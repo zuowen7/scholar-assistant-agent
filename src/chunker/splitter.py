@@ -20,6 +20,14 @@ class Chunk:
     estimated_tokens: int
 
 
+@dataclass
+class ChunkResult:
+    """切块结果"""
+
+    chunks: list[Chunk]
+    references_text: str  # 未翻译的引用区原文
+
+
 def _estimate_tokens(text: str) -> int:
     """粗略估算文本的 token 数"""
     en_chars = sum(1 for c in text if c.isascii() and c.isprintable())
@@ -36,6 +44,7 @@ def chunk_text(
     max_tokens: int = 2048,
     overlap_tokens: int = 128,
     strategy: str = "sentence",
+    skip_references: bool = True,
 ) -> list[Chunk]:
     """将文本切分为多个块
 
@@ -44,25 +53,89 @@ def chunk_text(
         max_tokens: 每块最大 token 数
         overlap_tokens: 块间重叠 token 数
         strategy: 切块策略 - sentence | paragraph | fixed
+        skip_references: 是否跳过引用区不切块
 
     Returns:
-        Chunk 列表
+        Chunk 列表（不含引用区）
     """
+    result = chunk_text_full(text, max_tokens, overlap_tokens, strategy, skip_references)
+    return result.chunks
+
+
+def chunk_text_full(
+    text: str,
+    max_tokens: int = 2048,
+    overlap_tokens: int = 128,
+    strategy: str = "sentence",
+    skip_references: bool = True,
+) -> ChunkResult:
+    """完整切块，返回引用区原文
+
+    Args:
+        text: 清洗后的文本
+        max_tokens: 每块最大 token 数
+        overlap_tokens: 块间重叠 token 数
+        strategy: 切块策略 - sentence | paragraph | fixed
+        skip_references: 是否跳过引用区不切块
+
+    Returns:
+        ChunkResult 包含 chunks 和 references_text
+    """
+    body_text = text
+    references_text = ""
+
+    if skip_references:
+        body_text, references_text = _split_references(text)
+
+    if not body_text.strip():
+        return ChunkResult(chunks=[], references_text=references_text)
+
     if strategy == "sentence":
-        segments = _split_sentences(text)
+        segments = _split_sentences(body_text)
     elif strategy == "paragraph":
-        segments = _split_paragraphs(text)
+        segments = _split_paragraphs(body_text)
     elif strategy == "fixed":
-        segments = _split_fixed(text, chunk_chars=max_tokens * CHARS_PER_TOKEN_EN)
+        segments = _split_fixed(body_text, chunk_chars=max_tokens * CHARS_PER_TOKEN_EN)
     else:
         raise ValueError(f"未知切块策略: {strategy}")
 
-    return _merge_segments(segments, max_tokens, overlap_tokens)
+    chunks = _merge_segments(segments, max_tokens, overlap_tokens)
+    return ChunkResult(chunks=chunks, references_text=references_text)
+
+
+# ---------------------------------------------------------------------------
+# 引用区分离
+# ---------------------------------------------------------------------------
+
+_REFERENCE_PATTERNS = [
+    r"REFERENCES\s+AND\s+NOTES",
+    r"REFERENCES",
+    r"BIBLIOGRAPHY",
+    r"LITERATURE\s+CITED",
+    r"WORKS\s+CITED",
+]
+
+
+def _split_references(text: str) -> tuple[str, str]:
+    """将正文和引用区拆分
+
+    Returns:
+        (body_text, references_text)
+    """
+    for pattern in _REFERENCE_PATTERNS:
+        m = re.search(r"^" + pattern, text, re.MULTILINE | re.IGNORECASE)
+        if m:
+            return text[: m.start()].rstrip(), text[m.start():]
+    return text, ""
+
+
+# ---------------------------------------------------------------------------
+# 切块策略
+# ---------------------------------------------------------------------------
 
 
 def _split_sentences(text: str) -> list[str]:
     """按句子拆分文本"""
-    # 以句号、问号、感叹号加空格/换行为分隔点
     parts = re.split(r"(?<=[.!?])\s+", text)
     return [p.strip() for p in parts if p.strip()]
 
