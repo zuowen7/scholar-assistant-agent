@@ -29,7 +29,7 @@ chunker:
 translator:
   # Ollama 配置
   ollama_base_url: "http://localhost:11434"
-  model: "qwen3"
+  model: "qwen3:8b"
   # 生成参数
   temperature: 0.3
   num_predict: 4096
