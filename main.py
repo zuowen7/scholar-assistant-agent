@@ -10,12 +10,11 @@ from pathlib import Path
 
 import yaml
 
-from src.chunker import chunk_text
-from src.cleaner import clean_text
+from src.chunker import chunk_text_full
+from src.cleaner import clean_text_full
 from src.formatter import format_output
 from src.formatter.renderer import save_output
-from src.parser import extract_text, extract_pages
-from src.translator import translate
+from src.parser import extract_pages
 from src.translator.ollama_client import OllamaClient
 
 logger = logging.getLogger("scholar-translate")
@@ -73,23 +72,38 @@ def main(argv: list[str] | None = None) -> None:
     t0 = time.time()
     doc = extract_pages(pdf_path)
     raw_text = doc.full_text
+    dual_pages = sum(1 for p in doc.pages if p.is_dual_column)
     logger.info("  → %d 页, %d 字符", doc.page_count, len(raw_text))
+    if dual_pages:
+        logger.info("  → 检测到 %d 页双栏布局", dual_pages)
 
     # Step 2: 文本清洗
     logger.info("[2/5] 清洗文本...")
-    cleaned = clean_text(raw_text)
+    clean_result = clean_text_full(raw_text)
+    cleaned = clean_result.text
     logger.info("  → 清洗后 %d 字符", len(cleaned))
+    if clean_result.has_references:
+        logger.info(
+            "  → 检测到引用区 (位置 %d, %d 字符)",
+            clean_result.references_start,
+            len(clean_result.references_text),
+        )
 
     # Step 3: 文本切块
     logger.info("[3/5] 切块...")
     chunker_cfg = config.get("chunker", {})
-    chunks = chunk_text(
+    chunk_result = chunk_text_full(
         cleaned,
         max_tokens=chunker_cfg.get("max_tokens", 2048),
         overlap_tokens=chunker_cfg.get("overlap_tokens", 128),
         strategy=chunker_cfg.get("strategy", "sentence"),
+        skip_references=True,
     )
+    chunks = chunk_result.chunks
+    references_text = chunk_result.references_text
     logger.info("  → %d 个文本块", len(chunks))
+    if references_text:
+        logger.info("  → 引用区 %d 字符已跳过", len(references_text))
 
     # Step 4: 翻译
     logger.info("[4/5] 翻译中...")
@@ -123,6 +137,11 @@ def main(argv: list[str] | None = None) -> None:
     fmt_cfg = config.get("formatter", {})
     output_format = args.format or fmt_cfg.get("output_format", "bilingual")
     content = format_output(results, output_format=output_format)
+
+    # 追加未翻译的引用区
+    if references_text:
+        content += "\n\n---\n\n## References\n\n" + references_text
+
     saved = save_output(content, output_path)
 
     elapsed = time.time() - t0

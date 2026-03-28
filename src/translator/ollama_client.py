@@ -27,7 +27,7 @@ class OllamaClient:
     def __init__(
         self,
         base_url: str = "http://localhost:11434",
-        model: str = "qwen3",
+        model: str = "qwen3:8b",
         temperature: float = 0.3,
         num_predict: int = 4096,
         system_prompt: str = "",
@@ -105,7 +105,7 @@ class OllamaClient:
 def translate(
     text: str,
     base_url: str = "http://localhost:11434",
-    model: str = "qwen3",
+    model: str = "qwen3:8b",
     system_prompt: str = "",
 ) -> TranslationResult:
     """翻译文本（快捷函数）

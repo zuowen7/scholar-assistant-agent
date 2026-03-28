@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
+
+
+@dataclass
+class CleanResult:
+    """清洗结果"""
+
+    text: str
+    has_references: bool
+    references_start: int  # 引用区在 text 中的起始位置 (-1 表示无)
+    references_text: str  # 引用区原文
 
 
 def clean_text(raw_text: str) -> str:
-    """清洗 PDF 提取的原始文本
-
-    处理步骤:
-    1. 合并被断行打断的单词 (连字符断词)
-    2. 合并同段落内的换行
-    3. 规范化空白字符
-    4. 移除页码标记
-    5. 恢复段落分隔
+    """清洗 PDF 提取的原始文本（向后兼容的快捷方法）
 
     Args:
         raw_text: PDF 提取的原始文本
@@ -21,24 +25,111 @@ def clean_text(raw_text: str) -> str:
     Returns:
         清洗后的文本
     """
+    return clean_text_full(raw_text).text
+
+
+def clean_text_full(raw_text: str) -> CleanResult:
+    """完整清洗，返回结构化结果
+
+    处理步骤:
+    1. 过滤水印文本
+    2. 合并被断行打断的单词 (连字符断词)
+    3. 合并同段落内的换行
+    4. 规范化空白字符
+    5. 移除页码标记
+    6. 检测引用区
+    7. 恢复段落分隔
+    """
     text = raw_text
 
-    # 1. 处理连字符断词: "infor-\nmation" → "information"
+    # 1. 过滤水印
+    text = _remove_watermarks(text)
+
+    # 2. 处理连字符断词: "infor-\nmation" → "information"
     text = _fix_hyphenation(text)
 
-    # 2. 合并段落内换行: 非空行后紧跟非空行（无空行间隔）视为同段落
+    # 3. 合并段落内换行
     text = _merge_paragraph_lines(text)
 
-    # 3. 规范化空白
+    # 4. 规范化空白
     text = _normalize_whitespace(text)
 
-    # 4. 移除独立页码行 (如 "12", "- 12 -", "Page 12")
+    # 5. 移除独立页码行
     text = _remove_page_numbers(text)
 
-    # 5. 压缩连续空行为最多两个换行
+    # 6. 压缩连续空行
     text = re.sub(r"\n{3,}", "\n\n", text)
 
-    return text.strip()
+    # 7. 检测引用区
+    ref_pos, ref_text = _detect_references(text)
+
+    return CleanResult(
+        text=text.strip(),
+        has_references=ref_pos >= 0,
+        references_start=ref_pos,
+        references_text=ref_text,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 引用区检测
+# ---------------------------------------------------------------------------
+
+# 常见引用区标题 (大小写不敏感)
+_REFERENCE_PATTERNS = [
+    r"REFERENCES\s+AND\s+NOTES",
+    r"REFERENCES",
+    r"BIBLIOGRAPHY",
+    r"LITERATURE\s+CITED",
+    r"WORKS\s+CITED",
+    r"SUPPLEMENTARY\s+MATERIALS",
+    r"ACKNOWLEDGMENTS",
+]
+
+
+def _detect_references(text: str) -> tuple[int, str]:
+    """检测引用区起始位置
+
+    Returns:
+        (position, reference_text) — position 为 -1 表示未检测到
+    """
+    for pattern in _REFERENCE_PATTERNS:
+        m = re.search(r"^" + pattern, text, re.MULTILINE | re.IGNORECASE)
+        if m:
+            return m.start(), text[m.start():]
+    return -1, ""
+
+
+# ---------------------------------------------------------------------------
+# 水印过滤
+# ---------------------------------------------------------------------------
+
+_WATERMARK_PATTERNS = [
+    r"^\d+\s+\d+\s+\w+\s+\d{4}\s+Science$",
+    r"^\w+\s+\d{4}\s+Science\s+Vol\s+\d+.*$",
+    r"^Science\s+\d+.*$",
+    r"^PERSPECTIVES$",
+    r"^REVIEW$",
+    r"^RESEARCH\s+ARTICLE$",
+    r"^REPORTS$",
+]
+
+
+def _remove_watermarks(text: str) -> str:
+    """移除水印和期刊页眉噪声"""
+    # 先处理跨行的 "Downloaded from ... on ..." 水印
+    text = re.sub(
+        r"Downloaded\s+from\s+.+?\s+on\s+\w+\s+\d+.*?(?=\n|$)",
+        "", text, flags=re.DOTALL,
+    )
+    for pattern in _WATERMARK_PATTERNS:
+        text = re.sub(pattern, "", text, flags=re.MULTILINE)
+    return text
+
+
+# ---------------------------------------------------------------------------
+# 原有清洗函数
+# ---------------------------------------------------------------------------
 
 
 def _fix_hyphenation(text: str) -> str:
@@ -89,7 +180,6 @@ def _is_continuation(prev_line: str, current_line: str) -> bool:
 
     续行特征:
     - 当前行以小写字母开头
-    - 当前行以逗号、分号等标点开头的情况较少见，但也可能是续行
     - 上一行以句号、问号、感叹号结尾时，通常不是续行
     """
     # 上一行以句末标点结尾 → 新段落
@@ -110,28 +200,23 @@ def _is_continuation(prev_line: str, current_line: str) -> bool:
 
 def _looks_like_heading(line: str) -> bool:
     """判断是否像标题行"""
-    # 短行 + 首字母大写 = 可能是标题
     return len(line) < 80 and not line.endswith((".", ",", ";", ":"))
 
 
 def _normalize_whitespace(text: str) -> str:
     """规范化空白字符"""
-    # 制表符替换为空格
     text = text.replace("\t", " ")
-    # 多个连续空格压缩为一个
     text = re.sub(r" {2,}", " ", text)
-    # 行首行尾空格
     text = re.sub(r"^ +| +$", "", text, flags=re.MULTILINE)
     return text
 
 
 def _remove_page_numbers(text: str) -> str:
     """移除独立页码行"""
-    # 匹配: "12", "- 12 -", "Page 12", "第 12 页" 等
     patterns = [
-        r"^\s*\d+\s*$",                           # 纯数字
-        r"^\s*[-–—]\s*\d+\s*[-–—]\s*$",           # - 12 -
-        r"^\s*[Pp]age\s+\d+\s*$",                  # Page 12
+        r"^\s*\d+\s*$",
+        r"^\s*[-–—]\s*\d+\s*[-–—]\s*$",
+        r"^\s*[Pp]age\s+\d+\s*$",
     ]
     for pattern in patterns:
         text = re.sub(pattern, "", text, flags=re.MULTILINE)
