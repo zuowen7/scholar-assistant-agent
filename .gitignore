@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 测试与覆盖率
+.pytest_cache/
+htmlcov/
+.coverage
+
+# 输出文件
+output/
+*.out
+
+# 环境变量
+.env
+
+# 模型权重
+*.bin
+*.gguf
+*.safetensors
+
+# OS
+Thumbs.db
+.DS_Store
