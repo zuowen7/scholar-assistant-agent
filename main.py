@@ -114,6 +114,7 @@ def main(argv: list[str] | None = None) -> None:
         temperature=trans_cfg.get("temperature", 0.3),
         num_predict=trans_cfg.get("num_predict", 4096),
         system_prompt=trans_cfg.get("system_prompt", ""),
+        timeout=trans_cfg.get("timeout", 300.0),
     )
 
     # 健康检查
