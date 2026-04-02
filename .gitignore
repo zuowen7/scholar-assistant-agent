@@ -40,3 +40,11 @@ data/output/*.txt
 # OS
 Thumbs.db
 .DS_Store
+
+# Tauri / Node
+node_modules/
+src-tauri/target/
+dist/
+
+# Claude
+.claude/
