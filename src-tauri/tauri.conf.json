@@ -1,0 +1,27 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
+  "productName": "Scholar Translate",
+  "version": "0.2.0",
+  "identifier": "com.scholar-translate.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "title": "Scholar Translate - 学术文献翻译",
+        "width": 1000,
+        "height": 700,
+        "resizable": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src http://localhost:18088 http://localhost:11434; style-src 'self' 'unsafe-inline'"
+    }
+  }
+}

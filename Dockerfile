@@ -5,7 +5,7 @@
 FROM python:3.12-slim AS builder
 
 WORKDIR /build
-COPY requirements.txt .
+COPY python/requirements.txt .
 RUN pip install --no-cache-dir --timeout 120 \
     -i https://pypi.tuna.tsinghua.edu.cn/simple \
     --prefix=/install -r requirements.txt
@@ -25,14 +25,16 @@ WORKDIR /app
 COPY --from=builder /install /usr/local
 
 # 复制项目代码
-COPY src/ src/
-COPY config/ config/
-COPY main.py .
+COPY python/src/ src/
+COPY python/config/ config/
+COPY python/main.py .
+COPY python/api.py .
 
 # 输出目录
 RUN mkdir -p /data/input /data/output && chown -R appuser:appuser /data
 
 USER appuser
 
-ENTRYPOINT ["python", "main.py"]
-CMD ["--help"]
+# 默认启动 API 服务器
+ENTRYPOINT ["python", "api.py"]
+CMD ["--port", "18088"]
