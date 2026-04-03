@@ -88,15 +88,23 @@ _REFERENCE_PATTERNS = [
 
 
 def _detect_references(text: str) -> tuple[int, str]:
-    """检测引用区起始位置
+    """检测引用区起始位置（查找最后一个匹配，避免误截多篇文章）
 
     Returns:
         (position, reference_text) — position 为 -1 表示未检测到
     """
+    best_pos = -1
     for pattern in _REFERENCE_PATTERNS:
-        m = re.search(r"^" + pattern, text, re.MULTILINE | re.IGNORECASE)
-        if m:
-            return m.start(), text[m.start():]
+        for m in re.finditer(r"^" + pattern, text, re.MULTILINE | re.IGNORECASE):
+            if m.start() > best_pos:
+                best_pos = m.start()
+
+    if best_pos >= 0:
+        refs = text[best_pos:]
+        # 如果"引用区"占比过大（>50%），可能是多篇文章误判
+        if len(refs) > len(text) * 0.5:
+            return -1, ""
+        return best_pos, refs
     return -1, ""
 
 

@@ -43,7 +43,7 @@ output/
 Thumbs.db
 .DS_Store
 
-# 文档（不需要进镜像）
+# 文档
 docs/
 
 # Docker 自身
@@ -51,5 +51,11 @@ Dockerfile
 docker-compose*.yml
 .dockerignore
 
-# Claude
+# Claude / Tauri 构建产物 (不需要进 Docker 镜像)
 .claude/
+src-tauri/
+target/
+node_modules/
+
+# 数据目录 (运行时挂载)
+data/

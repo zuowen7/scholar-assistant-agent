@@ -19,9 +19,9 @@ cleaner:
 # 文本切块
 chunker:
   # 每块最大 token 数 (面向 Qwen3)
-  max_tokens: 2048
+  max_tokens: 1024
   # 块间重叠 token 数
-  overlap_tokens: 128
+  overlap_tokens: 64
   # 切块策略: sentence | paragraph | fixed
   strategy: sentence
 
@@ -32,14 +32,18 @@ translator:
   model: "qwen3:8b"
   # 生成参数
   temperature: 0.3
-  num_predict: 4096
+  num_predict: 16384
   # 翻译提示词模板
   system_prompt: |
-    You are a professional academic translator. Translate the following English text to Chinese.
-    Rules:
-    1. Preserve all technical terms, formulas, and citations exactly as-is.
-    2. Keep the original paragraph structure.
-    3. Use natural, fluent Chinese suitable for academic contexts.
+    你是一位专业的学术翻译专家。请将以下英文文本完整翻译为中文。
+
+    要求：
+    1. 必须翻译全部内容，不得遗漏任何句子或段落。
+    2. 保留所有专业术语、公式、引用编号（如 (1), [2]）原样不动。
+    3. 保持原文的段落结构和逻辑关系。
+    4. 使用自然流畅的中文，适合学术阅读。
+    5. 专有名词首次出现时附注英文原文，如"系统发育学（phylogenetics）"。
+    6. 不要添加任何解释、注释或额外内容，只输出翻译结果。
 
 # 输出格式
 formatter:

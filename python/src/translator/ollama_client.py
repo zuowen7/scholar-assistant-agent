@@ -29,9 +29,9 @@ class OllamaClient:
         base_url: str = "http://localhost:11434",
         model: str = "qwen3:8b",
         temperature: float = 0.3,
-        num_predict: int = 4096,
+        num_predict: int = 16384,
         system_prompt: str = "",
-        timeout: float = 120.0,
+        timeout: float = 300.0,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
@@ -98,7 +98,7 @@ class OllamaClient:
         try:
             resp = httpx.get(f"{self.base_url}/api/tags", timeout=5.0)
             return resp.status_code == 200
-        except httpx.ConnectError:
+        except httpx.HTTPError:
             return False
 
 

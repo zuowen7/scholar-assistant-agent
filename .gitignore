@@ -2,7 +2,6 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
-dist/
 build/
 .eggs/
 
@@ -22,12 +21,16 @@ env/
 htmlcov/
 .coverage
 
-# 输出文件
-/output/
-*.out
+# 数据文件 (翻译输入/输出)
 data/input/*.pdf
 data/output/*.md
 data/output/*.txt
+python/data/input/*.pdf
+python/data/output/*.md
+python/data/output/*.txt
+
+# 构建产物
+dist/
 
 # 环境变量
 .env
@@ -41,10 +44,11 @@ data/output/*.txt
 Thumbs.db
 .DS_Store
 
-# Tauri / Node
+# Node
 node_modules/
+
+# Tauri
 src-tauri/target/
-dist/
 
 # Claude
 .claude/

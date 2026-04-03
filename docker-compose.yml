@@ -1,9 +1,13 @@
-# Scholar Translate - Docker Compose
+# Scholar Translate - Docker Compose 一键部署
 #
-# 用法:
-#   docker compose up              # 启动 Ollama + 翻译服务
-#   docker compose run app /data/input/paper.pdf -o /data/output/paper.md
-#   docker compose down            # 停止
+# 使用方法:
+#   docker compose up -d           # 启动所有服务 (Ollama + Web UI)
+#   浏览器打开 http://localhost:18088
+#   docker compose down             # 停止
+#   docker compose logs -f app      # 查看翻译日志
+#
+# 首次使用需要拉取模型:
+#   docker compose exec ollama ollama pull qwen3:8b
 
 services:
   # ---- Ollama 推理服务 ----
@@ -14,6 +18,7 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+    # GPU 加速 (需要 NVIDIA Docker Runtime)
     deploy:
       resources:
         reservations:
@@ -21,20 +26,23 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    # 如需 CPU 模式，注释掉 deploy 块即可
+    # 如只用 CPU，注释掉上面 deploy 块即可
+    restart: unless-stopped
 
-  # ---- 翻译应用 ----
+  # ---- 翻译 Web 应用 (前端 + 后端) ----
   app:
     build: .
     container_name: scholar-translate
+    ports:
+      - "18088:18088"
     depends_on:
       - ollama
     volumes:
-      - ./data/input:/data/input:ro
+      - ./data/input:/data/input
       - ./data/output:/data/output
     environment:
       - OLLAMA_HOST=http://ollama:11434
-    entrypoint: ["python", "main.py"]
+    restart: unless-stopped
 
 volumes:
   ollama_data:

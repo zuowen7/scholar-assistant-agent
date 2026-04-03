@@ -117,15 +117,24 @@ _REFERENCE_PATTERNS = [
 
 
 def _split_references(text: str) -> tuple[str, str]:
-    """将正文和引用区拆分
+    """将正文和引用区拆分（查找最后一个匹配，避免误截多篇文章）
 
     Returns:
         (body_text, references_text)
     """
+    best_pos = -1
     for pattern in _REFERENCE_PATTERNS:
-        m = re.search(r"^" + pattern, text, re.MULTILINE | re.IGNORECASE)
-        if m:
-            return text[: m.start()].rstrip(), text[m.start():]
+        for m in re.finditer(r"^" + pattern, text, re.MULTILINE | re.IGNORECASE):
+            if m.start() > best_pos:
+                best_pos = m.start()
+
+    if best_pos >= 0:
+        body = text[:best_pos].rstrip()
+        refs = text[best_pos:]
+        # 如果"引用区"占比过大（>50%），可能是多篇文章误判，不切割
+        if len(refs) > len(text) * 0.5:
+            return text, ""
+        return body, refs
     return text, ""
 
 

@@ -1,4 +1,5 @@
 import { reactive, readonly } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
 import type {
   TranslateState,
   TranslateStatus,
@@ -67,10 +68,18 @@ async function checkHealth(): Promise<boolean> {
 
 async function checkOllama(): Promise<boolean> {
   try {
-    const resp = await fetch(`${API_URL}/api/ollama/status`, { signal: AbortSignal.timeout(3000) })
-    if (!resp.ok) return false
-    const data = await resp.json()
-    return data.reachable === true
+    // 直接检测 Ollama（不走 Python 中转，避免间接层异常）
+    const resp = await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(3000) })
+    return resp.ok
+  } catch {
+    return false
+  }
+}
+
+async function checkOllamaDirect(): Promise<boolean> {
+  try {
+    const resp = await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(3000) })
+    return resp.ok
   } catch {
     return false
   }
@@ -78,12 +87,11 @@ async function checkOllama(): Promise<boolean> {
 
 async function startOllama(): Promise<string | null> {
   try {
-    const { invoke } = await import('@tauri-apps/api/core')
-    const result = await invoke<string>('start_ollama')
-    // Wait for Ollama to become reachable
-    for (let i = 0; i < 10; i++) {
+    await invoke<string>('start_ollama')
+    // 直接检测 Ollama（不走 Python 中转，更快更可靠）
+    for (let i = 0; i < 30; i++) {
       await new Promise(r => setTimeout(r, 1000))
-      if (await checkOllama()) return null
+      if (await checkOllamaDirect()) return null
     }
     return 'Ollama 启动超时，请手动运行 ollama serve'
   } catch (err) {
@@ -232,6 +240,45 @@ async function translate(file: File): Promise<void> {
   }
 }
 
+async function uploadPdfByPath(filePath: string): Promise<string> {
+  const resp = await fetch(`${API_URL}/api/translate/path`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: filePath }),
+  })
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ detail: '上传失败' }))
+    throw new Error(err.detail || `上传失败 (${resp.status})`)
+  }
+
+  const data = await resp.json()
+  state.taskId = data.task_id
+  return data.task_id
+}
+
+async function translateFromPath(filePath: string): Promise<void> {
+  reset()
+  setStatus('uploading')
+  state.stepMessage = '上传 PDF...'
+
+  try {
+    const healthOk = await checkHealth()
+    if (!healthOk) {
+      throw new Error('无法连接翻译服务，请确认后端已启动')
+    }
+
+    const taskId = await uploadPdfByPath(filePath)
+    await startStream(taskId)
+  } catch (err: unknown) {
+    if (state.status !== 'done') {
+      const msg = err instanceof Error ? err.message : '未知错误'
+      state.errorMessage = msg
+      setStatus('error')
+    }
+  }
+}
+
 async function downloadResult(): Promise<void> {
   if (!state.taskId) return
   const url = `${API_URL}/api/download/${state.taskId}`
@@ -242,6 +289,7 @@ export function useTranslate() {
   return {
     state: readonly(state),
     translate,
+    translateFromPath,
     reset,
     checkHealth,
     checkOllama,

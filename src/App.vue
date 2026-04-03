@@ -119,10 +119,11 @@
               <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
             </svg>
             <span class="done-label">翻译完成</span>
-            <span v-if="state.chunks.length" class="done-meta">{{ state.chunks.length }} 段</span>
+            <span v-if="state.chunks.length" class="done-meta">{{ state.chunks.length }} 段 · {{ allSentencePairs.length }} 句</span>
           </div>
           <div class="result-bar-right">
-            <button class="btn ghost" :class="{ on: viewMode === 'parallel' }" @click="viewMode = 'parallel'">逐句对照</button>
+            <button class="btn ghost" :class="{ on: viewMode === 'sentence' }" @click="viewMode = 'sentence'">逐句对照</button>
+            <button class="btn ghost" :class="{ on: viewMode === 'parallel' }" @click="viewMode = 'parallel'">段落对照</button>
             <button class="btn ghost" :class="{ on: viewMode === 'markdown' }" @click="viewMode = 'markdown'">全文</button>
             <button class="btn primary" @click="downloadResult">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -133,21 +134,37 @@
         </div>
 
         <!-- 逐句对照 -->
-        <div v-if="viewMode === 'parallel' && state.chunks.length" class="parallel">
-          <div v-for="(chunk, i) in state.chunks" :key="i" class="par-row">
-            <div class="par-side orig">
-              <span class="par-idx">{{ i + 1 }}</span>
-              <p>{{ chunk.original }}</p>
-            </div>
-            <div class="par-side trans">
-              <p>{{ chunk.translated }}</p>
+        <div v-if="viewMode === 'sentence' && allSentencePairs.length" class="sentence-view">
+          <div v-for="(pair, i) in allSentencePairs" :key="i" class="sent-pair">
+            <div class="sent-num">{{ i + 1 }}</div>
+            <div class="sent-body">
+              <p class="sent-orig">{{ pair.original }}</p>
+              <p class="sent-trans">{{ pair.translated }}</p>
             </div>
           </div>
         </div>
 
-        <!-- 全文 -->
+        <!-- 段落对照 -->
+        <div v-else-if="viewMode === 'parallel' && state.chunks.length" class="parallel">
+          <div v-for="(chunk, i) in state.chunks" :key="i" class="par-card">
+            <div class="par-header">
+              <span class="par-badge">{{ i + 1 }} / {{ state.chunks.length }}</span>
+            </div>
+            <div class="par-body">
+              <div class="par-col orig">
+                <p>{{ chunk.original }}</p>
+              </div>
+              <div class="par-divider"></div>
+              <div class="par-col trans">
+                <p>{{ chunk.translated }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 全文 Markdown -->
         <div v-else class="fulltext">
-          <pre>{{ state.finalContent }}</pre>
+          <div class="md-body" v-html="renderedContent"></div>
         </div>
       </div>
     </main>
@@ -156,9 +173,10 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useTranslate } from './composables/useTranslate'
 
-const { state, translate, reset, checkHealth, checkOllama, startOllama, downloadResult, overallProgress } = useTranslate()
+const { state, translate, translateFromPath, reset, checkHealth, checkOllama, startOllama, downloadResult, overallProgress } = useTranslate()
 
 const healthOk = ref(false)
 const ollamaOk = ref(false)
@@ -166,13 +184,71 @@ const ollamaLoading = ref(false)
 const ollamaError = ref<string | null>(null)
 const globalDragging = ref(false)
 const zoneHover = ref(false)
-const viewMode = ref<'parallel' | 'markdown'>('parallel')
+const viewMode = ref<'sentence' | 'parallel' | 'markdown'>('sentence')
 const stepLabels = ['解析 PDF', '清洗文本', '智能分块', '翻译', '格式化输出']
 
 const progress = computed(() => overallProgress())
 
+// --- 句子拆分与配对 ---
+
+interface SentencePair {
+  original: string
+  translated: string
+}
+
+function splitSentences(text: string, isChinese: boolean): string[] {
+  if (!text.trim()) return []
+  if (isChinese) {
+    return text.split(/(?<=[。！？；…\n])/g).map(s => s.trim()).filter(s => s.length > 0)
+  }
+  return text.split(/(?<=[.!?])\s+|\n+/g).map(s => s.trim()).filter(s => s.length > 0)
+}
+
+function alignPairs(en: string[], zh: string[]): SentencePair[] {
+  const pairs: SentencePair[] = []
+  const maxLen = Math.max(en.length, zh.length)
+  for (let i = 0; i < maxLen; i++) {
+    pairs.push({
+      original: en[i] ?? '',
+      translated: zh[i] ?? '',
+    })
+  }
+  return pairs
+}
+
+const allSentencePairs = computed<SentencePair[]>(() => {
+  const result: SentencePair[] = []
+  for (const chunk of state.chunks) {
+    const en = splitSentences(chunk.original, false)
+    const zh = splitSentences(chunk.translated, true)
+    if (en.length > 0 || zh.length > 0) {
+      result.push(...alignPairs(en, zh))
+    }
+  }
+  return result
+})
+
+// --- 简易 Markdown → HTML ---
+
+function renderMarkdown(md: string): string {
+  return md
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^\> (.+)$/gm, '<blockquote>$1</blockquote>')
+    .replace(/^---$/gm, '<hr/>')
+    .replace(/\n{2,}/g, '</p><p>')
+    .replace(/\n/g, '<br/>')
+    .replace(/^/, '<p>').replace(/$/, '</p>')
+}
+
+const renderedContent = computed(() => renderMarkdown(state.finalContent))
+
 let dragCounter = 0
 let timer: ReturnType<typeof setInterval> | null = null
+let unlistenDragDrop: (() => void) | null = null
 
 onMounted(async () => {
   healthOk.value = await checkHealth()
@@ -183,9 +259,32 @@ onMounted(async () => {
       ollamaOk.value = await checkOllama()
     }
   }, 8000)
+
+  // Tauri v2 原生拖拽事件（WebView2 会拦截 HTML5 拖拽）
+  try {
+    unlistenDragDrop = await getCurrentWindow().onDragDropEvent((event) => {
+      if (event.payload.type === 'enter') {
+        globalDragging.value = true
+      } else if (event.payload.type === 'drop') {
+        globalDragging.value = false
+        zoneHover.value = false
+        const paths = event.payload.paths
+        if (paths.length > 0 && paths[0].toLowerCase().endsWith('.pdf')) {
+          translateFromPath(paths[0])
+        }
+      } else if (event.payload.type === 'leave') {
+        globalDragging.value = false
+      }
+    })
+  } catch {
+    // 非 Tauri 环境，使用 HTML5 拖拽降级
+  }
 })
 
-onUnmounted(() => { if (timer) clearInterval(timer) })
+onUnmounted(() => {
+  if (timer) clearInterval(timer)
+  if (unlistenDragDrop) unlistenDragDrop()
+})
 
 function onDragEnter(e: Event) {
   e.preventDefault()
@@ -425,18 +524,18 @@ body {
 
 .result-bar {
   display: flex; align-items: center; justify-content: space-between;
-  padding-bottom: 12px; border-bottom: 1px solid var(--border);
-  margin-bottom: 12px; flex-shrink: 0;
+  padding: 14px 0; border-bottom: 1px solid var(--border);
+  margin-bottom: 16px; flex-shrink: 0;
 }
-.result-bar-left { display: flex; align-items: center; gap: 8px; }
-.done-label { font-size: 14px; font-weight: 600; color: var(--green); }
-.done-meta { font-size: 12px; color: var(--text3); }
-.result-bar-right { display: flex; gap: 6px; }
+.result-bar-left { display: flex; align-items: center; gap: 10px; }
+.done-label { font-size: 16px; font-weight: 600; color: var(--green); }
+.done-meta { font-size: 13px; color: var(--text3); }
+.result-bar-right { display: flex; gap: 8px; }
 
 .btn {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 5px 12px; border: none; border-radius: 6px;
-  font-size: 12px; font-weight: 500; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 14px; border: none; border-radius: 7px;
+  font-size: 13px; font-weight: 500; cursor: pointer;
   transition: all 0.15s; font-family: inherit;
 }
 .btn.primary { background: var(--accent); color: #fff; }
@@ -445,38 +544,84 @@ body {
 .btn.outline:hover { background: var(--surface2); }
 .btn.ghost { background: transparent; color: var(--text3); }
 .btn.ghost:hover { color: var(--text); }
-.btn.ghost.on { color: var(--accent2); background: #6366f112; }
+.btn.ghost.on { color: var(--accent2); background: #6366f115; }
 
-/* 逐句对照 */
+/* ── 逐句对照 ── */
+.sentence-view { flex: 1; overflow-y: auto; max-width: 900px; margin: 0 auto; width: 100%; }
+
+.sent-pair {
+  display: flex; gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid #27272a40;
+  transition: background 0.15s;
+}
+.sent-pair:hover { background: var(--surface); }
+.sent-pair:last-child { border-bottom: none; }
+
+.sent-num {
+  flex-shrink: 0; width: 32px; text-align: right;
+  font-size: 13px; color: var(--text3); padding-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sent-body { flex: 1; min-width: 0; }
+.sent-orig {
+  font-size: 14px; color: var(--text2); line-height: 1.7;
+  white-space: pre-wrap; word-break: break-word;
+  margin-bottom: 8px;
+}
+.sent-trans {
+  font-size: 16px; color: var(--text); line-height: 1.9;
+  white-space: pre-wrap; word-break: break-word;
+  font-weight: 400;
+}
+
+/* ── 段落对照 ── */
 .parallel { flex: 1; overflow-y: auto; }
-.par-row {
-  display: flex; margin-bottom: 2px;
-  background: var(--surface); border-radius: 6px;
-  overflow: hidden;
+
+.par-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; margin-bottom: 14px; overflow: hidden;
 }
-.par-side {
-  flex: 1; padding: 12px 14px; min-width: 0;
+.par-header {
+  padding: 8px 18px; border-bottom: 1px solid var(--border);
+  background: var(--surface2);
 }
-.par-side.orig {
-  border-right: 1px solid var(--border);
+.par-badge {
+  font-size: 12px; color: var(--text3); font-weight: 500;
 }
-.par-side.orig p { color: var(--text2); font-size: 13px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
-.par-side.trans p { color: var(--text); font-size: 13px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
-.par-idx {
-  display: block; font-size: 10px; color: var(--text3);
-  margin-bottom: 4px;
+.par-body { display: flex; min-height: 0; }
+.par-col {
+  flex: 1; padding: 18px; min-width: 0;
+  font-size: 14px; line-height: 1.9;
+  white-space: pre-wrap; word-break: break-word;
+}
+.par-col.orig p { color: var(--text2); }
+.par-col.trans p { color: var(--text); }
+.par-divider {
+  width: 1px; background: var(--border); flex-shrink: 0;
 }
 
-/* 全文 */
+/* ── 全文 Markdown ── */
 .fulltext {
   flex: 1; overflow-y: auto; background: var(--surface);
-  border-radius: var(--radius); padding: 16px;
+  border-radius: var(--radius); padding: 24px 28px;
 }
-.fulltext pre {
-  font-size: 13px; line-height: 1.7;
-  white-space: pre-wrap; word-break: break-word;
-  color: var(--text); font-family: inherit;
+.md-body {
+  font-size: 15px; line-height: 2.0; color: var(--text);
+  max-width: 800px;
 }
+.md-body h1 { font-size: 22px; font-weight: 700; margin: 24px 0 14px; color: var(--accent2); }
+.md-body h2 { font-size: 18px; font-weight: 600; margin: 20px 0 12px; color: var(--text); }
+.md-body h3 { font-size: 16px; font-weight: 600; margin: 16px 0 10px; color: var(--text); }
+.md-body p { margin-bottom: 14px; }
+.md-body blockquote {
+  border-left: 3px solid var(--accent); padding: 6px 14px;
+  color: var(--text2); margin: 10px 0; background: #6366f108;
+  border-radius: 0 6px 6px 0;
+}
+.md-body hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+.md-body strong { color: var(--accent2); font-weight: 600; }
 
 /* ── 滚动条 ── */
 ::-webkit-scrollbar { width: 5px; }

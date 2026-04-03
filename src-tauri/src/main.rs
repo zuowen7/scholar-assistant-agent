@@ -73,6 +73,9 @@ pub fn run() {
             if let Err(e) = spawn_python(app) {
                 eprintln!("[ERROR] spawn Python: {}", e);
             }
+            if let Err(e) = spawn_ollama(app) {
+                eprintln!("[WARN] spawn Ollama: {} (可能已在运行)", e);
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -81,14 +84,54 @@ pub fn run() {
                 if let Some(pid) = state.python.lock().unwrap().take() {
                     kill_tree(pid);
                 }
-                if let Some(pid) = state.ollama.lock().unwrap().take() {
-                    kill_tree(pid);
-                };
+                // 不杀 Ollama：它是共享服务，其他程序可能也在用
+                state.ollama.lock().unwrap().take();
             }
         })
         .invoke_handler(tauri::generate_handler![start_ollama, stop_ollama])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn spawn_ollama(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let state = app.state::<ManagedPids>();
+    if state.ollama.lock().unwrap().is_some() {
+        return Ok(());
+    }
+
+    // 检测 Ollama 是否已经在运行（端口可连接则跳过）
+    let addr: std::net::SocketAddr = "127.0.0.1:11434".parse().unwrap();
+    if std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(2)).is_ok() {
+        eprintln!("[INFO] Ollama already running, skip spawn");
+        return Ok(());
+    }
+
+    #[cfg(windows)]
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    #[cfg(windows)]
+    let mut child = std::process::Command::new("ollama")
+        .arg("serve")
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("启动 Ollama 失败: {}。请确认 Ollama 已安装。", e))?;
+
+    #[cfg(not(windows))]
+    let mut child = std::process::Command::new("ollama")
+        .arg("serve")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("启动 Ollama 失败: {}", e))?;
+
+    let pid = child.id();
+    *state.ollama.lock().unwrap() = Some(pid);
+    eprintln!("[INFO] Ollama spawned PID={}", pid);
+
+    std::thread::spawn(move || { let _ = child.wait(); });
+    Ok(())
 }
 
 fn spawn_python(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {

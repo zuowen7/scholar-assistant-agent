@@ -10,9 +10,10 @@ from pathlib import Path
 from typing import AsyncGenerator
 
 import yaml
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
@@ -38,7 +39,9 @@ app.add_middleware(
 )
 
 BASE_DIR = Path(__file__).parent
-CONFIG_PATH = BASE_DIR / "config" / "default.yaml"
+# Docker 环境自动切换配置
+_DOCKER_CONFIG = BASE_DIR / "config" / "docker.yaml"
+CONFIG_PATH = _DOCKER_CONFIG if _DOCKER_CONFIG.exists() else BASE_DIR / "config" / "default.yaml"
 DATA_DIR = BASE_DIR / "data"
 INPUT_DIR = DATA_DIR / "input"
 OUTPUT_DIR = DATA_DIR / "output"
@@ -54,6 +57,10 @@ class ConfigUpdate(BaseModel):
     chunker: dict | None = None
     translator: dict | None = None
     formatter: dict | None = None
+
+
+class FilePathPayload(BaseModel):
+    path: str
 
 
 # --- 辅助函数 ---
@@ -106,6 +113,38 @@ async def start_translate(file: UploadFile = File(...)):
     pdf_path = INPUT_DIR / f"{task_id}_{file.filename}"
     with open(pdf_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
+
+    tasks[task_id] = {
+        "status": "pending",
+        "pdf_path": str(pdf_path),
+        "output_path": None,
+        "content": None,
+        "error": None,
+    }
+
+    return {"task_id": task_id}
+
+
+@app.post("/api/translate/path")
+async def start_translate_path(payload: FilePathPayload):
+    """从本地文件路径创建翻译任务（供 Tauri 拖拽使用）"""
+    global is_busy
+
+    if is_busy:
+        raise HTTPException(409, "已有翻译任务在运行，请等待完成")
+
+    file_path = Path(payload.path)
+    if not file_path.exists():
+        raise HTTPException(400, "文件不存在")
+    if file_path.suffix.lower() != ".pdf":
+        raise HTTPException(400, "仅支持 PDF 文件")
+
+    task_id = uuid.uuid4().hex[:8]
+    INPUT_DIR.mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    pdf_path = INPUT_DIR / f"{task_id}_{file_path.name}"
+    shutil.copy2(file_path, pdf_path)
 
     tasks[task_id] = {
         "status": "pending",
@@ -185,8 +224,8 @@ async def _run_pipeline(task_id: str) -> AsyncGenerator[dict, None]:
         chunk_result = await asyncio.to_thread(
             chunk_text_full,
             clean_result.text,
-            chunker_cfg.get("max_tokens", 2048),
-            chunker_cfg.get("overlap_tokens", 128),
+            chunker_cfg.get("max_tokens", 1024),
+            chunker_cfg.get("overlap_tokens", 64),
             chunker_cfg.get("strategy", "sentence"),
             True,  # skip_references
         )
@@ -208,7 +247,7 @@ async def _run_pipeline(task_id: str) -> AsyncGenerator[dict, None]:
             base_url=trans_cfg.get("ollama_base_url", "http://localhost:11434"),
             model=trans_cfg.get("model", "qwen3:8b"),
             temperature=trans_cfg.get("temperature", 0.3),
-            num_predict=trans_cfg.get("num_predict", 4096),
+            num_predict=trans_cfg.get("num_predict", 16384),
             system_prompt=trans_cfg.get("system_prompt", ""),
             timeout=trans_cfg.get("timeout", 300.0),
         )
@@ -316,7 +355,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Scholar Translate API Server")
     parser.add_argument("--port", type=int, default=18088)
     parser.add_argument("--host", type=str, default="127.0.0.1")
+    parser.add_argument("--static-dir", type=str, default=None,
+                        help="前端静态文件目录 (Docker 部署用)")
     args = parser.parse_args()
+
+    # Docker 模式: 挂载前端静态文件
+    if args.static_dir:
+        static_path = Path(args.static_dir)
+        if static_path.exists():
+            app.mount("/", StaticFiles(directory=str(static_path), html=True), name="static")
+            print(f"[INFO] Serving frontend from {static_path}")
 
     import uvicorn
 
