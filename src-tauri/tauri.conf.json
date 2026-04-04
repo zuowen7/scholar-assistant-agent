@@ -13,15 +13,22 @@
     "withGlobalTauri": false,
     "windows": [
       {
-        "title": "Scholar Translate - 学术文献翻译",
+        "title": "Scholar Translate",
         "width": 1000,
         "height": 700,
         "resizable": true,
-        "center": true
+        "center": true,
+        "decorations": false
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src http://localhost:18088 http://localhost:11434; style-src 'self' 'unsafe-inline'"
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:5173 http://localhost:18088 http://localhost:11434 http://127.0.0.1:18088; connect-src *; style-src * 'unsafe-inline'; font-src * data:; img-src * asset: https://asset.localhost data: blob:; media-src * asset: https://asset.localhost blob:",
+      "assetProtocol": {
+        "enable": true,
+        "scope": {
+          "allow": ["$HOME/**", "$PICTURE/**", "$VIDEO/**", "$DOWNLOAD/**", "$DESKTOP/**", "$DOCUMENT/**"]
+        }
+      }
     }
   }
 }

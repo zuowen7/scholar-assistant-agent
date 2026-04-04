@@ -2,6 +2,67 @@
 
 本地离线英文学术文献智能翻译工具。输入 PDF，自动清洗排版噪声，输出高质量双语对照文档。
 
+## 快速开始（Docker 一键部署）
+
+**前提条件**：安装 [Docker](https://www.docker.com/) 和 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)（GPU 加速可选）
+
+```bash
+# 1. 克隆仓库
+git clone https://github.com/zuowen7/scholar-translate.git
+cd scholar-translate
+
+# 2. 一键启动（Ollama + Web 应用）
+docker compose up -d
+
+# 3. 拉取翻译模型（首次使用）
+docker compose exec ollama ollama pull qwen3:8b
+
+# 4. 浏览器打开
+# http://localhost:18088
+```
+
+就这么简单。打开浏览器拖入 PDF 即可翻译。
+
+### 常用命令
+
+```bash
+docker compose up -d          # 启动所有服务
+docker compose down           # 停止
+docker compose logs -f app    # 查看应用日志
+docker compose logs -f ollama # 查看 Ollama 日志
+docker compose exec ollama ollama list  # 查看已下载模型
+```
+
+### GPU 加速
+
+默认 CPU 运行。如需 GPU 加速，编辑 `docker-compose.yml`，取消 ollama 服务的 `deploy` 注释块。
+
+---
+
+## 桌面端（Tauri）
+
+适合本地开发，提供原生桌面体验：
+
+```bash
+# 安装依赖
+npm install
+
+# 安装 Ollama 并拉取模型
+ollama pull qwen3:8b
+
+# 启动桌面应用
+npm run tauri dev
+```
+
+### 构建安装包
+
+```bash
+npm run tauri build
+# 产物在 src-tauri/target/release/bundle/
+```
+
+---
+
 ## 功能特性
 
 - **PDF 智能解析** — 自动检测单栏/双栏布局，准确提取文本
@@ -9,74 +70,24 @@
 - **引用区跳过** — 自动识别 REFERENCES 区域，原样保留不翻译
 - **本地翻译** — 基于 Ollama + Qwen3，全程离线，无需 API Key
 - **双语逐句对照** — 翻译结果按句配对，支持逐句/段落/全文三种视图
-- **桌面端 UI** — Tauri + Vue 3 桌面应用，拖拽 PDF 即可翻译
-- **Web UI** — Docker 一键部署，浏览器即可使用
+- **自定义背景** — 支持本地图片/视频作为窗口背景
+- **Docker 一键部署** — `docker compose up -d` 即可使用
 
 ## 项目结构
 
 ```
 ├── src/                        # Vue 3 前端
-│   ├── App.vue                 # 主界面 (上传、进度、结果展示)
-│   ├── composables/            # Vue composables
-│   └── types/                  # TypeScript 类型
-├── src-tauri/                  # Tauri 2 桌面端 (Rust)
+├── src-tauri/                  # Tauri 2 桌面端
 ├── python/
-│   ├── api.py                  # FastAPI 服务端 (Web API + SSE)
-│   ├── main.py                 # CLI 入口
-│   ├── config/
-│   │   ├── default.yaml        # 默认配置
-│   │   └── docker.yaml         # Docker 环境配置
-│   ├── src/                    # Python 核心模块
-│   │   ├── parser/             # PDF 解析 (pdfplumber)
-│   │   ├── cleaner/            # 文本清洗管线
-│   │   ├── chunker/            # 文本切块
-│   │   ├── translator/         # Ollama 翻译客户端
-│   │   └── formatter/          # 输出格式化
-│   └── tests/                  # 单元测试
-├── Dockerfile                  # 多阶段 Docker 构建
-├── docker-compose.yml          # Ollama + Web UI 一键部署
-└── scripts/docker.sh           # Docker 便捷脚本
+│   ├── api.py                  # FastAPI 服务器
+│   ├── src/translator/         # 翻译管道（解析/清洗/切块/翻译/格式化）
+│   └── config/                 # 默认 & Docker 配置
+├── Dockerfile                  # 多阶段构建（前端 + 后端）
+├── docker-compose.yml          # Ollama + Web 一键部署
+└── vite.config.ts              # Vite 配置（含 API 代理）
 ```
 
-## 快速开始
-
-### 方式一: Docker 一键部署 (推荐)
-
-```bash
-# 克隆仓库
-git clone https://github.com/zuowen7/translator.git
-cd translator
-
-# 启动所有服务 (Ollama + Web UI)
-docker compose -p scholar-translate up -d
-
-# 首次使用需要拉取模型
-docker compose -p scholar-translate exec ollama ollama pull qwen3:8b
-
-# 浏览器打开 http://localhost:18088
-```
-
-### 方式二: 桌面端 (Tauri)
-
-需要: Node.js 20+, Python 3.12+, Ollama, Rust + MSYS2
-
-```bash
-npm install
-ollama pull qwen3:8b
-npx tauri dev
-```
-
-### 方式三: CLI
-
-```bash
-cd python
-pip install -r requirements.txt
-python main.py paper.pdf -o paper.md
-```
-
-## 配置
-
-编辑 `python/config/default.yaml` 自定义行为：
+## 配置项
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|

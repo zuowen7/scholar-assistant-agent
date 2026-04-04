@@ -1,0 +1,4 @@
+# 开发/测试依赖 (不用于生产镜像)
+-r requirements.txt
+pytest>=8.0.0
+pytest-cov>=5.0.0

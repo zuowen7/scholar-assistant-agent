@@ -7,8 +7,8 @@ FROM node:20-slim AS frontend
 WORKDIR /build
 COPY package.json package-lock.json* ./
 RUN npm install --registry=https://registry.npmmirror.com
-COPY src/ src/
 COPY index.html vite.config.ts tsconfig.json ./
+COPY src/ src/
 RUN npm run build
 
 # ---- 阶段2: 安装 Python 依赖 ----
@@ -31,7 +31,7 @@ RUN groupadd -r appuser && useradd -r -g appuser -m appuser
 
 WORKDIR /app
 
-# Python 依赖
+# Python 依赖 (仅生产依赖，不含 pytest)
 COPY --from=builder /install /usr/local
 
 # Python 后端代码
@@ -45,7 +45,13 @@ COPY --from=frontend /build/dist /app/static
 # 数据目录
 RUN mkdir -p /data/input /data/output && chown -R appuser:appuser /data
 
+# BUG-06: Docker 健康检查
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:18088/api/health')" || exit 1
+
 EXPOSE 18088
+
+ENV DOCKER_MODE=1
 
 USER appuser
 

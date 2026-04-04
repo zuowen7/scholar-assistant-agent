@@ -5,175 +5,250 @@
     @dragover.prevent
     @drop.prevent="onDrop"
   >
-    <!-- 全局拖拽遮罩 -->
-    <div v-if="globalDragging" class="drag-overlay">
-      <div class="drag-overlay-content">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M12 16V8m0 0l-3 3m3-3l3 3"/>
-          <path d="M2 12c0-4.714 0-7.071 1.464-8.536C4.93 2 7.286 2 12 2c4.714 0 7.071 0 8.535 1.464C22 4.93 22 7.286 22 12c0 4.714 0 7.071-1.465 8.535C19.072 22 16.714 22 12 22s-7.071 0-8.536-1.465C2 19.072 2 16.714 2 12z"/>
-        </svg>
-        <p>松开以开始翻译</p>
-      </div>
+    <!-- 自定义背景层 -->
+    <div class="background-layer" :style="backgroundLayerStyle">
+      <video
+        v-if="bgSettings.type === 'video' && bgSettings.path"
+        ref="bgVideo"
+        class="bg-video"
+        :src="bgAssetUrl"
+        autoplay
+        loop
+        muted
+        playsinline
+      ></video>
     </div>
 
-    <!-- 顶栏 -->
-    <header class="topbar">
-      <div class="brand">
-        <span class="logo">S</span>
-        <div>
-          <h1>Scholar Translate</h1>
-          <p>学术文献智能翻译</p>
-        </div>
-      </div>
-      <div class="topbar-right">
-        <span class="pill" :class="healthOk ? 'ok' : 'off'">
-          <span class="pill-dot"></span>后端
-        </span>
-        <button class="pill pill-btn" :class="ollamaOk ? 'ok' : 'off'" @click="toggleOllama" :disabled="ollamaLoading">
-          <span class="pill-dot"></span>
-          <template v-if="ollamaLoading">启动中...</template>
-          <template v-else-if="ollamaOk">Ollama 在线</template>
-          <template v-else>启动 Ollama</template>
-        </button>
-        <span v-if="ollamaError" class="pill error-text">{{ ollamaError }}</span>
-      </div>
-    </header>
-
-    <main class="main">
-      <!-- 上传态 -->
-      <div v-if="state.status === 'idle' || state.status === 'error'" class="upload-view">
-        <div class="drop-card" :class="{ hover: zoneHover }" @click="openFilePicker"
-          @dragenter.prevent="zoneHover = true" @dragleave="zoneHover = false">
-          <div class="drop-ring">
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M12 16V8m0 0l-3 3m3-3l3 3"/>
-              <path d="M2 12c0-4.714 0-7.071 1.464-8.536C4.93 2 7.286 2 12 2c4.714 0 7.071 0 8.535 1.464C22 4.93 22 7.286 22 12c0 4.714 0 7.071-1.465 8.535C19.072 22 16.714 22 12 22s-7.071 0-8.536-1.465C2 19.072 2 16.714 2 12z"/>
-            </svg>
-          </div>
-          <p class="drop-title">点击选择 PDF 或拖拽文件到窗口任意位置</p>
-          <p class="drop-hint">支持英文学术论文、双栏排版</p>
-        </div>
-        <div v-if="state.status === 'error' && state.errorMessage" class="error-banner">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+    <!-- 内容遮罩层（半透明，保证可读性） -->
+    <div class="content-overlay" :style="{ opacity: bgSettings.path ? 1 : 1 }">
+      <!-- 全局拖拽遮罩 -->
+      <div v-if="globalDragging" class="drag-overlay">
+        <div class="drag-overlay-content">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M12 16V8m0 0l-3 3m3-3l3 3"/>
+            <path d="M2 12c0-4.714 0-7.071 1.464-8.536C4.93 2 7.286 2 12 2c4.714 0 7.071 0 8.535 1.464C22 4.93 22 7.286 22 12c0 4.714 0 7.071-1.465 8.535C19.072 22 16.714 22 12 22s-7.071 0-8.536-1.465C2 19.072 2 16.714 2 12z"/>
           </svg>
-          {{ state.errorMessage }}
+          <p>松开以开始翻译</p>
         </div>
       </div>
 
-      <!-- 工作态：进度 -->
-      <div v-else-if="state.status !== 'done'" class="work-view">
-        <!-- 总进度条 -->
-        <div class="progress-section">
-          <div class="progress-header">
-            <span class="progress-label">{{ state.stepMessage || '准备中...' }}</span>
-            <span class="progress-pct">{{ progress }}%</span>
-          </div>
-          <div class="progress-track">
-            <div class="progress-fill" :style="{ width: progress + '%' }"></div>
+      <!-- 顶栏 -->
+      <header class="topbar" data-tauri-drag-region>
+        <div class="brand">
+          <span class="logo">S</span>
+          <div>
+            <h1>Scholar Translate</h1>
+            <p>学术文献智能翻译</p>
           </div>
         </div>
-
-        <!-- 步骤指示 -->
-        <div class="steps">
-          <div v-for="(label, idx) in stepLabels" :key="idx" class="step-item"
-            :class="{ active: idx + 1 === state.currentStep, done: idx + 1 < state.currentStep }">
-            <div class="step-dot">
-              <svg v-if="idx + 1 < state.currentStep" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-              <span v-else>{{ idx + 1 }}</span>
-            </div>
-            <span>{{ label }}</span>
-          </div>
-        </div>
-
-        <!-- 解析信息 -->
-        <div v-if="state.parsedInfo" class="info-tags">
-          <span class="tag">{{ state.parsedInfo.pages }} 页</span>
-          <span class="tag">{{ state.parsedInfo.chars.toLocaleString() }} 字符</span>
-          <span v-if="state.parsedInfo.dual_column_pages" class="tag accent">{{ state.parsedInfo.dual_column_pages }} 页双栏</span>
-        </div>
-
-        <!-- 翻译子进度 -->
-        <div v-if="state.currentStep === 4 && state.totalChunks > 0" class="sub-progress">
-          <div class="sub-track">
-            <div class="sub-fill" :style="{ width: `${(state.completedChunks / state.totalChunks) * 100}%` }"></div>
-          </div>
-          <span>{{ state.completedChunks }} / {{ state.totalChunks }} 块</span>
-        </div>
-
-        <!-- 实时翻译预览 -->
-        <div v-if="state.translations.length > 0" class="live">
-          <div class="live-label">实时预览</div>
-          <div v-for="(t, i) in state.translations.slice(-3)" :key="i" class="live-item">
-            <div class="live-orig">{{ t.original_preview }}</div>
-            <div class="live-trans">{{ t.translated_preview }}</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 完成态 -->
-      <div v-else class="result-view">
-        <div class="result-bar">
-          <div class="result-bar-left">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2.5">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-            </svg>
-            <span class="done-label">翻译完成</span>
-            <span v-if="state.chunks.length" class="done-meta">{{ state.chunks.length }} 段 · {{ allSentencePairs.length }} 句</span>
-          </div>
-          <div class="result-bar-right">
-            <button class="btn ghost" :class="{ on: viewMode === 'sentence' }" @click="viewMode = 'sentence'">逐句对照</button>
-            <button class="btn ghost" :class="{ on: viewMode === 'parallel' }" @click="viewMode = 'parallel'">段落对照</button>
-            <button class="btn ghost" :class="{ on: viewMode === 'markdown' }" @click="viewMode = 'markdown'">全文</button>
-            <button class="btn primary" @click="downloadResult">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              下载
+        <div class="topbar-right">
+          <!-- 设置按钮 -->
+          <div class="settings-wrapper">
+            <button class="topbar-icon-btn settings-btn" :class="{ active: showSettings }" @click.stop="toggleSettings" title="背景设置">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
             </button>
-            <button class="btn outline" @click="reset">新翻译</button>
-          </div>
-        </div>
-
-        <!-- 逐句对照 -->
-        <div v-if="viewMode === 'sentence' && allSentencePairs.length" class="sentence-view">
-          <div v-for="(pair, i) in allSentencePairs" :key="i" class="sent-pair">
-            <div class="sent-num">{{ i + 1 }}</div>
-            <div class="sent-body">
-              <p class="sent-orig">{{ pair.original }}</p>
-              <p class="sent-trans">{{ pair.translated }}</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- 段落对照 -->
-        <div v-else-if="viewMode === 'parallel' && state.chunks.length" class="parallel">
-          <div v-for="(chunk, i) in state.chunks" :key="i" class="par-card">
-            <div class="par-header">
-              <span class="par-badge">{{ i + 1 }} / {{ state.chunks.length }}</span>
-            </div>
-            <div class="par-body">
-              <div class="par-col orig">
-                <p>{{ chunk.original }}</p>
+            <!-- 设置下拉面板 -->
+            <div v-if="showSettings" class="settings-panel" @click.stop>
+              <div class="settings-title">背景设置</div>
+              <div class="settings-actions">
+                <button class="settings-action-btn" @click="pickBackground">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                  选择背景
+                </button>
+                <button class="settings-action-btn danger" @click="clearBackground" :disabled="!bgSettings.path">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  </svg>
+                  清除背景
+                </button>
               </div>
-              <div class="par-divider"></div>
-              <div class="par-col trans">
-                <p>{{ chunk.translated }}</p>
+              <div class="settings-slider">
+                <label>不透明度: {{ bgSettings.opacity }}%</label>
+                <input type="range" min="5" max="100" :value="bgSettings.opacity" @input="onOpacityChange" class="opacity-slider" />
               </div>
             </div>
           </div>
+
+          <!-- 健康状态指示 -->
+          <span class="pill" :class="healthOk ? 'ok' : 'off'">
+            <span class="pill-dot"></span>后端
+          </span>
+          <button class="pill pill-btn" :class="ollamaOk ? 'ok' : 'off'" @click="toggleOllama" :disabled="ollamaLoading">
+            <span class="pill-dot"></span>
+            <template v-if="ollamaLoading">启动中...</template>
+            <template v-else-if="ollamaOk">Ollama 在线</template>
+            <template v-else>启动 Ollama</template>
+          </button>
+          <span v-if="ollamaError" class="pill error-text">{{ ollamaError }}</span>
+
+          <!-- 窗口控制按钮 -->
+          <div class="window-controls">
+            <button class="win-btn minimize" @click="handleMinimize" title="最小化">
+              <svg width="12" height="12" viewBox="0 0 12 12">
+                <line x1="2" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1.2"/>
+              </svg>
+            </button>
+            <button class="win-btn maximize" @click="handleToggleMaximize" title="最大化">
+              <svg width="12" height="12" viewBox="0 0 12 12">
+                <rect x="2" y="2" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.2" rx="1"/>
+              </svg>
+            </button>
+            <button class="win-btn close" @click="handleClose" title="关闭">
+              <svg width="12" height="12" viewBox="0 0 12 12">
+                <line x1="2" y1="2" x2="10" y2="10" stroke="currentColor" stroke-width="1.2"/>
+                <line x1="10" y1="2" x2="2" y2="10" stroke="currentColor" stroke-width="1.2"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main class="main">
+        <!-- 上传态 -->
+        <div v-if="state.status === 'idle' || state.status === 'error'" class="upload-view">
+          <div class="drop-card" :class="{ hover: zoneHover }" @click="openFilePicker"
+            @dragenter.prevent="zoneHover = true" @dragleave="zoneHover = false">
+            <div class="drop-ring">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M12 16V8m0 0l-3 3m3-3l3 3"/>
+                <path d="M2 12c0-4.714 0-7.071 1.464-8.536C4.93 2 7.286 2 12 2c4.714 0 7.071 0 8.535 1.464C22 4.93 22 7.286 22 12c0 4.714 0 7.071-1.465 8.535C19.072 22 16.714 22 12 22s-7.071 0-8.536-1.465C2 19.072 2 16.714 2 12z"/>
+              </svg>
+            </div>
+            <p class="drop-title">点击选择 PDF 或拖拽文件到窗口任意位置</p>
+            <p class="drop-hint">支持英文学术论文、双栏排版</p>
+          </div>
+          <div v-if="state.status === 'error' && state.errorMessage" class="error-banner">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            {{ state.errorMessage }}
+          </div>
         </div>
 
-        <!-- 全文 Markdown -->
-        <div v-else class="fulltext">
-          <div class="md-body" v-html="renderedContent"></div>
+        <!-- 工作态：进度 -->
+        <div v-else-if="state.status !== 'done'" class="work-view">
+          <!-- 总进度条 -->
+          <div class="progress-section">
+            <div class="progress-header">
+              <span class="progress-label">{{ state.stepMessage || '准备中...' }}</span>
+              <span class="progress-pct">{{ progress }}%</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" :style="{ width: progress + '%' }"></div>
+            </div>
+          </div>
+
+          <!-- 步骤指示 -->
+          <div class="steps">
+            <div v-for="(label, idx) in stepLabels" :key="idx" class="step-item"
+              :class="{ active: idx + 1 === state.currentStep, done: idx + 1 < state.currentStep }">
+              <div class="step-dot">
+                <svg v-if="idx + 1 < state.currentStep" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                <span v-else>{{ idx + 1 }}</span>
+              </div>
+              <span>{{ label }}</span>
+            </div>
+          </div>
+
+          <!-- 解析信息 -->
+          <div v-if="state.parsedInfo" class="info-tags">
+            <span class="tag">{{ state.parsedInfo.pages }} 页</span>
+            <span class="tag">{{ state.parsedInfo.chars.toLocaleString() }} 字符</span>
+            <span v-if="state.parsedInfo.dual_column_pages" class="tag accent">{{ state.parsedInfo.dual_column_pages }} 页双栏</span>
+          </div>
+
+          <!-- 翻译子进度 -->
+          <div v-if="state.currentStep === 4 && state.totalChunks > 0" class="sub-progress">
+            <div class="sub-track">
+              <div class="sub-fill" :style="{ width: `${(state.completedChunks / state.totalChunks) * 100}%` }"></div>
+            </div>
+            <span>{{ state.completedChunks }} / {{ state.totalChunks }} 块</span>
+          </div>
+
+          <!-- 实时翻译预览 -->
+          <div v-if="state.translations.length > 0" class="live">
+            <div class="live-label">实时预览</div>
+            <div v-for="(t, i) in state.translations.slice(-3)" :key="i" class="live-item">
+              <div class="live-orig">{{ t.original_preview }}</div>
+              <div class="live-trans">{{ t.translated_preview }}</div>
+            </div>
+          </div>
         </div>
-      </div>
-    </main>
+
+        <!-- 完成态 -->
+        <div v-else class="result-view">
+          <div class="result-bar">
+            <div class="result-bar-left">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2.5">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+              </svg>
+              <span class="done-label">翻译完成</span>
+              <span v-if="state.chunks.length" class="done-meta">{{ state.chunks.length }} 段 · {{ allSentencePairs.length }} 句</span>
+            </div>
+            <div class="result-bar-right">
+              <button class="btn ghost" :class="{ on: viewMode === 'sentence' }" @click="viewMode = 'sentence'">逐句对照</button>
+              <button class="btn ghost" :class="{ on: viewMode === 'parallel' }" @click="viewMode = 'parallel'">段落对照</button>
+              <button class="btn ghost" :class="{ on: viewMode === 'markdown' }" @click="viewMode = 'markdown'">全文</button>
+              <button class="btn primary" @click="downloadResult">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                下载
+              </button>
+              <button class="btn outline" @click="reset">新翻译</button>
+            </div>
+          </div>
+
+          <!-- 逐句对照 -->
+          <div v-if="viewMode === 'sentence' && allSentencePairs.length" class="sentence-view">
+            <div v-for="(pair, i) in allSentencePairs" :key="i" class="sent-pair">
+              <div class="sent-num">{{ i + 1 }}</div>
+              <div class="sent-body">
+                <p class="sent-orig">{{ pair.original }}</p>
+                <p class="sent-trans">{{ pair.translated }}</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 段落对照 -->
+          <div v-else-if="viewMode === 'parallel' && state.chunks.length" class="parallel">
+            <div v-for="(chunk, i) in state.chunks" :key="i" class="par-card">
+              <div class="par-header">
+                <span class="par-badge">{{ i + 1 }} / {{ state.chunks.length }}</span>
+              </div>
+              <div class="par-body">
+                <div class="par-col orig">
+                  <p>{{ chunk.original }}</p>
+                </div>
+                <div class="par-divider"></div>
+                <div class="par-col trans">
+                  <p>{{ chunk.translated }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 全文 Markdown -->
+          <div v-else class="fulltext">
+            <div class="md-body" v-html="renderedContent"></div>
+          </div>
+        </div>
+      </main>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { open } from '@tauri-apps/plugin-dialog'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import { useTranslate } from './composables/useTranslate'
 
 const { state, translate, translateFromPath, reset, checkHealth, checkOllama, startOllama, downloadResult, overallProgress } = useTranslate()
@@ -188,6 +263,150 @@ const viewMode = ref<'sentence' | 'parallel' | 'markdown'>('sentence')
 const stepLabels = ['解析 PDF', '清洗文本', '智能分块', '翻译', '格式化输出']
 
 const progress = computed(() => overallProgress())
+
+// --- 窗口控制 ---
+
+const appWindow = getCurrentWindow()
+
+async function handleMinimize() {
+  await appWindow.minimize()
+}
+
+async function handleToggleMaximize() {
+  await appWindow.toggleMaximize()
+}
+
+async function handleClose() {
+  await appWindow.close()
+}
+
+// --- 自定义背景 ---
+
+interface BackgroundSettings {
+  path: string
+  type: 'image' | 'video'
+  opacity: number
+}
+
+const bgSettings = ref<BackgroundSettings>({
+  path: '',
+  type: 'image',
+  opacity: 30,
+})
+
+const showSettings = ref(false)
+
+const bgAssetUrl = computed(() => {
+  if (!bgSettings.value.path) return ''
+  try {
+    return convertFileSrc(bgSettings.value.path)
+  } catch {
+    return ''
+  }
+})
+
+const backgroundLayerStyle = computed(() => {
+  const s: Record<string, string> = {}
+  const opacity = bgSettings.value.opacity / 100
+  if (bgSettings.value.type === 'image' && bgSettings.value.path && bgAssetUrl.value) {
+    s['background-image'] = `url("${bgAssetUrl.value}")`
+    s['background-size'] = 'cover'
+    s['background-position'] = 'center'
+    s['background-repeat'] = 'no-repeat'
+    s['opacity'] = String(opacity)
+  } else if (bgSettings.value.type === 'video' && bgSettings.value.path && bgAssetUrl.value) {
+    s['opacity'] = String(opacity)
+  } else {
+    s['display'] = 'none'
+  }
+  return s
+})
+
+function loadBgSettings() {
+  try {
+    const raw = localStorage.getItem('bg-settings')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed && typeof parsed.path === 'string') {
+        bgSettings.value = {
+          path: parsed.path || '',
+          type: parsed.type === 'video' ? 'video' : 'image',
+          opacity: typeof parsed.opacity === 'number' ? parsed.opacity : 30,
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function saveBgSettings() {
+  try {
+    localStorage.setItem('bg-settings', JSON.stringify(bgSettings.value))
+  } catch {
+    // ignore
+  }
+}
+
+function toggleSettings() {
+  showSettings.value = !showSettings.value
+}
+
+async function pickBackground() {
+  try {
+    const selected = await open({
+      multiple: false,
+      filters: [
+        {
+          name: '图片与视频',
+          extensions: [
+            'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg',
+            'mp4', 'webm', 'mkv', 'avi', 'mov',
+          ],
+        },
+        { name: '图片', extensions: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'] },
+        { name: '视频', extensions: ['mp4', 'webm', 'mkv', 'avi', 'mov'] },
+        { name: '所有文件', extensions: ['*'] },
+      ],
+    })
+    if (!selected) return
+
+    const filePath = typeof selected === 'string' ? selected : (selected as string)
+    if (!filePath) return
+
+    const videoExts = ['mp4', 'webm', 'mkv', 'avi', 'mov']
+    const ext = filePath.split('.').pop()?.toLowerCase() || ''
+    const isVideo = videoExts.includes(ext)
+
+    bgSettings.value = {
+      path: filePath,
+      type: isVideo ? 'video' : 'image',
+      opacity: bgSettings.value.opacity,
+    }
+    saveBgSettings()
+  } catch {
+    // dialog not available in non-Tauri
+  }
+}
+
+function clearBackground() {
+  bgSettings.value = { path: '', type: 'image', opacity: 30 }
+  saveBgSettings()
+}
+
+function onOpacityChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  bgSettings.value.opacity = parseInt(input.value, 10)
+  saveBgSettings()
+}
+
+// Close settings panel when clicking outside
+function onDocumentClick(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  if (showSettings.value && !target.closest('.settings-wrapper')) {
+    showSettings.value = false
+  }
+}
 
 // --- 句子拆分与配对 ---
 
@@ -228,29 +447,76 @@ const allSentencePairs = computed<SentencePair[]>(() => {
   return result
 })
 
-// --- 简易 Markdown → HTML ---
+// --- 简易 Markdown -> HTML (BUG-11 fix: handle blockquotes before escaping) ---
 
 function renderMarkdown(md: string): string {
-  return md
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  // Step 1: Extract blockquote lines before HTML escaping
+  const blockquoteMap: string[] = []
+  let text = md.replace(/^(>+\s*.+)$/gm, (match) => {
+    const placeholder = `\x00BQ${blockquoteMap.length}\x00`
+    blockquoteMap.push(match)
+    return placeholder
+  })
+
+  // Step 2: Escape HTML entities in the remaining text
+  text = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+
+  // Step 3: Process markdown on escaped text (headings, bold, hr)
+  text = text
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
     .replace(/^# (.+)$/gm, '<h1>$1</h1>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/^\> (.+)$/gm, '<blockquote>$1</blockquote>')
     .replace(/^---$/gm, '<hr/>')
+
+  // Step 4: Restore blockquotes (with proper HTML conversion)
+  text = text.replace(/\x00BQ(\d+)\x00/g, (_match, idx: string) => {
+    const raw = blockquoteMap[parseInt(idx, 10)]
+    // Convert the blockquote: strip the leading ">" markers and wrap
+    const content = raw.replace(/^>+\s?/gm, '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    return `<blockquote>${content}</blockquote>`
+  })
+
+  // Step 5: Paragraphs and line breaks
+  text = text
     .replace(/\n{2,}/g, '</p><p>')
     .replace(/\n/g, '<br/>')
     .replace(/^/, '<p>').replace(/$/, '</p>')
+
+  // Clean up empty paragraphs around block elements
+  text = text.replace(/<p>\s*(<h[1-3]>)/g, '$1')
+  text = text.replace(/(<\/h[1-3]>)\s*<\/p>/g, '$1')
+  text = text.replace(/<p>\s*(<blockquote>)/g, '$1')
+  text = text.replace(/(<\/blockquote>)\s*<\/p>/g, '$1')
+  text = text.replace(/<p>\s*(<hr\/>)/g, '$1')
+  text = text.replace(/(<hr\/>)\s*<\/p>/g, '$1')
+
+  return text
 }
 
 const renderedContent = computed(() => renderMarkdown(state.finalContent))
+
+// --- 拖拽处理 ---
 
 let dragCounter = 0
 let timer: ReturnType<typeof setInterval> | null = null
 let unlistenDragDrop: (() => void) | null = null
 
 onMounted(async () => {
+  // Load background settings
+  loadBgSettings()
+
+  // Close settings on outside click
+  document.addEventListener('click', onDocumentClick)
+
+  // Health checks
   healthOk.value = await checkHealth()
   ollamaOk.value = await checkOllama()
   timer = setInterval(async () => {
@@ -260,7 +526,7 @@ onMounted(async () => {
     }
   }, 8000)
 
-  // Tauri v2 原生拖拽事件（WebView2 会拦截 HTML5 拖拽）
+  // Tauri v2 native drag-drop events (WebView2 intercepts HTML5 drag)
   try {
     unlistenDragDrop = await getCurrentWindow().onDragDropEvent((event) => {
       if (event.payload.type === 'enter') {
@@ -277,13 +543,14 @@ onMounted(async () => {
       }
     })
   } catch {
-    // 非 Tauri 环境，使用 HTML5 拖拽降级
+    // Non-Tauri environment: HTML5 drag fallback
   }
 })
 
 onUnmounted(() => {
   if (timer) clearInterval(timer)
   if (unlistenDragDrop) unlistenDragDrop()
+  document.removeEventListener('click', onDocumentClick)
 })
 
 function onDragEnter(e: Event) {
@@ -361,7 +628,32 @@ body {
 
 .app { height: 100vh; display: flex; flex-direction: column; position: relative; }
 
-/* ── 拖拽遮罩 ── */
+/* ── Background Layer ── */
+.background-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.bg-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ── Content Overlay ── */
+.content-overlay {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: rgba(9, 9, 11, 0.75);
+}
+
+/* ── Drag Overlay ── */
 .drag-overlay {
   position: fixed; inset: 0; z-index: 999;
   background: rgba(99, 102, 241, 0.08);
@@ -374,11 +666,12 @@ body {
 }
 .drag-overlay-content p { margin-top: 12px; font-size: 15px; font-weight: 500; }
 
-/* ── 顶栏 ── */
+/* ── Top Bar ── */
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 20px; background: var(--surface);
+  padding: 12px 8px 12px 20px; background: var(--surface);
   border-bottom: 1px solid var(--border); flex-shrink: 0;
+  -webkit-app-region: drag;
 }
 .brand { display: flex; align-items: center; gap: 10px; }
 .logo {
@@ -392,11 +685,152 @@ body {
 
 .topbar-right { display: flex; gap: 8px; align-items: center; }
 
+/* ── Settings Button & Panel ── */
+.settings-wrapper {
+  position: relative;
+  -webkit-app-region: no-drag;
+}
+
+.topbar-icon-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 6px;
+  background: transparent; border: none; color: var(--text3);
+  cursor: pointer; transition: all 0.15s;
+}
+.topbar-icon-btn:hover {
+  background: var(--surface2);
+  color: var(--text);
+}
+.topbar-icon-btn.active {
+  background: var(--surface2);
+  color: var(--accent2);
+}
+
+.settings-panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 6px;
+  width: 240px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  -webkit-app-region: no-drag;
+}
+
+.settings-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.settings-action-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface2);
+  color: var(--text2);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.settings-action-btn:hover {
+  background: var(--border);
+  color: var(--text);
+}
+.settings-action-btn.danger:hover {
+  background: #f8717118;
+  border-color: #f8717140;
+  color: var(--red);
+}
+.settings-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.settings-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.settings-slider label {
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.opacity-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface2);
+  outline: none;
+  cursor: pointer;
+}
+.opacity-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.opacity-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+/* ── Window Controls ── */
+.window-controls {
+  display: flex;
+  align-items: center;
+  margin-left: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.win-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 30px;
+  background: transparent; border: none;
+  color: var(--text3);
+  cursor: pointer;
+  transition: all 0.12s;
+  border-radius: 4px;
+}
+.win-btn:hover {
+  background: var(--surface2);
+  color: var(--text);
+}
+.win-btn.close:hover {
+  background: var(--red);
+  color: #fff;
+}
+
+/* ── Health Pills ── */
 .pill {
   display: inline-flex; align-items: center; gap: 5px;
   font-size: 11px; padding: 5px 10px; border-radius: 20px;
   background: var(--surface2); color: var(--text3);
   border: none; font-family: inherit;
+  -webkit-app-region: no-drag;
 }
 .pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text3); flex-shrink: 0; }
 .pill.ok .pill-dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
@@ -417,10 +851,10 @@ body {
   max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
-/* ── 主区域 ── */
+/* ── Main Area ── */
 .main { flex: 1; padding: 20px; overflow-y: auto; }
 
-/* ── 上传态 ── */
+/* ── Upload View ── */
 .upload-view { display: flex; flex-direction: column; align-items: center; padding-top: 8vh; }
 
 .drop-card {
@@ -453,7 +887,7 @@ body {
   border-radius: var(--radius); color: var(--red); font-size: 13px;
 }
 
-/* ── 工作态 ── */
+/* ── Working View ── */
 .work-view { max-width: 560px; margin: 0 auto; }
 
 .progress-section { margin-bottom: 24px; }
@@ -471,7 +905,7 @@ body {
   transition: width 0.4s ease;
 }
 
-/* 步骤指示 */
+/* Step indicators */
 .steps { display: flex; gap: 6px; margin-bottom: 20px; }
 .step-item {
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;
@@ -508,7 +942,7 @@ body {
   border-radius: 2px; transition: width 0.3s;
 }
 
-/* 实时预览 */
+/* Live preview */
 .live { margin-top: 12px; }
 .live-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
 .live-item {
@@ -519,7 +953,7 @@ body {
 .live-orig { font-size: 12px; color: var(--text3); margin-bottom: 4px; line-height: 1.5; }
 .live-trans { font-size: 13px; color: var(--text); line-height: 1.6; }
 
-/* ── 结果态 ── */
+/* ── Result View ── */
 .result-view { display: flex; flex-direction: column; height: 100%; }
 
 .result-bar {
@@ -546,7 +980,7 @@ body {
 .btn.ghost:hover { color: var(--text); }
 .btn.ghost.on { color: var(--accent2); background: #6366f115; }
 
-/* ── 逐句对照 ── */
+/* ── Sentence View ── */
 .sentence-view { flex: 1; overflow-y: auto; max-width: 900px; margin: 0 auto; width: 100%; }
 
 .sent-pair {
@@ -576,7 +1010,7 @@ body {
   font-weight: 400;
 }
 
-/* ── 段落对照 ── */
+/* ── Parallel View ── */
 .parallel { flex: 1; overflow-y: auto; }
 
 .par-card {
@@ -602,7 +1036,7 @@ body {
   width: 1px; background: var(--border); flex-shrink: 0;
 }
 
-/* ── 全文 Markdown ── */
+/* ── Full Text Markdown ── */
 .fulltext {
   flex: 1; overflow-y: auto; background: var(--surface);
   border-radius: var(--radius); padding: 24px 28px;
@@ -623,7 +1057,7 @@ body {
 .md-body hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 .md-body strong { color: var(--accent2); font-weight: 600; }
 
-/* ── 滚动条 ── */
+/* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }

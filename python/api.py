@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import shutil
 import uuid
 from pathlib import Path
@@ -34,19 +35,21 @@ app.add_middleware(
         "tauri://localhost",
         "https://tauri.localhost",
     ],
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT"],
     allow_headers=["*"],
 )
 
 BASE_DIR = Path(__file__).parent
-# Docker 环境自动切换配置
-_DOCKER_CONFIG = BASE_DIR / "config" / "docker.yaml"
-CONFIG_PATH = _DOCKER_CONFIG if _DOCKER_CONFIG.exists() else BASE_DIR / "config" / "default.yaml"
+# Docker 环境通过环境变量切换配置，本地开发默认用 default.yaml
+DOCKER_MODE = os.environ.get("DOCKER_MODE", "").lower() in ("1", "true", "yes")
+CONFIG_PATH = (BASE_DIR / "config" / "docker.yaml") if DOCKER_MODE else (BASE_DIR / "config" / "default.yaml")
 DATA_DIR = BASE_DIR / "data"
 INPUT_DIR = DATA_DIR / "input"
 OUTPUT_DIR = DATA_DIR / "output"
 
 # 内存任务存储 (单用户桌面应用)
+MAX_TASKS = 10
+MAX_UPLOAD_SIZE = 200 * 1024 * 1024  # 200 MB
 tasks: dict[str, dict] = {}
 is_busy = False
 
@@ -76,6 +79,18 @@ def _save_config(config: dict) -> None:
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         yaml.dump(config, f, allow_unicode=True, default_flow_style=False)
+
+
+def _cleanup_tasks() -> None:
+    """保留最近的 MAX_TASKS 条已完成/出错的任务"""
+    if len(tasks) <= MAX_TASKS:
+        return
+    to_remove = [
+        tid for tid, t in tasks.items()
+        if t["status"] in ("done", "error")
+    ]
+    for tid in to_remove[:-MAX_TASKS]:
+        del tasks[tid]
 
 
 # --- 端点 ---
@@ -112,7 +127,13 @@ async def start_translate(file: UploadFile = File(...)):
 
     pdf_path = INPUT_DIR / f"{task_id}_{file.filename}"
     with open(pdf_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+        total = 0
+        while chunk := file.file.read(1024 * 1024):
+            total += len(chunk)
+            if total > MAX_UPLOAD_SIZE:
+                pdf_path.unlink(missing_ok=True)
+                raise HTTPException(413, "文件过大，最大支持 200 MB")
+            f.write(chunk)
 
     tasks[task_id] = {
         "status": "pending",
@@ -138,6 +159,8 @@ async def start_translate_path(payload: FilePathPayload):
         raise HTTPException(400, "文件不存在")
     if file_path.suffix.lower() != ".pdf":
         raise HTTPException(400, "仅支持 PDF 文件")
+    if file_path.stat().st_size > MAX_UPLOAD_SIZE:
+        raise HTTPException(413, "文件过大，最大支持 200 MB")
 
     task_id = uuid.uuid4().hex[:8]
     INPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -243,8 +266,10 @@ async def _run_pipeline(task_id: str) -> AsyncGenerator[dict, None]:
             "data": json.dumps({"step": 4, "total": 5, "message": "翻译中..."}),
         }
         trans_cfg = config.get("translator", {})
+        # BUG-02: 优先使用 OLLAMA_HOST 环境变量
+        ollama_url = os.environ.get("OLLAMA_HOST") or trans_cfg.get("ollama_base_url", "http://localhost:11434")
         client = OllamaClient(
-            base_url=trans_cfg.get("ollama_base_url", "http://localhost:11434"),
+            base_url=ollama_url,
             model=trans_cfg.get("model", "qwen3:8b"),
             temperature=trans_cfg.get("temperature", 0.3),
             num_predict=trans_cfg.get("num_predict", 16384),
@@ -314,6 +339,7 @@ async def _run_pipeline(task_id: str) -> AsyncGenerator[dict, None]:
 
     finally:
         is_busy = False
+        _cleanup_tasks()
 
 
 @app.get("/api/config")

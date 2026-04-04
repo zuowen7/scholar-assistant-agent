@@ -64,7 +64,7 @@ def main(argv: list[str] | None = None) -> None:
     # 输出路径
     output_path = args.output or str(pdf_path.with_suffix(".md"))
 
-    logger.info(" Scholar Translate v0.1.0")
+    logger.info(" Scholar Translate v0.2.0")
     logger.info("输入: %s", pdf_path)
 
     # Step 1: PDF 解析

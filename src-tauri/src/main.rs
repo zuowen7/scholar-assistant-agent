@@ -9,34 +9,67 @@ struct ManagedPids {
     ollama: Mutex<Option<u32>>,
 }
 
+/// Kill a process tree (cross-platform)
 fn kill_tree(pid: u32) {
     eprintln!("[INFO] Killing process tree PID={}", pid);
-    let _ = std::process::Command::new("taskkill")
-        .args(["/F", "/T", "/PID", &pid.to_string()])
-        .spawn();
+    #[cfg(windows)]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/T", "/PID", &pid.to_string()])
+            .status(); // BUG-22: use .status() to wait for completion
+    }
+    #[cfg(not(windows))]
+    {
+        // BUG-05: use kill on Unix
+        let _ = std::process::Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .status();
+    }
+}
+
+/// BUG-21: Safe mutex lock that handles poisoned mutexes
+macro_rules! lock_state {
+    ($lock:expr) => {
+        $lock.lock().unwrap_or_else(|e| e.into_inner())
+    };
 }
 
 #[tauri::command]
 fn start_ollama(state: tauri::State<'_, ManagedPids>) -> Result<String, String> {
-    if state.ollama.lock().unwrap().is_some() {
+    if lock_state!(state.ollama).is_some() {
         return Ok("already running".into());
     }
+
+    // Pre-check: is Ollama already running on port 11434?
+    let addr: std::net::SocketAddr = "127.0.0.1:11434".parse().unwrap();
+    if std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(2)).is_ok() {
+        eprintln!("[INFO] Ollama already running on port 11434, skip spawn");
+        return Ok("already running".into());
+    }
+
+    // BUG-12: consistent CREATE_NO_WINDOW
+    #[cfg(windows)]
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
 
     #[cfg(windows)]
     let mut child = std::process::Command::new("ollama")
         .arg("serve")
-        .creation_flags(0x00000010)
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .spawn()
         .map_err(|e| format!("启动 Ollama 失败: {}。请确认 Ollama 已安装。", e))?;
 
     #[cfg(not(windows))]
     let mut child = std::process::Command::new("ollama")
         .arg("serve")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .spawn()
         .map_err(|e| format!("启动 Ollama 失败: {}", e))?;
 
     let pid = child.id();
-    *state.ollama.lock().unwrap() = Some(pid);
+    *lock_state!(state.ollama) = Some(pid);
     eprintln!("[INFO] Ollama started PID={}", pid);
 
     std::thread::spawn(move || { let _ = child.wait(); });
@@ -45,8 +78,38 @@ fn start_ollama(state: tauri::State<'_, ManagedPids>) -> Result<String, String> 
 }
 
 #[tauri::command]
+fn check_backend_health() -> bool {
+    let addr: std::net::SocketAddr = "127.0.0.1:18088".parse().unwrap();
+    std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(2)).is_ok()
+}
+
+#[tauri::command]
+fn check_ollama_health() -> bool {
+    let addr: std::net::SocketAddr = "127.0.0.1:11434".parse().unwrap();
+    std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(2)).is_ok()
+}
+
+#[tauri::command]
+fn save_file(path: String, content: String) -> Result<String, String> {
+    // BUG-01: validate file extension to prevent arbitrary file write
+    let ext = std::path::Path::new(&path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    if !["md", "txt"].contains(&ext.as_str()) {
+        return Err("仅支持保存 .md 或 .txt 文件".into());
+    }
+
+    std::fs::write(&path, content.as_bytes())
+        .map(|_| format!("已保存到 {}", path))
+        .map_err(|e| format!("保存失败: {}", e))
+}
+
+#[tauri::command]
 fn stop_ollama(state: tauri::State<'_, ManagedPids>) -> Result<String, String> {
-    if let Some(pid) = state.ollama.lock().unwrap().take() {
+    if let Some(pid) = lock_state!(state.ollama).take() {
         kill_tree(pid);
         Ok("stopped".into())
     } else {
@@ -63,7 +126,6 @@ pub fn run() {
                 let _ = w.unminimize();
             }
         }))
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(ManagedPids {
             python: Mutex::new(None),
@@ -81,21 +143,21 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 let state = window.state::<ManagedPids>();
-                if let Some(pid) = state.python.lock().unwrap().take() {
+                if let Some(pid) = lock_state!(state.python).take() {
                     kill_tree(pid);
                 }
                 // 不杀 Ollama：它是共享服务，其他程序可能也在用
-                state.ollama.lock().unwrap().take();
+                lock_state!(state.ollama).take();
             }
         })
-        .invoke_handler(tauri::generate_handler![start_ollama, stop_ollama])
+        .invoke_handler(tauri::generate_handler![start_ollama, stop_ollama, save_file, check_backend_health, check_ollama_health])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
 fn spawn_ollama(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let state = app.state::<ManagedPids>();
-    if state.ollama.lock().unwrap().is_some() {
+    if lock_state!(state.ollama).is_some() {
         return Ok(());
     }
 
@@ -127,7 +189,7 @@ fn spawn_ollama(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|e| format!("启动 Ollama 失败: {}", e))?;
 
     let pid = child.id();
-    *state.ollama.lock().unwrap() = Some(pid);
+    *lock_state!(state.ollama) = Some(pid);
     eprintln!("[INFO] Ollama spawned PID={}", pid);
 
     std::thread::spawn(move || { let _ = child.wait(); });
@@ -149,7 +211,7 @@ fn spawn_python(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     let pid = child.id();
     let state = app.state::<ManagedPids>();
-    *state.python.lock().unwrap() = Some(pid);
+    *lock_state!(state.python) = Some(pid);
     eprintln!("[INFO] Python spawned PID={}", pid);
 
     if let Some(out) = child.stdout.take() {
@@ -170,24 +232,34 @@ fn spawn_python(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // BUG-23: verify Python server is actually listening after spawn
+    eprintln!("[INFO] Waiting for Python server to be ready...");
+    for i in 0..30 {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let addr: std::net::SocketAddr = "127.0.0.1:18088".parse().unwrap();
+        if std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(1)).is_ok() {
+            eprintln!("[INFO] Python server ready after {}ms", (i + 1) * 500);
+            return Ok(());
+        }
+    }
+    eprintln!("[WARN] Python server did not become ready within 15s, but process is running");
+
     Ok(())
 }
 
 fn resolve_python_dir() -> std::path::PathBuf {
-    let base = if cfg!(debug_assertions) {
+    if cfg!(debug_assertions) {
         let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        manifest.parent().and_then(|p| p.parent())
+        // CARGO_MANIFEST_DIR = .../translator/src-tauri → parent = .../translator
+        manifest.parent()
             .map(|p| p.join("python"))
-            .unwrap_or_else(|| manifest.join("..").join("python"))
+            .unwrap_or_else(|| manifest.join("python"))
     } else {
         std::env::current_exe().ok()
             .and_then(|p| p.parent().map(|d| d.to_path_buf()))
             .unwrap_or_default()
             .join("python")
-    };
-
-    let junction = std::path::PathBuf::from("D:\\pycharm_study\\st\\python");
-    if junction.exists() { junction } else { base }
+    }
 }
 
 fn main() { run() }

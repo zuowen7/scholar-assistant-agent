@@ -1,5 +1,6 @@
 import { reactive, readonly } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { save } from '@tauri-apps/plugin-dialog'
 import type {
   TranslateState,
   TranslateStatus,
@@ -8,7 +9,9 @@ import type {
   ChunkDoneEvent,
 } from '../types'
 
-const API_URL = 'http://localhost:18088'
+// Tauri 桌面端: 后端固定在 18088; Docker/Web: 同源，用相对路径
+const isTauri = '__TAURI_INTERNALS__' in window
+const API_URL = isTauri ? 'http://localhost:18088' : ''
 
 function createState(): TranslateState {
   return {
@@ -59,39 +62,40 @@ function overallProgress(): number {
 
 async function checkHealth(): Promise<boolean> {
   try {
-    const resp = await fetch(`${API_URL}/api/health`, { signal: AbortSignal.timeout(3000) })
-    return resp.ok
+    return await invoke<boolean>('check_backend_health')
   } catch {
-    return false
+    // 非 Tauri 环境回退到 fetch
+    try {
+      const resp = await fetch(`${API_URL}/api/health`, { signal: AbortSignal.timeout(3000) })
+      return resp.ok
+    } catch {
+      return false
+    }
   }
 }
 
 async function checkOllama(): Promise<boolean> {
   try {
-    // 直接检测 Ollama（不走 Python 中转，避免间接层异常）
-    const resp = await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(3000) })
-    return resp.ok
+    return await invoke<boolean>('check_ollama_health')
   } catch {
-    return false
-  }
-}
-
-async function checkOllamaDirect(): Promise<boolean> {
-  try {
-    const resp = await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(3000) })
-    return resp.ok
-  } catch {
-    return false
+    // 非 Tauri 环境回退到 fetch
+    try {
+      const resp = await fetch(`${API_URL}/api/ollama/status`, { signal: AbortSignal.timeout(3000) })
+      if (!resp.ok) return false
+      const data = await resp.json()
+      return data.reachable === true
+    } catch {
+      return false
+    }
   }
 }
 
 async function startOllama(): Promise<string | null> {
   try {
     await invoke<string>('start_ollama')
-    // 直接检测 Ollama（不走 Python 中转，更快更可靠）
     for (let i = 0; i < 30; i++) {
       await new Promise(r => setTimeout(r, 1000))
-      if (await checkOllamaDirect()) return null
+      if (await checkOllama()) return null
     }
     return 'Ollama 启动超时，请手动运行 ollama serve'
   } catch (err) {
@@ -281,8 +285,27 @@ async function translateFromPath(filePath: string): Promise<void> {
 
 async function downloadResult(): Promise<void> {
   if (!state.taskId) return
-  const url = `${API_URL}/api/download/${state.taskId}`
-  window.open(url, '_blank')
+  const content = state.finalContent
+  if (!content) return
+
+  try {
+    const filePath = await save({
+      defaultPath: `translated_${state.taskId}.md`,
+      filters: [{ name: 'Markdown', extensions: ['md'] }, { name: 'All Files', extensions: ['*'] }],
+    })
+    if (!filePath) return
+
+    await invoke<string>('save_file', { path: filePath, content })
+  } catch {
+    // 非 Tauri 环境：浏览器下载
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `translated_${state.taskId}.md`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 }
 
 export function useTranslate() {

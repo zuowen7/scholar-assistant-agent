@@ -25,7 +25,6 @@ class DocumentContent:
 
     pages: list[PageContent]
     source_path: str
-    references_page: int | None = field(default=None, repr=False)
 
     @property
     def full_text(self) -> str:
