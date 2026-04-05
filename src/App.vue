@@ -503,6 +503,26 @@ function splitSentences(text: string, isChinese: boolean): string[] {
 
 function alignPairs(en: string[], zh: string[]): SentencePair[] {
   const pairs: SentencePair[] = []
+
+  // 如果翻译句子明显少于原文（LLM 截断），尝试将剩余原文合并到最后一对
+  if (zh.length === 0 && en.length > 0) {
+    // 整个 chunk 都没翻译出来，合并为一条
+    return [{ original: en.join(' '), translated: '' }]
+  }
+
+  if (en.length > zh.length * 2 && zh.length > 0) {
+    // 翻译严重不足：前 N 条正常对齐，剩余原文合并到最后一条
+    for (let i = 0; i < zh.length - 1; i++) {
+      pairs.push({ original: en[i] ?? '', translated: zh[i] ?? '' })
+    }
+    // 最后一条翻译对应剩余所有原文
+    const lastIdx = zh.length - 1
+    const remainingOrig = en.slice(lastIdx).join(' ')
+    pairs.push({ original: remainingOrig, translated: zh[lastIdx] ?? '' })
+    return pairs
+  }
+
+  // 正常对齐
   const maxLen = Math.max(en.length, zh.length)
   for (let i = 0; i < maxLen; i++) {
     pairs.push({
@@ -793,6 +813,7 @@ body {
   -webkit-app-region: drag;
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
+  position: relative; z-index: 100;
 }
 .brand { display: flex; align-items: center; gap: 10px; }
 .logo {
@@ -1103,9 +1124,9 @@ body {
 .btn.primary:hover { background: #5558e6; }
 .btn.outline { background: transparent; color: var(--text2); border: 1px solid var(--border); }
 .btn.outline:hover { background: var(--surface2); }
-.btn.ghost { background: transparent; color: var(--text3); }
+.btn.ghost { background: transparent; color: var(--text2); }
 .btn.ghost:hover { color: var(--text); }
-.btn.ghost.on { color: var(--accent2); background: var(--accent-bg); }
+.btn.ghost.on { color: var(--accent2); background: var(--accent-bg); font-weight: 600; }
 
 /* ── Sentence View ── */
 .sentence-view { flex: 1; overflow-y: auto; max-width: 900px; margin: 0 auto; width: 100%; }
