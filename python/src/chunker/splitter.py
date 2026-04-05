@@ -142,11 +142,84 @@ def _split_references(text: str) -> tuple[str, str]:
 # 切块策略
 # ---------------------------------------------------------------------------
 
+# 常见学术缩写，这些缩写后的句号不代表句子结束
+_ACADEMIC_ABBREVS = [
+    "et al", "etc", "fig", "figs", "eq", "eqs", "ref", "refs",
+    "vol", "no", "pp", "cf", "e.g", "i.e", "vs", "al",
+    "ed", "eds", "rev", "proc", "inst", "dept", "univ",
+    "sci", "tech", "phys", "chem", "biol", "med",
+    "hum", "evol", "anthrop", "soc", "pol", "econ", "psych",
+    "nat", "int", "inc", "ltd", "co", "st", "dr", "mr", "mrs",
+    "prof", "sr", "jr", "ph", "dc", "ba", "ma",
+    "approx", "max", "min", "avg", "std", "var",
+    "def", "thm", "lem", "cor", "prop",
+]
+
 
 def _split_sentences(text: str) -> list[str]:
-    """按句子拆分文本"""
-    parts = re.split(r"(?<=[.!?])\s+", text)
-    return [p.strip() for p in parts if p.strip()]
+    """按句子拆分文本，保护学术缩写不被误切
+
+    处理步骤:
+    1. 保护单字母缩写 (A. B. C. 等)
+    2. 保护已知学术缩写 (et al. Fig. Vol. 等)
+    3. 按句子边界切分
+    4. 还原占位符
+    5. 合并过短碎片
+    """
+    placeholders: list[str] = []
+    protected = text
+
+    # 保护单字母 + 句号 (人名首字母 J. A. 等)
+    protected = re.sub(
+        r"\b([A-Z])\.\s",
+        lambda m: _ph(m.group(0), placeholders),
+        protected,
+    )
+
+    # 保护已知缩写 + 句号
+    for abbr in _ACADEMIC_ABBREVS:
+        protected = re.sub(
+            rf"\b{abbr}\.\s",
+            lambda m: _ph(m.group(0), placeholders),
+            protected,
+            flags=re.IGNORECASE,
+        )
+
+    # 保护数字 + 句号 (如 "10.5", "3.14")
+    protected = re.sub(
+        r"(\d)\.(\d)",
+        lambda m: _ph(m.group(0), placeholders),
+        protected,
+    )
+
+    # 按句子边界切分: 句号/问号/感叹号后跟空格或换行
+    parts = re.split(r"(?<=[.!?])\s+", protected)
+
+    # 还原占位符
+    sentences = []
+    for p in parts:
+        restored = p.strip()
+        for i, ph in enumerate(placeholders):
+            restored = restored.replace(f"\x00PH{i}\x00", ph)
+        if restored:
+            sentences.append(restored)
+
+    # 合并过短碎片 (< 20 字符且不以大写开头)
+    merged: list[str] = []
+    for s in sentences:
+        if merged and len(s) < 20 and not re.match(r"^[A-Z]", s):
+            merged[-1] += " " + s
+        else:
+            merged.append(s)
+
+    return [s for s in merged if s.strip()]
+
+
+def _ph(match_text: str, placeholders: list[str]) -> str:
+    """创建占位符保护缩写不被切分"""
+    idx = len(placeholders)
+    placeholders.append(match_text)
+    return f"\x00PH{idx}\x00"
 
 
 def _split_paragraphs(text: str) -> list[str]:
@@ -156,12 +229,24 @@ def _split_paragraphs(text: str) -> list[str]:
 
 
 def _split_fixed(text: str, chunk_chars: int) -> list[str]:
-    """按固定字符数拆分"""
+    """按固定字符数拆分，尽量在句子边界处切割"""
     chunks: list[str] = []
-    for i in range(0, len(text), chunk_chars):
-        chunk = text[i : i + chunk_chars].strip()
+    start = 0
+    while start < len(text):
+        end = start + chunk_chars
+        if end >= len(text):
+            chunk = text[start:].strip()
+            if chunk:
+                chunks.append(chunk)
+            break
+        # 在 chunk_chars 范围内找最后一个句子边界
+        boundary = text.rfind(". ", start, end)
+        if boundary > start:
+            end = boundary + 1
+        chunk = text[start:end].strip()
         if chunk:
             chunks.append(chunk)
+        start = end
     return chunks
 
 
@@ -170,7 +255,7 @@ def _merge_segments(
     max_tokens: int,
     overlap_tokens: int,
 ) -> list[Chunk]:
-    """将小片段合并为大块，控制 token 上限"""
+    """将小片段合并为大块，控制 token 上限，重叠保持完整句子"""
     if not segments:
         return []
 
@@ -198,15 +283,9 @@ def _merge_segments(
         if current_len + seg_len + 1 > max_chars and current_parts:
             chunks.append(_make_chunk(idx, current_parts))
             idx += 1
-            # 重叠: 保留末尾部分
-            overlap_text = " ".join(current_parts)
-            if overlap_chars > 0 and len(overlap_text) > overlap_chars:
-                tail = overlap_text[-overlap_chars:]
-                current_parts = [tail]
-                current_len = len(tail)
-            else:
-                current_parts = []
-                current_len = 0
+            # 重叠: 保留末尾完整的句子 (从后往前找足够长的一段)
+            current_parts = _get_overlap_parts(current_parts, overlap_chars)
+            current_len = sum(len(p) for p in current_parts) + len(current_parts)
 
         current_parts.append(seg)
         current_len += seg_len + 1
@@ -215,6 +294,23 @@ def _merge_segments(
         chunks.append(_make_chunk(idx, current_parts))
 
     return chunks
+
+
+def _get_overlap_parts(parts: list[str], overlap_chars: int) -> list[str]:
+    """从已有片段中取末尾的完整句子作为重叠上下文"""
+    if overlap_chars <= 0 or not parts:
+        return []
+
+    # 从后往前累加，直到超过 overlap_chars
+    overlap: list[str] = []
+    total = 0
+    for p in reversed(parts):
+        if total + len(p) > overlap_chars and overlap:
+            break
+        overlap.insert(0, p)
+        total += len(p) + 1
+
+    return overlap
 
 
 def _make_chunk(index: int, parts: list[str]) -> Chunk:

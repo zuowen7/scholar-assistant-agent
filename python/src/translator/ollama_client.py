@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+MAX_RETRIES = 2
+RETRY_DELAY = 3.0  # 秒
 
 
 @dataclass
@@ -41,7 +45,7 @@ class OllamaClient:
         self.timeout = timeout
 
     def translate(self, text: str) -> TranslationResult:
-        """翻译单段文本
+        """翻译单段文本，失败自动重试
 
         Args:
             text: 待翻译的英文文本
@@ -53,6 +57,31 @@ class OllamaClient:
             ConnectionError: Ollama 服务不可达
             ValueError: 翻译失败
         """
+        last_error: Exception | None = None
+
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                result = self._call_api(text)
+                # 输出校验：翻译结果不应为空或过短
+                if len(result.translated) < 10 and len(result.original) > 50:
+                    logger.warning(
+                        "翻译结果过短 (attempt %d): original=%d chars, translated=%d chars",
+                        attempt + 1, len(result.original), len(result.translated),
+                    )
+                    if attempt < MAX_RETRIES:
+                        time.sleep(RETRY_DELAY)
+                        continue
+                return result
+            except (ConnectionError, ValueError) as e:
+                last_error = e
+                if attempt < MAX_RETRIES:
+                    logger.warning("翻译失败，%d 秒后重试 (attempt %d): %s", RETRY_DELAY, attempt + 1, e)
+                    time.sleep(RETRY_DELAY)
+
+        raise last_error or ValueError("翻译失败")
+
+    def _call_api(self, text: str) -> TranslationResult:
+        """实际调用 Ollama API"""
         payload = {
             "model": self.model,
             "prompt": text,
@@ -84,6 +113,9 @@ class OllamaClient:
 
         # 清理 Qwen3 的思考标签 <think >...</think > (如果出现)
         translated = _strip_think_tags(translated)
+
+        # 清理可能残留的 preamble（模型有时输出 "Here is the translation:" 等）
+        translated = _strip_preamble(translated)
 
         return TranslationResult(
             original=text,
@@ -128,3 +160,20 @@ def _strip_think_tags(text: str) -> str:
     import re
 
     return re.sub(r"<think\b[^>]*>.*?</think\s*>", "", text, flags=re.DOTALL).strip()
+
+
+def _strip_preamble(text: str) -> str:
+    """移除模型可能输出的前言（如 "Here is the translation:", "以下是翻译："等）"""
+    import re
+
+    # 匹配中英文常见 preamble
+    preamble_pattern = re.compile(
+        r"^(?:"
+        r"(?:Here|Below|Following)\s+(?:is|are)\s+(?:the\s+)?(?:translation|result|translated\s+text)[：:]*\s*"
+        r"|以下是翻译[：:]*\s*"
+        r"|翻译如下[：:]*\s*"
+        r"|(?:Sure|Certainly|Of\s+course)[，,\s]*(?:here|below)\s+(?:is|are)[^。\n]*[。.\n]\s*"
+        r")",
+        re.IGNORECASE,
+    )
+    return preamble_pattern.sub("", text).strip()
