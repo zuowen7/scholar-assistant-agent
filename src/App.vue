@@ -43,17 +43,6 @@
           </div>
         </div>
         <div class="topbar-right">
-          <!-- 主题切换按钮 -->
-            <button class="topbar-icon-btn" @click="toggleTheme" :title="isDark ? '切换日间模式' : '切换夜间模式'">
-              <!-- 太阳图标（夜间模式时显示，点击切换到日间） -->
-              <svg v-if="isDark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-              </svg>
-              <!-- 月亮图标（日间模式时显示，点击切换到夜间） -->
-              <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-              </svg>
-            </button>
           <!-- 设置按钮 -->
           <div class="settings-wrapper">
             <button class="topbar-icon-btn settings-btn" :class="{ active: showSettings }" @click.stop="toggleSettings" title="背景设置">
@@ -88,6 +77,16 @@
               </div>
             </div>
           </div>
+
+          <!-- 主题切换按钮 -->
+            <button class="topbar-icon-btn" @click="toggleTheme" :title="isDark ? '切换日间模式' : '切换夜间模式'">
+              <svg v-if="isDark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+              </svg>
+              <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+              </svg>
+            </button>
 
           <!-- 健康状态指示 -->
           <span class="pill" :class="healthOk ? 'ok' : 'off'">
@@ -690,9 +689,9 @@ async function toggleOllama() {
 
 :root {
   --bg: #09090b;
-  --surface: rgba(19, 19, 22, 0.55);
-  --surface2: rgba(28, 28, 32, 0.45);
-  --border: rgba(39, 39, 42, 0.5);
+  --surface: #131316;
+  --surface2: #1c1c20;
+  --border: #27272a;
   --text: #e4e4e7;
   --text2: #a1a1aa;
   --text3: #71717a;
@@ -709,14 +708,17 @@ async function toggleOllama() {
   --red-border: rgba(248, 113, 113, 0.19);
   --sent-border: rgba(39, 39, 42, 0.25);
   --glass-blur: 24px;
+  --glass: rgba(19, 19, 22, 0.55);
+  --glass2: rgba(28, 28, 32, 0.45);
+  --glass-border: rgba(39, 39, 42, 0.5);
   --topbar-bg: rgba(19, 19, 22, 0.6);
 }
 
 .light {
   --bg: #f5f5f7;
-  --surface: rgba(255, 255, 255, 0.55);
-  --surface2: rgba(240, 240, 242, 0.45);
-  --border: rgba(216, 216, 220, 0.55);
+  --surface: #ffffff;
+  --surface2: #f0f0f2;
+  --border: #d8d8dc;
   --text: #1a1a2e;
   --text2: #555566;
   --text3: #888899;
@@ -727,6 +729,9 @@ async function toggleOllama() {
   --red-bg: rgba(248, 113, 113, 0.08);
   --red-border: rgba(248, 113, 113, 0.25);
   --sent-border: rgba(0, 0, 0, 0.07);
+  --glass: rgba(255, 255, 255, 0.55);
+  --glass2: rgba(240, 240, 242, 0.45);
+  --glass-border: rgba(216, 216, 220, 0.55);
   --topbar-bg: rgba(255, 255, 255, 0.55);
 }
 
@@ -833,10 +838,8 @@ body {
   border-radius: var(--radius);
   padding: 14px;
   box-shadow: 0 8px 32px var(--shadow);
-  z-index: 100;
+  z-index: 9999;
   -webkit-app-region: no-drag;
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
 .settings-title {
@@ -977,7 +980,7 @@ body {
 
 .drop-card {
   width: 440px; max-width: 100%; padding: 44px 28px;
-  background: var(--surface); border: 2px dashed var(--border);
+  background: var(--glass); border: 2px dashed var(--glass-border);
   border-radius: 16px; text-align: center; cursor: pointer;
   transition: all 0.25s;
   backdrop-filter: blur(var(--glass-blur));
@@ -1030,7 +1033,7 @@ body {
 .step-item {
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;
   padding: 8px 4px; border-radius: 8px;
-  background: var(--surface); border: 1px solid var(--border);
+  background: var(--glass); border: 1px solid var(--glass-border);
   transition: all 0.3s; font-size: 11px; color: var(--text3);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
@@ -1069,7 +1072,7 @@ body {
 .live-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
 .live-item {
   padding: 10px 12px; margin-bottom: 4px;
-  background: var(--surface); border-radius: 8px;
+  background: var(--glass); border-radius: 8px;
   border-left: 3px solid var(--accent);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
@@ -1138,7 +1141,7 @@ body {
 .parallel { flex: 1; overflow-y: auto; }
 
 .par-card {
-  background: var(--surface); border: 1px solid var(--border);
+  background: var(--glass); border: 1px solid var(--glass-border);
   border-radius: 12px; margin-bottom: 14px; overflow: hidden;
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
@@ -1164,7 +1167,7 @@ body {
 
 /* ── Full Text Markdown ── */
 .fulltext {
-  flex: 1; overflow-y: auto; background: var(--surface);
+  flex: 1; overflow-y: auto; background: var(--glass);
   border-radius: var(--radius); padding: 24px 28px;
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
