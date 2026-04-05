@@ -1,6 +1,7 @@
 <template>
   <div
     class="app"
+    :class="{ light: !isDark }"
     @dragenter.prevent="onDragEnter"
     @dragover.prevent
     @drop.prevent="onDrop"
@@ -42,6 +43,17 @@
           </div>
         </div>
         <div class="topbar-right">
+          <!-- 主题切换按钮 -->
+            <button class="topbar-icon-btn" @click="toggleTheme" :title="isDark ? '切换日间模式' : '切换夜间模式'">
+              <!-- 太阳图标（夜间模式时显示，点击切换到日间） -->
+              <svg v-if="isDark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+              </svg>
+              <!-- 月亮图标（日间模式时显示，点击切换到夜间） -->
+              <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+              </svg>
+            </button>
           <!-- 设置按钮 -->
           <div class="settings-wrapper">
             <button class="topbar-icon-btn settings-btn" :class="{ active: showSettings }" @click.stop="toggleSettings" title="背景设置">
@@ -259,6 +271,7 @@ const ollamaLoading = ref(false)
 const ollamaError = ref<string | null>(null)
 const globalDragging = ref(false)
 const zoneHover = ref(false)
+const isDark = ref(true)
 const viewMode = ref<'sentence' | 'parallel' | 'markdown'>('sentence')
 const stepLabels = ['解析 PDF', '清洗文本', '智能分块', '翻译', '格式化输出']
 
@@ -408,6 +421,13 @@ function onDocumentClick(e: MouseEvent) {
   }
 }
 
+function toggleTheme() {
+  isDark.value = !isDark.value
+  try {
+    localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
+  } catch { /* ignore */ }
+}
+
 // --- 句子拆分与配对 ---
 
 interface SentencePair {
@@ -420,7 +440,66 @@ function splitSentences(text: string, isChinese: boolean): string[] {
   if (isChinese) {
     return text.split(/(?<=[。！？；…\n])/g).map(s => s.trim()).filter(s => s.length > 0)
   }
-  return text.split(/(?<=[.!?])\s+|\n+/g).map(s => s.trim()).filter(s => s.length > 0)
+  // Protect abbreviations from being split
+  // 1. Single uppercase letter + period (e.g. "J." "A.")
+  // 2. Common academic abbreviations
+  const abbrevs = [
+    'et al', 'etc', 'fig', 'eq', 'ref', 'vol', 'no', 'pp', 'cf',
+    'e.g', 'i.e', 'vs', 'al', 'ed', 'eds', 'rev', 'proc', 'inst',
+    'dept', 'univ', 'sci', 'tech', 'phys', 'chem', 'biol', 'med',
+    'hum', 'evol', 'anthrop', 'soc', 'pol', 'econ', 'psych',
+    'nat', 'int', 'inc', 'ltd', 'co', 'st', 'dr', 'mr', 'mrs',
+    'prof', 'sr', 'jr', 'ph', 'd.c', 'b.a', 'm.a',
+  ]
+  const placeholders: string[] = []
+  let protected_text = text
+
+  // Protect single-letter abbreviations (A. B. C. etc.)
+  protected_text = protected_text.replace(/\b([A-Z])\.\s/g, (m) => {
+    const ph = `\x00PH${placeholders.length}\x00`
+    placeholders.push(m)
+    return ph
+  })
+
+  // Protect known multi-char abbreviations
+  for (const abbr of abbrevs) {
+    const re = new RegExp(`\\b${abbr}\\.\\s`, 'gi')
+    protected_text = protected_text.replace(re, (m) => {
+      const ph = `\x00PH${placeholders.length}\x00`
+      placeholders.push(m)
+      return ph
+    })
+  }
+
+  // Split on sentence-ending punctuation followed by space or newline
+  let sentences = protected_text
+    .split(/(?<=[.!?])\s+|\n+/g)
+    .map(s => s.trim())
+    .filter(s => s.length > 0)
+
+  // Restore placeholders
+  sentences = sentences.map(s => {
+    let restored = s
+    for (let i = placeholders.length - 1; i >= 0; i--) {
+      restored = restored.replace(`\x00PH${i}\x00`, placeholders[i])
+    }
+    return restored
+  })
+
+  // Filter out very short meaningless fragments (< 8 chars and no word content)
+  sentences = sentences.filter(s => s.length >= 8 || /\b\w{3,}\b/.test(s))
+
+  // Merge fragments that are clearly not complete sentences
+  const merged: string[] = []
+  for (const s of sentences) {
+    if (merged.length > 0 && s.length < 15 && !/^[A-Z]/.test(s)) {
+      merged[merged.length - 1] += ' ' + s
+    } else {
+      merged.push(s)
+    }
+  }
+
+  return merged.filter(s => s.trim().length > 0)
 }
 
 function alignPairs(en: string[], zh: string[]): SentencePair[] {
@@ -510,6 +589,12 @@ let timer: ReturnType<typeof setInterval> | null = null
 let unlistenDragDrop: (() => void) | null = null
 
 onMounted(async () => {
+  // Load theme preference
+  try {
+    const saved = localStorage.getItem('theme')
+    if (saved === 'light') isDark.value = false
+  } catch { /* ignore */ }
+
   // Load background settings
   loadBgSettings()
 
@@ -605,9 +690,9 @@ async function toggleOllama() {
 
 :root {
   --bg: #09090b;
-  --surface: #131316;
-  --surface2: #1c1c20;
-  --border: #27272a;
+  --surface: rgba(19, 19, 22, 0.55);
+  --surface2: rgba(28, 28, 32, 0.45);
+  --border: rgba(39, 39, 42, 0.5);
   --text: #e4e4e7;
   --text2: #a1a1aa;
   --text3: #71717a;
@@ -616,6 +701,33 @@ async function toggleOllama() {
   --green: #4ade80;
   --red: #f87171;
   --radius: 10px;
+  --overlay-bg: rgba(9, 9, 11, 0.35);
+  --shadow: rgba(0, 0, 0, 0.5);
+  --accent-bg: rgba(99, 102, 241, 0.08);
+  --accent-bg2: rgba(99, 102, 241, 0.05);
+  --red-bg: rgba(248, 113, 113, 0.07);
+  --red-border: rgba(248, 113, 113, 0.19);
+  --sent-border: rgba(39, 39, 42, 0.25);
+  --glass-blur: 24px;
+  --topbar-bg: rgba(19, 19, 22, 0.6);
+}
+
+.light {
+  --bg: #f5f5f7;
+  --surface: rgba(255, 255, 255, 0.55);
+  --surface2: rgba(240, 240, 242, 0.45);
+  --border: rgba(216, 216, 220, 0.55);
+  --text: #1a1a2e;
+  --text2: #555566;
+  --text3: #888899;
+  --overlay-bg: rgba(245, 245, 247, 0.35);
+  --shadow: rgba(0, 0, 0, 0.1);
+  --accent-bg: rgba(99, 102, 241, 0.07);
+  --accent-bg2: rgba(99, 102, 241, 0.04);
+  --red-bg: rgba(248, 113, 113, 0.08);
+  --red-border: rgba(248, 113, 113, 0.25);
+  --sent-border: rgba(0, 0, 0, 0.07);
+  --topbar-bg: rgba(255, 255, 255, 0.55);
 }
 
 html, body { height: 100%; overflow: hidden; }
@@ -650,13 +762,15 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: rgba(9, 9, 11, 0.75);
+  background: var(--overlay-bg);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
 }
 
 /* ── Drag Overlay ── */
 .drag-overlay {
   position: fixed; inset: 0; z-index: 999;
-  background: rgba(99, 102, 241, 0.08);
+  background: var(--accent-bg);
   backdrop-filter: blur(4px);
   display: flex; align-items: center; justify-content: center;
   pointer-events: none;
@@ -669,9 +783,11 @@ body {
 /* ── Top Bar ── */
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 8px 12px 20px; background: var(--surface);
+  padding: 12px 8px 12px 20px; background: var(--topbar-bg);
   border-bottom: 1px solid var(--border); flex-shrink: 0;
   -webkit-app-region: drag;
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 .brand { display: flex; align-items: center; gap: 10px; }
 .logo {
@@ -716,9 +832,11 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 14px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 32px var(--shadow);
   z-index: 100;
   -webkit-app-region: no-drag;
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
 .settings-title {
@@ -755,8 +873,8 @@ body {
   color: var(--text);
 }
 .settings-action-btn.danger:hover {
-  background: #f8717118;
-  border-color: #f8717140;
+  background: var(--red-bg);
+  border-color: var(--red-border);
   color: var(--red);
 }
 .settings-action-btn:disabled {
@@ -847,7 +965,7 @@ body {
 
 .error-text {
   color: var(--red); font-size: 11px;
-  background: #f8717112; border: 1px solid #f8717130;
+  background: var(--red-bg); border: 1px solid var(--red-border);
   max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
@@ -862,11 +980,13 @@ body {
   background: var(--surface); border: 2px dashed var(--border);
   border-radius: 16px; text-align: center; cursor: pointer;
   transition: all 0.25s;
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 .drop-card:hover, .drop-card.hover {
   border-color: var(--accent);
-  background: #6366f108;
-  box-shadow: 0 0 60px #6366f110;
+  background: var(--accent-bg);
+  box-shadow: 0 0 60px var(--accent-bg);
 }
 
 .drop-ring {
@@ -875,7 +995,7 @@ body {
   display: flex; align-items: center; justify-content: center;
   color: var(--accent2); transition: all 0.25s;
 }
-.drop-card:hover .drop-ring { border-color: var(--accent); background: #6366f115; }
+.drop-card:hover .drop-ring { border-color: var(--accent); background: var(--accent-bg); }
 
 .drop-title { font-size: 14px; font-weight: 500; color: var(--text); }
 .drop-hint { font-size: 12px; color: var(--text3); margin-top: 4px; }
@@ -883,7 +1003,7 @@ body {
 .error-banner {
   display: flex; align-items: center; gap: 8px;
   margin-top: 14px; padding: 10px 14px;
-  background: #f8717112; border: 1px solid #f8717130;
+  background: var(--red-bg); border: 1px solid var(--red-border);
   border-radius: var(--radius); color: var(--red); font-size: 13px;
 }
 
@@ -912,9 +1032,11 @@ body {
   padding: 8px 4px; border-radius: 8px;
   background: var(--surface); border: 1px solid var(--border);
   transition: all 0.3s; font-size: 11px; color: var(--text3);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
-.step-item.active { border-color: var(--accent); background: #6366f112; color: var(--accent2); }
-.step-item.done { border-color: #4ade8040; background: #4ade8008; color: var(--green); }
+.step-item.active { border-color: var(--accent); background: var(--accent-bg); color: var(--accent2); }
+.step-item.done { border-color: rgba(74, 222, 128, 0.25); background: rgba(74, 222, 128, 0.05); color: var(--green); }
 
 .step-dot {
   width: 24px; height: 24px; border-radius: 50%;
@@ -927,7 +1049,7 @@ body {
   padding: 4px 10px; background: var(--surface2); border-radius: 6px;
   font-size: 12px; color: var(--text2);
 }
-.tag.accent { background: #6366f118; color: var(--accent2); }
+.tag.accent { background: var(--accent-bg); color: var(--accent2); }
 
 .sub-progress {
   display: flex; align-items: center; gap: 10px;
@@ -949,6 +1071,8 @@ body {
   padding: 10px 12px; margin-bottom: 4px;
   background: var(--surface); border-radius: 8px;
   border-left: 3px solid var(--accent);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 .live-orig { font-size: 12px; color: var(--text3); margin-bottom: 4px; line-height: 1.5; }
 .live-trans { font-size: 13px; color: var(--text); line-height: 1.6; }
@@ -978,7 +1102,7 @@ body {
 .btn.outline:hover { background: var(--surface2); }
 .btn.ghost { background: transparent; color: var(--text3); }
 .btn.ghost:hover { color: var(--text); }
-.btn.ghost.on { color: var(--accent2); background: #6366f115; }
+.btn.ghost.on { color: var(--accent2); background: var(--accent-bg); }
 
 /* ── Sentence View ── */
 .sentence-view { flex: 1; overflow-y: auto; max-width: 900px; margin: 0 auto; width: 100%; }
@@ -986,7 +1110,7 @@ body {
 .sent-pair {
   display: flex; gap: 16px;
   padding: 14px 20px;
-  border-bottom: 1px solid #27272a40;
+  border-bottom: 1px solid var(--sent-border);
   transition: background 0.15s;
 }
 .sent-pair:hover { background: var(--surface); }
@@ -1016,6 +1140,8 @@ body {
 .par-card {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 12px; margin-bottom: 14px; overflow: hidden;
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 .par-header {
   padding: 8px 18px; border-bottom: 1px solid var(--border);
@@ -1040,6 +1166,8 @@ body {
 .fulltext {
   flex: 1; overflow-y: auto; background: var(--surface);
   border-radius: var(--radius); padding: 24px 28px;
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 .md-body {
   font-size: 15px; line-height: 2.0; color: var(--text);
@@ -1051,7 +1179,7 @@ body {
 .md-body p { margin-bottom: 14px; }
 .md-body blockquote {
   border-left: 3px solid var(--accent); padding: 6px 14px;
-  color: var(--text2); margin: 10px 0; background: #6366f108;
+  color: var(--text2); margin: 10px 0; background: var(--accent-bg2);
   border-radius: 0 6px 6px 0;
 }
 .md-body hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
@@ -1061,4 +1189,13 @@ body {
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── Light mode overrides ── */
+.light .brand h1 { color: var(--text); }
+.light .logo {
+  background: linear-gradient(135deg, var(--accent), #7c3aed);
+  color: #fff;
+}
+.light .win-btn.close:hover { background: var(--red); color: #fff; }
+.light .btn.primary { color: #fff; }
 </style>
