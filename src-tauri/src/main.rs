@@ -250,15 +250,29 @@ fn spawn_python(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 fn resolve_python_dir() -> std::path::PathBuf {
     if cfg!(debug_assertions) {
         let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        // CARGO_MANIFEST_DIR = .../translator/src-tauri → parent = .../translator
         manifest.parent()
             .map(|p| p.join("python"))
             .unwrap_or_else(|| manifest.join("python"))
     } else {
-        std::env::current_exe().ok()
+        let exe_dir = std::env::current_exe().ok()
             .and_then(|p| p.parent().map(|d| d.to_path_buf()))
-            .unwrap_or_default()
-            .join("python")
+            .unwrap_or_default();
+
+        // exe 在 target/release/ 下，python 在项目根 translator/python/
+        // target/release/ -> target/ -> src-tauri/ -> translator/ -> python/
+        let fallback = exe_dir.join("../../../python");
+        if fallback.exists() {
+            return fallback;
+        }
+
+        // 已安装的情况：python 在 exe 同级目录
+        let installed = exe_dir.join("python");
+        if installed.exists() {
+            return installed;
+        }
+
+        // 最后兜底
+        exe_dir.join("python")
     }
 }
 
