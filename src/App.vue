@@ -1122,11 +1122,11 @@ body {
 }
 .btn.primary { background: var(--accent); color: #fff; }
 .btn.primary:hover { background: #5558e6; }
-.btn.outline { background: transparent; color: var(--text2); border: 1px solid var(--border); }
+.btn.outline { background: transparent; color: var(--text); border: 1px solid var(--border); }
 .btn.outline:hover { background: var(--surface2); }
-.btn.ghost { background: transparent; color: var(--text2); }
-.btn.ghost:hover { color: var(--text); }
-.btn.ghost.on { color: var(--accent2); background: var(--accent-bg); font-weight: 600; }
+.btn.ghost { background: transparent; color: var(--text); }
+.btn.ghost:hover { color: var(--accent2); }
+.btn.ghost.on { color: #fff; background: var(--accent); font-weight: 600; border-radius: 6px; padding: 5px 12px; }
 
 /* ── Sentence View ── */
 .sentence-view { flex: 1; overflow-y: auto; max-width: 900px; margin: 0 auto; width: 100%; }
