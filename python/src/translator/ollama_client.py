@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import dataclass
 
@@ -28,6 +29,8 @@ class TranslationResult:
 class OllamaClient:
     """Ollama REST API 客户端"""
 
+    _CONTEXT_SNIPPET_LEN = 300
+
     def __init__(
         self,
         base_url: str = "http://localhost:11434",
@@ -43,12 +46,14 @@ class OllamaClient:
         self.num_predict = num_predict
         self.system_prompt = system_prompt
         self.timeout = timeout
+        self._prev_translation = ""
 
-    def translate(self, text: str) -> TranslationResult:
+    def translate(self, text: str, prev_translation: str = "") -> TranslationResult:
         """翻译单段文本，失败自动重试
 
         Args:
             text: 待翻译的英文文本
+            prev_translation: 前一个 chunk 的翻译结果，用于保持术语一致性
 
         Returns:
             TranslationResult
@@ -58,12 +63,12 @@ class OllamaClient:
             ValueError: 翻译失败
         """
         last_error: Exception | None = None
+        ctx = prev_translation or self._prev_translation
 
         for attempt in range(MAX_RETRIES + 1):
             try:
-                result = self._call_api(text)
-                # 输出校验：翻译结果不应为空或过短
-                if len(result.translated) < 10 and len(result.original) > 50:
+                result = self._call_api(text, ctx)
+                if not _validate_translation(result):
                     logger.warning(
                         "翻译结果过短 (attempt %d): original=%d chars, translated=%d chars",
                         attempt + 1, len(result.original), len(result.translated),
@@ -71,6 +76,7 @@ class OllamaClient:
                     if attempt < MAX_RETRIES:
                         time.sleep(RETRY_DELAY)
                         continue
+                self._prev_translation = result.translated
                 return result
             except (ConnectionError, ValueError) as e:
                 last_error = e
@@ -80,11 +86,20 @@ class OllamaClient:
 
         raise last_error or ValueError("翻译失败")
 
-    def _call_api(self, text: str) -> TranslationResult:
+    def _call_api(self, text: str, prev_translation: str = "") -> TranslationResult:
         """实际调用 Ollama API"""
+        prompt = text
+        if prev_translation:
+            snippet = prev_translation[-self._CONTEXT_SNIPPET_LEN:]
+            prompt = (
+                f"[前文翻译参考（仅用于保持术语和风格一致，不要翻译此部分）]\n"
+                f"{snippet}\n\n"
+                f"[请翻译以下内容]\n{text}"
+            )
+
         payload = {
             "model": self.model,
-            "prompt": text,
+            "prompt": prompt,
             "stream": False,
             "options": {
                 "temperature": self.temperature,
@@ -107,15 +122,18 @@ class OllamaClient:
             ) from e
         except httpx.HTTPStatusError as e:
             raise ValueError(f"翻译请求失败: HTTP {e.response.status_code}") from e
+        except httpx.TimeoutException as e:
+            raise ConnectionError(
+                f"Ollama 请求超时 ({self.timeout}s)，模型可能过载或 num_predict 过大"
+            ) from e
 
         data = resp.json()
-        translated = data.get("response", "").strip()
+        translated = (data.get("response") or "").strip()
 
-        # 清理 Qwen3 的思考标签 <think >...</think > (如果出现)
         translated = _strip_think_tags(translated)
-
-        # 清理可能残留的 preamble（模型有时输出 "Here is the translation:" 等）
         translated = _strip_preamble(translated)
+        translated = _strip_context_leak(translated)
+        translated = _repair_truncation(translated)
 
         return TranslationResult(
             original=text,
@@ -157,23 +175,69 @@ def translate(
 
 def _strip_think_tags(text: str) -> str:
     """移除 Qwen3 的 <think >...</think > 标签"""
-    import re
-
-    return re.sub(r"<think\b[^>]*>.*?</think\s*>", "", text, flags=re.DOTALL).strip()
+    return re.sub(r"<think\b[^>]*>.*?</think\s*>", "", text, flags=re.DOTALL | re.IGNORECASE).strip()
 
 
 def _strip_preamble(text: str) -> str:
     """移除模型可能输出的前言（如 "Here is the translation:", "以下是翻译："等）"""
-    import re
-
-    # 匹配中英文常见 preamble
     preamble_pattern = re.compile(
         r"^(?:"
         r"(?:Here|Below|Following)\s+(?:is|are)\s+(?:the\s+)?(?:translation|result|translated\s+text)[：:]*\s*"
         r"|以下是翻译[：:]*\s*"
         r"|翻译如下[：:]*\s*"
         r"|(?:Sure|Certainly|Of\s+course)[，,\s]*(?:here|below)\s+(?:is|are)[^。\n]*[。.\n]\s*"
+        r"|(?:好的|没问题)[，,]?\s*(?:以下是|翻译如下)[：:]*\s*"
         r")",
         re.IGNORECASE,
     )
     return preamble_pattern.sub("", text).strip()
+
+
+def _strip_context_leak(text: str) -> str:
+    """移除模型误翻译了上下文参考部分的内容"""
+    ctx_markers = [
+        "[前文翻译参考",
+        "（仅用于保持术语",
+        "[请翻译以下内容]",
+    ]
+    for marker in ctx_markers:
+        idx = text.find(marker)
+        if idx >= 0:
+            text = text[:idx].rstrip()
+    return text.strip()
+
+
+def _validate_translation(result: TranslationResult) -> bool:
+    """校验翻译结果质量"""
+    if not result.translated:
+        return False
+    orig_len = len(result.original)
+    trans_len = len(result.translated)
+    # 译文不到原文 10% 且原文较长 → 疑似截断
+    if orig_len > 100 and trans_len < orig_len * 0.1:
+        return False
+    # 译文极短但原文有一定长度 → 翻译失败 (放宽中文阈值: 英50字→中可能15字)
+    if trans_len < max(10, orig_len * 0.2) and orig_len > 30:
+        return False
+    return True
+
+
+def _repair_truncation(text: str) -> str:
+    """尝试修复被截断的翻译（如句子在中间被截断）"""
+    if not text:
+        return text
+    last_sentence_end = max(
+        text.rfind("。"),
+        text.rfind("！"),
+        text.rfind("？"),
+        text.rfind("；"),
+        text.rfind("."),
+        text.rfind("!"),
+        text.rfind("?"),
+    )
+    if last_sentence_end >= 0 and last_sentence_end < len(text) - 1:
+        tail = text[last_sentence_end + 1:].strip()
+        if len(tail) < len(text) * 0.15 and len(tail) > 0:
+            logger.info("截断修复: 移除末尾 %d 字符不完整片段", len(tail))
+            return text[: last_sentence_end + 1].rstrip()
+    return text

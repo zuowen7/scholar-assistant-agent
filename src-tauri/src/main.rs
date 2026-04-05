@@ -72,7 +72,12 @@ fn start_ollama(state: tauri::State<'_, ManagedPids>) -> Result<String, String> 
     *lock_state!(state.ollama) = Some(pid);
     eprintln!("[INFO] Ollama started PID={}", pid);
 
-    std::thread::spawn(move || { let _ = child.wait(); });
+    std::thread::spawn(move || {
+        match child.wait() {
+            Ok(status) => eprintln!("[INFO] Process exited: {}", status),
+            Err(e) => eprintln!("[WARN] Process wait failed: {}", e),
+        }
+    });
 
     Ok("started".into())
 }
@@ -134,6 +139,7 @@ pub fn run() {
         .setup(|app| {
             if let Err(e) = spawn_python(app) {
                 eprintln!("[ERROR] spawn Python: {}", e);
+                eprintln!("[ERROR] 请确认 Python 已安装并在 PATH 中，且已安装所需依赖 (pip install -r python/requirements.txt)");
             }
             if let Err(e) = spawn_ollama(app) {
                 eprintln!("[WARN] spawn Ollama: {} (可能已在运行)", e);
@@ -192,7 +198,12 @@ fn spawn_ollama(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     *lock_state!(state.ollama) = Some(pid);
     eprintln!("[INFO] Ollama spawned PID={}", pid);
 
-    std::thread::spawn(move || { let _ = child.wait(); });
+    std::thread::spawn(move || {
+        match child.wait() {
+            Ok(status) => eprintln!("[INFO] Process exited: {}", status),
+            Err(e) => eprintln!("[WARN] Process wait failed: {}", e),
+        }
+    });
     Ok(())
 }
 
@@ -203,11 +214,19 @@ fn spawn_python(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     eprintln!("[INFO] Python dir: {}", python_dir.display());
 
-    let mut child = std::process::Command::new("python")
+    // Windows: python; Linux/macOS: python3
+    let python_cmd = if cfg!(windows) { "python" } else { "python3" };
+    let mut child = std::process::Command::new(python_cmd)
         .args([&api_str, "--port", "18088"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .spawn()?;
+        .spawn()
+        .or_else(|_| std::process::Command::new("python")
+            .args([&api_str, "--port", "18088"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+        )?;
 
     let pid = child.id();
     let state = app.state::<ManagedPids>();
@@ -258,20 +277,17 @@ fn resolve_python_dir() -> std::path::PathBuf {
             .and_then(|p| p.parent().map(|d| d.to_path_buf()))
             .unwrap_or_default();
 
-        // exe 在 target/release/ 下，python 在项目根 translator/python/
-        // target/release/ -> target/ -> src-tauri/ -> translator/ -> python/
-        let fallback = exe_dir.join("../../../python");
-        if fallback.exists() {
-            return fallback;
+        // 按优先级搜索: exe 同级 > 项目开发目录 > 兜底
+        let candidates: Vec<std::path::PathBuf> = vec![
+            exe_dir.join("python"),                          // NSIS 安装: python 在 exe 旁
+            exe_dir.join("../../../python").canonicalize().unwrap_or_else(|_| exe_dir.join("../../../python")), // 开发构建
+        ];
+        for dir in &candidates {
+            if dir.exists() {
+                return dir.clone();
+            }
         }
 
-        // 已安装的情况：python 在 exe 同级目录
-        let installed = exe_dir.join("python");
-        if installed.exists() {
-            return installed;
-        }
-
-        // 最后兜底
         exe_dir.join("python")
     }
 }

@@ -108,11 +108,11 @@ def chunk_text_full(
 # ---------------------------------------------------------------------------
 
 _REFERENCE_PATTERNS = [
-    r"REFERENCES\s+AND\s+NOTES",
-    r"REFERENCES",
-    r"BIBLIOGRAPHY",
-    r"LITERATURE\s+CITED",
-    r"WORKS\s+CITED",
+    r"REFERENCES\s+AND\s+NOTES\s*$",
+    r"REFERENCES\s*$",
+    r"BIBLIOGRAPHY\s*$",
+    r"LITERATURE\s+CITED\s*$",
+    r"WORKS\s+CITED\s*$",
 ]
 
 
@@ -240,7 +240,11 @@ def _split_fixed(text: str, chunk_chars: int) -> list[str]:
                 chunks.append(chunk)
             break
         # 在 chunk_chars 范围内找最后一个句子边界
-        boundary = text.rfind(". ", start, end)
+        boundary = -1
+        for sep in (". ", "! ", "? ", "。", "！", "？", "\n"):
+            pos = text.rfind(sep, start, end)
+            if pos > boundary:
+                boundary = pos
         if boundary > start:
             end = boundary + 1
         chunk = text[start:end].strip()

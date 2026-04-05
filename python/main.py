@@ -126,7 +126,8 @@ def main(argv: list[str] | None = None) -> None:
     for i, chunk in enumerate(chunks):
         logger.info("  翻译块 %d/%d (%d tokens)...", i + 1, len(chunks), chunk.estimated_tokens)
         try:
-            result = client.translate(chunk.text)
+            prev_trans = results[-1].translated if results else ""
+            result = client.translate(chunk.text, prev_trans)
             results.append(result)
             logger.debug("  → %d tokens 生成", result.completion_tokens)
         except (ConnectionError, ValueError) as e:

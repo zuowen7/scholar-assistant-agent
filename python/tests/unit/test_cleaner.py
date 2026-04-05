@@ -91,19 +91,19 @@ class TestDetectReferences:
     """引用区检测"""
 
     def test_references_section(self) -> None:
-        text = "Main text here.\n\nREFERENCES\n1. Smith et al."
+        text = "Main text here with enough content to fill the body.\nSecond line of main text.\nThird line.\n\nREFERENCES\n1. Smith et al."
         pos, ref_text = _detect_references(text)
         assert pos >= 0
         assert "REFERENCES" in ref_text
 
     def test_references_and_notes(self) -> None:
-        text = "Body.\n\nREFERENCES AND NOTES\n1. Author (2020)."
+        text = "Body text with multiple lines.\nLine two.\nLine three.\nLine four.\n\nREFERENCES AND NOTES\n1. Author (2020)."
         pos, ref_text = _detect_references(text)
         assert pos >= 0
         assert "REFERENCES AND NOTES" in ref_text
 
     def test_bibliography(self) -> None:
-        text = "End of article.\n\nBIBLIOGRAPHY\nItem 1."
+        text = "End of article with enough text.\nAnother line.\nMore content.\n\nBIBLIOGRAPHY\nItem 1."
         pos, ref_text = _detect_references(text)
         assert pos >= 0
         assert "BIBLIOGRAPHY" in ref_text
@@ -115,12 +115,12 @@ class TestDetectReferences:
         assert ref_text == ""
 
     def test_case_insensitive(self) -> None:
-        text = "Text.\n\nReferences\n1. Item."
+        text = "Text with multiple lines.\nLine two.\nLine three.\nLine four.\n\nReferences\n1. Item."
         pos, ref_text = _detect_references(text)
         assert pos >= 0
 
     def test_supplementary_materials(self) -> None:
-        text = "Conclusion.\n\nSUPPLEMENTARY MATERIALS\nFigure S1."
+        text = "Conclusion with enough content.\nSecond line.\nThird line.\n\nSUPPLEMENTARY MATERIALS\nFigure S1."
         pos, ref_text = _detect_references(text)
         assert pos >= 0
         assert "SUPPLEMENTARY MATERIALS" in ref_text
@@ -136,10 +136,9 @@ class TestCleanTextFull:
         assert result.references_text == ""
 
     def test_clean_result_with_references(self) -> None:
-        text = "Main body.\n\nREFERENCES\n1. Smith."
+        text = "Main body with enough text.\nSecond line.\nThird line.\nFourth line.\n\nREFERENCES\n1. Smith."
         result = clean_text_full(text)
         assert result.has_references is True
         assert result.references_start >= 0
         assert "REFERENCES" in result.references_text
-        # 正文部分应包含 body 但不含引用
         assert "Main body" in result.text

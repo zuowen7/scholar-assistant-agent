@@ -86,11 +86,9 @@ class TestChunkText:
         assert len(chunks) > 1
 
     def test_invalid_strategy(self) -> None:
-        try:
+        import pytest
+        with pytest.raises(ValueError, match="未知切块策略"):
             chunk_text("test", strategy="invalid")
-            assert False, "Should have raised ValueError"
-        except ValueError:
-            pass
 
     def test_chunk_has_required_fields(self) -> None:
         chunks = chunk_text("Hello world. Test text.")
@@ -98,6 +96,5 @@ class TestChunkText:
             assert isinstance(chunk, Chunk)
             assert isinstance(chunk.text, str)
             assert isinstance(chunk.char_count, int)
-            assert isinstance(chunk, Chunk)
             assert isinstance(chunk.estimated_tokens, int)
             assert chunk.char_count > 0

@@ -21,7 +21,7 @@
     </div>
 
     <!-- 内容遮罩层（半透明，保证可读性） -->
-    <div class="content-overlay" :style="{ opacity: bgSettings.path ? 1 : 1 }">
+    <div class="content-overlay">
       <!-- 全局拖拽遮罩 -->
       <div v-if="globalDragging" class="drag-overlay">
         <div class="drag-overlay-content">
@@ -133,8 +133,8 @@
                 <path d="M2 12c0-4.714 0-7.071 1.464-8.536C4.93 2 7.286 2 12 2c4.714 0 7.071 0 8.535 1.464C22 4.93 22 7.286 22 12c0 4.714 0 7.071-1.465 8.535C19.072 22 16.714 22 12 22s-7.071 0-8.536-1.465C2 19.072 2 16.714 2 12z"/>
               </svg>
             </div>
-            <p class="drop-title">点击选择 PDF 或拖拽文件到窗口任意位置</p>
-            <p class="drop-hint">支持英文学术论文、双栏排版</p>
+            <p class="drop-title">点击选择文件或拖拽文件到窗口任意位置</p>
+            <p class="drop-hint">支持 PDF、Word、PPT、Excel、TXT、Markdown 等 16 种格式</p>
           </div>
           <div v-if="state.status === 'error' && state.errorMessage" class="error-banner">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -272,7 +272,7 @@ const globalDragging = ref(false)
 const zoneHover = ref(false)
 const isDark = ref(true)
 const viewMode = ref<'sentence' | 'parallel' | 'markdown'>('sentence')
-const stepLabels = ['解析 PDF', '清洗文本', '智能分块', '翻译', '格式化输出']
+const stepLabels = ['解析文档', '清洗文本', '智能分块', '翻译', '格式化输出']
 
 const progress = computed(() => overallProgress())
 
@@ -504,32 +504,61 @@ function splitSentences(text: string, isChinese: boolean): string[] {
 function alignPairs(en: string[], zh: string[]): SentencePair[] {
   const pairs: SentencePair[] = []
 
-  // 如果翻译句子明显少于原文（LLM 截断），尝试将剩余原文合并到最后一对
   if (zh.length === 0 && en.length > 0) {
-    // 整个 chunk 都没翻译出来，合并为一条
     return [{ original: en.join(' '), translated: '' }]
   }
 
+  if (en.length === 0 && zh.length > 0) {
+    return zh.map(z => ({ original: '', translated: z }))
+  }
+
+  if (en.length === zh.length) {
+    return en.map((e, i) => ({ original: e, translated: zh[i] }))
+  }
+
   if (en.length > zh.length * 2 && zh.length > 0) {
-    // 翻译严重不足：前 N 条正常对齐，剩余原文合并到最后一条
     for (let i = 0; i < zh.length - 1; i++) {
       pairs.push({ original: en[i] ?? '', translated: zh[i] ?? '' })
     }
-    // 最后一条翻译对应剩余所有原文
     const lastIdx = zh.length - 1
     const remainingOrig = en.slice(lastIdx).join(' ')
     pairs.push({ original: remainingOrig, translated: zh[lastIdx] ?? '' })
     return pairs
   }
 
-  // 正常对齐
-  const maxLen = Math.max(en.length, zh.length)
-  for (let i = 0; i < maxLen; i++) {
-    pairs.push({
-      original: en[i] ?? '',
-      translated: zh[i] ?? '',
-    })
+  if (zh.length > en.length * 2 && en.length > 0) {
+    for (let i = 0; i < en.length - 1; i++) {
+      pairs.push({ original: en[i] ?? '', translated: zh[i] ?? '' })
+    }
+    const lastIdx = en.length - 1
+    const remainingTrans = zh.slice(lastIdx).join('')
+    pairs.push({ original: en[lastIdx] ?? '', translated: remainingTrans })
+    return pairs
   }
+
+  const maxLen = Math.max(en.length, zh.length)
+  if (maxLen <= 0) return []
+
+  const ratio = zh.length / en.length
+  let zhIdx = 0
+  for (let enI = 0; enI < en.length; enI++) {
+    const targetZh = Math.round((enI + 1) * ratio)
+    const targetZhClamped = Math.min(targetZh, zh.length)
+    const zhEnd = Math.max(targetZhClamped, zhIdx + 1)
+    const translated = zh.slice(zhIdx, zhEnd).join('')
+    pairs.push({ original: en[enI], translated })
+    zhIdx = zhEnd
+  }
+  while (zhIdx < zh.length) {
+    const lastPair = pairs[pairs.length - 1]
+    if (lastPair) {
+      lastPair.translated += zh[zhIdx]
+    } else {
+      pairs.push({ original: '', translated: zh[zhIdx] })
+    }
+    zhIdx++
+  }
+
   return pairs
 }
 
@@ -545,58 +574,59 @@ const allSentencePairs = computed<SentencePair[]>(() => {
   return result
 })
 
-// --- 简易 Markdown -> HTML (BUG-11 fix: handle blockquotes before escaping) ---
+// --- 简易 Markdown -> HTML ---
 
 function renderMarkdown(md: string): string {
-  // Step 1: Extract blockquote lines before HTML escaping
-  const blockquoteMap: string[] = []
-  let text = md.replace(/^(>+\s*.+)$/gm, (match) => {
-    const placeholder = `\x00BQ${blockquoteMap.length}\x00`
-    blockquoteMap.push(match)
-    return placeholder
-  })
+  const extracted: string[] = []
 
-  // Step 2: Escape HTML entities in the remaining text
-  text = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
+  function extract(re: RegExp, processor: (m: RegExpMatchArray) => string): void {
+    md = md.replace(re, (...args) => {
+      const ph = `\x00EX${extracted.length}\x00`
+      extracted.push(processor(args as unknown as RegExpMatchArray))
+      return ph
+    })
+  }
 
-  // Step 3: Process markdown on escaped text (headings, bold, hr)
-  text = text
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/^---$/gm, '<hr/>')
-
-  // Step 4: Restore blockquotes (with proper HTML conversion)
-  text = text.replace(/\x00BQ(\d+)\x00/g, (_match, idx: string) => {
-    const raw = blockquoteMap[parseInt(idx, 10)]
-    // Convert the blockquote: strip the leading ">" markers and wrap
-    const content = raw.replace(/^>+\s?/gm, '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  extract(/^[>]+\s*(.+(?:\n[>]+\s*.+)*)/gm, (m) => {
+    const lines = m[1].replace(/^[>]+\s?/gm, '').split('\n')
+    const content = lines
+      .map(l => escapeHtml(l).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>'))
+      .join('<br/>')
     return `<blockquote>${content}</blockquote>`
   })
 
-  // Step 5: Paragraphs and line breaks
-  text = text
-    .replace(/\n{2,}/g, '</p><p>')
-    .replace(/\n/g, '<br/>')
-    .replace(/^/, '<p>').replace(/$/, '</p>')
+  md = md.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
-  // Clean up empty paragraphs around block elements
-  text = text.replace(/<p>\s*(<h[1-3]>)/g, '$1')
-  text = text.replace(/(<\/h[1-3]>)\s*<\/p>/g, '$1')
-  text = text.replace(/<p>\s*(<blockquote>)/g, '$1')
-  text = text.replace(/(<\/blockquote>)\s*<\/p>/g, '$1')
-  text = text.replace(/<p>\s*(<hr\/>)/g, '$1')
-  text = text.replace(/(<hr\/>)\s*<\/p>/g, '$1')
+  md = md.replace(/^### (.+)$/gm, '<h3>$1</h3>')
+  md = md.replace(/^## (.+)$/gm, '<h2>$1</h2>')
+  md = md.replace(/^# (.+)$/gm, '<h1>$1</h1>')
+  md = md.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  md = md.replace(/^---$/gm, '<hr/>')
 
-  return text
+  md = md.replace(/\x00EX(\d+)\x00/g, (_: string, idx: string) => extracted[parseInt(idx)])
+
+  md = md.replace(/\n{2,}/g, '</p><p>')
+  md = md.replace(/\n/g, '<br/>')
+  md = `<p>${md}</p>`
+
+  md = md.replace(/<p>\s*(<h[1-3]>)/g, '$1')
+  md = md.replace(/(<\/h[1-3]>)\s*<\/p>/g, '$1')
+  md = md.replace(/<p>\s*(<blockquote>)/g, '$1')
+  md = md.replace(/(<\/blockquote>)\s*<\/p>/g, '$1')
+  md = md.replace(/<p>\s*(<hr\/>)/g, '$1')
+  md = md.replace(/(<hr\/>)\s*<\/p>/g, '$1')
+  md = md.replace(/<p>\s*<\/p>/g, '')
+
+  return md
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
 const renderedContent = computed(() => renderMarkdown(state.finalContent))
@@ -639,7 +669,8 @@ onMounted(async () => {
         globalDragging.value = false
         zoneHover.value = false
         const paths = event.payload.paths
-        if (paths.length > 0 && paths[0].toLowerCase().endsWith('.pdf')) {
+        const supportedExts = ['.pdf','.docx','.doc','.txt','.md','.html','.htm','.epub','.rtf','.tex','.csv','.pptx','.xlsx','.srt','.json','.xml','.log']
+        if (paths.length > 0 && supportedExts.some(ext => paths[0].toLowerCase().endsWith(ext))) {
           translateFromPath(paths[0])
         }
       } else if (event.payload.type === 'leave') {
@@ -669,7 +700,7 @@ function onDrop(e: DragEvent) {
   globalDragging.value = false
   zoneHover.value = false
   const file = e.dataTransfer?.files?.[0]
-  if (file && file.name.toLowerCase().endsWith('.pdf')) {
+  if (file) {
     translate(file)
   }
 }
@@ -677,7 +708,7 @@ function onDrop(e: DragEvent) {
 function openFilePicker() {
   const input = document.createElement('input')
   input.type = 'file'
-  input.accept = '.pdf'
+  input.accept = '.pdf,.docx,.doc,.txt,.md,.log,.html,.htm,.epub,.rtf,.tex,.csv,.pptx,.xlsx,.srt,.json,.xml'
   input.onchange = () => {
     const file = input.files?.[0]
     if (file) translate(file)

@@ -222,12 +222,18 @@ function stepToStatus(step: number): TranslateStatus {
   return map[step] || 'idle'
 }
 
+const MAX_UPLOAD_SIZE = 200 * 1024 * 1024 // 200 MB — 与后端保持一致
+
 async function translate(file: File): Promise<void> {
   reset()
   setStatus('uploading')
-  state.stepMessage = '上传 PDF...'
+  state.stepMessage = '上传文件...'
 
   try {
+    if (file.size > MAX_UPLOAD_SIZE) {
+      throw new Error('文件过大，最大支持 200 MB')
+    }
+
     const healthOk = await checkHealth()
     if (!healthOk) {
       throw new Error('无法连接翻译服务，请确认后端已启动')
@@ -264,12 +270,18 @@ async function uploadPdfByPath(filePath: string): Promise<string> {
 async function translateFromPath(filePath: string): Promise<void> {
   reset()
   setStatus('uploading')
-  state.stepMessage = '上传 PDF...'
+  state.stepMessage = '上传文件...'
 
   try {
     const healthOk = await checkHealth()
     if (!healthOk) {
       throw new Error('无法连接翻译服务，请确认后端已启动')
+    }
+
+    const supportedExts = ['.pdf','.docx','.doc','.txt','.md','.log','.html','.htm','.epub','.rtf','.tex','.csv','.pptx','.xlsx','.srt','.json','.xml']
+    const ext = '.' + filePath.split('.').pop()?.toLowerCase()
+    if (!supportedExts.includes(ext)) {
+      throw new Error(`不支持的文件格式: ${ext}`)
     }
 
     const taskId = await uploadPdfByPath(filePath)

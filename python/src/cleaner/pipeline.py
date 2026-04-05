@@ -77,12 +77,12 @@ def clean_text_full(raw_text: str) -> CleanResult:
 
 # 常见引用区标题 (大小写不敏感)
 _REFERENCE_PATTERNS = [
-    r"REFERENCES\s+AND\s+NOTES",
-    r"REFERENCES",
-    r"BIBLIOGRAPHY",
-    r"LITERATURE\s+CITED",
-    r"WORKS\s+CITED",
-    r"SUPPLEMENTARY\s+MATERIALS",
+    r"REFERENCES\s+AND\s+NOTES\s*$",
+    r"REFERENCES\s*$",
+    r"BIBLIOGRAPHY\s*$",
+    r"LITERATURE\s+CITED\s*$",
+    r"WORKS\s+CITED\s*$",
+    r"SUPPLEMENTARY\s+MATERIALS\s*$",
 ]
 
 
@@ -186,19 +186,33 @@ def _is_continuation(prev_line: str, current_line: str) -> bool:
     """判断当前行是否是上一行的续行
 
     续行特征:
-    - 当前行以小写字母开头
+    - 英文: 当前行以小写字母开头
+    - 中文: 上一行未以句末标点结尾时视为续行
     - 上一行以句号、问号、感叹号结尾时，通常不是续行
     """
-    # 上一行以句末标点结尾 → 新段落
-    if prev_line.rstrip() and prev_line.rstrip()[-1] in ".!?":
+    prev_stripped = prev_line.rstrip()
+
+    # 上一行以句末标点（含中文标点）结尾 → 新段落
+    if prev_stripped and prev_stripped[-1] in ".!?。！？；":
         return False
 
+    # 当前行首字符
+    first_char = current_line[0]
+
+    # 中文文本: 非句末标点结尾时视为续行
+    if prev_stripped and '\u4e00' <= prev_stripped[-1] <= '\u9fff':
+        return True
+
     # 当前行以大写字母开头 + 看起来像标题/列表 → 新段落
-    if current_line[0].isupper() and _looks_like_heading(current_line):
+    if first_char.isupper() and _looks_like_heading(current_line):
         return False
 
     # 当前行以小写字母开头 → 续行
-    if current_line[0].islower():
+    if first_char.islower():
+        return True
+
+    # 中文行首也视为续行（中文没有大小写）
+    if '\u4e00' <= first_char <= '\u9fff':
         return True
 
     # 默认视为新段落

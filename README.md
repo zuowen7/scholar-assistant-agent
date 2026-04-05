@@ -1,6 +1,6 @@
 # Scholar Translate
 
-本地离线英文学术文献智能翻译工具。输入 PDF，自动清洗排版噪声，输出高质量双语对照文档。
+本地离线英文学术文献智能翻译工具。支持 16 种文件格式，自动清洗排版噪声，输出高质量双语对照文档。
 
 ## 一键安装桌面端
 
@@ -60,11 +60,13 @@ docker compose logs -f app    # 查看应用日志
 
 ## 功能特性
 
+- **16 种格式支持** — PDF、Word、Excel、PowerPoint、TXT、Markdown、HTML、EPUB、RTF、LaTeX、CSV、JSON、XML、SRT 等
 - **PDF 智能解析** — 自动检测单栏/双栏布局，准确提取文本
 - **文本清洗** — 修复断行、移除水印/页眉页脚、处理连字符断词
 - **引用区跳过** — 自动识别 REFERENCES 区域，原样保留不翻译
 - **本地翻译** — 基于 Ollama + Qwen3，全程离线，无需 API Key
 - **双语逐句对照** — 翻译结果按句配对，支持逐句/段落/全文三种视图
+- **实时进度** — SSE 流式推送，解析/清洗/切块/翻译/格式化 5 步进度可视化
 - **日间/夜间模式** — 一键切换亮暗主题，液态玻璃毛玻璃效果
 - **自定义背景** — 支持本地图片/视频作为窗口背景，可调节透明度
 - **Docker 一键部署** — `docker compose up -d` 即可使用
@@ -74,6 +76,9 @@ docker compose logs -f app    # 查看应用日志
 ```bash
 # 安装前端依赖
 npm install
+
+# 安装 Python 依赖
+pip install -r python/requirements.txt
 
 # 安装 Ollama 并拉取模型
 ollama pull qwen3:8b
@@ -99,10 +104,21 @@ git push origin v0.3.0
 
 ```
 ├── src/                        # Vue 3 前端
-├── src-tauri/                  # Tauri 2 桌面端
+│   ├── App.vue                 # 主界面（上传/进度/结果）
+│   ├── composables/
+│   │   └── useTranslate.ts     # 翻译状态管理 + SSE 客户端
+│   └── types/                  # TypeScript 类型定义
+├── src-tauri/                  # Tauri 2 桌面端（Rust）
+│   └── src/main.rs             # 进程管理（Python + Ollama 子进程）
 ├── python/
-│   ├── api.py                  # FastAPI 服务器
-│   ├── src/translator/         # 翻译管道（解析/清洗/切块/翻译/格式化）
+│   ├── api.py                  # FastAPI 服务器 + SSE 翻译管道
+│   ├── src/
+│   │   ├── parser/             # 多格式文档解析（dispatcher + PDF extractor）
+│   │   ├── cleaner/            # 文本清洗管道
+│   │   ├── chunker/            # 智能切块（sentence/paragraph/fixed 策略）
+│   │   ├── translator/         # Ollama 翻译客户端
+│   │   └── formatter/          # 输出格式化（bilingual/parallel/translated_only）
+│   ├── tests/unit/             # 单元测试
 │   └── config/                 # 默认 & Docker 配置
 ├── .github/workflows/          # CI/CD：tag 触发自动构建
 ├── Dockerfile                  # 多阶段构建（前端 + 后端）
@@ -115,17 +131,18 @@ git push origin v0.3.0
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
 | `chunker.max_tokens` | 2048 | 每块最大 token 数 |
-| `chunker.strategy` | sentence | 切块策略 |
+| `chunker.overlap_tokens` | 64 | 块间重叠 token 数 |
+| `chunker.strategy` | sentence | 切块策略 (sentence/paragraph/fixed) |
 | `translator.model` | qwen3:8b | Ollama 模型 |
 | `translator.num_predict` | 16384 | 最大生成 token 数 |
 | `translator.temperature` | 0.3 | 生成温度 |
-| `formatter.output_format` | bilingual | 输出格式 |
+| `formatter.output_format` | bilingual | 输出格式 (bilingual/parallel/translated_only) |
 
 ## 技术栈
 
 - **前端**: Vue 3 + TypeScript + Vite + Tauri 2
 - **后端**: Python FastAPI + SSE
-- **PDF 解析**: pdfplumber
+- **文档解析**: pdfplumber, python-docx, python-pptx, openpyxl, ebooklib, beautifulsoup4, pylatexenc, striprtf
 - **翻译引擎**: Ollama (Qwen3)
 - **容器化**: Docker 多阶段构建
 

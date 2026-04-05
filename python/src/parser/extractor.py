@@ -172,8 +172,7 @@ def _filter_header_footer(text: str, page: pdfplumber.page.Page) -> str:
     header_cutoff = page.height * 0.05
     footer_cutoff = page.height * 0.95
 
-    # pdfplumber 的 y0 是从底部算起的，需要转换
-    # extract_words() 返回的 top 是从页面顶部算起的
+    # extract_words() 返回的 top/bottom 都是从页面顶部算起的，直接使用即可
     body_words = [
         w for w in words
         if w.get("top", 0) >= header_cutoff
