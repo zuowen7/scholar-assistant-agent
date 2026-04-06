@@ -1,61 +1,48 @@
-# Scholar Translate 默认配置
-
-# PDF 解析
-parser:
-  # pdfplumber 或 pymupdf
-  engine: pdfplumber
-  # 是否保留表格
-  extract_tables: false
-
-# 文本清洗
-cleaner:
-  # 合并断行的最大行间距 (pt)
-  max_line_gap: 5.0
-  # 连字符断词处理
-  fix_hyphenation: true
-  # 移除页眉页脚
-  remove_headers_footers: true
-
-# 文本切块
 chunker:
-  # 每块最大 token 数 (增大以获得更完整的上下文)
   max_tokens: 2048
-  # 块间重叠 token 数 (增大以保持上下文衔接)
   overlap_tokens: 128
-  # 切块策略: sentence | paragraph | fixed
   strategy: sentence
-
-# 翻译引擎
-translator:
-  # Ollama 配置
-  ollama_base_url: "http://localhost:11434"
-  model: "qwen3:8b"
-  # 生成参数
-  temperature: 0.3
-  num_predict: 16384
-  # 翻译提示词模板
-  system_prompt: |
-    你是一位专业的学术翻译专家，正在将英文学术论文逐段翻译为中文。
-
-    ## 翻译规则
-    1. 逐句完整翻译，不得遗漏、省略、概括或跳过任何内容。
-    2. 数学公式（如 $E=mc^2$）、化学式、代码片段保持原样。
-    3. 引用标记如 (1)、[2]、[Smith et al., 2020] 保持原样。
-    4. 保持原文的段落结构：原文有几段，译文就几段，用空行分隔段落。
-    5. 专业术语首次出现时在括号内附注英文原文，如"系统发育学（phylogenetics）"。
-    6. 数字、单位符号、缩写（如 DNA、RNA、PCR、WHO）保持原样。
-    7. 人名、地名、机构名保留英文，如 "Smith" 不翻译为"史密斯"。
-    8. 图表标题保持原格式，如 "Figure 1" 译为 "图 1"。
-
-    ## 输出格式
-    - 只输出翻译后的中文文本。
-    - 不要输出任何前言、解释、注释、总结或重复原文。
-    - 不要使用 markdown 代码块包裹翻译结果。
-    - 确保每句译文以中文标点（。！？）结尾。
-
-# 输出格式
+cleaner:
+  fix_hyphenation: true
+  max_line_gap: 5.0
+  remove_headers_footers: true
 formatter:
-  # 输出格式: bilingual | translated_only | parallel
-  output_format: bilingual
-  # 输出文件格式: txt | markdown | docx
   file_format: markdown
+  output_format: bilingual
+parser:
+  engine: pdfplumber
+  extract_tables: false
+translator:
+  cloud:
+    api_key: ''
+    base_url: https://api.openai.com/v1
+    max_tokens: 16384
+    model: gpt-4o
+    provider: openai
+  engine: ollama
+  model: qwen3:8b
+  num_predict: 16384
+  ollama_base_url: http://localhost:11434
+  system_prompt: '你是一位资深的学术文献翻译专家，精通英译中。请将以下英文学术文本翻译为流畅、准确的中文。
+
+    ## 核心原则
+
+    - 必须逐句完整翻译每一个句子，绝对不能跳过、省略、概括或遗漏任何内容。 - 如果输入有 N 个句子，输出必须也有 N 个句子的翻译。 - 保持原文段落结构：原文有几段，译文就几段，段落之间用空行分隔。
+
+    ## 格式保持
+
+    - 数学公式（$E=mc^2$、\alpha、\beta 等）保持原样不翻译。 - 引用标记 (1)、[2]、[Smith et al., 2020] 保持原样。
+    - 数字、单位、缩写（DNA、RNA、PCR）保持原样。 - 人名、地名、机构名保留英文。
+
+    ## 术语处理
+
+    - 专业术语首次出现时附注英文：如「系统发育学（phylogenetics）」。 - 图表标题：「Figure 1」→「图 1」，「Table 2」→「表
+    2」。
+
+    ## 输出要求
+
+    - 只输出中文翻译结果，不要任何前言、解释、注释或总结。 - 不要用 markdown 代码块包裹结果。 - 确保每句译文以中文标点（。！？）结尾。 - 翻译要自然流畅，符合中文学术论文的表达习惯。
+
+    '
+  temperature: 0.3
+  timeout: 300.0

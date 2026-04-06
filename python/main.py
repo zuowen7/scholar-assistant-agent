@@ -16,6 +16,7 @@ from src.formatter import format_output
 from src.formatter.renderer import save_output
 from src.parser import extract_pages
 from src.translator.ollama_client import OllamaClient
+from src.translator.context import extract_document_context
 
 logger = logging.getLogger("scholar-translate")
 
@@ -110,9 +111,9 @@ def main(argv: list[str] | None = None) -> None:
     trans_cfg = config.get("translator", {})
     client = OllamaClient(
         base_url=trans_cfg.get("ollama_base_url", "http://localhost:11434"),
-        model=trans_cfg.get("model", "qwen3"),
+        model=trans_cfg.get("model", "qwen3:8b"),
         temperature=trans_cfg.get("temperature", 0.3),
-        num_predict=trans_cfg.get("num_predict", 4096),
+        num_predict=trans_cfg.get("num_predict", 16384),
         system_prompt=trans_cfg.get("system_prompt", ""),
         timeout=trans_cfg.get("timeout", 300.0),
     )
@@ -122,17 +123,26 @@ def main(argv: list[str] | None = None) -> None:
         logger.error("Ollama 服务不可达，请确认已启动: ollama serve")
         sys.exit(1)
 
+    # 注入文档级上下文（标题+摘要），提升跨 chunk 术语一致性
+    doc_context = extract_document_context(raw_text)
+    if doc_context:
+        client.set_document_context(doc_context)
+        logger.info("  → 文档上下文已注入 (%d 字符)", len(doc_context))
+
     results = []
-    for i, chunk in enumerate(chunks):
-        logger.info("  翻译块 %d/%d (%d tokens)...", i + 1, len(chunks), chunk.estimated_tokens)
-        try:
-            prev_trans = results[-1].translated if results else ""
-            result = client.translate(chunk.text, prev_trans)
-            results.append(result)
-            logger.debug("  → %d tokens 生成", result.completion_tokens)
-        except (ConnectionError, ValueError) as e:
-            logger.error("  翻译块 %d 失败: %s", i + 1, e)
-            sys.exit(1)
+    try:
+        for i, chunk in enumerate(chunks):
+            logger.info("  翻译块 %d/%d (%d tokens)...", i + 1, len(chunks), chunk.estimated_tokens)
+            try:
+                prev_trans = results[-1].translated if results else ""
+                result = client.translate(chunk.text, prev_trans)
+                results.append(result)
+                logger.debug("  → %d tokens 生成", result.completion_tokens)
+            except (ConnectionError, ValueError) as e:
+                logger.error("  翻译块 %d 失败: %s", i + 1, e)
+                sys.exit(1)
+    finally:
+        client.close()
 
     # Step 5: 格式化输出
     logger.info("[5/5] 生成输出...")
@@ -140,9 +150,7 @@ def main(argv: list[str] | None = None) -> None:
     output_format = args.format or fmt_cfg.get("output_format", "bilingual")
     content = format_output(results, output_format=output_format)
 
-    # 追加未翻译的引用区
-    if references_text:
-        content += "\n\n---\n\n## References\n\n" + references_text
+    # References 已在清洗阶段整体删除，不追加到输出
 
     saved = save_output(content, output_path)
 

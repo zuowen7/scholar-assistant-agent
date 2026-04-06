@@ -43,7 +43,64 @@
           </div>
         </div>
         <div class="topbar-right">
-          <!-- 设置按钮 -->
+          <!-- 引擎设置按钮 -->
+          <div class="settings-wrapper">
+            <button class="topbar-icon-btn settings-btn" :class="{ active: showEngineSettings }" @click.stop="showEngineSettings = !showEngineSettings; showSettings = false" title="翻译引擎设置">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+              </svg>
+            </button>
+            <!-- 引擎设置面板 -->
+            <div v-if="showEngineSettings" class="settings-panel engine-panel" @click.stop>
+              <div class="settings-title">翻译引擎</div>
+              <div class="engine-switch">
+                <button class="engine-tab" :class="{ active: engineType === 'ollama' }" @click="engineType = 'ollama'; saveEngineSettings()">
+                  本地 Ollama
+                </button>
+                <button class="engine-tab" :class="{ active: engineType === 'cloud' }" @click="engineType = 'cloud'; saveEngineSettings()">
+                  云端 API
+                </button>
+              </div>
+              <div v-if="engineType === 'cloud'" class="cloud-settings">
+                <div class="cloud-field">
+                  <label>供应商</label>
+                  <select v-model="cloudConfig.provider" @change="onProviderChange" class="cloud-select">
+                    <option v-for="(preset, key) in providerPresets" :key="key" :value="key">{{ preset.name }}</option>
+                  </select>
+                </div>
+                <div class="cloud-field">
+                  <label>API Key</label>
+                  <input type="password" v-model="cloudConfig.api_key" class="cloud-input" placeholder="输入 API Key" />
+                </div>
+                <div class="cloud-field">
+                  <label>Base URL</label>
+                  <input type="text" v-model="cloudConfig.base_url" class="cloud-input" placeholder="https://api.openai.com/v1" />
+                </div>
+                <div class="cloud-field">
+                  <label>模型</label>
+                  <div class="model-input-row">
+                    <input type="text" v-model="cloudConfig.model" class="cloud-input" placeholder="gpt-4o" />
+                    <select v-if="providerPresets[cloudConfig.provider]?.models?.length" class="cloud-select model-select" @change="cloudConfig.model = ($event.target as HTMLSelectElement).value">
+                      <option value="" disabled selected>预设</option>
+                      <option v-for="m in providerPresets[cloudConfig.provider]?.models || []" :key="m" :value="m">{{ m }}</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="cloud-actions">
+                  <button class="settings-action-btn" :disabled="cloudChecking || !cloudConfig.api_key" @click="testCloudConnection">
+                    <template v-if="cloudChecking">测试中...</template>
+                    <template v-else>测试连接</template>
+                  </button>
+                  <button class="settings-action-btn primary-btn" @click="saveEngineSettings">保存</button>
+                </div>
+                <div v-if="cloudConfig.api_key" class="cloud-status-hint" :class="cloudOk ? 'ok' : 'off'">
+                  {{ cloudOk ? '已连接' : '未连接' }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 背景设置按钮 -->
           <div class="settings-wrapper">
             <button class="topbar-icon-btn settings-btn" :class="{ active: showSettings }" @click.stop="toggleSettings" title="背景设置">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -51,9 +108,38 @@
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
               </svg>
             </button>
-            <!-- 设置下拉面板 -->
-            <div v-if="showSettings" class="settings-panel" @click.stop>
-              <div class="settings-title">背景设置</div>
+            <div v-if="showSettings" class="settings-panel settings-panel-wide" @click.stop>
+              <div class="settings-title">显示设置</div>
+              <!-- 阅读设置 -->
+              <div class="settings-section-label">阅读</div>
+              <div class="settings-slider">
+                <label>字号: {{ readSettings.fontSize }}px</label>
+                <input type="range" min="12" max="28" :value="readSettings.fontSize" @input="onFontSizeChange" class="opacity-slider" />
+              </div>
+              <div class="settings-slider">
+                <label>行高: {{ readSettings.lineHeight }}</label>
+                <input type="range" min="14" max="32" :value="Math.round(readSettings.lineHeight * 10)" @input="onLineHeightChange" class="opacity-slider" />
+              </div>
+              <div class="cloud-field">
+                <label>字体</label>
+                <select v-model="readSettings.fontFamily" @change="saveReadSettings" class="cloud-select">
+                  <option value="system-ui">系统默认</option>
+                  <option value="'Noto Sans SC', sans-serif">思源黑体</option>
+                  <option value="'Noto Serif SC', serif">思源宋体</option>
+                  <option value="'LXGW WenKai', serif">霞鹜文楷</option>
+                  <option value="'Microsoft YaHei', sans-serif">微软雅黑</option>
+                  <option value="SimSun, serif">宋体</option>
+                </select>
+              </div>
+              <div class="cloud-field">
+                <label>译文颜色</label>
+                <div class="color-row">
+                  <input type="color" v-model="readSettings.transColor" @input="saveReadSettings" class="color-picker" />
+                  <span class="color-hex">{{ readSettings.transColor }}</span>
+                </div>
+              </div>
+              <!-- 背景设置 -->
+              <div class="settings-section-label" style="margin-top: 10px;">背景</div>
               <div class="settings-actions">
                 <button class="settings-action-btn" @click="pickBackground">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -92,13 +178,24 @@
           <span class="pill" :class="healthOk ? 'ok' : 'off'">
             <span class="pill-dot"></span>后端
           </span>
-          <button class="pill pill-btn" :class="ollamaOk ? 'ok' : 'off'" @click="toggleOllama" :disabled="ollamaLoading">
-            <span class="pill-dot"></span>
-            <template v-if="ollamaLoading">启动中...</template>
-            <template v-else-if="ollamaOk">Ollama 在线</template>
-            <template v-else>启动 Ollama</template>
-          </button>
-          <span v-if="ollamaError" class="pill error-text">{{ ollamaError }}</span>
+          <!-- Ollama 状态（仅本地模式显示） -->
+          <template v-if="engineType === 'ollama'">
+            <button class="pill pill-btn" :class="ollamaOk ? 'ok' : 'off'" @click="toggleOllama" :disabled="ollamaLoading">
+              <span class="pill-dot"></span>
+              <template v-if="ollamaLoading">启动中...</template>
+              <template v-else-if="ollamaOk">Ollama 在线</template>
+              <template v-else>启动 Ollama</template>
+            </button>
+            <span v-if="ollamaError" class="pill error-text">{{ ollamaError }}</span>
+          </template>
+          <!-- 云端 API 状态（仅云端模式显示） -->
+          <template v-if="engineType === 'cloud'">
+            <span class="pill" :class="cloudOk ? 'ok' : 'off'">
+              <span class="pill-dot"></span>
+              <template v-if="cloudOk">云端已连接</template>
+              <template v-else>云端未连接</template>
+            </span>
+          </template>
 
           <!-- 窗口控制按钮 -->
           <div class="window-controls">
@@ -187,7 +284,7 @@
           <!-- 实时翻译预览 -->
           <div v-if="state.translations.length > 0" class="live">
             <div class="live-label">实时预览</div>
-            <div v-for="(t, i) in state.translations.slice(-3)" :key="i" class="live-item">
+            <div v-for="t in state.translations.slice(-3)" :key="t.index" class="live-item">
               <div class="live-orig">{{ t.original_preview }}</div>
               <div class="live-trans">{{ t.translated_preview }}</div>
             </div>
@@ -195,7 +292,7 @@
         </div>
 
         <!-- 完成态 -->
-        <div v-else class="result-view">
+        <div v-else class="result-view" :style="readStyleVars">
           <div class="result-bar">
             <div class="result-bar-left">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2.5">
@@ -235,11 +332,11 @@
               </div>
               <div class="par-body">
                 <div class="par-col orig">
-                  <p>{{ chunk.original }}</p>
+                  <p v-for="(para, pi) in chunk.original.split(/\n\n+/)" :key="'o'+pi">{{ para }}</p>
                 </div>
                 <div class="par-divider"></div>
                 <div class="par-col trans">
-                  <p>{{ chunk.translated }}</p>
+                  <p v-for="(para, pi) in chunk.translated.split(/\n\n+/)" :key="'t'+pi">{{ para }}</p>
                 </div>
               </div>
             </div>
@@ -262,17 +359,31 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useTranslate } from './composables/useTranslate'
 
-const { state, translate, translateFromPath, reset, checkHealth, checkOllama, startOllama, downloadResult, overallProgress } = useTranslate()
+const { state, translate, translateFromPath, reset, checkHealth, checkOllama, startOllama, downloadResult, overallProgress, checkCloudApi, getConfig, updateConfig, getProviderPresets } = useTranslate()
 
 const healthOk = ref(false)
 const ollamaOk = ref(false)
 const ollamaLoading = ref(false)
 const ollamaError = ref<string | null>(null)
+const cloudOk = ref(false)
+const cloudChecking = ref(false)
 const globalDragging = ref(false)
 const zoneHover = ref(false)
 const isDark = ref(true)
 const viewMode = ref<'sentence' | 'parallel' | 'markdown'>('sentence')
 const stepLabels = ['解析文档', '清洗文本', '智能分块', '翻译', '格式化输出']
+
+// --- Translation engine settings ---
+const engineType = ref<'ollama' | 'cloud'>('ollama')
+const cloudConfig = ref({
+  provider: 'openai',
+  api_key: '',
+  base_url: 'https://api.openai.com/v1',
+  model: 'gpt-4o',
+  max_tokens: 16384,
+})
+const providerPresets = ref<Record<string, { name: string; base_url: string; models: string[] }>>({})
+const showEngineSettings = ref(false)
 
 const progress = computed(() => overallProgress())
 
@@ -307,6 +418,57 @@ const bgSettings = ref<BackgroundSettings>({
 })
 
 const showSettings = ref(false)
+
+// --- 阅读设置 ---
+
+interface ReadSettings {
+  fontSize: number
+  lineHeight: number
+  fontFamily: string
+  transColor: string
+}
+
+const readSettings = ref<ReadSettings>({
+  fontSize: 16,
+  lineHeight: 1.9,
+  fontFamily: 'system-ui',
+  transColor: '#e4e4e7',
+})
+
+function loadReadSettings() {
+  try {
+    const raw = localStorage.getItem('read-settings')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed && typeof parsed.fontSize === 'number') {
+        readSettings.value = { ...readSettings.value, ...parsed }
+      }
+    }
+  } catch { /* ignore */ }
+}
+
+function saveReadSettings() {
+  try {
+    localStorage.setItem('read-settings', JSON.stringify(readSettings.value))
+  } catch { /* ignore */ }
+}
+
+function onFontSizeChange(e: Event) {
+  readSettings.value.fontSize = parseInt((e.target as HTMLInputElement).value, 10)
+  saveReadSettings()
+}
+
+function onLineHeightChange(e: Event) {
+  readSettings.value.lineHeight = parseInt((e.target as HTMLInputElement).value, 10) / 10
+  saveReadSettings()
+}
+
+const readStyleVars = computed(() => ({
+  '--read-fs': `${readSettings.value.fontSize}px`,
+  '--read-lh': readSettings.value.lineHeight,
+  '--read-ff': readSettings.value.fontFamily,
+  '--read-trans-color': readSettings.value.transColor,
+}))
 
 const bgAssetUrl = computed(() => {
   if (!bgSettings.value.path) return ''
@@ -417,6 +579,9 @@ function onDocumentClick(e: MouseEvent) {
   const target = e.target as HTMLElement
   if (showSettings.value && !target.closest('.settings-wrapper')) {
     showSettings.value = false
+  }
+  if (showEngineSettings.value && !target.closest('.settings-wrapper')) {
+    showEngineSettings.value = false
   }
 }
 
@@ -576,7 +741,21 @@ const allSentencePairs = computed<SentencePair[]>(() => {
 
 // --- 简易 Markdown -> HTML ---
 
+const renderedContent = computed(() => renderMarkdown(state.finalContent))
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 function renderMarkdown(md: string): string {
+  // 先将全文 HTML 转义，阻断 XSS 注入
+  md = escapeHtml(md)
+
   const extracted: string[] = []
 
   function extract(re: RegExp, processor: (m: RegExpMatchArray) => string): void {
@@ -587,15 +766,14 @@ function renderMarkdown(md: string): string {
     })
   }
 
-  extract(/^[>]+\s*(.+(?:\n[>]+\s*.+)*)/gm, (m) => {
-    const lines = m[1].replace(/^[>]+\s?/gm, '').split('\n')
+  // 引用块 (已被转义为 &gt;)
+  extract(/^(?:&gt;)+\s*(.+(?:(?:\n|^)(?:&gt;)+\s*.+)*)/gm, (m) => {
+    const lines = m[1].replace(/^(?:&gt;)+\s?/gm, '').split('\n')
     const content = lines
-      .map(l => escapeHtml(l).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>'))
+      .map(l => l.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>'))
       .join('<br/>')
     return `<blockquote>${content}</blockquote>`
   })
-
-  md = md.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
   md = md.replace(/^### (.+)$/gm, '<h3>$1</h3>')
   md = md.replace(/^## (.+)$/gm, '<h2>$1</h2>')
@@ -620,17 +798,6 @@ function renderMarkdown(md: string): string {
   return md
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
-const renderedContent = computed(() => renderMarkdown(state.finalContent))
-
 // --- 拖拽处理 ---
 
 let dragCounter = 0
@@ -647,16 +814,29 @@ onMounted(async () => {
   // Load background settings
   loadBgSettings()
 
+  // Load read settings
+  loadReadSettings()
+
   // Close settings on outside click
   document.addEventListener('click', onDocumentClick)
+
+  // Load engine settings from backend config
+  await loadEngineSettings()
 
   // Health checks
   healthOk.value = await checkHealth()
   ollamaOk.value = await checkOllama()
+  if (engineType.value === 'cloud') {
+    cloudOk.value = await checkCloudApi()
+  }
   timer = setInterval(async () => {
     if (state.status === 'idle') {
       healthOk.value = await checkHealth()
-      ollamaOk.value = await checkOllama()
+      if (engineType.value === 'ollama') {
+        ollamaOk.value = await checkOllama()
+      } else {
+        cloudOk.value = await checkCloudApi()
+      }
     }
   }, 8000)
 
@@ -731,10 +911,65 @@ async function toggleOllama() {
     ollamaLoading.value = false
   }
 }
+
+// --- Engine settings ---
+
+async function loadEngineSettings() {
+  const presets = await getProviderPresets()
+  if (presets) providerPresets.value = presets
+
+  const config = await getConfig()
+  if (config?.translator) {
+    const t = config.translator
+    engineType.value = (t.engine as 'ollama' | 'cloud') || 'ollama'
+    if (t.cloud) {
+      cloudConfig.value = {
+        provider: t.cloud.provider || 'openai',
+        api_key: t.cloud.api_key || '',
+        base_url: t.cloud.base_url || 'https://api.openai.com/v1',
+        model: t.cloud.model || 'gpt-4o',
+        max_tokens: t.cloud.max_tokens || 16384,
+      }
+    }
+  }
+}
+
+async function saveEngineSettings() {
+  await updateConfig({
+    translator: { engine: engineType.value },
+    cloud: { ...cloudConfig.value },
+  })
+  // If switched to cloud, check connectivity
+  if (engineType.value === 'cloud') {
+    cloudOk.value = false
+    cloudOk.value = await checkCloudApi()
+  }
+}
+
+function onProviderChange() {
+  const preset = providerPresets.value[cloudConfig.value.provider]
+  if (preset) {
+    cloudConfig.value.base_url = preset.base_url
+    if (preset.models.length > 0) {
+      cloudConfig.value.model = preset.models[0]
+    }
+  }
+}
+
+async function testCloudConnection() {
+  cloudChecking.value = true
+  try {
+    // Save first so the backend has the latest config
+    await saveEngineSettings()
+    cloudOk.value = await checkCloudApi()
+  } finally {
+    cloudChecking.value = false
+  }
+}
 </script>
 
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap') /* offline fallback to system-ui */;
 
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -894,6 +1129,41 @@ body {
   -webkit-app-region: no-drag;
 }
 
+.settings-panel-wide {
+  width: 280px;
+}
+
+.settings-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.color-picker {
+  width: 32px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+  background: none;
+}
+
+.color-hex {
+  font-size: 11px;
+  color: var(--text3);
+  font-family: monospace;
+}
+
 .settings-title {
   font-size: 13px;
   font-weight: 600;
@@ -969,6 +1239,143 @@ body {
 }
 .opacity-slider::-webkit-slider-thumb:hover {
   transform: scale(1.2);
+}
+
+/* ── Engine Settings Panel ── */
+.engine-panel {
+  width: 320px;
+  right: 0;
+}
+
+.engine-switch {
+  display: flex;
+  gap: 4px;
+  background: var(--surface2);
+  border-radius: 8px;
+  padding: 3px;
+  margin-bottom: 14px;
+}
+
+.engine-tab {
+  flex: 1;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text3);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.engine-tab.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.engine-tab:not(.active):hover {
+  color: var(--text);
+}
+
+.cloud-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cloud-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cloud-field label {
+  font-size: 11px;
+  color: var(--text3);
+  font-weight: 500;
+}
+
+.cloud-input, .cloud-select {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.cloud-input:focus, .cloud-select:focus {
+  border-color: var(--accent);
+}
+
+.cloud-select {
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2371717a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 24px;
+}
+
+.model-input-row {
+  display: flex;
+  gap: 4px;
+}
+
+.model-input-row .cloud-input {
+  flex: 1;
+}
+
+.model-select {
+  width: auto;
+  min-width: 70px;
+  flex-shrink: 0;
+}
+
+.cloud-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.cloud-actions .settings-action-btn {
+  flex: 1;
+}
+
+.primary-btn {
+  background: var(--accent) !important;
+  color: #fff !important;
+  border-color: var(--accent) !important;
+}
+
+.primary-btn:hover {
+  opacity: 0.9;
+}
+
+.cloud-status-hint {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px;
+  border-radius: 6px;
+}
+
+.cloud-status-hint.ok {
+  color: var(--green);
+  background: rgba(74, 222, 128, 0.08);
+}
+
+.cloud-status-hint.off {
+  color: var(--red);
+  background: var(--red-bg);
 }
 
 /* ── Window Controls ── */
@@ -1184,9 +1591,10 @@ body {
   margin-bottom: 8px;
 }
 .sent-trans {
-  font-size: 16px; color: var(--text); line-height: 1.9;
+  font-size: var(--read-fs, 16px); color: var(--read-trans-color, var(--text)); line-height: var(--read-lh, 1.9);
   white-space: pre-wrap; word-break: break-word;
   font-weight: 400;
+  font-family: var(--read-ff, system-ui);
 }
 
 /* ── Parallel View ── */
@@ -1225,8 +1633,10 @@ body {
   -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 .md-body {
-  font-size: 15px; line-height: 2.0; color: var(--text);
+  font-size: var(--read-fs, 15px); line-height: var(--read-lh, 2.0); color: var(--read-trans-color, var(--text));
   max-width: 800px;
+  margin: 0 auto;
+  font-family: var(--read-ff, system-ui);
 }
 .md-body h1 { font-size: 22px; font-weight: 700; margin: 24px 0 14px; color: var(--accent2); }
 .md-body h2 { font-size: 18px; font-weight: 600; margin: 20px 0 12px; color: var(--text); }

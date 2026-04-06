@@ -60,8 +60,10 @@ def clean_text_full(raw_text: str) -> CleanResult:
     # 6. 压缩连续空行
     text = re.sub(r"\n{3,}", "\n\n", text)
 
-    # 7. 检测引用区
+    # 7. 检测引用区 → 直接从正文中删除，不翻译、不显示
     ref_pos, ref_text = _detect_references(text)
+    if ref_pos >= 0:
+        text = text[:ref_pos].rstrip()
 
     return CleanResult(
         text=text.strip(),
@@ -75,15 +77,10 @@ def clean_text_full(raw_text: str) -> CleanResult:
 # 引用区检测
 # ---------------------------------------------------------------------------
 
-# 常见引用区标题 (大小写不敏感)
-_REFERENCE_PATTERNS = [
-    r"REFERENCES\s+AND\s+NOTES\s*$",
-    r"REFERENCES\s*$",
-    r"BIBLIOGRAPHY\s*$",
-    r"LITERATURE\s+CITED\s*$",
-    r"WORKS\s+CITED\s*$",
-    r"SUPPLEMENTARY\s+MATERIALS\s*$",
-]
+# 常见引用区标题 — 从共享常量导入，消重复一
+from src.constants import REFERENCE_SECTION_PATTERNS as _REFERENCE_PATTERNS
+
+_REFERENCE_PATTERNS = [r"^" + p + r"\s*$" for p in _REFERENCE_PATTERNS]
 
 
 def _detect_references(text: str) -> tuple[int, str]:
@@ -94,7 +91,7 @@ def _detect_references(text: str) -> tuple[int, str]:
     """
     best_pos = -1
     for pattern in _REFERENCE_PATTERNS:
-        for m in re.finditer(r"^" + pattern, text, re.MULTILINE | re.IGNORECASE):
+        for m in re.finditer(pattern, text, re.MULTILINE | re.IGNORECASE):
             if m.start() > best_pos:
                 best_pos = m.start()
 
@@ -131,6 +128,44 @@ def _remove_watermarks(text: str) -> str:
     )
     for pattern in _WATERMARK_PATTERNS:
         text = re.sub(pattern, "", text, flags=re.MULTILINE)
+    return text
+
+
+def _remove_annotations(text: str) -> str:
+    """移除脚注、致谢、注释、作者贡献等非正文段落"""
+    # 脚注标记: 独立一行只有上标数字或 [数字] 或 上标 a/b/c
+    text = re.sub(r"^\^?\d{1,3}[a-z]?$", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^\[\d+\]$", "", text, flags=re.MULTILINE)
+    # 致谢/注释/作者贡献/利益声明 等段落（整段删除）
+    anno_section_headers = [
+        r"^Acknowledgments?\s*:?",
+        r"^Funding\s*:",
+        r"^Author\s+(?:Contributions?|Information)$",
+        r"^Competing\s+Interests?:?",
+        r"^Data\s+(?:Availability|Access)\s+Statement",
+        r"^Ethics\s+(?:Statement|Approval|Declarations?)",
+        r"^Consent\s+to\s+(?:Participate|Publish)",
+        r"^Conflicts?\s+of\s+Interests?",
+        r"^Financial\s+Disclosure",
+        r"^Declaration\s+of\s+",
+        r"^Supplementary\s+(?:Information|Data|Material|Note)",
+        r"^Footnotes?\s*:?",
+        r"^Notes?\s*:?",
+        r"^Additional\s+(?:Information|File)",
+        r"^Electronic\s+Supplementary",
+        r"^Supporting\s+Information",
+        r"^Author\s+e-mail",
+        r"^Correspondence",
+        r"^See\s+(?:also\s+)?(?:Appendix|Table|Figure|Fig\.?|Supplementary)",
+    ]
+    for pattern in anno_section_headers:
+        # 匹配该行及后续直到空行的内容
+        text = re.sub(
+            pattern + r"[^\n]*(?:\n(?!\n)[^\n]*)*",
+            "", text, flags=re.MULTILINE | re.IGNORECASE,
+        )
+    # 删除单独的脚注内容行: "1 Author Name, Title, Journal (2020) pp. 1-10"
+    text = re.sub(r"^\d{1,3}\s+[A-Z][a-z]+.+?\(\d{4}\).*$", "", text, flags=re.MULTILINE)
     return text
 
 

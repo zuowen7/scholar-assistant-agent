@@ -345,18 +345,20 @@ def _extract_xlsx(path: Path) -> DocumentContent:
         raise ImportError("请安装 openpyxl: pip install openpyxl")
 
     wb = load_workbook(str(path), read_only=True, data_only=True)
-    pages: list[PageContent] = []
+    try:
+        pages: list[PageContent] = []
 
-    for i, sheet in enumerate(wb.worksheets, 1):
-        rows: list[str] = []
-        for row in sheet.iter_rows(values_only=True):
-            cells = [str(c).strip() for c in row if c is not None]
-            if cells:
-                rows.append(" | ".join(cells))
-        pages.append(PageContent(page_num=i, text="\n".join(rows), width=0, height=0))
+        for i, sheet in enumerate(wb.worksheets, 1):
+            rows: list[str] = []
+            for row in sheet.iter_rows(values_only=True):
+                cells = [str(c).strip() for c in row if c is not None]
+                if cells:
+                    rows.append(" | ".join(cells))
+            pages.append(PageContent(page_num=i, text="\n".join(rows), width=0, height=0))
 
-    wb.close()
-    return DocumentContent(pages=pages, source_path=str(path))
+        return DocumentContent(pages=pages, source_path=str(path))
+    finally:
+        wb.close()
 
 
 # ---------------------------------------------------------------------------

@@ -55,8 +55,9 @@ services:
       ollama:
         condition: service_healthy
     volumes:
-      - ./data/input:/data/input
-      - ./data/output:/data/output
+      # 与 api.py 中 DATA_DIR=/app/data 一致
+      - ./data/input:/app/data/input
+      - ./data/output:/app/data/output
     environment:
       - DOCKER_MODE=1
       - OLLAMA_HOST=http://ollama:11434

@@ -7,6 +7,9 @@ import type {
   ProgressEvent,
   ParsedEvent,
   ChunkDoneEvent,
+  AppConfig,
+  CloudConfig,
+  ProviderPreset,
 } from '../types'
 
 // Tauri 桌面端: 后端固定在 18088; Docker/Web: 同源，用相对路径
@@ -31,8 +34,13 @@ function createState(): TranslateState {
 }
 
 const state = reactive<TranslateState>(createState())
+let abortController: AbortController | null = null
 
 function reset(): void {
+  if (abortController) {
+    abortController.abort()
+    abortController = null
+  }
   Object.assign(state, createState())
 }
 
@@ -123,7 +131,10 @@ async function uploadPdf(file: File): Promise<string> {
 }
 
 async function startStream(taskId: string): Promise<void> {
-  const resp = await fetch(`${API_URL}/api/translate/${taskId}/stream`)
+  abortController = new AbortController()
+  const resp = await fetch(`${API_URL}/api/translate/${taskId}/stream`, {
+    signal: abortController.signal,
+  })
 
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({ detail: '流式连接失败' }))
@@ -136,6 +147,40 @@ async function startStream(taskId: string): Promise<void> {
   const decoder = new TextDecoder()
   let buffer = ''
   let currentEvent = ''
+  let dataBuffer = ''
+
+  function processLine(line: string): void {
+    if (line.startsWith('event:')) {
+      // Flush previous event data
+      if (currentEvent && dataBuffer) {
+        try {
+          const data = JSON.parse(dataBuffer)
+          handleSseEvent(currentEvent, data)
+        } catch {
+          // skip malformed JSON
+        }
+        dataBuffer = ''
+      }
+      currentEvent = line.slice(6).trim()
+    } else if (line.startsWith('data:')) {
+      const raw = line.slice(5).trim()
+      if (raw) {
+        dataBuffer += (dataBuffer ? '\n' : '') + raw
+      }
+    } else if (line === '') {
+      // Empty line = event boundary, flush
+      if (currentEvent && dataBuffer) {
+        try {
+          const data = JSON.parse(dataBuffer)
+          handleSseEvent(currentEvent, data)
+        } catch {
+          // skip malformed JSON
+        }
+        dataBuffer = ''
+        currentEvent = ''
+      }
+    }
+  }
 
   try {
     while (true) {
@@ -147,22 +192,27 @@ async function startStream(taskId: string): Promise<void> {
       buffer = lines.pop() || ''
 
       for (const line of lines) {
-        if (line.startsWith('event:')) {
-          currentEvent = line.slice(6).trim()
-        } else if (line.startsWith('data:')) {
-          const raw = line.slice(5).trim()
-          if (!raw) continue
-          try {
-            const data = JSON.parse(raw)
-            handleSseEvent(currentEvent, data)
-          } catch {
-            // skip malformed JSON
-          }
-        }
+        processLine(line)
       }
     }
+
+    // Flush remaining data
+    if (currentEvent && dataBuffer) {
+      try {
+        const data = JSON.parse(dataBuffer)
+        handleSseEvent(currentEvent, data)
+      } catch {
+        // skip
+      }
+    } else if (buffer.trim()) {
+      processLine(buffer.trim())
+    }
   } catch (err) {
-    // Stream ended or was interrupted — if already done, ignore
+    // Stream ended or was interrupted
+    // 如果是 abort（用户主动取消/reset），静默处理
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      return
+    }
     if (state.status !== 'done') {
       throw err
     }
@@ -331,5 +381,61 @@ export function useTranslate() {
     startOllama,
     downloadResult,
     overallProgress,
+    // Cloud API
+    checkCloudApi,
+    getConfig,
+    updateConfig,
+    getProviderPresets,
+  }
+}
+
+// --- Cloud API ---
+
+async function checkCloudApi(): Promise<boolean> {
+  try {
+    const resp = await fetch(`${API_URL}/api/cloud/status`, { signal: AbortSignal.timeout(15000) })
+    if (!resp.ok) return false
+    const data = await resp.json()
+    return data.reachable === true
+  } catch {
+    return false
+  }
+}
+
+async function getConfig(): Promise<AppConfig | null> {
+  try {
+    const resp = await fetch(`${API_URL}/api/config`, { signal: AbortSignal.timeout(5000) })
+    if (!resp.ok) return null
+    return await resp.json() as AppConfig
+  } catch {
+    return null
+  }
+}
+
+async function updateConfig(config: { translator?: Record<string, unknown>; cloud?: CloudConfig }): Promise<AppConfig | null> {
+  try {
+    const payload: Record<string, unknown> = {}
+    if (config.translator) payload.translator = config.translator
+    if (config.cloud) payload.cloud = config.cloud
+
+    const resp = await fetch(`${API_URL}/api/config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!resp.ok) return null
+    return await resp.json() as AppConfig
+  } catch {
+    return null
+  }
+}
+
+async function getProviderPresets(): Promise<Record<string, ProviderPreset>> {
+  try {
+    const resp = await fetch(`${API_URL}/api/cloud/providers`, { signal: AbortSignal.timeout(5000) })
+    if (!resp.ok) return {}
+    return await resp.json() as Record<string, ProviderPreset>
+  } catch {
+    return {}
   }
 }

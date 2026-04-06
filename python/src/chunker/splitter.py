@@ -107,13 +107,9 @@ def chunk_text_full(
 # 引用区分离
 # ---------------------------------------------------------------------------
 
-_REFERENCE_PATTERNS = [
-    r"REFERENCES\s+AND\s+NOTES\s*$",
-    r"REFERENCES\s*$",
-    r"BIBLIOGRAPHY\s*$",
-    r"LITERATURE\s+CITED\s*$",
-    r"WORKS\s+CITED\s*$",
-]
+from src.constants import REFERENCE_SECTION_PATTERNS
+
+_REFERENCE_PATTERNS = [r"^" + p + r"\s*$" for p in REFERENCE_SECTION_PATTERNS]
 
 
 def _split_references(text: str) -> tuple[str, str]:
@@ -124,7 +120,7 @@ def _split_references(text: str) -> tuple[str, str]:
     """
     best_pos = -1
     for pattern in _REFERENCE_PATTERNS:
-        for m in re.finditer(r"^" + pattern, text, re.MULTILINE | re.IGNORECASE):
+        for m in re.finditer(pattern, text, re.MULTILINE | re.IGNORECASE):
             if m.start() > best_pos:
                 best_pos = m.start()
 

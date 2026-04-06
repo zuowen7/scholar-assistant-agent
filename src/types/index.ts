@@ -66,12 +66,29 @@ export interface AppConfig {
   cleaner: { max_line_gap: number; fix_hyphenation: boolean; remove_headers_footers: boolean }
   chunker: { max_tokens: number; overlap_tokens: number; strategy: string }
   translator: {
+    engine: 'ollama' | 'cloud'
     ollama_base_url: string
     model: string
     temperature: number
     num_predict: number
     system_prompt: string
     timeout: number
+    cloud: CloudConfig
   }
   formatter: { output_format: string; file_format: string }
+}
+
+export interface CloudConfig {
+  provider: string
+  api_key: string
+  base_url: string
+  model: string
+  max_tokens: number
+}
+
+export interface ProviderPreset {
+  name: string
+  base_url: string
+  models: string[]
+  api_format: string
 }
