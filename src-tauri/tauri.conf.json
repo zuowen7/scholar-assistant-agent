@@ -45,6 +45,9 @@
       "nsis": {
         "installMode": "currentUser",
         "languages": ["SimpChinese", "English"]
+      },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
       }
     }
   }
