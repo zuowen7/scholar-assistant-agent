@@ -24,6 +24,8 @@ RETRY_DELAY = 3.0
 _CONTEXT_WINDOW_LEN = 800
 _GLOSSARY_MAX_TERMS = 30
 _GLOSSARY_EXTRACTION_THRESHOLD = 0.3
+# Prompt 总长度安全上限（字符数），防止超出模型 context window
+_PROMPT_MAX_CHARS = 28_000
 
 
 @dataclass
@@ -182,6 +184,24 @@ class OllamaClient:
         prompt_parts.append(f"[请翻译以下内容]\n{text}")
         prompt = "".join(prompt_parts)
 
+        # Token 安全保护：如果 prompt 总长度超出上限，裁剪上下文
+        if len(prompt) > _PROMPT_MAX_CHARS:
+            # 优先保留当前 chunk 文本，缩减上下文窗口
+            ctx_budget = _PROMPT_MAX_CHARS - len(text) - 200
+            if ctx_budget > 0 and prev_translation:
+                snippet = prev_translation[-min(ctx_budget, _CONTEXT_WINDOW_LEN):]
+                prompt = (
+                    f"[前文翻译参考（不要翻译此部分）]\n{snippet}\n\n"
+                    f"[请翻译以下内容]\n{text}"
+                )
+            elif self._document_context and ctx_budget > 0:
+                prompt = (
+                    f"[文档背景（不要翻译此部分）]\n{self._document_context[:ctx_budget]}\n\n"
+                    f"[请翻译以下内容]\n{text}"
+                )
+            else:
+                prompt = f"[请翻译以下内容]\n{text}"
+
         system = self._build_system_prompt()
 
         payload = {
@@ -213,7 +233,12 @@ class OllamaClient:
             }
             resp = client.post(f"{self.base_url}/api/chat", json=chat_payload)
             if resp.status_code >= 400:
-                resp = client.post(f"{self.base_url}/api/generate", json=payload)
+                # Chat API 失败，fallback 到 Generate API，保留原始错误信息
+                chat_error = f"Chat API HTTP {resp.status_code}"
+                try:
+                    resp = client.post(f"{self.base_url}/api/generate", json=payload)
+                except Exception:
+                    raise ValueError(f"Chat API 和 Generate API 均失败（{chat_error}）")
             resp.raise_for_status()
         except httpx.ConnectError as e:
             raise ConnectionError(
@@ -403,6 +428,11 @@ def _repair_truncation(text: str) -> str:
     if not text:
         return text
 
+    n = len(text)
+    # 短文本（< 100 字符）不进行截断修复，避免误删标题或图注
+    if n < 100:
+        return text
+
     zh_endings = ["。", "！", "？", "；", "…"]
     en_endings = ["!", "?"]
 
@@ -413,7 +443,6 @@ def _repair_truncation(text: str) -> str:
     last_dot = text.rfind(".")
     if last_dot >= 0:
         before = text[:last_dot].rstrip()
-        after = text[last_dot + 1 :].strip()
         # 排除小数点: 前面紧跟数字
         if before and before[-1].isdigit():
             last_dot = -1
@@ -430,7 +459,6 @@ def _repair_truncation(text: str) -> str:
     last_en = max(last_en, last_dot)
 
     last_sentence_end = max(last_zh, last_en)
-    n = len(text)
 
     # 仅当「最后一句边界」落在文末附近时尝试修剪，避免误删未打句号的整段译文
     if last_sentence_end >= 0 and last_sentence_end < n - 1 and last_sentence_end >= int(n * 0.75):

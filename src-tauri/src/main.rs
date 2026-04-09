@@ -216,6 +216,26 @@ fn spawn_python(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     // Windows: python; Linux/macOS: python3
     let python_cmd = if cfg!(windows) { "python" } else { "python3" };
+
+    #[cfg(windows)]
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    #[cfg(windows)]
+    let mut child = std::process::Command::new(python_cmd)
+        .args([&api_str, "--port", "18088"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .or_else(|_| std::process::Command::new("python")
+            .args([&api_str, "--port", "18088"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+        )?;
+
+    #[cfg(not(windows))]
     let mut child = std::process::Command::new(python_cmd)
         .args([&api_str, "--port", "18088"])
         .stdout(std::process::Stdio::piped())

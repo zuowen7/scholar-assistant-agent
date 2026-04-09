@@ -273,169 +273,168 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         return {"task_id": task_id}
 
     async def _run_pipeline(task_id: str) -> AsyncGenerator[dict, None]:
-        await _busy_lock.acquire()
+        """翻译管道 generator — 不持有 _busy_lock，由 translate_stream 管理。"""
+        task = tasks[task_id]
+        task["status"] = "running"
+
         try:
-            task = tasks[task_id]
-            task["status"] = "running"
+            config = _load_config()
+            input_path = task["input_path"]
 
-            try:
-                config = _load_config()
-                input_path = task["input_path"]
+            ext = Path(input_path).suffix.lower()
+            fmt_name = SUPPORTED_EXTENSIONS.get(ext, "文档")
+            yield {
+                "event": "progress",
+                "data": json.dumps({"step": 1, "total": 5, "message": f"解析 {fmt_name}..."}),
+            }
+            doc = await asyncio.to_thread(extract_document, input_path)
+            raw_text = doc.full_text
+            dual_pages = sum(1 for p in doc.pages if getattr(p, "is_dual_column", False))
+            yield {
+                "event": "parsed",
+                "data": json.dumps({
+                    "pages": doc.page_count,
+                    "chars": len(raw_text),
+                    "dual_column_pages": dual_pages,
+                }),
+            }
 
-                ext = Path(input_path).suffix.lower()
-                fmt_name = SUPPORTED_EXTENSIONS.get(ext, "文档")
-                yield {
-                    "event": "progress",
-                    "data": json.dumps({"step": 1, "total": 5, "message": f"解析 {fmt_name}..."}),
-                }
-                doc = await asyncio.to_thread(extract_document, input_path)
-                raw_text = doc.full_text
-                dual_pages = sum(1 for p in doc.pages if getattr(p, "is_dual_column", False))
-                yield {
-                    "event": "parsed",
-                    "data": json.dumps({
-                        "pages": doc.page_count,
-                        "chars": len(raw_text),
-                        "dual_column_pages": dual_pages,
-                    }),
-                }
+            yield {
+                "event": "progress",
+                "data": json.dumps({"step": 2, "total": 5, "message": "清洗文本..."}),
+            }
+            clean_result = await asyncio.to_thread(clean_text_full, raw_text)
+            yield {
+                "event": "cleaned",
+                "data": json.dumps({
+                    "chars": len(clean_result.text),
+                    "has_references": clean_result.has_references,
+                }),
+            }
 
-                yield {
-                    "event": "progress",
-                    "data": json.dumps({"step": 2, "total": 5, "message": "清洗文本..."}),
-                }
-                clean_result = await asyncio.to_thread(clean_text_full, raw_text)
-                yield {
-                    "event": "cleaned",
-                    "data": json.dumps({
-                        "chars": len(clean_result.text),
-                        "has_references": clean_result.has_references,
-                    }),
-                }
+            yield {
+                "event": "progress",
+                "data": json.dumps({"step": 3, "total": 5, "message": "切块..."}),
+            }
+            chunker_cfg = config.get("chunker", {})
+            chunk_result = await asyncio.to_thread(
+                chunk_text_full,
+                clean_result.text,
+                chunker_cfg.get("max_tokens", 2048),
+                chunker_cfg.get("overlap_tokens", 128),
+                chunker_cfg.get("strategy", "sentence"),
+                True,
+            )
+            yield {
+                "event": "chunked",
+                "data": json.dumps({
+                    "total_chunks": len(chunk_result.chunks),
+                    "references_chars": len(chunk_result.references_text),
+                }),
+            }
 
-                yield {
-                    "event": "progress",
-                    "data": json.dumps({"step": 3, "total": 5, "message": "切块..."}),
-                }
-                chunker_cfg = config.get("chunker", {})
-                chunk_result = await asyncio.to_thread(
-                    chunk_text_full,
-                    clean_result.text,
-                    chunker_cfg.get("max_tokens", 2048),
-                    chunker_cfg.get("overlap_tokens", 128),
-                    chunker_cfg.get("strategy", "sentence"),
-                    True,
+            yield {
+                "event": "progress",
+                "data": json.dumps({"step": 4, "total": 5, "message": "翻译中..."}),
+            }
+            trans_cfg = config.get("translator", {})
+            use_cloud = cloud_only or trans_cfg.get("engine", "ollama") == "cloud"
+
+            if use_cloud:
+                cloud_cfg = trans_cfg.get("cloud", {})
+                key = (cloud_cfg.get("api_key") or "").strip()
+                if not key:
+                    raise ValueError(
+                        "未配置云端 API Key：请在配置中设置 translator.cloud.api_key，"
+                        "或在前端「翻译引擎 → 云端 API」中填写并保存。"
+                    )
+                client = _build_cloud_client(trans_cfg, cloud_cfg)
+            else:
+                ollama_url = os.environ.get("OLLAMA_HOST") or trans_cfg.get(
+                    "ollama_base_url", "http://localhost:11434"
                 )
-                yield {
-                    "event": "chunked",
-                    "data": json.dumps({
-                        "total_chunks": len(chunk_result.chunks),
-                        "references_chars": len(chunk_result.references_text),
-                    }),
-                }
+                client = OllamaClient(
+                    base_url=ollama_url,
+                    model=trans_cfg.get("model", "qwen3:8b"),
+                    temperature=trans_cfg.get("temperature", 0.3),
+                    num_predict=trans_cfg.get("num_predict", 16384),
+                    system_prompt=trans_cfg.get("system_prompt", ""),
+                    timeout=trans_cfg.get("timeout", 300.0),
+                )
 
-                yield {
-                    "event": "progress",
-                    "data": json.dumps({"step": 4, "total": 5, "message": "翻译中..."}),
-                }
-                trans_cfg = config.get("translator", {})
-                use_cloud = cloud_only or trans_cfg.get("engine", "ollama") == "cloud"
+            doc_context = extract_document_context(raw_text)
+            if doc_context:
+                client.set_document_context(doc_context)
 
-                if use_cloud:
-                    cloud_cfg = trans_cfg.get("cloud", {})
-                    key = (cloud_cfg.get("api_key") or "").strip()
-                    if not key:
-                        raise ValueError(
-                            "未配置云端 API Key：请在配置中设置 translator.cloud.api_key，"
-                            "或在前端「翻译引擎 → 云端 API」中填写并保存。"
-                        )
-                    client = _build_cloud_client(trans_cfg, cloud_cfg)
-                else:
-                    ollama_url = os.environ.get("OLLAMA_HOST") or trans_cfg.get(
-                        "ollama_base_url", "http://localhost:11434"
-                    )
-                    client = OllamaClient(
-                        base_url=ollama_url,
-                        model=trans_cfg.get("model", "qwen3:8b"),
-                        temperature=trans_cfg.get("temperature", 0.3),
-                        num_predict=trans_cfg.get("num_predict", 16384),
-                        system_prompt=trans_cfg.get("system_prompt", ""),
-                        timeout=trans_cfg.get("timeout", 300.0),
-                    )
-
-                doc_context = extract_document_context(raw_text)
-                if doc_context:
-                    client.set_document_context(doc_context)
-
-                results = []
-                try:
-                    total_chunks = len(chunk_result.chunks)
-                    for i, chunk in enumerate(chunk_result.chunks):
-                        prev_trans = results[-1].translated if results else ""
+            results = []
+            try:
+                total_chunks = len(chunk_result.chunks)
+                for i, chunk in enumerate(chunk_result.chunks):
+                    prev_trans = results[-1].translated if results else ""
+                    try:
+                        result = await asyncio.to_thread(client.translate, chunk.text, prev_trans)
+                    except Exception as e:
+                        logger.warning("块 %d/%d 翻译失败，尝试单独重试: %s", i + 1, total_chunks, e)
                         try:
                             result = await asyncio.to_thread(client.translate, chunk.text, prev_trans)
-                        except Exception as e:
-                            logger.warning("块 %d/%d 翻译失败，尝试单独重试: %s", i + 1, total_chunks, e)
-                            try:
-                                result = await asyncio.to_thread(client.translate, chunk.text, prev_trans)
-                            except Exception as e2:
-                                logger.error("块 %d/%d 重试仍失败: %s，保留原文", i + 1, total_chunks, e2)
-                                result = TranslationResult(
-                                    original=chunk.text,
-                                    translated=chunk.text,
-                                    model="",
-                                )
-                        results.append(result)
-                        yield {
-                            "event": "chunk_done",
-                            "data": json.dumps({
-                                "index": i,
-                                "total": total_chunks,
-                                "original_preview": result.original[:200],
-                                "translated_preview": result.translated[:200],
-                                "tokens": result.completion_tokens,
-                            }),
-                        }
-                finally:
-                    if hasattr(client, "close"):
-                        client.close()
+                        except Exception as e2:
+                            logger.error("块 %d/%d 重试仍失败: %s，保留原文", i + 1, total_chunks, e2)
+                            result = TranslationResult(
+                                original=chunk.text,
+                                translated=chunk.text,
+                                model="",
+                            )
+                    results.append(result)
+                    yield {
+                        "event": "chunk_done",
+                        "data": json.dumps({
+                            "index": i,
+                            "total": total_chunks,
+                            "original_preview": result.original[:200],
+                            "translated_preview": result.translated[:200],
+                            "tokens": result.completion_tokens,
+                        }),
+                    }
+            finally:
+                if hasattr(client, "close"):
+                    client.close()
 
-                yield {
-                    "event": "progress",
-                    "data": json.dumps({"step": 5, "total": 5, "message": "生成输出..."}),
-                }
-                fmt_cfg = config.get("formatter", {})
-                content = format_output(
-                    results,
-                    output_format=fmt_cfg.get("output_format", "bilingual"),
-                )
+            yield {
+                "event": "progress",
+                "data": json.dumps({"step": 5, "total": 5, "message": "生成输出..."}),
+            }
+            fmt_cfg = config.get("formatter", {})
+            content = format_output(
+                results,
+                output_format=fmt_cfg.get("output_format", "bilingual"),
+            )
 
-                out_path = output_dir / f"{task_id}_translated.md"
-                out_path.write_text(content, encoding="utf-8")
+            out_path = output_dir / f"{task_id}_translated.md"
+            out_path.write_text(content, encoding="utf-8")
 
-                task["status"] = "done"
-                task["output_path"] = str(out_path)
+            task["status"] = "done"
+            task["output_path"] = str(out_path)
 
-                yield {
-                    "event": "complete",
-                    "data": json.dumps({
-                        "task_id": task_id,
-                        "output_path": str(out_path),
-                        "content": content,
-                        "chunks": [
-                            {"original": r.original, "translated": r.translated}
-                            for r in results
-                        ],
-                    }),
-                }
+            yield {
+                "event": "complete",
+                "data": json.dumps({
+                    "task_id": task_id,
+                    "output_path": str(out_path),
+                    "content": content,
+                    "chunks": [
+                        {"original": r.original, "translated": r.translated}
+                        for r in results
+                    ],
+                }),
+            }
 
-            except Exception as e:
-                task["status"] = "error"
-                task["error"] = str(e)
-                yield {
-                    "event": "error",
-                    "data": json.dumps({"message": str(e)}),
-                }
+        except Exception as e:
+            task["status"] = "error"
+            task["error"] = str(e)
+            yield {
+                "event": "error",
+                "data": json.dumps({"message": str(e)}),
+            }
         finally:
             input_file = task.get("input_path")
             if input_file:
@@ -443,7 +442,6 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
                     Path(input_file).unlink(missing_ok=True)
                 except OSError:
                     pass
-            _busy_lock.release()
             _cleanup_tasks()
 
     @app.get("/api/translate/{task_id}/stream")
@@ -455,8 +453,21 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         if t["status"] == "running":
             raise HTTPException(409, "该任务已在运行中")
 
+        if _busy_lock.locked():
+            raise HTTPException(409, "已有翻译任务在运行，请等待完成")
+
+        await _busy_lock.acquire()
+        pipeline = _run_pipeline(task_id)
+
+        async def _wrapped() -> AsyncGenerator[dict, None]:
+            try:
+                async for event in pipeline:
+                    yield event
+            finally:
+                _busy_lock.release()
+
         return EventSourceResponse(
-            _run_pipeline(task_id),
+            _wrapped(),
             media_type="text/event-stream",
         )
 

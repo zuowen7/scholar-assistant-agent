@@ -252,21 +252,28 @@ def _extract_epub(path: Path) -> DocumentContent:
         raise ImportError("请安装 ebooklib 和 beautifulsoup4")
 
     book = epub.read_epub(str(path))
-    pages: list[PageContent] = []
-    idx = 0
+    try:
+        pages: list[PageContent] = []
+        idx = 0
 
-    for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
-        html = item.get_content().decode("utf-8", errors="replace")
-        soup = BeautifulSoup(html, "html.parser")
-        text = soup.get_text(separator="\n", strip=True)
-        if text.strip():
-            idx += 1
-            pages.append(PageContent(page_num=idx, text=text, width=0, height=0))
+        for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
+            html = item.get_content().decode("utf-8", errors="replace")
+            soup = BeautifulSoup(html, "html.parser")
+            text = soup.get_text(separator="\n", strip=True)
+            if text.strip():
+                idx += 1
+                pages.append(PageContent(page_num=idx, text=text, width=0, height=0))
 
-    if not pages:
-        pages.append(PageContent(page_num=1, text="", width=0, height=0))
+        if not pages:
+            pages.append(PageContent(page_num=1, text="", width=0, height=0))
 
-    return DocumentContent(pages=pages, source_path=str(path))
+        return DocumentContent(pages=pages, source_path=str(path))
+    finally:
+        # 显式释放 EPUB 资源
+        try:
+            book.book.close()
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------

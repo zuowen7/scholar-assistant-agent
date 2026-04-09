@@ -8,6 +8,8 @@ from dataclasses import dataclass
 # 粗略估算: 1 token ≈ 4 个英文字符 或 1.5 个中文字符
 CHARS_PER_TOKEN_EN = 4
 CHARS_PER_TOKEN_ZH = 1.5
+# 默认混合文本 token 估算字符系数（介于英中之间）
+CHARS_PER_TOKEN_MIXED = 2.5
 
 
 @dataclass
@@ -29,7 +31,7 @@ class ChunkResult:
 
 
 def _estimate_tokens(text: str) -> int:
-    """粗略估算文本的 token 数"""
+    """粗略估算文本的 token 数，中英文分别计算"""
     en_chars = sum(1 for c in text if c.isascii() and c.isprintable())
     zh_chars = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
     other_chars = len(text) - en_chars - zh_chars
@@ -37,6 +39,19 @@ def _estimate_tokens(text: str) -> int:
         1,
         int(en_chars / CHARS_PER_TOKEN_EN + zh_chars / CHARS_PER_TOKEN_ZH + other_chars / 2),
     )
+
+
+def _estimate_chars_per_token(text: str) -> float:
+    """根据文本的中文比例估算每 token 对应的字符数"""
+    if not text:
+        return CHARS_PER_TOKEN_EN
+    zh_chars = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
+    zh_ratio = zh_chars / max(len(text), 1)
+    if zh_ratio > 0.3:
+        return CHARS_PER_TOKEN_ZH
+    if zh_ratio > 0.1:
+        return CHARS_PER_TOKEN_MIXED
+    return CHARS_PER_TOKEN_EN
 
 
 def chunk_text(
@@ -72,11 +87,11 @@ def chunk_text_full(
     """完整切块，返回引用区原文
 
     Args:
-        text: 清洗后的文本
+        text: 清洗后的文本（Cleaner 已移除引用区）
         max_tokens: 每块最大 token 数
         overlap_tokens: 块间重叠 token 数
         strategy: 切块策略 - sentence | paragraph | fixed
-        skip_references: 是否跳过引用区不切块
+        skip_references: 是否尝试分离引用区（Cleaner 通常已处理）
 
     Returns:
         ChunkResult 包含 chunks 和 references_text
@@ -84,6 +99,7 @@ def chunk_text_full(
     body_text = text
     references_text = ""
 
+    # Cleaner 通常已在清洗阶段移除引用区，这里做二次安全检测
     if skip_references:
         body_text, references_text = _split_references(text)
 
@@ -95,7 +111,8 @@ def chunk_text_full(
     elif strategy == "paragraph":
         segments = _split_paragraphs(body_text)
     elif strategy == "fixed":
-        segments = _split_fixed(body_text, chunk_chars=max_tokens * CHARS_PER_TOKEN_EN)
+        chars_per_token = _estimate_chars_per_token(body_text)
+        segments = _split_fixed(body_text, chunk_chars=int(max_tokens * chars_per_token))
     else:
         raise ValueError(f"未知切块策略: {strategy}")
 
@@ -191,12 +208,12 @@ def _split_sentences(text: str) -> list[str]:
     # 按句子边界切分: 句号/问号/感叹号后跟空格或换行
     parts = re.split(r"(?<=[.!?])\s+", protected)
 
-    # 还原占位符
+    # 还原占位符 — 从后向前替换，避免索引低的占位符文本内嵌套高索引标记
     sentences = []
     for p in parts:
         restored = p.strip()
-        for i, ph in enumerate(placeholders):
-            restored = restored.replace(f"\x00PH{i}\x00", ph)
+        for i in range(len(placeholders) - 1, -1, -1):
+            restored = restored.replace(f"\x00PH{i}\x00", placeholders[i])
         if restored:
             sentences.append(restored)
 
@@ -225,7 +242,10 @@ def _split_paragraphs(text: str) -> list[str]:
 
 
 def _split_fixed(text: str, chunk_chars: int) -> list[str]:
-    """按固定字符数拆分，尽量在句子边界处切割"""
+    """按固定字符数拆分，尽量在句子边界处切割
+
+    chunk_chars 会根据文本中中文比例自动调整。
+    """
     chunks: list[str] = []
     start = 0
     while start < len(text):
@@ -259,8 +279,11 @@ def _merge_segments(
     if not segments:
         return []
 
-    max_chars = max_tokens * CHARS_PER_TOKEN_EN
-    overlap_chars = overlap_tokens * CHARS_PER_TOKEN_EN
+    # 根据文本内容动态计算每 token 对应字符数
+    full_text = " ".join(segments)
+    chars_per_token = _estimate_chars_per_token(full_text)
+    max_chars = int(max_tokens * chars_per_token)
+    overlap_chars = int(overlap_tokens * chars_per_token)
 
     chunks: list[Chunk] = []
     current_parts: list[str] = []

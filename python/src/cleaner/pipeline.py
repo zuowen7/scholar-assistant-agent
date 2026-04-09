@@ -57,10 +57,13 @@ def clean_text_full(raw_text: str) -> CleanResult:
     # 5. 移除独立页码行
     text = _remove_page_numbers(text)
 
-    # 6. 压缩连续空行
+    # 6. 移除脚注、致谢、注释等非正文段落
+    text = _remove_annotations(text)
+
+    # 7. 压缩连续空行
     text = re.sub(r"\n{3,}", "\n\n", text)
 
-    # 7. 检测引用区 → 直接从正文中删除，不翻译、不显示
+    # 8. 检测引用区 → 直接从正文中删除，不翻译、不显示
     ref_pos, ref_text = _detect_references(text)
     if ref_pos >= 0:
         text = text[:ref_pos].rstrip()
@@ -178,8 +181,10 @@ def _fix_hyphenation(text: str) -> str:
     """修复连字符断词
 
     示例: "infor-\\nmation" → "information"
+    支持 \\r\\n 和连字符后有空格的情况。
     """
-    return re.sub(r"(\w)-\n(\w)", r"\1\2", text)
+    # 匹配 word-后跟可选空格和换行符(\r\n, \r, \n)，再跟word
+    return re.sub(r"(\w)-\s*\r?\n\s*(\w)", r"\1\2", text)
 
 
 def _merge_paragraph_lines(text: str) -> str:
@@ -224,8 +229,19 @@ def _is_continuation(prev_line: str, current_line: str) -> bool:
     - 英文: 当前行以小写字母开头
     - 中文: 上一行未以句末标点结尾时视为续行
     - 上一行以句号、问号、感叹号结尾时，通常不是续行
+    - LaTeX 环境（\\begin/\\end）始终视为新段落
     """
     prev_stripped = prev_line.rstrip()
+
+    # LaTeX 环境: \begin{...} 或 \end{...} 或 $$ 始终作为新段落边界
+    if prev_stripped and re.match(r"^\\(?:begin|end)\{", prev_stripped):
+        return False
+    if current_line and re.match(r"^\\(?:begin|end)\{", current_line):
+        return False
+    if prev_stripped and prev_stripped.strip() in ("$$", r"\[", r"\]"):
+        return False
+    if current_line and current_line.strip() in ("$$", r"\[", r"\]"):
+        return False
 
     # 上一行以句末标点（含中文标点）结尾 → 新段落
     if prev_stripped and prev_stripped[-1] in ".!?。！？；":

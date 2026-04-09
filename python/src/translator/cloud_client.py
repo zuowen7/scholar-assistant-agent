@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 2
 RETRY_DELAY = 3.0
+_PROMPT_MAX_CHARS = 28_000
 
 # ── 供应商预设 ──
 
@@ -253,7 +254,26 @@ class CloudClient:
             )
 
         prompt_parts.append(f"[请翻译以下内容]\n{text}")
-        return "".join(prompt_parts)
+        prompt = "".join(prompt_parts)
+
+        # Token 安全保护：如果 prompt 总长度超出上限，裁剪上下文
+        if len(prompt) > _PROMPT_MAX_CHARS:
+            ctx_budget = _PROMPT_MAX_CHARS - len(text) - 200
+            if ctx_budget > 0 and prev_translation:
+                snippet = prev_translation[-min(ctx_budget, self._CONTEXT_SNIPPET_LEN):]
+                prompt = (
+                    f"[前文翻译参考（不要翻译此部分）]\n{snippet}\n\n"
+                    f"[请翻译以下内容]\n{text}"
+                )
+            elif self._document_context and ctx_budget > 0:
+                prompt = (
+                    f"[文档背景（不要翻译此部分）]\n{self._document_context[:ctx_budget]}\n\n"
+                    f"[请翻译以下内容]\n{text}"
+                )
+            else:
+                prompt = f"[请翻译以下内容]\n{text}"
+
+        return prompt
 
     def _build_system_prompt(self) -> str:
         """构建系统提示词，包含术语表和块索引（与 OllamaClient 对齐）"""

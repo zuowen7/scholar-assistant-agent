@@ -143,7 +143,7 @@ def _strip_overlap(
     """去除 chunk 开头与前一个 chunk 末尾因 overlap 重复的段落
 
     策略: 逐个比较当前 chunk 开头的段落与前一个 chunk 末尾段落，
-    如果高度相似（前缀匹配 >= 50%），则同时去除该原文段落及其对应的译文。
+    要求前缀匹配 >= 70% **且** 整体相似度 >= 60%，避免公式段落仅因前缀相同被误删。
     处理多段 overlap 的情况，且安全处理 orig/trans 段落数不一致。
     """
     if not prev_last_orig or not orig_paras:
@@ -169,7 +169,15 @@ def _strip_overlap(
             else:
                 break
 
-        if match_len >= shorter * 0.7:
+        # 前缀匹配比例
+        prefix_ratio = match_len / shorter if shorter > 0 else 0
+
+        # 整体相似度: 用较短文本的长度做归一化
+        longer = max(len(prev_stripped), len(para_stripped))
+        overall_ratio = shorter / longer if longer > 0 else 0
+
+        # 要求前缀匹配 >= 70% 且整体长度相似度 >= 60%（避免公式段落误删）
+        if prefix_ratio >= 0.7 and overall_ratio >= 0.6:
             strip_count += 1
         else:
             break
@@ -185,6 +193,9 @@ def _strip_overlap(
 
 
 def _md_table_escape(text: str) -> str:
+    text = text.replace("&", "&amp;")
+    text = text.replace("<", "&lt;")
+    text = text.replace(">", "&gt;")
     text = text.replace("\\", "\\\\")
     text = text.replace("|", "\\|")
     text = text.replace("\n", "<br>")
