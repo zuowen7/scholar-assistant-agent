@@ -1,6 +1,7 @@
 import { reactive, readonly } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { save } from '@tauri-apps/plugin-dialog'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type {
   TranslateState,
   TranslateStatus,
@@ -15,6 +16,10 @@ import type {
 // Tauri 桌面端: 后端固定在 18088; Docker/Web: 同源，用相对路径
 const isTauri = '__TAURI_INTERNALS__' in window
 const API_URL = isTauri ? 'http://localhost:18088' : ''
+
+// SSE 自动重连参数
+const SSE_RECONNECT_MAX_ATTEMPTS = 3
+const SSE_RECONNECT_DELAY_MS = 2000
 
 function createState(): TranslateState {
   return {
@@ -35,6 +40,7 @@ function createState(): TranslateState {
 
 const state = reactive<TranslateState>(createState())
 let abortController: AbortController | null = null
+let crashListener: UnlistenFn | null = null
 
 function reset(): void {
   if (abortController) {
@@ -44,8 +50,25 @@ function reset(): void {
   Object.assign(state, createState())
 }
 
+function cleanup(): void {
+  reset()
+  if (crashListener) {
+    crashListener()
+    crashListener = null
+  }
+}
+
 function setStatus(s: TranslateStatus): void {
   state.status = s
+}
+
+function setError(msg: string): void {
+  state.errorMessage = msg
+  state.status = 'error'
+}
+
+function setStepMessage(msg: string): void {
+  state.stepMessage = msg
 }
 
 function overallProgress(): number {
@@ -130,7 +153,7 @@ async function uploadPdf(file: File): Promise<string> {
   return data.task_id
 }
 
-async function startStream(taskId: string): Promise<void> {
+async function startStream(taskId: string, attempt: number = 0): Promise<void> {
   abortController = new AbortController()
   const resp = await fetch(`${API_URL}/api/translate/${taskId}/stream`, {
     signal: abortController.signal,
@@ -213,6 +236,25 @@ async function startStream(taskId: string): Promise<void> {
     if (err instanceof DOMException && err.name === 'AbortError') {
       return
     }
+
+    // SSE 自动重连: 如果翻译还没完成且未超过最大重试次数
+    if (state.status !== 'done' && attempt < SSE_RECONNECT_MAX_ATTEMPTS) {
+      state.stepMessage = `连接中断，正在重连 (${attempt + 1}/${SSE_RECONNECT_MAX_ATTEMPTS})...`
+      await new Promise(r => setTimeout(r, SSE_RECONNECT_DELAY_MS))
+
+      // 检查后端是否还活着
+      const stillAlive = await checkHealth()
+      if (stillAlive) {
+        // 后端还活着，重新连接同一个 task 的 stream
+        try {
+          await startStream(taskId, attempt + 1)
+          return
+        } catch {
+          // 重连也失败，走正常错误处理
+        }
+      }
+    }
+
     if (state.status !== 'done') {
       throw err
     }
@@ -370,17 +412,47 @@ async function downloadResult(): Promise<void> {
   }
 }
 
+async function restartBackend(): Promise<boolean> {
+  try {
+    await invoke<string>('restart_backend')
+    // 等待后端就绪
+    for (let i = 0; i < 20; i++) {
+      await new Promise(r => setTimeout(r, 500))
+      if (await checkHealth()) return true
+    }
+    return false
+  } catch {
+    return false
+  }
+}
+
+function listenBackendCrash(): void {
+  if (!isTauri) return
+  listen<{ message: string; exit_status: string }>('backend-crashed', (event) => {
+    if (state.status === 'idle' || state.status === 'error') {
+      state.errorMessage = event.payload.message || 'Python 后端意外退出'
+      setStatus('error')
+    }
+  }).then(fn => { crashListener = fn }).catch(() => {})
+}
+
 export function useTranslate() {
   return {
     state: readonly(state),
     translate,
     translateFromPath,
     reset,
+    cleanup,
     checkHealth,
     checkOllama,
     startOllama,
     downloadResult,
     overallProgress,
+    restartBackend,
+    listenBackendCrash,
+    setStatus,
+    setError,
+    setStepMessage,
     // Cloud API
     checkCloudApi,
     getConfig,

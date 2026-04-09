@@ -238,6 +238,7 @@
               <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
             </svg>
             {{ state.errorMessage }}
+            <button v-if="!healthOk" class="restart-btn" @click="handleRestartBackend">重启后端</button>
           </div>
         </div>
 
@@ -359,7 +360,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useTranslate } from './composables/useTranslate'
 
-const { state, translate, translateFromPath, reset, checkHealth, checkOllama, startOllama, downloadResult, overallProgress, checkCloudApi, getConfig, updateConfig, getProviderPresets } = useTranslate()
+const { state, translate, translateFromPath, reset, cleanup, checkHealth, checkOllama, startOllama, downloadResult, overallProgress, checkCloudApi, getConfig, updateConfig, getProviderPresets, restartBackend, listenBackendCrash, setStatus, setError, setStepMessage } = useTranslate()
 
 const healthOk = ref(false)
 const ollamaOk = ref(false)
@@ -820,6 +821,9 @@ onMounted(async () => {
   // Close settings on outside click
   document.addEventListener('click', onDocumentClick)
 
+  // Listen for backend crash events (Tauri only)
+  listenBackendCrash()
+
   // Load engine settings from backend config
   await loadEngineSettings()
 
@@ -831,7 +835,12 @@ onMounted(async () => {
   }
   timer = setInterval(async () => {
     if (state.status === 'idle') {
+      const prev = healthOk.value
       healthOk.value = await checkHealth()
+      // 后端从在线变为离线且非用户主动关闭 → 提示重启
+      if (prev && !healthOk.value) {
+        setError('Python 后端已离线，请点击「重启后端」')
+      }
       if (engineType.value === 'ollama') {
         ollamaOk.value = await checkOllama()
       } else {
@@ -866,6 +875,7 @@ onUnmounted(() => {
   if (timer) clearInterval(timer)
   if (unlistenDragDrop) unlistenDragDrop()
   document.removeEventListener('click', onDocumentClick)
+  cleanup()
 })
 
 function onDragEnter(e: Event) {
@@ -964,6 +974,18 @@ async function testCloudConnection() {
     cloudOk.value = await checkCloudApi()
   } finally {
     cloudChecking.value = false
+  }
+}
+
+async function handleRestartBackend() {
+  setStepMessage('正在重启后端...')
+  setStatus('uploading')
+  const ok = await restartBackend()
+  if (ok) {
+    healthOk.value = true
+    setStatus('idle')
+  } else {
+    setError('后端重启失败，请手动检查 Python 环境')
   }
 }
 </script>
@@ -1467,6 +1489,23 @@ body {
   margin-top: 14px; padding: 10px 14px;
   background: var(--red-bg); border: 1px solid var(--red-border);
   border-radius: var(--radius); color: var(--red); font-size: 13px;
+}
+
+.restart-btn {
+  margin-left: auto;
+  padding: 4px 12px;
+  border: 1px solid var(--red-border);
+  border-radius: 6px;
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--red);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.restart-btn:hover {
+  background: rgba(248, 113, 113, 0.22);
 }
 
 /* ── Working View ── */
