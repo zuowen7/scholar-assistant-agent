@@ -185,6 +185,18 @@ class CloudClient:
         system_prompt: str = "",
         timeout: float = 300.0,
     ) -> None:
+        """初始化云端翻译客户端
+
+        Args:
+            provider: 供应商标识（对应 PROVIDER_PRESETS 的 key）
+            base_url: API Base URL
+            api_key: API 密钥
+            model: 模型名称
+            temperature: 生成温度
+            max_tokens: 最大生成 token 数
+            system_prompt: 自定义系统提示词
+            timeout: HTTP 请求超时秒数
+        """
         self.provider = provider
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -211,7 +223,7 @@ class CloudClient:
         return self._http_client
 
     def close(self) -> None:
-        """关闭持久连接"""
+        """关闭底层 httpx 连接池，释放资源"""
         if self._http_client is not None:
             self._http_client.close()
             self._http_client = None
@@ -317,6 +329,7 @@ class CloudClient:
         return "\n".join(parts)
 
     def set_document_context(self, context: str) -> None:
+        """设置文档级上下文（标题+摘要），用于跨 chunk 保持一致性"""
         self._document_context = context.strip()
 
     def _post_process(self, translated: str) -> str:
@@ -365,6 +378,7 @@ class CloudClient:
                 body = e.response.json()
                 detail = body.get("error", {}).get("message", "") or str(body)
             except Exception:
+                logger.debug("Failed to parse API error response body", exc_info=True)
                 detail = e.response.text[:200]
             raise ValueError(f"API 请求失败 (HTTP {e.response.status_code}): {detail}") from e
         except httpx.TimeoutException as e:
@@ -421,6 +435,7 @@ class CloudClient:
                 body = e.response.json()
                 detail = body.get("error", {}).get("message", "") or str(body)
             except Exception:
+                logger.debug("Failed to parse Anthropic error response body", exc_info=True)
                 detail = e.response.text[:200]
             raise ValueError(f"Anthropic API 请求失败 (HTTP {e.response.status_code}): {detail}") from e
         except httpx.TimeoutException as e:
@@ -455,6 +470,7 @@ class CloudClient:
             else:
                 return self._openai_health_check()
         except Exception:
+            logger.debug("Cloud health check failed", exc_info=True)
             return False
 
     def _openai_health_check(self) -> bool:

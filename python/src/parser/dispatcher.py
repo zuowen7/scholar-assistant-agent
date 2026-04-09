@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import re
 import xml.etree.ElementTree as ET
 from io import StringIO
 from pathlib import Path
 from typing import Callable
+
+logger = logging.getLogger(__name__)
 
 from src.parser.extractor import DocumentContent, PageContent, extract_pages
 
@@ -273,7 +276,7 @@ def _extract_epub(path: Path) -> DocumentContent:
         try:
             book.book.close()
         except Exception:
-            pass
+            logger.debug("EPUB close error (ignored)", exc_info=True)
 
 
 # ---------------------------------------------------------------------------

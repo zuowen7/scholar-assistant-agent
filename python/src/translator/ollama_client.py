@@ -95,6 +95,16 @@ class OllamaClient:
         system_prompt: str = "",
         timeout: float = 300.0,
     ) -> None:
+        """初始化 Ollama 翻译客户端
+
+        Args:
+            base_url: Ollama 服务地址
+            model: 模型名称（如 ``qwen3:8b``）
+            temperature: 生成温度
+            num_predict: 最大生成 token 数
+            system_prompt: 自定义系统提示词
+            timeout: HTTP 请求超时秒数
+        """
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.temperature = temperature
@@ -109,6 +119,7 @@ class OllamaClient:
         self._http_client: httpx.Client | None = None
 
     def set_document_context(self, context: str) -> None:
+        """设置文档级上下文（标题+摘要），用于跨 chunk 保持一致性"""
         self._document_context = context.strip()
 
     def _get_http_client(self) -> httpx.Client:
@@ -117,11 +128,25 @@ class OllamaClient:
         return self._http_client
 
     def close(self) -> None:
+        """关闭底层 httpx 连接池，释放资源"""
         if self._http_client is not None:
             self._http_client.close()
             self._http_client = None
 
     def translate(self, text: str, prev_translation: str = "") -> TranslationResult:
+        """翻译单段文本，失败自动重试（指数退避）
+
+        Args:
+            text: 待翻译文本
+            prev_translation: 前一段译文（用于上下文衔接）
+
+        Returns:
+            TranslationResult 含原文、译文、模型信息、token 统计
+
+        Raises:
+            ConnectionError: 无法连接 Ollama 服务
+            ValueError: 重试耗尽后仍翻译失败
+        """
         last_error: Exception | None = None
         ctx = prev_translation or self._prev_translation
 
@@ -290,6 +315,7 @@ class OllamaClient:
         )
 
     def health_check(self) -> bool:
+        """检查 Ollama 服务是否在线（GET /api/tags）"""
         try:
             client = self._get_http_client()
             resp = client.get(f"{self.base_url}/api/tags", timeout=5.0)
@@ -304,6 +330,17 @@ def translate(
     model: str = "qwen3:8b",
     system_prompt: str = "",
 ) -> TranslationResult:
+    """一次性翻译便捷函数（自动创建并关闭客户端）
+
+    Args:
+        text: 待翻译文本
+        base_url: Ollama 服务地址
+        model: 模型名称
+        system_prompt: 自定义系统提示词
+
+    Returns:
+        TranslationResult
+    """
     client = OllamaClient(base_url=base_url, model=model, system_prompt=system_prompt)
     try:
         return client.translate(text)

@@ -14,9 +14,9 @@ from pathlib import Path
 from typing import AsyncGenerator
 
 import yaml
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
@@ -144,6 +144,17 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
 
     title = "Scholar Translate API (Cloud)" if cloud_only else "Scholar Translate API"
     app = FastAPI(title=title, version="0.3.0")
+
+    # ── 全局异常处理 ──
+
+    @app.exception_handler(Exception)
+    async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        """捕获所有未处理异常，返回统一格式 JSON，避免前端收到 500 纯文本"""
+        logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"服务器内部错误: {exc}"},
+        )
 
     allowed_origins = [
         "http://localhost",

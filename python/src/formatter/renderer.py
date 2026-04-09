@@ -19,6 +19,16 @@ def format_output(
     output_format: str = "bilingual",
     file_format: str = "markdown",
 ) -> str:
+    """将翻译结果格式化为输出文档
+
+    Args:
+        results: 翻译结果列表（每项含原文和译文）
+        output_format: 输出格式 — ``bilingual`` (逐段对照)、``parallel`` (表格对照)、``translated_only`` (纯译文)
+        file_format: 文件格式 — ``markdown`` 或 ``plain``
+
+    Returns:
+        格式化后的字符串内容
+    """
     if file_format == "markdown":
         return _format_markdown(results, output_format)
     return _format_plain(results, output_format)
@@ -289,6 +299,15 @@ def _md_table_escape(text: str) -> str:
 
 
 def save_output(content: str, output_path: str | Path) -> Path:
+    """将内容写入文件
+
+    Args:
+        content: 要写入的文本内容
+        output_path: 输出文件路径
+
+    Returns:
+        实际写入的 Path 对象
+    """
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(content, encoding="utf-8")

@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from api_factory import create_app
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 app = create_app(cloud_only=False)
 
@@ -29,6 +33,6 @@ if __name__ == "__main__":
         static_path = Path(args.static_dir)
         if static_path.exists():
             app.mount("/", StaticFiles(directory=str(static_path), html=True), name="static")
-            print(f"[INFO] Serving frontend from {static_path}")
+            logger.info("Serving frontend from %s", static_path)
 
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")

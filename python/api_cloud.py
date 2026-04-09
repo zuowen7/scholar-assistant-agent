@@ -19,12 +19,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
 
 from api_factory import create_app
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 app = create_app(cloud_only=True)
 
@@ -48,21 +52,21 @@ def _self_test(base_url: str) -> int:
                 data = json.loads(body)
             except json.JSONDecodeError:
                 data = body
-            print(f"[OK] {label} {path} -> {data}")
+            logger.info("[OK] %s %s -> %s", label, path, data)
         except urllib.error.HTTPError as e:
             ok = False
-            print(f"[HTTP {e.code}] {label} {path}: {e.read().decode('utf-8', errors='replace')[:500]}")
+            logger.error("[HTTP %d] %s %s: %s", e.code, label, path, e.read().decode("utf-8", errors="replace")[:500])
         except urllib.error.URLError as e:
             ok = False
-            print(f"[FAIL] {label} {path}: {e.reason}")
+            logger.error("[FAIL] %s %s: %s", label, path, e.reason)
         except Exception as e:
             ok = False
-            print(f"[FAIL] {label} {path}: {e}")
+            logger.error("[FAIL] %s %s: %s", label, path, e)
 
     if ok:
-        print("=== Self-test finished ===")
+        logger.info("=== Self-test finished ===")
         return 0
-    print("=== Self-test completed with errors ===", file=sys.stderr)
+    logger.error("=== Self-test completed with errors ===")
     return 1
 
 
@@ -85,7 +89,7 @@ def main() -> None:
         static_path = Path(args.static_dir)
         if static_path.exists():
             app.mount("/", StaticFiles(directory=str(static_path), html=True), name="static")
-            print(f"[INFO] Serving frontend from {static_path}")
+            logger.info("Serving frontend from %s", static_path)
 
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
