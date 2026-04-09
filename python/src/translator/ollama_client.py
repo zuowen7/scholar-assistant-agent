@@ -19,13 +19,20 @@ import httpx
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 2
-RETRY_DELAY = 3.0
+RETRY_DELAY_BASE = 3.0  # 基础重试延迟（秒），指数退避倍增
+RETRY_DELAY_MAX = 30.0  # 最大重试延迟
 
 _CONTEXT_WINDOW_LEN = 800
 _GLOSSARY_MAX_TERMS = 30
 _GLOSSARY_EXTRACTION_THRESHOLD = 0.3
 # Prompt 总长度安全上限（字符数），防止超出模型 context window
 _PROMPT_MAX_CHARS = 28_000
+
+
+def _backoff_delay(attempt: int) -> float:
+    """指数退避: base * 2^attempt, 上限 RETRY_DELAY_MAX"""
+    delay = RETRY_DELAY_BASE * (2 ** attempt)
+    return min(delay, RETRY_DELAY_MAX)
 
 
 @dataclass
@@ -129,7 +136,7 @@ class OllamaClient:
                         len(result.translated),
                     )
                     if attempt < MAX_RETRIES:
-                        time.sleep(RETRY_DELAY)
+                        time.sleep(_backoff_delay(attempt))
                         continue
                 self._prev_translation = result.translated
                 self._glossary.update(text, result.translated)
@@ -138,17 +145,25 @@ class OllamaClient:
             except (ConnectionError, ValueError) as e:
                 last_error = e
                 if attempt < MAX_RETRIES:
+                    delay = _backoff_delay(attempt)
                     logger.warning(
-                        "翻译失败，%d 秒后重试 (attempt %d): %s",
-                        RETRY_DELAY,
+                        "翻译失败，%.1f 秒后重试 (attempt %d): %s",
+                        delay,
                         attempt + 1,
                         e,
                     )
-                    time.sleep(RETRY_DELAY)
+                    time.sleep(delay)
 
         raise last_error or ValueError("翻译失败")
 
     def _build_system_prompt(self) -> str:
+        """构建系统提示词，整合术语表和块索引
+
+        三级上下文组装策略:
+        - Level 1 (system prompt): 基础翻译指令 + 术语表
+        - Level 2 (user prompt): 文档背景（标题+摘要）
+        - Level 3 (user prompt): 前文翻译滑动窗口
+        """
         parts = []
         if self.system_prompt:
             parts.append(self.system_prompt)
@@ -261,6 +276,7 @@ class OllamaClient:
         translated = translated.strip()
 
         translated = _strip_think_tags(translated)
+        translated = _strip_code_block_wrapping(translated)
         translated = _strip_preamble(translated)
         translated = _strip_context_leak(translated)
         translated = _repair_truncation(translated)
@@ -337,6 +353,29 @@ def _strip_think_tags(text: str) -> str:
     return text.strip()
 
 
+def _strip_code_block_wrapping(text: str) -> str:
+    """移除 LLM 用 markdown 代码块包裹翻译结果的格式幻觉
+
+    常见模式:
+    ```markdown
+    翻译内容...
+    ```
+    或
+    ```
+    翻译内容...
+    ```
+    """
+    stripped = text.strip()
+    # 匹配 ```lang\n...\n``` 或 ```\n...\n``` 模式
+    m = re.match(r"^```(?:\w+)?\s*\n(.*?)\n```\s*$", stripped, re.DOTALL)
+    if m:
+        inner = m.group(1).strip()
+        # 安全检查: 内部不应还有代码块（避免误剥嵌套的公式代码块）
+        if inner.count("```") == 0:
+            return inner
+    return text
+
+
 def _strip_preamble(text: str) -> str:
     preamble_pattern = re.compile(
         r"^(?:"
@@ -382,8 +421,12 @@ def _strip_context_leak(text: str) -> str:
 def _validate_translation(result: TranslationResult) -> bool:
     """校验翻译结果质量
 
-    策略: 宁可放过可疑结果也不要误杀有效翻译——
-    回退到原文比翻译不完美对用户体验伤害更大。
+    多层校验:
+    1. 空值/极短检测
+    2. 截断检测（译文过短）
+    3. 未翻译检测（原文=译文）
+    4. 语言检测（无中文字符）
+    5. 格式幻觉检测（markdown 代码块包裹、多份重复翻译）
     """
     if not result.translated:
         return False
@@ -420,6 +463,25 @@ def _validate_translation(result: TranslationResult) -> bool:
         if ascii_ratio > 0.95:
             logger.warning("译文 ASCII 占比 %.0f%% 且无中文，疑似未翻译: %.50s...", ascii_ratio * 100, trans)
             return False
+
+    # 格式幻觉检测: LLM 用 markdown 代码块包裹翻译结果
+    stripped = trans.strip()
+    if stripped.startswith("```") and stripped.endswith("```"):
+        logger.warning("译文被 markdown 代码块包裹，疑似格式幻觉")
+        return False
+
+    # 重复翻译检测: 译文前半段和后半段高度重复（>80% 相同）
+    if trans_len > 400:
+        half = trans_len // 2
+        first_half = stripped[:half]
+        second_half = stripped[half:half * 2]
+        if first_half and second_half and len(first_half) > 50:
+            # 计算两半的前 100 字符重复率
+            shorter_len = min(len(first_half), len(second_half), 100)
+            overlap = sum(1 for a, b in zip(first_half[:shorter_len], second_half[:shorter_len]) if a == b)
+            if overlap / shorter_len > 0.8:
+                logger.warning("译文前后半段高度重复 (%.0f%%)，疑似重复翻译", overlap / shorter_len * 100)
+                return False
 
     return True
 

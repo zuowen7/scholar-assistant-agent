@@ -14,6 +14,7 @@ from src.translator.ollama_client import (
     Glossary,
     _extract_term_pairs,
     _strip_think_tags,
+    _strip_code_block_wrapping,
     _strip_preamble,
     _strip_context_leak,
     _repair_truncation,
@@ -23,8 +24,17 @@ from src.translator.ollama_client import (
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 2
-RETRY_DELAY = 3.0
+RETRY_DELAY_BASE = 3.0
+RETRY_DELAY_MAX = 30.0
 _PROMPT_MAX_CHARS = 28_000
+# 云端 API 两个请求之间的最小间隔（秒），防止触发 rate limit
+_RATE_LIMIT_INTERVAL = 1.0
+
+
+def _backoff_delay(attempt: int) -> float:
+    """指数退避: base * 2^attempt, 上限 RETRY_DELAY_MAX"""
+    delay = RETRY_DELAY_BASE * (2 ** attempt)
+    return min(delay, RETRY_DELAY_MAX)
 
 # ── 供应商预设 ──
 
@@ -192,6 +202,7 @@ class CloudClient:
         self._glossary = Glossary()  # 与 OllamaClient 使用相同的 Glossary 类
         self._chunk_index = 0
         self._http_client: httpx.Client | None = None
+        self._last_request_time: float = 0.0  # 速率限制追踪
 
     def _get_http_client(self) -> httpx.Client:
         """懒加载复用 httpx 连接"""
@@ -205,13 +216,23 @@ class CloudClient:
             self._http_client.close()
             self._http_client = None
 
+    def _rate_limit_wait(self) -> None:
+        """确保两个 API 请求之间至少间隔 _RATE_LIMIT_INTERVAL 秒"""
+        now = time.monotonic()
+        elapsed = now - self._last_request_time
+        if elapsed < _RATE_LIMIT_INTERVAL:
+            wait = _RATE_LIMIT_INTERVAL - elapsed
+            time.sleep(wait)
+        self._last_request_time = time.monotonic()
+
     def translate(self, text: str, prev_translation: str = "") -> TranslationResult:
-        """翻译单段文本，失败自动重试"""
+        """翻译单段文本，失败自动重试（指数退避）+ 速率限制"""
         last_error: Exception | None = None
         ctx = prev_translation or self._prev_translation
 
         for attempt in range(MAX_RETRIES + 1):
             try:
+                self._rate_limit_wait()
                 if self.api_format == "anthropic":
                     result = self._call_anthropic(text, ctx)
                 else:
@@ -223,7 +244,7 @@ class CloudClient:
                         attempt + 1, len(result.original), len(result.translated),
                     )
                     if attempt < MAX_RETRIES:
-                        time.sleep(RETRY_DELAY)
+                        time.sleep(_backoff_delay(attempt))
                         continue
                 self._prev_translation = result.translated
                 self._glossary.update(text, result.translated)
@@ -232,8 +253,9 @@ class CloudClient:
             except (ConnectionError, ValueError) as e:
                 last_error = e
                 if attempt < MAX_RETRIES:
-                    logger.warning("翻译失败，%d 秒后重试 (attempt %d): %s", RETRY_DELAY, attempt + 1, e)
-                    time.sleep(RETRY_DELAY)
+                    delay = _backoff_delay(attempt)
+                    logger.warning("翻译失败，%.1f 秒后重试 (attempt %d): %s", delay, attempt + 1, e)
+                    time.sleep(delay)
 
         raise last_error or ValueError("翻译失败")
 
@@ -300,6 +322,7 @@ class CloudClient:
     def _post_process(self, translated: str) -> str:
         """后处理翻译结果"""
         translated = _strip_think_tags(translated)
+        translated = _strip_code_block_wrapping(translated)
         translated = _strip_preamble(translated)
         translated = _strip_context_leak(translated)
         translated = _repair_truncation(translated)

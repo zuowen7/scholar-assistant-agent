@@ -375,6 +375,8 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
                         result = await asyncio.to_thread(client.translate, chunk.text, prev_trans)
                     except Exception as e:
                         logger.warning("块 %d/%d 翻译失败，尝试单独重试: %s", i + 1, total_chunks, e)
+                        # 重试前给 GPU/API 喘息时间
+                        await asyncio.sleep(2.0)
                         try:
                             result = await asyncio.to_thread(client.translate, chunk.text, prev_trans)
                         except Exception as e2:
@@ -385,6 +387,8 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
                                 model="",
                             )
                     results.append(result)
+                    # 每个 chunk 之间让出事件循环，给 GPU 显存回收时间
+                    await asyncio.sleep(0.1)
                     yield {
                         "event": "chunk_done",
                         "data": json.dumps({
