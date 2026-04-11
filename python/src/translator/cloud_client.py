@@ -19,6 +19,9 @@ from src.translator.ollama_client import (
     _strip_context_leak,
     _repair_truncation,
     _validate_translation,
+    _deduplicate_repetition,
+    _strip_trailing_summary,
+    _strip_empty_parentheses,
 )
 
 logger = logging.getLogger(__name__)
@@ -338,6 +341,9 @@ class CloudClient:
         translated = _strip_code_block_wrapping(translated)
         translated = _strip_preamble(translated)
         translated = _strip_context_leak(translated)
+        translated = _deduplicate_repetition(translated)
+        translated = _strip_trailing_summary(translated)
+        translated = _strip_empty_parentheses(translated)
         translated = _repair_truncation(translated)
         return translated
 

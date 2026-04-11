@@ -63,3 +63,7 @@ src-tauri/python/
 
 # 测试文件
 article.md
+attention.pdf
+science.adn8744.pdf
+test_*.md
+test_output*.md

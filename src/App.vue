@@ -3,6 +3,7 @@
     class="app"
     :class="{ light: !isDark }"
     @dragenter.prevent="onDragEnter"
+    @dragleave.prevent="onDragLeave"
     @dragover.prevent
     @drop.prevent="onDrop"
   >
@@ -884,6 +885,16 @@ function onDragEnter(e: Event) {
   globalDragging.value = true
 }
 
+function onDragLeave(e: Event) {
+  e.preventDefault()
+  dragCounter--
+  if (dragCounter <= 0) {
+    dragCounter = 0
+    globalDragging.value = false
+    zoneHover.value = false
+  }
+}
+
 function onDrop(e: DragEvent) {
   e.preventDefault()
   dragCounter = 0
@@ -991,8 +1002,6 @@ async function handleRestartBackend() {
 </script>
 
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap') /* offline fallback to system-ui */;
-
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {

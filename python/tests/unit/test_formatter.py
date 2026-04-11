@@ -94,7 +94,7 @@ class TestStripOverlap:
     def test_identical_prefix_stripped(self) -> None:
         orig = ["Identical first paragraph.", "Unique para B."]
         trans = ["完全相同的第一段。", "独特段落乙。"]
-        prev = "Identical first paragraph."
+        prev = ["Identical first paragraph."]
         o, t = _strip_overlap(orig, trans, prev)
         assert len(o) == 1
         assert "Unique" in o[0]
@@ -102,14 +102,14 @@ class TestStripOverlap:
     def test_no_overlap_keeps_all(self) -> None:
         orig = ["Completely different paragraph."]
         trans = ["完全不同的段落。"]
-        prev = "Something else entirely."
+        prev = ["Something else entirely."]
         o, t = _strip_overlap(orig, trans, prev)
         assert len(o) == 1
 
     def test_short_prev_ignored(self) -> None:
         orig = ["Some paragraph"]
         trans = ["某段落"]
-        prev = "short"
+        prev = ["short"]
         o, t = _strip_overlap(orig, trans, prev)
         assert len(o) == 1
 

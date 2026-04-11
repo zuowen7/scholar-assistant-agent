@@ -8,7 +8,6 @@ import json
 import logging
 import os
 import shutil
-import time
 import uuid
 from pathlib import Path
 from typing import AsyncGenerator
@@ -51,19 +50,17 @@ class FilePathPayload(BaseModel):
 
 _config_cache: dict | None = None
 _config_cache_mtime: float = 0.0
-_CONFIG_CACHE_TTL = 2.0  # 秒
 
 
 def _load_config() -> dict:
     global _config_cache, _config_cache_mtime
     if CONFIG_PATH.exists():
         mtime = CONFIG_PATH.stat().st_mtime
-        if _config_cache is not None and (time.monotonic() - _config_cache_mtime) < _CONFIG_CACHE_TTL and mtime == getattr(_load_config, "_last_mtime", 0):
+        if _config_cache is not None and mtime == _config_cache_mtime:
             return copy.deepcopy(_config_cache)
         with open(CONFIG_PATH, encoding="utf-8") as f:
             _config_cache = yaml.safe_load(f) or {}
-            _config_cache_mtime = time.monotonic()
-            _load_config._last_mtime = mtime  # type: ignore[attr-defined]
+            _config_cache_mtime = mtime
             return copy.deepcopy(_config_cache)
     return {}
 
@@ -74,7 +71,7 @@ def _save_config(config: dict) -> None:
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         yaml.dump(config, f, allow_unicode=True, default_flow_style=False)
     _config_cache = copy.deepcopy(config)
-    _config_cache_mtime = time.monotonic()
+    _config_cache_mtime = CONFIG_PATH.stat().st_mtime
 
 
 def _build_cloud_client(trans_cfg: dict, cloud_cfg: dict) -> CloudClient:
@@ -143,7 +140,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
             del tasks[tid]
 
     title = "Scholar Translate API (Cloud)" if cloud_only else "Scholar Translate API"
-    app = FastAPI(title=title, version="0.3.0")
+    app = FastAPI(title=title, version="0.3.1")
 
     # ── 全局异常处理 ──
 
@@ -175,7 +172,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
 
     @app.get("/api/health")
     def health():
-        payload = {"status": "ok", "version": "0.3.0"}
+        payload = {"status": "ok", "version": "0.3.1"}
         if cloud_only:
             payload["mode"] = "cloud_only"
         return payload
@@ -215,7 +212,9 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
 
     @app.post("/api/translate")
     async def start_translate(file: UploadFile = File(...)):
-        if _busy_lock.locked():
+        if not _busy_lock.locked():
+            await _busy_lock.acquire()
+        else:
             raise HTTPException(409, "已有翻译任务在运行，请等待完成")
 
         if not file.filename:
@@ -252,7 +251,9 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
 
     @app.post("/api/translate/path")
     async def start_translate_path(payload: FilePathPayload):
-        if _busy_lock.locked():
+        if not _busy_lock.locked():
+            await _busy_lock.acquire()
+        else:
             raise HTTPException(409, "已有翻译任务在运行，请等待完成")
 
         file_path = Path(payload.path).resolve()
@@ -468,10 +469,8 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         if t["status"] == "running":
             raise HTTPException(409, "该任务已在运行中")
 
-        if _busy_lock.locked():
-            raise HTTPException(409, "已有翻译任务在运行，请等待完成")
-
-        await _busy_lock.acquire()
+        if not _busy_lock.locked():
+            raise HTTPException(409, "未持有任务锁，请先通过 POST /api/translate 创建任务")
         pipeline = _run_pipeline(task_id)
 
         async def _wrapped() -> AsyncGenerator[dict, None]:

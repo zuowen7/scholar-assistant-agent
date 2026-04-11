@@ -105,14 +105,21 @@ def _merge_chunks(
     all_trans: list[str] = []
 
     for i, r in enumerate(results):
-        orig_paras = _split_paragraphs(r.original)
-        trans_paras = _split_paragraphs(r.translated)
+        orig_text = r.original
+        trans_text = r.translated
 
-        # 去除与前一个 chunk 重叠的段落
-        if all_orig and orig_paras:
-            orig_paras, trans_paras = _strip_overlap(
-                orig_paras, trans_paras, all_orig[-1]
+        # 去除与前一个 chunk 重叠的内容（基于文本前缀匹配）
+        if all_orig:
+            prev_orig_joined = "\n\n".join(
+                p for p in all_orig[-min(len(all_orig), 10):] if p.strip()
             )
+            if prev_orig_joined.strip():
+                orig_text, trans_text = _strip_text_overlap(
+                    orig_text, trans_text, prev_orig_joined,
+                )
+
+        orig_paras = _split_paragraphs(orig_text)
+        trans_paras = _split_paragraphs(trans_text)
 
         # 恢复译文段落结构: 如果原文有 N 段但译文只有 1 段，尝试按比例拆分
         if len(orig_paras) > 1 and len(trans_paras) == 1:
@@ -230,62 +237,210 @@ def _ph(text: str, placeholders: list[str]) -> str:
 def _strip_overlap(
     orig_paras: list[str],
     trans_paras: list[str],
-    prev_last_orig: str,
+    prev_orig_tail: list[str],
 ) -> tuple[list[str], list[str]]:
     """去除 chunk 开头与前一个 chunk 末尾因 overlap 重复的段落
 
-    策略: 逐个比较当前 chunk 开头的段落与前一个 chunk 末尾段落，
-    要求前缀匹配 >= 70% **且** 整体相似度 >= 60%，避免公式段落仅因前缀相同被误删。
-    处理多段 overlap 的情况，且安全处理 orig/trans 段落数不一致。
+    策略: 在 prev_orig_tail 中找最长的连续子序列，使其与当前 chunk 开头的
+    段落逐段匹配。这样可以正确处理跨多个段落的 overlap。
     """
-    if not prev_last_orig or not orig_paras:
+    if not prev_orig_tail or not orig_paras:
         return orig_paras, trans_paras
 
-    prev_stripped = prev_last_orig.strip()
-    if len(prev_stripped) < 10:
+    # 过滤掉过短的尾部段落
+    prev_tail = [p.strip() for p in prev_orig_tail if p.strip() and len(p.strip()) >= 10]
+    if not prev_tail:
         return orig_paras, trans_paras
 
-    # 计算需要去除的段落数量
-    strip_count = 0
-    for para in orig_paras:
-        para_stripped = para.strip()
-        if len(para_stripped) < 10:
-            break
-
-        # 标题和公式段落不参与 overlap 去重
-        if _is_heading_or_math(para_stripped):
-            break
-
-        # 前缀匹配: 从头逐字比较
-        shorter = min(len(prev_stripped), len(para_stripped))
-        match_len = 0
-        for j in range(shorter):
-            if prev_stripped[j].lower() == para_stripped[j].lower():
-                match_len += 1
+    best_strip = 0
+    # 尝试从 prev_tail 的每个位置开始匹配
+    for start in range(len(prev_tail)):
+        match_count = 0
+        for k in range(min(len(prev_tail) - start, len(orig_paras))):
+            prev_p = prev_tail[start + k]
+            curr_p = orig_paras[k].strip()
+            if len(curr_p) < 10:
+                break
+            if _is_heading_or_math(curr_p):
+                break
+            if _paragraphs_match(prev_p, curr_p):
+                match_count += 1
             else:
                 break
+        # 必须匹配至少 1 段，且匹配数要大于之前的最佳结果
+        if match_count > best_strip:
+            best_strip = match_count
 
-        # 前缀匹配比例
-        prefix_ratio = match_len / shorter if shorter > 0 else 0
+    if best_strip == 0:
+        return orig_paras, trans_paras
 
-        # 整体相似度: 用较短文本的长度做归一化
-        longer = max(len(prev_stripped), len(para_stripped))
-        overall_ratio = shorter / longer if longer > 0 else 0
+    safe_strip_orig = min(best_strip, len(orig_paras))
+    safe_strip_trans = min(best_strip, len(trans_paras))
+    return orig_paras[safe_strip_orig:], trans_paras[safe_strip_trans:]
 
-        # 要求前缀匹配 >= 70% 且整体长度相似度 >= 60%（避免公式段落误删）
-        if prefix_ratio >= 0.7 and overall_ratio >= 0.6:
-            strip_count += 1
+
+def _strip_text_overlap(
+    orig_text: str,
+    trans_text: str,
+    prev_orig_text: str,
+) -> tuple[str, str]:
+    """在原始文本层面去除 chunk 间 overlap 导致的重复
+
+    策略: 在 prev_orig_text 的尾部寻找一个最长后缀，
+    该后缀与 orig_text 的前缀匹配。找到后按相同比例剥离两者。
+    """
+    if not prev_orig_text.strip() or not orig_text.strip():
+        return orig_text, trans_text
+
+    prev_tail = prev_orig_text[-1000:].strip()
+    if len(prev_tail) < 30:
+        return orig_text, trans_text
+
+    orig_stripped = orig_text.strip()
+    if not orig_stripped:
+        return orig_text, trans_text
+
+    # 核心策略: 找 prev_tail 的最长后缀，该后缀是 orig_stripped 的前缀
+    # 只在句子边界处尝试，减少搜索次数
+    best_suffix_len = 0
+
+    # 找 prev_tail 中所有句子边界位置
+    sentence_starts = [0]
+    for m in re.finditer(r"(?<=[.!?。！？\n])\s+", prev_tail):
+        sentence_starts.append(m.end())
+
+    for start in sentence_starts:
+        suffix = prev_tail[start:]
+        if len(suffix) < 30:
+            break
+
+        match_len = _prefix_match_len(suffix, orig_stripped)
+        if match_len > best_suffix_len:
+            best_suffix_len = match_len
+
+        if len(suffix) < best_suffix_len:
+            break
+
+    # 匹配长度需有实际意义
+    if best_suffix_len < 30:
+        return orig_text, trans_text
+
+    # 确保匹配不会吃掉整篇内容
+    if best_suffix_len > len(orig_stripped) * 0.8:
+        return orig_text, trans_text
+
+    # 找最近的句子边界作为切割点
+    cut_pos = _find_sentence_boundary(orig_stripped, best_suffix_len)
+    if cut_pos <= 0:
+        return orig_text, trans_text
+
+    # 按相同比例从 trans_text 中剥离
+    orig_ratio = cut_pos / max(len(orig_stripped), 1)
+    trans_cut = int(len(trans_text) * orig_ratio)
+    trans_cut = _find_sentence_boundary(trans_text, trans_cut)
+
+    new_orig = orig_stripped[cut_pos:].strip()
+    new_trans = trans_text[trans_cut:].strip()
+
+    return new_orig, new_trans
+
+
+def _prefix_match_len(a: str, b: str) -> int:
+    """计算 a 的前缀与 b 的前缀的连续匹配字符数（忽略空白差异，容许少量错误）
+
+    用于检测 overlap: a 是 prev_tail 的后缀，b 是 orig_text 的开头。
+    """
+    ia = 0
+    ib = 0
+    match = 0
+    mismatch_streak = 0
+
+    while ia < len(a) and ib < len(b):
+        ca = a[ia]
+        cb = b[ib]
+        # 跳过空白
+        if ca in " \t\n\r":
+            ia += 1
+            continue
+        if cb in " \t\n\r":
+            ib += 1
+            continue
+        if ca.lower() == cb.lower():
+            match += 1
+            mismatch_streak = 0
+        else:
+            mismatch_streak += 1
+            if mismatch_streak > 8:
+                break
+            match += 1  # 容许少量不匹配（OCR/编码差异）
+        ia += 1
+        ib += 1
+
+    # 匹配率太低则视为无效
+    if match < 30 or match < len(a) * 0.5:
+        return 0
+
+    return match
+
+
+def _find_sentence_boundary(text: str, target_pos: int) -> int:
+    """在 target_pos 附近找最近的句子边界（中英文句末标点后）"""
+    if target_pos <= 0 or target_pos >= len(text):
+        return target_pos
+
+    # 在 target_pos 附近 ±50 字符范围内找句末标点
+    search_start = max(0, target_pos - 50)
+    search_end = min(len(text), target_pos + 50)
+
+    best_pos = target_pos
+    best_dist = abs(target_pos - target_pos)  # 0
+
+    for i in range(search_start, search_end):
+        if text[i] in ".!?。！？；\n":
+            pos = i + 1
+            dist = abs(pos - target_pos)
+            if dist < best_dist or best_dist == 0:
+                best_pos = pos
+                best_dist = dist
+
+    # 如果没找到好的句末标点，在 target_pos 后找第一个空格或换行
+    if best_dist > 30:
+        for i in range(target_pos, min(len(text), target_pos + 30)):
+            if text[i] in " \n":
+                return i + 1
+        return target_pos
+
+    return best_pos
+
+
+def _paragraphs_match(a: str, b: str) -> bool:
+    """判断两个段落是否是同一段文字（可能是原文的同一片段）
+
+    策略: 前缀匹配 >= 50% 且整体长度比在 0.4~2.5 之间
+    """
+    a_s = a.strip()
+    b_s = b.strip()
+    if not a_s or not b_s:
+        return False
+
+    shorter = min(len(a_s), len(b_s))
+    longer = max(len(a_s), len(b_s))
+
+    # 长度差异过大不匹配
+    if shorter / longer < 0.4:
+        return False
+
+    # 前缀匹配
+    match_len = 0
+    check_len = min(shorter, 200)  # 只检查前 200 字符
+    for i in range(check_len):
+        if a_s[i].lower() == b_s[i].lower():
+            match_len += 1
         else:
             break
 
-    if strip_count == 0:
-        return orig_paras, trans_paras
-
-    # 安全去除: 取 orig 和 trans 中较小的 strip 数，避免越界
-    safe_strip_orig = min(strip_count, len(orig_paras))
-    safe_strip_trans = min(strip_count, len(trans_paras))
-
-    return orig_paras[safe_strip_orig:], trans_paras[safe_strip_trans:]
+    prefix_ratio = match_len / check_len if check_len > 0 else 0
+    return prefix_ratio >= 0.5
 
 
 def _md_table_escape(text: str) -> str:

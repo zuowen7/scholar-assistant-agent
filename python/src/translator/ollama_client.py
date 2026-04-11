@@ -251,6 +251,7 @@ class OllamaClient:
             "options": {
                 "temperature": self.temperature,
                 "num_predict": self.num_predict,
+                "repeat_penalty": 1.2,
             },
         }
         if system:
@@ -269,6 +270,7 @@ class OllamaClient:
                 "options": {
                     "temperature": self.temperature,
                     "num_predict": self.num_predict,
+                    "repeat_penalty": 1.2,
                 },
             }
             resp = client.post(f"{self.base_url}/api/chat", json=chat_payload)
@@ -304,6 +306,9 @@ class OllamaClient:
         translated = _strip_code_block_wrapping(translated)
         translated = _strip_preamble(translated)
         translated = _strip_context_leak(translated)
+        translated = _deduplicate_repetition(translated)
+        translated = _strip_trailing_summary(translated)
+        translated = _strip_empty_parentheses(translated)
         translated = _repair_truncation(translated)
 
         return TranslationResult(
@@ -520,6 +525,30 @@ def _validate_translation(result: TranslationResult) -> bool:
                 logger.warning("译文前后半段高度重复 (%.0f%%)，疑似重复翻译", overlap / shorter_len * 100)
                 return False
 
+    # 循环重复检测: 按句号分段后检查是否存在周期性重复
+    if trans_len > 600:
+        sents = re.split(r"(?<=[。！？])", stripped)
+        sents = [s.strip() for s in sents if s.strip()]
+        if len(sents) >= 6:
+            # 检查是否有连续 3+ 段相同内容循环出现
+            for unit_sz in range(1, min(len(sents) // 3, 20) + 1):
+                unit = sents[:unit_sz]
+                repeats = 0
+                for si in range(unit_sz, len(sents), unit_sz):
+                    chunk = sents[si:si + unit_sz]
+                    if not chunk:
+                        continue
+                    if _is_similar_sentences(unit, chunk):
+                        repeats += 1
+                    else:
+                        break
+                if repeats >= 2:
+                    logger.warning(
+                        "检测到循环重复 (单元=%d句, 重复%d次), 拒绝该翻译",
+                        unit_sz, repeats,
+                    )
+                    return False
+
     return True
 
 
@@ -571,6 +600,184 @@ def _repair_truncation(text: str) -> str:
             logger.info("截断修复: 移除末尾疑似残缺片段 (%d 字符)", len(tail))
             return text[: last_sentence_end + 1].rstrip()
     return text
+
+
+def _strip_empty_parentheses(text: str) -> str:
+    """移除翻译中残留的空括号，如 （）或 ()"""
+    text = re.sub(r"（\s*）", "", text)
+    text = re.sub(r"\(\s*\)", "", text)
+    return text
+
+
+def _strip_trailing_summary(text: str) -> str:
+    """移除译文末尾的总结段落
+
+    模型有时在翻译完正文后自作主张加总结，如"总之..."、"总而言之..."等。
+    """
+    if not text or len(text) < 200:
+        return text
+
+    summary_patterns = [
+        r"\n[（(]?总之[，,]?\s*",
+        r"\n[（(]?总而言之[，,]?\s*",
+        r"\n[（(]?综上所述[，,]?\s*",
+        r"\n[（(]?总的来说[，,]?\s*",
+        r"\n[（(]?概括来说[，,]?\s*",
+        r"\n[（(]?简而言之[，,]?\s*",
+        r"\n[（(]?总之[，,]?.*?(?:总结|概括|回顾)",
+        r"\n[（(]?In\s+summary[,.]?\s*",
+        r"\n[（(]?To\s+summarize[,.]?\s*",
+        r"\n[（(]?In\s+conclusion[,.]?\s*",
+        r"\n[（(]?Overall[,.]?\s*",
+    ]
+    for pattern in summary_patterns:
+        m = re.search(pattern, text, re.IGNORECASE)
+        if m:
+            # 确保这是在文末附近（最后 40% 的位置）
+            if m.start() >= len(text) * 0.6:
+                logger.info("移除末尾总结段落 (位置 %d/%d)", m.start(), len(text))
+                return text[: m.start()].rstrip()
+    return text
+
+
+def _deduplicate_repetition(text: str) -> str:
+    """检测并移除译文中的循环重复内容
+
+    模型有时陷入生成循环，同一段落重复几十次。
+    两级策略:
+    1. 行级重复检测: 按 \\n 分割，检测任意位置的连续重复块
+    2. 句级重复检测: 按句号分段，检测从头开始的周期性重复
+    """
+    if not text or len(text) < 300:
+        return text
+
+    # ── Level 1: 行级重复检测（检测文本任意位置的连续重复） ──
+    line_result = _deduplicate_line_repetition(text)
+    if len(line_result) < len(text) * 0.7:
+        return line_result
+
+    # ── Level 2: 句级重复检测（原有逻辑，检测从头开始的周期重复） ──
+    sentences = re.split(r"(?<=[。！？])", text)
+    sentences = [s.strip() for s in sentences if s.strip()]
+    if len(sentences) < 6:
+        return text
+
+    text_len = len(sentences)
+    for unit_size in range(1, text_len // 2 + 1):
+        if text_len < unit_size * 3:
+            break
+        unit = sentences[:unit_size]
+        is_repetitive = True
+        repeat_count = 0
+        for i in range(unit_size, text_len, unit_size):
+            chunk = sentences[i : i + unit_size]
+            if not chunk:
+                continue
+            if not _is_similar_sentences(unit, chunk):
+                is_repetitive = False
+                break
+            repeat_count += 1
+
+        if is_repetitive and repeat_count >= 2:
+            unique_text = "".join(unit)
+            logger.warning(
+                "检测到句级循环重复: 单元=%d句, 重复%d次, 保留第一份 (原文%d句→%d句)",
+                unit_size, repeat_count, text_len, unit_size,
+            )
+            return unique_text
+
+    return text
+
+
+def _deduplicate_line_repetition(text: str) -> str:
+    """行级重复检测: 在文本任意位置检测连续重复的行块
+
+    当相同的 1-4 行模式连续重复 3 次以上时，保留第一份并截断后续重复。
+    """
+    lines = text.split("\n")
+    if len(lines) < 8:
+        return text
+
+    # 在文本中扫描所有起始位置，寻找重复模式
+    for start in range(len(lines)):
+        for pat_size in range(1, 5):
+            if start + pat_size * 4 > len(lines):
+                break
+
+            pattern = [l.strip() for l in lines[start : start + pat_size]]
+            # 跳过全空行的模式
+            if all(not p for p in pattern):
+                continue
+            # 跳过过短的模式（每行平均 < 5 字符）
+            avg_len = sum(len(p) for p in pattern) / pat_size
+            if avg_len < 5:
+                continue
+
+            repeat_count = 0
+            pos = start + pat_size
+            while pos + pat_size <= len(lines):
+                chunk = [l.strip() for l in lines[pos : pos + pat_size]]
+                if _lines_match(pattern, chunk):
+                    repeat_count += 1
+                    pos += pat_size
+                else:
+                    break
+
+            if repeat_count >= 3:
+                # 保留: 重复之前的内容 + 第一份模式 + 重复之后的有效内容
+                kept = lines[: start + pat_size]
+                remaining = lines[pos:]
+                if remaining:
+                    non_empty = sum(1 for l in remaining if l.strip())
+                    if non_empty > 3:
+                        kept.extend(remaining)
+
+                result = "\n".join(kept)
+                logger.warning(
+                    "行级重复检测: 起始行=%d, 模式=%d行, 重复%d次, %d行→%d行",
+                    start, pat_size, repeat_count, len(lines), len(kept),
+                )
+                return result
+
+    return text
+
+
+def _lines_match(a: list[str], b: list[str]) -> bool:
+    """判断两组行是否高度相似"""
+    if len(a) != len(b):
+        return False
+    for la, lb in zip(a, b):
+        if not la and not lb:
+            continue
+        if not la or not lb:
+            return False
+        shorter = min(len(la), len(lb))
+        check_len = max(int(shorter * 0.8), 1)
+        match = sum(1 for ca, cb in zip(la[:check_len], lb[:check_len]) if ca == cb)
+        if match / check_len < 0.7:
+            return False
+    return True
+
+
+def _is_similar_sentences(a: list[str], b: list[str]) -> bool:
+    """判断两组句子是否高度相似（允许轻微差异）"""
+    if len(a) != len(b):
+        return False
+    for sa, sb in zip(a, b):
+        if not sa or not sb:
+            continue
+        shorter = min(len(sa), len(sb))
+        longer = max(len(sa), len(sb))
+        if longer == 0:
+            continue
+        # 逐字比较前 80% 的较短句
+        check_len = int(shorter * 0.8)
+        if check_len == 0:
+            continue
+        match = sum(1 for ca, cb in zip(sa[:check_len], sb[:check_len]) if ca == cb)
+        if match / check_len < 0.7:
+            return False
+    return True
 
 
 def _restore_paragraphs(original: str, translated: str) -> str:

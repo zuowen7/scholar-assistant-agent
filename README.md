@@ -2,6 +2,8 @@
 
 本地离线 + 云端大模型双引擎学术文献智能翻译工具。支持 16 种文件格式，自动清洗排版噪声，输出高质量双语对照文档。
 
+> **最新版本 v0.3.1** — PDF 双栏提取优化、翻译循环重复检测、进程生命周期绑定
+
 ## 一键安装桌面端
 
 前往 [Releases 页面](https://github.com/zuowen7/translator/releases) 下载对应平台的安装包：
@@ -59,8 +61,8 @@ docker compose logs -f app    # 查看应用日志
 
 ### 文档解析
 - **16 种格式支持** — PDF、Word、Excel、PowerPoint、TXT、Markdown、HTML、EPUB、RTF、LaTeX、CSV、JSON、XML、SRT 等
-- **PDF 智能解析** — 自动检测单栏/双栏布局，准确提取文本
-- **文本清洗** — 修复断行、移除水印/页眉页脚、处理连字符断词
+- **PDF 智能解析** — 自动检测单栏/双栏布局，词间距丢失时自动回退字符级坐标推断
+- **文本清洗** — 修复断行、移除水印/页眉页脚、处理连字符断词、修复跨页截断词
 - **引用区自动跳过** — 识别 REFERENCES 区域并跳过翻译，减少 token 浪费
 
 ### 翻译引擎
@@ -81,7 +83,7 @@ docker compose logs -f app    # 查看应用日志
 - **SSE 断线重连** — 自动检测连接中断，最多 3 次重连并验证后端健康状态
 - **进程生命周期** — Tauri 绑定 Python/Ollama 子进程，崩溃自动通知前端并提供重启按钮
 - **安全防护** — 路径遍历防护、API Key 脱敏、XSS 注入阻断、全局异常兜底
-- **翻译健壮性** — 指数退避重试、速率限制、prompt 长度保护、输出质量校验与截断修复
+- **翻译健壮性** — 指数退避重试、速率限制、prompt 长度保护、输出质量校验与截断修复、行级+句级循环重复检测
 - **日志规范** — 全链路使用 `logging` 模块，无 `print`/`console.log` 遗留
 - **Docker 一键部署** — `docker compose up -d` 即可使用
 
@@ -127,8 +129,8 @@ python api_cloud.py --host 127.0.0.1 --port 18089
 
 ```bash
 # 打 tag 触发 GitHub Actions 自动构建并发布
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.3.2
+git push origin v0.3.2
 ```
 
 构建完成后会在 [Releases 页面](https://github.com/zuowen7/translator/releases) 自动生成草稿，点击发布即可。

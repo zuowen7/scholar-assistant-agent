@@ -38,6 +38,7 @@ COPY --from=builder /install /usr/local
 COPY python/src/ src/
 COPY python/config/ config/
 COPY python/api.py .
+COPY python/api_factory.py .
 
 # Vue 前端静态文件
 COPY --from=frontend /build/dist /app/static

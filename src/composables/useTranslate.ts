@@ -283,8 +283,13 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       break
     case 'chunk_done': {
       const chunk = data as unknown as ChunkDoneEvent
-      state.completedChunks = chunk.index + 1
-      state.translations.push(chunk)
+      const existingIdx = state.translations.findIndex(t => t.index === chunk.index)
+      if (existingIdx >= 0) {
+        state.translations[existingIdx] = chunk
+      } else {
+        state.translations.push(chunk)
+      }
+      state.completedChunks = Math.max(state.completedChunks, chunk.index + 1)
       state.stepMessage = `翻译块 ${chunk.index + 1}/${chunk.total}`
       break
     }
