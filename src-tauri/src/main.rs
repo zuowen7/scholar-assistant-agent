@@ -236,48 +236,90 @@ fn spawn_ollama(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 /// `app_handle` is only needed for crash notifications (emit events).
 fn spawn_python_inner<R: tauri::Runtime, M: Manager<R>>(app: &M, app_handle: Option<&tauri::AppHandle<R>>) -> Result<String, String> {
     let python_dir = resolve_python_dir();
-    let api_path = python_dir.join("api.py");
-    if !api_path.exists() {
-        return Err(format!("Python API 文件不存在: {}", api_path.display()));
-    }
-    let api_str = api_path.to_str().expect("path not valid UTF-8").to_string();
-
-    eprintln!("[INFO] Python dir: {}", python_dir.display());
-
-    let python_cmd = if cfg!(windows) { "python" } else { "python3" };
 
     #[cfg(windows)]
     const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-    #[cfg(windows)]
-    let mut child = std::process::Command::new(python_cmd)
-        .args([&api_str, "--port", "18088"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .or_else(|_| std::process::Command::new("python")
+    if cfg!(debug_assertions) {
+        // ── Dev mode: run `python api.py` ──
+        let api_path = python_dir.join("api.py");
+        if !api_path.exists() {
+            return Err(format!("Python API 文件不存在: {}", api_path.display()));
+        }
+        let api_str = api_path.to_str().expect("path not valid UTF-8").to_string();
+        let python_cmd = if cfg!(windows) { "python" } else { "python3" };
+
+        eprintln!("[INFO] Dev mode: {} {} --port 18088", python_cmd, api_str);
+
+        #[cfg(windows)]
+        let child = std::process::Command::new(python_cmd)
             .args([&api_str, "--port", "18088"])
             .creation_flags(CREATE_NO_WINDOW)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
-        )
-        .map_err(|e| format!("启动 Python 失败: {}。请确认 Python 已安装。", e))?;
+            .or_else(|_| std::process::Command::new("python")
+                .args([&api_str, "--port", "18088"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+            )
+            .map_err(|e| format!("启动 Python 失败: {}。请确认 Python 已安装。", e))?;
 
-    #[cfg(not(windows))]
-    let mut child = std::process::Command::new(python_cmd)
-        .args([&api_str, "--port", "18088"])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .or_else(|_| std::process::Command::new("python")
+        #[cfg(not(windows))]
+        let child = std::process::Command::new(python_cmd)
             .args([&api_str, "--port", "18088"])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
-        )
-        .map_err(|e| format!("启动 Python 失败: {}。请确认 Python 已安装。", e))?;
+            .or_else(|_| std::process::Command::new("python")
+                .args([&api_str, "--port", "18088"])
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+            )
+            .map_err(|e| format!("启动 Python 失败: {}。请确认 Python 已安装。", e))?;
+
+        // Continue to common PID/monitor logic
+        return _finish_spawn(app, app_handle, child);
+    }
+
+    // ── Release mode: run `api.exe` (PyInstaller bundle) ──
+    let api_exe = python_dir.join(if cfg!(windows) { "api.exe" } else { "api" });
+    if !api_exe.exists() {
+        return Err(format!("Python 后端未找到: {}。请重新安装应用。", api_exe.display()));
+    }
+    let api_str = api_exe.to_str().expect("path not valid UTF-8").to_string();
+
+    eprintln!("[INFO] Release mode: {} --port 18088", api_str);
+
+    #[cfg(windows)]
+    let child = std::process::Command::new(&api_str)
+        .args(["--port", "18088"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("启动后端失败: {}", e))?;
+
+    #[cfg(not(windows))]
+    let child = std::process::Command::new(&api_str)
+        .args(["--port", "18088"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("启动后端失败: {}", e))?;
+
+    _finish_spawn(app, app_handle, child)
+}
+
+/// Common post-spawn logic: register PID, monitor thread, wait for readiness.
+fn _finish_spawn<R: tauri::Runtime, M: Manager<R>>(
+    app: &M,
+    app_handle: Option<&tauri::AppHandle<R>>,
+    mut child: std::process::Child,
+) -> Result<String, String> {
 
     let pid = child.id();
     let state = app.state::<ManagedPids>();
@@ -351,13 +393,13 @@ fn resolve_python_dir() -> std::path::PathBuf {
             .map(|p| p.join("python"))
             .unwrap_or_else(|| manifest.join("python"))
     } else {
+        // Release mode: look for python-dist/api/ (PyInstaller output)
         let exe_dir = std::env::current_exe().ok()
             .and_then(|p| p.parent().map(|d| d.to_path_buf()))
             .unwrap_or_default();
 
         let candidates: Vec<std::path::PathBuf> = vec![
-            exe_dir.join("python"),
-            exe_dir.join("../../../python").canonicalize().unwrap_or_else(|_| exe_dir.join("../../../python")),
+            exe_dir.join("python-dist").join("api"),
         ];
         for dir in &candidates {
             if dir.exists() {
@@ -365,7 +407,7 @@ fn resolve_python_dir() -> std::path::PathBuf {
             }
         }
 
-        exe_dir.join("python")
+        exe_dir.join("python-dist").join("api")
     }
 }
 

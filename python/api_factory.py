@@ -27,9 +27,32 @@ from src.translator.ollama_client import OllamaClient, TranslationResult
 from src.translator.cloud_client import CloudClient, PROVIDER_PRESETS
 from src.translator.context import extract_document_context
 
-BASE_DIR = Path(__file__).parent
+
+def _is_frozen() -> bool:
+    """检测是否运行在 PyInstaller 打包环境中"""
+    return getattr(__import__("sys"), "frozen", False) and hasattr(__import__("sys"), "_MEIPASS")
+
+
+# BUNDLED_DIR: 只读资源目录（PyInstaller 的 _MEIPASS 或源码目录）
+# RUNTIME_DIR: 可读写目录（api.exe 旁或源码目录），用于配置文件和数据存储
+if _is_frozen():
+    import sys as _sys
+    BUNDLED_DIR = Path(_sys._MEIPASS)
+    RUNTIME_DIR = Path(_sys.executable).parent
+else:
+    BUNDLED_DIR = Path(__file__).parent
+    RUNTIME_DIR = Path(__file__).parent
+
+BASE_DIR = RUNTIME_DIR
 DOCKER_MODE = os.environ.get("DOCKER_MODE", "").lower() in ("1", "true", "yes")
-CONFIG_PATH = (BASE_DIR / "config" / "docker.yaml") if DOCKER_MODE else (BASE_DIR / "config" / "default.yaml")
+CONFIG_PATH = (RUNTIME_DIR / "config" / "docker.yaml") if DOCKER_MODE else (RUNTIME_DIR / "config" / "default.yaml")
+
+# PyInstaller 打包环境下，首次运行时从 bundle 复制默认配置到运行时目录
+if _is_frozen() and not DOCKER_MODE and not CONFIG_PATH.exists():
+    bundled_default = BUNDLED_DIR / "config" / "default.yaml"
+    if bundled_default.exists():
+        CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(bundled_default, CONFIG_PATH)
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +150,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
     tasks: dict[str, dict] = {}
     _busy_lock = asyncio.Lock()
 
-    data_root = BASE_DIR / ("data_cloud" if cloud_only else "data")
+    data_root = RUNTIME_DIR / ("data_cloud" if cloud_only else "data")
     input_dir = data_root / "input"
     output_dir = data_root / "output"
 

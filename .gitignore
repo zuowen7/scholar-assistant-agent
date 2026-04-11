@@ -57,6 +57,10 @@ node_modules/
 # Tauri
 src-tauri/target/
 src-tauri/python/
+src-tauri/python-dist/
+
+# PyInstaller
+build/pyi-work/
 
 # Claude
 .claude/
