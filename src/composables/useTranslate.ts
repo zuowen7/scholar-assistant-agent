@@ -291,8 +291,16 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       }
       state.completedChunks = Math.max(state.completedChunks, chunk.index + 1)
       state.stepMessage = `翻译块 ${chunk.index + 1}/${chunk.total}`
+      // 翻译失败回退原文时给出提示
+      if ((data as Record<string, unknown>).fallback) {
+        state.stepMessage = `块 ${chunk.index + 1}/${chunk.total} 翻译失败，已保留原文`
+      }
       break
     }
+    case 'chunk_error':
+      // 翻译块失败但继续处理其他块
+      console.warn(`翻译块 ${(data as Record<string, unknown>).index}/${(data as Record<string, unknown>).total} 失败:`, (data as Record<string, unknown>).error)
+      break
     case 'complete':
       state.finalContent = (data.content as string) ?? ''
       state.chunks = (data.chunks as { original: string; translated: string }[]) ?? []

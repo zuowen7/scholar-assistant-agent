@@ -421,6 +421,14 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
                                 translated=chunk.text,
                                 model="",
                             )
+                            yield {
+                                "event": "chunk_error",
+                                "data": json.dumps({
+                                    "index": i,
+                                    "total": total_chunks,
+                                    "error": str(e2),
+                                }),
+                            }
                     results.append(result)
                     # 每个 chunk 之间让出事件循环，给 GPU 显存回收时间
                     await asyncio.sleep(0.1)
@@ -432,6 +440,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
                             "original_preview": result.original[:200],
                             "translated_preview": result.translated[:200],
                             "tokens": result.completion_tokens,
+                            "fallback": result.original == result.translated,
                         }),
                     }
             finally:

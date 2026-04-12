@@ -220,7 +220,7 @@ class CloudClient:
         self._last_request_time: float = 0.0  # 速率限制追踪
 
     def _get_http_client(self) -> httpx.Client:
-        """懒加载复用 httpx 连接"""
+        """懒加载复用 httpx 连接（走系统代理，需安装 socksio 支持 SOCKS）"""
         if self._http_client is None:
             self._http_client = httpx.Client(timeout=self.timeout)
         return self._http_client

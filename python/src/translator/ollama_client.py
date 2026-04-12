@@ -124,7 +124,10 @@ class OllamaClient:
 
     def _get_http_client(self) -> httpx.Client:
         if self._http_client is None:
-            self._http_client = httpx.Client(timeout=self.timeout)
+            self._http_client = httpx.Client(
+                timeout=self.timeout,
+                proxy=None,  # Ollama 在本地，不走系统代理
+            )
         return self._http_client
 
     def close(self) -> None:
