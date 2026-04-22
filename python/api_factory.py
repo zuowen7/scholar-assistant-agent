@@ -27,6 +27,17 @@ from src.translator.ollama_client import OllamaClient, TranslationResult
 from src.translator.cloud_client import CloudClient, PROVIDER_PRESETS
 from src.translator.context import extract_document_context
 
+# Agent 子系统 (延迟导入，chromadb 未安装时不影响翻译功能)
+try:
+    from src.agent.agent import AgentLoop
+    from src.agent.models import Message
+    from src.agent.rag import RAGStore
+    from src.agent.tools import create_default_registry
+    from src.agent.vram_manager import MultiplexingScheduler
+    _AGENT_AVAILABLE = True
+except ImportError:
+    _AGENT_AVAILABLE = False
+
 
 def _is_frozen() -> bool:
     """检测是否运行在 PyInstaller 打包环境中"""
@@ -69,6 +80,17 @@ class ConfigUpdate(BaseModel):
 
 class FilePathPayload(BaseModel):
     path: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    history: list[dict] | None = None
+
+
+class RAGIngestRequest(BaseModel):
+    doc_id: str
+    text: str
+    title: str = ""
 
 
 _config_cache: dict | None = None
@@ -178,6 +200,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
 
     allowed_origins = [
         "http://localhost",
+        "http://localhost:5173",
         "http://localhost:18088",
         "http://localhost:18089",
         "http://127.0.0.1:18088",
@@ -189,7 +212,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
-        allow_methods=["GET", "POST", "PUT"],
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Content-Type", "Authorization"],
     )
 
@@ -563,5 +586,132 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
             filename=f"{task_id}_translated.md",
             media_type="text/markdown",
         )
+
+    # ── Agent / RAG 端点 ──────────────────────────────────────────────
+
+    _agent_instance: AgentLoop | None = None
+    _rag_store: RAGStore | None = None
+    _agent_lock = asyncio.Lock()
+
+    async def _get_agent() -> AgentLoop:
+        """懒加载 Agent 单例 — 首次请求时初始化，复用配置。"""
+        nonlocal _agent_instance, _rag_store
+
+        if _agent_instance is not None:
+            return _agent_instance
+
+        async with _agent_lock:
+            if _agent_instance is not None:
+                return _agent_instance
+
+            config = _load_config()
+            agent_cfg = config.get("agent", {})
+            trans_cfg = config.get("translator", {})
+
+            # 初始化 RAG 存储
+            rag_cfg = agent_cfg.get("rag", {})
+            rag_dir = RUNTIME_DIR / rag_cfg.get("persist_dir", "data/chromadb")
+            _rag_store = RAGStore(
+                persist_dir=str(rag_dir),
+                collection_name=rag_cfg.get("collection_name", "scholar_docs"),
+                chunk_size=rag_cfg.get("chunk_size", 512),
+                chunk_overlap=rag_cfg.get("chunk_overlap", 64),
+            )
+
+            # 初始化工具注册表
+            registry = create_default_registry(rag_store=_rag_store)
+
+            # 可选: 初始化时分复用调度器
+            scheduler = None
+            vram_cfg = agent_cfg.get("vram", {})
+            if vram_cfg.get("enabled", True) and not cloud_only:
+                scheduler = MultiplexingScheduler(
+                    ollama_base_url=trans_cfg.get("ollama_base_url", "http://localhost:11434"),
+                    model=agent_cfg.get("model", "qwen3:8b"),
+                )
+
+            _agent_instance = AgentLoop(
+                ollama_base_url=trans_cfg.get("ollama_base_url", "http://localhost:11434"),
+                model=agent_cfg.get("model", "qwen3:8b"),
+                tool_registry=registry,
+                scheduler=scheduler,
+                max_steps=agent_cfg.get("max_steps", 10),
+                system_prompt=agent_cfg.get("system_prompt", ""),
+                temperature=agent_cfg.get("temperature", 0.3),
+                num_predict=agent_cfg.get("num_predict", 4096),
+                timeout=trans_cfg.get("timeout", 300.0),
+            )
+
+            logger.info("Agent 初始化完成 (model=%s, rag=%s)",
+                        agent_cfg.get("model"), rag_dir)
+            return _agent_instance
+
+    @app.post("/api/chat")
+    async def chat(req: ChatRequest):
+        """Agent 对话端点 — SSE 流式返回 ReAct 推理过程。"""
+        if not _AGENT_AVAILABLE:
+            raise HTTPException(503, "Agent 模块未安装，请安装 chromadb")
+        if cloud_only:
+            raise HTTPException(503, "纯云端模式暂不支持 Agent")
+
+        agent = await _get_agent()
+
+        # 将历史消息转换为 Message 对象
+        history: list[Message] | None = None
+        if req.history:
+            history = [
+                Message(role=m.get("role", "user"), content=m.get("content", ""))
+                for m in req.history
+            ]
+
+        async def _stream() -> AsyncGenerator[dict, None]:
+            async for event in agent.run(req.message, history):
+                payload: dict = {"type": event.type, "content": event.content}
+                if event.metadata:
+                    payload["metadata"] = event.metadata
+                yield {
+                    "event": event.type,
+                    "data": json.dumps(payload, ensure_ascii=False),
+                }
+
+        return EventSourceResponse(
+            _stream(),
+            media_type="text/event-stream",
+        )
+
+    @app.get("/api/rag/documents")
+    async def list_rag_documents():
+        """列出 RAG 知识库中的所有文档。"""
+        if _rag_store is None:
+            return []
+        docs = _rag_store.list_documents()
+        return [
+            {"id": d.id, "title": d.title, "chunk_count": d.chunk_count, "metadata": d.metadata}
+            for d in docs
+        ]
+
+    @app.delete("/api/rag/documents/{doc_id}")
+    async def delete_rag_document(doc_id: str):
+        """删除 RAG 知识库中的指定文档。"""
+        if _rag_store is None:
+            raise HTTPException(503, "RAG 存储未初始化，请先发送一条聊天消息")
+        _rag_store.delete_document(doc_id)
+        return {"deleted": doc_id}
+
+    @app.post("/api/rag/ingest")
+    async def ingest_rag_document(req: RAGIngestRequest):
+        """向 RAG 知识库入库文本。"""
+        if _rag_store is None:
+            await _get_agent()
+        metadata = {"title": req.title} if req.title else None
+        count = _rag_store.ingest_document(
+            doc_id=req.doc_id, text=req.text, metadata=metadata,
+        )
+        return {"doc_id": req.doc_id, "chunk_count": count}
+
+    @app.on_event("shutdown")
+    async def _shutdown():
+        if _agent_instance is not None:
+            await _agent_instance.close()
 
     return app

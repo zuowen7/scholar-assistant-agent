@@ -1,6 +1,6 @@
 # Scholar Translate
 
-本地离线 + 云端大模型双引擎学术文献智能翻译工具。支持 16 种文件格式，自动清洗排版噪声，输出高质量双语对照文档。
+本地离线 + 云端大模型双引擎学术文献智能翻译工具。支持 16 种文件格式，自动清洗排版噪声，输出高质量双语对照文档。内置 Agent 助手，支持文档检索、arXiv 搜索和智能问答。
 
 > **最新版本 v0.3.1** — PDF 双栏提取优化、翻译循环重复检测、进程生命周期绑定
 
@@ -78,6 +78,13 @@ docker compose logs -f app    # 查看应用日志
 - **日间/夜间模式** — 一键切换亮暗主题，毛玻璃效果
 - **自定义背景** — 支持本地图片/视频作为窗口背景，可调节透明度
 
+### Agent 智能助手
+- **ReAct 推理循环** — 手写 Agent 框架，不依赖 LangChain/LlamaIndex
+- **RAG 文档检索** — 基于 ChromaDB 的本地向量存储，CPU 嵌入零配置
+- **工具调用** — 文档检索、文本翻译、arXiv 论文搜索
+- **显存管理** — 单模型时分复用调度，KV Cache 隔离，消费级 GPU 友好
+- **知识库管理** — 前端可视化管理已入库文档，支持查看和删除
+
 ### 工程质量
 - **实时进度** — SSE 流式推送，解析/清洗/切块/翻译/格式化 5 步进度可视化
 - **SSE 断线重连** — 自动检测连接中断，最多 3 次重连并验证后端健康状态
@@ -141,9 +148,10 @@ git push origin v0.3.2
 
 ```
 ├── src/                        # Vue 3 前端
-│   ├── App.vue                 # 主界面（上传/进度/结果）
+│   ├── App.vue                 # 主界面（上传/进度/结果/Agent 面板）
 │   ├── composables/
-│   │   └── useTranslate.ts     # 翻译状态管理 + SSE 客户端
+│   │   ├── useTranslate.ts     # 翻译状态管理 + SSE 客户端
+│   │   └── useAgentChat.ts     # Agent 对话状态管理 + SSE 客户端
 │   └── types/                  # TypeScript 类型定义
 ├── src-tauri/                  # Tauri 2 桌面端（Rust）
 │   └── src/main.rs             # 进程管理（Python + Ollama 子进程）
@@ -151,6 +159,7 @@ git push origin v0.3.2
 │   ├── api.py                  # FastAPI：Ollama + 可选云端
 │   ├── api_cloud.py            # 纯云端模式（无 Ollama），数据在 data_cloud/
 │   ├── api_factory.py          # 应用工厂 create_app(cloud_only=…)
+│   ├── test_agent.py           # Agent 模块终端集成测试
 │   ├── src/
 │   │   ├── parser/             # 多格式文档解析（dispatcher + PDF extractor）
 │   │   ├── cleaner/            # 文本清洗管道
@@ -159,9 +168,14 @@ git push origin v0.3.2
 │   │   │   ├── ollama_client.py    # 本地 Ollama 客户端
 │   │   │   ├── cloud_client.py     # 云端 API 客户端
 │   │   │   └── context.py          # 文档级上下文提取
+│   │   ├── agent/              # Agent 子系统（ReAct + RAG + 显存调度）
+│   │   │   ├── agent.py            # ReAct 推理循环（双策略工具调用）
+│   │   │   ├── models.py           # 数据模型（Message/ToolCall/AgentEvent）
+│   │   │   ├── tools.py            # 工具注册表 + @tool 装饰器
+│   │   │   ├── rag.py              # ChromaDB 向量存储（ingest/retrieve/delete）
+│   │   │   └── vram_manager.py     # 单模型时分复用调度器（KV Cache 隔离）
 │   │   ├── formatter/          # 输出格式化（bilingual/parallel/translated_only）
 │   │   └── constants.py        # 共享常量（引用区检测模式等）
-│   ├── tests/unit/             # 单元测试
 │   └── config/                 # 默认 & Docker 配置
 ├── .github/workflows/          # CI/CD：tag 触发自动构建
 ├── Dockerfile                  # 多阶段构建（前端 + 后端）
@@ -185,6 +199,12 @@ git push origin v0.3.2
 | `translator.cloud.base_url` | https://api.openai.com/v1 | 云端 API 地址 |
 | `translator.cloud.model` | gpt-4o | 云端模型名称 |
 | `formatter.output_format` | bilingual | 输出格式 (bilingual/parallel/translated_only) |
+| `agent.model` | qwen3:8b | Agent 推理模型 |
+| `agent.max_steps` | 10 | 最大 ReAct 推理步数 |
+| `agent.rag.collection_name` | scholar_docs | RAG 向量库集合名 |
+| `agent.rag.chunk_size` | 512 | RAG 切块大小 (tokens) |
+| `agent.vram.enabled` | true | 启用显存时分复用调度 |
+| `agent.vram.unload_timeout` | 300 | 模型闲置超时卸载 (秒) |
 
 ## 技术栈
 
@@ -192,6 +212,7 @@ git push origin v0.3.2
 - **后端**: Python FastAPI + SSE
 - **文档解析**: pdfplumber, python-docx, python-pptx, openpyxl, ebooklib, beautifulsoup4, pylatexenc, striprtf
 - **翻译引擎**: Ollama (Qwen3) / OpenAI 兼容 API / Anthropic
+- **Agent**: 手写 ReAct 框架 + ChromaDB RAG + KV Cache 时分复用调度
 - **容器化**: Docker 多阶段构建
 
 ## License

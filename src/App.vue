@@ -165,6 +165,13 @@
             </div>
           </div>
 
+          <!-- Agent 助手按钮 -->
+          <button class="topbar-icon-btn" :class="{ active: showAgentChat }" @click="showAgentChat = !showAgentChat" title="Agent 助手">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+          </button>
+
           <!-- 主题切换按钮 -->
             <button class="topbar-icon-btn" @click="toggleTheme" :title="isDark ? '切换日间模式' : '切换夜间模式'">
               <svg v-if="isDark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -350,18 +357,140 @@
           </div>
         </div>
       </main>
+
+      <!-- Agent 聊天面板 -->
+      <div class="agent-panel" :class="{ open: showAgentChat }">
+        <div class="agent-header">
+          <div class="agent-tabs">
+            <button class="agent-tab" :class="{ active: agentTab === 'chat' }" @click="agentTab = 'chat'">对话</button>
+            <button class="agent-tab" :class="{ active: agentTab === 'docs' }" @click="agentTab = 'docs'">知识库</button>
+          </div>
+          <button class="agent-close-btn" @click="showAgentChat = false">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- 对话 Tab -->
+        <div v-show="agentTab === 'chat'" class="agent-chat">
+          <div class="agent-messages" ref="agentMessagesRef">
+            <div v-if="agentMessages.length === 0" class="agent-empty">
+              <p>向 Agent 助手提问</p>
+              <p class="hint">支持搜索文档、翻译文本、查询 arXiv 论文</p>
+            </div>
+            <div v-for="msg in agentMessages" :key="msg.id" class="agent-msg" :class="msg.role">
+              <!-- 事件流 -->
+              <template v-for="(evt, i) in msg.events" :key="i">
+                <div v-if="evt.type === 'thinking'" class="agent-event thinking">
+                  <span class="evt-label">Thinking</span> {{ evt.content }}
+                </div>
+                <div v-else-if="evt.type === 'tool_call'" class="agent-event tool-call">
+                  <span class="evt-label">Tool</span> {{ evt.metadata?.tool_name || evt.content }}
+                  <span v-if="evt.metadata?.arguments" class="evt-args">
+                    {{ JSON.stringify(evt.metadata.arguments).slice(0, 80) }}
+                  </span>
+                </div>
+                <div v-else-if="evt.type === 'tool_result'" class="agent-event tool-result">
+                  <span class="evt-label">Result</span>
+                  <span v-if="evt.metadata?.duration_ms">({{ evt.metadata.duration_ms }}ms)</span>
+                  {{ evt.content.slice(0, 150) }}
+                </div>
+              </template>
+              <!-- 消息内容 -->
+              <div v-if="msg.content" class="agent-bubble">{{ msg.content }}</div>
+              <div v-if="msg.isStreaming" class="agent-streaming">
+                <span class="dot-pulse"></span>
+              </div>
+            </div>
+          </div>
+          <div class="agent-input-area">
+            <input
+              v-model="agentInput"
+              @keydown.enter="sendAgentMessage"
+              :disabled="agentSending"
+              placeholder="输入消息..."
+              class="agent-input"
+            />
+            <button class="agent-send-btn" @click="sendAgentMessage" :disabled="agentSending || !agentInput.trim()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- 知识库 Tab -->
+        <div v-show="agentTab === 'docs'" class="agent-docs">
+          <div class="docs-toolbar">
+            <span class="docs-title">已入库文档</span>
+            <button class="btn ghost" @click="agentFetchDocs" :disabled="agentRagLoading">刷新</button>
+          </div>
+          <div v-if="agentRagLoading" class="docs-loading">加载中...</div>
+          <div v-else-if="agentRagDocuments.length === 0" class="docs-empty">暂无文档</div>
+          <div v-else class="docs-list">
+            <div v-for="doc in agentRagDocuments" :key="doc.id" class="doc-card">
+              <div class="doc-info">
+                <span class="doc-title">{{ doc.title || doc.id }}</span>
+                <span class="doc-meta">{{ doc.chunk_count }} 块</span>
+              </div>
+              <button class="doc-del-btn" @click="agentDeleteDoc(doc.id)" title="删除">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { open } from '@tauri-apps/plugin-dialog'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useTranslate } from './composables/useTranslate'
+import { useAgentChat } from './composables/useAgentChat'
 
 const { state, translate, translateFromPath, reset, cleanup, checkHealth, checkOllama, startOllama, downloadResult, overallProgress, checkCloudApi, getConfig, updateConfig, getProviderPresets, restartBackend, listenBackendCrash, setStatus, setError, setStepMessage } = useTranslate()
+
+// ── Agent 聊天 ──────────────────────────────────────────────
+const {
+  messages: agentMessages,
+  sending: agentSending,
+  ragDocuments: agentRagDocuments,
+  ragLoading: agentRagLoading,
+  sendMessage: agentSendMessage,
+  fetchRAGDocuments: _fetchRAGDocs,
+  deleteRAGDocument: agentDeleteDoc,
+} = useAgentChat()
+
+const showAgentChat = ref(false)
+const agentTab = ref<'chat' | 'docs'>('chat')
+const agentInput = ref('')
+const agentMessagesRef = ref<HTMLElement | null>(null)
+
+async function sendAgentMessage() {
+  const text = agentInput.value.trim()
+  if (!text || agentSending.value) return
+  agentInput.value = ''
+  await agentSendMessage(text)
+  await nextTick()
+  if (agentMessagesRef.value) {
+    agentMessagesRef.value.scrollTop = agentMessagesRef.value.scrollHeight
+  }
+}
+
+async function agentFetchDocs() {
+  await _fetchRAGDocs()
+}
+
+watch(showAgentChat, async (open) => {
+  if (open) await agentFetchDocs()
+})
 
 const healthOk = ref(false)
 const ollamaOk = ref(false)
@@ -1711,4 +1840,152 @@ body {
 }
 .light .win-btn.close:hover { background: var(--red); color: #fff; }
 .light .btn.primary { color: #fff; }
+
+/* ── Agent 聊天面板 ───────────────────────────────────────────── */
+.agent-panel {
+  position: fixed; top: 0; right: 0;
+  width: 400px; height: 100vh;
+  background: var(--glass);
+  border-left: 1px solid var(--border);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  display: flex; flex-direction: column;
+  z-index: 200;
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+}
+.agent-panel.open { transform: translateX(0); }
+
+.agent-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+}
+
+.agent-tabs { display: flex; gap: 4px; }
+.agent-tab {
+  padding: 5px 14px; border: none; border-radius: 6px;
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  background: transparent; color: var(--text2);
+  transition: all 0.15s;
+}
+.agent-tab:hover { color: var(--text); }
+.agent-tab.active { background: var(--accent); color: #fff; }
+
+.agent-close-btn {
+  background: none; border: none; color: var(--text3);
+  cursor: pointer; padding: 4px; border-radius: 4px;
+  display: flex; align-items: center;
+}
+.agent-close-btn:hover { color: var(--text); background: var(--surface2); }
+
+/* 对话区域 */
+.agent-chat { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+.agent-messages {
+  flex: 1; overflow-y: auto; padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+
+.agent-empty {
+  text-align: center; color: var(--text3); padding: 40px 20px;
+}
+.agent-empty p { margin: 4px 0; }
+.agent-empty .hint { font-size: 12px; }
+
+.agent-msg { max-width: 90%; }
+.agent-msg.user { align-self: flex-end; }
+.agent-msg.assistant { align-self: flex-start; }
+
+.agent-bubble {
+  padding: 10px 14px; border-radius: 12px;
+  font-size: 14px; line-height: 1.6;
+  white-space: pre-wrap; word-break: break-word;
+}
+.agent-msg.user .agent-bubble {
+  background: var(--accent); color: #fff;
+  border-bottom-right-radius: 4px;
+}
+.agent-msg.assistant .agent-bubble {
+  background: var(--surface2); color: var(--text);
+  border-bottom-left-radius: 4px;
+}
+
+/* 事件流样式 */
+.agent-event {
+  font-size: 12px; color: var(--text3); padding: 4px 8px;
+  margin-bottom: 4px; border-radius: 6px;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.agent-event.thinking { font-style: italic; }
+.agent-event.tool-call { border-left: 2px solid var(--accent); }
+.agent-event.tool-result { border-left: 2px solid var(--green); }
+
+.evt-label {
+  font-weight: 600; font-size: 11px; text-transform: uppercase;
+  margin-right: 6px; color: var(--text2);
+}
+.evt-args { display: block; font-size: 11px; color: var(--text3); margin-top: 2px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.agent-streaming { display: flex; padding: 8px 14px; }
+.dot-pulse {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); animation: dot-pulse 1.2s infinite;
+}
+@keyframes dot-pulse {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1); }
+}
+
+/* 输入区域 */
+.agent-input-area {
+  display: flex; gap: 8px; padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+.agent-input {
+  flex: 1; padding: 8px 12px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--surface);
+  color: var(--text); font-size: 14px; font-family: inherit;
+  outline: none; transition: border-color 0.15s;
+}
+.agent-input:focus { border-color: var(--accent); }
+.agent-input:disabled { opacity: 0.5; }
+
+.agent-send-btn {
+  padding: 8px 12px; border: none; border-radius: 8px;
+  background: var(--accent); color: #fff; cursor: pointer;
+  display: flex; align-items: center;
+  transition: opacity 0.15s;
+}
+.agent-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.agent-send-btn:not(:disabled):hover { opacity: 0.85; }
+
+/* 知识库 Tab */
+.agent-docs { flex: 1; overflow-y: auto; padding: 16px; }
+.docs-toolbar {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 12px;
+}
+.docs-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.docs-loading, .docs-empty { text-align: center; color: var(--text3); padding: 40px; }
+
+.docs-list { display: flex; flex-direction: column; gap: 8px; }
+
+.doc-card {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 12px; background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 8px;
+}
+.doc-info { display: flex; flex-direction: column; gap: 2px; }
+.doc-title { font-size: 13px; color: var(--text); }
+.doc-meta { font-size: 11px; color: var(--text3); }
+
+.doc-del-btn {
+  background: none; border: none; color: var(--text3);
+  cursor: pointer; padding: 4px; border-radius: 4px;
+  display: flex; align-items: center;
+}
+.doc-del-btn:hover { color: var(--red); background: rgba(248,113,113,0.1); }
+
+/* Topbar agent 按钮激活态 */
+.topbar-icon-btn.active { color: var(--accent2); background: var(--accent-bg); }
 </style>
