@@ -1,0 +1,36 @@
+\documentclass[$if(fontsize)$$fontsize$,$endif$]{acmart}
+$if(lang)$
+\usepackage[$lang$]{babel}
+$endif$
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{balance}
+
+\copyrightyear{2026}
+\acmYear{2026}
+\acmConference[]{}{}{2026}
+
+$if(title)$
+\title{$title$}
+$endif$
+$if(author)$
+\author{$for(author)$$author$$sep$ \and $endfor$}
+$endif$
+$if(abstract)$
+\begin{abstract}
+$abstract$
+\end{abstract}
+$endif$
+$if(CCSkeywords)$
+\keywords{$for(CCSkeywords)$$CCSkeywords$$sep$, $endfor$}
+$endif$
+
+\begin{document}
+\maketitle
+$body$
+$if(bibliography)$
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{$bibliography$}
+$endif$
+\end{document}

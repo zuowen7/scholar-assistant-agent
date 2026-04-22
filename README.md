@@ -2,218 +2,151 @@
 
 本地离线 + 云端大模型双引擎学术文献智能翻译工具。支持 16 种文件格式，自动清洗排版噪声，输出高质量双语对照文档。内置 Agent 助手，支持文档检索、arXiv 搜索和智能问答。
 
-> **最新版本 v0.3.1** — PDF 双栏提取优化、翻译循环重复检测、进程生命周期绑定
+> **v0.3.1** — PDF 双栏提取优化、翻译循环重复检测、纯 Python / Pandoc 双通道 PDF 导出、NSIS 一键安装
 
 ## 一键安装桌面端
 
-前往 [Releases 页面](https://github.com/zuowen7/translator/releases) 下载对应平台的安装包：
+前往 [Releases 页面](https://github.com/zuowen7/translator/releases) 下载 `Scholar Translate_0.3.1_x64-setup.exe`，安装即可：
 
-| 平台 | 文件 |
-|------|------|
-| Windows | `.exe` 安装包 |
-| macOS (Apple Silicon) | `.dmg` |
-| macOS (Intel) | `.dmg` |
-| Linux | `.AppImage` 或 `.deb` |
+- **内置 Pandoc 3.6.2** — 无需手动安装，NSIS 安装包已打包
+- **内置 Python 后端** — PyInstaller 单文件打包，开箱即用
+- 支持本地 Ollama 或云端 API 翻译引擎
+
+### 翻译引擎配置
 
 安装后启动应用，在「翻译引擎设置」中选择引擎：
 
-- **本地 Ollama**：安装 [Ollama](https://ollama.com) 并拉取模型 → `ollama pull qwen3:8b`
-- **云端 API**：填写 API Key 即可使用，无需安装 Ollama（支持 OpenAI、Anthropic、DeepSeek 等）
-
----
-
-## Docker 一键部署（Web 版）
-
-适合服务器部署或不想安装桌面端的用户。
-
-**前提条件**：安装 [Docker](https://www.docker.com/)
-
-```bash
-# 1. 克隆仓库
-git clone https://github.com/zuowen7/translator.git
-cd translator
-
-# 2. 一键启动
-docker compose up -d
-
-# 3. 拉取翻译模型（首次使用）
-docker compose exec ollama ollama pull qwen3:8b
-
-# 4. 浏览器打开
-# http://localhost:18088
-```
-
-### 常用命令
-
-```bash
-docker compose up -d          # 启动
-docker compose down           # 停止
-docker compose logs -f app    # 查看应用日志
-```
-
-### GPU 加速
-
-默认 CPU 运行。如需 GPU 加速，编辑 `docker-compose.yml`，取消 ollama 服务的 `deploy` 注释块（需要 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)）。
+| 引擎 | 配置方式 |
+|------|----------|
+| **本地 Ollama** | 安装 [Ollama](https://ollama.com) → `ollama pull qwen3:8b` |
+| **云端 API** | 填写 API Key，支持 OpenAI / Anthropic / DeepSeek / 智谱 等 |
 
 ---
 
 ## 功能特性
 
 ### 文档解析
-- **16 种格式支持** — PDF、Word、Excel、PowerPoint、TXT、Markdown、HTML、EPUB、RTF、LaTeX、CSV、JSON、XML、SRT 等
+- **16 种格式** — PDF、Word、Excel、PowerPoint、TXT、Markdown、HTML、EPUB、RTF、LaTeX、CSV、JSON、XML、SRT
 - **PDF 智能解析** — 自动检测单栏/双栏布局，词间距丢失时自动回退字符级坐标推断
 - **文本清洗** — 修复断行、移除水印/页眉页脚、处理连字符断词、修复跨页截断词
 - **引用区自动跳过** — 识别 REFERENCES 区域并跳过翻译，减少 token 浪费
 
 ### 翻译引擎
 - **本地 Ollama** — 基于 Qwen3 模型，全程离线，无需 API Key
-- **云端 API** — 支持 OpenAI、Anthropic、DeepSeek、Google Gemini 等主流供应商
+- **云端 API** — 支持 OpenAI、Anthropic、DeepSeek、智谱 GLM 等主流供应商
 - **术语一致性** — 自动构建术语表，跨 chunk 保持翻译一致
-- **文档级上下文** — 注入标题+摘要作为全局上下文
-- **翻译质量校验** — 自动检测未翻译、截断等问题并重试
+- **翻译质量校验** — 自动检测未翻译、截断、循环重复等问题并重试
 
 ### 阅读体验
 - **三种视图** — 逐句对照 / 段落对照 / 全文 Markdown
 - **阅读自定义** — 字号、行高、字体、译文颜色可调节
-- **日间/夜间模式** — 一键切换亮暗主题，毛玻璃效果
-- **自定义背景** — 支持本地图片/视频作为窗口背景，可调节透明度
+- **日间/夜间模式** — 一键切换亮暗主题
 
 ### Agent 智能助手
 - **ReAct 推理循环** — 手写 Agent 框架，不依赖 LangChain/LlamaIndex
 - **RAG 文档检索** — 基于 ChromaDB 的本地向量存储，CPU 嵌入零配置
-- **工具调用** — 文档检索、文本翻译、arXiv 论文搜索
-- **显存管理** — 单模型时分复用调度，KV Cache 隔离，消费级 GPU 友好
-- **知识库管理** — 前端可视化管理已入库文档，支持查看和删除
+- **工具调用** — 文档翻译、文本检索、arXiv 论文搜索
+- **对话管理** — 流式 SSE 输出，事件卡片可视化推理过程
 
-### 工程质量
-- **实时进度** — SSE 流式推送，解析/清洗/切块/翻译/格式化 5 步进度可视化
-- **SSE 断线重连** — 自动检测连接中断，最多 3 次重连并验证后端健康状态
-- **进程生命周期** — Tauri 绑定 Python/Ollama 子进程，崩溃自动通知前端并提供重启按钮
-- **安全防护** — 路径遍历防护、API Key 脱敏、XSS 注入阻断、全局异常兜底
-- **翻译健壮性** — 指数退避重试、速率限制、prompt 长度保护、输出质量校验与截断修复、行级+句级循环重复检测
-- **日志规范** — 全链路使用 `logging` 模块，无 `print`/`console.log` 遗留
-- **Docker 一键部署** — `docker compose up -d` 即可使用
-
----
-
-## 本地开发
-
-```bash
-# 安装前端依赖
-npm install
-
-# 安装 Python 依赖
-pip install -r python/requirements.txt
-
-# 安装 Ollama 并拉取模型（本地模式）
-ollama pull qwen3:8b
-
-# 启动桌面应用（开发模式）
-npm run tauri dev
-
-# 构建安装包
-npm run tauri build
-```
-
-### 纯云端模式（无需 Ollama）
-
-适合只使用各家云端大模型 API 的场景：
-
-```bash
-cd python
-pip install -r requirements.txt
-# 在 config/default.yaml 填写 translator.cloud，或用前端「翻译引擎 → 云端 API」保存
-python api_cloud.py --host 127.0.0.1 --port 18089
-```
-
-- 翻译始终走云端；`GET /api/health` 会包含 `"mode": "cloud_only"`。
-- 上传与输出目录为 `python/data_cloud/`，与本地 `api.py` 使用的 `python/data/` 分开。
-- 供应商列表见 `GET /api/cloud/providers`；未列出的 OpenAI 兼容网关选「自定义」并填写 Base URL。
-
----
-
-## 发布新版本
-
-```bash
-# 打 tag 触发 GitHub Actions 自动构建并发布
-git tag v0.3.2
-git push origin v0.3.2
-```
-
-构建完成后会在 [Releases 页面](https://github.com/zuowen7/translator/releases) 自动生成草稿，点击发布即可。
+### PDF 导出
+- **Pandoc 双通道** — Pandoc 可用时走 Pandoc → LaTeX → PDF；不可用时自动降级纯 Python `markdown_to_latex()` 引擎
+- **期刊模板** — 支持 generic、IEEE、ACM、CVPR、Springer、Elsevier 等模板
+- **Tectonic 编译** — 自动检测系统 Tectonic 安装，优先用于 PDF 编译
 
 ---
 
 ## 项目结构
 
 ```
-├── src/                        # Vue 3 前端
-│   ├── App.vue                 # 主界面（上传/进度/结果/Agent 面板）
+├── src/                          # Vue 3 前端
+│   ├── App.vue                   # 主界面（上传/进度/结果 + Agent 面板）
+│   ├── components/              # UI 组件（FileTree、EditorLayout、AgentPanel 等）
 │   ├── composables/
-│   │   ├── useTranslate.ts     # 翻译状态管理 + SSE 客户端
-│   │   └── useAgentChat.ts     # Agent 对话状态管理 + SSE 客户端
-│   └── types/                  # TypeScript 类型定义
-├── src-tauri/                  # Tauri 2 桌面端（Rust）
-│   └── src/main.rs             # 进程管理（Python + Ollama 子进程）
+│   │   ├── useTranslate.ts       # 翻译状态管理 + SSE 客户端
+│   │   ├── useAgentChat.ts       # Agent 对话状态管理 + SSE 客户端
+│   │   ├── useEditor.ts          # Monaco Editor 封装
+│   │   └── useFileTree.ts        # 文件树管理
+│   └── types/                   # TypeScript 类型定义
+├── src-tauri/                    # Tauri 2 桌面端（Rust）
+│   ├── src/main.rs              # 进程管理（启动 Python/Ollama 子进程）
+│   ├── capabilities/            # Tauri capability 权限配置
+│   ├── resources/pandoc/        # 内置 Pandoc 3.6.2（NSIS 打包）
+│   └── python-dist/             # PyInstaller 打包的 Python 后端
 ├── python/
-│   ├── api.py                  # FastAPI：Ollama + 可选云端
-│   ├── api_cloud.py            # 纯云端模式（无 Ollama），数据在 data_cloud/
-│   ├── api_factory.py          # 应用工厂 create_app(cloud_only=…)
-│   ├── test_agent.py           # Agent 模块终端集成测试
+│   ├── api_factory.py           # FastAPI 应用工厂（翻译 + Agent 双模式）
+│   ├── pandoc_templates/        # Pandoc 输出模板（generic.tex 等）
+│   ├── prompts/                 # Agent / AI Edit prompt 模板
+│   ├── paper_assets.py          # 期刊模板资产工具
 │   ├── src/
-│   │   ├── parser/             # 多格式文档解析（dispatcher + PDF extractor）
-│   │   ├── cleaner/            # 文本清洗管道
-│   │   ├── chunker/            # 智能切块（sentence/paragraph/fixed 策略）
-│   │   ├── translator/         # 翻译客户端（Ollama + Cloud）
-│   │   │   ├── ollama_client.py    # 本地 Ollama 客户端
-│   │   │   ├── cloud_client.py     # 云端 API 客户端
-│   │   │   └── context.py          # 文档级上下文提取
-│   │   ├── agent/              # Agent 子系统（ReAct + RAG + 显存调度）
-│   │   │   ├── agent.py            # ReAct 推理循环（双策略工具调用）
-│   │   │   ├── models.py           # 数据模型（Message/ToolCall/AgentEvent）
-│   │   │   ├── tools.py            # 工具注册表 + @tool 装饰器
-│   │   │   ├── rag.py              # ChromaDB 向量存储（ingest/retrieve/delete）
-│   │   │   └── vram_manager.py     # 单模型时分复用调度器（KV Cache 隔离）
-│   │   ├── formatter/          # 输出格式化（bilingual/parallel/translated_only）
-│   │   └── constants.py        # 共享常量（引用区检测模式等）
-│   └── config/                 # 默认 & Docker 配置
-├── .github/workflows/          # CI/CD：tag 触发自动构建
-├── Dockerfile                  # 多阶段构建（前端 + 后端）
-├── docker-compose.yml          # Ollama + Web 一键部署
-└── vite.config.ts              # Vite 配置
+│   │   ├── parser/              # 多格式文档解析
+│   │   ├── cleaner/             # 文本清洗管道
+│   │   ├── chunker/             # 智能切块（sentence/paragraph/fixed）
+│   │   ├── translator/          # 翻译客户端（Ollama + Cloud）
+│   │   ├── agent/               # Agent 子系统（ReAct + RAG）
+│   │   │   ├── agent.py         # ReAct 推理循环
+│   │   │   ├── tools.py         # 工具注册表
+│   │   │   ├── rag.py           # ChromaDB 向量存储
+│   │   │   └── vram_manager.py  # VRAM 时分复用调度
+│   │   └── formatter/           # 输出格式化
+│   └── config/                  # 默认配置
+├── scripts/
+│   └── api.spec                 # PyInstaller spec 文件
+├── .github/workflows/            # CI/CD：tag 触发自动构建 + 发布
+├── Dockerfile                   # 多阶段构建
+├── docker-compose.yml           # Ollama + Web 一键部署
+├── vite.config.ts               # Vite 配置
+└── README.md
 ```
-
-## 配置项
-
-| 配置项 | 默认值 | 说明 |
-|--------|--------|------|
-| `chunker.max_tokens` | 2048 | 每块最大 token 数 |
-| `chunker.overlap_tokens` | 128 | 块间重叠 token 数 |
-| `chunker.strategy` | sentence | 切块策略 (sentence/paragraph/fixed) |
-| `translator.engine` | ollama | 翻译引擎 (ollama/cloud) |
-| `translator.model` | qwen3:8b | Ollama 模型 |
-| `translator.num_predict` | 16384 | 最大生成 token 数 |
-| `translator.temperature` | 0.3 | 生成温度 |
-| `translator.cloud.provider` | openai | 云端供应商 (openai/anthropic/deepseek 等) |
-| `translator.cloud.api_key` | | 云端 API Key |
-| `translator.cloud.base_url` | https://api.openai.com/v1 | 云端 API 地址 |
-| `translator.cloud.model` | gpt-4o | 云端模型名称 |
-| `formatter.output_format` | bilingual | 输出格式 (bilingual/parallel/translated_only) |
-| `agent.model` | qwen3:8b | Agent 推理模型 |
-| `agent.max_steps` | 10 | 最大 ReAct 推理步数 |
-| `agent.rag.collection_name` | scholar_docs | RAG 向量库集合名 |
-| `agent.rag.chunk_size` | 512 | RAG 切块大小 (tokens) |
-| `agent.vram.enabled` | true | 启用显存时分复用调度 |
-| `agent.vram.unload_timeout` | 300 | 模型闲置超时卸载 (秒) |
 
 ## 技术栈
 
-- **前端**: Vue 3 + TypeScript + Vite + Tauri 2
-- **后端**: Python FastAPI + SSE
-- **文档解析**: pdfplumber, python-docx, python-pptx, openpyxl, ebooklib, beautifulsoup4, pylatexenc, striprtf
-- **翻译引擎**: Ollama (Qwen3) / OpenAI 兼容 API / Anthropic
-- **Agent**: 手写 ReAct 框架 + ChromaDB RAG + KV Cache 时分复用调度
-- **容器化**: Docker 多阶段构建
+| 层级 | 技术 | 说明 |
+|------|------|------|
+| 桌面端 | Tauri 2 + Rust | 窗口管理 + 子进程生命周期绑定 |
+| 前端 | Vue 3 + TypeScript + Vite | 单页应用 |
+| 编辑器 | Monaco Editor | Markdown 语法高亮 + AI 辅助编辑 |
+| 后端 | Python FastAPI + SSE | 翻译流式输出 + Agent 对话 |
+| 文档解析 | pdfplumber, python-docx, ebooklib 等 | 16 种格式支持 |
+| 翻译 | Ollama (Qwen3) / 云端 OpenAI 兼容 API | 本地 + 云端双模式 |
+| Agent | 手写 ReAct + ChromaDB | 不依赖 LangChain/LlamaIndex |
+| PDF 导出 | Pandoc + Tectonic + 纯 Python 降级 | 双通道保障 |
+
+## 本地开发
+
+```bash
+# 前端依赖
+npm install
+
+# Python 依赖
+cd python
+pip install -r requirements.txt
+
+# 启动桌面应用（开发模式）
+npm run tauri dev
+
+# 构建安装包（需先安装 Rust）
+npm run tauri build
+```
+
+### 纯云端模式（无需 Ollama）
+
+```bash
+cd python
+pip install -r requirements.txt
+python api_cloud.py --host 127.0.0.1 --port 18089
+```
+
+---
+
+## 发布新版本
+
+```bash
+# 修改版本号后，打 tag 触发 GitHub Actions 自动构建
+git tag v0.3.2
+git push origin v0.3.2
+```
+
+GitHub Actions 完成构建后，在 [Releases 页面](https://github.com/zuowen7/translator/releases) 自动生成草稿，点击发布即可。
 
 ## License
 
