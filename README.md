@@ -147,7 +147,3 @@ git push origin v0.3.2
 ```
 
 GitHub Actions 完成构建后，在 [Releases 页面](https://github.com/zuowen7/translator/releases) 自动生成草稿，点击发布即可。
-
-## License
-
-[MIT](LICENSE)
