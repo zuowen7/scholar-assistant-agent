@@ -1,0 +1,59 @@
+{
+  "templates": [
+    {
+      "id": "ieee",
+      "name": "IEEE Transactions",
+      "description": "IEEE 标准双栏模板，适合计算机、电子工程类论文",
+      "class": "article",
+      "color": "#0066CC",
+      "bib_style": "plain",
+      "supports_math": true,
+      "supports_figures": true,
+      "two_column": true
+    },
+    {
+      "id": "acm",
+      "name": "ACM SIG",
+      "description": "ACM 系统格式，适合计算机顶会论文",
+      "class": "acmart",
+      "color": "#E87722",
+      "bib_style": "ACM-Reference-Format",
+      "supports_math": true,
+      "supports_figures": true,
+      "two_column": true
+    },
+    {
+      "id": "generic",
+      "name": "通用学术模板",
+      "description": "通用单栏模板，适合大多数期刊和会议",
+      "class": "article",
+      "color": "#2E7D32",
+      "bib_style": "plain",
+      "supports_math": true,
+      "supports_figures": true,
+      "two_column": false
+    },
+    {
+      "id": "springer_lncs",
+      "name": "Springer LNCS",
+      "description": "Springer Lecture Notes in Computer Science，适合计算机顶会",
+      "class": "article",
+      "color": "#C62828",
+      "bib_style": "splncs04",
+      "supports_math": true,
+      "supports_figures": true,
+      "two_column": true
+    },
+    {
+      "id": "elsevier_elsarticle",
+      "name": "Elsevier elsarticle",
+      "description": "Elsevier 期刊通用模板",
+      "class": "elsarticle",
+      "color": "#FF6F00",
+      "bib_style": "unsrt",
+      "supports_math": true,
+      "supports_figures": true,
+      "two_column": false
+    }
+  ]
+}
