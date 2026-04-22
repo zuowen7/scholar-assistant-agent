@@ -26,3 +26,6 @@ pylatexenc>=2.10
 python-pptx>=0.6.23
 openpyxl>=3.1.0
 charset-normalizer>=3.3.0
+
+# Agent / RAG
+chromadb>=0.4.0

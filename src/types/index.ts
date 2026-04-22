@@ -92,3 +92,32 @@ export interface ProviderPreset {
   models: string[]
   api_format: string
 }
+
+// ── Agent / RAG 类型 ────────────────────────────────────────────
+
+export interface AgentEvent {
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'response' | 'error'
+  content: string
+  metadata?: {
+    tool_name?: string
+    arguments?: Record<string, unknown>
+    duration_ms?: number
+    error?: boolean
+  }
+}
+
+export interface AgentChatMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  events: AgentEvent[]
+  isStreaming: boolean
+  timestamp: number
+}
+
+export interface RAGDocument {
+  id: string
+  title: string
+  chunk_count: number
+  metadata: Record<string, unknown>
+}
