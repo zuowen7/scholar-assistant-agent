@@ -66,12 +66,97 @@ export interface AppConfig {
   cleaner: { max_line_gap: number; fix_hyphenation: boolean; remove_headers_footers: boolean }
   chunker: { max_tokens: number; overlap_tokens: number; strategy: string }
   translator: {
+    engine: 'ollama' | 'cloud'
     ollama_base_url: string
     model: string
     temperature: number
     num_predict: number
     system_prompt: string
     timeout: number
+    cloud: CloudConfig
   }
   formatter: { output_format: string; file_format: string }
+  network: { proxy: string }
 }
+
+export interface CloudConfig {
+  provider: string
+  api_key: string
+  base_url: string
+  model: string
+  max_tokens: number
+}
+
+export interface ProviderPreset {
+  name: string
+  base_url: string
+  models: string[]
+  api_format: string
+}
+
+// ── Agent / RAG 类型 ────────────────────────────────────────────
+
+export interface AgentEvent {
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'response' | 'error'
+  content: string
+  metadata?: {
+    tool_name?: string
+    arguments?: Record<string, unknown>
+    duration_ms?: number
+    error?: boolean
+  }
+}
+
+export interface AgentChatMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  events: AgentEvent[]
+  isStreaming: boolean
+  timestamp: number
+}
+
+export interface RAGDocument {
+  id: string
+  title: string
+  chunk_count: number
+  metadata: Record<string, unknown>
+}
+
+// ── 编辑器 / Scholar Cursor 类型 ─────────────────────────────────
+
+export interface EditorTab {
+  id: string        // unique per open file (path as id)
+  path: string | null  // null = untitled
+  name: string
+  content: string
+  isModified: boolean
+}
+
+export interface FileEntry {
+  name: string
+  path: string
+  isDir: boolean
+  children?: FileEntry[]
+}
+
+export interface EditorSelection {
+  startLine: number
+  endLine: number
+  startCol: number
+  endCol: number
+  text: string
+}
+
+export interface EditRequest {
+  text: string
+  instruction: string
+}
+
+export interface EditStreamEvent {
+  type: 'progress' | 'delta' | 'complete' | 'error'
+  content: string
+  usage?: { prompt_tokens: number; completion_tokens: number }
+}
+
+export type AppMode = 'translate' | 'editor'

@@ -5,10 +5,23 @@ export default defineConfig({
   plugins: [vue()],
   clearScreen: false,
   server: {
+    host: '127.0.0.1',
     port: 5173,
     strictPort: true,
   },
   env: {
     VITE_API_URL: "http://localhost:18088",
+  },
+  optimizeDeps: {
+    include: ['monaco-editor'],
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          monaco: ['monaco-editor'],
+        },
+      },
+    },
   },
 });

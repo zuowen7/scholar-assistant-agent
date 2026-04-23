@@ -1,0 +1,70 @@
+{
+  "templates": [
+    {
+      "id": "acm",
+      "name": "ACM",
+      "description": "ACM 官方模板，支持 sigconf、acmsmall 等多种格式",
+      "class": "acmart",
+      "color": "#E87722",
+      "bib_style": "ACM-Reference-Format",
+      "supports_math": true,
+      "supports_figures": true,
+      "two_column": true
+    },
+    {
+      "id": "ieee_conference",
+      "name": "IEEE Conference",
+      "description": "IEEE 会议论文模板，适用于 ICCV、CVPR 等 IEEE 会议",
+      "class": "article",
+      "color": "#0066CC",
+      "bib_style": "plain",
+      "supports_math": true,
+      "supports_figures": true,
+      "two_column": true
+    },
+    {
+      "id": "ieee_journal",
+      "name": "IEEE Journal",
+      "description": "IEEE 期刊模板，适用于 TPAMI、TIP 等 IEEE 期刊",
+      "class": "IEEEtran",
+      "color": "#004488",
+      "bib_style": "IEEEtran",
+      "supports_math": true,
+      "supports_figures": true,
+      "two_column": true
+    },
+    {
+      "id": "lncs",
+      "name": "LNCS (Springer)",
+      "description": "Springer LNCS 模板，适用于 ECCV、ICALP 等",
+      "class": "llncs",
+      "color": "#C62828",
+      "bib_style": "splncs04",
+      "supports_math": true,
+      "supports_figures": true,
+      "two_column": true
+    },
+    {
+      "id": "neurips",
+      "name": "NeurIPS",
+      "description": "NeurIPS 2025 官方模板，AI/ML 顶会",
+      "class": "article",
+      "color": "#7B1FA2",
+      "bib_style": "plain",
+      "supports_math": true,
+      "supports_figures": true,
+      "two_column": false
+    },
+    {
+      "id": "generic_article",
+      "name": "Generic Article",
+      "description": "通用论文模板，适合初学者或无特定格式要求",
+      "class": "article",
+      "color": "#2E7D32",
+      "bib_style": "plain",
+      "supports_math": true,
+      "supports_figures": true,
+      "two_column": false
+    }
+  ]
+}
