@@ -107,6 +107,22 @@ class WordExportRequest(BaseModel):
     title: str = "Scholar Assistant Export"
 
 
+class CitationIndexRequest(BaseModel):
+    content: str                    # Markdown 文本
+    bibliography: list[dict] = []  # BibTeX 文献库
+    style: str = "ieee"            # 引用格式: ieee/apa/gbt7714
+
+
+class VisionAnalysisRequest(BaseModel):
+    analysis_type: str = "general"  # general/chart/table/formula
+
+
+class ZoteroSearchRequest(BaseModel):
+    query: str                         # 搜索关键词
+    item_type: str | None = None     # 限定文献类型
+    limit: int = 20                  # 最大返回数量
+
+
 _config_cache: dict | None = None
 _config_cache_mtime: float = 0.0
 
@@ -843,6 +859,351 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             filename=filename,
         )
+
+    # ── 图片上传 ────────────────────────────────────────────────
+    @app.post("/api/upload/image")
+    async def upload_image(file: UploadFile = File(...)):
+        """上传图片到 assets 目录
+
+        Returns:
+            {"path": "...", "filename": "...", "url": "..."}
+        """
+        # 检查文件类型
+        allowed_types = {"image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp"}
+        if file.content_type not in allowed_types:
+            raise HTTPException(400, f"不支持的图片格式: {file.content_type}")
+
+        # 创建 assets 目录
+        assets_dir = data_root / "assets"
+        assets_dir.mkdir(parents=True, exist_ok=True)
+
+        # 生成唯一文件名
+        ext = Path(file.filename).suffix.lower() if file.filename else ".png"
+        filename = f"{uuid.uuid4().hex[:12]}{ext}"
+        file_path = assets_dir / filename
+
+        # 保存文件
+        content = await file.read()
+        if len(content) > 50 * 1024 * 1024:  # 50MB 上限
+            raise HTTPException(413, "图片大小超过 50MB 限制")
+        with open(file_path, "wb") as f:
+            f.write(content)
+
+        # 返回相对路径（前端可拼装为完整 URL）
+        relative_path = f"/api/assets/{filename}"
+        return {
+            "path": str(file_path),
+            "filename": filename,
+            "url": relative_path,
+            "size": len(content),
+        }
+
+    @app.get("/api/assets/{filename}")
+    async def serve_asset(filename: str):
+        """提供 assets 目录下的静态文件访问"""
+        assets_dir = data_root / "assets"
+        safe_path = (assets_dir / filename).resolve()
+
+        # 安全检查
+        if not str(safe_path).startswith(str(assets_dir.resolve())):
+            raise HTTPException(403, "禁止访问该文件")
+        if not safe_path.exists():
+            raise HTTPException(404, "文件不存在")
+
+        # 根据扩展名返回正确的 Content-Type
+        content_types = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".gif": "image/gif",
+            ".webp": "image/webp",
+            ".bmp": "image/bmp",
+        }
+        ext = safe_path.suffix.lower()
+        media_type = content_types.get(ext, "application/octet-stream")
+
+        return FileResponse(str(safe_path), media_type=media_type)
+
+    # ── MCP Vision 图像分析 ───────────────────────────────────
+    @app.post("/api/vision/analyze")
+    async def analyze_image(
+        file: UploadFile = File(...),
+        analysis_type: str = "general",
+    ):
+        """MCP 多模态图像分析（OCR、图表理解、表格识别）
+
+        Args:
+            file: 图片文件
+            analysis_type: 分析类型
+                - general: 通用描述 + 文字识别
+                - chart: 图表分析（柱状图、折线图等）
+                - table: 表格提取
+                - formula: 公式识别
+
+        Returns:
+            {
+                "text": "识别的文字/描述",
+                "chart_type": "bar/line/pie/table/...",
+                "chart_description": "图表详细描述",
+                "table_data": [["col1", "col2"], ...],
+                "key_findings": ["要点1", ...],
+                "raw_description": "原始API返回"
+            }
+        """
+        # 保存上传的图片
+        assets_dir = data_root / "assets"
+        assets_dir.mkdir(parents=True, exist_ok=True)
+
+        ext = Path(file.filename).suffix.lower() if file.filename else ".png"
+        temp_filename = f"vision_{uuid.uuid4().hex[:12]}{ext}"
+        temp_path = assets_dir / temp_filename
+
+        content = await file.read()
+        if len(content) > 20 * 1024 * 1024:  # 20MB 上限
+            raise HTTPException(413, "图片大小超过 20MB 限制")
+        with open(temp_path, "wb") as f:
+            f.write(content)
+
+        try:
+            # 调用 Vision Client
+            from src.mcp.vision_client import VisionClient
+
+            client = VisionClient()
+            result = await client.analyze_image(temp_path, analysis_type=analysis_type)
+
+            return result.to_dict()
+        finally:
+            # 清理临时文件
+            temp_path.unlink(missing_ok=True)
+
+    @app.post("/api/vision/ocr")
+    async def ocr_image(file: UploadFile = File(...)):
+        """OCR 专用接口 — 识别图片中的文字
+
+        Returns:
+            {"text": "识别的文字内容", ...}
+        """
+        return await analyze_image(file, analysis_type="general")
+
+    @app.post("/api/vision/chart")
+    async def analyze_chart(file: UploadFile = File(...)):
+        """图表分析接口
+
+        Returns:
+            {"chart_type": "...", "chart_description": "...", "key_findings": [...], ...}
+        """
+        return await analyze_image(file, analysis_type="chart")
+
+    @app.post("/api/vision/table")
+    async def extract_table(file: UploadFile = File(...)):
+        """表格提取接口
+
+        Returns:
+            {"table_data": [["col1", "col2"], ...], ...}
+        """
+        return await analyze_image(file, analysis_type="table")
+
+    # ── 文献引用索引 ──────────────────────────────────────────
+    @app.put("/api/citation/index")
+    async def index_citations(req: CitationIndexRequest):
+        """文献引用索引处理
+
+        将 Markdown 中的 [@key] 替换为 [编号]，并生成参考文献节。
+
+        Args:
+            req.content: Markdown 文本
+            req.bibliography: BibTeX 文献库
+            req.style: 引用格式 (ieee/apa/gbt7714)
+
+        Returns:
+            {
+                "text": "替换引用后的文本",
+                "citations": [{"key": "...", "number": 1, "found": true}, ...],
+                "index": {"key1": 1, "key2": 2, ...},
+                "bibliography": "参考文献\n[1] ..."
+            }
+        """
+        from src.citation.indexer import CitationIndexer
+
+        indexer = CitationIndexer()
+        result = indexer.process(
+            text=req.content,
+            bibliography=req.bibliography,
+            style=req.style,
+            include_reference_section=True,
+        )
+
+        return result
+
+    @app.get("/api/citation/extract")
+    async def extract_citations(content: str):
+        """提取文本中的文献引用（不处理）
+
+        用于前端预览有多少引用需要处理。
+        """
+        from src.citation.indexer import CitationIndexer
+
+        indexer = CitationIndexer()
+        keys = indexer.extract_citations(content)
+        index = indexer.build_index(content)
+
+        return {
+            "keys": keys,
+            "unique_count": len(index),
+            "index": index,
+        }
+
+    # ── Zotero 文献管理 ──────────────────────────────────────────
+    @app.get("/api/zotero/status")
+    async def zotero_status():
+        """检查 Zotero API 连接状态"""
+        try:
+            from src.zotero.client import ZoteroClient
+            client = ZoteroClient()
+            if not client.api_key or not client.user_id:
+                return {
+                    "connected": False,
+                    "message": "未配置 Zotero API Key 或 User ID",
+                }
+            return {
+                "connected": True,
+                "user_id": client.user_id,
+                "style": client.style,
+            }
+        except Exception as e:
+            return {
+                "connected": False,
+                "message": str(e),
+            }
+
+    @app.post("/api/zotero/search")
+    async def search_zotero(req: ZoteroSearchRequest):
+        """搜索 Zotero 文献库
+
+        Args:
+            req.query: 搜索关键词
+            req.item_type: 限定文献类型（可选）
+            req.limit: 最大返回数量（默认20）
+
+        Returns:
+            文献列表，每个文献包含详情和引用 key
+        """
+        try:
+            from src.zotero.client import ZoteroClient
+
+            client = ZoteroClient()
+            items = client.search(
+                query=req.query,
+                item_type=req.item_type,
+                limit=req.limit,
+            )
+
+            return {
+                "count": len(items),
+                "items": [item.to_dict() for item in items],
+            }
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:
+            logger.error("Zotero 搜索失败: %s", e)
+            raise HTTPException(500, f"Zotero 搜索失败: {e}")
+
+    @app.get("/api/zotero/item/{item_key}")
+    async def get_zotero_item(item_key: str):
+        """获取单条 Zotero 文献详情
+
+        Args:
+            item_key: 文献 key
+
+        Returns:
+            文献详情，包含 BibTeX 格式
+        """
+        try:
+            from src.zotero.client import ZoteroClient
+
+            client = ZoteroClient()
+            item = client.get_item(item_key)
+
+            if not item:
+                raise HTTPException(404, f"文献不存在: {item_key}")
+
+            return item.to_dict()
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error("获取 Zotero 文献失败: %s", e)
+            raise HTTPException(500, f"获取文献失败: {e}")
+
+    @app.get("/api/zotero/item/{item_key}/bibtex")
+    async def get_zotero_item_bibtex(item_key: str):
+        """导出单条文献为 BibTeX 格式"""
+        try:
+            from src.zotero.client import ZoteroClient
+
+            client = ZoteroClient()
+            item = client.get_item(item_key)
+
+            if not item:
+                raise HTTPException(404, f"文献不存在: {item_key}")
+
+            return {
+                "key": item_key,
+                "bibtex": item.to_bibtex(),
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error("导出 BibTeX 失败: %s", e)
+            raise HTTPException(500, f"导出失败: {e}")
+
+    @app.post("/api/zotero/export")
+    async def export_zotero_bibtex(item_keys: list[str] | None = None):
+        """批量导出 BibTeX
+
+        Args:
+            item_keys: 要导出的文献 key 列表，None 则导出全部
+
+        Returns:
+            BibTeX 格式文本
+        """
+        try:
+            from src.zotero.client import ZoteroClient
+
+            client = ZoteroClient()
+            bibtex = client.export_bibtex(item_keys)
+
+            return {
+                "bibtex": bibtex,
+                "count": len(bibtex.split("\n\n")) if bibtex else 0,
+            }
+        except Exception as e:
+            logger.error("导出 BibTeX 失败: %s", e)
+            raise HTTPException(500, f"导出失败: {e}")
+
+    @app.post("/api/zotero/citations")
+    async def get_zotero_citations(item_keys: list[str]):
+        """获取多条文献的引用信息
+
+        Args:
+            item_keys: 文献 key 列表
+
+        Returns:
+            文献列表，包含 Markdown 引用格式
+        """
+        try:
+            from src.zotero.client import ZoteroClient
+
+            client = ZoteroClient()
+            items = client.get_items_by_keys(item_keys)
+
+            return {
+                "count": len(items),
+                "items": [item.to_dict() for item in items],
+                "citations": [item.to_markdown_citation() for item in items],
+            }
+        except Exception as e:
+            logger.error("获取引用失败: %s", e)
+            raise HTTPException(500, f"获取引用失败: {e}")
 
     @app.on_event("shutdown")
     async def _shutdown():
