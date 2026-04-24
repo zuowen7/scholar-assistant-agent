@@ -10,9 +10,15 @@ Produces an --onedir bundle at src-tauri/python-dist/api/ containing:
 import sys
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files
+
 block_cipher = None
 
 python_dir = Path(SPECPATH).parent / "python"
+
+# Collect ALL chromadb submodules (chromadb uses lazy imports extensively)
+_chromadb_hiddenimports = collect_submodules('chromadb')
+_chromadb_datas = collect_data_files('chromadb', include_py_files=False)
 
 # Anaconda stores DLLs in Library/bin/ — PyInstaller doesn't find them automatically
 conda_bin = Path(sys.executable).parent / "Library" / "bin"
@@ -37,7 +43,7 @@ a = Analysis(
         (str(python_dir / "config" / "default.yaml"), "config"),
         (str(python_dir / "pandoc_templates"), "pandoc_templates"),
         (str(python_dir / "prompts"), "prompts"),
-    ],
+    ] + _chromadb_datas,
     hiddenimports=[
         # FastAPI / uvicorn
         "pydantic",
@@ -82,10 +88,6 @@ a = Analysis(
         "src.agent.error_classifier",
         "src.agent.hooks",
         # Agent subsystem — dependencies
-        "chromadb",
-        "chromadb.config",
-        "chromadb.api",
-        "chromadb.api.local",
         "onnxruntime",
         "sqlite3",
         # Source modules
@@ -102,7 +104,8 @@ a = Analysis(
         "src.translator.ollama_client",
         "src.translator.cloud_client",
         "src.translator.context",
-    ],
+        # chromadb: all submodules collected above via collect_submodules
+    ] + _chromadb_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
