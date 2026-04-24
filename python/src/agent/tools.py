@@ -28,13 +28,18 @@
 from __future__ import annotations
 
 import asyncio
+import functools
+import hashlib
 import inspect
 import json
 import logging
+import os
 import re
 import time
 import xml.etree.ElementTree as ET
+from collections import OrderedDict
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, get_type_hints
 
 import httpx
@@ -231,8 +236,13 @@ class ToolRegistry:
     execute() 中的 asyncio.to_thread() 本身是线程安全的。
     """
 
-    def __init__(self) -> None:
+    # 工具结果缓存的最大条目数
+    _CACHE_MAX_SIZE = 64
+
+    def __init__(self, enable_cache: bool = True) -> None:
         self._tools: dict[str, ToolDefinition] = {}
+        self._enable_cache = enable_cache
+        self._cache: OrderedDict[str, tuple[str, float]] = OrderedDict()
 
     def register(self, tool_def_or_fn: ToolDefinition | Callable, name: str | None = None) -> None:
         """注册一个工具到注册表。
@@ -311,6 +321,7 @@ class ToolRegistry:
         """异步执行指定工具，将结果序列化为字符串。
 
         执行策略:
+        - 先检查缓存，命中则直接返回。
         - 工具函数本身是同步的（复用现有 OllamaClient / parser 等同步代码）。
         - 通过 asyncio.to_thread() 在独立线程中执行，避免阻塞事件循环。
         - 执行结果截断至 _TOOL_RESULT_MAX_LEN 字符，保护 LLM 上下文窗口。
@@ -330,6 +341,14 @@ class ToolRegistry:
         if td is None:
             raise ValueError(f"未注册的工具: {name}")
 
+        # 检查缓存
+        cache_key = self._make_cache_key(name, arguments)
+        if self._enable_cache and cache_key in self._cache:
+            self._cache.move_to_end(cache_key)
+            cached_result, _ = self._cache[cache_key]
+            logger.debug("工具缓存命中: %s", name)
+            return cached_result
+
         try:
             result = await asyncio.to_thread(td.fn, **arguments)
             result_str = json.dumps(result, ensure_ascii=False) if not isinstance(result, str) else result
@@ -339,7 +358,32 @@ class ToolRegistry:
 
         if len(result_str) > _TOOL_RESULT_MAX_LEN:
             result_str = result_str[:_TOOL_RESULT_MAX_LEN] + "\n...[结果已截断]"
+
+        # 存入缓存（仅缓存成功结果，不缓存错误）
+        if self._enable_cache and not result_str.startswith("工具执行错误"):
+            self._cache[cache_key] = (result_str, time.monotonic())
+            if len(self._cache) > self._CACHE_MAX_SIZE:
+                self._cache.popitem(last=False)
+
         return result_str
+
+    def _make_cache_key(self, name: str, arguments: dict) -> str:
+        """生成工具调用的缓存键。
+
+        Args:
+            name: 工具名称。
+            arguments: 参数字典。
+
+        Returns:
+            缓存键字符串。
+        """
+        args_json = json.dumps(arguments, sort_keys=True, ensure_ascii=False)
+        args_hash = hashlib.md5(args_json.encode()).hexdigest()[:12]
+        return f"{name}:{args_hash}"
+
+    def clear_cache(self) -> None:
+        """清空工具结果缓存。"""
+        self._cache.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -445,6 +489,134 @@ def _crawl_arxiv(query: str, max_results: int = 5) -> str:
 
 
 # ---------------------------------------------------------------------------
+# LLM 驱动工具的辅助函数
+# ---------------------------------------------------------------------------
+
+def _call_llm_sync(
+    prompt: str,
+    ollama_base_url: str = "",
+    cloud_base_url: str = "",
+    cloud_api_key: str = "",
+    cloud_model: str = "",
+    model: str = "qwen3:8b",
+) -> str:
+    """同步调用 LLM，供文本处理工具使用。
+
+    Args:
+        prompt: 完整提示词。
+        ollama_base_url: Ollama API 地址。
+        cloud_base_url: 云端 API 地址。
+        cloud_api_key: 云端 API Key。
+        cloud_model: 云端模型名称。
+        model: Ollama 模型名称。
+
+    Returns:
+        LLM 生成的文本。
+    """
+    use_cloud = bool(cloud_api_key and cloud_base_url)
+    try:
+        with httpx.Client(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
+            if use_cloud:
+                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {cloud_api_key}"}
+                resp = client.post(
+                    f"{cloud_base_url}/chat/completions",
+                    json={
+                        "model": cloud_model or model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0.3,
+                        "max_tokens": 2048,
+                        "stream": False,
+                    },
+                    headers=headers,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+            else:
+                resp = client.post(
+                    f"{ollama_base_url}/api/chat",
+                    json={
+                        "model": model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "stream": False,
+                        "options": {"temperature": 0.3, "num_predict": 2048},
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                content = data.get("message", {}).get("content", "").strip()
+
+            content = re.sub(r"<think.*?>.*?</think.*?>", "", content, flags=re.DOTALL).strip()
+            return content if content else "（LLM 返回为空）"
+    except Exception as e:
+        return f"LLM 调用失败: {e}"
+
+
+# ---------------------------------------------------------------------------
+# 文件工具
+# ---------------------------------------------------------------------------
+
+_SANDBOX_ROOT = os.environ.get("SCHOLAR_AGENT_SANDBOX", str(Path.home() / "scholar_agent_files"))
+
+
+def _resolve_safe_path(file_path: str) -> Path:
+    """将用户提供的路径解析到沙箱目录内，防止路径遍历。
+
+    Args:
+        file_path: 用户提供的文件路径（相对或绝对）。
+
+    Returns:
+        解析后的安全绝对路径。
+
+    Raises:
+        ValueError: 路径逃逸沙箱时。
+    """
+    root = Path(_SANDBOX_ROOT).resolve()
+    target = (root / file_path).resolve() if not os.path.isabs(file_path) else Path(file_path).resolve()
+    if not str(target).startswith(str(root)):
+        raise ValueError(f"路径超出沙箱范围: {file_path}")
+    return target
+
+
+def _save_file(file_path: str, content: str) -> str:
+    """将内容保存到文件。支持在沙箱目录中创建文件和子目录。
+
+    Args:
+        file_path: 文件路径（相对于沙箱根目录，或绝对路径）。
+        content: 要保存的文本内容。
+    """
+    try:
+        safe_path = _resolve_safe_path(file_path)
+        safe_path.parent.mkdir(parents=True, exist_ok=True)
+        safe_path.write_text(content, encoding="utf-8")
+        return f"文件已保存: {safe_path} ({len(content)} 字符)"
+    except ValueError as e:
+        return f"路径安全错误: {e}"
+    except Exception as e:
+        return f"保存文件失败: {e}"
+
+
+def _read_file(file_path: str) -> str:
+    """读取文件内容。支持读取沙箱目录中的文本文件。
+
+    Args:
+        file_path: 文件路径（相对于沙箱根目录，或绝对路径）。
+    """
+    try:
+        safe_path = _resolve_safe_path(file_path)
+        if not safe_path.exists():
+            return f"文件不存在: {safe_path}"
+        content = safe_path.read_text(encoding="utf-8")
+        if len(content) > _TOOL_RESULT_MAX_LEN:
+            content = content[:_TOOL_RESULT_MAX_LEN] + "\n...[文件内容已截断]"
+        return content
+    except ValueError as e:
+        return f"路径安全错误: {e}"
+    except Exception as e:
+        return f"读取文件失败: {e}"
+
+
+# ---------------------------------------------------------------------------
 # 注册表工厂
 # ---------------------------------------------------------------------------
 
@@ -452,21 +624,26 @@ def create_default_registry(
     ollama_client: Any | None = None,
     cloud_client: Any | None = None,
     rag_store: Any | None = None,
+    ollama_base_url: str = "http://localhost:11434",
+    model: str = "qwen3:8b",
+    cloud_base_url: str = "",
+    cloud_api_key: str = "",
+    cloud_model: str = "",
 ) -> ToolRegistry:
     """创建包含所有默认工具的注册表。
 
     通过依赖注入将现有的翻译客户端、RAG 存储等实例传入，
     工具函数通过闭包捕获这些实例，避免在工具内部创建新的客户端。
 
-    该工厂模式确保:
-    - 工具函数复用已有的 HTTP 连接池。
-    - 翻译客户端的配置（模型、温度等）由外部统一管理。
-    - 工具注册过程集中在一处，便于维护和扩展。
-
     Args:
         ollama_client: 已初始化的 OllamaClient 实例（可选）。
         cloud_client: 已初始化的 CloudClient 实例（可选）。
         rag_store: 已初始化的 RAGStore 实例（可选）。
+        ollama_base_url: Ollama API 地址，供 LLM 工具使用。
+        model: Ollama 模型名称。
+        cloud_base_url: 云端 API 地址。
+        cloud_api_key: 云端 API Key。
+        cloud_model: 云端模型名称。
 
     Returns:
         包含所有可用工具的 ToolRegistry 实例。
@@ -561,6 +738,117 @@ def create_default_registry(
         fn=_crawl_arxiv,
     )
     registry.register(crawl_tool_def)
+
+    # --- 文本润色工具 ---
+    def polish_text(text: str, style: str = "academic") -> str:
+        """润色学术文本，改善表达和语法。支持多种写作风格的文本润色和优化。
+
+        Args:
+            text: 待润色的文本内容。
+            style: 润色风格，可选 academic（学术）、formal（正式）、concise（简洁），默认 academic。
+        """
+        style_hints = {
+            "academic": "使用严谨的学术语言，确保逻辑清晰、用词精准",
+            "formal": "使用正式的书面语，避免口语化表达",
+            "concise": "精简冗余表达，保留核心信息，使文字更加凝练",
+        }
+        hint = style_hints.get(style, style_hints["academic"])
+        prompt = f"请润色以下文本。要求：{hint}。只输出润色后的文本，不要解释。\n\n{text}"
+        return _call_llm_sync(prompt, ollama_base_url, cloud_base_url, cloud_api_key, cloud_model, model)
+
+    polish_text._agent_tool_def = ToolDefinition(
+        name="polish_text",
+        description="润色学术文本，改善表达和语法。支持多种写作风格的文本润色和优化。",
+        parameters=_extract_schema_from_function(polish_text),
+        fn=polish_text,
+    )
+    registry.register(polish_text)
+
+    # --- 文本摘要工具 ---
+    def summarize_text(text: str, max_sentences: int = 5) -> str:
+        """生成文本的精简摘要。提取核心论点和关键信息，输出结构化摘要。
+
+        Args:
+            text: 待摘要的文本内容。
+            max_sentences: 摘要的最大句子数，默认 5。
+        """
+        prompt = (
+            f"请用中文为以下文本生成摘要，不超过 {max_sentences} 个句子。"
+            "提取核心论点和关键信息。\n\n{text}"
+        )
+        return _call_llm_sync(prompt, ollama_base_url, cloud_base_url, cloud_api_key, cloud_model, model)
+
+    summarize_text._agent_tool_def = ToolDefinition(
+        name="summarize_text",
+        description="生成文本的精简摘要。提取核心论点和关键信息，输出结构化摘要。",
+        parameters=_extract_schema_from_function(summarize_text),
+        fn=summarize_text,
+    )
+    registry.register(summarize_text)
+
+    # --- 大纲生成工具 ---
+    def generate_outline(topic: str, sections: int = 5) -> str:
+        """生成学术论文或报告的结构化大纲。根据主题生成层次分明的大纲框架。
+
+        Args:
+            topic: 论文或报告的主题。
+            sections: 大纲的章节数量，默认 5。
+        """
+        prompt = (
+            f"请为主题「{topic}」生成一个学术论文大纲，包含 {sections} 个主要章节。"
+            "每个章节下给出 2-3 个子节。使用 Markdown 格式输出。"
+        )
+        return _call_llm_sync(prompt, ollama_base_url, cloud_base_url, cloud_api_key, cloud_model, model)
+
+    generate_outline._agent_tool_def = ToolDefinition(
+        name="generate_outline",
+        description="生成学术论文或报告的结构化大纲。根据主题生成层次分明的大纲框架。",
+        parameters=_extract_schema_from_function(generate_outline),
+        fn=generate_outline,
+    )
+    registry.register(generate_outline)
+
+    # --- 段落扩写工具 ---
+    def expand_section(section: str, context: str = "") -> str:
+        """扩写论文段落，补充细节和论据。根据上下文将简短的段落扩展为完整论述。
+
+        Args:
+            section: 待扩写的段落内容。
+            context: 上下文信息（可选，帮助 LLM 保持一致性）。
+        """
+        ctx_part = f"\n\n参考上下文:\n{context}" if context else ""
+        prompt = (
+            f"请将以下段落扩写为 200-400 字的完整论述，补充细节、论据和例子。"
+            "保持学术风格，逻辑连贯。只输出扩写后的文本。\n\n"
+            f"原文: {section}{ctx_part}"
+        )
+        return _call_llm_sync(prompt, ollama_base_url, cloud_base_url, cloud_api_key, cloud_model, model)
+
+    expand_section._agent_tool_def = ToolDefinition(
+        name="expand_section",
+        description="扩写论文段落，补充细节和论据。根据上下文将简短的段落扩展为完整论述。",
+        parameters=_extract_schema_from_function(expand_section),
+        fn=expand_section,
+    )
+    registry.register(expand_section)
+
+    # --- 文件保存工具 ---
+    save_file_def = ToolDefinition(
+        name="save_file",
+        description="将内容保存到文件。支持在沙箱目录中创建文件和子目录。",
+        parameters=_extract_schema_from_function(_save_file),
+        fn=_save_file,
+    )
+    registry.register(save_file_def)
+
+    # --- 文件读取工具 ---
+    read_file_def = ToolDefinition(
+        name="read_file",
+        description="读取文件内容。支持读取沙箱目录中的文本文件。",
+        parameters=_extract_schema_from_function(_read_file),
+        fn=_read_file,
+    )
+    registry.register(read_file_def)
 
     logger.info("默认工具注册完成: %s", [t.name for t in registry.list_tools()])
     return registry
