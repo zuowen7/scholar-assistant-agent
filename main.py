@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
 import sys
 import time
@@ -122,16 +123,28 @@ def main(argv: list[str] | None = None) -> None:
         logger.error("Ollama 服务不可达，请确认已启动: ollama serve")
         sys.exit(1)
 
-    results = []
-    for i, chunk in enumerate(chunks):
-        logger.info("  翻译块 %d/%d (%d tokens)...", i + 1, len(chunks), chunk.estimated_tokens)
+    # 并行翻译所有 chunk（asyncio 复用 HTTP 连接）
+    async def _run_translate() -> list:
         try:
-            result = client.translate(chunk.text)
-            results.append(result)
-            logger.debug("  → %d tokens 生成", result.completion_tokens)
-        except (ConnectionError, ValueError) as e:
-            logger.error("  翻译块 %d 失败: %s", i + 1, e)
-            sys.exit(1)
+            return await client.translate_batch(
+                [c.text for c in chunks],
+                prev_translations=[],
+                max_concurrency=trans_cfg.get("max_concurrency", 4),
+            )
+        finally:
+            await client.close_async()
+
+    logger.info("  并行翻译 %d 个块 (并发数: %d)...", len(chunks), trans_cfg.get("max_concurrency", 4))
+    t0 = time.time()
+    try:
+        results = asyncio.run(_run_translate())
+    except (ConnectionError, ValueError, RuntimeError) as e:
+        logger.error("  翻译失败: %s", e)
+        sys.exit(1)
+
+    for i, result in enumerate(results):
+        logger.debug("  块 %d/%d → %d tokens 生成", i + 1, len(results), result.completion_tokens)
+    logger.info("  翻译完成 (%.1fs)", time.time() - t0)
 
     # Step 5: 格式化输出
     logger.info("[5/5] 生成输出...")

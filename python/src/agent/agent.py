@@ -402,12 +402,15 @@ class AgentLoop:
                     self._finalize_trajectory(query, answer, success=True)
                     # 存储对话到长期记忆
                     if self._memory and answer:
-                        self._memory.add(
-                            content=f"Q: {query}\nA: {answer[:2000]}",
-                            category="conversation",
-                            importance=0.5,
-                            tags=["conversation"],
-                        )
+                        try:
+                            self._memory.add(
+                                content=f"Q: {query}\nA: {answer[:2000]}",
+                                category="conversation",
+                                importance=0.5,
+                                tags=["conversation"],
+                            )
+                        except Exception as e:
+                            logger.warning("长期记忆存储失败（不影响推理）: %s", e)
                     yield AgentEvent(
                         type="response",
                         content=answer,
