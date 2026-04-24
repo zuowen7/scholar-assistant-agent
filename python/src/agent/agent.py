@@ -58,7 +58,9 @@ from typing import AsyncGenerator
 
 import httpx
 
+from src.agent.context_compressor import ContextCompressor
 from src.agent.models import AgentEvent, Message, ToolCall, message_to_ollama_dict
+from src.agent.prompt_builder import PromptBuilder, PromptConfig
 from src.agent.tools import ToolRegistry
 from src.agent.vram_manager import ContextRole, MultiplexingScheduler
 
@@ -107,6 +109,8 @@ class AgentLoop:
         temperature: float = 0.3,
         num_predict: int = 4096,
         timeout: float = 300.0,
+        context_compressor: ContextCompressor | None = None,
+        prompt_builder: PromptBuilder | None = None,
     ) -> None:
         """初始化 Agent 推理循环引擎。
 
@@ -116,10 +120,12 @@ class AgentLoop:
             tool_registry: 工具注册表实例。
             scheduler: 时分复用调度器实例（可选）。
             max_steps: 最大推理步数。
-            system_prompt: 系统提示词。
+            system_prompt: 系统提示词（向后兼容，优先级低于 PromptBuilder）。
             temperature: 生成温度。
             num_predict: 最大生成 token 数。
             timeout: HTTP 超时秒数。
+            context_compressor: 上下文压缩器（可选，默认自动创建）。
+            prompt_builder: Prompt 拼装器（可选，默认自动创建）。
         """
         self.ollama_base_url = ollama_base_url.rstrip("/")
         self.model = model
@@ -130,6 +136,17 @@ class AgentLoop:
         self.temperature = temperature
         self.num_predict = num_predict
         self.timeout = timeout
+
+        # 上下文压缩器：优先用传入的，否则按模型窗口自动创建
+        self.compressor = context_compressor or ContextCompressor(
+            ollama_base_url=self.ollama_base_url,
+            summary_model=model,
+        )
+
+        # Prompt 拼装器：优先用传入的，否则自动创建
+        self.prompt_builder = prompt_builder or PromptBuilder(
+            tool_registry=self.tool_registry,
+        )
 
         self._http_client: httpx.AsyncClient | None = None
 
@@ -148,6 +165,7 @@ class AgentLoop:
             self._http_client = None
         if self.scheduler is not None:
             await self.scheduler.close()
+        await self.compressor.close()
 
     async def run(
         self,
@@ -198,17 +216,16 @@ class AgentLoop:
             for step in range(1, self.max_steps + 1):
                 logger.info("ReAct 步骤 %d/%d", step, self.max_steps)
 
-                # 主动上下文裁剪: 防止超出 token 预算
-                if self.scheduler is not None:
-                    ollama_dicts = [message_to_ollama_dict(m) for m in messages]
-                    trimmed_dicts = self.scheduler.trim_to_budget(ollama_dicts)
-                    if len(trimmed_dicts) < len(messages):
-                        # 裁剪发生了，重建 Message 列表
-                        messages = self._rebuild_messages_from_dicts(trimmed_dicts)
-                        logger.info(
-                            "上下文已裁剪: %d → %d 条消息",
-                            len(ollama_dicts), len(trimmed_dicts),
-                        )
+                # 主动上下文压缩：比例阈值 + 头尾保护 + 中间摘要
+                ollama_dicts = [message_to_ollama_dict(m) for m in messages]
+                compression = await self.compressor.compress(ollama_dicts)
+                if compression.was_compressed:
+                    messages = self._rebuild_messages_from_dicts(compression.messages)
+                    logger.info(
+                        "上下文已压缩: %d → %d 条消息, %d → %d tokens",
+                        compression.original_count, compression.compressed_count,
+                        compression.original_tokens, compression.compressed_tokens,
+                    )
 
                 # 调用 LLM
                 try:
@@ -383,10 +400,8 @@ class AgentLoop:
     ) -> list[Message]:
         """构建 LLM 调用的完整消息列表。
 
-        消息组装顺序:
-        1. System prompt (定义 Agent 角色和可用能力)。
-        2. 历史对话 (截断至最近 _MAX_HISTORY_TURNS 轮)。
-        3. 当前用户查询。
+        使用 PromptBuilder 动态拼装系统提示词（身份+工具+记忆+模型适配）。
+        若 prompt_builder 未配置或 system_prompt 已手动指定，回退到静态拼接。
 
         Args:
             query: 当前用户查询。
@@ -397,11 +412,15 @@ class AgentLoop:
         """
         messages: list[Message] = []
 
-        # 系统提示词
-        system = self.system_prompt
-        if self.tool_registry.list_tools():
-            tool_names = [t.name for t in self.tool_registry.list_tools()]
-            system += f"\n\n可用工具: {', '.join(tool_names)}"
+        # 系统提示词：优先使用 PromptBuilder，回退到静态拼接
+        if self.prompt_builder and not self.system_prompt:
+            config = PromptConfig(model_name=self.model)
+            system = self.prompt_builder.build(config)
+        else:
+            system = self.system_prompt
+            if self.tool_registry.list_tools():
+                tool_names = [t.name for t in self.tool_registry.list_tools()]
+                system += f"\n\n可用工具: {', '.join(tool_names)}"
         messages.append(Message(role="system", content=system))
 
         # 历史对话（截断保护）
