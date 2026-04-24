@@ -1,6 +1,6 @@
 """Agent 子系统 — ReAct 推理循环 + 上下文工程 + 记忆 + Skill 自进化 + RAG + VRAM 调度。
 
-本包实现了将 Scholar Translate 从单一翻译工具升级为
+本包实现了将 本包实现了将 Scholar Assistant 从单一翻译工具升级为 从单一翻译工具升级为
 自进化 ReAct 架构智能体的全部核心组件:
 
 核心推理:

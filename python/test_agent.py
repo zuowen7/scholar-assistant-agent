@@ -446,7 +446,7 @@ def test_phase_modules() -> None:
 def main() -> None:
     print()
     print("=" * 60)
-    print("  Scholar Translate Agent - Test Suite")
+    print("  Scholar Assistant Agent - Test Suite")
     print("=" * 60)
     print()
 

@@ -1,4 +1,4 @@
-"""Scholar Translate — 纯云端大模型 API 入口（不使用 Ollama）
+"""Scholar Assistant — 纯云端大模型 API 入口（不使用 Ollama）
 
 翻译管道始终走 ``translator.cloud``；配置中的 ``engine`` 会被固定为 ``cloud``。
 数据目录为 ``python/data_cloud/``，与本地 ``api.py`` 的 ``data/`` 分离。
@@ -71,7 +71,7 @@ def _self_test(base_url: str) -> int:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Scholar Translate API (cloud-only)")
+    parser = argparse.ArgumentParser(description="Scholar Assistant API (cloud-only)")
     parser.add_argument("--self-test", action="store_true", help="探测后端 API，不启动服务")
     parser.add_argument("--base-url", type=str, default="http://127.0.0.1:18089", help="--self-test 时的根地址")
     parser.add_argument("--port", type=int, default=18089)

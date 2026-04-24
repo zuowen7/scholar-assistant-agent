@@ -189,7 +189,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         for tid in done_ids[:excess]:
             del tasks[tid]
 
-    title = "Scholar Translate API (Cloud)" if cloud_only else "Scholar Translate API"
+    parser = argparse.ArgumentParser(description="Scholar Assistant API (cloud-only)")
     app = FastAPI(title=title, version="0.4.2")
 
     # ── 全局异常处理 ──

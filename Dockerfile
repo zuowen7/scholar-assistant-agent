@@ -1,4 +1,4 @@
-# Scholar Translate - 学术文献翻译工具
+# Scholar Assistant - 学术文献翻译工具
 # 多阶段构建：依赖安装 → 运行镜像
 
 # ---- 阶段1: 安装依赖 ----
@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir --timeout 120 \
 FROM python:3.12-slim
 
 LABEL maintainer="zuowen"
-LABEL description="Scholar Translate - 学术文献智能翻译工具"
+LABEL description="Scholar Assistant - 学术文献智能翻译工具"
 
 # 创建非 root 用户
 RUN groupadd -r appuser && useradd -r -g appuser -m appuser

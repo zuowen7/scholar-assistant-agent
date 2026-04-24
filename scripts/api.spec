@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for Scholar Translate Python backend.
+"""PyInstaller spec for Scholar Assistant Python backend.
 
 Produces an --onedir bundle at src-tauri/python-dist/api/ containing:
   - api.exe (FastAPI server)

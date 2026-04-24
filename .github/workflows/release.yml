@@ -61,7 +61,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "Scholar Translate ${{ github.ref_name }}"
+          releaseName: "Scholar Assistant ${{ github.ref_name }}"
           releaseBody: |
             ## 下载安装
 
