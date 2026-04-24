@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import copy
 import json
@@ -189,10 +190,11 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         for tid in done_ids[:excess]:
             del tasks[tid]
 
-    parser = argparse.ArgumentParser(description="Scholar Assistant API (cloud-only)")
-    app = FastAPI(title=title, version="0.4.2")
+        _app_title = "Scholar Assistant API (cloud-only)"
+        parser = argparse.ArgumentParser(description=_app_title)
+        app = FastAPI(title=_app_title, version="0.4.2")
 
-    # ── 全局异常处理 ──
+        # ── 全局异常处理 ──
 
     @app.exception_handler(Exception)
     async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import json
 import re
 from typing import Any
 
@@ -190,7 +191,7 @@ class ReviewAgent:
                 # 尝试解析 JSON
                 json_match = re.search(r"\{.*\}", result, re.DOTALL)
                 if json_match:
-                    data = eval(json_match.group())  # noqa: S307 — 受限环境，LLM 输出
+                    data = json.loads(json_match.group())
                     if data.get("should_create") and self.skill_registry:
                         self.skill_registry.create_skill(
                             name=data.get("name", f"skill_{hash(conv_text) % 10000}"),

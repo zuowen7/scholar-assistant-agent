@@ -137,7 +137,8 @@ def classify_error(exception: Exception) -> ErrorType:
         对应的 ErrorType。
     """
     msg = str(exception).lower()
-    status_code = getattr(getattr(exception, "response", None), "status_code", None)
+    response = getattr(exception, "response", None)
+    status_code = getattr(response, "status_code", None) if response is not None else None
 
     # 按状态码分类
     if status_code == 401:

@@ -129,6 +129,6 @@ def message_to_ollama_dict(msg: Message) -> dict:
             }
             for tc in msg.tool_calls
         ]
-    if msg.tool_call_id:
-        d["tool_call_id"] = msg.tool_call_id
+    # tool_call_id 是 Anthropic 格式字段，不属于 Ollama 标准格式，
+    # 在 message_to_ollama_dict 中省略；Cloud API 路径在 _format_for_openai 中单独处理
     return d

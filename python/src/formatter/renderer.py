@@ -326,7 +326,7 @@ def _strip_text_overlap(
         return orig_text, trans_text
 
     # 确保匹配不会吃掉整篇内容
-    if best_suffix_len > len(orig_stripped) * 0.8:
+    if best_suffix_len >= len(orig_stripped) * 0.8:
         return orig_text, trans_text
 
     # 找最近的句子边界作为切割点

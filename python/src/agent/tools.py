@@ -661,8 +661,11 @@ def create_default_registry(
                 source_lang: 源语言代码，默认 "en"（英文）。
                 target_lang: 目标语言代码，默认 "zh"（中文）。
             """
-            client = ollama_client or cloud_client
-            if client is None:
+            if ollama_client is not None:
+                client = ollama_client
+            elif cloud_client is not None:
+                client = cloud_client
+            else:
                 return "错误: 无可用的翻译客户端"
             result = client.translate(text)
             return result.translated
