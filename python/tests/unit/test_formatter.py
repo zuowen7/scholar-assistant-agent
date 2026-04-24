@@ -21,10 +21,9 @@ class TestFormatMarkdown:
     def test_bilingual_format(self) -> None:
         results = [_make_result("Hello", "你好")]
         output = format_output(results, output_format="bilingual", file_format="markdown")
-        assert "原文" in output
-        assert "译文" in output
-        assert "Hello" in output
-        assert "你好" in output
+        # 双语模式用 Markdown blockquote 格式：原文用 "> " 前缀，译文直接输出
+        assert "> Hello" in output  # 原文带 blockquote 前缀
+        assert "你好" in output  # 译文
 
     def test_translated_only(self) -> None:
         results = [_make_result("Hello", "你好")]

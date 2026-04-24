@@ -44,6 +44,36 @@ logger = logging.getLogger(__name__)
 SKILL_NUDGE_INTERVAL = 10
 
 
+def _tokenize(text: str) -> list[str]:
+    r"""中英文混合分词 — 英文按 \w+，中文按字符分词。
+
+    Args:
+        text: 待分词文本。
+
+    Returns:
+        词列表。
+    """
+    tokens: list[str] = []
+    i = 0
+    while i < len(text):
+        c = text[i]
+        code = ord(c)
+        if 0x4E00 <= code <= 0x9FFF or 0x3400 <= code <= 0x4DBF:
+            # CJK 统一表意文字，按字符分词
+            tokens.append(c)
+            i += 1
+        elif c.isalnum() or c == "_":
+            # 英文单词
+            j = i
+            while j < len(text) and (text[j].isalnum() or text[j] == "_"):
+                j += 1
+            tokens.append(text[i:j])
+            i = j
+        else:
+            i += 1
+    return tokens
+
+
 @dataclass
 class Skill:
     """一个可复用的技能。
@@ -259,7 +289,7 @@ class SkillRegistry:
             return None
 
         query_lower = query.lower()
-        query_tokens = set(re.findall(r"\w+", query_lower))
+        query_tokens = set(_tokenize(query_lower))
 
         best_match: Skill | None = None
         best_score = 0.0
@@ -295,7 +325,7 @@ class SkillRegistry:
                 score += len(phrase) * 0.5
 
         # 2. 关键词重合度
-        trigger_tokens = set(re.findall(r"\w+", skill.trigger.lower()))
+        trigger_tokens = set(_tokenize(skill.trigger.lower()))
         if query_tokens and trigger_tokens:
             overlap = query_tokens & trigger_tokens
             jaccard = len(overlap) / len(query_tokens | trigger_tokens)
@@ -303,13 +333,13 @@ class SkillRegistry:
 
         # 3. description 关键词匹配
         if skill.description:
-            desc_tokens = set(re.findall(r"\w+", skill.description.lower()))
+            desc_tokens = set(_tokenize(skill.description.lower()))
             if query_tokens and desc_tokens:
                 desc_overlap = query_tokens & desc_tokens
                 score += len(desc_overlap) * 0.3
 
         # 4. name 关键词匹配
-        name_tokens = set(re.findall(r"\w+", skill.name.lower()))
+        name_tokens = set(_tokenize(skill.name.lower()))
         if query_tokens and name_tokens:
             name_overlap = query_tokens & name_tokens
             score += len(name_overlap) * 0.5
