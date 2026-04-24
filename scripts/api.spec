@@ -35,6 +35,8 @@ a = Analysis(
     binaries=_conda_dlls,
     datas=[
         (str(python_dir / "config" / "default.yaml"), "config"),
+        (str(python_dir / "pandoc_templates"), "pandoc_templates"),
+        (str(python_dir / "prompts"), "prompts"),
     ],
     hiddenimports=[
         # FastAPI / uvicorn
@@ -61,6 +63,45 @@ a = Analysis(
         "openpyxl",
         "pptx",
         "docx",
+        # Agent subsystem — core modules
+        "src.agent",
+        "src.agent.agent",
+        "src.agent.models",
+        "src.agent.tools",
+        "src.agent.rag",
+        "src.agent.vram_manager",
+        # Agent subsystem — Phase 1 (context engineering)
+        "src.agent.context_compressor",
+        "src.agent.prompt_builder",
+        # Agent subsystem — Phase 2 (memory + skill + trajectory)
+        "src.agent.memory",
+        "src.agent.skill_system",
+        "src.agent.trajectory",
+        "src.agent.review_agent",
+        # Agent subsystem — Phase 3 (error + hooks)
+        "src.agent.error_classifier",
+        "src.agent.hooks",
+        # Agent subsystem — dependencies
+        "chromadb",
+        "chromadb.config",
+        "chromadb.api",
+        "chromadb.api.local",
+        "onnxruntime",
+        "sqlite3",
+        # Source modules
+        "src",
+        "src.parser",
+        "src.parser.dispatcher",
+        "src.cleaner",
+        "src.cleaner.pipeline",
+        "src.chunker",
+        "src.chunker.manager",
+        "src.formatter",
+        "src.formatter.bilingual",
+        "src.translator",
+        "src.translator.ollama_client",
+        "src.translator.cloud_client",
+        "src.translator.context",
     ],
     hookspath=[],
     hooksconfig={},
