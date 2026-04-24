@@ -166,9 +166,10 @@ def _remove_watermarks(text: str) -> str:
     """移除水印和期刊页眉噪声"""
     # 处理多行分散的 "Downloaded from ... on ..." 水印
     # 模式: "Downloaded\nfrom\nurl\nat\nInstitute\n...\non\nMarch\n28,\n2026"
+# 修复: 移除 DOTALL（.+? 会跨行贪婪匹配，误删正文）
     text = re.sub(
-        r"Downloaded\s+from\s+.+?\s+on\s+\w+\s+\d+.*?(?=\n|$)",
-        "", text, flags=re.DOTALL,
+        r"Downloaded\s+from\s+[^\n]+\s+on\s+\w+\s+\d+[^\n]*",
+        "", text,
     )
     # 多行变体: 每个词一行 (Science 期刊常见)
     text = re.sub(

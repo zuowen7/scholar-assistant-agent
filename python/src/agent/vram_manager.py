@@ -491,7 +491,7 @@ class MultiplexingScheduler:
                 f"{self._vram.ollama_base_url}/api/chat",
                 json={
                     "model": self.model,
-                    "messages": [{"role": "user", "content": "ok"}],
+                    "messages": [{"role": "user", "content": ""}],
                     "stream": False,
                     "options": {"num_predict": 1},
                 },

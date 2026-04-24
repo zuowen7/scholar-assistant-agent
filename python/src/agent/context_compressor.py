@@ -357,6 +357,7 @@ class ContextCompressor:
             resp = await client.post(
                 f"{self.ollama_base_url}/api/chat",
                 json=payload,
+                timeout=60.0,
             )
             resp.raise_for_status()
             data = resp.json()
