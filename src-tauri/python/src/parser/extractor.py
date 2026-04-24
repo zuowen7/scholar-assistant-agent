@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pdfplumber
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -87,6 +91,28 @@ def extract_pages(pdf_path: str | Path) -> DocumentContent:
                 )
     except Exception as e:
         raise ValueError(f"PDF 解析失败: {pdf_path} - {e}") from e
+
+    # 扫描件检测: 如果提取文字过少，触发 OCR fallback
+    full_text = "\n\n".join(p.text for p in pages if p.text.strip())
+    if len(pages) > 0 and len(full_text) < 500:
+        from src.parser.ocr import is_likely_scanned, ocr_pdf
+        if is_likely_scanned(len(full_text), len(pages)):
+            logger.info("PDF 提取文字过少（%d 字符/%d 页），触发 OCR fallback", len(full_text), len(pages))
+            ocr_text = ocr_pdf(pdf_path)
+            if ocr_text and len(ocr_text.strip()) > len(full_text):
+                logger.info("OCR 成功（%d 字符），替换提取结果", len(ocr_text))
+                # 用 OCR 结果替换所有页面的文本
+                ocr_pages = ocr_text.split("\n\n[Page ")
+                for i, page in enumerate(pages):
+                    if i == 0:
+                        # 第一段是 OCR 文本序言（split 后不含 [Page 前缀的部分），直接使用
+                        pg_text = ocr_pages[0] if ocr_pages else ""
+                        page.text = re.sub(r"^\[Page\s*\d+\]\s*\n?", "", pg_text).strip()
+                    elif i < len(ocr_pages):
+                        pg_text = ocr_pages[i]
+                        page.text = re.sub(r"^\[Page\s*\d+\]\s*\n?", "", pg_text).strip()
+                    else:
+                        page.text = ""
 
     return DocumentContent(pages=pages, source_path=str(pdf_path))
 

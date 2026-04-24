@@ -140,9 +140,16 @@ def chunk_text_full(
 # 引用区分离
 # ---------------------------------------------------------------------------
 
-from src.constants import REFERENCE_SECTION_PATTERNS
+_REFERENCE_PATTERNS: list[str] = []  # 延迟初始化，避免循环导入
 
-_REFERENCE_PATTERNS = [r"^" + p + r"\s*$" for p in REFERENCE_SECTION_PATTERNS]
+
+def _ensure_reference_patterns() -> list[str]:
+    """延迟初始化引用区正则模式（避免模块导入时的循环依赖）"""
+    global _REFERENCE_PATTERNS
+    if not _REFERENCE_PATTERNS:
+        from src.constants import REFERENCE_SECTION_PATTERNS
+        _REFERENCE_PATTERNS = [r"^" + p + r"\s*$" for p in REFERENCE_SECTION_PATTERNS]
+    return _REFERENCE_PATTERNS
 
 
 def _split_references(text: str) -> tuple[str, str]:
@@ -151,8 +158,9 @@ def _split_references(text: str) -> tuple[str, str]:
     Returns:
         (body_text, references_text)
     """
+    patterns = _ensure_reference_patterns()
     best_pos = -1
-    for pattern in _REFERENCE_PATTERNS:
+    for pattern in patterns:
         for m in re.finditer(pattern, text, re.MULTILINE | re.IGNORECASE):
             if m.start() > best_pos:
                 best_pos = m.start()
@@ -174,7 +182,7 @@ def _split_references(text: str) -> tuple[str, str]:
 # 常见学术缩写，这些缩写后的句号不代表句子结束
 _ACADEMIC_ABBREVS = [
     "et al", "etc", "fig", "figs", "eq", "eqs", "ref", "refs",
-    "vol", "no", "pp", "cf", "e.g", "i.e", "vs", "al",
+    "vol", "no", "pp", "cf", "e.g", "i.e", "vs",
     "ed", "eds", "rev", "proc", "inst", "dept", "univ",
     "sci", "tech", "phys", "chem", "biol", "med",
     "hum", "evol", "anthrop", "soc", "pol", "econ", "psych",
