@@ -328,7 +328,7 @@ def _get_overlap_parts(parts: list[str], overlap_chars: int) -> list[str]:
     overlap: list[str] = []
     total = 0
     for p in reversed(parts):
-        if total + len(p) > overlap_chars and overlap:
+        if total + len(p) >= overlap_chars and overlap:
             break
         overlap.insert(0, p)
         total += len(p) + 1

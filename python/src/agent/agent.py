@@ -425,6 +425,12 @@ class AgentLoop:
                 )
 
                 if has_heavy:
+                    # 先追加当前 assistant 消息，再捕获 snapshot（避免漏掉最新消息）
+                    messages.append(Message(
+                        role="assistant",
+                        content=assistant_content,
+                        tool_calls=tool_calls,
+                    ))
                     ollama_msgs = [message_to_ollama_dict(m) for m in messages]
                     self.scheduler.snapshot_context(ollama_msgs)
                     yield AgentEvent(
@@ -432,13 +438,13 @@ class AgentLoop:
                         content="正在隔离上下文以执行重 IO 工具...",
                     )
                     await self.scheduler.switch_role(ContextRole.ACTOR)
-
-                # 追加 assistant 消息（含工具调用）到消息列表
-                messages.append(Message(
-                    role="assistant",
-                    content=assistant_content,
-                    tool_calls=tool_calls,
-                ))
+                else:
+                    # 追加 assistant 消息（含工具调用）到消息列表
+                    messages.append(Message(
+                        role="assistant",
+                        content=assistant_content,
+                        tool_calls=tool_calls,
+                    ))
 
                 # 执行所有工具，收集结果
                 # 并行执行: 多个非重 IO 工具可同时运行
@@ -1631,6 +1637,25 @@ class AgentLoop:
             content = message.get("content", "")
             tool_calls = self._parse_text_react(content)
 
+        # 策略 3: Anthropic role:tool 格式处理
+        # 当 cloud API 返回 Anthropic 格式时，tool_use 信息在 message.tool_use 字段
+        if not tool_calls:
+            tool_use = message.get("tool_use")
+            if tool_use and isinstance(tool_use, dict):
+                name = tool_use.get("name", "")
+                raw_input = tool_use.get("input", {})
+                if isinstance(raw_input, str):
+                    try:
+                        raw_input = json.loads(raw_input)
+                    except json.JSONDecodeError:
+                        raw_input = {"raw_input": raw_input}
+                if name:
+                    tool_calls.append(ToolCall(
+                        id=tool_use.get("id") or str(uuid.uuid4())[:8],
+                        name=name,
+                        arguments=raw_input if isinstance(raw_input, dict) else {},
+                    ))
+
         return tool_calls
 
     def _parse_text_react(self, content: str) -> list[ToolCall]:
@@ -1711,7 +1736,7 @@ class AgentLoop:
             response: LLM 响应字典。
         """
         # Ollama 格式
-        eval_count = response.get("eval_count") or response.get("eval_count")
+        eval_count = response.get("eval_count") or response.get("prompt_eval_count", 0)
         prompt_eval = response.get("prompt_eval_count")
         if eval_count:
             self._token_usage["completion_tokens"] += eval_count
@@ -1720,15 +1745,13 @@ class AgentLoop:
 
         # OpenAI 格式
         usage = response.get("usage")
-        if isinstance(usage, dict):
+        if isinstance(usage, dict) and "prompt_tokens" in usage:
             self._token_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
             self._token_usage["completion_tokens"] += usage.get("completion_tokens", 0)
-
-        # Anthropic 格式
-        anthropic_usage = response.get("usage")
-        if isinstance(anthropic_usage, dict):
-            self._token_usage["prompt_tokens"] += anthropic_usage.get("input_tokens", 0)
-            self._token_usage["completion_tokens"] += anthropic_usage.get("output_tokens", 0)
+        elif isinstance(usage, dict) and "input_tokens" in usage:
+            # Anthropic 格式 (与 OpenAI 互斥，使用 elif 避免重复累加)
+            self._token_usage["prompt_tokens"] += usage.get("input_tokens", 0)
+            self._token_usage["completion_tokens"] += usage.get("output_tokens", 0)
 
         self._token_usage["total_tokens"] = (
             self._token_usage["prompt_tokens"] + self._token_usage["completion_tokens"]
