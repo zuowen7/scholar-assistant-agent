@@ -59,9 +59,13 @@ from typing import AsyncGenerator
 import httpx
 
 from src.agent.context_compressor import ContextCompressor
+from src.agent.memory import MemoryManager
 from src.agent.models import AgentEvent, Message, ToolCall, message_to_ollama_dict
 from src.agent.prompt_builder import PromptBuilder, PromptConfig
+from src.agent.review_agent import ReviewAgent
+from src.agent.skill_system import SkillRegistry
 from src.agent.tools import ToolRegistry
+from src.agent.trajectory import TrajectoryRecorder
 from src.agent.vram_manager import ContextRole, MultiplexingScheduler
 
 logger = logging.getLogger(__name__)
@@ -111,6 +115,9 @@ class AgentLoop:
         timeout: float = 300.0,
         context_compressor: ContextCompressor | None = None,
         prompt_builder: PromptBuilder | None = None,
+        memory_manager: MemoryManager | None = None,
+        skill_registry: SkillRegistry | None = None,
+        trajectory_recorder: TrajectoryRecorder | None = None,
     ) -> None:
         """初始化 Agent 推理循环引擎。
 
@@ -126,6 +133,9 @@ class AgentLoop:
             timeout: HTTP 超时秒数。
             context_compressor: 上下文压缩器（可选，默认自动创建）。
             prompt_builder: Prompt 拼装器（可选，默认自动创建）。
+            memory_manager: 记忆管理器（可选，默认自动创建）。
+            skill_registry: Skill 注册表（可选，默认自动创建）。
+            trajectory_recorder: 轨迹记录器（可选，默认自动创建）。
         """
         self.ollama_base_url = ollama_base_url.rstrip("/")
         self.model = model
@@ -137,15 +147,24 @@ class AgentLoop:
         self.num_predict = num_predict
         self.timeout = timeout
 
-        # 上下文压缩器：优先用传入的，否则按模型窗口自动创建
+        # Phase 1: 上下文工程
         self.compressor = context_compressor or ContextCompressor(
             ollama_base_url=self.ollama_base_url,
             summary_model=model,
         )
-
-        # Prompt 拼装器：优先用传入的，否则自动创建
         self.prompt_builder = prompt_builder or PromptBuilder(
             tool_registry=self.tool_registry,
+        )
+
+        # Phase 2: 记忆 + Skill + 轨迹
+        self.memory = memory_manager or MemoryManager()
+        self.skills = skill_registry or SkillRegistry()
+        self.trajectory_recorder = trajectory_recorder or TrajectoryRecorder()
+        self.reviewer = ReviewAgent(
+            ollama_base_url=self.ollama_base_url,
+            model=model,
+            memory_manager=self.memory,
+            skill_registry=self.skills,
         )
 
         self._http_client: httpx.AsyncClient | None = None
@@ -166,6 +185,7 @@ class AgentLoop:
         if self.scheduler is not None:
             await self.scheduler.close()
         await self.compressor.close()
+        await self.reviewer.close()
 
     async def run(
         self,
@@ -198,6 +218,9 @@ class AgentLoop:
         Yields:
             AgentEvent 实例，包含推理过程的中间状态或最终结果。
         """
+        # 开始轨迹记录
+        self.trajectory_recorder.start(query, model=self.model)
+
         # 构建消息列表
         messages = self._build_messages(query, history)
 
@@ -240,6 +263,7 @@ class AgentLoop:
                 if not tool_calls:
                     # 无工具调用 → 这是最终回答
                     answer = self._extract_text_content(response)
+                    self._finalize_trajectory(query, answer, success=True)
                     yield AgentEvent(type="response", content=answer)
                     return
 
@@ -286,6 +310,11 @@ class AgentLoop:
                     try:
                         result = await self.tool_registry.execute(tc.name, tc.arguments)
                         duration_ms = int((time.monotonic() - start_time) * 1000)
+                        self.trajectory_recorder.add_turn(
+                            role="tool", content=result[:500],
+                            tool_name=tc.name, tool_args=tc.arguments,
+                            duration_ms=duration_ms,
+                        )
                         yield AgentEvent(
                             type="tool_result",
                             content=result[:500] + ("..." if len(result) > 500 else ""),
@@ -334,6 +363,7 @@ class AgentLoop:
                         ))
 
             # 超过最大步数
+            self._finalize_trajectory(query, "", success=False)
             yield AgentEvent(
                 type="error",
                 content=f"推理步数超过上限 ({self.max_steps})，请简化问题或分步提问。",
@@ -350,6 +380,38 @@ class AgentLoop:
     # ------------------------------------------------------------------
     # 辅助方法
     # ------------------------------------------------------------------
+
+    def _finalize_trajectory(self, query: str, answer: str, success: bool) -> None:
+        """完成轨迹记录，保存对话，并触发后台审查。
+
+        Args:
+            query: 原始用户查询。
+            answer: 最终回答。
+            success: 是否成功完成。
+        """
+        trajectory = self.trajectory_recorder.finish(answer, success=success)
+
+        # 保存对话到记忆系统
+        self.memory.save_conversation(query, answer, success=success)
+
+        # Skill 催促检查
+        nudge = self.skills.nudge_check()
+        if nudge:
+            logger.info("Skill 催促: %s", nudge)
+
+        # 异步触发后台审查
+        if trajectory:
+            traj_data = {
+                "conversations": trajectory.to_sharegpt(),
+                "metadata": {
+                    "query": query,
+                    "model": self.model,
+                    "success": success,
+                    "total_duration_ms": trajectory.total_duration_ms,
+                    "created_at": trajectory.created_at,
+                },
+            }
+            self.reviewer.spawn_review(traj_data)
 
     def _rebuild_messages_from_dicts(self, dicts: list[dict]) -> list[Message]:
         """将 Ollama 格式的 dict 列表转换回 Message 对象列表。
@@ -414,7 +476,19 @@ class AgentLoop:
 
         # 系统提示词：优先使用 PromptBuilder，回退到静态拼接
         if self.prompt_builder and not self.system_prompt:
-            config = PromptConfig(model_name=self.model)
+            # 注入记忆上下文
+            memory_ctx = self.memory.get_memory_context(query)
+            # 注入 Skill 上下文
+            skill_ctx = self.skills.get_skill_context(query)
+            extra: dict[str, str] = {}
+            if skill_ctx:
+                extra["技能库"] = skill_ctx
+
+            config = PromptConfig(
+                model_name=self.model,
+                memory_content=memory_ctx,
+                extra_sections=extra,
+            )
             system = self.prompt_builder.build(config)
         else:
             system = self.system_prompt
