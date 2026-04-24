@@ -23,6 +23,8 @@
 """
 
 from src.agent.context_compressor import CompressionResult, ContextCompressor
+from src.agent.error_classifier import ErrorType, RecoveryAction, RetryManager, classify_error, get_recovery
+from src.agent.hooks import HookContext, HookManager, HookPoint
 from src.agent.memory import MemoryManager, MemoryEntry
 from src.agent.models import AgentEvent, DocumentInfo, Message, ToolCall
 from src.agent.prompt_builder import PromptBuilder, PromptConfig
@@ -46,6 +48,10 @@ __all__ = [
     "ContextCompressor",
     "ContextRole",
     "DocumentInfo",
+    "ErrorType",
+    "HookContext",
+    "HookManager",
+    "HookPoint",
     "MemoryEntry",
     "MemoryManager",
     "Message",
@@ -53,7 +59,9 @@ __all__ = [
     "PromptBuilder",
     "PromptConfig",
     "RAGStore",
+    "RecoveryAction",
     "ReviewAgent",
+    "RetryManager",
     "Skill",
     "SkillRegistry",
     "ToolCall",
