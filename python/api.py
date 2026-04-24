@@ -1,4 +1,4 @@
-"""Scholar Translate FastAPI Server - 为 Tauri 前端提供 HTTP API"""
+"""Scholar Assistant FastAPI Server - 为 Tauri 前端提供 HTTP API"""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from src.chunker import chunk_text_full
 from src.formatter import format_output
 from src.translator.ollama_client import OllamaClient
 
-app = FastAPI(title="Scholar Translate API", version="0.2.0")
+app = FastAPI(title="Scholar Assistant API", version="0.4.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -313,7 +313,7 @@ def download_result(task_id: str):
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Scholar Translate API Server")
+    parser = argparse.ArgumentParser(description="Scholar Assistant API Server")
     parser.add_argument("--port", type=int, default=18088)
     parser.add_argument("--host", type=str, default="127.0.0.1")
     args = parser.parse_args()

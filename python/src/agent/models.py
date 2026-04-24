@@ -10,7 +10,7 @@ TranslationResult / Chunk 等数据类保持风格一致。
   的命名风格（"progress", "chunk_done", "error"）保持一致。
 - 所有字段使用 Python 3.10+ 联合类型语法 (X | None) 而非 Optional[X]。
 
-版权声明: 本模块属于 Scholar Translate Agent 子系统，
+版权声明: 本模块属于 Scholar Assistant Agent 子系统，
 调度策略与数据隐私保护机制受软件著作权和发明专利保护。
 """
 

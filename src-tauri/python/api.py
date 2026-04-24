@@ -1,4 +1,4 @@
-"""Scholar Translate FastAPI Server - 为 Tauri 前端提供 HTTP API（Ollama + 可选云端）"""
+"""Scholar Assistant FastAPI Server - 为 Tauri 前端提供 HTTP API（Ollama + 可选云端）"""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ if __name__ == "__main__":
     from fastapi.staticfiles import StaticFiles
     import uvicorn
 
-    parser = argparse.ArgumentParser(description="Scholar Translate API Server")
+    parser = argparse.ArgumentParser(description="Scholar Assistant API Server")
     parser.add_argument("--port", type=int, default=18088)
     parser.add_argument("--host", type=str, default="127.0.0.1")
     parser.add_argument(

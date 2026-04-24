@@ -45,7 +45,7 @@
 - KV Cache 不写入持久存储，进程退出即销毁。
 - 工具执行结果在注入规划者上下文前经过截断处理。
 
-版权声明: 本模块属于 Scholar Translate Agent 子系统，
+版权声明: 本模块属于 Scholar Assistant Agent 子系统，
 单模型时分复用调度策略、上下文隔离与 KV Cache 管理机制
 受软件著作权和发明专利保护。
 """

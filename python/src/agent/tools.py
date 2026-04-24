@@ -21,7 +21,7 @@
 - 工具执行结果截断至 _TOOL_RESULT_MAX_LEN 字符，防止超长输出
   耗尽 LLM 上下文窗口。
 
-版权声明: 本模块属于 Scholar Translate Agent 子系统，
+版权声明: 本模块属于 Scholar Assistant Agent 子系统，
 工具注册与动态调度机制受软件著作权和发明专利保护。
 """
 

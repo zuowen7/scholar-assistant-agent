@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Scholar Translate Docker 便捷脚本
+# Scholar Assistant Docker 便捷脚本
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -7,7 +7,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 usage() {
     cat <<EOF
-Scholar Translate Docker 工具
+Scholar Assistant Docker 工具
 
 用法:
   $(basename "$0") <命令> [参数]
@@ -32,7 +32,7 @@ cd "$PROJECT_DIR"
 
 case "${1:-help}" in
     build)
-        echo "构建 scholar-translate 镜像..."
+        echo "构建 scholar-assistant 镜像..."
         docker compose build
         echo "完成!"
         ;;

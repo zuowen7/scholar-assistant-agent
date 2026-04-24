@@ -1,4 +1,4 @@
-"""Scholar Translate - 学术文献翻译工具主入口"""
+"""Scholar Assistant - 学术 AI 写作辅助工具主入口"""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from src.formatter.renderer import save_output
 from src.parser import extract_pages
 from src.translator.ollama_client import OllamaClient
 
-logger = logging.getLogger("scholar-translate")
+logger = logging.getLogger("scholar-assistant")
 
 
 def load_config(config_path: str | Path) -> dict:
@@ -42,8 +42,8 @@ def setup_logging(verbose: bool = False) -> None:
 def main(argv: list[str] | None = None) -> None:
     """主流程"""
     parser = argparse.ArgumentParser(
-        prog="scholar-translate",
-        description="学术文献智能翻译工具",
+        prog="scholar-assistant",
+        description="学术 AI 写作辅助工具",
     )
     parser.add_argument("pdf", help="输入 PDF 文件路径")
     parser.add_argument("-o", "--output", help="输出文件路径（默认: 同目录下 .md 文件）")
@@ -64,7 +64,7 @@ def main(argv: list[str] | None = None) -> None:
     # 输出路径
     output_path = args.output or str(pdf_path.with_suffix(".md"))
 
-    logger.info(" Scholar Translate v0.1.0")
+    logger.info(" Scholar Assistant v0.1.0")
     logger.info("输入: %s", pdf_path)
 
     # Step 1: PDF 解析
