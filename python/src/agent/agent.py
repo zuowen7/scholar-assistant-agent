@@ -59,6 +59,8 @@ from typing import AsyncGenerator
 import httpx
 
 from src.agent.context_compressor import ContextCompressor
+from src.agent.error_classifier import ErrorType, classify_error, get_recovery, RetryManager
+from src.agent.hooks import HookContext, HookManager, HookPoint
 from src.agent.memory import MemoryManager
 from src.agent.models import AgentEvent, Message, ToolCall, message_to_ollama_dict
 from src.agent.prompt_builder import PromptBuilder, PromptConfig
@@ -167,6 +169,10 @@ class AgentLoop:
             skill_registry=self.skills,
         )
 
+        # Phase 3: 错误恢复 + Hook
+        self.retry_manager = RetryManager()
+        self.hooks = HookManager()
+
         self._http_client: httpx.AsyncClient | None = None
 
     async def _get_http_client(self) -> httpx.AsyncClient:
@@ -241,8 +247,21 @@ class AgentLoop:
 
                 # 主动上下文压缩：比例阈值 + 头尾保护 + 中间摘要
                 ollama_dicts = [message_to_ollama_dict(m) for m in messages]
+                # Hook: on_pre_compress
+                await self.hooks.trigger(HookContext(
+                    point=HookPoint.ON_PRE_COMPRESS,
+                    data={"message_count": len(ollama_dicts), "step": step},
+                ))
                 compression = await self.compressor.compress(ollama_dicts)
                 if compression.was_compressed:
+                    # Hook: on_post_compress
+                    await self.hooks.trigger(HookContext(
+                        point=HookPoint.ON_POST_COMPRESS,
+                        data={
+                            "original_tokens": compression.original_tokens,
+                            "compressed_tokens": compression.compressed_tokens,
+                        },
+                    ))
                     messages = self._rebuild_messages_from_dicts(compression.messages)
                     logger.info(
                         "上下文已压缩: %d → %d 条消息, %d → %d tokens",
@@ -252,9 +271,28 @@ class AgentLoop:
 
                 # 调用 LLM
                 try:
+                    # Hook: on_llm_call
+                    await self.hooks.trigger(HookContext(
+                        point=HookPoint.ON_LLM_CALL,
+                        data={"step": step, "message_count": len(messages)},
+                    ))
                     response = await self._call_llm(messages)
+                    # Hook: on_llm_response
+                    await self.hooks.trigger(HookContext(
+                        point=HookPoint.ON_LLM_RESPONSE,
+                        data={"step": step},
+                    ))
                 except Exception as e:
-                    yield AgentEvent(type="error", content=f"LLM 调用失败: {e}")
+                    error_type = classify_error(e)
+                    recovery = get_recovery(error_type)
+                    feedback = self.retry_manager.get_feedback_message(error_type, str(e))
+                    # Hook: on_error
+                    await self.hooks.trigger(HookContext(
+                        point=HookPoint.ON_ERROR,
+                        data={"error_type": error_type.value, "error": str(e), "step": step},
+                    ))
+                    logger.warning("LLM 错误 [%s]: %s → %s", error_type.value, e, feedback)
+                    yield AgentEvent(type="error", content=f"LLM 调用失败: {feedback}")
                     return
 
                 # 解析 LLM 响应中的工具调用
@@ -300,6 +338,11 @@ class AgentLoop:
                 # 执行所有工具，收集结果
                 tool_results: list[tuple[str, str]] = []
                 for tc in tool_calls:
+                    # Hook: on_tool_call
+                    await self.hooks.trigger(HookContext(
+                        point=HookPoint.ON_TOOL_CALL,
+                        data={"tool_name": tc.name, "arguments": tc.arguments},
+                    ))
                     yield AgentEvent(
                         type="tool_call",
                         content=f"调用工具: {tc.name}",
@@ -315,6 +358,11 @@ class AgentLoop:
                             tool_name=tc.name, tool_args=tc.arguments,
                             duration_ms=duration_ms,
                         )
+                        # Hook: on_tool_result
+                        await self.hooks.trigger(HookContext(
+                            point=HookPoint.ON_TOOL_RESULT,
+                            data={"tool_name": tc.name, "duration_ms": duration_ms, "success": True},
+                        ))
                         yield AgentEvent(
                             type="tool_result",
                             content=result[:500] + ("..." if len(result) > 500 else ""),
@@ -322,6 +370,11 @@ class AgentLoop:
                         )
                     except ValueError as e:
                         result = f"错误: {e}"
+                        # Hook: on_tool_result (error)
+                        await self.hooks.trigger(HookContext(
+                            point=HookPoint.ON_TOOL_RESULT,
+                            data={"tool_name": tc.name, "success": False, "error": str(e)},
+                        ))
                         yield AgentEvent(
                             type="tool_result",
                             content=result,
