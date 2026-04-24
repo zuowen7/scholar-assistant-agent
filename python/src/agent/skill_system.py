@@ -244,8 +244,10 @@ class SkillRegistry:
     def match(self, query: str) -> Skill | None:
         """根据用户查询匹配最相关的 Skill。
 
-        匹配策略：将 trigger 按逗号分割为短语，每个短语中的字符
-        在 query 中出现的比例作为匹配分数。
+        匹配策略：
+        1. 关键词精确匹配：trigger 短语直接出现在 query 中
+        2. 关键词重合度：query 和 trigger 共享关键词的比例
+        3. 语义扩展：检查 description 和 name 是否匹配
 
         Args:
             query: 用户查询文本。
@@ -253,31 +255,66 @@ class SkillRegistry:
         Returns:
             匹配的 Skill 或 None。
         """
+        if not self._skills:
+            return None
+
         query_lower = query.lower()
+        query_tokens = set(re.findall(r"\w+", query_lower))
+
         best_match: Skill | None = None
-        best_score = 0
+        best_score = 0.0
 
         for skill in self._skills.values():
-            score = 0
-            trigger_phrases = skill.trigger.lower().split(",")
-            for phrase in trigger_phrases:
-                phrase = phrase.strip()
-                if not phrase:
-                    continue
-                # 子串匹配
-                if phrase in query_lower:
-                    score += len(phrase) * 2
-                else:
-                    # 字符级匹配：短语中有多少字符出现在 query 中
-                    matched_chars = sum(1 for ch in phrase if ch in query_lower)
-                    ratio = matched_chars / len(phrase) if phrase else 0
-                    if ratio >= 0.6:
-                        score += int(matched_chars)
+            score = self._compute_match_score(query_lower, query_tokens, skill)
             if score > best_score:
                 best_score = score
                 best_match = skill
 
-        return best_match
+        # 需要达到最低匹配阈值
+        return best_match if best_score >= 1.0 else None
+
+    def _compute_match_score(
+        self, query_lower: str, query_tokens: set[str], skill: Skill
+    ) -> float:
+        """计算查询与 Skill 的匹配分数。
+
+        Args:
+            query_lower: 小写的查询文本。
+            query_tokens: 查询的关键词集合。
+            skill: 待匹配的 Skill。
+
+        Returns:
+            匹配分数（>= 1.0 为有效匹配）。
+        """
+        score = 0.0
+
+        # 1. trigger 短语精确子串匹配（最高权重）
+        trigger_phrases = [p.strip() for p in skill.trigger.lower().split(",") if p.strip()]
+        for phrase in trigger_phrases:
+            if phrase in query_lower:
+                score += len(phrase) * 0.5
+
+        # 2. 关键词重合度
+        trigger_tokens = set(re.findall(r"\w+", skill.trigger.lower()))
+        if query_tokens and trigger_tokens:
+            overlap = query_tokens & trigger_tokens
+            jaccard = len(overlap) / len(query_tokens | trigger_tokens)
+            score += jaccard * 10
+
+        # 3. description 关键词匹配
+        if skill.description:
+            desc_tokens = set(re.findall(r"\w+", skill.description.lower()))
+            if query_tokens and desc_tokens:
+                desc_overlap = query_tokens & desc_tokens
+                score += len(desc_overlap) * 0.3
+
+        # 4. name 关键词匹配
+        name_tokens = set(re.findall(r"\w+", skill.name.lower()))
+        if query_tokens and name_tokens:
+            name_overlap = query_tokens & name_tokens
+            score += len(name_overlap) * 0.5
+
+        return score
 
     def list_skills(self) -> list[Skill]:
         """返回所有已加载的 Skill 列表。"""
