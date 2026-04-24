@@ -1,33 +1,21 @@
 <template>
-  <div class="editor-tabs">
+  <div class="editor-tabs" :class="{ dark: isDark }">
     <div class="tabs-list">
       <div
         v-for="tab in tabs"
         :key="tab.id"
-        class="tab"
-        :class="{ active: tab.id === activeTabId }"
+        class="tab-item"
+        :class="{ active: tab.id === activeTabId, modified: tab.isModified }"
         @click="setActiveTab(tab.id)"
       >
-        <span class="tab-name">
-          <span v-if="tab.isModified" class="tab-dot"></span>
-          {{ tab.name }}
+        <span class="tab-name" :title="tab.path || 'Untitled'">
+          {{ tab.name || 'Untitled' }}
+          <span v-if="tab.isModified" class="modified-dot">●</span>
         </span>
-        <button
-          class="tab-close"
-          @click.stop="handleClose(tab.id)"
-          title="Close"
-        >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
+        <button class="tab-close" @click.stop="closeTab(tab.id)" title="关闭">✕</button>
       </div>
     </div>
-    <button class="tab-new" @click="openNewUntitled" title="New File">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M12 5v14M5 12h14"/>
-      </svg>
-    </button>
+    <button class="new-tab-btn" @click="openNewUntitled" title="新建标签">+</button>
   </div>
 </template>
 
@@ -35,103 +23,63 @@
 import { useEditor } from '../composables/useEditor'
 
 const { tabs, activeTabId, setActiveTab, closeTab, openNewUntitled } = useEditor()
-
-function handleClose(id: string) {
-  closeTab(id)
-}
+const isDark = document.documentElement.classList.contains('dark')
 </script>
 
 <style scoped>
 .editor-tabs {
-  display: flex;
-  align-items: center;
-  background: var(--toolbar-bg);
-  border-bottom: 1px solid var(--border-color);
-  height: 36px;
-  overflow: hidden;
+  display: flex; align-items: center;
+  background: #f5f5f5; border-bottom: 1px solid #ddd;
+  height: 38px; padding: 0 6px; gap: 2px; overflow-x: auto;
 }
+.editor-tabs.dark { background: #252525; border-color: #333; }
+.editor-tabs::-webkit-scrollbar { height: 3px; }
+.editor-tabs::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+.dark .editor-tabs::-webkit-scrollbar-thumb { background: #555; }
 
-.tabs-list {
-  display: flex;
-  align-items: stretch;
-  flex: 1;
-  overflow-x: auto;
-  overflow-y: hidden;
+.tabs-list { display: flex; align-items: center; gap: 1px; overflow-x: auto; flex: 1; }
+
+.tab-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 10px; height: 30px; border-radius: 4px 4px 0 0;
+  cursor: pointer; font-size: 12.5px; color: #666;
+  background: transparent; border: 1px solid transparent;
+  white-space: nowrap; min-width: 80px; max-width: 160px;
+  transition: background 0.15s;
 }
+.tab-item:hover { background: #e8e8e8; }
+.dark .tab-item { color: #aaa; }
+.dark .tab-item:hover { background: #333; }
 
-.tabs-list::-webkit-scrollbar { height: 0; }
-
-.tab {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 12px;
-  min-width: 80px;
-  max-width: 180px;
-  height: 100%;
-  cursor: pointer;
-  border-right: 1px solid var(--border-color);
-  color: var(--text-secondary);
-  font-size: 12px;
-  flex-shrink: 0;
-  position: relative;
-  transition: background 0.1s, color 0.1s;
+.tab-item.active {
+  background: #fff; border-color: #ccc;
+  color: #1a1a1a; font-weight: 500;
 }
-
-.tab:hover { background: var(--hover-bg); color: var(--text-primary); }
-
-.tab.active {
-  background: var(--editor-bg);
-  color: var(--text-primary);
-  border-bottom: 2px solid var(--accent);
+.dark .tab-item.active {
+  background: #1e1e1e; border-color: #444; color: #e0e0e0;
 }
 
 .tab-name {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  flex: 1;
+  overflow: hidden; text-overflow: ellipsis; flex: 1;
 }
-
-.tab-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  flex-shrink: 0;
-}
+.modified-dot { color: #4a9eff; font-size: 10px; margin-left: 2px; }
 
 .tab-close {
-  background: none;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  padding: 2px;
-  border-radius: 3px;
-  display: flex;
-  align-items: center;
-  opacity: 0;
-  transition: opacity 0.1s, background 0.1s;
-  flex-shrink: 0;
+  background: none; border: none; font-size: 10px;
+  color: #999; cursor: pointer; padding: 0 2px; line-height: 1;
+  border-radius: 2px; opacity: 0; transition: opacity 0.15s;
 }
-.tab:hover .tab-close,
-.tab.active .tab-close { opacity: 1; }
-.tab-close:hover { background: var(--active-bg); }
+.tab-item:hover .tab-close { opacity: 1; }
+.tab-close:hover { background: rgba(0,0,0,0.1); color: #333; }
+.dark .tab-close:hover { background: rgba(255,255,255,0.1); color: #e0e0e0; }
 
-.tab-new {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 0 10px;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  border-left: 1px solid var(--border-color);
-  flex-shrink: 0;
+.new-tab-btn {
+  flex-shrink: 0; width: 26px; height: 26px; border-radius: 4px;
+  border: none; background: transparent; cursor: pointer;
+  font-size: 18px; color: #888; line-height: 1;
+  transition: background 0.15s;
 }
-.tab-new:hover { background: var(--hover-bg); color: var(--text-primary); }
+.new-tab-btn:hover { background: #ddd; color: #333; }
+.dark .new-tab-btn { color: #888; }
+.dark .new-tab-btn:hover { background: #333; color: #e0e0e0; }
 </style>

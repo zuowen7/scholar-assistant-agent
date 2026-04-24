@@ -1,4 +1,4 @@
-import { reactive, readonly } from 'vue'
+﻿import { reactive, readonly } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { save } from '@tauri-apps/plugin-dialog'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
@@ -13,11 +13,11 @@ import type {
   ProviderPreset,
 } from '../types'
 
-// Tauri 桌面端: 后端固定在 18088; Docker/Web: 同源，用相对路径
+// Tauri 妗岄潰绔? 鍚庣鍥哄畾鍦?18088; Docker/Web: 鍚屾簮锛岀敤鐩稿璺緞
 const isTauri = '__TAURI_INTERNALS__' in window
 const API_URL = isTauri ? 'http://localhost:18088' : ''
 
-// SSE 自动重连参数
+// SSE 鑷姩閲嶈繛鍙傛暟
 const SSE_RECONNECT_MAX_ATTEMPTS = 3
 const SSE_RECONNECT_DELAY_MS = 2000
 
@@ -95,7 +95,7 @@ async function checkHealth(): Promise<boolean> {
   try {
     return await invoke<boolean>('check_backend_health')
   } catch {
-    // 非 Tauri 环境回退到 fetch
+    // 闈?Tauri 鐜鍥為€€鍒?fetch
     try {
       const resp = await fetch(`${API_URL}/api/health`, { signal: AbortSignal.timeout(3000) })
       return resp.ok
@@ -109,7 +109,7 @@ async function checkOllama(): Promise<boolean> {
   try {
     return await invoke<boolean>('check_ollama_health')
   } catch {
-    // 非 Tauri 环境回退到 fetch
+    // 闈?Tauri 鐜鍥為€€鍒?fetch
     try {
       const resp = await fetch(`${API_URL}/api/ollama/status`, { signal: AbortSignal.timeout(3000) })
       if (!resp.ok) return false
@@ -128,7 +128,7 @@ async function startOllama(): Promise<string | null> {
       await new Promise(r => setTimeout(r, 1000))
       if (await checkOllama()) return null
     }
-    return 'Ollama 启动超时，请手动运行 ollama serve'
+    return 'Ollama 鍚姩瓒呮椂锛岃鎵嬪姩杩愯 ollama serve'
   } catch (err) {
     return err instanceof Error ? err.message : String(err)
   }
@@ -144,8 +144,8 @@ async function uploadPdf(file: File): Promise<string> {
   })
 
   if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ detail: '上传失败' }))
-    throw new Error(err.detail || `上传失败 (${resp.status})`)
+    const err = await resp.json().catch(() => ({ detail: '涓婁紶澶辫触' }))
+    throw new Error(err.detail || `涓婁紶澶辫触 (${resp.status})`)
   }
 
   const data = await resp.json()
@@ -160,12 +160,12 @@ async function startStream(taskId: string, attempt: number = 0): Promise<void> {
   })
 
   if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ detail: '流式连接失败' }))
-    throw new Error(err.detail || `连接失败 (${resp.status})`)
+    const err = await resp.json().catch(() => ({ detail: '娴佸紡杩炴帴澶辫触' }))
+    throw new Error(err.detail || `杩炴帴澶辫触 (${resp.status})`)
   }
 
   const reader = resp.body?.getReader()
-  if (!reader) throw new Error('无法读取响应流')
+  if (!reader) throw new Error('Unable to read response stream')
 
   const decoder = new TextDecoder()
   let buffer = ''
@@ -232,26 +232,24 @@ async function startStream(taskId: string, attempt: number = 0): Promise<void> {
     }
   } catch (err) {
     // Stream ended or was interrupted
-    // 如果是 abort（用户主动取消/reset），静默处理
+    // 濡傛灉鏄?abort锛堢敤鎴蜂富鍔ㄥ彇娑?reset锛夛紝闈欓粯澶勭悊
     if (err instanceof DOMException && err.name === 'AbortError') {
       return
     }
 
-    // SSE 自动重连: 如果翻译还没完成且未超过最大重试次数
-    if (state.status !== 'done' && attempt < SSE_RECONNECT_MAX_ATTEMPTS) {
-      state.stepMessage = `连接中断，正在重连 (${attempt + 1}/${SSE_RECONNECT_MAX_ATTEMPTS})...`
+    // SSE 鑷姩閲嶈繛: 濡傛灉缈昏瘧杩樻病瀹屾垚涓旀湭瓒呰繃鏈€澶ч噸璇曟鏁?    if (state.status !== 'done' && attempt < SSE_RECONNECT_MAX_ATTEMPTS) {
+      state.stepMessage = `杩炴帴涓柇锛屾鍦ㄩ噸杩?(${attempt + 1}/${SSE_RECONNECT_MAX_ATTEMPTS})...`
       await new Promise(r => setTimeout(r, SSE_RECONNECT_DELAY_MS))
 
-      // 检查后端是否还活着
+      // 妫€鏌ュ悗绔槸鍚﹁繕娲荤潃
       const stillAlive = await checkHealth()
       if (stillAlive) {
-        // 后端还活着，重新连接同一个 task 的 stream
+        // 鍚庣杩樻椿鐫€锛岄噸鏂拌繛鎺ュ悓涓€涓?task 鐨?stream
         try {
           await startStream(taskId, attempt + 1)
           return
         } catch {
-          // 重连也失败，走正常错误处理
-        }
+          // 閲嶈繛涔熷け璐ワ紝璧版甯搁敊璇鐞?        }
       }
     }
 
@@ -275,11 +273,11 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       state.parsedInfo = data as unknown as ParsedEvent
       break
     case 'cleaned':
-      state.stepMessage = `清洗完成，${data.chars?.toLocaleString() ?? 0} 字符`
+      state.stepMessage = `Cleaning complete, ${data.chars?.toLocaleString() ?? 0} characters`
       break
     case 'chunked':
       state.totalChunks = (data.total_chunks as number) ?? 0
-      state.stepMessage = `共 ${data.total_chunks} 个块`
+      state.stepMessage = `鍏?${data.total_chunks} 涓潡`
       break
     case 'chunk_done': {
       const chunk = data as unknown as ChunkDoneEvent
@@ -290,26 +288,24 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
         state.translations.push(chunk)
       }
       state.completedChunks = Math.max(state.completedChunks, chunk.index + 1)
-      state.stepMessage = `翻译块 ${chunk.index + 1}/${chunk.total}`
-      // 翻译失败回退原文时给出提示
+      state.stepMessage = `Translated chunk ${chunk.index + 1}/${chunk.total}`
       if ((data as Record<string, unknown>).fallback) {
-        state.stepMessage = `块 ${chunk.index + 1}/${chunk.total} 翻译失败，已保留原文`
+        state.stepMessage = `Chunk ${chunk.index + 1}/${chunk.total} failed; original text was kept`
       }
       break
     }
     case 'chunk_error':
-      // 翻译块失败但继续处理其他块
-      console.warn(`翻译块 ${(data as Record<string, unknown>).index}/${(data as Record<string, unknown>).total} 失败:`, (data as Record<string, unknown>).error)
+      console.warn(`Translation chunk ${(data as Record<string, unknown>).index}/${(data as Record<string, unknown>).total} failed:`, (data as Record<string, unknown>).error)
       break
     case 'complete':
       state.finalContent = (data.content as string) ?? ''
       state.chunks = (data.chunks as { original: string; translated: string }[]) ?? []
       setStatus('done')
-      state.stepMessage = '翻译完成'
+      state.stepMessage = '缈昏瘧瀹屾垚'
       break
     case 'error':
       if (state.status !== 'done') {
-        state.errorMessage = (data.message as string) ?? '未知错误'
+        state.errorMessage = (data.message as string) ?? '鏈煡閿欒'
         setStatus('error')
       }
       break
@@ -327,28 +323,27 @@ function stepToStatus(step: number): TranslateStatus {
   return map[step] || 'idle'
 }
 
-const MAX_UPLOAD_SIZE = 200 * 1024 * 1024 // 200 MB — 与后端保持一致
-
+const MAX_UPLOAD_SIZE = 200 * 1024 * 1024 // 200 MB 鈥?涓庡悗绔繚鎸佷竴鑷?
 async function translate(file: File): Promise<void> {
   reset()
   setStatus('uploading')
-  state.stepMessage = '上传文件...'
+  state.stepMessage = '涓婁紶鏂囦欢...'
 
   try {
     if (file.size > MAX_UPLOAD_SIZE) {
-      throw new Error('文件过大，最大支持 200 MB')
+      throw new Error('鏂囦欢杩囧ぇ锛屾渶澶ф敮鎸?200 MB')
     }
 
     const healthOk = await checkHealth()
     if (!healthOk) {
-      throw new Error('无法连接翻译服务，请确认后端已启动')
+      throw new Error('Cannot connect to translation service. Please make sure the backend is running.')
     }
 
     const taskId = await uploadPdf(file)
     await startStream(taskId)
   } catch (err: unknown) {
     if (state.status !== 'done') {
-      const msg = err instanceof Error ? err.message : '未知错误'
+      const msg = err instanceof Error ? err.message : '鏈煡閿欒'
       state.errorMessage = msg
       setStatus('error')
     }
@@ -363,8 +358,8 @@ async function uploadPdfByPath(filePath: string): Promise<string> {
   })
 
   if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ detail: '上传失败' }))
-    throw new Error(err.detail || `上传失败 (${resp.status})`)
+    const err = await resp.json().catch(() => ({ detail: '涓婁紶澶辫触' }))
+    throw new Error(err.detail || `涓婁紶澶辫触 (${resp.status})`)
   }
 
   const data = await resp.json()
@@ -375,25 +370,25 @@ async function uploadPdfByPath(filePath: string): Promise<string> {
 async function translateFromPath(filePath: string): Promise<void> {
   reset()
   setStatus('uploading')
-  state.stepMessage = '上传文件...'
+  state.stepMessage = '涓婁紶鏂囦欢...'
 
   try {
     const healthOk = await checkHealth()
     if (!healthOk) {
-      throw new Error('无法连接翻译服务，请确认后端已启动')
+      throw new Error('Cannot connect to translation service. Please make sure the backend is running.')
     }
 
     const supportedExts = ['.pdf','.docx','.doc','.txt','.md','.log','.html','.htm','.epub','.rtf','.tex','.csv','.pptx','.xlsx','.srt','.json','.xml']
     const ext = '.' + filePath.split('.').pop()?.toLowerCase()
     if (!supportedExts.includes(ext)) {
-      throw new Error(`不支持的文件格式: ${ext}`)
+      throw new Error(`涓嶆敮鎸佺殑鏂囦欢鏍煎紡: ${ext}`)
     }
 
     const taskId = await uploadPdfByPath(filePath)
     await startStream(taskId)
   } catch (err: unknown) {
     if (state.status !== 'done') {
-      const msg = err instanceof Error ? err.message : '未知错误'
+      const msg = err instanceof Error ? err.message : '鏈煡閿欒'
       state.errorMessage = msg
       setStatus('error')
     }
@@ -414,7 +409,7 @@ async function downloadResult(): Promise<void> {
 
     await invoke<string>('save_file', { path: filePath, content })
   } catch {
-    // 非 Tauri 环境：浏览器下载
+    // 闈?Tauri 鐜锛氭祻瑙堝櫒涓嬭浇
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -428,7 +423,7 @@ async function downloadResult(): Promise<void> {
 async function restartBackend(): Promise<boolean> {
   try {
     await invoke<string>('restart_backend')
-    // 等待后端就绪
+    // 绛夊緟鍚庣灏辩华
     for (let i = 0; i < 20; i++) {
       await new Promise(r => setTimeout(r, 500))
       if (await checkHealth()) return true
@@ -443,7 +438,7 @@ function listenBackendCrash(): void {
   if (!isTauri) return
   listen<{ message: string; exit_status: string }>('backend-crashed', (event) => {
     if (state.status === 'idle' || state.status === 'error') {
-      state.errorMessage = event.payload.message || 'Python 后端意外退出'
+      state.errorMessage = event.payload.message || 'Python backend exited unexpectedly'
       setStatus('error')
     }
   }).then(fn => { crashListener = fn }).catch(() => {})
@@ -497,11 +492,12 @@ async function getConfig(): Promise<AppConfig | null> {
   }
 }
 
-async function updateConfig(config: { translator?: Record<string, unknown>; cloud?: CloudConfig }): Promise<AppConfig | null> {
+async function updateConfig(config: { translator?: Record<string, unknown>; cloud?: CloudConfig; network?: Record<string, unknown> }): Promise<AppConfig | null> {
   try {
     const payload: Record<string, unknown> = {}
     if (config.translator) payload.translator = config.translator
     if (config.cloud) payload.cloud = config.cloud
+    if (config.network) payload.network = config.network
 
     const resp = await fetch(`${API_URL}/api/config`, {
       method: 'PUT',

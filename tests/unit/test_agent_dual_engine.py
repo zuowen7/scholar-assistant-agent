@@ -52,13 +52,18 @@ class TestAgentDualEngine:
     def test_default_is_ollama(self):
         agent = AgentLoop()
         assert agent._use_cloud is False
-        assert agent.cloud_client is None
+        assert agent.cloud_base_url == ""
+        assert agent.cloud_api_key == ""
 
-    def test_cloud_mode_when_client_provided(self):
-        cloud = MagicMock()
-        agent = AgentLoop(cloud_client=cloud)
+    def test_cloud_mode_when_credentials_provided(self):
+        agent = AgentLoop(
+            cloud_base_url="https://api.openai.com/v1",
+            cloud_api_key="sk-test",
+            cloud_model="gpt-4o",
+        )
         assert agent._use_cloud is True
-        assert agent.cloud_client is cloud
+        assert agent.cloud_base_url == "https://api.openai.com/v1"
+        assert agent.cloud_api_key == "sk-test"
 
     @pytest.mark.anyio
     async def test_call_ollama(self):
@@ -76,11 +81,12 @@ class TestAgentDualEngine:
 
     @pytest.mark.anyio
     async def test_call_cloud_routes_to_openai_endpoint(self):
-        cloud = MagicMock()
-        cloud.base_url = "https://api.openai.com/v1"
-        cloud.api_key = "sk-test"
-        cloud.model = "gpt-4o"
-        agent = AgentLoop(cloud_client=cloud, model="gpt-4o")
+        agent = AgentLoop(
+            cloud_base_url="https://api.openai.com/v1",
+            cloud_api_key="sk-test",
+            cloud_model="gpt-4o",
+            model="gpt-4o",
+        )
 
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
@@ -102,11 +108,12 @@ class TestAgentDualEngine:
 
     @pytest.mark.anyio
     async def test_cloud_tool_calls_normalized(self):
-        cloud = MagicMock()
-        cloud.base_url = "https://api.openai.com/v1"
-        cloud.api_key = "sk-test"
-        cloud.model = "gpt-4o"
-        agent = AgentLoop(cloud_client=cloud, model="gpt-4o")
+        agent = AgentLoop(
+            cloud_base_url="https://api.openai.com/v1",
+            cloud_api_key="sk-test",
+            cloud_model="gpt-4o",
+            model="gpt-4o",
+        )
 
         ollama_tc = [{"function": {"name": "translate_text", "arguments": {"text": "hello"}}}]
         mock_resp = MagicMock()
@@ -127,7 +134,12 @@ class TestAgentDualEngine:
 
     @pytest.mark.anyio
     async def test_extract_tool_calls_works_with_cloud_response(self):
-        agent = AgentLoop(cloud_client=MagicMock(), model="gpt-4o")
+        agent = AgentLoop(
+            cloud_base_url="https://api.openai.com/v1",
+            cloud_api_key="sk-test",
+            cloud_model="gpt-4o",
+            model="gpt-4o",
+        )
 
         ollama_tc = [{"function": {"name": "crawl_arxiv", "arguments": {"query": "AI"}}}]
         normalized = _make_ollama_response("thinking...", ollama_tc)

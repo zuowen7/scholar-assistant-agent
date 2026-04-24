@@ -1,0 +1,71 @@
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\geometry{margin=1in}
+
+\title{A Minimal Generic Article Template for Paper Generation Testing}
+\author{Template Library}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This document serves as a minimal generic article template for testing paper generation workflows, structured text insertion, and LaTeX compilation in a template-independent setting.
+\end{abstract}
+
+\section{Introduction}
+This generic article template is intended for baseline testing. It provides a simple environment for validating whether generated content can be inserted into a standard \LaTeX{} article structure without relying on conference- or journal-specific style files.
+
+\section{Method}
+We assume that generated text, equations, figures, tables, and citations may later be injected into this template for downstream testing.
+
+\section{Example Equation}
+A simple equation is shown below:
+\begin{equation}
+f(x) = x^2 + 2x + 1
+\end{equation}
+
+\section{Example Figure}
+Figure~\ref{fig:placeholder} is a placeholder reference for future asset testing.
+
+\begin{figure}[h]
+\centering
+\fbox{\rule{0pt}{1.5in}\rule{0.8\linewidth}{0pt}}
+\caption{Placeholder figure for template testing.}
+\label{fig:placeholder}
+\end{figure}
+
+\section{Example Table}
+Table~\ref{tab:example} provides a minimal table example.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\toprule
+Item & Description \\
+\midrule
+Template & Generic article \\
+Purpose & Baseline LaTeX testing \\
+\bottomrule
+\end{tabular}
+\caption{A minimal example table.}
+\label{tab:example}
+\end{table}
+
+\section{Conclusion}
+This template provides a simple baseline for validating generated academic content and LaTeX compilation behavior.
+
+\bibliographystyle{plain}
+\bibliography{refs}
+
+\end{document}

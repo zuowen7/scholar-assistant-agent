@@ -17,6 +17,7 @@ import logging
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
+from time import time
 from pathlib import Path
 from typing import Any
 
@@ -332,3 +333,45 @@ class MemoryManager:
     def close(self) -> None:
         """关闭资源（SQLite 连接由 with 语句自动管理，此方法为接口一致性保留）。"""
         pass
+
+
+class AgentMemory:
+    """Simple file-backed memory for Agent events (persistent, used alongside MemoryManager)."""
+
+    def __init__(self, persist_dir: str) -> None:
+        self.persist_dir = Path(persist_dir)
+        self.persist_dir.mkdir(parents=True, exist_ok=True)
+        self.path = self.persist_dir / "memory.jsonl"
+
+    def add(
+        self,
+        content: str,
+        category: str = "general",
+        importance: float = 0.5,
+        tags: list[str] | None = None,
+    ) -> None:
+        """Append a memory entry to the JSONL log."""
+        entry = {
+            "content": content,
+            "category": category,
+            "importance": importance,
+            "tags": tags or [],
+            "timestamp": time(),
+        }
+        with open(self.path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    def search(self, category: str | None = None, limit: int = 10) -> list[dict]:
+        """Search memory entries by category."""
+        if not self.path.exists():
+            return []
+        results = []
+        with open(self.path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    entry = json.loads(line)
+                    if category is None or entry.get("category") == category:
+                        results.append(entry)
+                except json.JSONDecodeError:
+                    continue
+        return results[-limit:]

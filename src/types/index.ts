@@ -76,6 +76,7 @@ export interface AppConfig {
     cloud: CloudConfig
   }
   formatter: { output_format: string; file_format: string }
+  network: { proxy: string }
 }
 
 export interface CloudConfig {
@@ -121,3 +122,41 @@ export interface RAGDocument {
   chunk_count: number
   metadata: Record<string, unknown>
 }
+
+// ── 编辑器 / Scholar Cursor 类型 ─────────────────────────────────
+
+export interface EditorTab {
+  id: string        // unique per open file (path as id)
+  path: string | null  // null = untitled
+  name: string
+  content: string
+  isModified: boolean
+}
+
+export interface FileEntry {
+  name: string
+  path: string
+  isDir: boolean
+  children?: FileEntry[]
+}
+
+export interface EditorSelection {
+  startLine: number
+  endLine: number
+  startCol: number
+  endCol: number
+  text: string
+}
+
+export interface EditRequest {
+  text: string
+  instruction: string
+}
+
+export interface EditStreamEvent {
+  type: 'progress' | 'delta' | 'complete' | 'error'
+  content: string
+  usage?: { prompt_tokens: number; completion_tokens: number }
+}
+
+export type AppMode = 'translate' | 'editor'

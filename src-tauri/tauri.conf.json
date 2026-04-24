@@ -1,19 +1,19 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
-  "productName": "Scholar Translate",
-  "version": "0.4.2",
-  "identifier": "com.scholar-translate.desktop",
+  "productName": "Scholar Assistant",
+  "version": "0.3.1",
+  "identifier": "com.scholar-assistant.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build && node scripts/build-python.cjs",
-    "devUrl": "http://localhost:5173",
+    "devUrl": "http://127.0.0.1:5173",
     "frontendDist": "../dist"
   },
   "app": {
     "withGlobalTauri": false,
     "windows": [
       {
-        "title": "Scholar Translate",
+        "title": "Scholar Assistant",
         "width": 1000,
         "height": 700,
         "resizable": true,
@@ -22,28 +22,23 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:5173 http://localhost:18088 http://localhost:11434 http://127.0.0.1:18088; connect-src *; style-src * 'unsafe-inline'; font-src * data:; img-src * asset: https://asset.localhost data: blob:; media-src * asset: https://asset.localhost blob:",
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:18088 http://localhost:11434 ws://localhost:11434; img-src 'self' data: blob: asset: https://asset.localhost; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self';",
       "assetProtocol": {
         "enable": true,
         "scope": {
-          "allow": ["$HOME/**", "$PICTURE/**", "$VIDEO/**", "$DOWNLOAD/**", "$DESKTOP/**", "$DOCUMENT/**"]
+          "allow": ["$PICTURE/**", "$VIDEO/**", "$DOWNLOAD/**", "$DESKTOP/**", "$DOCUMENT/**"]
         }
-      }
+      },
+      "dangerousDisableAssetCspModification": false
     }
   },
   "bundle": {
     "active": true,
     "resources": [
-      "WebView2Loader.dll",
       "python-dist"
     ],
     "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico",
-      "icons/icon.png"
+      "icons/icon.ico"
     ],
     "windows": {
       "nsis": {

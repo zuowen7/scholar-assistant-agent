@@ -39,9 +39,13 @@
         <div class="brand">
           <span class="logo">S</span>
           <div>
-            <h1>Scholar Translate</h1>
-            <p>学术文献智能翻译</p>
+            <h1>Scholar Assistant</h1>
+            <p>学术写作智能助手</p>
           </div>
+        </div>
+        <div class="mode-switch">
+          <button class="mode-tab" :class="{ active: appMode === 'translate' }" @click="appMode = 'translate'">Translate</button>
+          <button class="mode-tab" :class="{ active: appMode === 'editor' }" @click="appMode = 'editor'">Editor</button>
         </div>
         <div class="topbar-right">
           <!-- 引擎设置按钮 -->
@@ -97,6 +101,15 @@
                 <div v-if="cloudConfig.api_key" class="cloud-status-hint" :class="cloudOk ? 'ok' : 'off'">
                   {{ cloudOk ? '已连接' : '未连接' }}
                 </div>
+              </div>
+              <!-- 网络代理 -->
+              <div class="settings-section-label" style="margin-top: 12px;">网络代理</div>
+              <div class="cloud-field">
+                <label>代理地址</label>
+                <input type="text" v-model="proxyUrl" class="cloud-input" placeholder="http://127.0.0.1:7897 或留空" />
+              </div>
+              <div class="cloud-actions">
+                <button class="settings-action-btn primary-btn" @click="saveProxy">保存代理</button>
               </div>
             </div>
           </div>
@@ -205,6 +218,14 @@
             </span>
           </template>
 
+          <!-- LaTeX 引擎状态 -->
+          <button class="pill pill-btn" :class="tectonicOk ? 'ok' : 'off'" @click="handleTectonic" :disabled="tectonicChecking">
+            <span class="pill-dot"></span>
+            <template v-if="tectonicChecking">检测中...</template>
+            <template v-else-if="tectonicOk">LaTeX 在线</template>
+            <template v-else>安装 LaTeX</template>
+          </button>
+
           <!-- 窗口控制按钮 -->
           <div class="window-controls">
             <button class="win-btn minimize" @click="handleMinimize" title="最小化">
@@ -227,7 +248,8 @@
         </div>
       </header>
 
-      <main class="main">
+      <!-- 翻译模式 -->
+      <main v-if="appMode === 'translate'" class="main">
         <!-- 上传态 -->
         <div v-if="state.status === 'idle' || state.status === 'error'" class="upload-view">
           <div class="drop-card" :class="{ hover: zoneHover }" @click="openFilePicker"
@@ -358,12 +380,16 @@
         </div>
       </main>
 
+      <!-- 编辑器模式 -->
+      <EditorLayout v-if="appMode === 'editor'" :isDark="isDark" class="editor-mode" />
+
       <!-- Agent 聊天面板 -->
       <div class="agent-panel" :class="{ open: showAgentChat }">
         <div class="agent-header">
           <div class="agent-tabs">
             <button class="agent-tab" :class="{ active: agentTab === 'chat' }" @click="agentTab = 'chat'">对话</button>
             <button class="agent-tab" :class="{ active: agentTab === 'docs' }" @click="agentTab = 'docs'">知识库</button>
+            <button class="agent-tab" :class="{ active: agentTab === 'templates' }" @click="agentTab = 'templates'">模板</button>
           </div>
           <button class="agent-close-btn" @click="showAgentChat = false">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -375,26 +401,47 @@
         <!-- 对话 Tab -->
         <div v-show="agentTab === 'chat'" class="agent-chat">
           <div class="agent-messages" ref="agentMessagesRef">
-            <div v-if="agentMessages.length === 0" class="agent-empty">
+            <!-- 实时状态条 -->
+            <div v-if="agentCurrentStatus && agentSending" class="agent-status-bar">
+              <span class="dot-pulse"></span>
+              <span class="agent-status-text">{{ agentCurrentStatus }}</span>
+            </div>
+            <div v-if="agentMessages.length === 0 && !agentSending" class="agent-empty">
               <p>向 Agent 助手提问</p>
               <p class="hint">支持搜索文档、翻译文本、查询 arXiv 论文</p>
             </div>
             <div v-for="msg in agentMessages" :key="msg.id" class="agent-msg" :class="msg.role">
               <!-- 事件流 -->
               <template v-for="(evt, i) in msg.events" :key="i">
+                <!-- Thinking 推理中 -->
                 <div v-if="evt.type === 'thinking'" class="agent-event thinking">
-                  <span class="evt-label">Thinking</span> {{ evt.content }}
+                  <span class="evt-thinking-dot"></span>
+                  <span class="evt-label">推理</span>
+                  <span class="evt-content-text">{{ evt.content }}</span>
                 </div>
+                <!-- 工具调用 -->
                 <div v-else-if="evt.type === 'tool_call'" class="agent-event tool-call">
-                  <span class="evt-label">Tool</span> {{ evt.metadata?.tool_name || evt.content }}
-                  <span v-if="evt.metadata?.arguments" class="evt-args">
-                    {{ JSON.stringify(evt.metadata.arguments).slice(0, 80) }}
-                  </span>
+                  <div class="evt-tool-header">
+                    <span class="evt-tool-icon">⚡</span>
+                    <span class="evt-label">调用工具</span>
+                    <span class="evt-tool-name">{{ evt.metadata?.tool_name || evt.content }}</span>
+                  </div>
+                  <div class="evt-tool-desc">{{ getToolDescription(evt.metadata?.tool_name) }}</div>
+                  <div v-if="evt.metadata?.arguments && Object.keys(evt.metadata.arguments).length" class="evt-tool-args">
+                    <span class="evt-args-label">参数</span>
+                    <code class="evt-args-code">{{ formatToolArgs(evt.metadata.arguments) }}</code>
+                  </div>
                 </div>
-                <div v-else-if="evt.type === 'tool_result'" class="agent-event tool-result">
-                  <span class="evt-label">Result</span>
-                  <span v-if="evt.metadata?.duration_ms">({{ evt.metadata.duration_ms }}ms)</span>
-                  {{ evt.content.slice(0, 150) }}
+                <!-- 工具结果 -->
+                <div v-else-if="evt.type === 'tool_result'" class="agent-event tool-result" :class="{ 'evt-error': evt.metadata?.error }">
+                  <div class="evt-result-header">
+                    <span v-if="evt.metadata?.error" class="evt-tool-icon error">✗</span>
+                    <span v-else class="evt-tool-icon success">✓</span>
+                    <span class="evt-label">{{ evt.metadata?.error ? '执行失败' : '执行完成' }}</span>
+                    <span class="evt-result-tool">{{ evt.metadata?.tool_name }}</span>
+                    <span v-if="evt.metadata?.duration_ms" class="evt-duration">{{ evt.metadata.duration_ms }}ms</span>
+                  </div>
+                  <div class="evt-result-preview">{{ truncateResult(evt.content) }}</div>
                 </div>
               </template>
               <!-- 消息内容 -->
@@ -442,6 +489,37 @@
             </div>
           </div>
         </div>
+
+        <!-- 模板浏览器 Tab -->
+        <div v-show="agentTab === 'templates'" class="agent-templates">
+          <div class="docs-toolbar">
+            <span class="docs-title">论文模板库</span>
+            <button class="btn ghost" @click="loadPaperTemplates" :disabled="paperTemplatesLoading">刷新</button>
+          </div>
+          <div v-if="paperTemplatesLoading" class="docs-loading">加载中...</div>
+          <div v-else-if="paperTemplates.length === 0" class="docs-empty">
+            暂无模板数据
+            <button class="btn ghost" style="margin-top:8px" @click="ingestPaperAssets">索引模板素材</button>
+          </div>
+          <div v-else class="template-grid">
+            <div v-for="t in paperTemplates" :key="t.id" class="template-card" @click="previewTemplate(t)">
+              <span class="template-icon">{{ t.icon }}</span>
+              <div class="template-info">
+                <span class="template-name">{{ t.name }}</span>
+                <span class="template-venue">{{ t.venue }}</span>
+              </div>
+            </div>
+          </div>
+          <!-- 模板预览 -->
+          <div v-if="previewingTemplate" class="template-preview">
+            <div class="template-preview-header">
+              <span>{{ previewingTemplate.icon }} {{ previewingTemplate.name }}</span>
+              <button class="btn ghost" @click="previewingTemplate = null">&times;</button>
+            </div>
+            <div class="template-preview-desc">{{ previewingTemplate.description }}</div>
+            <button class="btn primary" style="margin-top:8px;width:100%" @click="createFromTemplate(previewingTemplate)">以此为模板新建</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -454,8 +532,14 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useTranslate } from './composables/useTranslate'
 import { useAgentChat } from './composables/useAgentChat'
+import EditorLayout from './components/EditorLayout.vue'
+import type { AppMode } from './types'
+import DOMPurify from 'dompurify'
 
 const { state, translate, translateFromPath, reset, cleanup, checkHealth, checkOllama, startOllama, downloadResult, overallProgress, checkCloudApi, getConfig, updateConfig, getProviderPresets, restartBackend, listenBackendCrash, setStatus, setError, setStepMessage } = useTranslate()
+
+// ── 应用模式 ──────────────────────────────────────────────────
+const appMode = ref<AppMode>('editor')
 
 // ── Agent 聊天 ──────────────────────────────────────────────
 const {
@@ -469,9 +553,93 @@ const {
 } = useAgentChat()
 
 const showAgentChat = ref(false)
-const agentTab = ref<'chat' | 'docs'>('chat')
+const agentTab = ref<'chat' | 'docs' | 'templates'>('chat')
 const agentInput = ref('')
 const agentMessagesRef = ref<HTMLElement | null>(null)
+
+// ── Agent 工具描述映射 ────────────────────────────────────────
+const TOOL_DESCRIPTIONS: Record<string, string> = {
+  translate_text: '翻译文本为指定语言',
+  parse_document: '解析文档文件，提取纯文本内容',
+  search_documents: '在已入库文档中检索相关内容',
+  crawl_arxiv: '搜索 arXiv 学术论文',
+  polish_text: '润色文本，使其更加学术化',
+  generate_outline: '根据研究主题生成论文大纲',
+  summarize_text: '对长文本进行摘要',
+  save_file: '将文本内容保存到文件',
+  read_file: '读取文本文件内容',
+  search_paper_templates: '检索论文模板和写作范例',
+}
+
+// ── 论文模板浏览器 ──────────────────────────────────────────────
+const paperTemplates = ref<{ id: string; name: string; venue: string; description: string; icon: string }[]>([])
+const paperTemplatesLoading = ref(false)
+const previewingTemplate = ref<{ id: string; name: string; venue: string; description: string; icon: string } | null>(null)
+const _isTauri = '__TAURI_INTERNALS__' in window
+const API_BASE = _isTauri ? 'http://localhost:18088' : ''
+
+async function loadPaperTemplates() {
+  paperTemplatesLoading.value = true
+  try {
+    const resp = await fetch(`${API_BASE}/api/paper-assets/templates`)
+    if (resp.ok) {
+      const data = await resp.json()
+      paperTemplates.value = data.templates || []
+    }
+  } catch (e) { console.warn('loadPaperTemplates failed:', e) }
+  finally { paperTemplatesLoading.value = false }
+}
+
+async function ingestPaperAssets() {
+  try {
+    await fetch(`${API_BASE}/api/paper-assets/ingest`, { method: 'POST' })
+    loadPaperTemplates()
+  } catch (e) { console.warn('ingestPaperAssets failed:', e) }
+}
+
+function previewTemplate(t: any) {
+  previewingTemplate.value = t
+}
+
+function createFromTemplate(t: any) {
+  // Switch to editor mode and trigger scaffold creation via a custom event
+  agentTab.value = 'chat'
+  // Use fetch to get scaffold and switch mode
+  fetch(`${API_BASE}/api/paper-scaffold`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ template_id: t.id, title: '' }),
+  }).then(r => r.json()).then(data => {
+    if (data.markdown) {
+      // Store the scaffold for EditorLayout to pick up
+      window.dispatchEvent(new CustomEvent('paper-scaffold', { detail: { markdown: data.markdown, templateId: t.id } }))
+      appMode.value = 'editor'
+    }
+  }).catch(() => {})
+  previewingTemplate.value = null
+}
+
+function getToolDescription(toolName?: string): string {
+  if (!toolName) return ''
+  return TOOL_DESCRIPTIONS[toolName] || ''
+}
+
+function formatToolArgs(args: Record<string, unknown>): string {
+  const entries = Object.entries(args)
+  if (!entries.length) return ''
+  return entries
+    .map(([k, v]) => {
+      const val = typeof v === 'string' ? `"${v.length > 40 ? v.slice(0, 40) + '…' : v}"` : JSON.stringify(v)
+      return `${k}: ${val}`
+    })
+    .join('\n')
+}
+
+function truncateResult(content: string): string {
+  if (!content) return ''
+  if (content.length <= 300) return content
+  return content.slice(0, 300) + '…'
+}
 
 async function sendAgentMessage() {
   const text = agentInput.value.trim()
@@ -488,8 +656,26 @@ async function agentFetchDocs() {
   await _fetchRAGDocs()
 }
 
+// 当前状态：从最新 streaming 消息的事件中推断
+const agentCurrentStatus = computed(() => {
+  const streaming = agentMessages.value.find(m => m.isStreaming)
+  if (!streaming) return ''
+  // 从后往前找最近的 thinking 或 tool_call 事件
+  for (let i = streaming.events.length - 1; i >= 0; i--) {
+    const evt = streaming.events[i]
+    if (evt.type === 'thinking') return '🤔 ' + evt.content
+    if (evt.type === 'tool_call') return '⚡ 调用 ' + (evt.metadata?.tool_name || evt.content)
+    if (evt.type === 'tool_result') return '✓ ' + (evt.metadata?.tool_name || '工具') + ' 执行完成'
+  }
+  return ''
+})
+
 watch(showAgentChat, async (open) => {
   if (open) await agentFetchDocs()
+})
+
+watch(agentTab, (tab) => {
+  if (tab === 'templates' && paperTemplates.value.length === 0) loadPaperTemplates()
 })
 
 const healthOk = ref(false)
@@ -498,6 +684,8 @@ const ollamaLoading = ref(false)
 const ollamaError = ref<string | null>(null)
 const cloudOk = ref(false)
 const cloudChecking = ref(false)
+const tectonicOk = ref(false)
+const tectonicChecking = ref(false)
 const globalDragging = ref(false)
 const zoneHover = ref(false)
 const isDark = ref(true)
@@ -515,6 +703,7 @@ const cloudConfig = ref({
 })
 const providerPresets = ref<Record<string, { name: string; base_url: string; models: string[] }>>({})
 const showEngineSettings = ref(false)
+const proxyUrl = ref('')
 
 const progress = computed(() => overallProgress())
 
@@ -575,13 +764,13 @@ function loadReadSettings() {
         readSettings.value = { ...readSettings.value, ...parsed }
       }
     }
-  } catch { /* ignore */ }
+  } catch (e) { console.warn('loadReadSettings failed:', e) }
 }
 
 function saveReadSettings() {
   try {
     localStorage.setItem('read-settings', JSON.stringify(readSettings.value))
-  } catch { /* ignore */ }
+  } catch (e) { console.warn('saveReadSettings failed:', e) }
 }
 
 function onFontSizeChange(e: Event) {
@@ -720,7 +909,7 @@ function toggleTheme() {
   isDark.value = !isDark.value
   try {
     localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
-  } catch { /* ignore */ }
+  } catch (e) { console.warn('saveTheme failed:', e) }
 }
 
 // --- 句子拆分与配对 ---
@@ -926,7 +1115,7 @@ function renderMarkdown(md: string): string {
   md = md.replace(/(<hr\/>)\s*<\/p>/g, '$1')
   md = md.replace(/<p>\s*<\/p>/g, '')
 
-  return md
+  return DOMPurify.sanitize(md)
 }
 
 // --- 拖拽处理 ---
@@ -940,7 +1129,7 @@ onMounted(async () => {
   try {
     const saved = localStorage.getItem('theme')
     if (saved === 'light') isDark.value = false
-  } catch { /* ignore */ }
+  } catch (e) { console.warn('loadTheme failed:', e) }
 
   // Load background settings
   loadBgSettings()
@@ -960,6 +1149,7 @@ onMounted(async () => {
   // Health checks
   healthOk.value = await checkHealth()
   ollamaOk.value = await checkOllama()
+  checkTectonic()
   if (engineType.value === 'cloud') {
     cloudOk.value = await checkCloudApi()
   }
@@ -1062,6 +1252,39 @@ async function toggleOllama() {
   }
 }
 
+// --- Tectonic (LaTeX) ---
+
+async function checkTectonic() {
+  tectonicChecking.value = true
+  try {
+    const resp = await fetch(`${API_BASE}/api/tectonic/status`)
+    if (resp.ok) {
+      const data = await resp.json()
+      tectonicOk.value = data.available === true
+    }
+  } catch (e) { console.warn('tectonic check failed:', e) }
+  finally { tectonicChecking.value = false }
+}
+
+function handleTectonic() {
+  if (tectonicOk.value) return
+  tectonicChecking.value = true
+  fetch(`${API_BASE}/api/tectonic/install`, { method: 'POST' })
+    .then(r => r.ok ? r.json() : r.json().then(d => Promise.reject(d.detail || '安装失败')))
+    .then(data => {
+      tectonicOk.value = data.success !== false
+      if (data.version) {
+        // show brief success
+      }
+    })
+    .catch(e => {
+      console.error('Tectonic install failed:', e)
+      // Fallback: open download page
+      window.open('https://github.com/typst/tectonic/releases/latest', '_blank')
+    })
+    .finally(() => { tectonicChecking.value = false })
+}
+
 // --- Engine settings ---
 
 async function loadEngineSettings() {
@@ -1082,6 +1305,10 @@ async function loadEngineSettings() {
       }
     }
   }
+  // 加载代理配置
+  if (config?.network?.proxy) {
+    proxyUrl.value = config.network.proxy
+  }
 }
 
 async function saveEngineSettings() {
@@ -1094,6 +1321,12 @@ async function saveEngineSettings() {
     cloudOk.value = false
     cloudOk.value = await checkCloudApi()
   }
+}
+
+async function saveProxy() {
+  await updateConfig({
+    network: { proxy: proxyUrl.value },
+  })
 }
 
 function onProviderChange() {
@@ -1158,6 +1391,18 @@ async function handleRestartBackend() {
   --glass2: rgba(28, 28, 32, 0.45);
   --glass-border: rgba(39, 39, 42, 0.5);
   --topbar-bg: rgba(19, 19, 22, 0.6);
+  /* Editor panels */
+  --editor-bg: #1e1e1e;
+  --sidebar-bg: #181818;
+  --panel-bg: #1e1e1e;
+  --toolbar-bg: #181818;
+  --border-color: #27272a;
+  --text-primary: #d4d4d4;
+  --text-secondary: #888888;
+  --hover-bg: #2d2d2d;
+  --active-bg: #37373d;
+  --code-bg: #2d2d2d;
+  --input-bg: #2d2d2d;
 }
 
 .light {
@@ -1179,6 +1424,18 @@ async function handleRestartBackend() {
   --glass2: rgba(240, 240, 242, 0.45);
   --glass-border: rgba(216, 216, 220, 0.55);
   --topbar-bg: rgba(255, 255, 255, 0.55);
+  /* Editor panels */
+  --editor-bg: #ffffff;
+  --sidebar-bg: #f0f0f2;
+  --panel-bg: #fafafa;
+  --toolbar-bg: #f0f0f2;
+  --border-color: #d0d0d4;
+  --text-primary: #1a1a2e;
+  --text-secondary: #555566;
+  --hover-bg: #e8e8ec;
+  --active-bg: #dcdce0;
+  --code-bg: #f5f5f7;
+  --input-bg: #f5f5f7;
 }
 
 html, body { height: 100%; overflow: hidden; }
@@ -1242,6 +1499,28 @@ body {
   position: relative; z-index: 100;
 }
 .brand { display: flex; align-items: center; gap: 10px; }
+.mode-switch {
+  display: flex;
+  background: rgba(255,255,255,0.06);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+.mode-tab {
+  background: none;
+  border: none;
+  color: var(--text-secondary, #888);
+  padding: 4px 14px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mode-tab:hover { color: var(--text-primary, #ddd); }
+.mode-tab.active {
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+}
 .logo {
   width: 32px; height: 32px; border-radius: 8px;
   background: linear-gradient(135deg, var(--accent), #a78bfa);
@@ -1593,6 +1872,7 @@ body {
 
 /* ── Main Area ── */
 .main { flex: 1; padding: 20px; overflow-y: auto; }
+.editor-mode { flex: 1; min-height: 0; }
 
 /* ── Upload View ── */
 .upload-view { display: flex; flex-direction: column; align-items: center; padding-top: 8vh; }
@@ -1912,19 +2192,62 @@ body {
 
 /* 事件流样式 */
 .agent-event {
-  font-size: 12px; color: var(--text3); padding: 4px 8px;
-  margin-bottom: 4px; border-radius: 6px;
+  font-size: 12px; padding: 6px 10px;
+  margin-bottom: 6px; border-radius: 8px;
   background: var(--surface); border: 1px solid var(--border);
 }
-.agent-event.thinking { font-style: italic; }
-.agent-event.tool-call { border-left: 2px solid var(--accent); }
-.agent-event.tool-result { border-left: 2px solid var(--green); }
+.agent-event.thinking {
+  color: var(--text2); display: flex; align-items: center; gap: 6px;
+  font-style: normal; border-left: 3px solid var(--text3);
+}
+.agent-event.tool-call {
+  border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+.agent-event.tool-result {
+  border-left: 3px solid var(--green); background: color-mix(in srgb, #4caf50 8%, var(--surface));
+}
+.agent-event.tool-result.evt-error {
+  border-left: 3px solid #f44336; background: color-mix(in srgb, #f44336 8%, var(--surface));
+}
 
 .evt-label {
   font-weight: 600; font-size: 11px; text-transform: uppercase;
-  margin-right: 6px; color: var(--text2);
+  color: var(--text2); flex-shrink: 0;
 }
-.evt-args { display: block; font-size: 11px; color: var(--text3); margin-top: 2px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.evt-thinking-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  background: var(--text3); animation: evt-pulse 1.2s infinite;
+}
+@keyframes evt-pulse {
+  0%, 80%, 100% { opacity: 0.4; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1.1); }
+}
+.evt-content-text { color: var(--text2); }
+.evt-tool-header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.evt-tool-icon { font-size: 13px; flex-shrink: 0; }
+.evt-tool-icon.success { color: #4caf50; }
+.evt-tool-icon.error { color: #f44336; }
+.evt-tool-name { font-weight: 600; color: var(--accent); font-size: 13px; }
+.evt-tool-desc { font-size: 11px; color: var(--text2); margin: 2px 0 5px 22px; }
+.evt-tool-args {
+  background: var(--surface2); border-radius: 4px; padding: 5px 8px;
+  margin-top: 4px; border: 1px solid var(--border);
+}
+.evt-args-label { font-size: 10px; color: var(--text3); text-transform: uppercase; font-weight: 600; margin-right: 6px; }
+.evt-args-code { font-size: 11px; color: var(--text2); white-space: pre-wrap; word-break: break-all; }
+.evt-result-header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.evt-result-tool { font-weight: 600; color: var(--text2); font-size: 12px; }
+.evt-duration { font-size: 11px; color: var(--text3); margin-left: auto; }
+.evt-result-preview { font-size: 11px; color: var(--text2); line-height: 1.5; white-space: pre-wrap; word-break: break-word; max-height: 80px; overflow: hidden; }
+
+.agent-status-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 14px; margin-bottom: 8px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 20px; width: fit-content; max-width: 100%;
+}
+.agent-status-text { font-size: 12px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
 
 .agent-streaming { display: flex; padding: 8px 14px; }
 .dot-pulse {
@@ -1985,6 +2308,34 @@ body {
   display: flex; align-items: center;
 }
 .doc-del-btn:hover { color: var(--red); background: rgba(248,113,113,0.1); }
+
+/* 模板浏览器 Tab */
+.agent-templates { flex: 1; overflow-y: auto; padding: 16px; }
+.template-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.template-card {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 8px;
+  cursor: pointer; transition: all 0.15s;
+}
+.template-card:hover { border-color: var(--accent2); background: rgba(139,92,246,0.05); }
+.template-icon { font-size: 24px; }
+.template-info { display: flex; flex-direction: column; gap: 1px; }
+.template-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.template-venue { font-size: 11px; color: var(--text3); }
+
+.template-preview {
+  margin-top: 12px; padding: 12px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.template-preview-header {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 14px; font-weight: 600; color: var(--text);
+}
+.template-preview-desc {
+  font-size: 12px; color: var(--text3); margin-top: 6px; line-height: 1.5;
+}
 
 /* Topbar agent 按钮激活态 */
 .topbar-icon-btn.active { color: var(--accent2); background: var(--accent-bg); }

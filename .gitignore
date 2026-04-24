@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+dist/
 build/
 .eggs/
 
@@ -21,26 +22,19 @@ env/
 htmlcov/
 .coverage
 
-# 数据文件 (翻译输入/输出)
-data/input/*
-data/output/*
-!data/input/.gitkeep
-!data/output/.gitkeep
+# 输出文件
+/output/
+*.out
+data/input/*.pdf
+data/output/*.md
+data/output/*.txt
 python/data/input/*
 python/data/output/*
 !python/data/input/.gitkeep
 !python/data/output/.gitkeep
-python/data_cloud/
-
-# 构建产物
-dist/
 
 # 环境变量
 .env
-.env.*
-
-# 本地覆盖配置（可能含 API Key）
-python/config.json
 
 # 模型权重
 *.bin
@@ -51,23 +45,15 @@ python/config.json
 Thumbs.db
 .DS_Store
 
-# Node
+# Tauri / Node
 node_modules/
-
-# Tauri
 src-tauri/target/
-src-tauri/python/
 src-tauri/python-dist/
+dist/
 
-# PyInstaller
-build/pyi-work/
+# Local test scratch
+pytest-cache-files-*/
+tmp_pytest/
 
 # Claude
 .claude/
-
-# 测试文件
-article.md
-attention.pdf
-science.adn8744.pdf
-test_*.md
-test_output*.md

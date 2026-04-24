@@ -72,7 +72,9 @@ onMounted(() => {
     tabSize: 2,
     suggestOnTriggerCharacters: true,
     quickSuggestions: { other: true, comments: false, strings: false },
-    inlineSuggest: { enabled: true },
+    inlineSuggest: { enabled: true, mode: 'subword' },
+    parameterHints: { enabled: true },
+    acceptSuggestionOnEnter: 'on',
   })
 
   // ── 注册 AI Inline Completions Provider ──────────────────────
@@ -176,7 +178,7 @@ onMounted(() => {
   })
 
   // ── Ghost Text (AI 行内补全) ─────────────────────────────────
-  // 自动触发：末尾行末尾 + 空闲 1.5s，按 Tab 接受，Esc 清除
+  // 手动触发：Alt+\ 请求补全，按 Tab 接受，Esc 清除
 
   function getLineContext(lineNumber: number, column: number): string {
     const model = editor!.getModel()
@@ -205,33 +207,20 @@ onMounted(() => {
     }])
   }
 
-  // 自动触发：内容变化后，在末尾行末尾且空闲 1.5s 时请求补全
-  let lastContentLen = editor.getValue().length
-  editor.onDidChangeModelContent(() => {
-    if (showPalette.value) return
-    const now = Date.now()
-    if (now - lastGhostTrigger < 1500) return
-
-    const pos = editor!.getPosition()
-    if (!pos) return
-    const model = editor!.getModel()
-    if (!model) return
-
-    // 只有光标在行末才触发
-    const lineContent = model.getLineContent(pos.lineNumber)
-    const isAtLineEnd = pos.column >= lineContent.length
-    if (!isAtLineEnd) { clearGhost(); return }
-
-    const newLen = model.getValue().length
-    const deleted = lastContentLen - newLen > 0
-    lastContentLen = newLen
-
-    if (ghostDebounceTimer) clearTimeout(ghostDebounceTimer)
-    ghostDebounceTimer = setTimeout(async () => {
-      if (deleted) return // 删内容不触发
-      const p = editor!.getPosition()
-      if (!p) return
-      const ctx = getLineContext(p.lineNumber, p.column)
+  // 手动触发：Alt+\ 请求 AI 补全
+  editor.addAction({
+    id: 'trigger-ghost-text',
+    label: 'Trigger AI Completion',
+    keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.Backslash],
+    run: async () => {
+      const pos = editor!.getPosition()
+      if (!pos) return
+      const model = editor!.getModel()
+      if (!model) return
+      const lineContent = model.getLineContent(pos.lineNumber)
+      const isAtLineEnd = pos.column >= lineContent.length
+      if (!isAtLineEnd) return
+      const ctx = getLineContext(pos.lineNumber, pos.column)
       if (ctx.length < 5) return
       try {
         lastGhostTrigger = Date.now()
@@ -246,11 +235,11 @@ onMounted(() => {
         const completion = (data as { completion?: string }).completion || ''
         if (!completion) return
         const currentPos = editor!.getPosition()
-        if (currentPos && currentPos.lineNumber === p.lineNumber && currentPos.column === p.column) {
+        if (currentPos && currentPos.lineNumber === pos.lineNumber && currentPos.column === pos.column) {
           showGhost(currentPos, completion)
         }
-      } catch { /* ignore */ }
-    }, 1500)
+      } catch { /* ghost text fetch cancelled or failed */ }
+    },
   })
 
   // Esc → 清除 ghost text
@@ -369,4 +358,11 @@ onBeforeUnmount(() => {
   color: #888888 !important;
   opacity: 0.8;
 }
+/* AI inline edit 蓝色高亮动画 */
+.ai-inline-edit { background: rgba(33, 150, 243, 0.15); border-radius: 2px; }
+@keyframes ai-inline-flash {
+  0% { background: rgba(33, 150, 243, 0.4); }
+  100% { background: rgba(33, 150, 243, 0.15); }
+}
+.ai-inline-edit-char { animation: ai-inline-flash 0.4s ease-out; }
 </style>

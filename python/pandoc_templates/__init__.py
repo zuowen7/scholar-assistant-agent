@@ -136,11 +136,20 @@ def _find_tectonic() -> str | None:
 
     # 2. 应用自管目录
     import os
+    import sys
     local_app = os.environ.get("LOCALAPPDATA", "")
     if local_app:
         app_tectonic = Path(local_app) / "ScholarTranslate" / "tools" / "tectonic.exe"
         if app_tectonic.exists():
             TECTONIC_CMD = str(app_tectonic)
+            return TECTONIC_CMD
+
+    # 2b. 打包目录中的 Tectonic（与 api.exe 同目录的 tools/ 子目录）
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        exe_dir = Path(sys.executable).parent
+        bundled_tectonic = exe_dir / "tools" / "tectonic.exe"
+        if bundled_tectonic.exists():
+            TECTONIC_CMD = str(bundled_tectonic)
             return TECTONIC_CMD
 
     # 3. Program Files
@@ -596,6 +605,14 @@ def convert_markdown(
         # 使用纯 Python 转换器（不依赖 Pandoc）
         return markdown_to_latex(markdown_text, metadata)
 
+    # 兼容旧 pandoc ID（ieee → ieee_conference, generic → generic_article 等）
+    _LEGACY_ID_MAP: dict[str, str] = {
+        "ieee": "ieee_conference",
+        "generic": "generic_article",
+        "springer_lncs": "lncs",
+    }
+    template_id = _LEGACY_ID_MAP.get(template_id, template_id)
+
     # 加载模板
     registry = _load_registry()
     templates = registry.get("templates", [])
@@ -603,13 +620,13 @@ def convert_markdown(
     template_info = template_map.get(template_id)
 
     if not template_info:
-        template_id = "generic"
-        template_info = template_map.get("generic", {})
+        template_id = "generic_article"
+        template_info = template_map.get("generic_article", {})
 
     # 模板文件路径
     template_file = TEMPLATE_DIR / f"{template_id}.tex"
     if not template_file.exists():
-        template_file = TEMPLATE_DIR / "generic.tex"
+        template_file = TEMPLATE_DIR / "generic_article.tex"
 
     # 构建 Pandoc 参数
     args = [
@@ -756,3 +773,68 @@ def convert_markdown(
             "output_path": "",
             "pandoc_version": pandoc_version(),
         }
+
+
+# ── Tectonic 自动安装 ──────────────────────────────────────────────
+
+TECTONIC_DOWNLOAD_URL = "https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%400.16.9/tectonic-0.16.9-x86_64-pc-windows-msvc.zip"
+TECTONIC_VERSION = "0.16.9"
+
+
+def install_tectonic() -> dict:
+    """下载并安装 Tectonic LaTeX 引擎到 LOCALAPPDATA/ScholarTranslate/tools/。
+
+    Returns:
+        {"success": bool, "error": str, "version": str}
+    """
+    global TECTONIC_CMD
+    import os
+    import zipfile
+    import tempfile
+    import urllib.request
+
+    local_app = os.environ.get("LOCALAPPDATA", "")
+    if not local_app:
+        return {"success": False, "error": "无法确定 LOCALAPPDATA 路径", "version": ""}
+
+    install_dir = Path(local_app) / "ScholarTranslate" / "tools"
+    install_dir.mkdir(parents=True, exist_ok=True)
+    tectonic_path = install_dir / "tectonic.exe"
+
+    if tectonic_path.exists():
+        TECTONIC_CMD = str(tectonic_path)
+        return {"success": True, "error": "", "version": tectonic_version()}
+
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+            tmp_path = tmp.name
+            logger.info("正在下载 Tectonic %s...", TECTONIC_VERSION)
+            urllib.request.urlretrieve(TECTONIC_DOWNLOAD_URL, tmp_path,)
+
+        with zipfile.ZipFile(tmp_path, "r") as zf:
+            for name in zf.namelist():
+                if name.lower().endswith("tectonic.exe"):
+                    with zf.open(name) as src, open(tectonic_path, "wb") as dst:
+                        dst.write(src.read())
+                    break
+            else:
+                return {"success": False, "error": "压缩包中未找到 tectonic.exe", "version": ""}
+
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+        TECTONIC_CMD = str(tectonic_path)
+        logger.info("Tectonic 安装成功: %s", tectonic_path)
+        return {"success": True, "error": "", "version": tectonic_version()}
+
+    except Exception as e:
+        logger.error("Tectonic 安装失败: %s", e)
+        err_msg = str(e)
+        if "SSL" in err_msg or "timeout" in err_msg.lower() or "EOF" in err_msg:
+            err_msg = (
+                "网络连接失败，无法从 GitHub 下载 Tectonic。"
+                "请手动下载：https://github.com/tectonic-typesetting/tectonic/releases"
+            )
+        return {"success": False, "error": err_msg, "version": ""}

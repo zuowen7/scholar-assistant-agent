@@ -1,15 +1,14 @@
 use std::sync::Mutex;
-use tauri::{Manager, Emitter};
+use tauri::{Emitter, Manager};
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
-struct ManagedPids {
-    python: Mutex<Option<u32>>,
-    ollama: Mutex<Option<u32>>,
+struct ManagedProcesses {
+    python: Mutex<Option<std::process::Child>>,
+    ollama: Mutex<Option<std::process::Child>>,
 }
 
-/// Kill a process tree (cross-platform)
 fn kill_tree(pid: u32) {
     eprintln!("[INFO] Killing process tree PID={}", pid);
     #[cfg(windows)]
@@ -26,61 +25,75 @@ fn kill_tree(pid: u32) {
     }
 }
 
-/// Check if a process is still running (port-based)
+fn kill_child(child: &mut std::process::Child) {
+    let pid = child.id();
+    if child.kill().is_err() {
+        kill_tree(pid);
+    }
+}
+
 fn is_port_listening(port: u16, timeout_ms: u64) -> bool {
-    let addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
+    let addr = format!("127.0.0.1:{}", port)
+        .parse::<std::net::SocketAddr>()
+        .expect("invalid socket address");
     std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(timeout_ms)).is_ok()
 }
 
-/// Safe mutex lock that handles poisoned mutexes
 macro_rules! lock_state {
     ($lock:expr) => {
         $lock.lock().unwrap_or_else(|e| e.into_inner())
     };
 }
 
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+fn build_command(program: &str, args: &[&str]) -> std::process::Command {
+    let mut cmd = std::process::Command::new(program);
+    cmd.args(args);
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd
+}
+
+fn pipe_output(child: &mut std::process::Child, label: &str) {
+    let out = child.stdout.take();
+    let err = child.stderr.take();
+    let lo = label.to_string();
+    let le = label.to_string();
+
+    if let Some(out) = out {
+        std::thread::spawn(move || {
+            use std::io::{BufRead, BufReader};
+            for line in BufReader::new(out).lines().flatten() {
+                println!("[{}] {}", lo, line);
+            }
+        });
+    }
+    if let Some(err) = err {
+        std::thread::spawn(move || {
+            use std::io::{BufRead, BufReader};
+            for line in BufReader::new(err).lines().flatten() {
+                eprintln!("[{}] {}", le, line);
+            }
+        });
+    }
+}
+
 #[tauri::command]
-fn start_ollama(state: tauri::State<'_, ManagedPids>) -> Result<String, String> {
-    if lock_state!(state.ollama).is_some() {
+fn start_ollama(state: tauri::State<'_, ManagedProcesses>) -> Result<String, String> {
+    if lock_state!(state.ollama).is_some() || is_port_listening(11434, 2000) {
         return Ok("already running".into());
     }
 
-    if is_port_listening(11434, 2000) {
-        eprintln!("[INFO] Ollama already running on port 11434, skip spawn");
-        return Ok("already running".into());
-    }
-
-    #[cfg(windows)]
-    const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-    #[cfg(windows)]
-    let mut child = std::process::Command::new("ollama")
-        .arg("serve")
-        .creation_flags(CREATE_NO_WINDOW)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+    let mut child = build_command("ollama", &["serve"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| format!("启动 Ollama 失败: {}。请确认 Ollama 已安装。", e))?;
+        .map_err(|e| format!("Failed to start Ollama: {}. Please make sure Ollama is installed.", e))?;
 
-    #[cfg(not(windows))]
-    let mut child = std::process::Command::new("ollama")
-        .arg("serve")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| format!("启动 Ollama 失败: {}", e))?;
-
-    let pid = child.id();
-    *lock_state!(state.ollama) = Some(pid);
-    eprintln!("[INFO] Ollama started PID={}", pid);
-
-    std::thread::spawn(move || {
-        match child.wait() {
-            Ok(status) => eprintln!("[INFO] Ollama process exited: {}", status),
-            Err(e) => eprintln!("[WARN] Ollama process wait failed: {}", e),
-        }
-    });
-
+    eprintln!("[INFO] Ollama started PID={}", child.id());
+    pipe_output(&mut child, "ollama");
+    *lock_state!(state.ollama) = Some(child);
     Ok("started".into())
 }
 
@@ -101,45 +114,43 @@ fn save_file(path: String, content: String) -> Result<String, String> {
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_lowercase();
-
     if !["md", "txt"].contains(&ext.as_str()) {
-        return Err("仅支持保存 .md 或 .txt 文件".into());
+        return Err("Only .md and .txt files can be saved.".into());
     }
-
     std::fs::write(&path, content.as_bytes())
-        .map(|_| format!("已保存到 {}", path))
-        .map_err(|e| format!("保存失败: {}", e))
+        .map(|_| format!("Saved to {}", path))
+        .map_err(|e| format!("Failed to save file: {}", e))
 }
 
 #[tauri::command]
-fn stop_ollama(state: tauri::State<'_, ManagedPids>) -> Result<String, String> {
-    if let Some(pid) = lock_state!(state.ollama).take() {
-        kill_tree(pid);
+fn stop_ollama(state: tauri::State<'_, ManagedProcesses>) -> Result<String, String> {
+    if let Some(mut child) = lock_state!(state.ollama).take() {
+        kill_child(&mut child);
         Ok("stopped".into())
     } else {
         Ok("not running".into())
     }
 }
 
-/// Restart Python backend — kills existing process and spawns a new one
 #[tauri::command]
 fn restart_backend(app: tauri::AppHandle) -> Result<String, String> {
-    let state = app.state::<ManagedPids>();
+    let state = app.state::<ManagedProcesses>();
 
-    // Kill existing Python process
-    if let Some(pid) = lock_state!(state.python).take() {
-        eprintln!("[INFO] Restart: killing Python PID={}", pid);
-        kill_tree(pid);
-        // Wait for port to free up
-        for _ in 0..10 {
+    if let Some(mut child) = lock_state!(state.python).take() {
+        eprintln!("[INFO] Restart: killing Python PID={}", child.id());
+        kill_child(&mut child);
+        for i in 0..60 {
             if !is_port_listening(18088, 500) {
                 break;
+            }
+            if i % 10 == 0 {
+                eprintln!("[INFO] Waiting for port 18088 to be freed... ({})", i);
             }
             std::thread::sleep(std::time::Duration::from_millis(500));
         }
     }
 
-    spawn_python_inner(&app, None)
+    spawn_python_inner(&app, Some(&app))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -152,27 +163,27 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
-        .manage(ManagedPids {
+        .plugin(tauri_plugin_fs::init())
+        .manage(ManagedProcesses {
             python: Mutex::new(None),
             ollama: Mutex::new(None),
         })
         .setup(|app| {
             if let Err(e) = spawn_python_inner(app, None) {
                 eprintln!("[ERROR] spawn Python: {}", e);
-                eprintln!("[ERROR] 请确认 Python 已安装并在 PATH 中，且已安装所需依赖 (pip install -r python/requirements.txt)");
+                eprintln!("[ERROR] Please make sure Python is installed and available in PATH.");
             }
             if let Err(e) = spawn_ollama(app) {
-                eprintln!("[WARN] spawn Ollama: {} (可能已在运行)", e);
+                eprintln!("[WARN] spawn Ollama: {} (it may already be running)", e);
             }
             Ok(())
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
-                let state = window.state::<ManagedPids>();
-                if let Some(pid) = lock_state!(state.python).take() {
-                    kill_tree(pid);
+                let state = window.state::<ManagedProcesses>();
+                if let Some(mut child) = lock_state!(state.python).take() {
+                    kill_child(&mut child);
                 }
-                // 不杀 Ollama：它是共享服务，其他程序可能也在用
                 lock_state!(state.ollama).take();
             }
         })
@@ -189,226 +200,130 @@ pub fn run() {
 }
 
 fn spawn_ollama(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    let state = app.state::<ManagedPids>();
-    if lock_state!(state.ollama).is_some() {
+    let state = app.state::<ManagedProcesses>();
+    if lock_state!(state.ollama).is_some() || is_port_listening(11434, 2000) {
         return Ok(());
     }
 
-    if is_port_listening(11434, 2000) {
-        eprintln!("[INFO] Ollama already running, skip spawn");
-        return Ok(());
-    }
-
-    #[cfg(windows)]
-    const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-    #[cfg(windows)]
-    let mut child = std::process::Command::new("ollama")
-        .arg("serve")
-        .creation_flags(CREATE_NO_WINDOW)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+    let mut child = build_command("ollama", &["serve"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| format!("启动 Ollama 失败: {}。请确认 Ollama 已安装。", e))?;
+        .map_err(|e| format!("Failed to start Ollama: {}. Please make sure Ollama is installed.", e))?;
 
-    #[cfg(not(windows))]
-    let mut child = std::process::Command::new("ollama")
-        .arg("serve")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| format!("启动 Ollama 失败: {}", e))?;
-
-    let pid = child.id();
-    *lock_state!(state.ollama) = Some(pid);
-    eprintln!("[INFO] Ollama spawned PID={}", pid);
-
-    std::thread::spawn(move || {
-        match child.wait() {
-            Ok(status) => eprintln!("[INFO] Ollama process exited: {}", status),
-            Err(e) => eprintln!("[WARN] Ollama process wait failed: {}", e),
-        }
-    });
+    eprintln!("[INFO] Ollama spawned PID={}", child.id());
+    pipe_output(&mut child, "ollama");
+    *lock_state!(state.ollama) = Some(child);
     Ok(())
 }
 
-/// Internal Python spawn logic, shared between setup and restart_backend.
-/// `app_handle` is only needed for crash notifications (emit events).
-fn spawn_python_inner<R: tauri::Runtime, M: Manager<R>>(app: &M, app_handle: Option<&tauri::AppHandle<R>>) -> Result<String, String> {
-    let python_dir = resolve_python_dir();
-
-    #[cfg(windows)]
-    const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-    if cfg!(debug_assertions) {
-        // ── Dev mode: run `python api.py` ──
-        let api_path = python_dir.join("api.py");
-        if !api_path.exists() {
-            return Err(format!("Python API 文件不存在: {}", api_path.display()));
-        }
-        let api_str = api_path.to_str().expect("path not valid UTF-8").to_string();
-        let python_cmd = if cfg!(windows) { "python" } else { "python3" };
-
-        eprintln!("[INFO] Dev mode: {} {} --port 18088", python_cmd, api_str);
-
-        #[cfg(windows)]
-        let child = std::process::Command::new(python_cmd)
-            .args([&api_str, "--port", "18088"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .or_else(|_| std::process::Command::new("python")
-                .args([&api_str, "--port", "18088"])
-                .creation_flags(CREATE_NO_WINDOW)
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .spawn()
-            )
-            .map_err(|e| format!("启动 Python 失败: {}。请确认 Python 已安装。", e))?;
-
-        #[cfg(not(windows))]
-        let child = std::process::Command::new(python_cmd)
-            .args([&api_str, "--port", "18088"])
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .or_else(|_| std::process::Command::new("python")
-                .args([&api_str, "--port", "18088"])
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .spawn()
-            )
-            .map_err(|e| format!("启动 Python 失败: {}。请确认 Python 已安装。", e))?;
-
-        // Continue to common PID/monitor logic
-        return _finish_spawn(app, app_handle, child);
-    }
-
-    // ── Release mode: run `api.exe` (PyInstaller bundle) ──
-    let api_exe = python_dir.join(if cfg!(windows) { "api.exe" } else { "api" });
-    if !api_exe.exists() {
-        return Err(format!("Python 后端未找到: {}。请重新安装应用。", api_exe.display()));
-    }
-    let api_str = api_exe.to_str().expect("path not valid UTF-8").to_string();
-
-    eprintln!("[INFO] Release mode: {} --port 18088", api_str);
-
-    #[cfg(windows)]
-    let child = std::process::Command::new(&api_str)
-        .args(["--port", "18088"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("启动后端失败: {}", e))?;
-
-    #[cfg(not(windows))]
-    let child = std::process::Command::new(&api_str)
-        .args(["--port", "18088"])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("启动后端失败: {}", e))?;
-
-    _finish_spawn(app, app_handle, child)
-}
-
-/// Common post-spawn logic: register PID, monitor thread, wait for readiness.
-fn _finish_spawn<R: tauri::Runtime, M: Manager<R>>(
+fn spawn_python_inner<R: tauri::Runtime, M: Manager<R>>(
     app: &M,
     app_handle: Option<&tauri::AppHandle<R>>,
-    mut child: std::process::Child,
 ) -> Result<String, String> {
+    let python_dir = resolve_python_dir();
+
+    let mut child = if cfg!(debug_assertions) {
+        let api_path = python_dir.join("api_factory.py");
+        if !api_path.exists() {
+            return Err(format!("Python API file not found: {}", api_path.display()));
+        }
+        let api_str = api_path
+            .to_str()
+            .ok_or("Path contains invalid characters")?
+            .to_string();
+        let python_cmd = if cfg!(windows) { "python" } else { "python3" };
+        eprintln!("[INFO] Dev mode: {} {} --port 18088", python_cmd, api_str);
+
+        build_command(python_cmd, &[api_str.as_str(), "--port", "18088"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .or_else(|_| {
+                build_command("python", &[api_str.as_str(), "--port", "18088"])
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .spawn()
+            })
+            .map_err(|e| format!("Failed to start Python: {}. Please make sure Python is installed.", e))?
+    } else {
+        let api_exe = python_dir.join(if cfg!(windows) { "api.exe" } else { "api" });
+        if !api_exe.exists() {
+            return Err(format!(
+                "Python backend not found: {}. Please reinstall the application.",
+                api_exe.display()
+            ));
+        }
+        let api_str = api_exe
+            .to_str()
+            .ok_or("Path contains invalid characters")?
+            .to_string();
+        eprintln!("[INFO] Release mode: {} --port 18088", api_str);
+
+        build_command(&api_str, &["--port", "18088"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to start backend: {}", e))?
+    };
 
     let pid = child.id();
-    let state = app.state::<ManagedPids>();
-    *lock_state!(state.python) = Some(pid);
+    let state = app.state::<ManagedProcesses>();
+
+    pipe_output(&mut child, "python");
+    *lock_state!(state.python) = Some(child);
+
     eprintln!("[INFO] Python spawned PID={}", pid);
 
-    // Spawn a monitor thread that reads stdout, stderr, AND detects process exit
-    let handle = app_handle.cloned();
-    std::thread::spawn(move || {
-        use std::io::{BufRead, BufReader};
-
-        // Take stdout/stderr before wait
-        let out = child.stdout.take();
-        let err = child.stderr.take();
-
-        // Read stdout in a sub-thread
-        if let Some(out) = out {
-            std::thread::spawn(move || {
-                for line in BufReader::new(out).lines().flatten() {
-                    println!("[python] {}", line);
+    if let Some(h) = app_handle.cloned() {
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(15));
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(30));
+                if !is_port_listening(18088, 1000) {
+                    eprintln!("[WARN] Python backend port not responding");
+                    let _ = h.emit(
+                        "backend-crashed",
+                        serde_json::json!({
+                            "message": "Python backend may have exited. Please restart it.",
+                        }),
+                    );
+                    break;
                 }
-            });
-        }
-
-        // Read stderr in a sub-thread
-        if let Some(err) = err {
-            std::thread::spawn(move || {
-                for line in BufReader::new(err).lines().flatten() {
-                    eprintln!("[python] {}", line);
-                }
-            });
-        }
-
-        // Wait for process exit
-        let exit_result = child.wait();
-        match &exit_result {
-            Ok(status) => {
-                eprintln!("[WARN] Python process exited unexpectedly: {}", status);
             }
-            Err(e) => {
-                eprintln!("[WARN] Python process wait error: {}", e);
-            }
-        }
+        });
+    }
 
-        // Notify frontend that backend crashed
-        if let Some(h) = handle {
-            let _ = h.emit("backend-crashed", serde_json::json!({
-                "message": "Python 后端进程意外退出，请重启",
-                "exit_status": exit_result.map(|s| s.to_string()).unwrap_or_else(|e| e.to_string())
-            }));
-        }
-    });
-
-    // Verify Python server is actually listening after spawn
     eprintln!("[INFO] Waiting for Python server to be ready...");
     for i in 0..30 {
         std::thread::sleep(std::time::Duration::from_millis(500));
         if is_port_listening(18088, 1000) {
             eprintln!("[INFO] Python server ready after {}ms", (i + 1) * 500);
-            return Ok(format!("Python 后端已启动 (PID={})", pid));
+            return Ok(format!("Python backend started (PID={})", pid));
         }
     }
-    eprintln!("[WARN] Python server did not become ready within 15s, but process is running");
-    Ok(format!("Python 进程已启动但未在 15 秒内就绪 (PID={})", pid))
+    Ok(format!(
+        "Python process started but was not ready within 15 seconds (PID={})",
+        pid
+    ))
 }
 
 fn resolve_python_dir() -> std::path::PathBuf {
     if cfg!(debug_assertions) {
         let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        manifest.parent()
+        manifest
+            .parent()
             .map(|p| p.join("python"))
             .unwrap_or_else(|| manifest.join("python"))
     } else {
-        // Release mode: look for python-dist/api/ (PyInstaller output)
-        let exe_dir = std::env::current_exe().ok()
+        let exe_dir = std::env::current_exe()
+            .ok()
             .and_then(|p| p.parent().map(|d| d.to_path_buf()))
             .unwrap_or_default();
-
-        let candidates: Vec<std::path::PathBuf> = vec![
-            exe_dir.join("python-dist").join("api"),
-        ];
-        for dir in &candidates {
-            if dir.exists() {
-                return dir.clone();
-            }
-        }
-
         exe_dir.join("python-dist").join("api")
     }
 }
 
-fn main() { run() }
+fn main() {
+    run()
+}

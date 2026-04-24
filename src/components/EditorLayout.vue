@@ -1,55 +1,55 @@
-<template>
+﻿<template>
   <div class="editor-layout">
-    <!-- 左侧文件树 -->
+    <!-- 宸︿晶鏂囦欢鏍?-->
     <div class="layout-sidebar" :style="{ width: sidebarWidth + 'px' }">
       <FileTree />
     </div>
     <div class="resize-handle" @mousedown="startResize($event, 'sidebar')"></div>
 
-    <!-- 中间编辑器 -->
+    <!-- 涓棿缂栬緫鍣?-->
     <div class="layout-editor">
-      <!-- 文件标签栏 -->
+      <!-- 鏂囦欢鏍囩鏍?-->
       <EditorTabs />
-      <!-- 编辑器工具栏 -->
+      <!-- 缂栬緫鍣ㄥ伐鍏锋爮 -->
       <div class="editor-toolbar">
         <div class="toolbar-left">
-          <button class="toolbar-btn new-paper-btn" @click="showTemplatePicker = true" title="新建论文">
+          <button class="toolbar-btn new-paper-btn" @click="showTemplatePicker = true" title="鏂板缓璁烘枃">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-            <span class="btn-label">新建论文</span>
+            <span class="btn-label">鏂板缓璁烘枃</span>
           </button>
           <span class="toolbar-hint">Ctrl+K AI Edit</span>
         </div>
         <div class="toolbar-right">
-          <!-- 论文合规检查 -->
-          <button class="toolbar-btn compliance-btn" @click="runComplianceCheck" title="论文合规检查">
+          <!-- 璁烘枃鍚堣妫€鏌?-->
+          <button class="toolbar-btn compliance-btn" @click="runComplianceCheck" title="Compliance check">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
             </svg>
           </button>
-          <!-- 导出按钮 -->
+          <!-- 瀵煎嚭鎸夐挳 -->
           <div class="export-wrapper" v-if="exportTemplates.length">
             <select
               class="export-select"
               v-model="selectedTemplate"
               :disabled="exportLoading"
-              title="选择导出模板"
+              title="閫夋嫨瀵煎嚭妯℃澘"
             >
-              <option value="" disabled>选择模板...</option>
+              <option value="" disabled>閫夋嫨妯℃澘...</option>
               <option
                 v-for="t in exportTemplates"
                 :key="t.id"
                 :value="t.id"
               >{{ t.name }}</option>
             </select>
-            <button class="export-btn" @click="handleExportLatex" :disabled="!selectedTemplate || exportLoading" title="导出 LaTeX (.tex)">LaTeX</button>
+            <button class="export-btn" @click="handleExportLatex" :disabled="!selectedTemplate || exportLoading" title="瀵煎嚭 LaTeX (.tex)">LaTeX</button>
             <button
               class="export-btn pdf-btn"
               @click="handleExportPdf"
               :disabled="!selectedTemplate || exportLoading || !tectonicAvailable"
-              :title="tectonicAvailable ? '导出 PDF' : '请先安装 LaTeX 引擎（Tectonic）'"
+              :title="tectonicAvailable ? 'Export PDF' : 'Please install Tectonic first'"
             >PDF</button>
           </div>
-          <!-- 导出状态提示 -->
+          <!-- 瀵煎嚭鐘舵€佹彁绀?-->
           <div v-if="exportMessage" class="export-toast">{{ exportMessage }}</div>
           <button class="toolbar-btn" :class="{ active: showPreview }" @click="showPreview = !showPreview" title="Toggle Preview">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -62,20 +62,21 @@
           </button>
         </div>
       </div>
-      <!-- Monaco 编辑器 -->
+      <!-- Monaco 缂栬緫鍣?-->
       <MonacoEditor :theme="isDark ? 'vs-dark' : 'vs'" @contentChange="onContentChange" @selectionChange="onSelectionChange" />
     </div>
 
-    <!-- 右侧面板 -->
+    <!-- 鍙充晶闈㈡澘 -->
     <template v-if="showPreview || showAiPanel">
       <div class="resize-handle" @mousedown="startResize($event, 'panel')"></div>
       <div class="layout-panel" :style="{ width: panelWidth + 'px' }">
-        <MarkdownPreview v-if="showPreview && !showAiPanel" :content="content" />
+        <MarkdownPreview v-if="showPreview" :content="content" :version="contentVersion" :class="{ 'panel-half': showAiPanel }" />
         <AiPanel
           v-if="showAiPanel"
           :loading="aiLoading"
           :result="aiResult"
           :can-undo="!!previousContent"
+          :class="{ 'panel-half': showPreview }"
           @edit="handleAiEdit"
           @accept="applyAiResult"
           @reject="rejectAiResult"
@@ -83,11 +84,12 @@
           @cancel="cancelAiEdit"
           @close="showAiPanel = false"
           @styleTransfer="handleStyleTransfer"
+          @agent="handleAgentRequest"
         />
       </div>
     </template>
 
-    <!-- 论文合规检查弹窗 -->
+    <!-- 璁烘枃鍚堣妫€鏌ュ脊绐?-->
     <ComplianceModal
       :visible="showCompliance"
       :loading="complianceLoading"
@@ -119,19 +121,19 @@ import { useEditor } from '../composables/useEditor'
 const props = defineProps<{ isDark: boolean }>()
 
 const {
-  content, activeTab, selection,
+  content, contentVersion, activeTab, selection,
   showPreview, showAiPanel, aiLoading, aiResult,
   previousContent,
   openNewUntitled,
   saveFile, aiEdit, cancelAiEdit, applyAiResult, rejectAiResult, undoEdit,
 } = useEditor()
 
-// ── 论文模板选择器 ──────────────────────────────────────────────
+// 鈹€鈹€ 璁烘枃妯℃澘閫夋嫨鍣?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 const showTemplatePicker = ref(false)
 
 function handleScaffoldCreate(markdown: string, templateId: string) {
   openNewUntitled()
-  //setContent 会在 nextTick 通过 tab switch 处理
+  //setContent 浼氬湪 nextTick 閫氳繃 tab switch 澶勭悊
   nextTick(() => {
     if (activeTab.value) {
       activeTab.value.content = markdown
@@ -140,15 +142,15 @@ function handleScaffoldCreate(markdown: string, templateId: string) {
   })
 }
 
-// ── 论文合规检查 ────────────────────────────────────────────────
+// 鈹€鈹€ 璁烘枃鍚堣妫€鏌?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 const showCompliance = ref(false)
 const complianceLoading = ref(false)
 const complianceError = ref('')
-const complianceReport = ref<any>(null)
+const complianceReport = ref<Record<string, unknown> | null>(null)
 
 async function runComplianceCheck() {
   if (!content.value.trim()) {
-    complianceError.value = '编辑器内容为空'
+    complianceError.value = 'Editor content is empty'
     showCompliance.value = true
     return
   }
@@ -170,7 +172,7 @@ async function runComplianceCheck() {
     })
     const data = await resp.json()
     if (data.error && !data.report) {
-      complianceError.value = data.error || '检查失败'
+      complianceError.value = data.error || 'Compliance check failed'
     } else {
       complianceReport.value = data.report
       if (data.report?.error && !data.report?.summary) {
@@ -178,7 +180,7 @@ async function runComplianceCheck() {
       }
     }
   } catch (e) {
-    complianceError.value = `请求失败: ${e}`
+    complianceError.value = `璇锋眰澶辫触: ${e}`
   } finally {
     complianceLoading.value = false
   }
@@ -198,11 +200,49 @@ function onSelectionChange(_sel: any) {
 function handleAiEdit(instruction: string, taskType?: string) {
   const contextText = selection.value.text || content.value
   if (!contextText.trim()) {
-    // 没有内容时仍然发送请求（AI 可以做 free-form 问答）
-    aiEdit(instruction, ' ', taskType)
+    // 娌℃湁閫夋嫨鍐呭鏃讹紝鍙敤 instruction 鎻愰棶锛圓I 鍙互鍋?free-form 闂瓟锛?    aiEdit(instruction, '', undefined)
     return
   }
   aiEdit(instruction, contextText, taskType)
+}
+
+async function handleAgentRequest(instruction: string) {
+  const contextText = selection.value.text || content.value
+  try {
+    const resp = await fetch(`${EXPORT_API}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: instruction,
+        context: contextText,
+      }),
+    })
+    if (resp.ok) {
+      // Stream the response to AI result
+      const reader = resp.body?.getReader()
+      if (!reader) return
+      const decoder = new TextDecoder()
+      let buffer = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const raw = line.slice(6).trim()
+          if (!raw) continue
+          try {
+            const evt = JSON.parse(raw)
+            if (evt.content) {
+              aiResult.value = (aiResult.value || '') + evt.content
+            }
+          } catch { /* SSE parse error, skip */ }
+        }
+      }
+    }
+  } catch (e) { console.warn('handleAgentRequest failed:', e) }
 }
 
 async function handleStyleTransfer(templateId: string, templateName: string) {
@@ -219,14 +259,13 @@ async function handleStyleTransfer(templateId: string, templateName: string) {
       // Use aiEdit to set the result as the AI result
       aiEdit(`Rewrite in ${templateName} style`, contextText, 'expand')
     }
-  } catch { /* ignore */ }
+  } catch (e) { console.warn('handleStyleTransfer failed:', e) }
 }
 
 function handleUndo() {
   undoEdit()
 }
 
-// 拖拽分隔条
 function startResize(e: MouseEvent, target: 'sidebar' | 'panel') {
   e.preventDefault()
   const startX = e.clientX
@@ -249,11 +288,12 @@ function startResize(e: MouseEvent, target: 'sidebar' | 'panel') {
   document.addEventListener('mouseup', onMouseUp)
 }
 
-// Ctrl+S 保存
-function onKeyDown(e: KeyboardEvent) {
+// Ctrl+S 淇濆瓨
+async function onKeyDown(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key === 's') {
     e.preventDefault()
-    saveFile()
+    const err = await saveFile()
+    if (err) showExportToast(err)
   }
 }
 
@@ -279,7 +319,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('paper-scaffold', handlePaperScaffold)
 })
 
-// ── Pandoc 导出 ───────────────────────────────────────────────
+// 鈹€鈹€ Pandoc 瀵煎嚭 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 const isTauri = '__TAURI_INTERNALS__' in window
 const EXPORT_API = isTauri ? 'http://localhost:18088' : ''
 const exportTemplates = ref<{ id: string; name: string; description: string }[]>([])
@@ -288,6 +328,7 @@ const exportLoading = ref(false)
 const exportMessage = ref('')
 let exportToastTimer: ReturnType<typeof setTimeout> | null = null
 
+const tectonicAvailable = ref(false)
 async function loadExportTemplates() {
   try {
     const resp = await fetch(`${EXPORT_API}/api/export/templates`)
@@ -299,15 +340,13 @@ async function loadExportTemplates() {
         selectedTemplate.value = exportTemplates.value[0].id
       }
     }
-  } catch { /* ignore */ }
+  } catch (e) { console.warn('loadExportTemplates failed:', e) }
 }
-
-const tectonicAvailable = ref(false)
 
 async function handleExportLatex() {
   if (!selectedTemplate.value || exportLoading.value) return
   if (!content.value.trim()) {
-    showExportToast('请先在编辑器中写入内容')
+    showExportToast('Please write content in the editor first')
     return
   }
 
@@ -323,8 +362,8 @@ async function handleExportLatex() {
     })
 
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ error: '导出失败' }))
-      showExportToast(err.error || '导出失败')
+      const err = await resp.json().catch(() => ({ error: '瀵煎嚭澶辫触' }))
+      showExportToast(err.error || '瀵煎嚭澶辫触')
       return
     }
 
@@ -332,14 +371,14 @@ async function handleExportLatex() {
     const tex = data.tex || ''
 
     if (!tex) {
-      showExportToast('转换结果为空')
+      showExportToast('杞崲缁撴灉涓虹┖')
       return
     }
 
     await navigator.clipboard.writeText(tex)
-    showExportToast('✓ .tex 已复制到剪贴板')
+    showExportToast('LaTeX copied to clipboard')
   } catch (e) {
-    showExportToast(`导出失败: ${e}`)
+    showExportToast(`瀵煎嚭澶辫触: ${e}`)
   } finally {
     exportLoading.value = false
   }
@@ -348,11 +387,11 @@ async function handleExportLatex() {
 async function handleExportPdf() {
   if (!selectedTemplate.value || exportLoading.value) return
   if (!content.value.trim()) {
-    showExportToast('请先在编辑器中写入内容')
+    showExportToast('Please write content in the editor first')
     return
   }
   if (!tectonicAvailable.value) {
-    showExportToast('请先安装 LaTeX 引擎（在设置中安装 Tectonic）')
+    showExportToast('Please install the LaTeX engine (Tectonic) first')
     return
   }
 
@@ -369,12 +408,12 @@ async function handleExportPdf() {
     })
 
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ detail: 'PDF 导出失败' }))
-      showExportToast(err.detail || err.error || 'PDF 导出失败')
+      const err = await resp.json().catch(() => ({ detail: 'PDF 瀵煎嚭澶辫触' }))
+      showExportToast(err.detail || err.error || 'PDF 瀵煎嚭澶辫触')
       return
     }
 
-    // 下载 PDF
+    // 涓嬭浇 PDF
     const blob = await resp.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -384,9 +423,9 @@ async function handleExportPdf() {
     a.download = match ? match[1] : 'paper.pdf'
     a.click()
     URL.revokeObjectURL(url)
-    showExportToast('✓ PDF 已下载')
+    showExportToast('PDF downloaded')
   } catch (e) {
-    showExportToast(`PDF 导出失败: ${e}`)
+    showExportToast(`PDF 瀵煎嚭澶辫触: ${e}`)
   } finally {
     exportLoading.value = false
   }
@@ -537,5 +576,10 @@ function showExportToast(msg: string) {
   max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.panel-half {
+  height: 50% !important;
+  flex: none !important;
 }
 </style>

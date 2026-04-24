@@ -9,6 +9,7 @@ agent:
     persist_dir: data/chromadb
     top_k: 5
   system_prompt: '你是一个学术研究助手，具备以下能力: 1. 翻译英文学术文献为中文 2. 解析和检索已入库的文档 3. 搜索 arXiv 学术论文
+    4. 查询论文模板和写作范例（如 IEEE、ACM、NeurIPS 格式要求）
 
     根据用户请求，选择合适的工具完成任务。 如果已有信息足够，直接回答，不要调用工具。
 
@@ -28,17 +29,19 @@ cleaner:
 formatter:
   file_format: markdown
   output_format: bilingual
+network:
+  proxy: ''
 parser:
   engine: pdfplumber
   extract_tables: false
 translator:
   cloud:
-    api_key: 5eef97e2c9204763ad8b3087f5cbc9ca.Y7FCVsm5iquKOJNA
-    base_url: https://open.bigmodel.cn/api/anthropic
+    api_key: ""
+    base_url: https://api.deepseek.com/v1
     max_tokens: 16384
-    model: glm-5.1
-    provider: anthropic
-  engine: ollama
+    model: deepseek-chat
+    provider: deepseek
+  engine: cloud
   model: qwen3:8b
   num_predict: 16384
   ollama_base_url: http://localhost:11434
