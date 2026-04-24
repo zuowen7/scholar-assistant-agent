@@ -120,6 +120,7 @@ class AgentLoop:
         memory_manager: MemoryManager | None = None,
         skill_registry: SkillRegistry | None = None,
         trajectory_recorder: TrajectoryRecorder | None = None,
+        cloud_client: Any | None = None,
     ) -> None:
         """初始化 Agent 推理循环引擎。
 
@@ -172,6 +173,10 @@ class AgentLoop:
         # Phase 3: 错误恢复 + Hook
         self.retry_manager = RetryManager()
         self.hooks = HookManager()
+
+        # 双引擎: cloud_client 非空时走云端 API, 否则走 Ollama
+        self.cloud_client = cloud_client
+        self._use_cloud = cloud_client is not None
 
         self._http_client: httpx.AsyncClient | None = None
 
@@ -565,31 +570,31 @@ class AgentLoop:
     # ------------------------------------------------------------------
 
     async def _call_llm(self, messages: list[Message]) -> dict:
-        """调用 Ollama Chat API，支持原生工具调用。
+        """调用 LLM — 云端 API 或本地 Ollama。
 
-        请求格式:
-        - endpoint: POST {base_url}/api/chat
-        - payload: {
-            "model": "...",
-            "messages": [...],
-            "tools": [...],  // 工具定义
-            "stream": false,
-            "options": { temperature, num_predict, ... }
-          }
+        根据用户设置自动路由：
+        - cloud_client 非空 → OpenAI 兼容 API (/v1/chat/completions)
+        - 否则 → Ollama API (/api/chat)
+
+        两种格式的 tool_calls 响应在 _extract_tool_calls 中统一处理。
 
         Args:
             messages: 消息列表。
 
         Returns:
-            Ollama Chat API 的完整 JSON 响应。
+            统一格式的响应 dict，包含 message.content 和 message.tool_calls。
 
         Raises:
-            ConnectionError: 无法连接 Ollama。
+            ConnectionError: 无法连接 LLM 服务。
             ValueError: API 返回错误。
         """
-        client = await self._get_http_client()
+        if self._use_cloud:
+            return await self._call_cloud(messages)
+        return await self._call_ollama(messages)
 
-        # 序列化消息为 Ollama 格式
+    async def _call_ollama(self, messages: list[Message]) -> dict:
+        """调用 Ollama Chat API。"""
+        client = await self._get_http_client()
         ollama_messages = [message_to_ollama_dict(m) for m in messages]
 
         payload: dict = {
@@ -602,7 +607,6 @@ class AgentLoop:
             },
         }
 
-        # 附带工具定义（Ollama 原生 tool calling）
         tools = self.tool_registry.to_ollama_tools()
         if tools:
             payload["tools"] = tools
@@ -614,20 +618,98 @@ class AgentLoop:
             )
             resp.raise_for_status()
         except httpx.ConnectError as e:
-            raise ConnectionError(
-                f"无法连接 Ollama 服务 ({self.ollama_base_url})"
-            ) from e
+            raise ConnectionError(f"无法连接 Ollama 服务 ({self.ollama_base_url})") from e
         except httpx.HTTPStatusError as e:
-            raise ValueError(
-                f"Ollama API 错误 (HTTP {e.response.status_code}): "
-                f"{e.response.text[:200]}"
-            ) from e
+            raise ValueError(f"Ollama API 错误 (HTTP {e.response.status_code}): {e.response.text[:200]}") from e
         except httpx.TimeoutException as e:
-            raise ConnectionError(
-                f"Ollama 请求超时 ({self.timeout}s)"
-            ) from e
+            raise ConnectionError(f"Ollama 请求超时 ({self.timeout}s)") from e
 
         return resp.json()
+
+    async def _call_cloud(self, messages: list[Message]) -> dict:
+        """调用 OpenAI 兼容 Chat API，返回统一格式。"""
+        client = await self._get_http_client()
+        cloud = self.cloud_client
+
+        # 将 Message 列表转为 OpenAI 格式
+        api_messages = []
+        for m in messages:
+            d: dict = {"role": m.role, "content": m.content or ""}
+            if m.tool_calls:
+                d["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.name, "arguments": json.dumps(tc.arguments, ensure_ascii=False)},
+                    }
+                    for tc in m.tool_calls
+                ]
+            if m.tool_call_id:
+                d["tool_call_id"] = m.tool_call_id
+                d["content"] = m.content or ""
+            api_messages.append(d)
+
+        payload: dict = {
+            "model": cloud.model,
+            "messages": api_messages,
+            "temperature": self.temperature,
+            "max_tokens": self.num_predict,
+        }
+
+        tools = self.tool_registry.to_ollama_tools()
+        if tools:
+            payload["tools"] = tools
+
+        url = f"{cloud.base_url}/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {cloud.api_key}",
+        }
+
+        try:
+            resp = await client.post(url, json=payload, headers=headers)
+            resp.raise_for_status()
+        except httpx.ConnectError as e:
+            raise ConnectionError(f"无法连接云端 API ({cloud.base_url})") from e
+        except httpx.HTTPStatusError as e:
+            detail = ""
+            try:
+                body = e.response.json()
+                detail = body.get("error", {}).get("message", "") or str(body)
+            except Exception:
+                detail = e.response.text[:200]
+            raise ValueError(f"云端 API 错误 (HTTP {e.response.status_code}): {detail}") from e
+        except httpx.TimeoutException as e:
+            raise ConnectionError(f"云端 API 请求超时 ({self.timeout}s)") from e
+
+        data = resp.json()
+        # 统一为 Ollama 格式，方便下游 _extract_tool_calls 处理
+        choice = (data.get("choices") or [{}])[0]
+        msg = choice.get("message", {})
+
+        unified_tool_calls = []
+        for tc in (msg.get("tool_calls") or []):
+            func = tc.get("function", {})
+            args = func.get("arguments", {})
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    args = {"raw_input": args}
+            unified_tool_calls.append({
+                "function": {
+                    "name": func.get("name", ""),
+                    "arguments": args if isinstance(args, dict) else {},
+                },
+            })
+
+        return {
+            "message": {
+                "role": "assistant",
+                "content": msg.get("content", ""),
+                "tool_calls": unified_tool_calls,
+            },
+        }
 
     # ------------------------------------------------------------------
     # 工具调用解析

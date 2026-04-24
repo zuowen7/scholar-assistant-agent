@@ -651,6 +651,18 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
             )
             prompt_builder = PromptBuilder(tool_registry=registry)
 
+            # 双引擎: 用户设置 engine=cloud 且有 api_key 时走云端, 否则走 Ollama
+            use_cloud = cloud_only or trans_cfg.get("engine", "ollama") == "cloud"
+            cloud_client_for_agent = None
+            if use_cloud:
+                cloud_cfg = trans_cfg.get("cloud", {})
+                key = (cloud_cfg.get("api_key") or "").strip()
+                if key:
+                    cloud_client_for_agent = _build_cloud_client(trans_cfg, cloud_cfg)
+                    agent_model = cloud_cfg.get("model", "gpt-4o")
+                    logger.info("Agent 使用云端 API: model=%s, provider=%s",
+                                agent_model, cloud_cfg.get("provider", "openai"))
+
             _agent_instance = AgentLoop(
                 ollama_base_url=ollama_url,
                 model=agent_model,
@@ -666,6 +678,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
                 memory_manager=memory_manager,
                 skill_registry=skill_registry,
                 trajectory_recorder=trajectory_recorder,
+                cloud_client=cloud_client_for_agent,
             )
 
             logger.info("Agent 初始化完成 (model=%s, rag=%s)",
@@ -674,11 +687,9 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
 
     @app.post("/api/chat")
     async def chat(req: ChatRequest):
-        """Agent 对话端点 — SSE 流式返回 ReAct 推理过程。"""
+        """Agent 对话端点 — SSE 流式返回 ReAct 推理过程。支持 Ollama 和云端双引擎。"""
         if not _AGENT_AVAILABLE:
             raise HTTPException(503, "Agent 模块未安装，请安装 chromadb")
-        if cloud_only:
-            raise HTTPException(503, "纯云端模式暂不支持 Agent")
 
         agent = await _get_agent()
 
