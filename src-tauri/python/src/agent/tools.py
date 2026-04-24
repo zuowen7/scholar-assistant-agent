@@ -853,5 +853,43 @@ def create_default_registry(
     )
     registry.register(read_file_def)
 
+    # --- 参考文献格式化工具 ---
+    def format_bibliography(
+        bibtex_entry: str,
+        style: str = "ieee",
+        target_lang: str = "zh",
+    ) -> str:
+        """将 BibTeX 条目格式化为指定的引用格式。支持 GB/T 7714、APA、IEEE 等常见学术引用格式。
+
+        Args:
+            bibtex_entry: BibTeX 格式的参考文献条目（@article{...}, @book{...} 等）
+            style: 引用格式，可选 ieee（IEEE）、apa（APA 第七版）、gbt7714（GB/T 7714-2015）、mla（MLA 第九版），默认 ieee
+            target_lang: 引用语言，可选 zh（中文）、en（英文），默认 zh
+        """
+        styles = ["ieee", "apa", "gbt7714", "mla"]
+        if style not in styles:
+            return f"不支持的引用格式: {style}。支持的格式: {', '.join(styles)}"
+        prompt = f"""请将以下 BibTeX 条目格式化为 {style.upper()} 引用格式的文本。
+
+要求：
+1. 只输出格式化后的参考文献，不要任何解释或说明
+2. 严格按照 {style.upper()} 格式规范
+3. 目标语言：{"中文" if target_lang == "zh" else "英文"}
+4. 译名使用学界公认译法，不要生造
+
+BibTeX 条目：
+{bibtex_entry}
+
+格式化后的引用："""
+        return _call_llm_sync(prompt, ollama_base_url, cloud_base_url, cloud_api_key, cloud_model, model)
+
+    format_bibliography._agent_tool_def = ToolDefinition(
+        name="format_bibliography",
+        description="将 BibTeX 条目格式化为指定引用格式（IEEE/APA/GB/T 7714/MLA）。",
+        parameters=_extract_schema_from_function(format_bibliography),
+        fn=format_bibliography,
+    )
+    registry.register(format_bibliography)
+
     logger.info("默认工具注册完成: %s", [t.name for t in registry.list_tools()])
     return registry
