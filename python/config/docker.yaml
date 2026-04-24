@@ -23,6 +23,7 @@ translator:
   ollama_base_url: "http://host.docker.internal:11434"
   model: "qwen3:8b"
   temperature: 0.3
+  max_concurrency: 4
   num_predict: 4096
   system_prompt: |
     You are a professional academic translator. Translate the following English text to Chinese.
