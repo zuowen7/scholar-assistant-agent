@@ -9,10 +9,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import time
 from dataclasses import dataclass, field
+from typing import Sequence
 
 import httpx
 
@@ -117,6 +119,8 @@ class OllamaClient:
         self._glossary = Glossary()
         self._chunk_index = 0
         self._http_client: httpx.Client | None = None
+        self._async_client: httpx.AsyncClient | None = None
+        self._lock = asyncio.Lock()  # 保护 _prev_translation / _chunk_index 的顺序写入
 
     def set_document_context(self, context: str) -> None:
         """设置文档级上下文（标题+摘要），用于跨 chunk 保持一致性"""
@@ -330,6 +334,237 @@ class OllamaClient:
             return resp.status_code == 200
         except httpx.HTTPError:
             return False
+
+
+    # ── 异步并行翻译 ─────────────────────────────────────────────────────────
+
+    async def _get_async_http_client(self) -> httpx.AsyncClient:
+        if self._async_client is None:
+            self._async_client = httpx.AsyncClient(timeout=self.timeout)
+        return self._async_client
+
+    async def close_async(self) -> None:
+        if self._async_client is not None:
+            await self._async_client.aclose()
+            self._async_client = None
+
+    async def _call_api_async(
+        self, text: str, prev_translation: str = "",
+    ) -> dict:
+        """异步调用 Ollama Chat API（不走重试，重试由外层 handle）"""
+        prompt_parts = []
+
+        if self._document_context:
+            prompt_parts.append(
+                f"[文档背景（不要翻译此部分）]\n{self._document_context}\n\n"
+            )
+
+        if prev_translation:
+            snippet = prev_translation[-_CONTEXT_WINDOW_LEN:]
+            prompt_parts.append(
+                f"[前文翻译参考（不要翻译此部分，仅用于保持术语和风格一致）]\n"
+                f"{snippet}\n\n"
+            )
+
+        prompt_parts.append(f"[请翻译以下内容]\n{text}")
+        prompt = "".join(prompt_parts)
+
+        # Token 安全保护
+        if len(prompt) > _PROMPT_MAX_CHARS:
+            ctx_budget = _PROMPT_MAX_CHARS - len(text) - 200
+            if ctx_budget > 0 and prev_translation:
+                snippet = prev_translation[-min(ctx_budget, _CONTEXT_WINDOW_LEN):]
+                prompt = (
+                    f"[前文翻译参考（不要翻译此部分）]\n{snippet}\n\n"
+                    f"[请翻译以下内容]\n{text}"
+                )
+            elif self._document_context and ctx_budget > 0:
+                prompt = (
+                    f"[文档背景（不要翻译此部分）]\n{self._document_context[:ctx_budget]}\n\n"
+                    f"[请翻译以下内容]\n{text}"
+                )
+            else:
+                prompt = f"[请翻译以下内容]\n{text}"
+
+        system = self._build_system_prompt()
+
+        chat_payload = {
+            "model": self.model,
+            "messages": (
+                ([{"role": "system", "content": system}] if system else [])
+                + [{"role": "user", "content": prompt}]
+            ),
+            "stream": False,
+            "options": {
+                "temperature": self.temperature,
+                "num_predict": self.num_predict,
+                "repeat_penalty": 1.2,
+            },
+        }
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": self.temperature,
+                "num_predict": self.num_predict,
+                "repeat_penalty": 1.2,
+            },
+        }
+        if system:
+            payload["system"] = system
+
+        try:
+            client = await self._get_async_http_client()
+            resp = await client.post(f"{self.base_url}/api/chat", json=chat_payload)
+            if resp.status_code >= 400:
+                chat_error = f"Chat API HTTP {resp.status_code}"
+                try:
+                    resp = await client.post(f"{self.base_url}/api/generate", json=payload)
+                except Exception:
+                    raise ValueError(f"Chat API 和 Generate API 均失败（{chat_error}）")
+            resp.raise_for_status()
+        except httpx.ConnectError as e:
+            raise ConnectionError(
+                f"无法连接 Ollama 服务 ({self.base_url})，请确认 Ollama 已启动"
+            ) from e
+        except httpx.HTTPStatusError as e:
+            raise ValueError(f"翻译请求失败: HTTP {e.response.status_code}") from e
+        except httpx.TimeoutException as e:
+            raise ConnectionError(
+                f"Ollama 请求超时 ({self.timeout}s)，模型可能过载或 num_predict 过大"
+            ) from e
+
+        return resp.json()
+
+    def _post_process(self, translated: str) -> str:
+        """同步后处理（与 _call_api 保持一致）"""
+        translated = _strip_think_tags(translated)
+        translated = _strip_code_block_wrapping(translated)
+        translated = _strip_preamble(translated)
+        translated = _strip_context_leak(translated)
+        translated = _deduplicate_repetition(translated)
+        translated = _strip_trailing_summary(translated)
+        translated = _strip_empty_parentheses(translated)
+        translated = _repair_truncation(translated)
+        return translated
+
+    async def translate_async(
+        self, text: str, prev_translation: str = "",
+    ) -> TranslationResult:
+        """异步翻译单段，自动重试 + 状态更新（线程安全）
+
+        Args:
+            text: 待翻译文本
+            prev_translation: 前一段译文（用于上下文衔接）
+
+        Returns:
+            TranslationResult
+        """
+        last_error: Exception | None = None
+        ctx = prev_translation or self._prev_translation
+
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                data = await self._call_api_async(text, ctx)
+                raw = (data.get("message") or {}).get("content") or data.get("response") or ""
+                translated = self._post_process(raw.strip())
+
+                result = TranslationResult(
+                    original=text,
+                    translated=translated,
+                    model=data.get("model", self.model),
+                    prompt_tokens=int(data.get("prompt_eval_count", 0) or 0),
+                    completion_tokens=int(data.get("eval_count", 0) or 0),
+                )
+
+                if not _validate_translation(result):
+                    logger.warning(
+                        "翻译结果过短 (attempt %d): original=%d chars, translated=%d chars",
+                        attempt + 1, len(text), len(translated),
+                    )
+                    if attempt < MAX_RETRIES:
+                        await asyncio.sleep(_backoff_delay(attempt))
+                        continue
+
+                # 锁内顺序更新状态，保证 glossary 顺序正确
+                async with self._lock:
+                    self._prev_translation = result.translated
+                    self._glossary.update(text, result.translated)
+                    self._chunk_index += 1
+
+                return result
+
+            except (ConnectionError, ValueError) as e:
+                last_error = e
+                if attempt < MAX_RETRIES:
+                    delay = _backoff_delay(attempt)
+                    logger.warning(
+                        "翻译失败，%.1f 秒后重试 (attempt %d): %s",
+                        delay, attempt + 1, e,
+                    )
+                    await asyncio.sleep(delay)
+
+        raise last_error if last_error else ValueError("翻译失败")
+
+    async def translate_batch(
+        self,
+        chunks: Sequence[str],
+        prev_translations: Sequence[str] | None = None,
+        *,
+        max_concurrency: int = 4,
+    ) -> list[TranslationResult]:
+        """并发翻译多个 chunk（保持顺序）
+
+        使用 asyncio.Semaphore 控制并发数，避免 Ollama 过载。
+        结果顺序与输入 chunks 顺序一致。
+
+        Args:
+            chunks: 待翻译文本块列表
+            prev_translations: 每个 chunk 对应的前一段译文（可选，默认用滑动窗口）
+            max_concurrency: 最大并发数（默认 4，建议 Ollama 2-4）
+            on_progress: 进度回调 (completed: int, total: int)
+
+        Returns:
+            TranslationResult 列表（顺序与 chunks 一致）
+        """
+        if not chunks:
+            return []
+
+        n = len(chunks)
+        prevs = prev_translations if prev_translations is not None else [self._prev_translation] * n
+        sem = asyncio.Semaphore(max_concurrency)
+
+        async def _translate_one(index: int, text: str, prev_t: str) -> tuple[int, TranslationResult]:
+            async with sem:
+                try:
+                    result = await self.translate_async(text, prev_t)
+                    return index, result
+                except Exception as e:
+                    logger.error("块 %d 翻译失败: %s", index + 1, e)
+                    raise
+
+        tasks = [
+            _translate_one(i, chunks[i], prevs[i] if i < len(prevs) else "")
+            for i in range(n)
+        ]
+
+        results: list[TranslationResult | None] = [None] * n
+        completed = 0
+
+        for coro in asyncio.as_completed(tasks):
+            index, result = await coro
+            results[index] = result
+            completed += 1
+            logger.debug("  并行翻译进度 %d/%d (块 %d)", completed, n, index + 1)
+
+        # 验证所有结果都成功
+        failed = [i for i, r in enumerate(results) if r is None]
+        if failed:
+            raise RuntimeError(f"以下块翻译失败: {failed}")
+
+        return results  # type: ignore[return-value]
+
 
 
 def translate(
