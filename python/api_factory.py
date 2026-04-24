@@ -638,7 +638,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
             # Phase 1/2/3: 上下文工程 + 记忆 + Skill + 轨迹
             agent_data_dir = str(data_root / "agent")
             memory_manager = MemoryManager(data_dir=agent_data_dir)
-            skill_registry = SkillRegistry(data_dir=agent_data_dir + "/skills")
+            skill_registry = SkillRegistry(skills_dir=agent_data_dir + "/skills")
             trajectory_recorder = TrajectoryRecorder(data_dir=agent_data_dir + "/trajectories")
 
             ollama_url = trans_cfg.get("ollama_base_url", "http://localhost:11434")
