@@ -208,6 +208,9 @@ class AgentLoop:
         # 自适应工具生成器
         self._tool_generator = create_tool_generator(self.tool_registry)
 
+        # 特殊元素自动处理器
+        self._auto_processor: AutoElementProcessor | None = None
+
         # Token 用量追踪
         self._token_usage: dict[str, int] = {
             "prompt_tokens": 0,
@@ -285,6 +288,18 @@ class AgentLoop:
 
         # 开始轨迹记录
         self.trajectory_recorder.start(query, model=self.model)
+
+        # ── 特殊元素自动检测和处理 ──────────────────────────────
+        # 检测用户消息中的图片、表格、引用等，自动调用工具分析
+        auto_result = await self._auto_process_special_elements(query, history)
+        if auto_result and auto_result.has_special_elements:
+            logger.info("自动检测到特殊元素: %s", auto_result.detected_elements)
+            yield AgentEvent(
+                type="thinking",
+                content=f"检测到特殊元素: {', '.join(auto_result.detected_elements)}，正在分析..."
+            )
+            # 使用增强后的查询
+            query = auto_result.enhanced_query
 
         # 构建消息列表
         messages = self._build_messages(query, history)
@@ -587,6 +602,62 @@ class AgentLoop:
                 tool_call_id=d.get("tool_call_id"),
             ))
         return messages
+
+    # ------------------------------------------------------------------
+    # 特殊元素自动处理
+    # ------------------------------------------------------------------
+
+    async def _auto_process_special_elements(
+        self,
+        query: str,
+        history: list[Message] | None = None,
+    ) -> AutoProcessResult | None:
+        """自动检测并处理用户消息中的特殊元素
+
+        当用户发送包含图片、表格、引用等元素的消息时，
+        自动调用相应工具分析这些元素，并将结果注入到上下文中。
+
+        Args:
+            query: 用户原始消息
+            history: 对话历史（用于提取 context_text）
+
+        Returns:
+            AutoProcessResult 或 None（如果没有检测到特殊元素）
+        """
+        # 延迟导入避免循环依赖
+        try:
+            from src.agent.auto_processor import AutoElementProcessor, enrich_system_prompt
+        except ImportError:
+            return None
+
+        # 初始化处理器
+        if self._auto_processor is None:
+            self._auto_processor = AutoElementProcessor()
+
+        # 从历史中提取上下文文本
+        context_text = None
+        if history:
+            # 尝试从最近的用户消息中获取上下文
+            for msg in reversed(history):
+                if msg.role == "user" and msg.content:
+                    context_text = msg.content
+                    break
+
+        # 执行自动处理
+        try:
+            result = await self._auto_processor.process_async(query, context_text)
+
+            # 如果检测到特殊元素，增强系统提示词
+            if result.has_special_elements:
+                # 增强系统提示词
+                if hasattr(self, 'prompt_builder') and self.prompt_builder:
+                    # 通知 prompt_builder 增强
+                    pass  # 后续可以实现
+
+            return result
+        except Exception as e:
+            logger.warning("特殊元素自动处理失败: %s", e)
+            return None
 
     # ------------------------------------------------------------------
     # 消息构建
