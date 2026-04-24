@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from src.chunker.syntax_splitter import _split_long_sentence
+
 # 粗略估算: 1 token ≈ 4 个英文字符 或 1.5 个中文字符
 CHARS_PER_TOKEN_EN = 4
 CHARS_PER_TOKEN_ZH = 1.5
@@ -115,6 +117,20 @@ def chunk_text_full(
         segments = _split_fixed(body_text, chunk_chars=int(max_tokens * chars_per_token))
     else:
         raise ValueError(f"未知切块策略: {strategy}")
+
+    # 句法感知切分: 对超长句子在从句边界二次切分
+    chars_per_token = _estimate_chars_per_token(" ".join(segments))
+    max_chars = int(max_tokens * chars_per_token)
+    # 只对超过 80% max_tokens 的句子二次切分
+    threshold = int(max_chars * 0.8)
+    final_segments: list[str] = []
+    for seg in segments:
+        if len(seg) > threshold:
+            split_parts = _split_long_sentence(seg, threshold)
+            final_segments.extend(split_parts)
+        else:
+            final_segments.append(seg)
+    segments = final_segments
 
     chunks = _merge_segments(segments, max_tokens, overlap_tokens)
     return ChunkResult(chunks=chunks, references_text=references_text)
