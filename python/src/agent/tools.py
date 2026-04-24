@@ -891,5 +891,15 @@ BibTeX 条目：
     )
     registry.register(format_bibliography)
 
+    # --- 特殊元素处理工具 ---
+    try:
+        from src.agent.special_elements import build_special_elements_tools
+        special_tools = build_special_elements_tools()
+        for tool_def in special_tools:
+            registry.register(tool_def)
+        logger.info("特殊元素工具注册完成: %s", [t.name for t in special_tools])
+    except ImportError as e:
+        logger.warning("特殊元素模块不可用: %s", e)
+
     logger.info("默认工具注册完成: %s", [t.name for t in registry.list_tools()])
     return registry
