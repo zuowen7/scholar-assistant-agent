@@ -71,12 +71,24 @@ class ReviewAgent:
         model: str = "qwen3:8b",
         memory_manager: Any | None = None,
         skill_registry: Any | None = None,
+        cloud_base_url: str = "",
+        cloud_api_key: str = "",
+        cloud_model: str = "",
+        api_format: str = "openai",
     ) -> None:
         self.ollama_base_url = ollama_base_url.rstrip("/")
         self.model = model
         self.memory_manager = memory_manager
         self.skill_registry = skill_registry
+        self.cloud_base_url = cloud_base_url.rstrip("/") if cloud_base_url else ""
+        self.cloud_api_key = cloud_api_key
+        self.cloud_model = cloud_model
+        self.api_format = api_format
         self._http_client: httpx.AsyncClient | None = None
+
+    @property
+    def _use_cloud(self) -> bool:
+        return bool(self.cloud_api_key and self.cloud_base_url)
 
     async def close(self) -> None:
         if self._http_client and not self._http_client.is_closed:
@@ -240,7 +252,7 @@ class ReviewAgent:
         return "\n".join(parts)
 
     async def _call_llm(self, prompt: str) -> str | None:
-        """调用 LLM 生成审查结果。
+        """调用 LLM 生成审查结果，支持 Ollama 和云端 API。
 
         Args:
             prompt: 审查提示词。
@@ -250,19 +262,42 @@ class ReviewAgent:
         """
         try:
             client = await self._get_http_client()
-            resp = await client.post(
-                f"{self.ollama_base_url}/api/chat",
-                json={
-                    "model": self.model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "stream": False,
-                    "options": {"temperature": 0.1, "num_predict": 1024},
-                },
-            )
+            messages = [{"role": "user", "content": prompt}]
+
+            if self._use_cloud:
+                openai_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
+                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.cloud_api_key}"}
+                endpoint = f"{self.cloud_base_url}/chat/completions"
+                resp = await client.post(
+                    endpoint,
+                    json={
+                        "model": self.cloud_model or self.model,
+                        "messages": openai_messages,
+                        "temperature": 0.1,
+                        "max_tokens": 1024,
+                        "stream": False,
+                    },
+                    headers=headers,
+                )
+            else:
+                resp = await client.post(
+                    f"{self.ollama_base_url}/api/chat",
+                    json={
+                        "model": self.model,
+                        "messages": messages,
+                        "stream": False,
+                        "options": {"temperature": 0.1, "num_predict": 1024},
+                    },
+                )
+
             resp.raise_for_status()
             data = resp.json()
-            content = data.get("message", {}).get("content", "").strip()
-            # 清理 think 标签
+
+            if self._use_cloud:
+                content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+            else:
+                content = data.get("message", {}).get("content", "").strip()
+
             content = re.sub(r"<think?>.*?</think?>", "", content, flags=re.DOTALL).strip()
             return content if content else None
         except Exception as e:

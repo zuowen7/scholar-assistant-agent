@@ -106,12 +106,25 @@ class ModelState(Enum):
 # 需要上下文隔离的"重 IO"工具列表
 # ---------------------------------------------------------------------------
 
-# 这些工具在执行时会产生大量文本输出或消耗大量 LLM 推理资源，
-# 需要在隔离的上下文中执行以避免 KV Cache 膨胀导致 OOM。
-HEAVY_TOOLS: set[str] = {
+# 静态默认重 IO 工具列表（运行时可通过 register_heavy_tool 扩展）
+_DEFAULT_HEAVY_TOOLS: set[str] = {
     "translate_text",    # 翻译可能处理数千字符的长文本
     "parse_document",    # 文档解析可能输出整篇论文的文本
 }
+
+# 运行时注册的额外重工具
+_ADDITIONAL_HEAVY_TOOLS: set[str] = set()
+
+# 运行时动态注册重工具（用于自动检测触发隔离的工具）
+def register_heavy_tool(tool_name: str) -> None:
+    _ADDITIONAL_HEAVY_TOOLS.add(tool_name)
+
+def unregister_heavy_tool(tool_name: str) -> None:
+    _ADDITIONAL_HEAVY_TOOLS.discard(tool_name)
+
+def is_heavy_tool(tool_name: str) -> bool:
+    """判断工具是否为重 IO 类型（静态注册 + 动态注册）。"""
+    return tool_name in _DEFAULT_HEAVY_TOOLS or tool_name in _ADDITIONAL_HEAVY_TOOLS
 
 
 # ---------------------------------------------------------------------------
@@ -418,13 +431,15 @@ class MultiplexingScheduler:
         - 执行时间长（>5 秒）。
         - 产生大量中间 token。
 
+        支持动态注册: register_heavy_tool() / unregister_heavy_tool()。
+
         Args:
             tool_name: 工具名称。
 
         Returns:
             True 表示该工具需要在隔离上下文中执行。
         """
-        return tool_name in HEAVY_TOOLS
+        return is_heavy_tool(tool_name)
 
     async def switch_role(self, target_role: ContextRole) -> None:
         """切换到目标角色，执行 KV Cache 重置。
