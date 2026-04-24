@@ -20,6 +20,23 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+from src.translator._helpers import (
+    _extract_term_pairs as _extract_term_pairs_impl,
+    _strip_think_tags as _strip_think_tags_impl,
+    _strip_code_block_wrapping as _strip_code_block_wrapping_impl,
+    _strip_preamble as _strip_preamble_impl,
+    _strip_context_leak as _strip_context_leak_impl,
+    _validate_translation as _validate_translation_impl,
+    _repair_truncation as _repair_truncation_impl,
+    _strip_empty_parentheses as _strip_empty_parentheses_impl,
+    _strip_trailing_summary as _strip_trailing_summary_impl,
+    _deduplicate_repetition as _deduplicate_repetition_impl,
+    _deduplicate_line_repetition as _deduplicate_line_repetition_impl,
+    _lines_match as _lines_match_impl,
+    _is_similar_sentences as _is_similar_sentences_impl,
+    _restore_paragraphs as _restore_paragraphs_impl,
+)
+
 MAX_RETRIES = 2
 RETRY_DELAY_BASE = 3.0  # 基础重试延迟（秒），指数退避倍增
 RETRY_DELAY_MAX = 30.0  # 最大重试延迟
@@ -632,76 +649,19 @@ def _extract_term_pairs(original: str, translated: str) -> list[tuple[str, str]]
 # ---------------------------------------------------------------------------
 
 def _strip_think_tags(text: str) -> str:
-    """移除推理模型常见思考段，避免进入正文。"""
-    for tag in ("think", "redacted_thinking", "redacted_reasoning"):
-        pat = rf"<{tag}\b[^>]*>.*?</{tag}\s*>"
-        text = re.sub(pat, "", text, flags=re.DOTALL | re.IGNORECASE)
-    return text.strip()
+    return _strip_think_tags_impl(text)
 
 
 def _strip_code_block_wrapping(text: str) -> str:
-    """移除 LLM 用 markdown 代码块包裹翻译结果的格式幻觉
-
-    常见模式:
-    ```markdown
-    翻译内容...
-    ```
-    或
-    ```
-    翻译内容...
-    ```
-    """
-    stripped = text.strip()
-    # 匹配 ```lang\n...\n``` 或 ```\n...\n``` 模式
-    m = re.match(r"^```(?:\w+)?\s*\n(.*?)\n```\s*$", stripped, re.DOTALL)
-    if m:
-        inner = m.group(1).strip()
-        # 安全检查: 内部不应还有代码块（避免误剥嵌套的公式代码块）
-        if inner.count("```") == 0:
-            return inner
-    return text
+    return _strip_code_block_wrapping_impl(text)
 
 
 def _strip_preamble(text: str) -> str:
-    preamble_pattern = re.compile(
-        r"^(?:"
-        r"(?:Here|Below|Following)\s+(?:is|are)\s+(?:the\s+)?(?:translation|result|translated\s+text)[：:]*\s*"
-        r"|以下是翻译[：:]*\s*"
-        r"|翻译如下[：:]*\s*"
-        # 避免把正文「这是翻译结果」整句误删：要求冒号或换行后再接正文
-        r"|这是翻译结果(?:[：:]+\s*|\n+\s*)"
-        r"|下面是(?:翻译|译文)[：:]*\s*"
-        r"|这是(?:翻译|译文)(?:[：:]+\s*|\n+\s*)"
-        r"|(?:Sure|Certainly|Of\s+course)[，,\s]*(?:here|below)\s+(?:is|are)[^。\n]*[。.\n]\s*"
-        r"|(?:好的|没问题|收到)[，,]?\s*(?:以下是翻译|以下是译文|翻译如下|下面是翻译|下面是译文)[：:]*\s*"
-        r")",
-        re.IGNORECASE,
-    )
-    return preamble_pattern.sub("", text).strip()
+    return _strip_preamble_impl(text)
 
 
 def _strip_context_leak(text: str) -> str:
-    """去掉开头附近的指令回声；仅在扫描窗口内匹配，避免误伤正文。"""
-    scan_len = 500
-    head = text[:scan_len]
-    ctx_markers = [
-        "[文档背景",
-        "[前文翻译参考",
-        "（不要翻译此部分",
-        "（仅用于保持术语",
-        "[请翻译以下内容]",
-    ]
-    for marker in ctx_markers:
-        idx = head.find(marker)
-        if idx < 0:
-            continue
-        rest = text[idx:]
-        if "\n\n" in rest[:2500]:
-            _, sep, tail = rest.partition("\n\n")
-            if sep:
-                return tail.lstrip()
-        return text[idx + len(marker) :].lstrip()
-    return text.strip()
+    return _strip_context_leak_impl(text)
 
 
 def _validate_translation(result: TranslationResult) -> bool:
@@ -847,41 +807,11 @@ def _repair_truncation(text: str) -> str:
 
 
 def _strip_empty_parentheses(text: str) -> str:
-    """移除翻译中残留的空括号，如 （）或 ()"""
-    text = re.sub(r"（\s*）", "", text)
-    text = re.sub(r"\(\s*\)", "", text)
-    return text
+    return _strip_empty_parentheses_impl(text)
 
 
 def _strip_trailing_summary(text: str) -> str:
-    """移除译文末尾的总结段落
-
-    模型有时在翻译完正文后自作主张加总结，如"总之..."、"总而言之..."等。
-    """
-    if not text or len(text) < 200:
-        return text
-
-    summary_patterns = [
-        r"\n[（(]?总之[，,]?\s*",
-        r"\n[（(]?总而言之[，,]?\s*",
-        r"\n[（(]?综上所述[，,]?\s*",
-        r"\n[（(]?总的来说[，,]?\s*",
-        r"\n[（(]?概括来说[，,]?\s*",
-        r"\n[（(]?简而言之[，,]?\s*",
-        r"\n[（(]?总之[，,]?.*?(?:总结|概括|回顾)",
-        r"\n[（(]?In\s+summary[,.]?\s*",
-        r"\n[（(]?To\s+summarize[,.]?\s*",
-        r"\n[（(]?In\s+conclusion[,.]?\s*",
-        r"\n[（(]?Overall[,.]?\s*",
-    ]
-    for pattern in summary_patterns:
-        m = re.search(pattern, text, re.IGNORECASE)
-        if m:
-            # 确保这是在文末附近（最后 40% 的位置）
-            if m.start() >= len(text) * 0.6:
-                logger.info("移除末尾总结段落 (位置 %d/%d)", m.start(), len(text))
-                return text[: m.start()].rstrip()
-    return text
+    return _strip_trailing_summary_impl(text)
 
 
 def _deduplicate_repetition(text: str) -> str:
@@ -934,94 +864,15 @@ def _deduplicate_repetition(text: str) -> str:
 
 
 def _deduplicate_line_repetition(text: str) -> str:
-    """行级重复检测: 在文本任意位置检测连续重复的行块
-
-    当相同的 1-4 行模式连续重复 3 次以上时，保留第一份并截断后续重复。
-    """
-    lines = text.split("\n")
-    if len(lines) < 8:
-        return text
-
-    # 在文本中扫描所有起始位置，寻找重复模式
-    for start in range(len(lines)):
-        for pat_size in range(1, 5):
-            if start + pat_size * 4 > len(lines):
-                break
-
-            pattern = [l.strip() for l in lines[start : start + pat_size]]
-            # 跳过全空行的模式
-            if all(not p for p in pattern):
-                continue
-            # 跳过过短的模式（每行平均 < 5 字符）
-            avg_len = sum(len(p) for p in pattern) / pat_size
-            if avg_len < 5:
-                continue
-
-            repeat_count = 0
-            pos = start + pat_size
-            while pos + pat_size <= len(lines):
-                chunk = [l.strip() for l in lines[pos : pos + pat_size]]
-                if _lines_match(pattern, chunk):
-                    repeat_count += 1
-                    pos += pat_size
-                else:
-                    break
-
-            if repeat_count >= 3:
-                # 保留: 重复之前的内容 + 第一份模式 + 重复之后的有效内容
-                kept = lines[: start + pat_size]
-                remaining = lines[pos:]
-                if remaining:
-                    non_empty = sum(1 for l in remaining if l.strip())
-                    if non_empty > 3:
-                        kept.extend(remaining)
-
-                result = "\n".join(kept)
-                logger.warning(
-                    "行级重复检测: 起始行=%d, 模式=%d行, 重复%d次, %d行→%d行",
-                    start, pat_size, repeat_count, len(lines), len(kept),
-                )
-                return result
-
-    return text
+    return _deduplicate_line_repetition_impl(text)
 
 
 def _lines_match(a: list[str], b: list[str]) -> bool:
-    """判断两组行是否高度相似"""
-    if len(a) != len(b):
-        return False
-    for la, lb in zip(a, b):
-        if not la and not lb:
-            continue
-        if not la or not lb:
-            return False
-        shorter = min(len(la), len(lb))
-        check_len = max(int(shorter * 0.8), 1)
-        match = sum(1 for ca, cb in zip(la[:check_len], lb[:check_len]) if ca == cb)
-        if match / check_len < 0.7:
-            return False
-    return True
+    return _lines_match_impl(a, b)
 
 
 def _is_similar_sentences(a: list[str], b: list[str]) -> bool:
-    """判断两组句子是否高度相似（允许轻微差异）"""
-    if len(a) != len(b):
-        return False
-    for sa, sb in zip(a, b):
-        if not sa or not sb:
-            continue
-        shorter = min(len(sa), len(sb))
-        longer = max(len(sa), len(sb))
-        if longer == 0:
-            continue
-        # 逐字比较前 80% 的较短句
-        check_len = int(shorter * 0.8)
-        if check_len == 0:
-            continue
-        match = sum(1 for ca, cb in zip(sa[:check_len], sb[:check_len]) if ca == cb)
-        if match / check_len < 0.7:
-            return False
-    return True
+    return _is_similar_sentences_impl(a, b)
 
 
 def _restore_paragraphs(original: str, translated: str) -> str:
