@@ -624,7 +624,16 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
             )
 
             # 初始化工具注册表
-            registry = create_default_registry(rag_store=_rag_store)
+            use_cloud_tools = cloud_only or trans_cfg.get("engine", "ollama") == "cloud"
+            cloud_cfg_tools = trans_cfg.get("cloud", {}) if use_cloud_tools else {}
+            registry = create_default_registry(
+                rag_store=_rag_store,
+                ollama_base_url=trans_cfg.get("ollama_base_url", "http://localhost:11434"),
+                model=agent_cfg.get("model", "qwen3:8b"),
+                cloud_base_url=cloud_cfg_tools.get("base_url", "https://api.openai.com/v1") if use_cloud_tools else "",
+                cloud_api_key=(cloud_cfg_tools.get("api_key") or "").strip() if use_cloud_tools else "",
+                cloud_model=cloud_cfg_tools.get("model", "gpt-4o") if use_cloud_tools else "",
+            )
 
             # 可选: 初始化时分复用调度器
             scheduler = None
@@ -676,6 +685,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
                 memory_manager=memory_manager,
                 skill_registry=skill_registry,
                 trajectory_recorder=trajectory_recorder,
+                rag_store=_rag_store,
                 cloud_base_url=cloud_cfg.get("base_url", "https://api.openai.com/v1") if use_cloud else "",
                 cloud_api_key=(cloud_cfg.get("api_key") or "").strip() if use_cloud else "",
                 cloud_model=cloud_cfg.get("model", "gpt-4o") if use_cloud else "",
