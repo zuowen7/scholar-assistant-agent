@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pdfplumber
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -101,13 +105,12 @@ def extract_pages(pdf_path: str | Path) -> DocumentContent:
                 ocr_pages = ocr_text.split("\n\n[Page ")
                 for i, page in enumerate(pages):
                     if i == 0:
-                        # 第一页格式: "[Page 1]\ntext"
+                        # 第一段是 OCR 文本序言（split 后不含 [Page 前缀的部分），直接使用
                         pg_text = ocr_pages[0] if ocr_pages else ""
-                        page.text = re.sub(r"^\[^\]*\]\n?", "", pg_text).strip()
+                        page.text = re.sub(r"^\[Page\s*\d+\]\s*\n?", "", pg_text).strip()
                     elif i < len(ocr_pages):
                         pg_text = ocr_pages[i]
-                        # 格式: "[Page N]\ntext"
-                        page.text = re.sub(r"^\[^\]*\]\n?", "", pg_text).strip()
+                        page.text = re.sub(r"^\[Page\s*\d+\]\s*\n?", "", pg_text).strip()
                     else:
                         page.text = ""
 

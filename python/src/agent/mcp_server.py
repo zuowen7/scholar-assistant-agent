@@ -450,7 +450,7 @@ async def main():
             )
 
         try:
-            result = handler(arguments)
+            result = await asyncio.to_thread(handler, arguments)
             text = str(result) if result is not None else ""
             if len(text) > _TOOL_RESULT_MAX_LEN:
                 text = text[:_TOOL_RESULT_MAX_LEN] + "\n...[结果已截断]"

@@ -120,7 +120,13 @@ class OllamaClient:
         self._chunk_index = 0
         self._http_client: httpx.Client | None = None
         self._async_client: httpx.AsyncClient | None = None
-        self._lock = asyncio.Lock()  # 保护 _prev_translation / _chunk_index 的顺序写入
+        self._lock: asyncio.Lock | None = None  # 延迟初始化，避免在无事件循环的上下文中创建
+
+    def _ensure_lock(self) -> asyncio.Lock:
+        """延迟创建 Lock，确保在有事件循环的上下文中调用"""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     def set_document_context(self, context: str) -> None:
         """设置文档级上下文（标题+摘要），用于跨 chunk 保持一致性"""
@@ -488,7 +494,7 @@ class OllamaClient:
                         continue
 
                 # 锁内顺序更新状态，保证 glossary 顺序正确
-                async with self._lock:
+                async with self._ensure_lock():
                     self._prev_translation = result.translated
                     self._glossary.update(text, result.translated)
                     self._chunk_index += 1
