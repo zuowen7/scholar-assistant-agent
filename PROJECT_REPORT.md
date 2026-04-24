@@ -548,7 +548,110 @@ PDF → [Tauri 窗口] → [FastAPI localhost] → [Ollama localhost]
 
 ---
 
-## 19. 我的改进建议（超越 ChatGPT 的视角）
+## 20. 当前问题清单（2026-04-24 审计）
+
+### 🔴 阻断级：8 个测试失败
+
+```
+FAILED python/tests/unit/test_cleaner.py::TestDetectReferences::test_references_section
+FAILED python/tests/unit/test_cleaner.py::TestDetectReferences::test_references_and_notes
+FAILED python/tests/unit/test_cleaner.py::TestDetectReferences::test_bibliography
+FAILED python/tests/unit/test_cleaner.py::TestDetectReferences::test_case_insensitive
+FAILED python/tests/unit/test_cleaner.py::TestDetectReferences::test_supplementary_materials
+FAILED python/tests/unit/test_cleaner.py::TestCleanTextFull::test_clean_result_with_references
+FAILED python/tests/unit/test_phase2.py::TestSkillRegistry::test_match
+FAILED python/tests/unit/test_formatter.py::TestFormatMarkdown::test_bilingual_format
+```
+
+**根因分析**：
+
+| 失败项 | 根因 | 修复方案 |
+|--------|------|----------|
+| Cleaner 5 项引用区检测 | `constants.py` 中的 `REFERENCE_SECTION_PATTERNS` 缺少 `r"^" + p + r"\s*$"` 锚定，引用区标题模式与 `pipeline.py` 中生成的 `_REFERENCE_PATTERNS` 不一致（多行模式下 `^` 锚定导致 `REFERENCES\n1. Smith` 无法匹配） | 修改 `constants.py` 中 pattern 定义，去掉行首锚定，或改用非贪婪匹配 |
+| Skill matching | 匹配阈值 1.0 过高，测试 query "帮我翻译这篇学术论文" 无法达到阈值（新算法基于 Jaccard + trigger phrase + description overlap，query 中"翻译"token 在 trigger "翻译论文, 学术翻译" 中是子串但贡献分数不足） | 降低阈值至 0.5-0.8，或在 trigger 匹配中增加子串匹配的权重 |
+| Formatter 中文编码 | `format_output()` 返回字节串编码错误，中文字符在测试比较时损坏 | 检查 `renderer.py` 输出编码路径，确保返回 str 而非 bytes |
+
+**影响**：影响翻译管线完整性验证，必须立即修复后才能推进后续开发。
+
+---
+
+### 🟡 高优先级：架构问题
+
+| 问题 | 位置 | 行数 | 说明 |
+|------|------|------|------|
+| 单文件过大 | `api_factory.py` | 778 行 | 承担路由 + 业务逻辑 + 进程管理，拆分为 `routers/` + `services/` + `background/` 后可解除单点故障风险 |
+| 前端组件膨胀 | `src/App.vue` | 2342 行 | 单文件包含 3 个主模式（Translate/Editor/对比阅读）、完整导航、翻译状态机、AI 面板；建议按模式拆为 `TranslatePage.vue`、`EditorPage.vue`，共享基础组件 |
+| Agent 过长 | `python/src/agent/agent.py` | 1736 行 | 最大的 Python 文件，含有 5 个 100+ 行函数（`__init__` 114行、`run` 268行、`_build_messages` 89行、`_call_llm_cloud` 115行、`_stream_anthropic` 153行），建议按职责拆分为 `_llm_engine.py`、`_tool_executor.py`、`_plan_engine.py` |
+| Cloud Client 无测试 | `cloud_client.py` | 535 行 | 零测试覆盖，所有调用路径未验证 |
+| Agent 无测试 | `agent.py` | 1736 行 | 零测试覆盖，ReAct 循环难以测试但工具函数可独立测试 |
+
+### 🟡 中优先级：代码质量
+
+| 问题 | 位置 | 说明 |
+|------|------|------|
+| 前端 `any` 类型滥用 | `App.vue:600`, `ComplianceModal.vue:170,177,185`, `useEditor.ts:196,308` 等 | 9 处 `any` 使用，应定义明确类型或使用 `unknown` |
+| 过长函数 | `agent.py:run` 268行、`_run_pipeline` 186行、`_stream_anthropic` 153行、`_is_frozen` 58行等 | 违反单一职责原则，影响可读性和测试性 |
+| 依赖未锁版本 | `requirements.txt` 全部使用 `>=` 范围版本 | CI 可能因上游 breaking change 突然失败 |
+| 文本处理工具内嵌 LLM | `tools.py:_call_llm_sync` 67行 | 文本处理（润色/摘要/扩写）直接调 LLM，绕过 Agent 的 ReAct 循环和 RAG 注入上下文，质量和 Agent 调用不一致 |
+| 平台硬编码 | `src-tauri/src/main.rs` | Windows 命令硬编码，跨平台需抽象为 PlatformAdapter trait |
+
+### 🟢 低优先级：工程改进
+
+- `cleaner/pipeline.py` 17 阶段正则管线缺少 PDF 样本回归测试集
+- Glossary 提取仅依赖 `中文(English)` 模式，模型不按格式输出则术语表为空
+- 翻译失败无差异化降级（坏块直接抛异常中断全文）
+- `src/__tests__/` 仅 1 个前端测试（dompurify），覆盖率极低
+- PyInstaller `.spec` 文件存在但未验证可运行
+
+### 测试覆盖总览
+
+| 模块 | 源码行数 | 测试数 | 测试文件 | 覆盖评估 |
+|------|----------|--------|----------|----------|
+| Cleaner | 789 | ~10 | test_cleaner.py (20 tests) | ⚠️ 引用区检测缺回归 |
+| Chunker | 347 | 9 | test_chunker.py | ✅ 基本覆盖 |
+| Translator (Ollama) | 839 | 4 | test_translator.py | ⚠️ 不足 |
+| Translator (Cloud) | 535 | 0 | — | ❌ 无覆盖 |
+| Formatter | 469 | 5 | test_formatter.py | ⚠️ 中文编码缺测 |
+| Agent | 1736 | 6 | test_agent_dual_engine.py | ❌ 工具函数未测 |
+| ContextCompressor | 412 | 23 | test_context_compressor.py | ✅ 较好 |
+| PromptBuilder | 261 | 25 | test_prompt_builder.py | ✅ 较好 |
+| SkillSystem | 517 | 31 | test_phase2.py | ⚠️ 匹配算法缺边界测 |
+| Parser | 825 | 11 | test_parser.py | ⚠️ 仅基础格式 |
+| **总计** | **~10337** | **~170** | — | 约 **1.6%/行**，远低于目标 |
+
+---
+
+## 21. 下阶段目标（v0.4.0 — 2026-04-24 修订）
+
+### P0 必须修复
+- **8 个测试失败**（见第 20 章）：引用区检测 regression、Skill 匹配阈值、Formatter 编码问题
+- **依赖版本锁定**：`requirements.txt` 所有 `>=` 改为 `==` 精确版本，生成 `requirements.lock`
+
+### P0 新增功能（来自竞品分析）
+- **MCP Server 支持**（1-2 天）：将翻译管道 + Agent 工具暴露为 MCP 协议，Claude/Cursor 等客户端可直接调用
+- **双语 PDF 叠加**（3-5 天）：Parser 保留坐标 + Formatter `pdf_overlay` 模式（格式保留是用户第一痛点）
+
+### P1 核心功能
+- **翻译记忆库 TMCache**（1-2 天）：ChromaDB 存储原文→译文映射，命中率 > 0.9 复用
+- **并行翻译**（1-2 天）：`asyncio.Semaphore` 控制并发度，翻译速度提升 3-4x
+- **术语锚点系统**（2-3 天）：首次术语弹出确认 → 全局锁定译法（后端 API + 前端交互）
+
+### P2 工程改善
+- **api_factory.py 拆分为多文件**（0.5 天）：`routers/translate.py`、`routers/config.py`、`routers/agent.py`、`services/translation_pipeline.py`
+- **App.vue 拆分**（2-3 天）：按模式拆为 `TranslatePage.vue` + `EditorPage.vue`，共享基础组件
+- **前端测试补全**（2 天）：增加组件测试，覆盖 useTranslate、useEditor、useAgentChat
+- **Cleaner PDF 回归测试集**（1-2 天）：收集 10 份不同排版 PDF，保证正则修改不破坏兼容性
+
+### P3 打磨
+- 多轮翻译精炼、文档级一致性质检、AI Panel diff 视图、Ollama 进程守护
+
+### 版本目标
+> **v0.4.0 = MCP 生态兼容 + 翻译速度 3x + 格式保留（PDF叠加）+ 术语可锚点 + 测试全部通过**
+
+### 关键决策
+1. **先修测试再推功能**：8 个失败测试阻断所有后续开发信心，必须作为第一优先级
+2. **格式保留降级**：不做 DocLayout-YOLO 级排版（不与 PDFMathTranslate 竞争），只做 `pdf_overlay` 文字叠加
+3. **依赖先锁再开发**：任何新依赖加入前必须锁版本
 
 ### 一、翻译记忆库 (Translation Memory)
 

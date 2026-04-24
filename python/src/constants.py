@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 # 引用区标题检测模式 (大小写不敏感)
-REFERENCE_SECTION_PATTERNS = [
-    r"REFERENCES\s+AND\s+NOTES",
-    r"REFERENCES",
-    r"BIBLIOGRAPHY",
-    r"LITERATURE\s+CITED",
-    r"WORKS\s+CITED",
-    r"SUPPLEMENTARY\s+MATERIALS",
+# 注意: 不含 \s，因为 line.strip() 已处理首尾空白，re.match 直接匹配原文本
+REFERENCE_SECTION_PATTERNS: list[str] = [
+    "REFERENCES AND NOTES",
+    "REFERENCES",
+    "BIBLIOGRAPHY",
+    "LITERATURE CITED",
+    "WORKS CITED",
+    "SUPPLEMENTARY MATERIALS",
 ]

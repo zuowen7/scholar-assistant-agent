@@ -108,10 +108,16 @@ def clean_text_full(raw_text: str) -> CleanResult:
 # 引用区检测
 # ---------------------------------------------------------------------------
 
-# 常见引用区标题 — 从共享常量导入，消重复一
-from src.constants import REFERENCE_SECTION_PATTERNS as _RAW_REF_PATTERNS
-
-_REFERENCE_PATTERNS = [r"^" + p + r"\s*$" for p in _RAW_REF_PATTERNS]
+# 直接内联 patterns，避免模块缓存导致的常量版本不一致
+# 普通字符串中 \\s 在 regex 里是 \s（空白符），可匹配单/多个空格
+_REFERENCE_PATTERNS = [
+    "REFERENCES\\s+AND\\s+NOTES",
+    "REFERENCES",
+    "BIBLIOGRAPHY",
+    "LITERATURE\\s+CITED",
+    "WORKS\\s+CITED",
+    "SUPPLEMENTARY\\s+MATERIALS",
+]
 
 
 def _detect_references(text: str) -> tuple[int, str]:
@@ -121,17 +127,19 @@ def _detect_references(text: str) -> tuple[int, str]:
         (position, reference_text) — position 为 -1 表示未检测到
     """
     best_pos = -1
+    lines = text.split("\n")
     for pattern in _REFERENCE_PATTERNS:
-        for m in re.finditer(pattern, text, re.MULTILINE | re.IGNORECASE):
-            if m.start() > best_pos:
-                best_pos = m.start()
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            # 允许 \s 匹配空白（单/多个空格），但必须是完整词匹配
+            # 用 re.match 匹配行首，避免子串误匹配（如 "no references" 中的 "references"）
+            if re.match(pattern, stripped, re.IGNORECASE):
+                line_start = sum(len(l) + 1 for l in lines[:i])
+                if line_start > best_pos:
+                    best_pos = line_start
 
     if best_pos >= 0:
-        refs = text[best_pos:]
-        # 如果"引用区"占比过大（>50%），可能是多篇文章误判
-        if len(refs) > len(text) * 0.5:
-            return -1, ""
-        return best_pos, refs
+        return best_pos, text[best_pos:]
     return -1, ""
 
 
