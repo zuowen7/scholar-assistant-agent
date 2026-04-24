@@ -265,6 +265,26 @@ def _expand_section(section: str, context: str = "") -> str:
     return _call_llm(prompt)
 
 
+def _format_bibliography(bibtex_entry: str, style: str = "ieee", target_lang: str = "zh") -> str:
+    """将 BibTeX 条目格式化为指定引用格式。"""
+    styles = ["ieee", "apa", "gbt7714", "mla"]
+    if style not in styles:
+        return f"不支持的引用格式: {style}。支持的格式: {', '.join(styles)}"
+    prompt = f"""请将以下 BibTeX 条目格式化为 {style.upper()} 引用格式的文本。
+
+要求：
+1. 只输出格式化后的参考文献，不要任何解释或说明
+2. 严格按照 {style.upper()} 格式规范
+3. 目标语言：{"中文" if target_lang == "zh" else "英文"}
+4. 译名使用学界公认译法
+
+BibTeX 条目：
+{bibtex_entry}
+
+格式化后的引用："""
+    return _call_llm(prompt)
+
+
 # ---------------------------------------------------------------------------
 # MCP 工具定义
 # ---------------------------------------------------------------------------
@@ -366,6 +386,27 @@ MCP_TOOLS: list[Tool] = [
             "required": ["section"],
         },
     ),
+    Tool(
+        name="format_bibliography",
+        description="将 BibTeX 条目格式化为指定引用格式（IEEE/APA/GB/T 7714/MLA）。",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "bibtex_entry": {"type": "string", "description": "BibTeX 格式的参考文献条目"},
+                "style": {
+                    "type": "string",
+                    "description": "引用格式：ieee / apa / gbt7714 / mla",
+                    "default": "ieee",
+                },
+                "target_lang": {
+                    "type": "string",
+                    "description": "目标语言：zh（中文）/ en（英文）",
+                    "default": "zh",
+                },
+            },
+            "required": ["bibtex_entry"],
+        },
+    ),
 ]
 
 
@@ -439,6 +480,11 @@ async def main():
             "expand_section": lambda args: _expand_section(
                 section=args["section"],
                 context=args.get("context", ""),
+            ),
+            "format_bibliography": lambda args: _format_bibliography(
+                bibtex_entry=args["bibtex_entry"],
+                style=args.get("style", "ieee"),
+                target_lang=args.get("target_lang", "zh"),
             ),
         }
 

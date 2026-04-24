@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import shutil
+import time
 import uuid
 from pathlib import Path
 from typing import AsyncGenerator
@@ -91,12 +92,19 @@ class FilePathPayload(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     history: list[dict] | None = None
+    context_text: str | None = None  # 引用上下文（选中文本、文档片段等）
+    constraints: str | None = None    # 追加约束（格式、风格、字数限制等）
 
 
 class RAGIngestRequest(BaseModel):
     doc_id: str
     text: str
     title: str = ""
+
+
+class WordExportRequest(BaseModel):
+    content: str   # Markdown 格式文本
+    title: str = "Scholar Assistant Export"
 
 
 _config_cache: dict | None = None
@@ -190,9 +198,9 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         for tid in done_ids[:excess]:
             del tasks[tid]
 
-        _app_title = "Scholar Assistant API (cloud-only)"
-        parser = argparse.ArgumentParser(description=_app_title)
-        app = FastAPI(title=_app_title, version="0.4.2")
+    _app_title = "Scholar Assistant API (cloud-only)"
+    parser = argparse.ArgumentParser(description=_app_title)
+    app = FastAPI(title=_app_title, version="0.4.2")
 
         # ── 全局异常处理 ──
 
@@ -701,7 +709,14 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
 
     @app.post("/api/chat")
     async def chat(req: ChatRequest):
-        """Agent 对话端点 — SSE 流式返回 ReAct 推理过程。支持 Ollama 和云端双引擎。"""
+        """Agent 对话端点 — SSE 流式返回 ReAct 推理过程。
+
+        支持 Ollama 和云端双引擎。
+        增强功能：
+        - context_text: 传入选中文本、文档片段作为上下文
+        - constraints: 传入格式/风格/字数等追加约束
+        - 这些内容会被拼接进用户消息前，引导 Agent 精准回答
+        """
         if not _AGENT_AVAILABLE:
             raise HTTPException(503, "Agent 模块未安装，请安装 chromadb")
 
@@ -715,8 +730,19 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
                 for m in req.history
             ]
 
+        # 增强消息：注入上下文文本和追加约束
+        message = req.message
+        if req.context_text or req.constraints:
+            enhancements: list[str] = []
+            if req.context_text:
+                enhancements.append(f"[参考文本]\n{req.context_text}")
+            if req.constraints:
+                enhancements.append(f"[约束要求]\n{req.constraints}")
+            enhanced = "\n\n".join(enhancements) + f"\n\n[用户问题]\n{req.message}"
+            message = enhanced
+
         async def _stream() -> AsyncGenerator[dict, None]:
-            async for event in agent.run(req.message, history):
+            async for event in agent.run(message, history):
                 payload: dict = {"type": event.type, "content": event.content}
                 if event.metadata:
                     payload["metadata"] = event.metadata
@@ -770,6 +796,53 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
             "model": agent.model,
             "max_steps": agent.max_steps,
         }
+
+    @app.post("/api/export/word")
+    async def export_word(req: WordExportRequest):
+        """将 Markdown 文本导出为 .docx 文件（保留段落结构）。
+
+        Args:
+            req.content: Markdown 格式文本
+            req.title: 文档标题（默认 "Scholar Assistant Export"）
+
+        Returns:
+            .docx 文件路径（30 分钟内有效）
+        """
+        from src.formatter.word_exporter import markdown_to_docx
+
+        out_dir = output_dir if 'output_dir' in dir() else (RUNTIME_DIR / "data" / "output")
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        docx_path = out_dir / f"export_{uuid.uuid4().hex[:8]}.docx"
+        markdown_to_docx(req.content, docx_path, title=req.title)
+
+        return {
+            "path": str(docx_path),
+            "filename": docx_path.name,
+            "size": docx_path.stat().st_size,
+        }
+
+    @app.get("/api/export/word/{filename}")
+    async def download_word(filename: str):
+        """下载导出的 .docx 文件。"""
+        # 安全检查：只允许下载 data/output 目录下的 .docx 文件
+        output_dir = RUNTIME_DIR / "data" / "output"
+        safe_path = (output_dir / filename).resolve()
+        if not str(safe_path).startswith(str(output_dir.resolve())):
+            raise HTTPException(403, "禁止访问该文件")
+        if not safe_path.exists() or safe_path.suffix.lower() != ".docx":
+            raise HTTPException(404, "文件不存在")
+        # 清理过期文件（超过 30 分钟）
+        age_minutes = (time.time() - safe_path.stat().st_mtime) / 60
+        if age_minutes > 30:
+            safe_path.unlink(missing_ok=True)
+            raise HTTPException(404, "文件已过期")
+
+        return FileResponse(
+            str(safe_path),
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            filename=filename,
+        )
 
     @app.on_event("shutdown")
     async def _shutdown():
