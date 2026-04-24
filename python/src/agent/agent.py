@@ -181,6 +181,10 @@ class AgentLoop:
             model=model,
             memory_manager=self.memory,
             skill_registry=self.skills,
+            cloud_base_url=cloud_base_url,
+            cloud_api_key=cloud_api_key,
+            cloud_model=cloud_model,
+            api_format=api_format,
         )
 
         # Phase 3: 错误恢复 + Hook
@@ -255,6 +259,9 @@ class AgentLoop:
         Yields:
             AgentEvent 实例，包含推理过程的中间状态或最终结果。
         """
+        # 重试计数器 per-session 重置
+        self.retry_manager.reset()
+
         # 开始轨迹记录
         self.trajectory_recorder.start(query, model=self.model)
 
@@ -316,12 +323,34 @@ class AgentLoop:
                 except Exception as e:
                     error_type = classify_error(e)
                     recovery = get_recovery(error_type)
-                    feedback = self.retry_manager.get_feedback_message(error_type, str(e))
+
                     # Hook: on_error
                     await self.hooks.trigger(HookContext(
                         point=HookPoint.ON_ERROR,
                         data={"error_type": error_type.value, "error": str(e), "step": step},
                     ))
+
+                    # CONTEXT_OVERFLOW: 触发主动压缩，尝试继续推理循环
+                    if error_type == ErrorType.CONTEXT_OVERFLOW:
+                        logger.warning("上下文溢出，触发主动压缩...")
+                        try:
+                            ollama_dicts = [message_to_ollama_dict(m) for m in messages]
+                            compression = await self.compressor.compress(ollama_dicts)
+                            if compression.was_compressed:
+                                messages = self._rebuild_messages_from_dicts(compression.messages)
+                                logger.info("上下文压缩后重试: %d → %d 条消息",
+                                            compression.original_count, compression.compressed_count)
+                                continue  # 继续 ReAct 循环，不 abort
+                            else:
+                                feedback = self.retry_manager.get_feedback_message(error_type, str(e))
+                                yield AgentEvent(type="error", content=f"上下文过长: {feedback}")
+                                return
+                        except Exception as compress_err:
+                            logger.error("压缩重试也失败: %s", compress_err)
+                            yield AgentEvent(type="error", content="上下文过长，无法处理，请简化问题。")
+                            return
+
+                    feedback = self.retry_manager.get_feedback_message(error_type, str(e))
                     logger.warning("LLM 错误 [%s]: %s → %s", error_type.value, e, feedback)
                     yield AgentEvent(type="error", content=f"LLM 调用失败: {feedback}")
                     return
