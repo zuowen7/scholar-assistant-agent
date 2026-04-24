@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from src.translator.ollama_client import TranslationResult, _restore_paragraphs
+from src.translator._helpers import TranslationResult, _restore_paragraphs
 
 
 def format_output(

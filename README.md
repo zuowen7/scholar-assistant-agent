@@ -69,6 +69,39 @@
 └── package.json
 ```
 
+## 下载安装
+
+### 桌面端安装包（Windows / macOS / Linux）
+
+GitHub Releases 页面：https://github.com/zuowen7/scholar-cursor/releases
+
+| 平台 | 下载文件 |
+|------|---------|
+| Windows | `Scholar Assistant_{版本}_x64-setup.exe` |
+| macOS (Apple Silicon) | `Scholar Assistant_{版本}_aarch64.dmg` |
+| macOS (Intel) | `Scholar Assistant_{版本}_x64.dmg` |
+| Linux | `Scholar Assistant_{版本}_amd64.deb` 或 `.AppImage` |
+
+> **前提条件**：安装 [Ollama](https://ollama.com) 并拉取模型：
+> ```bash
+> ollama pull qwen3:8b
+> ```
+
+### Docker 镜像
+
+```bash
+# 拉取最新镜像
+docker pull zuowen7/scholar-cursor:latest
+
+# 启动 Ollama + 应用服务
+docker compose up
+
+# 翻译文档
+docker compose run app /data/input/paper.pdf -o /data/output/paper.md
+```
+
+---
+
 ## 快速开始
 
 ### 前置条件
