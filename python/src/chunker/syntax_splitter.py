@@ -14,7 +14,7 @@ _EN_CLAUSE_CONNECTORS = [
     r"\bhowever\b", r"\btherefore\b", r"\bfurthermore\b",
     r"\bmoreover\b", r"\bnevertheless\b", r"\bconsequently\b",
     r"\bspecifically\b", r"\bparticularly\b", r"\badditionally\b",
-    r"\bcompared\b", r"\bhowever\b", r"\boverall\b",
+    r"\bcompared\b", r"\boverall\b",
 ]
 _EN_PATTERN = "|".join(_EN_CLAUSE_CONNECTORS)
 
