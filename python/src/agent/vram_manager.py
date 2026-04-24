@@ -156,6 +156,7 @@ class VRAMResourceManager:
         self._lock = asyncio.Semaphore(1)
         self._unload_timers: dict[str, asyncio.Task] = {}
         self._http_client: httpx.AsyncClient | None = None
+        self._active_requests: dict[str, int] = {}  # 记录每个模型当前处理中的请求数
 
     async def _get_http_client(self) -> httpx.AsyncClient:
         if self._http_client is None or self._http_client.is_closed:
@@ -173,6 +174,7 @@ class VRAMResourceManager:
     async def acquire(self, model_name: str) -> None:
         """请求加载模型到显存并等待就绪。"""
         async with self._lock:
+            self._active_requests[model_name] = self._active_requests.get(model_name, 0) + 1
             if self._states.get(model_name) == ModelState.ACTIVE:
                 self._reset_unload_timer(model_name)
                 return
@@ -185,6 +187,7 @@ class VRAMResourceManager:
     async def release(self, model_name: str) -> None:
         """卸载模型，释放 GPU 显存。"""
         async with self._lock:
+            self._active_requests[model_name] = max(0, self._active_requests.get(model_name, 1) - 1)
             await self._do_unload(model_name)
 
     async def is_loaded(self, model_name: str) -> bool:
@@ -246,6 +249,18 @@ class VRAMResourceManager:
         if timer is not None:
             timer.cancel()
         self._states[model_name] = ModelState.UNLOADING
+
+        # 等待正在处理的请求完成后再卸载
+        wait_attempts = 0
+        max_wait = 10  # 最多等 10 秒
+        while self._active_requests.get(model_name, 0) > 0 and wait_attempts < max_wait:
+            logger.debug("VRAM: 模型 %s 有 %d 个请求在处理中，等待完成...", model_name, self._active_requests.get(model_name, 0))
+            self._states[model_name] = ModelState.ACTIVE  # 保持ACTIVE，阻止新请求触发卸载
+            await asyncio.sleep(1.0)
+            wait_attempts += 1
+        if wait_attempts == max_wait:
+            logger.warning("VRAM: 模型 %s 等待卸载超时，仍有 %d 个请求未完成", model_name, self._active_requests.get(model_name, 0))
+
         logger.info("VRAM 调度: 卸载模型 %s...", model_name)
         client = await self._get_http_client()
         try:
