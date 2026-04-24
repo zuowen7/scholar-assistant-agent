@@ -136,7 +136,3 @@ cd python && pytest tests/ -v
 | 翻译 | Ollama, Qwen3:8b |
 | PDF | PyMuPDF, pdfplumber |
 | 容器化 | Docker 多阶段构建 |
-
-## License
-
-[MIT](LICENSE)
