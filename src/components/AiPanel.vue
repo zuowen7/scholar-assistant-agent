@@ -3,6 +3,10 @@
     <div class="ai-header">
       <span class="ai-title">AI Assist</span>
       <div class="header-actions">
+        <div class="mode-toggle">
+          <button :class="{ active: !isAgentMode }" @click="isAgentMode = false" title="Assistant Mode">Assis</button>
+          <button :class="{ active: isAgentMode }" @click="isAgentMode = true" title="Agent Mode (RAG+ReAct)">Agent</button>
+        </div>
         <button class="ai-btn-icon" @click="handleUndo" title="撤销上次插入" :disabled="!canUndo">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 00-15-6.7L3 13"/></svg>
         </button>
@@ -56,11 +60,11 @@
 
       <!-- 快捷预设 -->
       <div class="ai-presets">
-        <button class="ai-preset" @click="runPreset('Expand this paragraph into a more detailed academic paragraph with rigorous reasoning', 'expand')">扩写</button>
-        <button class="ai-preset" @click="runPreset('Polish and improve the academic writing style and coherence', 'coherence')">润色</button>
-        <button class="ai-preset" @click="runPreset('Find potential issues in this writing and suggest fixes', 'polish')">审查</button>
-        <button class="ai-preset" @click="runPreset('Translate the selected text to fluent academic English', 'expand')">英文翻译</button>
-        <button class="ai-preset" @click="runPreset('将所选文本翻译成流畅的中文学术论文', 'expand')">中文翻译</button>
+        <button class="ai-preset" @click="runPreset('请扩写以下文本，增加更多细节和学术深度，使其成为完整详尽的学术段落。', 'expand')">扩写</button>
+        <button class="ai-preset" @click="runPreset('请润色以下学术文本，提升语法、词汇和学术风格，使表达更正式、简洁、流畅。', 'polish')">润色</button>
+        <button class="ai-preset" @click="runPreset('请审查以下学术文本，找出潜在问题并提出改进建议，包括逻辑连贯性、论证充分性和语言表达。', 'polish')">审查</button>
+        <button class="ai-preset" @click="runPreset('请将以下中文文本翻译为流畅的学术英文，保持原意，提升学术规范性。', 'expand')">英译</button>
+        <button class="ai-preset" @click="runPreset('Please translate the following text into fluent academic Chinese, preserving the original meaning.', 'expand')">中译</button>
       </div>
 
       <!-- 风格迁移预设 -->
@@ -104,6 +108,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import DOMPurify from 'dompurify'
 
 const props = defineProps<{
   loading: boolean
@@ -119,12 +124,14 @@ const emit = defineEmits<{
   (e: 'cancel'): void
   (e: 'close'): void
   (e: 'styleTransfer', templateId: string, templateName: string): void
+  (e: 'agent', instruction: string): void
 }>()
 
 const instruction = ref('')
 const inputRef = ref<HTMLTextAreaElement>()
 const attachedFiles = ref<{ path: string; name: string; content: string }[]>([])
 const notice = ref('')
+const isAgentMode = ref(false)
 
 function showNotice(msg: string) {
   notice.value = msg
@@ -162,12 +169,20 @@ function handleSend() {
     ).join('\n\n')
     fullInstruction = `${filesCtx}\n\nUser request: ${instruction.value.trim()}`
   }
-  emit('edit', fullInstruction)
+  if (isAgentMode.value) {
+    emit('agent', fullInstruction)
+  } else {
+    emit('edit', fullInstruction)
+  }
 }
 
 function runPreset(presetInstruction: string, taskType?: string) {
   instruction.value = presetInstruction
-  emit('edit', presetInstruction, taskType)
+  if (isAgentMode.value) {
+    emit('agent', presetInstruction)
+  } else {
+    emit('edit', presetInstruction, taskType)
+  }
 }
 
 async function runStyleTransfer(templateId: string) {
@@ -201,14 +216,22 @@ function handleUndo() {
   emit('undo')
 }
 
-function renderMarkdown(text: string): string {
-  return text
+function escapeHtml(s: string): string {
+  return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function renderMarkdown(text: string): string {
+  const safe = escapeHtml(text)
+  const html = safe
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/`(.+?)`/g, '<code style="background:#2d2d2d;padding:1px 5px;border-radius:3px;font-size:0.9em">$1</code>')
     .replace(/\n/g, '<br/>')
+  return DOMPurify.sanitize(html)
 }
 
 const renderedResult = computed(() => renderMarkdown(props.result))
@@ -238,7 +261,29 @@ const renderedResult = computed(() => renderMarkdown(props.result))
   color: var(--text-secondary);
 }
 
-.header-actions { display: flex; align-items: center; gap: 4px; }
+.header-actions { display: flex; align-items: center; gap: 6px; }
+
+.mode-toggle {
+  display: flex;
+  background: var(--input-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.mode-toggle button {
+  background: none;
+  border: none;
+  padding: 4px 8px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mode-toggle button.active {
+  background: var(--accent);
+  color: #fff;
+}
+.mode-toggle button:hover:not(.active) { background: var(--hover-bg); color: var(--text-primary); }
 
 .ai-btn-icon {
   background: none;

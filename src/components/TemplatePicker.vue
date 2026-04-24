@@ -48,6 +48,7 @@
       </div>
 
       <div class="tp-footer">
+        <span v-if="error" class="tp-error">{{ error }}</span>
         <button class="tp-btn tp-btn-cancel" @click="close">取消</button>
         <button class="tp-btn tp-btn-create" :disabled="!selected || loading" @click="create">
           {{ loading ? '生成中...' : '创建' }}
@@ -70,9 +71,10 @@ const emit = defineEmits<{
 }>()
 
 const templates = ref<{ id: string; name: string; venue: string; description: string; icon: string }[]>([])
-const selected = ref('generic')
+const selected = ref('generic_article')
 const title = ref('')
 const loading = ref(false)
+const error = ref('')
 
 const sectionOptions = reactive([
   { id: 'title', label: '标题', checked: true },
@@ -85,12 +87,17 @@ const sectionOptions = reactive([
 
 async function loadTemplates() {
   try {
+    error.value = ''
     const resp = await fetch(`${API}/api/paper-assets/templates`)
     if (resp.ok) {
       const data = await resp.json()
       templates.value = data.templates || []
+    } else {
+      error.value = '后端未响应，请检查 Python 后端是否运行'
     }
-  } catch { /* ignore */ }
+  } catch (e) {
+    error.value = `加载模板失败: ${e}`
+  }
 }
 
 function close() {
@@ -100,6 +107,7 @@ function close() {
 async function create() {
   if (!selected.value || loading.value) return
   loading.value = true
+  error.value = ''
   try {
     const sections = sectionOptions.filter(s => s.checked).map(s => s.id)
     const resp = await fetch(`${API}/api/paper-scaffold`, {
@@ -115,8 +123,13 @@ async function create() {
       const data = await resp.json()
       emit('create', data.markdown, data.template_id)
       close()
+    } else {
+      const errData = await resp.json().catch(() => ({}))
+      error.value = errData.detail || `创建失败 (${resp.status})`
     }
-  } catch { /* ignore */ }
+  } catch (e) {
+    error.value = `创建失败: ${e}`
+  }
   finally {
     loading.value = false
   }
@@ -309,4 +322,13 @@ watch(() => props.visible, (v) => {
 }
 .tp-btn-create:hover { opacity: 0.9; }
 .tp-btn-create:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.tp-error {
+  flex: 1;
+  font-size: 12px;
+  color: #f87171;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 </style>

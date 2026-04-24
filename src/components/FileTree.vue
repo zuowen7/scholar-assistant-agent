@@ -54,7 +54,7 @@ import { useEditor } from '../composables/useEditor'
 import type { FileEntry } from '../types'
 
 const { files, rootDir, openFolder, readFileContent, createFile } = useFileTree()
-const { openFile: openEditorFile } = useEditor()
+const { openFile: openEditorFile, activeFile } = useEditor()
 
 const searchQuery = ref('')
 

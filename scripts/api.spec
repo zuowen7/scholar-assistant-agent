@@ -10,15 +10,9 @@ Produces an --onedir bundle at src-tauri/python-dist/api/ containing:
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules, collect_data_files
-
 block_cipher = None
 
 python_dir = Path(SPECPATH).parent / "python"
-
-# Collect ALL chromadb submodules (chromadb uses lazy imports extensively)
-_chromadb_hiddenimports = collect_submodules('chromadb')
-_chromadb_datas = collect_data_files('chromadb', include_py_files=False)
 
 # Anaconda stores DLLs in Library/bin/ — PyInstaller doesn't find them automatically
 conda_bin = Path(sys.executable).parent / "Library" / "bin"
@@ -36,14 +30,16 @@ if conda_bin.exists():
             _conda_dlls.append((str(dll_path), "."))
 
 a = Analysis(
-    [str(python_dir / "api.py")],
+    [str(python_dir / "api_factory.py")],
     pathex=[str(python_dir)],
     binaries=_conda_dlls,
     datas=[
         (str(python_dir / "config" / "default.yaml"), "config"),
+        # Pandoc 模板目录（包含 generic.tex 等期刊模板）
         (str(python_dir / "pandoc_templates"), "pandoc_templates"),
-        (str(python_dir / "prompts"), "prompts"),
-    ] + _chromadb_datas,
+        # 论文模板素材库（模板源码 + Markdown/LaTeX/Text 范例）
+        (str(python_dir / "data" / "paper_assets"), "data/paper_assets"),
+    ],
     hiddenimports=[
         # FastAPI / uvicorn
         "pydantic",
@@ -69,43 +65,28 @@ a = Analysis(
         "openpyxl",
         "pptx",
         "docx",
-        # Agent subsystem — core modules
-        "src.agent",
+        # ChromaDB (Agent/RAG memory)
+        "chromadb",
+        "chromadb.api",
+        "chromadb.api.types",
+        "chromadb.api.client",
+        "chromadb.config",
+        "chromadb.utils",
+        "chromadb.utils.batch_utils",
+        "chromadb.utils.messageid_router",
+        "chromadb.utils.ranking_utils",
+        "hnswlib",
+        # Agent subsystems
         "src.agent.agent",
         "src.agent.models",
-        "src.agent.tools",
         "src.agent.rag",
+        "src.agent.tools",
         "src.agent.vram_manager",
-        # Agent subsystem — Phase 1 (context engineering)
-        "src.agent.context_compressor",
-        "src.agent.prompt_builder",
-        # Agent subsystem — Phase 2 (memory + skill + trajectory)
         "src.agent.memory",
-        "src.agent.skill_system",
-        "src.agent.trajectory",
-        "src.agent.review_agent",
-        # Agent subsystem — Phase 3 (error + hooks)
-        "src.agent.error_classifier",
-        "src.agent.hooks",
-        # Agent subsystem — dependencies
-        "onnxruntime",
-        "sqlite3",
-        # Source modules
-        "src",
-        "src.parser",
-        "src.parser.dispatcher",
-        "src.cleaner",
-        "src.cleaner.pipeline",
-        "src.chunker",
-        "src.chunker.manager",
-        "src.formatter",
-        "src.formatter.bilingual",
-        "src.translator",
-        "src.translator.ollama_client",
-        "src.translator.cloud_client",
-        "src.translator.context",
-        # chromadb: all submodules collected above via collect_submodules
-    ] + _chromadb_hiddenimports,
+        "src.agent.tool_generator",
+        # Prompts library
+        "prompts.core",
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

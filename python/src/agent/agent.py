@@ -19,7 +19,7 @@
     │            ┌──────────┼──────────┐           │
     │            ▼                     ▼           │
     │    [Tool Calls]           [Final Answer]     │
-    │    [Execute]              [Yield Response]   │
+    │    [Execute]              [Yield Response]  │
     │    [Observation]                             │
     │         │                                    │
     │         └──▶ 回到 LLM 推理 ◀──┘              │
@@ -54,18 +54,19 @@ import logging
 import re
 import time
 import uuid
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 
 import httpx
 
 from src.agent.context_compressor import ContextCompressor
 from src.agent.error_classifier import ErrorType, classify_error, get_recovery, RetryManager
 from src.agent.hooks import HookContext, HookManager, HookPoint
-from src.agent.memory import MemoryManager
+from src.agent.memory import AgentMemory, MemoryManager
 from src.agent.models import AgentEvent, Message, ToolCall, message_to_ollama_dict
 from src.agent.prompt_builder import PromptBuilder, PromptConfig
 from src.agent.review_agent import ReviewAgent
 from src.agent.skill_system import SkillRegistry
+from src.agent.tool_generator import ToolGenerator, create_tool_generator
 from src.agent.tools import ToolRegistry
 from src.agent.trajectory import TrajectoryRecorder
 from src.agent.vram_manager import ContextRole, MultiplexingScheduler
@@ -115,12 +116,19 @@ class AgentLoop:
         temperature: float = 0.3,
         num_predict: int = 4096,
         timeout: float = 300.0,
+        # Phase 1/2/3 模块
         context_compressor: ContextCompressor | None = None,
         prompt_builder: PromptBuilder | None = None,
         memory_manager: MemoryManager | None = None,
         skill_registry: SkillRegistry | None = None,
         trajectory_recorder: TrajectoryRecorder | None = None,
-        cloud_client: Any | None = None,
+        # 云端 API 配置（可选）
+        cloud_base_url: str = "",
+        cloud_api_key: str = "",
+        cloud_model: str = "",
+        api_format: str = "openai",
+        # 长期记忆持久化目录（可选）
+        memory_dir: str = "",
     ) -> None:
         """初始化 Agent 推理循环引擎。
 
@@ -139,6 +147,11 @@ class AgentLoop:
             memory_manager: 记忆管理器（可选，默认自动创建）。
             skill_registry: Skill 注册表（可选，默认自动创建）。
             trajectory_recorder: 轨迹记录器（可选，默认自动创建）。
+            cloud_base_url: 云端 API 地址。
+            cloud_api_key: 云端 API Key。
+            cloud_model: 云端模型名称。
+            api_format: 云端 API 格式，"openai" 或 "anthropic"。
+            memory_dir: 记忆持久化目录。
         """
         self.ollama_base_url = ollama_base_url.rstrip("/")
         self.model = model
@@ -174,11 +187,24 @@ class AgentLoop:
         self.retry_manager = RetryManager()
         self.hooks = HookManager()
 
-        # 双引擎: cloud_client 非空时走云端 API, 否则走 Ollama
-        self.cloud_client = cloud_client
-        self._use_cloud = cloud_client is not None
+        # 云端 API 配置（提供后优先使用云端）
+        self.cloud_base_url = cloud_base_url.rstrip("/") if cloud_base_url else ""
+        self.cloud_api_key = cloud_api_key
+        self.cloud_model = cloud_model
+        self.api_format = api_format  # "openai" or "anthropic"
+
+        # 长期记忆管理器（文件持久化）
+        self._memory = AgentMemory(persist_dir=memory_dir) if memory_dir else None
+
+        # 自适应工具生成器
+        self._tool_generator = create_tool_generator(self.tool_registry)
 
         self._http_client: httpx.AsyncClient | None = None
+
+    @property
+    def _use_cloud(self) -> bool:
+        """是否使用云端 API。"""
+        return bool(self.cloud_api_key and self.cloud_base_url)
 
     async def _get_http_client(self) -> httpx.AsyncClient:
         """获取异步 HTTP 客户端（懒加载复用）。"""
@@ -209,7 +235,7 @@ class AgentLoop:
         1. 构建初始消息列表 (system + history + user query)。
         2. 如果配置了调度器，确保 Agent 模型已加载到显存。
         3. 进入 ReAct 循环:
-           a. 调用 Ollama Chat API (附带工具定义)。
+           a. 调用 LLM API (附带工具定义)。
            b. 解析响应:
               - 包含 tool_calls → 执行工具 → yield 事件 → 回到步骤 a。
               - 无 tool_calls → 最终回答 → yield response 事件 → 结束。
@@ -307,6 +333,14 @@ class AgentLoop:
                     # 无工具调用 → 这是最终回答
                     answer = self._extract_text_content(response)
                     self._finalize_trajectory(query, answer, success=True)
+                    # 存储对话到长期记忆
+                    if self._memory and answer:
+                        self._memory.add(
+                            content=f"Q: {query}\nA: {answer[:2000]}",
+                            category="conversation",
+                            importance=0.5,
+                            tags=["conversation"],
+                        )
                     yield AgentEvent(type="response", content=answer)
                     return
 
@@ -314,17 +348,12 @@ class AgentLoop:
                 assistant_content = self._extract_text_content(response)
 
                 # ── 判断本轮是否需要上下文隔离 ──
-                # 只要有一个 heavy tool 就整轮隔离，避免多工具调用的消息链断裂。
-                # 整轮隔离意味着 snapshot 在 append assistant 消息之前完成，
-                # 恢复后 messages 不包含 assistant(tool_calls) 消息，
-                # 避免 Ollama 报 "assistant with tool_calls but no tool response" 格式错误。
                 has_heavy = (
                     self.scheduler is not None
                     and any(self.scheduler.is_heavy_tool(tc.name) for tc in tool_calls)
                 )
 
                 if has_heavy:
-                    # 在 append assistant 消息之前保存快照（不含 tool_calls 格式）
                     ollama_msgs = [message_to_ollama_dict(m) for m in messages]
                     self.scheduler.snapshot_context(ollama_msgs)
                     yield AgentEvent(
@@ -374,17 +403,71 @@ class AgentLoop:
                             metadata={"tool_name": tc.name, "duration_ms": duration_ms},
                         )
                     except ValueError as e:
-                        result = f"错误: {e}"
-                        # Hook: on_tool_result (error)
-                        await self.hooks.trigger(HookContext(
-                            point=HookPoint.ON_TOOL_RESULT,
-                            data={"tool_name": tc.name, "success": False, "error": str(e)},
-                        ))
+                        error_msg = str(e)
+                        # 工具未注册，尝试动态生成
+                        if "未注册的工具" in error_msg or "not found" in error_msg.lower():
+                            yield AgentEvent(
+                                type="thinking",
+                                content=f"工具 '{tc.name}' 不存在，正在尝试生成...",
+                            )
+                            tool_spec = self._tool_generator.generate_from_llm_request(
+                                llm_request=f"{tc.name}: {tc.arguments}",
+                                task_description=query,
+                            )
+                            if tool_spec and self._tool_generator.generate_tool(tool_spec):
+                                try:
+                                    result = await self.tool_registry.execute(tc.name, tc.arguments)
+                                    duration_ms = int((time.monotonic() - start_time) * 1000)
+                                    yield AgentEvent(
+                                        type="tool_result",
+                                        content=f"[动态生成工具] {result[:480]}...",
+                                        metadata={"tool_name": tc.name, "duration_ms": duration_ms, "generated": True},
+                                    )
+                                except Exception as gen_err:
+                                    result = f"动态工具执行失败: {gen_err}"
+                                    yield AgentEvent(
+                                        type="tool_result",
+                                        content=result,
+                                        metadata={"tool_name": tc.name, "error": True},
+                                    )
+                            else:
+                                result = f"错误: 工具 '{tc.name}' 不存在且自动生成失败"
+                                yield AgentEvent(
+                                    type="tool_result",
+                                    content=result,
+                                    metadata={"tool_name": tc.name, "error": True},
+                                )
+                        else:
+                            result = f"错误: {e}"
+                            yield AgentEvent(
+                                type="tool_result",
+                                content=result,
+                                metadata={"tool_name": tc.name, "error": True},
+                            )
+
+                        # 记录错误到记忆系统
+                        if self._memory:
+                            self._memory.add(
+                                content=f"工具 {tc.name} 执行失败: {error_msg}\n参数: {tc.arguments}",
+                                category="tool_knowledge",
+                                importance=0.6,
+                                tags=["tool_error", tc.name],
+                            )
+                    except Exception as e:
+                        error_str = str(e)
+                        result = f"工具执行错误 ({tc.name}): {error_str}"
                         yield AgentEvent(
                             type="tool_result",
                             content=result,
                             metadata={"tool_name": tc.name, "error": True},
                         )
+                        if self._memory:
+                            self._memory.add(
+                                content=f"工具 {tc.name} 执行异常: {error_str}\n参数: {tc.arguments}",
+                                category="tool_knowledge",
+                                importance=0.7,
+                                tags=["tool_error", tc.name],
+                            )
 
                     tool_results.append((tc.name, tc.id, result))
 
@@ -570,30 +653,52 @@ class AgentLoop:
     # ------------------------------------------------------------------
 
     async def _call_llm(self, messages: list[Message]) -> dict:
-        """调用 LLM — 云端 API 或本地 Ollama。
+        """调用 LLM，自动选择 Ollama / OpenAI / Anthropic。
 
-        根据用户设置自动路由：
-        - cloud_client 非空 → OpenAI 兼容 API (/v1/chat/completions)
-        - 否则 → Ollama API (/api/chat)
+        云端 API 优先: cloud_api_key + cloud_base_url → _call_llm_cloud / _call_llm_anthropic
+        否则使用本地 Ollama: _call_llm_ollama
 
-        两种格式的 tool_calls 响应在 _extract_tool_calls 中统一处理。
+        返回值统一为 Ollama 格式: {"message": {"role", "content", "tool_calls"?}}
 
         Args:
             messages: 消息列表。
 
         Returns:
-            统一格式的响应 dict，包含 message.content 和 message.tool_calls。
+            归一化后的 LLM 响应字典。
 
         Raises:
-            ConnectionError: 无法连接 LLM 服务。
+            ConnectionError: 无法连接服务。
             ValueError: API 返回错误。
         """
-        if self._use_cloud:
-            return await self._call_cloud(messages)
-        return await self._call_ollama(messages)
+        if not self._use_cloud:
+            return await self._call_llm_ollama(messages)
+        if self.api_format == "anthropic":
+            return await self._call_llm_anthropic(messages)
+        return await self._call_llm_cloud(messages)
 
-    async def _call_ollama(self, messages: list[Message]) -> dict:
-        """调用 Ollama Chat API。"""
+    async def _call_llm_ollama(self, messages: list[Message]) -> dict:
+        """调用 Ollama Chat API，支持原生工具调用。
+
+        请求格式:
+        - endpoint: POST {base_url}/api/chat
+        - payload: {
+            "model": "...",
+            "messages": [...],
+            "tools": [...],  // 工具定义
+            "stream": false,
+            "options": { temperature, num_predict, ... }
+          }
+
+        Args:
+            messages: 消息列表。
+
+        Returns:
+            Ollama Chat API 的完整 JSON 响应。
+
+        Raises:
+            ConnectionError: 无法连接 Ollama。
+            ValueError: API 返回错误。
+        """
         client = await self._get_http_client()
         ollama_messages = [message_to_ollama_dict(m) for m in messages]
 
@@ -607,6 +712,7 @@ class AgentLoop:
             },
         }
 
+        # 附带工具定义（Ollama 原生 tool calling）
         tools = self.tool_registry.to_ollama_tools()
         if tools:
             payload["tools"] = tools
@@ -618,97 +724,262 @@ class AgentLoop:
             )
             resp.raise_for_status()
         except httpx.ConnectError as e:
-            raise ConnectionError(f"无法连接 Ollama 服务 ({self.ollama_base_url})") from e
+            raise ConnectionError(
+                f"无法连接 Ollama 服务 ({self.ollama_base_url})"
+            ) from e
         except httpx.HTTPStatusError as e:
-            raise ValueError(f"Ollama API 错误 (HTTP {e.response.status_code}): {e.response.text[:200]}") from e
+            raise ValueError(
+                f"Ollama API 错误 (HTTP {e.response.status_code}): "
+                f"{e.response.text[:200]}"
+            ) from e
         except httpx.TimeoutException as e:
-            raise ConnectionError(f"Ollama 请求超时 ({self.timeout}s)") from e
+            raise ConnectionError(
+                f"Ollama 请求超时 ({self.timeout}s)"
+            ) from e
 
         return resp.json()
 
-    async def _call_cloud(self, messages: list[Message]) -> dict:
-        """调用 OpenAI 兼容 Chat API，返回统一格式。"""
-        client = await self._get_http_client()
-        cloud = self.cloud_client
+    async def _call_llm_cloud(self, messages: list[Message]) -> dict:
+        """调用 OpenAI 兼容的云端 Chat API。
 
-        # 将 Message 列表转为 OpenAI 格式
-        api_messages = []
+        将 OpenAI 响应格式归一化为 Ollama 格式，下游代码无需修改。
+
+        Args:
+            messages: 消息列表。
+
+        Returns:
+            归一化为 Ollama 格式的响应: {"message": {"role", "content", "tool_calls"?}}
+        """
+        client = await self._get_http_client()
+
+        # 序列化消息为 OpenAI 兼容格式
+        # 关键: tool_calls[].function.arguments 必须是 JSON 字符串
+        openai_messages: list[dict] = []
         for m in messages:
-            d: dict = {"role": m.role, "content": m.content or ""}
+            d: dict = {"role": m.role, "content": m.content}
             if m.tool_calls:
                 d["tool_calls"] = [
                     {
                         "id": tc.id,
                         "type": "function",
-                        "function": {"name": tc.name, "arguments": json.dumps(tc.arguments, ensure_ascii=False)},
+                        "function": {
+                            "name": tc.name,
+                            "arguments": json.dumps(tc.arguments, ensure_ascii=False),
+                        },
                     }
                     for tc in m.tool_calls
                 ]
             if m.tool_call_id:
                 d["tool_call_id"] = m.tool_call_id
-                d["content"] = m.content or ""
-            api_messages.append(d)
+            openai_messages.append(d)
+
+        # 构建 endpoint
+        endpoint = f"{self.cloud_base_url}/chat/completions"
 
         payload: dict = {
-            "model": cloud.model,
-            "messages": api_messages,
+            "model": self.cloud_model or self.model,
+            "messages": openai_messages,
             "temperature": self.temperature,
             "max_tokens": self.num_predict,
+            "stream": False,
         }
 
         tools = self.tool_registry.to_ollama_tools()
         if tools:
             payload["tools"] = tools
 
-        url = f"{cloud.base_url}/chat/completions"
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {cloud.api_key}",
+            "Authorization": f"Bearer {self.cloud_api_key}",
         }
 
         try:
-            resp = await client.post(url, json=payload, headers=headers)
+            resp = await client.post(endpoint, json=payload, headers=headers)
             resp.raise_for_status()
         except httpx.ConnectError as e:
-            raise ConnectionError(f"无法连接云端 API ({cloud.base_url})") from e
+            raise ConnectionError(
+                f"无法连接云端 API ({self.cloud_base_url})"
+            ) from e
         except httpx.HTTPStatusError as e:
             detail = ""
             try:
                 body = e.response.json()
                 detail = body.get("error", {}).get("message", "") or str(body)
             except Exception:
-                detail = e.response.text[:200]
-            raise ValueError(f"云端 API 错误 (HTTP {e.response.status_code}): {detail}") from e
+                detail = e.response.text[:300]
+            raise ValueError(
+                f"云端 API 错误 (HTTP {e.response.status_code}): {detail}"
+            ) from e
         except httpx.TimeoutException as e:
-            raise ConnectionError(f"云端 API 请求超时 ({self.timeout}s)") from e
+            raise ConnectionError(
+                f"云端 API 请求超时 ({self.timeout}s)"
+            ) from e
 
         data = resp.json()
-        # 统一为 Ollama 格式，方便下游 _extract_tool_calls 处理
-        choice = (data.get("choices") or [{}])[0]
-        msg = choice.get("message", {})
 
-        unified_tool_calls = []
-        for tc in (msg.get("tool_calls") or []):
+        # 归一化: OpenAI → Ollama 格式
+        choice = data.get("choices", [{}])[0]
+        openai_msg = choice.get("message", {})
+
+        normalized_tool_calls = []
+        for tc in (openai_msg.get("tool_calls") or []):
             func = tc.get("function", {})
-            args = func.get("arguments", {})
-            if isinstance(args, str):
+            raw_args = func.get("arguments", "{}")
+            # OpenAI 返回 arguments 为 JSON 字符串，需要解析为 dict
+            if isinstance(raw_args, str):
                 try:
-                    args = json.loads(args)
+                    args = json.loads(raw_args)
                 except json.JSONDecodeError:
-                    args = {"raw_input": args}
-            unified_tool_calls.append({
+                    args = {"raw_input": raw_args}
+            else:
+                args = raw_args if isinstance(raw_args, dict) else {}
+
+            normalized_tool_calls.append({
+                "id": tc.get("id", str(uuid.uuid4())[:8]),
                 "function": {
                     "name": func.get("name", ""),
-                    "arguments": args if isinstance(args, dict) else {},
+                    "arguments": args,
                 },
             })
 
         return {
             "message": {
+                "role": openai_msg.get("role", "assistant"),
+                "content": openai_msg.get("content", ""),
+                **({"tool_calls": normalized_tool_calls} if normalized_tool_calls else {}),
+            }
+        }
+
+    async def _call_llm_anthropic(self, messages: list[Message]) -> dict:
+        """调用 Anthropic Messages API，归一化为 Ollama 格式。
+
+        Anthropic 与 OpenAI 的关键差异:
+        - endpoint: {base_url}/v1/messages
+        - auth: x-api-key + anthropic-version header
+        - system prompt 是顶层字段，不在 messages 数组中
+        - 工具定义用 input_schema 而非 parameters
+        - 响应 content 是 blocks 数组: [{"type": "text"}, {"type": "tool_use"}]
+        - tool result 消息用 {"type": "tool_result", "tool_use_id": ...}
+        """
+        client = await self._get_http_client()
+        endpoint = f"{self.cloud_base_url}/v1/messages"
+
+        # 分离 system prompt 和其他消息
+        system_text = self.system_prompt
+        anthropic_messages: list[dict] = []
+
+        for msg in messages:
+            if msg.role == "system":
+                # 系统消息合并到顶层 system 字段
+                if msg.content:
+                    system_text = (system_text + "\n\n" + msg.content).strip() if system_text else msg.content
+                continue
+
+            # tool result 消息 → Anthropic 的 user + tool_result 格式
+            if msg.role == "tool" and msg.tool_call_id:
+                anthropic_messages.append({
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": msg.tool_call_id,
+                        "content": msg.content,
+                    }],
+                })
+                continue
+
+            # assistant 消息带 tool_calls → Anthropic 的 content blocks 格式
+            if msg.role == "assistant" and msg.tool_calls:
+                content_blocks: list[dict] = []
+                if msg.content:
+                    content_blocks.append({"type": "text", "text": msg.content})
+                for tc in msg.tool_calls:
+                    content_blocks.append({
+                        "type": "tool_use",
+                        "id": tc.id,
+                        "name": tc.name,
+                        "input": tc.arguments,
+                    })
+                anthropic_messages.append({"role": "assistant", "content": content_blocks})
+                continue
+
+            # 普通 user / assistant 消息
+            if msg.content:
+                anthropic_messages.append({"role": msg.role, "content": msg.content})
+
+        payload: dict = {
+            "model": self.cloud_model or self.model,
+            "max_tokens": self.num_predict,
+            "messages": anthropic_messages,
+        }
+        if system_text:
+            payload["system"] = system_text
+
+        # Anthropic 工具定义格式: {name, description, input_schema}
+        ollama_tools = self.tool_registry.to_ollama_tools()
+        if ollama_tools:
+            anthropic_tools = []
+            for t in ollama_tools:
+                func = t.get("function", {})
+                anthropic_tools.append({
+                    "name": func.get("name", ""),
+                    "description": func.get("description", ""),
+                    "input_schema": func.get("parameters", {"type": "object", "properties": {}}),
+                })
+            payload["tools"] = anthropic_tools
+
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": self.cloud_api_key,
+            "anthropic-version": "2023-06-01",
+        }
+
+        try:
+            resp = await client.post(endpoint, json=payload, headers=headers)
+            resp.raise_for_status()
+        except httpx.ConnectError as e:
+            raise ConnectionError(
+                f"无法连接 Anthropic API ({self.cloud_base_url})"
+            ) from e
+        except httpx.HTTPStatusError as e:
+            detail = ""
+            try:
+                body = e.response.json()
+                detail = body.get("error", {}).get("message", "") or str(body)
+            except Exception:
+                detail = e.response.text[:300]
+            raise ValueError(
+                f"Anthropic API 错误 (HTTP {e.response.status_code}): {detail}"
+            ) from e
+        except httpx.TimeoutException as e:
+            raise ConnectionError(
+                f"Anthropic API 请求超时 ({self.timeout}s)"
+            ) from e
+
+        # 归一化: Anthropic → Ollama 格式
+        # Anthropic: {"content": [{"type": "text", "text": "..."}, {"type": "tool_use", "id": "...", "name": "...", "input": {...}}]}
+        # Ollama:    {"message": {"role": "assistant", "content": "...", "tool_calls": [...]}}
+        data = resp.json()
+        text_parts: list[str] = []
+        normalized_tool_calls = []
+
+        for block in data.get("content", []):
+            if block.get("type") == "text":
+                text_parts.append(block.get("text", ""))
+            elif block.get("type") == "tool_use":
+                normalized_tool_calls.append({
+                    "id": block.get("id", str(uuid.uuid4())[:8]),
+                    "function": {
+                        "name": block.get("name", ""),
+                        "arguments": block.get("input", {}),
+                    },
+                })
+
+        return {
+            "message": {
                 "role": "assistant",
-                "content": msg.get("content", ""),
-                "tool_calls": unified_tool_calls,
-            },
+                "content": "".join(text_parts),
+                **({"tool_calls": normalized_tool_calls} if normalized_tool_calls else {}),
+            }
         }
 
     # ------------------------------------------------------------------
@@ -750,7 +1021,7 @@ class AgentLoop:
                     arguments = {"raw_input": arguments}
 
             tool_calls.append(ToolCall(
-                id=str(uuid.uuid4())[:8],
+                id=call.get("id") or str(uuid.uuid4())[:8],
                 name=name,
                 arguments=arguments if isinstance(arguments, dict) else {},
             ))

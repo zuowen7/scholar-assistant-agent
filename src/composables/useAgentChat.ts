@@ -171,7 +171,7 @@ export function useAgentChat() {
       if (resp.ok) {
         ragDocuments.value = await resp.json()
       }
-    } catch { /* ignore */ }
+    } catch (e) { console.warn('agentFetchDocs failed:', e) }
     finally {
       ragLoading.value = false
     }

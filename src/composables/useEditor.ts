@@ -1,5 +1,6 @@
 import { ref, shallowRef, computed } from 'vue'
 import type { EditorSelection, EditorTab } from '../types'
+import * as monaco from 'monaco-editor'
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 const API = isTauri ? 'http://localhost:18088' : ''
@@ -13,8 +14,9 @@ const showPreview = ref(true)
 const showAiPanel = ref(false)
 const aiLoading = ref(false)
 const aiResult = ref('')
-const monacoEditor = shallowRef<any>(null)
+const monacoEditor = shallowRef<monaco.editor.IStandaloneCodeEditor | null>(null)
 const previousContent = ref('')
+const contentVersion = ref(0)  // 递增来强制触发 preview 更新
 
 const activeTab = computed(() => tabs.value.find(t => t.id === activeTabId.value) ?? null)
 const content = computed(() => activeTab.value?.content ?? '')
@@ -25,7 +27,7 @@ const isModified = computed(() => activeTab.value?.isModified ?? false)
 
 export function useEditor() {
 
-  function setEditorInstance(editor: any) {
+  function setEditorInstance(editor: monaco.editor.IStandaloneCodeEditor) {
     monacoEditor.value = editor
   }
 
@@ -33,6 +35,7 @@ export function useEditor() {
     const tab = activeTab.value
     if (tab) {
       tab.content = text
+      contentVersion.value++  // 触发 preview 更新
       // mark modified only after initial load; use markClean to reset
     }
   }
@@ -108,18 +111,24 @@ export function useEditor() {
     }
   }
 
-  async function saveFile(): Promise<void> {
+  async function saveFile(): Promise<string | null> {
     const tab = activeTab.value
-    if (!tab || !tab.path) return
+    if (!tab || !tab.path) {
+      return '无法保存：请先导出到文件（未命名文件暂不支持直接保存）'
+    }
     const { writeTextFile } = await import('@tauri-apps/plugin-fs')
     await writeTextFile(tab.path, tab.content)
     tab.isModified = false
+    return null
   }
 
   // 内容变化时标记 dirty（由 Monaco 的 onDidChangeModelContent 调用）
   function markDirty() {
     const tab = activeTab.value
-    if (tab) tab.isModified = true
+    if (tab) {
+      tab.isModified = true
+      contentVersion.value++  // 每次变化触发 preview 刷新
+    }
   }
 
   // ── AI Edit ────────────────────────────────────────────────────
@@ -190,6 +199,115 @@ export function useEditor() {
         return
       }
       aiResult.value = `请求失败: ${e}`
+    } finally {
+      aiLoading.value = false
+      abortController = null
+    }
+  }
+
+  // ── AI Inline Edit ─────────────────────────────────────────────
+  // 直接替换 Monaco 选中文本，流式写入，带高亮动画
+
+  let inlineDecoration: string[] = []
+
+  function applyInlineDecoration(editor: monaco.editor.IStandaloneCodeEditor, startLine: number, startCol: number, endLine: number, endCol: number) {
+    inlineDecoration = editor.deltaDecorations([], [{
+      range: new monaco.Range(startLine, startCol, endLine, endCol),
+      options: {
+        className: 'ai-inline-edit',
+        inlineClassName: 'ai-inline-edit-char',
+      },
+    }])
+  }
+
+  function clearInlineDecoration(editor: monaco.editor.IStandaloneCodeEditor) {
+    if (inlineDecoration.length) {
+      editor.deltaDecorations(inlineDecoration, [])
+      inlineDecoration = []
+    }
+  }
+
+  async function inlineEdit(instruction: string, taskType?: string): Promise<string | null> {
+    const editor = monacoEditor.value
+    const sel = selection.value
+    if (!editor || !sel.text) return null
+
+    const startLine = sel.startLine
+    const startCol = sel.startCol
+    const endLine = sel.endLine
+    const endCol = sel.endCol
+
+    // 保存原文用于 undo
+    previousContent.value = content.value
+
+    if (abortController) abortController.abort()
+    abortController = new AbortController()
+
+    aiLoading.value = true
+    aiResult.value = ''
+
+    try {
+      const resp = await fetch(`${API}/api/edit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: sel.text, instruction, task_type: taskType || 'expand' }),
+        signal: abortController.signal,
+      })
+
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      if (!resp.body) throw new Error('No response body')
+
+      const reader = resp.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      applyInlineDecoration(editor, startLine, startCol, endLine, endCol)
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const raw = line.slice(6).trim()
+          if (!raw) continue
+          try {
+            const evt = JSON.parse(raw)
+            if (evt.content) {
+              aiResult.value = (aiResult.value || '') + evt.content
+              // 实时替换选中文本
+              editor.executeEdits('ai-inline', [{
+                range: new monaco.Range(startLine, startCol, endLine, endCol),
+                text: aiResult.value,
+              }])
+              // 更新 range 以便下次追加
+              const newEndLine = startLine + (aiResult.value.match(/\n/g) || []).length
+              const newEndCol = newEndLine === startLine ? startCol + aiResult.value.length : aiResult.value.length - aiResult.value.lastIndexOf('\n') - 1
+              clearInlineDecoration(editor)
+              applyInlineDecoration(editor, startLine, startCol, newEndLine, newEndCol + 1)
+            }
+          } catch {
+            // ignore parse errors
+          }
+        }
+      }
+
+      clearInlineDecoration(editor)
+      if (!aiResult.value) {
+        aiResult.value = sel.text
+        editor.executeEdits('ai-inline', [{
+          range: new monaco.Range(startLine, startCol, endLine, endCol),
+          text: sel.text,
+        }])
+      }
+      return aiResult.value
+    } catch (e: any) {
+      clearInlineDecoration(editor)
+      return null
     } finally {
       aiLoading.value = false
       abortController = null
@@ -267,6 +385,7 @@ export function useEditor() {
     aiResult,
     monacoEditor,
     previousContent,
+    contentVersion,
     // methods
     setEditorInstance,
     setContent,
@@ -279,6 +398,7 @@ export function useEditor() {
     setActiveTab,
     saveFile,
     aiEdit,
+    inlineEdit,
     cancelAiEdit,
     applyAiResult,
     rejectAiResult,

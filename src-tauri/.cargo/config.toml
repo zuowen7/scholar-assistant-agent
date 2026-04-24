@@ -1,2 +1,5 @@
-# BUG-13: removed hardcoded target-dir and GNU linker
-# Now using default target directory (src-tauri/target/)
+[build]
+target-dir = "D:\\cargo-target\\scholar-translate"
+
+[target.x86_64-pc-windows-gnu]
+linker = "C:\\msys64\\mingw64\\bin\\gcc.exe"

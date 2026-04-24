@@ -8,32 +8,69 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
+import katex from 'katex'
+import DOMPurify from 'dompurify'
 
 const props = defineProps<{
   content: string
+  version?: number
 }>()
 
-// HTML 转义：阻断 XSS 注入（marked 不会转义原始 HTML 标签）
-const SAFE_TAGS = new Set(['pre', 'code', 'em', 'strong', 'del', 'sup', 'sub', 'br', 'hr', 'span', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'blockquote', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'img'])
+// Debounced content for rendering (avoid re-rendering on every keystroke)
+const debouncedContent = ref('')
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
-function escapeUnsafeHtml(html: string): string {
-  // 保留 marked 生成的安全标签，剥离 script/iframe/event handlers
-  return html.replace(/<\s*(\/?)\s*(\w+)([^>]*)>/g, (match, slash, tag, attrs) => {
-    const tagName = tag.toLowerCase()
-    if (SAFE_TAGS.has(tagName)) return match
-    // class/href/src/style/id 是安全属性，移除 on* 事件和 javascript: 链接
-    if (tagName === 'div' || tagName === 'section') {
-      const cleanAttrs = attrs.replace(/\s*on\w+\s*=\s*["'][^"']*["']/gi, '')
-      return `<${slash}${tag}${cleanAttrs}>`
-    }
-    return ''
-  }).replace(/on\w+\s*=\s*["'][^"']*["']/gi, '')
+watch(() => [props.content, props.version], (v) => {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(() => { debouncedContent.value = v[0] as string }, 80)
+}, { immediate: true })
+
+// Extract math blocks before Markdown parsing, replace with placeholders
+function extractMath(text: string): { text: string; blocks: string[] } {
+  const blocks: string[] = []
+
+  // Display math: $$...$$ (must come before inline)
+  let result = text.replace(/\$\$([\s\S]*?)\$\$/g, (_, math) => {
+    const idx = blocks.length
+    blocks.push(renderKatex(math, true))
+    return `\x00MATH${idx}\x00`
+  })
+
+  // Inline math: $...$
+  result = result.replace(/\$([^\$\n]+?)\$/g, (_, math) => {
+    const idx = blocks.length
+    blocks.push(renderKatex(math, false))
+    return `\x00MATH${idx}\x00`
+  })
+
+  return { text: result, blocks }
 }
 
-// 配置 marked 使用 highlight.js
+function renderKatex(latex: string, displayMode: boolean): string {
+  try {
+    return katex.renderToString(latex.trim(), {
+      displayMode,
+      throwOnError: false,
+      strict: false,
+    })
+  } catch {
+    return `<code class="math-error">${escapeHtmlText(latex)}</code>`
+  }
+}
+
+function escapeHtmlText(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+// Restore math blocks after Markdown rendering
+function restoreMath(html: string, blocks: string[]): string {
+  return html.replace(/\x00MATH(\d+)\x00/g, (_, idx) => blocks[parseInt(idx)])
+}
+
+// Configure marked
 marked.setOptions({
   gfm: true,
   breaks: true,
@@ -49,11 +86,34 @@ renderer.code = ({ text, lang }: { text: string; lang?: string }) => {
 marked.use({ renderer })
 
 const renderedHtml = computed(() => {
-  if (!props.content) return '<p class="empty-hint">Start writing...</p>'
-  const raw = marked.parse(props.content) as string
-  return escapeUnsafeHtml(raw)
+  const src = debouncedContent.value
+  if (!src) return '<p class="empty-hint">Start writing...</p>'
+
+  const { text: mathExtracted, blocks } = extractMath(src)
+  const raw = marked.parse(mathExtracted) as string
+
+  // Protect KaTeX output from XSS cleanup
+  const katexBlocks: string[] = []
+  let protectedHtml = raw.replace(/\x00MATH(\d+)\x00/g, (_, idx) => {
+    const ph = `\x00KX${katexBlocks.length}\x00`
+    katexBlocks.push(blocks[parseInt(idx)])
+    return ph
+  })
+
+  protectedHtml = DOMPurify.sanitize(protectedHtml, {
+    ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'munder', 'mover', 'munderover', 'mtext', 'mspace', 'mstyle', 'mpadded', 'mphantom', 'mfenced', 'menclose', 'msqrt', 'mroot', 'mtable', 'mtr', 'mtd', 'annotation', 'mglyph', 'ms', 'msgroup', 'msline', 'mscarry', 'mscarries', 'mscolumn', 'msrow', 'mstack', 'mlongdiv', 'msgap', 'mlabeledtr', 'maction', 'merror'],
+    ADD_ATTR: ['display', 'mathvariant', 'linethickness', 'notation', 'lspace', 'rspace', 'width', 'height', 'depth', 'voffset', 'align', 'columnalign', 'rowspacing', 'columnspacing', 'class', 'xmlns'],
+  })
+
+  // Restore KaTeX blocks
+  protectedHtml = protectedHtml.replace(/\x00KX(\d+)\x00/g, (_, idx) => katexBlocks[parseInt(idx)])
+  return protectedHtml
 })
 </script>
+
+<style>
+@import 'katex/dist/katex.min.css';
+</style>
 
 <style scoped>
 .preview-container {
@@ -101,4 +161,12 @@ const renderedHtml = computed(() => {
 .preview-body :deep(a) { color: var(--accent); text-decoration: none; }
 .preview-body :deep(a:hover) { text-decoration: underline; }
 .preview-body :deep(.empty-hint) { color: var(--text-secondary); font-style: italic; }
+.preview-body :deep(.math-error) { color: #f87171; background: rgba(248,113,113,0.1); padding: 2px 6px; border-radius: 3px; }
+
+/* KaTeX display math centering */
+.preview-body :deep(.katex-display) {
+  margin: 1em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
 </style>

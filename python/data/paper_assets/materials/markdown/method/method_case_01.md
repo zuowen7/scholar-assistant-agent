@@ -1,0 +1,3 @@
+## Method
+
+Our method rewrites the current paragraph by incorporating surrounding paragraphs as contextual input. This design allows the revision process to better reflect the local discourse structure and maintain stronger consistency with neighboring content. The method is intended as a minimal sample for testing prompt behavior, template insertion, and downstream LaTeX formatting.

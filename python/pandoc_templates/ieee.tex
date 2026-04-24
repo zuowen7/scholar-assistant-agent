@@ -46,21 +46,9 @@ $endif$
 
 $body$
 
-$if(natbib)$
 $if(bibliography)$
-$if(biblio-title)$
-$if(booktitle)$
-\addcontentsline{toc}{chapter}{\refname}
-$else$
-\addcontentsline{toc}{section}{\refname}
-$endif$
-$endif$
-\begin{thebibliography}{$if(bibliography)$参考文献$endif$}
-$for(bibliography)$
-bibitem{$for(.)$$key$$endfor$} $bibliography$
-$endfor$
-\end{thebibliography}
-$endif$
+\bibliographystyle{plain}
+\bibliography{$bibliography$}
 $endif$
 
 \end{document}
