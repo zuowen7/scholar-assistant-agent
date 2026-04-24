@@ -190,7 +190,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
             del tasks[tid]
 
     title = "Scholar Translate API (Cloud)" if cloud_only else "Scholar Translate API"
-    app = FastAPI(title=title, version="0.3.1")
+    app = FastAPI(title=title, version="0.4.2")
 
     # ── 全局异常处理 ──
 
@@ -223,7 +223,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
 
     @app.get("/api/health")
     def health():
-        payload = {"status": "ok", "version": "0.3.1"}
+        payload = {"status": "ok", "version": "0.4.2"}
         if cloud_only:
             payload["mode"] = "cloud_only"
         return payload
