@@ -1,0 +1,40 @@
+# Scholar Translate - Docker Compose
+#
+# 用法:
+#   docker compose up              # 启动 Ollama + 翻译服务
+#   docker compose run app /data/input/paper.pdf -o /data/output/paper.md
+#   docker compose down            # 停止
+
+services:
+  # ---- Ollama 推理服务 ----
+  ollama:
+    image: ollama/ollama:latest
+    container_name: scholar-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    # 如需 CPU 模式，注释掉 deploy 块即可
+
+  # ---- 翻译应用 ----
+  app:
+    build: .
+    container_name: scholar-translate
+    depends_on:
+      - ollama
+    volumes:
+      - ./data/input:/data/input:ro
+      - ./data/output:/data/output
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: ["python", "main.py"]
+
+volumes:
+  ollama_data:

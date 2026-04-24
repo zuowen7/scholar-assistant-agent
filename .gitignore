@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 测试与覆盖率
+.pytest_cache/
+htmlcov/
+.coverage
+
+# 输出文件
+/output/
+*.out
+data/input/*.pdf
+data/output/*.md
+data/output/*.txt
+python/data/input/*
+python/data/output/*
+!python/data/input/.gitkeep
+!python/data/output/.gitkeep
+
+# 环境变量
+.env
+
+# 模型权重
+*.bin
+*.gguf
+*.safetensors
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Tauri / Node
+node_modules/
+src-tauri/target/
+src-tauri/python-dist/
+dist/
+
+# Local test scratch
+pytest-cache-files-*/
+tmp_pytest/
+
+# Claude
+.claude/

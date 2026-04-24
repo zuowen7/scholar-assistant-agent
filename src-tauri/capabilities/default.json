@@ -1,0 +1,44 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-utils/schema.json",
+  "identifier": "default",
+  "description": "Default capabilities for Scholar Assistant",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:default",
+    "core:window:allow-set-focus",
+    "core:window:allow-unminimize",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging",
+    "dialog:default",
+    {
+      "identifier": "fs:allow-read-text-file",
+      "allow": [
+        { "path": "$DOCUMENT/**" },
+        { "path": "$DESKTOP/**" },
+        { "path": "$DOWNLOAD/**" },
+        { "path": "$APPDATA/**" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-write-text-file",
+      "allow": [
+        { "path": "$DOCUMENT/**" },
+        { "path": "$DESKTOP/**" },
+        { "path": "$DOWNLOAD/**" },
+        { "path": "$APPDATA/**" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-read-dir",
+      "allow": [
+        { "path": "$DOCUMENT/**" },
+        { "path": "$DESKTOP/**" },
+        { "path": "$DOWNLOAD/**" },
+        { "path": "$APPDATA/**" }
+      ]
+    }
+  ]
+}
