@@ -187,9 +187,16 @@ class MemoryManager:
         """
         with sqlite3.connect(self._db_path) as conn:
             conn.row_factory = sqlite3.Row
+            # Escape LIKE special chars: % _ '
+            safe_keywords = (
+                keywords.replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_")
+                .replace("'", "''")
+            )
             rows = conn.execute(
                 "SELECT * FROM memories WHERE content LIKE ? ORDER BY importance DESC LIMIT ?",
-                (f"%{keywords}%", limit),
+                (f"%{safe_keywords}%", limit),
             ).fetchall()
 
         return [

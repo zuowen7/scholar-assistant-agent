@@ -65,7 +65,7 @@ class Glossary:
                 entry = self._entries[key]
                 if zh != entry.chinese:
                     entry.count += 1
-                    if entry.count <= 2:
+                    if entry.count <= 5:
                         entry.chinese = zh
                 else:
                     entry.count += 1
@@ -124,7 +124,10 @@ class OllamaClient:
 
     def _get_http_client(self) -> httpx.Client:
         if self._http_client is None:
-            self._http_client = httpx.Client(timeout=self.timeout)
+            self._http_client = httpx.Client(
+                timeout=self.timeout,
+                proxy=None,  # Ollama 在本地，不走系统代理
+            )
         return self._http_client
 
     def close(self) -> None:
@@ -179,7 +182,7 @@ class OllamaClient:
                     )
                     time.sleep(delay)
 
-        raise last_error or ValueError("翻译失败")
+        raise last_error if last_error else ValueError("翻译失败")
 
     def _build_system_prompt(self) -> str:
         """构建系统提示词，整合术语表和块索引
@@ -477,9 +480,9 @@ def _validate_translation(result: TranslationResult) -> bool:
     orig_len = len(orig)
     trans_len = len(trans)
 
-    # 短块: 标题、图注等, 只要有输出就通过
-    if orig_len < 100:
-        return trans_len >= 1
+    # 短块: 标题、图注等（< 30 字符）只做最低检查
+    if orig_len < 30:
+        return trans_len >= 1 and len(trans.strip()) > 0
 
     # 原文公式/LaTeX/代码占比高时不做强校验
     latexish = sum(1 for c in orig if c in "\\{}$[]_^") / max(orig_len, 1)

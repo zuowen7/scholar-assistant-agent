@@ -15,10 +15,17 @@ class ToolGenerator:
     registry: Any
 
     def generate_from_llm_request(self, llm_request: str, task_description: str = "") -> None:
-        return None
+        """暂未实现，调用时显式提示未就绪。"""
+        raise NotImplementedError(
+            "Tool generation is not yet implemented. "
+            "Set generate=True in agent config to enable dynamic generation.",
+        )
 
     def generate_tool(self, tool_spec: Any) -> bool:
-        return False
+        raise NotImplementedError(
+            "Tool generation is not yet implemented. "
+            "Set generate=True in agent config to enable dynamic generation.",
+        )
 
 
 def create_tool_generator(registry: Any) -> ToolGenerator:
