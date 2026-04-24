@@ -3,6 +3,8 @@
 本地离线 + 云端大模型双引擎学术文献智能翻译工具。支持 16 种文件格式，自动清洗排版噪声，输出高质量双语对照文档。内置 Agent 助手，支持文档检索、arXiv 搜索和智能问答。
 
 > **v0.3.1** — PDF 双栏提取优化、翻译循环重复检测、纯 Python / Pandoc 双通道 PDF 导出、NSIS 一键安装
+>
+> **Agent v2** — 上下文工程 + 持久记忆 + 动态 Skill + 错误恢复 + 生命周期 Hook（Phase 1/2/3 已完成）
 
 ## 一键安装桌面端
 
@@ -44,6 +46,12 @@
 
 ### Agent 智能助手
 - **ReAct 推理循环** — 手写 Agent 框架，不依赖 LangChain/LlamaIndex
+- **上下文工程** — 比例阈值压缩（头尾保护 + 中间 LLM 摘要），动态 System Prompt 拼装
+- **持久记忆** — MEMORY.md + SQLite 双层存储，自动召回相关记忆注入上下文
+- **动态 Skill** — 从任务轨迹沉淀可复用经验，字符级智能匹配，催促机制
+- **错误恢复** — 14 类错误分类 + 指数退避重试，自动降级策略
+- **生命周期 Hook** — 12 个扩展点，支持同步/异步 Hook 注入
+- **后台审查** — 异步三维度审查（记忆 + Skill + 综合），不阻塞前台
 - **RAG 文档检索** — 基于 ChromaDB 的本地向量存储，CPU 嵌入零配置
 - **工具调用** — 文档翻译、文本检索、arXiv 论文搜索
 - **对话管理** — 流式 SSE 输出，事件卡片可视化推理过程
@@ -82,8 +90,16 @@
 │   │   ├── cleaner/             # 文本清洗管道
 │   │   ├── chunker/             # 智能切块（sentence/paragraph/fixed）
 │   │   ├── translator/          # 翻译客户端（Ollama + Cloud）
-│   │   ├── agent/               # Agent 子系统（ReAct + RAG）
-│   │   │   ├── agent.py         # ReAct 推理循环
+│   │   ├── agent/               # Agent 子系统（ReAct + RAG + 记忆 + Skill）
+│   │   │   ├── agent.py         # ReAct 推理循环（双策略工具调用 + 上下文压缩）
+│   │   │   ├── context_compressor.py  # 比例阈值上下文压缩器
+│   │   │   ├── prompt_builder.py     # 动态 System Prompt 拼装
+│   │   │   ├── memory.py        # 持久化记忆（MEMORY.md + SQLite）
+│   │   │   ├── skill_system.py  # 动态 Skill 系统
+│   │   │   ├── trajectory.py    # ReAct 轨迹记录器
+│   │   │   ├── review_agent.py  # 后台审查 Agent
+│   │   │   ├── error_classifier.py  # 14 类错误分类 + 恢复策略
+│   │   │   ├── hooks.py         # 生命周期 Hook 系统
 │   │   │   ├── tools.py         # 工具注册表
 │   │   │   ├── rag.py           # ChromaDB 向量存储
 │   │   │   └── vram_manager.py  # VRAM 时分复用调度
@@ -108,7 +124,7 @@
 | 后端 | Python FastAPI + SSE | 翻译流式输出 + Agent 对话 |
 | 文档解析 | pdfplumber, python-docx, ebooklib 等 | 16 种格式支持 |
 | 翻译 | Ollama (Qwen3) / 云端 OpenAI 兼容 API | 本地 + 云端双模式 |
-| Agent | 手写 ReAct + ChromaDB | 不依赖 LangChain/LlamaIndex |
+| Agent | 手写 ReAct + ChromaDB + 记忆 + Skill | 不依赖 LangChain/LlamaIndex，自进化架构 |
 | PDF 导出 | Pandoc + Tectonic + 纯 Python 降级 | 双通道保障 |
 
 ## 本地开发

@@ -30,9 +30,14 @@ from src.translator.context import extract_document_context
 # Agent 子系统 (延迟导入，chromadb 未安装时不影响翻译功能)
 try:
     from src.agent.agent import AgentLoop
+    from src.agent.context_compressor import ContextCompressor
+    from src.agent.memory import MemoryManager
     from src.agent.models import Message
+    from src.agent.prompt_builder import PromptBuilder
     from src.agent.rag import RAGStore
+    from src.agent.skill_system import SkillRegistry
     from src.agent.tools import create_default_registry
+    from src.agent.trajectory import TrajectoryRecorder
     from src.agent.vram_manager import MultiplexingScheduler
     _AGENT_AVAILABLE = True
 except ImportError:
@@ -630,9 +635,25 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
                     model=agent_cfg.get("model", "qwen3:8b"),
                 )
 
+            # Phase 1/2/3: 上下文工程 + 记忆 + Skill + 轨迹
+            agent_data_dir = str(data_root / "agent")
+            memory_manager = MemoryManager(data_dir=agent_data_dir)
+            skill_registry = SkillRegistry(data_dir=agent_data_dir + "/skills")
+            trajectory_recorder = TrajectoryRecorder(data_dir=agent_data_dir + "/trajectories")
+
+            ollama_url = trans_cfg.get("ollama_base_url", "http://localhost:11434")
+            agent_model = agent_cfg.get("model", "qwen3:8b")
+            compressor = ContextCompressor(
+                max_window_tokens=agent_cfg.get("max_window_tokens", 32_000),
+                threshold_percent=agent_cfg.get("compress_threshold", 0.50),
+                ollama_base_url=ollama_url,
+                summary_model=agent_model,
+            )
+            prompt_builder = PromptBuilder(tool_registry=registry)
+
             _agent_instance = AgentLoop(
-                ollama_base_url=trans_cfg.get("ollama_base_url", "http://localhost:11434"),
-                model=agent_cfg.get("model", "qwen3:8b"),
+                ollama_base_url=ollama_url,
+                model=agent_model,
                 tool_registry=registry,
                 scheduler=scheduler,
                 max_steps=agent_cfg.get("max_steps", 10),
@@ -640,6 +661,11 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
                 temperature=agent_cfg.get("temperature", 0.3),
                 num_predict=agent_cfg.get("num_predict", 4096),
                 timeout=trans_cfg.get("timeout", 300.0),
+                context_compressor=compressor,
+                prompt_builder=prompt_builder,
+                memory_manager=memory_manager,
+                skill_registry=skill_registry,
+                trajectory_recorder=trajectory_recorder,
             )
 
             logger.info("Agent 初始化完成 (model=%s, rag=%s)",
@@ -709,9 +735,21 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         )
         return {"doc_id": req.doc_id, "chunk_count": count}
 
+    @app.get("/api/agent/stats")
+    async def agent_stats():
+        """Agent 子系统统计：记忆、Skill、轨迹。"""
+        agent = await _get_agent()
+        return {
+            "memory": agent.memory.get_stats(),
+            "skills": {"count": len(agent.skills.list_skills())},
+            "model": agent.model,
+            "max_steps": agent.max_steps,
+        }
+
     @app.on_event("shutdown")
     async def _shutdown():
         if _agent_instance is not None:
             await _agent_instance.close()
+            _agent_instance.memory.close()
 
     return app

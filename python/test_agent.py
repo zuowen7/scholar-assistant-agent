@@ -273,6 +273,23 @@ async def test_agent_loop() -> None:
                 observation_max_chars=1500,
             )
 
+        # Phase 1/2/3: 上下文工程 + 记忆 + Skill + 轨迹
+        from src.agent.context_compressor import ContextCompressor
+        from src.agent.memory import MemoryManager
+        from src.agent.prompt_builder import PromptBuilder
+        from src.agent.skill_system import SkillRegistry
+        from src.agent.trajectory import TrajectoryRecorder
+
+        agent_data = tmpdir + "/agent"
+        memory_mgr = MemoryManager(data_dir=agent_data)
+        skill_reg = SkillRegistry(data_dir=agent_data + "/skills")
+        traj_rec = TrajectoryRecorder(data_dir=agent_data + "/trajectories")
+        compressor = ContextCompressor(
+            ollama_base_url=trans_cfg.get("ollama_base_url", "http://localhost:11434"),
+            summary_model=agent_cfg.get("model", "qwen3:8b"),
+        )
+        prompt_b = PromptBuilder(tool_registry=registry)
+
         # 创建 Agent
         agent = AgentLoop(
             ollama_base_url=trans_cfg.get("ollama_base_url", "http://localhost:11434"),
@@ -283,6 +300,11 @@ async def test_agent_loop() -> None:
             system_prompt=agent_cfg.get("system_prompt", ""),
             temperature=agent_cfg.get("temperature", 0.3),
             num_predict=agent_cfg.get("num_predict", 4096),
+            context_compressor=compressor,
+            prompt_builder=prompt_b,
+            memory_manager=memory_mgr,
+            skill_registry=skill_reg,
+            trajectory_recorder=traj_rec,
         )
 
         # 执行查询
@@ -325,6 +347,100 @@ async def test_agent_loop() -> None:
         traceback.print_exc()
 
 
+# ── 测试 5: Phase 1/2/3 模块 ────────────────────────────────────────────
+
+def test_phase_modules() -> None:
+    _header("测试 5: Phase 1/2/3 模块（上下文工程、记忆、Skill、轨迹、Hook、错误分类）")
+    tmpdir = tempfile.mkdtemp(prefix="scholar_phase_test_", ignore_cleanup_errors=True)
+    try:
+        from src.agent.context_compressor import ContextCompressor
+        from src.agent.memory import MemoryManager
+        from src.agent.prompt_builder import PromptBuilder
+        from src.agent.skill_system import SkillRegistry
+        from src.agent.trajectory import TrajectoryRecorder
+        from src.agent.hooks import HookManager, HookPoint, HookContext
+        from src.agent.error_classifier import classify_error, ErrorType, get_recovery, RetryManager
+        from src.agent.tools import ToolRegistry
+
+        # MemoryManager
+        mem = MemoryManager(data_dir=tmpdir + "/agent")
+        mem.add_memory("测试记忆", category="fact", importance=0.8)
+        mem.save_conversation("你好", "你好！有什么可以帮你？", success=True)
+        stats = mem.get_stats()
+        assert stats["memories_count"] == 1 and stats["conversations_count"] == 1
+        _result(f"MemoryManager: {stats}")
+
+        ctx = mem.get_memory_context("测试")
+        assert "测试记忆" in ctx
+        _result("get_memory_context 检索到相关记忆")
+
+        # SkillRegistry
+        skills = SkillRegistry(data_dir=tmpdir + "/agent/skills")
+        s = skills.create_skill(
+            name="test_skill",
+            trigger="测试技能",
+            description="用于测试的技能",
+            steps=["步骤1", "步骤2"],
+            notes=["注意1"],
+        )
+        assert skills.get("test_skill") is not None
+        matched = skills.match("执行测试技能")
+        assert matched is not None and matched.name == "test_skill"
+        _result(f"SkillRegistry: 创建+匹配成功 ({skills.list_skills()})")
+
+        # TrajectoryRecorder
+        traj = TrajectoryRecorder(data_dir=tmpdir + "/agent/trajectories")
+        traj.start("测试查询", model="test")
+        traj.add_turn("user", "测试查询")
+        traj.add_turn("tool", "结果", tool_name="test", duration_ms=100)
+        trajectory = traj.finish("测试回答", success=True)
+        assert trajectory is not None and trajectory.success
+        recent = traj.get_recent(limit=5)
+        assert len(recent) == 1
+        _result(f"TrajectoryRecorder: 保存+读取成功 ({len(recent)} 条)")
+
+        # HookManager
+        hooks = HookManager()
+        calls = []
+        hooks.add_hook(HookPoint.ON_TOOL_CALL, lambda ctx: calls.append(ctx.data.get("tool_name")))
+        hooks.trigger_sync(HookContext(point=HookPoint.ON_TOOL_CALL, data={"tool_name": "translate"}))
+        assert calls == ["translate"]
+        _result(f"HookManager: 同步触发成功 (calls={calls})")
+
+        # ErrorClassifier
+        err = Exception("rate limit exceeded")
+        et = classify_error(err)
+        assert et == ErrorType.RATE_LIMIT
+        recovery = get_recovery(et)
+        assert recovery.action == "retry"
+        mgr = RetryManager()
+        assert mgr.can_retry(et) is True
+        msg = mgr.get_feedback_message(et)
+        assert "等待" in msg
+        _result(f"ErrorClassifier: 分类+恢复策略正确 ({et.value} → {recovery.action})")
+
+        # ContextCompressor（同步部分）
+        comp = ContextCompressor(summary_model=None)
+        assert not comp.should_compress([{"role": "user", "content": "短消息"}])
+        _result("ContextCompressor: token 估算正常")
+
+        # PromptBuilder
+        from src.agent.prompt_builder import PromptConfig
+        pb = PromptBuilder(tool_registry=ToolRegistry())
+        prompt = pb.build(PromptConfig(model_name="qwen3:8b"))
+        assert "qwen" in prompt.lower()
+        _result("PromptBuilder: 动态拼装正常")
+
+        mem.close()
+
+    except Exception as e:
+        _error(f"测试失败: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 # ── 主入口 ─────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -339,6 +455,9 @@ def main() -> None:
 
     # 测试 2: 工具注册（同步）
     test_tools()
+
+    # 测试 5: Phase 1/2/3 模块（同步，不需要 Ollama）
+    test_phase_modules()
 
     # 测试 3 & 4: 需要 Ollama（异步）
     _header("以下测试需要 Ollama 运行 (ollama serve + qwen3:8b)")
