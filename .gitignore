@@ -33,6 +33,10 @@ python/data/output/*
 !python/data/input/.gitkeep
 !python/data/output/.gitkeep
 
+# Agent 运行时数据（SQLite 数据库、日志等）
+python/data/agent/
+data/agent/
+
 # 环境变量
 .env
 
