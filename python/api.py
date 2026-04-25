@@ -8,7 +8,11 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 from pathlib import Path
+
+# Disable chromadb telemetry (posthog module missing in some builds)
+os.environ.setdefault("ANONYMIZED_TELEMETRY", "FALSE")
 
 from api_factory import create_app
 

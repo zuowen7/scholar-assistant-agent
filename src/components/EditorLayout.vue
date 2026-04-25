@@ -162,6 +162,7 @@
 
     <TemplatePicker
       :visible="showTemplatePicker"
+      :isDark="isDark"
       @close="showTemplatePicker = false"
       @create="handleScaffoldCreate"
     />
