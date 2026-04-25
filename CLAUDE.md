@@ -15,13 +15,15 @@ npm run dev          # Vite dev server
 npm run build        # Production build
 npx tauri dev        # Tauri development mode
 npx tauri build      # Tauri production build
+npm test             # Run vitest unit tests
 ```
 
 ### Python
 ```bash
 cd python
 pip install -r requirements.txt
-pytest tests/ -v     # Run 170 unit tests
+pytest tests/ -v                 # Run all tests
+pytest tests/unit/test_parser.py # Run single test file
 ```
 
 ### Docker
@@ -80,6 +82,7 @@ SSE events: `progress` → `parsed` → `cleaned` → `chunked` → `chunk_done`
 
 ### Key Files
 - `python/api_factory.py` — FastAPI app factory, main API implementation
+- `python/api.py` — API entry point (used by Tauri in dev mode)
 - `python/src/translator/ollama_client.py` — Local Ollama translation client
 - `python/src/translator/cloud_client.py` — Cloud API translation client
 - `python/src/agent/agent.py` — ReAct inference loop engine
@@ -96,8 +99,9 @@ SSE events: `progress` → `parsed` → `cleaned` → `chunked` → `chunk_done`
 | POST | `/api/translate` | Upload document, returns task_id |
 | GET | `/api/translate/{id}/stream` | SSE translation progress stream |
 | GET | `/api/download/{id}` | Download translation result |
-| POST | `/api/chat` | Agent SSE chat (ReAct loop) |
 | GET/PUT | `/api/config` | Read/write config |
+| POST | `/api/chat` | Agent SSE chat (ReAct loop) |
+| POST | `/api/agent/task` | Execute specific Agent task |
 | GET | `/api/plugins` | List registered plugin tools |
 | POST | `/api/vision/analyze` | MCP Vision image analysis |
 
