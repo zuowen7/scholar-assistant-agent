@@ -1,6 +1,5 @@
-"""Argument map data helpers."""
+"""Argument Mapping — 交互式思维导图后端模块"""
 
-from .store import ArgumentStore
-from .logic_checker import check_argument_tree
+from src.argument.models import ArgumentNode, Reference, ArgumentTree, RuleIssue
 
-__all__ = ["ArgumentStore", "check_argument_tree"]
+__all__ = ["ArgumentNode", "Reference", "ArgumentTree", "RuleIssue"]
