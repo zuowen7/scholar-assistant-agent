@@ -2370,4 +2370,8 @@ body {
 
 /* Topbar agent 按钮激活态 */
 .topbar-icon-btn.active { color: var(--accent2); background: var(--accent-bg); }
+
+/* Ghost text inline completion */
+.ghost-text-suggestion { color: rgba(255,255,255,0.25) !important; font-style: italic; }
+.ghost-text-line { background: none !important; }
 </style>

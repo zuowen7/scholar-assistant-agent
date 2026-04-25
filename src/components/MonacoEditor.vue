@@ -29,6 +29,7 @@ self.MonacoEnvironment = {
 
 const props = defineProps<{
   theme?: 'vs-dark' | 'vs'
+  onDidChangeContent?: () => void
 }>()
 
 const editorContainer = ref<HTMLElement>()
@@ -48,9 +49,11 @@ const editLoading = ref(false)
 
 // Ghost text 状态（模块级别，供 onBeforeUnmount 访问）
 let ghostDebounceTimer: ReturnType<typeof setTimeout> | null = null
+let autoGhostTimer: ReturnType<typeof setTimeout> | null = null
 let ghostDecoration: string[] = []
 let ghostText = ''
 let lastGhostTrigger = 0
+let _clearingGhost = false
 
 onMounted(() => {
   if (!editorContainer.value) return
@@ -123,6 +126,7 @@ onMounted(() => {
     if (!editor) return
     setContent(editor.getValue())
     markDirty()
+    if (props.onDidChangeContent) props.onDidChangeContent()
   })
 
   editor.onDidChangeCursorSelection(() => {
@@ -187,9 +191,15 @@ onMounted(() => {
   }
 
   function clearGhost() {
+    if (_clearingGhost) return
     if (ghostDecoration.length && editor) {
-      editor.deltaDecorations(ghostDecoration, [])
-      ghostDecoration = []
+      try {
+        _clearingGhost = true
+        editor.deltaDecorations(ghostDecoration, [])
+      } finally {
+        ghostDecoration = []
+        _clearingGhost = false
+      }
     }
     ghostText = ''
   }
@@ -198,13 +208,15 @@ onMounted(() => {
     clearGhost()
     ghostText = text
     ghostDecoration = editor!.deltaDecorations([], [{
-      range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column + text.length),
+      range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
       options: {
-        inlineClassName: 'ghost-text-suggestion',
+        after: { content: text, inlineClassName: 'ghost-text-suggestion' },
+        className: 'ghost-text-line',
         hoverMessage: { value: '**AI 补全** — 按 Tab 接受，Esc 清除' },
         stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
       },
     }])
+    console.log('[Ghost Text] shown:', text.slice(0, 30))
   }
 
   // 手动触发：Alt+\ 请求 AI 补全
@@ -285,6 +297,52 @@ onMounted(() => {
   // 光标移动 → 清除 ghost
   editor.onDidChangeCursorSelection(() => { clearGhost() })
 
+  // Auto-trigger ghost text on typing (debounced)
+  let autoGhostTimer: ReturnType<typeof setTimeout> | null = null
+  editor.onDidChangeModelContent(() => {
+    setContent(editor.getValue())
+    markDirty()
+    if (props.onDidChangeContent) props.onDidChangeContent()
+    // Auto-trigger: after typing stops for 1.5s, request completion
+    if (autoGhostTimer) clearTimeout(autoGhostTimer)
+    autoGhostTimer = setTimeout(async () => {
+      const pos = editor!.getPosition()
+      if (!pos) { console.log('[Ghost] no position'); return }
+      const model = editor!.getModel()
+      if (!model) { console.log('[Ghost] no model'); return }
+      const lineContent = model.getLineContent(pos.lineNumber)
+      const isAtLineEnd = pos.column >= lineContent.length + 1
+      console.log('[Ghost] auto-trigger check:', { lineContent: lineContent.slice(-20), pos: pos.column, lineLen: lineContent.length, isAtLineEnd })
+      if (!isAtLineEnd) { console.log('[Ghost] not at line end, skipping'); return }
+      const ctx = model.getValueInRange({
+        startLineNumber: Math.max(1, pos.lineNumber - 15),
+        startColumn: 1,
+        endLineNumber: pos.lineNumber,
+        endColumn: pos.column,
+      })
+      console.log('[Ghost] context length:', ctx.trim().length)
+      if (ctx.trim().length < 10) { console.log('[Ghost] context too short'); return }
+      console.log('[Ghost] fetching from:', `${COMPLETE_API}/api/complete`)
+      try {
+        const resp = await fetch(`${COMPLETE_API}/api/complete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ context: ctx, max_tokens: 150 }),
+          signal: AbortSignal.timeout(20000),
+        })
+        console.log('[Ghost] fetch status:', resp.status)
+        if (!resp.ok) { console.log('[Ghost] non-ok response'); return }
+        const data = await resp.json() as { completion?: string }
+        const completion = (data.completion || '').trim()
+        console.log('[Ghost] got completion:', completion.slice(0, 40))
+        if (!completion || completion.length < 3) { console.log('[Ghost] completion too short'); return }
+        const currentPos = editor!.getPosition()
+        if (!currentPos || currentPos.lineNumber !== pos.lineNumber || currentPos.column !== pos.column) { console.log('[Ghost] position changed, skipping'); return }
+        showGhost(currentPos, completion)
+      } catch (e) { console.log('[Ghost] fetch error:', e) }
+    }, 1500)
+  })
+
 })
 
 async function handlePaletteSubmit(payload: { instruction: string; taskType: string; previous: string }) {
@@ -343,6 +401,7 @@ watch(content, (v) => {
 
 onBeforeUnmount(() => {
   if (ghostDebounceTimer) clearTimeout(ghostDebounceTimer)
+  if (autoGhostTimer) clearTimeout(autoGhostTimer)
   editor?.dispose()
 })
 </script>
@@ -354,15 +413,12 @@ onBeforeUnmount(() => {
 
 <!-- ghost text 样式（需要全局作用域，不能 scoped）-->
 <style>
-.ghost-text-suggestion {
-  color: #888888 !important;
-  opacity: 0.8;
+/* Ghost text: gray inline suggestion after cursor */
+.monaco-editor .ghost-text-suggestion {
+  color: rgba(200, 200, 200, 0.55) !important;
+  font-style: italic;
 }
-/* AI inline edit 蓝色高亮动画 */
-.ai-inline-edit { background: rgba(33, 150, 243, 0.15); border-radius: 2px; }
-@keyframes ai-inline-flash {
-  0% { background: rgba(33, 150, 243, 0.4); }
-  100% { background: rgba(33, 150, 243, 0.15); }
+.monaco-editor .ghost-text-line {
+  background: transparent !important;
 }
-.ai-inline-edit-char { animation: ai-inline-flash 0.4s ease-out; }
 </style>

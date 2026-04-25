@@ -108,3 +108,29 @@ SSE events: `progress` → `parsed` → `cleaned` → `chunked` → `chunk_done`
 ## Prerequisites
 - Ollama must be installed with `ollama pull qwen3:8b` for local translation
 - Python 3.12+ for backend development
+
+## Usage
+```bash
+# Desktop app (Tauri)
+npx tauri dev                   # Development
+npx tauri build                 # Production build
+
+# Python CLI (standalone)
+cd python && pip install -r requirements.txt
+python main.py paper.pdf -o paper.md    # CLI translation
+python api.py --port 18088              # API server
+```
+
+## Configuration
+Edit `python/config/default.yaml`:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `parser.engine` | pdfplumber | PDF parsing engine |
+| `chunker.max_tokens` | 2048 | Max tokens per chunk |
+| `chunker.strategy` | sentence | Chunking strategy |
+| `translator.engine` | cloud | ollama / cloud |
+| `translator.model` | qwen3:8b | Ollama model |
+| `formatter.output_format` | bilingual | Output format (bilingual/translated-only/parallel) |
+| `agent.enabled` | true | Enable ReAct agent |
+| `rag.enabled` | true | Enable ChromaDB RAG (local only) |
