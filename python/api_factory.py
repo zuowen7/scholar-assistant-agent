@@ -169,6 +169,51 @@ class PaperStyleTransferRequest(BaseModel):
     section: str = "introduction"
 
 
+class ArgumentTreeCreateRequest(BaseModel):
+    topic: str
+    domain_tags: list[str] = []
+    position: dict | None = None
+
+
+class ArgumentNodeRequest(BaseModel):
+    id: str | None = None
+    topic: str
+    parent_id: str | None = None
+    content: str = ""
+    domain_tags: list[str] = []
+    position: dict | None = None
+
+
+class ArgumentExpandRequest(BaseModel):
+    node_id: str
+    max_children: int = 4
+    direction: str = "expand"
+
+
+class ArgumentObserveRequest(BaseModel):
+    node_id: str
+    content_hint: str = ""
+
+
+class ArgumentBindRequest(BaseModel):
+    node_id: str
+    doc_id: str
+    binding_type: str = "user_manual"
+    relevance_score: float = 0.0
+
+
+class ArgumentReviewRequest(BaseModel):
+    node_id: str = "root"
+    include_subtree: bool = True
+
+
+class ArgumentFlattenRequest(BaseModel):
+    node_id: str = "root"
+    template: str = "markdown"
+    include_references: bool = True
+    style: str = "IEEE"
+
+
 _config_cache: dict | None = None
 _config_cache_mtime: float = 0.0
 
@@ -732,12 +777,18 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
             # 初始化 RAG 存储
             rag_cfg = agent_cfg.get("rag", {})
             rag_dir = RUNTIME_DIR / rag_cfg.get("persist_dir", "data/chromadb")
-            _rag_store = RAGStore(
-                persist_dir=str(rag_dir),
-                collection_name=rag_cfg.get("collection_name", "scholar_docs"),
-                chunk_size=rag_cfg.get("chunk_size", 512),
-                chunk_overlap=rag_cfg.get("chunk_overlap", 64),
-            )
+            try:
+                _rag_store = RAGStore(
+                    persist_dir=str(rag_dir),
+                    collection_name=rag_cfg.get("collection_name", "scholar_docs"),
+                    chunk_size=rag_cfg.get("chunk_size", 512),
+                    chunk_overlap=rag_cfg.get("chunk_overlap", 64),
+                )
+            except ModuleNotFoundError as e:
+                if e.name != "chromadb":
+                    raise
+                logger.warning("chromadb not installed; Agent chat will run without RAG memory")
+                _rag_store = None
 
             # 初始化工具注册表
             use_cloud_tools = cloud_only or trans_cfg.get("engine", "ollama") == "cloud"
@@ -1289,6 +1340,251 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
             "style_context": get_style_examples(req.template_id, req.section),
             "text": req.text,
         }
+
+    argument_tasks: dict[str, dict] = {}
+
+    def _argument_store():
+        from src.argument import ArgumentStore
+
+        return ArgumentStore(RUNTIME_DIR / "data" / "argument_tree.json")
+
+    def _argument_tree_or_404() -> dict:
+        tree = _argument_store().load()
+        if not tree:
+            raise HTTPException(404, "Argument tree not found")
+        return tree
+
+    def _argument_node_or_404(tree: dict, node_id: str) -> dict:
+        real_id = tree.get("root_id") if node_id == "root" else node_id
+        node = tree.get("nodes", {}).get(real_id)
+        if not node:
+            raise HTTPException(404, "Node not found")
+        return node
+
+    def _argument_child_topics(topic: str, max_children: int) -> list[dict]:
+        topic_l = topic.lower()
+        if any(key in topic_l for key in ("control", "stability", "compensator", "校正", "控制", "稳定")):
+            topics = [
+                ("System modeling", ["control_theory", "modeling"]),
+                ("Stability analysis", ["control_theory", "stability"]),
+                ("Simulation validation", ["simulation", "validation"]),
+                ("Comparative experiment", ["experiment", "baseline"]),
+            ]
+        else:
+            topics = [
+                ("Problem framing", ["background"]),
+                ("Method design", ["method"]),
+                ("Evidence and references", ["evidence"]),
+                ("Evaluation and conclusion", ["evaluation"]),
+            ]
+        return [{"topic": t, "domain_tags": tags} for t, tags in topics[: max(1, min(max_children, 8))]]
+
+    def _argument_markdown(tree: dict, node_id: str, include_references: bool) -> str:
+        nodes = tree.get("nodes", {})
+        start_id = tree.get("root_id") if node_id == "root" else node_id
+        lines: list[str] = []
+
+        def walk(nid: str) -> None:
+            node = nodes[nid]
+            level = min(int(node.get("depth", 0)) + 1, 6)
+            lines.append(f"{'#' * level} {node.get('topic', 'Untitled')}")
+            if node.get("content"):
+                lines.extend(["", node["content"]])
+            if include_references and node.get("references"):
+                refs = ", ".join(r.get("citation_key") or r.get("doc_id", "") for r in node["references"])
+                lines.extend(["", f"References: {refs}"])
+            lines.append("")
+            for child_id in node.get("children", []):
+                if child_id in nodes:
+                    walk(child_id)
+
+        walk(start_id)
+        return "\n".join(lines).strip() + "\n"
+
+    @app.post("/api/argument/tree", status_code=201)
+    async def argument_create_tree(req: ArgumentTreeCreateRequest):
+        return _argument_store().create_tree(req.topic, req.domain_tags, req.position)
+
+    @app.get("/api/argument/tree")
+    async def argument_get_tree():
+        return _argument_tree_or_404()
+
+    @app.put("/api/argument/node")
+    async def argument_upsert_node(req: ArgumentNodeRequest):
+        store = _argument_store()
+        tree = store.load()
+        if not tree:
+            tree = store.create_tree(req.topic, req.domain_tags, req.position)
+            return tree["nodes"][tree["root_id"]]
+        try:
+            node, _created = store.upsert_node(
+                tree,
+                topic=req.topic,
+                parent_id=req.parent_id,
+                content=req.content,
+                domain_tags=req.domain_tags,
+                position=req.position,
+                node_id=req.id,
+            )
+            return node
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    @app.get("/api/argument/node/{node_id}")
+    async def argument_get_node(node_id: str):
+        tree = _argument_tree_or_404()
+        return _argument_node_or_404(tree, node_id)
+
+    @app.delete("/api/argument/node/{node_id}")
+    async def argument_delete_node(node_id: str, cascade: bool = False):
+        store = _argument_store()
+        tree = _argument_tree_or_404()
+        try:
+            deleted = store.delete_node(tree, node_id, cascade)
+            return {"deleted": deleted, "message": f"Deleted {len(deleted)} nodes"}
+        except KeyError:
+            raise HTTPException(404, "Node not found")
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    @app.post("/api/argument/expand")
+    async def argument_expand(req: ArgumentExpandRequest):
+        store = _argument_store()
+        tree = _argument_tree_or_404()
+        parent = _argument_node_or_404(tree, req.node_id)
+        children = []
+        base_x = float(parent.get("position", {}).get("x", 400))
+        base_y = float(parent.get("position", {}).get("y", 100)) + 140
+        for index, child in enumerate(_argument_child_topics(parent.get("topic", ""), req.max_children)):
+            node, _ = store.upsert_node(
+                tree,
+                topic=child["topic"],
+                parent_id=parent["id"],
+                domain_tags=child["domain_tags"],
+                position={"x": base_x + (index - 1.5) * 180, "y": base_y},
+            )
+            children.append({
+                "id": node["id"],
+                "topic": node["topic"],
+                "domain_tags": node["domain_tags"],
+                "depth": node["depth"],
+                "position": node["position"],
+            })
+        parent["status"] = "expanded"
+        parent["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        store.save(tree)
+        return {"parent_id": parent["id"], "children": children, "expanded_node": parent}
+
+    @app.post("/api/argument/observe")
+    async def argument_observe(req: ArgumentObserveRequest):
+        tree = _argument_tree_or_404()
+        node = _argument_node_or_404(tree, req.node_id)
+        query = req.content_hint or node.get("content") or node.get("topic", "")
+        recommendations = []
+        if _rag_store is not None and query.strip():
+            for item in _rag_store.retrieve_context(query, top_k=5):
+                score = max(0.0, 1.0 - float(item.get("distance", 1.0)))
+                if score < 0.85:
+                    continue
+                meta = item.get("metadata") or {}
+                recommendations.append({
+                    "doc_id": meta.get("doc_id") or item.get("id"),
+                    "citation_key": meta.get("citation_key") or meta.get("title") or meta.get("doc_id") or item.get("id"),
+                    "title": meta.get("title") or meta.get("doc_id") or item.get("id"),
+                    "authors": meta.get("authors", []),
+                    "year": meta.get("year"),
+                    "relevance_score": round(score, 3),
+                    "excerpt": item.get("text", "")[:240],
+                    "match_type": "keyword",
+                })
+        return {"node_id": node["id"], "recommendations": recommendations}
+
+    @app.post("/api/argument/bind")
+    async def argument_bind(req: ArgumentBindRequest):
+        store = _argument_store()
+        tree = _argument_tree_or_404()
+        node = _argument_node_or_404(tree, req.node_id)
+        ref = {
+            "doc_id": req.doc_id,
+            "citation_key": req.doc_id,
+            "relevance_score": req.relevance_score,
+            "binding_type": req.binding_type,
+            "bound_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        return {"node_id": node["id"], "reference": store.bind_reference(tree, node["id"], ref)}
+
+    @app.get("/api/argument/recommendations/{node_id}")
+    async def argument_recommendations(node_id: str):
+        tree = _argument_tree_or_404()
+        node = _argument_node_or_404(tree, node_id)
+        return {"node_id": node["id"], "references": node.get("references", [])}
+
+    @app.delete("/api/argument/bind/{node_id}/{doc_id}")
+    async def argument_unbind(node_id: str, doc_id: str):
+        store = _argument_store()
+        tree = _argument_tree_or_404()
+        node = _argument_node_or_404(tree, node_id)
+        store.unbind_reference(tree, node["id"], doc_id)
+        return {"node_id": node["id"], "doc_id": doc_id, "message": "Reference unbound successfully"}
+
+    @app.post("/api/argument/review")
+    async def argument_review(req: ArgumentReviewRequest):
+        from src.argument import check_argument_tree
+
+        store = _argument_store()
+        tree = _argument_tree_or_404()
+        result = check_argument_tree(tree, req.node_id, req.include_subtree)
+        feedbacks = {}
+        for nid in result["reviewed_subtree"]:
+            issues = [i for i in result["rule_results"] if nid in i.get("node_ids", [])]
+            node = tree["nodes"][nid]
+            node["logic_status"] = "warning" if issues else "pass"
+            node["rule_issues"] = [i["issue_code"] for i in issues]
+            node["agent_feedback"] = issues[0]["suggestion"] if issues else None
+            feedbacks[nid] = {
+                "logic_status": node["logic_status"],
+                "rule_issues": node["rule_issues"],
+                "agent_feedback": node["agent_feedback"],
+            }
+        store.save(tree)
+        return {**result, "node_feedbacks": feedbacks, "reviewed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+
+    @app.post("/api/argument/flatten")
+    async def argument_flatten(req: ArgumentFlattenRequest):
+        tree = _argument_tree_or_404()
+        _argument_node_or_404(tree, req.node_id)
+        task_id = f"flatten_task_{uuid.uuid4().hex[:8]}"
+        out_dir = RUNTIME_DIR / "data" / "output"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        output_path = out_dir / f"{task_id}.md"
+        content = _argument_markdown(tree, req.node_id, req.include_references)
+        output_path.write_text(content, encoding="utf-8")
+        argument_tasks[task_id] = {
+            "task_id": task_id,
+            "status": "complete",
+            "output_path": str(output_path),
+            "word_count": len(content.split()),
+            "reference_count": content.count("References:"),
+        }
+        return {"task_id": task_id, "status": "processing"}
+
+    @app.get("/api/argument/flatten/{task_id}/stream")
+    async def argument_flatten_stream(task_id: str):
+        task = argument_tasks.get(task_id)
+        if not task:
+            raise HTTPException(404, "Task not found")
+
+        async def _stream():
+            yield {"event": "complete", "data": json.dumps(task, ensure_ascii=False)}
+
+        return EventSourceResponse(_stream(), media_type="text/event-stream")
+
+    @app.get("/api/argument/download/{task_id}")
+    async def argument_download(task_id: str):
+        task = argument_tasks.get(task_id)
+        if not task:
+            raise HTTPException(404, "Task not found")
+        return FileResponse(task["output_path"], media_type="text/markdown", filename=f"{task_id}.md")
 
     @app.post("/api/compliance")
     async def compliance_check(req: ComplianceRequest):
