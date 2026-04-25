@@ -19,10 +19,28 @@ TEMPLATES: list[dict[str, Any]] = [
         "description": "IEEE-style conference paper sections.",
     },
     {
+        "id": "ieee_journal",
+        "name": "IEEE Journal",
+        "venue": "IEEE",
+        "description": "IEEE journal paper scaffold.",
+    },
+    {
         "id": "neurips",
         "name": "NeurIPS",
         "venue": "NeurIPS",
         "description": "Machine learning conference paper scaffold.",
+    },
+    {
+        "id": "acm",
+        "name": "ACM",
+        "venue": "ACM",
+        "description": "ACM-style conference paper scaffold.",
+    },
+    {
+        "id": "lncs",
+        "name": "LNCS (Springer)",
+        "venue": "Springer",
+        "description": "Springer LNCS paper scaffold.",
     },
 ]
 

@@ -19,6 +19,12 @@
       </div>
     </div>
 
+    <div class="ac-tabs">
+      <button class="ac-tab" :class="{ active: activePanel === 'chat' }" @click="activePanel = 'chat'">Chat</button>
+      <button class="ac-tab" :class="{ active: activePanel === 'argument' }" @click="activePanel = 'argument'">Argument</button>
+    </div>
+
+    <template v-if="activePanel === 'chat'">
     <!-- Context bar -->
     <div class="ac-context" v-if="editorContext">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -123,12 +129,16 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>
       </button>
     </div>
+    </template>
+
+    <ArgumentMap v-else class="ac-argument-map" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue'
 import DOMPurify from 'dompurify'
+import ArgumentMap from './ArgumentMap.vue'
 
 const props = defineProps<{
   editorContext: string
@@ -164,6 +174,7 @@ const inputRef = ref<HTMLTextAreaElement>()
 const messagesRef = ref<HTMLElement>()
 const slashMenu = ref(false)
 const atMenu = ref(false)
+const activePanel = ref<'chat' | 'argument'>('chat')
 let abortCtrl: AbortController | null = null
 
 // ── Slash commands ──────────────────────────────────────────
@@ -429,6 +440,24 @@ watch(() => input.value, () => {
 .ac-icon-btn { background:none; border:none; color:var(--text-secondary,#888); cursor:pointer; padding:4px; border-radius:4px; display:flex; }
 .ac-icon-btn:hover { background:var(--hover-bg,#2d2d2d); color:var(--text-primary,#e0e0e0); }
 .ac-icon-btn:disabled { opacity:.3; cursor:not-allowed; }
+
+.ac-tabs { display:flex; gap:6px; padding:8px 12px; border-bottom:1px solid var(--border-color,#333); }
+.ac-tab {
+  border:1px solid var(--border-color,#333);
+  border-radius:7px;
+  background:var(--button-bg,#2a2a2a);
+  color:var(--text-secondary,#888);
+  padding:5px 10px;
+  font:inherit;
+  font-size:12px;
+  cursor:pointer;
+}
+.ac-tab.active {
+  background:var(--accent,#7c6ef0);
+  border-color:var(--accent,#7c6ef0);
+  color:#fff;
+}
+.ac-argument-map { flex:1; min-height:0; }
 
 /* Context */
 .ac-context { display:flex; align-items:center; gap:6px; padding:6px 12px; font-size:11px; color:var(--accent,#7c6ef0); background:var(--accent-bg,rgba(124,110,240,.1)); border-bottom:1px solid var(--border-color,#333); }
