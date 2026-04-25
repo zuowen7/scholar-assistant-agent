@@ -12,8 +12,11 @@ const items = [
   'api.py',
   'api_cloud.py',
   'api_factory.py',
+  'paper_assets.py',
   'requirements.txt',
   'config',
+  'pandoc_templates',
+  'prompts',
   'src',
 ];
 

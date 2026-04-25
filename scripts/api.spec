@@ -30,7 +30,7 @@ if conda_bin.exists():
             _conda_dlls.append((str(dll_path), "."))
 
 a = Analysis(
-    [str(python_dir / "api_factory.py")],
+    [str(python_dir / "api.py")],
     pathex=[str(python_dir)],
     binaries=_conda_dlls,
     datas=[
@@ -39,6 +39,7 @@ a = Analysis(
         (str(python_dir / "pandoc_templates"), "pandoc_templates"),
         # 论文模板素材库（模板源码 + Markdown/LaTeX/Text 范例）
         (str(python_dir / "data" / "paper_assets"), "data/paper_assets"),
+        (str(python_dir / "prompts"), "prompts"),
     ],
     hiddenimports=[
         # FastAPI / uvicorn
@@ -86,6 +87,9 @@ a = Analysis(
         "src.agent.tool_generator",
         # Prompts library
         "prompts.core",
+        # Runtime endpoint helpers imported by api_factory routes
+        "paper_assets",
+        "pandoc_templates",
     ],
     hookspath=[],
     hooksconfig={},

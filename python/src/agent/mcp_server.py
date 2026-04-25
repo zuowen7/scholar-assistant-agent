@@ -286,6 +286,56 @@ BibTeX 条目：
 
 
 # ---------------------------------------------------------------------------
+# 特殊元素处理函数
+# ---------------------------------------------------------------------------
+
+def _analyze_markdown_elements(text: str) -> str:
+    """分析 Markdown 文本中的特殊元素。"""
+    from src.agent.special_elements import analyze_markdown_elements as analyze
+    import json
+    result = analyze(text)
+    return json.dumps(result, ensure_ascii=False, indent=2)
+
+
+def _parse_table_structure(table_markdown: str) -> str:
+    """解析 Markdown 表格结构。"""
+    from src.agent.special_elements import parse_table_structure as parse_tbl
+    import json
+    result = parse_tbl(table_markdown)
+    return json.dumps(result, ensure_ascii=False, indent=2)
+
+
+def _generate_table_markdown_handler(headers: list, rows: list) -> str:
+    """从结构化数据生成 Markdown 表格。"""
+    from src.agent.special_elements import generate_table_markdown as gen_tbl
+    return gen_tbl(headers, rows)
+
+
+def _format_latex_formula_handler(formula: str, display: bool = False) -> str:
+    """格式化 LaTeX 公式。"""
+    from src.agent.special_elements import format_latex_formula as fmt
+    return fmt(formula, display=display)
+
+
+def _get_citation_context_handler(text: str, citation_key: str) -> str:
+    """获取文献引用的上下文。"""
+    from src.agent.special_elements import get_citation_context as get_ctx
+    return get_ctx(text, citation_key)
+
+
+def _analyze_image_with_vision_handler(image_path: str) -> str:
+    """使用 Vision API 分析图片内容。"""
+    from src.agent.special_elements import analyze_image_with_vision as analyze_img
+    return analyze_img(image_path)
+
+
+def _analyze_chart_image_handler(image_path: str) -> str:
+    """使用 Vision API 分析图表图片。"""
+    from src.agent.special_elements import analyze_chart_image as analyze_ch
+    return analyze_ch(image_path)
+
+
+# ---------------------------------------------------------------------------
 # MCP 工具定义
 # ---------------------------------------------------------------------------
 
@@ -407,6 +457,99 @@ MCP_TOOLS: list[Tool] = [
             "required": ["bibtex_entry"],
         },
     ),
+    # === 特殊元素处理工具 ===
+    Tool(
+        name="analyze_markdown_elements",
+        description="分析 Markdown 文本中的特殊元素（图片、表格、公式、引用），返回文档结构摘要。",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "Markdown 格式的文本内容"},
+            },
+            "required": ["text"],
+        },
+    ),
+    Tool(
+        name="parse_table_structure",
+        description="解析 Markdown 表格为结构化数据，方便修改表格内容。",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "table_markdown": {"type": "string", "description": "Markdown 格式的表格文本"},
+            },
+            "required": ["table_markdown"],
+        },
+    ),
+    Tool(
+        name="generate_table_markdown",
+        description="从结构化数据生成 Markdown 表格文本。用于修改或创建表格。",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "headers": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "表头列表",
+                },
+                "rows": {
+                    "type": "array",
+                    "items": {"type": "array", "items": {"type": "string"}},
+                    "description": "数据行列表",
+                },
+            },
+            "required": ["headers", "rows"],
+        },
+    ),
+    Tool(
+        name="format_latex_formula",
+        description="格式化 LaTeX 数学公式，添加 $ 或 $$ 包裹。",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "formula": {"type": "string", "description": "LaTeX 公式内容"},
+                "display": {
+                    "type": "boolean",
+                    "description": "是否为块级公式，默认 false（行内公式）",
+                    "default": False,
+                },
+            },
+            "required": ["formula"],
+        },
+    ),
+    Tool(
+        name="get_citation_context",
+        description="获取文献引用在文档中的前后上下文，帮助理解引用用途。",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "完整文档文本"},
+                "citation_key": {"type": "string", "description": "文献引用 key（如 smith2020）"},
+            },
+            "required": ["text", "citation_key"],
+        },
+    ),
+    Tool(
+        name="analyze_image_with_vision",
+        description="使用 Vision API 分析图片内容（需要云端 API Key）。识别图片中的文字、图表数据、关键发现等。",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "image_path": {"type": "string", "description": "图片文件的绝对路径（不支持远程 URL）"},
+            },
+            "required": ["image_path"],
+        },
+    ),
+    Tool(
+        name="analyze_chart_image",
+        description="使用 Vision API 分析图表图片（柱状图、折线图、饼图等），提取数据趋势和关键发现。",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "image_path": {"type": "string", "description": "图表图片文件的绝对路径"},
+            },
+            "required": ["image_path"],
+        },
+    ),
 ]
 
 
@@ -485,6 +628,27 @@ async def main():
                 bibtex_entry=args["bibtex_entry"],
                 style=args.get("style", "ieee"),
                 target_lang=args.get("target_lang", "zh"),
+            ),
+            # === 特殊元素处理工具 ===
+            "analyze_markdown_elements": lambda args: _analyze_markdown_elements(args["text"]),
+            "parse_table_structure": lambda args: _parse_table_structure(args["table_markdown"]),
+            "generate_table_markdown": lambda args: _generate_table_markdown_handler(
+                headers=args["headers"],
+                rows=args["rows"],
+            ),
+            "format_latex_formula": lambda args: _format_latex_formula_handler(
+                formula=args["formula"],
+                display=args.get("display", False),
+            ),
+            "get_citation_context": lambda args: _get_citation_context_handler(
+                text=args["text"],
+                citation_key=args["citation_key"],
+            ),
+            "analyze_image_with_vision": lambda args: _analyze_image_with_vision_handler(
+                image_path=args["image_path"],
+            ),
+            "analyze_chart_image": lambda args: _analyze_chart_image_handler(
+                image_path=args["image_path"],
             ),
         }
 

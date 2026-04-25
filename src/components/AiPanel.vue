@@ -83,10 +83,11 @@
       </div>
 
       <!-- AI 结果 -->
-      <div class="ai-result" v-if="result && !loading">
+      <div class="ai-result" v-if="!loading">
         <div class="ai-label">AI Response</div>
-        <div class="ai-result-text" v-html="renderedResult"></div>
-        <div class="ai-actions">
+        <div v-if="result" class="ai-result-text" v-html="renderedResult"></div>
+        <div v-else class="ai-result-empty">等待 AI 输出</div>
+        <div v-if="result" class="ai-actions">
           <button class="ai-action accept" @click="handleAccept">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
             插入到编辑器
@@ -511,6 +512,13 @@ const renderedResult = computed(() => renderMarkdown(props.result))
   word-break: break-word;
   max-height: 400px;
   overflow-y: auto;
+}
+
+.ai-result-empty {
+  min-height: 26px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+  font-size: 12px;
 }
 
 .ai-actions {
