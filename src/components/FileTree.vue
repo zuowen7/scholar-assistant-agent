@@ -47,7 +47,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import FileTreeNode from './FileTreeNode.vue'
 import { useFileTree } from '../composables/useFileTree'
 import { useEditor } from '../composables/useEditor'
@@ -90,6 +90,13 @@ async function handleOpenFolder() {
   }
 }
 
+async function handleOpenWorkspaceFolder(e: Event) {
+  const path = (e as CustomEvent<{ path?: string | string[] }>).detail?.path
+  if (typeof path === 'string') {
+    await openFolder(path)
+  }
+}
+
 async function handleSelect(entry: FileEntry) {
   if (entry.isDir) return
   const text = await readFileContent(entry.path)
@@ -106,6 +113,14 @@ async function handleNewFile() {
   const path = await createFile(rootDir.value, name)
   openEditorFile(path, '')
 }
+
+onMounted(() => {
+  window.addEventListener('open-workspace-folder', handleOpenWorkspaceFolder as EventListener)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('open-workspace-folder', handleOpenWorkspaceFolder as EventListener)
+})
 </script>
 
 <style scoped>

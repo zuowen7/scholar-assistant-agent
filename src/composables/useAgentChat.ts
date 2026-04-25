@@ -1,8 +1,8 @@
 import { ref } from 'vue'
 import type { AgentChatMessage, AgentEvent, RAGDocument } from '../types'
+import { API_BASE } from '../utils/api'
 
-const isTauri = '__TAURI_INTERNALS__' in window
-const API_URL = isTauri ? 'http://localhost:18088' : ''
+const API_URL = API_BASE
 
 export function useAgentChat() {
   const messages = ref<AgentChatMessage[]>([])
@@ -14,7 +14,11 @@ export function useAgentChat() {
 
   // ── SSE 流式对话 ──────────────────────────────────────────────
 
-  async function sendMessage(text: string): Promise<void> {
+  async function sendMessage(
+    text: string,
+    contextText?: string,
+    constraints?: string,
+  ): Promise<void> {
     if (!text.trim() || sending.value) return
 
     // 添加用户消息
@@ -51,7 +55,12 @@ export function useAgentChat() {
       const resp = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text.trim(), history }),
+        body: JSON.stringify({
+          message: text.trim(),
+          history,
+          context_text: contextText?.trim() || undefined,
+          constraints: constraints?.trim() || undefined,
+        }),
         signal: abortController.signal,
       })
 

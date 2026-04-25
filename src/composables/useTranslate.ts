@@ -2,6 +2,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { save } from '@tauri-apps/plugin-dialog'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { API_BASE } from '../utils/api'
 import type {
   TranslateState,
   TranslateStatus,
@@ -15,7 +16,7 @@ import type {
 
 // Tauri 妗岄潰绔? 鍚庣鍥哄畾鍦?18088; Docker/Web: 鍚屾簮锛岀敤鐩稿璺緞
 const isTauri = '__TAURI_INTERNALS__' in window
-const API_URL = isTauri ? 'http://localhost:18088' : ''
+const API_URL = API_BASE
 
 // SSE 鑷姩閲嶈繛鍙傛暟
 const SSE_RECONNECT_MAX_ATTEMPTS = 3

@@ -1355,5 +1355,6 @@ BibTeX 条目：
         )
         registry.register(manage_knowledge_def)
 
+
     logger.info("默认工具注册完成: %s", [t.name for t in registry.list_tools()])
     return registry

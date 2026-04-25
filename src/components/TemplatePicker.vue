@@ -1,28 +1,34 @@
 <template>
   <div v-if="visible" class="template-picker-overlay" @click.self="close">
-    <div class="template-picker">
-      <div class="tp-header">
-        <h3>新建论文</h3>
-        <button class="tp-close" @click="close">&times;</button>
-      </div>
+    <section class="template-picker" role="dialog" aria-modal="true" aria-labelledby="template-title">
+      <header class="tp-header">
+        <div>
+          <h3 id="template-title">新建论文</h3>
+          <p>选择一个论文结构模板，生成可继续编辑的 Markdown 草稿。</p>
+        </div>
+        <button class="tp-close" @click="close" title="关闭">×</button>
+      </header>
 
       <div class="tp-body">
-        <div class="tp-grid">
-          <div
+        <div v-if="loadingTemplates" class="tp-state">正在加载模板...</div>
+        <div v-else-if="templates.length" class="tp-grid">
+          <button
             v-for="t in templates"
             :key="t.id"
+            type="button"
             class="tp-card"
             :class="{ active: selected === t.id }"
             @click="selected = t.id"
           >
-            <div class="tp-card-icon">{{ t.icon }}</div>
-            <div class="tp-card-info">
-              <div class="tp-card-name">{{ t.name }}</div>
-              <div class="tp-card-venue">{{ t.venue }}</div>
-              <div class="tp-card-desc">{{ t.description }}</div>
-            </div>
-          </div>
+            <span class="tp-card-icon">{{ t.icon }}</span>
+            <span class="tp-card-info">
+              <span class="tp-card-name">{{ t.name }}</span>
+              <span class="tp-card-venue">{{ t.venue }}</span>
+              <span class="tp-card-desc">{{ t.description }}</span>
+            </span>
+          </button>
         </div>
+        <div v-else class="tp-state">还没有可用模板</div>
 
         <div class="tp-options">
           <label class="tp-label">
@@ -30,7 +36,7 @@
             <input
               v-model="title"
               class="tp-input"
-              placeholder="（可选）输入论文标题"
+              placeholder="可选，输入论文标题"
               @keydown.enter="create"
             />
           </label>
@@ -47,22 +53,21 @@
         </div>
       </div>
 
-      <div class="tp-footer">
+      <footer class="tp-footer">
         <span v-if="error" class="tp-error">{{ error }}</span>
+        <button v-if="error" class="tp-btn tp-btn-ghost" @click="loadTemplates">重试</button>
         <button class="tp-btn tp-btn-cancel" @click="close">取消</button>
         <button class="tp-btn tp-btn-create" :disabled="!selected || loading" @click="create">
           {{ loading ? '生成中...' : '创建' }}
         </button>
-      </div>
-    </div>
+      </footer>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
-
-const isTauri = '__TAURI_INTERNALS__' in window
-const API = isTauri ? 'http://localhost:18088' : ''
+import { reactive, ref, watch } from 'vue'
+import { API_BASE } from '../utils/api'
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{
@@ -74,6 +79,7 @@ const templates = ref<{ id: string; name: string; venue: string; description: st
 const selected = ref('generic_article')
 const title = ref('')
 const loading = ref(false)
+const loadingTemplates = ref(false)
 const error = ref('')
 
 const sectionOptions = reactive([
@@ -86,17 +92,25 @@ const sectionOptions = reactive([
 ])
 
 async function loadTemplates() {
+  loadingTemplates.value = true
+  error.value = ''
   try {
-    error.value = ''
-    const resp = await fetch(`${API}/api/paper-assets/templates`)
-    if (resp.ok) {
-      const data = await resp.json()
-      templates.value = data.templates || []
-    } else {
-      error.value = '后端未响应，请检查 Python 后端是否运行'
+    const resp = await fetch(`${API_BASE}/api/paper-assets/templates`, {
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!resp.ok) {
+      error.value = `模板接口异常 (${resp.status})`
+      return
+    }
+    const data = await resp.json()
+    templates.value = data.templates || []
+    if (templates.value.length && !templates.value.some(t => t.id === selected.value)) {
+      selected.value = templates.value[0].id
     }
   } catch (e) {
-    error.value = `加载模板失败: ${e}`
+    error.value = `加载模板失败: ${e instanceof Error ? e.message : String(e)}`
+  } finally {
+    loadingTemplates.value = false
   }
 }
 
@@ -110,7 +124,7 @@ async function create() {
   error.value = ''
   try {
     const sections = sectionOptions.filter(s => s.checked).map(s => s.id)
-    const resp = await fetch(`${API}/api/paper-scaffold`, {
+    const resp = await fetch(`${API_BASE}/api/paper-scaffold`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -119,25 +133,23 @@ async function create() {
         sections,
       }),
     })
-    if (resp.ok) {
-      const data = await resp.json()
-      emit('create', data.markdown, data.template_id)
-      close()
-    } else {
+    if (!resp.ok) {
       const errData = await resp.json().catch(() => ({}))
       error.value = errData.detail || `创建失败 (${resp.status})`
+      return
     }
+    const data = await resp.json()
+    emit('create', data.markdown, data.template_id)
+    close()
   } catch (e) {
-    error.value = `创建失败: ${e}`
-  }
-  finally {
+    error.value = `创建失败: ${e instanceof Error ? e.message : String(e)}`
+  } finally {
     loading.value = false
   }
 }
 
-import { watch } from 'vue'
 watch(() => props.visible, (v) => {
-  if (v && templates.value.length === 0) loadTemplates()
+  if (v) loadTemplates()
 })
 </script>
 
@@ -145,190 +157,216 @@ watch(() => props.visible, (v) => {
 .template-picker-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
-  backdrop-filter: blur(4px);
+  padding: 24px;
+  background: rgba(9, 9, 11, 0.72);
+  backdrop-filter: blur(8px);
 }
 
 .template-picker {
-  background: var(--surface, #1a1a1e);
-  border: 1px solid var(--border-color, #27272a);
-  border-radius: 12px;
-  width: 640px;
-  max-height: 80vh;
+  width: min(760px, 100%);
+  max-height: min(760px, 88vh);
   display: flex;
   flex-direction: column;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  background: #111113;
+  color: var(--text-primary, #d4d4d4);
+  border: 1px solid #2a2a2f;
+  border-radius: 10px;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
 }
 
 .tp-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color, #27272a);
+  gap: 16px;
+  padding: 18px 20px;
+  border-bottom: 1px solid #242428;
 }
 
 .tp-header h3 {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary, #d4d4d4);
   margin: 0;
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.tp-header p {
+  margin: 5px 0 0;
+  color: var(--text-secondary, #8b8b93);
+  font-size: 12px;
 }
 
 .tp-close {
-  background: none;
+  width: 28px;
+  height: 28px;
   border: none;
-  color: var(--text-secondary, #888);
-  font-size: 20px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary, #8b8b93);
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 4px;
+  font-size: 20px;
+  line-height: 1;
 }
-.tp-close:hover { background: var(--hover-bg, #2d2d2d); color: var(--text-primary, #d4d4d4); }
+.tp-close:hover { background: #242428; color: var(--text-primary, #e4e4e7); }
 
 .tp-body {
-  padding: 16px 20px;
-  overflow-y: auto;
   flex: 1;
+  overflow-y: auto;
+  padding: 18px 20px;
 }
 
 .tp-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .tp-card {
   display: flex;
   gap: 12px;
+  align-items: flex-start;
+  width: 100%;
   padding: 12px;
-  border: 1px solid var(--border-color, #27272a);
+  border: 1px solid #2a2a2f;
   border-radius: 8px;
+  background: #17171a;
+  color: inherit;
+  text-align: left;
   cursor: pointer;
-  transition: all 0.15s;
-  background: transparent;
+  transition: border-color 0.15s, background 0.15s, transform 0.15s;
 }
-.tp-card:hover { border-color: var(--accent, #3b82f6); background: var(--hover-bg, #2d2d2d); }
-.tp-card.active { border-color: var(--accent, #3b82f6); background: var(--active-bg, #37373d); box-shadow: 0 0 0 1px var(--accent, #3b82f6); }
+.tp-card:hover { border-color: #5f5cf1; background: #1d1d23; }
+.tp-card.active {
+  border-color: #6c63ff;
+  background: rgba(108, 99, 255, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(108, 99, 255, 0.42);
+}
 
 .tp-card-icon {
-  font-size: 28px;
-  flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-  display: flex;
+  min-width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  background: #232329;
+  color: #b9b6ff;
+  font-size: 12px;
+  font-weight: 700;
 }
 
-.tp-card-info { flex: 1; min-width: 0; }
-
-.tp-card-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary, #d4d4d4);
+.tp-card-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
-.tp-card-venue {
-  font-size: 11px;
-  color: var(--accent, #3b82f6);
-  margin: 2px 0;
-}
-
+.tp-card-name { font-size: 13px; font-weight: 650; }
+.tp-card-venue { font-size: 11px; color: #9b97ff; }
 .tp-card-desc {
   font-size: 12px;
-  color: var(--text-secondary, #888);
-  line-height: 1.4;
+  color: var(--text-secondary, #8b8b93);
+  line-height: 1.45;
+}
+
+.tp-state {
+  padding: 24px;
+  color: var(--text-secondary, #8b8b93);
+  text-align: center;
 }
 
 .tp-options {
-  border-top: 1px solid var(--border-color, #27272a);
-  padding-top: 14px;
+  border-top: 1px solid #242428;
+  padding-top: 16px;
 }
 
 .tp-label {
   display: block;
+  margin-bottom: 7px;
+  color: var(--text-secondary, #8b8b93);
   font-size: 12px;
-  color: var(--text-secondary, #888);
-  margin-bottom: 6px;
 }
 
 .tp-input {
+  box-sizing: border-box;
   display: block;
   width: 100%;
-  padding: 8px 12px;
-  border: 1px solid var(--border-color, #27272a);
-  border-radius: 6px;
-  background: var(--input-bg, #2d2d2d);
-  color: var(--text-primary, #d4d4d4);
-  font-size: 14px;
-  margin-top: 4px;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1px solid #2a2a2f;
+  border-radius: 7px;
+  background: #1d1d20;
+  color: var(--text-primary, #e4e4e7);
+  font-size: 13px;
   outline: none;
 }
-.tp-input:focus { border-color: var(--accent, #3b82f6); }
+.tp-input:focus { border-color: #6c63ff; }
 
-.tp-sections { margin-top: 12px; }
-
+.tp-sections { margin-top: 14px; }
 .tp-checks {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 6px;
+  gap: 10px 14px;
+  margin-top: 8px;
 }
 
 .tp-check {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 13px;
+  gap: 6px;
   color: var(--text-primary, #d4d4d4);
+  font-size: 13px;
   cursor: pointer;
 }
-.tp-check input { accent-color: var(--accent, #3b82f6); }
+.tp-check input { accent-color: #6c63ff; }
 
 .tp-footer {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  padding: 12px 20px;
-  border-top: 1px solid var(--border-color, #27272a);
+  padding: 14px 20px;
+  border-top: 1px solid #242428;
 }
-
-.tp-btn {
-  padding: 8px 20px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  border: none;
-  transition: all 0.15s;
-}
-
-.tp-btn-cancel {
-  background: transparent;
-  color: var(--text-secondary, #888);
-  border: 1px solid var(--border-color, #27272a);
-}
-.tp-btn-cancel:hover { background: var(--hover-bg, #2d2d2d); color: var(--text-primary, #d4d4d4); }
-
-.tp-btn-create {
-  background: var(--accent, #3b82f6);
-  color: #fff;
-}
-.tp-btn-create:hover { opacity: 0.9; }
-.tp-btn-create:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .tp-error {
   flex: 1;
+  min-width: 0;
+  color: #ff6b6b;
   font-size: 12px;
-  color: #f87171;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.tp-btn {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 7px;
+  border: 1px solid #2d2d34;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-primary, #d4d4d4);
+}
+.tp-btn:hover { background: #232329; }
+.tp-btn-create {
+  border-color: #6c63ff;
+  background: #6c63ff;
+  color: #fff;
+}
+.tp-btn-create:hover { background: #5e56ef; }
+.tp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.tp-btn-ghost { color: #b9b6ff; }
+
+@media (max-width: 720px) {
+  .tp-grid { grid-template-columns: 1fr; }
 }
 </style>

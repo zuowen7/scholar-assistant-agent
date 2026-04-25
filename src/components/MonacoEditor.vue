@@ -18,6 +18,7 @@ import * as monaco from 'monaco-editor'
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import CommandPalette from './CommandPalette.vue'
 import { useEditor } from '../composables/useEditor'
+import { API_BASE } from '../utils/api'
 
 // 配置 Monaco Web Worker（解决 Tauri 环境下 worker 无法创建的问题）
 self.MonacoEnvironment = {
@@ -40,8 +41,7 @@ let editor: monaco.editor.IStandaloneCodeEditor | null = null
 
 // Ctrl+K Palette
 const showPalette = ref(false)
-const isTauri = '__TAURI_INTERNALS__' in window
-const COMPLETE_API = isTauri ? 'http://localhost:18088' : ''
+const COMPLETE_API = API_BASE
 const palettePos = ref({ x: 200, y: 200 })
 const selectedText = ref('')
 const editLoading = ref(false)

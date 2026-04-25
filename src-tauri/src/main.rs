@@ -224,7 +224,7 @@ fn spawn_python_inner<R: tauri::Runtime, M: Manager<R>>(
     let python_dir = resolve_python_dir();
 
     let mut child = if cfg!(debug_assertions) {
-        let api_path = python_dir.join("api_factory.py");
+        let api_path = python_dir.join("api.py");
         if !api_path.exists() {
             return Err(format!("Python API file not found: {}", api_path.display()));
         }
