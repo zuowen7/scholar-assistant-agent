@@ -45,6 +45,15 @@ try:
 except ImportError:
     _AGENT_AVAILABLE = False
 
+# Plugin 系统 (延迟导入，不影响核心翻译功能)
+try:
+    from src.plugin import PluginRegistry, register_builtin
+    _PLUGIN_AVAILABLE = True
+except ImportError:
+    _PLUGIN_AVAILABLE = False
+    PluginRegistry = None
+    register_builtin = None
+
 
 def _is_frozen() -> bool:
     """检测是否运行在 PyInstaller 打包环境中"""
@@ -283,6 +292,16 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Content-Type", "Authorization"],
     )
+
+    # ── Plugin 系统初始化 ───────────────────────────────────────
+    if _PLUGIN_AVAILABLE:
+        plugin_registry = PluginRegistry()
+        register_builtin(plugin_registry)
+        route_count = plugin_registry.attach_to_app(app)
+        logger.info("Plugin 系统初始化完成: %d 条路由注册", route_count)
+    else:
+        plugin_registry = None
+        logger.warning("Plugin 系统不可用")
 
     @app.get("/api/health")
     def health():
@@ -638,6 +657,17 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         if cloud_only:
             out.setdefault("translator", {})["engine"] = "cloud"
         return out
+
+    @app.get("/api/plugins")
+    def get_plugins():
+        """返回已注册的插件和工具列表。"""
+        if not _PLUGIN_AVAILABLE or plugin_registry is None:
+            return {"available": False, "servers": [], "tools": []}
+        return {
+            "available": True,
+            **plugin_registry.get_stats(),
+            "tools": plugin_registry.get_all_tools(),
+        }
 
     @app.get("/api/download/{task_id}")
     def download_result(task_id: str):
