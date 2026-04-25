@@ -107,6 +107,43 @@ class WordExportRequest(BaseModel):
     title: str = "Scholar Assistant Export"
 
 
+class EditRequest(BaseModel):
+    text: str = ""
+    instruction: str = ""
+    task_type: str | None = None
+    previous: str | None = None
+
+
+class CompletionRequest(BaseModel):
+    context: str = ""
+    max_tokens: int = 128
+
+
+class MarkdownExportRequest(BaseModel):
+    markdown: str = ""
+    template_id: str = "generic_article"
+    title: str | None = None
+
+
+class ComplianceRequest(BaseModel):
+    markdown: str = ""
+    title: str = ""
+    venue: str = ""
+    required_sections: str = ""
+
+
+class PaperScaffoldRequest(BaseModel):
+    template_id: str = "generic_article"
+    title: str = ""
+    sections: list[str] | None = None
+
+
+class PaperStyleTransferRequest(BaseModel):
+    text: str = ""
+    template_id: str = "generic_article"
+    section: str = "introduction"
+
+
 _config_cache: dict | None = None
 _config_cache_mtime: float = 0.0
 
@@ -198,7 +235,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         for tid in done_ids[:excess]:
             del tasks[tid]
 
-    _app_title = "Scholar Assistant API (cloud-only)"
+    _app_title = "Scholar Assistant API (cloud-only)" if cloud_only else "Scholar Assistant API"
     parser = argparse.ArgumentParser(description=_app_title)
     app = FastAPI(title=_app_title, version="0.4.2")
 
@@ -795,6 +832,169 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
             "skills": {"count": len(agent.skills.list_skills())},
             "model": agent.model,
             "max_steps": agent.max_steps,
+        }
+
+    @app.post("/api/edit")
+    async def edit_text(req: EditRequest):
+        """Basic streaming edit endpoint used by the editor UI."""
+        text = req.text or ""
+        instruction = (req.instruction or "").strip()
+        task_type = (req.task_type or "").lower()
+
+        if task_type == "coherence" and req.previous:
+            result = f"{req.previous.rstrip()}\n\n{text.strip()}".strip()
+        elif task_type in {"polish", "expand"}:
+            result = text.strip()
+        else:
+            result = text.strip() or instruction
+
+        async def _stream() -> AsyncGenerator[dict, None]:
+            yield {
+                "event": "delta",
+                "data": json.dumps({"content": result}, ensure_ascii=False),
+            }
+
+        return EventSourceResponse(_stream(), media_type="text/event-stream")
+
+    @app.post("/api/complete")
+    async def complete_text(req: CompletionRequest):
+        """Inline completion endpoint. Returns empty text when no model is configured."""
+        return {"completion": "", "usage": {"prompt_tokens": len(req.context), "completion_tokens": 0}}
+
+    @app.get("/api/export/templates")
+    async def export_templates():
+        from pandoc_templates import get_templates, tectonic_available
+
+        return {
+            "templates": get_templates(),
+            "tectonic_available": tectonic_available(),
+        }
+
+    @app.post("/api/export")
+    async def export_latex(req: MarkdownExportRequest):
+        from pandoc_templates import convert_markdown
+
+        result = convert_markdown(
+            req.markdown,
+            template_id=req.template_id,
+            output_format="tex",
+            metadata={"title": req.title or ""},
+        )
+        if not result.get("success"):
+            raise HTTPException(400, result.get("error") or "Export failed")
+        return result
+
+    @app.post("/api/export/pdf")
+    async def export_pdf(req: MarkdownExportRequest):
+        from pandoc_templates import convert_markdown
+
+        result = convert_markdown(
+            req.markdown,
+            template_id=req.template_id,
+            output_format="pdf",
+            metadata={"title": req.title or ""},
+        )
+        if not result.get("success") or not result.get("pdf_path"):
+            raise HTTPException(400, result.get("error") or "PDF export failed")
+        pdf_path = Path(result["pdf_path"])
+        return FileResponse(str(pdf_path), media_type="application/pdf", filename=f"{req.title or 'paper'}.pdf")
+
+    @app.get("/api/tectonic/status")
+    async def tectonic_status():
+        from pandoc_templates import tectonic_available, tectonic_version
+
+        return {"available": tectonic_available(), "version": tectonic_version()}
+
+    @app.post("/api/tectonic/install")
+    async def tectonic_install():
+        from pandoc_templates import install_tectonic
+
+        result = install_tectonic()
+        if not result.get("success"):
+            raise HTTPException(400, result.get("error") or "Tectonic install failed")
+        return result
+
+    @app.get("/api/paper-assets/templates")
+    async def paper_asset_templates():
+        from paper_assets import get_template_list
+
+        icon_map = {
+            "generic": "Doc",
+            "generic_article": "Doc",
+            "ieee": "IEEE",
+            "ieee_conference": "IEEE",
+            "ieee_journal": "IEEE",
+            "neurips": "N",
+            "acm": "ACM",
+            "lncs": "LNCS",
+        }
+        templates = [
+            {**item, "icon": icon_map.get(item.get("id", ""), "Doc")}
+            for item in get_template_list()
+        ]
+        return {"templates": templates}
+
+    @app.post("/api/paper-assets/ingest")
+    async def paper_assets_ingest():
+        from paper_assets import ingest_paper_assets
+
+        agent = await _get_agent()
+        return ingest_paper_assets(agent.rag)
+
+    @app.post("/api/paper-scaffold")
+    async def paper_scaffold(req: PaperScaffoldRequest):
+        from paper_assets import generate_scaffold
+
+        return {
+            "template_id": req.template_id,
+            "markdown": generate_scaffold(req.template_id, req.title, req.sections),
+        }
+
+    @app.post("/api/paper-style-transfer")
+    async def paper_style_transfer(req: PaperStyleTransferRequest):
+        from paper_assets import get_style_examples
+
+        return {
+            "template_id": req.template_id,
+            "section": req.section,
+            "style_context": get_style_examples(req.template_id, req.section),
+            "text": req.text,
+        }
+
+    @app.post("/api/compliance")
+    async def compliance_check(req: ComplianceRequest):
+        markdown = req.markdown or ""
+        words = [w for w in markdown.replace("\n", " ").split(" ") if w.strip()]
+        required = [
+            s.strip().lower()
+            for s in (req.required_sections or "").split(",")
+            if s.strip()
+        ]
+        headings = set()
+        for line in markdown.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                heading = stripped.lstrip("#").strip().lower().replace(" ", "_")
+                headings.add(heading)
+        missing = [s for s in required if s not in headings]
+        return {
+            "report": {
+                "summary": {
+                    "title": req.title,
+                    "venue": req.venue,
+                    "total_words": len(words),
+                    "total_characters": len(markdown),
+                    "missing_sections": len(missing),
+                },
+                "sections": {
+                    "required": required,
+                    "found": sorted(headings),
+                    "missing": missing,
+                },
+                "recommendations": [
+                    f"Add a {section.replace('_', ' ')} section." for section in missing
+                ],
+            }
         }
 
     @app.post("/api/export/word")

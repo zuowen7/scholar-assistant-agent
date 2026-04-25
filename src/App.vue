@@ -452,6 +452,16 @@
             </div>
           </div>
           <div class="agent-input-area">
+            <div v-if="agentContextText" class="agent-context-note">
+              Using editor {{ editorSelection.text ? 'selection' : 'document' }} as context ({{ agentContextText.length }} chars)
+            </div>
+            <textarea
+              v-model="agentConstraints"
+              class="agent-constraints"
+              :disabled="agentSending"
+              placeholder="Optional constraints, e.g. answer in Chinese under 200 words"
+              rows="2"
+            ></textarea>
             <input
               v-model="agentInput"
               @keydown.enter="sendAgentMessage"
@@ -532,9 +542,11 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useTranslate } from './composables/useTranslate'
 import { useAgentChat } from './composables/useAgentChat'
+import { useEditor } from './composables/useEditor'
 import EditorLayout from './components/EditorLayout.vue'
 import type { AppMode } from './types'
 import DOMPurify from 'dompurify'
+import { API_BASE } from './utils/api'
 
 const { state, translate, translateFromPath, reset, cleanup, checkHealth, checkOllama, startOllama, downloadResult, overallProgress, checkCloudApi, getConfig, updateConfig, getProviderPresets, restartBackend, listenBackendCrash, setStatus, setError, setStepMessage } = useTranslate()
 
@@ -555,7 +567,17 @@ const {
 const showAgentChat = ref(false)
 const agentTab = ref<'chat' | 'docs' | 'templates'>('chat')
 const agentInput = ref('')
+const agentConstraints = ref('')
 const agentMessagesRef = ref<HTMLElement | null>(null)
+const {
+  selection: editorSelection,
+  content: editorContent,
+  activeTab: editorActiveTab,
+} = useEditor()
+const agentContextText = computed(() => {
+  if (appMode.value !== 'editor' || !editorActiveTab.value) return ''
+  return editorSelection.value.text || editorContent.value
+})
 
 // ── Agent 工具描述映射 ────────────────────────────────────────
 const TOOL_DESCRIPTIONS: Record<string, string> = {
@@ -575,9 +597,6 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
 const paperTemplates = ref<{ id: string; name: string; venue: string; description: string; icon: string }[]>([])
 const paperTemplatesLoading = ref(false)
 const previewingTemplate = ref<{ id: string; name: string; venue: string; description: string; icon: string } | null>(null)
-const _isTauri = '__TAURI_INTERNALS__' in window
-const API_BASE = _isTauri ? 'http://localhost:18088' : ''
-
 async function loadPaperTemplates() {
   paperTemplatesLoading.value = true
   try {
@@ -645,7 +664,7 @@ async function sendAgentMessage() {
   const text = agentInput.value.trim()
   if (!text || agentSending.value) return
   agentInput.value = ''
-  await agentSendMessage(text)
+  await agentSendMessage(text, agentContextText.value, agentConstraints.value)
   await nextTick()
   if (agentMessagesRef.value) {
     agentMessagesRef.value.scrollTop = agentMessagesRef.value.scrollHeight
@@ -2262,8 +2281,20 @@ body {
 /* 输入区域 */
 .agent-input-area {
   display: flex; gap: 8px; padding: 12px 16px;
+  flex-wrap: wrap;
   border-top: 1px solid var(--border);
 }
+.agent-context-note {
+  width: 100%; color: var(--text3); font-size: 11px;
+}
+.agent-constraints {
+  width: 100%; padding: 8px 12px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--surface);
+  color: var(--text); font-size: 12px; font-family: inherit;
+  resize: vertical; min-height: 54px; outline: none;
+}
+.agent-constraints:focus { border-color: var(--accent); }
+.agent-constraints:disabled { opacity: 0.5; }
 .agent-input {
   flex: 1; padding: 8px 12px; border: 1px solid var(--border);
   border-radius: 8px; background: var(--surface);
