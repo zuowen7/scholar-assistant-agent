@@ -604,6 +604,107 @@ export function useEditor() {
     aiResult.value = ''
   }
 
+  // ── Inline ghost text completion ───────────────────────────────
+  let ghostDecoration: string[] = []
+  let completionTimer: ReturnType<typeof setTimeout> | null = null
+  let currentSuggestion = ''
+  let _clearingGhost = false
+
+  function clearGhostText() {
+    if (_clearingGhost) return
+    const editor = monacoEditor.value
+    if (!editor) return
+    if (ghostDecoration.length) {
+      try {
+        _clearingGhost = true
+        editor.deltaDecorations(ghostDecoration, [])
+      } finally {
+        ghostDecoration = []
+        _clearingGhost = false
+      }
+    }
+    currentSuggestion = ''
+  }
+
+  async function requestCompletion() {
+    const editor = monacoEditor.value
+    if (!editor) return
+    const model = editor.getModel()
+    if (!model) return
+
+    const pos = editor.getPosition()
+    if (!pos) return
+
+    // Get text before cursor (last ~500 chars for context)
+    const lineCount = model.getLineCount()
+    const startLine = Math.max(1, pos.lineNumber - 15)
+    const textBefore = model.getValueInRange({
+      startLineNumber: startLine,
+      startColumn: 1,
+      endLineNumber: pos.lineNumber,
+      endColumn: pos.column,
+    })
+
+    if (textBefore.trim().length < 10) { clearGhostText(); return }
+
+    try {
+      const resp = await fetch(`${API}/api/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ context: textBefore, max_tokens: 200 }),
+      })
+      if (!resp.ok) { clearGhostText(); return }
+      const data = await resp.json()
+      const suggestion = (data.completion || '').trim()
+      if (!suggestion || suggestion.length < 3) { clearGhostText(); return }
+
+      // Check if editor content has changed since request
+      const currentContent = model.getValueInRange({
+        startLineNumber: startLine,
+        startColumn: 1,
+        endLineNumber: pos.lineNumber,
+        endColumn: pos.column,
+      })
+      if (currentContent !== textBefore) { clearGhostText(); return }
+
+      currentSuggestion = suggestion
+
+      // Show ghost text as inline decoration
+      ghostDecoration = editor.deltaDecorations(ghostDecoration, [{
+        range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
+        options: {
+          after: { content: suggestion, inlineClassName: 'ghost-text-suggestion' },
+          className: 'ghost-text-line',
+        },
+      }])
+    } catch {
+      clearGhostText()
+    }
+  }
+
+  function triggerCompletion() {
+    if (completionTimer) clearTimeout(completionTimer)
+    // Clear ghost when user starts typing (don't clear decorations here — Monaco prohibits it during events)
+    completionTimer = setTimeout(requestCompletion, 1500)
+  }
+
+  function acceptGhostText() {
+    const editor = monacoEditor.value
+    if (!editor || !currentSuggestion) return false
+    const pos = editor.getPosition()
+    if (!pos) return false
+    editor.executeEdits('inline-completion', [{
+      range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
+      text: currentSuggestion,
+    }])
+    clearGhostText()
+    return true
+  }
+
+  function onDidChangeContent() {
+    triggerCompletion()
+  }
+
   return {
     // state
     tabs,
@@ -655,5 +756,9 @@ export function useEditor() {
     applyAiResult,
     rejectAiResult,
     undoEdit,
+    // inline completion
+    onDidChangeContent,
+    acceptGhostText,
+    clearGhostText,
   }
 }

@@ -123,7 +123,7 @@
           </button>
         </div>
       </div>
-      <MonacoEditor :theme="isDark ? 'vs-dark' : 'vs'" @contentChange="onContentChange" @selectionChange="onSelectionChange" />
+      <MonacoEditor :theme="isDark ? 'vs-dark' : 'vs'" :on-did-change-content="onDidChangeContent" @contentChange="onContentChange" @selectionChange="onSelectionChange" />
       </template>
     </div>
 
@@ -134,18 +134,13 @@
         <MarkdownPreview v-if="showPreview" :content="content" :version="contentVersion" :class="{ 'panel-half': showAiPanel }" />
         <AiPanel
           v-if="showAiPanel"
-          :loading="aiLoading"
-          :result="aiResult"
+          :editor-context="selection.text || content"
           :can-undo="!!previousContent"
+          :workspace-files="workspaceFiles"
           :class="{ 'panel-half': showPreview }"
-          @edit="handleAiEdit"
-          @accept="applyAiResult"
-          @reject="rejectAiResult"
+          @insert="handleInsert"
           @undo="handleUndo"
-          @cancel="cancelAiEdit"
           @close="showAiPanel = false"
-          @styleTransfer="handleStyleTransfer"
-          @agent="handleAgentRequest"
         />
       </div>
     </template>
@@ -170,7 +165,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import MonacoEditor from './MonacoEditor.vue'
 import MarkdownPreview from './MarkdownPreview.vue'
 import FileTree from './FileTree.vue'
@@ -191,11 +186,15 @@ const {
   saveFile, exportToWord, insertTextAtCursor, insertImageFile, analyzeVision,
   insertTable, insertInlineFormula, insertBlockFormula, processCitations,
   previewCitations, getZoteroStatus, searchZotero, insertZoteroCitation,
-  aiEdit, cancelAiEdit, applyAiResult, rejectAiResult, undoEdit,
+  aiEdit, applyAiResult, undoEdit, tabs,
+  onDidChangeContent, acceptGhostText, clearGhostText,
 } = useEditor()
 
 // 鈹€鈹€ 璁烘枃妯℃澘閫夋嫨鍣?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 const showTemplatePicker = ref(false)
+const workspaceFiles = computed(() =>
+  tabs.value.map(t => ({ name: t.title || t.path?.split(/[\\/]/).pop() || 'untitled', content: t.content }))
+)
 const imageInputRef = ref<HTMLInputElement | null>(null)
 const visionInputRef = ref<HTMLInputElement | null>(null)
 const assetLoading = ref(false)
@@ -495,6 +494,11 @@ async function handleStyleTransfer(templateId: string, templateName: string) {
   } catch (e) { console.warn('handleStyleTransfer failed:', e) }
 }
 
+function handleInsert(text: string) {
+  aiResult.value = text
+  applyAiResult()
+}
+
 function handleUndo() {
   undoEdit()
 }
@@ -527,13 +531,17 @@ function startResize(e: MouseEvent, target: 'sidebar' | 'panel') {
   document.addEventListener('mouseup', onMouseUp)
 }
 
-// Ctrl+S 淇濆瓨
+// Ctrl+S save, Tab accept ghost text
 async function onKeyDown(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key === 's') {
     e.preventDefault()
     const err = await saveFile()
     if (err) showExportToast(err)
   }
+  if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.shiftKey && acceptGhostText()) {
+    e.preventDefault()
+  }
+  if (e.key === 'Escape') clearGhostText()
 }
 
 function handlePaperScaffold(e: Event) {

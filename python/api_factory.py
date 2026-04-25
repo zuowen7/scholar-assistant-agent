@@ -729,10 +729,11 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
                 cloud_model=cloud_cfg_tools.get("model", "gpt-4o") if use_cloud_tools else "",
             )
 
-            # 可选: 初始化时分复用调度器
+            # 可选: 初始化时分复用调度器（仅 Ollama 模式，云端不需要）
             scheduler = None
             vram_cfg = agent_cfg.get("vram", {})
-            if vram_cfg.get("enabled", True) and not cloud_only:
+            _use_cloud_engine = cloud_only or trans_cfg.get("engine", "ollama") == "cloud"
+            if vram_cfg.get("enabled", True) and not _use_cloud_engine:
                 scheduler = MultiplexingScheduler(
                     ollama_base_url=trans_cfg.get("ollama_base_url", "http://localhost:11434"),
                     model=agent_cfg.get("model", "qwen3:8b"),
@@ -783,7 +784,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
                 cloud_base_url=cloud_cfg.get("base_url", "https://api.openai.com/v1") if use_cloud else "",
                 cloud_api_key=(cloud_cfg.get("api_key") or "").strip() if use_cloud else "",
                 cloud_model=cloud_cfg.get("model", "gpt-4o") if use_cloud else "",
-                api_format=cloud_cfg.get("provider", "openai") if use_cloud else "openai",
+                api_format=PROVIDER_PRESETS.get(cloud_cfg.get("provider", "openai"), {}).get("api_format", "openai") if use_cloud else "openai",
                 memory_dir=agent_data_dir + "/memory",
             )
 
@@ -883,30 +884,228 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
 
     @app.post("/api/edit")
     async def edit_text(req: EditRequest):
-        """Basic streaming edit endpoint used by the editor UI."""
+        """AI-powered streaming edit endpoint used by the editor UI.
+
+        Routes the instruction + text through the configured AI backend
+        (cloud API when engine=cloud, otherwise Ollama) and streams the
+        result back as SSE events.
+        """
         text = req.text or ""
         instruction = (req.instruction or "").strip()
         task_type = (req.task_type or "").lower()
 
-        if task_type == "coherence" and req.previous:
-            result = f"{req.previous.rstrip()}\n\n{text.strip()}".strip()
-        elif task_type in {"polish", "expand"}:
-            result = text.strip()
+        if not instruction:
+            return EventSourceResponse(
+                _edit_echo(text), media_type="text/event-stream"
+            )
+
+        config = _load_config()
+        trans_cfg = config.get("translator", {})
+        engine = trans_cfg.get("engine", "ollama")
+
+        # Build messages for the LLM
+        if text.strip():
+            system_prompt = (
+                "你是一个学术写作助手。用户会提供一段文本和一条指令，"
+                "请严格根据指令处理文本。直接输出处理后的结果，不要添加解释或前言。"
+                "如果指令不是对文本进行编辑操作（如问候、闲聊、提问），请正常回复。"
+            )
+            user_msg = f"--- 文本 ---\n{text}\n--- 指令 ---\n{instruction}"
         else:
-            result = text.strip() or instruction
+            system_prompt = (
+                "你是一个学术研究助手，可以帮助用户进行学术写作、翻译、润色、"
+                "文献检索、论文大纲等任务。请用中文回复用户的问题。"
+            )
+            user_msg = instruction
 
-        async def _stream() -> AsyncGenerator[dict, None]:
-            yield {
-                "event": "delta",
-                "data": json.dumps({"content": result}, ensure_ascii=False),
-            }
+        if engine == "cloud":
+            cloud_cfg = trans_cfg.get("cloud", {})
+            base_url = cloud_cfg.get("base_url", "").rstrip("/")
+            api_key = (cloud_cfg.get("api_key") or "").strip()
+            model = cloud_cfg.get("model", "gpt-4o")
+            if not base_url or not api_key:
+                return EventSourceResponse(
+                    _edit_error("云端 API 未配置，请在设置中填写 API Key"),
+                    media_type="text/event-stream",
+                )
+            return EventSourceResponse(
+                _edit_stream_cloud(base_url, api_key, model, system_prompt, user_msg),
+                media_type="text/event-stream",
+            )
+        else:
+            ollama_url = trans_cfg.get("ollama_base_url", "http://localhost:11434").rstrip("/")
+            model = trans_cfg.get("model", "qwen3:8b")
+            return EventSourceResponse(
+                _edit_stream_ollama(ollama_url, model, system_prompt, user_msg),
+                media_type="text/event-stream",
+            )
 
-        return EventSourceResponse(_stream(), media_type="text/event-stream")
+    async def _edit_echo(text: str) -> AsyncGenerator[dict, None]:
+        yield {"event": "delta", "data": json.dumps({"content": text.strip()}, ensure_ascii=False)}
+
+    async def _edit_error(msg: str) -> AsyncGenerator[dict, None]:
+        yield {"event": "delta", "data": json.dumps({"content": msg}, ensure_ascii=False)}
+
+    async def _edit_stream_cloud(
+        base_url: str, api_key: str, model: str,
+        system_prompt: str, user_msg: str,
+    ) -> AsyncGenerator[dict, None]:
+        import httpx
+        full_content = ""
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
+                async with client.stream(
+                    "POST",
+                    f"{base_url}/chat/completions",
+                    json={
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_msg},
+                        ],
+                        "temperature": 0.3,
+                        "max_tokens": 8192,
+                        "stream": True,
+                    },
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {api_key}",
+                    },
+                ) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        data_str = line[5:].strip()
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data_str)
+                        except json.JSONDecodeError:
+                            continue
+                        delta = chunk.get("choices", [{}])[0].get("delta", {})
+                        token = delta.get("content", "")
+                        if token:
+                            full_content += token
+        except Exception as e:
+            logger.error("Edit cloud stream error: %s", e)
+            if not full_content:
+                full_content = f"AI 处理失败: {e}"
+
+        yield {"event": "delta", "data": json.dumps({"content": full_content}, ensure_ascii=False)}
+
+    async def _edit_stream_ollama(
+        ollama_url: str, model: str,
+        system_prompt: str, user_msg: str,
+    ) -> AsyncGenerator[dict, None]:
+        import httpx
+        full_content = ""
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
+                async with client.stream(
+                    "POST",
+                    f"{ollama_url}/api/chat",
+                    json={
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_msg},
+                        ],
+                        "stream": True,
+                        "options": {"temperature": 0.3, "num_predict": 8192},
+                    },
+                ) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if not line.strip():
+                            continue
+                        try:
+                            chunk = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        token = chunk.get("message", {}).get("content", "")
+                        if token:
+                            full_content += token
+                        if chunk.get("done"):
+                            break
+        except Exception as e:
+            logger.error("Edit Ollama stream error: %s", e)
+            if not full_content:
+                full_content = f"AI 处理失败（Ollama 未启动？）: {e}"
+
+        yield {"event": "delta", "data": json.dumps({"content": full_content}, ensure_ascii=False)}
 
     @app.post("/api/complete")
     async def complete_text(req: CompletionRequest):
-        """Inline completion endpoint. Returns empty text when no model is configured."""
-        return {"completion": "", "usage": {"prompt_tokens": len(req.context), "completion_tokens": 0}}
+        """Inline completion endpoint powered by the configured AI backend."""
+        context = (req.context or "").strip()
+        if not context:
+            return {"completion": "", "usage": {"prompt_tokens": 0, "completion_tokens": 0}}
+
+        config = _load_config()
+        trans_cfg = config.get("translator", {})
+        engine = trans_cfg.get("engine", "ollama")
+
+        prompt = (
+            "You are an academic writing auto-complete assistant. "
+            "Continue the text naturally. Output ONLY the continuation, "
+            "no explanations, no markdown, no preamble.\n\n"
+            f"Context:\n{context[-2000:]}"
+        )
+
+        try:
+            if engine == "cloud":
+                cloud_cfg = trans_cfg.get("cloud", {})
+                base_url = cloud_cfg.get("base_url", "").rstrip("/")
+                api_key = (cloud_cfg.get("api_key") or "").strip()
+                model = cloud_cfg.get("model", "gpt-4o")
+                if not base_url or not api_key:
+                    return {"completion": "", "usage": {"prompt_tokens": 0, "completion_tokens": 0}}
+                import httpx
+                async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0)) as client:
+                    resp = await client.post(
+                        f"{base_url}/chat/completions",
+                        json={
+                            "model": model,
+                            "messages": [{"role": "user", "content": prompt}],
+                            "temperature": 0.2,
+                            "max_tokens": req.max_tokens,
+                            "stream": False,
+                        },
+                        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    usage = data.get("usage", {})
+            else:
+                ollama_url = trans_cfg.get("ollama_base_url", "http://localhost:11434").rstrip("/")
+                model = trans_cfg.get("model", "qwen3:8b")
+                import httpx
+                async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0)) as client:
+                    resp = await client.post(
+                        f"{ollama_url}/api/chat",
+                        json={
+                            "model": model,
+                            "messages": [{"role": "user", "content": prompt}],
+                            "stream": False,
+                            "options": {"temperature": 0.2, "num_predict": req.max_tokens},
+                        },
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    text = data.get("message", {}).get("content", "")
+                    usage = {"prompt_tokens": data.get("prompt_eval_count", 0), "completion_tokens": data.get("eval_count", 0)}
+
+            # Strip think tags and code blocks
+            import re
+            text = re.sub(r"<think.*?>.*?</think.*?>", "", text, flags=re.DOTALL).strip()
+            text = text.lstrip("```").rstrip("```").strip()
+
+            return {"completion": text, "usage": usage}
+        except Exception as e:
+            logger.debug("Inline completion failed: %s", e)
+            return {"completion": "", "usage": {"prompt_tokens": 0, "completion_tokens": 0}}
 
     @app.get("/api/export/templates")
     async def export_templates():
