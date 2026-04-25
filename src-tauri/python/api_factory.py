@@ -45,6 +45,32 @@ try:
 except ImportError:
     _AGENT_AVAILABLE = False
 
+# Plugin 系统 (延迟导入，不影响核心翻译功能)
+try:
+    from src.plugin import PluginRegistry, register_builtin
+    _PLUGIN_AVAILABLE = True
+except ImportError:
+    _PLUGIN_AVAILABLE = False
+    PluginRegistry = None
+    register_builtin = None
+
+# Argument Mapping 子系统 (延迟导入)
+try:
+    from src.argument.models import (
+        CreateTreeRequest, UpsertNodeRequest, ExpandRequest,
+        ObserveRequest, BindRequest, ReviewRequest, FlattenRequest,
+        NodeStatus, _now_iso,
+    )
+    from src.argument.store import ArgumentStore
+    from src.argument.logic_checker import LogicChecker
+    from src.argument.expander import ArgumentExpander
+    from src.argument.observer import ArgumentObserver
+    from src.argument.feedback_generator import FeedbackGenerator
+    from src.argument.flatten import ArgumentFlattener
+    _ARGUMENT_AVAILABLE = True
+except ImportError:
+    _ARGUMENT_AVAILABLE = False
+
 
 def _is_frozen() -> bool:
     """检测是否运行在 PyInstaller 打包环境中"""
@@ -105,6 +131,22 @@ class RAGIngestRequest(BaseModel):
 class WordExportRequest(BaseModel):
     content: str   # Markdown 格式文本
     title: str = "Scholar Assistant Export"
+
+
+class CitationIndexRequest(BaseModel):
+    content: str                    # Markdown 文本
+    bibliography: list[dict] = []  # BibTeX 文献库
+    style: str = "ieee"            # 引用格式: ieee/apa/gbt7714
+
+
+class VisionAnalysisRequest(BaseModel):
+    analysis_type: str = "general"  # general/chart/table/formula
+
+
+class ZoteroSearchRequest(BaseModel):
+    query: str                         # 搜索关键词
+    item_type: str | None = None     # 限定文献类型
+    limit: int = 20                  # 最大返回数量
 
 
 class EditRequest(BaseModel):
@@ -298,6 +340,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
     allowed_origins = [
         "http://localhost",
         "http://localhost:5173",
+        "http://127.0.0.1:5173",
         "http://localhost:18088",
         "http://localhost:18089",
         "http://127.0.0.1:18088",
@@ -312,6 +355,16 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Content-Type", "Authorization"],
     )
+
+    # ── Plugin 系统初始化 ───────────────────────────────────────
+    if _PLUGIN_AVAILABLE:
+        plugin_registry = PluginRegistry()
+        register_builtin(plugin_registry)
+        route_count = plugin_registry.attach_to_app(app)
+        logger.info("Plugin 系统初始化完成: %d 条路由注册", route_count)
+    else:
+        plugin_registry = None
+        logger.warning("Plugin 系统不可用")
 
     @app.get("/api/health")
     def health():
@@ -346,8 +399,8 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         if not cloud_cfg.get("api_key"):
             return {"reachable": False, "error": "未配置 API Key"}
         client = _build_cloud_client(trans_cfg, cloud_cfg)
-        reachable = client.health_check()
-        return {"reachable": reachable}
+        reachable, error_detail = client.health_check_detail()
+        return {"reachable": reachable, "error": error_detail}
 
     @app.get("/api/cloud/providers")
     def cloud_providers():
@@ -388,6 +441,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
             "output_path": None,
             "content": None,
             "error": None,
+            "filename": file.filename or "unknown",
         }
 
         return {"task_id": task_id}
@@ -583,6 +637,27 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
             task["status"] = "done"
             task["output_path"] = str(out_path)
 
+            # 自动将翻译结果入库到 RAG 知识库
+            if _rag_store is not None:
+                try:
+                    src_lang = config.get("translator", {}).get("source_lang", "en")
+                    src_label = "英文" if src_lang == "en" else src_lang
+                    rag_meta = {
+                        "title": f"[翻译] {task['filename']}",
+                        "source": "translation",
+                        "source_lang": src_label,
+                    }
+                    # 入库原文 + 译文对照，便于后续问答
+                    dual_text = f"[原文]\n{clean_result.text}\n\n[译文]\n{content}"
+                    _rag_store.ingest_document(
+                        doc_id=f"trans_{task_id}",
+                        text=dual_text,
+                        metadata=rag_meta,
+                    )
+                    logger.info("翻译结果已自动入库 RAG: trans_%s", task_id)
+                except Exception as rag_err:
+                    logger.warning("翻译结果入库 RAG 失败（不影响翻译）: %s", rag_err)
+
             yield {
                 "event": "complete",
                 "data": json.dumps({
@@ -668,6 +743,17 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
             out.setdefault("translator", {})["engine"] = "cloud"
         return out
 
+    @app.get("/api/plugins")
+    def get_plugins():
+        """返回已注册的插件和工具列表。"""
+        if not _PLUGIN_AVAILABLE or plugin_registry is None:
+            return {"available": False, "servers": [], "tools": []}
+        return {
+            "available": True,
+            **plugin_registry.get_stats(),
+            "tools": plugin_registry.get_all_tools(),
+        }
+
     @app.get("/api/download/{task_id}")
     def download_result(task_id: str):
         if task_id not in tasks:
@@ -733,10 +819,11 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
                 cloud_model=cloud_cfg_tools.get("model", "gpt-4o") if use_cloud_tools else "",
             )
 
-            # 可选: 初始化时分复用调度器
+            # 可选: 初始化时分复用调度器（仅 Ollama 模式，云端不需要）
             scheduler = None
             vram_cfg = agent_cfg.get("vram", {})
-            if vram_cfg.get("enabled", True) and not cloud_only:
+            _use_cloud_engine = cloud_only or trans_cfg.get("engine", "ollama") == "cloud"
+            if vram_cfg.get("enabled", True) and not _use_cloud_engine:
                 scheduler = MultiplexingScheduler(
                     ollama_base_url=trans_cfg.get("ollama_base_url", "http://localhost:11434"),
                     model=agent_cfg.get("model", "qwen3:8b"),
@@ -787,7 +874,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
                 cloud_base_url=cloud_cfg.get("base_url", "https://api.openai.com/v1") if use_cloud else "",
                 cloud_api_key=(cloud_cfg.get("api_key") or "").strip() if use_cloud else "",
                 cloud_model=cloud_cfg.get("model", "gpt-4o") if use_cloud else "",
-                api_format=cloud_cfg.get("provider", "openai") if use_cloud else "openai",
+                api_format=PROVIDER_PRESETS.get(cloud_cfg.get("provider", "openai"), {}).get("api_format", "openai") if use_cloud else "openai",
                 memory_dir=agent_data_dir + "/memory",
             )
 
@@ -874,6 +961,67 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         )
         return {"doc_id": req.doc_id, "chunk_count": count}
 
+    @app.post("/api/rag/upload")
+    async def upload_rag_document(file: UploadFile = File(...)):
+        """上传文件并直接入库到 RAG 知识库（不经翻译管道）。"""
+        if _rag_store is None:
+            await _get_agent()
+
+        if not file.filename:
+            raise HTTPException(400, "文件名不能为空")
+
+        ext = Path(file.filename).suffix.lower()
+        if ext not in SUPPORTED_EXTENSIONS:
+            supported = ", ".join(sorted(SUPPORTED_EXTENSIONS.keys()))
+            raise HTTPException(400, f"不支持的文件格式: {ext}。支持: {supported}")
+
+        doc_id = f"upload_{uuid.uuid4().hex[:8]}"
+
+        # 保存到临时目录
+        upload_dir = Path("data/uploads")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        temp_path = upload_dir / f"{doc_id}_{file.filename}"
+
+        try:
+            total = 0
+            with open(temp_path, "wb") as f:
+                while chunk := file.file.read(1024 * 1024):
+                    total += len(chunk)
+                    if total > MAX_UPLOAD_SIZE:
+                        f.close()
+                        temp_path.unlink(missing_ok=True)
+                        raise HTTPException(413, "文件过大，最大支持 200 MB")
+                    f.write(chunk)
+
+            # 解析文档
+            doc = await asyncio.to_thread(extract_document, str(temp_path))
+            raw_text = doc.full_text
+
+            if not raw_text.strip():
+                raise HTTPException(400, "文档内容为空")
+
+            # 入库 RAG
+            metadata = {
+                "title": file.filename,
+                "source": "user_upload",
+                "page_count": doc.page_count,
+            }
+            chunk_count = _rag_store.ingest_document(
+                doc_id=doc_id,
+                text=raw_text,
+                metadata=metadata,
+            )
+
+            return {
+                "doc_id": doc_id,
+                "title": file.filename,
+                "chunk_count": chunk_count,
+                "chars": len(raw_text),
+            }
+
+        finally:
+            temp_path.unlink(missing_ok=True)
+
     @app.get("/api/agent/stats")
     async def agent_stats():
         """Agent 子系统统计：记忆、Skill、轨迹。"""
@@ -887,30 +1035,228 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
 
     @app.post("/api/edit")
     async def edit_text(req: EditRequest):
-        """Basic streaming edit endpoint used by the editor UI."""
+        """AI-powered streaming edit endpoint used by the editor UI.
+
+        Routes the instruction + text through the configured AI backend
+        (cloud API when engine=cloud, otherwise Ollama) and streams the
+        result back as SSE events.
+        """
         text = req.text or ""
         instruction = (req.instruction or "").strip()
         task_type = (req.task_type or "").lower()
 
-        if task_type == "coherence" and req.previous:
-            result = f"{req.previous.rstrip()}\n\n{text.strip()}".strip()
-        elif task_type in {"polish", "expand"}:
-            result = text.strip()
+        if not instruction:
+            return EventSourceResponse(
+                _edit_echo(text), media_type="text/event-stream"
+            )
+
+        config = _load_config()
+        trans_cfg = config.get("translator", {})
+        engine = trans_cfg.get("engine", "ollama")
+
+        # Build messages for the LLM
+        if text.strip():
+            system_prompt = (
+                "你是一个学术写作助手。用户会提供一段文本和一条指令，"
+                "请严格根据指令处理文本。直接输出处理后的结果，不要添加解释或前言。"
+                "如果指令不是对文本进行编辑操作（如问候、闲聊、提问），请正常回复。"
+            )
+            user_msg = f"--- 文本 ---\n{text}\n--- 指令 ---\n{instruction}"
         else:
-            result = text.strip() or instruction
+            system_prompt = (
+                "你是一个学术研究助手，可以帮助用户进行学术写作、翻译、润色、"
+                "文献检索、论文大纲等任务。请用中文回复用户的问题。"
+            )
+            user_msg = instruction
 
-        async def _stream() -> AsyncGenerator[dict, None]:
-            yield {
-                "event": "delta",
-                "data": json.dumps({"content": result}, ensure_ascii=False),
-            }
+        if engine == "cloud":
+            cloud_cfg = trans_cfg.get("cloud", {})
+            base_url = cloud_cfg.get("base_url", "").rstrip("/")
+            api_key = (cloud_cfg.get("api_key") or "").strip()
+            model = cloud_cfg.get("model", "gpt-4o")
+            if not base_url or not api_key:
+                return EventSourceResponse(
+                    _edit_error("云端 API 未配置，请在设置中填写 API Key"),
+                    media_type="text/event-stream",
+                )
+            return EventSourceResponse(
+                _edit_stream_cloud(base_url, api_key, model, system_prompt, user_msg),
+                media_type="text/event-stream",
+            )
+        else:
+            ollama_url = trans_cfg.get("ollama_base_url", "http://localhost:11434").rstrip("/")
+            model = trans_cfg.get("model", "qwen3:8b")
+            return EventSourceResponse(
+                _edit_stream_ollama(ollama_url, model, system_prompt, user_msg),
+                media_type="text/event-stream",
+            )
 
-        return EventSourceResponse(_stream(), media_type="text/event-stream")
+    async def _edit_echo(text: str) -> AsyncGenerator[dict, None]:
+        yield {"event": "delta", "data": json.dumps({"content": text.strip()}, ensure_ascii=False)}
+
+    async def _edit_error(msg: str) -> AsyncGenerator[dict, None]:
+        yield {"event": "delta", "data": json.dumps({"content": msg}, ensure_ascii=False)}
+
+    async def _edit_stream_cloud(
+        base_url: str, api_key: str, model: str,
+        system_prompt: str, user_msg: str,
+    ) -> AsyncGenerator[dict, None]:
+        import httpx
+        full_content = ""
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
+                async with client.stream(
+                    "POST",
+                    f"{base_url}/chat/completions",
+                    json={
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_msg},
+                        ],
+                        "temperature": 0.3,
+                        "max_tokens": 8192,
+                        "stream": True,
+                    },
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {api_key}",
+                    },
+                ) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        data_str = line[5:].strip()
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data_str)
+                        except json.JSONDecodeError:
+                            continue
+                        delta = chunk.get("choices", [{}])[0].get("delta", {})
+                        token = delta.get("content", "")
+                        if token:
+                            full_content += token
+        except Exception as e:
+            logger.error("Edit cloud stream error: %s", e)
+            if not full_content:
+                full_content = f"AI 处理失败: {e}"
+
+        yield {"event": "delta", "data": json.dumps({"content": full_content}, ensure_ascii=False)}
+
+    async def _edit_stream_ollama(
+        ollama_url: str, model: str,
+        system_prompt: str, user_msg: str,
+    ) -> AsyncGenerator[dict, None]:
+        import httpx
+        full_content = ""
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
+                async with client.stream(
+                    "POST",
+                    f"{ollama_url}/api/chat",
+                    json={
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_msg},
+                        ],
+                        "stream": True,
+                        "options": {"temperature": 0.3, "num_predict": 8192},
+                    },
+                ) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if not line.strip():
+                            continue
+                        try:
+                            chunk = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        token = chunk.get("message", {}).get("content", "")
+                        if token:
+                            full_content += token
+                        if chunk.get("done"):
+                            break
+        except Exception as e:
+            logger.error("Edit Ollama stream error: %s", e)
+            if not full_content:
+                full_content = f"AI 处理失败（Ollama 未启动？）: {e}"
+
+        yield {"event": "delta", "data": json.dumps({"content": full_content}, ensure_ascii=False)}
 
     @app.post("/api/complete")
     async def complete_text(req: CompletionRequest):
-        """Inline completion endpoint. Returns empty text when no model is configured."""
-        return {"completion": "", "usage": {"prompt_tokens": len(req.context), "completion_tokens": 0}}
+        """Inline completion endpoint powered by the configured AI backend."""
+        context = (req.context or "").strip()
+        if not context:
+            return {"completion": "", "usage": {"prompt_tokens": 0, "completion_tokens": 0}}
+
+        config = _load_config()
+        trans_cfg = config.get("translator", {})
+        engine = trans_cfg.get("engine", "ollama")
+
+        prompt = (
+            "You are an academic writing auto-complete assistant. "
+            "Continue the text naturally. Output ONLY the continuation, "
+            "no explanations, no markdown, no preamble.\n\n"
+            f"Context:\n{context[-2000:]}"
+        )
+
+        try:
+            if engine == "cloud":
+                cloud_cfg = trans_cfg.get("cloud", {})
+                base_url = cloud_cfg.get("base_url", "").rstrip("/")
+                api_key = (cloud_cfg.get("api_key") or "").strip()
+                model = cloud_cfg.get("model", "gpt-4o")
+                if not base_url or not api_key:
+                    return {"completion": "", "usage": {"prompt_tokens": 0, "completion_tokens": 0}}
+                import httpx
+                async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0)) as client:
+                    resp = await client.post(
+                        f"{base_url}/chat/completions",
+                        json={
+                            "model": model,
+                            "messages": [{"role": "user", "content": prompt}],
+                            "temperature": 0.2,
+                            "max_tokens": req.max_tokens,
+                            "stream": False,
+                        },
+                        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    usage = data.get("usage", {})
+            else:
+                ollama_url = trans_cfg.get("ollama_base_url", "http://localhost:11434").rstrip("/")
+                model = trans_cfg.get("model", "qwen3:8b")
+                import httpx
+                async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0)) as client:
+                    resp = await client.post(
+                        f"{ollama_url}/api/chat",
+                        json={
+                            "model": model,
+                            "messages": [{"role": "user", "content": prompt}],
+                            "stream": False,
+                            "options": {"temperature": 0.2, "num_predict": req.max_tokens},
+                        },
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    text = data.get("message", {}).get("content", "")
+                    usage = {"prompt_tokens": data.get("prompt_eval_count", 0), "completion_tokens": data.get("eval_count", 0)}
+
+            # Strip think tags and code blocks
+            import re
+            text = re.sub(r"<think.*?>.*?</think.*?>", "", text, flags=re.DOTALL).strip()
+            text = text.lstrip("```").rstrip("```").strip()
+
+            return {"completion": text, "usage": usage}
+        except Exception as e:
+            logger.debug("Inline completion failed: %s", e)
+            return {"completion": "", "usage": {"prompt_tokens": 0, "completion_tokens": 0}}
 
     @app.get("/api/export/templates")
     async def export_templates():
@@ -1339,6 +1685,638 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             filename=filename,
         )
+
+    # ── 图片上传 ────────────────────────────────────────────────
+    @app.post("/api/upload/image")
+    async def upload_image(file: UploadFile = File(...)):
+        """上传图片到 assets 目录
+
+        Returns:
+            {"path": "...", "filename": "...", "url": "..."}
+        """
+        # 检查文件类型
+        allowed_types = {"image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp"}
+        if file.content_type not in allowed_types:
+            raise HTTPException(400, f"不支持的图片格式: {file.content_type}")
+
+        # 创建 assets 目录
+        assets_dir = data_root / "assets"
+        assets_dir.mkdir(parents=True, exist_ok=True)
+
+        # 生成唯一文件名
+        ext = Path(file.filename).suffix.lower() if file.filename else ".png"
+        filename = f"{uuid.uuid4().hex[:12]}{ext}"
+        file_path = assets_dir / filename
+
+        # 保存文件
+        content = await file.read()
+        if len(content) > 50 * 1024 * 1024:  # 50MB 上限
+            raise HTTPException(413, "图片大小超过 50MB 限制")
+        with open(file_path, "wb") as f:
+            f.write(content)
+
+        # 返回相对路径（前端可拼装为完整 URL）
+        relative_path = f"/api/assets/{filename}"
+        return {
+            "path": str(file_path),
+            "filename": filename,
+            "url": relative_path,
+            "size": len(content),
+        }
+
+    @app.get("/api/assets/{filename}")
+    async def serve_asset(filename: str):
+        """提供 assets 目录下的静态文件访问"""
+        assets_dir = data_root / "assets"
+        safe_path = (assets_dir / filename).resolve()
+
+        # 安全检查
+        if not str(safe_path).startswith(str(assets_dir.resolve())):
+            raise HTTPException(403, "禁止访问该文件")
+        if not safe_path.exists():
+            raise HTTPException(404, "文件不存在")
+
+        # 根据扩展名返回正确的 Content-Type
+        content_types = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".gif": "image/gif",
+            ".webp": "image/webp",
+            ".bmp": "image/bmp",
+        }
+        ext = safe_path.suffix.lower()
+        media_type = content_types.get(ext, "application/octet-stream")
+
+        return FileResponse(str(safe_path), media_type=media_type)
+
+    # ── MCP Vision 图像分析 ───────────────────────────────────
+    @app.post("/api/vision/analyze")
+    async def analyze_image(
+        file: UploadFile = File(...),
+        analysis_type: str = "general",
+    ):
+        """MCP 多模态图像分析（OCR、图表理解、表格识别）
+
+        Args:
+            file: 图片文件
+            analysis_type: 分析类型
+                - general: 通用描述 + 文字识别
+                - chart: 图表分析（柱状图、折线图等）
+                - table: 表格提取
+                - formula: 公式识别
+
+        Returns:
+            {
+                "text": "识别的文字/描述",
+                "chart_type": "bar/line/pie/table/...",
+                "chart_description": "图表详细描述",
+                "table_data": [["col1", "col2"], ...],
+                "key_findings": ["要点1", ...],
+                "raw_description": "原始API返回"
+            }
+        """
+        # 保存上传的图片
+        assets_dir = data_root / "assets"
+        assets_dir.mkdir(parents=True, exist_ok=True)
+
+        ext = Path(file.filename).suffix.lower() if file.filename else ".png"
+        temp_filename = f"vision_{uuid.uuid4().hex[:12]}{ext}"
+        temp_path = assets_dir / temp_filename
+
+        content = await file.read()
+        if len(content) > 20 * 1024 * 1024:  # 20MB 上限
+            raise HTTPException(413, "图片大小超过 20MB 限制")
+        with open(temp_path, "wb") as f:
+            f.write(content)
+
+        try:
+            # 调用 Vision Client
+            from src.mcp.vision_client import VisionClient
+
+            client = VisionClient()
+            result = await client.analyze_image(temp_path, analysis_type=analysis_type)
+
+            return result.to_dict()
+        finally:
+            # 清理临时文件
+            try:
+                temp_path.unlink(missing_ok=True)
+            except PermissionError:
+                logger.warning("Vision temporary file is still locked, skip cleanup: %s", temp_path)
+
+    @app.post("/api/vision/ocr")
+    async def ocr_image(file: UploadFile = File(...)):
+        """OCR 专用接口 — 识别图片中的文字
+
+        Returns:
+            {"text": "识别的文字内容", ...}
+        """
+        return await analyze_image(file, analysis_type="general")
+
+    @app.post("/api/vision/chart")
+    async def analyze_chart(file: UploadFile = File(...)):
+        """图表分析接口
+
+        Returns:
+            {"chart_type": "...", "chart_description": "...", "key_findings": [...], ...}
+        """
+        return await analyze_image(file, analysis_type="chart")
+
+    @app.post("/api/vision/table")
+    async def extract_table(file: UploadFile = File(...)):
+        """表格提取接口
+
+        Returns:
+            {"table_data": [["col1", "col2"], ...], ...}
+        """
+        return await analyze_image(file, analysis_type="table")
+
+    # ── 文献引用索引 ──────────────────────────────────────────
+    @app.put("/api/citation/index")
+    async def index_citations(req: CitationIndexRequest):
+        """文献引用索引处理
+
+        将 Markdown 中的 [@key] 替换为 [编号]，并生成参考文献节。
+
+        Args:
+            req.content: Markdown 文本
+            req.bibliography: BibTeX 文献库
+            req.style: 引用格式 (ieee/apa/gbt7714)
+
+        Returns:
+            {
+                "text": "替换引用后的文本",
+                "citations": [{"key": "...", "number": 1, "found": true}, ...],
+                "index": {"key1": 1, "key2": 2, ...},
+                "bibliography": "参考文献\n[1] ..."
+            }
+        """
+        from src.citation.indexer import CitationIndexer
+
+        indexer = CitationIndexer()
+        result = indexer.process(
+            text=req.content,
+            bibliography=req.bibliography,
+            style=req.style,
+            include_reference_section=True,
+        )
+
+        return result
+
+    @app.get("/api/citation/extract")
+    async def extract_citations(content: str):
+        """提取文本中的文献引用（不处理）
+
+        用于前端预览有多少引用需要处理。
+        """
+        from src.citation.indexer import CitationIndexer
+
+        indexer = CitationIndexer()
+        keys = indexer.extract_citations(content)
+        index = indexer.build_index(content)
+
+        return {
+            "keys": keys,
+            "unique_count": len(index),
+            "index": index,
+        }
+
+    # ── Zotero 文献管理 ──────────────────────────────────────────
+    @app.get("/api/zotero/status")
+    async def zotero_status():
+        """检查 Zotero API 连接状态"""
+        try:
+            from src.zotero.client import ZoteroClient
+            client = ZoteroClient()
+            if not client.api_key or not client.user_id:
+                return {
+                    "connected": False,
+                    "message": "未配置 Zotero API Key 或 User ID",
+                }
+            return {
+                "connected": True,
+                "user_id": client.user_id,
+                "style": client.style,
+            }
+        except Exception as e:
+            return {
+                "connected": False,
+                "message": str(e),
+            }
+
+    @app.post("/api/zotero/search")
+    async def search_zotero(req: ZoteroSearchRequest):
+        """搜索 Zotero 文献库
+
+        Args:
+            req.query: 搜索关键词
+            req.item_type: 限定文献类型（可选）
+            req.limit: 最大返回数量（默认20）
+
+        Returns:
+            文献列表，每个文献包含详情和引用 key
+        """
+        try:
+            from src.zotero.client import ZoteroClient
+
+            client = ZoteroClient()
+            items = client.search(
+                query=req.query,
+                item_type=req.item_type,
+                limit=req.limit,
+            )
+
+            return {
+                "count": len(items),
+                "items": [item.to_dict() for item in items],
+            }
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:
+            logger.error("Zotero 搜索失败: %s", e)
+            raise HTTPException(500, f"Zotero 搜索失败: {e}")
+
+    @app.get("/api/zotero/item/{item_key}")
+    async def get_zotero_item(item_key: str):
+        """获取单条 Zotero 文献详情
+
+        Args:
+            item_key: 文献 key
+
+        Returns:
+            文献详情，包含 BibTeX 格式
+        """
+        try:
+            from src.zotero.client import ZoteroClient
+
+            client = ZoteroClient()
+            item = client.get_item(item_key)
+
+            if not item:
+                raise HTTPException(404, f"文献不存在: {item_key}")
+
+            return item.to_dict()
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error("获取 Zotero 文献失败: %s", e)
+            raise HTTPException(500, f"获取文献失败: {e}")
+
+    @app.get("/api/zotero/item/{item_key}/bibtex")
+    async def get_zotero_item_bibtex(item_key: str):
+        """导出单条文献为 BibTeX 格式"""
+        try:
+            from src.zotero.client import ZoteroClient
+
+            client = ZoteroClient()
+            item = client.get_item(item_key)
+
+            if not item:
+                raise HTTPException(404, f"文献不存在: {item_key}")
+
+            return {
+                "key": item_key,
+                "bibtex": item.to_bibtex(),
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error("导出 BibTeX 失败: %s", e)
+            raise HTTPException(500, f"导出失败: {e}")
+
+    @app.post("/api/zotero/export")
+    async def export_zotero_bibtex(item_keys: list[str] | None = None):
+        """批量导出 BibTeX
+
+        Args:
+            item_keys: 要导出的文献 key 列表，None 则导出全部
+
+        Returns:
+            BibTeX 格式文本
+        """
+        try:
+            from src.zotero.client import ZoteroClient
+
+            client = ZoteroClient()
+            bibtex = client.export_bibtex(item_keys)
+
+            return {
+                "bibtex": bibtex,
+                "count": len(bibtex.split("\n\n")) if bibtex else 0,
+            }
+        except Exception as e:
+            logger.error("导出 BibTeX 失败: %s", e)
+            raise HTTPException(500, f"导出失败: {e}")
+
+    @app.post("/api/zotero/citations")
+    async def get_zotero_citations(item_keys: list[str]):
+        """获取多条文献的引用信息
+
+        Args:
+            item_keys: 文献 key 列表
+
+        Returns:
+            文献列表，包含 Markdown 引用格式
+        """
+        try:
+            from src.zotero.client import ZoteroClient
+
+            client = ZoteroClient()
+            items = client.get_items_by_keys(item_keys)
+
+            return {
+                "count": len(items),
+                "items": [item.to_dict() for item in items],
+                "citations": [item.to_markdown_citation() for item in items],
+            }
+        except Exception as e:
+            logger.error("获取引用失败: %s", e)
+            raise HTTPException(500, f"获取引用失败: {e}")
+
+    # ── Argument Mapping 端点 ──────────────────────────────────────────
+
+    if _ARGUMENT_AVAILABLE:
+        _argument_store = ArgumentStore(persist_dir=str(data_root))
+        _logic_checker = LogicChecker()
+        _argument_expander = ArgumentExpander(_argument_store)
+        _argument_observer = ArgumentObserver(_argument_store)
+        _feedback_generator = FeedbackGenerator()
+        _argument_flattener = ArgumentFlattener()
+        _flatten_tasks: dict[str, dict] = {}
+
+        def _cleanup_flatten_tasks() -> None:
+            done_ids = [tid for tid, t in _flatten_tasks.items() if t["status"] in ("done", "error")]
+            if len(done_ids) <= MAX_TASKS:
+                return
+            for tid in done_ids[:len(done_ids) - MAX_TASKS]:
+                del _flatten_tasks[tid]
+
+        def _get_cloud_client_for_argument():
+            """获取 Argument 模块使用的 CloudClient。"""
+            config = _load_config()
+            trans_cfg = config.get("translator", {})
+            cloud_cfg = trans_cfg.get("cloud", {})
+            if not cloud_cfg.get("api_key"):
+                return None
+            return _build_cloud_client(trans_cfg, cloud_cfg)
+
+        def _ensure_rag_store() -> Any:
+            """确保 RAG Store 已初始化（复用 Agent 懒加载逻辑）。"""
+            nonlocal _rag_store
+            if _rag_store is not None:
+                return _rag_store
+            if _AGENT_AVAILABLE:
+                config = _load_config()
+                agent_cfg = config.get("agent", {})
+                rag_cfg = agent_cfg.get("rag", {})
+                rag_dir = RUNTIME_DIR / rag_cfg.get("persist_dir", "data/chromadb")
+                _rag_store = RAGStore(
+                    persist_dir=str(rag_dir),
+                    collection_name=rag_cfg.get("collection_name", "scholar_docs"),
+                    chunk_size=rag_cfg.get("chunk_size", 512),
+                    chunk_overlap=rag_cfg.get("chunk_overlap", 64),
+                )
+            return _rag_store
+
+        class _ArgumentError(HTTPException):
+            """Argument 端点统一错误：响应体包含 detail + error_code + timestamp。"""
+            def __init__(self, status_code: int, detail: str, error_code: str):
+                self.error_code = error_code
+                self.error_timestamp = _now_iso()
+                super().__init__(status_code=status_code, detail=detail)
+
+        @app.exception_handler(_ArgumentError)
+        async def _argument_error_handler(request: Request, exc: _ArgumentError) -> JSONResponse:
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail, "error_code": exc.error_code, "timestamp": exc.error_timestamp},
+            )
+
+        def _arg_error(status_code: int, detail: str, error_code: str):
+            raise _ArgumentError(status_code, detail, error_code)
+
+        @app.get("/api/argument/tree")
+        def argument_get_tree():
+            tree = _argument_store.get_tree()
+            if tree.root_id is None:
+                _arg_error(404, "Argument tree not found", "TREE_NOT_FOUND")
+            return tree.model_dump()
+
+        @app.post("/api/argument/tree", status_code=201)
+        def argument_create_tree(req: CreateTreeRequest):
+            root = _argument_store.create_tree(
+                topic=req.topic,
+                domain_tags=req.domain_tags,
+                position=req.position,
+            )
+            return _argument_store.get_tree().model_dump()
+
+        @app.put("/api/argument/node")
+        def argument_upsert_node(req: UpsertNodeRequest):
+            if req.id and req.parent_id:
+                parent = _argument_store.get_node(req.parent_id)
+                if not parent:
+                    _arg_error(400, "Invalid parent_id", "INVALID_PARENT")
+
+            is_update = req.id is not None and req.id in _argument_store.get_tree().nodes
+            node = _argument_store.upsert_node(
+                **{k: v for k, v in req.model_dump().items() if v is not None},
+            )
+            return JSONResponse(content=node.model_dump(), status_code=200 if is_update else 201)
+
+        @app.delete("/api/argument/node/{node_id}")
+        def argument_delete_node(node_id: str, cascade: bool = False):
+            deleted = _argument_store.delete_node(node_id, cascade=cascade)
+            if not deleted:
+                _arg_error(404, "Node not found", "NODE_NOT_FOUND")
+            return {"deleted": deleted, "message": f"Deleted {len(deleted)} nodes"}
+
+        @app.get("/api/argument/node/{node_id}")
+        def argument_get_node(node_id: str):
+            node = _argument_store.get_node(node_id)
+            if not node:
+                _arg_error(404, "Node not found", "NODE_NOT_FOUND")
+            return node.model_dump()
+
+        @app.post("/api/argument/expand")
+        async def argument_expand(req: ExpandRequest):
+            cloud_client = _get_cloud_client_for_argument()
+            result = await _argument_expander.expand(
+                node_id=req.node_id,
+                max_children=req.max_children,
+                direction=req.direction,
+                cloud_client=cloud_client,
+            )
+            if "error" in result:
+                _arg_error(404, result["error"], "NODE_NOT_FOUND")
+            return result
+
+        @app.post("/api/argument/observe")
+        def argument_observe(req: ObserveRequest):
+            return _argument_observer.observe(
+                node_id=req.node_id,
+                content_hint=req.content_hint,
+                rag_store=_ensure_rag_store(),
+            )
+
+        @app.post("/api/argument/bind")
+        def argument_bind(req: BindRequest):
+            node = _argument_store.get_node(req.node_id)
+            if not node:
+                _arg_error(404, "Node not found", "NODE_NOT_FOUND")
+
+            citation_key = req.doc_id
+            rag = _ensure_rag_store()
+            if rag is not None:
+                for doc in rag.list_documents():
+                    if doc.id == req.doc_id:
+                        citation_key = doc.title or req.doc_id
+                        break
+
+            updated = _argument_store.bind_reference(
+                node_id=req.node_id,
+                doc_id=req.doc_id,
+                citation_key=citation_key,
+                binding_type=req.binding_type.value,
+                relevance_score=req.relevance_score,
+            )
+            if not updated:
+                _arg_error(404, "Node not found", "NODE_NOT_FOUND")
+
+            ref = next((r for r in updated.references if r.doc_id == req.doc_id), None)
+            return {
+                "node_id": req.node_id,
+                "reference": ref.model_dump() if ref else None,
+            }
+
+        @app.delete("/api/argument/bind/{node_id}/{doc_id}")
+        def argument_unbind(node_id: str, doc_id: str):
+            ok = _argument_store.unbind_reference(node_id, doc_id)
+            if not ok:
+                _arg_error(404, "Node or reference not found", "NODE_NOT_FOUND")
+            return {"node_id": node_id, "doc_id": doc_id, "message": "Reference unbound successfully"}
+
+        @app.post("/api/argument/review")
+        async def argument_review(req: ReviewRequest):
+            tree = _argument_store.get_tree()
+            if not tree.root_id:
+                _arg_error(404, "Argument tree not found", "TREE_NOT_FOUND")
+
+            target_id = req.node_id if req.node_id != "root" else tree.root_id
+            if target_id not in tree.nodes:
+                _arg_error(404, "Node not found", "NODE_NOT_FOUND")
+            subtree_ids = _argument_store.get_subtree_ids(target_id) if req.include_subtree else [target_id]
+
+            issues = _logic_checker.check(tree, subtree_ids)
+
+            cloud_client = _get_cloud_client_for_argument()
+            node_feedbacks = await _feedback_generator.generate(
+                tree, issues, cloud_client=cloud_client,
+            )
+
+            # Update nodes with feedback
+            for nid, fb in node_feedbacks.items():
+                _argument_store.update_node_fields(
+                    nid,
+                    logic_status=fb["logic_status"],
+                    rule_issues=fb["rule_issues"],
+                    agent_feedback=fb["agent_feedback"],
+                )
+
+            overall = "pass"
+            for fb in node_feedbacks.values():
+                if fb["logic_status"] == "error":
+                    overall = "error"
+                    break
+                if fb["logic_status"] == "warning":
+                    overall = "warning"
+
+            return {
+                "reviewed_node_id": target_id,
+                "reviewed_subtree": subtree_ids,
+                "overall_status": overall,
+                "rule_results": [iss.model_dump() for iss in issues],
+                "node_feedbacks": node_feedbacks,
+                "reviewed_at": _now_iso(),
+            }
+
+        @app.post("/api/argument/flatten")
+        def argument_flatten(req: FlattenRequest):
+            tree = _argument_store.get_tree()
+            if not tree.root_id:
+                _arg_error(404, "Argument tree not found", "TREE_NOT_FOUND")
+
+            import uuid as _uuid
+            task_id = f"flatten_{_uuid.uuid4().hex[:8]}"
+            _flatten_tasks[task_id] = {
+                "status": "processing",
+                "request": req.model_dump(),
+                "tree_snapshot": tree.model_dump(),
+            }
+            return {"task_id": task_id, "status": "processing"}
+
+        @app.get("/api/argument/flatten/{task_id}/stream")
+        async def argument_flatten_stream(task_id: str):
+            if task_id not in _flatten_tasks:
+                _arg_error(404, "Task not found", "TASK_NOT_FOUND")
+
+            task = _flatten_tasks[task_id]
+            tree_data = task["tree_snapshot"]
+            req = FlattenRequest(**task["request"])
+            cloud_client = _get_cloud_client_for_argument()
+
+            async def _generate():
+                try:
+                    async for event in _argument_flattener.flatten_stream(
+                        tree_data=tree_data,
+                        template=req.template,
+                        style=req.style,
+                        include_references=req.include_references,
+                        output_dir=output_dir,
+                        cloud_client=cloud_client,
+                    ):
+                        if event.get("event") == "complete":
+                            import json as _json
+                            data = _json.loads(event.get("data", "{}"))
+                            task["output_path"] = data.get("output_path", "")
+                        yield event
+                    task["status"] = "done"
+                except Exception:
+                    task["status"] = "error"
+                    raise
+                finally:
+                    _cleanup_flatten_tasks()
+
+            return EventSourceResponse(_generate())
+
+        @app.get("/api/argument/download/{task_id}")
+        def argument_download(task_id: str):
+            if task_id not in _flatten_tasks:
+                _arg_error(404, "Task not found", "TASK_NOT_FOUND")
+            task = _flatten_tasks[task_id]
+            if task.get("status") != "done":
+                _arg_error(400, "Task not completed yet", "TASK_NOT_FOUND")
+            output_path = Path(task.get("output_path", ""))
+            if not output_path.exists():
+                _arg_error(404, "Output file not found", "TASK_NOT_FOUND")
+            content_types = {
+                ".md": "text/markdown",
+                ".tex": "text/x-latex",
+                ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            }
+            ct = content_types.get(output_path.suffix, "application/octet-stream")
+            return FileResponse(output_path, media_type=ct, filename=output_path.name)
+
+        @app.get("/api/argument/recommendations/{node_id}")
+        def argument_recommendations(node_id: str):
+            node = _argument_store.get_node(node_id)
+            if not node:
+                _arg_error(404, "Node not found", "NODE_NOT_FOUND")
+            return {
+                "node_id": node_id,
+                "references": [r.model_dump() for r in node.references],
+            }
 
     @app.on_event("shutdown")
     async def _shutdown():

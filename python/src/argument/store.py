@@ -1,161 +1,249 @@
-"""JSON-backed Argument Map store."""
+"""Argument Mapping — 节点树 CRUD + JSON 持久化"""
 
 from __future__ import annotations
 
 import json
-import uuid
-from datetime import datetime, timezone
+import logging
+import os
 from pathlib import Path
 from typing import Any
 
+from src.argument.models import (
+    ArgumentNode,
+    ArgumentTree,
+    LogicStatus,
+    NodeStatus,
+    _gen_id,
+    _now_iso,
+)
 
-def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def new_node_id() -> str:
-    return f"node_{uuid.uuid4().hex[:4]}"
+logger = logging.getLogger(__name__)
 
 
 class ArgumentStore:
-    def __init__(self, path: str | Path) -> None:
-        self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+    """内存 + JSON 文件持久化的思维导图节点树存储。
 
-    def exists(self) -> bool:
-        return self.path.exists()
+    单树设计：当前仅支持一棵活跃的思维导图。
+    持久化路径: {persist_dir}/argument_tree.json
+    """
 
-    def load(self) -> dict[str, Any] | None:
-        if not self.path.exists():
-            return None
-        return json.loads(self.path.read_text(encoding="utf-8"))
+    def __init__(self, persist_dir: str | Path = "data") -> None:
+        self._persist_path = Path(persist_dir) / "argument_tree.json"
+        self._tree = ArgumentTree()
+        self._load()
 
-    def save(self, tree: dict[str, Any]) -> dict[str, Any]:
-        tree["updated_at"] = utc_now()
-        self.path.write_text(json.dumps(tree, ensure_ascii=False, indent=2), encoding="utf-8")
-        return tree
+    @property
+    def tree(self) -> ArgumentTree:
+        return self._tree
 
-    def create_tree(self, topic: str, domain_tags: list[str] | None = None, position: dict[str, float] | None = None) -> dict[str, Any]:
-        now = utc_now()
-        root = self._make_node(
-            node_id="node_root",
-            parent_id=None,
-            topic=topic.strip() or "Untitled Argument",
-            content="",
+    def _load(self) -> None:
+        if self._persist_path.exists():
+            try:
+                raw = json.loads(self._persist_path.read_text(encoding="utf-8"))
+                # 反序列化 nodes 字典
+                nodes = {}
+                for nid, ndata in raw.get("nodes", {}).items():
+                    nodes[nid] = ArgumentNode(**ndata)
+                self._tree = ArgumentTree(
+                    root_id=raw.get("root_id"),
+                    nodes=nodes,
+                    created_at=raw.get("created_at", _now_iso()),
+                    updated_at=raw.get("updated_at", _now_iso()),
+                )
+                logger.info("已加载 Argument Tree: %d nodes", len(nodes))
+            except Exception as e:
+                logger.warning("加载 Argument Tree 失败，使用空树: %s", e)
+                self._tree = ArgumentTree()
+
+    def _save(self) -> None:
+        self._persist_path.parent.mkdir(parents=True, exist_ok=True)
+        raw = {
+            "root_id": self._tree.root_id,
+            "nodes": {nid: node.model_dump() for nid, node in self._tree.nodes.items()},
+            "created_at": self._tree.created_at,
+            "updated_at": self._tree.updated_at,
+        }
+        tmp = self._persist_path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(str(tmp), str(self._persist_path))
+
+    def _touch(self) -> None:
+        self._tree.updated_at = _now_iso()
+        self._save()
+
+    # ── Tree ──────────────────────────────────────────────────────
+
+    def get_tree(self) -> ArgumentTree:
+        return self._tree
+
+    def create_tree(self, topic: str, domain_tags: list[str] | None = None,
+                    position: dict[str, float] | None = None) -> ArgumentNode:
+        root = ArgumentNode(
+            id="node_root",
+            topic=topic,
             depth=0,
-            position=position or {"x": 400, "y": 50},
             domain_tags=domain_tags or [],
-            now=now,
+            position=position or {"x": 400.0, "y": 50.0},
+            logic_status=LogicStatus.warning,
+            rule_issues=["MISSING_CLASSIC_CHAIN"],
+            status=NodeStatus.draft,
         )
-        root["logic_status"] = "warning"
-        root["rule_issues"] = ["MISSING_CLASSIC_CHAIN"]
-        tree = {"root_id": "node_root", "nodes": {"node_root": root}, "created_at": now, "updated_at": now}
-        return self.save(tree)
+        self._tree = ArgumentTree(
+            root_id=root.id,
+            nodes={root.id: root},
+        )
+        self._touch()
+        return root
 
-    def upsert_node(
-        self,
-        tree: dict[str, Any],
-        topic: str,
-        parent_id: str | None = None,
-        content: str = "",
-        domain_tags: list[str] | None = None,
-        position: dict[str, float] | None = None,
-        node_id: str | None = None,
-    ) -> tuple[dict[str, Any], bool]:
-        nodes = tree["nodes"]
-        now = utc_now()
-        if node_id and node_id in nodes:
-            node = nodes[node_id]
-            node.update({
-                "topic": topic.strip() or node.get("topic", "Untitled"),
-                "content": content,
-                "domain_tags": domain_tags or [],
-                "position": position or node.get("position", {"x": 400, "y": 200}),
-                "updated_at": now,
-            })
-            self.save(tree)
-            return node, False
+    # ── Node CRUD ─────────────────────────────────────────────────
 
-        if parent_id and parent_id not in nodes:
-            raise ValueError("Invalid parent_id")
-        parent = nodes.get(parent_id) if parent_id else None
-        nid = node_id or new_node_id()
-        depth = (parent.get("depth", 0) + 1) if parent else 0
-        node = self._make_node(nid, parent_id, topic, content, depth, position, domain_tags or [], now)
-        nodes[nid] = node
-        if parent:
-            parent.setdefault("children", [])
-            if nid not in parent["children"]:
-                parent["children"].append(nid)
-            parent["updated_at"] = now
-        self.save(tree)
-        return node, True
+    def get_node(self, node_id: str) -> ArgumentNode | None:
+        return self._tree.nodes.get(node_id)
 
-    def delete_node(self, tree: dict[str, Any], node_id: str, cascade: bool = False) -> list[str]:
-        nodes = tree["nodes"]
-        if node_id not in nodes:
-            raise KeyError(node_id)
-        if node_id == tree.get("root_id"):
-            raise ValueError("Cannot delete root node")
-        children = list(nodes[node_id].get("children", []))
-        if children and not cascade:
-            raise ValueError("Node has children; use cascade=true")
+    def upsert_node(self, **kwargs: Any) -> ArgumentNode:
+        """创建或更新节点。有 id 且存在则更新，否则创建。"""
+        node_id = kwargs.get("id")
+
+        if node_id and node_id in self._tree.nodes:
+            # 更新
+            node = self._tree.nodes[node_id]
+            for key, val in kwargs.items():
+                if val is not None and key != "id" and hasattr(node, key):
+                    setattr(node, key, val)
+            node.updated_at = _now_iso()
+            self._touch()
+            return node
+
+        # 创建新节点
+        parent_id = kwargs.get("parent_id")
+        depth = 0
+        if parent_id and parent_id in self._tree.nodes:
+            depth = self._tree.nodes[parent_id].depth + 1
+
+        new_node = ArgumentNode(
+            id=node_id or _gen_id("node"),
+            parent_id=parent_id,
+            topic=kwargs.get("topic", ""),
+            content=kwargs.get("content", ""),
+            depth=depth,
+            position=kwargs.get("position", {"x": 0.0, "y": 0.0}),
+            domain_tags=kwargs.get("domain_tags", []),
+            status=NodeStatus.draft,
+            logic_status=LogicStatus.warning,
+            rule_issues=[],
+        )
+
+        self._tree.nodes[new_node.id] = new_node
+
+        # 更新父节点的 children
+        if parent_id and parent_id in self._tree.nodes:
+            parent = self._tree.nodes[parent_id]
+            if new_node.id not in parent.children:
+                parent.children.append(new_node.id)
+
+        self._touch()
+        return new_node
+
+    def delete_node(self, node_id: str, cascade: bool = False) -> list[str]:
+        """删除节点，返回被删除的节点 ID 列表。"""
+        node = self._tree.nodes.get(node_id)
+        if not node:
+            return []
+
         deleted: list[str] = []
 
-        def remove(nid: str) -> None:
-            for child in list(nodes.get(nid, {}).get("children", [])):
-                remove(child)
-            parent_id = nodes.get(nid, {}).get("parent_id")
-            if parent_id in nodes:
-                nodes[parent_id]["children"] = [cid for cid in nodes[parent_id].get("children", []) if cid != nid]
-            if nid in nodes:
-                del nodes[nid]
-                deleted.append(nid)
+        if cascade:
+            # 递归收集所有子孙节点
+            stack = [node_id]
+            while stack:
+                nid = stack.pop()
+                nd = self._tree.nodes.get(nid)
+                if nd:
+                    deleted.append(nid)
+                    stack.extend(nd.children)
+        else:
+            deleted.append(node_id)
+            # 非 cascade 模式：将被删节点的子节点重新挂到其父节点
+            if node.parent_id and node.parent_id in self._tree.nodes:
+                parent = self._tree.nodes[node.parent_id]
+                for child_id in node.children:
+                    child = self._tree.nodes.get(child_id)
+                    if child:
+                        child.parent_id = node.parent_id
+                        parent.children.append(child_id)
 
-        remove(node_id)
-        self.save(tree)
+        # 从父节点的 children 中移除被删节点
+        if node.parent_id and node.parent_id in self._tree.nodes:
+            parent = self._tree.nodes[node.parent_id]
+            parent.children = [c for c in parent.children if c not in deleted]
+
+        # 从树中移除
+        for nid in deleted:
+            self._tree.nodes.pop(nid, None)
+
+        self._touch()
         return deleted
 
-    def bind_reference(self, tree: dict[str, Any], node_id: str, ref: dict[str, Any]) -> dict[str, Any]:
-        node = tree["nodes"][node_id]
-        refs = [r for r in node.get("references", []) if r.get("doc_id") != ref["doc_id"]]
-        refs.append(ref)
-        node["references"] = refs
-        node["updated_at"] = utc_now()
-        self.save(tree)
-        return ref
+    # ── Reference binding ─────────────────────────────────────────
 
-    def unbind_reference(self, tree: dict[str, Any], node_id: str, doc_id: str) -> None:
-        node = tree["nodes"][node_id]
-        node["references"] = [r for r in node.get("references", []) if r.get("doc_id") != doc_id]
-        node["updated_at"] = utc_now()
-        self.save(tree)
+    def bind_reference(self, node_id: str, doc_id: str, citation_key: str,
+                       binding_type: str, relevance_score: float) -> ArgumentNode | None:
+        from src.argument.models import BindingType, Reference
 
-    @staticmethod
-    def _make_node(
-        node_id: str,
-        parent_id: str | None,
-        topic: str,
-        content: str,
-        depth: int,
-        position: dict[str, float] | None,
-        domain_tags: list[str],
-        now: str,
-    ) -> dict[str, Any]:
-        return {
-            "id": node_id,
-            "parent_id": parent_id,
-            "topic": topic.strip() or "Untitled",
-            "content": content,
-            "depth": depth,
-            "position": position or {"x": 400, "y": 200 + depth * 120},
-            "domain_tags": domain_tags,
-            "references": [],
-            "logic_status": "draft",
-            "rule_issues": [],
-            "agent_feedback": None,
-            "status": "draft",
-            "children": [],
-            "created_at": now,
-            "updated_at": now,
-        }
+        node = self._tree.nodes.get(node_id)
+        if not node:
+            return None
+
+        ref = Reference(
+            doc_id=doc_id,
+            citation_key=citation_key,
+            relevance_score=relevance_score,
+            binding_type=BindingType(binding_type),
+        )
+        # 避免重复绑定
+        if not any(r.doc_id == doc_id for r in node.references):
+            node.references.append(ref)
+            node.updated_at = _now_iso()
+            self._touch()
+        return node
+
+    def unbind_reference(self, node_id: str, doc_id: str) -> bool:
+        node = self._tree.nodes.get(node_id)
+        if not node:
+            return False
+        before = len(node.references)
+        node.references = [r for r in node.references if r.doc_id != doc_id]
+        if len(node.references) < before:
+            node.updated_at = _now_iso()
+            self._touch()
+            return True
+        return False
+
+    def get_subtree_ids(self, node_id: str) -> list[str]:
+        """返回以 node_id 为根的子树中所有节点 ID（包含自身）。"""
+        if node_id == "root":
+            node_id = self._tree.root_id or ""
+        result: list[str] = []
+        stack = [node_id]
+        while stack:
+            nid = stack.pop()
+            if nid in self._tree.nodes:
+                result.append(nid)
+                stack.extend(self._tree.nodes[nid].children)
+        return result
+
+    def update_node_fields(self, node_id: str, **fields: Any) -> ArgumentNode | None:
+        node = self._tree.nodes.get(node_id)
+        if not node:
+            return None
+        # Convert string values to enum types where needed
+        if "logic_status" in fields and isinstance(fields["logic_status"], str):
+            fields["logic_status"] = LogicStatus(fields["logic_status"])
+        if "status" in fields and isinstance(fields["status"], str):
+            fields["status"] = NodeStatus(fields["status"])
+        for key, val in fields.items():
+            if hasattr(node, key):
+                setattr(node, key, val)
+        node.updated_at = _now_iso()
+        self._touch()
+        return node
