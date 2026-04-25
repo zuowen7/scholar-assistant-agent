@@ -22,13 +22,14 @@
 
 ### 学术写作 AI
 - **Agent 对话** — 基于 ReAct 循环的智能助手，可调用工具、检索知识库
-- **RAG 知识库** — ChromaDB + 本地嵌入，文档自动分块索引
+- **RAG 知识库** — ChromaDB + 本地嵌入，文档自动分块索引；翻译后自动入库；支持手动上传/删除文件
 - **Skill 系统** — 从任务轨迹中沉淀可复用经验，支持多信号匹配
 - **AI 润色 / 扩写 / 连贯性改写 / 合规检查** — 通过 AI Panel 对选中文本操作
+- **Inline Ghost Text** — Monaco Editor 打字后 1.5s 自动请求补全建议，Tab 接受 ghost 文本
 
 ### 编辑器
 - **Monaco Editor** — 全功能代码编辑器，支持 Markdown 语法高亮
-- **AI Panel** — 润色/扩写结果用 diff 视图对比原文，一键应用/撤销
+- **AI Panel** — 聊天风格 UI，支持消息历史；润色/扩写结果用 diff 视图对比原文，一键应用/撤销
 - **文件树** — 多文件管理，左侧导航
 - **模板导出** — Pandoc 编译，支持 IEEE/ACM/NeurIPS/LNCS/Elsevier/通用 LaTeX 模板
 
@@ -164,6 +165,12 @@ MSYS_NO_PATHCONV=1 docker run --rm \
 | `GET/PUT` | `/api/config` | 读写配置 |
 | `POST` | `/api/chat` | Agent SSE 对话（ReAct 循环） |
 | `POST` | `/api/agent/task` | 执行特定 Agent 任务 |
+| `POST` | `/api/edit` | AI 驱动的 SSE 流式编辑（ollama/cloud 双引擎） |
+| `POST` | `/api/complete` | 非流式 inline 补全 |
+| `GET` | `/api/rag/documents` | 列出 RAG 知识库文档 |
+| `POST` | `/api/rag/upload` | 上传文件入库 RAG（不经翻译） |
+| `DELETE` | `/api/rag/documents/{doc_id}` | 删除 RAG 知识库文档 |
+| `POST` | `/api/rag/ingest` | 向 RAG 知识库存入文本 |
 
 翻译 SSE 事件顺序：`progress` → `parsed` → `cleaned` → `chunked` → `chunk_done`(×N) → `complete`
 
@@ -190,7 +197,7 @@ MSYS_NO_PATHCONV=1 docker run --rm \
 cd python && pytest tests/ -v
 ```
 
-当前：170 个单元测试，覆盖 Parser / Cleaner / Chunker / Translator / Formatter / Agent / PromptBuilder / ContextCompressor / MemoryManager / TrajectoryRecorder / ErrorClassifier / RetryManager / HookManager
+当前：463 个测试（24 unit + 3 integration），覆盖 Parser / Cleaner / Chunker / Translator / Formatter / Agent 全模块 / RAG / MCP / Zotero / WordExporter / Benchmark
 
 ## 技术栈
 
