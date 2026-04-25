@@ -379,6 +379,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
             "output_path": None,
             "content": None,
             "error": None,
+            "filename": file.filename or "unknown",
         }
 
         return {"task_id": task_id}
@@ -573,6 +574,27 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
 
             task["status"] = "done"
             task["output_path"] = str(out_path)
+
+            # 自动将翻译结果入库到 RAG 知识库
+            if _rag_store is not None:
+                try:
+                    src_lang = config.get("translator", {}).get("source_lang", "en")
+                    src_label = "英文" if src_lang == "en" else src_lang
+                    rag_meta = {
+                        "title": f"[翻译] {task['filename']}",
+                        "source": "translation",
+                        "source_lang": src_label,
+                    }
+                    # 入库原文 + 译文对照，便于后续问答
+                    dual_text = f"[原文]\n{clean_result.text}\n\n[译文]\n{content}"
+                    _rag_store.ingest_document(
+                        doc_id=f"trans_{task_id}",
+                        text=dual_text,
+                        metadata=rag_meta,
+                    )
+                    logger.info("翻译结果已自动入库 RAG: trans_%s", task_id)
+                except Exception as rag_err:
+                    logger.warning("翻译结果入库 RAG 失败（不影响翻译）: %s", rag_err)
 
             yield {
                 "event": "complete",
@@ -870,6 +892,67 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
             doc_id=req.doc_id, text=req.text, metadata=metadata,
         )
         return {"doc_id": req.doc_id, "chunk_count": count}
+
+    @app.post("/api/rag/upload")
+    async def upload_rag_document(file: UploadFile = File(...)):
+        """上传文件并直接入库到 RAG 知识库（不经翻译管道）。"""
+        if _rag_store is None:
+            await _get_agent()
+
+        if not file.filename:
+            raise HTTPException(400, "文件名不能为空")
+
+        ext = Path(file.filename).suffix.lower()
+        if ext not in SUPPORTED_EXTENSIONS:
+            supported = ", ".join(sorted(SUPPORTED_EXTENSIONS.keys()))
+            raise HTTPException(400, f"不支持的文件格式: {ext}。支持: {supported}")
+
+        doc_id = f"upload_{uuid.uuid4().hex[:8]}"
+
+        # 保存到临时目录
+        upload_dir = Path("data/uploads")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        temp_path = upload_dir / f"{doc_id}_{file.filename}"
+
+        try:
+            total = 0
+            with open(temp_path, "wb") as f:
+                while chunk := file.file.read(1024 * 1024):
+                    total += len(chunk)
+                    if total > MAX_UPLOAD_SIZE:
+                        f.close()
+                        temp_path.unlink(missing_ok=True)
+                        raise HTTPException(413, "文件过大，最大支持 200 MB")
+                    f.write(chunk)
+
+            # 解析文档
+            doc = await asyncio.to_thread(extract_document, str(temp_path))
+            raw_text = doc.full_text
+
+            if not raw_text.strip():
+                raise HTTPException(400, "文档内容为空")
+
+            # 入库 RAG
+            metadata = {
+                "title": file.filename,
+                "source": "user_upload",
+                "page_count": doc.page_count,
+            }
+            chunk_count = _rag_store.ingest_document(
+                doc_id=doc_id,
+                text=raw_text,
+                metadata=metadata,
+            )
+
+            return {
+                "doc_id": doc_id,
+                "title": file.filename,
+                "chunk_count": chunk_count,
+                "chars": len(raw_text),
+            }
+
+        finally:
+            temp_path.unlink(missing_ok=True)
 
     @app.get("/api/agent/stats")
     async def agent_stats():
