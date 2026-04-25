@@ -19,7 +19,8 @@
         { "path": "$DOCUMENT/**" },
         { "path": "$DESKTOP/**" },
         { "path": "$DOWNLOAD/**" },
-        { "path": "$APPDATA/**" }
+        { "path": "$APPDATA/**" },
+        { "path": "$PICTURE/**" }
       ]
     },
     {
@@ -37,7 +38,8 @@
         { "path": "$DOCUMENT/**" },
         { "path": "$DESKTOP/**" },
         { "path": "$DOWNLOAD/**" },
-        { "path": "$APPDATA/**" }
+        { "path": "$APPDATA/**" },
+        { "path": "$PICTURE/**" }
       ]
     }
   ]

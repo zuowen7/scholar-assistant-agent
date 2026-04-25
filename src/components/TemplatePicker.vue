@@ -1,5 +1,5 @@
 <template>
-  <div v-if="visible" class="template-picker-overlay" @click.self="close">
+  <div v-if="visible" class="template-picker-overlay" :class="{ light: !isDark }" @click.self="close">
     <section class="template-picker" role="dialog" aria-modal="true" aria-labelledby="template-title">
       <header class="tp-header">
         <div>
@@ -69,7 +69,8 @@
 import { reactive, ref, watch } from 'vue'
 import { API_BASE } from '../utils/api'
 
-const props = defineProps<{ visible: boolean }>()
+const props = defineProps<{ visible: boolean; isDark?: boolean }>()
+const isDark = props.isDark !== undefined ? props.isDark : true
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'create', markdown: string, templateId: string): void
@@ -162,7 +163,7 @@ watch(() => props.visible, (v) => {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(9, 9, 11, 0.72);
+  background: var(--overlay-bg);
   backdrop-filter: blur(8px);
 }
 
@@ -171,11 +172,11 @@ watch(() => props.visible, (v) => {
   max-height: min(760px, 88vh);
   display: flex;
   flex-direction: column;
-  background: #111113;
-  color: var(--text-primary, #d4d4d4);
-  border: 1px solid #2a2a2f;
+  background: var(--surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 28px 80px var(--shadow);
   overflow: hidden;
 }
 
@@ -185,18 +186,19 @@ watch(() => props.visible, (v) => {
   justify-content: space-between;
   gap: 16px;
   padding: 18px 20px;
-  border-bottom: 1px solid #242428;
+  border-bottom: 1px solid var(--border);
 }
 
 .tp-header h3 {
   margin: 0;
   font-size: 18px;
   font-weight: 650;
+  color: var(--text);
 }
 
 .tp-header p {
   margin: 5px 0 0;
-  color: var(--text-secondary, #8b8b93);
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
@@ -206,12 +208,12 @@ watch(() => props.visible, (v) => {
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: var(--text-secondary, #8b8b93);
+  color: var(--text-secondary);
   cursor: pointer;
   font-size: 20px;
   line-height: 1;
 }
-.tp-close:hover { background: #242428; color: var(--text-primary, #e4e4e7); }
+.tp-close:hover { background: var(--hover-bg); color: var(--text-primary); }
 
 .tp-body {
   flex: 1;
@@ -232,19 +234,19 @@ watch(() => props.visible, (v) => {
   align-items: flex-start;
   width: 100%;
   padding: 12px;
-  border: 1px solid #2a2a2f;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #17171a;
+  background: var(--surface2);
   color: inherit;
   text-align: left;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s, transform 0.15s;
 }
-.tp-card:hover { border-color: #5f5cf1; background: #1d1d23; }
+.tp-card:hover { border-color: var(--accent); background: var(--hover-bg); }
 .tp-card.active {
-  border-color: #6c63ff;
-  background: rgba(108, 99, 255, 0.14);
-  box-shadow: inset 0 0 0 1px rgba(108, 99, 255, 0.42);
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .tp-card-icon {
@@ -254,8 +256,8 @@ watch(() => props.visible, (v) => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #232329;
-  color: #b9b6ff;
+  background: var(--accent-bg);
+  color: var(--accent2);
   font-size: 12px;
   font-weight: 700;
 }
@@ -267,29 +269,29 @@ watch(() => props.visible, (v) => {
   gap: 3px;
 }
 
-.tp-card-name { font-size: 13px; font-weight: 650; }
-.tp-card-venue { font-size: 11px; color: #9b97ff; }
+.tp-card-name { font-size: 13px; font-weight: 650; color: var(--text-primary); }
+.tp-card-venue { font-size: 11px; color: var(--accent2); }
 .tp-card-desc {
   font-size: 12px;
-  color: var(--text-secondary, #8b8b93);
+  color: var(--text-secondary);
   line-height: 1.45;
 }
 
 .tp-state {
   padding: 24px;
-  color: var(--text-secondary, #8b8b93);
+  color: var(--text-secondary);
   text-align: center;
 }
 
 .tp-options {
-  border-top: 1px solid #242428;
+  border-top: 1px solid var(--border);
   padding-top: 16px;
 }
 
 .tp-label {
   display: block;
   margin-bottom: 7px;
-  color: var(--text-secondary, #8b8b93);
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
@@ -299,14 +301,14 @@ watch(() => props.visible, (v) => {
   width: 100%;
   margin-top: 6px;
   padding: 10px 12px;
-  border: 1px solid #2a2a2f;
+  border: 1px solid var(--border);
   border-radius: 7px;
-  background: #1d1d20;
-  color: var(--text-primary, #e4e4e7);
+  background: var(--input-bg);
+  color: var(--text-primary);
   font-size: 13px;
   outline: none;
 }
-.tp-input:focus { border-color: #6c63ff; }
+.tp-input:focus { border-color: var(--accent); }
 
 .tp-sections { margin-top: 14px; }
 .tp-checks {
@@ -320,11 +322,11 @@ watch(() => props.visible, (v) => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--text-primary, #d4d4d4);
+  color: var(--text-primary);
   font-size: 13px;
   cursor: pointer;
 }
-.tp-check input { accent-color: #6c63ff; }
+.tp-check input { accent-color: var(--accent); }
 
 .tp-footer {
   display: flex;
@@ -332,13 +334,13 @@ watch(() => props.visible, (v) => {
   justify-content: flex-end;
   gap: 8px;
   padding: 14px 20px;
-  border-top: 1px solid #242428;
+  border-top: 1px solid var(--border);
 }
 
 .tp-error {
   flex: 1;
   min-width: 0;
-  color: #ff6b6b;
+  color: var(--red);
   font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
@@ -349,22 +351,22 @@ watch(() => props.visible, (v) => {
   height: 32px;
   padding: 0 16px;
   border-radius: 7px;
-  border: 1px solid #2d2d34;
+  border: 1px solid var(--border);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   background: transparent;
-  color: var(--text-primary, #d4d4d4);
+  color: var(--text-primary);
 }
-.tp-btn:hover { background: #232329; }
+.tp-btn:hover { background: var(--hover-bg); }
 .tp-btn-create {
-  border-color: #6c63ff;
-  background: #6c63ff;
+  border-color: var(--accent);
+  background: var(--accent);
   color: #fff;
 }
-.tp-btn-create:hover { background: #5e56ef; }
+.tp-btn-create:hover { opacity: 0.9; }
 .tp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.tp-btn-ghost { color: #b9b6ff; }
+.tp-btn-ghost { color: var(--accent2); }
 
 @media (max-width: 720px) {
   .tp-grid { grid-template-columns: 1fr; }
