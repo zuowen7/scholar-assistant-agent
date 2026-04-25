@@ -4,8 +4,6 @@ fn main() {
         std::fs::create_dir_all(resource_dir).expect("failed to create python-dist resource dir");
     }
 
-    // Use icon from ASCII-only target path to avoid windres issues
-    // with non-ASCII project directory names on Windows
     let icon_path = std::path::Path::new("D:\\cargo-target\\scholar-translate\\icons\\icon.ico");
     if !icon_path.exists() {
         if let Some(parent) = icon_path.parent() {
@@ -16,5 +14,13 @@ fn main() {
 
     let attrs = tauri_build::Attributes::new()
         .windows_attributes(tauri_build::WindowsAttributes::new().window_icon_path(icon_path));
+
+    // In debug builds, emit rerun-if-changed only for the top-level python-dist
+    // directory to avoid Windows quota exhaustion (8200+ files exceed OS limits).
+    // In release builds, tauri_build handles full resource tracking for bundling.
+    if cfg!(debug_assertions) {
+        println!("cargo:rerun-if-changed=python-dist");
+    }
+
     tauri_build::try_build(attrs).expect("failed to run build script");
 }
