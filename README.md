@@ -16,7 +16,7 @@
 
 ### 翻译引擎
 - **本地** — Ollama + Qwen3，全程离线，无需 API Key
-- **云端** — OpenAI / Anthropic / DeepSeek / Moonshot / Grok / Gemini / together / custom
+- **云端** — OpenAI / Anthropic / DeepSeek / Moonshot / Gemini / xAI / Groq / Together / SiliconFlow / Novita / 火山方舟 / 百度千帆 / Azure / 自定义 (共 18 家供应商)
 - **Glossary 自动提取** — 翻译结果中提取 `中文(English)` 术语对，注入后续块翻译
 - **滑动上下文窗口** — 每块翻译携带前 N 块的摘要和术语表
 
@@ -26,6 +26,14 @@
 - **Skill 系统** — 从任务轨迹中沉淀可复用经验，支持多信号匹配
 - **AI 润色 / 扩写 / 连贯性改写 / 合规检查** — 通过 AI Panel 对选中文本操作
 - **Inline Ghost Text** — Monaco Editor 打字后 1.5s 自动请求补全建议，Tab 接受 ghost 文本
+
+### 动态逻辑引擎 (Dynamic Argument Mapping)
+- **论证树** — 创建/编辑/删除论证节点，构建层次化论证结构
+- **AI 扩展** — 基于节点内容自动生成子论点
+- **证据绑定** — 将 RAG 知识库文档绑定到节点作为文献依据
+- **逻辑审查** — AI 检测论证链中的逻辑跳跃和不自洽
+- **降维展开** — 将论证树自动展开为结构化论文初稿（SSE 流式）
+- **观测反馈** — 对节点添加观测记录和评审意见
 
 ### 编辑器
 - **Monaco Editor** — 全功能代码编辑器，支持 Markdown 语法高亮
@@ -49,22 +57,28 @@
 │   ├── composables/
 │   │   ├── useTranslate.ts       #   SSE 翻译管线状态管理
 │   │   ├── useAgentChat.ts       #   Agent SSE 对话状态管理
-│   │   └── useEditor.ts          #   Monaco Editor + AI Panel
-│   └── components/               #   AI Panel, FileTree, ComplianceModal 等
-├── python/                       # Python 后端 (~10337 行)
-│   ├── api_factory.py            #   FastAPI app 工厂
+│   │   ├── useEditor.ts          #   Monaco Editor + AI Panel
+│   │   └── useFileTree.ts        #   文件树导航
+│   └── components/               #   AiPanel, FileTree, ArgumentMap, MonacoEditor 等
+├── python/                       # Python 后端 (~17k 行)
+│   ├── api_factory.py            #   FastAPI app 工厂 (73 个 API 端点)
 │   ├── main.py                   #   CLI 入口
 │   ├── config/default.yaml       #   默认配置
 │   ├── src/
 │   │   ├── parser/               #   16 格式解析器
-│   │   ├── cleaner/             #   17 阶段清洗管线
+│   │   ├── cleaner/              #   17 阶段清洗管线
 │   │   ├── chunker/              #   3 策略切块 (sentence/paragraph/fixed)
-│   │   ├── translator/           #   Ollama + Cloud 双客户端
+│   │   ├── translator/           #   Ollama + Cloud 双客户端 (18 家供应商)
 │   │   ├── formatter/            #   3 输出模式 + Pandoc 导出
-│   │   └── agent/                #   ReAct Agent + RAG + Tools + Skills
+│   │   ├── agent/                #   ReAct Agent + RAG + Tools + Skills
+│   │   ├── argument/             #   动态逻辑引擎 (树存储/扩展/审查/展开)
+│   │   ├── plugin/               #   MCP 风格插件注册 (16 内置工具)
+│   │   ├── citation/             #   引用索引器
+│   │   ├── zotero/               #   Zotero API 集成
+│   │   └── mcp/                  #   Vision 客户端 (多模态图像理解)
 │   ├── prompts/                  #   学术写作 Prompt 体系
-│   ├── data/paper_assets/       #   论文模板 + 组件库
-│   └── tests/                    #   170 个单元测试
+│   ├── data/paper_assets/        #   论文模板 + 组件库
+│   └── tests/                    #   463 个测试 (19 unit + 3 integration)
 ├── Dockerfile
 ├── docker-compose.yml
 └── package.json
@@ -155,24 +169,110 @@ MSYS_NO_PATHCONV=1 docker run --rm \
 
 ## API 接口
 
+翻译 SSE 事件顺序：`progress` → `parsed` → `cleaned` → `chunked` → `chunk_done`(×N) → `complete`
+
+### 翻译
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/api/translate` | 上传文档，返回 task_id |
+| `POST` | `/api/translate/path` | 从文件路径翻译 |
+| `GET` | `/api/translate/{id}/stream` | SSE 翻译进度流 |
+| `GET` | `/api/download/{id}` | 下载翻译结果 |
+
+### 引擎状态
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `GET` | `/api/health` | 健康检查 |
 | `GET` | `/api/ollama/status` | Ollama 状态 |
-| `POST` | `/api/translate` | 上传文档，返回 task_id |
-| `GET` | `/api/translate/{id}/stream` | SSE 翻译进度流 |
-| `GET` | `/api/download/{id}` | 下载翻译结果 |
-| `GET/PUT` | `/api/config` | 读写配置 |
-| `POST` | `/api/chat` | Agent SSE 对话（ReAct 循环） |
-| `POST` | `/api/agent/task` | 执行特定 Agent 任务 |
-| `POST` | `/api/edit` | AI 驱动的 SSE 流式编辑（ollama/cloud 双引擎） |
-| `POST` | `/api/complete` | 非流式 inline 补全 |
-| `GET` | `/api/rag/documents` | 列出 RAG 知识库文档 |
-| `POST` | `/api/rag/upload` | 上传文件入库 RAG（不经翻译） |
-| `DELETE` | `/api/rag/documents/{doc_id}` | 删除 RAG 知识库文档 |
-| `POST` | `/api/rag/ingest` | 向 RAG 知识库存入文本 |
+| `GET` | `/api/cloud/status` | 云端 API 状态 |
+| `GET` | `/api/cloud/providers` | 列出可用供应商 |
 
-翻译 SSE 事件顺序：`progress` → `parsed` → `cleaned` → `chunked` → `chunk_done`(×N) → `complete`
+### 配置
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/api/config` | 读取配置 |
+| `PUT` | `/api/config` | 写入配置 |
+
+### Agent & 编辑
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/api/chat` | Agent SSE 对话 (ReAct 循环) |
+| `POST` | `/api/edit` | AI 驱动的 SSE 流式编辑 |
+| `POST` | `/api/complete` | 非流式 inline 补全 |
+| `GET` | `/api/agent/stats` | Agent 统计信息 |
+
+### RAG 知识库
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/api/rag/documents` | 列出 RAG 文档 |
+| `POST` | `/api/rag/upload` | 上传文件到 RAG |
+| `POST` | `/api/rag/ingest` | 向 RAG 存入文本 |
+| `DELETE` | `/api/rag/documents/{doc_id}` | 删除 RAG 文档 |
+
+### 动态逻辑引擎
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/api/argument/tree` | 创建论证树 |
+| `GET` | `/api/argument/tree` | 获取论证树 |
+| `PUT` | `/api/argument/node` | 创建/更新节点 |
+| `GET` | `/api/argument/node/{id}` | 获取节点详情 |
+| `DELETE` | `/api/argument/node/{id}` | 删除节点 |
+| `POST` | `/api/argument/expand` | AI 扩展子论点 |
+| `POST` | `/api/argument/observe` | 添加观测记录 |
+| `POST` | `/api/argument/bind` | 绑定文献到节点 |
+| `DELETE` | `/api/argument/bind/{node_id}/{doc_id}` | 解绑文献 |
+| `GET` | `/api/argument/recommendations/{node_id}` | 推荐相关文献 |
+| `POST` | `/api/argument/review` | AI 逻辑审查 |
+| `POST` | `/api/argument/flatten` | 降维展开为论文 |
+| `GET` | `/api/argument/flatten/{task_id}/stream` | SSE 展开进度 |
+| `GET` | `/api/argument/download/{task_id}` | 下载展开结果 |
+
+### 论文写作
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/api/paper-assets/templates` | 列出论文模板 |
+| `POST` | `/api/paper-assets/ingest` | 索引模板素材 |
+| `POST` | `/api/paper-scaffold` | 生成论文大纲 |
+| `POST` | `/api/paper-style-transfer` | 风格迁移 |
+| `POST` | `/api/compliance` | 合规检查 |
+
+### 导出
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/api/export/templates` | 列出导出模板 |
+| `POST` | `/api/export` | 导出文档 (LaTeX/PDF) |
+| `POST` | `/api/export/pdf` | 导出为 PDF |
+| `POST` | `/api/export/word` | 导出为 Word (.docx) |
+| `GET` | `/api/export/word/{filename}` | 下载 Word 导出 |
+
+### Vision
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/api/vision/analyze` | 通用图像分析 |
+| `POST` | `/api/vision/ocr` | OCR 文字提取 |
+| `POST` | `/api/vision/chart` | 图表分析 |
+| `POST` | `/api/vision/table` | 表格结构提取 |
+
+### Zotero
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/api/zotero/status` | 连接状态 |
+| `POST` | `/api/zotero/search` | 搜索 Zotero 库 |
+| `GET` | `/api/zotero/item/{key}` | 获取条目元数据 |
+| `GET` | `/api/zotero/item/{key}/bibtex` | 获取 BibTeX |
+| `POST` | `/api/zotero/export` | 导出条目到文件 |
+| `POST` | `/api/zotero/citations` | 提取引用 |
+
+### 其他
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/api/plugins` | 列出已注册插件工具 |
+| `GET` | `/api/tectonic/status` | LaTeX 引擎状态 |
+| `POST` | `/api/tectonic/install` | 安装 Tectonic |
+| `PUT` | `/api/citation/index` | 索引引用 |
+| `GET` | `/api/citation/extract` | 提取引用 |
+| `POST` | `/api/upload/image` | 上传图片 |
+| `GET` | `/api/assets/{filename}` | 获取资源文件 |
 
 ## 配置
 
@@ -197,7 +297,7 @@ MSYS_NO_PATHCONV=1 docker run --rm \
 cd python && pytest tests/ -v
 ```
 
-当前：463 个测试（24 unit + 3 integration），覆盖 Parser / Cleaner / Chunker / Translator / Formatter / Agent 全模块 / RAG / MCP / Zotero / WordExporter / Benchmark
+463 个测试（19 unit + 3 integration），覆盖 Parser / Cleaner / Chunker / Translator / Formatter / Agent / RAG / MCP / Zotero / WordExporter / Benchmark
 
 ## 技术栈
 
@@ -207,7 +307,7 @@ cd python && pytest tests/ -v
 | 桌面端 | Tauri 2 (Rust) |
 | 后端 | Python 3.12, FastAPI, SSE |
 | 翻译（本地） | Ollama + Qwen3:8b |
-| 翻译（云端） | OpenAI / Anthropic / DeepSeek / Moonshot 等 |
+| 翻译（云端） | OpenAI / Anthropic / DeepSeek 等 18 家供应商 |
 | PDF | PyMuPDF, pdfplumber |
 | 向量数据库 | ChromaDB + all-MiniLM-L6-v2（仅本地） |
 | LaTeX 导出 | Pandoc + 6 套官方模板 |

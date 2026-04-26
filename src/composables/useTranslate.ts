@@ -472,14 +472,14 @@ export function useTranslate() {
 
 // --- Cloud API ---
 
-async function checkCloudApi(): Promise<boolean> {
+async function checkCloudApi(): Promise<{ ok: boolean; error?: string }> {
   try {
     const resp = await fetch(`${API_URL}/api/cloud/status`, { signal: AbortSignal.timeout(15000) })
-    if (!resp.ok) return false
+    if (!resp.ok) return { ok: false, error: `HTTP ${resp.status}` }
     const data = await resp.json()
-    return data.reachable === true
+    return { ok: data.reachable === true, error: data.error }
   } catch {
-    return false
+    return { ok: false, error: '无法连接到后端' }
   }
 }
 

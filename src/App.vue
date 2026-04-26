@@ -101,6 +101,7 @@
                 <div v-if="cloudConfig.api_key" class="cloud-status-hint" :class="cloudOk ? 'ok' : 'off'">
                   {{ cloudOk ? '已连接' : '未连接' }}
                 </div>
+                <div v-if="cloudError" class="cloud-error-hint">{{ cloudError }}</div>
               </div>
               <!-- 网络代理 -->
               <div class="settings-section-label" style="margin-top: 12px;">网络代理</div>
@@ -702,6 +703,7 @@ const ollamaOk = ref(false)
 const ollamaLoading = ref(false)
 const ollamaError = ref<string | null>(null)
 const cloudOk = ref(false)
+const cloudError = ref<string | null>(null)
 const cloudChecking = ref(false)
 const tectonicOk = ref(false)
 const tectonicChecking = ref(false)
@@ -1170,7 +1172,9 @@ onMounted(async () => {
   ollamaOk.value = await checkOllama()
   checkTectonic()
   if (engineType.value === 'cloud') {
-    cloudOk.value = await checkCloudApi()
+    const r = await checkCloudApi()
+    cloudOk.value = r.ok
+    cloudError.value = r.error ?? null
   }
   timer = setInterval(async () => {
     if (state.status === 'idle') {
@@ -1183,7 +1187,9 @@ onMounted(async () => {
       if (engineType.value === 'ollama') {
         ollamaOk.value = await checkOllama()
       } else {
-        cloudOk.value = await checkCloudApi()
+        const r = await checkCloudApi()
+        cloudOk.value = r.ok
+        cloudError.value = r.error ?? null
       }
     }
   }, 8000)
@@ -1338,7 +1344,9 @@ async function saveEngineSettings() {
   // If switched to cloud, check connectivity
   if (engineType.value === 'cloud') {
     cloudOk.value = false
-    cloudOk.value = await checkCloudApi()
+    const r = await checkCloudApi()
+    cloudOk.value = r.ok
+    cloudError.value = r.error ?? null
   }
 }
 
@@ -1360,10 +1368,13 @@ function onProviderChange() {
 
 async function testCloudConnection() {
   cloudChecking.value = true
+  cloudError.value = null
   try {
     // Save first so the backend has the latest config
     await saveEngineSettings()
-    cloudOk.value = await checkCloudApi()
+    const r = await checkCloudApi()
+    cloudOk.value = r.ok
+    cloudError.value = r.error ?? null
   } finally {
     cloudChecking.value = false
   }
@@ -1834,6 +1845,14 @@ body {
 .cloud-status-hint.off {
   color: var(--red);
   background: var(--red-bg);
+}
+
+.cloud-error-hint {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text2);
+  padding: 4px 6px;
+  margin-top: 4px;
 }
 
 /* ── Window Controls ── */

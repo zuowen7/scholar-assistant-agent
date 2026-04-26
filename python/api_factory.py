@@ -1363,7 +1363,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
     def _argument_store():
         from src.argument import ArgumentStore
 
-        return ArgumentStore(RUNTIME_DIR / "data" / "argument_tree.json")
+        return ArgumentStore(RUNTIME_DIR / "data")
 
     def _argument_tree_or_404() -> dict:
         tree = _argument_store().load()

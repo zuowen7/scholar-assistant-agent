@@ -59,7 +59,7 @@ PROVIDER_PRESETS: dict[str, dict] = {
     "deepseek": {
         "name": "DeepSeek",
         "base_url": "https://api.deepseek.com/v1",
-        "models": ["deepseek-chat", "deepseek-reasoner"],
+        "models": ["deepseek-v4-pro", "deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"],
         "api_format": "openai",
     },
     "moonshot": {
@@ -472,51 +472,67 @@ class CloudClient:
 
     def health_check(self) -> bool:
         """检查云端 API 是否可用（用 models 列表接口验证连通性，不消耗 token）"""
+        result, _ = self.health_check_detail()
+        return result
+
+    def health_check_detail(self) -> tuple[bool, str]:
+        """检查云端 API 是否可用，返回 (是否成功, 错误原因)"""
         try:
             if self.api_format == "anthropic":
-                return self._anthropic_health_check()
+                return self._anthropic_health_check_detail()
             else:
-                return self._openai_health_check()
-        except Exception:
+                return self._openai_health_check_detail()
+        except Exception as e:
             logger.debug("Cloud health check failed", exc_info=True)
-            return False
+            return False, f"连接异常: {e}"
 
     def _openai_health_check(self) -> bool:
+        result, _ = self._openai_health_check_detail()
+        return result
+
+    def _openai_health_check_detail(self) -> tuple[bool, str]:
         """OpenAI 兼容 API 健康检查 — 尝试 /models 端点（不消耗 token）"""
-        # 优先尝试 models 端点
         for path in ("/models", "/v1/models"):
             try:
-                headers = {
-                    "Authorization": f"Bearer {self.api_key}",
-                }
+                headers = {"Authorization": f"Bearer {self.api_key}"}
                 client = self._get_http_client()
                 resp = client.get(f"{self.base_url}{path}", headers=headers, timeout=10.0)
                 if resp.status_code == 200:
-                    return True
+                    return True, ""
                 if resp.status_code == 401:
-                    return False
+                    return False, "API Key 无效 (401 Unauthorized)"
+                if resp.status_code == 403:
+                    return False, "访问被拒绝 (403 Forbidden)，检查代理或网络设置"
+                return False, f"HTTP {resp.status_code}"
+            except httpx.TimeoutException:
+                return False, f"连接 {self.base_url} 超时，请检查网络或代理设置"
             except httpx.HTTPError:
                 continue
 
-        # fallback: 发最小 chat 请求（兼容不支持 /models 的网关）
+        # fallback: 发最小 chat 请求
         url = f"{self.base_url}/chat/completions"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}",
-        }
-        payload = {
-            "model": self.model,
-            "messages": [{"role": "user", "content": "hi"}],
-            "max_tokens": 1,
-        }
+        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"}
+        payload = {"model": self.model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1}
         try:
             client = self._get_http_client()
             resp = client.post(url, json=payload, headers=headers, timeout=15.0)
-            return resp.status_code == 200
-        except httpx.HTTPError:
-            return False
+            if resp.status_code == 200:
+                return True, ""
+            if resp.status_code == 401:
+                return False, "API Key 无效 (401 Unauthorized)"
+            if resp.status_code == 403:
+                return False, "访问被拒绝 (403 Forbidden)，检查代理或网络设置"
+            return False, f"HTTP {resp.status_code}"
+        except httpx.TimeoutException:
+            return False, f"连接 {self.base_url} 超时，请检查网络或代理设置"
+        except httpx.HTTPError as e:
+            return False, f"连接错误: {e}"
 
     def _anthropic_health_check(self) -> bool:
+        result, _ = self._anthropic_health_check_detail()
+        return result
+
+    def _anthropic_health_check_detail(self) -> tuple[bool, str]:
         """Anthropic API 健康检查 — 发送最小请求"""
         url = f"{self.base_url}/v1/messages"
         headers = {
@@ -524,14 +540,18 @@ class CloudClient:
             "x-api-key": self.api_key,
             "anthropic-version": "2023-06-01",
         }
-        payload = {
-            "model": self.model,
-            "max_tokens": 1,
-            "messages": [{"role": "user", "content": "hi"}],
-        }
+        payload = {"model": self.model, "max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]}
         try:
             client = self._get_http_client()
             resp = client.post(url, json=payload, headers=headers, timeout=15.0)
-            return resp.status_code == 200
-        except httpx.HTTPError:
-            return False
+            if resp.status_code == 200:
+                return True, ""
+            if resp.status_code == 401:
+                return False, "API Key 无效 (401 Unauthorized)"
+            if resp.status_code == 403:
+                return False, "访问被拒绝 (403 Forbidden)，检查代理或网络设置"
+            return False, f"HTTP {resp.status_code}"
+        except httpx.TimeoutException:
+            return False, f"连接 {self.base_url} 超时，请检查网络或代理设置"
+        except httpx.HTTPError as e:
+            return False, f"连接错误: {e}"
