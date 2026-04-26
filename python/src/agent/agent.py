@@ -374,6 +374,7 @@ class AgentLoop:
                         data={"step": step},
                     ))
                 except Exception as e:
+                    logger.error("LLM 调用异常 [%s]: %s", type(e).__name__, e, exc_info=True)
                     error_type = classify_error(e)
                     recovery = get_recovery(error_type)
 
@@ -405,7 +406,7 @@ class AgentLoop:
 
                     feedback = self.retry_manager.get_feedback_message(error_type, str(e))
                     logger.warning("LLM 错误 [%s]: %s → %s", error_type.value, e, feedback)
-                    yield AgentEvent(type="error", content=f"LLM 调用失败: {feedback}")
+                    yield AgentEvent(type="error", content=f"LLM 调用失败: {feedback}", metadata={"raw_error": str(e), "error_type": error_type.value})
                     return
 
                 # 解析 LLM 响应中的工具调用
@@ -435,6 +436,7 @@ class AgentLoop:
 
                 # 将 LLM 的 assistant 消息（含工具调用）加入历史
                 assistant_content = self._extract_text_content(response)
+                reasoning = (response.get("message") or {}).get("reasoning_content") or None
 
                 # ── 判断本轮是否需要上下文隔离 ──
                 has_heavy = (
@@ -448,6 +450,7 @@ class AgentLoop:
                         role="assistant",
                         content=assistant_content,
                         tool_calls=tool_calls,
+                        reasoning_content=reasoning,
                     ))
                     ollama_msgs = [message_to_ollama_dict(m) for m in messages]
                     self.scheduler.snapshot_context(ollama_msgs)
@@ -462,6 +465,7 @@ class AgentLoop:
                         role="assistant",
                         content=assistant_content,
                         tool_calls=tool_calls,
+                        reasoning_content=reasoning,
                     ))
 
                 # 执行所有工具，收集结果
@@ -978,6 +982,8 @@ class AgentLoop:
         openai_messages: list[dict] = []
         for m in messages:
             d: dict = {"role": m.role, "content": m.content}
+            if m.role == "assistant" and m.reasoning_content:
+                d["reasoning_content"] = m.reasoning_content
             if m.tool_calls:
                 d["tool_calls"] = [
                     {
@@ -1063,13 +1069,18 @@ class AgentLoop:
                 },
             })
 
-        return {
+        result = {
             "message": {
                 "role": openai_msg.get("role", "assistant"),
                 "content": openai_msg.get("content", ""),
-                **({"tool_calls": normalized_tool_calls} if normalized_tool_calls else {}),
             }
         }
+        rc = openai_msg.get("reasoning_content")
+        if rc:
+            result["message"]["reasoning_content"] = rc
+        if normalized_tool_calls:
+            result["message"]["tool_calls"] = normalized_tool_calls
+        return result
 
     # ------------------------------------------------------------------
     # 流式 LLM 调用
@@ -1175,6 +1186,8 @@ class AgentLoop:
         openai_messages: list[dict] = []
         for m in messages:
             d: dict = {"role": m.role, "content": m.content}
+            if m.role == "assistant" and m.reasoning_content:
+                d["reasoning_content"] = m.reasoning_content
             if m.tool_calls:
                 d["tool_calls"] = [
                     {
@@ -1213,6 +1226,7 @@ class AgentLoop:
                 resp.raise_for_status()
 
                 full_content = ""
+                reasoning_content = ""
                 tc_accumulator: dict[str, dict] = {}  # index -> {id, name, arguments_str}
 
                 async for line in resp.aiter_lines():
@@ -1226,7 +1240,17 @@ class AgentLoop:
                     except json.JSONDecodeError:
                         continue
 
+                    # Check for error in SSE stream (some providers return errors mid-stream)
+                    err_obj = chunk.get("error")
+                    if err_obj:
+                        err_msg = err_obj if isinstance(err_obj, str) else err_obj.get("message", str(err_obj))
+                        raise ValueError(f"云端 API 流式错误: {err_msg}")
+
                     delta = chunk.get("choices", [{}])[0].get("delta", {})
+
+                    rc = delta.get("reasoning_content", "")
+                    if rc:
+                        reasoning_content += rc
 
                     token = delta.get("content", "")
                     if token:
@@ -1259,7 +1283,7 @@ class AgentLoop:
             ) from e
         except httpx.HTTPStatusError as e:
             raise ValueError(
-                f"云端 API 错误 (HTTP {e.response.status_code})"
+                f"云端 API 错误 (HTTP {e.response.status_code}): {e.response.text[:300]}"
             ) from e
         except httpx.TimeoutException as e:
             raise ConnectionError(
@@ -1285,6 +1309,8 @@ class AgentLoop:
                 "content": full_content,
             }
         }
+        if reasoning_content:
+            result["message"]["reasoning_content"] = reasoning_content
         if normalized_tool_calls:
             result["message"]["tool_calls"] = normalized_tool_calls
         yield None, result

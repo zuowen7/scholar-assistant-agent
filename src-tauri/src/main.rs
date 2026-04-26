@@ -52,6 +52,13 @@ fn build_command(program: &str, args: &[&str]) -> std::process::Command {
     cmd.args(args);
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
+    // Remove proxy env vars so httpx doesn't hang trying to connect through a local proxy
+    cmd.env_remove("HTTP_PROXY");
+    cmd.env_remove("HTTPS_PROXY");
+    cmd.env_remove("http_proxy");
+    cmd.env_remove("https_proxy");
+    cmd.env_remove("ALL_PROXY");
+    cmd.env_remove("all_proxy");
     cmd
 }
 
