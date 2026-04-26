@@ -52,6 +52,28 @@ export function useAgentChat() {
       .slice(-20)
       .map(m => ({ role: m.role, content: m.content }))
 
+    // handleEvent 闭包状态
+    function handleEvent(eventType: string, data: Record<string, unknown>): void {
+      const agentEvent: AgentEvent = {
+        type: data.type as AgentEvent['type'],
+        content: (data.content as string) || '',
+        metadata: data.metadata as AgentEvent['metadata'] | undefined,
+      }
+
+      const msg = messages.value.find(m => m.id === assistantMsg.id)
+      if (!msg) return
+
+      if (eventType === 'response') {
+        msg.content = agentEvent.content
+        msg.isStreaming = false
+      } else if (eventType === 'error') {
+        msg.content = agentEvent.content
+        msg.isStreaming = false
+      } else {
+        msg.events = [...msg.events, agentEvent]
+      }
+    }
+
     try {
       const resp = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
