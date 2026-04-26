@@ -40,6 +40,10 @@ data/agent/
 # 环境变量
 .env
 
+# 运行时配置（可能含 API Key，不入库）
+python/config/default.yaml
+python/config/*.local.yaml
+
 # 模型权重
 *.bin
 *.gguf

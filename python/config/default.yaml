@@ -36,15 +36,15 @@ parser:
   extract_tables: false
 translator:
   cloud:
-    api_key: ""
+    api_key: ''
     base_url: https://api.deepseek.com/v1
     max_tokens: 16384
-    model: deepseek-chat
+    model: deepseek-v4-pro
     provider: deepseek
   engine: cloud
+  max_concurrency: 4
   model: qwen3:8b
   num_predict: 16384
-  max_concurrency: 4
   ollama_base_url: http://localhost:11434
   system_prompt: '你是一位资深的学术文献翻译专家，精通英译中。请将以下英文学术文本翻译为流畅、准确的中文。
 
