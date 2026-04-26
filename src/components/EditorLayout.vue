@@ -4,10 +4,15 @@
     <div class="layout-sidebar" :style="{ width: sidebarWidth + 'px' }">
       <FileTree />
     </div>
-    <div class="resize-handle" @mousedown="startResize($event, 'sidebar')"></div>
+    <div class="resize-handle sidebar-resize" @mousedown="startResize($event, 'sidebar')"></div>
 
     <!-- 涓棿缂栬緫鍣?-->
     <div class="layout-editor">
+      <MindMapView
+        v-if="workspaceMode === 'mindmap'"
+        @enter-editor="enterEditorFromMindMap"
+      />
+      <template v-else>
       <EditorTabs />
       <div v-if="!activeTab" class="editor-welcome">
         <div class="welcome-panel">
@@ -15,9 +20,9 @@
           <h2>开始写作</h2>
           <p>打开一个工程或创建论文草稿，编辑器、预览和 AI 助手会在文档打开后自动进入工作区。</p>
           <div class="welcome-actions">
-            <button class="welcome-action primary" @click="showTemplatePicker = true">新建论文</button>
+            <button class="welcome-action primary" @click="showProjectStart = true">新建工程</button>
+            <button class="welcome-action" @click="showTemplatePicker = true">新建论文</button>
             <button class="welcome-action" @click="openWorkspaceFolder">打开工程</button>
-            <button class="welcome-action" @click="openNewUntitled">新建空白文档</button>
           </div>
         </div>
       </div>
@@ -28,6 +33,7 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
             <span class="btn-label">新建论文</span>
           </button>
+          <button class="toolbar-btn" @click="openMindMapFromEditor" title="打开思维导图">思维导图</button>
           <span class="toolbar-hint">Ctrl+K AI Edit</span>
         </div>
         <div class="toolbar-right" @click.stop>
@@ -125,11 +131,12 @@
       </div>
       <MonacoEditor :theme="isDark ? 'vs-dark' : 'vs'" :on-did-change-content="onDidChangeContent" @contentChange="onContentChange" @selectionChange="onSelectionChange" />
       </template>
+      </template>
     </div>
 
     <!-- 鍙充晶闈㈡澘 -->
-    <template v-if="activeTab && (showPreview || showAiPanel)">
-      <div class="resize-handle" @mousedown="startResize($event, 'panel')"></div>
+    <template v-if="workspaceMode === 'editor' && activeTab && (showPreview || showAiPanel)">
+      <div class="resize-handle panel-resize" @mousedown="startResize($event, 'panel')"></div>
       <div class="layout-panel" :style="{ width: panelWidth + 'px' }">
         <MarkdownPreview v-if="showPreview" :content="content" :version="contentVersion" :class="{ 'panel-half': showAiPanel }" />
         <AiPanel
@@ -161,6 +168,28 @@
       @close="showTemplatePicker = false"
       @create="handleScaffoldCreate"
     />
+
+    <div v-if="showProjectStart" class="project-start-backdrop" @click.self="showProjectStart = false">
+      <div class="project-start-dialog">
+        <div class="project-start-header">
+          <div>
+            <div class="welcome-kicker">New Project</div>
+            <h3>新建工程</h3>
+          </div>
+          <button class="project-start-close" @click="showProjectStart = false">&times;</button>
+        </div>
+        <div class="project-start-options">
+          <button class="project-start-option primary" @click="startProjectInEditor">
+            <strong>直接进入编辑器</strong>
+            <span>创建空白文档，保持现有写作流程。</span>
+          </button>
+          <button class="project-start-option" @click="startProjectWithMindMap">
+            <strong>先创建思维导图</strong>
+            <span>先梳理论文结构，再保存并进入编辑器。</span>
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -173,11 +202,16 @@ import EditorTabs from './EditorTabs.vue'
 import AiPanel from './AiPanel.vue'
 import ComplianceModal from './ComplianceModal.vue'
 import TemplatePicker from './TemplatePicker.vue'
+import MindMapView from './MindMapView.vue'
 import { useEditor } from '../composables/useEditor'
+import { useMindMap } from '../composables/useMindMap'
 import { API_BASE } from '../utils/api'
 import { readSseStream } from '../utils/streamReader'
 
 const props = defineProps<{ isDark: boolean }>()
+const workspaceMode = ref<'editor' | 'mindmap'>('editor')
+const showProjectStart = ref(false)
+const { resetMindMap, loadSavedMindMap, saveMindMap } = useMindMap()
 
 const {
   content, contentVersion, activeTab, selection,
@@ -200,6 +234,29 @@ const imageInputRef = ref<HTMLInputElement | null>(null)
 const visionInputRef = ref<HTMLInputElement | null>(null)
 const assetLoading = ref(false)
 const openToolMenu = ref<'insert' | 'analyze' | 'reference' | 'export' | null>(null)
+
+function startProjectInEditor() {
+  showProjectStart.value = false
+  workspaceMode.value = 'editor'
+  openNewUntitled()
+}
+
+function startProjectWithMindMap() {
+  showProjectStart.value = false
+  resetMindMap()
+  workspaceMode.value = 'mindmap'
+}
+
+function enterEditorFromMindMap() {
+  saveMindMap()
+  workspaceMode.value = 'editor'
+  if (!activeTab.value) openNewUntitled()
+}
+
+function openMindMapFromEditor() {
+  loadSavedMindMap()
+  workspaceMode.value = 'mindmap'
+}
 
 function toggleToolMenu(menu: 'insert' | 'analyze' | 'reference' | 'export') {
   openToolMenu.value = openToolMenu.value === menu ? null : menu
@@ -693,13 +750,64 @@ function showExportToast(msg: string) {
   display: flex;
   height: 100%;
   width: 100%;
+  min-width: 0;
+  overflow: hidden;
   background: var(--editor-bg);
   color: var(--text-primary);
 }
 
 .layout-sidebar {
   flex-shrink: 0;
+  min-width: 0;
   overflow: hidden;
+}
+
+@media (max-width: 1180px) {
+  .layout-sidebar {
+    width: 220px !important;
+  }
+
+  .layout-panel {
+    max-width: 42vw;
+  }
+}
+
+@media (max-width: 980px) {
+  .layout-sidebar,
+  .sidebar-resize {
+    display: none;
+  }
+
+  .layout-panel {
+    width: min(420px, 46vw) !important;
+    min-width: 320px;
+  }
+}
+
+@media (max-width: 820px) {
+  .layout-panel,
+  .panel-resize {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .editor-welcome {
+    padding: 24px;
+  }
+
+  .welcome-panel {
+    width: 100%;
+  }
+
+  .editor-toolbar {
+    gap: 6px;
+    padding-inline: 8px;
+  }
+
+  .toolbar-hint {
+    display: none;
+  }
 }
 
 .layout-editor {
@@ -770,8 +878,81 @@ function showExportToast(msg: string) {
   font-weight: 650;
 }
 
+.project-start-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.42);
+}
+.project-start-dialog {
+  width: min(520px, calc(100vw - 48px));
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--panel-bg);
+  color: var(--text-primary);
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.35);
+}
+.project-start-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+.project-start-header h3 {
+  margin: 4px 0 0;
+  font-size: 20px;
+}
+.project-start-close {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+.project-start-options {
+  display: grid;
+  gap: 10px;
+  padding: 18px 20px 20px;
+}
+.project-start-option {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--toolbar-bg);
+  color: var(--text-primary);
+  text-align: left;
+  padding: 14px 16px;
+  cursor: pointer;
+  font: inherit;
+}
+.project-start-option:hover {
+  border-color: var(--accent);
+  background: var(--hover-bg);
+}
+.project-start-option.primary {
+  background: color-mix(in srgb, var(--accent) 18%, var(--toolbar-bg));
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border-color));
+}
+.project-start-option strong {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 14px;
+}
+.project-start-option span {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .layout-panel {
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-width: 260px;
+  max-width: min(760px, 45vw);
   overflow: hidden;
 }
 
@@ -788,13 +969,14 @@ function showExportToast(msg: string) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: nowrap;
   gap: 12px;
   padding: 7px 12px;
   border-bottom: 1px solid var(--border-color);
   background: var(--toolbar-bg);
-  height: 46px;
+  min-height: 46px;
   flex-shrink: 0;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .toolbar-left {
@@ -802,7 +984,7 @@ function showExportToast(msg: string) {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
 }
 .toolbar-right {
   display: flex;
@@ -811,6 +993,7 @@ function showExportToast(msg: string) {
   gap: 6px;
   min-width: 0;
   flex: 1 1 auto;
+  overflow: visible;
 }
 
 .file-name {
@@ -980,14 +1163,29 @@ function showExportToast(msg: string) {
   .editor-toolbar {
     gap: 8px;
     padding-inline: 8px;
+    height: auto;
+    flex-wrap: wrap;
+    align-content: center;
   }
 
   .toolbar-hint {
     display: none;
   }
 
+  .toolbar-left,
   .toolbar-right {
     gap: 4px;
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+
+  .toolbar-right {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .toolbar-right::-webkit-scrollbar {
+    display: none;
   }
 }
 
