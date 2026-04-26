@@ -72,7 +72,10 @@ class ContextCompressor:
         protect_tail_turns: 尾部保护的对话轮数。
         summary_max_tokens: 摘要的目标 token 预算。
         ollama_base_url: Ollama API 地址（用于 LLM 摘要生成）。
-        summary_model: 用于生成摘要的模型名称。
+        summary_model: 用于生成摘要的模型名称（Ollama 本地模型名）。
+        cloud_base_url: 云端 API 地址（优先于 Ollama）。
+        cloud_api_key: 云端 API Key。
+        cloud_model: 云端模型名。
     """
 
     def __init__(
@@ -84,6 +87,9 @@ class ContextCompressor:
         summary_max_tokens: int = 500,
         ollama_base_url: str = "http://localhost:11434",
         summary_model: str | None = None,
+        cloud_base_url: str = "",
+        cloud_api_key: str = "",
+        cloud_model: str = "",
     ) -> None:
         self.max_window_tokens = max_window_tokens
         self.threshold_percent = threshold_percent
@@ -92,6 +98,9 @@ class ContextCompressor:
         self.summary_max_tokens = summary_max_tokens
         self.ollama_base_url = ollama_base_url.rstrip("/")
         self.summary_model = summary_model
+        self.cloud_base_url = cloud_base_url.rstrip("/") if cloud_base_url else ""
+        self.cloud_api_key = cloud_api_key
+        self.cloud_model = cloud_model
 
         self._http_client: httpx.AsyncClient | None = None
 
@@ -257,10 +266,14 @@ class ContextCompressor:
         tail_count = min(self.protect_tail_turns * 2, total - head_end)
         tail_start = total - tail_count
 
-        # 确保中间区域非空时 head 和 tail 不重叠
         if tail_start <= head_end:
-            # 消息太少，无法分区
             return messages, [], []
+
+        # Never split assistant(tool_calls) -> tool pairs across the
+        # middle/tail boundary.  OpenAI / DeepSeek reject a tool message
+        # that is not immediately preceded by an assistant with tool_calls.
+        while tail_start > head_end and messages[tail_start].get("role") == "tool":
+            tail_start -= 1
 
         head = messages[:head_end]
         middle = messages[head_end:tail_start]
@@ -330,6 +343,8 @@ class ContextCompressor:
     async def _llm_summarize(self, text: str) -> str | None:
         """调用 LLM 生成中间区域摘要。
 
+        优先使用云端 API（如果已配置），否则使用 Ollama。
+
         Args:
             text: 中间区域的格式化文本。
 
@@ -343,26 +358,57 @@ class ContextCompressor:
             f"--- 执行记录 ---\n{text}\n--- 结束 ---"
         )
 
+        use_cloud = bool(self.cloud_api_key and self.cloud_base_url and self.cloud_model)
+
         try:
             client = await self._get_http_client()
-            payload = {
-                "model": self.summary_model,
-                "messages": [{"role": "user", "content": prompt}],
-                "stream": False,
-                "options": {
-                    "temperature": 0.1,
-                    "num_predict": self.summary_max_tokens,
-                },
-            }
-            resp = await client.post(
-                f"{self.ollama_base_url}/api/chat",
-                json=payload,
-                timeout=60.0,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            content = data.get("message", {}).get("content", "").strip()
-            # 清理 think 标签
+
+            if use_cloud:
+                headers = {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.cloud_api_key}",
+                }
+                resp = await client.post(
+                    f"{self.cloud_base_url}/chat/completions",
+                    json={
+                        "model": self.cloud_model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0.1,
+                        "max_tokens": self.summary_max_tokens,
+                        "stream": False,
+                    },
+                    headers=headers,
+                    timeout=60.0,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                content = (
+                    data.get("choices", [{}])[0]
+                    .get("message", {})
+                    .get("content", "")
+                    .strip()
+                )
+            else:
+                if not self.summary_model:
+                    return None
+                payload = {
+                    "model": self.summary_model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "stream": False,
+                    "options": {
+                        "temperature": 0.1,
+                        "num_predict": self.summary_max_tokens,
+                    },
+                }
+                resp = await client.post(
+                    f"{self.ollama_base_url}/api/chat",
+                    json=payload,
+                    timeout=60.0,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                content = data.get("message", {}).get("content", "").strip()
+
             import re
             content = re.sub(r"<think?>.*?</think?>", "", content, flags=re.DOTALL).strip()
             return content if content else None

@@ -5,13 +5,14 @@ import { readSseStream } from '../utils/streamReader'
 
 const API_URL = API_BASE
 
-export function useAgentChat() {
-  const messages = ref<AgentChatMessage[]>([])
-  const sending = ref(false)
-  const ragDocuments = ref<RAGDocument[]>([])
-  const ragLoading = ref(false)
+// Module-level singleton state — survives page switches
+const messages = ref<AgentChatMessage[]>([])
+const sending = ref(false)
+const ragDocuments = ref<RAGDocument[]>([])
+const ragLoading = ref(false)
+let abortController: AbortController | null = null
 
-  let abortController: AbortController | null = null
+export function useAgentChat() {
 
   // ── SSE 流式对话 ──────────────────────────────────────────────
 

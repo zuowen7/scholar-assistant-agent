@@ -37,12 +37,23 @@ class ChatRequest(BaseModel):
     history: list[dict] | None = None
     context_text: str | None = None
     constraints: str | None = None
+    workspace_root: str | None = None
 
 
 class RAGIngestRequest(BaseModel):
     doc_id: str
     text: str
     title: str = ""
+
+
+class V2ToolRequest(BaseModel):
+    tool: str
+    args: dict = {}
+
+
+class ApproveRequest(BaseModel):
+    decision: str  # "allow_once" | "allow_session" | "deny"
+    reason: str | None = None
 
 
 def register_agent(
@@ -74,6 +85,7 @@ def register_agent(
             config = load_config()
             agent_cfg = config.get("agent", {})
             trans_cfg = config.get("translator", {})
+            workspace_root = agent_cfg.get("workspace_root", "")
 
             rag_cfg = agent_cfg.get("rag", {})
             rag_dir = runtime_dir / rag_cfg.get("persist_dir", "data/chromadb")
@@ -99,6 +111,7 @@ def register_agent(
                 cloud_base_url=cloud_cfg_tools.get("base_url", "https://api.openai.com/v1") if use_cloud_tools else "",
                 cloud_api_key=(cloud_cfg_tools.get("api_key") or "").strip() if use_cloud_tools else "",
                 cloud_model=cloud_cfg_tools.get("model", "gpt-4o") if use_cloud_tools else "",
+                workspace_root=workspace_root,
             )
 
             scheduler = None
@@ -117,11 +130,16 @@ def register_agent(
 
             ollama_url = trans_cfg.get("ollama_base_url", "http://localhost:11434")
             agent_model = agent_cfg.get("model", "qwen3:8b")
+            # use_cloud_tools 已在上方定义：cloud_only or engine == "cloud"
+            _compress_cloud_cfg = cloud_cfg_tools if use_cloud_tools else {}
             compressor = ContextCompressor(
                 max_window_tokens=agent_cfg.get("max_window_tokens", 32_000),
                 threshold_percent=agent_cfg.get("compress_threshold", 0.50),
                 ollama_base_url=ollama_url,
-                summary_model=agent_model,
+                summary_model=agent_model if not use_cloud_tools else None,
+                cloud_base_url=_compress_cloud_cfg.get("base_url", "") if use_cloud_tools else "",
+                cloud_api_key=(_compress_cloud_cfg.get("api_key") or "").strip() if use_cloud_tools else "",
+                cloud_model=_compress_cloud_cfg.get("model", "") if use_cloud_tools else "",
             )
             prompt_builder = PromptBuilder(tool_registry=registry)
 
@@ -251,6 +269,34 @@ def register_agent(
             "model": _agent_instance.model,
             "max_steps": _agent_instance.max_steps,
         }
+
+    # --- AWA v2: Direct tool invocation endpoint (for testing / Phase 1 validation) ---
+
+    @app.post("/api/agent/v2/tool")
+    async def v2_tool_invoke(req: V2ToolRequest):
+        """直接调用 AWA v2 工作区工具（开发调试用）。"""
+        if not _AGENT_AVAILABLE:
+            raise HTTPException(503, "Agent 模块未安装")
+
+        agent = await _get_agent()
+        tool_def = agent.tool_registry.get(req.tool)
+        if tool_def is None:
+            raise HTTPException(404, f"工具 '{req.tool}' 不存在")
+
+        try:
+            if asyncio.iscoroutinefunction(tool_def.fn):
+                result = await asyncio.to_thread(tool_def.fn, **req.args)
+            else:
+                result = tool_def.fn(**req.args)
+            # result 是 JSON 字符串
+            try:
+                return json.loads(result)
+            except (json.JSONDecodeError, TypeError):
+                return {"result": result}
+        except TypeError as e:
+            raise HTTPException(400, f"参数错误: {e}")
+        except Exception as e:
+            raise HTTPException(500, f"工具执行失败: {e}")
 
     async def shutdown():
         nonlocal _agent_instance

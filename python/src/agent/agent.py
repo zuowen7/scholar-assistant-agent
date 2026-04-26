@@ -83,6 +83,36 @@ _MAX_HISTORY_TURNS = 10
 _TOOL_RESULT_MAX_CHARS = 4000
 
 
+async def _safe_response_text(response) -> str:
+    """安全读取 httpx Response 的文本内容，失败时返回占位字符串。"""
+    try:
+        await response.aread()
+        return response.text[:500]
+    except Exception:
+        return "<response body not available>"
+
+
+# 需要多步规划的关键词 — 查询包含这些词才触发 plan 生成
+_PLAN_TRIGGER_KEYWORDS = frozenset({
+    "研究", "对比", "分析", "写", "撰写", "搜索", "查", "找",
+    "总结", "概括", "整理", "归纳", "综述", "论文", "报告",
+    "compare", "analyze", "research", "write", "search", "summarize",
+})
+
+
+def _is_simple_query(query: str) -> bool:
+    """判断查询是否简单到无需 LLM 规划步骤。"""
+    q = query.strip()
+    # 先检查复杂意图关键词 — 包含就需要规划
+    for kw in _PLAN_TRIGGER_KEYWORDS:
+        if kw in q:
+            return False
+    # 不含复杂关键词的短查询 → 跳过规划
+    if len(q) < 80:
+        return True
+    return False
+
+
 class AgentLoop:
     """ReAct 模式 Agent 推理循环引擎。
 
@@ -278,6 +308,9 @@ class AgentLoop:
         # 重试计数器 per-session 重置
         self.retry_manager.reset()
 
+        # 重置 format error 重试标记
+        self._format_error_retry = False
+
         # 重置 token 用量追踪
         self._token_usage = {
             "prompt_tokens": 0,
@@ -308,10 +341,14 @@ class AgentLoop:
         plan = await self._generate_plan(query, messages)
         if plan:
             yield AgentEvent(type="thinking", content=f"执行计划:\n{plan}")
-            messages.append(Message(
-                role="system",
-                content=f"以下是为你制定的执行计划，请按步骤执行:\n\n{plan}",
-            ))
+            # Merge plan into the first system message so it stays before the user
+            # message — providers like DeepSeek reject system messages that appear
+            # after a user message (HTTP 400).
+            plan_text = f"\n\n## 执行计划\n请按以下步骤执行：\n{plan}"
+            if messages and messages[0].role == "system":
+                messages[0] = Message(role="system", content=messages[0].content + plan_text)
+            else:
+                messages.insert(0, Message(role="system", content=plan_text))
 
         # 调度器: 确保 Agent 模型已加载到显存
         if self.scheduler is not None:
@@ -368,6 +405,10 @@ class AgentLoop:
                     if response is None:
                         raise ValueError("LLM 流式响应未返回完整结果")
                     self._accumulate_token_usage(response)
+                    # 如果上一步因 FORMAT_ERROR 去掉了工具，成功响应后恢复
+                    if self._format_error_retry:
+                        self._format_error_retry = False
+                        logger.info("工具调用已恢复（上一步无工具重试成功）")
                     # Hook: on_llm_response
                     await self.hooks.trigger(HookContext(
                         point=HookPoint.ON_LLM_RESPONSE,
@@ -396,17 +437,57 @@ class AgentLoop:
                                             compression.original_count, compression.compressed_count)
                                 continue  # 继续 ReAct 循环，不 abort
                             else:
-                                feedback = self.retry_manager.get_feedback_message(error_type, str(e))
-                                yield AgentEvent(type="error", content=f"上下文过长: {feedback}")
+                                yield AgentEvent(type="error", content="上下文过长，无法处理，请简化问题。")
                                 return
                         except Exception as compress_err:
                             logger.error("压缩重试也失败: %s", compress_err)
                             yield AgentEvent(type="error", content="上下文过长，无法处理，请简化问题。")
                             return
 
+                    # FORMAT_ERROR (HTTP 400): 首次尝试去掉工具重试，兼容不支持工具调用的 provider
+                    if error_type == ErrorType.FORMAT_ERROR and self.retry_manager.can_retry(error_type):
+                        delay = self.retry_manager.get_delay(error_type)
+                        feedback = self.retry_manager.get_feedback_message(error_type, str(e))
+                        self.retry_manager.record_attempt(error_type)
+                        logger.warning(
+                            "LLM 错误 [%s]: %s → %s (去掉工具后重试, 第 %d 次)",
+                            error_type.value, e, feedback,
+                            self.retry_manager._attempt_counts.get(error_type, 0),
+                        )
+                        yield AgentEvent(
+                            type="thinking",
+                            content=f"请求格式错误，尝试去掉工具后重新调用...",
+                        )
+                        await asyncio.sleep(delay)
+                        # 标记：本次 ReAct 循环使用无工具模式
+                        self._format_error_retry = True
+                        continue
+
+                    # 可重试错误: 按策略重试而非直接 abort
+                    if recovery.action == "retry" and self.retry_manager.can_retry(error_type):
+                        delay = self.retry_manager.get_delay(error_type)
+                        feedback = self.retry_manager.get_feedback_message(error_type, str(e))
+                        self.retry_manager.record_attempt(error_type)
+                        logger.warning(
+                            "LLM 错误 [%s]: %s → %s (将在 %.1fs 后重试, 第 %d 次)",
+                            error_type.value, e, feedback, delay,
+                            self.retry_manager._attempt_counts.get(error_type, 0),
+                        )
+                        yield AgentEvent(
+                            type="thinking",
+                            content=f"遇到错误 ({feedback})，正在重试...",
+                        )
+                        await asyncio.sleep(delay)
+                        continue  # 重试当前步骤
+
+                    # 不可重试或重试耗尽: 终止
                     feedback = self.retry_manager.get_feedback_message(error_type, str(e))
-                    logger.warning("LLM 错误 [%s]: %s → %s", error_type.value, e, feedback)
-                    yield AgentEvent(type="error", content=f"LLM 调用失败: {feedback}", metadata={"raw_error": str(e), "error_type": error_type.value})
+                    raw = str(e)
+                    logger.warning("LLM 错误 [%s]: %s → %s (终止)", error_type.value, e, feedback)
+                    display_msg = f"LLM 调用失败: {feedback}"
+                    if raw and raw not in display_msg:
+                        display_msg += f"\n详情: {raw[:300]}"
+                    yield AgentEvent(type="error", content=display_msg, metadata={"raw_error": raw, "error_type": error_type.value})
                     return
 
                 # 解析 LLM 响应中的工具调用
@@ -769,6 +850,10 @@ class AgentLoop:
         Returns:
             执行计划文本，或空字符串（简单查询时）。
         """
+        # 预过滤：简单查询跳过 plan 生成，节省一次 LLM 调用
+        if _is_simple_query(query):
+            return ""
+
         tool_names = [t.name for t in self.tool_registry.list_tools()]
         prompt = self._PLAN_PROMPT.format(
             query=query[:500],
@@ -953,10 +1038,7 @@ class AgentLoop:
                 f"无法连接 Ollama 服务 ({self.ollama_base_url})"
             ) from e
         except httpx.HTTPStatusError as e:
-            try:
-                detail = e.response.text[:200]
-            except httpx.ResponseNotRead:
-                detail = "<response body not available>"
+            detail = await _safe_response_text(e.response)
             raise ValueError(
                 f"Ollama API 错误 (HTTP {e.response.status_code}): {detail}"
             ) from e
@@ -984,9 +1066,9 @@ class AgentLoop:
         # 关键: tool_calls[].function.arguments 必须是 JSON 字符串
         openai_messages: list[dict] = []
         for m in messages:
-            d: dict = {"role": m.role, "content": m.content}
-            if m.role == "assistant" and m.reasoning_content:
-                d["reasoning_content"] = m.reasoning_content
+            # assistant with tool_calls but no text: send null content per OpenAI spec
+            content_val: str | None = m.content if m.content else (None if m.tool_calls else m.content)
+            d: dict = {"role": m.role, "content": content_val}
             if m.tool_calls:
                 d["tool_calls"] = [
                     {
@@ -999,8 +1081,10 @@ class AgentLoop:
                     }
                     for tc in m.tool_calls
                 ]
-            if m.tool_call_id:
+            if m.tool_call_id is not None:
                 d["tool_call_id"] = m.tool_call_id
+            if m.reasoning_content:
+                d["reasoning_content"] = m.reasoning_content
             openai_messages.append(d)
 
         # 构建 endpoint
@@ -1031,15 +1115,10 @@ class AgentLoop:
                 f"无法连接云端 API ({self.cloud_base_url})"
             ) from e
         except httpx.HTTPStatusError as e:
-            detail = ""
-            try:
-                body = e.response.json()
-                detail = body.get("error", {}).get("message", "") or str(body)
-            except Exception:
-                try:
-                    detail = e.response.text[:300]
-                except httpx.ResponseNotRead:
-                    detail = "<response body not available>"
+            detail = await _safe_response_text(e.response)
+            logger.debug("云端 API HTTP %d, endpoint: %s, 消息角色序列: %s",
+                         e.response.status_code, endpoint,
+                         [m.get("role") for m in payload.get("messages", [])])
             raise ValueError(
                 f"云端 API 错误 (HTTP {e.response.status_code}): {detail}"
             ) from e
@@ -1112,9 +1191,10 @@ class AgentLoop:
                 "num_predict": self.num_predict,
             },
         }
-        tools = self.tool_registry.to_ollama_tools()
-        if tools:
-            payload["tools"] = tools
+        if not self._format_error_retry:
+            tools = self.tool_registry.to_ollama_tools()
+            if tools:
+                payload["tools"] = tools
 
         try:
             async with client.stream(
@@ -1122,7 +1202,15 @@ class AgentLoop:
                 f"{self.ollama_base_url}/api/chat",
                 json=payload,
             ) as resp:
-                resp.raise_for_status()
+                if resp.status_code >= 400:
+                    body = await resp.aread()
+                    error_text = body.decode(errors="replace")[:500]
+                    logger.debug("Ollama 流式 HTTP %d, 请求 payload 消息角色: %s",
+                                 resp.status_code,
+                                 [m.get("role") for m in payload.get("messages", [])])
+                    raise ValueError(
+                        f"Ollama API 错误 (HTTP {resp.status_code}): {error_text}"
+                    )
                 full_content = ""
                 tool_calls_acc: list[dict] = []
 
@@ -1147,6 +1235,11 @@ class AgentLoop:
                         yield AgentEvent(type="token", content=token), None
 
                     if chunk.get("done"):
+                        # Ollama 有时在 done=true 的块中携带错误信息
+                        ollama_err = chunk.get("error")
+                        if ollama_err and not full_content:
+                            raise ValueError(f"Ollama 流式错误: {ollama_err}")
+
                         # 流结束，组装完整响应
                         result: dict = {
                             "message": {
@@ -1163,19 +1256,12 @@ class AgentLoop:
             raise ConnectionError(
                 f"无法连接 Ollama 服务 ({self.ollama_base_url})"
             ) from e
-        except httpx.HTTPStatusError as e:
-            try:
-                detail = e.response.text[:200]
-            except httpx.ResponseNotRead:
-                detail = "<response body not available>"
-            raise ValueError(
-                f"Ollama API 错误 (HTTP {e.response.status_code}): {detail}"
-            ) from e
         except httpx.TimeoutException as e:
             raise ConnectionError(
                 f"Ollama 请求超时 ({self.timeout}s)"
             ) from e
-# 流结束但未收到 done=true，返回已积累的内容
+
+        # 流结束但未收到 done=true，返回已积累的内容
         result = {"message": {"role": "assistant", "content": full_content}}
         if tool_calls_acc:
             result["message"]["tool_calls"] = tool_calls_acc
@@ -1193,9 +1279,9 @@ class AgentLoop:
         client = await self._get_http_client()
         openai_messages: list[dict] = []
         for m in messages:
-            d: dict = {"role": m.role, "content": m.content}
-            if m.role == "assistant" and m.reasoning_content:
-                d["reasoning_content"] = m.reasoning_content
+            # assistant with tool_calls but no text: send null content per OpenAI spec
+            content_val: str | None = m.content if m.content else (None if m.tool_calls else m.content)
+            d: dict = {"role": m.role, "content": content_val}
             if m.tool_calls:
                 d["tool_calls"] = [
                     {
@@ -1208,8 +1294,10 @@ class AgentLoop:
                     }
                     for tc in m.tool_calls
                 ]
-            if m.tool_call_id:
+            if m.tool_call_id is not None:
                 d["tool_call_id"] = m.tool_call_id
+            if m.reasoning_content:
+                d["reasoning_content"] = m.reasoning_content
             openai_messages.append(d)
 
         endpoint = f"{self.cloud_base_url}/chat/completions"
@@ -1220,9 +1308,10 @@ class AgentLoop:
             "max_tokens": self.num_predict,
             "stream": True,
         }
-        tools = self.tool_registry.to_ollama_tools()
-        if tools:
-            payload["tools"] = tools
+        if not self._format_error_retry:
+            tools = self.tool_registry.to_ollama_tools()
+            if tools:
+                payload["tools"] = tools
 
         headers = {
             "Content-Type": "application/json",
@@ -1231,7 +1320,15 @@ class AgentLoop:
 
         try:
             async with client.stream("POST", endpoint, json=payload, headers=headers) as resp:
-                resp.raise_for_status()
+                if resp.status_code >= 400:
+                    body = await resp.aread()
+                    error_text = body.decode(errors="replace")[:500]
+                    logger.debug("云端 API 流式 HTTP %d, 请求 endpoint: %s, 消息角色序列: %s",
+                                 resp.status_code, endpoint,
+                                 [m.get("role") for m in payload.get("messages", [])])
+                    raise ValueError(
+                        f"云端 API 错误 (HTTP {resp.status_code}): {error_text}"
+                    )
 
                 full_content = ""
                 reasoning_content = ""
@@ -1288,16 +1385,6 @@ class AgentLoop:
         except httpx.ConnectError as e:
             raise ConnectionError(
                 f"无法连接云端 API ({self.cloud_base_url})"
-            ) from e
-        except httpx.HTTPStatusError as e:
-            # In streaming mode, e.response may not be fully read yet.
-            # Reading .text here could raise ResponseNotRead. Use safe access.
-            try:
-                detail = e.response.text[:300]
-            except httpx.ResponseNotRead:
-                detail = "<response body not available>"
-            raise ValueError(
-                f"云端 API 错误 (HTTP {e.response.status_code}): {detail}"
             ) from e
         except httpx.TimeoutException as e:
             raise ConnectionError(
@@ -1384,17 +1471,18 @@ class AgentLoop:
         if system_text:
             payload["system"] = system_text
 
-        ollama_tools = self.tool_registry.to_ollama_tools()
-        if ollama_tools:
-            anthropic_tools = []
-            for t in ollama_tools:
-                func = t.get("function", {})
-                anthropic_tools.append({
-                    "name": func.get("name", ""),
-                    "description": func.get("description", ""),
-                    "input_schema": func.get("parameters", {"type": "object", "properties": {}}),
-                })
-            payload["tools"] = anthropic_tools
+        if not self._format_error_retry:
+            ollama_tools = self.tool_registry.to_ollama_tools()
+            if ollama_tools:
+                anthropic_tools = []
+                for t in ollama_tools:
+                    func = t.get("function", {})
+                    anthropic_tools.append({
+                        "name": func.get("name", ""),
+                        "description": func.get("description", ""),
+                        "input_schema": func.get("parameters", {"type": "object", "properties": {}}),
+                    })
+                payload["tools"] = anthropic_tools
 
         headers = {
             "Content-Type": "application/json",
@@ -1407,7 +1495,14 @@ class AgentLoop:
 
         try:
             async with client.stream("POST", endpoint, json=payload, headers=headers) as resp:
-                resp.raise_for_status()
+                if resp.status_code >= 400:
+                    body = await resp.aread()
+                    error_text = body.decode(errors="replace")[:500]
+                    logger.debug("Anthropic 流式 HTTP %d, 请求 endpoint: %s",
+                                 resp.status_code, endpoint)
+                    raise ValueError(
+                        f"Anthropic API 错误 (HTTP {resp.status_code}): {error_text}"
+                    )
 
                 async for line in resp.aiter_lines():
                     if not line.startswith("data:"):
@@ -1450,10 +1545,6 @@ class AgentLoop:
         except httpx.ConnectError as e:
             raise ConnectionError(
                 f"无法连接 Anthropic API ({self.cloud_base_url})"
-            ) from e
-        except httpx.HTTPStatusError as e:
-            raise ValueError(
-                f"Anthropic API 错误 (HTTP {e.response.status_code})"
             ) from e
         except httpx.TimeoutException as e:
             raise ConnectionError(
@@ -1573,15 +1664,9 @@ class AgentLoop:
                 f"无法连接 Anthropic API ({self.cloud_base_url})"
             ) from e
         except httpx.HTTPStatusError as e:
-            detail = ""
-            try:
-                body = e.response.json()
-                detail = body.get("error", {}).get("message", "") or str(body)
-            except Exception:
-                try:
-                    detail = e.response.text[:300]
-                except httpx.ResponseNotRead:
-                    detail = "<response body not available>"
+            detail = await _safe_response_text(e.response)
+            logger.debug("Anthropic API HTTP %d, endpoint: %s",
+                         e.response.status_code, endpoint)
             raise ValueError(
                 f"Anthropic API 错误 (HTTP {e.response.status_code}): {detail}"
             ) from e

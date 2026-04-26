@@ -68,20 +68,42 @@ _config_cache: dict | None = None
 _config_cache_mtime: float = 0.0
 
 
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Recursively merge override into base (override wins on conflict)."""
+    result = copy.deepcopy(base)
+    for k, v in override.items():
+        if k in result and isinstance(result[k], dict) and isinstance(v, dict):
+            result[k] = _deep_merge(result[k], v)
+        else:
+            result[k] = copy.deepcopy(v)
+    return result
+
+
 def _load_config() -> dict:
     global _config_cache, _config_cache_mtime
     if CONFIG_PATH.exists():
         mtime = CONFIG_PATH.stat().st_mtime
         if _config_cache is not None and mtime == _config_cache_mtime:
             cfg = copy.deepcopy(_config_cache)
+            _apply_local_overrides(cfg)
             _apply_env_overrides(cfg)
             return cfg
         with open(CONFIG_PATH, encoding="utf-8") as f:
             _config_cache = yaml.safe_load(f) or {}
             _config_cache_mtime = mtime
     cfg = copy.deepcopy(_config_cache or {})
+    _apply_local_overrides(cfg)
     _apply_env_overrides(cfg)
     return cfg
+
+
+def _apply_local_overrides(cfg: dict) -> None:
+    """Merge default.local.yaml into cfg if it exists (never tracked by git)."""
+    local_path = CONFIG_PATH.parent / "default.local.yaml"
+    if local_path.exists():
+        with open(local_path, encoding="utf-8") as f:
+            local_cfg = yaml.safe_load(f) or {}
+        cfg.update(_deep_merge(cfg, local_cfg))
 
 
 def _apply_env_overrides(cfg: dict) -> None:

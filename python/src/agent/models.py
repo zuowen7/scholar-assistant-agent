@@ -130,6 +130,8 @@ def message_to_ollama_dict(msg: Message) -> dict:
             }
             for tc in msg.tool_calls
         ]
-    # tool_call_id 是 Anthropic 格式字段，不属于 Ollama 标准格式，
-    # 在 message_to_ollama_dict 中省略；Cloud API 路径在 _format_for_openai 中单独处理
+    if msg.reasoning_content:
+        d["reasoning_content"] = msg.reasoning_content
+    if msg.tool_call_id is not None:
+        d["tool_call_id"] = msg.tool_call_id
     return d
