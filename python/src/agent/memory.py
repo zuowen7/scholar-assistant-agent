@@ -70,9 +70,16 @@ class MemoryManager:
     # SQLite 初始化
     # ------------------------------------------------------------------
 
+    def _connect(self) -> sqlite3.Connection:
+        """创建启用 WAL 模式的 SQLite 连接。"""
+        conn = sqlite3.connect(self._db_path, check_same_thread=False, timeout=30.0)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        return conn
+
     def _init_db(self) -> None:
         """初始化 SQLite 表结构。"""
-        with sqlite3.connect(self._db_path) as conn:
+        with self._connect() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS memories (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -163,7 +170,7 @@ class MemoryManager:
             新记录的 ID。
         """
         now = datetime.now().isoformat(timespec="seconds")
-        with sqlite3.connect(self._db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.execute(
                 "INSERT INTO memories (content, category, source, importance, created_at) VALUES (?, ?, ?, ?, ?)",
                 (content, category, source, importance, now),
@@ -185,7 +192,7 @@ class MemoryManager:
         Returns:
             匹配的记忆列表。
         """
-        with sqlite3.connect(self._db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             # Escape LIKE special chars: % _ '
             safe_keywords = (
@@ -220,7 +227,7 @@ class MemoryManager:
         Returns:
             最近的记忆列表。
         """
-        with sqlite3.connect(self._db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT * FROM memories ORDER BY id DESC LIMIT ?",
@@ -287,7 +294,7 @@ class MemoryManager:
             新记录的 ID。
         """
         now = datetime.now().isoformat(timespec="seconds")
-        with sqlite3.connect(self._db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.execute(
                 "INSERT INTO conversations (query, answer, success, created_at) VALUES (?, ?, ?, ?)",
                 (query, answer[:2000], int(success), now),
@@ -304,7 +311,7 @@ class MemoryManager:
         Returns:
             对话记录列表。
         """
-        with sqlite3.connect(self._db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT * FROM conversations ORDER BY id DESC LIMIT ?",
@@ -332,7 +339,7 @@ class MemoryManager:
         Returns:
             包含 memories_count 和 conversations_count 的字典。
         """
-        with sqlite3.connect(self._db_path) as conn:
+        with self._connect() as conn:
             mem_count = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
             conv_count = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
         return {"memories_count": mem_count, "conversations_count": conv_count}
