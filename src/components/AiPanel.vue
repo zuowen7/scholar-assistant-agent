@@ -130,6 +130,8 @@
 import { ref, computed, nextTick, watch } from 'vue'
 import DOMPurify from 'dompurify'
 import { readSseStream } from '../utils/streamReader'
+import { aiMessages, aiStreaming, aiStreamContent, aiThinkingText, aiAbortCtrl } from '../composables/useAiPanelState'
+import type { AiPanelMsg } from '../composables/useAiPanelState'
 
 const props = defineProps<{
   editorContext: string
@@ -143,29 +145,23 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
-interface Msg {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  thinking?: string
-  isStreaming?: boolean
-}
+type Msg = AiPanelMsg
 
 interface FileRef { name: string; content: string }
 
 const API = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:18088').replace(/\/$/, '')
 
-const messages = ref<Msg[]>([])
+const messages = aiMessages
+const streaming = aiStreaming
+const streamContent = aiStreamContent
+const thinkingText = aiThinkingText
+
 const input = ref('')
-const streaming = ref(false)
-const streamContent = ref('')
-const thinkingText = ref('')
 const files = ref<FileRef[]>([])
 const inputRef = ref<HTMLTextAreaElement>()
 const messagesRef = ref<HTMLElement>()
 const slashMenu = ref(false)
 const atMenu = ref(false)
-let abortCtrl: AbortController | null = null
 
 // ── Slash commands ──────────────────────────────────────────
 const commands = [
@@ -337,7 +333,7 @@ async function doSend(text: string) {
   streaming.value = true
   streamContent.value = ''
   thinkingText.value = ''
-  abortCtrl = new AbortController()
+  aiAbortCtrl.value = new AbortController()
 
   const history = messages.value
     .filter(m => !m.isStreaming).slice(-20)
@@ -348,7 +344,7 @@ async function doSend(text: string) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: text, history, context_text: props.editorContext?.trim() || undefined }),
-      signal: abortCtrl.signal,
+      signal: aiAbortCtrl.value.signal,
     })
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({ detail: 'Request failed' }))
@@ -373,7 +369,7 @@ async function doSend(text: string) {
     if (streamContent.value) {
       messages.value.push({ id: crypto.randomUUID(), role: 'assistant', content: streamContent.value })
     }
-    streamContent.value = ''; abortCtrl = null; scrollBottom()
+    streamContent.value = ''; aiAbortCtrl.value = null; scrollBottom()
   }
 }
 

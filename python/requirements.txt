@@ -36,6 +36,9 @@ paddleocr>=2.9.0
 # MCP Server support (stdio transport for Claude Code / Cursor IDE integration)
 mcp>=1.0.0
 
+# Agent workspace tools: diff preview generation
+unidiff>=0.7.5
+
 # Tests
 pytest>=8.0.0
 pytest-cov>=5.0.0

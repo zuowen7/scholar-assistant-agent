@@ -122,7 +122,7 @@ _RECOVERY_STRATEGIES: dict[ErrorType, RecoveryAction] = {
     ),
     ErrorType.UNKNOWN: RecoveryAction(
         action="retry", delay_seconds=3.0, max_retries=1,
-        message="未知错误，等待 {delay}s 后重试...",
+        message="未知错误，请检查 API 配置和网络连接",
     ),
 }
 
@@ -139,6 +139,13 @@ def classify_error(exception: Exception) -> ErrorType:
     msg = str(exception).lower()
     response = getattr(exception, "response", None)
     status_code = getattr(response, "status_code", None) if response is not None else None
+
+    # 从错误消息中提取 HTTP 状态码（如 "HTTP 400" 或 "(HTTP 429)"）
+    if status_code is None:
+        import re as _re
+        m = _re.search(r"(?i)\(http (\d+)\)", msg)
+        if m:
+            status_code = int(m.group(1))
 
     # 按状态码分类
     if status_code == 401:
@@ -161,11 +168,17 @@ def classify_error(exception: Exception) -> ErrorType:
     # 按消息内容分类
     if "timeout" in msg or "timed out" in msg:
         return ErrorType.TIMEOUT
-    if "connection" in msg or "connect" in msg:
+    if "connection" in msg or "connect" in msg or "连接" in msg:
         return ErrorType.TIMEOUT
     if "context" in msg and ("overflow" in msg or "too long" in msg or "length" in msg):
         return ErrorType.CONTEXT_OVERFLOW
-    if "rate" in msg or "limit" in msg or "too many" in msg:
+    if "input too long" in msg or "input is too long" in msg:
+        return ErrorType.CONTEXT_OVERFLOW
+    if "maximum context length" in msg or "max_tokens_exceed" in msg or "tokens exceed" in msg:
+        return ErrorType.CONTEXT_OVERFLOW
+    if "rate" in msg and ("limit" in msg or "exceeded" in msg):
+        return ErrorType.RATE_LIMIT
+    if "too many requests" in msg or "请求过多" in msg:
         return ErrorType.RATE_LIMIT
     if "auth" in msg or "api key" in msg or "unauthorized" in msg:
         return ErrorType.AUTH
@@ -175,6 +188,34 @@ def classify_error(exception: Exception) -> ErrorType:
         return ErrorType.BILLING
     if "overload" in msg or "capacity" in msg:
         return ErrorType.OVERLOADED
+    # 中文错误消息匹配
+    if "api 错误" in msg or "api错误" in msg or "服务器" in msg:
+        return ErrorType.SERVER_ERROR
+    if "限流" in msg or "频率" in msg or "请求过多" in msg:
+        return ErrorType.RATE_LIMIT
+    if "认证" in msg or "密钥" in msg or "api key" in msg:
+        return ErrorType.AUTH
+    if "超时" in msg:
+        return ErrorType.TIMEOUT
+    if "模型" in msg and "不存在" in msg:
+        return ErrorType.MODEL_NOT_FOUND
+    # 流式响应不完整（Ollama 未发送 done=true 等）
+    if "未返回完整" in msg or "未返回" in msg or "empty response" in msg:
+        return ErrorType.TIMEOUT
+    # 通用 httpx / json 解析错误
+    if "json" in msg and "decode" in msg:
+        return ErrorType.FORMAT_ERROR
+
+    # 云端 API 流式错误: 提取内层消息重新分类，避免前缀干扰
+    # 格式: "云端 API 流式错误: <实际错误消息>"
+    if "流式错误" in msg or "streaming error" in msg:
+        colon_idx = msg.find(":")
+        if colon_idx != -1:
+            inner = msg[colon_idx + 1:].strip()
+            if inner:
+                inner_type = classify_error(Exception(inner))
+                if inner_type != ErrorType.UNKNOWN:
+                    return inner_type
 
     return ErrorType.UNKNOWN
 
@@ -238,7 +279,7 @@ class RetryManager:
             True 表示可以重试。
         """
         recovery = get_recovery(error_type)
-        if recovery.action != "retry":
+        if recovery.action not in ("retry", "rephrase"):
             return False
 
         attempts = self._attempt_counts.get(error_type, 0)
