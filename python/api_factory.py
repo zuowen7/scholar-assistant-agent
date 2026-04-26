@@ -240,12 +240,26 @@ def _load_config() -> dict:
     if CONFIG_PATH.exists():
         mtime = CONFIG_PATH.stat().st_mtime
         if _config_cache is not None and mtime == _config_cache_mtime:
-            return copy.deepcopy(_config_cache)
+            cfg = copy.deepcopy(_config_cache)
+            _apply_env_overrides(cfg)
+            return cfg
         with open(CONFIG_PATH, encoding="utf-8") as f:
             _config_cache = yaml.safe_load(f) or {}
             _config_cache_mtime = mtime
-            return copy.deepcopy(_config_cache)
-    return {}
+    cfg = copy.deepcopy(_config_cache or {})
+    _apply_env_overrides(cfg)
+    return cfg
+
+
+def _apply_env_overrides(cfg: dict) -> None:
+    """将环境变量覆盖到配置字典中（不修改磁盘文件）。
+
+    支持的环境变量:
+        SCHOLAR_CLOUD_API_KEY  — 覆盖 translator.cloud.api_key
+    """
+    env_key = os.environ.get("SCHOLAR_CLOUD_API_KEY", "").strip()
+    if env_key:
+        cfg.setdefault("translator", {}).setdefault("cloud", {})["api_key"] = env_key
 
 
 def _save_config(config: dict) -> None:
@@ -408,11 +422,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
 
     @app.post("/api/translate")
     async def start_translate(file: UploadFile = File(...)):
-        if not _busy_lock.locked():
-            await _busy_lock.acquire()
-        else:
-            raise HTTPException(409, "已有翻译任务在运行，请等待完成")
-
+        # 先验证，再加锁 — 避免验证失败时锁永久泄漏
         if not file.filename:
             raise HTTPException(400, "文件名不能为空")
         ext = Path(file.filename).suffix.lower()
@@ -420,41 +430,42 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
             supported = ", ".join(sorted(SUPPORTED_EXTENSIONS.keys()))
             raise HTTPException(400, f"不支持的文件格式: {ext}。支持: {supported}")
 
+        if _busy_lock.locked():
+            raise HTTPException(409, "已有翻译任务在运行，请等待完成")
+        await _busy_lock.acquire()
+
         task_id = uuid.uuid4().hex[:8]
         input_dir.mkdir(parents=True, exist_ok=True)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         input_file = input_dir / f"{task_id}_{file.filename}"
-        with open(input_file, "wb") as f:
-            total = 0
-            while chunk := file.file.read(1024 * 1024):
-                total += len(chunk)
-                if total > MAX_UPLOAD_SIZE:
-                    f.close()
-                    input_file.unlink(missing_ok=True)
-                    raise HTTPException(413, "文件过大，最大支持 200 MB")
-                f.write(chunk)
+        try:
+            with open(input_file, "wb") as f:
+                total = 0
+                while chunk := file.file.read(1024 * 1024):
+                    total += len(chunk)
+                    if total > MAX_UPLOAD_SIZE:
+                        input_file.unlink(missing_ok=True)
+                        raise HTTPException(413, "文件过大，最大支持 200 MB")
+                    f.write(chunk)
 
-        tasks[task_id] = {
-            "status": "pending",
-            "input_path": str(input_file),
-            "output_path": None,
-            "content": None,
-            "error": None,
-            "filename": file.filename or "unknown",
-        }
-
-        return {"task_id": task_id}
+            tasks[task_id] = {
+                "status": "pending",
+                "input_path": str(input_file),
+                "output_path": None,
+                "content": None,
+                "error": None,
+                "filename": file.filename or "unknown",
+            }
+            return {"task_id": task_id}
+        except Exception:
+            _busy_lock.release()
+            raise
 
     @app.post("/api/translate/path")
     async def start_translate_path(payload: FilePathPayload):
-        if not _busy_lock.locked():
-            await _busy_lock.acquire()
-        else:
-            raise HTTPException(409, "已有翻译任务在运行，请等待完成")
-
+        # 先验证，再加锁 — 避免验证失败时锁永久泄漏
         file_path = Path(payload.path).resolve()
-        # 路径遍历防护: 禁止访问敏感目录
         _validate_file_path(file_path)
         if not file_path.exists():
             raise HTTPException(400, "文件不存在")
@@ -464,22 +475,29 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         if file_path.stat().st_size > MAX_UPLOAD_SIZE:
             raise HTTPException(413, "文件过大，最大支持 200 MB")
 
+        if _busy_lock.locked():
+            raise HTTPException(409, "已有翻译任务在运行，请等待完成")
+        await _busy_lock.acquire()
+
         task_id = uuid.uuid4().hex[:8]
         input_dir.mkdir(parents=True, exist_ok=True)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         in_path = input_dir / f"{task_id}_{file_path.name}"
-        shutil.copy2(file_path, in_path)
+        try:
+            shutil.copy2(file_path, in_path)
 
-        tasks[task_id] = {
-            "status": "pending",
-            "input_path": str(in_path),
-            "output_path": None,
-            "content": None,
-            "error": None,
-        }
-
-        return {"task_id": task_id}
+            tasks[task_id] = {
+                "status": "pending",
+                "input_path": str(in_path),
+                "output_path": None,
+                "content": None,
+                "error": None,
+            }
+            return {"task_id": task_id}
+        except Exception:
+            _busy_lock.release()
+            raise
 
     async def _run_pipeline(task_id: str) -> AsyncGenerator[dict, None]:
         """翻译管道 generator — 不持有 _busy_lock，由 translate_stream 管理。"""
