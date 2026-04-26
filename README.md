@@ -50,7 +50,7 @@
 
 ```
 ├── src-tauri/                    # Rust + Tauri 桌面端
-│   ├── src/main.rs               #   进程管理 (Python API + Ollama)
+│   ├── src/main.rs               #   进程管理 (Python API + Ollama，自动清除代理环境变量)
 │   └── capabilities/             #   Tauri v2 权限配置
 ├── src/                          # Vue 3 前端
 │   ├── App.vue                   #   主界面 (Translate Mode + Editor Mode)
@@ -59,9 +59,16 @@
 │   │   ├── useAgentChat.ts       #   Agent SSE 对话状态管理
 │   │   ├── useEditor.ts          #   Monaco Editor + AI Panel
 │   │   └── useFileTree.ts        #   文件树导航
+│   ├── utils/
+│   │   └── streamReader.ts       #   统一 SSE 流解析工具（6 个调用点共用）
 │   └── components/               #   AiPanel, FileTree, ArgumentMap, MonacoEditor 等
-├── python/                       # Python 后端 (~17k 行)
-│   ├── api_factory.py            #   FastAPI app 工厂 (73 个 API 端点)
+├── python/                       # Python 后端
+│   ├── api_factory.py            #   FastAPI app 工厂（仅保留核心逻辑）
+│   ├── routers/                  #   路由模块（按功能拆分）
+│   │   ├── translate.py          #   翻译/配置/健康检查路由
+│   │   ├── agent.py              #   Agent 对话/RAG/工具路由
+│   │   ├── editor.py             #   编辑/导出/Vision/Citation路由
+│   │   └── argument.py           #   动态逻辑引擎路由
 │   ├── main.py                   #   CLI 入口
 │   ├── config/default.yaml       #   默认配置
 │   ├── src/
@@ -78,7 +85,7 @@
 │   │   └── mcp/                  #   Vision 客户端 (多模态图像理解)
 │   ├── prompts/                  #   学术写作 Prompt 体系
 │   ├── data/paper_assets/        #   论文模板 + 组件库
-│   └── tests/                    #   463 个测试 (19 unit + 3 integration)
+│   └── tests/                    #   单元测试 + 集成测试
 ├── Dockerfile
 ├── docker-compose.yml
 └── package.json
@@ -131,7 +138,9 @@ docker compose run app /data/input/paper.pdf -o /data/output/paper.md
 ```bash
 npm install
 
-# 开发模式
+# 开发模式（自动清除代理环境变量，避免 httpx import 卡住）
+start_dev.bat
+# 或手动清除代理后运行
 npx tauri dev
 
 # 生产构建
@@ -294,10 +303,12 @@ MSYS_NO_PATHCONV=1 docker run --rm \
 ## 测试
 
 ```bash
+# Python 后端测试
 cd python && pytest tests/ -v
-```
 
-463 个测试（19 unit + 3 integration），覆盖 Parser / Cleaner / Chunker / Translator / Formatter / Agent / RAG / MCP / Zotero / WordExporter / Benchmark
+# 前端单元测试
+npx vitest
+```
 
 ## 技术栈
 
