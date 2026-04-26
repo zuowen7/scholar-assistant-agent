@@ -14,7 +14,7 @@
 
 #### C1. 明文 API Key 硬编码在仓库配置文件中
 - **文件**: `python/config/default.yaml:39`
-- **问题**: `api_key: sk-53790f5e78654ae695e2795ee2a78f02` 明文写入并随代码提交。`.gitignore` 未忽略该文件。
+- **问题**: `api_key: sk-****` (已轮换) 明文写入并随代码提交。`.gitignore` 未忽略该文件。
 - **影响**: 任何有仓库访问权限的人可直接取用 DeepSeek API Key，产生未授权计费或数据泄露。
 - **关联**: `python/config.json`（运行时生成）也可能落入 git 暂存区。
 

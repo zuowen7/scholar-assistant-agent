@@ -58,6 +58,7 @@ def register_translate(
     """Register translate/config/health routes. Returns shared state dict."""
     tasks: dict[str, dict] = {}
     _busy_lock = asyncio.Lock()
+    _lock_reaper_handle: asyncio.Task | None = None
     _state: dict = {"rag_store_getter": rag_store_getter}
 
     data_root = runtime_dir / ("data_cloud" if cloud_only else "data")
@@ -71,6 +72,25 @@ def register_translate(
         excess = len(done_ids) - MAX_TASKS
         for tid in done_ids[:excess]:
             del tasks[tid]
+
+    async def _lock_reaper(delay: float = 60.0) -> None:
+        """Auto-release _busy_lock if stream never connects within delay seconds."""
+        await asyncio.sleep(delay)
+        if _busy_lock.locked():
+            logger.warning("Lock reaper: releasing _busy_lock after %.0fs with no stream connection", delay)
+            _busy_lock.release()
+
+    def _start_reaper() -> None:
+        nonlocal _lock_reaper_handle
+        if _lock_reaper_handle is not None:
+            _lock_reaper_handle.cancel()
+        _lock_reaper_handle = asyncio.create_task(_lock_reaper())
+
+    def _cancel_reaper() -> None:
+        nonlocal _lock_reaper_handle
+        if _lock_reaper_handle is not None:
+            _lock_reaper_handle.cancel()
+            _lock_reaper_handle = None
 
     @app.get("/api/health")
     def health():
@@ -121,9 +141,10 @@ def register_translate(
             supported = ", ".join(sorted(SUPPORTED_EXTENSIONS.keys()))
             raise HTTPException(400, f"不支持的文件格式: {ext}。支持: {supported}")
 
-        if _busy_lock.locked():
+        try:
+            await asyncio.wait_for(_busy_lock.acquire(), timeout=0)
+        except asyncio.TimeoutError:
             raise HTTPException(409, "已有翻译任务在运行，请等待完成")
-        await _busy_lock.acquire()
 
         task_id = uuid.uuid4().hex[:8]
         input_dir.mkdir(parents=True, exist_ok=True)
@@ -148,12 +169,11 @@ def register_translate(
                 "error": None,
                 "filename": file.filename or "unknown",
             }
+            _start_reaper()
             return {"task_id": task_id}
         except Exception:
             _busy_lock.release()
             raise
-
-    @app.post("/api/translate/path")
     async def start_translate_path(payload: FilePathPayload):
         file_path = Path(payload.path).resolve()
         validate_file_path(file_path)
@@ -165,9 +185,10 @@ def register_translate(
         if file_path.stat().st_size > MAX_UPLOAD_SIZE:
             raise HTTPException(413, "文件过大，最大支持 200 MB")
 
-        if _busy_lock.locked():
+        try:
+            await asyncio.wait_for(_busy_lock.acquire(), timeout=0)
+        except asyncio.TimeoutError:
             raise HTTPException(409, "已有翻译任务在运行，请等待完成")
-        await _busy_lock.acquire()
 
         task_id = uuid.uuid4().hex[:8]
         input_dir.mkdir(parents=True, exist_ok=True)
@@ -184,6 +205,7 @@ def register_translate(
                 "content": None,
                 "error": None,
             }
+            _start_reaper()
             return {"task_id": task_id}
         except Exception:
             _busy_lock.release()
@@ -401,7 +423,8 @@ def register_translate(
             raise HTTPException(409, "该任务已在运行中")
 
         if not _busy_lock.locked():
-            raise HTTPException(409, "未持有任务锁，请先通过 POST /api/translate 创建任务")
+            raise HTTPException(409, "任务已超时释放，请重新上传")
+        _cancel_reaper()
         pipeline = _run_pipeline(task_id)
 
         async def _wrapped() -> AsyncGenerator[dict, None]:
