@@ -58,6 +58,7 @@ def register_translate(
     """Register translate/config/health routes. Returns shared state dict."""
     tasks: dict[str, dict] = {}
     _busy_lock = asyncio.Lock()
+    _state: dict = {"rag_store_getter": rag_store_getter}
 
     data_root = runtime_dir / ("data_cloud" if cloud_only else "data")
     input_dir = data_root / "input"
@@ -341,7 +342,7 @@ def register_translate(
             task["status"] = "done"
             task["output_path"] = str(out_path)
 
-            rag_store = rag_store_getter()
+            rag_store = _state["rag_store_getter"]()
             if rag_store is not None:
                 try:
                     src_lang = config.get("translator", {}).get("source_lang", "en")
@@ -462,4 +463,4 @@ def register_translate(
             media_type="text/markdown",
         )
 
-    return {"tasks": tasks}
+    return {"tasks": tasks, "rag_store_getter": _state["rag_store_getter"]}
