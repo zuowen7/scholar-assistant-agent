@@ -151,6 +151,7 @@ export function useAgentChat() {
         }
       }
     } catch (err) {
+      reader?.cancel().catch(() => {})
       if (err instanceof DOMException && err.name === 'AbortError') return
       const msg = messages.value.find(m => m.id === assistantMsg.id)
       if (msg) {

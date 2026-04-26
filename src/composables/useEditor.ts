@@ -428,6 +428,7 @@ export function useEditor() {
         aiResult.value = 'AI 未返回结果，请重试。'
       }
     } catch (e: any) {
+      reader.cancel().catch(() => {})
       if (e.name === 'AbortError') {
         // 用户主动取消，不清空结果
         return
@@ -540,6 +541,7 @@ export function useEditor() {
       }
       return aiResult.value
     } catch (e: any) {
+      reader.cancel().catch(() => {})
       clearInlineDecoration(editor)
       return null
     } finally {

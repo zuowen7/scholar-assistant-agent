@@ -32,7 +32,7 @@
     </div>
 
     <!-- Messages -->
-    <div class="ac-messages" ref="messagesRef">
+    <div class="ac-messages" ref="messagesRef" @click="handleCodeBlockClick">
       <div v-if="messages.length===0 && !streaming" class="ac-empty">
         <div class="ac-empty-icon">
           <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
@@ -265,8 +265,8 @@ function renderMd(text: string, msgId: string): string {
     const displayLang = lang || 'text'
     return `<div class="ac-code-block" data-id="${id}">`
       + `<div class="ac-code-bar"><span class="ac-code-lang">${displayLang}</span>`
-      + `<button class="ac-code-btn" onclick="(function(b){var t=b.closest('.ac-code-block').querySelector('code').textContent;navigator.clipboard.writeText(t);b.textContent='Copied!';setTimeout(()=>b.textContent='Copy',1500)})(this)">Copy</button>`
-      + `<button class="ac-code-btn" onclick="(function(b){var t=b.closest('.ac-code-block').querySelector('code').textContent;window.__aiInsert?.(t)})(this)">Insert</button>`
+      + `<button class="ac-code-btn" data-action="copy">Copy</button>`
+      + `<button class="ac-code-btn" data-action="insert">Insert</button>`
       + `</div>`
       + `<pre><code>${code}</code></pre></div>`
   })
@@ -279,7 +279,7 @@ function renderMd(text: string, msgId: string): string {
   h = h.replace(/^- (.+)$/gm, '<li>$1</li>')
   h = h.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>')
   h = h.replace(/\n/g, '<br/>')
-  return DOMPurify.sanitize(h, { ADD_ATTR: ['onclick', 'data-id'] })
+  return DOMPurify.sanitize(h, { ADD_ATTR: ['data-id', 'data-action'] })
 }
 
 // ── File operations ─────────────────────────────────────────
@@ -401,6 +401,7 @@ async function doSend(text: string) {
     }
     flush()
   } catch (e) {
+    reader?.cancel().catch(() => {})
     if (e instanceof DOMException && e.name === 'AbortError') return
     streamContent.value = `Error: ${e instanceof Error ? e.message : String(e)}`
   } finally {
@@ -412,8 +413,21 @@ async function doSend(text: string) {
   }
 }
 
-// Expose insert callback for code block buttons
-;(window as any).__aiInsert = (text: string) => emit('insert', text)
+// Event delegation for code block Copy / Insert buttons (replaces inline onclick)
+function handleCodeBlockClick(e: MouseEvent) {
+  const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-action]')
+  if (!btn) return
+  const block = btn.closest<HTMLElement>('.ac-code-block')
+  if (!block) return
+  const code = block.querySelector('code')?.textContent ?? ''
+  if (btn.dataset.action === 'copy') {
+    navigator.clipboard.writeText(code).catch(() => {})
+    btn.textContent = 'Copied!'
+    setTimeout(() => { btn.textContent = 'Copy' }, 1500)
+  } else if (btn.dataset.action === 'insert') {
+    emit('insert', code)
+  }
+}
 
 function clearHistory() { messages.value = []; streamContent.value = '' }
 function copyText(t: string) { navigator.clipboard.writeText(t).catch(() => {}) }
