@@ -86,10 +86,14 @@ class MemoryManager:
                     content TEXT NOT NULL,
                     category TEXT NOT NULL DEFAULT 'fact',
                     source TEXT NOT NULL DEFAULT 'manual',
-                    importance REAL NOT NULL DEFAULT 0.5,
-                    created_at TEXT NOT NULL DEFAULT ''
+                    importance REAL NOT NULL DEFAULT 0.5
+                        CHECK (importance >= 0.0 AND importance <= 1.0),
+                    created_at TEXT NOT NULL DEFAULT '',
+                    UNIQUE(content)
                 )
             """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_importance ON memories(importance DESC)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_created ON memories(created_at DESC)")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS conversations (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,

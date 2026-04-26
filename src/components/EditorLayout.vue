@@ -530,8 +530,12 @@ function startResize(e: MouseEvent, target: 'sidebar' | 'panel') {
 async function onKeyDown(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key === 's') {
     e.preventDefault()
-    const err = await saveFile()
-    if (err) showExportToast(err)
+    try {
+      const err = await saveFile()
+      if (err) showExportToast(err)
+    } catch (err) {
+      showExportToast(String(err))
+    }
   }
   if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.shiftKey && acceptGhostText()) {
     e.preventDefault()

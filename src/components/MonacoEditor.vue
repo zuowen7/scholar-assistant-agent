@@ -298,7 +298,6 @@ onMounted(() => {
   editor.onDidChangeCursorSelection(() => { clearGhost() })
 
   // Auto-trigger ghost text on typing (debounced)
-  let autoGhostTimer: ReturnType<typeof setTimeout> | null = null
   editor.onDidChangeModelContent(() => {
     setContent(editor.getValue())
     markDirty()
