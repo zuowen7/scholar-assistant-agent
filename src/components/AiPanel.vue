@@ -251,8 +251,8 @@ function renderMd(text: string, msgId: string): string {
     const displayLang = lang || 'text'
     return `<div class="ac-code-block" data-id="${id}">`
       + `<div class="ac-code-bar"><span class="ac-code-lang">${displayLang}</span>`
-      + `<button class="ac-code-btn" data-action="copy">Copy</button>`
-      + `<button class="ac-code-btn" data-action="insert">Insert</button>`
+      + `<button class="ac-code-btn ac-code-copy">Copy</button>`
+      + `<button class="ac-code-btn ac-code-insert">Insert</button>`
       + `</div>`
       + `<pre><code>${code}</code></pre></div>`
   })
@@ -265,7 +265,7 @@ function renderMd(text: string, msgId: string): string {
   h = h.replace(/^- (.+)$/gm, '<li>$1</li>')
   h = h.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>')
   h = h.replace(/\n/g, '<br/>')
-  return DOMPurify.sanitize(h, { ADD_ATTR: ['data-id', 'data-action'] })
+  return DOMPurify.sanitize(h, { ADD_ATTR: ['data-id'] })
 }
 
 // ── File operations ─────────────────────────────────────────
@@ -373,18 +373,18 @@ async function doSend(text: string) {
   }
 }
 
-// Event delegation for code block Copy / Insert buttons (replaces inline onclick)
+// Event delegation for code block Copy / Insert buttons
 function handleCodeBlockClick(e: MouseEvent) {
-  const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-action]')
+  const btn = (e.target as HTMLElement).closest<HTMLElement>('.ac-code-btn')
   if (!btn) return
   const block = btn.closest<HTMLElement>('.ac-code-block')
   if (!block) return
   const code = block.querySelector('code')?.textContent ?? ''
-  if (btn.dataset.action === 'copy') {
+  if (btn.classList.contains('ac-code-copy')) {
     navigator.clipboard.writeText(code).catch(() => {})
     btn.textContent = 'Copied!'
     setTimeout(() => { btn.textContent = 'Copy' }, 1500)
-  } else if (btn.dataset.action === 'insert') {
+  } else if (btn.classList.contains('ac-code-insert')) {
     emit('insert', code)
   }
 }

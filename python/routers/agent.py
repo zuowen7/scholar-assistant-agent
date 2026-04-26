@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
@@ -30,6 +30,11 @@ try:
     _AGENT_AVAILABLE = True
 except ImportError:
     _AGENT_AVAILABLE = False
+
+_V2_TOOL_WHITELIST = frozenset({
+    "read_file", "list_directory", "search_files",
+    "rag_retrieve", "web_search", "arxiv_search",
+})
 
 
 class ChatRequest(BaseModel):
@@ -273,10 +278,14 @@ def register_agent(
     # --- AWA v2: Direct tool invocation endpoint (for testing / Phase 1 validation) ---
 
     @app.post("/api/agent/v2/tool")
-    async def v2_tool_invoke(req: V2ToolRequest):
+    async def v2_tool_invoke(req: V2ToolRequest, request: Request):
         """直接调用 AWA v2 工作区工具（开发调试用）。"""
+        if request.client.host not in ("127.0.0.1", "::1", "localhost"):
+            raise HTTPException(403, "仅允许本地访问")
         if not _AGENT_AVAILABLE:
             raise HTTPException(503, "Agent 模块未安装")
+        if req.tool not in _V2_TOOL_WHITELIST:
+            raise HTTPException(403, f"工具 '{req.tool}' 不在白名单中，允许: {sorted(_V2_TOOL_WHITELIST)}")
 
         agent = await _get_agent()
         tool_def = agent.tool_registry.get(req.tool)
