@@ -1521,6 +1521,8 @@ body {
 /* ── Top Bar ── */
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
   padding: 12px 8px 12px 20px; background: var(--topbar-bg);
   border-bottom: 1px solid var(--border); flex-shrink: 0;
   -webkit-app-region: drag;
@@ -1528,7 +1530,7 @@ body {
   -webkit-backdrop-filter: blur(var(--glass-blur));
   position: relative; z-index: 100;
 }
-.brand { display: flex; align-items: center; gap: 10px; }
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 0 1 240px; }
 .mode-switch {
   display: flex;
   background: rgba(255,255,255,0.06);
@@ -1557,10 +1559,10 @@ body {
   display: flex; align-items: center; justify-content: center;
   font-weight: 700; font-size: 15px; color: #fff;
 }
-.brand h1 { font-size: 14px; font-weight: 600; color: #fff; }
-.brand p { font-size: 11px; color: var(--text3); margin-top: 1px; }
+.brand h1 { font-size: 14px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brand p { font-size: 11px; color: var(--text3); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.topbar-right { display: flex; gap: 8px; align-items: center; }
+.topbar-right { display: flex; gap: 8px; align-items: center; min-width: 0; flex-shrink: 1; justify-content: flex-end; }
 
 /* ── Settings Button & Panel ── */
 .settings-wrapper {
@@ -1888,6 +1890,7 @@ body {
   background: var(--surface2); color: var(--text3);
   border: none; font-family: inherit;
   -webkit-app-region: no-drag;
+  white-space: nowrap;
 }
 .pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text3); flex-shrink: 0; }
 .pill.ok .pill-dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
@@ -2389,6 +2392,53 @@ body {
 
 /* Topbar agent 按钮激活态 */
 .topbar-icon-btn.active { color: var(--accent2); background: var(--accent-bg); }
+
+@media (max-width: 760px) {
+  .topbar {
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .brand {
+    flex: 0 1 auto;
+    gap: 6px;
+  }
+
+  .brand h1,
+  .brand p {
+    display: none;
+  }
+
+  .logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+
+  .mode-switch {
+    display: none;
+  }
+
+  .topbar-right {
+    gap: 3px;
+    margin-left: auto;
+  }
+
+  .topbar-icon-btn {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+@media (max-width: 520px) {
+  .topbar-right .pill {
+    max-width: 68px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
 
 /* Ghost text inline completion */
 .ghost-text-suggestion { color: rgba(255,255,255,0.25) !important; font-style: italic; }
