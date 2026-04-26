@@ -138,6 +138,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue'
 import DOMPurify from 'dompurify'
+import { readSseStream } from '../utils/streamReader'
 import ArgumentMap from './ArgumentMap.vue'
 
 const props = defineProps<{
@@ -367,41 +368,15 @@ async function doSend(text: string) {
     const reader = resp.body?.getReader()
     if (!reader) throw new Error('No response body')
 
-    const decoder = new TextDecoder()
-    let buffer = ''
-    let evtType = ''
-    let dataBuf = ''
-
-    function flush() {
-      if (!evtType || !dataBuf) return
-      try {
-        const d = JSON.parse(dataBuf)
-        if (evtType === 'token' && d.content) { streamContent.value += d.content; scrollBottom() }
-        else if (evtType === 'response' && d.content) { streamContent.value = d.content }
-        else if (evtType === 'error') { streamContent.value = d.content || 'Error' }
-        else if (evtType === 'thinking' && d.content) { thinkingText.value = d.content }
-        else if (evtType === 'tool_call') { thinkingText.value = 'Calling: ' + (d.metadata?.tool_name || '...') }
-        else if (evtType === 'tool_result') { thinkingText.value = '' }
-      } catch { /* skip */ }
-      evtType = ''; dataBuf = ''
-    }
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-      for (const line of lines) {
-        if (line.startsWith(':')) continue
-        if (line.startsWith('event:')) { flush(); evtType = line.slice(6).trim() }
-        else if (line.startsWith('data:')) { const r = line.slice(5).trim(); if (r) dataBuf += (dataBuf ? '\n' : '') + r }
-        else if (line === '') { flush() }
-      }
-    }
-    flush()
+    await readSseStream(reader, (evtType, d) => {
+      if (evtType === 'token' && d.content) { streamContent.value += d.content as string; scrollBottom() }
+      else if (evtType === 'response' && d.content) { streamContent.value = d.content as string }
+      else if (evtType === 'error') { streamContent.value = (d.content as string) || 'Error' }
+      else if (evtType === 'thinking' && d.content) { thinkingText.value = d.content as string }
+      else if (evtType === 'tool_call') { thinkingText.value = 'Calling: ' + (((d.metadata as Record<string, unknown>)?.tool_name as string) || '...') }
+      else if (evtType === 'tool_result') { thinkingText.value = '' }
+    })
   } catch (e) {
-    reader?.cancel().catch(() => {})
     if (e instanceof DOMException && e.name === 'AbortError') return
     streamContent.value = `Error: ${e instanceof Error ? e.message : String(e)}`
   } finally {

@@ -2,6 +2,7 @@ import { ref, shallowRef, computed } from 'vue'
 import type { EditorSelection, EditorTab } from '../types'
 import * as monaco from 'monaco-editor'
 import { API_BASE } from '../utils/api'
+import { readSseStream } from '../utils/streamReader'
 
 const API = API_BASE
 
@@ -399,36 +400,15 @@ export function useEditor() {
       if (!resp.body) throw new Error('No response body')
 
       const reader = resp.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const raw = line.slice(6).trim()
-          if (!raw) continue
-          try {
-            const evt = JSON.parse(raw)
-            if (evt.content) {
-              aiResult.value = evt.content
-            }
-          } catch {
-            // ignore parse errors
-          }
+      await readSseStream(reader, (_type, evt) => {
+        if (evt.content) {
+          aiResult.value = evt.content as string
         }
-      }
+      })
       if (!aiResult.value) {
         aiResult.value = 'AI 未返回结果，请重试。'
       }
     } catch (e: any) {
-      reader.cancel().catch(() => {})
       if (e.name === 'AbortError') {
         // 用户主动取消，不清空结果
         return
@@ -493,44 +473,22 @@ export function useEditor() {
       if (!resp.body) throw new Error('No response body')
 
       const reader = resp.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
 
       applyInlineDecoration(editor, startLine, startCol, endLine, endCol)
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const raw = line.slice(6).trim()
-          if (!raw) continue
-          try {
-            const evt = JSON.parse(raw)
-            if (evt.content) {
-              aiResult.value = (aiResult.value || '') + evt.content
-              // 实时替换选中文本
-              editor.executeEdits('ai-inline', [{
-                range: new monaco.Range(startLine, startCol, endLine, endCol),
-                text: aiResult.value,
-              }])
-              // 更新 range 以便下次追加
-              const newEndLine = startLine + (aiResult.value.match(/\n/g) || []).length
-              const newEndCol = newEndLine === startLine ? startCol + aiResult.value.length : aiResult.value.length - aiResult.value.lastIndexOf('\n') - 1
-              clearInlineDecoration(editor)
-              applyInlineDecoration(editor, startLine, startCol, newEndLine, newEndCol + 1)
-            }
-          } catch {
-            // ignore parse errors
-          }
+      await readSseStream(reader, (_type, evt) => {
+        if (evt.content) {
+          aiResult.value = (aiResult.value || '') + (evt.content as string)
+          editor.executeEdits('ai-inline', [{
+            range: new monaco.Range(startLine, startCol, endLine, endCol),
+            text: aiResult.value,
+          }])
+          const newEndLine = startLine + (aiResult.value.match(/\n/g) || []).length
+          const newEndCol = newEndLine === startLine ? startCol + aiResult.value.length : aiResult.value.length - aiResult.value.lastIndexOf('\n') - 1
+          clearInlineDecoration(editor)
+          applyInlineDecoration(editor, startLine, startCol, newEndLine, newEndCol + 1)
         }
-      }
-
+      })
       clearInlineDecoration(editor)
       if (!aiResult.value) {
         aiResult.value = sel.text
@@ -541,7 +499,6 @@ export function useEditor() {
       }
       return aiResult.value
     } catch (e: any) {
-      reader.cancel().catch(() => {})
       clearInlineDecoration(editor)
       return null
     } finally {
