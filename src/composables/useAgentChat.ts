@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import type { AgentChatMessage, AgentEvent, RAGDocument } from '../types'
 import { API_BASE } from '../utils/api'
+import { readSseStream } from '../utils/streamReader'
 
 const API_URL = API_BASE
 
@@ -72,73 +73,7 @@ export function useAgentChat() {
       const reader = resp.body?.getReader()
       if (!reader) throw new Error('无法读取响应流')
 
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let currentEvent = ''
-      let dataBuffer = ''
-
-      function processLine(line: string): void {
-        if (line.startsWith('event:')) {
-          if (currentEvent && dataBuffer) {
-            try {
-              handleEvent(currentEvent, JSON.parse(dataBuffer))
-            } catch { /* skip */ }
-            dataBuffer = ''
-          }
-          currentEvent = line.slice(6).trim()
-        } else if (line.startsWith('data:')) {
-          const raw = line.slice(5).trim()
-          if (raw) dataBuffer += (dataBuffer ? '\n' : '') + raw
-        } else if (line === '') {
-          if (currentEvent && dataBuffer) {
-            try {
-              handleEvent(currentEvent, JSON.parse(dataBuffer))
-            } catch { /* skip */ }
-            dataBuffer = ''
-            currentEvent = ''
-          }
-        }
-      }
-
-      function handleEvent(eventType: string, data: Record<string, unknown>): void {
-        const agentEvent: AgentEvent = {
-          type: data.type as AgentEvent['type'],
-          content: (data.content as string) || '',
-          metadata: data.metadata as AgentEvent['metadata'] | undefined,
-        }
-
-        // 找到当前的 assistant 消息
-        const msg = messages.value.find(m => m.id === assistantMsg.id)
-        if (!msg) return
-
-        if (eventType === 'response') {
-          msg.content = agentEvent.content
-          msg.isStreaming = false
-        } else if (eventType === 'error') {
-          msg.content = agentEvent.content
-          msg.isStreaming = false
-        } else {
-          msg.events = [...msg.events, agentEvent]
-        }
-      }
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          processLine(line)
-        }
-      }
-
-      // Flush remaining
-      if (currentEvent && dataBuffer) {
-        try { handleEvent(currentEvent, JSON.parse(dataBuffer)) } catch { /* skip */ }
-      }
+      await readSseStream(reader, handleEvent)
 
       // 如果流结束但 assistant 还在 streaming（没有收到 response 事件），标记结束
       const msg = messages.value.find(m => m.id === assistantMsg.id)
@@ -151,7 +86,6 @@ export function useAgentChat() {
         }
       }
     } catch (err) {
-      reader?.cancel().catch(() => {})
       if (err instanceof DOMException && err.name === 'AbortError') return
       const msg = messages.value.find(m => m.id === assistantMsg.id)
       if (msg) {

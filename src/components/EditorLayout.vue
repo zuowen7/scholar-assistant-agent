@@ -175,6 +175,7 @@ import ComplianceModal from './ComplianceModal.vue'
 import TemplatePicker from './TemplatePicker.vue'
 import { useEditor } from '../composables/useEditor'
 import { API_BASE } from '../utils/api'
+import { readSseStream } from '../utils/streamReader'
 
 const props = defineProps<{ isDark: boolean }>()
 
@@ -440,28 +441,14 @@ async function handleAgentRequest(instruction: string) {
       // Stream the response to AI result
       const reader = resp.body?.getReader()
       if (!reader) return
-      const decoder = new TextDecoder()
-      let buffer = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const raw = line.slice(6).trim()
-          if (!raw) continue
-          try {
-            const evt = JSON.parse(raw)
-            if (evt.content) {
-              aiResult.value = (aiResult.value || '') + evt.content
-            }
-          } catch { /* SSE parse error, skip */ }
+
+      await readSseStream(reader, (_type, evt) => {
+        if (evt.content) {
+          aiResult.value = (aiResult.value || '') + (evt.content as string)
         }
-      }
+      })
     }
-  } catch (e) { reader?.cancel().catch(() => {}); console.warn('handleAgentRequest failed:', e) }
+  } catch (e) { console.warn('handleAgentRequest failed:', e) }
 }
 
 async function handleExportWord() {

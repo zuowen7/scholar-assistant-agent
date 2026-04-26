@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { save } from '@tauri-apps/plugin-dialog'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { API_BASE } from '../utils/api'
+import { readSseStream } from '../utils/streamReader'
 import type {
   TranslateState,
   TranslateStatus,
@@ -169,90 +170,25 @@ async function startStream(taskId: string, attempt: number = 0): Promise<void> {
   const reader = resp.body?.getReader()
   if (!reader) throw new Error('Unable to read response stream')
 
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let currentEvent = ''
-  let dataBuffer = ''
-
-  function processLine(line: string): void {
-    if (line.startsWith('event:')) {
-      // Flush previous event data
-      if (currentEvent && dataBuffer) {
-        try {
-          const data = JSON.parse(dataBuffer)
-          handleSseEvent(currentEvent, data)
-        } catch {
-          // skip malformed JSON
-        }
-        dataBuffer = ''
-      }
-      currentEvent = line.slice(6).trim()
-    } else if (line.startsWith('data:')) {
-      const raw = line.slice(5).trim()
-      if (raw) {
-        dataBuffer += (dataBuffer ? '\n' : '') + raw
-      }
-    } else if (line === '') {
-      // Empty line = event boundary, flush
-      if (currentEvent && dataBuffer) {
-        try {
-          const data = JSON.parse(dataBuffer)
-          handleSseEvent(currentEvent, data)
-        } catch {
-          // skip malformed JSON
-        }
-        dataBuffer = ''
-        currentEvent = ''
-      }
-    }
-  }
-
   try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        processLine(line)
-      }
-    }
-
-    // Flush remaining data
-    if (currentEvent && dataBuffer) {
-      try {
-        const data = JSON.parse(dataBuffer)
-        handleSseEvent(currentEvent, data)
-      } catch {
-        // skip
-      }
-    } else if (buffer.trim()) {
-      processLine(buffer.trim())
-    }
+    await readSseStream(reader, handleSseEvent)
   } catch (err) {
-    reader.cancel().catch(() => {})
-    // Stream ended or was interrupted
-    // 濡傛灉鏄?abort锛堢敤鎴蜂富鍔ㄥ彇娑?reset锛夛紝闈欓粯澶勭悊
     if (err instanceof DOMException && err.name === 'AbortError') {
       return
     }
 
-    // SSE 鑷姩閲嶈繛: 濡傛灉缈昏瘧杩樻病瀹屾垚涓旀湭瓒呰繃鏈€澶ч噸璇曟鏁?    if (state.status !== 'done' && attempt < SSE_RECONNECT_MAX_ATTEMPTS) {
-      state.stepMessage = `杩炴帴涓柇锛屾鍦ㄩ噸杩?(${attempt + 1}/${SSE_RECONNECT_MAX_ATTEMPTS})...`
+    if (state.status !== 'done' && attempt < SSE_RECONNECT_MAX_ATTEMPTS) {
+      state.stepMessage = `连接中断，正在重试 (${attempt + 1}/${SSE_RECONNECT_MAX_ATTEMPTS})...`
       await new Promise(r => setTimeout(r, SSE_RECONNECT_DELAY_MS))
 
-      // 妫€鏌ュ悗绔槸鍚﹁繕娲荤潃
       const stillAlive = await checkHealth()
       if (stillAlive) {
-        // 鍚庣杩樻椿鐫€锛岄噸鏂拌繛鎺ュ悓涓€涓?task 鐨?stream
         try {
           await startStream(taskId, attempt + 1)
           return
         } catch {
-          // 閲嶈繛涔熷け璐ワ紝璧版甯搁敊璇鐞?        }
+          // ignore reconnect failure
+        }
       }
     }
 
