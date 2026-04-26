@@ -36,6 +36,7 @@ function createState(): TranslateState {
     chunks: [],
     errorMessage: null,
     taskId: null,
+    fallbackChunks: 0,
   }
 }
 
@@ -232,6 +233,7 @@ async function startStream(taskId: string, attempt: number = 0): Promise<void> {
       processLine(buffer.trim())
     }
   } catch (err) {
+    reader.cancel().catch(() => {})
     // Stream ended or was interrupted
     // 濡傛灉鏄?abort锛堢敤鎴蜂富鍔ㄥ彇娑?reset锛夛紝闈欓粯澶勭悊
     if (err instanceof DOMException && err.name === 'AbortError') {
@@ -289,9 +291,11 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
         state.translations.push(chunk)
       }
       state.completedChunks = Math.max(state.completedChunks, chunk.index + 1)
-      state.stepMessage = `Translated chunk ${chunk.index + 1}/${chunk.total}`
       if ((data as Record<string, unknown>).fallback) {
+        state.fallbackChunks += 1
         state.stepMessage = `Chunk ${chunk.index + 1}/${chunk.total} failed; original text was kept`
+      } else {
+        state.stepMessage = `Translated chunk ${chunk.index + 1}/${chunk.total}`
       }
       break
     }
@@ -302,7 +306,11 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       state.finalContent = (data.content as string) ?? ''
       state.chunks = (data.chunks as { original: string; translated: string }[]) ?? []
       setStatus('done')
-      state.stepMessage = '缈昏瘧瀹屾垚'
+      if (state.fallbackChunks > 0) {
+        state.stepMessage = `翻译完成（警告：${state.fallbackChunks} 个块翻译失败，已保留原文）`
+      } else {
+        state.stepMessage = '缈昏瘧瀹屾垚'
+      }
       break
     case 'error':
       if (state.status !== 'done') {

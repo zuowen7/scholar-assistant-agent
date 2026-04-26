@@ -461,7 +461,7 @@ async function handleAgentRequest(instruction: string) {
         }
       }
     }
-  } catch (e) { console.warn('handleAgentRequest failed:', e) }
+  } catch (e) { reader?.cancel().catch(() => {}); console.warn('handleAgentRequest failed:', e) }
 }
 
 async function handleExportWord() {
@@ -509,6 +509,10 @@ async function handleSaveFile() {
   else showExportToast('Saved')
 }
 
+// Track active resize handlers so onBeforeUnmount can clean them up if drag is in progress
+let _activeResizeMove: ((e: MouseEvent) => void) | null = null
+let _activeResizeUp: (() => void) | null = null
+
 function startResize(e: MouseEvent, target: 'sidebar' | 'panel') {
   e.preventDefault()
   const startX = e.clientX
@@ -525,8 +529,12 @@ function startResize(e: MouseEvent, target: 'sidebar' | 'panel') {
   function onMouseUp() {
     document.removeEventListener('mousemove', onMouseMove)
     document.removeEventListener('mouseup', onMouseUp)
+    _activeResizeMove = null
+    _activeResizeUp = null
   }
 
+  _activeResizeMove = onMouseMove
+  _activeResizeUp = onMouseUp
   document.addEventListener('mousemove', onMouseMove)
   document.addEventListener('mouseup', onMouseUp)
 }
@@ -566,6 +574,9 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('click', closeToolMenu)
   window.removeEventListener('paper-scaffold', handlePaperScaffold)
+  // Clean up resize drag handlers if a drag was in progress when component unmounted
+  if (_activeResizeMove) document.removeEventListener('mousemove', _activeResizeMove)
+  if (_activeResizeUp) document.removeEventListener('mouseup', _activeResizeUp)
 })
 
 // 鈹€鈹€ Pandoc 瀵煎嚭 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
