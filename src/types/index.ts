@@ -59,6 +59,8 @@ export interface TranslateState {
   chunks: { original: string; translated: string }[]
   errorMessage: string | null
   taskId: string | null
+  /** Number of chunks that fell back to original text due to translation failure */
+  fallbackChunks: number
 }
 
 export interface AppConfig {
