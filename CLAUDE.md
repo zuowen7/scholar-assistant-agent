@@ -19,13 +19,17 @@ npx vitest src/__tests__/useEditor.test.ts  # Single test file
 # Python backend
 cd python
 pip install -r requirements.txt
-pytest tests/ -v               # All tests
-pytest tests/unit/test_parser.py  # Single test file
-pytest tests/ -k "test_chunk"  # By keyword
+pytest tests/ -v                                   # All tests (unit + integration)
+pytest tests/unit/test_parser.py                   # Single test file
+pytest tests/unit/ -v                              # Unit tests only
+pytest tests/integration/ -v                       # Integration tests (needs running API)
+pytest tests/ -k "test_chunk"                      # By keyword
 
 # Desktop app
 npx tauri dev                  # Dev mode (auto-starts Python API on :18088)
 npx tauri build                # Production build
+# Windows: use start_dev.bat instead — it clears HTTP_PROXY env vars first
+# (httpx hangs on import when proxy vars are set)
 
 # Docker
 docker compose --project-name scholar-assistant build && docker compose up
@@ -68,7 +72,17 @@ Key backend modules:
 - `src/chunker/` — 3 strategies (sentence/paragraph/fixed)
 - `src/translator/` — `ollama_client.py` + `cloud_client.py` (provider presets in `PROVIDER_PRESETS`)
 - `src/formatter/` — bilingual/translated-only/parallel output + `renderer.py` (PDF/LaTeX) + `word_exporter.py`
-- `src/agent/` — ReAct loop (`agent.py`), RAG (`rag.py`), tools (`tools.py`), skill system (`skill_system.py`), memory, VRAM manager, context compressor, trajectory recorder, MCP server
+- `src/agent/` — ReAct loop engine with dual-strategy tool calling:
+  - `agent.py` — ReAct loop; `models.py` — shared dataclasses (Message, AgentEvent, ToolCall)
+  - `tools.py` — tool registry; `rag.py` — ChromaDB RAG; `prompt_builder.py` — prompt assembly
+  - `memory.py` — dual-layer memory: `MEMORY.md` (long-term facts) + SQLite (conversation history)
+  - `skill_system.py` — `SKILL.md`-based skill accumulation from task trajectories; nudge every 10 rounds
+  - `trajectory.py` — JSONL trajectory recorder (ShareGPT-compatible) for Skill generation
+  - `context_compressor.py` — proportional-threshold compression (head/tail protected, middle summarised)
+  - `vram_manager.py` — PLANNER/ACTOR role-switching with KV cache flush; avoids OOM on 8GB GPUs
+  - `hooks.py` — 12 lifecycle hook points (`on_tool_call`, `on_llm_response`, `on_memory_write`, etc.)
+  - `error_classifier.py` — error taxonomy + `RetryManager`; `review_agent.py` — background review
+  - `mcp_server.py` — MCP server; `tool_generator.py` — dynamic tool generation
 - `src/plugin/` — MCP-style plugin registry + 16 built-in tools
 - `src/argument/` — Dynamic Argument Mapping: tree store, logic checker, expander, observer, feedback generator, flattener
 - `src/citation/` — Citation indexer
@@ -80,12 +94,12 @@ Key backend modules:
 ### Frontend Structure (`src/`)
 
 - `App.vue` — Main layout, toggles between Translate Mode and Editor Mode
-- `composables/` — **Singleton state stores** (module-level `ref`/`reactive`, not composable functions):
-  - `useTranslate.ts` — SSE translation pipeline state + reconnect logic
-  - `useAgentChat.ts` — Agent SSE chat state
-  - `useEditor.ts` — Monaco instance, tabs, AI panel, file tree, ghost text completion
-  - `useFileTree.ts` — File system navigation
-- `components/` — `MonacoEditor.vue`, `AiPanel.vue`, `FileTree.vue`, `MarkdownPreview.vue`, `ArgumentMap.vue`, etc.
+- `composables/` — state stores; three are **true singletons** (module-level state, shared app-wide):
+  - `useTranslate.ts` — singleton; SSE translation pipeline state + reconnect logic
+  - `useEditor.ts` — singleton; Monaco instance, tabs, AI panel, ghost text completion
+  - `useFileTree.ts` — singleton; file system navigation
+  - `useAgentChat.ts` — regular composable (new state per call); Agent SSE chat state
+- `components/` — `MonacoEditor.vue`, `AiPanel.vue`, `FileTree.vue`, `MarkdownPreview.vue`, `ArgumentMap.vue`, `EditorLayout.vue`, `EditorTabs.vue`, `CommandPalette.vue`, `TemplatePicker.vue`, `ComplianceModal.vue`
 - `utils/api.ts` — API base URL (auto-detects Tauri vs web)
 - `types/index.ts` — Shared TypeScript types
 
