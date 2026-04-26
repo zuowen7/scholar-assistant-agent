@@ -953,13 +953,16 @@ class AgentLoop:
                 f"无法连接 Ollama 服务 ({self.ollama_base_url})"
             ) from e
         except httpx.HTTPStatusError as e:
+            try:
+                detail = e.response.text[:200]
+            except httpx.ResponseNotRead:
+                detail = "<response body not available>"
             raise ValueError(
-                f"Ollama API 错误 (HTTP {e.response.status_code}): "
-                f"{e.response.text[:200]}"
+                f"Ollama API 错误 (HTTP {e.response.status_code}): {detail}"
             ) from e
         except httpx.TimeoutException as e:
             raise ConnectionError(
-                f"Ollama 请求超时 ({self.timeout}s)"
+                f"无法连接 Ollama 服务 ({self.ollama_base_url})"
             ) from e
 
         return resp.json()
@@ -1033,7 +1036,10 @@ class AgentLoop:
                 body = e.response.json()
                 detail = body.get("error", {}).get("message", "") or str(body)
             except Exception:
-                detail = e.response.text[:300]
+                try:
+                    detail = e.response.text[:300]
+                except httpx.ResponseNotRead:
+                    detail = "<response body not available>"
             raise ValueError(
                 f"云端 API 错误 (HTTP {e.response.status_code}): {detail}"
             ) from e
@@ -1158,16 +1164,18 @@ class AgentLoop:
                 f"无法连接 Ollama 服务 ({self.ollama_base_url})"
             ) from e
         except httpx.HTTPStatusError as e:
+            try:
+                detail = e.response.text[:200]
+            except httpx.ResponseNotRead:
+                detail = "<response body not available>"
             raise ValueError(
-                f"Ollama API 错误 (HTTP {e.response.status_code}): "
-                f"{e.response.text[:200]}"
+                f"Ollama API 错误 (HTTP {e.response.status_code}): {detail}"
             ) from e
         except httpx.TimeoutException as e:
             raise ConnectionError(
                 f"Ollama 请求超时 ({self.timeout}s)"
             ) from e
-
-        # 流结束但未收到 done=true，返回已积累的内容
+# 流结束但未收到 done=true，返回已积累的内容
         result = {"message": {"role": "assistant", "content": full_content}}
         if tool_calls_acc:
             result["message"]["tool_calls"] = tool_calls_acc
@@ -1282,8 +1290,14 @@ class AgentLoop:
                 f"无法连接云端 API ({self.cloud_base_url})"
             ) from e
         except httpx.HTTPStatusError as e:
+            # In streaming mode, e.response may not be fully read yet.
+            # Reading .text here could raise ResponseNotRead. Use safe access.
+            try:
+                detail = e.response.text[:300]
+            except httpx.ResponseNotRead:
+                detail = "<response body not available>"
             raise ValueError(
-                f"云端 API 错误 (HTTP {e.response.status_code}): {e.response.text[:300]}"
+                f"云端 API 错误 (HTTP {e.response.status_code}): {detail}"
             ) from e
         except httpx.TimeoutException as e:
             raise ConnectionError(
@@ -1564,7 +1578,10 @@ class AgentLoop:
                 body = e.response.json()
                 detail = body.get("error", {}).get("message", "") or str(body)
             except Exception:
-                detail = e.response.text[:300]
+                try:
+                    detail = e.response.text[:300]
+                except httpx.ResponseNotRead:
+                    detail = "<response body not available>"
             raise ValueError(
                 f"Anthropic API 错误 (HTTP {e.response.status_code}): {detail}"
             ) from e
