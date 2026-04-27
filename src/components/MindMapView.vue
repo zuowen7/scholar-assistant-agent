@@ -7,7 +7,7 @@
       </div>
       <div class="view-meta">
         <span v-if="connectionFromId">选择目标节点以完成连接</span>
-        <span v-else>{{ Math.round(viewport.zoom * 100) }}%</span>
+        <span v-else>{{ nodeCount }} 个节点</span>
       </div>
     </div>
 
@@ -57,16 +57,7 @@
       />
 
       <section class="mindmap-workspace" :style="mindmapWorkspaceStyle">
-      <main
-        ref="canvasRef"
-        class="mindmap-canvas"
-        :class="{ panning: isPanning, connecting: !!connectionFromId }"
-        @pointerdown="startPan"
-        @pointermove="movePan"
-        @pointerup="endPan"
-        @pointercancel="endPan"
-        @pointerleave="endPan"
-      >
+      <main class="mindmap-canvas-vf">
         <MindMapFloatingToolbar
           :position="viewport.toolbar"
           :can-add="!!selectedNode"
@@ -80,60 +71,18 @@
           @ai-expand="aiExpandSelectedNode"
           @analyze="runMindMapAnalysis"
           @start-connect="startConnection"
-          @delete-node="deleteNode"
-          @zoom-in="zoomBy(1.12)"
-          @zoom-out="zoomBy(0.88)"
-          @reset-view="resetView"
-          @fit-view="fitView"
+          @delete-node="deleteSelectedNode"
+          @reset-view="() => {}"
+          @fit-view="() => {}"
           @save="saveAndStay"
           @enter-editor="saveAndEnterEditor"
+          @auto-layout="autoLayout"
         />
 
-        <div class="mindmap-stage" :style="stageStyle">
-          <svg class="mindmap-lines" aria-hidden="true">
-            <path
-              v-for="line in treeLines"
-              :key="line.key"
-              class="tree-line"
-              :d="line.d"
-            />
-            <path
-              v-for="line in associationLines"
-              :key="line.key"
-              class="association-line"
-              :d="line.d"
-            />
-          </svg>
-          <button
-            v-for="node in positionedNodes"
-            :key="node.id"
-            class="map-node"
-            :class="{
-              root: node.id === draftMindMap.rootId,
-              active: node.id === selectedNodeId,
-              source: node.id === connectionFromId,
-              hinted: highlightedNodeIds.has(node.id),
-            }"
-            :style="{ left: `${node.x}px`, top: `${node.y}px` }"
-            @pointerdown.stop="startNodeDrag($event, node.id)"
-            @click.stop="handleNodeClick(node.id)"
-            @dblclick.stop="startInlineEdit(node.id)"
-          >
-            <input
-              v-if="editingNodeId === node.id"
-              ref="nodeInputRef"
-              v-model="editingText"
-              class="node-input"
-              @pointerdown.stop
-              @click.stop
-              @blur="commitInlineEdit"
-              @keydown.enter.prevent="commitInlineEdit"
-              @keydown.escape.prevent="cancelInlineEdit"
-            />
-            <span v-else>{{ node.text }}</span>
-            <span v-if="issueCountByNode[node.id]" class="issue-badge">{{ issueCountByNode[node.id] }}</span>
-          </button>
-        </div>
+        <MindMapCanvas
+          :connection-from-id="connectionFromId"
+          @update:connection-from-id="connectionFromId = $event"
+        />
       </main>
 
       <div
@@ -164,15 +113,11 @@
         </label>
         <div class="inspector-meta">
           <span>节点数</span>
-          <strong>{{ orderedNodes.length }}</strong>
+          <strong>{{ nodeCount }}</strong>
         </div>
         <div class="inspector-meta">
           <span>关联线</span>
           <strong>{{ draftMindMap.links.length }}</strong>
-        </div>
-        <div class="inspector-meta">
-          <span>缩放</span>
-          <strong>{{ Math.round(viewport.zoom * 100) }}%</strong>
         </div>
         <div class="inspector-meta">
           <span>保存状态</span>
@@ -220,23 +165,15 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import MindMapFloatingToolbar from './MindMapFloatingToolbar.vue'
 import MindMapAiHints from './MindMapAiHints.vue'
-import { useMindMap, mindMapToMarkdown } from '../composables/useMindMap'
+import MindMapCanvas from './mindmap/MindMapCanvas.vue'
+import { useMindMap, mindMapToMarkdown, setAnalysisIssues } from '../composables/useMindMap'
 import { useMindMapAnalysis, type MindMapAnalysisIssue } from '../composables/useMindMapAnalysis'
+import { useMindMapLayout } from '../composables/useMindMapLayout'
 
 const emit = defineEmits<{
   (e: 'enter-editor', outline: string): void
 }>()
 
-const NODE_WIDTH = 168
-const NODE_HEIGHT = 52
-const X_GAP = 260
-const Y_GAP = 88
-const STAGE_WIDTH = 2600
-const STAGE_HEIGHT = 1800
-const MIN_ZOOM = 0.35
-const MAX_ZOOM = 1.8
-
-type PositionedNode = { id: string; text: string; depth: number; x: number; y: number }
 type PaneResizeTarget = 'outline' | 'ai' | 'properties'
 type OutlineMode = 'expanded' | 'collapsed' | 'hidden'
 
@@ -250,47 +187,32 @@ const {
   loadFromBackend,
   selectNode,
   updateNodeText,
-  setNodePosition,
   addChild,
   addAssociationLink,
   expandNode,
   deleteNode,
 } = useMindMap()
 const { analyzeMindMap } = useMindMapAnalysis()
+const { autoLayout } = useMindMapLayout()
 
-const editingNodeId = ref('')
-const editingText = ref('')
 const selectedText = ref('')
 const saveMessage = ref('')
-const nodeInputRef = ref<HTMLInputElement[]>()
-const canvasRef = ref<HTMLElement | null>(null)
-const isPanning = ref(false)
-const panStart = ref({ x: 0, y: 0, panX: 0, panY: 0 })
 const collapsedNodeIds = ref<Set<string>>(new Set())
 const connectionFromId = ref('')
 const analysisIssues = ref<MindMapAnalysisIssue[]>([])
 const analysisLoading = ref(false)
 const expandingNode = ref(false)
 const activeIssueId = ref('')
-const highlightedNodeIds = ref<Set<string>>(new Set())
 const outlineMode = ref<OutlineMode>('collapsed')
 const outlineWidth = ref(178)
 const aiPanelOpen = ref(true)
 const aiPanelWidth = ref(284)
 const propertiesCollapsed = ref(false)
 const propertiesHeight = ref(148)
-const nodeDrag = ref<{
-  id: string
-  pointerX: number
-  pointerY: number
-  startX: number
-  startY: number
-  moved: boolean
-} | null>(null)
-const suppressNextNodeClick = ref(false)
 let canvasResizeObserver: ResizeObserver | null = null
 
 const canDelete = computed(() => !!selectedNode.value && selectedNodeId.value !== draftMindMap.value.rootId)
+const nodeCount = computed(() => Object.keys(draftMindMap.value.nodes).length)
 
 const mindmapBodyStyle = computed(() => {
   const outlineColumn = outlineMode.value === 'hidden'
@@ -310,16 +232,6 @@ const mindmapWorkspaceStyle = computed(() => ({
     : `minmax(0, 1fr) 4px ${propertiesHeight.value}px`,
 }))
 
-const issueCountByNode = computed(() => {
-  const counts: Record<string, number> = {}
-  analysisIssues.value.forEach((issue) => {
-    issue.nodeIds.forEach((id) => {
-      counts[id] = (counts[id] ?? 0) + 1
-    })
-  })
-  return counts
-})
-
 const orderedNodes = computed(() => {
   const output: Array<{ id: string; text: string; depth: number; hasChildren: boolean; collapsed: boolean }> = []
   const visit = (id: string, depth: number) => {
@@ -335,271 +247,28 @@ const orderedNodes = computed(() => {
   return output
 })
 
-const autoPositionedNodes = computed(() => {
-  const positions = new Map<string, PositionedNode>()
-  let cursorY = 120
-
-  const place = (id: string, depth: number): number => {
-    const node = draftMindMap.value.nodes[id]
-    if (!node) return cursorY
-
-    let y: number
-    const visibleChildren = collapsedNodeIds.value.has(id) ? [] : node.children
-    if (!visibleChildren.length) {
-      y = cursorY
-      cursorY += Y_GAP
-    } else {
-      const childYs = visibleChildren.map(childId => place(childId, depth + 1))
-      y = (childYs[0] + childYs[childYs.length - 1]) / 2
-    }
-
-    positions.set(id, {
-      id,
-      text: node.text,
-      depth,
-      x: 120 + depth * X_GAP,
-      y,
-    })
-    return y
-  }
-
-  place(draftMindMap.value.rootId, 0)
-  return positions
-})
-
-const positionedNodes = computed(() => {
-  return orderedNodes.value
-    .map((node) => {
-      const autoPosition = autoPositionedNodes.value.get(node.id)
-      if (!autoPosition) return null
-      const savedPosition = draftMindMap.value.positions?.[node.id]
-      return {
-        ...autoPosition,
-        x: savedPosition?.x ?? autoPosition.x,
-        y: savedPosition?.y ?? autoPosition.y,
-      }
-    })
-    .filter((node): node is PositionedNode => !!node)
-})
-
-const positionMap = computed(() => new Map(positionedNodes.value.map(node => [node.id, node])))
-
-const treeLines = computed(() => {
-  return positionedNodes.value.flatMap(node => {
-    const parentId = draftMindMap.value.nodes[node.id]?.parentId
-    const parent = parentId ? positionMap.value.get(parentId) : null
-    if (!parent) return []
-    return [{
-      key: `tree-${parent.id}-${node.id}`,
-      d: makeRightBranchPath(parent, node),
-    }]
-  })
-})
-
-const associationLines = computed(() => {
-  return draftMindMap.value.links.flatMap(link => {
-    const from = positionMap.value.get(link.from)
-    const to = positionMap.value.get(link.to)
-    if (!from || !to) return []
-    return [{
-      key: link.id,
-      d: makeAssociationPath(from, to),
-    }]
-  })
-})
-
-const stageStyle = computed(() => ({
-  width: `${STAGE_WIDTH}px`,
-  height: `${STAGE_HEIGHT}px`,
-  transform: `translate(${viewport.value.pan.x}px, ${viewport.value.pan.y}px) scale(${viewport.value.zoom})`,
-}))
-
 watch(selectedNode, (node) => {
   selectedText.value = node?.text ?? ''
 }, { immediate: true })
 
 onMounted(async () => {
-  canvasRef.value?.addEventListener('wheel', handleWheel, { passive: false })
   canvasResizeObserver = new ResizeObserver(() => {
     clampPaneSizes()
     clampToolbarPosition()
   })
-  if (canvasRef.value) canvasResizeObserver.observe(canvasRef.value)
+  canvasResizeObserver.observe(document.documentElement)
   window.addEventListener('resize', handleWindowResize)
   clampPaneSizes()
   await loadFromBackend()
 })
 
 onBeforeUnmount(() => {
-  canvasRef.value?.removeEventListener('wheel', handleWheel)
   canvasResizeObserver?.disconnect()
   window.removeEventListener('resize', handleWindowResize)
 })
 
-function makeRightBranchPath(from: PositionedNode, to: PositionedNode) {
-  const startX = from.x + NODE_WIDTH
-  const startY = from.y + NODE_HEIGHT / 2
-  const endX = to.x
-  const endY = to.y + NODE_HEIGHT / 2
-  const mid = Math.max(70, Math.abs(endX - startX) * 0.5)
-  return `M ${startX} ${startY} C ${startX + mid} ${startY}, ${endX - mid} ${endY}, ${endX} ${endY}`
-}
-
-function makeAssociationPath(from: PositionedNode, to: PositionedNode) {
-  const startX = from.x + NODE_WIDTH / 2
-  const startY = from.y + NODE_HEIGHT / 2
-  const endX = to.x + NODE_WIDTH / 2
-  const endY = to.y + NODE_HEIGHT / 2
-  const curve = Math.max(50, Math.abs(endX - startX) * 0.2)
-  return `M ${startX} ${startY} C ${startX + curve} ${startY - 56}, ${endX - curve} ${endY - 56}, ${endX} ${endY}`
-}
-
-function clampZoom(value: number) {
-  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value))
-}
-
-function startInlineEdit(id: string) {
-  const node = draftMindMap.value.nodes[id]
-  if (!node) return
-  selectNode(id)
-  editingNodeId.value = id
-  editingText.value = node.text
-  nextTick(() => nodeInputRef.value?.[0]?.focus())
-}
-
-function commitInlineEdit() {
-  if (editingNodeId.value) updateNodeText(editingNodeId.value, editingText.value)
-  editingNodeId.value = ''
-}
-
-function cancelInlineEdit() {
-  editingNodeId.value = ''
-}
-
 function applyInspectorText() {
   if (selectedNode.value) updateNodeText(selectedNode.value.id, selectedText.value)
-}
-
-function startPan(event: PointerEvent) {
-  const target = event.target as HTMLElement
-  if (target.closest('.map-node') || target.closest('.floating-toolbar')) return
-  isPanning.value = true
-  panStart.value = {
-    x: event.clientX,
-    y: event.clientY,
-    panX: viewport.value.pan.x,
-    panY: viewport.value.pan.y,
-  }
-  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
-}
-
-function movePan(event: PointerEvent) {
-  if (!isPanning.value) return
-  viewport.value.pan = {
-    x: panStart.value.panX + event.clientX - panStart.value.x,
-    y: panStart.value.panY + event.clientY - panStart.value.y,
-  }
-}
-
-function endPan(event: PointerEvent) {
-  if (!isPanning.value) return
-  isPanning.value = false
-  const target = event.currentTarget as HTMLElement
-  if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId)
-}
-
-function startNodeDrag(event: PointerEvent, id: string) {
-  if (editingNodeId.value === id || connectionFromId.value) return
-  const node = positionMap.value.get(id)
-  if (!node) return
-  selectNode(id)
-  nodeDrag.value = {
-    id,
-    pointerX: event.clientX,
-    pointerY: event.clientY,
-    startX: node.x,
-    startY: node.y,
-    moved: false,
-  }
-  const target = event.currentTarget as HTMLElement
-  target.setPointerCapture(event.pointerId)
-
-  const move = (moveEvent: PointerEvent) => {
-    const drag = nodeDrag.value
-    if (!drag) return
-    const dx = (moveEvent.clientX - drag.pointerX) / viewport.value.zoom
-    const dy = (moveEvent.clientY - drag.pointerY) / viewport.value.zoom
-    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) drag.moved = true
-    setNodePosition(id, {
-      x: drag.startX + dx,
-      y: drag.startY + dy,
-    })
-  }
-
-  const up = (upEvent: PointerEvent) => {
-    const moved = !!nodeDrag.value?.moved
-    suppressNextNodeClick.value = moved
-    nodeDrag.value = null
-    target.removeEventListener('pointermove', move)
-    target.removeEventListener('pointerup', up)
-    target.removeEventListener('pointercancel', up)
-    if (target.hasPointerCapture(upEvent.pointerId)) target.releasePointerCapture(upEvent.pointerId)
-    window.setTimeout(() => {
-      suppressNextNodeClick.value = false
-    }, 0)
-  }
-
-  target.addEventListener('pointermove', move)
-  target.addEventListener('pointerup', up)
-  target.addEventListener('pointercancel', up)
-}
-
-function handleNodeClick(id: string) {
-  if (suppressNextNodeClick.value) return
-  if (connectionFromId.value) {
-    if (connectionFromId.value !== id) addAssociationLink(connectionFromId.value, id)
-    selectNode(id)
-    connectionFromId.value = ''
-    return
-  }
-  selectNode(id)
-}
-
-function startConnection() {
-  if (!selectedNode.value) return
-  connectionFromId.value = connectionFromId.value === selectedNodeId.value ? '' : selectedNodeId.value
-}
-
-function setZoom(nextZoom: number, anchor?: { x: number; y: number }) {
-  const zoom = clampZoom(nextZoom)
-  const canvas = canvasRef.value
-  if (!canvas) {
-    viewport.value.zoom = zoom
-    return
-  }
-
-  const rect = canvas.getBoundingClientRect()
-  const point = anchor ?? { x: rect.width / 2, y: rect.height / 2 }
-  const stageX = (point.x - viewport.value.pan.x) / viewport.value.zoom
-  const stageY = (point.y - viewport.value.pan.y) / viewport.value.zoom
-
-  viewport.value.zoom = zoom
-  viewport.value.pan = {
-    x: point.x - stageX * zoom,
-    y: point.y - stageY * zoom,
-  }
-}
-
-function handleWheel(event: WheelEvent) {
-  event.preventDefault()
-  const target = canvasRef.value
-  if (!target) return
-  const rect = target.getBoundingClientRect()
-  const factor = event.deltaY > 0 ? 0.9 : 1.1
-  setZoom(viewport.value.zoom * factor, {
-    x: event.clientX - rect.left,
-    y: event.clientY - rect.top,
-  })
 }
 
 function handleWindowResize() {
@@ -656,7 +325,7 @@ function startPaneResize(event: PointerEvent, target: PaneResizeTarget) {
 }
 
 function clampToolbarPosition() {
-  const canvas = canvasRef.value
+  const canvas = document.querySelector('.mindmap-canvas-vf')
   if (!canvas) return
   const maxX = Math.max(8, canvas.clientWidth - 190)
   const maxY = Math.max(8, canvas.clientHeight - 56)
@@ -671,46 +340,10 @@ function updateToolbarPosition(position: { x: number; y: number }) {
   clampToolbarPosition()
 }
 
-function zoomBy(factor: number) {
-  setZoom(viewport.value.zoom * factor)
-}
-
-function resetView() {
-  viewport.value.pan = { x: 80, y: 80 }
-  viewport.value.zoom = 1
-}
-
-function fitView() {
-  const canvas = canvasRef.value
-  if (!canvas || !positionedNodes.value.length) return
-
-  const rect = canvas.getBoundingClientRect()
-  const xs = positionedNodes.value.map(node => [node.x, node.x + NODE_WIDTH]).flat()
-  const ys = positionedNodes.value.map(node => [node.y, node.y + NODE_HEIGHT]).flat()
-  const minX = Math.min(...xs)
-  const maxX = Math.max(...xs)
-  const minY = Math.min(...ys)
-  const maxY = Math.max(...ys)
-  const mapWidth = maxX - minX
-  const mapHeight = maxY - minY
-  const zoom = clampZoom(Math.min((rect.width - 160) / mapWidth, (rect.height - 140) / mapHeight, 1.25))
-
-  viewport.value.zoom = zoom
-  viewport.value.pan = {
-    x: (rect.width - mapWidth * zoom) / 2 - minX * zoom,
-    y: (rect.height - mapHeight * zoom) / 2 - minY * zoom,
-  }
-}
-
 function addChildWithPosition() {
   const parent = selectedNode.value
   if (!parent) return
-  const parentPosition = positionMap.value.get(parent.id)
-  const childIndex = parent.children.length
-  addChild(parent.id, parentPosition
-    ? { x: parentPosition.x + X_GAP, y: parentPosition.y + (childIndex - 0.5) * Y_GAP }
-    : undefined,
-  )
+  addChild(parent.id)
 }
 
 function resetMap() {
@@ -718,7 +351,6 @@ function resetMap() {
   connectionFromId.value = ''
   clearAnalysisHighlights()
   resetMindMap()
-  nextTick(fitView)
 }
 
 function toggleCollapse(id: string) {
@@ -738,9 +370,9 @@ function markSaved() {
 async function runMindMapAnalysis() {
   analysisLoading.value = true
   activeIssueId.value = ''
-  highlightedNodeIds.value = new Set()
   try {
     analysisIssues.value = await analyzeMindMap(draftMindMap.value)
+    setAnalysisIssues(analysisIssues.value)
   } finally {
     analysisLoading.value = false
   }
@@ -748,12 +380,10 @@ async function runMindMapAnalysis() {
 
 function focusIssue(issue: MindMapAnalysisIssue) {
   activeIssueId.value = issue.id
-  highlightedNodeIds.value = new Set(issue.nodeIds)
   const targetId = issue.nodeIds.find(id => draftMindMap.value.nodes[id])
   if (!targetId) return
   expandAncestors(targetId)
   selectNode(targetId)
-  nextTick(() => centerNode(targetId))
 }
 
 function expandAncestors(id: string) {
@@ -766,21 +396,10 @@ function expandAncestors(id: string) {
   collapsedNodeIds.value = next
 }
 
-function centerNode(id: string) {
-  const canvas = canvasRef.value
-  const node = positionMap.value.get(id)
-  if (!canvas || !node) return
-  const rect = canvas.getBoundingClientRect()
-  viewport.value.pan = {
-    x: rect.width / 2 - (node.x + NODE_WIDTH / 2) * viewport.value.zoom,
-    y: rect.height / 2 - (node.y + NODE_HEIGHT / 2) * viewport.value.zoom,
-  }
-}
-
 function clearAnalysisHighlights() {
   activeIssueId.value = ''
-  highlightedNodeIds.value = new Set()
   analysisIssues.value = []
+  setAnalysisIssues([])
 }
 
 function saveAndStay() {
@@ -794,12 +413,22 @@ function saveAndEnterEditor() {
   emit('enter-editor', outline)
 }
 
+function startConnection() {
+  if (!selectedNode.value) return
+  connectionFromId.value = connectionFromId.value === selectedNodeId.value ? '' : selectedNodeId.value
+}
+
+function deleteSelectedNode() {
+  if (selectedNodeId.value && selectedNodeId.value !== draftMindMap.value.rootId) {
+    deleteNode(selectedNodeId.value)
+  }
+}
+
 async function aiExpandSelectedNode() {
   if (!selectedNode.value || expandingNode.value) return
   expandingNode.value = true
   try {
     await expandNode(selectedNodeId.value)
-    nextTick(fitView)
   } finally {
     expandingNode.value = false
   }
@@ -963,6 +592,14 @@ async function aiExpandSelectedNode() {
   overflow: hidden;
   display: grid;
 }
+.mindmap-canvas-vf {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 260px;
+}
 .mindmap-properties {
   position: relative;
   min-width: 0;
@@ -1042,115 +679,6 @@ async function aiExpandSelectedNode() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.mindmap-canvas {
-  position: relative;
-  overflow: hidden;
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 260px;
-  cursor: grab;
-  background:
-    linear-gradient(var(--border-color) 1px, transparent 1px),
-    linear-gradient(90deg, var(--border-color) 1px, transparent 1px);
-  background-size: 48px 48px;
-  background-color: var(--editor-bg);
-  touch-action: none;
-}
-.mindmap-canvas.panning {
-  cursor: grabbing;
-}
-.mindmap-canvas.connecting {
-  cursor: crosshair;
-}
-.mindmap-stage {
-  position: absolute;
-  inset: 0;
-  transform-origin: 0 0;
-}
-.mindmap-lines {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  inset: 0;
-  pointer-events: none;
-  overflow: visible;
-}
-.mindmap-lines path {
-  fill: none;
-}
-.tree-line {
-  stroke: var(--accent);
-  stroke-width: 2;
-  opacity: 0.52;
-}
-.association-line {
-  stroke: color-mix(in srgb, var(--accent) 50%, var(--text-secondary));
-  stroke-width: 1.8;
-  stroke-dasharray: 8 7;
-  opacity: 0.68;
-}
-.map-node {
-  position: absolute;
-  width: 168px;
-  min-height: 52px;
-  border: 1px solid var(--border-color);
-  border-radius: 9px;
-  background: var(--toolbar-bg);
-  color: var(--text-primary);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18);
-  padding: 9px 11px;
-  font: inherit;
-  font-size: 13px;
-  text-align: center;
-  cursor: move;
-  touch-action: none;
-}
-.map-node.root {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-  font-weight: 700;
-}
-.map-node.active {
-  border-color: var(--accent);
-  outline: 3px solid color-mix(in srgb, var(--accent) 42%, transparent);
-  outline-offset: 3px;
-  box-shadow: 0 12px 34px color-mix(in srgb, var(--accent) 24%, transparent);
-}
-.map-node.source {
-  outline: 3px dashed color-mix(in srgb, var(--accent) 72%, transparent);
-  outline-offset: 5px;
-}
-.map-node.hinted {
-  border-color: #f59e0b;
-  box-shadow: 0 0 0 3px color-mix(in srgb, #f59e0b 28%, transparent), 0 12px 34px rgba(0, 0, 0, 0.22);
-}
-.issue-badge {
-  position: absolute;
-  top: -8px;
-  right: -8px;
-  min-width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: #f59e0b;
-  color: #111827;
-  font-size: 11px;
-  font-weight: 800;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
-}
-.node-input {
-  width: 100%;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: center;
 }
 .inspector-label {
   display: flex;

@@ -28,12 +28,27 @@
     <button @click.stop="$emit('reset-view')" title="重置视图">重置</button>
     <button @click.stop="$emit('fit-view')" title="适应视图">适应</button>
     <span class="divider" />
+    <button @click.stop="$emit('auto-layout')" title="自动整理布局">整理</button>
     <button class="primary" @click.stop="$emit('save')" title="保存到当前工程">保存</button>
     <button class="primary" @click.stop="$emit('enter-editor')" title="进入编辑器">编辑器</button>
+    <span class="divider" />
+    <button class="icon-btn help-btn" :class="{ active: showHelp }" @click.stop="showHelp = !showHelp" title="快捷键">?</button>
+    <div v-if="showHelp" class="shortcut-panel" @click.stop @pointerdown.stop>
+      <div class="shortcut-title">快捷键</div>
+      <div class="shortcut-row"><kbd>Tab</kbd> 添加子节点</div>
+      <div class="shortcut-row"><kbd>Enter</kbd> 添加兄弟节点</div>
+      <div class="shortcut-row"><kbd>F2</kbd> / 双击 编辑节点</div>
+      <div class="shortcut-row"><kbd>Del</kbd> 删除悬停的连线</div>
+      <div class="shortcut-row"><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> 导航节点</div>
+      <div class="shortcut-row"><kbd>Ctrl+Z</kbd> 撤销</div>
+      <div class="shortcut-row"><kbd>Ctrl+Shift+Z</kbd> 重做</div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
+
 const props = defineProps<{
   position: { x: number; y: number }
   canAdd: boolean
@@ -42,6 +57,8 @@ const props = defineProps<{
   analyzing: boolean
   expanding: boolean
 }>()
+
+const showHelp = ref(false)
 
 const emit = defineEmits<{
   (e: 'update:position', value: { x: number; y: number }): void
@@ -57,6 +74,7 @@ const emit = defineEmits<{
   (e: 'fit-view'): void
   (e: 'save'): void
   (e: 'enter-editor'): void
+  (e: 'auto-layout'): void
 }>()
 
 function startDrag(event: PointerEvent) {
@@ -181,5 +199,53 @@ button:disabled {
   .divider {
     display: none;
   }
+}
+
+.help-btn {
+  font-weight: 700;
+  font-size: 13px;
+}
+.shortcut-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 220px;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-surface-3);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  z-index: 20;
+}
+.shortcut-title {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--c-text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--space-1);
+}
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--c-text-0);
+  line-height: 1.6;
+}
+.shortcut-row kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--c-surface-4);
+  border: 1px solid var(--c-surface-3);
+  border-radius: 4px;
+  color: var(--c-accent);
+  white-space: nowrap;
 }
 </style>
