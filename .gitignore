@@ -65,3 +65,12 @@ tmp_pytest/
 
 # Claude
 .claude/
+
+# Runtime artifacts
+*.log
+*_warnings.txt
+python/data/chromadb/
+python/test_chroma/
+python/data/assets/
+python/manual_test_*.py
+python/_test_agent_live.py
