@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from time import time
@@ -64,6 +65,8 @@ class MemoryManager:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.memory_file = self.data_dir / "MEMORY.md"
         self._db_path = self.data_dir / "memory.db"
+        self._local = threading.local()
+        self._write_lock = threading.Lock()
         self._init_db()
 
     # ------------------------------------------------------------------
@@ -71,46 +74,51 @@ class MemoryManager:
     # ------------------------------------------------------------------
 
     def _connect(self) -> sqlite3.Connection:
-        """创建启用 WAL 模式的 SQLite 连接。"""
-        conn = sqlite3.connect(self._db_path, check_same_thread=False, timeout=30.0)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
+        """返回当前线程的 SQLite 连接（WAL 模式，每线程独立）。"""
+        conn: sqlite3.Connection | None = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(str(self._db_path), check_same_thread=False, timeout=30.0)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.row_factory = sqlite3.Row
+            self._local.conn = conn
         return conn
 
     def _init_db(self) -> None:
         """初始化 SQLite 表结构。"""
-        with self._connect() as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS memories (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    content TEXT NOT NULL,
-                    category TEXT NOT NULL DEFAULT 'fact',
-                    source TEXT NOT NULL DEFAULT 'manual',
-                    importance REAL NOT NULL DEFAULT 0.5
-                        CHECK (importance >= 0.0 AND importance <= 1.0),
-                    created_at TEXT NOT NULL DEFAULT '',
-                    UNIQUE(content)
-                )
-            """)
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_importance ON memories(importance DESC)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_created ON memories(created_at DESC)")
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS conversations (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    query TEXT NOT NULL,
-                    answer TEXT NOT NULL DEFAULT '',
-                    success INTEGER NOT NULL DEFAULT 1,
-                    created_at TEXT NOT NULL DEFAULT ''
-                )
-            """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_memories_category
-                ON memories(category)
-            """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_conversations_created
-                ON conversations(created_at)
-            """)
+        conn = self._connect()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS memories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                content TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT 'fact',
+                source TEXT NOT NULL DEFAULT 'manual',
+                importance REAL NOT NULL DEFAULT 0.5
+                    CHECK (importance >= 0.0 AND importance <= 1.0),
+                created_at TEXT NOT NULL DEFAULT '',
+                UNIQUE(content)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_importance ON memories(importance DESC)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_created ON memories(created_at DESC)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS conversations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                query TEXT NOT NULL,
+                answer TEXT NOT NULL DEFAULT '',
+                success INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT ''
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_memories_category
+            ON memories(category)
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_conversations_created
+            ON conversations(created_at)
+        """)
+        conn.commit()
 
     # ------------------------------------------------------------------
     # MEMORY.md 文件操作
@@ -174,7 +182,8 @@ class MemoryManager:
             新记录的 ID。
         """
         now = datetime.now().isoformat(timespec="seconds")
-        with self._connect() as conn:
+        with self._write_lock:
+            conn = self._connect()
             cursor = conn.execute(
                 "INSERT INTO memories (content, category, source, importance, created_at) VALUES (?, ?, ?, ?, ?)",
                 (content, category, source, importance, now),
@@ -196,19 +205,17 @@ class MemoryManager:
         Returns:
             匹配的记忆列表。
         """
-        with self._connect() as conn:
-            conn.row_factory = sqlite3.Row
-            # Escape LIKE special chars: % _ '
-            safe_keywords = (
-                keywords.replace("\\", "\\\\")
-                .replace("%", "\\%")
-                .replace("_", "\\_")
-                .replace("'", "''")
-            )
-            rows = conn.execute(
-                "SELECT * FROM memories WHERE content LIKE ? ORDER BY importance DESC LIMIT ?",
-                (f"%{safe_keywords}%", limit),
-            ).fetchall()
+        conn = self._connect()
+        safe_keywords = (
+            keywords.replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+            .replace("'", "''")
+        )
+        rows = conn.execute(
+            "SELECT * FROM memories WHERE content LIKE ? ORDER BY importance DESC LIMIT ?",
+            (f"%{safe_keywords}%", limit),
+        ).fetchall()
 
         return [
             MemoryEntry(
@@ -231,12 +238,11 @@ class MemoryManager:
         Returns:
             最近的记忆列表。
         """
-        with self._connect() as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                "SELECT * FROM memories ORDER BY id DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
+        conn = self._connect()
+        rows = conn.execute(
+            "SELECT * FROM memories ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
 
         return [
             MemoryEntry(
@@ -298,7 +304,8 @@ class MemoryManager:
             新记录的 ID。
         """
         now = datetime.now().isoformat(timespec="seconds")
-        with self._connect() as conn:
+        with self._write_lock:
+            conn = self._connect()
             cursor = conn.execute(
                 "INSERT INTO conversations (query, answer, success, created_at) VALUES (?, ?, ?, ?)",
                 (query, answer[:2000], int(success), now),
@@ -315,12 +322,11 @@ class MemoryManager:
         Returns:
             对话记录列表。
         """
-        with self._connect() as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                "SELECT * FROM conversations ORDER BY id DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
+        conn = self._connect()
+        rows = conn.execute(
+            "SELECT * FROM conversations ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
 
         return [
             {
@@ -343,14 +349,20 @@ class MemoryManager:
         Returns:
             包含 memories_count 和 conversations_count 的字典。
         """
-        with self._connect() as conn:
-            mem_count = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
-            conv_count = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
+        conn = self._connect()
+        mem_count = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
+        conv_count = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
         return {"memories_count": mem_count, "conversations_count": conv_count}
 
     def close(self) -> None:
-        """关闭资源（SQLite 连接由 with 语句自动管理，此方法为接口一致性保留）。"""
-        pass
+        conn: sqlite3.Connection | None = getattr(self._local, "conn", None)
+        if conn is not None:
+            try:
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            except Exception:
+                pass
+            conn.close()
+            self._local.conn = None
 
 
 class AgentMemory:

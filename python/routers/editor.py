@@ -12,64 +12,64 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 logger = logging.getLogger(__name__)
 
 
 class EditRequest(BaseModel):
-    text: str = ""
-    instruction: str = ""
-    task_type: str | None = None
-    previous: str | None = None
+    text: str = Field(default="", max_length=500_000)
+    instruction: str = Field(default="", max_length=10_000)
+    task_type: str | None = Field(default=None, max_length=64)
+    previous: str | None = Field(default=None, max_length=500_000)
 
 
 class CompletionRequest(BaseModel):
-    context: str = ""
-    max_tokens: int = 128
+    context: str = Field(default="", max_length=500_000)
+    max_tokens: int = Field(default=128, ge=1, le=32768)
 
 
 class MarkdownExportRequest(BaseModel):
-    markdown: str = ""
-    template_id: str = "generic_article"
-    title: str | None = None
+    markdown: str = Field(default="", max_length=2_000_000)
+    template_id: str = Field(default="generic_article", max_length=128)
+    title: str | None = Field(default=None, max_length=500)
 
 
 class ComplianceRequest(BaseModel):
-    markdown: str = ""
-    title: str = ""
-    venue: str = ""
-    required_sections: str = ""
+    markdown: str = Field(default="", max_length=2_000_000)
+    title: str = Field(default="", max_length=500)
+    venue: str = Field(default="", max_length=128)
+    required_sections: str = Field(default="", max_length=10_000)
 
 
 class WordExportRequest(BaseModel):
-    content: str
-    title: str = "Scholar Assistant Export"
+    content: str = Field(max_length=2_000_000)
+    title: str = Field(default="Scholar Assistant Export", max_length=500)
 
 
 class CitationIndexRequest(BaseModel):
-    content: str
-    bibliography: list[dict] = []
-    style: str = "ieee"
+    content: str = Field(max_length=2_000_000)
+    bibliography: list[dict] = Field(default_factory=list, max_length=100)
+    style: str = Field(default="ieee", max_length=32)
 
 
 class ZoteroSearchRequest(BaseModel):
-    query: str
-    item_type: str | None = None
-    limit: int = 20
+    query: str = Field(max_length=500)
+    item_type: str | None = Field(default=None, max_length=64)
+    limit: int = Field(default=20, ge=1, le=100)
 
 
 class PaperScaffoldRequest(BaseModel):
-    template_id: str = "generic_article"
-    title: str = ""
-    sections: list[str] | None = None
+    template_id: str = Field(default="generic_article", max_length=128)
+    title: str = Field(default="", max_length=500)
+    sections: list[str] | None = Field(default=None, max_length=20)
 
 
 class PaperStyleTransferRequest(BaseModel):
-    text: str = ""
-    template_id: str = "generic_article"
-    section: str = "introduction"
+    text: str = Field(default="", max_length=500_000)
+    template_id: str = Field(default="generic_article", max_length=128)
+    section: str = Field(default="introduction", max_length=64)
 
 
 def register_editor(

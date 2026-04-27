@@ -45,6 +45,7 @@ export function useAgentChat() {
     messages.value.push(assistantMsg)
 
     sending.value = true
+    abortController?.abort()
     abortController = new AbortController()
 
     // 构造历史（最近 10 轮，不含当前 assistant 占位）

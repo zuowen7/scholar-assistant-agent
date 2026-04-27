@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 logger = logging.getLogger(__name__)
@@ -38,22 +38,22 @@ _V2_TOOL_WHITELIST = frozenset({
 
 
 class ChatRequest(BaseModel):
-    message: str
-    history: list[dict] | None = None
-    context_text: str | None = None
-    constraints: str | None = None
+    message: str = Field(max_length=100_000)
+    history: list[dict] | None = Field(default=None, max_length=50)
+    context_text: str | None = Field(default=None, max_length=500_000)
+    constraints: str | None = Field(default=None, max_length=10_000)
     workspace_root: str | None = None
 
 
 class RAGIngestRequest(BaseModel):
-    doc_id: str
-    text: str
-    title: str = ""
+    doc_id: str = Field(max_length=256)
+    text: str = Field(max_length=5_000_000)
+    title: str = Field(default="", max_length=500)
 
 
 class V2ToolRequest(BaseModel):
-    tool: str
-    args: dict = {}
+    tool: str = Field(max_length=128)
+    args: dict = Field(default={}, max_length=20)
 
 
 class ApproveRequest(BaseModel):
@@ -70,32 +70,36 @@ def register_agent(
     data_root: Path,
 ) -> dict:
     """Register Agent chat + RAG routes. Returns state dict with rag_store getter."""
-    _agent_instance: AgentLoop | None = None
-    _rag_store: RAGStore | None = None
-    _agent_lock = asyncio.Lock()
+    _shared: dict = {}
+    _init_lock = asyncio.Lock()
 
     def get_rag_store():
-        return _rag_store
+        return _shared.get("rag_store")
 
-    async def _get_agent() -> AgentLoop:
-        nonlocal _agent_instance, _rag_store
+    # ------------------------------------------------------------------
+    # Shared resource initialization (RAG, Memory, Skills, etc.)
+    # ------------------------------------------------------------------
 
-        if _agent_instance is not None:
-            return _agent_instance
+    async def _ensure_shared() -> dict:
+        """Initialize shared resources on first call, then cache."""
+        if _shared:
+            return _shared
 
-        async with _agent_lock:
-            if _agent_instance is not None:
-                return _agent_instance
+        async with _init_lock:
+            if _shared:
+                return _shared
 
             config = load_config()
             agent_cfg = config.get("agent", {})
             trans_cfg = config.get("translator", {})
             workspace_root = agent_cfg.get("workspace_root", "")
 
+            # RAG Store
             rag_cfg = agent_cfg.get("rag", {})
             rag_dir = runtime_dir / rag_cfg.get("persist_dir", "data/chromadb")
+            rag_store = None
             try:
-                _rag_store = RAGStore(
+                rag_store = RAGStore(
                     persist_dir=str(rag_dir),
                     collection_name=rag_cfg.get("collection_name", "scholar_docs"),
                     chunk_size=rag_cfg.get("chunk_size", 512),
@@ -105,91 +109,115 @@ def register_agent(
                 if e.name != "chromadb":
                     raise
                 logger.warning("chromadb not installed; Agent chat will run without RAG memory")
-                _rag_store = None
 
-            use_cloud_tools = cloud_only or trans_cfg.get("engine", "ollama") == "cloud"
-            cloud_cfg_tools = trans_cfg.get("cloud", {}) if use_cloud_tools else {}
-            registry = create_default_registry(
-                rag_store=_rag_store,
-                ollama_base_url=trans_cfg.get("ollama_base_url", "http://localhost:11434"),
-                model=agent_cfg.get("model", "qwen3:8b"),
-                cloud_base_url=cloud_cfg_tools.get("base_url", "https://api.openai.com/v1") if use_cloud_tools else "",
-                cloud_api_key=(cloud_cfg_tools.get("api_key") or "").strip() if use_cloud_tools else "",
-                cloud_model=cloud_cfg_tools.get("model", "gpt-4o") if use_cloud_tools else "",
-                workspace_root=workspace_root,
-            )
-
-            scheduler = None
-            vram_cfg = agent_cfg.get("vram", {})
-            _use_cloud_engine = cloud_only or trans_cfg.get("engine", "ollama") == "cloud"
-            if vram_cfg.get("enabled", True) and not _use_cloud_engine:
-                scheduler = MultiplexingScheduler(
-                    ollama_base_url=trans_cfg.get("ollama_base_url", "http://localhost:11434"),
-                    model=agent_cfg.get("model", "qwen3:8b"),
-                )
-
+            # Persistent memory, skills, trajectory
             agent_data_dir = str(data_root / "agent")
             memory_manager = MemoryManager(data_dir=agent_data_dir)
             skill_registry = SkillRegistry(skills_dir=agent_data_dir + "/skills")
             trajectory_recorder = TrajectoryRecorder(data_dir=agent_data_dir + "/trajectories")
 
-            ollama_url = trans_cfg.get("ollama_base_url", "http://localhost:11434")
-            agent_model = agent_cfg.get("model", "qwen3:8b")
-            # use_cloud_tools 已在上方定义：cloud_only or engine == "cloud"
-            _compress_cloud_cfg = cloud_cfg_tools if use_cloud_tools else {}
-            compressor = ContextCompressor(
-                max_window_tokens=agent_cfg.get("max_window_tokens", 32_000),
-                threshold_percent=agent_cfg.get("compress_threshold", 0.50),
-                ollama_base_url=ollama_url,
-                summary_model=agent_model if not use_cloud_tools else None,
-                cloud_base_url=_compress_cloud_cfg.get("base_url", "") if use_cloud_tools else "",
-                cloud_api_key=(_compress_cloud_cfg.get("api_key") or "").strip() if use_cloud_tools else "",
-                cloud_model=_compress_cloud_cfg.get("model", "") if use_cloud_tools else "",
-            )
-            prompt_builder = PromptBuilder(tool_registry=registry)
-
+            # Tool registry (stateless tool functions, safe to share)
             use_cloud = cloud_only or trans_cfg.get("engine", "ollama") == "cloud"
-            cloud_cfg = trans_cfg.get("cloud", {})
-            if use_cloud:
-                key = (cloud_cfg.get("api_key") or "").strip()
-                if key:
-                    agent_model = cloud_cfg.get("model", "gpt-4o")
-                    logger.info("Agent 使用云端 API: model=%s, provider=%s",
-                                agent_model, cloud_cfg.get("provider", "openai"))
-
-            _agent_instance = AgentLoop(
-                ollama_base_url=ollama_url,
-                model=agent_model,
-                tool_registry=registry,
-                scheduler=scheduler,
-                max_steps=agent_cfg.get("max_steps", 10),
-                system_prompt=agent_cfg.get("system_prompt", ""),
-                temperature=agent_cfg.get("temperature", 0.3),
-                num_predict=agent_cfg.get("num_predict", 4096),
-                timeout=trans_cfg.get("timeout", 300.0),
-                context_compressor=compressor,
-                prompt_builder=prompt_builder,
-                memory_manager=memory_manager,
-                skill_registry=skill_registry,
-                trajectory_recorder=trajectory_recorder,
-                rag_store=_rag_store,
+            cloud_cfg = trans_cfg.get("cloud", {}) if use_cloud else {}
+            tool_registry = create_default_registry(
+                rag_store=rag_store,
+                ollama_base_url=trans_cfg.get("ollama_base_url", "http://localhost:11434"),
+                model=agent_cfg.get("model", "qwen3:8b"),
                 cloud_base_url=cloud_cfg.get("base_url", "https://api.openai.com/v1") if use_cloud else "",
                 cloud_api_key=(cloud_cfg.get("api_key") or "").strip() if use_cloud else "",
                 cloud_model=cloud_cfg.get("model", "gpt-4o") if use_cloud else "",
-                api_format=PROVIDER_PRESETS.get(cloud_cfg.get("provider", "openai"), {}).get("api_format", "openai") if use_cloud else "openai",
-                memory_dir=agent_data_dir + "/memory",
+                workspace_root=workspace_root,
             )
 
-            logger.info("Agent 初始化完成 (model=%s, rag=%s)",
-                        agent_cfg.get("model"), rag_dir)
-            return _agent_instance
+            _shared.update({
+                "rag_store": rag_store,
+                "memory_manager": memory_manager,
+                "skill_registry": skill_registry,
+                "trajectory_recorder": trajectory_recorder,
+                "tool_registry": tool_registry,
+                "workspace_root": workspace_root,
+            })
+
+            logger.info("Agent shared resources initialized (rag=%s)", rag_dir)
+            return _shared
+
+    # ------------------------------------------------------------------
+    # Per-request AgentLoop factory
+    # ------------------------------------------------------------------
+
+    async def _create_agent() -> AgentLoop:
+        """Create a fresh AgentLoop for this request using shared resources."""
+        shared = await _ensure_shared()
+        config = load_config()
+        agent_cfg = config.get("agent", {})
+        trans_cfg = config.get("translator", {})
+
+        use_cloud = cloud_only or trans_cfg.get("engine", "ollama") == "cloud"
+        cloud_cfg = trans_cfg.get("cloud", {})
+        ollama_url = trans_cfg.get("ollama_base_url", "http://localhost:11434")
+
+        # Per-request compressor (owns HTTP client, cleaned up by AgentLoop.close())
+        agent_model = agent_cfg.get("model", "qwen3:8b")
+        compressor = ContextCompressor(
+            max_window_tokens=agent_cfg.get("max_window_tokens", 32_000),
+            threshold_percent=agent_cfg.get("compress_threshold", 0.50),
+            ollama_base_url=ollama_url,
+            summary_model=agent_model if not use_cloud else None,
+            cloud_base_url=cloud_cfg.get("base_url", "") if use_cloud else "",
+            cloud_api_key=(cloud_cfg.get("api_key") or "").strip() if use_cloud else "",
+            cloud_model=cloud_cfg.get("model", "") if use_cloud else "",
+        )
+        prompt_builder = PromptBuilder(tool_registry=shared["tool_registry"])
+
+        # Scheduler
+        scheduler = None
+        vram_cfg = agent_cfg.get("vram", {})
+        if vram_cfg.get("enabled", True) and not use_cloud:
+            scheduler = MultiplexingScheduler(
+                ollama_base_url=ollama_url,
+                model=agent_model,
+            )
+
+        if use_cloud:
+            key = (cloud_cfg.get("api_key") or "").strip()
+            if key:
+                agent_model = cloud_cfg.get("model", "gpt-4o")
+                logger.info("Agent 使用云端 API: model=%s, provider=%s",
+                            agent_model, cloud_cfg.get("provider", "openai"))
+
+        return AgentLoop(
+            ollama_base_url=ollama_url,
+            model=agent_model,
+            tool_registry=shared["tool_registry"],
+            scheduler=scheduler,
+            max_steps=agent_cfg.get("max_steps", 10),
+            system_prompt=agent_cfg.get("system_prompt", ""),
+            temperature=agent_cfg.get("temperature", 0.3),
+            num_predict=agent_cfg.get("num_predict", 4096),
+            timeout=trans_cfg.get("timeout", 300.0),
+            context_compressor=compressor,
+            prompt_builder=prompt_builder,
+            memory_manager=shared["memory_manager"],
+            skill_registry=shared["skill_registry"],
+            trajectory_recorder=shared["trajectory_recorder"],
+            rag_store=shared["rag_store"],
+            cloud_base_url=cloud_cfg.get("base_url", "https://api.openai.com/v1") if use_cloud else "",
+            cloud_api_key=(cloud_cfg.get("api_key") or "").strip() if use_cloud else "",
+            cloud_model=cloud_cfg.get("model", "gpt-4o") if use_cloud else "",
+            api_format=PROVIDER_PRESETS.get(cloud_cfg.get("provider", "openai"), {}).get("api_format", "openai") if use_cloud else "openai",
+            memory_dir=str(data_root / "agent" / "memory"),
+        )
+
+    # ------------------------------------------------------------------
+    # Routes
+    # ------------------------------------------------------------------
 
     @app.post("/api/chat")
     async def chat(req: ChatRequest):
         if not _AGENT_AVAILABLE:
             raise HTTPException(503, "Agent 模块未安装，请安装 chromadb")
 
-        agent = await _get_agent()
+        agent = await _create_agent()
 
         history: list[Message] | None = None
         if req.history:
@@ -209,14 +237,17 @@ def register_agent(
             message = enhanced
 
         async def _stream() -> AsyncGenerator[dict, None]:
-            async for event in agent.run(message, history):
-                payload: dict = {"type": event.type, "content": event.content}
-                if event.metadata:
-                    payload["metadata"] = event.metadata
-                yield {
-                    "event": event.type,
-                    "data": json.dumps(payload, ensure_ascii=False),
-                }
+            try:
+                async for event in agent.run(message, history):
+                    payload: dict = {"type": event.type, "content": event.content}
+                    if event.metadata:
+                        payload["metadata"] = event.metadata
+                    yield {
+                        "event": event.type,
+                        "data": json.dumps(payload, ensure_ascii=False),
+                    }
+            finally:
+                await agent.close()
 
         return EventSourceResponse(
             _stream(),
@@ -225,9 +256,10 @@ def register_agent(
 
     @app.get("/api/rag/documents")
     async def list_rag_documents():
-        if _rag_store is None:
+        rag_store = _shared.get("rag_store") if _shared else None
+        if rag_store is None:
             return []
-        docs = _rag_store.list_documents()
+        docs = rag_store.list_documents()
         return [
             {"id": d.id, "title": d.title, "chunk_count": d.chunk_count, "metadata": d.metadata}
             for d in docs
@@ -235,16 +267,18 @@ def register_agent(
 
     @app.delete("/api/rag/documents/{doc_id}")
     async def delete_rag_document(doc_id: str):
-        if _rag_store is None:
+        rag_store = _shared.get("rag_store") if _shared else None
+        if rag_store is None:
             raise HTTPException(503, "RAG 未初始化")
-        _rag_store.delete_document(doc_id)
+        rag_store.delete_document(doc_id)
         return {"status": "deleted", "doc_id": doc_id}
 
     @app.post("/api/rag/ingest")
     async def rag_ingest(req: RAGIngestRequest):
-        if _rag_store is None:
+        rag_store = _shared.get("rag_store") if _shared else None
+        if rag_store is None:
             raise HTTPException(503, "RAG 未初始化")
-        _rag_store.ingest_document(
+        rag_store.ingest_document(
             doc_id=req.doc_id,
             text=req.text,
             title=req.title,
@@ -253,12 +287,13 @@ def register_agent(
 
     @app.post("/api/rag/upload")
     async def rag_upload(file: UploadFile = File(...)):
-        if _rag_store is None:
+        rag_store = _shared.get("rag_store") if _shared else None
+        if rag_store is None:
             raise HTTPException(503, "RAG 未初始化")
         text_bytes = await file.read()
         text = text_bytes.decode("utf-8", errors="replace")
         doc_id = file.filename or "uploaded"
-        _rag_store.ingest_document(
+        rag_store.ingest_document(
             doc_id=doc_id,
             text=text,
             title=file.filename or "Uploaded document",
@@ -267,12 +302,14 @@ def register_agent(
 
     @app.get("/api/agent/stats")
     async def agent_stats():
-        if not _AGENT_AVAILABLE or _agent_instance is None:
+        if not _AGENT_AVAILABLE or not _shared:
             return {"available": False}
+        config = load_config()
+        agent_cfg = config.get("agent", {})
         return {
             "available": True,
-            "model": _agent_instance.model,
-            "max_steps": _agent_instance.max_steps,
+            "model": agent_cfg.get("model", "qwen3:8b"),
+            "max_steps": agent_cfg.get("max_steps", 10),
         }
 
     # --- AWA v2: Direct tool invocation endpoint (for testing / Phase 1 validation) ---
@@ -287,8 +324,8 @@ def register_agent(
         if req.tool not in _V2_TOOL_WHITELIST:
             raise HTTPException(403, f"工具 '{req.tool}' 不在白名单中，允许: {sorted(_V2_TOOL_WHITELIST)}")
 
-        agent = await _get_agent()
-        tool_def = agent.tool_registry.get(req.tool)
+        shared = await _ensure_shared()
+        tool_def = shared["tool_registry"].get(req.tool)
         if tool_def is None:
             raise HTTPException(404, f"工具 '{req.tool}' 不存在")
 
@@ -308,10 +345,10 @@ def register_agent(
             raise HTTPException(500, f"工具执行失败: {e}")
 
     async def shutdown():
-        nonlocal _agent_instance
-        if _agent_instance is not None:
-            await _agent_instance.close()
-            _agent_instance.memory.close()
+        mm = _shared.get("memory_manager")
+        if mm:
+            mm.close()
+        _shared.clear()
 
     return {
         "get_rag_store": get_rag_store,
