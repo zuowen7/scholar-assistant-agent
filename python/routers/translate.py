@@ -24,6 +24,8 @@ from src.formatter import format_output
 from src.translator.ollama_client import OllamaClient, TranslationResult
 from src.translator.cloud_client import CloudClient, PROVIDER_PRESETS
 from src.translator.context import extract_document_context
+from src.translator.parallel_runner import translate_chunks_parallel
+from src.translator.memory_store import TranslationMemory
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +62,8 @@ def register_translate(
     _busy_lock = asyncio.Lock()
     _lock_reaper_handle: asyncio.Task | None = None
     _state: dict = {"rag_store_getter": rag_store_getter}
+
+    tm_store = TranslationMemory(runtime_dir / "tm.db")
 
     data_root = runtime_dir / ("data_cloud" if cloud_only else "data")
     input_dir = data_root / "input"
@@ -304,53 +308,100 @@ def register_translate(
             if doc_context:
                 client.set_document_context(doc_context)
 
-            results = []
+            results_by_idx: dict[int, TranslationResult] = {}
             fallback_count = 0
+            total_chunks = len(chunk_result.chunks)
+            parallel_cfg = trans_cfg.get("parallel", {})
+            max_concurrency = parallel_cfg.get("max_concurrency", 1)
+
+            src_lang = trans_cfg.get("source_lang", "en")
+            tgt_lang = trans_cfg.get("target_lang", "zh")
+
+            # TM lookup: separate chunks into TM-hits and LLM-needs
+            tm_hit_map: dict[int, tuple] = {}
+            llm_indices: list[int] = []
+            llm_chunks: list = []
+            for i, chunk in enumerate(chunk_result.chunks):
+                hit = await asyncio.to_thread(
+                    tm_store.lookup, chunk.text,
+                    source_lang=src_lang, target_lang=tgt_lang,
+                )
+                if hit.match_type in ("exact", "fuzzy"):
+                    tm_hit_map[i] = (hit, chunk)
+                else:
+                    llm_indices.append(i)
+                    llm_chunks.append(chunk)
+
+            # Yield TM hits first (in order)
+            for i in sorted(tm_hit_map):
+                hit, chunk = tm_hit_map[i]
+                results_by_idx[i] = TranslationResult(
+                    original=chunk.text,
+                    translated=hit.target,
+                    model="tm",
+                )
+                yield {
+                    "event": "chunk_tm_hit",
+                    "data": json.dumps({
+                        "index": i,
+                        "total": total_chunks,
+                        "match_type": hit.match_type,
+                        "score": round(hit.score, 3),
+                        "original_preview": chunk.text[:200],
+                        "translated_preview": hit.target[:200],
+                    }),
+                }
+
+            # Translate remaining chunks via LLM
             try:
-                total_chunks = len(chunk_result.chunks)
-                for i, chunk in enumerate(chunk_result.chunks):
-                    prev_trans = results[-1].translated if results else ""
-                    try:
-                        result = await asyncio.to_thread(client.translate, chunk.text, prev_trans)
-                    except Exception as e:
-                        logger.warning("块 %d/%d 翻译失败，尝试单独重试: %s", i + 1, total_chunks, e)
-                        await asyncio.sleep(2.0)
-                        try:
-                            result = await asyncio.to_thread(client.translate, chunk.text, prev_trans)
-                        except Exception as e2:
-                            logger.error("块 %d/%d 重试仍失败: %s，保留原文", i + 1, total_chunks, e2)
-                            result = TranslationResult(
-                                original=chunk.text,
-                                translated=chunk.text,
-                                model="",
-                            )
+                if llm_chunks:
+                    async for cr in translate_chunks_parallel(
+                        client,
+                        llm_chunks,
+                        max_concurrency=max_concurrency,
+                        retry_delay=parallel_cfg.get("retry_delay", 2.0),
+                    ):
+                        orig_idx = llm_indices[cr.index]
+                        if cr.error:
                             yield {
                                 "event": "chunk_error",
                                 "data": json.dumps({
-                                    "index": i,
+                                    "index": orig_idx,
                                     "total": total_chunks,
-                                    "error": str(e2),
+                                    "error": cr.error,
                                 }),
                             }
-                    is_fallback = result.original == result.translated
-                    if is_fallback:
-                        fallback_count += 1
-                    results.append(result)
-                    await asyncio.sleep(0.1)
-                    yield {
-                        "event": "chunk_done",
-                        "data": json.dumps({
-                            "index": i,
-                            "total": total_chunks,
-                            "original_preview": result.original[:200],
-                            "translated_preview": result.translated[:200],
-                            "tokens": result.completion_tokens,
-                            "fallback": is_fallback,
-                        }),
-                    }
+                        if cr.is_fallback:
+                            fallback_count += 1
+                        results_by_idx[orig_idx] = cr.result
+                        yield {
+                            "event": "chunk_done",
+                            "data": json.dumps({
+                                "index": orig_idx,
+                                "total": total_chunks,
+                                "original_preview": cr.result.original[:200],
+                                "translated_preview": cr.result.translated[:200],
+                                "tokens": cr.result.completion_tokens,
+                                "fallback": cr.is_fallback,
+                            }),
+                        }
             finally:
                 if hasattr(client, "close"):
                     client.close()
+
+            # Reconstruct results in original chunk order
+            results = [results_by_idx[i] for i in range(total_chunks)]
+
+            # Store LLM results in TM
+            for idx in llm_indices:
+                r = results_by_idx[idx]
+                try:
+                    await asyncio.to_thread(
+                        tm_store.store, r.original, r.translated,
+                        source_lang=src_lang, target_lang=tgt_lang,
+                    )
+                except Exception:
+                    logger.debug("TM store failed for chunk %d (non-fatal)", idx)
 
             yield {
                 "event": "progress",
@@ -495,4 +546,54 @@ def register_translate(
             headers=headers,
         )
 
-    return {"tasks": tasks, "rag_store_getter": _state["rag_store_getter"]}
+    # ── TM API routes ──────────────────────────────────────────────
+
+    @app.get("/api/tm/stats")
+    def tm_stats():
+        s = tm_store.stats()
+        return {
+            "total_pairs": s.total_pairs,
+            "source_lang": s.source_lang,
+            "target_lang": s.target_lang,
+        }
+
+    @app.post("/api/tm/import")
+    async def tm_import(file: UploadFile = File(...)):
+        if not file.filename:
+            raise HTTPException(400, "文件名不能为空")
+        if not file.filename.lower().endswith(".tmx"):
+            raise HTTPException(400, "仅支持 TMX 格式文件")
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".tmx", delete=False) as tmp:
+            while chunk := file.file.read(1024 * 1024):
+                tmp.write(chunk)
+            tmp_path = tmp.name
+        try:
+            count = await asyncio.to_thread(tm_store.import_tmx, tmp_path)
+            return {"imported": count}
+        except Exception as e:
+            raise HTTPException(400, f"TMX 导入失败: {e}")
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    @app.get("/api/tm/export")
+    async def tm_export(source_lang: str = "en", target_lang: str = "zh"):
+        import tempfile
+        tmp = tempfile.NamedTemporaryFile(suffix=".tmx", delete=False)
+        tmp_path = tmp.name
+        tmp.close()
+        try:
+            count = await asyncio.to_thread(
+                tm_store.export_tmx, tmp_path,
+                source_lang=source_lang, target_lang=target_lang,
+            )
+            return FileResponse(
+                tmp_path,
+                filename="translation_memory.tmx",
+                media_type="application/xml",
+            )
+        except Exception as e:
+            Path(tmp_path).unlink(missing_ok=True)
+            raise HTTPException(500, f"TMX 导出失败: {e}")
+
+    return {"tasks": tasks, "rag_store_getter": _state["rag_store_getter"], "tm_store": tm_store}
