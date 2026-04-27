@@ -52,6 +52,7 @@
             <span class="btn-label">新建论文</span>
           </button>
           <button class="toolbar-btn" @click="openMindMapFromEditor" title="打开思维导图">思维导图</button>
+          <button class="toolbar-btn" :class="{ active: showArgumentMap }" @click="toggleArgumentMap" title="论证导图">论证</button>
           <span class="toolbar-hint">Ctrl+K AI Edit</span>
         </div>
         <div class="toolbar-right" @click.stop>
@@ -152,11 +153,11 @@
       </template>
     </div>
 
-    <!-- 鍙充晶闈㈡澘 -->
-    <template v-if="workspaceMode === 'editor' && activeTab && (showPreview || showAiPanel)">
+    <!-- 右侧面板 -->
+    <template v-if="workspaceMode === 'editor' && activeTab && (showPreview || showAiPanel || showArgumentMap)">
       <div class="resize-handle panel-resize" @mousedown="startResize($event, 'panel')"></div>
       <div class="layout-panel" :style="{ width: panelWidth + 'px' }">
-        <MarkdownPreview v-if="showPreview" :content="content" :version="contentVersion" :class="{ 'panel-half': showAiPanel }" />
+        <MarkdownPreview v-if="showPreview" :content="content" :version="contentVersion" :class="{ 'panel-half': showAiPanel || showArgumentMap }" />
         <AiPanel
           v-if="showAiPanel"
           :editor-context="selection.text || content"
@@ -166,6 +167,10 @@
           @insert="handleInsert"
           @undo="handleUndo"
           @close="showAiPanel = false"
+        />
+        <ArgumentMap
+          v-if="showArgumentMap"
+          :class="{ 'panel-half': showPreview }"
         />
       </div>
     </template>
@@ -218,6 +223,7 @@ import MarkdownPreview from './MarkdownPreview.vue'
 import FileTree from './FileTree.vue'
 import EditorTabs from './EditorTabs.vue'
 import AiPanel from './AiPanel.vue'
+import ArgumentMap from './ArgumentMap.vue'
 import ComplianceModal from './ComplianceModal.vue'
 import TemplatePicker from './TemplatePicker.vue'
 import MindMapView from './MindMapView.vue'
@@ -229,6 +235,7 @@ import { readSseStream } from '../utils/streamReader'
 const props = defineProps<{ isDark: boolean }>()
 const workspaceMode = ref<'editor' | 'mindmap'>('editor')
 const showProjectStart = ref(false)
+const showArgumentMap = ref(false)
 const { resetMindMap, loadSavedMindMap, saveMindMap } = useMindMap()
 
 const {
@@ -294,6 +301,12 @@ function runMenuAction(action: () => void | Promise<void>) {
 function toggleAiPanel() {
   closeToolMenu()
   showAiPanel.value = !showAiPanel.value
+  if (showAiPanel.value) showArgumentMap.value = false
+}
+
+function toggleArgumentMap() {
+  showArgumentMap.value = !showArgumentMap.value
+  if (showArgumentMap.value) showAiPanel.value = false
 }
 
 async function openWorkspaceFolder() {
