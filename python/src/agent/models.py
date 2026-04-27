@@ -1,6 +1,6 @@
 """Agent 子系统数据模型 — 定义消息、工具调用、事件、文档信息等跨模块共享的数据结构。
 
-本模块作为 Agent 子系统的「类型字典」，被 tools.py / rag.py / agent.py / vram_manager.py
+本模块作为 Agent 子系统的「类型字典」，被 tools.py / rag.py / agent.py
 共同引用。所有数据结构使用纯 dataclass 定义（不依赖 Pydantic），与项目现有的
 TranslationResult / Chunk 等数据类保持风格一致。
 
@@ -16,7 +16,48 @@ TranslationResult / Chunk 等数据类保持风格一致。
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
+from enum import Enum, auto
+
+
+# ---------------------------------------------------------------------------
+# Session State (Phase 2: AgentSession 状态机)
+# ---------------------------------------------------------------------------
+
+
+class SessionState(Enum):
+    """AgentSession 生命周期状态。"""
+    INITIALIZING = auto()
+    PLANNING = auto()
+    EXECUTING = auto()
+    IDLE = auto()
+    DONE = auto()
+    ABORTED = auto()
+
+
+# ---------------------------------------------------------------------------
+# SSE Event Type Constants (Phase 2: Event Protocol v2)
+# ---------------------------------------------------------------------------
+
+# v1 事件 (保留兼容)
+EVT_THINKING = "thinking"
+EVT_TOKEN = "token"
+EVT_TOOL_RESULT = "tool_result"
+EVT_RESPONSE = "response"
+EVT_ERROR = "error"
+
+# v2 新增事件
+EVT_SESSION_STARTED = "session_started"
+EVT_TASK_STARTED = "task_started"
+EVT_THOUGHT = "thought"
+EVT_TOOL_CALL = "tool_call"
+EVT_AWAIT_APPROVAL = "await_approval"
+EVT_APPROVAL_RECEIVED = "approval_received"
+EVT_TASK_DONE = "task_done"
+EVT_WARNING = "warning"
+EVT_DONE = "done"
+EVT_ABORTED = "aborted"
 
 
 @dataclass
@@ -65,25 +106,39 @@ class Message:
 class AgentEvent:
     """Agent SSE 事件 — ReAct 推理过程中流式返回的中间状态或最终结果。
 
-    事件类型说明:
+    v1 事件类型:
     - thinking:    Agent 正在推理（可选择性地展示思考过程）。
-    - tool_call:   Agent 决定调用某个工具，携带工具名和参数。
     - tool_result: 工具执行完毕，携带返回值或错误信息。
     - response:    Agent 的最终回答（ReAct 循环终止）。
     - error:       不可恢复的错误（如连接失败、超过最大步数）。
 
-    该数据结构与 api_factory.py 中 SSE EventSourceResponse 的事件格式兼容，
-    未来接入 FastAPI 路由时可直接映射为 {"event": type, "data": json.dumps(...)}。
+    v2 新增事件类型:
+    - session_started: 会话开始。
+    - task_started: 子任务开始。
+    - thought: 替代 v1 thinking，更精确。
+    - tool_call: Agent 决定调用某个工具。
+    - await_approval: 等待用户审批。
+    - approval_received: 收到审批决定。
+    - task_done: 子任务完成。
+    - warning: 非致命提醒。
+    - done: 全部任务结束（替代 v1 response）。
+    - aborted: 用户主动中止。
 
     Attributes:
         type: 事件类型标识符。
-        content: 事件的文本内容（思考过程、工具参数、最终回答等）。
-        metadata: 附加元数据，如工具名称、执行耗时、token 用量等。
+        content: 事件的文本内容。
+        metadata: 附加元数据（工具名称、执行耗时、token 用量等）。
+        event_id: 事件唯一标识（v2），用于审批回流关联。
     """
 
     type: str
     content: str = ""
     metadata: dict | None = None
+    event_id: str = ""
+
+    def __post_init__(self):
+        if not self.event_id:
+            object.__setattr__(self, "event_id", f"evt_{uuid.uuid4().hex[:8]}")
 
 
 @dataclass

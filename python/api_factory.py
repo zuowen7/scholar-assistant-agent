@@ -107,6 +107,27 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
+def _validate_config(cfg: dict) -> None:
+    """Basic sanity checks on loaded config. Raises ValueError on invalid values."""
+    # Temperature must be in [0, 2]
+    trans = cfg.get("translator", {})
+    temp = trans.get("temperature")
+    if temp is not None:
+        if not isinstance(temp, (int, float)) or temp < 0 or temp > 2:
+            raise ValueError(f"translator.temperature must be 0–2, got {temp!r}")
+    # Agent temperature
+    agent = cfg.get("agent", {})
+    a_temp = agent.get("temperature")
+    if a_temp is not None:
+        if not isinstance(a_temp, (int, float)) or a_temp < 0 or a_temp > 2:
+            raise ValueError(f"agent.temperature must be 0–2, got {a_temp!r}")
+    # max_steps must be positive int
+    max_steps = agent.get("max_steps")
+    if max_steps is not None:
+        if not isinstance(max_steps, int) or max_steps < 1:
+            raise ValueError(f"agent.max_steps must be a positive integer, got {max_steps!r}")
+
+
 def _load_config() -> dict:
     global _config_cache, _config_cache_mtime
     if CONFIG_PATH.exists():
@@ -118,6 +139,7 @@ def _load_config() -> dict:
             return cfg
         with open(CONFIG_PATH, encoding="utf-8") as f:
             _config_cache = yaml.safe_load(f) or {}
+            _validate_config(_config_cache)
             _config_cache_mtime = mtime
     cfg = copy.deepcopy(_config_cache or {})
     _apply_local_overrides(cfg)

@@ -1535,23 +1535,23 @@ def create_default_registry(
     )
     registry.register(expand_section)
 
-    # --- 文件保存工具 ---
-    save_file_def = ToolDefinition(
-        name="save_file",
-        description="将内容保存到文件。支持在沙箱目录中创建文件和子目录。",
-        parameters=_extract_schema_from_function(_save_file),
-        fn=_save_file,
-    )
-    registry.register(save_file_def)
+    # --- 文件保存/读取工具（无 workspace_root 时使用旧沙箱；有 workspace_root 时由 AWA v2 工具替代）---
+    if not workspace_root:
+        save_file_def = ToolDefinition(
+            name="save_file",
+            description="将内容保存到文件。支持在沙箱目录中创建文件和子目录。",
+            parameters=_extract_schema_from_function(_save_file),
+            fn=_save_file,
+        )
+        registry.register(save_file_def)
 
-    # --- 文件读取工具 ---
-    read_file_def = ToolDefinition(
-        name="read_file",
-        description="读取文件内容。支持读取沙箱目录中的文本文件。",
-        parameters=_extract_schema_from_function(_read_file),
-        fn=_read_file,
-    )
-    registry.register(read_file_def)
+        read_file_def = ToolDefinition(
+            name="read_file",
+            description="读取文件内容。支持读取沙箱目录中的文本文件。",
+            parameters=_extract_schema_from_function(_read_file),
+            fn=_read_file,
+        )
+        registry.register(read_file_def)
 
     # --- 参考文献格式化工具 ---
     def format_bibliography(

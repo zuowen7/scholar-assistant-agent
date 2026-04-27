@@ -22,9 +22,12 @@ try:
     from src.agent.models import Message
     from src.agent.prompt_builder import PromptBuilder
     from src.agent.rag import RAGStore
+    from src.agent.session import AgentSession, SessionConfig
     from src.agent.skill_system import SkillRegistry
     from src.agent.tools import create_default_registry
     from src.agent.trajectory import TrajectoryRecorder
+    from src.agent.workspace import WorkspaceEnv
+    from src.agent.change_journal import ChangeJournal
     from src.translator.cloud_client import PROVIDER_PRESETS
     _AGENT_AVAILABLE = True
 except ImportError:
@@ -71,6 +74,7 @@ def register_agent(
     """Register Agent chat + RAG routes. Returns state dict with rag_store getter."""
     _shared: dict = {}
     _init_lock = asyncio.Lock()
+    _session_pool: dict[str, AgentSession] = {}
 
     def get_rag_store():
         return _shared.get("rag_store")
@@ -266,6 +270,114 @@ def register_agent(
             _stream(),
             media_type="text/event-stream",
         )
+
+    # ------------------------------------------------------------------
+    # v2: AgentSession-driven SSE endpoint
+    # ------------------------------------------------------------------
+
+    @app.post("/api/agent/v2/chat")
+    async def v2_chat(req: ChatRequest):
+        """v2 SSE endpoint — AgentSession 状态机驱动，支持多任务编排。"""
+        if not _AGENT_AVAILABLE:
+            raise HTTPException(503, "Agent 模块未安装，请安装 chromadb")
+
+        agent = await _create_agent(workspace_root=req.workspace_root)
+
+        history: list[Message] | None = None
+        if req.history:
+            history = [
+                Message(role=m.get("role", "user"), content=m.get("content", ""))
+                for m in req.history
+            ]
+
+        message = req.message
+        if req.context_text or req.constraints:
+            enhancements: list[str] = []
+            if req.context_text:
+                enhancements.append(f"[参考文本]\n{req.context_text}")
+            if req.constraints:
+                enhancements.append(f"[约束要求]\n{req.constraints}")
+            message = "\n\n".join(enhancements) + f"\n\n[用户问题]\n{req.message}"
+
+        # Build workspace/journal if workspace_root is set
+        workspace = None
+        journal = None
+        effective_ws = (req.workspace_root or "").strip()
+        if effective_ws:
+            try:
+                workspace = WorkspaceEnv(root=effective_ws)
+                journal = ChangeJournal(backup_root=workspace.backup_root_path())
+            except Exception as e:
+                logger.warning("v2 workspace 初始化失败: %s", e)
+
+        session = AgentSession(
+            agent=agent,
+            workspace=workspace,
+            journal=journal,
+            config=SessionConfig(auto_approve=True),
+        )
+        _session_pool[session.id] = session
+
+        async def _v2_stream() -> AsyncGenerator[dict, None]:
+            try:
+                async for event in session.drive(message, history):
+                    payload: dict = {
+                        "type": event.type,
+                        "content": event.content,
+                        "event_id": event.event_id,
+                    }
+                    if event.metadata:
+                        payload["metadata"] = event.metadata
+                    yield {
+                        "event": event.type,
+                        "data": json.dumps(payload, ensure_ascii=False),
+                    }
+            finally:
+                _session_pool.pop(session.id, None)
+                await agent.close()
+
+        return EventSourceResponse(
+            _v2_stream(),
+            media_type="text/event-stream",
+        )
+
+    @app.post("/api/agent/v2/approve/{session_id}/{event_id}")
+    async def v2_approve(session_id: str, event_id: str, req: ApproveRequest):
+        """v2 审批回流端点。"""
+        if not _AGENT_AVAILABLE:
+            raise HTTPException(503, "Agent 模块未安装")
+        session = _session_pool.get(session_id)
+        if session is None:
+            raise HTTPException(404, f"Session {session_id} 不存在")
+        ok = await session.approve(event_id, req.decision)
+        if not ok:
+            raise HTTPException(400, f"Event {event_id} 无待处理的审批")
+        return {"status": "ok"}
+
+    @app.post("/api/agent/v2/abort/{session_id}")
+    async def v2_abort(session_id: str):
+        """v2 会话中止端点。"""
+        if not _AGENT_AVAILABLE:
+            raise HTTPException(503, "Agent 模块未安装")
+        session = _session_pool.get(session_id)
+        if session is None:
+            raise HTTPException(404, f"Session {session_id} 不存在")
+        await session.abort()
+        return {"status": "ok"}
+
+    @app.get("/api/agent/v2/sessions")
+    async def v2_list_sessions():
+        """列出活跃的 v2 sessions。"""
+        return [
+            {
+                "id": s.id,
+                "state": s.state.value,
+                "global_step": s.global_step,
+                "tasks_total": s.task_queue.total_count,
+                "tasks_done": s.task_queue.done_count,
+            }
+            for s in _session_pool.values()
+        ]
 
     @app.get("/api/rag/documents")
     async def list_rag_documents():
