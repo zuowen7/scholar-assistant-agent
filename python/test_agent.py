@@ -3,8 +3,7 @@
 测试场景:
 1. RAG 文档入库与语义检索
 2. 工具注册与直接调用 (翻译、解析)
-3. VRAM 管理器 acquire/release 生命周期
-4. 完整 Agent ReAct 循环 (入库 → 提问 → 检索+翻译 → 输出)
+3. 完整 Agent ReAct 循环 (入库 → 提问 → 检索+翻译 → 输出)
 
 前置条件:
 - 本地 Ollama 服务已启动: ollama serve
@@ -157,62 +156,15 @@ def test_tools() -> None:
         _error(f"测试失败: {e}")
 
 
-# ── 测试 3: VRAM 管理器 ────────────────────────────────────────────────
-
-async def test_vram_manager() -> None:
-    _header("测试 3: VRAM 管理器 (需要 Ollama 运行)")
-    try:
-        from src.agent.vram_manager import VRAMResourceManager, ModelState
-
-        manager = VRAMResourceManager(
-            ollama_base_url="http://localhost:11434",
-            unload_timeout=10.0,  # 测试用短超时
-        )
-
-        # 检查当前状态
-        loaded = await manager.get_loaded_models()
-        _result(f"当前已加载模型: {loaded or '(空)'}")
-
-        # acquire: 加载模型
-        _step("加载 qwen3:8b 到显存...")
-        t0 = time.time()
-        await manager.acquire("qwen3:8b")
-        _result(f"模型加载完成 (耗时 {time.time() - t0:.1f}s)")
-        _result(f"状态: {manager.get_state('qwen3:8b').name}")
-
-        # 验证已加载
-        is_loaded = await manager.is_loaded("qwen3:8b")
-        _result(f"is_loaded: {is_loaded}")
-
-        # release: 卸载模型
-        _step("卸载模型...")
-        await manager.release("qwen3:8b")
-        _result(f"状态: {manager.get_state('qwen3:8b').name}")
-
-        # 测试上下文管理器
-        _step("测试 with_model 上下文管理器...")
-        async with manager.with_model("qwen3:8b"):
-            inner_loaded = await manager.is_loaded("qwen3:8b")
-            _result(f"上下文内 is_loaded: {inner_loaded}")
-        _result(f"退出上下文后状态: {manager.get_state('qwen3:8b').name}")
-
-        await manager.close()
-
-    except Exception as e:
-        _error(f"测试失败: {e}")
-        _step("请确认 Ollama 已启动: ollama serve")
-
-
-# ── 测试 4: 完整 Agent 循环 ────────────────────────────────────────────
+# ── 测试 3: 完整 Agent 循环 ────────────────────────────────────────────
 
 async def test_agent_loop() -> None:
-    _header("测试 4: 完整 Agent ReAct 循环 (需要 Ollama 运行)")
+    _header("测试 3: 完整 Agent ReAct 循环 (需要 Ollama 运行)")
     try:
         import yaml
         from src.agent.agent import AgentLoop
         from src.agent.rag import RAGStore
         from src.agent.tools import create_default_registry
-        from src.agent.vram_manager import MultiplexingScheduler
 
         # 加载配置
         config_path = os.path.join(
@@ -263,16 +215,6 @@ async def test_agent_loop() -> None:
         trans_cfg = config.get("translator", {})
         registry = create_default_registry(rag_store=store)
 
-        # 初始化时分复用调度器
-        scheduler = None
-        if agent_cfg.get("vram", {}).get("enabled", True):
-            scheduler = MultiplexingScheduler(
-                ollama_base_url=trans_cfg.get("ollama_base_url", "http://localhost:11434"),
-                model=agent_cfg.get("model", "qwen3:8b"),
-                context_budget_tokens=28_000,
-                observation_max_chars=1500,
-            )
-
         # Phase 1/2/3: 上下文工程 + 记忆 + Skill + 轨迹
         from src.agent.context_compressor import ContextCompressor
         from src.agent.memory import MemoryManager
@@ -295,7 +237,6 @@ async def test_agent_loop() -> None:
             ollama_base_url=trans_cfg.get("ollama_base_url", "http://localhost:11434"),
             model=agent_cfg.get("model", "qwen3:8b"),
             tool_registry=registry,
-            scheduler=scheduler,
             max_steps=agent_cfg.get("max_steps", 10),
             system_prompt=agent_cfg.get("system_prompt", ""),
             temperature=agent_cfg.get("temperature", 0.3),
@@ -347,7 +288,7 @@ async def test_agent_loop() -> None:
         traceback.print_exc()
 
 
-# ── 测试 5: Phase 1/2/3 模块 ────────────────────────────────────────────
+# ── 测试 4: Phase 1/2/3 模块 ────────────────────────────────────────────
 
 def test_phase_modules() -> None:
     _header("测试 5: Phase 1/2/3 模块（上下文工程、记忆、Skill、轨迹、Hook、错误分类）")
@@ -456,12 +397,11 @@ def main() -> None:
     # 测试 2: 工具注册（同步）
     test_tools()
 
-    # 测试 5: Phase 1/2/3 模块（同步，不需要 Ollama）
+    # 测试 4: Phase 1/2/3 模块（同步，不需要 Ollama）
     test_phase_modules()
 
-    # 测试 3 & 4: 需要 Ollama（异步）
+    # 测试 3: 需要 Ollama（异步）
     _header("以下测试需要 Ollama 运行 (ollama serve + qwen3:8b)")
-    asyncio.run(test_vram_manager())
     asyncio.run(test_agent_loop())
 
     print()

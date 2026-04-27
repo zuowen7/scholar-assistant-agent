@@ -157,6 +157,7 @@ async function uploadPdf(file: File): Promise<string> {
 }
 
 async function startStream(taskId: string, attempt: number = 0): Promise<void> {
+  abortController?.abort()
   abortController = new AbortController()
   const resp = await fetch(`${API_URL}/api/translate/${taskId}/stream`, {
     signal: abortController.signal,

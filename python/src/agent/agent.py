@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import dataclass, field
 import logging
 import re
 import time
@@ -64,6 +65,8 @@ from src.agent.trajectory import TrajectoryRecorder
 logger = logging.getLogger(__name__)
 
 MAX_STEPS = 10
+TASK_MAX_STEPS = 50
+GLOBAL_MAX_STEPS = 200
 _MAX_HISTORY_TURNS = 10
 _TOOL_RESULT_MAX_CHARS = 4000
 
@@ -179,6 +182,136 @@ class AgentLoop:
         await self.llm.close()
         await self.compressor.close()
         await self.reviewer.close()
+
+    # ------------------------------------------------------------------
+    # v2: Stateless single-step executor
+    # ------------------------------------------------------------------
+
+    @dataclass
+    class StepResult:
+        """单步执行结果。"""
+        events: list[AgentEvent]
+        tool_calls: list[ToolCall]
+        tool_results: list[tuple[str, str, str]]  # (name, id, result)
+        is_final: bool = False
+        final_answer: str = ""
+        error: str = ""
+
+    async def step(
+        self,
+        messages: list[Message],
+        *,
+        step_num: int = 1,
+        max_steps: int = TASK_MAX_STEPS,
+    ) -> AgentLoop.StepResult:
+        """执行单个 ReAct 步骤，返回结构化结果。
+
+        AgentSession.drive() 反复调用此方法驱动循环。
+        不修改 self 实例状态（除了 token_usage 累积），
+        所有可变状态由 AgentSession 管理。
+
+        Args:
+            messages: 当前消息列表（会被原地追加 assistant + tool 消息）。
+            step_num: 当前步骤编号（用于日志）。
+            max_steps: 最大步骤数上限（用于日志，不做判断）。
+
+        Returns:
+            StepResult 包含本轮事件、工具调用和结果。
+        """
+        result = self.StepResult(events=[], tool_calls=[], tool_results=[])
+        logger.info("ReAct step %d (session-driven)", step_num)
+
+        # 上下文压缩
+        ollama_dicts = [message_to_ollama_dict(m) for m in messages]
+        try:
+            compression = await self.compressor.compress(ollama_dicts)
+            if compression.was_compressed:
+                messages[:] = self._rebuild_messages_from_dicts(compression.messages)
+                result.events.append(AgentEvent(
+                    type="thinking",
+                    content=f"上下文已压缩: {compression.original_tokens} → {compression.compressed_tokens} tokens",
+                ))
+        except Exception as e:
+            logger.warning("上下文压缩失败（继续）: %s", e)
+
+        # LLM 调用
+        try:
+            tools = self.tool_registry.to_ollama_tools() or None
+            response = None
+            token_events: list[AgentEvent] = []
+            async for token_event, full_response in self.llm.stream(messages, tools=tools):
+                if token_event is not None:
+                    ev = AgentEvent(type="token", content=token_event.get("content", ""))
+                    token_events.append(ev)
+                    result.events.append(ev)
+                if full_response is not None:
+                    response = full_response
+            if response is None:
+                raise ValueError("LLM 流式响应未返回完整结果")
+            self.llm.token_usage.accumulate(response)
+        except Exception as e:
+            logger.error("LLM 调用异常: %s", e, exc_info=True)
+            result.error = str(e)
+            result.events.append(AgentEvent(type="error", content=f"LLM 调用失败: {e}"))
+            return result
+
+        # 解析工具调用
+        tool_calls = extract_tool_calls(response)
+        if not tool_calls:
+            tool_calls = self._parse_text_react(extract_text_content(response))
+
+        if not tool_calls:
+            answer = extract_text_content(response)
+            result.is_final = True
+            result.final_answer = answer
+            result.events.append(AgentEvent(
+                type="response",
+                content=answer,
+                metadata={"token_usage": self.llm.token_usage.to_dict()},
+            ))
+            return result
+
+        # 记录 assistant 消息
+        assistant_content = extract_text_content(response)
+        reasoning = (response.get("message") or {}).get("reasoning_content") or None
+        messages.append(Message(
+            role="assistant",
+            content=assistant_content,
+            tool_calls=tool_calls,
+            reasoning_content=reasoning,
+        ))
+
+        result.tool_calls = tool_calls
+
+        # 发出 tool_call 事件
+        for tc in tool_calls:
+            result.events.append(AgentEvent(
+                type="tool_call",
+                content="",
+                metadata={"tool": tc.name, "args": tc.arguments},
+            ))
+
+        # 执行工具
+        if len(tool_calls) > 1:
+            parallel_results = await self._execute_tools_parallel(tool_calls, "")
+            for tc_name, tc_id, tc_result in parallel_results:
+                result.tool_results.append((tc_name, tc_id, tc_result))
+        else:
+            for tc in tool_calls:
+                tc_result = await self._execute_single_tool(tc, "")
+                result.tool_results.append((tc.name, tc.id, tc_result))
+
+        # 追加 tool 消息 + tool_result 事件
+        for tc_name, tc_id, tc_result in result.tool_results:
+            truncated = tc_result[:_TOOL_RESULT_MAX_CHARS]
+            messages.append(Message(role="tool", content=truncated, tool_call_id=tc_id))
+            result.events.append(AgentEvent(
+                type="tool_result",
+                content=tc_result[:500] + ("..." if len(tc_result) > 500 else ""),
+                metadata={"tool_name": tc_name},
+            ))
+
+        return result
 
     async def run(
         self,
@@ -610,22 +743,22 @@ class AgentLoop:
             else:
                 result = f"错误: {e}"
 
-            if self._memory:
-                self._memory.add(
+            if self.memory:
+                self.memory.add_memory(
                     content=f"工具 {tc.name} 执行失败: {error_msg}\n参数: {tc.arguments}",
                     category="tool_knowledge",
+                    source="agent",
                     importance=0.6,
-                    tags=["tool_error", tc.name],
                 )
             return result
         except Exception as e:
             error_str = str(e)
-            if self._memory:
-                self._memory.add(
+            if self.memory:
+                self.memory.add_memory(
                     content=f"工具 {tc.name} 执行异常: {error_str}\n参数: {tc.arguments}",
                     category="tool_knowledge",
+                    source="agent",
                     importance=0.7,
-                    tags=["tool_error", tc.name],
                 )
             return f"工具执行错误 ({tc.name}): {error_str}"
 
