@@ -316,6 +316,14 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         rag_store_getter=state_agent["get_rag_store"],
     )
 
+    from routers.mindmap import register_mindmap
+    register_mindmap(
+        app,
+        runtime_dir=RUNTIME_DIR,
+        load_config=_load_config,
+        build_cloud_client=_build_cloud_client,
+    )
+
     @app.on_event("shutdown")
     async def _shutdown():
         shutdown_fn = state_agent.get("shutdown")

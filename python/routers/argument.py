@@ -100,11 +100,24 @@ def register_argument(
 
     argument_tasks: dict[str, dict] = {}
 
+    # Lazy-import argument store; if unavailable, raise 503
+    _fallback_available = False
+    if not _ARGUMENT_AVAILABLE:
+        try:
+            from src.argument.store import ArgumentStore as _ArgStore  # noqa: F401
+            _fallback_available = True
+        except ImportError:
+            pass
+
     def _argument_store():
+        if not _fallback_available:
+            raise HTTPException(503, "Argument 模块不可用，请检查安装")
         from src.argument import ArgumentStore
         return ArgumentStore(runtime_dir / "data")
 
     def _argument_tree_or_404() -> dict:
+        if not _fallback_available:
+            raise HTTPException(503, "Argument 模块不可用，请检查安装")
         tree = _argument_store().load()
         if not tree:
             raise HTTPException(404, "Argument tree not found")
@@ -272,6 +285,8 @@ def register_argument(
         if _ARGUMENT_AVAILABLE:
             return await argument_review_advanced(req)
         from src.argument import check_argument_tree
+        if not _fallback_available:
+            raise HTTPException(503, "Argument 模块不可用，请检查安装")
         store = _argument_store()
         tree = _argument_tree_or_404()
         result = check_argument_tree(tree, req.node_id, req.include_subtree)

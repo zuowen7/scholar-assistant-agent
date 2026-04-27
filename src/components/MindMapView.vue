@@ -73,9 +73,11 @@
           :can-delete="canDelete"
           :connecting="!!connectionFromId"
           :analyzing="analysisLoading"
+          :expanding="expandingNode"
           @update:position="updateToolbarPosition"
           @reset-map="resetMap"
           @add-child="addChildWithPosition"
+          @ai-expand="aiExpandSelectedNode"
           @analyze="runMindMapAnalysis"
           @start-connect="startConnection"
           @delete-node="deleteNode"
@@ -174,7 +176,7 @@
         </div>
         <div class="inspector-meta">
           <span>保存状态</span>
-          <strong>{{ saveMessage || '未保存改动仅保存在当前界面' }}</strong>
+          <strong>{{ saveMessage || '未保存' }}</strong>
         </div>
       </section>
       </section>
@@ -218,11 +220,11 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import MindMapFloatingToolbar from './MindMapFloatingToolbar.vue'
 import MindMapAiHints from './MindMapAiHints.vue'
-import { useMindMap } from '../composables/useMindMap'
+import { useMindMap, mindMapToMarkdown } from '../composables/useMindMap'
 import { useMindMapAnalysis, type MindMapAnalysisIssue } from '../composables/useMindMapAnalysis'
 
 const emit = defineEmits<{
-  (e: 'enter-editor'): void
+  (e: 'enter-editor', outline: string): void
 }>()
 
 const NODE_WIDTH = 168
@@ -245,11 +247,13 @@ const {
   selectedNode,
   resetMindMap,
   saveMindMap,
+  loadFromBackend,
   selectNode,
   updateNodeText,
   setNodePosition,
   addChild,
   addAssociationLink,
+  expandNode,
   deleteNode,
 } = useMindMap()
 const { analyzeMindMap } = useMindMapAnalysis()
@@ -266,6 +270,7 @@ const collapsedNodeIds = ref<Set<string>>(new Set())
 const connectionFromId = ref('')
 const analysisIssues = ref<MindMapAnalysisIssue[]>([])
 const analysisLoading = ref(false)
+const expandingNode = ref(false)
 const activeIssueId = ref('')
 const highlightedNodeIds = ref<Set<string>>(new Set())
 const outlineMode = ref<OutlineMode>('collapsed')
@@ -413,7 +418,7 @@ watch(selectedNode, (node) => {
   selectedText.value = node?.text ?? ''
 }, { immediate: true })
 
-onMounted(() => {
+onMounted(async () => {
   canvasRef.value?.addEventListener('wheel', handleWheel, { passive: false })
   canvasResizeObserver = new ResizeObserver(() => {
     clampPaneSizes()
@@ -422,6 +427,7 @@ onMounted(() => {
   if (canvasRef.value) canvasResizeObserver.observe(canvasRef.value)
   window.addEventListener('resize', handleWindowResize)
   clampPaneSizes()
+  await loadFromBackend()
 })
 
 onBeforeUnmount(() => {
@@ -784,7 +790,19 @@ function saveAndStay() {
 
 function saveAndEnterEditor() {
   saveMindMap()
-  emit('enter-editor')
+  const outline = mindMapToMarkdown(draftMindMap.value)
+  emit('enter-editor', outline)
+}
+
+async function aiExpandSelectedNode() {
+  if (!selectedNode.value || expandingNode.value) return
+  expandingNode.value = true
+  try {
+    await expandNode(selectedNodeId.value)
+    nextTick(fitView)
+  } finally {
+    expandingNode.value = false
+  }
 }
 </script>
 

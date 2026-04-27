@@ -1,4 +1,5 @@
-import type { MindMapData, MindMapNode } from './useMindMap'
+import { API_BASE } from '../utils/api'
+import type { MindMapData } from './useMindMap'
 
 export type MindMapIssueType =
   | 'isolated'
@@ -19,201 +20,118 @@ export interface MindMapAnalysisIssue {
   nodeIds: string[]
 }
 
-export interface MindMapAnalysisInput {
-  rootId: string
-  nodes: Array<{
-    id: string
-    text: string
-    parentId: string | null
-    children: string[]
-    depth: number
-  }>
-  treeEdges: Array<{ from: string; to: string }>
-  associationEdges: Array<{ from: string; to: string }>
-}
-
-const GENERIC_NODE_TEXT = new Set(['中心主题', '新节点', '未命名节点'])
-
 export function useMindMapAnalysis() {
-  function buildAnalysisInput(map: MindMapData): MindMapAnalysisInput {
-    const nodes: MindMapAnalysisInput['nodes'] = []
-    const treeEdges: MindMapAnalysisInput['treeEdges'] = []
-
-    const visit = (id: string, depth: number) => {
-      const node = map.nodes[id]
-      if (!node) return
-
-      nodes.push({
-        id,
-        text: node.text,
-        parentId: node.parentId,
-        children: [...node.children],
-        depth,
-      })
-
-      node.children.forEach((childId) => {
-        treeEdges.push({ from: id, to: childId })
-        visit(childId, depth + 1)
-      })
-    }
-
-    visit(map.rootId, 0)
-
-    const visited = new Set(nodes.map(node => node.id))
-    Object.values(map.nodes).forEach((node) => {
-      if (!visited.has(node.id)) {
-        nodes.push({
-          id: node.id,
-          text: node.text,
-          parentId: node.parentId,
-          children: [...node.children],
-          depth: 0,
-        })
-      }
-    })
-
-    return {
-      rootId: map.rootId,
-      nodes,
-      treeEdges,
-      associationEdges: map.links.map(link => ({ from: link.from, to: link.to })),
-    }
-  }
-
   async function analyzeMindMap(map: MindMapData): Promise<MindMapAnalysisIssue[]> {
-    const input = buildAnalysisInput(map)
-    return runMockAnalysis(input, map.nodes)
+    const raw = await callBackendAnalysis(map)
+    return raw.map(iss => ({
+      id: iss.id ?? `issue-${Math.random().toString(16).slice(2, 8)}`,
+      type: (iss.type as MindMapIssueType) ?? 'logic_gap',
+      severity: (iss.severity as MindMapIssueSeverity) ?? 'info',
+      title: String(iss.title ?? ''),
+      message: String(iss.message ?? ''),
+      nodeIds: resolveNodeIds(iss.node_texts ?? [], map),
+    }))
   }
 
-  return {
-    buildAnalysisInput,
-    analyzeMindMap,
+  return { analyzeMindMap }
+}
+
+async function callBackendAnalysis(
+  map: MindMapData,
+): Promise<Array<Record<string, any>>> {
+  try {
+    const res = await fetch(`${API_BASE}/api/mindmap/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        root_id: map.rootId,
+        nodes: map.nodes,
+        links: map.links,
+      }),
+    })
+    if (!res.ok) return runStructuralFallback(map)
+    const data = await res.json()
+    if (Array.isArray(data.issues) && data.issues.length > 0) return data.issues
+    return runStructuralFallback(map)
+  }
+  catch {
+    return runStructuralFallback(map)
   }
 }
 
-function runMockAnalysis(input: MindMapAnalysisInput, nodeMap: Record<string, MindMapNode>) {
-  const issues: MindMapAnalysisIssue[] = []
-  const pushIssue = (issue: Omit<MindMapAnalysisIssue, 'id'>) => {
-    issues.push({ ...issue, id: `issue-${issues.length + 1}` })
+function resolveNodeIds(texts: string[], map: MindMapData): string[] {
+  if (!texts || !texts.length) return []
+  const ids: string[] = []
+  for (const text of texts) {
+    for (const [id, node] of Object.entries(map.nodes)) {
+      if (node.text.trim() === text.trim()) {
+        ids.push(id)
+        break
+      }
+    }
   }
+  return ids
+}
 
-  const root = nodeMap[input.rootId]
+const GENERIC = new Set(['中心主题', '新节点', '未命名节点'])
+
+function runStructuralFallback(map: MindMapData): Array<Record<string, any>> {
+  const issues: Array<Record<string, any>> = []
+  const root = map.nodes[map.rootId]
+
   if (root && root.children.length === 0) {
-    pushIssue({
+    issues.push({
+      id: `issue-${issues.length + 1}`,
       type: 'shallow_branch',
       severity: 'warning',
       title: '主链还没有展开',
       message: '中心主题下面还没有分支，建议先拆出研究问题、方法、论据或结论。',
-      nodeIds: [input.rootId],
+      node_texts: [root.text],
     })
   }
 
   const normalized = new Map<string, string[]>()
-  input.nodes.forEach((node) => {
-    const key = normalizeText(node.text)
-    if (!key) return
-    normalized.set(key, [...(normalized.get(key) ?? []), node.id])
-  })
-  normalized.forEach((nodeIds, text) => {
-    if (nodeIds.length > 1 && !GENERIC_NODE_TEXT.has(text)) {
-      pushIssue({
+  for (const [id, node] of Object.entries(map.nodes)) {
+    const key = node.text.trim().toLowerCase().replace(/\s+/g, '')
+    if (!key || GENERIC.has(key)) continue
+    normalized.set(key, [...(normalized.get(key) ?? []), id])
+  }
+  for (const [text, ids] of normalized) {
+    if (ids.length > 1) {
+      issues.push({
+        id: `issue-${issues.length + 1}`,
         type: 'duplicate',
         severity: 'warning',
         title: '存在相似表达',
-        message: `有 ${nodeIds.length} 个节点使用了相近表述，建议合并或区分论点侧重点。`,
-        nodeIds,
+        message: `有 ${ids.length} 个节点使用了相近表述，建议合并或区分论点侧重点。`,
+        node_texts: ids.map(id => map.nodes[id]?.text ?? text),
       })
     }
-  })
+  }
 
-  input.nodes.forEach((node) => {
-    const original = nodeMap[node.id]
-    if (!original) return
-
-    if (node.id !== input.rootId && (!node.parentId || !nodeMap[node.parentId])) {
-      pushIssue({
+  for (const [id, node] of Object.entries(map.nodes)) {
+    if (id === map.rootId) continue
+    if (node.parentId && !map.nodes[node.parentId]) {
+      issues.push({
+        id: `issue-${issues.length + 1}`,
         type: 'isolated',
         severity: 'critical',
         title: '发现孤立节点',
         message: '这个节点没有有效父节点，建议把它接回主链或删除。',
-        nodeIds: [node.id],
+        node_texts: [node.text],
       })
     }
-
-    if (node.id !== input.rootId && node.depth <= 1 && original.children.length === 0) {
-      pushIssue({
-        type: 'shallow_branch',
-        severity: 'info',
-        title: '分支层级偏浅',
-        message: '这个一级分支还没有展开，建议补充论据、方法步骤或结论节点。',
-        nodeIds: [node.id],
-      })
-    }
-
-    if (original.children.length === 0 && (node.text.trim().length < 6 || GENERIC_NODE_TEXT.has(node.text.trim()))) {
-      pushIssue({
+    if (!node.children.length && (node.text.trim().length < 6 || GENERIC.has(node.text.trim()))) {
+      issues.push({
+        id: `issue-${issues.length + 1}`,
         type: 'missing_support',
         severity: 'info',
         title: '建议补充支撑信息',
         message: '节点内容较短，建议补充前置条件、证据来源或预期结论。',
-        nodeIds: [node.id],
+        node_texts: [node.text],
       })
     }
-
-    if (node.parentId && nodeMap[node.parentId]) {
-      const parent = nodeMap[node.parentId]
-      if (looksLikeLogicJump(parent.text, node.text)) {
-        pushIssue({
-          type: 'logic_gap',
-          severity: 'warning',
-          title: '可能存在逻辑跳跃',
-          message: '父节点和子节点表达关联较弱，建议补一个过渡节点或解释推理关系。',
-          nodeIds: [parent.id, node.id],
-        })
-      }
-    }
-  })
-
-  input.associationEdges.forEach((edge) => {
-    const from = nodeMap[edge.from]
-    const to = nodeMap[edge.to]
-    if (!from || !to) return
-    if (looksLikeLogicJump(from.text, to.text)) {
-      pushIssue({
-        type: 'weak_link',
-        severity: 'info',
-        title: '关联线解释不足',
-        message: '这条自定义关联线连接的概念跨度较大，建议补充说明为什么二者相关。',
-        nodeIds: [from.id, to.id],
-      })
-    }
-  })
+  }
 
   return issues.slice(0, 12)
-}
-
-function normalizeText(text: string) {
-  return text.trim().toLowerCase().replace(/\s+/g, '')
-}
-
-function looksLikeLogicJump(a: string, b: string) {
-  const left = significantChars(a)
-  const right = significantChars(b)
-  if (left.size < 2 || right.size < 2) return false
-  let overlap = 0
-  left.forEach((char) => {
-    if (right.has(char)) overlap += 1
-  })
-  return overlap === 0 && a.trim().length >= 4 && b.trim().length >= 4
-}
-
-function significantChars(text: string) {
-  return new Set(
-    text
-      .trim()
-      .toLowerCase()
-      .replace(/[，。,.!?！？、\s]/g, '')
-      .slice(0, 16)
-      .split(''),
-  )
 }
