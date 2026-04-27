@@ -13,8 +13,7 @@
 使用 stdio 传输（stdin/stdout），与 Claude Code / Cursor 等 IDE 无缝集成。
 运行方式: python -m src.agent.mcp_server
 
-版权声明: 本模块属于 Scholar Assistant Agent 子系统，
-MCP 协议暴露与工具调度机制受软件著作权和发明专利保护。
+接入指引（Claude Desktop / Cursor / Continue 配置）见 docs/mcp/README.md。
 """
 
 from __future__ import annotations

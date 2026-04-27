@@ -66,8 +66,8 @@ class TestPatternAutoGeneration:
                 error_type="ConnectionError" if i < 2 else None,
             )
         assert result is not None
-        # Should mention the error type in notes
-        assert "ConnectionError" in str(result.notes)
+        # Should mention the error type in steps
+        assert "ConnectionError" in str(result.steps)
 
     def test_different_patterns_dont_merge(self, tmp_path: Path):
         reg = SkillRegistry(skills_dir=str(tmp_path / "skills"))
