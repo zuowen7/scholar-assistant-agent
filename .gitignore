@@ -37,6 +37,9 @@ python/data/output/*
 python/data/agent/
 data/agent/
 
+# 翻译记忆 SQLite（运行时自动生成）
+python/tm.db*
+
 # 环境变量
 .env
 
