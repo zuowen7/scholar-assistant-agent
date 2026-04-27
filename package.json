@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "pack:python": "node scripts/build-python.cjs",
     "tauri": "tauri"
   },
   "dependencies": {

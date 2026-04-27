@@ -1,0 +1,60 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
+  "productName": "Scholar Assistant",
+  "version": "0.3.1",
+  "identifier": "com.scholar-assistant.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build && node scripts/build-python.cjs",
+    "devUrl": "http://127.0.0.1:5173",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "title": "Scholar Assistant",
+        "width": 1000,
+        "height": 700,
+        "resizable": true,
+        "center": true,
+        "decorations": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:18088 http://127.0.0.1:18088 http://localhost:11434 ws://localhost:11434; img-src 'self' data: blob: asset: https://asset.localhost http://localhost:18088 http://127.0.0.1:18088; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self';",
+      "assetProtocol": {
+        "enable": true,
+        "scope": {
+          "allow": [
+            "$PICTURE/**",
+            "$VIDEO/**",
+            "$DOWNLOAD/**",
+            "$DESKTOP/**",
+            "$DOCUMENT/**"
+          ]
+        }
+      },
+      "dangerousDisableAssetCspModification": false
+    }
+  },
+  "bundle": {
+    "active": true,
+    "resources": [],
+    "icon": [
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "SimpChinese",
+          "English"
+        ]
+      },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    }
+  }
+}

@@ -41,8 +41,7 @@ export async function readSseStream(
       }
     }
     flush()
-  } catch (err) {
+  } finally {
     reader.cancel().catch(() => {})
-    throw err
   }
 }

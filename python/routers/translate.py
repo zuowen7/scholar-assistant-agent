@@ -14,7 +14,7 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from src.parser import extract_document, SUPPORTED_EXTENSIONS
@@ -39,7 +39,7 @@ class ConfigUpdate(BaseModel):
 
 
 class FilePathPayload(BaseModel):
-    path: str
+    path: str = Field(max_length=1024)
 
 
 def register_translate(
