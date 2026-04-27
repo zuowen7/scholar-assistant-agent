@@ -25,6 +25,7 @@
 from src.agent.context_compressor import CompressionResult, ContextCompressor
 from src.agent.error_classifier import ErrorType, RecoveryAction, RetryManager, classify_error, get_recovery
 from src.agent.hooks import HookContext, HookManager, HookPoint
+from src.agent.llm_client import LLMClient, TokenUsage
 from src.agent.memory import MemoryManager, MemoryEntry
 from src.agent.models import AgentEvent, DocumentInfo, Message, ToolCall
 from src.agent.prompt_builder import PromptBuilder, PromptConfig
@@ -52,6 +53,7 @@ __all__ = [
     "HookContext",
     "HookManager",
     "HookPoint",
+    "LLMClient",
     "MemoryEntry",
     "MemoryManager",
     "Message",
@@ -64,6 +66,7 @@ __all__ = [
     "RetryManager",
     "Skill",
     "SkillRegistry",
+    "TokenUsage",
     "ToolCall",
     "ToolRegistry",
     "Trajectory",

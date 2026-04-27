@@ -305,6 +305,7 @@ def register_translate(
                 client.set_document_context(doc_context)
 
             results = []
+            fallback_count = 0
             try:
                 total_chunks = len(chunk_result.chunks)
                 for i, chunk in enumerate(chunk_result.chunks):
@@ -331,6 +332,9 @@ def register_translate(
                                     "error": str(e2),
                                 }),
                             }
+                    is_fallback = result.original == result.translated
+                    if is_fallback:
+                        fallback_count += 1
                     results.append(result)
                     await asyncio.sleep(0.1)
                     yield {
@@ -341,7 +345,7 @@ def register_translate(
                             "original_preview": result.original[:200],
                             "translated_preview": result.translated[:200],
                             "tokens": result.completion_tokens,
-                            "fallback": result.original == result.translated,
+                            "fallback": is_fallback,
                         }),
                     }
             finally:
@@ -361,7 +365,8 @@ def register_translate(
             out_path = output_dir / f"{task_id}_translated.md"
             out_path.write_text(content, encoding="utf-8")
 
-            task["status"] = "done"
+            task["status"] = "done_with_warnings" if fallback_count else "done"
+            task["fallback_count"] = fallback_count
             task["output_path"] = str(out_path)
 
             rag_store = _state["rag_store_getter"]()
@@ -475,15 +480,19 @@ def register_translate(
         if task_id not in tasks:
             raise HTTPException(404, "任务不存在")
         t = tasks[task_id]
-        if t["status"] != "done" or not t.get("output_path"):
+        if t["status"] not in ("done", "done_with_warnings") or not t.get("output_path"):
             raise HTTPException(400, "翻译尚未完成")
         path = Path(t["output_path"])
         if not path.exists():
             raise HTTPException(404, "文件已丢失")
+        headers: dict[str, str] = {}
+        if t["status"] == "done_with_warnings":
+            headers["X-Translation-Warnings"] = str(t.get("fallback_count", 0))
         return FileResponse(
             path,
             filename=f"{task_id}_translated.md",
             media_type="text/markdown",
+            headers=headers,
         )
 
     return {"tasks": tasks, "rag_store_getter": _state["rag_store_getter"]}

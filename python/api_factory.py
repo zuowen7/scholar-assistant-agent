@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import collections
 import copy
 import logging
 import os
 import shutil
+import time
+import threading
 from pathlib import Path
 
 import yaml
@@ -55,6 +58,31 @@ logger = logging.getLogger(__name__)
 
 MAX_TASKS = 10
 MAX_UPLOAD_SIZE = 200 * 1024 * 1024  # 200 MB
+
+# ── In-process rate limiter ──────────────────────────────────────────────────
+# Sliding-window counter, no external dependency.
+# Rate-limited paths: /api/translate, /api/chat, /api/rag/upload
+_RATE_LIMITED_PREFIXES = ("/api/translate", "/api/chat", "/api/rag/upload")
+_RATE_LIMIT_RPM = 30  # max requests per minute per remote IP
+
+_rl_windows: dict[str, collections.deque] = collections.defaultdict(
+    lambda: collections.deque()
+)
+_rl_lock = threading.Lock()
+
+
+def _check_rate_limit(client_ip: str) -> bool:
+    """Return True if request is allowed, False if rate-limited."""
+    now = time.monotonic()
+    cutoff = now - 60.0
+    with _rl_lock:
+        dq = _rl_windows[client_ip]
+        while dq and dq[0] < cutoff:
+            dq.popleft()
+        if len(dq) >= _RATE_LIMIT_RPM:
+            return False
+        dq.append(now)
+        return True
 
 
 class ConfigUpdate(BaseModel):
@@ -191,6 +219,18 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Content-Type", "Authorization"],
     )
+
+    @app.middleware("http")
+    async def rate_limit_middleware(request: Request, call_next):
+        if request.url.path.startswith(_RATE_LIMITED_PREFIXES):
+            ip = (request.client.host if request.client else "unknown")
+            if not _check_rate_limit(ip):
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "请求过于频繁，请稍后再试"},
+                    headers={"Retry-After": "60"},
+                )
+        return await call_next(request)
 
     # Plugin system
     plugin_registry = None

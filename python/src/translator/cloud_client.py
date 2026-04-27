@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import httpx
 
@@ -40,6 +41,27 @@ def _backoff_delay(attempt: int) -> float:
     """指数退避: base * 2^attempt, 上限 RETRY_DELAY_MAX"""
     delay = RETRY_DELAY_BASE * (2 ** attempt)
     return min(delay, RETRY_DELAY_MAX)
+
+
+@dataclass
+class _ProviderRateLimiter:
+    lock: threading.Lock = field(default_factory=threading.Lock)
+    last_time: float = 0.0
+
+
+# Module-level registry: one limiter per (base_url + api_key_prefix) combination.
+# Survives CloudClient reconstruction across pipeline calls.
+_rate_limiters: dict[str, _ProviderRateLimiter] = {}
+_rate_limiters_registry_lock = threading.Lock()
+
+
+def _get_limiter(key: str) -> _ProviderRateLimiter:
+    if key in _rate_limiters:
+        return _rate_limiters[key]
+    with _rate_limiters_registry_lock:
+        if key not in _rate_limiters:
+            _rate_limiters[key] = _ProviderRateLimiter()
+        return _rate_limiters[key]
 
 # ── 供应商预设 ──
 
@@ -219,7 +241,8 @@ class CloudClient:
         self._glossary = Glossary()  # 与 OllamaClient 使用相同的 Glossary 类
         self._chunk_index = 0
         self._http_client: httpx.Client | None = None
-        self._last_request_time: float = 0.0  # 速率限制追踪
+        # Rate limiter key: stable across client reconstruction, private (only first 8 chars of key)
+        self._rate_limiter_key = f"{base_url}:{api_key[:8]}"
 
     def _get_http_client(self) -> httpx.Client:
         """懒加载复用 httpx 连接（走系统代理，需安装 socksio 支持 SOCKS）"""
@@ -234,13 +257,15 @@ class CloudClient:
             self._http_client = None
 
     def _rate_limit_wait(self) -> None:
-        """确保两个 API 请求之间至少间隔 _RATE_LIMIT_INTERVAL 秒"""
-        now = time.monotonic()
-        elapsed = now - self._last_request_time
-        if elapsed < _RATE_LIMIT_INTERVAL:
-            wait = _RATE_LIMIT_INTERVAL - elapsed
-            time.sleep(wait)
-        self._last_request_time = time.monotonic()
+        """确保同一 provider+key 的两个请求之间至少间隔 _RATE_LIMIT_INTERVAL 秒。
+        使用模块级 limiter，跨 CloudClient 实例持久生效。"""
+        limiter = _get_limiter(self._rate_limiter_key)
+        with limiter.lock:
+            now = time.monotonic()
+            elapsed = now - limiter.last_time
+            if elapsed < _RATE_LIMIT_INTERVAL:
+                time.sleep(_RATE_LIMIT_INTERVAL - elapsed)
+            limiter.last_time = time.monotonic()
 
     def translate(self, text: str, prev_translation: str = "") -> TranslationResult:
         """翻译单段文本，失败自动重试（指数退避）+ 速率限制"""

@@ -1,5 +1,8 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
+
+static HEALTH_MONITOR_RUNNING: AtomicBool = AtomicBool::new(false);
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -124,6 +127,23 @@ fn save_file(path: String, content: String) -> Result<String, String> {
     if !["md", "txt"].contains(&ext.as_str()) {
         return Err("Only .md and .txt files can be saved.".into());
     }
+    // Restrict writes to user home directory to prevent WebView XSS → arbitrary file write
+    let home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_default();
+    if !home.is_empty() {
+        let canon_home = std::path::Path::new(&home)
+            .canonicalize()
+            .unwrap_or_else(|_| std::path::PathBuf::from(&home));
+        let p = std::path::Path::new(&path);
+        let canon_parent = p
+            .parent()
+            .and_then(|parent| parent.canonicalize().ok())
+            .unwrap_or_else(|| p.to_path_buf());
+        if !canon_parent.starts_with(&canon_home) {
+            return Err("Files can only be saved within the user home directory.".into());
+        }
+    }
     std::fs::write(&path, content.as_bytes())
         .map(|_| format!("Saved to {}", path))
         .map_err(|e| format!("Failed to save file: {}", e))
@@ -176,7 +196,8 @@ pub fn run() {
             ollama: Mutex::new(None),
         })
         .setup(|app| {
-            if let Err(e) = spawn_python_inner(app, None) {
+            let handle = app.handle().clone();
+            if let Err(e) = spawn_python_inner(&handle, Some(&handle)) {
                 eprintln!("[ERROR] spawn Python: {}", e);
                 eprintln!("[ERROR] Please make sure Python is installed and available in PATH.");
             }
@@ -191,7 +212,9 @@ pub fn run() {
                 if let Some(mut child) = lock_state!(state.python).take() {
                     kill_child(&mut child);
                 }
-                lock_state!(state.ollama).take();
+                if let Some(mut child) = lock_state!(state.ollama).take() {
+                    kill_child(&mut child);
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -283,22 +306,29 @@ fn spawn_python_inner<R: tauri::Runtime, M: Manager<R>>(
     eprintln!("[INFO] Python spawned PID={}", pid);
 
     if let Some(h) = app_handle.cloned() {
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_secs(15));
-            loop {
-                std::thread::sleep(std::time::Duration::from_secs(30));
-                if !is_port_listening(18088, 1000) {
-                    eprintln!("[WARN] Python backend port not responding");
-                    let _ = h.emit(
-                        "backend-crashed",
-                        serde_json::json!({
-                            "message": "Python backend may have exited. Please restart it.",
-                        }),
-                    );
-                    break;
+        // Prevent duplicate monitor threads when restart_backend is called multiple times
+        if !HEALTH_MONITOR_RUNNING.swap(true, Ordering::SeqCst) {
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(15));
+                let mut interval_secs = 30u64;
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(interval_secs));
+                    if !is_port_listening(18088, 1000) {
+                        eprintln!("[WARN] Python backend port not responding");
+                        let _ = h.emit(
+                            "backend-crashed",
+                            serde_json::json!({
+                                "message": "Python backend may have exited. Please restart it.",
+                            }),
+                        );
+                        // Back off but keep monitoring; backend might be restarting
+                        interval_secs = (interval_secs * 2).min(120);
+                    } else {
+                        interval_secs = 30;
+                    }
                 }
-            }
-        });
+            });
+        }
     }
 
     eprintln!("[INFO] Waiting for Python server to be ready...");
