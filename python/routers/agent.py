@@ -36,6 +36,7 @@ except ImportError:
 _V2_TOOL_WHITELIST = frozenset({
     "read_file", "list_directory", "search_files",
     "rag_retrieve", "web_search", "arxiv_search",
+    "run_command", "git_op",
 })
 
 
@@ -342,8 +343,10 @@ def register_agent(
         )
 
     @app.post("/api/agent/v2/approve/{session_id}/{event_id}")
-    async def v2_approve(session_id: str, event_id: str, req: ApproveRequest):
+    async def v2_approve(session_id: str, event_id: str, req: ApproveRequest, request: Request):
         """v2 审批回流端点。"""
+        if request.client.host not in ("127.0.0.1", "::1", "localhost"):
+            raise HTTPException(403, "仅允许本地访问")
         if not _AGENT_AVAILABLE:
             raise HTTPException(503, "Agent 模块未安装")
         session = _session_pool.get(session_id)
@@ -355,8 +358,10 @@ def register_agent(
         return {"status": "ok"}
 
     @app.post("/api/agent/v2/abort/{session_id}")
-    async def v2_abort(session_id: str):
+    async def v2_abort(session_id: str, request: Request):
         """v2 会话中止端点。"""
+        if request.client.host not in ("127.0.0.1", "::1", "localhost"):
+            raise HTTPException(403, "仅允许本地访问")
         if not _AGENT_AVAILABLE:
             raise HTTPException(503, "Agent 模块未安装")
         session = _session_pool.get(session_id)
@@ -366,8 +371,10 @@ def register_agent(
         return {"status": "ok"}
 
     @app.get("/api/agent/v2/sessions")
-    async def v2_list_sessions():
+    async def v2_list_sessions(request: Request):
         """列出活跃的 v2 sessions。"""
+        if request.client.host not in ("127.0.0.1", "::1", "localhost"):
+            raise HTTPException(403, "仅允许本地访问")
         return [
             {
                 "id": s.id,
@@ -378,6 +385,21 @@ def register_agent(
             }
             for s in _session_pool.values()
         ]
+
+    @app.post("/api/agent/v2/undo/{session_id}")
+    async def v2_undo(session_id: str, request: Request):
+        """v2 Undo 端点 — 回退最近 N 次破坏性操作。"""
+        if request.client.host not in ("127.0.0.1", "::1", "localhost"):
+            raise HTTPException(403, "仅允许本地访问")
+        if not _AGENT_AVAILABLE:
+            raise HTTPException(503, "Agent 模块未安装")
+        session = _session_pool.get(session_id)
+        if session is None:
+            raise HTTPException(404, f"Session {session_id} 不存在")
+        if session.journal is None:
+            raise HTTPException(400, "Session 无变更日志")
+        reverted = session.journal.undo(count=1)
+        return {"status": "ok", "reverted": len(reverted)}
 
     @app.get("/api/rag/documents")
     async def list_rag_documents():

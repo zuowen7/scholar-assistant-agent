@@ -46,6 +46,10 @@ class HookPoint(Enum):
     ON_SKILL_CREATE = auto()
     ON_ERROR = auto()
     ON_SESSION_END = auto()
+    ON_APPROVAL_REQUEST = auto()
+    ON_APPROVAL_RESPONSE = auto()
+    ON_TASK_START = auto()
+    ON_TASK_COMPLETE = auto()
 
 
 @dataclass
