@@ -46,7 +46,7 @@ cd python && python main.py paper.pdf -o paper.md
 
 | Layer | Technology |
 |-------|------------|
-| UI | Vue 3, TypeScript, Vite, Monaco Editor |
+| UI | Vue 3, TypeScript, Vite, Monaco Editor, Vue Flow (mind map canvas) |
 | Desktop | Tauri 2 (Rust) |
 | Backend | Python 3.12, FastAPI, SSE (`sse-starlette`) |
 | Local LLM | Ollama + Qwen3:8b (port 11434) |
@@ -89,13 +89,26 @@ Key backend modules under `src/`:
 
 ### Frontend Structure (`src/`)
 
-- `App.vue` — Main layout, toggles between Translate Mode and Editor Mode
+- `App.vue` — Thin shell (~630 lines): wires AppTopBar, TranslateView, AgentPanel, EditorLayout. Manages app-wide state (theme, engine settings, drag-drop, background layer, health checks).
 - `composables/` — state stores; three are **true singletons** (module-level state, shared app-wide):
   - `useTranslate.ts` — singleton; SSE translation pipeline state + reconnect logic
   - `useEditor.ts` — singleton; Monaco instance, tabs, AI panel, ghost text completion
   - `useFileTree.ts` — singleton; file system navigation
   - `useAgentChat.ts` — regular composable (new state per call); Agent SSE chat state
-- `components/` — MonacoEditor, AiPanel, FileTree, MarkdownPreview, ArgumentMap, EditorLayout, EditorTabs, CommandPalette, TemplatePicker, ComplianceModal
+  - `useMindMap.ts` — singleton; mind map data (CRUD, undo/redo, flow adapters `toFlowNodes`/`toFlowEdges`)
+  - `useMindMapKeyboard.ts` — keyboard handler (Tab/Enter/F2/arrows/Ctrl+Z)
+  - `useMindMapLayout.ts` — dagre auto-layout
+  - `useMindMapAnalysis.ts` — AI analysis integration
+- `components/` — extracted from the former monolithic App.vue:
+  - `AppTopBar.vue` — brand, mode switch, engine/display settings panels, health pills, window controls
+  - `TranslateView.vue` — upload drop card, progress/step indicators, result views (sentence/parallel/markdown), sentence splitting, markdown rendering
+  - `AgentPanel.vue` — agent chat/docs/templates/sessions side panel (self-contained via `useAgentChat()`)
+  - `EditorLayout.vue` — editor mode layout (Monaco + AiPanel + FileTree + ArgumentMap)
+  - `mindmap/` — MindMapCanvas (Vue Flow), MindNodeCard, MindEdge
+  - `MindMapView.vue`, `MindMapFloatingToolbar.vue`, `MindMapAiHints.vue`
+  - `ui/` — design-system primitives: UiButton, UiIconButton, UiPanel, UiInput, UiTextarea, UiSelect, UiTooltip
+  - Other: MonacoEditor, AiPanel, FileTree, MarkdownPreview, ArgumentMap, EditorTabs, CommandPalette, TemplatePicker, ComplianceModal, AgentSessionList, AgentApprovalInline
+- `styles/tokens.css` — Design token system (`--c-*` colors, `--space-*`, `--radius-*`, `--text-*`, `--shadow-*`, `--ease-*`) with dark/light themes. Legacy aliases (`--bg`, `--text`, `--accent`, etc.) maintained for backward compat.
 - `utils/api.ts` — API base URL (auto-detects Tauri vs web)
 - `utils/streamReader.ts` — shared SSE stream parser used by `useTranslate.ts`, `useAgentChat.ts`, and other SSE consumers (6 call sites)
 - `types/index.ts` — Shared TypeScript types
