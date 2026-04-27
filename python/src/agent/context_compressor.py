@@ -18,8 +18,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-import httpx
-
+from src.agent.llm_client import LLMClient
 from src.agent.models import Message, message_to_ollama_dict
 
 logger = logging.getLogger(__name__)
@@ -96,23 +95,20 @@ class ContextCompressor:
         self.protect_head_count = protect_head_count
         self.protect_tail_turns = protect_tail_turns
         self.summary_max_tokens = summary_max_tokens
-        self.ollama_base_url = ollama_base_url.rstrip("/")
         self.summary_model = summary_model
-        self.cloud_base_url = cloud_base_url.rstrip("/") if cloud_base_url else ""
-        self.cloud_api_key = cloud_api_key
-        self.cloud_model = cloud_model
 
-        self._http_client: httpx.AsyncClient | None = None
+        self._llm = LLMClient(
+            ollama_base_url=ollama_base_url,
+            model=summary_model or "qwen3:8b",
+            cloud_base_url=cloud_base_url,
+            cloud_api_key=cloud_api_key,
+            cloud_model=cloud_model,
+            temperature=0.1,
+            num_predict=summary_max_tokens,
+        )
 
     async def close(self) -> None:
-        if self._http_client and not self._http_client.is_closed:
-            await self._http_client.aclose()
-            self._http_client = None
-
-    async def _get_http_client(self) -> httpx.AsyncClient:
-        if self._http_client is None or self._http_client.is_closed:
-            self._http_client = httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0))
-        return self._http_client
+        await self._llm.close()
 
     # ------------------------------------------------------------------
     # Token 估算
@@ -343,14 +339,15 @@ class ContextCompressor:
     async def _llm_summarize(self, text: str) -> str | None:
         """调用 LLM 生成中间区域摘要。
 
-        优先使用云端 API（如果已配置），否则使用 Ollama。
-
         Args:
             text: 中间区域的格式化文本。
 
         Returns:
             摘要文本，失败时返回 None。
         """
+        if not self.summary_model:
+            return None
+
         prompt = (
             "请用简洁的中文总结以下 Agent 执行过程的中间步骤，"
             "保留关键决策、工具调用结果和重要结论，"
@@ -358,60 +355,8 @@ class ContextCompressor:
             f"--- 执行记录 ---\n{text}\n--- 结束 ---"
         )
 
-        use_cloud = bool(self.cloud_api_key and self.cloud_base_url and self.cloud_model)
-
         try:
-            client = await self._get_http_client()
-
-            if use_cloud:
-                headers = {
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self.cloud_api_key}",
-                }
-                resp = await client.post(
-                    f"{self.cloud_base_url}/chat/completions",
-                    json={
-                        "model": self.cloud_model,
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0.1,
-                        "max_tokens": self.summary_max_tokens,
-                        "stream": False,
-                    },
-                    headers=headers,
-                    timeout=60.0,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                content = (
-                    data.get("choices", [{}])[0]
-                    .get("message", {})
-                    .get("content", "")
-                    .strip()
-                )
-            else:
-                if not self.summary_model:
-                    return None
-                payload = {
-                    "model": self.summary_model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "stream": False,
-                    "options": {
-                        "temperature": 0.1,
-                        "num_predict": self.summary_max_tokens,
-                    },
-                }
-                resp = await client.post(
-                    f"{self.ollama_base_url}/api/chat",
-                    json=payload,
-                    timeout=60.0,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                content = data.get("message", {}).get("content", "").strip()
-
-            import re
-            content = re.sub(r"<think?>.*?</think?>", "", content, flags=re.DOTALL).strip()
-            return content if content else None
+            return await self._llm.call_simple([Message(role="user", content=prompt)])
         except Exception as e:
             logger.warning("LLM 摘要生成失败，降级为关键信息提取: %s", e)
             return None

@@ -673,6 +673,29 @@ export function useEditor() {
     triggerCompletion()
   }
 
+  // Explicit teardown for onBeforeUnmount — clears timers, decorations, and pending fetches
+  function cleanup() {
+    if (completionTimer) {
+      clearTimeout(completionTimer)
+      completionTimer = null
+    }
+    const editor = monacoEditor.value
+    if (editor) {
+      if (ghostDecoration.length) {
+        try { editor.deltaDecorations(ghostDecoration, []) } catch { /* editor may be disposed */ }
+        ghostDecoration = []
+      }
+      if (inlineDecoration.length) {
+        try { editor.deltaDecorations(inlineDecoration, []) } catch { /* editor may be disposed */ }
+        inlineDecoration = []
+      }
+    }
+    for (const ctrl of _abortMap.values()) {
+      ctrl.abort()
+    }
+    _abortMap.clear()
+  }
+
   return {
     // state
     tabs,
@@ -728,5 +751,6 @@ export function useEditor() {
     onDidChangeContent,
     acceptGhostText,
     clearGhostText,
+    cleanup,
   }
 }

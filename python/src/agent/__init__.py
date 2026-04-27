@@ -1,7 +1,4 @@
-"""Agent 子系统 — ReAct 推理循环 + 上下文工程 + 记忆 + Skill 自进化 + RAG + VRAM 调度。
-
-本包实现了将 本包实现了将 Scholar Assistant 从单一翻译工具升级为 从单一翻译工具升级为
-自进化 ReAct 架构智能体的全部核心组件:
+"""Agent 子系统 — ReAct 推理循环 + 上下文工程 + 记忆 + Skill 自进化 + RAG。
 
 核心推理:
 - **AgentLoop** (agent.py): ReAct 推理循环，双策略工具调用，轨迹记录
@@ -17,7 +14,6 @@
 工具与资源:
 - **ToolRegistry** (tools.py): 工具注册表与 @tool 装饰器
 - **RAGStore** (rag.py): ChromaDB 文档检索存储
-- **VRAMResourceManager** (vram_manager.py): GPU 显存调度
 
 所有 Agent 逻辑均为手写实现，不依赖 LangChain/LlamaIndex 等重量级框架。
 """
@@ -34,7 +30,6 @@ from src.agent.review_agent import ReviewAgent
 from src.agent.skill_system import Skill, SkillRegistry
 from src.agent.tools import ToolRegistry, create_default_registry
 from src.agent.trajectory import Trajectory, TrajectoryRecorder, TrajectoryTurn
-from src.agent.vram_manager import ContextRole, MultiplexingScheduler, VRAMResourceManager
 
 # AgentLoop 延迟导入，避免循环依赖
 try:
@@ -47,7 +42,6 @@ __all__ = [
     "AgentLoop",
     "CompressionResult",
     "ContextCompressor",
-    "ContextRole",
     "DocumentInfo",
     "ErrorType",
     "HookContext",
@@ -57,7 +51,6 @@ __all__ = [
     "MemoryEntry",
     "MemoryManager",
     "Message",
-    "MultiplexingScheduler",
     "PromptBuilder",
     "PromptConfig",
     "RAGStore",
@@ -72,6 +65,5 @@ __all__ = [
     "Trajectory",
     "TrajectoryRecorder",
     "TrajectoryTurn",
-    "VRAMResourceManager",
     "create_default_registry",
 ]

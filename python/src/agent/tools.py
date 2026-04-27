@@ -45,6 +45,8 @@ from typing import Any, Callable, get_type_hints
 
 import httpx
 
+from src.agent.llm_client import LLMClient
+
 logger = logging.getLogger(__name__)
 
 # 工具执行结果的最大字符长度，超出部分截断并附加省略标记
@@ -490,81 +492,6 @@ def _crawl_arxiv(query: str, max_results: int = 5) -> str:
         return "\n\n---\n\n".join(results)
     except Exception as e:
         return f"arXiv 搜索失败: {e}"
-
-
-# ---------------------------------------------------------------------------
-# LLM 驱动工具的辅助函数
-# ---------------------------------------------------------------------------
-
-def _call_llm_sync(
-    prompt: str,
-    ollama_base_url: str = "",
-    cloud_base_url: str = "",
-    cloud_api_key: str = "",
-    cloud_model: str = "",
-    model: str = "qwen3:8b",
-) -> str:
-    """同步调用 LLM，供文本处理工具使用。
-
-    Args:
-        prompt: 完整提示词。
-        ollama_base_url: Ollama API 地址。
-        cloud_base_url: 云端 API 地址。
-        cloud_api_key: 云端 API Key。
-        cloud_model: 云端模型名称。
-        model: Ollama 模型名称。
-
-    Returns:
-        LLM 生成的文本。
-    """
-    use_cloud = bool(cloud_api_key and cloud_base_url)
-    try:
-        with httpx.Client(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
-            if use_cloud:
-                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {cloud_api_key}"}
-                resp = client.post(
-                    f"{cloud_base_url}/chat/completions",
-                    json={
-                        "model": cloud_model or model,
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0.3,
-                        "max_tokens": 4096,
-                        "stream": False,
-                    },
-                    headers=headers,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                msg = data.get("choices", [{}])[0].get("message", {})
-                content = msg.get("content", "").strip()
-                # DeepSeek thinking mode: fallback to reasoning_content when content is empty
-                if not content:
-                    content = msg.get("reasoning_content", "").strip()
-            else:
-                resp = client.post(
-                    f"{ollama_base_url}/api/chat",
-                    json={
-                        "model": model,
-                        "messages": [{"role": "user", "content": prompt}],
-                        "stream": False,
-                        "options": {"temperature": 0.3, "num_predict": 4096},
-                    },
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                content = data.get("message", {}).get("content", "").strip()
-
-            stripped = re.sub(r"<think.*?>.*?</think.*?>", "", content, flags=re.DOTALL).strip()
-            if stripped:
-                return stripped
-            # Model wrapped entire response inside <think> tags with nothing after —
-            # extract the interior as the actual answer.
-            m = re.search(r"<think[^>]*>(.*?)</think[^>]*>", content, flags=re.DOTALL | re.IGNORECASE)
-            if m:
-                return m.group(1).strip() or "（LLM 返回为空）"
-            return content.strip() or "（LLM 返回为空）"
-    except Exception as e:
-        return f"LLM 调用失败: {e}"
 
 
 # ---------------------------------------------------------------------------
@@ -1412,6 +1339,17 @@ def create_default_registry(
     """
     registry = ToolRegistry()
 
+    # --- Shared LLM client for text-processing tools ---
+    _llm = LLMClient(
+        ollama_base_url=ollama_base_url,
+        model=model,
+        cloud_base_url=cloud_base_url,
+        cloud_api_key=cloud_api_key,
+        cloud_model=cloud_model,
+        temperature=0.3,
+        num_predict=4096,
+    )
+
     # --- 翻译工具 ---
     if ollama_client is not None or cloud_client is not None:
 
@@ -1519,7 +1457,7 @@ def create_default_registry(
         }
         hint = style_hints.get(style, style_hints["academic"])
         prompt = f"请润色以下文本。要求：{hint}。只输出润色后的文本，不要解释。\n\n{text}"
-        return _call_llm_sync(prompt, ollama_base_url, cloud_base_url, cloud_api_key, cloud_model, model)
+        return _llm.call_simple_sync(prompt)
 
     polish_text._agent_tool_def = ToolDefinition(
         name="polish_text",
@@ -1541,7 +1479,7 @@ def create_default_registry(
             f"请用中文为以下文本生成摘要，不超过 {max_sentences} 个句子。"
             "提取核心论点和关键信息。\n\n{text}"
         )
-        return _call_llm_sync(prompt, ollama_base_url, cloud_base_url, cloud_api_key, cloud_model, model)
+        return _llm.call_simple_sync(prompt)
 
     summarize_text._agent_tool_def = ToolDefinition(
         name="summarize_text",
@@ -1563,7 +1501,7 @@ def create_default_registry(
             f"请为主题「{topic}」生成一个学术论文大纲，包含 {sections} 个主要章节。"
             "每个章节下给出 2-3 个子节。使用 Markdown 格式输出。"
         )
-        return _call_llm_sync(prompt, ollama_base_url, cloud_base_url, cloud_api_key, cloud_model, model)
+        return _llm.call_simple_sync(prompt)
 
     generate_outline._agent_tool_def = ToolDefinition(
         name="generate_outline",
@@ -1587,7 +1525,7 @@ def create_default_registry(
             "保持学术风格，逻辑连贯。只输出扩写后的文本。\n\n"
             f"原文: {section}{ctx_part}"
         )
-        return _call_llm_sync(prompt, ollama_base_url, cloud_base_url, cloud_api_key, cloud_model, model)
+        return _llm.call_simple_sync(prompt)
 
     expand_section._agent_tool_def = ToolDefinition(
         name="expand_section",
@@ -1643,7 +1581,7 @@ BibTeX 条目：
 {bibtex_entry}
 
 格式化后的引用："""
-        return _call_llm_sync(prompt, ollama_base_url, cloud_base_url, cloud_api_key, cloud_model, model)
+        return _llm.call_simple_sync(prompt)
 
     format_bibliography._agent_tool_def = ToolDefinition(
         name="format_bibliography",

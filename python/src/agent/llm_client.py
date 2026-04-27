@@ -435,6 +435,63 @@ class LLMClient:
             logger.warning("LLM 辅助调用失败: %s", e)
             return None
 
+    def call_simple_sync(self, prompt: str) -> str:
+        """Synchronous counterpart of call_simple for sync tool callers.
+
+        Creates a short-lived httpx.Client per call (no persistent connection).
+        Strips <think/> tags from the response.
+        """
+        import re as _re
+
+        use_cloud = self.use_cloud
+        try:
+            with httpx.Client(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
+                if use_cloud:
+                    headers = {
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {self.cloud_api_key}",
+                    }
+                    resp = client.post(
+                        f"{self.cloud_base_url}/chat/completions",
+                        json={
+                            "model": self.effective_model,
+                            "messages": [{"role": "user", "content": prompt}],
+                            "temperature": 0.3,
+                            "max_tokens": self.num_predict,
+                            "stream": False,
+                        },
+                        headers=headers,
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    msg = data.get("choices", [{}])[0].get("message", {})
+                    content = msg.get("content", "").strip()
+                    if not content:
+                        content = msg.get("reasoning_content", "").strip()
+                else:
+                    resp = client.post(
+                        f"{self.ollama_base_url}/api/chat",
+                        json={
+                            "model": self.model,
+                            "messages": [{"role": "user", "content": prompt}],
+                            "stream": False,
+                            "options": {"temperature": 0.3, "num_predict": self.num_predict},
+                        },
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    content = data.get("message", {}).get("content", "").strip()
+
+                stripped = _re.sub(r"<think.*?>.*?</think.*?>", "", content, flags=_re.DOTALL).strip()
+                if stripped:
+                    return stripped
+                m = _re.search(r"<think[^>]*>(.*?)</think[^>]*>", content, flags=_re.DOTALL | _re.IGNORECASE)
+                if m:
+                    return m.group(1).strip() or "（LLM 返回为空）"
+                return content.strip() or "（LLM 返回为空）"
+        except Exception as e:
+            return f"LLM 调用失败: {e}"
+
     # ------------------------------------------------------------------
     # Ollama
     # ------------------------------------------------------------------
