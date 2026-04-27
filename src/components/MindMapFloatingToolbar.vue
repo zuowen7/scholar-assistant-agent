@@ -7,6 +7,9 @@
     <div class="toolbar-grip" title="拖动工具组" />
     <button @click.stop="$emit('reset-map')" title="新建导图">新建</button>
     <button @click.stop="$emit('add-child')" :disabled="!canAdd" title="新增子节点">子节点</button>
+    <button @click.stop="$emit('ai-expand')" :disabled="!canAdd || expanding" title="AI 智能展开子主题">
+      {{ expanding ? '展开中' : 'AI 展开' }}
+    </button>
     <button @click.stop="$emit('analyze')" :disabled="analyzing" title="AI 检查思维链">
       {{ analyzing ? '检查中' : 'AI 检查' }}
     </button>
@@ -37,12 +40,14 @@ const props = defineProps<{
   canDelete: boolean
   connecting: boolean
   analyzing: boolean
+  expanding: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'update:position', value: { x: number; y: number }): void
   (e: 'reset-map'): void
   (e: 'add-child'): void
+  (e: 'ai-expand'): void
   (e: 'analyze'): void
   (e: 'start-connect'): void
   (e: 'delete-node'): void

@@ -30,6 +30,7 @@
         v-if="workspaceMode === 'mindmap'"
         @enter-editor="enterEditorFromMindMap"
       />
+
       <template v-else>
       <EditorTabs />
       <div v-if="!activeTab" class="editor-welcome">
@@ -206,10 +207,19 @@
             <strong>直接进入编辑器</strong>
             <span>创建空白文档，保持现有写作流程。</span>
           </button>
-          <button class="project-start-option" @click="startProjectWithMindMap">
+          <div class="project-start-option">
             <strong>先创建思维导图</strong>
             <span>先梳理论文结构，再保存并进入编辑器。</span>
-          </button>
+            <div class="project-topic-row">
+              <input
+                v-model="projectTopic"
+                class="project-topic-input"
+                placeholder="输入研究主题（可选）"
+                @keydown.enter="startProjectWithMindMap"
+              />
+              <button class="project-topic-go" @click="startProjectWithMindMap">创建</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -228,7 +238,7 @@ import ComplianceModal from './ComplianceModal.vue'
 import TemplatePicker from './TemplatePicker.vue'
 import MindMapView from './MindMapView.vue'
 import { useEditor } from '../composables/useEditor'
-import { useMindMap } from '../composables/useMindMap'
+import { useMindMap, mindMapToMarkdown, markdownToMindMapNodes } from '../composables/useMindMap'
 import { API_BASE } from '../utils/api'
 import { readSseStream } from '../utils/streamReader'
 
@@ -236,7 +246,7 @@ const props = defineProps<{ isDark: boolean }>()
 const workspaceMode = ref<'editor' | 'mindmap'>('editor')
 const showProjectStart = ref(false)
 const showArgumentMap = ref(false)
-const { resetMindMap, loadSavedMindMap, saveMindMap } = useMindMap()
+const { resetMindMap, loadSavedMindMap, saveMindMap, addChild, updateNodeText } = useMindMap()
 
 const {
   content, contentVersion, activeTab, selection,
@@ -266,22 +276,52 @@ function startProjectInEditor() {
   openNewUntitled()
 }
 
+const projectTopic = ref('')
+
 function startProjectWithMindMap() {
   showProjectStart.value = false
   sidebarCollapsed.value = true
-  resetMindMap()
+  resetMindMap(projectTopic.value.trim() || undefined)
+  projectTopic.value = ''
   workspaceMode.value = 'mindmap'
 }
 
-function enterEditorFromMindMap() {
+function enterEditorFromMindMap(outline: string) {
   saveMindMap()
   workspaceMode.value = 'editor'
   if (!activeTab.value) openNewUntitled()
+  nextTick(() => {
+    if (activeTab.value && outline.trim()) {
+      setContent(outline)
+    }
+  })
 }
 
 function openMindMapFromEditor() {
   sidebarCollapsed.value = true
-  loadSavedMindMap()
+  const md = content.value
+  if (md.trim()) {
+    const tree = markdownToMindMapNodes(md)
+    if (tree) {
+      resetMindMap(tree.text)
+      const rootId = useMindMap().draftMindMap.value.rootId
+      for (const child of tree.children) {
+        addChild(rootId)
+        const newNodeId = useMindMap().selectedNodeId.value
+        updateNodeText(newNodeId, child.text)
+        for (const grandChild of child.children) {
+          addChild(newNodeId)
+          const gcId = useMindMap().selectedNodeId.value
+          updateNodeText(gcId, grandChild.text)
+        }
+      }
+      useMindMap().selectNode(rootId)
+    } else {
+      loadSavedMindMap()
+    }
+  } else {
+    loadSavedMindMap()
+  }
   workspaceMode.value = 'mindmap'
 }
 
@@ -1033,6 +1073,41 @@ function showExportToast(msg: string) {
   color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.5;
+}
+.project-topic-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.project-topic-input {
+  flex: 1;
+  height: 32px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--editor-bg);
+  color: var(--text-primary);
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.project-topic-input:focus {
+  border-color: var(--accent);
+}
+.project-topic-go {
+  height: 32px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  padding: 0 16px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.project-topic-go:hover {
+  opacity: 0.88;
 }
 
 .layout-panel {
