@@ -19,10 +19,11 @@ try:
     from src.agent.agent import AgentLoop
     from src.agent.context_compressor import ContextCompressor
     from src.agent.memory import MemoryManager
-    from src.agent.models import Message
+    from src.agent.models import Message, SessionState
     from src.agent.prompt_builder import PromptBuilder
     from src.agent.rag import RAGStore
     from src.agent.session import AgentSession, SessionConfig
+    from src.agent.session_store import SessionStore
     from src.agent.skill_system import SkillRegistry
     from src.agent.tools import create_default_registry
     from src.agent.trajectory import TrajectoryRecorder
@@ -76,6 +77,7 @@ def register_agent(
     _shared: dict = {}
     _init_lock = asyncio.Lock()
     _session_pool: dict[str, AgentSession] = {}
+    _session_store: SessionStore | None = None
 
     def get_rag_store():
         return _shared.get("rag_store")
@@ -141,6 +143,10 @@ def register_agent(
                 "tool_registry": tool_registry,
                 "workspace_root": workspace_root,
             })
+
+            # Session store (SQLite, Phase 4)
+            nonlocal _session_store
+            _session_store = SessionStore(db_path=str(data_root / "agent" / "sessions.db"))
 
             logger.info("Agent shared resources initialized (rag=%s)", rag_dir)
             return _shared
@@ -232,6 +238,12 @@ def register_agent(
 
     @app.post("/api/chat")
     async def chat(req: ChatRequest):
+        """Default chat endpoint — now forwards to v2 session-driven SSE."""
+        return await v2_chat(req)
+
+    @app.post("/api/chat/v1")
+    async def chat_v1(req: ChatRequest):
+        """Legacy v1 endpoint (deprecated, uses AgentLoop.run() directly)."""
         if not _AGENT_AVAILABLE:
             raise HTTPException(503, "Agent 模块未安装，请安装 chromadb")
 
@@ -282,6 +294,7 @@ def register_agent(
         if not _AGENT_AVAILABLE:
             raise HTTPException(503, "Agent 模块未安装，请安装 chromadb")
 
+        shared = await _ensure_shared()
         agent = await _create_agent(workspace_root=req.workspace_root)
 
         history: list[Message] | None = None
@@ -311,13 +324,33 @@ def register_agent(
             except Exception as e:
                 logger.warning("v2 workspace 初始化失败: %s", e)
 
+        # Event callback: dual-write to trajectory
+        trajectory = shared["trajectory_recorder"]
+        trajectory.start(message)
+
+        def _on_event(event):
+            trajectory.record_event(event)
+
+        trajectory.start_event_stream("pending", message)
+
         session = AgentSession(
             agent=agent,
             workspace=workspace,
             journal=journal,
             config=SessionConfig(auto_approve=True),
+            session_store=_session_store,
+            event_callback=_on_event,
         )
         _session_pool[session.id] = session
+
+        # Update event stream filename with actual session id
+        if trajectory._event_stream_path:
+            new_path = trajectory.data_dir / f"events_{session.id}.jsonl"
+            try:
+                trajectory._event_stream_path.rename(new_path)
+                trajectory._event_stream_path = new_path
+            except Exception:
+                pass
 
         async def _v2_stream() -> AsyncGenerator[dict, None]:
             try:
@@ -335,6 +368,7 @@ def register_agent(
                     }
             finally:
                 _session_pool.pop(session.id, None)
+                trajectory.finish_event_stream(success=session.state == SessionState.DONE)
                 await agent.close()
 
         return EventSourceResponse(
@@ -372,19 +406,151 @@ def register_agent(
 
     @app.get("/api/agent/v2/sessions")
     async def v2_list_sessions(request: Request):
-        """列出活跃的 v2 sessions。"""
+        """列出所有 v2 sessions（内存 + 持久化）。"""
         if request.client.host not in ("127.0.0.1", "::1", "localhost"):
             raise HTTPException(403, "仅允许本地访问")
-        return [
-            {
+
+        # In-memory sessions take priority
+        result = {
+            s.id: {
                 "id": s.id,
-                "state": s.state.value,
+                "state": s.state.value if hasattr(s.state, "value") else s.state,
                 "global_step": s.global_step,
                 "tasks_total": s.task_queue.total_count,
                 "tasks_done": s.task_queue.done_count,
+                "source": "memory",
             }
             for s in _session_pool.values()
-        ]
+        }
+
+        # Merge persisted sessions (not already in memory)
+        if _session_store:
+            try:
+                for stored in _session_store.list_sessions(exclude_done=True):
+                    if stored["id"] not in result:
+                        result[stored["id"]] = {
+                            "id": stored["id"],
+                            "state": stored["state"],
+                            "global_step": stored["global_step"],
+                            "tasks_total": stored["tasks_total"],
+                            "tasks_done": stored["tasks_done"],
+                            "workspace_root": stored.get("workspace_root", ""),
+                            "query": stored.get("query", ""),
+                            "created_at": stored.get("created_at", ""),
+                            "updated_at": stored.get("updated_at", ""),
+                            "source": "store",
+                        }
+            except Exception as e:
+                logger.warning("Failed to list stored sessions: %s", e)
+
+        return list(result.values())
+
+    @app.post("/api/agent/v2/resume/{session_id}")
+    async def v2_resume(session_id: str, request: Request):
+        """Resume a paused/persisted session via SSE."""
+        if request.client.host not in ("127.0.0.1", "::1", "localhost"):
+            raise HTTPException(403, "仅允许本地访问")
+        if not _AGENT_AVAILABLE:
+            raise HTTPException(503, "Agent 模块未安装")
+
+        # Check in-memory first (client disconnected but session still alive)
+        session = _session_pool.get(session_id)
+        if session is not None:
+            if session.state in (SessionState.DONE, SessionState.ABORTED):
+                raise HTTPException(400, f"Session {session_id} already completed")
+
+            agent = await _create_agent(
+                workspace_root=str(session.workspace.root) if session.workspace else None
+            )
+            _session_pool[session_id] = session
+
+            async def _resume_stream() -> AsyncGenerator[dict, None]:
+                try:
+                    async for event in session.resume(agent):
+                        payload: dict = {
+                            "type": event.type,
+                            "content": event.content,
+                            "event_id": event.event_id,
+                        }
+                        if event.metadata:
+                            payload["metadata"] = event.metadata
+                        yield {
+                            "event": event.type,
+                            "data": json.dumps(payload, ensure_ascii=False),
+                        }
+                finally:
+                    _session_pool.pop(session_id, None)
+                    await agent.close()
+
+            return EventSourceResponse(_resume_stream(), media_type="text/event-stream")
+
+        # Try restoring from SessionStore
+        if _session_store is None:
+            raise HTTPException(404, f"Session {session_id} 不存在且无持久化存储")
+
+        data = _session_store.load(session_id)
+        if data is None:
+            raise HTTPException(404, f"Session {session_id} 不存在")
+
+        if data["state"] in ("DONE", "ABORTED"):
+            raise HTTPException(400, f"Session {session_id} already completed")
+
+        # Reconstruct session from stored data
+        workspace = None
+        journal = None
+        ws_root = data.get("workspace_root", "")
+        if ws_root:
+            try:
+                workspace = WorkspaceEnv(root=ws_root)
+                journal = ChangeJournal(backup_root=workspace.backup_root_path())
+            except Exception as e:
+                logger.warning("Resume workspace 初始化失败: %s", e)
+
+        config = SessionConfig(
+            max_task_steps=data["config"].get("max_task_steps", 50),
+            max_global_steps=data["config"].get("max_global_steps", 200),
+            auto_approve=data["config"].get("auto_approve", True),
+            approval_timeout=data["config"].get("approval_timeout", 600),
+        )
+
+        agent = await _create_agent(workspace_root=ws_root or None)
+        messages = _session_store.deserialize_messages(data["messages"])
+        task_queue = _session_store.deserialize_task_queue(data["task_queue"])
+
+        session = AgentSession(
+            agent=agent,
+            workspace=workspace,
+            journal=journal,
+            config=config,
+            session_id=session_id,
+            session_store=_session_store,
+            created_at=data.get("created_at", ""),
+        )
+        session.messages = messages
+        session.task_queue = task_queue
+        session.global_step = data["global_step"]
+        session.state = SessionState.EXECUTING
+        _session_pool[session_id] = session
+
+        async def _restored_stream() -> AsyncGenerator[dict, None]:
+            try:
+                async for event in session.resume(agent):
+                    payload: dict = {
+                        "type": event.type,
+                        "content": event.content,
+                        "event_id": event.event_id,
+                    }
+                    if event.metadata:
+                        payload["metadata"] = event.metadata
+                    yield {
+                        "event": event.type,
+                        "data": json.dumps(payload, ensure_ascii=False),
+                    }
+            finally:
+                _session_pool.pop(session_id, None)
+                await agent.close()
+
+        return EventSourceResponse(_restored_stream(), media_type="text/event-stream")
 
     @app.post("/api/agent/v2/undo/{session_id}")
     async def v2_undo(session_id: str, request: Request):
@@ -495,6 +661,8 @@ def register_agent(
         mm = _shared.get("memory_manager")
         if mm:
             mm.close()
+        if _session_store:
+            _session_store.close()
         _shared.clear()
 
     return {
