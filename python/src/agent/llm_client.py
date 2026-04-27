@@ -61,8 +61,6 @@ def messages_to_openai(messages: list[Message]) -> list[dict]:
             ]
         if m.tool_call_id is not None:
             d["tool_call_id"] = m.tool_call_id
-        if m.reasoning_content:
-            d["reasoning_content"] = m.reasoning_content
         out.append(d)
     return out
 
