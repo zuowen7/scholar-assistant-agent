@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 # Lazy imports — these may fail if chromadb is not installed
 try:
     from src.agent.agent import AgentLoop
-    from src.agent.context_compressor import ContextCompressor
     from src.agent.memory import MemoryManager
     from src.agent.models import Message, SessionState
     from src.agent.prompt_builder import PromptBuilder
@@ -190,17 +189,7 @@ def register_agent(
         else:
             tool_registry = shared["tool_registry"]
 
-        # Per-request compressor (owns HTTP client, cleaned up by AgentLoop.close())
         agent_model = agent_cfg.get("model", "qwen3:8b")
-        compressor = ContextCompressor(
-            max_window_tokens=agent_cfg.get("max_window_tokens", 32_000),
-            threshold_percent=agent_cfg.get("compress_threshold", 0.50),
-            ollama_base_url=ollama_url,
-            summary_model=agent_model if not use_cloud else None,
-            cloud_base_url=cloud_cfg.get("base_url", "") if use_cloud else "",
-            cloud_api_key=(cloud_cfg.get("api_key") or "").strip() if use_cloud else "",
-            cloud_model=cloud_cfg.get("model", "") if use_cloud else "",
-        )
         prompt_builder = PromptBuilder(tool_registry=tool_registry)
 
         if use_cloud:
@@ -214,12 +203,11 @@ def register_agent(
             ollama_base_url=ollama_url,
             model=agent_model,
             tool_registry=tool_registry,
-            max_steps=agent_cfg.get("max_steps", 10),
+            max_steps=agent_cfg.get("max_steps", 6),
             system_prompt=agent_cfg.get("system_prompt", ""),
             temperature=agent_cfg.get("temperature", 0.3),
             num_predict=agent_cfg.get("num_predict", 4096),
             timeout=trans_cfg.get("timeout", 300.0),
-            context_compressor=compressor,
             prompt_builder=prompt_builder,
             memory_manager=shared["memory_manager"],
             skill_registry=shared["skill_registry"],

@@ -42,49 +42,75 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import logging
 import re
 import time
 import uuid
 from typing import Any, AsyncGenerator
 
-from src.agent.context_compressor import ContextCompressor
 from src.agent.error_classifier import ErrorType, classify_error, get_recovery, RetryManager
 from src.agent.hooks import HookContext, HookManager, HookPoint
 from src.agent.llm_client import LLMClient, TokenUsage, extract_text_content, extract_tool_calls
 from src.agent.memory import MemoryManager
-from src.agent.models import AgentEvent, Message, ToolCall, message_to_ollama_dict
+from src.agent.models import AgentEvent, Message, ToolCall
 from src.agent.prompt_builder import PromptBuilder, PromptConfig
-from src.agent.review_agent import ReviewAgent
 from src.agent.skill_system import SkillRegistry
-from src.agent.tool_generator import ToolGenerator, create_tool_generator
 from src.agent.tools import ToolRegistry
 from src.agent.trajectory import TrajectoryRecorder
 
 logger = logging.getLogger(__name__)
 
-MAX_STEPS = 10
+MAX_STEPS = 6
 TASK_MAX_STEPS = 50
 GLOBAL_MAX_STEPS = 200
 _MAX_HISTORY_TURNS = 10
 _TOOL_RESULT_MAX_CHARS = 4000
-
-_PLAN_TRIGGER_KEYWORDS = frozenset({
-    "研究", "对比", "分析", "写", "撰写", "搜索", "查", "找",
-    "总结", "概括", "整理", "归纳", "综述", "论文", "报告",
-    "compare", "analyze", "research", "write", "search", "summarize",
-})
+_TOOL_RESULT_RECENT = 2
+_TOOL_RESULT_SHORT = 800
+_SLIDING_WINDOW_TAIL = 16
+_SLIDING_WINDOW_THRESHOLD = 22
 
 
-def _is_simple_query(query: str) -> bool:
-    q = query.strip()
-    for kw in _PLAN_TRIGGER_KEYWORDS:
-        if kw in q:
-            return False
-    if len(q) < 80:
-        return True
-    return False
+def _trim_messages(messages: list[Message]) -> list[Message]:
+    """滑动窗口裁剪，保证 tool/assistant 消息配对完整，旧工具结果截断。"""
+    if len(messages) <= _SLIDING_WINDOW_THRESHOLD:
+        return messages
+    head = messages[:2]
+    tail = messages[-_SLIDING_WINDOW_TAIL:]
+    # 从 head 末端收集已有的 tool_call_id
+    valid_ids: set[str] = set()
+    for m in head:
+        if m.tool_calls:
+            valid_ids.update(tc.id for tc in m.tool_calls)
+    # 从 tail 头部丢掉孤立的 tool 或引用不全的 assistant
+    while tail:
+        m = tail[0]
+        if m.role == "tool" and m.tool_call_id and m.tool_call_id not in valid_ids:
+            tail.pop(0)
+            continue
+        if m.role == "assistant" and m.tool_calls:
+            need = {tc.id for tc in m.tool_calls}
+            have = {x.tool_call_id for x in tail[1:] if x.role == "tool"}
+            if not need.issubset(have):
+                tail.pop(0)
+                continue
+            valid_ids.update(need)
+        elif m.role == "tool" and m.tool_call_id:
+            pass  # already covered by valid_ids check above
+        break
+    # 截断旧工具结果：最近 2 条保持原样，更早的截到 _TOOL_RESULT_SHORT
+    tool_msg_indices = [i for i, m in enumerate(tail) if m.role == "tool"]
+    recent_tool_count = 0
+    for i in reversed(tool_msg_indices):
+        recent_tool_count += 1
+        if recent_tool_count > _TOOL_RESULT_RECENT and len(tail[i].content) > _TOOL_RESULT_SHORT:
+            tail[i] = Message(
+                role="tool",
+                content=tail[i].content[:_TOOL_RESULT_SHORT],
+                tool_call_id=tail[i].tool_call_id,
+            )
+    return head + tail
 
 
 class AgentLoop:
@@ -104,7 +130,7 @@ class AgentLoop:
         temperature: float = 0.3,
         num_predict: int = 4096,
         timeout: float = 300.0,
-        context_compressor: ContextCompressor | None = None,
+        context_compressor: Any | None = None,
         prompt_builder: PromptBuilder | None = None,
         memory_manager: MemoryManager | None = None,
         skill_registry: SkillRegistry | None = None,
@@ -139,31 +165,14 @@ class AgentLoop:
             system_prompt=system_prompt,
         )
 
-        # Phase 1: 上下文工程
-        self.compressor = context_compressor or ContextCompressor(
-            ollama_base_url=self.ollama_base_url,
-            summary_model=model,
-        )
         self.prompt_builder = prompt_builder or PromptBuilder(
             tool_registry=self.tool_registry,
         )
 
-        # Phase 2: 记忆 + Skill + 轨迹
         self.memory = memory_manager or MemoryManager()
         self.skills = skill_registry or SkillRegistry()
         self.trajectory_recorder = trajectory_recorder or TrajectoryRecorder()
-        self.reviewer = ReviewAgent(
-            ollama_base_url=self.ollama_base_url,
-            model=model,
-            memory_manager=self.memory,
-            skill_registry=self.skills,
-            cloud_base_url=cloud_base_url,
-            cloud_api_key=cloud_api_key,
-            cloud_model=cloud_model,
-            api_format=api_format,
-        )
 
-        # Phase 3: 错误恢复 + Hook
         self.retry_manager = RetryManager()
         self.hooks = HookManager()
 
@@ -173,15 +182,10 @@ class AgentLoop:
         self.api_format = api_format
 
         self.rag_store = rag_store
-        self._tool_generator = create_tool_generator(self.tool_registry)
-        self._auto_processor: Any | None = None
-
         self._format_error_retry = False
 
     async def close(self) -> None:
         await self.llm.close()
-        await self.compressor.close()
-        await self.reviewer.close()
 
     # ------------------------------------------------------------------
     # v2: Stateless single-step executor
@@ -223,18 +227,8 @@ class AgentLoop:
         result = self.StepResult(events=[], tool_calls=[], tool_results=[])
         logger.info("ReAct step %d (session-driven)", step_num)
 
-        # 上下文压缩
-        ollama_dicts = [message_to_ollama_dict(m) for m in messages]
-        try:
-            compression = await self.compressor.compress(ollama_dicts)
-            if compression.was_compressed:
-                messages[:] = self._rebuild_messages_from_dicts(compression.messages)
-                result.events.append(AgentEvent(
-                    type="thinking",
-                    content=f"上下文已压缩: {compression.original_tokens} → {compression.compressed_tokens} tokens",
-                ))
-        except Exception as e:
-            logger.warning("上下文压缩失败（继续）: %s", e)
+        # 滑动窗口上下文管理
+        messages[:] = _trim_messages(messages)
 
         # LLM 调用
         try:
@@ -331,53 +325,14 @@ class AgentLoop:
 
         self.trajectory_recorder.start(query, model=self.model)
 
-        # 特殊元素自动检测和处理
-        auto_result = await self._auto_process_special_elements(query, history)
-        if auto_result and auto_result.has_special_elements:
-            logger.info("自动检测到特殊元素: %s", auto_result.detected_elements)
-            yield AgentEvent(
-                type="thinking",
-                content=f"检测到特殊元素: {', '.join(auto_result.detected_elements)}，正在分析..."
-            )
-            query = auto_result.enhanced_query
-
         messages = self._build_messages(query, history)
-
-        # Plan-and-Execute
-        plan = await self._generate_plan(query, messages)
-        if plan:
-            yield AgentEvent(type="thinking", content=f"执行计划:\n{plan}")
-            plan_text = f"\n\n## 执行计划\n请按以下步骤执行：\n{plan}"
-            if messages and messages[0].role == "system":
-                messages[0] = Message(role="system", content=messages[0].content + plan_text)
-            else:
-                messages.insert(0, Message(role="system", content=plan_text))
 
         try:
             for step in range(1, self.max_steps + 1):
                 logger.info("ReAct 步骤 %d/%d", step, self.max_steps)
 
-                # 主动上下文压缩
-                ollama_dicts = [message_to_ollama_dict(m) for m in messages]
-                await self.hooks.trigger(HookContext(
-                    point=HookPoint.ON_PRE_COMPRESS,
-                    data={"message_count": len(ollama_dicts), "step": step},
-                ))
-                compression = await self.compressor.compress(ollama_dicts)
-                if compression.was_compressed:
-                    await self.hooks.trigger(HookContext(
-                        point=HookPoint.ON_POST_COMPRESS,
-                        data={
-                            "original_tokens": compression.original_tokens,
-                            "compressed_tokens": compression.compressed_tokens,
-                        },
-                    ))
-                    messages = self._rebuild_messages_from_dicts(compression.messages)
-                    logger.info(
-                        "上下文已压缩: %d → %d 条消息, %d → %d tokens",
-                        compression.original_count, compression.compressed_count,
-                        compression.original_tokens, compression.compressed_tokens,
-                    )
+                # 滑动窗口上下文管理
+                messages = _trim_messages(messages)
 
                 # 调用 LLM（流式输出）
                 try:
@@ -414,22 +369,13 @@ class AgentLoop:
                     ))
 
                     if error_type == ErrorType.CONTEXT_OVERFLOW:
-                        logger.warning("上下文溢出，触发主动压缩...")
-                        try:
-                            ollama_dicts = [message_to_ollama_dict(m) for m in messages]
-                            compression = await self.compressor.compress(ollama_dicts)
-                            if compression.was_compressed:
-                                messages = self._rebuild_messages_from_dicts(compression.messages)
-                                logger.info("上下文压缩后重试: %d → %d 条消息",
-                                            compression.original_count, compression.compressed_count)
-                                continue
-                            else:
-                                yield AgentEvent(type="error", content="上下文过长，无法处理，请简化问题。")
-                                return
-                        except Exception as compress_err:
-                            logger.error("压缩重试也失败: %s", compress_err)
-                            yield AgentEvent(type="error", content="上下文过长，无法处理，请简化问题。")
-                            return
+                        logger.warning("上下文溢出，滑动窗口裁剪后重试...")
+                        trimmed = _trim_messages(messages)
+                        if len(trimmed) < len(messages):
+                            messages = trimmed
+                            continue
+                        yield AgentEvent(type="error", content="上下文过长，无法处理，请简化问题。")
+                        return
 
                     if error_type == ErrorType.FORMAT_ERROR and self.retry_manager.can_retry(error_type):
                         delay = self.retry_manager.get_delay(error_type)
@@ -543,23 +489,8 @@ class AgentLoop:
     # ------------------------------------------------------------------
 
     def _finalize_trajectory(self, query: str, answer: str, success: bool) -> None:
-        trajectory = self.trajectory_recorder.finish(answer, success=success)
+        self.trajectory_recorder.finish(answer, success=success)
         self.memory.save_conversation(query, answer, success=success)
-        nudge = self.skills.nudge_check()
-        if nudge:
-            logger.info("Skill 催促: %s", nudge)
-        if trajectory:
-            traj_data = {
-                "conversations": trajectory.to_sharegpt(),
-                "metadata": {
-                    "query": query,
-                    "model": self.model,
-                    "success": success,
-                    "total_duration_ms": trajectory.total_duration_ms,
-                    "created_at": trajectory.created_at,
-                },
-            }
-            self.reviewer.spawn_review(traj_data)
 
     def _rebuild_messages_from_dicts(self, dicts: list[dict]) -> list[Message]:
         messages: list[Message] = []
@@ -582,38 +513,9 @@ class AgentLoop:
                 content=content,
                 tool_calls=tool_calls,
                 tool_call_id=d.get("tool_call_id"),
+                reasoning_content=d.get("reasoning_content"),
             ))
         return messages
-
-    # ------------------------------------------------------------------
-    # 特殊元素自动处理
-    # ------------------------------------------------------------------
-
-    async def _auto_process_special_elements(
-        self,
-        query: str,
-        history: list[Message] | None = None,
-    ) -> Any | None:
-        try:
-            from src.agent.auto_processor import AutoElementProcessor
-        except ImportError:
-            return None
-
-        if self._auto_processor is None:
-            self._auto_processor = AutoElementProcessor()
-
-        context_text = None
-        if history:
-            for msg in reversed(history):
-                if msg.role == "user" and msg.content:
-                    context_text = msg.content
-                    break
-
-        try:
-            return await self._auto_processor.process_async(query, context_text)
-        except Exception as e:
-            logger.warning("特殊元素自动处理失败: %s", e)
-            return None
 
     # ------------------------------------------------------------------
     # 消息构建
@@ -627,16 +529,7 @@ class AgentLoop:
         messages: list[Message] = []
 
         if self.prompt_builder and not self.system_prompt:
-            memory_ctx = self.memory.get_memory_context(query)
-            skill_ctx = self.skills.get_skill_context(query)
-            extra: dict[str, str] = {}
-            if skill_ctx:
-                extra["技能库"] = skill_ctx
-            config = PromptConfig(
-                model_name=self.model,
-                memory_content=memory_ctx,
-                extra_sections=extra,
-            )
+            config = PromptConfig(model_name=self.model)
             system = self.prompt_builder.build(config)
         else:
             system = self.system_prompt
@@ -669,46 +562,6 @@ class AgentLoop:
         return messages
 
     # ------------------------------------------------------------------
-    # Plan-and-Execute 规划
-    # ------------------------------------------------------------------
-
-    _PLAN_PROMPT = """分析以下用户请求，判断是否需要多步骤执行计划。
-
-如果请求比较简单（单步即可完成，如简单翻译、单个问题回答），输出: SKIP
-如果请求需要多个步骤（如研究某个主题、对比多篇论文、分步骤处理文档），输出执行计划。
-
-执行计划格式:
-1. [步骤描述]
-2. [步骤描述]
-...
-
-用户请求: {query}
-
-可用的工具: {tools}
-
-执行计划（或 SKIP）:"""
-
-    async def _generate_plan(self, query: str, messages: list[Message]) -> str:
-        if _is_simple_query(query):
-            return ""
-        tool_names = [t.name for t in self.tool_registry.list_tools()]
-        prompt = self._PLAN_PROMPT.format(
-            query=query[:500],
-            tools=", ".join(tool_names) if tool_names else "无",
-        )
-        try:
-            plan_messages = [Message(role="user", content=prompt)]
-            response = await self.llm.call_simple(plan_messages)
-            if response and response.strip().upper().startswith("SKIP"):
-                return ""
-            if response and response.strip():
-                cleaned = re.sub(r"<think.*?>.*?</think.*?>", "", response, flags=re.DOTALL).strip()
-                return cleaned
-        except Exception as e:
-            logger.warning("规划生成失败 (将跳过): %s", e)
-        return ""
-
-    # ------------------------------------------------------------------
     # 工具执行
     # ------------------------------------------------------------------
 
@@ -735,17 +588,8 @@ class AgentLoop:
         except ValueError as e:
             error_msg = str(e)
             if "未注册的工具" in error_msg or "not found" in error_msg.lower():
-                tool_spec = self._tool_generator.generate_from_llm_request(
-                    llm_request=f"{tc.name}: {tc.arguments}",
-                    task_description=query,
-                )
-                if tool_spec and self._tool_generator.generate_tool(tool_spec):
-                    try:
-                        result = await self.tool_registry.execute(tc.name, tc.arguments)
-                        return result
-                    except Exception:
-                        pass
-                result = f"错误: 工具 '{tc.name}' 不存在且自动生成失败"
+                available = [t.name for t in self.tool_registry.list_tools()]
+                result = f"错误: 工具 '{tc.name}' 不存在。可用工具: {', '.join(available)}"
             else:
                 result = f"错误: {e}"
 

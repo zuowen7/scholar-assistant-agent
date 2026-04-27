@@ -125,6 +125,9 @@ class AgentSession:
         """
         self._query = query
         self.state = SessionState.INITIALIZING
+
+        self.agent.trajectory_recorder.start(query, model=self.agent.model)
+
         ev_start = AgentEvent(
             type=EVT_SESSION_STARTED,
             content="",
@@ -136,28 +139,8 @@ class AgentSession:
         # 构建初始消息
         self.messages = self.agent._build_messages(query, history)
 
-        # Plan-and-Execute
-        self.state = SessionState.PLANNING
-        plan = await self.agent._generate_plan(query, self.messages)
-        if plan:
-            ev_plan = AgentEvent(type=EVT_THOUGHT, content=f"执行计划:\n{plan}")
-            yield ev_plan
-            self._dispatch_event(ev_plan)
-            plan_text = f"\n\n## 执行计划\n请按以下步骤执行：\n{plan}"
-            if self.messages and self.messages[0].role == "system":
-                self.messages[0] = Message(
-                    role="system",
-                    content=self.messages[0].content + plan_text,
-                )
-            else:
-                self.messages.insert(0, Message(role="system", content=plan_text))
-
-            # 将计划拆解为任务
-            steps = [line.strip() for line in plan.split("\n") if line.strip()]
-            self.task_queue.add_many(steps)
-        else:
-            # 简单任务：单任务队列
-            self.task_queue.add(query)
+        # 单任务直接入队
+        self.task_queue.add(query)
 
         self.state = SessionState.EXECUTING
         self._checkpoint()
@@ -209,11 +192,12 @@ class AgentSession:
                 self._checkpoint()
 
                 # Skill nudge check after each task completion
-                nudge = self._skill_nudge()
+                nudge = self._skill_nudge(task_title=task.title)
                 if nudge:
                     yield AgentEvent(type=EVT_WARNING, content=nudge)
 
             self.state = SessionState.DONE
+            self.agent._finalize_trajectory(self._query, "", success=True)
             ev_done = AgentEvent(
                 type=EVT_DONE,
                 content="",
@@ -314,9 +298,15 @@ class AgentSession:
                 continue
 
             # ── Phase 3: SecurityGate + 审批执行 ──
+            # 先对每个工具做门控分类
+            gated: list[tuple[Any, Any]] = []  # (ToolCall, gate_result)
             for tc in step_result.tool_calls:
-                gate = self.security_gate.classify(tc.name, tc.arguments)
+                gated.append((tc, self.security_gate.classify(tc.name, tc.arguments)))
 
+            # 分离：可立即执行的 vs 需要审批的 vs banned
+            auto_exec: list[tuple[Any, Any]] = []
+            needs_approval_list: list[tuple[Any, Any]] = []
+            for tc, gate in gated:
                 if gate.is_banned:
                     error_msg = f"Tool '{tc.name}' blocked: {gate.reason}"
                     self.messages.append(Message(
@@ -329,63 +319,95 @@ class AgentSession:
                     )
                     logger.warning("SecurityGate banned: %s %s → %s", tc.name, tc.arguments, gate.reason)
                     continue
-
-                # 是否需要用户审批？
-                needs_approval = (
+                if (
                     not self.config.auto_approve
                     and gate.needs_approval
                     and "*" not in self.approved_categories
-                )
+                ):
+                    needs_approval_list.append((tc, gate))
+                else:
+                    auto_exec.append((tc, gate))
 
-                if needs_approval:
-                    evt_id = f"evt_{uuid.uuid4().hex[:8]}"
-                    approval_evt = AgentEvent(
-                        type=EVT_AWAIT_APPROVAL,
-                        content=f"Agent 想要执行 '{tc.name}'",
-                        event_id=evt_id,
-                        metadata={
-                            "tool": tc.name,
-                            "args": tc.arguments,
-                            "risk": gate.risk.name.lower(),
-                            "reason": gate.reason,
-                        },
-                    )
-                    self._dispatch_event(approval_evt)
-                    yield approval_evt
-
-                    # 创建 Future 并等待用户通过 REST 端点裁决
-                    loop = asyncio.get_running_loop()
-                    fut: asyncio.Future = loop.create_future()
-                    self.pending_approvals[evt_id] = fut
-                    try:
-                        decision = await asyncio.wait_for(
-                            fut, timeout=self.config.approval_timeout,
-                        )
-                    except asyncio.TimeoutError:
-                        decision = "deny"
-                    finally:
-                        self.pending_approvals.pop(evt_id, None)
-
-                    yield AgentEvent(
-                        type=EVT_APPROVAL_RECEIVED,
-                        content=f"审批结果: {decision}",
-                        event_id=evt_id,
-                    )
-
-                    if decision == "deny":
+            # 可立即执行的工具 → 并行
+            if auto_exec:
+                if len(auto_exec) > 1:
+                    results = await asyncio.gather(*[
+                        self.agent._execute_single_tool(tc, self._query)
+                        for tc, _ in auto_exec
+                    ])
+                    for (tc, _), result in zip(auto_exec, results):
                         self.messages.append(Message(
                             role="tool",
-                            content=f"User denied execution of '{tc.name}': {gate.reason}",
+                            content=result[:_TOOL_RESULT_MAX_CHARS],
                             tool_call_id=tc.id,
                         ))
-                        continue
-                    if decision == "allow_session":
-                        self.approved_categories.add("*")
-                    if decision == "abort":
-                        raise SessionAborted()
-                    # allow_once → 继续执行
+                        yield AgentEvent(
+                            type=EVT_TOOL_RESULT,
+                            content=result[:500] + ("..." if len(result) > 500 else ""),
+                            metadata={"tool_name": tc.name},
+                        )
+                else:
+                    tc, _ = auto_exec[0]
+                    result = await self.agent._execute_single_tool(tc, self._query)
+                    self.messages.append(Message(
+                        role="tool",
+                        content=result[:_TOOL_RESULT_MAX_CHARS],
+                        tool_call_id=tc.id,
+                    ))
+                    yield AgentEvent(
+                        type=EVT_TOOL_RESULT,
+                        content=result[:500] + ("..." if len(result) > 500 else ""),
+                        metadata={"tool_name": tc.name},
+                    )
 
-                # 执行工具
+            # 需要审批的工具 → 串行（避免审批顺序错乱）
+            for tc, gate in needs_approval_list:
+                evt_id = f"evt_{uuid.uuid4().hex[:8]}"
+                approval_evt = AgentEvent(
+                    type=EVT_AWAIT_APPROVAL,
+                    content=f"Agent 想要执行 '{tc.name}'",
+                    event_id=evt_id,
+                    metadata={
+                        "tool": tc.name,
+                        "args": tc.arguments,
+                        "risk": gate.risk.name.lower(),
+                        "reason": gate.reason,
+                    },
+                )
+                self._dispatch_event(approval_evt)
+                yield approval_evt
+
+                loop = asyncio.get_running_loop()
+                fut: asyncio.Future = loop.create_future()
+                self.pending_approvals[evt_id] = fut
+                try:
+                    decision = await asyncio.wait_for(
+                        fut, timeout=self.config.approval_timeout,
+                    )
+                except asyncio.TimeoutError:
+                    decision = "deny"
+                finally:
+                    self.pending_approvals.pop(evt_id, None)
+
+                yield AgentEvent(
+                    type=EVT_APPROVAL_RECEIVED,
+                    content=f"审批结果: {decision}",
+                    event_id=evt_id,
+                )
+
+                if decision == "deny":
+                    self.messages.append(Message(
+                        role="tool",
+                        content=f"User denied execution of '{tc.name}': {gate.reason}",
+                        tool_call_id=tc.id,
+                    ))
+                    continue
+                if decision == "allow_session":
+                    self.approved_categories.add("*")
+                if decision == "abort":
+                    raise SessionAborted()
+
+                # allow_once → 执行
                 result = await self.agent._execute_single_tool(tc, self._query)
                 self.messages.append(Message(
                     role="tool",
@@ -452,8 +474,10 @@ class AgentSession:
             except Exception as e:
                 logger.warning("Event callback error: %s", e)
 
-    def _skill_nudge(self) -> str | None:
-        """Check if skill system wants to nudge the agent.
+    def _skill_nudge(self, task_title: str = "", success: bool = True,
+                     tools_used: list[str] | None = None,
+                     error_type: str | None = None) -> str | None:
+        """Check if skill system wants to nudge the agent, and record task patterns.
 
         Returns:
             Nudge message or None.
@@ -462,6 +486,15 @@ class AgentSession:
         if skills is None:
             return None
         try:
+            # Record task pattern for auto-skill generation (Phase 4)
+            if self._query:
+                skills.record_pattern(
+                    query=self._query,
+                    task_title=task_title,
+                    success=success,
+                    tools_used=tools_used,
+                    error_type=error_type,
+                )
             return skills.nudge_check()
         except Exception:
             return None
@@ -537,7 +570,7 @@ class AgentSession:
                 self._dispatch_event(ev_td)
                 self._checkpoint()
 
-                nudge = self._skill_nudge()
+                nudge = self._skill_nudge(task_title=task.title)
                 if nudge:
                     yield AgentEvent(type=EVT_WARNING, content=nudge)
 
