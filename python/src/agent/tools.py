@@ -871,6 +871,137 @@ def _undo_last_change(
     }, ensure_ascii=False)
 
 
+def _run_command_v2(
+    command: str,
+    bash_session,  # BashSession — 闭包注入
+    *,
+    timeout: int = 120,
+    cwd: str | None = None,
+) -> str:
+    """在持久 BashSession 中执行 shell 命令。
+
+    Args:
+        command: 命令字符串。
+        bash_session: BashSession 实例（内部注入）。
+        timeout: 超时秒，默认 120，硬上限 600。
+        cwd: 工作目录相对项目根，None 表示沿用上次 cwd。
+    """
+    result = bash_session.run_command(command, timeout=timeout, cwd=cwd)
+    return result.to_json()
+
+
+_GIT_ALLOWED_OPS = frozenset({
+    "status", "diff", "log", "show", "branch", "tag", "remote",
+    "commit", "restore", "checkout", "add", "stash",
+})
+
+
+def _git_op(
+    operation: str,
+    workspace,  # WorkspaceEnv — 闭包注入
+    *,
+    args: dict | None = None,
+) -> str:
+    """受控 git 操作。
+
+    Args:
+        operation: 操作名，支持 status/diff/log/show/branch/tag/remote/commit/restore/checkout/add/stash。
+        workspace: WorkspaceEnv 实例（内部注入）。
+        args: 操作参数字典。
+    """
+    args = args or {}
+    operation = operation.strip().lower()
+
+    if operation not in _GIT_ALLOWED_OPS:
+        return json.dumps({
+            "error": f"git operation '{operation}' is not allowed",
+            "allowed": sorted(_GIT_ALLOWED_OPS),
+        })
+
+    # 禁止危险标志
+    args_str = json.dumps(args, ensure_ascii=False)
+    forbidden = ["--no-verify", "--no-gpg-sign", "--force", "--hard"]
+    for flag in forbidden:
+        if flag in args_str:
+            return json.dumps({"error": f"git flag '{flag}' is banned"})
+
+    # 构建 git 命令
+    git_cmd = _build_git_command(operation, args)
+
+    try:
+        result = subprocess.run(
+            git_cmd,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            encoding="utf-8",
+            errors="replace",
+            cwd=str(workspace.root),
+        )
+        return json.dumps({
+            "operation": operation,
+            "exit_code": result.returncode,
+            "stdout": result.stdout[:4000],
+            "stderr": result.stderr[:1000],
+        }, ensure_ascii=False)
+    except subprocess.TimeoutExpired:
+        return json.dumps({"operation": operation, "exit_code": -1, "error": "git command timed out"})
+    except Exception as e:
+        return json.dumps({"operation": operation, "exit_code": -1, "error": str(e)})
+
+
+def _build_git_command(operation: str, args: dict) -> str:
+    """构建安全的 git 命令字符串。"""
+    if operation == "status":
+        return "git status --short"
+    elif operation == "diff":
+        path = args.get("path", "")
+        staged = "--staged" if args.get("staged") else ""
+        return f"git diff {staged} -- {path}".strip()
+    elif operation == "log":
+        n = args.get("count", 10)
+        return f"git log --oneline -{n}"
+    elif operation == "show":
+        ref = args.get("ref", "HEAD")
+        return f"git show --stat {ref}"
+    elif operation == "branch":
+        return "git branch -a"
+    elif operation == "tag":
+        return "git tag -l"
+    elif operation == "remote":
+        return "git remote -v"
+    elif operation == "commit":
+        msg = args.get("message", "agent commit").replace('"', '\\"')
+        files = args.get("files", [])
+        files_str = " ".join(f'"{f}"' for f in files) if files else "-a"
+        return f'git commit {files_str} -m "{msg}"'
+    elif operation == "add":
+        files = args.get("files", [])
+        if files:
+            files_str = " ".join(f'"{f}"' for f in files)
+            return f"git add {files_str}"
+        return "git add -A"
+    elif operation == "restore":
+        path = args.get("path", "")
+        source = args.get("source", "HEAD")
+        return f'git restore --source={source} -- "{path}"'
+    elif operation == "checkout":
+        target = args.get("branch", "")
+        if target:
+            return f'git checkout "{target}"'
+        path = args.get("path", "")
+        return f'git checkout -- "{path}"'
+    elif operation == "stash":
+        action = args.get("action", "push")
+        if action == "pop":
+            return "git stash pop"
+        elif action == "list":
+            return "git stash list"
+        return "git stash push -u"
+    return "git status"
+
+
 # --- 辅助函数 ---
 
 
@@ -1725,9 +1856,11 @@ BibTeX 条目：
     if workspace_root:
         from src.agent.workspace import WorkspaceEnv
         from src.agent.change_journal import ChangeJournal
+        from src.agent.bash_session import BashSession
 
         ws_env = WorkspaceEnv(root=workspace_root)
         ws_journal = ChangeJournal(backup_root=ws_env.backup_root_path())
+        ws_bash = BashSession(workspace_root=workspace_root)
 
         def read_file_v2(file_path: str, offset: int = 0, limit: int | None = None, encoding: str = "utf-8") -> str:
             """读取项目工作区内的文件，返回带行号的内容。
@@ -1781,12 +1914,33 @@ BibTeX 条目：
             """
             return _undo_last_change(ws_journal, ws_env, count=count, backup_id=backup_id)
 
+        def run_command(command: str, timeout: int = 120, cwd: str | None = None) -> str:
+            """在持久 Shell 会话中执行命令。cwd 和 env 跨命令保持。
+
+            Args:
+                command: 要执行的 shell 命令。
+                timeout: 超时秒数，默认 120，最大 600。
+                cwd: 工作目录（相对项目根），None 表示沿用上次 cwd。
+            """
+            return _run_command_v2(command, ws_bash, timeout=timeout, cwd=cwd)
+
+        def git_op(operation: str, args: dict | None = None) -> str:
+            """受控 git 操作。支持 status/diff/log/show/branch/commit/restore/checkout/add/stash。
+
+            Args:
+                operation: 操作名（status/diff/log/show/branch/commit/restore/checkout/add/stash）。
+                args: 操作参数字典。
+            """
+            return _git_op(operation, ws_env, args=args)
+
         for fn, tool_name, desc in [
             (read_file_v2, "read_file", "读取项目工作区内的文件，返回带行号的内容。支持 offset/limit 分页。"),
             (list_directory, "list_directory", "列出目录内容，返回带类型和大小的结构。支持递归和 glob 过滤。"),
             (str_replace, "str_replace", "精确字符串替换。在文件中找到唯一匹配的旧字符串并替换。"),
             (write_file, "write_file", "整文件写入。用于新建文件或全量重写。会自动备份被覆盖的文件。"),
             (undo_last_change, "undo_last_change", "回退最近 N 次破坏性操作。从 .agent_backup 中恢复文件。"),
+            (run_command, "run_command", "在持久 Shell 会话中执行命令。cwd 跨命令保持。支持黑/白名单安全检查。"),
+            (git_op, "git_op", "受控 git 操作。比直接 shell 更安全，支持 status/diff/log/show/branch/commit 等。"),
         ]:
             # 使用新的描述覆盖旧的 sandbox 版同名工具
             registry.register(ToolDefinition(

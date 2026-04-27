@@ -23,15 +23,20 @@ from src.agent.hooks import HookContext, HookPoint
 from src.agent.models import (
     AgentEvent,
     EVT_ABORTED,
+    EVT_APPROVAL_RECEIVED,
+    EVT_AWAIT_APPROVAL,
     EVT_DONE,
     EVT_SESSION_STARTED,
     EVT_TASK_DONE,
     EVT_TASK_STARTED,
     EVT_THOUGHT,
+    EVT_TOOL_CALL,
+    EVT_TOOL_RESULT,
     EVT_WARNING,
     Message,
     SessionState,
 )
+from src.agent.security_gate import SecurityGate, ToolRiskLevel
 from src.agent.task_queue import TaskQueue
 from src.agent.workspace import WorkspaceEnv
 
@@ -91,6 +96,7 @@ class AgentSession:
         self.pending_approvals: dict[str, Any] = {}
         self.approved_categories: set[str] = set()
         self.consecutive_errors = 0
+        self.security_gate = SecurityGate()
 
     async def drive(
         self,
@@ -240,6 +246,10 @@ class AgentSession:
 
             self.consecutive_errors = 0
 
+            # SecurityGate: 对 tool_calls 做风险判定和审批拦截
+            if step_result.tool_calls and not self.config.auto_approve:
+                await self._classify_and_gate(step_result)
+
             if step_result.is_final:
                 if step_result.final_answer and self.agent.memory:
                     try:
@@ -260,6 +270,26 @@ class AgentSession:
                 content=f"任务步数达到上限 ({self.config.max_task_steps})",
                 metadata={"code": "TASK_STEP_LIMIT"},
             )
+
+    async def _classify_and_gate(self, step_result) -> None:
+        """对 step_result 中的 tool_calls 做 SecurityGate 风险判定。
+
+        对 BANNED 调用直接注入拒绝结果到 messages；
+        对 MODERATE/DESTRUCTIVE 调用触发 await_approval 等待用户决定。
+        此方法修改 messages，由 _drive_task 下一轮继续处理。
+        """
+        for tc in step_result.tool_calls:
+            gate = self.security_gate.classify(tc.name, tc.arguments)
+
+            if gate.is_banned:
+                # 直接拒绝，不执行也不询问
+                error_msg = f"Tool '{tc.name}' blocked: {gate.reason}"
+                self.messages.append(Message(
+                    role="tool",
+                    content=error_msg,
+                    tool_call_id=tc.id,
+                ))
+                logger.warning("SecurityGate banned: %s %s → %s", tc.name, tc.arguments, gate.reason)
 
     async def abort(self) -> None:
         """中止会话。"""
