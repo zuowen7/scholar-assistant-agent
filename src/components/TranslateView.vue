@@ -131,8 +131,9 @@ import { ref, computed } from 'vue'
 import { useTranslate } from '../composables/useTranslate'
 import DOMPurify from 'dompurify'
 
-defineProps<{
+const props = defineProps<{
   healthOk: boolean
+  readSettings: { fontSize: number; lineHeight: number; fontFamily: string; transColor: string }
 }>()
 
 defineEmits<{
@@ -147,40 +148,11 @@ const stepLabels = ['解析文档', '清洗文本', '智能分块', '翻译', '�
 
 const progress = computed(() => overallProgress())
 
-// ── Read settings (persisted in localStorage) ──
-interface ReadSettings {
-  fontSize: number
-  lineHeight: number
-  fontFamily: string
-  transColor: string
-}
-
-const readSettings = ref<ReadSettings>({
-  fontSize: 16,
-  lineHeight: 1.9,
-  fontFamily: 'system-ui',
-  transColor: '#e4e4e7',
-})
-
-function loadReadSettings() {
-  try {
-    const raw = localStorage.getItem('read-settings')
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      if (parsed && typeof parsed.fontSize === 'number') {
-        readSettings.value = { ...readSettings.value, ...parsed }
-      }
-    }
-  } catch (e) { console.warn('loadReadSettings failed:', e) }
-}
-
-loadReadSettings()
-
 const readStyleVars = computed(() => ({
-  '--read-fs': `${readSettings.value.fontSize}px`,
-  '--read-lh': readSettings.value.lineHeight,
-  '--read-ff': readSettings.value.fontFamily,
-  '--read-trans-color': readSettings.value.transColor,
+  '--read-fs': `${props.readSettings.fontSize}px`,
+  '--read-lh': props.readSettings.lineHeight,
+  '--read-ff': props.readSettings.fontFamily,
+  '--read-trans-color': props.readSettings.transColor,
 }))
 
 // ── Sentence splitting & alignment ──
@@ -426,8 +398,8 @@ function openFilePicker() {
 .error-banner {
   display: flex; align-items: center; gap: 8px;
   margin-top: 14px; padding: 10px 14px;
-  background: var(--red-bg); border: 1px solid var(--red-border);
-  border-radius: var(--radius-lg); color: var(--red); font-size: 13px;
+  background: var(--c-danger-bg); border: 1px solid var(--c-danger-border);
+  border-radius: var(--radius-lg); color: var(--c-danger); font-size: 13px;
 }
 
 .restart-btn {
