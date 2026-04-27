@@ -48,6 +48,7 @@ class TranslationMemory:
         self._init_schema()
         self._encoder = None
         self._encoder_dim: int | None = None
+        self._fuzzy_ok: bool | None = None  # None = untested, set after first attempt
 
     def _init_schema(self) -> None:
         self._conn.executescript("""
@@ -70,10 +71,18 @@ class TranslationMemory:
         self._conn.commit()
 
     def _get_encoder(self):
-        if self._encoder is None:
-            from sentence_transformers import SentenceTransformer
-            self._encoder = SentenceTransformer("all-MiniLM-L6-v2")
-            self._encoder_dim = self._encoder.get_sentence_embedding_dimension()
+        if self._fuzzy_ok is None:
+            try:
+                from sentence_transformers import SentenceTransformer
+                self._encoder = SentenceTransformer("all-MiniLM-L6-v2")
+                self._encoder_dim = self._encoder.get_sentence_embedding_dimension()
+                self._fuzzy_ok = True
+            except ImportError:
+                logger.warning(
+                    "sentence-transformers 未安装，TM 模糊匹配已禁用。"
+                    " 可通过 `pip install sentence-transformers` 启用。"
+                )
+                self._fuzzy_ok = False
         return self._encoder
 
     def _embed(self, texts: str | list[str]) -> "numpy.ndarray":
@@ -128,6 +137,9 @@ class TranslationMemory:
             )
 
         if not fuzzy:
+            return TMHit(source=source_text, target="", score=0.0, match_type="none")
+
+        if not self._get_encoder():
             return TMHit(source=source_text, target="", score=0.0, match_type="none")
 
         # Fuzzy match via embeddings

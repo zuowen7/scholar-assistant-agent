@@ -10,7 +10,7 @@ import os
 import shutil
 import uuid
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Literal
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from src.parser import extract_document, SUPPORTED_EXTENSIONS
+from src.parser.extractor import extract_document_with_layout
 from src.cleaner import clean_text_full
 from src.chunker import chunk_text_full
 from src.formatter import format_output
@@ -181,6 +182,8 @@ def register_translate(
                 "content": None,
                 "error": None,
                 "filename": file.filename or "unknown",
+                "blocks": None,  # TextBlock list for PDF overlay
+                "layout_doc": None,  # DocumentContent from layout-aware extraction
             }
             _start_reaper()
             return {"task_id": task_id}
@@ -217,6 +220,8 @@ def register_translate(
                 "output_path": None,
                 "content": None,
                 "error": None,
+                "blocks": None,
+                "layout_doc": None,
             }
             _start_reaper()
             return {"task_id": task_id}
@@ -238,7 +243,20 @@ def register_translate(
                 "event": "progress",
                 "data": json.dumps({"step": 1, "total": 5, "message": f"解析 {fmt_name}..."}),
             }
-            doc = await asyncio.to_thread(extract_document, input_path)
+
+            # Use layout-aware extraction for PDFs to enable bilingual overlay export
+            if ext == ".pdf":
+                layout_doc, blocks = await asyncio.to_thread(extract_document_with_layout, input_path)
+                doc = layout_doc
+                task["blocks"] = blocks
+                task["layout_doc"] = layout_doc
+                block_ids_in_page = len(blocks)
+            else:
+                doc = await asyncio.to_thread(extract_document, input_path)
+                blocks = []
+                task["blocks"] = None
+                task["layout_doc"] = None
+
             raw_text = doc.full_text
             dual_pages = sum(1 for p in doc.pages if getattr(p, "is_dual_column", False))
             yield {
@@ -247,6 +265,7 @@ def register_translate(
                     "pages": doc.page_count,
                     "chars": len(raw_text),
                     "dual_column_pages": dual_pages,
+                    "block_count": len(blocks),
                 }),
             }
 
@@ -485,6 +504,7 @@ def register_translate(
                     "task_id": task_id,
                     "output_path": str(out_path),
                     "content": content,
+                    "block_ids": [b.block_id for b in task.get("blocks", []) or []] if task.get("blocks") else None,
                     "chunks": [
                         {"original": r.original, "translated": r.translated}
                         for r in results
@@ -676,5 +696,102 @@ def register_translate(
             raise HTTPException(400, f"导入失败: {e}")
         finally:
             Path(tmp_path).unlink(missing_ok=True)
+
+    # ── Bilingual PDF export ───────────────────────────────────────────
+
+    class BilingualPdfPayload(BaseModel):
+        task_id: str
+        mode: Literal["below", "above", "replace"] = "below"
+
+    @app.post("/api/export/bilingual_pdf")
+    async def export_bilingual_pdf(payload: BilingualPdfPayload):
+        if payload.task_id not in tasks:
+            raise HTTPException(404, "任务不存在")
+        t = tasks[payload.task_id]
+        if t["status"] not in ("done", "done_with_warnings"):
+            raise HTTPException(400, "翻译尚未完成")
+        blocks = t.get("blocks")
+        if not blocks:
+            raise HTTPException(400, "该任务不支持双语 PDF 叠加导出（仅 PDF 翻译任务支持）")
+
+        input_path = t.get("input_path")
+        if not input_path or not Path(input_path).exists():
+            raise HTTPException(404, "源 PDF 文件已丢失")
+
+        # Build block_id → translated text mapping from completed chunks
+        # Re-read the output markdown and pair with block text
+        results_by_block = _build_block_translations(t.get("chunks", []), blocks)
+        if not results_by_block:
+            raise HTTPException(400, "未找到有效的翻译结果")
+
+        try:
+            from src.formatter.pdf_overlay import overlay_translation
+        except ImportError:
+            raise HTTPException(500, "PDF overlay 模块不可用")
+
+        output_dir = runtime_dir / "output"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        out_pdf = output_dir / f"{payload.task_id}_bilingual.pdf"
+
+        try:
+            overlay_translation(
+                src_pdf=input_path,
+                blocks=blocks,
+                translations=results_by_block,
+                output=out_pdf,
+                mode=payload.mode,
+            )
+        except Exception as e:
+            raise HTTPException(500, f"PDF 叠加导出失败: {e}")
+
+        return FileResponse(
+            out_pdf,
+            filename=f"{payload.task_id}_bilingual.pdf",
+            media_type="application/pdf",
+        )
+
+    def _build_block_translations(
+        chunk_results: list[dict],
+        blocks: list,
+    ) -> dict[str, str]:
+        """Map block_id → translated text from chunk results.
+
+        We reconstruct block-level translations by splitting each chunk's
+        translated text proportionally across the blocks it contained.
+        """
+        if not chunk_results or not blocks:
+            return {}
+
+        # Build block_id → block text map
+        block_texts: dict[str, str] = {b.block_id: b.text for b in blocks}
+
+        translations: dict[str, str] = {}
+        chunk_idx = 0
+        remaining = ""
+
+        for chunk in chunk_results:
+            trans = chunk.get("translated", "")
+            orig = chunk.get("original", "")
+
+            if not trans or not orig:
+                continue
+
+            # Distribute trans across blocks that match this chunk's original text
+            # Use a simple prefix match to find which blocks contributed to this chunk
+            cursor = 0
+            for bid, btext in block_texts.items():
+                if bid in translations:
+                    continue
+                if orig.startswith(btext[:30]) or btext.startswith(orig[:30]):
+                    # This block likely contributed to this chunk
+                    # Use ratio to extract the relevant portion of translation
+                    ratio = len(btext) / max(len(orig), 1)
+                    chars_to_take = max(1, int(len(trans) * ratio))
+                    translations[bid] = trans[:chars_to_take]
+                    trans = trans[chars_to_take:]
+                    if not trans:
+                        break
+
+        return translations
 
     return {"tasks": tasks, "rag_store_getter": _state["rag_store_getter"], "tm_store": tm_store, "glossary_store": glossary_store}

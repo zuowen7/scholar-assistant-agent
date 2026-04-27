@@ -2,14 +2,52 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
+import fitz
 import pdfplumber
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TextBlock:
+    """A text block with bounding box coordinates for PDF overlay translation."""
+
+    page: int  # 0-indexed page number
+    bbox: tuple[float, float, float, float]  # (x0, y0, x1, y1) in PDF points
+    text: str  # original text content
+    font_size: float  # estimated font size in points
+    block_id: str  # stable hash identifier for translation mapping
+    font_name: str = ""  # font family name
+
+    def __post_init__(self):
+        if not self.block_id:
+            self.block_id = self._compute_id()
+
+    def _compute_id(self) -> str:
+        unique = f"{self.page}:{self.bbox}:{self.text[:50]}"
+        return hashlib.md5(unique.encode("utf-8")).hexdigest()[:12]
+
+    @property
+    def width(self) -> float:
+        return self.bbox[2] - self.bbox[0]
+
+    @property
+    def height(self) -> float:
+        return self.bbox[3] - self.bbox[1]
+
+    def text_ratio(self, translated_text: str) -> float:
+        if not self.text:
+            return 1.0
+        orig_chars = len(self.text)
+        trans_chars = len(translated_text)
+        return max(0.5, min(3.0, trans_chars / max(orig_chars, 1)))
 
 
 @dataclass
@@ -431,3 +469,121 @@ def _extract_with_char_spaces(page: pdfplumber.page.Page) -> str:
         text_lines.append("".join(parts))
 
     return "\n".join(text_lines)
+
+
+# ---------------------------------------------------------------------------
+# Layout-aware extraction (for PDF overlay translation)
+# ---------------------------------------------------------------------------
+
+def _extract_blocks_from_fitz_page(page: fitz.Page) -> list[TextBlock]:
+    """Extract TextBlock list from a single fitz Page using get_text("dict").
+
+    Groups consecutive spans sharing the same font/size into line-level blocks.
+    Filters out page header/footer regions (< 5% and > 95% of page height).
+    """
+    header_cutoff = page.rect.height * 0.05
+    footer_cutoff = page.rect.height * 0.95
+
+    blocks: list[TextBlock] = []
+    block_id_seed = 0
+
+    # get_text("dict") returns blocks → lines → spans
+    text_dict = page.get_text("dict")
+    for block in text_dict.get("blocks", []):
+        if block.get("type") != 0:  # only text blocks (type 0)
+            continue
+
+        for line in block.get("lines", []):
+            line_bbox = tuple(line["bbox"])
+            y0 = line_bbox[1]
+            y1 = line_bbox[3]
+
+            # Filter header/footer
+            if y0 < header_cutoff or y1 > footer_cutoff:
+                continue
+
+            # Collect spans in this line
+            spans_texts: list[str] = []
+            font_size: float = 8.0
+            font_name: str = ""
+
+            for span in line.get("spans", []):
+                span_text = span.get("text", "")
+                if span_text.strip():
+                    spans_texts.append(span_text)
+                if not font_name:
+                    font_name = span.get("font", "")
+                if not font_size or font_size < 4:
+                    font_size = max(span.get("size", 8.0), 4.0)
+
+            if not spans_texts:
+                continue
+
+            combined_text = "".join(spans_texts)
+            if not combined_text.strip():
+                continue
+
+            block_id_seed += 1
+            block_id = hashlib.md5(
+                f"{page.number}:{line_bbox}:{combined_text[:30]}".encode("utf-8")
+            ).hexdigest()[:12]
+
+            blocks.append(TextBlock(
+                page=page.number,
+                bbox=line_bbox,
+                text=combined_text,
+                font_size=font_size,
+                block_id=block_id,
+                font_name=font_name,
+            ))
+
+    return blocks
+
+
+def extract_document_with_layout(
+    pdf_path: str | Path,
+) -> tuple[DocumentContent, list[TextBlock]]:
+    """Extract PDF with full layout (bbox) information for bilingual overlay.
+
+    Uses PyMuPDF (fitz) to extract blocks/lines/spans with coordinates.
+    Returns both a plain DocumentContent (compatible with existing pipeline)
+    and a list of TextBlocks with precise bounding boxes.
+
+    Args:
+        pdf_path: Path to PDF file
+
+    Returns:
+        (DocumentContent, list[TextBlock]) — doc for translation pipeline,
+        blocks for PDF overlay rendering
+    """
+    pdf_path = Path(pdf_path)
+    if not pdf_path.exists():
+        raise FileNotFoundError(f"PDF 文件不存在: {pdf_path}")
+
+    all_blocks: list[TextBlock] = []
+    pages_content: list[PageContent] = []
+
+    try:
+        with fitz.open(pdf_path) as doc:
+            for page_num, page in enumerate(doc):
+                blocks = _extract_blocks_from_fitz_page(page)
+                all_blocks.extend(blocks)
+
+                # Build plain text for each page (compatible with existing pipeline)
+                page_text = "\n".join(b.text for b in blocks)
+                pages_content.append(PageContent(
+                    page_num=page_num + 1,
+                    text=page_text,
+                    width=page.rect.width,
+                    height=page.rect.height,
+                    is_dual_column=False,
+                ))
+
+    except Exception as e:
+        raise ValueError(f"PDF layout 解析失败: {pdf_path} - {e}") from e
+
+    doc_content = DocumentContent(
+        pages=pages_content,
+        source_path=str(pdf_path),
+    )
+    return doc_content, all_blocks
