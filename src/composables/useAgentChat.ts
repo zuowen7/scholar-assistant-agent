@@ -92,13 +92,15 @@ export function useAgentChat() {
             const total = u.total_tokens || (u.prompt_tokens || 0) + (u.completion_tokens || 0)
             if (total) parts.push(`${total} tokens`)
           }
-          msg.content = agentEvent.content || (parts.length ? parts.join(' · ') : '完成')
+          if (!msg.content) {
+            msg.content = agentEvent.content || (parts.length ? parts.join(' · ') : '完成')
+          }
           msg.isStreaming = false
           msg.events = [...msg.events, agentEvent]
           break
         }
         case 'error':
-          msg.content = agentEvent.content || '发生错误'
+          if (!msg.content) msg.content = agentEvent.content || '发生错误'
           msg.isStreaming = false
           msg.events = [...msg.events, agentEvent]
           break
@@ -305,14 +307,14 @@ export function useAgentChat() {
         case 'done':
         case 'error':
         case 'aborted': {
-          msg.content = agentEvent.content || '完成'
+          if (!msg.content) msg.content = agentEvent.content || '完成'
           msg.isStreaming = false
           pendingApproval.value = null
           msg.events = [...msg.events, agentEvent]
           break
         }
         case 'response':
-          msg.content = agentEvent.content
+          if (!msg.content) msg.content = agentEvent.content
           msg.isStreaming = false
           break
         case 'session_started':

@@ -203,6 +203,7 @@ class AgentLoop:
         *,
         step_num: int = 1,
         max_steps: int = TASK_MAX_STEPS,
+        execute_tools: bool = True,
     ) -> AgentLoop.StepResult:
         """执行单个 ReAct 步骤，返回结构化结果。
 
@@ -214,6 +215,7 @@ class AgentLoop:
             messages: 当前消息列表（会被原地追加 assistant + tool 消息）。
             step_num: 当前步骤编号（用于日志）。
             max_steps: 最大步骤数上限（用于日志，不做判断）。
+            execute_tools: 若为 False，只推理不执行工具，由调用方门控后执行。
 
         Returns:
             StepResult 包含本轮事件、工具调用和结果。
@@ -290,6 +292,10 @@ class AgentLoop:
                 content="",
                 metadata={"tool": tc.name, "args": tc.arguments},
             ))
+
+        # Phase 3: 若调用方要求不执行，则由 AgentSession 门控后再执行
+        if not execute_tools:
+            return result
 
         # 执行工具
         if len(tool_calls) > 1:

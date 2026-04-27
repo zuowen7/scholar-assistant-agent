@@ -231,3 +231,110 @@ class TrajectoryRecorder:
         # 按 created_at 降序
         records.sort(key=lambda r: r.get("metadata", {}).get("created_at", ""), reverse=True)
         return records[:limit]
+
+    # ------------------------------------------------------------------
+    # Event stream recording (Phase 4: full event dual-write)
+    # ------------------------------------------------------------------
+
+    def start_event_stream(self, session_id: str, query: str, model: str = "") -> None:
+        """Start recording an event stream for a session.
+
+        This creates a session-specific events.jsonl that records every
+        AgentEvent, not just the ShareGPT conversation turns.
+
+        Args:
+            session_id: Session identifier.
+            query: User query.
+            model: Model name.
+        """
+        self._event_stream_path = self.data_dir / f"events_{session_id}.jsonl"
+        self._event_stream_meta = {
+            "session_id": session_id,
+            "query": query,
+            "model": model,
+            "started_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        # Write header line
+        try:
+            with open(self._event_stream_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps({
+                    "type": "_header",
+                    "meta": self._event_stream_meta,
+                }, ensure_ascii=False) + "\n")
+        except Exception as e:
+            logger.warning("Failed to create event stream: %s", e)
+            self._event_stream_path = None
+
+    def record_event(self, event) -> None:
+        """Record an AgentEvent to the event stream.
+
+        Called by AgentSession._dispatch_event for every event during drive().
+
+        Args:
+            event: AgentEvent instance.
+        """
+        if not hasattr(self, "_event_stream_path") or self._event_stream_path is None:
+            return
+
+        record = {
+            "type": event.type,
+            "event_id": event.event_id,
+            "content": event.content[:5000] if event.content else "",
+            "metadata": event.metadata,
+            "ts": datetime.now().isoformat(timespec="seconds"),
+        }
+
+        try:
+            with open(self._event_stream_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except Exception as e:
+            logger.warning("Failed to record event: %s", e)
+
+    def finish_event_stream(self, success: bool = True) -> None:
+        """Finalize the event stream file.
+
+        Args:
+            success: Whether the session completed successfully.
+        """
+        if not hasattr(self, "_event_stream_path") or self._event_stream_path is None:
+            return
+
+        footer = {
+            "type": "_footer",
+            "success": success,
+            "finished_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        try:
+            with open(self._event_stream_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(footer, ensure_ascii=False) + "\n")
+        except Exception as e:
+            logger.warning("Failed to finalize event stream: %s", e)
+        finally:
+            self._event_stream_path = None
+
+    def get_event_stream(self, session_id: str) -> list[dict]:
+        """Read back an event stream for replay/analysis.
+
+        Args:
+            session_id: Session identifier.
+
+        Returns:
+            List of event records.
+        """
+        path = self.data_dir / f"events_{session_id}.jsonl"
+        if not path.exists():
+            return []
+
+        records: list[dict] = []
+        try:
+            with open(path, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        try:
+                            records.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            continue
+        except Exception:
+            pass
+        return records
