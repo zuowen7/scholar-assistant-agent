@@ -36,6 +36,3 @@ mcp==1.27.0
 # Agent workspace tools: diff preview generation
 unidiff==0.7.5
 
-# Tests
-pytest==9.0.3
-pytest-cov==7.1.0
