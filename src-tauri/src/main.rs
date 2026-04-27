@@ -209,11 +209,17 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 let state = window.state::<ManagedProcesses>();
-                if let Some(mut child) = lock_state!(state.python).take() {
-                    kill_child(&mut child);
+                {
+                    let mut guard = state.python.lock().unwrap_or_else(|e| e.into_inner());
+                    if let Some(mut child) = guard.take() {
+                        kill_child(&mut child);
+                    }
                 }
-                if let Some(mut child) = lock_state!(state.ollama).take() {
-                    kill_child(&mut child);
+                {
+                    let mut guard = state.ollama.lock().unwrap_or_else(|e| e.into_inner());
+                    if let Some(mut child) = guard.take() {
+                        kill_child(&mut child);
+                    }
                 }
             }
         })
