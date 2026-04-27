@@ -72,13 +72,15 @@
         @font-size-change="onFontSizeChange"
         @line-height-change="onLineHeightChange"
         @save-read-settings="saveReadSettings"
+        @font-family-change="onFontFamilyChange"
+        @color-change="onColorChange"
         @window-minimize="handleMinimize"
         @window-maximize="handleToggleMaximize"
         @window-close="handleClose"
       />
 
       <!-- 翻译模式 -->
-      <TranslateView v-if="appMode === 'translate'" :health-ok="healthOk" @restart-backend="handleRestartBackend" />
+      <TranslateView v-if="appMode === 'translate'" :health-ok="healthOk" :read-settings="readSettings" @restart-backend="handleRestartBackend" />
 
       <!-- 编辑器模式 -->
       <EditorLayout v-if="appMode === 'editor'" :isDark="isDark" class="editor-mode" />
@@ -209,6 +211,16 @@ function onFontSizeChange(e: Event) {
 
 function onLineHeightChange(e: Event) {
   readSettings.value.lineHeight = parseInt((e.target as HTMLInputElement).value, 10) / 10
+  saveReadSettings()
+}
+
+function onFontFamilyChange(value: string) {
+  readSettings.value.fontFamily = value
+  saveReadSettings()
+}
+
+function onColorChange(value: string) {
+  readSettings.value.transColor = value
   saveReadSettings()
 }
 
