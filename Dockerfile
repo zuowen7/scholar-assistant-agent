@@ -5,10 +5,10 @@
 FROM python:3.12-slim AS builder
 
 WORKDIR /build
-COPY python/requirements.txt .
+COPY python/requirements-lock.txt .
 RUN pip install --no-cache-dir --timeout 120 \
     -i https://pypi.tuna.tsinghua.edu.cn/simple \
-    --prefix=/install -r requirements.txt
+    --prefix=/install -r requirements-lock.txt
 
 # ---- 阶段2: 运行镜像 ----
 FROM python:3.12-slim
