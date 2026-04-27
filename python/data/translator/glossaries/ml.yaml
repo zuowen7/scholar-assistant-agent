@@ -1,0 +1,225 @@
+# ML 术语锚点词表 — 机器学习/深度学习论文常见术语
+# locked=true → 翻译时强制使用；locked=false → 建议使用
+# target="" → 不翻译，保留原文
+
+category: ML
+
+entries:
+  # ── 核心概念 ──
+  - source: attention mechanism
+    target: 注意力机制
+    locked: true
+
+  - source: self-attention
+    target: 自注意力
+    locked: true
+
+  - source: multi-head attention
+    target: 多头注意力
+    locked: true
+
+  - source: transformer
+    target: Transformer
+    locked: true
+    note: 保留原文
+
+  - source: gradient descent
+    target: 梯度下降
+    locked: true
+
+  - source: backpropagation
+    target: 反向传播
+    locked: true
+
+  - source: loss function
+    target: 损失函数
+    locked: true
+
+  - source: objective function
+    target: 目标函数
+    locked: true
+
+  - source: learning rate
+    target: 学习率
+    locked: true
+
+  - source: batch normalization
+    target: 批归一化
+    locked: true
+
+  - source: layer normalization
+    target: 层归一化
+    locked: true
+
+  - source: dropout
+    target: 随机失活
+    locked: false
+
+  - source: fine-tuning
+    target: 微调
+    locked: true
+
+  - source: pre-training
+    target: 预训练
+    locked: true
+
+  - source: transfer learning
+    target: 迁移学习
+    locked: true
+
+  # ── 模型架构 ──
+  - source: encoder
+    target: 编码器
+    locked: true
+
+  - source: decoder
+    target: 解码器
+    locked: true
+
+  - source: embedding
+    target: 嵌入
+    locked: true
+
+  - source: hidden layer
+    target: 隐藏层
+    locked: true
+
+  - source: feedforward
+    target: 前馈
+    locked: true
+
+  - source: residual connection
+    target: 残差连接
+    locked: true
+
+  - source: softmax
+    target: softmax
+    locked: true
+    note: 保留原文
+
+  - source: cross-entropy
+    target: 交叉熵
+    locked: true
+
+  # ── 训练与优化 ──
+  - source: epoch
+    target: 轮次
+    locked: false
+
+  - source: overfitting
+    target: 过拟合
+    locked: true
+
+  - source: underfitting
+    target: 欠拟合
+    locked: true
+
+  - source: regularization
+    target: 正则化
+    locked: true
+
+  - source: optimization
+    target: 优化
+    locked: false
+
+  - source: convergence
+    target: 收敛
+    locked: true
+
+  - source: hyperparameter
+    target: 超参数
+    locked: true
+
+  - source: weight decay
+    target: 权重衰减
+    locked: true
+
+  # ── 评估指标 ──
+  - source: accuracy
+    target: 准确率
+    locked: true
+
+  - source: precision
+    target: 精确率
+    locked: true
+
+  - source: recall
+    target: 召回率
+    locked: true
+
+  - source: F1 score
+    target: F1 值
+    locked: true
+
+  - source: perplexity
+    target: 困惑度
+    locked: true
+
+  - source: BLEU
+    target: BLEU
+    locked: true
+    note: 保留原文
+
+  # ── 不翻译的专有名词 ──
+  - source: BERT
+    target: ""
+    locked: true
+    note: 保留原文不翻译
+
+  - source: GPT
+    target: ""
+    locked: true
+    note: 保留原文不翻译
+
+  - source: ResNet
+    target: ""
+    locked: true
+    note: 保留原文不翻译
+
+  - source: VGG
+    target: ""
+    locked: true
+    note: 保留原文不翻译
+
+  - source: LSTM
+    target: ""
+    locked: true
+    note: 保留原文不翻译
+
+  - source: GRU
+    target: ""
+    locked: true
+    note: 保留原文不翻译
+
+  # ── NLP ──
+  - source: tokenization
+    target: 分词
+    locked: true
+
+  - source: word embedding
+    target: 词嵌入
+    locked: true
+
+  - source: language model
+    target: 语言模型
+    locked: true
+
+  - source: beam search
+    target: 束搜索
+    locked: true
+
+  - source: prompt engineering
+    target: 提示工程
+    locked: false
+
+  - source: in-context learning
+    target: 上下文学习
+    locked: true
+
+  - source: reinforcement learning
+    target: 强化学习
+    locked: true
+
+  - source: reward model
+    target: 奖励模型
+    locked: true
