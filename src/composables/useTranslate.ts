@@ -177,9 +177,11 @@ async function startStream(taskId: string, attempt: number = 0): Promise<void> {
       return
     }
 
-    if (state.status !== 'done' && attempt < SSE_RECONNECT_MAX_ATTEMPTS) {
+    if (state.status !== 'done' && state.status !== 'idle' && attempt < SSE_RECONNECT_MAX_ATTEMPTS) {
       state.stepMessage = `连接中断，正在重试 (${attempt + 1}/${SSE_RECONNECT_MAX_ATTEMPTS})...`
       await new Promise(r => setTimeout(r, SSE_RECONNECT_DELAY_MS))
+      // Re-check: user may have called reset() during the wait
+      if (abortController === null) return
 
       const stillAlive = await checkHealth()
       if (stillAlive) {

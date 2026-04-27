@@ -368,7 +368,20 @@ export function useEditor() {
 
   // ── AI Edit ────────────────────────────────────────────────────
 
-  let abortController: AbortController | null = null
+  // Per-operation abort controllers — keyed by 'aiEdit' | 'inlineEdit' | 'completion'
+  const _abortMap = new Map<string, AbortController>()
+
+  function _abortOp(key: string): void {
+    _abortMap.get(key)?.abort()
+    _abortMap.delete(key)
+  }
+
+  function _signalFor(key: string): AbortSignal {
+    _abortOp(key)
+    const ctrl = new AbortController()
+    _abortMap.set(key, ctrl)
+    return ctrl.signal
+  }
 
   async function aiEdit(instruction: string, text?: string, taskType?: string, previous?: string) {
     const targetText = text || selection.value.text
@@ -377,10 +390,7 @@ export function useEditor() {
     // 保存当前内容用于 undo
     previousContent.value = content.value
 
-    // 取消上一次未完成的请求
-    if (abortController) abortController.abort()
-    abortController = new AbortController()
-
+    const signal = _signalFor('aiEdit')
     aiLoading.value = true
     aiResult.value = ''
 
@@ -393,7 +403,7 @@ export function useEditor() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-        signal: abortController.signal,
+        signal,
       })
 
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
@@ -416,7 +426,7 @@ export function useEditor() {
       aiResult.value = `请求失败: ${e}`
     } finally {
       aiLoading.value = false
-      abortController = null
+      _abortMap.delete('aiEdit')
     }
   }
 
@@ -455,9 +465,7 @@ export function useEditor() {
     // 保存原文用于 undo
     previousContent.value = content.value
 
-    if (abortController) abortController.abort()
-    abortController = new AbortController()
-
+    const signal = _signalFor('inlineEdit')
     aiLoading.value = true
     aiResult.value = ''
 
@@ -466,7 +474,7 @@ export function useEditor() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: sel.text, instruction, task_type: taskType || 'expand' }),
-        signal: abortController.signal,
+        signal,
       })
 
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
@@ -503,15 +511,12 @@ export function useEditor() {
       return null
     } finally {
       aiLoading.value = false
-      abortController = null
+      _abortMap.delete('inlineEdit')
     }
   }
 
   function cancelAiEdit() {
-    if (abortController) {
-      abortController.abort()
-      abortController = null
-    }
+    _abortOp('aiEdit')
     aiLoading.value = false
   }
 
@@ -606,11 +611,13 @@ export function useEditor() {
 
     if (textBefore.trim().length < 10) { clearGhostText(); return }
 
+    const signal = _signalFor('completion')
     try {
       const resp = await fetch(`${API}/api/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ context: textBefore, max_tokens: 200 }),
+        signal,
       })
       if (!resp.ok) { clearGhostText(); return }
       const data = await resp.json()
@@ -638,6 +645,8 @@ export function useEditor() {
       }])
     } catch {
       clearGhostText()
+    } finally {
+      _abortMap.delete('completion')
     }
   }
 

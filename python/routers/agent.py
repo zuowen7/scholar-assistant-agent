@@ -25,7 +25,6 @@ try:
     from src.agent.skill_system import SkillRegistry
     from src.agent.tools import create_default_registry
     from src.agent.trajectory import TrajectoryRecorder
-    from src.agent.vram_manager import MultiplexingScheduler
     from src.translator.cloud_client import PROVIDER_PRESETS
     _AGENT_AVAILABLE = True
 except ImportError:
@@ -145,8 +144,12 @@ def register_agent(
     # Per-request AgentLoop factory
     # ------------------------------------------------------------------
 
-    async def _create_agent() -> AgentLoop:
-        """Create a fresh AgentLoop for this request using shared resources."""
+    async def _create_agent(workspace_root: str | None = None) -> AgentLoop:
+        """Create a fresh AgentLoop for this request using shared resources.
+
+        workspace_root: if provided (from ChatRequest), overrides the config default
+        and ensures workspace file-editing tools are available for this session.
+        """
         shared = await _ensure_shared()
         config = load_config()
         agent_cfg = config.get("agent", {})
@@ -155,6 +158,26 @@ def register_agent(
         use_cloud = cloud_only or trans_cfg.get("engine", "ollama") == "cloud"
         cloud_cfg = trans_cfg.get("cloud", {})
         ollama_url = trans_cfg.get("ollama_base_url", "http://localhost:11434")
+
+        # Resolve effective workspace: prefer request value over config value
+        effective_workspace = (workspace_root or "").strip() or shared.get("workspace_root", "")
+
+        # If request specifies a different workspace, build a per-request tool registry
+        # that includes AWA v2 file-editing tools scoped to that workspace.
+        if effective_workspace and effective_workspace != shared.get("workspace_root", ""):
+            cloud_cfg_for_tools = trans_cfg.get("cloud", {}) if use_cloud else {}
+            tool_registry = create_default_registry(
+                rag_store=shared["rag_store"],
+                ollama_base_url=ollama_url,
+                model=agent_cfg.get("model", "qwen3:8b"),
+                cloud_base_url=cloud_cfg_for_tools.get("base_url", "https://api.openai.com/v1") if use_cloud else "",
+                cloud_api_key=(cloud_cfg_for_tools.get("api_key") or "").strip() if use_cloud else "",
+                cloud_model=cloud_cfg_for_tools.get("model", "gpt-4o") if use_cloud else "",
+                workspace_root=effective_workspace,
+            )
+            logger.info("Agent 使用请求级工作区: %s", effective_workspace)
+        else:
+            tool_registry = shared["tool_registry"]
 
         # Per-request compressor (owns HTTP client, cleaned up by AgentLoop.close())
         agent_model = agent_cfg.get("model", "qwen3:8b")
@@ -167,16 +190,7 @@ def register_agent(
             cloud_api_key=(cloud_cfg.get("api_key") or "").strip() if use_cloud else "",
             cloud_model=cloud_cfg.get("model", "") if use_cloud else "",
         )
-        prompt_builder = PromptBuilder(tool_registry=shared["tool_registry"])
-
-        # Scheduler
-        scheduler = None
-        vram_cfg = agent_cfg.get("vram", {})
-        if vram_cfg.get("enabled", True) and not use_cloud:
-            scheduler = MultiplexingScheduler(
-                ollama_base_url=ollama_url,
-                model=agent_model,
-            )
+        prompt_builder = PromptBuilder(tool_registry=tool_registry)
 
         if use_cloud:
             key = (cloud_cfg.get("api_key") or "").strip()
@@ -188,8 +202,7 @@ def register_agent(
         return AgentLoop(
             ollama_base_url=ollama_url,
             model=agent_model,
-            tool_registry=shared["tool_registry"],
-            scheduler=scheduler,
+            tool_registry=tool_registry,
             max_steps=agent_cfg.get("max_steps", 10),
             system_prompt=agent_cfg.get("system_prompt", ""),
             temperature=agent_cfg.get("temperature", 0.3),
@@ -217,7 +230,7 @@ def register_agent(
         if not _AGENT_AVAILABLE:
             raise HTTPException(503, "Agent 模块未安装，请安装 chromadb")
 
-        agent = await _create_agent()
+        agent = await _create_agent(workspace_root=req.workspace_root)
 
         history: list[Message] | None = None
         if req.history:

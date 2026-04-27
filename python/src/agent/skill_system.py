@@ -42,6 +42,8 @@ logger = logging.getLogger(__name__)
 
 # Skill 催促间隔（连续 N 轮对话未创建/更新 Skill 时提醒）
 SKILL_NUDGE_INTERVAL = 10
+# Skill 衰减阈值：超过此天数未使用则标记为 deprecated，不再注入 prompt
+SKILL_DECAY_DAYS = 30
 
 
 def _tokenize(text: str) -> list[str]:
@@ -96,7 +98,9 @@ class Skill:
     notes: list[str] = field(default_factory=list)
     created_at: str = ""
     updated_at: str = ""
+    last_used_at: str = ""   # 最后一次被 match/increment_use 调用的日期
     use_count: int = 0
+    deprecated: bool = False  # True = 超过 SKILL_DECAY_DAYS 天未使用，不注入 prompt
 
     def to_markdown(self) -> str:
         """序列化为 SKILL.md 格式。
@@ -109,7 +113,9 @@ class Skill:
             f"trigger: {self.trigger}",
             f"created: {self.created_at}",
             f"updated: {self.updated_at}",
+            f"last_used: {self.last_used_at}",
             f"use_count: {self.use_count}",
+            f"deprecated: {str(self.deprecated).lower()}",
         ]
 
         lines = [
@@ -170,6 +176,34 @@ class SkillRegistry:
 
         if self._skills:
             logger.info("已加载 %d 个 Skill: %s", len(self._skills), list(self._skills.keys()))
+        self._prune_stale()
+
+    def _prune_stale(self) -> None:
+        """将超过 SKILL_DECAY_DAYS 天未使用的 skill 标记为 deprecated。
+
+        deprecated skill 不再注入 prompt，但文件保留在磁盘上方便人工审查。
+        若 skill 再次被调用（increment_use），自动恢复为 active。
+        """
+        today = datetime.now()
+        for skill in self._skills.values():
+            # 用 last_used_at，若为空则退回 updated_at，再退回 created_at
+            date_str = skill.last_used_at or skill.updated_at or skill.created_at
+            if not date_str:
+                continue
+            try:
+                last = datetime.strptime(date_str, "%Y-%m-%d")
+            except ValueError:
+                continue
+            stale = (today - last).days > SKILL_DECAY_DAYS
+            if stale and not skill.deprecated:
+                skill.deprecated = True
+                self._save_skill(skill)
+                logger.info("Skill 已标记为过期（%d 天未使用）: %s", SKILL_DECAY_DAYS, skill.name)
+            elif not stale and skill.deprecated:
+                # 文件手动去掉 deprecated=true 后重新加载时恢复
+                skill.deprecated = False
+                self._save_skill(skill)
+                logger.info("Skill 已从过期状态恢复: %s", skill.name)
 
     def _parse_skill_file(self, filepath: Path) -> Skill | None:
         """解析 SKILL.md 文件。
@@ -214,7 +248,9 @@ class SkillRegistry:
             notes=notes,
             created_at=fm.get("created", ""),
             updated_at=fm.get("updated", ""),
+            last_used_at=fm.get("last_used", ""),
             use_count=int(fm.get("use_count", "0")),
+            deprecated=fm.get("deprecated", "false").lower() == "true",
         )
 
     @staticmethod
@@ -295,6 +331,8 @@ class SkillRegistry:
         best_score = 0.0
 
         for skill in self._skills.values():
+            if skill.deprecated:
+                continue
             score = self._compute_match_score(query_lower, query_tokens, skill)
             if score > best_score:
                 best_score = score
@@ -415,7 +453,7 @@ class SkillRegistry:
         return skill
 
     def increment_use(self, name: str) -> None:
-        """增加 Skill 的使用计数。
+        """增加 Skill 的使用计数，同时更新 last_used_at 并恢复 deprecated 状态。
 
         Args:
             name: Skill 名称。
@@ -423,6 +461,10 @@ class SkillRegistry:
         skill = self._skills.get(name)
         if skill:
             skill.use_count += 1
+            skill.last_used_at = datetime.now().strftime("%Y-%m-%d")
+            if skill.deprecated:
+                skill.deprecated = False
+                logger.info("Skill 因使用而从过期状态恢复: %s", name)
             self._save_skill(skill)
 
     def _save_skill(self, skill: Skill) -> None:
@@ -474,7 +516,7 @@ class SkillRegistry:
             Skill 上下文文本，无匹配时返回空字符串。
         """
         if not query:
-            skills = self.list_skills()
+            skills = [s for s in self.list_skills() if not s.deprecated]
             if not skills:
                 return ""
             lines = ["已积累的技能:"]
