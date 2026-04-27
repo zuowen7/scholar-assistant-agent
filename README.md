@@ -41,6 +41,15 @@
 - **文件树** — 多文件管理，左侧导航
 - **模板导出** — Pandoc 编译，支持 IEEE/ACM/NeurIPS/LNCS/Elsevier/通用 LaTeX 模板
 
+### 思维导图
+- **Vue Flow 画布** — 自定义节点卡片 + 连线（树边/关联线），支持拖拽、缩放、小地图
+- **AI 智能展开** — 基于选中节点内容自动生成子主题
+- **AI 逻辑检查** — 检测思维链中的逻辑问题
+- **撤销/重做** — 100 步历史栈，支持 Ctrl+Z / Ctrl+Shift+Z
+- **自动布局** — dagre 算法一键整理
+- **快捷键** — Tab 添加子节点、Enter 添加兄弟、F2 编辑、Delete 删除悬停连线、方向键导航
+- **Markdown 桥接** — 思维导图 ↔ Argument Map 双向同步
+
 ### 部署
 - **桌面端** — Tauri 2 打包，自动管理 Python 后端和 Ollama 进程
 - **Docker** — 多阶段构建，一键容器化运行
@@ -53,15 +62,29 @@
 │   ├── src/main.rs               #   进程管理 (Python API + Ollama，自动清除代理环境变量)
 │   └── capabilities/             #   Tauri v2 权限配置
 ├── src/                          # Vue 3 前端
-│   ├── App.vue                   #   主界面 (Translate Mode + Editor Mode)
+│   ├── App.vue                   #   主界面薄壳（~630 行，管理全局状态）
+│   ├── styles/tokens.css         #   Design Tokens（暗色/亮色主题）
 │   ├── composables/
-│   │   ├── useTranslate.ts       #   SSE 翻译管线状态管理
+│   │   ├── useTranslate.ts       #   SSE 翻译管线状态管理（单例）
 │   │   ├── useAgentChat.ts       #   Agent SSE 对话状态管理
-│   │   ├── useEditor.ts          #   Monaco Editor + AI Panel
-│   │   └── useFileTree.ts        #   文件树导航
+│   │   ├── useEditor.ts          #   Monaco Editor + AI Panel（单例）
+│   │   ├── useFileTree.ts        #   文件树导航（单例）
+│   │   ├── useMindMap.ts         #   思维导图数据 + undo/redo（单例）
+│   │   ├── useMindMapKeyboard.ts #   思维导图键盘快捷键
+│   │   ├── useMindMapLayout.ts   #   dagre 自动布局
+│   │   └── useMindMapAnalysis.ts #   AI 分析集成
+│   ├── components/
+│   │   ├── AppTopBar.vue         #   顶栏（品牌/模式切换/引擎设置/窗口控制）
+│   │   ├── TranslateView.vue     #   翻译模式（上传/进度/结果三视图）
+│   │   ├── AgentPanel.vue        #   Agent 侧面板（对话/知识库/模板/会话）
+│   │   ├── EditorLayout.vue      #   编辑器布局（Monaco + AiPanel + FileTree）
+│   │   ├── mindmap/              #   思维导图（Vue Flow 画布 + 自定义节点/边）
+│   │   ├── ui/                   #   UI 原语（Button/Input/Panel/Tooltip…）
+│   │   └── …                     #   MonacoEditor, AiPanel, ArgumentMap 等
 │   ├── utils/
+│   │   ├── api.ts                #   API base URL（自动检测 Tauri/Web）
 │   │   └── streamReader.ts       #   统一 SSE 流解析工具（6 个调用点共用）
-│   └── components/               #   AiPanel, FileTree, ArgumentMap, MonacoEditor 等
+│   └── types/index.ts            #   共享 TypeScript 类型
 ├── python/                       # Python 后端
 │   ├── api_factory.py            #   FastAPI app 工厂（仅保留核心逻辑）
 │   ├── routers/                  #   路由模块（按功能拆分）
@@ -314,7 +337,7 @@ npx vitest
 
 | 层 | 技术 |
 |----|------|
-| UI | Vue 3, TypeScript, Vite, Monaco Editor |
+| UI | Vue 3, TypeScript, Vite, Monaco Editor, Vue Flow |
 | 桌面端 | Tauri 2 (Rust) |
 | 后端 | Python 3.12, FastAPI, SSE |
 | 翻译（本地） | Ollama + Qwen3:8b |
@@ -322,4 +345,5 @@ npx vitest
 | PDF | PyMuPDF, pdfplumber |
 | 向量数据库 | ChromaDB + all-MiniLM-L6-v2（仅本地） |
 | LaTeX 导出 | Pandoc + 6 套官方模板 |
+| 思维导图 | Vue Flow + dagre 自动布局 |
 | 容器化 | Docker 多阶段构建 |
