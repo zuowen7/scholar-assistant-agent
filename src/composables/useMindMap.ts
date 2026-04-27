@@ -13,6 +13,12 @@ export interface MindMapData {
   updatedAt: number
 }
 
+export interface MindMapViewport {
+  pan: { x: number; y: number }
+  zoom: number
+  toolbar: { x: number; y: number }
+}
+
 const createDefaultMap = (): MindMapData => {
   const rootId = `mind-${Date.now()}`
   return {
@@ -32,6 +38,11 @@ const createDefaultMap = (): MindMapData => {
 const draftMindMap = ref<MindMapData>(createDefaultMap())
 const savedMindMap = ref<MindMapData | null>(null)
 const selectedNodeId = ref(draftMindMap.value.rootId)
+const viewport = ref<MindMapViewport>({
+  pan: { x: 80, y: 80 },
+  zoom: 1,
+  toolbar: { x: 24, y: 18 },
+})
 
 function cloneMap(map: MindMapData): MindMapData {
   return {
@@ -48,9 +59,15 @@ export function useMindMap() {
   const hasSavedMindMap = computed(() => savedMindMap.value !== null)
 
   function resetMindMap(text = '中心主题') {
+    const currentToolbar = viewport.value.toolbar
     draftMindMap.value = createDefaultMap()
     draftMindMap.value.nodes[draftMindMap.value.rootId].text = text
     selectedNodeId.value = draftMindMap.value.rootId
+    viewport.value = {
+      pan: { x: 80, y: 80 },
+      zoom: 1,
+      toolbar: currentToolbar,
+    }
   }
 
   function loadSavedMindMap() {
@@ -115,6 +132,7 @@ export function useMindMap() {
   return {
     draftMindMap,
     savedMindMap,
+    viewport,
     selectedNodeId,
     selectedNode,
     hasSavedMindMap,
