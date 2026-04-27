@@ -1,29 +1,45 @@
 import { ref } from 'vue'
-import type { AgentChatMessage, AgentEvent, RAGDocument } from '../types'
+import type { AgentChatMessage, AgentEvent, AgentSessionInfo, RAGDocument } from '../types'
 import { API_BASE } from '../utils/api'
 import { readSseStream } from '../utils/streamReader'
 
 const API_URL = API_BASE
 
-// Module-level singleton state — survives page switches
+// ── Module-level singleton state — survives page switches ──────────
+
 const messages = ref<AgentChatMessage[]>([])
 const sending = ref(false)
 const ragDocuments = ref<RAGDocument[]>([])
 const ragLoading = ref(false)
 let abortController: AbortController | null = null
 
+// v2 state
+const sessionId = ref<string | null>(null)
+const pendingApproval = ref<PendingApproval | null>(null)
+
+export interface PendingApproval {
+  event_id: string
+  tool_name: string
+  args?: Record<string, unknown>
+  risk?: string
+  preview?: Record<string, unknown>
+}
+
 export function useAgentChat() {
 
-  // ── SSE 流式对话 ──────────────────────────────────────────────
+  // ── SSE streaming ────────────────────────────────────────────────
 
   async function sendMessage(
     text: string,
     contextText?: string,
     constraints?: string,
+    workspaceRoot?: string,
   ): Promise<void> {
     if (!text.trim() || sending.value) return
 
-    // 添加用户消息
+    // Clear pending approval if any
+    pendingApproval.value = null
+
     messages.value.push({
       id: crypto.randomUUID(),
       role: 'user',
@@ -33,7 +49,6 @@ export function useAgentChat() {
       timestamp: Date.now(),
     })
 
-    // 创建 assistant 消息占位
     const assistantMsg: AgentChatMessage = {
       id: crypto.randomUUID(),
       role: 'assistant',
@@ -48,36 +63,104 @@ export function useAgentChat() {
     abortController?.abort()
     abortController = new AbortController()
 
-    // 构造历史（最近 10 轮，不含当前 assistant 占位）
     const history = messages.value
       .filter(m => m.id !== assistantMsg.id && !m.isStreaming)
       .slice(-20)
       .map(m => ({ role: m.role, content: m.content }))
 
-    // handleEvent 闭包状态
     function handleEvent(eventType: string, data: Record<string, unknown>): void {
       const agentEvent: AgentEvent = {
-        type: data.type as AgentEvent['type'],
+        type: (data.type as AgentEvent['type']) || eventType,
         content: (data.content as string) || '',
+        event_id: data.event_id as string | undefined,
         metadata: data.metadata as AgentEvent['metadata'] | undefined,
       }
 
       const msg = messages.value.find(m => m.id === assistantMsg.id)
       if (!msg) return
 
-      if (eventType === 'response') {
-        msg.content = agentEvent.content
-        msg.isStreaming = false
-      } else if (eventType === 'error') {
-        msg.content = agentEvent.content
-        msg.isStreaming = false
-      } else {
-        msg.events = [...msg.events, agentEvent]
+      switch (eventType) {
+        // v2 terminal events
+        case 'done': {
+          const tasksDone = agentEvent.metadata?.tasks_done
+          const usage = agentEvent.metadata?.token_usage
+          const parts: string[] = []
+          if (agentEvent.content) parts.push(agentEvent.content)
+          if (tasksDone != null) parts.push(`${tasksDone} tasks`)
+          if (usage) {
+            const u = usage as Record<string, number>
+            const total = u.total_tokens || (u.prompt_tokens || 0) + (u.completion_tokens || 0)
+            if (total) parts.push(`${total} tokens`)
+          }
+          msg.content = agentEvent.content || (parts.length ? parts.join(' · ') : '完成')
+          msg.isStreaming = false
+          msg.events = [...msg.events, agentEvent]
+          break
+        }
+        case 'error':
+          msg.content = agentEvent.content || '发生错误'
+          msg.isStreaming = false
+          msg.events = [...msg.events, agentEvent]
+          break
+        case 'aborted':
+          msg.content = agentEvent.content || '会话已中止'
+          msg.isStreaming = false
+          pendingApproval.value = null
+          msg.events = [...msg.events, agentEvent]
+          break
+
+        // Legacy v1 terminal
+        case 'response':
+          msg.content = agentEvent.content
+          msg.isStreaming = false
+          break
+
+        // v2 session tracking
+        case 'session_started':
+          sessionId.value = (agentEvent.metadata?.session_id as string) || null
+          break
+
+        // v2 approval
+        case 'await_approval':
+          pendingApproval.value = {
+            event_id: agentEvent.event_id || '',
+            tool_name: (agentEvent.metadata?.tool_name as string) || (agentEvent.metadata?.tool as string) || '',
+            args: agentEvent.metadata?.args as Record<string, unknown>
+              || agentEvent.metadata?.arguments as Record<string, unknown>,
+            risk: agentEvent.metadata?.risk as string | undefined,
+            preview: agentEvent.metadata?.preview as Record<string, unknown> | undefined,
+          }
+          msg.events = [...msg.events, agentEvent]
+          break
+        case 'approval_received':
+          pendingApproval.value = null
+          msg.events = [...msg.events, agentEvent]
+          break
+
+        // v2 task lifecycle — attach to events stream
+        case 'task_started':
+        case 'task_done':
+        case 'thought':
+        case 'tool_call':
+        case 'tool_result':
+        case 'token':
+        case 'warning':
+          msg.events = [...msg.events, agentEvent]
+          break
+
+        // v1 / legacy types
+        case 'thinking':
+          msg.events = [...msg.events, agentEvent]
+          break
+
+        default:
+          msg.events = [...msg.events, agentEvent]
+          break
       }
     }
 
     try {
-      const resp = await fetch(`${API_URL}/api/chat`, {
+      const resp = await fetch(`${API_URL}/api/agent/v2/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -85,6 +168,7 @@ export function useAgentChat() {
           history,
           context_text: contextText?.trim() || undefined,
           constraints: constraints?.trim() || undefined,
+          workspace_root: workspaceRoot?.trim() || undefined,
         }),
         signal: abortController.signal,
       })
@@ -99,14 +183,13 @@ export function useAgentChat() {
 
       await readSseStream(reader, handleEvent)
 
-      // 如果流结束但 assistant 还在 streaming（没有收到 response 事件），标记结束
+      // Fallback: stream ended without a terminal event
       const msg = messages.value.find(m => m.id === assistantMsg.id)
       if (msg?.isStreaming) {
         msg.isStreaming = false
-        if (!msg.content && msg.events.length > 0) {
-          // 用最后一个事件的内容作为回答
+        if (!msg.content) {
           const last = msg.events[msg.events.length - 1]
-          msg.content = last.content
+          msg.content = last?.content || '完成'
         }
       }
     } catch (err) {
@@ -119,6 +202,7 @@ export function useAgentChat() {
     } finally {
       sending.value = false
       abortController = null
+      pendingApproval.value = null
     }
   }
 
@@ -128,9 +212,183 @@ export function useAgentChat() {
 
   function clearHistory(): void {
     messages.value = []
+    sessionId.value = null
+    pendingApproval.value = null
   }
 
-  // ── RAG 文档管理 ─────────────────────────────────────────────
+  // ── v2 Approval ──────────────────────────────────────────────────
+
+  async function sendApproval(
+    eventId: string,
+    decision: 'allow_once' | 'allow_session' | 'deny',
+    reason?: string,
+  ): Promise<boolean> {
+    const sid = sessionId.value
+    if (!sid || !eventId) return false
+
+    try {
+      const resp = await fetch(
+        `${API_URL}/api/agent/v2/approve/${sid}/${eventId}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ decision, reason: reason || undefined }),
+        },
+      )
+      if (resp.ok) {
+        pendingApproval.value = null
+        return true
+      }
+    } catch (e) {
+      console.warn('sendApproval failed:', e)
+    }
+    return false
+  }
+
+  async function abortSession(): Promise<boolean> {
+    const sid = sessionId.value
+    if (!sid) {
+      // 没有 session_id 时直接中止当前 SSE
+      stopGenerating()
+      return true
+    }
+
+    try {
+      const resp = await fetch(`${API_URL}/api/agent/v2/abort/${sid}`, { method: 'POST' })
+      if (resp.ok) {
+        pendingApproval.value = null
+        stopGenerating()
+        return true
+      }
+    } catch (e) {
+      console.warn('abortSession failed:', e)
+    }
+    // 即使后端 abort 失败，也中止前端流
+    stopGenerating()
+    return false
+  }
+
+  // ── v2 Resume ────────────────────────────────────────────────────
+
+  async function resumeSession(targetSessionId: string): Promise<void> {
+    if (sending.value) return
+
+    pendingApproval.value = null
+    sessionId.value = targetSessionId
+
+    const assistantMsg: AgentChatMessage = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: '',
+      events: [],
+      isStreaming: true,
+      timestamp: Date.now(),
+    }
+    messages.value.push(assistantMsg)
+
+    sending.value = true
+    abortController?.abort()
+    abortController = new AbortController()
+
+    function handleEvent(eventType: string, data: Record<string, unknown>): void {
+      const agentEvent: AgentEvent = {
+        type: (data.type as AgentEvent['type']) || eventType,
+        content: (data.content as string) || '',
+        event_id: data.event_id as string | undefined,
+        metadata: data.metadata as AgentEvent['metadata'] | undefined,
+      }
+
+      const msg = messages.value.find(m => m.id === assistantMsg.id)
+      if (!msg) return
+
+      switch (eventType) {
+        case 'done':
+        case 'error':
+        case 'aborted': {
+          msg.content = agentEvent.content || '完成'
+          msg.isStreaming = false
+          pendingApproval.value = null
+          msg.events = [...msg.events, agentEvent]
+          break
+        }
+        case 'response':
+          msg.content = agentEvent.content
+          msg.isStreaming = false
+          break
+        case 'session_started':
+          sessionId.value = (agentEvent.metadata?.session_id as string) || targetSessionId
+          break
+        case 'await_approval':
+          pendingApproval.value = {
+            event_id: agentEvent.event_id || '',
+            tool_name: (agentEvent.metadata?.tool_name as string) || (agentEvent.metadata?.tool as string) || '',
+            args: agentEvent.metadata?.args as Record<string, unknown>
+              || agentEvent.metadata?.arguments as Record<string, unknown>,
+            risk: agentEvent.metadata?.risk as string | undefined,
+            preview: agentEvent.metadata?.preview as Record<string, unknown> | undefined,
+          }
+          msg.events = [...msg.events, agentEvent]
+          break
+        case 'approval_received':
+          pendingApproval.value = null
+          msg.events = [...msg.events, agentEvent]
+          break
+        default:
+          msg.events = [...msg.events, agentEvent]
+          break
+      }
+    }
+
+    try {
+      const resp = await fetch(`${API_URL}/api/agent/v2/resume/${targetSessionId}`, {
+        method: 'POST',
+        signal: abortController.signal,
+      })
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: '恢复失败' }))
+        throw new Error(err.detail || `恢复失败 (${resp.status})`)
+      }
+
+      const reader = resp.body?.getReader()
+      if (!reader) throw new Error('无法读取响应流')
+
+      await readSseStream(reader, handleEvent)
+
+      const msg = messages.value.find(m => m.id === assistantMsg.id)
+      if (msg?.isStreaming) {
+        msg.isStreaming = false
+        if (!msg.content) {
+          const last = msg.events[msg.events.length - 1]
+          msg.content = last?.content || '完成'
+        }
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      const msg = messages.value.find(m => m.id === assistantMsg.id)
+      if (msg) {
+        msg.content = `恢复失败: ${err instanceof Error ? err.message : String(err)}`
+        msg.isStreaming = false
+      }
+    } finally {
+      sending.value = false
+      abortController = null
+    }
+  }
+
+  // ── Session listing ──────────────────────────────────────────────
+
+  async function fetchSessions(): Promise<AgentSessionInfo[]> {
+    try {
+      const resp = await fetch(`${API_URL}/api/agent/v2/sessions`)
+      if (resp.ok) return await resp.json()
+    } catch (e) {
+      console.warn('fetchSessions failed:', e)
+    }
+    return []
+  }
+
+  // ── RAG ──────────────────────────────────────────────────────────
 
   async function fetchRAGDocuments(): Promise<void> {
     ragLoading.value = true
@@ -155,11 +413,17 @@ export function useAgentChat() {
   return {
     messages,
     sending,
-    ragDocuments,
-    ragLoading,
+    sessionId,
+    pendingApproval,
     sendMessage,
     stopGenerating,
     clearHistory,
+    sendApproval,
+    abortSession,
+    resumeSession,
+    fetchSessions,
+    ragDocuments,
+    ragLoading,
     fetchRAGDocuments,
     deleteRAGDocument,
   }

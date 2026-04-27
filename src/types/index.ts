@@ -100,13 +100,51 @@ export interface ProviderPreset {
 
 export interface AgentEvent {
   type: 'thinking' | 'tool_call' | 'tool_result' | 'response' | 'error'
+    | 'session_started' | 'task_started' | 'thought' | 'await_approval'
+    | 'approval_received' | 'task_done' | 'warning' | 'done' | 'aborted'
   content: string
+  event_id?: string
   metadata?: {
+    // v1
     tool_name?: string
     arguments?: Record<string, unknown>
     duration_ms?: number
     error?: boolean
+    event_id?: string
+    // v2 session/task
+    session_id?: string
+    task_id?: string
+    resumed?: boolean
+    title?: string
+    index?: number
+    total?: number
+    // v2 tool_call
+    tool?: string
+    args?: Record<string, unknown>
+    risk?: string
+    // v2 await_approval
+    preview?: Record<string, unknown>
+    // v2 done
+    tasks_done?: number
+    token_usage?: Record<string, number>
+    // v2 warning
+    code?: string
+    // v2 task_done
+    status?: string
   }
+}
+
+export interface AgentSessionInfo {
+  id: string
+  state: string
+  global_step: number
+  tasks_total: number
+  tasks_done: number
+  workspace_root?: string
+  query?: string
+  created_at?: string
+  updated_at?: string
+  source?: 'memory' | 'store'
 }
 
 export interface AgentChatMessage {
