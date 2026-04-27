@@ -67,6 +67,7 @@ describe('TranslateState default shape', () => {
     chunks: [],
     errorMessage: null,
     taskId: null,
+    fallbackChunks: 0,
   }
 
   it('has status idle by default', () => {

@@ -24,6 +24,7 @@
     "@tauri-apps/cli": "^2.10.1",
     "@tauri-apps/plugin-shell": "^2",
     "@types/dompurify": "^3.0.5",
+    "@types/jsdom": "^28.0.1",
     "@vitejs/plugin-vue": "^5.2.0",
     "jsdom": "^28.1.0",
     "typescript": "^5.6.0",

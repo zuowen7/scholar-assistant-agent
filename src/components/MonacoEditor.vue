@@ -299,15 +299,17 @@ onMounted(() => {
 
   // Auto-trigger ghost text on typing (debounced)
   editor.onDidChangeModelContent(() => {
-    setContent(editor.getValue())
+    const currentEditor = editor
+    if (!currentEditor) return
+    setContent(currentEditor.getValue())
     markDirty()
     if (props.onDidChangeContent) props.onDidChangeContent()
     // Auto-trigger: after typing stops for 1.5s, request completion
     if (autoGhostTimer) clearTimeout(autoGhostTimer)
     autoGhostTimer = setTimeout(async () => {
-      const pos = editor!.getPosition()
+      const pos = currentEditor.getPosition()
       if (!pos) { console.log('[Ghost] no position'); return }
-      const model = editor!.getModel()
+      const model = currentEditor.getModel()
       if (!model) { console.log('[Ghost] no model'); return }
       const lineContent = model.getLineContent(pos.lineNumber)
       const isAtLineEnd = pos.column >= lineContent.length + 1
