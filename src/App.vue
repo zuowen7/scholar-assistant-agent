@@ -391,6 +391,7 @@
             <button class="agent-tab" :class="{ active: agentTab === 'chat' }" @click="agentTab = 'chat'">对话</button>
             <button class="agent-tab" :class="{ active: agentTab === 'docs' }" @click="agentTab = 'docs'">知识库</button>
             <button class="agent-tab" :class="{ active: agentTab === 'templates' }" @click="agentTab = 'templates'">模板</button>
+            <button class="agent-tab" :class="{ active: agentTab === 'sessions' }" @click="agentTab = 'sessions'; refreshSessions()">会话</button>
           </div>
           <button class="agent-close-btn" @click="showAgentChat = false">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -399,14 +400,25 @@
           </button>
         </div>
 
+        <!-- 会话历史 Tab -->
+        <div v-show="agentTab === 'sessions'" class="agent-sessions">
+          <AgentSessionList @resume="handleSessionResume" />
+        </div>
+
         <!-- 对话 Tab -->
         <div v-show="agentTab === 'chat'" class="agent-chat">
           <div class="agent-messages" ref="agentMessagesRef">
             <!-- 实时状态条 -->
-            <div v-if="agentCurrentStatus && agentSending" class="agent-status-bar">
+            <div v-if="agentCurrentStatus && agentSending && !agentPendingApproval" class="agent-status-bar">
               <span class="dot-pulse"></span>
               <span class="agent-status-text">{{ agentCurrentStatus }}</span>
             </div>
+            <!-- 审批栏 -->
+            <AgentApprovalInline
+              v-if="agentSending"
+              :pending="agentPendingApproval"
+              @decide="handleApprovalDecision"
+            />
             <div v-if="agentMessages.length === 0 && !agentSending" class="agent-empty">
               <p>向 Agent 助手提问</p>
               <p class="hint">支持搜索文档、翻译文本、查询 arXiv 论文</p>
@@ -414,36 +426,56 @@
             <div v-for="msg in agentMessages" :key="msg.id" class="agent-msg" :class="msg.role">
               <!-- 事件流 -->
               <template v-for="(evt, i) in msg.events" :key="i">
-                <!-- Thinking 推理中 -->
-                <div v-if="evt.type === 'thinking'" class="agent-event thinking">
+                <!-- v2: task_started -->
+                <div v-if="evt.type === 'task_started'" class="agent-event task-lifecycle">
+                  <span class="evt-lifecycle-icon">&#x25B6;</span>
+                  <span class="evt-label">任务</span>
+                  <span class="evt-task-title">{{ evt.metadata?.title || evt.content }}</span>
+                  <span v-if="evt.metadata?.index != null" class="evt-task-progress">{{ evt.metadata.index }}/{{ evt.metadata.total }}</span>
+                </div>
+                <!-- v2: task_done -->
+                <div v-else-if="evt.type === 'task_done'" class="agent-event task-lifecycle done">
+                  <span class="evt-lifecycle-icon">&#x2714;</span>
+                  <span class="evt-label">任务完成</span>
+                  <span class="evt-task-id">{{ evt.metadata?.task_id }}</span>
+                </div>
+                <!-- v2: thought / v1: thinking -->
+                <div v-else-if="evt.type === 'thought' || evt.type === 'thinking'" class="agent-event thinking">
                   <span class="evt-thinking-dot"></span>
-                  <span class="evt-label">推理</span>
+                  <span class="evt-label">{{ evt.type === 'thought' ? '思考' : '推理' }}</span>
                   <span class="evt-content-text">{{ evt.content }}</span>
                 </div>
-                <!-- 工具调用 -->
+                <!-- v2: tool_call / v1: tool_call -->
                 <div v-else-if="evt.type === 'tool_call'" class="agent-event tool-call">
                   <div class="evt-tool-header">
-                    <span class="evt-tool-icon">⚡</span>
+                    <span class="evt-tool-icon">&#x26A1;</span>
                     <span class="evt-label">调用工具</span>
-                    <span class="evt-tool-name">{{ evt.metadata?.tool_name || evt.content }}</span>
+                    <span class="evt-tool-name">{{ evt.metadata?.tool_name || evt.metadata?.tool || evt.content }}</span>
+                    <span v-if="evt.metadata?.risk" class="evt-risk-badge" :class="'risk-' + evt.metadata.risk">{{ evt.metadata.risk }}</span>
                   </div>
-                  <div class="evt-tool-desc">{{ getToolDescription(evt.metadata?.tool_name) }}</div>
-                  <div v-if="evt.metadata?.arguments && Object.keys(evt.metadata.arguments).length" class="evt-tool-args">
+                  <div class="evt-tool-desc">{{ getToolDescription(evt.metadata?.tool_name || evt.metadata?.tool) }}</div>
+                  <div v-if="(evt.metadata?.arguments || evt.metadata?.args) && Object.keys((evt.metadata?.arguments || evt.metadata?.args) as any).length" class="evt-tool-args">
                     <span class="evt-args-label">参数</span>
-                    <code class="evt-args-code">{{ formatToolArgs(evt.metadata.arguments) }}</code>
+                    <code class="evt-args-code">{{ formatToolArgs((evt.metadata?.arguments || evt.metadata?.args) as any) }}</code>
                   </div>
                 </div>
-                <!-- 工具结果 -->
+                <!-- v1/v2: tool_result -->
                 <div v-else-if="evt.type === 'tool_result'" class="agent-event tool-result" :class="{ 'evt-error': evt.metadata?.error }">
                   <div class="evt-result-header">
-                    <span v-if="evt.metadata?.error" class="evt-tool-icon error">✗</span>
-                    <span v-else class="evt-tool-icon success">✓</span>
+                    <span v-if="evt.metadata?.error" class="evt-tool-icon error">&#x2717;</span>
+                    <span v-else class="evt-tool-icon success">&#x2713;</span>
                     <span class="evt-label">{{ evt.metadata?.error ? '执行失败' : '执行完成' }}</span>
-                    <span class="evt-result-tool">{{ evt.metadata?.tool_name }}</span>
+                    <span class="evt-result-tool">{{ evt.metadata?.tool_name || evt.metadata?.tool }}</span>
                     <span v-if="evt.metadata?.duration_ms" class="evt-duration">{{ evt.metadata.duration_ms }}ms</span>
                   </div>
                   <div class="evt-result-preview">{{ truncateResult(evt.content) }}</div>
                 </div>
+                <!-- v2: warning -->
+                <div v-else-if="evt.type === 'warning'" class="agent-event warning">
+                  <span class="evt-warning-icon">&#x26A0;</span>
+                  <span class="evt-content-text">{{ evt.content }}</span>
+                </div>
+                <!-- v2: done (terminal, shown as content — fallback here if content was empty) -->
               </template>
               <!-- 消息内容 -->
               <div v-if="msg.content" class="agent-bubble">{{ msg.content }}</div>
@@ -545,7 +577,9 @@ import { useTranslate } from './composables/useTranslate'
 import { useAgentChat } from './composables/useAgentChat'
 import { useEditor } from './composables/useEditor'
 import EditorLayout from './components/EditorLayout.vue'
-import type { AppMode } from './types'
+import AgentApprovalInline from './components/AgentApprovalInline.vue'
+import AgentSessionList from './components/AgentSessionList.vue'
+import type { AgentSessionInfo, AppMode } from './types'
 import DOMPurify from 'dompurify'
 import { API_BASE } from './utils/api'
 
@@ -558,18 +592,49 @@ const appMode = ref<AppMode>('editor')
 const {
   messages: agentMessages,
   sending: agentSending,
+  sessionId: agentSessionId,
+  pendingApproval: agentPendingApproval,
   ragDocuments: agentRagDocuments,
   ragLoading: agentRagLoading,
   sendMessage: agentSendMessage,
+  stopGenerating: agentStopGenerating,
+  clearHistory: agentClearHistory,
+  sendApproval: agentSendApproval,
+  abortSession: agentAbortSession,
+  resumeSession: agentResumeSession,
+  fetchSessions: _fetchSessions,
   fetchRAGDocuments: _fetchRAGDocs,
   deleteRAGDocument: agentDeleteDoc,
 } = useAgentChat()
 
 const showAgentChat = ref(false)
-const agentTab = ref<'chat' | 'docs' | 'templates'>('chat')
+const agentTab = ref<'chat' | 'docs' | 'templates' | 'sessions'>('chat')
 const agentInput = ref('')
 const agentConstraints = ref('')
 const agentMessagesRef = ref<HTMLElement | null>(null)
+const agentSessions = ref<AgentSessionInfo[]>([])
+
+// ── v2 Approval handler ─────────────────────────────────────────
+async function handleApprovalDecision(decision: 'allow_once' | 'allow_session' | 'deny') {
+  const pending = agentPendingApproval.value
+  if (!pending) return
+  await agentSendApproval(pending.event_id, decision)
+}
+
+// ── v2 Session handlers ─────────────────────────────────────────
+async function refreshSessions() {
+  agentSessions.value = await _fetchSessions()
+}
+
+async function handleSessionResume(sessionId: string) {
+  await agentResumeSession(sessionId)
+  showAgentChat.value = true
+  agentTab.value = 'chat'
+  await nextTick()
+  if (agentMessagesRef.value) {
+    agentMessagesRef.value.scrollTop = agentMessagesRef.value.scrollHeight
+  }
+}
 const {
   selection: editorSelection,
   content: editorContent,
@@ -681,12 +746,15 @@ async function agentFetchDocs() {
 const agentCurrentStatus = computed(() => {
   const streaming = agentMessages.value.find(m => m.isStreaming)
   if (!streaming) return ''
-  // 从后往前找最近的 thinking 或 tool_call 事件
+  if (agentPendingApproval.value) return '等待审批: ' + agentPendingApproval.value.tool_name
   for (let i = streaming.events.length - 1; i >= 0; i--) {
     const evt = streaming.events[i]
-    if (evt.type === 'thinking') return '🤔 ' + evt.content
-    if (evt.type === 'tool_call') return '⚡ 调用 ' + (evt.metadata?.tool_name || evt.content)
-    if (evt.type === 'tool_result') return '✓ ' + (evt.metadata?.tool_name || '工具') + ' 执行完成'
+    if (evt.type === 'thinking' || evt.type === 'thought') return 'Thinking... ' + (evt.content.length > 100 ? evt.content.slice(0, 100) + '...' : evt.content)
+    if (evt.type === 'tool_call') return 'Calling ' + ((evt.metadata?.tool_name || evt.metadata?.tool || evt.content) as string)
+    if (evt.type === 'tool_result') return 'Done: ' + ((evt.metadata?.tool_name || evt.metadata?.tool || 'tool') as string)
+    if (evt.type === 'task_started') return 'Starting task: ' + (evt.metadata?.title || '')
+    if (evt.type === 'task_done') return 'Task completed'
+    if (evt.type === 'warning') return 'Warning: ' + evt.content
   }
   return ''
 })
@@ -2282,6 +2350,43 @@ body {
 .evt-result-tool { font-weight: 600; color: var(--text2); font-size: 12px; }
 .evt-duration { font-size: 11px; color: var(--text3); margin-left: auto; }
 .evt-result-preview { font-size: 11px; color: var(--text2); line-height: 1.5; white-space: pre-wrap; word-break: break-word; max-height: 80px; overflow: hidden; }
+
+/* v2: task lifecycle events */
+.agent-event.task-lifecycle {
+  display: flex; align-items: center; gap: 6px;
+  border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+.agent-event.task-lifecycle.done {
+  border-left-color: var(--green); background: color-mix(in srgb, #4caf50 6%, var(--surface));
+}
+.evt-lifecycle-icon { font-size: 14px; flex-shrink: 0; }
+.evt-task-title { font-size: 13px; font-weight: 500; color: var(--text); }
+.evt-task-id { font-size: 11px; color: var(--text3); font-family: monospace; }
+.evt-task-progress {
+  font-size: 11px; color: var(--accent2);
+  margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600;
+}
+
+/* v2: risk badge */
+.evt-risk-badge {
+  font-size: 9px; text-transform: uppercase; font-weight: 600;
+  padding: 1px 5px; border-radius: 3px;
+}
+.evt-risk-badge.risk-safe { background: #d4edda; color: #155724; }
+.evt-risk-badge.risk-moderate { background: #fff3cd; color: #856404; }
+.evt-risk-badge.risk-destructive { background: #f8d7da; color: #721c24; }
+.evt-risk-badge.risk-banned { background: #000; color: #f87171; }
+
+/* v2: warning event */
+.agent-event.warning {
+  display: flex; align-items: center; gap: 8px;
+  border-left: 3px solid #f0a030;
+  background: color-mix(in srgb, #f0a030 8%, var(--surface));
+}
+.evt-warning-icon { font-size: 14px; flex-shrink: 0; color: #f0a030; }
+
+/* v2: sessions tab */
+.agent-sessions { flex: 1; overflow-y: auto; padding: 0; }
 
 .agent-status-bar {
   display: flex; align-items: center; gap: 8px;
