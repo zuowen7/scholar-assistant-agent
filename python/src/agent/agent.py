@@ -52,7 +52,7 @@ from src.agent.context_compressor import ContextCompressor
 from src.agent.error_classifier import ErrorType, classify_error, get_recovery, RetryManager
 from src.agent.hooks import HookContext, HookManager, HookPoint
 from src.agent.llm_client import LLMClient, TokenUsage, extract_text_content, extract_tool_calls
-from src.agent.memory import AgentMemory, MemoryManager
+from src.agent.memory import MemoryManager
 from src.agent.models import AgentEvent, Message, ToolCall, message_to_ollama_dict
 from src.agent.prompt_builder import PromptBuilder, PromptConfig
 from src.agent.review_agent import ReviewAgent
@@ -60,7 +60,6 @@ from src.agent.skill_system import SkillRegistry
 from src.agent.tool_generator import ToolGenerator, create_tool_generator
 from src.agent.tools import ToolRegistry
 from src.agent.trajectory import TrajectoryRecorder
-from src.agent.vram_manager import ContextRole, MultiplexingScheduler
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +96,6 @@ class AgentLoop:
         ollama_base_url: str = "http://localhost:11434",
         model: str = "qwen3:8b",
         tool_registry: ToolRegistry | None = None,
-        scheduler: MultiplexingScheduler | None = None,
         max_steps: int = MAX_STEPS,
         system_prompt: str = "",
         temperature: float = 0.3,
@@ -118,7 +116,6 @@ class AgentLoop:
         self.ollama_base_url = ollama_base_url.rstrip("/")
         self.model = model
         self.tool_registry = tool_registry or ToolRegistry()
-        self.scheduler = scheduler
         self.max_steps = max_steps
         self.system_prompt = system_prompt
         self.temperature = temperature
@@ -172,7 +169,6 @@ class AgentLoop:
         self.cloud_model = cloud_model
         self.api_format = api_format
 
-        self._memory = AgentMemory(persist_dir=memory_dir) if memory_dir else None
         self.rag_store = rag_store
         self._tool_generator = create_tool_generator(self.tool_registry)
         self._auto_processor: Any | None = None
@@ -181,8 +177,6 @@ class AgentLoop:
 
     async def close(self) -> None:
         await self.llm.close()
-        if self.scheduler is not None:
-            await self.scheduler.close()
         await self.compressor.close()
         await self.reviewer.close()
 
@@ -219,16 +213,6 @@ class AgentLoop:
                 messages[0] = Message(role="system", content=messages[0].content + plan_text)
             else:
                 messages.insert(0, Message(role="system", content=plan_text))
-
-        # 调度器: 确保 Agent 模型已加载到显存
-        if self.scheduler is not None:
-            yield AgentEvent(type="thinking", content="正在加载推理模型...")
-            try:
-                await self.scheduler.ensure_model()
-                self.scheduler.enter_role(ContextRole.PLANNER)
-            except Exception as e:
-                yield AgentEvent(type="error", content=f"模型加载失败: {e}")
-                return
 
         try:
             for step in range(1, self.max_steps + 1):
@@ -358,13 +342,13 @@ class AgentLoop:
                 if not tool_calls:
                     answer = extract_text_content(response)
                     self._finalize_trajectory(query, answer, success=True)
-                    if self._memory and answer:
+                    if answer:
                         try:
-                            self._memory.add(
+                            self.memory.add_memory(
                                 content=f"Q: {query}\nA: {answer[:2000]}",
                                 category="conversation",
+                                source="conversation",
                                 importance=0.5,
-                                tags=["conversation"],
                             )
                         except Exception as e:
                             logger.warning("长期记忆存储失败（不影响推理）: %s", e)
@@ -377,36 +361,15 @@ class AgentLoop:
 
                 assistant_content = extract_text_content(response)
                 reasoning = (response.get("message") or {}).get("reasoning_content") or None
-
-                has_heavy = (
-                    self.scheduler is not None
-                    and any(self.scheduler.is_heavy_tool(tc.name) for tc in tool_calls)
-                )
-
-                if has_heavy:
-                    messages.append(Message(
-                        role="assistant",
-                        content=assistant_content,
-                        tool_calls=tool_calls,
-                        reasoning_content=reasoning,
-                    ))
-                    ollama_msgs = [message_to_ollama_dict(m) for m in messages]
-                    self.scheduler.snapshot_context(ollama_msgs)
-                    yield AgentEvent(
-                        type="thinking",
-                        content="正在隔离上下文以执行重 IO 工具...",
-                    )
-                    await self.scheduler.switch_role(ContextRole.ACTOR)
-                else:
-                    messages.append(Message(
-                        role="assistant",
-                        content=assistant_content,
-                        tool_calls=tool_calls,
-                        reasoning_content=reasoning,
-                    ))
+                messages.append(Message(
+                    role="assistant",
+                    content=assistant_content,
+                    tool_calls=tool_calls,
+                    reasoning_content=reasoning,
+                ))
 
                 tool_results: list[tuple[str, str, str]] = []
-                if len(tool_calls) > 1 and not has_heavy:
+                if len(tool_calls) > 1:
                     parallel_results = await self._execute_tools_parallel(tool_calls, query)
                     for tc_name, tc_id, result in parallel_results:
                         tool_results.append((tc_name, tc_id, result))
@@ -420,44 +383,21 @@ class AgentLoop:
                         result = await self._execute_single_tool(tc, query)
                         tool_results.append((tc.name, tc.id, result))
 
-                if has_heavy:
-                    await self.scheduler.switch_role(ContextRole.PLANNER)
-                    if len(tool_results) == 1:
-                        tc_name, _, tc_result = tool_results[0]
-                        observation = self.scheduler.condense_observation(tc_name, tc_result)
-                    else:
-                        parts = [
-                            self.scheduler.condense_observation(name, result)
-                            for name, _, result in tool_results
-                        ]
-                        observation = "\n\n".join(parts)
-                    restored_dicts = self.scheduler.restore_context(observation)
-                    messages = self._rebuild_messages_from_dicts(restored_dicts)
-                    logger.info(
-                        "上下文已恢复: %d 条消息, 观测值 %d 字符",
-                        len(messages), len(observation),
-                    )
-                else:
-                    for tc_name, tc_id, tc_result in tool_results:
-                        truncated = tc_result[:_TOOL_RESULT_MAX_CHARS]
-                        messages.append(Message(
-                            role="tool",
-                            content=truncated,
-                            tool_call_id=tc_id,
-                        ))
+                for tc_name, tc_id, tc_result in tool_results:
+                    truncated = tc_result[:_TOOL_RESULT_MAX_CHARS]
+                    messages.append(Message(
+                        role="tool",
+                        content=truncated,
+                        tool_call_id=tc_id,
+                    ))
 
             self._finalize_trajectory(query, "", success=False)
             yield AgentEvent(
                 type="error",
                 content=f"推理步数超过上限 ({self.max_steps})，请简化问题或分步提问。",
             )
-
-        finally:
-            if self.scheduler is not None:
-                try:
-                    await self.scheduler.release_model()
-                except Exception:
-                    pass
+        except GeneratorExit:
+            raise
 
     # ------------------------------------------------------------------
     # 辅助方法

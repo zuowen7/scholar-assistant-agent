@@ -265,14 +265,7 @@ class TestCompress:
             threshold_percent=0.50,
             summary_model="test-model",
         )
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {
-            "message": {"content": "这是LLM生成的摘要"}
-        }
-        mock_client = AsyncMock()
-        mock_client.post = AsyncMock(return_value=mock_response)
-        comp._get_http_client = AsyncMock(return_value=mock_client)
+        comp._llm.call_simple = AsyncMock(return_value="这是LLM生成的摘要")
 
         msgs = _make_messages(20, chars_per_msg=100)
         result = await comp.compress(msgs)
@@ -286,9 +279,7 @@ class TestCompress:
             threshold_percent=0.50,
             summary_model="test-model",
         )
-        mock_client = AsyncMock()
-        mock_client.post = AsyncMock(side_effect=Exception("LLM 不可用"))
-        comp._get_http_client = AsyncMock(return_value=mock_client)
+        comp._llm.call_simple = AsyncMock(side_effect=Exception("LLM 不可用"))
 
         msgs = _make_messages(20, chars_per_msg=100)
         result = await comp.compress(msgs)

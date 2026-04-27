@@ -574,6 +574,7 @@ const {
   selection: editorSelection,
   content: editorContent,
   activeTab: editorActiveTab,
+  cleanup: editorCleanup,
 } = useEditor()
 const agentContextText = computed(() => {
   if (appMode.value !== 'editor' || !editorActiveTab.value) return ''
@@ -1221,6 +1222,7 @@ onUnmounted(() => {
   if (unlistenDragDrop) unlistenDragDrop()
   document.removeEventListener('click', onDocumentClick)
   cleanup()
+  editorCleanup()
 })
 
 function onDragEnter(e: Event) {

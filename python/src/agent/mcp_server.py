@@ -72,6 +72,19 @@ _cloud_api_key = ""
 _cloud_model = ""
 
 
+def _build_llm() -> "LLMClient":
+    from src.agent.llm_client import LLMClient
+    return LLMClient(
+        ollama_base_url=_ollama_base_url,
+        model=_model,
+        cloud_base_url=_cloud_base_url,
+        cloud_api_key=_cloud_api_key,
+        cloud_model=_cloud_model,
+        temperature=0.3,
+        num_predict=2048,
+    )
+
+
 # ---------------------------------------------------------------------------
 # 工具函数
 # ---------------------------------------------------------------------------
@@ -187,44 +200,7 @@ def _crawl_arxiv(query: str, max_results: int = 5) -> str:
 
 def _call_llm(prompt: str) -> str:
     """同步调用 LLM。"""
-    import httpx
-    use_cloud = bool(_cloud_api_key and _cloud_base_url)
-    try:
-        with httpx.Client(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
-            if use_cloud:
-                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {_cloud_api_key}"}
-                resp = client.post(
-                    f"{_cloud_base_url}/chat/completions",
-                    json={
-                        "model": _cloud_model or _model,
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0.3,
-                        "max_tokens": 2048,
-                        "stream": False,
-                    },
-                    headers=headers,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-            else:
-                resp = client.post(
-                    f"{_ollama_base_url}/api/chat",
-                    json={
-                        "model": _model,
-                        "messages": [{"role": "user", "content": prompt}],
-                        "stream": False,
-                        "options": {"temperature": 0.3, "num_predict": 2048},
-                    },
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                content = data.get("message", {}).get("content", "").strip()
-
-            content = re.sub(r"<think.*?>.*?</think.*?>", "", content, flags=re.DOTALL).strip()
-            return content if content else "（LLM 返回为空）"
-    except Exception as e:
-        return f"LLM 调用失败: {e}"
+    return _build_llm().call_simple_sync(prompt)
 
 
 def _polish_text(text: str, style: str = "academic") -> str:
