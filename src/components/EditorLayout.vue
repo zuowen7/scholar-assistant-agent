@@ -1,12 +1,30 @@
 ﻿<template>
   <div class="editor-layout">
-    <!-- 宸︿晶鏂囦欢鏍?-->
-    <div class="layout-sidebar" :style="{ width: sidebarWidth + 'px' }">
-      <FileTree />
+    <!-- 左侧文件树 -->
+    <div
+      class="layout-sidebar"
+      :class="{ collapsed: sidebarCollapsed }"
+      :style="{ width: (sidebarCollapsed ? collapsedSidebarWidth : sidebarWidth) + 'px' }"
+    >
+      <button
+        class="sidebar-collapse-toggle"
+        :title="sidebarCollapsed ? '展开 Explorer' : '折叠 Explorer'"
+        @click="sidebarCollapsed = !sidebarCollapsed"
+      >
+        {{ sidebarCollapsed ? '›' : '‹' }}
+      </button>
+      <FileTree v-if="!sidebarCollapsed" />
+      <button v-else class="sidebar-rail-button" @click="sidebarCollapsed = false">
+        Explorer
+      </button>
     </div>
-    <div class="resize-handle sidebar-resize" @mousedown="startResize($event, 'sidebar')"></div>
+    <div
+      v-if="!sidebarCollapsed"
+      class="resize-handle sidebar-resize"
+      @mousedown="startResize($event, 'sidebar')"
+    ></div>
 
-    <!-- 涓棿缂栬緫鍣?-->
+    <!-- 中间编辑器 -->
     <div class="layout-editor">
       <MindMapView
         v-if="workspaceMode === 'mindmap'"
@@ -152,7 +170,7 @@
       </div>
     </template>
 
-    <!-- 璁烘枃鍚堣妫€鏌ュ脊绐?-->
+    <!-- 论文合规检查弹窗 -->
     <ComplianceModal
       :visible="showCompliance"
       :loading="complianceLoading"
@@ -228,7 +246,7 @@ const {
 // 鈹€鈹€ 璁烘枃妯℃澘閫夋嫨鍣?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 const showTemplatePicker = ref(false)
 const workspaceFiles = computed(() =>
-  tabs.value.map(t => ({ name: t.title || t.path?.split(/[\\/]/).pop() || 'untitled', content: t.content }))
+  tabs.value.map(t => ({ name: t.name || t.path?.split(/[\\/]/).pop() || 'untitled', content: t.content }))
 )
 const imageInputRef = ref<HTMLInputElement | null>(null)
 const visionInputRef = ref<HTMLInputElement | null>(null)
@@ -243,6 +261,7 @@ function startProjectInEditor() {
 
 function startProjectWithMindMap() {
   showProjectStart.value = false
+  sidebarCollapsed.value = true
   resetMindMap()
   workspaceMode.value = 'mindmap'
 }
@@ -254,6 +273,7 @@ function enterEditorFromMindMap() {
 }
 
 function openMindMapFromEditor() {
+  sidebarCollapsed.value = true
   loadSavedMindMap()
   workspaceMode.value = 'mindmap'
 }
@@ -419,7 +439,7 @@ async function handleZoteroInsert() {
   }
 }
 
-// 鈹€鈹€ 璁烘枃鍚堣妫€鏌?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// 论文合规检查
 const showCompliance = ref(false)
 const complianceLoading = ref(false)
 const complianceError = ref('')
@@ -464,6 +484,8 @@ async function runComplianceCheck() {
 }
 
 const sidebarWidth = ref(296)
+const collapsedSidebarWidth = 44
+const sidebarCollapsed = ref(false)
 const panelWidth = ref(300)
 
 function onContentChange(_value: string) {
@@ -669,8 +691,8 @@ async function handleExportLatex() {
     })
 
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ error: '瀵煎嚭澶辫触' }))
-      showExportToast(err.error || '瀵煎嚭澶辫触')
+      const err = await resp.json().catch(() => ({ error: '导出失败' }))
+      showExportToast(err.error || '导出失败')
       return
     }
 
@@ -678,14 +700,14 @@ async function handleExportLatex() {
     const tex = data.tex || ''
 
     if (!tex) {
-      showExportToast('杞崲缁撴灉涓虹┖')
+      showExportToast('转换结果为空')
       return
     }
 
     await navigator.clipboard.writeText(tex)
     showExportToast('LaTeX copied to clipboard')
   } catch (e) {
-    showExportToast(`瀵煎嚭澶辫触: ${e}`)
+    showExportToast(`导出失败: ${e}`)
   } finally {
     exportLoading.value = false
   }
@@ -715,12 +737,12 @@ async function handleExportPdf() {
     })
 
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ detail: 'PDF 瀵煎嚭澶辫触' }))
-      showExportToast(err.detail || err.error || 'PDF 瀵煎嚭澶辫触')
+      const err = await resp.json().catch(() => ({ detail: 'PDF 导出失败' }))
+      showExportToast(err.detail || err.error || 'PDF 导出失败')
       return
     }
 
-    // 涓嬭浇 PDF
+    // 下载 PDF
     const blob = await resp.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -732,7 +754,7 @@ async function handleExportPdf() {
     URL.revokeObjectURL(url)
     showExportToast('PDF downloaded')
   } catch (e) {
-    showExportToast(`PDF 瀵煎嚭澶辫触: ${e}`)
+    showExportToast(`PDF 导出失败: ${e}`)
   } finally {
     exportLoading.value = false
   }
@@ -757,14 +779,65 @@ function showExportToast(msg: string) {
 }
 
 .layout-sidebar {
+  position: relative;
   flex-shrink: 0;
   min-width: 0;
   overflow: hidden;
 }
 
+.layout-sidebar.collapsed {
+  border-right: 1px solid var(--border-color);
+  background: var(--sidebar-bg);
+}
+
+.sidebar-collapse-toggle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 5;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--toolbar-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+}
+
+.sidebar-collapse-toggle:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.sidebar-rail-button {
+  position: absolute;
+  left: 50%;
+  top: 52px;
+  transform: translateX(-50%);
+  writing-mode: vertical-rl;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.sidebar-rail-button:hover {
+  color: var(--accent);
+}
+
 @media (max-width: 1180px) {
   .layout-sidebar {
     width: 220px !important;
+  }
+
+  .layout-sidebar.collapsed {
+    width: 44px !important;
   }
 
   .layout-panel {
