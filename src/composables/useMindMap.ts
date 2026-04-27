@@ -63,6 +63,12 @@ const viewport = ref<MindMapViewport>({
   toolbar: { x: 24, y: 18 },
 })
 
+const history = ref<MindMapData[]>([])
+const redoStack = ref<MindMapData[]>([])
+const HISTORY_LIMIT = 100
+
+const externalIssues = ref<Array<{ nodeIds: string[] }>>([])
+
 function cloneMap(map: MindMapData): MindMapData {
   return {
     rootId: map.rootId,
@@ -75,6 +81,34 @@ function cloneMap(map: MindMapData): MindMapData {
     ),
     links: (map.links ?? []).map(link => ({ ...link })),
   }
+}
+
+function pushHistory() {
+  history.value.push(cloneMap(draftMindMap.value))
+  if (history.value.length > HISTORY_LIMIT) history.value.shift()
+  redoStack.value = []
+}
+
+export function undo() {
+  if (!history.value.length) return
+  redoStack.value.push(cloneMap(draftMindMap.value))
+  draftMindMap.value = history.value.pop()!
+}
+
+export function redo() {
+  if (!redoStack.value.length) return
+  history.value.push(cloneMap(draftMindMap.value))
+  draftMindMap.value = redoStack.value.pop()!
+}
+
+export const canUndo = computed(() => history.value.length > 0)
+export const canRedo = computed(() => redoStack.value.length > 0)
+
+function getDepth(map: MindMapData, id: string): number {
+  let depth = 0
+  let cur = map.nodes[id]
+  while (cur?.parentId) { depth++; cur = map.nodes[cur.parentId] }
+  return depth
 }
 
 export function mindMapToMarkdown(map: MindMapData): string {
@@ -191,26 +225,50 @@ export function useMindMap() {
     draftMindMap.value.updatedAt = Date.now()
   }
 
+  function commitNodeText(id: string, text: string) {
+    pushHistory()
+    updateNodeText(id, text)
+  }
+
   function setNodePosition(id: string, position: MindMapPosition) {
     if (!draftMindMap.value.nodes[id]) return
     draftMindMap.value.positions[id] = { ...position }
     draftMindMap.value.updatedAt = Date.now()
   }
 
-  function addChild(parentId = selectedNodeId.value, position?: MindMapPosition) {
-    const parent = draftMindMap.value.nodes[parentId]
+  function commitNodePosition(id: string, position: MindMapPosition) {
+    pushHistory()
+    setNodePosition(id, position)
+  }
+
+  function addChild(parentId = selectedNodeId.value, position?: MindMapPosition): string | undefined {
+    const map = draftMindMap.value
+    const parent = map.nodes[parentId]
     if (!parent) return
+    pushHistory()
     const id = `mind-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`
-    draftMindMap.value.nodes[id] = {
+    map.nodes[id] = {
       id,
       text: '新节点',
       parentId,
       children: [],
     }
     parent.children.push(id)
-    if (position) draftMindMap.value.positions[id] = { ...position }
+
+    if (position) {
+      map.positions[id] = { ...position }
+    } else {
+      const parentPos = map.positions[parentId] ?? { x: 0, y: 0 }
+      const siblingCount = parent.children.length
+      map.positions[id] = {
+        x: parentPos.x + 260,
+        y: parentPos.y + (siblingCount - 1) * 88,
+      }
+    }
+
     selectedNodeId.value = id
-    draftMindMap.value.updatedAt = Date.now()
+    map.updatedAt = Date.now()
+    return id
   }
 
   function addAssociationLink(from: string, to: string) {
@@ -221,6 +279,7 @@ export function useMindMap() {
       && ((link.from === from && link.to === to) || (link.from === to && link.to === from)),
     )
     if (exists) return
+    pushHistory()
     map.links.push({
       id: `link-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
       from,
@@ -233,6 +292,7 @@ export function useMindMap() {
   async function expandNode(parentId: string): Promise<boolean> {
     const parent = draftMindMap.value.nodes[parentId]
     if (!parent) return false
+    pushHistory()
     try {
       const res = await fetch(`${API_BASE}/api/mindmap/expand`, {
         method: 'POST',
@@ -279,10 +339,35 @@ export function useMindMap() {
     return `完整导图结构：\n${lines.join('\n')}\n\n正在展开的节点：${node?.text ?? ''}`
   }
 
+  function removeAssociationLink(linkId: string) {
+    pushHistory()
+    const map = draftMindMap.value
+    map.links = map.links.filter(link => link.id !== linkId)
+    map.updatedAt = Date.now()
+  }
+
+  function detachChild(childId: string) {
+    pushHistory()
+    const map = draftMindMap.value
+    const child = map.nodes[childId]
+    if (!child || !child.parentId) return
+    const parent = map.nodes[child.parentId]
+    if (parent) parent.children = parent.children.filter(id => id !== childId)
+    child.parentId = null
+    map.updatedAt = Date.now()
+  }
+
+  function addSibling(id: string, position?: MindMapPosition): string | undefined {
+    const node = draftMindMap.value.nodes[id]
+    if (!node || !node.parentId) return
+    return addChild(node.parentId, position)
+  }
+
   function deleteNode(id = selectedNodeId.value) {
     const map = draftMindMap.value
     const node = map.nodes[id]
     if (!node || id === map.rootId) return
+    pushHistory()
 
     const removeIds: string[] = []
     const collect = (nodeId: string) => {
@@ -302,6 +387,16 @@ export function useMindMap() {
     map.updatedAt = Date.now()
   }
 
+  const analysisIssuesByNode = computed(() => {
+    const counts: Record<string, number> = {}
+    externalIssues.value.forEach(issue => {
+      issue.nodeIds.forEach(id => {
+        counts[id] = (counts[id] ?? 0) + 1
+      })
+    })
+    return counts
+  })
+
   return {
     draftMindMap,
     savedMindMap,
@@ -309,16 +404,68 @@ export function useMindMap() {
     selectedNodeId,
     selectedNode,
     hasSavedMindMap,
+    canUndo,
+    canRedo,
     resetMindMap,
     loadSavedMindMap,
     loadFromBackend,
     saveMindMap,
     selectNode,
     updateNodeText,
+    commitNodeText,
     setNodePosition,
+    commitNodePosition,
     addChild,
+    addSibling,
     addAssociationLink,
+    removeAssociationLink,
+    detachChild,
     expandNode,
     deleteNode,
+    undo,
+    redo,
+    analysisIssuesByNode,
   }
+}
+
+// Vue Flow adapters
+export function toFlowNodes(map: MindMapData): any[] {
+  return Object.values(map.nodes).map(node => ({
+    id: node.id,
+    type: 'mindNode',
+    position: map.positions[node.id] ?? { x: 0, y: 0 },
+    data: {
+      text: node.text,
+      depth: getDepth(map, node.id),
+      isRoot: node.id === map.rootId,
+      hasChildren: node.children.length > 0,
+    },
+  }))
+}
+
+export function toFlowEdges(map: MindMapData): any[] {
+  const parentEdges: any[] = []
+  for (const node of Object.values(map.nodes)) {
+    if (node.parentId) {
+      parentEdges.push({
+        id: `tree-${node.parentId}-${node.id}`,
+        source: node.parentId,
+        target: node.id,
+        type: 'mindEdge',
+        data: { kind: 'parent', childId: node.id },
+      })
+    }
+  }
+  const linkEdges: any[] = map.links.map(link => ({
+    id: link.id,
+    source: link.from,
+    target: link.to,
+    type: 'mindEdge',
+    data: { kind: 'association' },
+  }))
+  return [...parentEdges, ...linkEdges]
+}
+
+export function setAnalysisIssues(issues: { nodeIds: string[] }[]) {
+  externalIssues.value = issues
 }

@@ -1464,79 +1464,8 @@ async function handleRestartBackend() {
 </script>
 
 <style>
+/* Design tokens are in src/styles/tokens.css — imported by main.ts */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
-:root {
-  --bg: #09090b;
-  --surface: #131316;
-  --surface2: #1c1c20;
-  --border: #27272a;
-  --text: #e4e4e7;
-  --text2: #a1a1aa;
-  --text3: #71717a;
-  --accent: #6366f1;
-  --accent2: #818cf8;
-  --green: #4ade80;
-  --red: #f87171;
-  --radius: 10px;
-  --overlay-bg: rgba(9, 9, 11, 0.35);
-  --shadow: rgba(0, 0, 0, 0.5);
-  --accent-bg: rgba(99, 102, 241, 0.08);
-  --accent-bg2: rgba(99, 102, 241, 0.05);
-  --red-bg: rgba(248, 113, 113, 0.07);
-  --red-border: rgba(248, 113, 113, 0.19);
-  --sent-border: rgba(39, 39, 42, 0.25);
-  --glass-blur: 24px;
-  --glass: rgba(19, 19, 22, 0.55);
-  --glass2: rgba(28, 28, 32, 0.45);
-  --glass-border: rgba(39, 39, 42, 0.5);
-  --topbar-bg: rgba(19, 19, 22, 0.6);
-  /* Editor panels */
-  --editor-bg: #1e1e1e;
-  --sidebar-bg: #181818;
-  --panel-bg: #1e1e1e;
-  --toolbar-bg: #181818;
-  --border-color: #27272a;
-  --text-primary: #d4d4d4;
-  --text-secondary: #888888;
-  --hover-bg: #2d2d2d;
-  --active-bg: #37373d;
-  --code-bg: #2d2d2d;
-  --input-bg: #2d2d2d;
-}
-
-.light {
-  --bg: #f5f5f7;
-  --surface: #ffffff;
-  --surface2: #f0f0f2;
-  --border: #d8d8dc;
-  --text: #1a1a2e;
-  --text2: #555566;
-  --text3: #888899;
-  --overlay-bg: rgba(245, 245, 247, 0.35);
-  --shadow: rgba(0, 0, 0, 0.1);
-  --accent-bg: rgba(99, 102, 241, 0.07);
-  --accent-bg2: rgba(99, 102, 241, 0.04);
-  --red-bg: rgba(248, 113, 113, 0.08);
-  --red-border: rgba(248, 113, 113, 0.25);
-  --sent-border: rgba(0, 0, 0, 0.07);
-  --glass: rgba(255, 255, 255, 0.55);
-  --glass2: rgba(240, 240, 242, 0.45);
-  --glass-border: rgba(216, 216, 220, 0.55);
-  --topbar-bg: rgba(255, 255, 255, 0.55);
-  /* Editor panels */
-  --editor-bg: #ffffff;
-  --sidebar-bg: #f0f0f2;
-  --panel-bg: #fafafa;
-  --toolbar-bg: #f0f0f2;
-  --border-color: #d0d0d4;
-  --text-primary: #1a1a2e;
-  --text-secondary: #555566;
-  --hover-bg: #e8e8ec;
-  --active-bg: #dcdce0;
-  --code-bg: #f5f5f7;
-  --input-bg: #f5f5f7;
-}
 
 html, body { height: 100%; overflow: hidden; }
 

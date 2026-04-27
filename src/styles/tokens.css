@@ -1,0 +1,164 @@
+/*
+ * Design Tokens — single source of truth for the entire app.
+ * Dark theme lives in :root; light theme overrides via .light.
+ *
+ * Token naming:
+ *   --c-{role}           color tokens
+ *   --space-{n}          spacing scale (4px base)
+ *   --radius-{size}      border-radius
+ *   --text-{size}        font-size
+ *   --shadow-{size}      box-shadow
+ *   --ease-{name}        transition timing
+ *
+ * Semantic aliases (used by components):
+ *   --editor-bg, --sidebar-bg, etc. point into the tokens above.
+ */
+
+:root {
+  /* ── Surface (neutral, 0=deepest → 5=lightest in dark) ─── */
+  --c-surface-0: #09090b;
+  --c-surface-1: #131316;
+  --c-surface-2: #1c1c20;
+  --c-surface-3: #27272a;
+  --c-surface-4: #2d2d2d;
+  --c-surface-5: #37373d;
+
+  /* ── Text ─────────────────────────────────────────────── */
+  --c-text-0: #e4e4e7;
+  --c-text-1: #d4d4d4;
+  --c-text-2: #a1a1aa;
+  --c-text-3: #71717a;
+
+  /* ── Accent ───────────────────────────────────────────── */
+  --c-accent: #6366f1;
+  --c-accent-hover: #818cf8;
+
+  /* ── Semantic ─────────────────────────────────────────── */
+  --c-success: #4ade80;
+  --c-warn: #f59e0b;
+  --c-danger: #f87171;
+
+  /* ── Derived composites ───────────────────────────────── */
+  --c-accent-bg: rgba(99, 102, 241, 0.08);
+  --c-accent-bg2: rgba(99, 102, 241, 0.05);
+  --c-danger-bg: rgba(248, 113, 113, 0.07);
+  --c-danger-border: rgba(248, 113, 113, 0.19);
+  --c-overlay: rgba(9, 9, 11, 0.35);
+  --c-shadow: rgba(0, 0, 0, 0.5);
+  --c-sent-border: rgba(39, 39, 42, 0.25);
+
+  /* ── Glass ────────────────────────────────────────────── */
+  --c-glass: rgba(19, 19, 22, 0.55);
+  --c-glass2: rgba(28, 28, 32, 0.45);
+  --c-glass-border: rgba(39, 39, 42, 0.5);
+  --glass-blur: 24px;
+
+  /* ── Spacing ──────────────────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* ── Radius ───────────────────────────────────────────── */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+
+  /* ── Font size ────────────────────────────────────────── */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-xl: 18px;
+
+  /* ── Shadow ───────────────────────────────────────────── */
+  --shadow-sm: 0 2px 8px var(--c-shadow);
+  --shadow-md: 0 8px 32px var(--c-shadow);
+  --shadow-lg: 0 18px 44px var(--c-shadow);
+
+  /* ── Transitions ──────────────────────────────────────── */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ── Semantic aliases (backward compat) ───────────────── */
+  --bg: var(--c-surface-0);
+  --surface: var(--c-surface-1);
+  --surface2: var(--c-surface-2);
+  --border: var(--c-surface-3);
+  --text: var(--c-text-0);
+  --text2: var(--c-text-2);
+  --text3: var(--c-text-3);
+  --accent: var(--c-accent);
+  --accent2: var(--c-accent-hover);
+  --green: var(--c-success);
+  --red: var(--c-danger);
+  --radius: var(--radius-lg);
+  --overlay-bg: var(--c-overlay);
+  --shadow: var(--c-shadow);
+  --accent-bg: var(--c-accent-bg);
+  --accent-bg2: var(--c-accent-bg2);
+  --red-bg: var(--c-danger-bg);
+  --red-border: var(--c-danger-border);
+  --sent-border: var(--c-sent-border);
+  --glass: var(--c-glass);
+  --glass2: var(--c-glass2);
+  --glass-border: var(--c-glass-border);
+  --topbar-bg: rgba(19, 19, 22, 0.6);
+
+  /* Editor panel aliases */
+  --editor-bg: #1e1e1e;
+  --sidebar-bg: #181818;
+  --panel-bg: #1e1e1e;
+  --toolbar-bg: #181818;
+  --border-color: var(--c-surface-3);
+  --text-primary: var(--c-text-1);
+  --text-secondary: var(--c-text-2);
+  --hover-bg: var(--c-surface-4);
+  --active-bg: var(--c-surface-5);
+  --code-bg: var(--c-surface-4);
+  --input-bg: var(--c-surface-4);
+}
+
+.light {
+  /* ── Surface (light) ──────────────────────────────────── */
+  --c-surface-0: #f5f5f7;
+  --c-surface-1: #ffffff;
+  --c-surface-2: #f0f0f2;
+  --c-surface-3: #d8d8dc;
+  --c-surface-4: #e8e8ec;
+  --c-surface-5: #dcdce0;
+
+  /* ── Text (light) ─────────────────────────────────────── */
+  --c-text-0: #1a1a2e;
+  --c-text-1: #1a1a2e;
+  --c-text-2: #555566;
+  --c-text-3: #888899;
+
+  /* ── Derived (light) ──────────────────────────────────── */
+  --c-accent-bg: rgba(99, 102, 241, 0.07);
+  --c-accent-bg2: rgba(99, 102, 241, 0.04);
+  --c-danger-bg: rgba(248, 113, 113, 0.08);
+  --c-danger-border: rgba(248, 113, 113, 0.25);
+  --c-overlay: rgba(245, 245, 247, 0.35);
+  --c-shadow: rgba(0, 0, 0, 0.1);
+  --c-sent-border: rgba(0, 0, 0, 0.07);
+  --c-glass: rgba(255, 255, 255, 0.55);
+  --c-glass2: rgba(240, 240, 242, 0.45);
+  --c-glass-border: rgba(216, 216, 220, 0.55);
+
+  /* ── Semantic aliases (light) ─────────────────────────── */
+  --topbar-bg: rgba(255, 255, 255, 0.55);
+  --editor-bg: #ffffff;
+  --sidebar-bg: #f0f0f2;
+  --panel-bg: #fafafa;
+  --toolbar-bg: #f0f0f2;
+  --border-color: #d0d0d4;
+  --text-primary: var(--c-text-1);
+  --text-secondary: var(--c-text-2);
+  --hover-bg: var(--c-surface-4);
+  --active-bg: var(--c-surface-5);
+  --code-bg: #f5f5f7;
+  --input-bg: #f5f5f7;
+}
