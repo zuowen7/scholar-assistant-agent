@@ -7,6 +7,17 @@
     <div class="toolbar-grip" title="拖动工具组" />
     <button @click.stop="$emit('reset-map')" title="新建导图">新建</button>
     <button @click.stop="$emit('add-child')" :disabled="!canAdd" title="新增子节点">子节点</button>
+    <button @click.stop="$emit('analyze')" :disabled="analyzing" title="AI 检查思维链">
+      {{ analyzing ? '检查中' : 'AI 检查' }}
+    </button>
+    <button
+      :class="{ active: connecting }"
+      @click.stop="$emit('start-connect')"
+      :disabled="!canAdd"
+      title="连接节点"
+    >
+      连接
+    </button>
     <button @click.stop="$emit('delete-node')" :disabled="!canDelete" title="删除节点">删除</button>
     <span class="divider" />
     <button class="icon-btn" @click.stop="$emit('zoom-in')" title="放大">+</button>
@@ -24,12 +35,16 @@ const props = defineProps<{
   position: { x: number; y: number }
   canAdd: boolean
   canDelete: boolean
+  connecting: boolean
+  analyzing: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'update:position', value: { x: number; y: number }): void
   (e: 'reset-map'): void
   (e: 'add-child'): void
+  (e: 'analyze'): void
+  (e: 'start-connect'): void
   (e: 'delete-node'): void
   (e: 'zoom-in'): void
   (e: 'zoom-out'): void
@@ -78,8 +93,11 @@ function startDrag(event: PointerEvent) {
   z-index: 10;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   max-width: calc(100% - 16px);
+  max-height: min(132px, calc(100% - 16px));
+  overflow: auto;
   min-height: 38px;
   padding: 6px;
   border: 1px solid var(--border-color);
@@ -115,9 +133,11 @@ button {
   white-space: nowrap;
   cursor: pointer;
 }
-button:hover:not(:disabled) {
+button:hover:not(:disabled),
+button.active {
   background: var(--hover-bg);
-  border-color: var(--border-color);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 button:disabled {
   opacity: 0.42;
@@ -142,7 +162,19 @@ button:disabled {
 }
 @media (max-width: 760px) {
   .floating-toolbar {
-    overflow-x: auto;
+    width: min(320px, calc(100% - 16px));
+    align-items: flex-start;
+    overflow: auto;
+  }
+
+  button {
+    height: 26px;
+    padding: 0 7px;
+    font-size: 11px;
+  }
+
+  .divider {
+    display: none;
   }
 }
 </style>
