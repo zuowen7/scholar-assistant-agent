@@ -149,11 +149,18 @@ class SkillRegistry:
         skills_dir: Skill 文件目录。
     """
 
+    # 同模式重复 N 次后自动生成 Skill
+    _AUTO_SKILL_THRESHOLD = 3
+
     def __init__(self, skills_dir: str | Path = "data/agent/skills") -> None:
         self.skills_dir = Path(skills_dir)
         self.skills_dir.mkdir(parents=True, exist_ok=True)
         self._skills: dict[str, Skill] = {}
         self._iters_since_skill = 0
+        # Pattern tracker: normalized_key → list[{ts, query, success, error_type}]
+        self._patterns: dict[str, list[dict]] = {}
+        # Tracks which patterns already auto-generated a skill (avoid duplicates)
+        self._auto_generated: set[str] = set()
         self._load_all()
 
     # ------------------------------------------------------------------
@@ -503,6 +510,121 @@ class SkillRegistry:
                 "使用 create_skill 工具将其固化为可复用的 Skill。"
             )
         return None
+
+    # ------------------------------------------------------------------
+    # 模式追踪与自动生成
+    # ------------------------------------------------------------------
+
+    def record_pattern(
+        self,
+        query: str,
+        task_title: str = "",
+        success: bool = True,
+        tools_used: list[str] | None = None,
+        error_type: str | None = None,
+    ) -> Skill | None:
+        """记录一次任务执行模式，若同一模式重复 ≥3 次则自动生成 Skill。
+
+        Args:
+            query: 用户原始查询。
+            task_title: 任务标题。
+            success: 任务是否成功。
+            tools_used: 使用的工具列表。
+            error_type: 若失败，错误类型。
+
+        Returns:
+            若触发了自动生成，返回新 Skill；否则返回 None。
+        """
+        key = self._pattern_key(query, task_title)
+        entry = {
+            "ts": datetime.now().isoformat(timespec="seconds"),
+            "query": query[:200],
+            "task_title": task_title[:200],
+            "success": success,
+            "tools_used": tools_used or [],
+            "error_type": error_type,
+        }
+        self._patterns.setdefault(key, []).append(entry)
+
+        if key in self._auto_generated:
+            return None
+        if len(self._patterns[key]) < self._AUTO_SKILL_THRESHOLD:
+            return None
+        if self._skills.get(key):
+            return None
+
+        return self._auto_generate_skill(key)
+
+    @staticmethod
+    def _pattern_key(query: str, task_title: str = "") -> str:
+        """归一化查询/任务为模式键。"""
+        raw = (task_title or query).strip().lower()
+        # 去除时间戳、路径、数字等高度可变部分
+        raw = re.sub(r"/[^\s]+", "", raw)
+        raw = re.sub(r"\d{4}-\d{2}-\d{2}", "", raw)
+        raw = re.sub(r"\d+", "", raw)
+        # 去除文件系统非法字符，取前 60 字符
+        raw = re.sub(r"[#<>:\"/\\|?*\s]+", "_", raw).strip("_")
+        return f"pat_{raw[:60]}"
+
+    def _auto_generate_skill(self, key: str) -> Skill | None:
+        """根据重复模式自动生成 Skill。
+
+        Args:
+            key: 模式键。
+
+        Returns:
+            生成的 Skill 或 None。
+        """
+        entries = self._patterns.get(key, [])
+        if len(entries) < self._AUTO_SKILL_THRESHOLD:
+            return None
+
+        successes = sum(1 for e in entries if e["success"])
+        failures = sum(1 for e in entries if not e["success"])
+        all_tools: list[str] = []
+        all_errors: list[str] = []
+        for e in entries:
+            all_tools.extend(e["tools_used"])
+            if e["error_type"]:
+                all_errors.append(e["error_type"])
+
+        # 去重取 top tools
+        tool_counts: dict[str, int] = {}
+        for t in all_tools:
+            tool_counts[t] = tool_counts.get(t, 0) + 1
+        top_tools = sorted(tool_counts, key=tool_counts.get, reverse=True)[:5]
+
+        # 生成描述和步骤
+        sample_query = entries[0]["query"][:80]
+        trigger = sample_query
+        description = f"自动生成的技能: {sample_query[:40]}"
+
+        steps: list[str] = []
+        if top_tools:
+            steps.append(f"优先使用工具: {', '.join(top_tools)}")
+        if failures > 0:
+            steps.append(f"注意: {failures}/{len(entries)} 次执行失败，常见错误: {', '.join(set(all_errors[:3]))}")
+
+        notes = [
+            f"此 Skill 由系统自动生成（{len(entries)} 次重复模式触发）",
+            f"{successes} 次成功, {failures} 次失败",
+            "建议人工审核后更新步骤和注意事项",
+        ]
+
+        skill_name = key.replace("pat_", "auto_")[:64]
+        # Sanitize: remove any remaining filesystem-illegal characters
+        skill_name = re.sub(r"[#<>:\"/\\|?*]+", "_", skill_name).rstrip("._")
+        skill = self.create_skill(
+            name=skill_name,
+            trigger=trigger,
+            description=description,
+            steps=steps,
+            notes=notes,
+        )
+        self._auto_generated.add(key)
+        logger.info("Skill 自动生成（模式重复 %d 次）: %s → %s", len(entries), key, skill_name)
+        return skill
 
     def get_skill_context(self, query: str = "") -> str:
         """构建注入到 Prompt 的 Skill 上下文。
