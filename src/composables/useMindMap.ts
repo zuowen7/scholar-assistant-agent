@@ -7,9 +7,23 @@ export interface MindMapNode {
   children: string[]
 }
 
+export interface MindMapPosition {
+  x: number
+  y: number
+}
+
+export interface MindMapLink {
+  id: string
+  from: string
+  to: string
+  type: 'association'
+}
+
 export interface MindMapData {
   rootId: string
   nodes: Record<string, MindMapNode>
+  positions: Record<string, MindMapPosition>
+  links: MindMapLink[]
   updatedAt: number
 }
 
@@ -31,6 +45,10 @@ const createDefaultMap = (): MindMapData => {
         children: [],
       },
     },
+    positions: {
+      [rootId]: { x: 120, y: 120 },
+    },
+    links: [],
     updatedAt: Date.now(),
   }
 }
@@ -51,6 +69,10 @@ function cloneMap(map: MindMapData): MindMapData {
     nodes: Object.fromEntries(
       Object.entries(map.nodes).map(([id, node]) => [id, { ...node, children: [...node.children] }]),
     ),
+    positions: Object.fromEntries(
+      Object.entries(map.positions ?? {}).map(([id, position]) => [id, { ...position }]),
+    ),
+    links: (map.links ?? []).map(link => ({ ...link })),
   }
 }
 
@@ -95,7 +117,13 @@ export function useMindMap() {
     draftMindMap.value.updatedAt = Date.now()
   }
 
-  function addChild(parentId = selectedNodeId.value) {
+  function setNodePosition(id: string, position: MindMapPosition) {
+    if (!draftMindMap.value.nodes[id]) return
+    draftMindMap.value.positions[id] = { ...position }
+    draftMindMap.value.updatedAt = Date.now()
+  }
+
+  function addChild(parentId = selectedNodeId.value, position?: MindMapPosition) {
     const parent = draftMindMap.value.nodes[parentId]
     if (!parent) return
     const id = `mind-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`
@@ -106,8 +134,26 @@ export function useMindMap() {
       children: [],
     }
     parent.children.push(id)
+    if (position) draftMindMap.value.positions[id] = { ...position }
     selectedNodeId.value = id
     draftMindMap.value.updatedAt = Date.now()
+  }
+
+  function addAssociationLink(from: string, to: string) {
+    const map = draftMindMap.value
+    if (from === to || !map.nodes[from] || !map.nodes[to]) return
+    const exists = map.links.some(link =>
+      link.type === 'association'
+      && ((link.from === from && link.to === to) || (link.from === to && link.to === from)),
+    )
+    if (exists) return
+    map.links.push({
+      id: `link-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
+      from,
+      to,
+      type: 'association',
+    })
+    map.updatedAt = Date.now()
   }
 
   function deleteNode(id = selectedNodeId.value) {
@@ -124,7 +170,11 @@ export function useMindMap() {
 
     const parent = node.parentId ? map.nodes[node.parentId] : null
     if (parent) parent.children = parent.children.filter(childId => childId !== id)
-    removeIds.forEach(nodeId => delete map.nodes[nodeId])
+    removeIds.forEach(nodeId => {
+      delete map.nodes[nodeId]
+      delete map.positions[nodeId]
+    })
+    map.links = map.links.filter(link => !removeIds.includes(link.from) && !removeIds.includes(link.to))
     selectedNodeId.value = parent?.id ?? map.rootId
     map.updatedAt = Date.now()
   }
@@ -141,7 +191,9 @@ export function useMindMap() {
     saveMindMap,
     selectNode,
     updateNodeText,
+    setNodePosition,
     addChild,
+    addAssociationLink,
     deleteNode,
   }
 }

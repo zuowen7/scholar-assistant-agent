@@ -15,11 +15,11 @@ import type {
   ProviderPreset,
 } from '../types'
 
-// Tauri 妗岄潰绔? 鍚庣鍥哄畾鍦?18088; Docker/Web: 鍚屾簮锛岀敤鐩稿璺緞
+// Tauri 桌面端: 后端固定在 18088; Docker/Web: 同源，使用相对路径
 const isTauri = '__TAURI_INTERNALS__' in window
 const API_URL = API_BASE
 
-// SSE 鑷姩閲嶈繛鍙傛暟
+// SSE 自动重连参数
 const SSE_RECONNECT_MAX_ATTEMPTS = 3
 const SSE_RECONNECT_DELAY_MS = 2000
 
@@ -98,7 +98,7 @@ async function checkHealth(): Promise<boolean> {
   try {
     return await invoke<boolean>('check_backend_health')
   } catch {
-    // 闈?Tauri 鐜鍥為€€鍒?fetch
+    // 非 Tauri 环境回退到 fetch
     try {
       const resp = await fetch(`${API_URL}/api/health`, { signal: AbortSignal.timeout(3000) })
       return resp.ok
@@ -112,7 +112,7 @@ async function checkOllama(): Promise<boolean> {
   try {
     return await invoke<boolean>('check_ollama_health')
   } catch {
-    // 闈?Tauri 鐜鍥為€€鍒?fetch
+    // 非 Tauri 环境回退到 fetch
     try {
       const resp = await fetch(`${API_URL}/api/ollama/status`, { signal: AbortSignal.timeout(3000) })
       if (!resp.ok) return false
@@ -131,7 +131,7 @@ async function startOllama(): Promise<string | null> {
       await new Promise(r => setTimeout(r, 1000))
       if (await checkOllama()) return null
     }
-    return 'Ollama 鍚姩瓒呮椂锛岃鎵嬪姩杩愯 ollama serve'
+    return 'Ollama 启动超时，请手动运行 ollama serve'
   } catch (err) {
     return err instanceof Error ? err.message : String(err)
   }
@@ -147,8 +147,8 @@ async function uploadPdf(file: File): Promise<string> {
   })
 
   if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ detail: '涓婁紶澶辫触' }))
-    throw new Error(err.detail || `涓婁紶澶辫触 (${resp.status})`)
+    const err = await resp.json().catch(() => ({ detail: '上传失败' }))
+    throw new Error(err.detail || `上传失败 (${resp.status})`)
   }
 
   const data = await resp.json()
@@ -164,8 +164,8 @@ async function startStream(taskId: string, attempt: number = 0): Promise<void> {
   })
 
   if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ detail: '娴佸紡杩炴帴澶辫触' }))
-    throw new Error(err.detail || `杩炴帴澶辫触 (${resp.status})`)
+    const err = await resp.json().catch(() => ({ detail: '流式连接失败' }))
+    throw new Error(err.detail || `连接失败 (${resp.status})`)
   }
 
   const reader = resp.body?.getReader()
@@ -219,7 +219,7 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       break
     case 'chunked':
       state.totalChunks = (data.total_chunks as number) ?? 0
-      state.stepMessage = `鍏?${data.total_chunks} 涓潡`
+      state.stepMessage = `共 ${data.total_chunks} 个块`
       break
     case 'chunk_done': {
       const chunk = data as unknown as ChunkDoneEvent
@@ -248,12 +248,12 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       if (state.fallbackChunks > 0) {
         state.stepMessage = `翻译完成（警告：${state.fallbackChunks} 个块翻译失败，已保留原文）`
       } else {
-        state.stepMessage = '缈昏瘧瀹屾垚'
+        state.stepMessage = '翻译完成'
       }
       break
     case 'error':
       if (state.status !== 'done') {
-        state.errorMessage = (data.message as string) ?? '鏈煡閿欒'
+        state.errorMessage = (data.message as string) ?? '未知错误'
         setStatus('error')
       }
       break
@@ -271,15 +271,15 @@ function stepToStatus(step: number): TranslateStatus {
   return map[step] || 'idle'
 }
 
-const MAX_UPLOAD_SIZE = 200 * 1024 * 1024 // 200 MB 鈥?涓庡悗绔繚鎸佷竴鑷?
+const MAX_UPLOAD_SIZE = 200 * 1024 * 1024 // 200 MB, 与后端保持一致
 async function translate(file: File): Promise<void> {
   reset()
   setStatus('uploading')
-  state.stepMessage = '涓婁紶鏂囦欢...'
+  state.stepMessage = '上传文件...'
 
   try {
     if (file.size > MAX_UPLOAD_SIZE) {
-      throw new Error('鏂囦欢杩囧ぇ锛屾渶澶ф敮鎸?200 MB')
+      throw new Error('文件过大，最大支持 200 MB')
     }
 
     const healthOk = await checkHealth()
@@ -291,7 +291,7 @@ async function translate(file: File): Promise<void> {
     await startStream(taskId)
   } catch (err: unknown) {
     if (state.status !== 'done') {
-      const msg = err instanceof Error ? err.message : '鏈煡閿欒'
+      const msg = err instanceof Error ? err.message : '未知错误'
       state.errorMessage = msg
       setStatus('error')
     }
@@ -306,8 +306,8 @@ async function uploadPdfByPath(filePath: string): Promise<string> {
   })
 
   if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ detail: '涓婁紶澶辫触' }))
-    throw new Error(err.detail || `涓婁紶澶辫触 (${resp.status})`)
+    const err = await resp.json().catch(() => ({ detail: '上传失败' }))
+    throw new Error(err.detail || `上传失败 (${resp.status})`)
   }
 
   const data = await resp.json()
@@ -318,7 +318,7 @@ async function uploadPdfByPath(filePath: string): Promise<string> {
 async function translateFromPath(filePath: string): Promise<void> {
   reset()
   setStatus('uploading')
-  state.stepMessage = '涓婁紶鏂囦欢...'
+  state.stepMessage = '上传文件...'
 
   try {
     const healthOk = await checkHealth()
@@ -329,14 +329,14 @@ async function translateFromPath(filePath: string): Promise<void> {
     const supportedExts = ['.pdf','.docx','.doc','.txt','.md','.log','.html','.htm','.epub','.rtf','.tex','.csv','.pptx','.xlsx','.srt','.json','.xml']
     const ext = '.' + filePath.split('.').pop()?.toLowerCase()
     if (!supportedExts.includes(ext)) {
-      throw new Error(`涓嶆敮鎸佺殑鏂囦欢鏍煎紡: ${ext}`)
+      throw new Error(`不支持的文件格式: ${ext}`)
     }
 
     const taskId = await uploadPdfByPath(filePath)
     await startStream(taskId)
   } catch (err: unknown) {
     if (state.status !== 'done') {
-      const msg = err instanceof Error ? err.message : '鏈煡閿欒'
+      const msg = err instanceof Error ? err.message : '未知错误'
       state.errorMessage = msg
       setStatus('error')
     }
@@ -357,7 +357,7 @@ async function downloadResult(): Promise<void> {
 
     await invoke<string>('save_file', { path: filePath, content })
   } catch {
-    // 闈?Tauri 鐜锛氭祻瑙堝櫒涓嬭浇
+    // 非 Tauri 环境：浏览器下载
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -371,7 +371,7 @@ async function downloadResult(): Promise<void> {
 async function restartBackend(): Promise<boolean> {
   try {
     await invoke<string>('restart_backend')
-    // 绛夊緟鍚庣灏辩华
+    // 等待后端就绪
     for (let i = 0; i < 20; i++) {
       await new Promise(r => setTimeout(r, 500))
       if (await checkHealth()) return true
