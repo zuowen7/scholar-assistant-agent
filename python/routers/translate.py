@@ -26,6 +26,8 @@ from src.translator.cloud_client import CloudClient, PROVIDER_PRESETS
 from src.translator.context import extract_document_context
 from src.translator.parallel_runner import translate_chunks_parallel
 from src.translator.memory_store import TranslationMemory
+from src.translator.glossary_store import GlossaryStore
+from src.translator._helpers import _extract_term_pairs
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +66,13 @@ def register_translate(
     _state: dict = {"rag_store_getter": rag_store_getter}
 
     tm_store = TranslationMemory(runtime_dir / "tm.db")
+
+    # Glossary store — load seed glossaries from data/translator/glossaries/
+    glossary_store = GlossaryStore()
+    glossary_dir = runtime_dir / "data" / "translator" / "glossaries"
+    if not glossary_dir.is_dir():
+        glossary_dir = Path(__file__).resolve().parent.parent / "data" / "translator" / "glossaries"
+    glossary_store.load_yaml_dir(glossary_dir)
 
     data_root = runtime_dir / ("data_cloud" if cloud_only else "data")
     input_dir = data_root / "input"
@@ -308,6 +317,15 @@ def register_translate(
             if doc_context:
                 client.set_document_context(doc_context)
 
+            # Inject glossary prompt into client's system prompt
+            if glossary_store and len(glossary_store) > 0:
+                glossary_prompt = glossary_store.build_prompt_text()
+                if glossary_prompt:
+                    existing_sp = trans_cfg.get("system_prompt", "")
+                    enhanced_sp = existing_sp + "\n\n" + glossary_prompt if existing_sp else glossary_prompt
+                    if hasattr(client, "system_prompt"):
+                        client.system_prompt = enhanced_sp
+
             results_by_idx: dict[int, TranslationResult] = {}
             fallback_count = 0
             total_chunks = len(chunk_result.chunks)
@@ -374,6 +392,27 @@ def register_translate(
                         if cr.is_fallback:
                             fallback_count += 1
                         results_by_idx[orig_idx] = cr.result
+
+                        # Glossary enforcement on translated text
+                        if glossary_store:
+                            violations = glossary_store.enforce(
+                                cr.result.translated,
+                                original=cr.result.original,
+                            )
+                            if violations:
+                                yield {
+                                    "event": "glossary_violation",
+                                    "data": json.dumps({
+                                        "index": orig_idx,
+                                        "total": total_chunks,
+                                        "violations": violations,
+                                    }),
+                                }
+                            # Feed learned term pairs as suggestions
+                            learned = _extract_term_pairs(cr.result.original, cr.result.translated)
+                            if learned:
+                                glossary_store.add_suggestions(learned)
+
                         yield {
                             "event": "chunk_done",
                             "data": json.dumps({
@@ -596,4 +635,46 @@ def register_translate(
             Path(tmp_path).unlink(missing_ok=True)
             raise HTTPException(500, f"TMX 导出失败: {e}")
 
-    return {"tasks": tasks, "rag_store_getter": _state["rag_store_getter"], "tm_store": tm_store}
+    # ── Glossary API routes ────────────────────────────────────────────
+
+    @app.get("/api/glossary")
+    def get_glossary():
+        return {"entries": glossary_store.to_dict_list(), "total": len(glossary_store)}
+
+    @app.put("/api/glossary")
+    def update_glossary(payload: dict):
+        items = payload.get("entries", [])
+        if not isinstance(items, list):
+            raise HTTPException(400, "entries must be a list")
+        count = glossary_store.update_from_list(items)
+        return {"entries": glossary_store.to_dict_list(), "total": count}
+
+    @app.post("/api/glossary/import")
+    async def glossary_import(
+        file: UploadFile = File(...),
+        locked: bool = False,
+    ):
+        if not file.filename:
+            raise HTTPException(400, "文件名不能为空")
+        ext = Path(file.filename).suffix.lower()
+        if ext not in (".csv", ".tbx"):
+            raise HTTPException(400, "仅支持 CSV 和 TBX 格式文件")
+
+        import tempfile
+        suffix = ext
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            while chunk := file.file.read(1024 * 1024):
+                tmp.write(chunk)
+            tmp_path = tmp.name
+        try:
+            if ext == ".csv":
+                count = glossary_store.import_csv(tmp_path, locked=locked)
+            else:
+                count = glossary_store.import_tbx(tmp_path, locked=locked)
+            return {"imported": count, "total": len(glossary_store)}
+        except Exception as e:
+            raise HTTPException(400, f"导入失败: {e}")
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    return {"tasks": tasks, "rag_store_getter": _state["rag_store_getter"], "tm_store": tm_store, "glossary_store": glossary_store}

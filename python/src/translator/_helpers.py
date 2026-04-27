@@ -15,9 +15,12 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dataclasses import dataclass
+
+if TYPE_CHECKING:
+    from src.translator.glossary_store import GlossaryStore
 
 
 # ---------------------------------------------------------------------------
@@ -32,11 +35,14 @@ class TranslationResult:
 
 
 # ---------------------------------------------------------------------------
-# 术语提取
+# 术语提取（保留作为兜底学习，结果仅为建议）
 # ---------------------------------------------------------------------------
 
 def _extract_term_pairs(original: str, translated: str) -> list[tuple[str, str]]:
-    """从原文-译文对中提取可能的术语翻译对"""
+    """从原文-译文对中提取可能的术语翻译对。
+
+    结果仅作为建议注入 GlossaryStore，不具有强制力。
+    """
     pairs: list[tuple[str, str]] = []
     seen: set[str] = set()
 
@@ -55,6 +61,41 @@ def _extract_term_pairs(original: str, translated: str) -> list[tuple[str, str]]
             seen.add(key)
 
     return pairs
+
+
+# ---------------------------------------------------------------------------
+# 术语锚点 Prompt 构建
+# ---------------------------------------------------------------------------
+
+def build_glossary_prompt(
+    glossary_store: "GlossaryStore | None" = None,
+    learned_pairs: list[tuple[str, str]] | None = None,
+    max_entries: int = 50,
+) -> str:
+    """合并权威术语表 + 兜底学习术语对，生成 system prompt 注入文本。
+
+    权威表（GlossaryStore）中的 locked 条目为强制，非 locked 为建议。
+    learned_pairs（来自 _extract_term_pairs）仅在没有权威条目时作为弱建议。
+    """
+    parts: list[str] = []
+
+    if glossary_store and len(glossary_store) > 0:
+        prompt_text = glossary_store.build_prompt_text(max_entries=max_entries)
+        if prompt_text:
+            parts.append(prompt_text)
+
+    if learned_pairs:
+        # 只添加 glossary_store 中不存在的条目
+        existing_sources: set[str] = set()
+        if glossary_store:
+            existing_sources = {e.source.lower() for e in glossary_store.all_entries()}
+        new_pairs = [(s, t) for s, t in learned_pairs if s.lower() not in existing_sources]
+        if new_pairs:
+            parts.append("## 自动提取的术语（建议沿用）")
+            for source, target in new_pairs[:max_entries]:
+                parts.append(f"- {source} → {target}")
+
+    return "\n".join(parts)
 
 
 # ---------------------------------------------------------------------------
