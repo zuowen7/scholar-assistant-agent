@@ -224,6 +224,18 @@ class TestValidateFilePath:
             self._validate(link)
         assert exc_info.value.status_code == 403
 
+    def test_appdata_roaming_blocked(self) -> None:
+        home = Path.home()
+        with pytest.raises(HTTPException) as exc_info:
+            self._validate(home / "AppData" / "Roaming" / "Microsoft" / "Teams" / "cookies")
+        assert exc_info.value.status_code == 403
+
+    def test_appdata_local_blocked(self) -> None:
+        home = Path.home()
+        with pytest.raises(HTTPException) as exc_info:
+            self._validate(home / "AppData" / "Local" / "Microsoft" / "VSCode" / "settings.json")
+        assert exc_info.value.status_code == 403
+
 
 # ── _load_config cache behavior ─────────────────────────────────────────
 
