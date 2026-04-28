@@ -1,362 +1,205 @@
-# REVIEW_CURRENT.md — 代码库现状评审
+# Scholar Assistant — 工程代码评审
 
-> 评审基准：当前 working tree（main 分支，最新 commit `1dcb684`）  
-> 评审范围：完整源码（Python 后端 ~20.6k 行 + 前端 Vue/TS ~14.4k 行 + Tauri Rust ~385 行 + 测试 ~9.6k 行）  
-> 方法：直接读取源代码，未参考任何历史评审/规划文档
+**评审日期**：2026-04-28
+**分支**：`refactor/editor-cleanup-and-review-fixes` (HEAD `073958e`)
+**评审依据**：当前代码实际状态（不参考任何历史评审文档）
+**代码体量**：Python ~23k 行（含 routers/src），前端 TS+Vue ~14k 行，Rust 385 行，测试 Python 10k + 前端 1.1k
 
 ---
 
-## 0. 评分汇总
+## 1. 当前工程健康度评分
 
-| 子系统 | 评分 | 一句话理由 |
+| 子系统 | 评分 | 主要观察 |
 |---|---|---|
-| 翻译管道（parser/cleaner/chunker/translator/formatter） | **3 / 5** | 功能完整、链路清晰；但 `_helpers.py` 抽取**没有完成**，`ollama_client.py` 仍保留全部重复实现，并存在两个同名 `TranslationResult` 类。 |
-| Agent / AWA 系统（python/src/agent/ ~25 个模块、~9.5k 行） | **2.5 / 5** | 架构层次野心很大（AgentLoop / AgentSession / SecurityGate / MemoryManager / SkillRegistry / ChangeJournal …）；`tools.py` 单文件 1957 行已成怪兽，路径解析/沙箱有两套并存（`_save_file` vs `_write_file_v2`），`AgentLoop.run()` 与 `AgentSession.drive()` 是两套并行实现，配套测试覆盖薄弱。 |
-| 后端 API 层（api_factory + 5 个 routers） | **3.5 / 5** | `api_factory.create_app()` 重构干净（工厂模式 + 闭包注入 + 双入口 `api.py` / `api_cloud.py`），不过 `routers/translate.py` 单文件 804 行、`routers/editor.py` 721 行仍偏大，`/api/chat` 直接 forward 到 v2，留下 `/api/chat/v1` legacy。 |
-| 前端状态管理与 SSE | **3.5 / 5** | 真单例 + 共享 `streamReader` 思路清晰；`EditorLayout.vue` 1319 行、`useEditor.ts` 802 行已偏厚；`API_BASE` 检测/重连/类型定义都到位。 |
-| Tauri 进程管理 | **4 / 5** | 进程树终结、proxy env 清理、健康监控、单实例锁、热重启都做好了；权限文件膨胀但每条都有据可查。 |
-| 配置与安全 | **2 / 5** | **真实 DeepSeek API Key 写入了仓库内的 `python/config/default.yaml` 与 `default.local.yaml` 两份**（被 `.gitignore` 救下未推到远端，但本地工作树仍长期存放明文密钥）；`python/data/agent/memory.db` 与 `python/data/argument_tree.json` 等运行时产物**已被 `git add` 入库**。 |
-| 测试覆盖 | **3 / 5** | 单元 39 个、集成 6 个、~9.6k 行、~860 个 test 函数，规模可观；但翻译核心 `_helpers.py` 与 `ollama_client.py` 共存的两套实现没人验证一致性，`api_factory.py` 没有单元测试，`tools.py` 中 1957 行只对应少量集成测试。 |
-
-> 加权综合（按对生产风险的影响）：约 **3.0 / 5**。距离 V1.0 还有明确阻塞项（重构未完成、密钥/二进制入库、Agent 层稳定度），但翻译流水线 + 桌面壳 + 前端骨架已经可用。
-
----
-
-## 1. 当前工程健康度（详细）
-
-### 1.1 翻译管道 — 3 / 5
-
-**优点**
-
-- `routers/translate.py:239-536` 的 `_run_pipeline` 把"解析→清洗→切块→翻译→格式化"5 步用 SSE 串得很清晰，事件名 `progress / parsed / cleaned / chunked / chunk_done / chunk_tm_hit / glossary_violation / complete / error` 一致。
-- `parser/dispatcher.py` 用 `@_register` 装饰器维护了 16 种格式（`SUPPORTED_EXTENSIONS` at `parser/dispatcher.py:23-41`），扩展性好。
-- `chunker/splitter.py` 分 sentence/paragraph/fixed 三策略，有 `syntax_splitter._split_long_sentence` 兜底。
-- 云端客户端用了**模块级 rate limiter**（`cloud_client.py:46-64` 的 `_ProviderRateLimiter`），跨 `CloudClient` 实例稳定生效。
-- TM (`memory_store.py` 301 行 / SQLite) + Glossary (`glossary_store.py` 410 行) 是真东西，前端 `/api/tm/*` `/api/glossary/*` 路由都接好了。
-
-**问题**
-
-- **`_helpers.py` 抽取没做完**（详见 §3 第 1 条）。
-- `OllamaClient.translate_async` (`ollama_client.py:475-531`) 与同步 `translate` (`ollama_client.py:166-212`) 的 prompt 构建/post-processing 各写了一遍，`_call_api` (`ollama_client.py:239-350`) 与 `_call_api_async` (`ollama_client.py:374-461`) 也是两份高度雷同的代码。
-- `cleaner/pipeline.py` 单文件 798 行，17 道清洗工序硬串在 `clean_text_full` 里，没有可独立测试的 stage 抽象。
-
-### 1.2 Agent / AWA 系统 — 2.5 / 5
-
-**架构清单（python/src/agent/）**
-
-| 模块 | 行数 | 作用 |
-|---|---|---|
-| `agent.py` | 661 | `AgentLoop`：ReAct 主循环（`run()` + `step()` 两套入口） |
-| `session.py` | 598 | `AgentSession`：状态机 + 任务队列 + 审批 + checkpoint，调用 `step()` 而非 `run()` |
-| `tools.py` | **1957** | `ToolRegistry` + 全部工具实现（旧沙箱版 + AWA v2 工作区版混在一起） |
-| `llm_client.py` | 849 | 三后端 LLM 抽象（Ollama / OpenAI 兼容 / Anthropic） |
-| `skill_system.py` | 711 | SKILL.md 沉淀 + nudge |
-| `mcp_server.py` | 664 | MCP 服务端 |
-| `special_elements.py` | 661 | 特殊元素（公式/表格…）工具 |
-| `context_compressor.py` | 404 | 上下文压缩 |
-| `memory.py` | 365 | MEMORY.md + SQLite 记忆 |
-| `trajectory.py` | 340 | 轨迹回放 |
-| `error_classifier.py` | 316 | 错误分类 + 重试 |
-| `auto_processor.py` | 305 | 自动处理 |
-| `bash_session.py` | 279 | 持久 BashSession |
-| `session_store.py` | 266 | SQLite 会话持久化 |
-| `security_gate.py` | 263 | 工具审批门控 |
-| `prompt_builder.py` | 261 | 系统提示词构建 |
-| `review_agent.py` | 247 | 审计 Agent |
-| `change_journal.py` | 197 | 文件变更日志 + undo |
-| `models.py` | 192 | 数据模型 + Event 常量 |
-| `hooks.py` | 180 | Hook 总线 |
-| `workspace.py` | 122 | 工作区沙箱 |
-
-**优点**
-
-- `models.py` 把 `Message / ToolCall / AgentEvent / SessionState` 集中定义，事件常量 (`EVT_*`) 命名整齐。
-- `AgentSession.drive()` (`session.py:112-225`) 与 `_drive_task()` (`session.py:226-430`) 把状态机/审批/串并行执行编排得相对清楚。
-- `ChangeJournal` + `undo_last_change` (`tools.py:846-871`) + `WorkspaceEnv` 构成的 AWA v2 思路是真本事，已经能用。
-- `SecurityGate.classify` 三档 + `auto_approve` 模式让 v2 可以零配置跑得起来。
-
-**问题**
-
-- **新旧两套 ReAct 循环并存**：`AgentLoop.run()` (`agent.py:316-486`) 是历史 v1 入口，被 `routers/agent.py:233 /api/chat/v1` 直连；`AgentLoop.step()` (`agent.py:204-314`) + `AgentSession.drive()` 才是 v2 主线。`/api/chat` 现已 forward 到 v2 (`routers/agent.py:227-230`)，但 v1 仍在运行、仍在测试 (`test_agent_v2_router.py`、`test_agent_dual_engine.py`)。两套都要维护。
-- **`tools.py` 1957 行**单文件，含：
-  - 沙箱版 `_save_file/_read_file` (`tools.py:523-558`)
-  - AWA v2 版 `_read_file_v2/_write_file_v2/_str_replace/_undo_last_change` (`tools.py:568-871`)
-  - LLM 包装工具 `polish/summarize/outline/expand/format_bibliography`
-  - 占位实现 `_translate_text/_parse_document/_search_documents/_manage_knowledge`（被 `create_default_registry` 用闭包覆盖注入，`tools.py:400-432`、`tools.py:1415-1434`）
-  - Phase 4 工具 `_shell_exec/_python_exec/_web_fetch/_web_search/_export_pdf`
-  - 注册装配函数 `create_default_registry` 占了 ~500 行（`tools.py:1441-1957`）。
-- `create_default_registry` 在 `workspace_root` 给定时**两次**注册同名工具（先注册沙箱版 `save_file/read_file`，然后被 v2 工具 `overwrite=True` 覆盖，`tools.py:1670-1685` vs `tools.py:1936-1951`）。
-- `agent.py:194-202` 在 `AgentLoop` 中用 `@dataclass` 嵌套定义了 `StepResult`，但实例方法用 `self.StepResult(...)` 创建（line 227）— 可读性差，且把数据类塞进类里没明显收益。
-- Agent 层缺一致性测试：`tests/unit/test_session.py` 14 个、`test_phase2.py` 31 个虽然名字到位，但 `_drive_task` 中的并行执行、审批超时、circuit breaker（连续 5 错）这些路径没有专门的端到端覆盖。
-
-### 1.3 后端 API 层 — 3.5 / 5
-
-**优点**
-
-- `api_factory.create_app(cloud_only=)` (`api_factory.py:219-333`) 单一构造点，本地版 `api.py` 与纯云版 `api_cloud.py` 各自只剩 47 行 / 99 行 入口。
-- 共享闭包注入：`load_config / save_config / build_cloud_client / mask_api_key / validate_file_path` 都从 `api_factory` 注入到各 router，不存在 router 之间相互 import 的耦合。
-- `_validate_file_path` (`api_factory.py:198-213`) 简单但有效（黑名单系统目录 + 敏感扩展名 + 隐藏文件）。
-- `_check_rate_limit` (`api_factory.py:74-85`) 按 IP 滑动窗口、30 RPM、in-process 实现，不引外部依赖；中间件 (`api_factory.py:245-255`) 仅对 `/api/translate /api/chat /api/rag/upload` 三条路径生效，符合设计。
-- `_unhandled_exception_handler` (`api_factory.py:224-230`) 顶层兜底。
-
-**问题**
-
-- `routers/translate.py` 单文件 804 行：`_run_pipeline` (239-536) 把上传保存、TM 命中、并发翻译、Glossary 校验、RAG 自动入库、SSE 事件全混在一起，已经接近"上帝函数"的边界。
-- `routers/editor.py` 721 行同病：编辑/补全/导出/视觉/引用/Zotero/scaffold 都塞在一起。
-- `routers/translate.py:760-802` 的 `_build_block_translations` 用前缀匹配在原文-block 之间手工对位，注释也承认这是启发式（30 字符前缀），实际效果难保证；缺单测。
-- `/api/chat` (`routers/agent.py:227-230`) 直接 forward 给 `v2_chat`，`/api/chat/v1` 仍在；前端如果还有调用 v1 的地方就会沉默地走旧路径。
-- `routers/translate.py:75` 出现 `glossary_dir = Path(__file__).resolve().parent.parent / "data" / "translator" / "glossaries"` 这种 fallback — 跨 PyInstaller 打包/dev 模式不稳。
-- `api_factory.py` 整文件**没有任何 pytest 文件**直接覆盖（只在集成测试里间接调用）。
-- `_load_config` (`api_factory.py:131-147`) 缓存按 `mtime` 失效，但若用户调 `_save_config` (`api_factory.py:165-171`) 后立刻读取，写入与缓存设置都在同进程内成对，问题不大；多进程场景下 mtime 同分辨率可能出问题。
-
-### 1.4 前端状态管理与 SSE — 3.5 / 5
-
-**优点**
-
-- `streamReader.ts` 47 行复用得很彻底（被 6 处 SSE 消费）。
-- `useTranslate.ts` 470 行 / `useEditor.ts` 802 行 / `useFileTree.ts` 135 行都用模块级 `reactive`/`ref` 单例，符合 CLAUDE.md 描述。
-- `useTranslate.ts:23-24` 给 SSE 加了 `MAX_ATTEMPTS=3 / DELAY=2000ms` 重连。
-- `utils/api.ts` 仅 11 行，开发模式走 Vite 代理（避免 Tauri WebView2 的 HTTP_PROXY 坑），生产直连 18088，逻辑紧凑。
-- 设计 token 系统 (`styles/tokens.css`) 与 `ui/` 原语已经成型，组件树已经从单体 App.vue 拆开。
-
-**问题**
-
-- `EditorLayout.vue` **1319 行**：包含 FileTree 调度、MindMap 切换、Welcome 屏、Tabs 容器、Resize handle、AI 面板、新工程向导等，已经逼近上一次拆 App.vue 之前的体量。
-- `useEditor.ts` 802 行：Monaco 实例、tabs、AI 面板、ghost-text、Word/PDF 导出、Vision、Citation、Zotero、ImageUpload 都在一个 composable 里。注释列出了 7 个 response 接口（`useEditor.ts:55-105`），暗示职责膨胀。
-- `App.vue` 仍有 682 行（CLAUDE.md 写的是 ~630 行）— 仍在长。
-- `useAgentChat.ts` 是"普通 composable，每次 new state"（CLAUDE.md 注），但实际看 `useAgentChat.ts:10-18` 模块级 `messages / sending / ragDocuments / sessionId / pendingApproval` 都是模块级 `ref`，**也是单例**。文档与实现不一致。
-
-### 1.5 Tauri 进程管理 — 4 / 5
-
-- `main.rs:10-13` 用 `Mutex<Option<Child>>` 管理 python/ollama 子进程；
-- `kill_tree`+`kill_child` (`main.rs:15-36`) 在 Windows 走 `taskkill /F /T /PID`，处理孤儿进程。
-- `build_command` (`main.rs:53-66`) 主动 `env_remove` 6 个 proxy 变量，与 `main()` 里 (`main.rs:370-385`) 父进程清理双保险。
-- 健康监控线程用 `HEALTH_MONITOR_RUNNING: AtomicBool` 防重复启动 (`main.rs:316`)，间隔从 30s 退避到 120s 也合理。
-- `restart_backend` (`main.rs:163-181`) 等 `is_port_listening(18088)` 释放后再起新进程，最长 30 秒。
-- 唯一小毛病：`save_file` (`main.rs:121-150`) 写文件白名单只放 `.md/.txt`，且要求 canonical parent 在 `$HOME` 内 — 但 capabilities 里 `fs:allow-write-file` 又开放到 `$HOME/**`，两层授权概念有点重叠。
-
-### 1.6 配置与安全 — 2 / 5
-
-- `python/config/default.yaml:3` 与 `python/config/default.local.yaml:3` 各保存了一份明文 DeepSeek API Key (`sk-cd83abedd26f4ab79899216bfe78ea70`)。两份文件都在 `.gitignore` 中（`/.gitignore:43-44` 排除 `python/config/default.yaml` 与 `python/config/*.local.yaml`），所以**未被推到 git**；但本地工作树长期保留生产密钥仍是泄露面。
-- `python/data/agent/memory.db` 与 `python/data/argument_tree.json` **已被 git add**（`git ls-files` 确认），但 `.gitignore` 写了 `python/data/agent/`（line 36）和 `python/data/agent/`（line 35）— 文件在加 `.gitignore` 之前就入库了，没人 `git rm --cached`。SQLite 二进制随仓库分发是隐患（含历史对话内容、可能的私密查询）。
-- `_validate_file_path` (`api_factory.py:198-213`) 黑名单仅覆盖 `/etc /proc /sys /dev /root C:\Windows C:\Program Files`，没覆盖 `~/.ssh ~/.aws ~/.config` 等用户敏感目录，也未做符号链接逃逸校验。
-- CSP (`tauri.conf.json:25`) 允许 `'unsafe-inline'` + `'unsafe-eval'` — Monaco 自身需要 eval，没法立即收紧，但在 README/审查时应明确风险。
-- API key 通过 `mask_api_key` (`api_factory.py:187-191`) 在 GET `/api/config` 时打码，`update_config` 又用 `is_masked` 判断保留旧值（`routers/translate.py:583-585`）— 这套逻辑正确，但前端如果 PUT 时没显式提交 key 会把空字符串覆盖（`update_glossary` 那种），需要再核 UI。
-
-### 1.7 测试覆盖 — 3 / 5
-
-- 单元测试 39 个文件、~6.4k 行，集成测试 6 个文件、~1.8k 行，前端测试 5 个文件、~1.2k 行。
-- 翻译管道核心覆盖好：`test_translator.py` 352 行、`test_cleaner.py` 145、`test_chunker.py` 62、`test_glossary.py` 423、`test_translation_memory.py` 274、`test_parallel_runner.py` 187、`test_cloud_client.py` 296。
-- Agent 层有名义覆盖但实际深度待定：`test_phase2.py` 333、`test_phase3.py` 296、`test_phase4_tools.py` 357、`test_session.py` 167、`test_session_store.py` 202、`test_security_gate.py` 253，但 1957 行的 `tools.py` + 661 行 `agent.py` 的真实覆盖率没量化。
-- 缺口：
-  - `api_factory.py` / `routers/translate.py` 没有 router 级单测（只有 `test_api_integration.py` 266 行的端到端）。
-  - `_helpers.py` vs `ollama_client.py` 双份实现一致性没人验证。
-  - `_build_block_translations` (`routers/translate.py:760-802`) 启发式没单测。
-  - `tests/unit/test_translator.py:14-16` 直接 `from src.translator.ollama_client import _strip_think_tags`，测的是 `ollama_client.py` 内的 thin wrapper；如果有人改了 `_helpers.py` 真实实现而忘了改 wrapper，测试还是会过，**误导性强**。
+| 翻译管道 (parser/cleaner/chunker/translator/formatter) | **4.0 / 5** | 主流程稳定、有 OCR fallback、字符级空格修复、句法切分；多格式分发器优雅；Cleaner 17 阶段流水线复杂但有据可循。云端 + 本地双客户端共享 `_helpers.py` 已统一。 |
+| Agent / AWA 子系统 (`src/agent/`) | **2.5 / 5** | 设计完整（ReAct + SecurityGate + ChangeJournal + Skill + Trajectory + Memory），但工程量超载（10k 行、26 个模块）。安全闸与原子工具白名单互相矛盾；`tool_generator.py` 是空 stub；`tools.py` 是 38 行兼容外壳。 |
+| 后端 API 层 (`api_factory.py` + `routers/`) | **3.5 / 5** | 路由按子系统拆得很清晰，依赖注入模式干净。存在数处实际 Bug（双语 PDF 导出、Agent v2/tool 工具调用、paper-assets/ingest）和 `cloud_only` 路径错配。 |
+| 前端状态管理 + SSE (`src/composables/`) | **4.0 / 5** | 14 个 composable 组织良好，singleton 模式一致；`useEditor.ts` 已拆为 5 个子模块；`streamReader` 共享。少量 `(editor as any)` 类型逃逸。 |
+| Tauri 进程管理 (`src-tauri/`) | **4.0 / 5** | 单文件 385 行简洁有力，`taskkill /F /T` 清理进程树、proxy 环境变量清理、健康监控线程去重、文件保存路径校验都到位。`save_file` 限制 `.md/.txt` 且必须在用户家目录内。 |
+| 配置与安全 | **3.0 / 5** | API Key 已从 git 移除（提交 `3614c96`）、`tm.db` 已 untrack；`_DENIED_PATH_PREFIXES` / `_DENIED_EXTENSIONS` 提供基本路径防护；CSP 已限制 connect-src/img-src。但 atomic_tools 沙箱白名单允许 `rm/rmdir/curl/wget`，与 SecurityGate 黑名单冲突。 |
+| 测试覆盖率 | **3.0 / 5** | 45 个 Python 测试文件、10k 行；前端 5 个测试 1.1k 行。翻译管道、glossary、TM、cleaner、parser 覆盖良好；Agent 子系统虽有 8 个相关测试，但相对 26 个生产模块仍显薄弱；前端 composables 几乎只覆盖 `useEditor`。集成测试需运行实例（依赖外部服务）。 |
+| **总评** | **3.4 / 5** | 翻译核心质量过硬可发布，Agent 子系统过度复杂、藏有真实 Bug、需要大幅瘦身或下沉到 V1.5 |
 
 ---
 
-## 2. 现存问题清单
+## 2. 现存问题清单（按严重程度）
 
-> 严重度划分：🔴 P0 阻断/泄露 / 🟠 P1 严重 / 🟡 P2 中等 / 🔵 P3 整理
+### P0 — 阻断性 Bug（功能不可用 / 必须立即修）
 
-### 🔴 P0
+1. **`routers/translate.py:794` — 双语 PDF 导出端点恒定失败**
+   ```python
+   results_by_block = _build_block_translations(t.get("chunks", []), blocks)
+   ```
+   `tasks[task_id]` 字典初始化时（第 250-259、287-295 行）从未写入 `"chunks"` key，pipeline 也只在 SSE `complete` 事件 payload 里 yield chunks，而非存到 task。所以 `t.get("chunks", [])` 永远是 `[]`，紧接着第 795-796 行 `if not results_by_block` 一定触发 400 "未找到有效的翻译结果"。
 
-1. **API key 明文落盘**  
-   `python/config/default.yaml:3` 与 `python/config/default.local.yaml:3` 各存放一份真实 DeepSeek key。虽被 `.gitignore` 排除，但任何打包/快照/clone 错误都会泄露，应立即吊销该 key 并改环境变量 (`SCHOLAR_CLOUD_API_KEY` 在 `api_factory.py:160-162` 已有支持)。
+2. **`routers/agent.py:586-587` — V2 直接工具调用端点对协程函数处理反了**
+   ```python
+   if asyncio.iscoroutinefunction(tool_def.fn):
+       result = await asyncio.to_thread(tool_def.fn, **req.args)   # ← 错
+   else:
+       result = tool_def.fn(**req.args)
+   ```
+   对协程函数应直接 `await tool_def.fn(...)`；`asyncio.to_thread` 在子线程同步调用，遇到协程函数只会得到一个 coroutine 对象，根本不会被 await。逻辑应该交换。
 
-2. **运行时 SQLite 入库**  
-   `python/data/agent/memory.db` 与 `python/data/argument_tree.json` 被 `git ls-files` 列出，包含本地对话历史；`.gitignore` 已添加但旧文件未 `git rm --cached`。
+3. **`routers/editor.py:371` — `paper_assets_ingest` 调用 `await get_agent()` 但 `get_agent` 始终为 `None`**
+   `api_factory.py:319` 注册时直接传 `get_agent=None`。命中此端点必然抛 `TypeError: 'NoneType' object is not callable`。要么把 `get_agent` 真接进来（agent state），要么去掉路由。
 
-3. **`TranslationResult` 同名两份**  
-   - `python/src/translator/_helpers.py:30-34`：`@dataclass class TranslationResult: original: str = ""; translated: str = ""`
-   - `python/src/translator/ollama_client.py:57-63`：`@dataclass class TranslationResult: original/translated/model/prompt_tokens/completion_tokens`  
-   `python/src/formatter/renderer.py:14` 导入的是 `_helpers` 版（缺 `model/tokens` 字段），但实际传入的是 `ollama_client` 版 — 凭运行时鸭子类型才不爆。这是真的逻辑错误。
+4. **`routers/editor.py:522` — Word 下载路径硬写死，`cloud_only` 模式下与上传不一致**
+   写入用 `output_dir = data_root / "output"`（line 85），其中 `data_root` 在 cloud-only 时是 `data_cloud`；下载却用 `safe_dir = runtime_dir / "data" / "output"`。在 cloud-only 模式下，文件落在 `data_cloud/output` 但下载找 `data/output`，恒 404。
 
-### 🟠 P1
+### P1 — 严重（影响安全/正确性/重构一致性）
 
-4. **`_helpers.py` 重构不彻底**  
-   `_helpers.py` 已实现 12 个共用函数，但 `ollama_client.py` 仍保留 6 个**完整重复实现**：
-   - `_extract_term_pairs` (`ollama_client.py:621-644` vs `_helpers.py:41-63`)
-   - `_validate_translation` (`ollama_client.py:667-756` vs `_helpers.py:170-240`)
-   - `_repair_truncation` (`ollama_client.py:759-806` vs `_helpers.py:243-283`)
-   - `_deduplicate_repetition` (`ollama_client.py:817-863` vs `_helpers.py:323-356`)
-   - `_is_similar_sentences` 是 wrapper but `_restore_paragraphs` (`ollama_client.py:878-931` vs `_helpers.py:444-481`) 又是完整实现。  
-   逻辑会逐渐发散；`cloud_client.py` 完全走 `_helpers.py`，但 `ollama_client.py` 自己用自己的版本，两条管道行为悄悄分叉。
+5. **`agent/security_gate.py` 黑名单与 `agent/tools/atomic_tools.py:35-46` 白名单冲突**
+   - SecurityGate `_CMD_BLACKLIST`：`rm/rmdir/sudo/dd/curl/wget/ssh/...`
+   - atomic_tools `_SHELL_ALLOWED_COMMANDS`：包含 `rm/rmdir/curl/wget`
+   `shell_exec` 的 SecurityGate 风险等级是 MODERATE，而 SessionConfig 默认 `auto_approve=True`（dev mode），意味着 LLM 可以在沙箱中执行 `rm/curl/wget`，在双闸门设计下属于"前后矛盾"。
 
-5. **AgentLoop 的 `run()` 与 `step()/AgentSession.drive()` 双链路并存**  
-   - `agent.py:316-486` 是 v1 主循环。
-   - `agent.py:204-314` + `session.py:226-430` 是 v2。  
-   `routers/agent.py:227-230` 已让 `/api/chat` 走 v2，但 `/api/chat/v1` (`routers/agent.py:232-273`) 仍直接调用 `agent.run()`。两条路径都要维护、都要 hook 上 SecurityGate/Memory/Skill — 边界有模糊。
+6. **`routers/argument.py:97-349` — Fallback 路径已是死代码且 API 调用不匹配**
+   `_ARGUMENT_AVAILABLE` 只有当 `src.argument.models` 不可导时才为 False，而后者是项目内模块、永远可导。所以"fallback"分支 173-349 行从不会执行。更糟的是它调用 `store.load()`、`store.upsert_node(tree, …)`、`store.delete_node(tree, …)` —— 这些 API 在 `src/argument/store.py:30-237` 根本不存在或签名不一致（实际方法是 `get_tree()` / `upsert_node(**kwargs)` / `delete_node(node_id, cascade)`）。一旦真的进入 fallback 路径就会 `AttributeError`。建议直接删除 fallback 段。
 
-6. **`tools.py` 1957 行单文件巨兽**  
-   包含 5 类工具实现 + 注册工厂；`create_default_registry` (`tools.py:1441-1957`) 自身 ~500 行。改任何一个工具都要在这个文件里翻找，IDE 都开始卡。
+7. **`routers/translate.py:108-163` — busy lock 实现脆弱**
+   - `_busy_lock` 是模块级单实例，整个进程只允许一个翻译任务（已在评论中承认），但前端可能同时打开多个任务上传；`_acquire_busy_lock` 用 `asyncio.wait_for(timeout=0)` 的非阻塞 `acquire`，正常情况这个写法是 anti-pattern（应直接 `lock.locked()` 检查）。
+   - `_lock_reaper` 60 秒后强行释放：如果用户上传后立刻关闭页面，下一个任务会用脏 lock；orphan 检测 `_acquire_busy_lock` 替换 lock 也只是 best-effort，多用户/多任务场景会出现"任务已超时释放"误报。
 
-7. **沙箱与 AWA v2 工作区双套文件 IO**  
-   `_save_file/_read_file` (`tools.py:523-558`) 在 `~/scholar_agent_files`；`_read_file_v2/_write_file_v2/_str_replace/_undo_last_change` (`tools.py:568-871`) 在 `WorkspaceEnv.root`。注册时按 `workspace_root` 分支 + `overwrite=True` 覆盖（`tools.py:1670-1685`、`tools.py:1936-1951`），同名工具在不同模式下行为不同，文档没写清。
+8. **`api_factory.py:209-226` — `_validate_file_path` 防御不完整**
+   - 没有解析符号链接：例如 `~/symlink_to_etc_passwd.txt`，`resolved.suffix` 不是敏感后缀也不在 DENIED 子目录里，直接放行。
+   - DENIED list 写死 `C:\Windows`、`/etc`，未包含 `C:\\Users\\<user>\\AppData\\Roaming\\Microsoft` 等敏感目录；也未阻止 `..` 路径遍历后落到工作目录外（仅靠 resolve 不够，缺白名单）。
 
-8. **根目录与 `python/` 各有一份 `main.py`，行为完全相同**  
-   `D:/pycharm_study/translator/main.py` 与 `D:/pycharm_study/translator/python/main.py` 都是 166 行、`diff` 为空。其中一份是死的；`tauri.conf.json:9` 与 Rust 端 `resolve_python_dir` (`main.rs:354-368`) 都用 `python/` 下的；根 main.py 应删。
+9. **`routers/editor.py:526-531` — Word 文件 30 分钟过期逻辑独立、可被绕过**
+   `download_word` 给出 30 分钟过期；但 `data/output/` 下文件是写后即静态保留，不存在后台清理任务，磁盘会无限增长；`age_minutes > 30` 触发即时删除也会让正在下载的文件中断。
 
-9. **根目录残留两份脚本式补丁**  
-   - `_add_syntax_aware.py` (165 行)：脚本，用 `open('python/src/chunker/splitter.py').read()` 拼接字符串后 write 回去 — 一次性写 patch 用的工具，已无作用。
-   - `_fix_ollama_helpers.py` (608 行)：同上，是用来生成 `_helpers.py` 的脚本（这正是上面问题 4 的来源）。  
-   两份都被 `git ls-files` 列出，都不是 tests 也不是 src，是历史 patch 工具。
+10. **`agent/auto_processor.py`、`bash_session.py`、`mcp_server.py` 等占用 ~1.5k 行但未在 V2 工具白名单**
+    `routers/agent.py:36-40` `_V2_TOOL_WHITELIST` 只允许 8 个工具，bash_session/auto_processor/mcp_server 不在内，仅 AgentLoop 内部可能调用。功能尚未端到端打通，是"半成品"。
 
-10. **`python/` 根有大量手动测试脚本被 git 跟踪**  
-    `test_pipeline.py` (172 行) / `test_agent.py`（用户手动测试） / `_test_agent_live.py` / `manual_test_exception.py` — 不是 pytest 用例（都不在 `tests/`），但占据着 test_*.py 的命名。`server_test*.log`（4 份）在 `.gitignore` 内不会再 commit，但本地仍是工作树噪音。
+### P2 — 中等（代码质量 / 可维护性）
 
-11. **`/api/chat` 与 `/api/chat/v1`：v1 客户端兼容代码到底是给谁用？**  
-    `useAgentChat.ts` 全部走 `/api/agent/v2/chat`，本地搜索没看到 v1 的调用方。建议直接删 `chat_v1` 函数（`routers/agent.py:232-273`）。
+11. **`api_cloud.py` vs `api.py` 重复入口** — 两个文件功能重叠，`api.py` 用 `cloud_only=False`，`api_cloud.py` 用 `cloud_only=True`。可改为单一入口加 `--cloud-only` 旗标。`api_cloud.py:33` 在导入时立即创建 app，而 `--self-test` 模式根本不需要 app 实例，浪费启动时间。
 
-### 🟡 P2
+12. **`python/main.py` 已 staged-deleted 但 `.gitignore:39` 也把它列入忽略** — 重复语义。`git status` 显示 `deleted: python/main.py` 已暂存但未提交，需要尽快清理这个不一致状态。
 
-12. **`OllamaClient.translate` 与 `translate_async`、`_call_api` 与 `_call_api_async` 各自一份重复 prompt 构造和 post-process**  
-    `ollama_client.py:166-212` vs `:475-531`、`:239-350` vs `:374-461`，其中 prompt 构造完全相同但写两遍，post-process 列表也写两遍 (`:335-342` vs `:465-472`)。
+13. **`agent/tools.py` (38 行) 与 `agent/tools/__init__.py` (90 行) 都是 re-export 兼容层** — 注释说 "向后兼容（DEPRECATED）"，但项目内仍有代码直接 `from src.agent.tools import ...`。可以删旧文件或保留一个。
 
-13. **Sec：`_validate_file_path` 黑名单弱**（`api_factory.py:198-213`）  
-    缺 `~/.ssh / ~/.aws / ~/.gitconfig / ~/.docker` 等用户敏感路径，未做 symlink resolve（用户传 `~/Public/link → /etc/passwd` 仍可读）。
+14. **`agent/tool_generator.py` (32 行) 是 stub** — 文件中所有方法都 `raise NotImplementedError`。要么实现，要么删。
 
-14. **`api_factory.create_app` 未单测覆盖**  
-    导致 rate limiter / config 缓存 / mask 逻辑只能在集成测试间接观察。
+15. **`routers/translate.py:125-142` `_restore_paragraphs_for_display` 与 `src/translator/_helpers.py` `_restore_paragraphs` 重复定义类似逻辑** — 前者只是后者的"先判断是否需要"再调用的薄包装，应该把启发式判断推到 helpers，避免路由层做业务判断。
 
-15. **`EditorLayout.vue` 1319 行 + `useEditor.ts` 802 行**  
-    上一次 App.vue 拆分的红利正在被这两个文件吞回去。
+16. **`routers/editor.py:103-114, 406-417` — System prompt 硬编码在路由代码里**
+    几个 system prompt 直接写死在 router 函数中（中文+英文混合）；`prompts/` 目录已为此存在，应该迁移过去。
 
-16. **`useAgentChat.ts` 实际是单例，CLAUDE.md 说"new state per call"** — 文档与代码不符。
-
-17. **`chunker/splitter.py:46-56` 的 `_estimate_chars_per_token` 与 `_estimate_tokens` 共存**，前者按比例返回每 token 多少字符，后者直接估 token 总数 — 两套估算函数都被引用，建议归并。
-
-18. **`routers/translate.py:73-76`：glossary 目录有"开发期 fallback"**  
-    PyInstaller 后 `Path(__file__).resolve().parent.parent` 的语义不确定，已知坑。
-
-19. **`routers/translate.py:760-802` `_build_block_translations` 是启发式 + 没测试**  
-    PDF 双语叠加导出的关键映射，靠 30 字符前缀匹配；遇到中英混排或被切两块的段落会错位。
-
-20. **`agent.py:194-202` 把 `StepResult` 嵌套在 `AgentLoop` 内部** — 用 `self.StepResult(...)` 实例化，可读性低于普通 module-level dataclass。
-
-21. **`tools.py:1602-1612` `summarize_text` 模板字符串错误**：  
-    ```python
-    prompt = (
-        f"请用中文为以下文本生成摘要，不超过 {max_sentences} 个句子。"
-        "提取核心论点和关键信息。\n\n{text}"   # ← 这一行非 f-string，{text} 不会被替换
-    )
+17. **`useEditor.ts:81, 114, 151, 231, 253` — Monaco Range 兜底类频繁出现**
+    ```typescript
+    const Range = (editor as any).monaco?.Range ?? class R {...}
     ```
-    实际输入 LLM 的 prompt 里 `{text}` 是字面量，文本内容根本没传进去。**真 bug**。
+    五处复制相同的"未挂 monaco 时回退"代码，应抽出顶层 helper。`as any` 也是类型逃逸。
 
-22. **`hooks.py` 中 `HookManager.trigger` 是异步的** (`agent.py:339, 357, 366` 直接 await)，但 `tools.py` 的 hook 触发只在 `_execute_single_tool` 进出（`agent.py:569-572, 583-586`）— `_execute_tools_parallel` (`agent.py:615-623`) 走 `_execute_single_tool` 间接触发，没问题，但若以后并行优化路径分叉得记住。
+18. **`agent/llm_client.py` 849 行单文件过厚** — 一个文件混合 Ollama / OpenAI / Anthropic 三家协议、流式/非流式两种模式、消息转换 helpers。建议按 provider 拆。
 
-### 🔵 P3 整理
+19. **`api_factory.py:46-49`、`routers/translate.py:116-119` — `BUNDLED_DIR / RUNTIME_DIR` 区分仅在 `api_factory.py` 实现，translate 路由 `glossary_dir` 第 116-118 行二次回退到 `Path(__file__).resolve().parent.parent`** —— 单冷启动时 `runtime_dir / "data"` 不存在则换路径，对 PyInstaller 包无意义。
 
-23. **`python/src/agent/skill_system_warnings.txt` 与 `python/src/constants_warnings.txt` 内容均只写 "OK"**，残留产物，但未入 git，可清理。
-24. **`python/__pycache__` 被 `git ls-files` 跟踪过吗？** — 检查后未跟踪，但本地存在。
-25. **`renderer.py` 注释 (`renderer.py:1-6`) 描述合并 chunk 时的优化，但 `_restore_paragraphs` 是从 `_helpers.py` 来的，并非 renderer 自己 — 注释稍有误导。**
-26. **`_helpers.py:23` 仅在 `TYPE_CHECKING` 时 import `GlossaryStore`** — 但 `build_glossary_prompt` 实际 runtime 也要操作 `glossary_store.all_entries()`、`glossary_store.build_prompt_text()`；运行时全靠 duck typing，类型注解给的是字符串引用 — 现状能工作，但 mypy 会告警。
-27. **CLAUDE.md 与代码已小漂移**：声明 App.vue ~630 行（实际 682）、`useAgentChat` 是非单例（实际单例）、router 列表少了 `mindmap.py`（已是 5 个 router）。
+20. **`agent/skill_system.py:711` 行、`agent/special_elements.py:661` 行** — 单文件超大，混合多个职责（Skill 数据/检索/衰减/纳吉、特殊元素的多种检测器）。
+
+21. **频繁的 `try / except ImportError` 标记可选依赖**（agent.py:32-34, plugin 17 处, ocr fallback, agent register, 等）—— 是优雅降级模式，但累计后让"哪些功能在生产中可用"难以判断。建议把可选 backend 集中到一个 features module，运行时一次性检测。
+
+### P3 — 轻微（清理 / 文档 / 风格）
+
+22. **`api_factory.py:235` `app = FastAPI(version="0.4.2")` vs `package.json` 0.2.0 vs `tauri.conf.json` 0.3.1 vs CLAUDE.md "Tauri 0.3.1 / npm 0.2.0" — 多家版本号不同步**
+
+23. **`MIGRATION_V2_COMPLETE.md` 与旧版 `REVIEW_CURRENT.md` 残留在仓库根目录** — 都是开发笔记，应该挪到 `docs/` 或在合并到 main 时删除。
+
+24. **`routers/translate.py:31-32` 两行 `from src.translator._helpers import` 应合并**
+
+25. **`config/default.yaml`（仓库根，48 行）vs `python/config/default.yaml`（gitignore） vs `python/config/default.local.yaml`（运行时）** — 三个 default 文件存在三种角色，新人不易理解；建议在 README 或 CLAUDE.md 单列章节说明。
+
+26. **`api_factory.py:234` `parser = argparse.ArgumentParser(description=_app_title)` 创建后未使用** — 死变量。
+
+27. **`routers/translate.py:43-86, 89-91` 顶层定义的 `ConfigUpdate` 与 `_build_block_translations` 在文件外不被复用** — 可降为 register 内部。
 
 ---
 
 ## 3. 重构质量评估
 
-### 3.1 已完成的重构（亮点）
+### 已经完成且干净的部分
+- **API 路由按子系统拆分**：`api_factory.py` (345) → `routers/{translate,agent,editor,argument,mindmap}.py`，注入式架构清晰，依赖只往下传不上抓。
+- **TranslationResult 统一**：`src/translator/_helpers.py` 提供单一 `TranslationResult`，`ollama_client.py:22-34` 和 `cloud_client.py:16-28` 都从 helpers 导入。
+- **Editor composables 拆分**：`useEditor.ts` (284) 主入口 + `useEditorState/useEditorIO/useEditorTabs/useEditorVision/useEditorCitation` 五件套，单一真实源在 `useEditorState.ts`。
+- **API Key 处理**：`_apply_env_overrides` (api_factory.py:159) 走 `SCHOLAR_CLOUD_API_KEY` 环境变量，`_mask_api_key` 在 GET /config 时遮盖；提交 `3614c96` 移除了 plaintext key。
+- **Agent ReAct 主循环**：`agent.py:205-319` 的 `step()` 是无状态的、只追加 messages，`session.py:225-450` 的 `_drive_task` 才管控并行/审批/错误恢复，关注点分离。
 
-- **App.vue 拆分**：成功拆出 `AppTopBar / TranslateView / EditorLayout / AgentPanel / MindMapView` + `ui/` 原语，token 化 (`styles/tokens.css`) 也到位。
-- **API 工厂模式**：`api_factory.create_app(cloud_only=)` + 5 个 router 注册，本地/云端/Docker 三模共用同一管线，骨架很清晰。
-- **`streamReader.ts` 共用**：6 处 SSE 消费方都用同一个 reader，前端不重复造 SSE 解析。
-- **AWA v2 工作区**：`WorkspaceEnv` + `ChangeJournal` + `BashSession` 是个完整的、可独立运转的子系统，与旧沙箱模式有明确边界（虽然边界有副作用，见下）。
-- **AgentSession 状态机**：从 `AgentLoop.run()` 流式生成器进化到可暂停/可恢复的 `AgentSession.drive()`，是真重构。
+### 重构未彻底的痕迹
 
-### 3.2 遗留的"半完成"痕迹（疼点）
+- **死代码块**：
+  - `routers/argument.py:97-349`（fallback 路径，永不命中且 API 不匹配）
+  - `agent/tool_generator.py`（全 stub）
+  - `agent/tools.py`（与 `agent/tools/__init__.py` 重复 re-export）
+  - `python/main.py`（已暂存删除中）
+  - `api_factory.py:234` 未使用的 `argparse.ArgumentParser`
 
-| 痕迹 | 位置 | 表现 |
+- **新旧两套并存**：
+  - 翻译管道有两条路径：`extract_document` 与 `extract_document_with_layout`（PDF 时走第二条），新路径只为双语 PDF 叠加导出存在；其他格式（含 PDF 不需要 overlay 时）依然走第一条。
+  - `Glossary`（`ollama_client.py:61-91`，自动术语学习类）vs `GlossaryStore`（`glossary_store.py`，权威术语表 + YAML 加载）：两套术语机制并存，OllamaClient 的 `_glossary` 是私有兜底，路由层却又直接拼接 `glossary_store.build_prompt_text`（routers/translate.py:411-416），双重注入。
+
+- **命名不一致**：
+  - `auto_approve` vs `approved_categories` vs `pending_approvals` 三套审批状态混用 (session.py:102-103, 322)；
+  - 路由 `/api/agent/v2/...` 但 frontend 文件名/composable 命名都不带 v2，而 `_V2_TOOL_WHITELIST` 只锁住 8 个工具 —— "v2" 是过渡命名而非正式产品概念，建议要么去掉，要么把 v1 的残影也清理。
+
+- **导入双轨**：
+  - `from src.agent.tools import ...` 与 `from src.agent.tools.core import ...` 都被使用；
+  - `from src.translator.ollama_client import _strip_think_tags`（兼容 re-export）与 `from src.translator._helpers import _strip_think_tags`（直接源）并存。
+
+- **注释掉的旧逻辑**：未发现明显残留（`grep TODO/FIXME/XXX/HACK` 在 `python/src+routers` 下命中数为 0），算是一个亮点。
+
+- **复杂度积累**：
+  - `python/src/agent/` 下 26 个模块、~10000 行，与 V1 实际可用的 8 个 agent 路由严重不对称；
+  - `cleaner/pipeline.py` 861 行实现 17 个清洗阶段，单文件无内部分模块；
+  - `llm_client.py` 849 行融合三家 API。
+
+---
+
+## 4. 距离生产就绪还差什么（V1.0 阻碍 + 改动成本）
+
+按优先级排序：
+
+| # | 阻碍 | 改动成本 |
 |---|---|---|
-| `_helpers.py` 抽离未完工 | `python/src/translator/{ollama_client.py, _helpers.py}` | `ollama_client.py:23-38` 用 `_impl` 别名导入 12 个 helper，又在 `:621-931` 重新本地实现其中 6 个；剩下 6 个改为 `_helpers.py:N(...)` 的 thin wrapper。**没有人在 PR 里把 `_call_api` 中的本地实现替换为 `_impl` 调用就合并了**。 |
-| 两份 `TranslationResult` | `_helpers.py:30-34` vs `ollama_client.py:57-63` | 字段不同；`renderer.py` 的 import 与实参类型不匹配。 |
-| 双 ReAct 循环 | `agent.py:run()` (v1) vs `step()` + `session.drive()` (v2) | 两套都跑得起来；`/api/chat/v1` 直连 v1。 |
-| 双套文件 IO 工具 | `tools.py:523-558` 沙箱版 vs `:568-871` v2 版 | `register` 时 `overwrite=True` 覆盖同名工具。 |
-| 根 `main.py` 与 `python/main.py` 内容相同 | 项目根 vs `python/` | 167 行 / 167 行，`diff` 空。 |
-| 根目录补丁脚本 `_add_syntax_aware.py / _fix_ollama_helpers.py` | 项目根 | 历史一次性 patch 工具，仍 git tracked。 |
-| `python/` 散落手动 test 脚本 `test_pipeline.py / test_agent.py / _test_agent_live.py / manual_test_exception.py` | python 根 | 不在 `tests/`，不被 pytest 收集，是手工跑的。 |
-| `CLAUDE.md` 与代码小漂移 | `CLAUDE.md:74-79, 89-93, 88-92` | App.vue 行数、useAgentChat 单例标注、router 数量。 |
-| 配置历史泄露 | `python/config/default.yaml`、`default.local.yaml` | 两份明文 API key（已 gitignore，但本地仍在）。 |
-| 残留 `*_warnings.txt` 占位文件 | `python/src/constants_warnings.txt`、`python/src/agent/skill_system_warnings.txt` | 内容仅 "OK"，无被引用。 |
-| `mindmap.json`、`tm.db*` | python 根 | 运行时产物 + 数据库缓存，散落工作树。 |
-| 大量根 `.md` 历史文档 | `AGENT_REFACTOR_PLAN.md / DIAGNOSIS.md / ENGINEERING_REVIEW.md / PLAN_NEW_FEATURES.md / PROJECT_REPORT.md / DECISION_MATRIX.md / STRATEGY.md` | 7 份共 ~210KB 历史规划/评审；新规划/评审应放在 `docs/` 并 prune 老的（用户亦明确要求本次评审不参考）。 |
-
-### 3.3 评估结论
-
-**重构质量在 65/100 分**：方向对、骨架已经搭好；但**新旧实现并存**是反复出现的问题（翻译 helper、Agent 主循环、文件 IO 工具、main.py、TranslationResult），说明每次重构上线后没安排回头清扫。这种半完成态在跨人协作或自动重构 agent 接手时容易加深分裂。
-
----
-
-## 4. 距离生产就绪还差什么
-
-> 排序：紧急/影响大 → 不紧急/影响小。改动成本：S = 半小时～几小时；M = 一两天；L = 一周量级。
-
-### 阻断 V1.0 的硬障碍
-
-1. **吊销并清理仓库内的 DeepSeek API key【🔴 / S】**  
-   `python/config/default.yaml:3`、`default.local.yaml:3`，立即换 key，改用 `SCHOLAR_CLOUD_API_KEY` env 注入；如果 key 曾经 commit 到任何远端，必须 `git filter-repo` 清史。
-
-2. **`git rm --cached python/data/agent/memory.db` 与 `python/data/argument_tree.json`【🔴 / S】**  
-   并补一行 `python/data/argument_tree.json` 到 `.gitignore`。
-
-3. **统一 `TranslationResult`【🔴 / S】**  
-   把 `_helpers.py:30-34` 删掉；`renderer.py:14` 改 `from src.translator.ollama_client import TranslationResult`，或者干脆把 `TranslationResult` 移到一个中立 `src/translator/types.py`。
-
-4. **完成 `_helpers.py` 抽取，让 `ollama_client.py` 的 6 个函数全部 delegate【🟠 / S-M】**  
-   或者**反过来**：删除 `_helpers.py`、`cloud_client.py`/`renderer.py`/`routers/translate.py` 直接 import `ollama_client.py`。两者择一，二选一即可。无论哪种都要在测试里加一个"单一来源"断言。
-
-5. **决定 `/api/chat/v1` 与 `AgentLoop.run()` 是删还是留【🟠 / S】**  
-   推荐删；前端无引用，留着只是负债。
-
-6. **拆分 `tools.py` 1957 行【🟠 / M】**  
-   建议拆成：`tools/registry.py`（`@tool`、`ToolRegistry`、`ToolDefinition`、`_extract_schema_from_function`），`tools/builtin_lite.py`（无 workspace 时的旧沙箱版），`tools/builtin_v2.py`（AWA v2 文件 IO + git_op），`tools/web.py`（arxiv/web_fetch/web_search/_export_pdf），`tools/llm_wrappers.py`（polish/summarize/outline/expand/format_bibliography），`tools/factory.py`（`create_default_registry`）。
-
-7. **修 `summarize_text` 的 prompt bug【🟠 / S】**  
-   `tools.py:1602-1612` 把第二行字符串字面量改成 f-string，否则文本根本没传进 LLM。
-
-8. **拆 `routers/translate.py` 与 `routers/editor.py`【🟠 / M】**  
-   `_run_pipeline` 至少抽 `_translate_chunks_with_tm`、`_finalize_with_rag` 两个子函数；editor.py 把 export/vision/citation/zotero 拆成各自的子文件或子函数。
-
-### 体验/质量级阻碍
-
-9. **删根目录死代码【🟡 / S】**  
-   `main.py`（与 `python/main.py` 重复）、`_add_syntax_aware.py`、`_fix_ollama_helpers.py`、根 `*_warnings.txt`（如果有）。
-
-10. **挪走/删除 `python/test_pipeline.py / test_agent.py / _test_agent_live.py / manual_test_exception.py`【🟡 / S】**  
-    要么进 `tests/manual/` 并补 README，要么删；目前命名诱导新人以为是 pytest 用例。
-
-11. **`EditorLayout.vue` 拆分【🟡 / M】**  
-    把 Welcome、ProjectStart、Resize、TemplatePicker 触发按钮抽成独立子组件。`useEditor.ts` 拆出 `useEditorIO.ts`（导出）、`useEditorVision.ts`、`useEditorCitation.ts`。
-
-12. **加 `api_factory` 的单测【🟡 / S-M】**  
-    rate limiter、`_load_config` 缓存、`_validate_file_path`、`_mask_api_key/_is_masked`、`_apply_env_overrides` 都是纯函数，单测成本极低、收益高。
-
-13. **统一前端 `useAgentChat` 的"单例 vs new"【🟡 / S】**  
-    要么改回真 composable（每次 new state），要么修 CLAUDE.md。
-
-14. **PDF 双语叠加 `_build_block_translations` 加用例【🟡 / S】**  
-    至少给典型 IEEE 双栏论文 + 单栏论文各加一个固定 fixture 的回归测试。
-
-15. **`_validate_file_path` 增强【🟡 / S】**  
-    把 `~/.ssh ~/.aws ~/.config ~/.docker ~/.gitconfig` 加入黑名单；用 `Path.resolve(strict=True)` + `is_relative_to` 抵御 symlink。
-
-16. **CSP 收紧（远期）【🔵 / L】**  
-    Monaco 用 `unsafe-eval` 难以避开，但 `unsafe-inline` 可改 hash/nonce 模式。
-
-17. **CLAUDE.md 校准【🔵 / S】**  
-    更新 App.vue 行数、useAgentChat 状态描述、`routers/` 数量（含 `mindmap.py`）。
-
-18. **大量历史 `.md` 归档【🔵 / S】**  
-    `AGENT_REFACTOR_PLAN.md / DIAGNOSIS.md / ENGINEERING_REVIEW.md / PLAN_NEW_FEATURES.md / PROJECT_REPORT.md / DECISION_MATRIX.md / STRATEGY.md` 总计 ~210KB；建议挪到 `docs/archive/` 并加日期前缀，避免新人误把过期方案当真。
+| 1 | **修 P0 Bug：双语 PDF 导出（translate.py:794）、Agent v2 直接工具调用 async 反转（agent.py:586）、Word 下载路径不一致（editor.py:522）、paper_assets_ingest 注入缺失（editor.py:371）** | **小**（单文件 1-3 行修改 + 单元测试） |
+| 2 | **统一 atomic_tools / SecurityGate 安全策略**：从 `_SHELL_ALLOWED_COMMANDS` 删除 `rm/rmdir/curl/wget`，或者让 SecurityGate 的黑名单成为唯一权威，atomic_tools 在执行前查询 SecurityGate.classify 决定是否放行 | **小**（一次性整理 + 加 1-2 个单元测试） |
+| 3 | **删除死代码**：`routers/argument.py` fallback、`agent/tool_generator.py`、`agent/tools.py`、`api_factory.py:234`、`MIGRATION_V2_COMPLETE.md`/旧版 `REVIEW_CURRENT.md` 等 | **小**（机械操作） |
+| 4 | **统一版本号**：`api_factory.py:235`、`package.json`、`src-tauri/tauri.conf.json`、`README.md`、CLAUDE.md 全部对齐到一个 V1.0 号 | **小** |
+| 5 | **busy_lock + lock_reaper 改成 task_id 级锁**（translate.py:108-182），允许多任务排队/并行；orphan recovery 改为基于 task_status 而不是计时器 | **中**（影响并发模型，需测试） |
+| 6 | **`_validate_file_path` 增强**：处理 symlink、补 Windows AppData/Roaming 敏感子目录、引入路径白名单（用户家目录或显式 work_dir）替代单纯黑名单 | **中** |
+| 7 | **Agent 子系统瘦身决策**：要么把 V1 的 Agent 缩到 8 个路由白名单需要的 ~3-5 个模块（llm_client、agent、session、tools、security_gate、memory），把 `tool_generator/auto_processor/skill_system/special_elements/mcp_server/bash_session/review_agent/trajectory` 中没接通到端到端流程的部分挪到 `experimental/` 或 `next_v2/`；要么明确接通到 v2 路由白名单。当前状态对单元测试和文档都是负担。 | **大**（涉及 5k+ 行代码归类，测试需要重新对齐） |
+| 8 | **集成测试矩阵补齐**：`tests/integration/` 6 个测试都依赖运行实例（`needs running API`，CLAUDE.md 已注明），缺 CI 中可运行的端到端 Mock；前端 vitest 只覆盖 5 个模块（`useEditor` 是唯一 composable 测试）。建议至少给 `useTranslate`、`useAgentChat`、`streamReader` SSE 错误路径补测。 | **中** |
+| 9 | **配置文件三件套澄清** — 在 README 或 CLAUDE.md 加章节说明 `config/default.yaml`（仓库默认）、`python/config/default.yaml`（运行时拷贝）、`python/config/default.local.yaml`（用户私有覆盖）三者关系 | **小**（纯文档） |
+| 10 | **API Key 安全升级**：当前 `_mask_api_key` 在 GET 时打码，PUT 时识别 `****` 不覆盖。但磁盘上 `default.local.yaml` 仍是明文。生产建议接系统 keychain 或 OS-level 加密存储 | **中** |
+| 11 | **错误事件 SSE 标准化** — `routers/translate.py` 用 `chunk_error/error/glossary_violation` 等多种事件名，前端 `useTranslate.ts:241-260` 处理散落，建议引入 `ErrorEnvelope` 类型 + 前后端共享枚举 | **中** |
+| 12 | **下载文件 GC 策略**：30-min 过期清理逻辑只在请求时触发，磁盘可能积压。引入后台 task / cron 或在 `_cleanup_tasks` 钩子里统一处理 | **小** |
+| 13 | **CSP 收紧**：`unsafe-inline` 和 `unsafe-eval` 都在 script-src（`tauri.conf.json:23`），与"privacy-first"承诺有出入。Monaco 通常需要这两个，但可考虑 worker-src 单独白名单 | **大**（要确认 Monaco 行为） |
+| 14 | **跨平台 sandbox 路径**：`atomic_tools.py:32` 写死 `~/scholar_agent_files`，Windows 下没问题但 Tauri 打包后没有对此目录的预创建/权限说明 | **小** |
+| 15 | **观察性**：基本只用 `logging` 输出 stdout（被 Tauri pipe 到控制台），缺结构化日志、缺 trace id（每个翻译任务/会话都应带 task_id 链路日志） | **中** |
 
 ---
 
-## 终评
+## 评分汇总（再次列出，便于扫读）
 
-代码确实经历过多轮重构，可见的进展是真：API 工厂、SSE 流水线、AWA v2 工作区、Tauri 进程管理、设计 token、单例 composable。但**每一次大重构都遗留了"旧实现没删干净"的尾巴**，最危险的两个是：
-- 翻译核心 `_helpers.py` ↔ `ollama_client.py` 的双份实现 + 两个同名 `TranslationResult` 类；
-- Agent 层 v1/v2 双链路 + `tools.py` 单文件 1957 行的双套文件 IO。
+| 子系统 | 评分 |
+|---|---:|
+| 翻译管道 | 4.0 |
+| Agent / AWA | 2.5 |
+| API 路由层 | 3.5 |
+| 前端 + SSE | 4.0 |
+| Tauri 进程 | 4.0 |
+| 配置 + 安全 | 3.0 |
+| 测试覆盖 | 3.0 |
+| **总评** | **3.4** |
 
-加上配置目录里仍有真实 API key、运行时 SQLite 入库这类历史遗留卫生问题，目前**还谈不上"生产就绪"**。但只要花上 1～2 周专门收尾（删冗余、合并实现、收紧密钥、补 router 单测），即可把质量推过 V1.0 的发布门槛。
+## Top 5 待解决问题（按"投入产出比 × 阻断性"排序）
+
+1. **`routers/translate.py:794` 双语 PDF 导出 — task["chunks"] 永远为空** （P0，10 分钟修）
+2. **`routers/agent.py:586` async 函数误用 `to_thread` — V2 直接工具调用对协程工具无效** （P0，5 分钟修）
+3. **`routers/editor.py:371, 522` paper_assets_ingest 与 Word 下载 — 路径/注入错误** （P0，30 分钟修）
+4. **atomic_tools `_SHELL_ALLOWED_COMMANDS` 与 SecurityGate 黑名单冲突 — `rm/curl/wget` 被默认 auto_approve 后可执行** （P1，1 小时修+测）
+5. **Agent 子系统总量决策（10k 行 vs 8 个生效路由）— 在发布 V1.0 前必须做"瘦身"还是"接通"的取舍** （P1，1-2 周）
+
+---
+
+*本评审基于当前代码静态阅读，未运行端到端验证。建议在落实任意修复前先补对应单元测试以锁定行为契约。*
