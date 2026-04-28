@@ -392,17 +392,105 @@ def register_editor(
     @app.post("/api/compliance")
     async def compliance_check(req: ComplianceRequest):
         try:
-            from src.compliance.checker import ComplianceChecker
-            checker = ComplianceChecker()
-            report = checker.check(
-                markdown=req.markdown,
-                title=req.title,
-                venue=req.venue,
-                required_sections=req.required_sections.split(",") if req.required_sections else [],
+            config = load_config()
+            trans_cfg = config.get("translator", {})
+            engine = trans_cfg.get("engine", "ollama")
+
+            prompt_path = Path(__file__).parent / "prompts" / "tasks_compliance" / "compliance_check.md"
+            prompt_text = prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else ""
+
+            user_msg = (
+                f"Paper Title: {req.title}\n"
+                f"Target Venue: {req.venue}\n"
+                f"Required Sections: {req.required_sections}\n"
+                f"Input Text:\n{req.markdown[:60000]}"
             )
+
+            system_prompt = (
+                "You are an academic writing compliance auditor. Analyze the paper and "
+                "produce a structured JSON compliance report. Output ONLY valid JSON, "
+                "no markdown fences, no explanation."
+            )
+
+            raw = ""
+            if engine == "cloud":
+                cloud_cfg = trans_cfg.get("cloud", {})
+                raw = await _call_cloud(
+                    cloud_cfg.get("base_url", "").rstrip("/"),
+                    (cloud_cfg.get("api_key") or "").strip(),
+                    cloud_cfg.get("model", "gpt-4o"),
+                    system_prompt, user_msg,
+                )
+            else:
+                raw = await _call_ollama(
+                    trans_cfg.get("ollama_base_url", "http://localhost:11434").rstrip("/"),
+                    trans_cfg.get("model", "qwen3:8b"),
+                    system_prompt, user_msg,
+                )
+
+            raw = raw.strip()
+            if raw.startswith("```"):
+                raw = re.sub(r"^```\w*\n?", "", raw)
+                raw = re.sub(r"\n?```$", "", raw)
+                raw = raw.strip()
+
+            try:
+                report = json.loads(raw)
+            except json.JSONDecodeError:
+                return {"error": "LLM returned invalid JSON", "report": {"raw": raw[:4000], "summary": {"overall_status": "error"}}}
+
             return {"report": report}
         except Exception as e:
+            logger.error("Compliance check error: %s", e)
             return {"error": str(e), "report": None}
+
+    async def _call_cloud(
+        base_url: str, api_key: str, model: str,
+        system_prompt: str, user_msg: str,
+    ) -> str:
+        import httpx
+        if not base_url or not api_key:
+            raise RuntimeError("云端 API 未配置")
+        async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
+            resp = await client.post(
+                f"{base_url}/chat/completions",
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_msg},
+                    ],
+                    "temperature": 0.3,
+                    "max_tokens": 8192,
+                    "stream": False,
+                },
+                headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+    async def _call_ollama(
+        ollama_url: str, model: str,
+        system_prompt: str, user_msg: str,
+    ) -> str:
+        import httpx
+        async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
+            resp = await client.post(
+                f"{ollama_url}/api/chat",
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_msg},
+                    ],
+                    "stream": False,
+                    "options": {"temperature": 0.3, "num_predict": 8192},
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("message", {}).get("content", "")
 
     @app.post("/api/export/word")
     async def export_word(req: WordExportRequest):
