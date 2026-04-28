@@ -123,7 +123,7 @@ class TestToolRegistryDefaults:
             "summarize_text": {"text": "A short test sentence.", "max_sentences": 1},
             "generate_outline": {"topic": "test topic", "sections": 2},
             "expand_section": {"section": "test section", "context": ""},
-            "save_file": {"file_path": "test_out.txt", "content": "hello"},
+            "write_file": {"file_path": "test_out.txt", "content": "hello"},
             "read_file": {"file_path": "nonexistent_file.txt"},
             "format_bibliography": {
                 "bibtex_entry": "@article{test, title={Test}}",

@@ -191,12 +191,12 @@ class TestChatEndpoint:
     def test_chat_endpoint_validation(self, client):
         """POST /api/chat with missing message field returns 422."""
         # FastAPI/Pydantic validation error for missing required field
-        resp = client.post("/api/chat", json={})
+        resp = client.post("/api/agent/v2/chat", json={})
         assert resp.status_code == 422
 
     def test_chat_endpoint_validation_wrong_types(self, client):
         """POST /api/chat with wrong types for message returns 422."""
-        resp = client.post("/api/chat", json={"message": 12345})
+        resp = client.post("/api/agent/v2/chat", json={"message": 12345})
         assert resp.status_code == 422
 
     def test_chat_endpoint_accepts_valid_payload(self, client):
@@ -212,7 +212,7 @@ class TestChatEndpoint:
 
         def _make_request():
             try:
-                resp = client.post("/api/chat", json={
+                resp = client.post("/api/agent/v2/chat", json={
                     "message": "test query",
                     "history": [
                         {"role": "user", "content": "previous question"},

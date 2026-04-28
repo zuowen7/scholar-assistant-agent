@@ -224,56 +224,8 @@ def register_agent(
     # Routes
     # ------------------------------------------------------------------
 
-    @app.post("/api/chat")
-    async def chat(req: ChatRequest):
-        """Default chat endpoint — now forwards to v2 session-driven SSE."""
-        return await v2_chat(req)
-
-    @app.post("/api/chat/v1")
-    async def chat_v1(req: ChatRequest):
-        """Legacy v1 endpoint (deprecated, uses AgentLoop.run() directly)."""
-        if not _AGENT_AVAILABLE:
-            raise HTTPException(503, "Agent 模块未安装，请安装 chromadb")
-
-        agent = await _create_agent(workspace_root=req.workspace_root)
-
-        history: list[Message] | None = None
-        if req.history:
-            history = [
-                Message(role=m.get("role", "user"), content=m.get("content", ""))
-                for m in req.history
-            ]
-
-        message = req.message
-        if req.context_text or req.constraints:
-            enhancements: list[str] = []
-            if req.context_text:
-                enhancements.append(f"[参考文本]\n{req.context_text}")
-            if req.constraints:
-                enhancements.append(f"[约束要求]\n{req.constraints}")
-            enhanced = "\n\n".join(enhancements) + f"\n\n[用户问题]\n{req.message}"
-            message = enhanced
-
-        async def _stream() -> AsyncGenerator[dict, None]:
-            try:
-                async for event in agent.run(message, history):
-                    payload: dict = {"type": event.type, "content": event.content}
-                    if event.metadata:
-                        payload["metadata"] = event.metadata
-                    yield {
-                        "event": event.type,
-                        "data": json.dumps(payload, ensure_ascii=False),
-                    }
-            finally:
-                await agent.close()
-
-        return EventSourceResponse(
-            _stream(),
-            media_type="text/event-stream",
-        )
-
     # ------------------------------------------------------------------
-    # v2: AgentSession-driven SSE endpoint
+    # Agent chat endpoint
     # ------------------------------------------------------------------
 
     @app.post("/api/agent/v2/chat")

@@ -59,18 +59,18 @@ class TestFieldValidation:
     """Verify Pydantic Field constraints reject oversized payloads."""
 
     def test_chat_message_too_long(self, client):
-        resp = client.post("/api/chat", json={"message": "x" * 100_001})
+        resp = client.post("/api/agent/v2/chat", json={"message": "x" * 100_001})
         assert resp.status_code == 422
 
     def test_chat_history_too_many_items(self, client):
-        resp = client.post("/api/chat", json={
+        resp = client.post("/api/agent/v2/chat", json={
             "message": "hi",
             "history": [{"role": "user", "content": f"m{i}"} for i in range(51)],
         })
         assert resp.status_code == 422
 
     def test_chat_context_text_too_long(self, client):
-        resp = client.post("/api/chat", json={
+        resp = client.post("/api/agent/v2/chat", json={
             "message": "hi",
             "context_text": "x" * 500_001,
         })
