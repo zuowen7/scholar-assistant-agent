@@ -13,6 +13,7 @@
     "core:window:allow-close",
     "core:window:allow-start-dragging",
     "dialog:default",
+    "dialog:allow-save",
     {
       "identifier": "fs:allow-read-text-file",
       "allow": [
@@ -25,6 +26,15 @@
     },
     {
       "identifier": "fs:allow-write-text-file",
+      "allow": [
+        { "path": "$DOCUMENT/**" },
+        { "path": "$DESKTOP/**" },
+        { "path": "$DOWNLOAD/**" },
+        { "path": "$APPDATA/**" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-write-file",
       "allow": [
         { "path": "$DOCUMENT/**" },
         { "path": "$DESKTOP/**" },
