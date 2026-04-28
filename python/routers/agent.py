@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 # Lazy imports — these may fail if chromadb is not installed
 try:
     from src.agent.agent import AgentLoop
+    from src.agent.auto_processor import auto_process_message, enrich_system_prompt
     from src.agent.memory import MemoryManager
     from src.agent.models import Message, SessionState
     from src.agent.prompt_builder import PromptBuilder
@@ -199,12 +200,23 @@ def register_agent(
                 logger.info("Agent 使用云端 API: model=%s, provider=%s",
                             agent_model, cloud_cfg.get("provider", "openai"))
 
+        # Build system prompt, enriching it with special-element handling instructions
+        base_system_prompt = agent_cfg.get("system_prompt", "")
+        try:
+            if base_system_prompt:
+                system_prompt = enrich_system_prompt(base_system_prompt)
+            else:
+                system_prompt = ""
+        except Exception as e:
+            logger.warning("enrich_system_prompt failed (non-fatal): %s", e)
+            system_prompt = base_system_prompt
+
         return AgentLoop(
             ollama_base_url=ollama_url,
             model=agent_model,
             tool_registry=tool_registry,
             max_steps=agent_cfg.get("max_steps", 6),
-            system_prompt=agent_cfg.get("system_prompt", ""),
+            system_prompt=system_prompt,
             temperature=agent_cfg.get("temperature", 0.3),
             num_predict=agent_cfg.get("num_predict", 4096),
             timeout=trans_cfg.get("timeout", 300.0),
@@ -252,6 +264,19 @@ def register_agent(
             if req.constraints:
                 enhancements.append(f"[约束要求]\n{req.constraints}")
             message = "\n\n".join(enhancements) + f"\n\n[用户问题]\n{req.message}"
+
+        # Auto-detect and process special elements (images, tables, citations)
+        # before passing to AgentLoop, so their analysis results are in context.
+        try:
+            auto_result = await auto_process_message(message, req.context_text)
+            if auto_result.has_special_elements and auto_result.needs_agent:
+                # Prepend analysis results to the message so the agent sees them
+                element_summary = "\n".join(auto_result.tool_results)
+                message = f"[特殊元素分析结果]\n{element_summary}\n\n[原始用户消息]\n{message}"
+                logger.info("auto_processor detected %d special elements: %s",
+                             len(auto_result.detected_elements), auto_result.detected_elements)
+        except Exception as e:
+            logger.warning("auto_process_message failed (non-fatal): %s", e)
 
         # Build workspace/journal if workspace_root is set
         workspace = None
