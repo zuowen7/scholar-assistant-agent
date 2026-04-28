@@ -90,10 +90,10 @@ Key backend modules under `src/`:
 
 ### Frontend Structure (`src/`)
 
-- `App.vue` — Thin shell (~680 lines): wires AppTopBar, TranslateView, AgentPanel, EditorLayout. Manages app-wide state (theme, engine settings, drag-drop, background layer, health checks).
+- `App.vue` — Thin shell (~682 lines): wires AppTopBar, TranslateView, AgentPanel, EditorLayout. Manages app-wide state (theme, engine settings, drag-drop, background layer, health checks).
 - `composables/` — state stores; all major ones are **true singletons** (module-level state, shared app-wide):
   - `useTranslate.ts` — singleton; SSE translation pipeline state + reconnect logic
-  - `useEditor.ts` — singleton; Monaco instance, tabs, AI panel, ghost text completion
+  - `useEditor.ts` — singleton; Monaco instance, tabs, AI panel, ghost text completion; delegates to `useEditorIO.ts` / `useEditorVision.ts` / `useEditorCitation.ts` / `useEditorState.ts` / `useEditorTabs.ts` for sub-responsibilities
   - `useFileTree.ts` — singleton; file system navigation
   - `useAgentChat.ts` — singleton (module-level refs); Agent SSE chat state + session/approval state
   - `useMindMap.ts` — singleton; mind map data (CRUD, undo/redo, flow adapters `toFlowNodes`/`toFlowEdges`)
@@ -104,7 +104,7 @@ Key backend modules under `src/`:
   - `AppTopBar.vue` — brand, mode switch, engine/display settings panels, health pills, window controls
   - `TranslateView.vue` — upload drop card, progress/step indicators, result views (sentence/parallel/markdown), sentence splitting, markdown rendering
   - `AgentPanel.vue` — agent chat/docs/templates/sessions side panel (self-contained via `useAgentChat()`)
-  - `EditorLayout.vue` — editor mode layout (~650 lines): FileTree sidebar + MonacoEditor + AiPanel right panel + ArgumentMap, with tab management and keyboard shortcuts
+  - `EditorLayout.vue` — editor mode layout (~645 lines): FileTree sidebar + MonacoEditor + AiPanel right panel + ArgumentMap, with tab management and keyboard shortcuts
   - `mindmap/` — MindMapCanvas (Vue Flow), MindNodeCard, MindEdge
   - `MindMapView.vue`, `MindMapFloatingToolbar.vue`, `MindMapAiHints.vue`
   - `ui/` — design-system primitives: UiButton, UiIconButton, UiPanel, UiInput, UiTextarea, UiSelect, UiTooltip
