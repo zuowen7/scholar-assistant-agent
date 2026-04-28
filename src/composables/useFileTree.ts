@@ -58,6 +58,27 @@ export function useFileTree() {
     return path
   }
 
+  async function renameFile(oldPath: string, newName: string): Promise<string> {
+    const { rename } = await import('@tauri-apps/plugin-fs')
+    const lastSep = Math.max(oldPath.lastIndexOf('/'), oldPath.lastIndexOf('\\'))
+    const dir = oldPath.substring(0, lastSep)
+    const sep = oldPath.includes('\\') ? '\\' : '/'
+    const newPath = `${dir}${sep}${newName}`
+    await rename(oldPath, newPath)
+    if (rootDir.value) {
+      files.value = await readDir(rootDir.value)
+    }
+    return newPath
+  }
+
+  async function deleteFile(path: string): Promise<void> {
+    const { remove } = await import('@tauri-apps/plugin-fs')
+    await remove(path)
+    if (rootDir.value) {
+      files.value = await readDir(rootDir.value)
+    }
+  }
+
   return {
     files,
     rootDir,
@@ -66,5 +87,7 @@ export function useFileTree() {
     readFileContent,
     writeFile,
     createFile,
+    renameFile,
+    deleteFile,
   }
 }
