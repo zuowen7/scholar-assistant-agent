@@ -340,7 +340,7 @@ async function doSend(text: string) {
     .map(m => ({ role: m.role, content: m.content }))
 
   try {
-    const resp = await fetch(`${API}/api/chat`, {
+    const resp = await fetch(`${API}/api/agent/v2/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: text, history, context_text: props.editorContext?.trim() || undefined }),

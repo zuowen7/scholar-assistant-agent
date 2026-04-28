@@ -80,3 +80,12 @@ python/test_chroma/
 python/data/assets/
 python/manual_test_*.py
 python/_test_agent_live.py
+
+# Runtime user config & data (auto-generated, may contain API keys)
+python/config.json
+python/mindmap.json
+
+# Scratch test scripts (not pytest)
+python/simple_test.py
+python/test_tools_import.py
+verify_tools.py

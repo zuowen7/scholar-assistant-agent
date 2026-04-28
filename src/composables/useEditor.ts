@@ -1,802 +1,284 @@
-import { ref, shallowRef, computed } from 'vue'
-import type { EditorSelection, EditorTab } from '../types'
-import * as monaco from 'monaco-editor'
+/**
+ * useEditor — AI Edit / Inline Edit / Ghost Text 补全
+ *
+ * 状态来源：useEditorState（单一真实源）
+ *
+ * `insertTextAtCursor` / `insertImage` 也放在这里，
+ * 因为两者依赖 Monaco editor 实例，属于 AI 编辑子系统。
+ */
 import { API_BASE } from '../utils/api'
 import { readSseStream } from '../utils/streamReader'
+import {
+  monacoEditor, contentVersion, activeTab, content,
+  selection, showAiPanel, aiLoading, aiResult, previousContent,
+  insertTextAtCursor, insertImage,
+} from './useEditorState'
 
-const API = API_BASE
+// ── AI Edit ──────────────────────────────────────────────────────────────
 
-// ── File save helper (works in both Tauri and browser) ──────────
-async function saveBlob(blob: Blob, defaultName: string): Promise<string | null> {
+const _abortMap = new Map<string, AbortController>()
+
+function _abortOp(key: string): void {
+  _abortMap.get(key)?.abort()
+  _abortMap.delete(key)
+}
+
+function _signalFor(key: string): AbortSignal {
+  _abortOp(key)
+  const ctrl = new AbortController()
+  _abortMap.set(key, ctrl)
+  return ctrl.signal
+}
+
+export async function aiEdit(
+  instruction: string,
+  text?: string,
+  taskType?: string,
+  previous?: string,
+) {
+  const targetText = text || selection.value.text
+  if (!instruction) return
+  previousContent.value = content.value
+  const signal = _signalFor('aiEdit')
+  aiLoading.value = true
+  aiResult.value = ''
   try {
-    const { save } = await import('@tauri-apps/plugin-dialog')
-    const { writeFile } = await import('@tauri-apps/plugin-fs')
-    const ext = defaultName.split('.').pop() || 'bin'
-    const path = await save({
-      defaultPath: defaultName,
-      filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
-    })
-    if (!path) return 'Cancelled'
-    const buffer = new Uint8Array(await blob.arrayBuffer())
-    await writeFile(path, buffer)
-    return null
-  } catch (e) {
-    console.warn('Tauri save failed, using browser fallback:', e)
-  }
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = defaultName
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
-  return null
-}
-
-// ── 全局单例状态 ──────────────────────────────────────────────────
-
-const tabs = ref<EditorTab[]>([])
-const activeTabId = ref<string | null>(null)
-const selection = ref<EditorSelection>({ startLine: 0, endLine: 0, startCol: 0, endCol: 0, text: '' })
-const showPreview = ref(true)
-const showAiPanel = ref(true)
-const aiLoading = ref(false)
-const aiResult = ref('')
-const monacoEditor = shallowRef<monaco.editor.IStandaloneCodeEditor | null>(null)
-const previousContent = ref('')
-const contentVersion = ref(0)  // 递增来强制触发 preview 更新
-
-const activeTab = computed(() => tabs.value.find(t => t.id === activeTabId.value) ?? null)
-const content = computed(() => activeTab.value?.content ?? '')
-const activeFile = computed(() => activeTab.value?.path ?? null)
-const isModified = computed(() => activeTab.value?.isModified ?? false)
-
-interface WordExportResponse {
-  filename?: string
-}
-
-export interface ImageUploadResponse {
-  path: string
-  filename: string
-  url: string
-  size: number
-}
-
-export type VisionAnalysisType = 'general' | 'chart' | 'table' | 'formula'
-
-export interface VisionAnalysisResponse {
-  text?: string
-  chart_type?: string
-  chart_description?: string
-  table_data?: string[][]
-  key_findings?: string[]
-  raw_description?: string
-}
-
-export interface CitationIndexResponse {
-  text?: string
-  citations?: Array<Record<string, unknown>>
-  index?: Record<string, number>
-  bibliography?: string
-}
-
-export interface CitationExtractResponse {
-  keys?: string[]
-  unique_count?: number
-  index?: Record<string, number>
-}
-
-export interface ZoteroStatusResponse {
-  connected?: boolean
-  user_id?: string
-  style?: string
-  error?: string
-}
-
-export interface ZoteroItem {
-  key: string
-  citation_key?: string
-  title?: string
-  authors?: string[]
-  year?: string
-  journal?: string
-  markdown_citation?: string
-}
-
-// ── useEditor ─────────────────────────────────────────────────────
-
-export function useEditor() {
-
-  function setEditorInstance(editor: monaco.editor.IStandaloneCodeEditor) {
-    monacoEditor.value = editor
-  }
-
-  function setContent(text: string) {
-    const tab = activeTab.value
-    if (tab) {
-      tab.content = text
-      contentVersion.value++  // 触发 preview 更新
-      // mark modified only after initial load; use markClean to reset
-    }
-  }
-
-  function updateSelection(sel: EditorSelection) {
-    selection.value = sel
-  }
-
-  function markClean() {
-    const tab = activeTab.value
-    if (tab) tab.isModified = false
-  }
-
-  // ── Tab 管理 ───────────────────────────────────────────────────
-
-  function openFile(path: string, text: string = '') {
-    // 已打开则激活
-    const existing = tabs.value.find(t => t.path === path)
-    if (existing) {
-      activeTabId.value = existing.id
-      if (text) existing.content = text
-      return
-    }
-    // 新建 tab
-    const name = path.split(/[\\/]/).pop() || 'Untitled'
-    const tab: EditorTab = {
-      id: path,
-      path,
-      name,
-      content: text,
-      isModified: false,
-    }
-    tabs.value.push(tab)
-    activeTabId.value = tab.id
-  }
-
-  function openNewUntitled() {
-    const id = `untitled-${Date.now()}`
-    const tab: EditorTab = {
-      id,
-      path: null,
-      name: 'Untitled',
-      content: '',
-      isModified: false,
-    }
-    tabs.value.push(tab)
-    activeTabId.value = tab.id
-  }
-
-  function closeTab(id: string) {
-    const idx = tabs.value.findIndex(t => t.id === id)
-    if (idx === -1) return
-
-    tabs.value.splice(idx, 1)
-
-    // 尝试激活邻居 tab
-    if (activeTabId.value === id) {
-      if (tabs.value.length === 0) {
-        activeTabId.value = null
-      } else if (idx >= tabs.value.length) {
-        // 关闭的是最后一个，激活前一个
-        activeTabId.value = tabs.value[tabs.value.length - 1].id
-      } else {
-        // 激活下一个
-        activeTabId.value = tabs.value[idx].id
-      }
-    }
-  }
-
-  function setActiveTab(id: string) {
-    if (tabs.value.some(t => t.id === id)) {
-      activeTabId.value = id
-    }
-  }
-
-  function renameTabPath(oldPath: string, newPath: string) {
-    const tab = tabs.value.find(t => t.path === oldPath)
-    if (tab) {
-      tab.path = newPath
-      tab.id = newPath
-      tab.name = newPath.split(/[\\/]/).pop() || tab.name
-      if (activeTabId.value === oldPath) {
-        activeTabId.value = newPath
-      }
-    }
-  }
-
-  async function saveFile(): Promise<string | null> {
-    const tab = activeTab.value
-    if (!tab || !tab.path) {
-      return '无法保存：请先导出到文件（未命名文件暂不支持直接保存）'
-    }
-    const { writeTextFile } = await import('@tauri-apps/plugin-fs')
-    await writeTextFile(tab.path, tab.content)
-    tab.isModified = false
-    return null
-  }
-
-  async function exportToWord(): Promise<string | null> {
-    const tab = activeTab.value
-    if (!tab || !tab.content.trim()) {
-      return 'Please write content in the editor first'
-    }
-
-    const resp = await fetch(`${API}/api/export/word`, {
+    const payload: Record<string, string> = { text: targetText, instruction }
+    if (taskType) payload.task_type = taskType
+    if (previous) payload.previous = previous
+    const resp = await fetch(`${API_BASE}/api/edit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        content: tab.content,
-        title: tab.name?.replace(/\.md$/i, '') || 'Scholar Assistant Export',
-      }),
+      body: JSON.stringify(payload),
+      signal,
     })
-
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ detail: 'Word export failed' }))
-      return err.detail || err.error || 'Word export failed'
-    }
-
-    const data = await resp.json() as WordExportResponse
-    if (!data.filename) return 'Word export did not return a filename'
-
-    // Download the file
-    const downloadResp = await fetch(`${API}/api/export/word/${encodeURIComponent(data.filename)}`)
-    if (!downloadResp.ok) return 'Failed to download Word file'
-    const blob = await downloadResp.blob()
-
-    const defaultName = data.filename || 'export.docx'
-    return await saveBlob(blob, defaultName)
-  }
-
-  // 内容变化时标记 dirty（由 Monaco 的 onDidChangeModelContent 调用）
-  function insertTextAtCursor(text: string) {
-    const editor = monacoEditor.value
-    const tab = activeTab.value
-    if (!editor || !tab) return false
-
-    const pos = editor.getPosition()
-    const range = pos
-      ? new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column)
-      : new monaco.Range(1, 1, 1, 1)
-
-    editor.executeEdits('insert-markdown', [{ range, text }])
-    editor.focus()
-    return true
-  }
-
-  function insertImage(url: string, alt = 'image') {
-    return insertTextAtCursor(`\n![${alt}](${url})\n`)
-  }
-
-  async function uploadImage(file: File): Promise<ImageUploadResponse | null> {
-    const formData = new FormData()
-    formData.append('file', file)
-
-    const resp = await fetch(`${API}/api/upload/image`, {
-      method: 'POST',
-      body: formData,
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    if (!resp.body) throw new Error('No response body')
+    const reader = resp.body.getReader()
+    await readSseStream(reader, (_type, evt) => {
+      if (evt.content) aiResult.value = evt.content as string
     })
-    if (!resp.ok) return null
-    return await resp.json() as ImageUploadResponse
-  }
-
-  async function insertImageFile(file: File): Promise<ImageUploadResponse | null> {
-    const data = await uploadImage(file)
-    if (!data?.url) return null
-    insertImage(data.url, file.name.replace(/\.[^.]+$/, '') || 'image')
-    return data
-  }
-
-  async function analyzeVision(file: File, analysisType: VisionAnalysisType = 'general'): Promise<VisionAnalysisResponse | null> {
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('analysis_type', analysisType)
-
-    const resp = await fetch(`${API}/api/vision/analyze`, {
-      method: 'POST',
-      body: formData,
-    })
-    if (!resp.ok) return null
-    return await resp.json() as VisionAnalysisResponse
-  }
-
-  async function ocrImage(file: File): Promise<VisionAnalysisResponse | null> {
-    const formData = new FormData()
-    formData.append('file', file)
-
-    const resp = await fetch(`${API}/api/vision/ocr`, {
-      method: 'POST',
-      body: formData,
-    })
-    if (!resp.ok) return null
-    return await resp.json() as VisionAnalysisResponse
-  }
-
-  async function analyzeChart(file: File): Promise<VisionAnalysisResponse | null> {
-    const formData = new FormData()
-    formData.append('file', file)
-
-    const resp = await fetch(`${API}/api/vision/chart`, {
-      method: 'POST',
-      body: formData,
-    })
-    if (!resp.ok) return null
-    return await resp.json() as VisionAnalysisResponse
-  }
-
-  async function extractTableFromImage(file: File): Promise<VisionAnalysisResponse | null> {
-    const formData = new FormData()
-    formData.append('file', file)
-
-    const resp = await fetch(`${API}/api/vision/table`, {
-      method: 'POST',
-      body: formData,
-    })
-    if (!resp.ok) return null
-    return await resp.json() as VisionAnalysisResponse
-  }
-
-  function insertTable(rows = 3, cols = 3) {
-    const safeRows = Math.max(2, rows)
-    const safeCols = Math.max(1, cols)
-    const header = `| ${Array.from({ length: safeCols }, (_, i) => `Column ${i + 1}`).join(' | ')} |`
-    const separator = `| ${Array.from({ length: safeCols }, () => '---').join(' | ')} |`
-    const body = Array.from({ length: safeRows - 1 }, () => `| ${Array.from({ length: safeCols }, () => '').join(' | ')} |`)
-    return insertTextAtCursor(`\n${[header, separator, ...body].join('\n')}\n`)
-  }
-
-  function insertInlineFormula() {
-    return insertTextAtCursor('$ $')
-  }
-
-  function insertBlockFormula() {
-    return insertTextAtCursor('\n$$\n\n$$\n')
-  }
-
-  async function processCitations(targetContent = content.value, bibliography: Record<string, unknown>[] = [], style = 'ieee'): Promise<CitationIndexResponse | null> {
-    const resp = await fetch(`${API}/api/citation/index`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        content: targetContent,
-        bibliography,
-        style,
-      }),
-    })
-    if (!resp.ok) return null
-    return await resp.json() as CitationIndexResponse
-  }
-
-  async function previewCitations(targetContent = content.value): Promise<CitationExtractResponse | null> {
-    const resp = await fetch(`${API}/api/citation/extract?content=${encodeURIComponent(targetContent)}`)
-    if (!resp.ok) return null
-    return await resp.json() as CitationExtractResponse
-  }
-
-  async function getZoteroStatus(): Promise<ZoteroStatusResponse | null> {
-    const resp = await fetch(`${API}/api/zotero/status`)
-    if (!resp.ok) return null
-    return await resp.json() as ZoteroStatusResponse
-  }
-
-  async function searchZotero(query: string, limit = 20): Promise<ZoteroItem[]> {
-    const resp = await fetch(`${API}/api/zotero/search`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, limit }),
-    })
-    if (!resp.ok) return []
-    const data = await resp.json() as { items?: ZoteroItem[] }
-    return data.items || []
-  }
-
-  async function getZoteroItem(key: string): Promise<ZoteroItem | null> {
-    const resp = await fetch(`${API}/api/zotero/item/${encodeURIComponent(key)}`)
-    if (!resp.ok) return null
-    return await resp.json() as ZoteroItem
-  }
-
-  async function insertZoteroCitation(key: string): Promise<ZoteroItem | null> {
-    const item = await getZoteroItem(key)
-    const citation = item?.markdown_citation || (item?.citation_key ? `[@${item.citation_key}]` : '')
-    if (!citation) return item
-    insertTextAtCursor(citation)
-    return item
-  }
-
-  function markDirty() {
-    const tab = activeTab.value
-    if (tab) {
-      tab.isModified = true
-      contentVersion.value++  // 每次变化触发 preview 刷新
-    }
-  }
-
-  // ── AI Edit ────────────────────────────────────────────────────
-
-  // Per-operation abort controllers — keyed by 'aiEdit' | 'inlineEdit' | 'completion'
-  const _abortMap = new Map<string, AbortController>()
-
-  function _abortOp(key: string): void {
-    _abortMap.get(key)?.abort()
-    _abortMap.delete(key)
-  }
-
-  function _signalFor(key: string): AbortSignal {
-    _abortOp(key)
-    const ctrl = new AbortController()
-    _abortMap.set(key, ctrl)
-    return ctrl.signal
-  }
-
-  async function aiEdit(instruction: string, text?: string, taskType?: string, previous?: string) {
-    const targetText = text || selection.value.text
-    if (!instruction) return
-
-    // 保存当前内容用于 undo
-    previousContent.value = content.value
-
-    const signal = _signalFor('aiEdit')
-    aiLoading.value = true
-    aiResult.value = ''
-
-    try {
-      const payload: Record<string, string> = { text: targetText, instruction }
-      if (taskType) payload.task_type = taskType
-      if (previous) payload.previous = previous
-
-      const resp = await fetch(`${API}/api/edit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal,
-      })
-
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-      if (!resp.body) throw new Error('No response body')
-
-      const reader = resp.body.getReader()
-      await readSseStream(reader, (_type, evt) => {
-        if (evt.content) {
-          aiResult.value = evt.content as string
-        }
-      })
-      if (!aiResult.value) {
-        aiResult.value = 'AI 未返回结果，请重试。'
-      }
-    } catch (e: any) {
-      if (e.name === 'AbortError') {
-        // 用户主动取消，不清空结果
-        return
-      }
-      aiResult.value = `请求失败: ${e}`
-    } finally {
-      aiLoading.value = false
-      _abortMap.delete('aiEdit')
-    }
-  }
-
-  // ── AI Inline Edit ─────────────────────────────────────────────
-  // 直接替换 Monaco 选中文本，流式写入，带高亮动画
-
-  let inlineDecoration: string[] = []
-
-  function applyInlineDecoration(editor: monaco.editor.IStandaloneCodeEditor, startLine: number, startCol: number, endLine: number, endCol: number) {
-    inlineDecoration = editor.deltaDecorations([], [{
-      range: new monaco.Range(startLine, startCol, endLine, endCol),
-      options: {
-        className: 'ai-inline-edit',
-        inlineClassName: 'ai-inline-edit-char',
-      },
-    }])
-  }
-
-  function clearInlineDecoration(editor: monaco.editor.IStandaloneCodeEditor) {
-    if (inlineDecoration.length) {
-      editor.deltaDecorations(inlineDecoration, [])
-      inlineDecoration = []
-    }
-  }
-
-  async function inlineEdit(instruction: string, taskType?: string): Promise<string | null> {
-    const editor = monacoEditor.value
-    const sel = selection.value
-    if (!editor || !sel.text) return null
-
-    const startLine = sel.startLine
-    const startCol = sel.startCol
-    const endLine = sel.endLine
-    const endCol = sel.endCol
-
-    // 保存原文用于 undo
-    previousContent.value = content.value
-
-    const signal = _signalFor('inlineEdit')
-    aiLoading.value = true
-    aiResult.value = ''
-
-    try {
-      const resp = await fetch(`${API}/api/edit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: sel.text, instruction, task_type: taskType || 'expand' }),
-        signal,
-      })
-
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-      if (!resp.body) throw new Error('No response body')
-
-      const reader = resp.body.getReader()
-
-      applyInlineDecoration(editor, startLine, startCol, endLine, endCol)
-
-      await readSseStream(reader, (_type, evt) => {
-        if (evt.content) {
-          aiResult.value = (aiResult.value || '') + (evt.content as string)
-          editor.executeEdits('ai-inline', [{
-            range: new monaco.Range(startLine, startCol, endLine, endCol),
-            text: aiResult.value,
-          }])
-          const newEndLine = startLine + (aiResult.value.match(/\n/g) || []).length
-          const newEndCol = newEndLine === startLine ? startCol + aiResult.value.length : aiResult.value.length - aiResult.value.lastIndexOf('\n') - 1
-          clearInlineDecoration(editor)
-          applyInlineDecoration(editor, startLine, startCol, newEndLine, newEndCol + 1)
-        }
-      })
-      clearInlineDecoration(editor)
-      if (!aiResult.value) {
-        aiResult.value = sel.text
-        editor.executeEdits('ai-inline', [{
-          range: new monaco.Range(startLine, startCol, endLine, endCol),
-          text: sel.text,
-        }])
-      }
-      return aiResult.value
-    } catch (e: any) {
-      clearInlineDecoration(editor)
-      return null
-    } finally {
-      aiLoading.value = false
-      _abortMap.delete('inlineEdit')
-    }
-  }
-
-  function cancelAiEdit() {
-    _abortOp('aiEdit')
+    if (!aiResult.value) aiResult.value = 'AI 未返回结果，请重试。'
+  } catch (e: unknown) {
+    if ((e as Error).name === 'AbortError') return
+    aiResult.value = `请求失败: ${e}`
+  } finally {
     aiLoading.value = false
+    _abortMap.delete('aiEdit')
   }
+}
 
-  function applyAiResult() {
-    if (!monacoEditor.value || !aiResult.value) return
-    const editor = monacoEditor.value
-    const sel = selection.value
+// ── AI Inline Edit ────────────────────────────────────────────────────────
 
-    if (sel.text) {
-      const range = {
-        startLineNumber: sel.startLine,
-        startColumn: sel.startCol,
-        endLineNumber: sel.endLine,
-        endColumn: sel.endCol,
-      }
-      editor.executeEdits('ai-edit', [{ range, text: aiResult.value }])
-    } else {
-      const pos = editor.getPosition()
-      if (pos) {
-        editor.executeEdits('ai-edit', [{
-          range: {
-            startLineNumber: pos.lineNumber,
-            startColumn: pos.column,
-            endLineNumber: pos.lineNumber,
-            endColumn: pos.column,
-          },
+let inlineDecoration: string[] = []
+
+function applyInlineDecoration(
+  startLine: number, startCol: number,
+  endLine: number, endCol: number,
+) {
+  const editor = monacoEditor.value
+  if (!editor) return
+  const Range = (editor as any).monaco?.Range ??
+    class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
+  inlineDecoration = editor.deltaDecorations([], [{
+    range: new Range(startLine, startCol, endLine, endCol),
+    options: { className: 'ai-inline-edit', inlineClassName: 'ai-inline-edit-char' },
+  }])
+}
+
+function clearInlineDecoration() {
+  const editor = monacoEditor.value
+  if (editor && inlineDecoration.length) {
+    editor.deltaDecorations(inlineDecoration, [])
+    inlineDecoration = []
+  }
+}
+
+export async function inlineEdit(instruction: string, taskType?: string): Promise<string | null> {
+  const editor = monacoEditor.value
+  const sel = selection.value
+  if (!editor || !sel.text) return null
+  previousContent.value = content.value
+  const signal = _signalFor('inlineEdit')
+  aiLoading.value = true
+  aiResult.value = ''
+  try {
+    const resp = await fetch(`${API_BASE}/api/edit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: sel.text, instruction, task_type: taskType || 'expand' }),
+      signal,
+    })
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    if (!resp.body) throw new Error('No response body')
+    const Range = (editor as any).monaco?.Range ??
+      class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
+    const reader = resp.body.getReader()
+    applyInlineDecoration(sel.startLine, sel.startCol, sel.endLine, sel.endCol)
+    await readSseStream(reader, (_type, evt) => {
+      if (evt.content) {
+        aiResult.value = (aiResult.value || '') + (evt.content as string)
+        editor.executeEdits('ai-inline', [{
+          range: new Range(sel.startLine, sel.startCol, sel.endLine, sel.endCol),
           text: aiResult.value,
         }])
+        const newEndLine = sel.startLine + (aiResult.value.match(/\n/g) || []).length
+        const newEndCol = newEndLine === sel.startLine
+          ? sel.startCol + aiResult.value.length
+          : aiResult.value.length - aiResult.value.lastIndexOf('\n') - 1
+        clearInlineDecoration()
+        applyInlineDecoration(sel.startLine, sel.startCol, newEndLine, newEndCol + 1)
       }
-    }
-    // 插入后不清除结果、不关闭面板，用户可以继续操作
-    aiResult.value = ''
-  }
-
-  function rejectAiResult() {
-    aiResult.value = ''
-    // 不关闭面板
-  }
-
-  function undoEdit() {
-    if (!previousContent.value) return
-    const tab = activeTab.value
-    if (tab) tab.content = previousContent.value
-    previousContent.value = ''
-    if (monacoEditor.value) {
-      monacoEditor.value.setValue(activeTab.value?.content ?? '')
-    }
-    showAiPanel.value = false
-    aiResult.value = ''
-  }
-
-  // ── Inline ghost text completion ───────────────────────────────
-  let ghostDecoration: string[] = []
-  let completionTimer: ReturnType<typeof setTimeout> | null = null
-  let currentSuggestion = ''
-  let _clearingGhost = false
-
-  function clearGhostText() {
-    if (_clearingGhost) return
-    const editor = monacoEditor.value
-    if (!editor) return
-    if (ghostDecoration.length) {
-      try {
-        _clearingGhost = true
-        editor.deltaDecorations(ghostDecoration, [])
-      } finally {
-        ghostDecoration = []
-        _clearingGhost = false
-      }
-    }
-    currentSuggestion = ''
-  }
-
-  async function requestCompletion() {
-    const editor = monacoEditor.value
-    if (!editor) return
-    const model = editor.getModel()
-    if (!model) return
-
-    const pos = editor.getPosition()
-    if (!pos) return
-
-    // Get text before cursor (last ~500 chars for context)
-    const lineCount = model.getLineCount()
-    const startLine = Math.max(1, pos.lineNumber - 15)
-    const textBefore = model.getValueInRange({
-      startLineNumber: startLine,
-      startColumn: 1,
-      endLineNumber: pos.lineNumber,
-      endColumn: pos.column,
     })
-
-    if (textBefore.trim().length < 10) { clearGhostText(); return }
-
-    const signal = _signalFor('completion')
-    try {
-      const resp = await fetch(`${API}/api/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ context: textBefore, max_tokens: 200 }),
-        signal,
-      })
-      if (!resp.ok) { clearGhostText(); return }
-      const data = await resp.json()
-      const suggestion = (data.completion || '').trim()
-      if (!suggestion || suggestion.length < 3) { clearGhostText(); return }
-
-      // Check if editor content has changed since request
-      const currentContent = model.getValueInRange({
-        startLineNumber: startLine,
-        startColumn: 1,
-        endLineNumber: pos.lineNumber,
-        endColumn: pos.column,
-      })
-      if (currentContent !== textBefore) { clearGhostText(); return }
-
-      currentSuggestion = suggestion
-
-      // Show ghost text as inline decoration
-      ghostDecoration = editor.deltaDecorations(ghostDecoration, [{
-        range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
-        options: {
-          after: { content: suggestion, inlineClassName: 'ghost-text-suggestion' },
-          className: 'ghost-text-line',
-        },
+    clearInlineDecoration()
+    if (!aiResult.value) {
+      aiResult.value = sel.text
+      editor.executeEdits('ai-inline', [{
+        range: new Range(sel.startLine, sel.startCol, sel.endLine, sel.endCol),
+        text: sel.text,
       }])
-    } catch {
-      clearGhostText()
-    } finally {
-      _abortMap.delete('completion')
     }
-  }
+    return aiResult.value
+  } catch { return null } finally { aiLoading.value = false; _abortMap.delete('inlineEdit') }
+}
 
-  function triggerCompletion() {
-    if (completionTimer) clearTimeout(completionTimer)
-    // Clear ghost when user starts typing (don't clear decorations here — Monaco prohibits it during events)
-    completionTimer = setTimeout(requestCompletion, 1500)
-  }
+export function cancelAiEdit() { _abortOp('aiEdit'); aiLoading.value = false }
 
-  function acceptGhostText() {
-    const editor = monacoEditor.value
-    if (!editor || !currentSuggestion) return false
-    const pos = editor.getPosition()
-    if (!pos) return false
-    editor.executeEdits('inline-completion', [{
-      range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
-      text: currentSuggestion,
+export function applyAiResult() {
+  const editor = monacoEditor.value
+  if (!editor || !aiResult.value) return
+  const sel = selection.value
+  const Range = (editor as any).monaco?.Range ??
+    class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
+  if (sel.text) {
+    editor.executeEdits('ai-edit', [{
+      range: new Range(sel.startLine, sel.startCol, sel.endLine, sel.endCol),
+      text: aiResult.value,
     }])
-    clearGhostText()
-    return true
-  }
-
-  function onDidChangeContent() {
-    triggerCompletion()
-  }
-
-  // Explicit teardown for onBeforeUnmount — clears timers, decorations, and pending fetches
-  function cleanup() {
-    if (completionTimer) {
-      clearTimeout(completionTimer)
-      completionTimer = null
+  } else {
+    const pos = editor.getPosition()
+    if (pos) {
+      editor.executeEdits('ai-edit', [{
+        range: new Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
+        text: aiResult.value,
+      }])
     }
-    const editor = monacoEditor.value
-    if (editor) {
-      if (ghostDecoration.length) {
-        try { editor.deltaDecorations(ghostDecoration, []) } catch { /* editor may be disposed */ }
-        ghostDecoration = []
-      }
-      if (inlineDecoration.length) {
-        try { editor.deltaDecorations(inlineDecoration, []) } catch { /* editor may be disposed */ }
-        inlineDecoration = []
-      }
-    }
-    for (const ctrl of _abortMap.values()) {
-      ctrl.abort()
-    }
-    _abortMap.clear()
   }
+  aiResult.value = ''
+}
 
+export function rejectAiResult() { aiResult.value = '' }
+
+export function undoEdit() {
+  if (!previousContent.value) return
+  const tab = activeTab.value
+  if (tab) tab.content = previousContent.value
+  previousContent.value = ''
+  if (monacoEditor.value) monacoEditor.value.setValue(activeTab.value?.content ?? '')
+  showAiPanel.value = false
+  aiResult.value = ''
+}
+
+// ── Ghost text completion ────────────────────────────────────────────────
+let ghostDecoration: string[] = []
+let completionTimer: ReturnType<typeof setTimeout> | null = null
+let currentSuggestion = ''
+let _clearingGhost = false
+
+function clearGhostText() {
+  if (_clearingGhost) return
+  const editor = monacoEditor.value
+  if (!editor) return
+  if (ghostDecoration.length) {
+    try { _clearingGhost = true; editor.deltaDecorations(ghostDecoration, []) } finally {
+      ghostDecoration = []; _clearingGhost = false
+    }
+  }
+  currentSuggestion = ''
+}
+
+async function requestCompletion() {
+  const editor = monacoEditor.value
+  if (!editor) return
+  const model = editor.getModel()
+  if (!model) return
+  const pos = editor.getPosition()
+  if (!pos) return
+  const startLine = Math.max(1, pos.lineNumber - 15)
+  const textBefore = model.getValueInRange({
+    startLineNumber: startLine, startColumn: 1,
+    endLineNumber: pos.lineNumber, endColumn: pos.column,
+  })
+  if (textBefore.trim().length < 10) { clearGhostText(); return }
+  const signal = _signalFor('completion')
+  try {
+    const resp = await fetch(`${API_BASE}/api/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ context: textBefore, max_tokens: 200 }),
+      signal,
+    })
+    if (!resp.ok) { clearGhostText(); return }
+    const data = await resp.json()
+    const suggestion = (data.completion || '').trim()
+    if (!suggestion || suggestion.length < 3) { clearGhostText(); return }
+    const currentContent = model.getValueInRange({
+      startLineNumber: startLine, startColumn: 1,
+      endLineNumber: pos.lineNumber, endColumn: pos.column,
+    })
+    if (currentContent !== textBefore) { clearGhostText(); return }
+    currentSuggestion = suggestion
+    const Range = (editor as any).monaco?.Range ??
+      class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
+    ghostDecoration = editor.deltaDecorations(ghostDecoration, [{
+      range: new Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
+      options: {
+        after: { content: suggestion, inlineClassName: 'ghost-text-suggestion' },
+        className: 'ghost-text-line',
+      },
+    }])
+  } catch { clearGhostText() } finally { _abortMap.delete('completion') }
+}
+
+export function triggerCompletion() {
+  if (completionTimer) clearTimeout(completionTimer)
+  completionTimer = setTimeout(requestCompletion, 1500)
+}
+
+export function acceptGhostText(): boolean {
+  const editor = monacoEditor.value
+  if (!editor || !currentSuggestion) return false
+  const pos = editor.getPosition()
+  if (!pos) return false
+  const Range = (editor as any).monaco?.Range ??
+    class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
+  editor.executeEdits('inline-completion', [{
+    range: new Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
+    text: currentSuggestion,
+  }])
+  clearGhostText()
+  return true
+}
+
+export function onDidChangeContent() { triggerCompletion() }
+
+export function cleanup() {
+  if (completionTimer) { clearTimeout(completionTimer); completionTimer = null }
+  const editor = monacoEditor.value
+  if (editor) {
+    if (ghostDecoration.length) { try { editor.deltaDecorations(ghostDecoration, []) } catch { /* disposed */ } ghostDecoration = [] }
+    if (inlineDecoration.length) { try { editor.deltaDecorations(inlineDecoration, []) } catch { /* disposed */ } inlineDecoration = [] }
+  }
+  for (const ctrl of _abortMap.values()) ctrl.abort()
+  _abortMap.clear()
+}
+// ── Facade function (returns module-level singletons) ─────────────────────
+export function useEditor() {
   return {
-    // state
-    tabs,
-    activeTabId,
-    activeTab,
-    content,
-    activeFile,
-    isModified,
-    selection,
-    showPreview,
-    showAiPanel,
-    aiLoading,
-    aiResult,
-    monacoEditor,
-    previousContent,
-    contentVersion,
-    // methods
-    setEditorInstance,
-    setContent,
-    updateSelection,
-    markClean,
-    markDirty,
-    openFile,
-    openNewUntitled,
-    closeTab,
-    setActiveTab,
-    renameTabPath,
-    saveFile,
-    exportToWord,
-    insertTextAtCursor,
-    insertImage,
-    uploadImage,
-    insertImageFile,
-    analyzeVision,
-    ocrImage,
-    analyzeChart,
-    extractTableFromImage,
-    insertTable,
-    insertInlineFormula,
-    insertBlockFormula,
-    processCitations,
-    previewCitations,
-    getZoteroStatus,
-    searchZotero,
-    getZoteroItem,
-    insertZoteroCitation,
-    aiEdit,
-    inlineEdit,
-    cancelAiEdit,
-    applyAiResult,
-    rejectAiResult,
-    undoEdit,
-    // inline completion
-    onDidChangeContent,
-    acceptGhostText,
-    clearGhostText,
-    cleanup,
+    showAiPanel, aiLoading, aiResult, previousContent,
+    insertTextAtCursor, insertImage,
+    monacoEditor, contentVersion, activeTab, content, selection,
+    aiEdit, inlineEdit, cancelAiEdit, applyAiResult, rejectAiResult, undoEdit,
+    triggerCompletion, acceptGhostText, onDidChangeContent, clearGhostText, cleanup,
   }
 }

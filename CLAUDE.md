@@ -71,6 +71,7 @@ SSE events stream tool calls and reasoning steps. Agent can use RAG, Zotero, arX
 - `routers/agent.py` — Agent chat, RAG document management
 - `routers/editor.py` — AI edit, complete, export (LaTeX/PDF/Word), vision, citation, Zotero, paper scaffolding
 - `routers/argument.py` — Dynamic Argument Mapping (tree CRUD, expand, review, flatten)
+- `routers/mindmap.py` — Mind map CRUD, AI expand, layout
 
 `api.py` — entry point used by Tauri and standalone. Uses **delayed imports** for optional subsystems (Agent, Plugin): they set `_AGENT_AVAILABLE = False` on ImportError, so translation works without them.
 
@@ -80,7 +81,7 @@ Key backend modules under `src/`:
 - `chunker/` — 3 strategies (sentence/paragraph/fixed)
 - `translator/` — `ollama_client.py` + `cloud_client.py` (`PROVIDER_PRESETS`, 18 providers)
 - `formatter/` — bilingual/translated-only/parallel output + `renderer.py` (PDF/LaTeX) + `word_exporter.py`
-- `agent/` — Core: `agent.py` (AgentLoop ReAct engine), `context_compressor.py`, `prompt_builder.py`, `models.py`. Memory+Evolution: `memory.py`, `skill_system.py`, `trajectory.py`, `review_agent.py`. Tools+Resources: `tools.py`, `rag.py`, `vram_manager.py`, `tool_generator.py`. Reliability: `error_classifier.py`, `hooks.py`. Integration: `mcp_server.py`, `auto_processor.py`, `special_elements.py`.
+- `agent/` — Core: `agent.py` (AgentLoop ReAct engine), `context_compressor.py`, `prompt_builder.py`, `models.py`. Memory+Evolution: `memory.py`, `skill_system.py`, `trajectory.py`, `review_agent.py`. Tools+Resources: `tools/` (core, workspace_tools, atomic_tools, builtin_tools, registry), `rag.py`, `vram_manager.py`, `tool_generator.py`. Reliability: `error_classifier.py`, `hooks.py`. Integration: `mcp_server.py`, `auto_processor.py`, `special_elements.py`.
 - `plugin/` — MCP-style plugin registry + 16 built-in tools
 - `argument/` — Dynamic Argument Mapping: tree store, logic checker, expander, observer, feedback generator, flattener
 - `citation/`, `zotero/`, `mcp/vision_client.py` — citation indexer, Zotero API client, multi-modal image analysis
@@ -89,12 +90,12 @@ Key backend modules under `src/`:
 
 ### Frontend Structure (`src/`)
 
-- `App.vue` — Thin shell (~630 lines): wires AppTopBar, TranslateView, AgentPanel, EditorLayout. Manages app-wide state (theme, engine settings, drag-drop, background layer, health checks).
-- `composables/` — state stores; three are **true singletons** (module-level state, shared app-wide):
+- `App.vue` — Thin shell (~680 lines): wires AppTopBar, TranslateView, AgentPanel, EditorLayout. Manages app-wide state (theme, engine settings, drag-drop, background layer, health checks).
+- `composables/` — state stores; all major ones are **true singletons** (module-level state, shared app-wide):
   - `useTranslate.ts` — singleton; SSE translation pipeline state + reconnect logic
   - `useEditor.ts` — singleton; Monaco instance, tabs, AI panel, ghost text completion
   - `useFileTree.ts` — singleton; file system navigation
-  - `useAgentChat.ts` — regular composable (new state per call); Agent SSE chat state
+  - `useAgentChat.ts` — singleton (module-level refs); Agent SSE chat state + session/approval state
   - `useMindMap.ts` — singleton; mind map data (CRUD, undo/redo, flow adapters `toFlowNodes`/`toFlowEdges`)
   - `useMindMapKeyboard.ts` — keyboard handler (Tab/Enter/F2/arrows/Ctrl+Z)
   - `useMindMapLayout.ts` — dagre auto-layout
@@ -103,7 +104,7 @@ Key backend modules under `src/`:
   - `AppTopBar.vue` — brand, mode switch, engine/display settings panels, health pills, window controls
   - `TranslateView.vue` — upload drop card, progress/step indicators, result views (sentence/parallel/markdown), sentence splitting, markdown rendering
   - `AgentPanel.vue` — agent chat/docs/templates/sessions side panel (self-contained via `useAgentChat()`)
-  - `EditorLayout.vue` — editor mode layout (Monaco + AiPanel + FileTree + ArgumentMap)
+  - `EditorLayout.vue` — editor mode layout (~650 lines): FileTree sidebar + MonacoEditor + AiPanel right panel + ArgumentMap, with tab management and keyboard shortcuts
   - `mindmap/` — MindMapCanvas (Vue Flow), MindNodeCard, MindEdge
   - `MindMapView.vue`, `MindMapFloatingToolbar.vue`, `MindMapAiHints.vue`
   - `ui/` — design-system primitives: UiButton, UiIconButton, UiPanel, UiInput, UiTextarea, UiSelect, UiTooltip
@@ -119,7 +120,7 @@ Key backend modules under `src/`:
 
 ### Cross-Cutting Patterns
 
-- **Router registration**: `api_factory.py` calls `register_translate`, `register_agent`, `register_editor`, `register_argument` — each receives shared closures and returns state dicts for cross-module wiring.
+- **Router registration**: `api_factory.py` calls `register_translate`, `register_agent`, `register_editor`, `register_argument`, `register_mindmap` — each receives shared closures and returns state dicts for cross-module wiring.
 - **PyInstaller dual-dir**: `BUNDLED_DIR` (read-only, from `_MEIPASS`) vs `RUNTIME_DIR` (writable, beside exe). Config copied from bundle to runtime on first run.
 - **Docker mode**: `DOCKER_MODE` env var switches config to `docker.yaml`.
 - **SSE everywhere**: Backend uses `sse-starlette`, frontend uses shared `streamReader.ts`. `useTranslate.ts` retries SSE connections up to 3 times with 2s delay.

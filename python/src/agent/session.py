@@ -1,6 +1,5 @@
 """AgentSession — 一次完整任务的会话对象（Phase 2: 状态机核心）。
 
-取代原有 AgentLoop.run() 的一次性 AsyncGenerator 模式，
 提供可暂停、可恢复、多任务编排的会话管理。
 
 关键设计：
