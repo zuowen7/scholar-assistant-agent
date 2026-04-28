@@ -1,13 +1,12 @@
 <template>
   <div class="mindmap-view">
     <div class="mindmap-header">
-      <div>
-        <div class="mindmap-kicker">Mind Map</div>
-        <h2>思维导图</h2>
-      </div>
-      <div class="view-meta">
-        <span v-if="connectionFromId">选择目标节点以完成连接</span>
-        <span v-else>{{ nodeCount }} 个节点</span>
+      <div class="mindmap-title-row">
+        <span class="mindmap-badge">思维导图</span>
+        <span class="mindmap-node-count">
+          <span v-if="connectionFromId">选择目标节点以完成连接</span>
+          <span v-else>{{ nodeCount }} 个节点</span>
+        </span>
       </div>
     </div>
 
@@ -445,33 +444,32 @@ async function aiExpandSelectedNode() {
   color: var(--text-primary);
 }
 .mindmap-header {
-  min-height: 64px;
+  height: 44px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 10px 16px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--border-color);
   background: var(--toolbar-bg);
 }
-.mindmap-kicker {
-  color: var(--accent);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.mindmap-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
 }
-.mindmap-header h2 {
-  margin: 2px 0 0;
-  font-size: 18px;
+.mindmap-badge {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--c-accent);
+  letter-spacing: 0.01em;
 }
-.view-meta {
-  color: var(--text-secondary);
-  font-size: 12px;
+.mindmap-node-count {
+  font-size: var(--text-sm);
+  color: var(--c-text-3);
   border: 1px solid var(--border-color);
-  border-radius: 999px;
-  padding: 4px 9px;
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
 }
 .mindmap-body {
   flex: 1;

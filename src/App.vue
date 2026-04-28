@@ -24,15 +24,19 @@
     <!-- 内容遮罩层（半透明，保证可读性） -->
     <div class="content-overlay">
       <!-- 全局拖拽遮罩 -->
-      <div v-if="globalDragging" class="drag-overlay">
-        <div class="drag-overlay-content">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M12 16V8m0 0l-3 3m3-3l3 3"/>
-            <path d="M2 12c0-4.714 0-7.071 1.464-8.536C4.93 2 7.286 2 12 2c4.714 0 7.071 0 8.535 1.464C22 4.93 22 7.286 22 12c0 4.714 0 7.071-1.465 8.535C19.072 22 16.714 22 12 22s-7.071 0-8.536-1.465C2 19.072 2 16.714 2 12z"/>
-          </svg>
-          <p>松开以开始翻译</p>
+      <Transition name="drag-fade">
+        <div v-if="globalDragging" class="drag-overlay">
+          <div class="drag-card">
+            <div class="drag-ring">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M12 16V8m0 0l-3 3m3-3l3 3"/>
+              </svg>
+            </div>
+            <p class="drag-label">松开以开始翻译</p>
+            <p class="drag-hint">支持 PDF、Word、TXT、Markdown 等格式</p>
+          </div>
         </div>
-      </div>
+      </Transition>
 
       <!-- 顶栏 -->
       <AppTopBar
@@ -612,16 +616,55 @@ body {
 
 /* ── Drag Overlay ── */
 .drag-overlay {
-  position: fixed; inset: 0; z-index: 999;
-  background: var(--accent-bg);
-  backdrop-filter: blur(4px);
-  display: flex; align-items: center; justify-content: center;
+  position: fixed;
+  inset: 8px;
+  z-index: 999;
+  border-radius: var(--radius-xl);
+  border: 2px dashed var(--c-accent);
+  background: rgba(99, 102, 241, 0.06);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   pointer-events: none;
 }
-.drag-overlay-content {
-  text-align: center; color: var(--accent2);
+.drag-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
 }
-.drag-overlay-content p { margin-top: 12px; font-size: 15px; font-weight: 500; }
+.drag-ring {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 2px solid var(--c-accent);
+  background: var(--c-accent-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-accent-hover);
+  animation: drag-pulse 1.4s ease-in-out infinite;
+}
+.drag-label {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--c-accent-hover);
+}
+.drag-hint {
+  font-size: var(--text-sm);
+  color: var(--c-text-2);
+}
+@keyframes drag-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 var(--c-accent-soft); }
+  50% { transform: scale(1.06); box-shadow: 0 0 0 10px transparent; }
+}
+/* Drag overlay transition */
+.drag-fade-enter-active,
+.drag-fade-leave-active { transition: opacity var(--motion-base) var(--ease-out); }
+.drag-fade-enter-from,
+.drag-fade-leave-to { opacity: 0; }
 
 /* ── Agent icon active state (kept here because it's part of topbar) ── */
 .editor-mode { flex: 1; min-height: 0; }

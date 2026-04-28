@@ -3,14 +3,18 @@
       v-if="visible"
       class="cmd-palette"
       :style="{ top: position.y + 'px', left: position.x + 'px' }"
+      role="dialog"
+      aria-label="AI 编辑命令"
     >
       <!-- 任务类型切换 -->
-      <div class="cmd-task-tabs">
+      <div class="cmd-task-tabs" role="tablist">
         <button
           v-for="t in taskTypes"
           :key="t.id"
           class="cmd-tab"
+          role="tab"
           :class="{ active: activeTask === t.id }"
+          :aria-selected="activeTask === t.id"
           @click="activeTask = t.id"
         >{{ t.label }}</button>
       </div>
@@ -31,7 +35,7 @@
           @keydown.escape="$emit('cancel')"
           @keydown.stop
         />
-        <button class="cmd-submit" @click="handleSubmit" :disabled="loading">
+        <button class="cmd-submit" @click="handleSubmit" :disabled="loading" aria-label="执行">
           <span v-if="!loading">Apply</span>
           <span v-else class="cmd-spinner"></span>
         </button>
@@ -132,7 +136,7 @@ function handleSubmit() {
   emit('submit', {
     instruction: inst,
     taskType: activeTask.value,
-    previous: '',  // MonacoEditor 从 editor API 获取前一段
+    previous: '',
   })
 }
 
@@ -150,11 +154,11 @@ function setAndSubmit(text: string) {
 .cmd-palette {
   position: fixed;
   z-index: 9999;
-  background: #1f1f1f;
-  border: 1px solid #007acc;
-  border-radius: 8px;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius-md);
   padding: 8px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  box-shadow: var(--elevation-4);
   min-width: 380px;
   max-width: 500px;
 }
@@ -163,8 +167,8 @@ function setAndSubmit(text: string) {
   display: flex;
   gap: 2px;
   margin-bottom: 6px;
-  background: #181818;
-  border-radius: 6px;
+  background: var(--c-surface-1);
+  border-radius: var(--radius-sm);
   padding: 2px;
 }
 
@@ -172,19 +176,20 @@ function setAndSubmit(text: string) {
   flex: 1;
   background: none;
   border: none;
-  border-radius: 4px;
-  padding: 3px 6px;
-  color: #888;
-  font-size: 12px;
+  border-radius: var(--radius-xs);
+  padding: 4px 6px;
+  color: var(--c-text-3);
+  font-size: var(--text-sm);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all var(--motion-fast);
+  font-family: inherit;
 }
-.cmd-tab:hover { color: #ddd; background: #2a2a2a; }
-.cmd-tab.active { background: #007acc; color: #fff; }
+.cmd-tab:hover { color: var(--c-text-0); background: var(--c-surface-3); }
+.cmd-tab.active { background: var(--c-accent); color: #fff; }
 
 .cmd-hint {
-  font-size: 11px;
-  color: #666;
+  font-size: var(--text-xs);
+  color: var(--c-text-3);
   padding: 2px 4px;
   margin-bottom: 4px;
 }
@@ -196,29 +201,32 @@ function setAndSubmit(text: string) {
 
 .cmd-input {
   flex: 1;
-  background: #2d2d2d;
-  border: 1px solid #444;
-  border-radius: 4px;
-  padding: 6px 10px;
-  color: #ddd;
-  font-size: 13px;
+  background: var(--c-surface-1);
+  border: 1px solid var(--c-surface-3);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+  color: var(--c-text-0);
+  font-size: var(--text-md);
   outline: none;
+  font-family: inherit;
 }
-.cmd-input:focus { border-color: #007acc; }
-.cmd-input::placeholder { color: #666; }
+.cmd-input:focus { border-color: var(--c-accent); }
+.cmd-input::placeholder { color: var(--c-text-3); }
 
 .cmd-submit {
-  background: #007acc;
+  background: var(--c-accent);
   border: none;
-  border-radius: 4px;
-  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  padding: 7px 14px;
   color: #fff;
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
   min-width: 60px;
+  font-family: inherit;
+  transition: opacity var(--motion-fast);
 }
-.cmd-submit:hover { opacity: 0.9; }
-.cmd-submit:disabled { opacity: 0.5; }
+.cmd-submit:hover:not(:disabled) { opacity: 0.88; }
+.cmd-submit:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .cmd-presets {
   display: flex;
@@ -228,15 +236,17 @@ function setAndSubmit(text: string) {
 }
 
 .cmd-presets button {
-  background: #333;
-  border: 1px solid #444;
-  border-radius: 10px;
+  background: var(--c-surface-3);
+  border: 1px solid var(--c-surface-4);
+  border-radius: var(--radius-pill);
   padding: 2px 10px;
-  color: #aaa;
-  font-size: 11px;
+  color: var(--c-text-2);
+  font-size: var(--text-xs);
   cursor: pointer;
+  font-family: inherit;
+  transition: all var(--motion-fast);
 }
-.cmd-presets button:hover { background: #444; color: #ddd; }
+.cmd-presets button:hover { background: var(--c-surface-4); color: var(--c-text-0); }
 
 .cmd-spinner {
   display: inline-block;

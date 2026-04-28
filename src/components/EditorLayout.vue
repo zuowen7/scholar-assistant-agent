@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="editor-layout">
     <!-- 左侧文件树 -->
     <div
@@ -11,7 +11,8 @@
         :title="sidebarCollapsed ? '展开 Explorer' : '折叠 Explorer'"
         @click="sidebarCollapsed = !sidebarCollapsed"
       >
-        {{ sidebarCollapsed ? '›' : '‹' }}
+        <ChevronRight v-if="sidebarCollapsed" :size="14" :stroke-width="2" />
+        <ChevronLeft v-else :size="14" :stroke-width="2" />
       </button>
       <FileTree v-if="!sidebarCollapsed" />
       <button v-else class="sidebar-rail-button" @click="sidebarCollapsed = false">
@@ -32,151 +33,225 @@
       />
 
       <template v-else>
-      <EditorTabs />
-      <div v-if="!activeTab" class="editor-welcome">
-        <div class="welcome-panel">
-          <div class="welcome-kicker">Scholar Workspace</div>
-          <h2>开始写作</h2>
-          <p>打开一个工程或创建论文草稿，编辑器、预览和 AI 助手会在文档打开后自动进入工作区。</p>
-          <div class="welcome-actions">
-            <button class="welcome-action primary" @click="showProjectStart = true">新建工程</button>
-            <button class="welcome-action" @click="showTemplatePicker = true">新建论文</button>
-            <button class="welcome-action" @click="openWorkspaceFolder">打开工程</button>
+        <EditorTabs />
+
+        <!-- Welcome screen -->
+        <div v-if="!activeTab" class="editor-welcome">
+          <div class="welcome-content">
+            <div class="welcome-hero">
+              <GraduationCap :size="36" class="hero-icon" />
+              <div class="hero-text">
+                <p class="hero-kicker">Scholar Workspace</p>
+                <h1 class="hero-title">开始写作</h1>
+              </div>
+            </div>
+
+            <p class="welcome-section-label">快速开始</p>
+            <div class="welcome-cards">
+              <button class="wc-card" @click="showProjectStart = true">
+                <span class="wc-icon"><Workflow :size="18" /></span>
+                <div class="wc-text">
+                  <strong>新建工程</strong>
+                  <span>思维导图 → 论文草稿</span>
+                </div>
+              </button>
+              <button class="wc-card" @click="showTemplatePicker = true">
+                <span class="wc-icon accent"><FileText :size="18" /></span>
+                <div class="wc-text">
+                  <strong>从模板新建</strong>
+                  <span>IEEE / ACM / 自定义</span>
+                </div>
+              </button>
+              <button class="wc-card" @click="openWorkspaceFolder">
+                <span class="wc-icon"><FolderOpen :size="18" /></span>
+                <div class="wc-text">
+                  <strong>打开文件夹</strong>
+                  <span>继续现有工程</span>
+                </div>
+              </button>
+              <button class="wc-card" @click="openNewUntitled">
+                <span class="wc-icon"><FilePlus :size="18" /></span>
+                <div class="wc-text">
+                  <strong>空白文档</strong>
+                  <span>直接进入编辑器</span>
+                </div>
+              </button>
+            </div>
+
+            <div class="welcome-shortcuts">
+              <kbd>Ctrl+K</kbd> AI 编辑 &nbsp;·&nbsp; <kbd>Ctrl+S</kbd> 保存 &nbsp;·&nbsp; <kbd>Tab</kbd> 接受补全
+            </div>
           </div>
         </div>
-      </div>
-      <template v-else>
-      <div class="editor-toolbar">
-        <div class="toolbar-left">
-          <button class="toolbar-btn new-paper-btn" @click="showTemplatePicker = true" title="新建论文">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-            <span class="btn-label">新建论文</span>
-          </button>
-          <button class="toolbar-btn" @click="openMindMapFromEditor" title="打开思维导图">思维导图</button>
-          <button class="toolbar-btn" :class="{ active: showArgumentMap }" @click="toggleArgumentMap" title="论证导图">论证</button>
-          <span class="toolbar-hint">Ctrl+K AI Edit</span>
-        </div>
-        <div class="toolbar-right" @click.stop>
-          <input
-            ref="imageInputRef"
-            class="hidden-file-input"
-            type="file"
-            accept="image/png,image/jpeg,image/gif,image/webp,image/bmp"
-            @change="handleImageSelected"
-          />
-          <input
-            ref="visionInputRef"
-            class="hidden-file-input"
-            type="file"
-            accept="image/png,image/jpeg,image/gif,image/webp,image/bmp"
-            @change="handleVisionSelected"
-          />
 
-          <div class="tool-group">
-            <button class="toolbar-btn menu-trigger" :class="{ active: openToolMenu === 'insert' }" @click="toggleToolMenu('insert')" title="插入内容">
-              插入
-              <span class="chevron">⌄</span>
-            </button>
-            <div v-if="openToolMenu === 'insert'" class="tool-menu">
-              <button class="tool-menu-item" @click="runMenuAction(openImagePicker)" :disabled="assetLoading">图片</button>
-              <button class="tool-menu-item" @click="runMenuAction(handleInsertTable)">表格</button>
-              <button class="tool-menu-item" @click="runMenuAction(handleInsertInlineFormula)">行内公式</button>
-              <button class="tool-menu-item" @click="runMenuAction(handleInsertBlockFormula)">块级公式</button>
+        <template v-else>
+          <!-- Slim toolbar -->
+          <div class="editor-toolbar" @click.stop>
+            <!-- Hidden file inputs -->
+            <input
+              ref="imageInputRef"
+              class="hidden-file-input"
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp,image/bmp"
+              @change="handleImageSelected"
+            />
+            <input
+              ref="visionInputRef"
+              class="hidden-file-input"
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp,image/bmp"
+              @change="handleVisionSelected"
+            />
+
+            <div class="tb-left">
+              <button class="tb-btn" title="新建论文" @click="showTemplatePicker = true" aria-label="新建论文">
+                <FilePlus :size="15" :stroke-width="1.7" />
+              </button>
+              <button class="tb-btn" title="保存 (Ctrl+S)" @click="handleSaveFile" aria-label="保存">
+                <Save :size="15" :stroke-width="1.7" />
+              </button>
+              <div class="tb-divider" />
+              <kbd class="tb-kbd">Ctrl+K · AI</kbd>
             </div>
-          </div>
 
-          <div class="tool-group">
-            <button class="toolbar-btn menu-trigger" :class="{ active: openToolMenu === 'analyze' }" @click="toggleToolMenu('analyze')" title="分析与检查">
-              分析
-              <span class="chevron">⌄</span>
-            </button>
-            <div v-if="openToolMenu === 'analyze'" class="tool-menu">
-              <button class="tool-menu-item" @click="runMenuAction(openVisionPicker)" :disabled="assetLoading">OCR / Vision</button>
-              <button class="tool-menu-item" @click="runMenuAction(runComplianceCheck)">论文合规检查</button>
-              <button class="tool-menu-item" @click="toggleAiPanel">AI 编辑面板</button>
-            </div>
-          </div>
+            <div class="tb-right">
+              <div v-if="exportMessage" class="export-toast">{{ exportMessage }}</div>
 
-          <div class="tool-group">
-            <button class="toolbar-btn menu-trigger" :class="{ active: openToolMenu === 'reference' }" @click="toggleToolMenu('reference')" title="引用与文献">
-              引用
-              <span class="chevron">⌄</span>
-            </button>
-            <div v-if="openToolMenu === 'reference'" class="tool-menu">
-              <button class="tool-menu-item" @click="runMenuAction(handleProcessCitations)" :disabled="assetLoading">编号引用</button>
-              <button class="tool-menu-item" @click="runMenuAction(handleZoteroInsert)" :disabled="assetLoading">Zotero 搜索</button>
-            </div>
-          </div>
-
-          <div class="tool-group">
-            <button class="toolbar-btn menu-trigger primary-trigger" :class="{ active: openToolMenu === 'export' }" @click="toggleToolMenu('export')" title="导出文档">
-              导出
-              <span class="chevron">⌄</span>
-            </button>
-            <div v-if="openToolMenu === 'export'" class="tool-menu export-menu">
-              <label v-if="exportTemplates.length" class="tool-menu-label">
-                LaTeX 模板
-                <select
-                  class="export-select"
-                  v-model="selectedTemplate"
-                  :disabled="exportLoading"
-                  title="选择导出模板"
-                >
-                  <option value="" disabled>选择模板...</option>
-                  <option
-                    v-for="t in exportTemplates"
-                    :key="t.id"
-                    :value="t.id"
-                  >{{ t.name }}</option>
-                </select>
-              </label>
-              <button class="tool-menu-item" @click="runMenuAction(handleExportWord)" :disabled="exportLoading">Word (.docx)</button>
-              <button class="tool-menu-item" @click="runMenuAction(handleExportLatex)" :disabled="!selectedTemplate || exportLoading">LaTeX (.tex)</button>
               <button
-                class="tool-menu-item"
-                @click="runMenuAction(handleExportPdf)"
-                :disabled="!selectedTemplate || exportLoading || !tectonicAvailable"
-              >PDF</button>
+                class="tb-btn"
+                title="思维导图"
+                aria-label="思维导图"
+                @click="openMindMapFromEditor"
+              >
+                <Workflow :size="15" :stroke-width="1.7" />
+              </button>
+              <button
+                class="tb-btn"
+                :class="{ active: rightPanelTab === 'preview' }"
+                title="预览"
+                aria-label="预览"
+                @click="toggleRightPanel('preview')"
+              >
+                <Eye :size="15" :stroke-width="1.7" />
+              </button>
+              <button
+                class="tb-btn"
+                :class="{ active: rightPanelTab === 'ai' }"
+                title="AI 编辑"
+                aria-label="AI 编辑面板"
+                @click="toggleRightPanel('ai')"
+              >
+                <Bot :size="15" :stroke-width="1.7" />
+              </button>
+              <button
+                class="tb-btn"
+                :class="{ active: rightPanelTab === 'argument' }"
+                title="论证导图"
+                aria-label="论证导图"
+                @click="toggleRightPanel('argument')"
+              >
+                <GitBranch :size="15" :stroke-width="1.7" />
+              </button>
+              <div class="tb-divider" />
+
+              <!-- More actions dropdown -->
+              <UiDropdown :items="toolbarMoreItems" :width="230" align="end">
+                <template #trigger>
+                  <button class="tb-btn" title="更多工具" aria-label="更多工具">
+                    <MoreHorizontal :size="15" :stroke-width="1.7" />
+                  </button>
+                </template>
+                <template v-if="exportTemplates.length" #default>
+                  <div class="dd-template-row">
+                    <span class="dd-template-label">LaTeX 模板</span>
+                    <select
+                      class="dd-template-select"
+                      v-model="selectedTemplate"
+                      :disabled="exportLoading"
+                    >
+                      <option v-for="t in exportTemplates" :key="t.id" :value="t.id">{{ t.name }}</option>
+                    </select>
+                  </div>
+                </template>
+              </UiDropdown>
             </div>
           </div>
-          <!-- 瀵煎嚭鐘舵€佹彁绀?-->
-          <div v-if="exportMessage" class="export-toast">{{ exportMessage }}</div>
-          <button class="toolbar-btn icon-btn" :class="{ active: showPreview }" @click="showPreview = !showPreview" title="切换预览">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-          </button>
-          <button class="toolbar-btn icon-btn" @click="handleSaveFile" title="保存 (Ctrl+S)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-          </button>
-        </div>
-      </div>
-      <MonacoEditor :theme="isDark ? 'vs-dark' : 'vs'" :on-did-change-content="onDidChangeContent" @contentChange="onContentChange" @selectionChange="onSelectionChange" />
-      </template>
+
+          <MonacoEditor
+            :theme="isDark ? 'vs-dark' : 'vs'"
+            :on-did-change-content="onDidChangeContent"
+            @contentChange="onContentChange"
+            @selectionChange="onSelectionChange"
+          />
+        </template>
       </template>
     </div>
 
-    <!-- 右侧面板 -->
-    <template v-if="workspaceMode === 'editor' && activeTab && (showPreview || showAiPanel || showArgumentMap)">
+    <!-- 右侧统一 Tab 面板 -->
+    <template v-if="workspaceMode === 'editor' && activeTab && rightPanelTab">
       <div class="resize-handle panel-resize" @mousedown="startResize($event, 'panel')"></div>
       <div class="layout-panel" :style="{ width: panelWidth + 'px' }">
-        <MarkdownPreview v-if="showPreview" :content="content" :version="contentVersion" :class="{ 'panel-half': showAiPanel || showArgumentMap }" />
+        <!-- Tab bar -->
+        <div class="rp-tab-bar">
+          <button
+            class="rp-tab"
+            :class="{ active: rightPanelTab === 'preview' }"
+            @click="rightPanelTab = 'preview'"
+          >
+            <Eye :size="13" :stroke-width="1.7" />
+            预览
+          </button>
+          <button
+            class="rp-tab"
+            :class="{ active: rightPanelTab === 'ai' }"
+            @click="rightPanelTab = 'ai'"
+          >
+            <Bot :size="13" :stroke-width="1.7" />
+            AI 编辑
+          </button>
+          <button
+            class="rp-tab"
+            :class="{ active: rightPanelTab === 'argument' }"
+            @click="rightPanelTab = 'argument'"
+          >
+            <GitBranch :size="13" :stroke-width="1.7" />
+            论证
+          </button>
+          <button
+            class="rp-close"
+            title="关闭面板"
+            aria-label="关闭面板"
+            @click="rightPanelTab = null"
+          >
+            <X :size="13" :stroke-width="2" />
+          </button>
+        </div>
+
+        <!-- Tab content -->
+        <MarkdownPreview
+          v-if="rightPanelTab === 'preview'"
+          :content="content"
+          :version="contentVersion"
+          class="rp-content"
+        />
         <AiPanel
-          v-if="showAiPanel"
+          v-if="rightPanelTab === 'ai'"
           :editor-context="selection.text || content"
           :can-undo="!!previousContent"
           :workspace-files="workspaceFiles"
-          :class="{ 'panel-half': showPreview }"
+          class="rp-content"
           @insert="handleInsert"
           @undo="handleUndo"
-          @close="showAiPanel = false"
+          @close="rightPanelTab = null"
         />
         <ArgumentMap
-          v-if="showArgumentMap"
-          :class="{ 'panel-half': showPreview }"
+          v-if="rightPanelTab === 'argument'"
+          class="rp-content"
         />
       </div>
     </template>
 
-    <!-- 论文合规检查弹窗 -->
+    <!-- Modals -->
     <ComplianceModal
       :visible="showCompliance"
       :loading="complianceLoading"
@@ -200,7 +275,9 @@
             <div class="welcome-kicker">New Project</div>
             <h3>新建工程</h3>
           </div>
-          <button class="project-start-close" @click="showProjectStart = false">&times;</button>
+          <button class="project-start-close" @click="showProjectStart = false" aria-label="关闭">
+            <X :size="18" :stroke-width="2" />
+          </button>
         </div>
         <div class="project-start-options">
           <button class="project-start-option primary" @click="startProjectInEditor">
@@ -237,6 +314,13 @@ import ArgumentMap from './ArgumentMap.vue'
 import ComplianceModal from './ComplianceModal.vue'
 import TemplatePicker from './TemplatePicker.vue'
 import MindMapView from './MindMapView.vue'
+import UiDropdown from './ui/UiDropdown.vue'
+import type { DropdownItem } from './ui/UiDropdown.vue'
+import {
+  FilePlus, Save, Eye, Bot, GitBranch, Workflow, MoreHorizontal,
+  Image, Table, Sigma, Quote, Library, Code2, CheckCircle, Download,
+  GraduationCap, FileText, FolderOpen, X, ChevronLeft, ChevronRight,
+} from './ui/icons'
 import { useEditor } from '../composables/useEditor'
 import { useMindMap, mindMapToMarkdown, markdownToMindMapNodes } from '../composables/useMindMap'
 import { API_BASE } from '../utils/api'
@@ -245,12 +329,23 @@ import { readSseStream } from '../utils/streamReader'
 const props = defineProps<{ isDark: boolean }>()
 const workspaceMode = ref<'editor' | 'mindmap'>('editor')
 const showProjectStart = ref(false)
-const showArgumentMap = ref(false)
 const { resetMindMap, loadSavedMindMap, saveMindMap, addChild, updateNodeText } = useMindMap()
+
+// ── Right panel: unified tab ─────────────────────────────────────────────────
+type RightTab = 'preview' | 'ai' | 'argument'
+const rightPanelTab = ref<RightTab | null>(null)
+
+function toggleRightPanel(tab: RightTab) {
+  if (rightPanelTab.value === tab) {
+    rightPanelTab.value = null
+  } else {
+    rightPanelTab.value = tab
+  }
+}
 
 const {
   content, contentVersion, activeTab, selection,
-  showPreview, showAiPanel, aiLoading, aiResult,
+  aiLoading, aiResult,
   previousContent,
   openNewUntitled, setContent, markDirty,
   saveFile, exportToWord, insertTextAtCursor, insertImageFile, analyzeVision,
@@ -260,7 +355,7 @@ const {
   onDidChangeContent, acceptGhostText, clearGhostText,
 } = useEditor()
 
-// 鈹€鈹€ 璁烘枃妯℃澘閫夋嫨鍣?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Template picker ───────────────────────────────────────────────────────────
 const showTemplatePicker = ref(false)
 const workspaceFiles = computed(() =>
   tabs.value.map(t => ({ name: t.name || t.path?.split(/[\\/]/).pop() || 'untitled', content: t.content }))
@@ -268,7 +363,6 @@ const workspaceFiles = computed(() =>
 const imageInputRef = ref<HTMLInputElement | null>(null)
 const visionInputRef = ref<HTMLInputElement | null>(null)
 const assetLoading = ref(false)
-const openToolMenu = ref<'insert' | 'analyze' | 'reference' | 'export' | null>(null)
 
 function startProjectInEditor() {
   showProjectStart.value = false
@@ -325,29 +419,32 @@ function openMindMapFromEditor() {
   workspaceMode.value = 'mindmap'
 }
 
-function toggleToolMenu(menu: 'insert' | 'analyze' | 'reference' | 'export') {
-  openToolMenu.value = openToolMenu.value === menu ? null : menu
-}
-
-function closeToolMenu() {
-  openToolMenu.value = null
-}
-
-function runMenuAction(action: () => void | Promise<void>) {
-  closeToolMenu()
-  void action()
-}
-
-function toggleAiPanel() {
-  closeToolMenu()
-  showAiPanel.value = !showAiPanel.value
-  if (showAiPanel.value) showArgumentMap.value = false
-}
-
-function toggleArgumentMap() {
-  showArgumentMap.value = !showArgumentMap.value
-  if (showArgumentMap.value) showAiPanel.value = false
-}
+// ── Toolbar more-actions dropdown ─────────────────────────────────────────────
+const toolbarMoreItems = computed<DropdownItem[]>(() => [
+  { label: '插入' },
+  { text: '图片', icon: Image, onClick: openImagePicker, disabled: assetLoading.value },
+  { text: '表格 3×3', icon: Table, onClick: handleInsertTable },
+  { text: '行内公式', icon: Sigma, onClick: handleInsertInlineFormula },
+  { text: '块级公式', icon: Sigma, onClick: handleInsertBlockFormula },
+  { divider: true },
+  { label: '分析' },
+  { text: 'OCR / Vision', icon: Eye, onClick: openVisionPicker, disabled: assetLoading.value },
+  { text: '论文合规检查', icon: CheckCircle, onClick: runComplianceCheck },
+  { divider: true },
+  { label: '引用' },
+  { text: '编号引用', icon: Quote, onClick: handleProcessCitations, disabled: assetLoading.value },
+  { text: 'Zotero 搜索', icon: Library, onClick: handleZoteroInsert, disabled: assetLoading.value },
+  { divider: true },
+  { label: '导出' },
+  { text: 'Word (.docx)', icon: Download, onClick: handleExportWord, disabled: exportLoading.value },
+  { text: 'LaTeX (.tex)', icon: Code2, onClick: handleExportLatex, disabled: !selectedTemplate.value || exportLoading.value },
+  {
+    text: 'PDF',
+    icon: Download,
+    onClick: handleExportPdf,
+    disabled: !selectedTemplate.value || exportLoading.value || !tectonicAvailable.value,
+  },
+])
 
 async function openWorkspaceFolder() {
   try {
@@ -363,7 +460,6 @@ async function openWorkspaceFolder() {
 
 function handleScaffoldCreate(markdown: string, templateId: string) {
   openNewUntitled()
-  //setContent 浼氬湪 nextTick 閫氳繃 tab switch 澶勭悊
   nextTick(() => {
     if (activeTab.value) {
       activeTab.value.content = markdown
@@ -372,20 +468,14 @@ function handleScaffoldCreate(markdown: string, templateId: string) {
   })
 }
 
-function openImagePicker() {
-  imageInputRef.value?.click()
-}
-
-function openVisionPicker() {
-  visionInputRef.value?.click()
-}
+function openImagePicker() { imageInputRef.value?.click() }
+function openVisionPicker() { visionInputRef.value?.click() }
 
 async function handleImageSelected(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
   if (!file || assetLoading.value) return
-
   assetLoading.value = true
   try {
     const data = await insertImageFile(file)
@@ -402,19 +492,14 @@ async function handleVisionSelected(event: Event) {
   const file = input.files?.[0]
   input.value = ''
   if (!file || assetLoading.value) return
-
   assetLoading.value = true
   try {
     const data = await analyzeVision(file, 'general')
-    if (!data) {
-      showExportToast('Vision analysis failed')
-      return
-    }
-
+    if (!data) { showExportToast('Vision analysis failed'); return }
     const findings = data.key_findings?.length ? `\nFindings: ${data.key_findings.join('; ')}` : ''
     const chart = data.chart_type ? `\nChart type: ${data.chart_type}` : ''
     const table = data.table_data?.length
-      ? `\n\n${data.table_data.map(row => `| ${row.join(' | ')} |`).join('\n')}`
+      ? `\n\n${data.table_data.map((row: string[]) => `| ${row.join(' | ')} |`).join('\n')}`
       : ''
     insertTextAtCursor(`\n\n> Vision: ${data.text || data.raw_description || 'No text returned'}${chart}${findings}${table}\n`)
     showExportToast('Vision result inserted')
@@ -425,37 +510,18 @@ async function handleVisionSelected(event: Event) {
   }
 }
 
-function handleInsertTable() {
-  insertTable(3, 3)
-}
-
-function handleInsertInlineFormula() {
-  insertInlineFormula()
-}
-
-function handleInsertBlockFormula() {
-  insertBlockFormula()
-}
+function handleInsertTable() { insertTable(3, 3) }
+function handleInsertInlineFormula() { insertInlineFormula() }
+function handleInsertBlockFormula() { insertBlockFormula() }
 
 async function handleProcessCitations() {
-  if (!content.value.trim()) {
-    showExportToast('Please write content in the editor first')
-    return
-  }
-
+  if (!content.value.trim()) { showExportToast('Please write content in the editor first'); return }
   assetLoading.value = true
   try {
     const preview = await previewCitations(content.value)
     const data = await processCitations(content.value, [], 'ieee')
-    if (!data?.text) {
-      showExportToast('Citation indexing failed')
-      return
-    }
-
-    if (activeTab.value) {
-      setContent(`${data.text}${data.bibliography || ''}`)
-      markDirty()
-    }
+    if (!data?.text) { showExportToast('Citation indexing failed'); return }
+    if (activeTab.value) { setContent(`${data.text}${data.bibliography || ''}`); markDirty() }
     showExportToast(`Indexed ${preview?.unique_count ?? data.citations?.length ?? 0} citations`)
   } catch (e) {
     showExportToast(`Citation indexing failed: ${e}`)
@@ -467,22 +533,13 @@ async function handleProcessCitations() {
 async function handleZoteroInsert() {
   const query = window.prompt('Search Zotero')
   if (!query?.trim() || assetLoading.value) return
-
   assetLoading.value = true
   try {
     const status = await getZoteroStatus()
-    if (status && status.connected === false) {
-      showExportToast('Please configure Zotero API first')
-      return
-    }
-
+    if (status && status.connected === false) { showExportToast('Please configure Zotero API first'); return }
     const items = await searchZotero(query.trim(), 5)
     const item = items[0]
-    if (!item?.key) {
-      showExportToast('No Zotero result found')
-      return
-    }
-
+    if (!item?.key) { showExportToast('No Zotero result found'); return }
     await insertZoteroCitation(item.key)
     showExportToast(`Inserted ${item.citation_key || item.key}`)
   } catch (e) {
@@ -492,7 +549,7 @@ async function handleZoteroInsert() {
   }
 }
 
-// 论文合规检查
+// ── Compliance ────────────────────────────────────────────────────────────────
 const showCompliance = ref(false)
 const complianceLoading = ref(false)
 const complianceError = ref('')
@@ -508,7 +565,6 @@ async function runComplianceCheck() {
   complianceError.value = ''
   complianceReport.value = null
   showCompliance.value = true
-
   try {
     const resp = await fetch(`${EXPORT_API}/api/compliance`, {
       method: 'POST',
@@ -525,37 +581,27 @@ async function runComplianceCheck() {
       complianceError.value = data.error || 'Compliance check failed'
     } else {
       complianceReport.value = data.report
-      if (data.report?.error && !data.report?.summary) {
-        complianceError.value = data.report.error
-      }
+      if (data.report?.error && !data.report?.summary) complianceError.value = data.report.error
     }
   } catch (e) {
-    complianceError.value = `璇锋眰澶辫触: ${e}`
+    complianceError.value = `请求失败: ${e}`
   } finally {
     complianceLoading.value = false
   }
 }
 
+// ── Layout / resize ───────────────────────────────────────────────────────────
 const sidebarWidth = ref(296)
 const collapsedSidebarWidth = 44
 const sidebarCollapsed = ref(false)
 const panelWidth = ref(300)
 
-function onContentChange(_value: string) {
-  // content is already updated by useEditor
-}
-
-function onSelectionChange(_sel: any) {
-  // selection is already updated by useEditor
-}
+function onContentChange(_value: string) {}
+function onSelectionChange(_sel: unknown) {}
 
 function handleAiEdit(instruction: string, taskType?: string) {
   const contextText = selection.value.text || content.value
-  if (!contextText.trim()) {
-    // 娌℃湁閫夋嫨鍐呭鏃讹紝鍙敤 instruction 鎻愰棶锛圓I 鍙互鍋?free-form 闂瓟锛?    aiEdit(instruction, '', undefined)
-    return
-  }
-  aiEdit(instruction, contextText, taskType)
+  aiEdit(instruction, contextText || '', taskType)
 }
 
 async function handleAgentRequest(instruction: string) {
@@ -564,20 +610,13 @@ async function handleAgentRequest(instruction: string) {
     const resp = await fetch(`${EXPORT_API}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: instruction,
-        context_text: contextText || undefined,
-      }),
+      body: JSON.stringify({ message: instruction, context_text: contextText || undefined }),
     })
     if (resp.ok) {
-      // Stream the response to AI result
       const reader = resp.body?.getReader()
       if (!reader) return
-
       await readSseStream(reader, (_type, evt) => {
-        if (evt.content) {
-          aiResult.value = (aiResult.value || '') + (evt.content as string)
-        }
+        if (evt.content) aiResult.value = (aiResult.value || '') + (evt.content as string)
       })
     }
   } catch (e) { console.warn('handleAgentRequest failed:', e) }
@@ -600,27 +639,17 @@ async function handleStyleTransfer(templateId: string, templateName: string) {
   const contextText = selection.value.text || content.value
   if (!contextText.trim()) return
   try {
-    const resp = await fetch(`${EXPORT_API}/api/paper-style-transfer`, {
+    await fetch(`${EXPORT_API}/api/paper-style-transfer`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: contextText, template_id: templateId, section: 'introduction' }),
     })
-    if (resp.ok) {
-      const data = await resp.json()
-      // Use aiEdit to set the result as the AI result
-      aiEdit(`Rewrite in ${templateName} style`, contextText, 'expand')
-    }
+    aiEdit(`Rewrite in ${templateName} style`, contextText, 'expand')
   } catch (e) { console.warn('handleStyleTransfer failed:', e) }
 }
 
-function handleInsert(text: string) {
-  aiResult.value = text
-  applyAiResult()
-}
-
-function handleUndo() {
-  undoEdit()
-}
+function handleInsert(text: string) { aiResult.value = text; applyAiResult() }
+function handleUndo() { undoEdit() }
 
 async function handleSaveFile() {
   const err = await saveFile()
@@ -628,7 +657,6 @@ async function handleSaveFile() {
   else showExportToast('Saved')
 }
 
-// Track active resize handlers so onBeforeUnmount can clean them up if drag is in progress
 let _activeResizeMove: ((e: MouseEvent) => void) | null = null
 let _activeResizeUp: (() => void) | null = null
 
@@ -644,30 +672,25 @@ function startResize(e: MouseEvent, target: 'sidebar' | 'panel') {
       panelWidth.value = Math.max(260, Math.min(760, startWidth - (e.clientX - startX)))
     }
   }
-
   function onMouseUp() {
     document.removeEventListener('mousemove', onMouseMove)
     document.removeEventListener('mouseup', onMouseUp)
     _activeResizeMove = null
     _activeResizeUp = null
   }
-
   _activeResizeMove = onMouseMove
   _activeResizeUp = onMouseUp
   document.addEventListener('mousemove', onMouseMove)
   document.addEventListener('mouseup', onMouseUp)
 }
 
-// Ctrl+S save, Tab accept ghost text
 async function onKeyDown(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key === 's') {
     e.preventDefault()
     try {
       const err = await saveFile()
       if (err) showExportToast(err)
-    } catch (err) {
-      showExportToast(String(err))
-    }
+    } catch (err) { showExportToast(String(err)) }
   }
   if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.shiftKey && acceptGhostText()) {
     e.preventDefault()
@@ -688,21 +711,18 @@ function handlePaperScaffold(e: Event) {
 
 onMounted(() => {
   window.addEventListener('keydown', onKeyDown)
-  window.addEventListener('click', closeToolMenu)
   loadExportTemplates()
   window.addEventListener('paper-scaffold', handlePaperScaffold)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
-  window.removeEventListener('click', closeToolMenu)
   window.removeEventListener('paper-scaffold', handlePaperScaffold)
-  // Clean up resize drag handlers if a drag was in progress when component unmounted
   if (_activeResizeMove) document.removeEventListener('mousemove', _activeResizeMove)
   if (_activeResizeUp) document.removeEventListener('mouseup', _activeResizeUp)
 })
 
-// 鈹€鈹€ Pandoc 瀵煎嚭 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Export ────────────────────────────────────────────────────────────────────
 const EXPORT_API = API_BASE
 const exportTemplates = ref<{ id: string; name: string; description: string }[]>([])
 const selectedTemplate = ref('')
@@ -711,6 +731,7 @@ const exportMessage = ref('')
 let exportToastTimer: ReturnType<typeof setTimeout> | null = null
 
 const tectonicAvailable = ref(false)
+
 async function loadExportTemplates() {
   try {
     const resp = await fetch(`${EXPORT_API}/api/export/templates`)
@@ -727,36 +748,22 @@ async function loadExportTemplates() {
 
 async function handleExportLatex() {
   if (!selectedTemplate.value || exportLoading.value) return
-  if (!content.value.trim()) {
-    showExportToast('Please write content in the editor first')
-    return
-  }
-
+  if (!content.value.trim()) { showExportToast('Please write content in the editor first'); return }
   exportLoading.value = true
   try {
     const resp = await fetch(`${EXPORT_API}/api/export`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        markdown: content.value,
-        template_id: selectedTemplate.value,
-      }),
+      body: JSON.stringify({ markdown: content.value, template_id: selectedTemplate.value }),
     })
-
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({ error: '导出失败' }))
       showExportToast(err.error || '导出失败')
       return
     }
-
     const data = await resp.json()
     const tex = data.tex || ''
-
-    if (!tex) {
-      showExportToast('转换结果为空')
-      return
-    }
-
+    if (!tex) { showExportToast('转换结果为空'); return }
     await navigator.clipboard.writeText(tex)
     showExportToast('LaTeX copied to clipboard')
   } catch (e) {
@@ -768,15 +775,8 @@ async function handleExportLatex() {
 
 async function handleExportPdf() {
   if (!selectedTemplate.value || exportLoading.value) return
-  if (!content.value.trim()) {
-    showExportToast('Please write content in the editor first')
-    return
-  }
-  if (!tectonicAvailable.value) {
-    showExportToast('Please install the LaTeX engine (Tectonic) first')
-    return
-  }
-
+  if (!content.value.trim()) { showExportToast('Please write content in the editor first'); return }
+  if (!tectonicAvailable.value) { showExportToast('Please install the LaTeX engine (Tectonic) first'); return }
   exportLoading.value = true
   try {
     const resp = await fetch(`${EXPORT_API}/api/export/pdf`, {
@@ -788,14 +788,11 @@ async function handleExportPdf() {
         title: activeTab.value?.name?.replace(/\.md$/i, '') || 'paper',
       }),
     })
-
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({ detail: 'PDF 导出失败' }))
       showExportToast(err.detail || err.error || 'PDF 导出失败')
       return
     }
-
-    // 下载 PDF
     const blob = await resp.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -831,6 +828,7 @@ function showExportToast(msg: string) {
   color: var(--text-primary);
 }
 
+/* ── Sidebar ──────────────────────────────────────────────── */
 .layout-sidebar {
   position: relative;
   flex-shrink: 0;
@@ -851,18 +849,15 @@ function showExportToast(msg: string) {
   width: 24px;
   height: 24px;
   border: 1px solid var(--border-color);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--toolbar-bg);
-  color: var(--text-secondary);
+  color: var(--c-text-3);
   cursor: pointer;
-  font: inherit;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-
-.sidebar-collapse-toggle:hover {
-  color: var(--text-primary);
-  border-color: var(--accent);
-}
+.sidebar-collapse-toggle:hover { color: var(--c-text-0); border-color: var(--c-accent); }
 
 .sidebar-rail-button {
   position: absolute;
@@ -872,70 +867,16 @@ function showExportToast(msg: string) {
   writing-mode: vertical-rl;
   border: 0;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--c-text-3);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font: inherit;
   font-size: 11px;
   cursor: pointer;
 }
+.sidebar-rail-button:hover { color: var(--c-accent); }
 
-.sidebar-rail-button:hover {
-  color: var(--accent);
-}
-
-@media (max-width: 1180px) {
-  .layout-sidebar {
-    width: 220px !important;
-  }
-
-  .layout-sidebar.collapsed {
-    width: 44px !important;
-  }
-
-  .layout-panel {
-    max-width: 42vw;
-  }
-}
-
-@media (max-width: 980px) {
-  .layout-sidebar,
-  .sidebar-resize {
-    display: none;
-  }
-
-  .layout-panel {
-    width: min(420px, 46vw) !important;
-    min-width: 320px;
-  }
-}
-
-@media (max-width: 820px) {
-  .layout-panel,
-  .panel-resize {
-    display: none;
-  }
-}
-
-@media (max-width: 760px) {
-  .editor-welcome {
-    padding: 24px;
-  }
-
-  .welcome-panel {
-    width: 100%;
-  }
-
-  .editor-toolbar {
-    gap: 6px;
-    padding-inline: 8px;
-  }
-
-  .toolbar-hint {
-    display: none;
-  }
-}
-
+/* ── Editor center ────────────────────────────────────────── */
 .layout-editor {
   flex: 1;
   display: flex;
@@ -944,66 +885,295 @@ function showExportToast(msg: string) {
   container-type: inline-size;
 }
 
+/* ── Welcome ──────────────────────────────────────────────── */
 .editor-welcome {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 48px;
+  padding: var(--space-7) var(--space-6);
   background: var(--editor-bg);
+  overflow-y: auto;
 }
 
-.welcome-panel {
-  width: min(520px, 100%);
-  color: var(--text-primary);
+.welcome-content { width: min(480px, 100%); }
+
+.welcome-hero {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
 }
 
-.welcome-kicker {
-  color: var(--accent);
-  font-size: 12px;
+.hero-icon { color: var(--c-accent); flex-shrink: 0; }
+
+.hero-kicker {
+  margin: 0 0 2px;
+  color: var(--c-accent);
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.welcome-panel h2 {
-  margin: 10px 0 8px;
-  font-size: 28px;
+.hero-title {
+  margin: 0;
+  font-size: var(--text-3xl);
   font-weight: 700;
+  color: var(--c-text-0);
+  line-height: var(--leading-tight);
 }
 
-.welcome-panel p {
-  margin: 0 0 22px;
-  color: var(--text-secondary);
-  line-height: 1.7;
-  font-size: 14px;
+.welcome-section-label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--c-text-3);
+  margin-bottom: var(--space-2);
 }
 
-.welcome-actions {
+.welcome-cards {
   display: grid;
-  gap: 10px;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
 }
 
-.welcome-action {
-  height: 38px;
+.wc-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3);
   border: 1px solid var(--border-color);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: var(--toolbar-bg);
-  color: var(--text-primary);
-  font: inherit;
-  font-size: 13px;
+  color: var(--c-text-1);
   cursor: pointer;
+  font: inherit;
   text-align: left;
-  padding: 0 14px;
+  transition: border-color var(--motion-fast), background var(--motion-fast);
 }
-.welcome-action:hover { background: var(--hover-bg); border-color: var(--accent); }
-.welcome-action.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-  font-weight: 650;
+.wc-card:hover { border-color: var(--c-accent); background: var(--hover-bg); }
+
+.wc-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--c-surface-3);
+  color: var(--c-text-2);
+  flex-shrink: 0;
+}
+.wc-icon.accent { background: var(--c-accent-soft); color: var(--c-accent); }
+.wc-card:hover .wc-icon { background: var(--c-accent-soft); color: var(--c-accent); }
+
+.wc-text { display: flex; flex-direction: column; gap: 2px; }
+.wc-text strong { font-size: var(--text-md); font-weight: 600; }
+.wc-text span { font-size: var(--text-sm); color: var(--c-text-3); }
+
+.welcome-shortcuts {
+  font-size: var(--text-sm);
+  color: var(--c-text-3);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.welcome-shortcuts kbd {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--c-surface-4);
+  color: var(--c-text-2);
+  font: inherit;
+  font-size: 11px;
 }
 
+/* ── Slim toolbar ─────────────────────────────────────────── */
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--toolbar-bg);
+  min-height: 40px;
+  flex-shrink: 0;
+}
+
+.tb-left, .tb-right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--c-text-3);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out),
+              color var(--motion-fast) var(--ease-out);
+  flex-shrink: 0;
+}
+.tb-btn:hover { background: var(--hover-bg); color: var(--c-text-0); }
+.tb-btn.active { background: var(--c-accent-soft); color: var(--c-accent); }
+.tb-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.tb-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border-color);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+.tb-kbd {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--c-surface-4);
+  color: var(--c-text-3);
+  font: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: default;
+  flex-shrink: 0;
+}
+
+.export-toast {
+  font-size: 11px;
+  color: var(--c-success);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--c-success) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c-success) 25%, transparent);
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hidden-file-input { display: none; }
+
+/* ── More-dropdown extras ─────────────────────────────────── */
+.dd-template-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 8px;
+  border-top: 1px solid var(--c-surface-3);
+  margin-top: 4px;
+}
+.dd-template-label {
+  font-size: var(--text-xs);
+  color: var(--c-text-3);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.dd-template-select {
+  flex: 1;
+  min-width: 0;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-surface-3);
+  border-radius: var(--radius-sm);
+  color: var(--c-text-1);
+  font-size: var(--text-sm);
+  padding: 4px 6px;
+  cursor: pointer;
+  outline: none;
+}
+.dd-template-select:hover { border-color: var(--c-accent); }
+.dd-template-select:disabled { opacity: 0.5; cursor: not-allowed; }
+.dd-template-select option { background: var(--c-surface-2); }
+
+/* ── Right panel (unified tabs) ────────────────────────────── */
+.layout-panel {
+  flex: 0 1 auto;
+  min-width: 260px;
+  max-width: min(760px, 45vw);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.rp-tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--sidebar-bg);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.rp-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--c-text-3);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: color var(--motion-fast), border-color var(--motion-fast), background var(--motion-fast);
+}
+.rp-tab:hover { color: var(--c-text-0); background: var(--hover-bg); }
+.rp-tab.active { color: var(--c-accent); border-bottom-color: var(--c-accent); }
+
+.rp-close {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 4px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--c-text-3);
+  cursor: pointer;
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+.rp-close:hover { background: var(--hover-bg); color: var(--c-danger); }
+
+.rp-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* ── Resize handle ────────────────────────────────────────── */
+.resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.resize-handle:hover { background: var(--c-accent); }
+
+/* ── New Project dialog ───────────────────────────────────── */
 .project-start-backdrop {
   position: fixed;
   inset: 0;
@@ -1011,15 +1181,16 @@ function showExportToast(msg: string) {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.42);
+  background: var(--c-overlay);
+  backdrop-filter: blur(4px);
 }
 .project-start-dialog {
   width: min(520px, calc(100vw - 48px));
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--panel-bg);
   color: var(--text-primary);
-  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--elevation-4);
 }
 .project-start-header {
   display: flex;
@@ -1029,26 +1200,29 @@ function showExportToast(msg: string) {
   padding: 18px 20px;
   border-bottom: 1px solid var(--border-color);
 }
-.project-start-header h3 {
-  margin: 4px 0 0;
-  font-size: 20px;
+.project-start-header h3 { margin: 4px 0 0; font-size: 20px; }
+.welcome-kicker {
+  color: var(--c-accent);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 .project-start-close {
   border: 0;
   background: transparent;
-  color: var(--text-secondary);
-  font-size: 24px;
-  line-height: 1;
+  color: var(--c-text-3);
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  border-radius: 4px;
 }
-.project-start-options {
-  display: grid;
-  gap: 10px;
-  padding: 18px 20px 20px;
-}
+.project-start-close:hover { color: var(--c-text-0); background: var(--hover-bg); }
+.project-start-options { display: grid; gap: 10px; padding: 18px 20px 20px; }
 .project-start-option {
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--toolbar-bg);
   color: var(--text-primary);
   text-align: left;
@@ -1056,34 +1230,19 @@ function showExportToast(msg: string) {
   cursor: pointer;
   font: inherit;
 }
-.project-start-option:hover {
-  border-color: var(--accent);
-  background: var(--hover-bg);
-}
+.project-start-option:hover { border-color: var(--c-accent); background: var(--hover-bg); }
 .project-start-option.primary {
-  background: color-mix(in srgb, var(--accent) 18%, var(--toolbar-bg));
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border-color));
+  background: color-mix(in srgb, var(--c-accent) 18%, var(--toolbar-bg));
+  border-color: color-mix(in srgb, var(--c-accent) 55%, var(--border-color));
 }
-.project-start-option strong {
-  display: block;
-  margin-bottom: 5px;
-  font-size: 14px;
-}
-.project-start-option span {
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.5;
-}
-.project-topic-row {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-}
+.project-start-option strong { display: block; margin-bottom: 5px; font-size: 14px; }
+.project-start-option span { color: var(--c-text-3); font-size: 12px; line-height: 1.5; }
+.project-topic-row { display: flex; gap: 8px; margin-top: 10px; }
 .project-topic-input {
   flex: 1;
   height: 32px;
   border: 1px solid var(--border-color);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--editor-bg);
   color: var(--text-primary);
   padding: 0 10px;
@@ -1091,14 +1250,12 @@ function showExportToast(msg: string) {
   font-size: 13px;
   outline: none;
 }
-.project-topic-input:focus {
-  border-color: var(--accent);
-}
+.project-topic-input:focus { border-color: var(--c-accent); }
 .project-topic-go {
   height: 32px;
-  border: 1px solid var(--accent);
-  border-radius: 6px;
-  background: var(--accent);
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius-sm);
+  background: var(--c-accent);
   color: #fff;
   padding: 0 16px;
   font: inherit;
@@ -1106,268 +1263,28 @@ function showExportToast(msg: string) {
   font-weight: 600;
   cursor: pointer;
 }
-.project-topic-go:hover {
-  opacity: 0.88;
-}
+.project-topic-go:hover { opacity: 0.88; }
 
-.layout-panel {
-  flex: 0 1 auto;
-  min-width: 260px;
-  max-width: min(760px, 45vw);
-  overflow: hidden;
+/* ── Responsive ───────────────────────────────────────────── */
+@media (max-width: 1180px) {
+  .layout-sidebar { width: 220px !important; }
+  .layout-sidebar.collapsed { width: 44px !important; }
+  .layout-panel { max-width: 42vw; }
 }
-
-.resize-handle {
-  width: 4px;
-  cursor: col-resize;
-  background: transparent;
-  transition: background 0.15s;
-  flex-shrink: 0;
+@media (max-width: 980px) {
+  .layout-sidebar, .sidebar-resize { display: none; }
+  .layout-panel { width: min(420px, 46vw) !important; min-width: 320px; }
 }
-.resize-handle:hover { background: var(--accent); }
-
-.editor-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: nowrap;
-  gap: 12px;
-  padding: 7px 12px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--toolbar-bg);
-  min-height: 46px;
-  flex-shrink: 0;
-  overflow: hidden;
+@media (max-width: 820px) {
+  .layout-panel, .panel-resize { display: none; }
 }
-
-.toolbar-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  flex: 0 1 auto;
+@media (max-width: 760px) {
+  .editor-welcome { padding: 24px; }
+  .welcome-cards { grid-template-columns: 1fr; }
+  .editor-toolbar { gap: 4px; padding-inline: 6px; }
+  .tb-kbd { display: none; }
 }
-.toolbar-right {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  min-width: 0;
-  flex: 1 1 auto;
-  overflow: visible;
-}
-
-.file-name {
-  font-size: 13px;
-  color: var(--text-primary);
-}
-.file-modified {
-  color: var(--accent);
-  font-weight: bold;
-}
-
-.toolbar-btn {
-  height: 28px;
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 0 8px;
-  border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-family: inherit;
-  line-height: 1;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.toolbar-btn:hover { background: var(--hover-bg); color: var(--text-primary); border-color: var(--border-color); }
-.toolbar-btn.active { color: var(--text-primary); background: var(--active-bg); border-color: var(--border-color); }
-.toolbar-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.icon-btn {
-  width: 28px;
-  padding: 0;
-  justify-content: center;
-}
-
-.hidden-file-input {
-  display: none;
-}
-
-.new-paper-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--accent);
-  font-weight: 650;
-  max-width: 108px;
-}
-.new-paper-btn .btn-label {
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.new-paper-btn:hover { background: var(--hover-bg); border-color: var(--accent); }
-
-.toolbar-hint {
-  font-size: 11px;
-  color: var(--text-secondary);
-  background: var(--code-bg);
-  border: 1px solid var(--border-color);
-  padding: 3px 8px;
-  border-radius: 6px;
-  white-space: nowrap;
-}
-
-.tool-group {
-  position: relative;
-  flex-shrink: 0;
-}
-
-.menu-trigger {
-  min-width: 54px;
-  justify-content: center;
-}
-
-.primary-trigger {
-  color: var(--accent);
-  border-color: var(--border-color);
-  background: var(--code-bg);
-}
-
-.chevron {
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
-.tool-menu {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  z-index: 40;
-  width: 180px;
-  padding: 6px;
-  background: var(--panel-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  box-shadow: 0 16px 46px rgba(0, 0, 0, 0.28);
-}
-
-.export-menu {
-  width: 220px;
-}
-
-.tool-menu-item {
-  width: 100%;
-  min-height: 30px;
-  display: flex;
-  align-items: center;
-  padding: 0 10px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-primary);
-  text-align: left;
-  cursor: pointer;
-  font: inherit;
-  font-size: 12px;
-}
-.tool-menu-item:hover:not(:disabled) { background: var(--hover-bg); color: var(--text-primary); }
-.tool-menu-item:disabled { opacity: 0.45; cursor: not-allowed; }
-
-.tool-menu-label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 6px 8px 8px;
-  color: var(--text-secondary);
-  font-size: 11px;
-}
-
-.export-select {
-  width: 100%;
-  background: var(--code-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  color: var(--text-primary);
-  font-size: 12px;
-  padding: 6px 8px;
-  cursor: pointer;
-  outline: none;
-}
-.export-select:hover { border-color: var(--accent); }
-.export-select:disabled { opacity: 0.5; cursor: not-allowed; }
-.export-select option { background: var(--panel-bg); }
-
-.export-toast {
-  font-size: 12px;
-  color: #8ee59d;
-  padding: 4px 8px;
-  border-radius: 6px;
-  background: rgba(34, 197, 94, 0.12);
-  border: 1px solid rgba(34, 197, 94, 0.26);
-  white-space: nowrap;
-  max-width: 240px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.panel-half {
-  height: 50% !important;
-  flex: none !important;
-}
-
-@container (max-width: 640px) {
-  .editor-toolbar {
-    gap: 8px;
-    padding-inline: 8px;
-    height: auto;
-    flex-wrap: wrap;
-    align-content: center;
-  }
-
-  .toolbar-hint {
-    display: none;
-  }
-
-  .toolbar-left,
-  .toolbar-right {
-    gap: 4px;
-    flex: 1 1 100%;
-    justify-content: flex-start;
-  }
-
-  .toolbar-right {
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .toolbar-right::-webkit-scrollbar {
-    display: none;
-  }
-}
-
 @container (max-width: 520px) {
-  .new-paper-btn {
-    width: 30px;
-    padding: 0;
-    justify-content: center;
-  }
-
-  .new-paper-btn .btn-label {
-    display: none;
-  }
-
-  .menu-trigger {
-    min-width: 48px;
-    padding: 0 6px;
-  }
-
-  .icon-btn {
-    width: 26px;
-  }
+  .tb-kbd { display: none; }
 }
 </style>
