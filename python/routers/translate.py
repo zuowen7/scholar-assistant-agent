@@ -547,6 +547,13 @@ def register_translate(
             task["status"] = "done_with_warnings" if fallback_count else "done"
             task["fallback_count"] = fallback_count
             task["output_path"] = str(out_path)
+            task["chunks"] = [
+                {
+                    "original": r.original,
+                    "translated": _restore_paragraphs_for_display(r.original, r.translated),
+                }
+                for r in results
+            ]
 
             rag_store = _state["rag_store_getter"]()
             if rag_store is not None:
