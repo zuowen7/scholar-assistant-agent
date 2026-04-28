@@ -316,7 +316,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         load_config=_load_config,
         runtime_dir=RUNTIME_DIR,
         data_root=data_root,
-        get_agent=None,
+        rag_store_getter=state_agent["get_rag_store"],
     )
 
     from routers.argument import register_argument
