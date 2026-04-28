@@ -220,6 +220,12 @@ def _validate_file_path(file_path: Path) -> None:
             raise HTTPException(403, f"禁止访问敏感目录: ~/{parts[0]}")
     except ValueError:
         pass
+    # Block Windows AppData — absolute paths like C:\Users\<user>\AppData\...
+    # are not caught by the home-relative check above (ValueError silently passes),
+    # and are not covered by _DENIED_PATH_PREFIXES.
+    if resolved_str.startswith(f"{home}\\AppData\\Roaming\\") or \
+            resolved_str.startswith(f"{home}\\AppData\\Local\\"):
+        raise HTTPException(403, "禁止访问 AppData 目录")
     if resolved.suffix.lower() in _DENIED_EXTENSIONS:
         raise HTTPException(403, f"禁止访问敏感文件: {resolved.suffix}")
     if resolved.name.startswith("."):
