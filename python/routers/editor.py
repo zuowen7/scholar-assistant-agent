@@ -396,9 +396,6 @@ def register_editor(
             trans_cfg = config.get("translator", {})
             engine = trans_cfg.get("engine", "ollama")
 
-            prompt_path = Path(__file__).parent / "prompts" / "tasks_compliance" / "compliance_check.md"
-            prompt_text = prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else ""
-
             user_msg = (
                 f"Paper Title: {req.title}\n"
                 f"Target Venue: {req.venue}\n"
@@ -408,8 +405,15 @@ def register_editor(
 
             system_prompt = (
                 "You are an academic writing compliance auditor. Analyze the paper and "
-                "produce a structured JSON compliance report. Output ONLY valid JSON, "
-                "no markdown fences, no explanation."
+                "produce a structured JSON compliance report.\n\n"
+                "Output ONLY a valid JSON object with these top-level keys:\n"
+                '- "summary": {total_characters, total_words, total_sections, compliance_score (0-100), overall_status ("pass"|"warning"|"fail")}\n'
+                '- "structure": {required_sections (dict of section→{found, word_count, issues}), issues[]}\n'
+                '- "terminology": {consistent_terms[], inconsistent_terms[], issues[]}\n'
+                '- "citation": {total_citations, format_issues[], issues[]}\n'
+                '- "hallucination_risk": {flags[], risk_level ("low"|"medium"|"high"), issues[]}\n'
+                '- "readability": {avg_sentence_length, long_sentences[], issues[]}\n\n'
+                "Do NOT wrap the JSON in markdown fences. Output raw JSON only."
             )
 
             raw = ""
@@ -431,15 +435,22 @@ def register_editor(
             raw = raw.strip()
             # Strip <think ...>...</think)> tags (Qwen3 adds these by default)
             raw = re.sub(r"<think[^>]*>.*?</think\s*>", "", raw, flags=re.DOTALL).strip()
-            if raw.startswith("```"):
-                raw = re.sub(r"^```\w*\n?", "", raw)
-                raw = re.sub(r"\n?```$", "", raw)
-                raw = raw.strip()
+            # Strip markdown fences
+            raw = re.sub(r"^```\w*\n?", "", raw)
+            raw = re.sub(r"\n?```$", "", raw)
+            raw = raw.strip()
+
+            # Extract JSON object from response
+            start = raw.find("{")
+            end = raw.rfind("}")
+            if start != -1 and end > start:
+                raw = raw[start:end + 1]
 
             try:
                 report = json.loads(raw)
             except json.JSONDecodeError:
-                return {"error": "LLM returned invalid JSON", "report": {"raw": raw[:4000], "summary": {"overall_status": "error"}}}
+                logger.warning("Compliance JSON parse failed, raw=%s", raw[:500])
+                return {"error": "Failed to parse compliance report from LLM response", "report": None}
 
             return {"report": report}
         except Exception as e:
