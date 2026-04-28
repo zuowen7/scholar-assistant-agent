@@ -588,8 +588,8 @@ def convert_markdown(
         }
     """
     if output_format == "pdf":
-        # PDF 模式：先生成 LaTeX，再编译
-        tex_result = convert_markdown(markdown_text, template_id, "tex", metadata)
+        # PDF 模式：用纯 Python 转换器（包含 fontspec 中文支持），再编译
+        tex_result = markdown_to_latex(markdown_text, metadata)
         if not tex_result["success"]:
             return tex_result
         pdf_result = compile_pdf(tex_result["tex"])
