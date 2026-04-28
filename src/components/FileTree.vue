@@ -6,11 +6,15 @@
         <button class="tree-btn" @click="handleNewFile" title="新建文件">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
         </button>
+        <button class="tree-btn" @click="handleOpenFolder" title="打开文件夹">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+        </button>
         <button class="tree-btn" @click="handleRefresh" title="刷新">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
         </button>
-        <button class="tree-btn" @click="handleOpenFolder" title="切换文件夹">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+        <div class="tree-btn-sep" />
+        <button class="tree-btn" @click="$emit('collapse')" title="折叠侧栏">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
       </div>
     </div>
@@ -58,6 +62,8 @@ import type { FileEntry } from '../types'
 
 const { files, rootDir, openFolder, readFileContent, createFile } = useFileTree()
 const { openFile: openEditorFile, activeFile } = useEditor()
+
+defineEmits<{ (e: 'collapse'): void }>()
 
 const searchQuery = ref('')
 
@@ -171,6 +177,13 @@ onBeforeUnmount(() => {
   align-items: center;
 }
 .tree-btn:hover { background: var(--hover-bg); color: var(--text-primary); }
+
+.tree-btn-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--border-color);
+  align-self: center;
+}
 
 .tree-search {
   display: flex;
