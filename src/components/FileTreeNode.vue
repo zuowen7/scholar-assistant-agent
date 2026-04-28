@@ -2,7 +2,7 @@
   <div class="tree-node" @contextmenu.prevent="showContextMenu">
     <div
       class="tree-item"
-      :class="{ active: activeFile === entry.path, dir: entry.isDir, renaming: isRenaming }"
+      :class="{ active: activeFile === entry.path, dir: entry.isDir }"
       :style="{ paddingLeft: depth * 16 + 8 + 'px' }"
       @click="handleClick"
     >
@@ -31,23 +31,30 @@
         :depth="depth + 1"
         :active-file="activeFile"
         @select="(e: FileEntry) => $emit('select', e)"
-        @rename="(p: string, n: string) => $emit('rename', p, n)"
-        @delete="(p: string) => $emit('delete', p)"
+        @action="(a: string, p: string, n: string) => $emit('action', a, p, n)"
       />
     </template>
   </div>
 
   <!-- Context menu -->
   <Teleport to="body">
-    <div v-if="contextMenu.visible" class="ctx-menu" :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }" @click="contextMenu.visible = false">
-      <button class="ctx-item" @click="startRename">Rename</button>
+    <div v-if="ctx.visible" class="ctx-menu" :style="{ left: ctx.x + 'px', top: ctx.y + 'px' }">
+      <button class="ctx-item" @click="action('cut')">Cut</button>
+      <button class="ctx-item" @click="action('copy')">Copy</button>
+      <button v-if="canPaste" class="ctx-item" @click="action('paste')">Paste</button>
+      <div v-if="canPaste" class="ctx-sep" />
+      <button class="ctx-item" @click="action('rename')">Rename</button>
+      <button class="ctx-item ctx-danger" @click="action('delete')">Delete</button>
+      <div class="ctx-sep" />
+      <button class="ctx-item" @click="action('copy-path')">Copy Path</button>
     </div>
   </Teleport>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, reactive } from 'vue'
+import { ref, nextTick, reactive, computed } from 'vue'
 import type { FileEntry } from '../types'
+import { useFileTree } from '../composables/useFileTree'
 
 const props = defineProps<{
   entry: FileEntry
@@ -57,16 +64,22 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'select', entry: FileEntry): void
-  (e: 'rename', oldPath: string, newName: string): void
-  (e: 'delete', path: string): void
+  (e: 'action', action: string, path: string, extra: string): void
 }>()
+
+const { getClipboard } = useFileTree()
 
 const expanded = ref(false)
 const isRenaming = ref(false)
 const newName = ref('')
 const renameInput = ref<HTMLInputElement | null>(null)
 
-const contextMenu = reactive({ visible: false, x: 0, y: 0 })
+const ctx = reactive({ visible: false, x: 0, y: 0 })
+const canPaste = computed(() => {
+  if (!props.entry.isDir) return false
+  const cb = getClipboard()
+  return cb !== null
+})
 
 function handleClick() {
   if (props.entry.isDir) {
@@ -77,23 +90,31 @@ function handleClick() {
 }
 
 function showContextMenu(e: MouseEvent) {
-  contextMenu.x = e.clientX
-  contextMenu.y = e.clientY
-  contextMenu.visible = true
-
-  const close = () => { contextMenu.visible = false; document.removeEventListener('click', close) }
-  setTimeout(() => document.addEventListener('click', close), 0)
+  ctx.x = e.clientX
+  ctx.y = e.clientY
+  // Clamp to viewport
+  nextTick(() => {
+    if (ctx.y + 240 > window.innerHeight) ctx.y = window.innerHeight - 250
+    if (ctx.x + 160 > window.innerWidth) ctx.x = window.innerWidth - 170
+  })
+  ctx.visible = true
+  const close = () => { ctx.visible = false; document.removeEventListener('click', close); document.removeEventListener('contextmenu', close) }
+  setTimeout(() => { document.addEventListener('click', close); document.addEventListener('contextmenu', close) }, 0)
 }
 
-function startRename() {
-  newName.value = props.entry.name
-  isRenaming.value = true
-  nextTick(() => {
-    renameInput.value?.focus()
-    // Select name without extension
-    const dotIdx = props.entry.name.lastIndexOf('.')
-    renameInput.value?.setSelectionRange(0, dotIdx > 0 ? dotIdx : props.entry.name.length)
-  })
+function action(a: string) {
+  ctx.visible = false
+  if (a === 'rename') {
+    newName.value = props.entry.name
+    isRenaming.value = true
+    nextTick(() => {
+      renameInput.value?.focus()
+      const dotIdx = props.entry.name.lastIndexOf('.')
+      renameInput.value?.setSelectionRange(0, dotIdx > 0 ? dotIdx : props.entry.name.length)
+    })
+    return
+  }
+  emit('action', a, props.entry.path, props.entry.name)
 }
 
 async function confirmRename() {
@@ -101,7 +122,7 @@ async function confirmRename() {
   isRenaming.value = false
   const trimmed = newName.value.trim()
   if (trimmed && trimmed !== props.entry.name) {
-    emit('rename', props.entry.path, trimmed)
+    emit('action', 'rename', props.entry.path, trimmed)
   }
 }
 
@@ -146,11 +167,13 @@ function cancelRename() {
   border: 1px solid var(--border-color, #3c3c3c);
   border-radius: 6px;
   padding: 4px 0;
-  min-width: 140px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  min-width: 160px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.35);
 }
 .ctx-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   text-align: left;
   background: none;
@@ -159,6 +182,10 @@ function cancelRename() {
   font-size: 13px;
   padding: 6px 16px;
   cursor: pointer;
+  white-space: nowrap;
 }
 .ctx-item:hover { background: var(--hover-bg, #2a2a2a); }
+.ctx-item.ctx-danger { color: #e06c75; }
+.ctx-item.ctx-danger:hover { background: rgba(224,108,117,0.12); }
+.ctx-sep { height: 1px; background: var(--border-color, #3c3c3c); margin: 4px 8px; }
 </style>
