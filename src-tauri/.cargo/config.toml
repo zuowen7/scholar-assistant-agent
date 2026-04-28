@@ -1,5 +1,8 @@
 [build]
 target-dir = "D:\\cargo-target\\scholar-translate"
+# Limit parallelism — this machine OOMs during full recompilation
+# of all 396 crates, causing cascading "can't find crate" errors.
+jobs = 1
 
 [target.x86_64-pc-windows-gnu]
 linker = "C:\\msys64\\mingw64\\bin\\gcc.exe"

@@ -28,6 +28,7 @@ from src.translator.context import extract_document_context
 from src.translator.parallel_runner import translate_chunks_parallel
 from src.translator.memory_store import TranslationMemory
 from src.translator.glossary_store import GlossaryStore
+from src.translator._helpers import _restore_paragraphs
 from src.translator._helpers import _extract_term_pairs
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,25 @@ def register_translate(
     input_dir = data_root / "input"
     output_dir = data_root / "output"
 
+    def _restore_paragraphs_for_display(original: str, translated: str) -> str:
+        """为前端显示恢复译文段落结构
+
+        如果 LLM 翻译时丢失了段落分隔符（\n\n），根据原文段落结构恢复。
+        这确保前端按段落分割时，原文和译文段落数一致。
+        """
+        if not translated or not original:
+            return translated
+
+        # 检查译文是否已经有段落分隔符
+        orig_para_count = len([p for p in original.split("\n\n") if p.strip()])
+        trans_para_count = len([p for p in translated.split("\n\n") if p.strip()])
+
+        # 如果译段落落数明显少于原文，尝试恢复
+        if trans_para_count < orig_para_count * 0.5:
+            return _restore_paragraphs(original, translated)
+
+        return translated
+
     def _cleanup_tasks() -> None:
         done_ids = [tid for tid, t in tasks.items() if t["status"] in ("done", "error")]
         if len(done_ids) <= MAX_TASKS:
@@ -86,6 +106,19 @@ def register_translate(
         excess = len(done_ids) - MAX_TASKS
         for tid in done_ids[:excess]:
             del tasks[tid]
+
+    async def _acquire_busy_lock() -> None:
+        """Acquire _busy_lock, force-releasing stale lock if no tasks are running."""
+        nonlocal _busy_lock
+        try:
+            await asyncio.wait_for(_busy_lock.acquire(), timeout=0)
+        except asyncio.TimeoutError:
+            has_running = any(t["status"] == "running" for t in tasks.values())
+            if has_running:
+                raise HTTPException(409, "已有翻译任务在运行，请等待完成")
+            logger.warning("Orphan lock detected, replacing with new lock")
+            _busy_lock = asyncio.Lock()
+            await _busy_lock.acquire()
 
     async def _lock_reaper(delay: float = 60.0) -> None:
         """Auto-release _busy_lock if stream never connects within delay seconds."""
@@ -155,10 +188,7 @@ def register_translate(
             supported = ", ".join(sorted(SUPPORTED_EXTENSIONS.keys()))
             raise HTTPException(400, f"不支持的文件格式: {ext}。支持: {supported}")
 
-        try:
-            await asyncio.wait_for(_busy_lock.acquire(), timeout=0)
-        except asyncio.TimeoutError:
-            raise HTTPException(409, "已有翻译任务在运行，请等待完成")
+        await _acquire_busy_lock()
 
         task_id = uuid.uuid4().hex[:8]
         input_dir.mkdir(parents=True, exist_ok=True)
@@ -190,6 +220,7 @@ def register_translate(
         except Exception:
             _busy_lock.release()
             raise
+    @app.post("/api/translate/path")
     async def start_translate_path(payload: FilePathPayload):
         file_path = Path(payload.path).resolve()
         validate_file_path(file_path)
@@ -201,10 +232,7 @@ def register_translate(
         if file_path.stat().st_size > MAX_UPLOAD_SIZE:
             raise HTTPException(413, "文件过大，最大支持 200 MB")
 
-        try:
-            await asyncio.wait_for(_busy_lock.acquire(), timeout=0)
-        except asyncio.TimeoutError:
-            raise HTTPException(409, "已有翻译任务在运行，请等待完成")
+        await _acquire_busy_lock()
 
         task_id = uuid.uuid4().hex[:8]
         input_dir.mkdir(parents=True, exist_ok=True)
@@ -506,7 +534,10 @@ def register_translate(
                     "content": content,
                     "block_ids": [b.block_id for b in task.get("blocks", []) or []] if task.get("blocks") else None,
                     "chunks": [
-                        {"original": r.original, "translated": r.translated}
+                        {
+                            "original": r.original,
+                            "translated": _restore_paragraphs_for_display(r.original, r.translated),
+                        }
                         for r in results
                     ],
                 }),
