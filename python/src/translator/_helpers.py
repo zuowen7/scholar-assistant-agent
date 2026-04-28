@@ -14,8 +14,11 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import TYPE_CHECKING, Any
+
+logger = logging.getLogger(__name__)
 
 from dataclasses import dataclass
 
@@ -192,11 +195,13 @@ def _validate_translation(result: "TranslationResult | Any") -> bool:
         return trans_len >= max(3, int(orig_len * 0.03))
 
     if orig_len > 100 and trans_len < orig_len * 0.03:
+        logger.warning("译文过短 (原文 %d 字符, 译文仅 %d 字符)", orig_len, trans_len)
         return False
 
     orig_no_space = re.sub(r"\s+", "", original)
     trans_no_space = re.sub(r"\s+", "", translated)
     if orig_no_space and orig_no_space == trans_no_space:
+        logger.warning("译文与原文完全相同，疑似未翻译")
         return False
 
     cjk_n = sum(1 for c in translated if "一" <= c <= "鿿")
@@ -204,10 +209,12 @@ def _validate_translation(result: "TranslationResult | Any") -> bool:
     if cjk_ratio < 0.05 and orig_len > 100:
         ascii_ratio = sum(1 for c in translated if c.isascii() and c.isalpha()) / max(trans_len, 1)
         if ascii_ratio > 0.95:
+            logger.warning("译文 ASCII 占比 %.0f%% 且无中文，疑似未翻译: %.50s...", ascii_ratio * 100, translated)
             return False
 
     stripped = translated.strip()
     if stripped.startswith("```") and stripped.endswith("```"):
+        logger.warning("译文被 markdown 代码块包裹，疑似格式幻觉")
         return False
 
     if trans_len > 400:
@@ -218,6 +225,7 @@ def _validate_translation(result: "TranslationResult | Any") -> bool:
             shorter_len = min(len(first_half), len(second_half), 100)
             overlap = sum(1 for a, b in zip(first_half[:shorter_len], second_half[:shorter_len]) if a == b)
             if overlap / shorter_len > 0.8:
+                logger.warning("译文前后半段高度重复 (%.0f%%)，疑似重复翻译", overlap / shorter_len * 100)
                 return False
 
     # 循环重复检测 — 优化：早期退出，限制检测范围
@@ -238,6 +246,7 @@ def _validate_translation(result: "TranslationResult | Any") -> bool:
                     else:
                         break
                 if repeats >= 2:
+                    logger.warning("检测到循环重复 (单元=%d句, 重复%d次), 拒绝该翻译", unit_sz, repeats)
                     return False
 
     return True
@@ -282,6 +291,7 @@ def _repair_truncation(text: str) -> str:
             and tail_cjk == 0
             and not re.search(r"[\w一-鿿]{6,}", tail)
         ):
+            logger.info("截断修复: 移除末尾疑似残缺片段 (%d 字符)", len(tail))
             return text[: last_sentence_end + 1].rstrip()
     return text
 
@@ -354,6 +364,10 @@ def _deduplicate_repetition(text: str) -> str:
             repeat_count += 1
 
         if is_repetitive and repeat_count >= 2:
+            logger.warning(
+                "检测到句级循环重复: 单元=%d句, 重复%d次, 保留第一份",
+                unit_size, repeat_count,
+            )
             return "".join(unit)
 
     return text

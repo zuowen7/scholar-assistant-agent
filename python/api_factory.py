@@ -61,8 +61,8 @@ MAX_UPLOAD_SIZE = 200 * 1024 * 1024  # 200 MB
 
 # ── In-process rate limiter ──────────────────────────────────────────────────
 # Sliding-window counter, no external dependency.
-# Rate-limited paths: /api/translate, /api/chat, /api/rag/upload
-_RATE_LIMITED_PREFIXES = ("/api/translate", "/api/chat", "/api/rag/upload")
+# Rate-limited paths: /api/translate, /api/agent/v2/chat, /api/rag/upload
+_RATE_LIMITED_PREFIXES = ("/api/translate", "/api/agent/v2/chat", "/api/rag/upload")
 _RATE_LIMIT_RPM = 30  # max requests per minute per remote IP
 
 _rl_windows: dict[str, collections.deque] = collections.defaultdict(
@@ -199,17 +199,30 @@ _DENIED_PATH_PREFIXES = (
     "/etc", "/proc", "/sys", "/dev", "/root",
     "C:\\Windows", "C:\\Program Files",
 )
+_DENIED_HOME_SUBPATHS = (
+    ".ssh", ".aws", ".gnupg", ".gitconfig", ".docker",
+    ".kube", ".netrc", ".npmrc", ".pypirc",
+)
 _DENIED_EXTENSIONS = {".env", ".key", ".pem", ".p12", ".pfx", ".secret", ".credentials"}
 
 
 def _validate_file_path(file_path: Path) -> None:
-    resolved = str(file_path)
+    resolved = file_path.resolve()
+    resolved_str = str(resolved)
     for prefix in _DENIED_PATH_PREFIXES:
-        if resolved.startswith(prefix):
+        if resolved_str.startswith(prefix):
             raise HTTPException(403, f"禁止访问系统目录: {prefix}")
-    if file_path.suffix.lower() in _DENIED_EXTENSIONS:
-        raise HTTPException(403, f"禁止访问敏感文件: {file_path.suffix}")
-    if file_path.name.startswith("."):
+    home = Path.home().resolve()
+    try:
+        rel = resolved.relative_to(home)
+        parts = rel.parts
+        if parts and parts[0] in _DENIED_HOME_SUBPATHS:
+            raise HTTPException(403, f"禁止访问敏感目录: ~/{parts[0]}")
+    except ValueError:
+        pass
+    if resolved.suffix.lower() in _DENIED_EXTENSIONS:
+        raise HTTPException(403, f"禁止访问敏感文件: {resolved.suffix}")
+    if resolved.name.startswith("."):
         raise HTTPException(403, "禁止访问隐藏文件")
 
 
