@@ -429,6 +429,8 @@ def register_editor(
                 )
 
             raw = raw.strip()
+            # Strip <think ...>...</think)> tags (Qwen3 adds these by default)
+            raw = re.sub(r"<think[^>]*>.*?</think\s*>", "", raw, flags=re.DOTALL).strip()
             if raw.startswith("```"):
                 raw = re.sub(r"^```\w*\n?", "", raw)
                 raw = re.sub(r"\n?```$", "", raw)

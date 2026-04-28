@@ -577,11 +577,12 @@ async function runComplianceCheck() {
       }),
     })
     const data = await resp.json()
-    if (data.error && !data.report) {
+    if (data.error && (!data.report || !data.report.summary)) {
       complianceError.value = data.error || 'Compliance check failed'
-    } else {
+    } else if (data.report?.summary) {
       complianceReport.value = data.report
-      if (data.report?.error && !data.report?.summary) complianceError.value = data.report.error
+    } else {
+      complianceError.value = 'LLM returned unexpected format'
     }
   } catch (e) {
     complianceError.value = `请求失败: ${e}`
