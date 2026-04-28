@@ -262,7 +262,9 @@ def compile_pdf(tex_source: str, output_dir: str | None = None) -> dict:
 
     if result.returncode != 0:
         error_msg = (result.stderr or "").strip() or (result.stdout or "").strip() or "编译失败"
-        return {"success": False, "pdf_path": "", "error": f"Tectonic: {error_msg}"}
+        # 保留完整错误信息方便排查，截断到 2000 字符
+        logger.error("Tectonic compile failed:\n%s", error_msg[:2000])
+        return {"success": False, "pdf_path": "", "error": f"Tectonic: {error_msg[:1500]}"}
 
     if not pdf_path.exists():
         return {"success": False, "pdf_path": "", "error": "编译成功但未生成 PDF 文件"}
@@ -608,12 +610,20 @@ def convert_markdown(
         }
     """
     if output_format == "pdf":
-        # PDF 模式：Pandoc md→tex → 注入 CJK 字体 → Tectonic 编译
+        # PDF 模式：Pandoc md→tex → 清理 pdfTeX 专用包 → 注入 CJK → Tectonic 编译
         tex_result = convert_markdown(markdown_text, template_id, "tex", metadata)
         if not tex_result["success"]:
             return tex_result
 
         tex = tex_result["tex"]
+
+        # 移除与 XeTeX/fontspec 冲突的包
+        tex = re.sub(r"\\usepackage(\[.*?\])?\{inputenc\}\n?", "", tex)
+        tex = re.sub(r"\\usepackage(\[.*?\])?\{fontenc\}\n?", "", tex)
+        tex = re.sub(r"\\usepackage(\[.*?\])?\{libertine\}\n?", "", tex)
+        tex = re.sub(r"\\usepackage(\[.*?\])?\{libertinus\}\n?", "", tex)
+
+        # 注入 CJK 字体支持
         cjk_preamble = (
             r"\usepackage{fontspec}" + "\n" +
             r"\setmainfont{SimSun}" + "\n" +
