@@ -623,16 +623,20 @@ def convert_markdown(
         tex = re.sub(r"\\usepackage(\[.*?\])?\{libertine\}\n?", "", tex)
         tex = re.sub(r"\\usepackage(\[.*?\])?\{libertinus\}\n?", "", tex)
 
-        # 注入 CJK 字体支持
-        cjk_preamble = (
+        # 注入 CJK 字体 + Pandoc 常用表格/排版包
+        inject_preamble = (
             r"\usepackage{fontspec}" + "\n" +
             r"\setmainfont{SimSun}" + "\n" +
             r"\usepackage{xeCJK}" + "\n" +
-            r"\setCJKmainfont{SimSun}" + "\n"
+            r"\setCJKmainfont{SimSun}" + "\n" +
+            r"\usepackage{longtable}" + "\n" +
+            r"\usepackage{booktabs}" + "\n" +
+            r"\usepackage{array}" + "\n" +
+            r"\usepackage{calc}" + "\n"
         )
         if r"\usepackage{fontspec}" not in tex:
             def _inject_cjk(m):
-                return m.group(1) + cjk_preamble
+                return m.group(1) + inject_preamble
             tex = re.sub(
                 r"(\\documentclass[^\n]*\n)",
                 _inject_cjk,
@@ -751,6 +755,8 @@ def convert_markdown(
                         tex_fb = re.sub(r"\\end\{Highlighting\}", "", tex_fb)
                         tex_fb = re.sub(r"\\begin\{Shaded\}", r"\\begin{verbatim}", tex_fb)
                         tex_fb = re.sub(r"\\end\{Shaded\}", r"\\end{verbatim}", tex_fb)
+                        tex_fb = re.sub(r"\\[A-Z][a-zA-Z]*Tok\{([^}]*)\}", r"\1", tex_fb)
+                        tex_fb = re.sub(r"\\[A-Z][a-zA-Z]*Tok\[[^\]]*\]\{([^}]*)\}", r"\1", tex_fb)
                     return {
                         "success": True,
                         "tex": tex_fb,
@@ -773,14 +779,20 @@ def convert_markdown(
             if tex_output:
                 tex_output = re.sub(r"\\tightlist\b(?!\{)", "", tex_output)
 
-            # Pandoc 用 Shaded + Highlighting 环境高亮代码块，但 generic 模板
-            # 不支持这些。把 \begin{Shaded}...\end{Highlighting}...\end{Shaded}
-            # 替换为简单的 \begin{verbatim}...\end{verbatim}
+            # Pandoc 用 Shaded + Highlighting 环境高亮代码块，转换为 verbatim
             if tex_output:
                 tex_output = re.sub(r"\\begin\{Highlighting\}", "", tex_output)
                 tex_output = re.sub(r"\\end\{Highlighting\}", "", tex_output)
                 tex_output = re.sub(r"\\begin\{Shaded\}", r"\\begin{verbatim}", tex_output)
                 tex_output = re.sub(r"\\end\{Shaded\}", r"\\end{verbatim}", tex_output)
+                # 清除 Pandoc 语法高亮命令 (\ImportTok{...} → ...), 仅保留文本
+                tex_output = re.sub(r"\\[A-Z][a-zA-Z]*Tok\{([^}]*)\}", r"\1", tex_output)
+                tex_output = re.sub(r"\\[A-Z][a-zA-Z]*Tok\[[^\]]*\]\{([^}]*)\}", r"\1", tex_output)
+                tex_output = re.sub(r"\\NormalTok\b", "", tex_output)
+                tex_output = re.sub(r"\\KeywordTok\b", "", tex_output)
+                tex_output = re.sub(r"\\OperatorTok\b", "", tex_output)
+                tex_output = re.sub(r"\\BuiltInTok\b", "", tex_output)
+                tex_output = re.sub(r"\\ControlSequenceTok\b", "", tex_output)
 
             # output_path 参数默认空字符串，由调用方指定保存路径
             saved_path = ""
