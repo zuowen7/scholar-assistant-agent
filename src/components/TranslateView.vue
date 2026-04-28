@@ -384,7 +384,7 @@ function openFilePicker() {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -708,6 +708,7 @@ function openFilePicker() {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
   padding: 0 var(--space-5) var(--space-5);
 }
 

@@ -123,6 +123,9 @@ _REFERENCE_PATTERNS = [
 def _detect_references(text: str) -> tuple[int, str]:
     """检测引用区起始位置（查找最后一个匹配，避免误截多篇文章）
 
+    验证逻辑：匹配行后必须紧跟引用格式行（如 [1] Author, Journal Year）
+    避免误删正文中出现的 "REFERENCES" 关键词。
+
     Returns:
         (position, reference_text) — position 为 -1 表示未检测到
     """
@@ -134,13 +137,53 @@ def _detect_references(text: str) -> tuple[int, str]:
             # 允许 \s 匹配空白（单/多个空格），但必须是完整词匹配
             # 用 re.match 匹配行首，避免子串误匹配（如 "no references" 中的 "references"）
             if re.match(pattern, stripped, re.IGNORECASE):
-                line_start = sum(len(l) + 1 for l in lines[:i])
-                if line_start > best_pos:
-                    best_pos = line_start
+                # 验证：检查后面几行是否像引用条目
+                if _looks_like_reference_section(lines, i):
+                    line_start = sum(len(l) + 1 for l in lines[:i])
+                    if line_start > best_pos:
+                        best_pos = line_start
 
     if best_pos >= 0:
         return best_pos, text[best_pos:]
     return -1, ""
+
+
+def _looks_like_reference_section(lines: list[str], header_idx: int) -> bool:
+    """验证 header 行后面是否真的是引用条目
+
+    引用条目特征：
+    - 数字开头: "[1]" 或 "1."
+    - 或包含年份: "(2020)" 或 "2020."
+    - 或包含期刊/会议名模式: "vol.", "pp.", "doi:", 等
+    - 或以大写字母开头的条目（如 "Figure S1.", "Item 1."）
+    - 至少 1 行符合引用模式即可（宽松模式以适应短引用列表）
+    """
+    # 检查后续 10 行内至少有 1 行像引用
+    for i in range(header_idx + 1, min(header_idx + 11, len(lines))):
+        line = lines[i].strip()
+        if not line:
+            continue
+        # 引用条目模式
+        if re.match(r"^\[\d+\]", line):  # [1] Author
+            return True
+        if re.match(r"^\d{1,3}\.", line):  # 1. Author
+            return True
+        if re.match(r"^[A-Z][a-z]+\s+\d+\.", line):  # Item 1.
+            return True
+        if re.match(r"^[A-Z][a-z]+\s+S\d+\.", line):  # Figure S1.
+            return True
+        if re.search(r"\(\d{4}[a-z]?\)", line):  # (2020) or (2020a)
+            return True
+        if re.search(r"\b\d{4}\.", line):  # 2020. Author
+            return True
+        if re.search(r"\bvol\.?\s+\d+", line, re.IGNORECASE):
+            return True
+        if re.search(r"\bpp\.?\s+\d+", line, re.IGNORECASE):
+            return True
+        if re.search(r"\bdoi:\s*10\.", line, re.IGNORECASE):
+            return True
+
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -598,7 +641,9 @@ def _merge_paragraph_lines(text: str) -> str:
         elif _is_continuation(buffer, stripped):
             buffer += " " + stripped
         else:
+            # 新段落：在上一段和当前行之间插入空行
             merged.append(buffer)
+            merged.append("")  # 空行作为段落分隔
             buffer = stripped
 
     if buffer:
@@ -639,9 +684,27 @@ def _is_continuation(prev_line: str, current_line: str) -> bool:
     if prev_stripped and '\u4e00' <= prev_stripped[-1] <= '\u9fff':
         return True
 
-    # 当前行以大写字母开头 + 看起来像标题/列表 → 新段落
-    if first_char.isupper() and _looks_like_heading(current_line):
-        return False
+    # 当前行以大写字母开头 → 检查是否为新段落
+    if first_char.isupper():
+        # 短行且不以标点结尾 → 像标题
+        if _looks_like_heading(current_line):
+            return False
+        # 上一行以句号结尾 + 当前行以大写开头 → 新段落
+        # 排除单字母续行情况（如 "I" + "n 2023"）
+        if prev_stripped and prev_stripped[-1] in ".!?。！？":
+            # 上一行是单字母 → 可能是续行（如 "I" + "n 2023"）
+            if len(prev_stripped) <= 3:
+                # 检查合并后是否像有效单词
+                combined = prev_stripped + current_line[:5]
+                # 如果合并后看起来像有效句子开头，则视为续行
+                if combined[:2].isalpha() and combined[2:5].isalpha():
+                    return True
+            # 否则是新段落
+            return False
+        # 长行以大写开头且单词数>3 → 可能是新段落
+        word_count = len(current_line.split())
+        if word_count > 3:
+            return False
 
     # 当前行以小写字母开头 → 续行
     if first_char.islower():

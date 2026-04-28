@@ -368,5 +368,18 @@ fn resolve_python_dir() -> std::path::PathBuf {
 }
 
 fn main() {
+    // Clear proxy env vars for the current process so WebView2's fetch()
+    // doesn't route localhost requests through a system-configured proxy.
+    // Child processes (Python, Ollama) are already covered by build_command().
+    for var in &[
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "ALL_PROXY",
+        "all_proxy",
+    ] {
+        std::env::remove_var(var);
+    }
     run()
 }
