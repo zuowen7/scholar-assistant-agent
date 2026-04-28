@@ -33,21 +33,32 @@ class ChunkResult:
 
 
 def _estimate_tokens(text: str) -> int:
-    """粗略估算文本的 token 数，中英文分别计算"""
-    en_chars = sum(1 for c in text if c.isascii() and c.isprintable())
-    zh_chars = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
-    other_chars = len(text) - en_chars - zh_chars
-    return max(
-        1,
-        int(en_chars / CHARS_PER_TOKEN_EN + zh_chars / CHARS_PER_TOKEN_ZH + other_chars / 2),
-    )
+    """估算文本的 token 数（中英文分开计算）。
+
+    与 _estimate_chars_per_token 逻辑一致，但直接返回 token 数。
+    """
+    if not text:
+        return 1
+    zh_chars = sum(1 for c in text if "一" <= c <= "鿿")
+    zh_ratio = zh_chars / max(len(text), 1)
+    if zh_ratio > 0.3:
+        chars_per_token = CHARS_PER_TOKEN_ZH
+    elif zh_ratio > 0.1:
+        chars_per_token = CHARS_PER_TOKEN_MIXED
+    else:
+        chars_per_token = CHARS_PER_TOKEN_EN
+    return max(1, int(len(text) / chars_per_token))
 
 
 def _estimate_chars_per_token(text: str) -> float:
-    """根据文本的中文比例估算每 token 对应的字符数"""
+    """根据文本的中文比例估算每 token 对应的字符数。
+
+    与 _estimate_tokens 逻辑一致，但返回每 token 字符数而非 token 总数。
+    空文本返回英文字符系数（作为安全默认值）。
+    """
     if not text:
         return CHARS_PER_TOKEN_EN
-    zh_chars = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
+    zh_chars = sum(1 for c in text if "一" <= c <= "鿿")
     zh_ratio = zh_chars / max(len(text), 1)
     if zh_ratio > 0.3:
         return CHARS_PER_TOKEN_ZH

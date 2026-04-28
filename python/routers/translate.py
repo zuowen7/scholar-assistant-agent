@@ -44,6 +44,48 @@ class ConfigUpdate(BaseModel):
     cloud: dict | None = None
 
 
+def _build_block_translations(
+    chunk_results: list[dict],
+    blocks: list,
+) -> dict[str, str]:
+    """Map block_id → translated text from chunk results.
+
+    We reconstruct block-level translations by splitting each chunk's
+    translated text proportionally across the blocks it contained.
+
+    Args:
+        chunk_results: list of dicts with 'original' and 'translated' keys.
+        blocks: sequence of objects with .block_id and .text attributes
+                (e.g. src.parser.extractor.TextBlock).
+    """
+    if not chunk_results or not blocks:
+        return {}
+
+    block_texts: dict[str, str] = {b.block_id: b.text for b in blocks}
+
+    translations: dict[str, str] = {}
+
+    for chunk in chunk_results:
+        trans = chunk.get("translated", "")
+        orig = chunk.get("original", "")
+
+        if not trans or not orig:
+            continue
+
+        for bid, btext in block_texts.items():
+            if bid in translations:
+                continue
+            if orig.startswith(btext[:30]) or btext.startswith(orig[:30]):
+                ratio = len(btext) / max(len(orig), 1)
+                chars_to_take = max(1, int(len(trans) * ratio))
+                translations[bid] = trans[:chars_to_take]
+                trans = trans[chars_to_take:]
+                if not trans:
+                    break
+
+    return translations
+
+
 class FilePathPayload(BaseModel):
     path: str = Field(max_length=1024)
 
@@ -728,8 +770,6 @@ def register_translate(
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
-    # ── Bilingual PDF export ───────────────────────────────────────────
-
     class BilingualPdfPayload(BaseModel):
         task_id: str
         mode: Literal["below", "above", "replace"] = "below"
@@ -780,49 +820,5 @@ def register_translate(
             filename=f"{payload.task_id}_bilingual.pdf",
             media_type="application/pdf",
         )
-
-    def _build_block_translations(
-        chunk_results: list[dict],
-        blocks: list,
-    ) -> dict[str, str]:
-        """Map block_id → translated text from chunk results.
-
-        We reconstruct block-level translations by splitting each chunk's
-        translated text proportionally across the blocks it contained.
-        """
-        if not chunk_results or not blocks:
-            return {}
-
-        # Build block_id → block text map
-        block_texts: dict[str, str] = {b.block_id: b.text for b in blocks}
-
-        translations: dict[str, str] = {}
-        chunk_idx = 0
-        remaining = ""
-
-        for chunk in chunk_results:
-            trans = chunk.get("translated", "")
-            orig = chunk.get("original", "")
-
-            if not trans or not orig:
-                continue
-
-            # Distribute trans across blocks that match this chunk's original text
-            # Use a simple prefix match to find which blocks contributed to this chunk
-            cursor = 0
-            for bid, btext in block_texts.items():
-                if bid in translations:
-                    continue
-                if orig.startswith(btext[:30]) or btext.startswith(orig[:30]):
-                    # This block likely contributed to this chunk
-                    # Use ratio to extract the relevant portion of translation
-                    ratio = len(btext) / max(len(orig), 1)
-                    chars_to_take = max(1, int(len(trans) * ratio))
-                    translations[bid] = trans[:chars_to_take]
-                    trans = trans[chars_to_take:]
-                    if not trans:
-                        break
-
-        return translations
 
     return {"tasks": tasks, "rag_store_getter": _state["rag_store_getter"], "tm_store": tm_store, "glossary_store": glossary_store}
