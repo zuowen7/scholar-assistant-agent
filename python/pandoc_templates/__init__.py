@@ -222,16 +222,38 @@ def compile_pdf(tex_source: str, output_dir: str | None = None) -> dict:
     tex_path = out_dir / "input.tex"
     pdf_path = out_dir / "input.pdf"
 
+    import os
+    import sys
+
     try:
         tex_path.write_text(tex_source, encoding="utf-8")
     except Exception as e:
         return {"success": False, "pdf_path": "", "error": f"写入 .tex 失败: {e}"}
 
+    # Fix Fontconfig on Windows: provide a fonts.conf pointing to system fonts
+    env = os.environ.copy()
+    if sys.platform == "win32":
+        windir = os.environ.get("WINDIR", "C:\\Windows")
+        fonts_dir = os.path.join(windir, "Fonts")
+        cache_dir = os.path.join(tempfile.gettempdir(), "tectonic_fontcache")
+        os.makedirs(cache_dir, exist_ok=True)
+        fonts_conf = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">\n'
+            '<fontconfig>\n'
+            f'  <dir>{fonts_dir}</dir>\n'
+            f'  <cachedir>{cache_dir}</cachedir>\n'
+            '</fontconfig>'
+        )
+        conf_path = out_dir / "fonts.conf"
+        conf_path.write_text(fonts_conf, encoding="utf-8")
+        env["FONTCONFIG_FILE"] = str(conf_path)
+
     try:
         result = subprocess.run(
             [cmd, "-X", "compile", str(tex_path)],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=120, cwd=str(out_dir),
+            timeout=120, cwd=str(out_dir), env=env,
         )
     except subprocess.TimeoutExpired:
         return {"success": False, "pdf_path": "", "error": "Tectonic 编译超时（120秒）"}
@@ -515,8 +537,8 @@ def markdown_to_latex(markdown_text: str, metadata: dict | None = None) -> dict:
         r"\documentclass[12pt]{article}" + "\n" +
         r"\usepackage{fontspec}" + "\n" +
         r"\setmainfont{SimSun}" + "\n" +
-        r"\setsansfont{Microsoft YaHei}" + "\n" +
-        r"\setmonofont{Consolas}" + "\n" +
+        r"\usepackage{xeCJK}" + "\n" +
+        r"\setCJKmainfont{SimSun}" + "\n" +
         r"\usepackage{amsmath,amssymb,bm}" + "\n" +
         r"\usepackage{graphicx}" + "\n" +
         r"\usepackage{hyperref}" + "\n" +
