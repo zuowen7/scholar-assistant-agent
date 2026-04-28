@@ -513,7 +513,10 @@ def markdown_to_latex(markdown_text: str, metadata: dict | None = None) -> dict:
 
     _doc_preamble = (
         r"\documentclass[12pt]{article}" + "\n" +
-        r"\usepackage[UTF8]{ctex}" + "\n" +
+        r"\usepackage{fontspec}" + "\n" +
+        r"\setmainfont{SimSun}" + "\n" +
+        r"\setsansfont{Microsoft YaHei}" + "\n" +
+        r"\setmonofont{Consolas}" + "\n" +
         r"\usepackage{amsmath,amssymb,bm}" + "\n" +
         r"\usepackage{graphicx}" + "\n" +
         r"\usepackage{hyperref}" + "\n" +
