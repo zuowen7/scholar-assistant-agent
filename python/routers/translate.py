@@ -106,6 +106,7 @@ def register_translate(
     """Register translate/config/health routes. Returns shared state dict."""
     tasks: dict[str, dict] = {}
     _busy_lock = asyncio.Lock()
+    _lock_orphaned = False
     _lock_reaper_handle: asyncio.Task | None = None
     _state: dict = {"rag_store_getter": rag_store_getter}
 
@@ -151,23 +152,26 @@ def register_translate(
 
     async def _acquire_busy_lock() -> None:
         """Acquire _busy_lock, force-releasing stale lock if no tasks are running."""
-        nonlocal _busy_lock
-        try:
-            await asyncio.wait_for(_busy_lock.acquire(), timeout=0)
-        except asyncio.TimeoutError:
+        nonlocal _busy_lock, _lock_orphaned
+        if _busy_lock.locked() or _lock_orphaned:
             has_running = any(t["status"] == "running" for t in tasks.values())
             if has_running:
                 raise HTTPException(409, "已有翻译任务在运行，请等待完成")
             logger.warning("Orphan lock detected, replacing with new lock")
             _busy_lock = asyncio.Lock()
-            await _busy_lock.acquire()
+            _lock_orphaned = False
+        await _busy_lock.acquire()
 
     async def _lock_reaper(delay: float = 60.0) -> None:
-        """Auto-release _busy_lock if stream never connects within delay seconds."""
+        """Set _lock_orphaned flag if stream never connects within delay seconds.
+
+        The actual lock release is deferred until the next _acquire_busy_lock call
+        (which checks _lock_orphaned and replaces the stale lock).
+        """
         await asyncio.sleep(delay)
         if _busy_lock.locked():
-            logger.warning("Lock reaper: releasing _busy_lock after %.0fs with no stream connection", delay)
-            _busy_lock.release()
+            logger.warning("Lock reaper: marking lock as orphaned after %.0fs", delay)
+            _lock_orphaned = True
 
     def _start_reaper() -> None:
         nonlocal _lock_reaper_handle

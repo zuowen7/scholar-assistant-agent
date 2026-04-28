@@ -37,12 +37,12 @@ _SHELL_ALLOWED_COMMANDS = frozenset({
     "ls", "dir", "cat", "head", "tail", "wc", "echo",
     "find", "grep", "sort", "uniq", "cut", "tr", "tee",
     "pwd", "whoami", "date", "uname",
-    # 文件操作（限制在沙箱内）
-    "touch", "mkdir", "cp", "mv", "rm", "rmdir",
+    # 文件操作（限制在沙箱内；rm/rmdir 已由 SecurityGate 黑名单拦截，此处不再列入）
+    "touch", "mkdir", "cp", "mv",
     # 开发工具
     "python", "python3", "pip", "pip3",
     "git",
-    "curl", "wget",
+    # curl/wget 已由 SecurityGate 黑名单拦截，网络下载统一走 web_fetch 工具
 })
 
 _SHELL_TIMEOUT = 30
