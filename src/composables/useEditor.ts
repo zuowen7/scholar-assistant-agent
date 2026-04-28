@@ -192,6 +192,18 @@ export function useEditor() {
     }
   }
 
+  function renameTabPath(oldPath: string, newPath: string) {
+    const tab = tabs.value.find(t => t.path === oldPath)
+    if (tab) {
+      tab.path = newPath
+      tab.id = newPath
+      tab.name = newPath.split(/[\\/]/).pop() || tab.name
+      if (activeTabId.value === oldPath) {
+        activeTabId.value = newPath
+      }
+    }
+  }
+
   async function saveFile(): Promise<string | null> {
     const tab = activeTab.value
     if (!tab || !tab.path) {
@@ -755,6 +767,7 @@ export function useEditor() {
     openNewUntitled,
     closeTab,
     setActiveTab,
+    renameTabPath,
     saveFile,
     exportToWord,
     insertTextAtCursor,

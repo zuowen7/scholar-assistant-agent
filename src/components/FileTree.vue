@@ -41,6 +41,7 @@
         :depth="0"
         :active-file="activeFile"
         @select="handleSelect"
+        @rename="handleRename"
       />
       <div v-if="searchQuery && filteredFiles.length === 0" class="tree-no-match">
         No matches for "{{ searchQuery }}"
@@ -60,8 +61,8 @@ import { useFileTree } from '../composables/useFileTree'
 import { useEditor } from '../composables/useEditor'
 import type { FileEntry } from '../types'
 
-const { files, rootDir, openFolder, readFileContent, createFile } = useFileTree()
-const { openFile: openEditorFile, activeFile } = useEditor()
+const { files, rootDir, openFolder, readFileContent, createFile, renameFile, deleteFile } = useFileTree()
+const { openFile: openEditorFile, activeFile, renameTabPath, closeTab } = useEditor()
 
 defineEmits<{ (e: 'collapse'): void }>()
 
@@ -126,6 +127,15 @@ async function handleNewFile() {
 async function handleRefresh() {
   if (rootDir.value) {
     await openFolder(rootDir.value)
+  }
+}
+
+async function handleRename(oldPath: string, newName: string) {
+  try {
+    const newPath = await renameFile(oldPath, newName)
+    renameTabPath(oldPath, newPath)
+  } catch (e) {
+    console.error('Rename failed:', e)
   }
 }
 
