@@ -316,7 +316,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
     translate_state["rag_store_getter"] = state_agent["get_rag_store"]
 
     from routers.editor import register_editor
-    register_editor(
+    state_editor = register_editor(
         app,
         cloud_only=cloud_only,
         load_config=_load_config,
@@ -348,5 +348,8 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         shutdown_fn = state_agent.get("shutdown")
         if shutdown_fn:
             await shutdown_fn()
+        shutdown_editor = state_editor.get("shutdown")
+        if shutdown_editor:
+            await shutdown_editor()
 
     return app

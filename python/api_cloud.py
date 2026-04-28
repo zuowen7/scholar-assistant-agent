@@ -30,7 +30,7 @@ from api_factory import create_app
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-app = create_app(cloud_only=True)
+app: FastAPI | None = None
 
 
 def _self_test(base_url: str) -> int:
@@ -81,6 +81,10 @@ def main() -> None:
 
     if args.self_test:
         raise SystemExit(_self_test(args.base_url))
+
+    global app
+    if app is None:
+        app = create_app(cloud_only=True)
 
     from fastapi.staticfiles import StaticFiles
     import uvicorn

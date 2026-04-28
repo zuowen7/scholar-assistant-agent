@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -80,9 +81,40 @@ def register_editor(
     runtime_dir: Path,
     data_root: Path,
     rag_store_getter,
-) -> None:
+) -> dict[str, callable]:
     """Register editor-related routes."""
     output_dir = data_root / "output"
+
+    _output_reaper_handle: asyncio.Task | None = None
+
+    async def _output_file_reaper(delay: float = 300.0) -> None:
+        """Periodically delete Word export files older than 30 minutes."""
+        while True:
+            await asyncio.sleep(delay)
+            if not output_dir.exists():
+                continue
+            now = time.time()
+            for path in output_dir.iterdir():
+                if path.suffix.lower() != ".docx":
+                    continue
+                try:
+                    age_minutes = (now - path.stat().st_mtime) / 60
+                    if age_minutes > 30:
+                        path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+
+    def _start_output_reaper() -> None:
+        nonlocal _output_reaper_handle
+        if _output_reaper_handle is not None:
+            _output_reaper_handle.cancel()
+        _output_reaper_handle = asyncio.create_task(_output_file_reaper())
+
+    def _cancel_output_reaper() -> None:
+        nonlocal _output_reaper_handle
+        if _output_reaper_handle is not None:
+            _output_reaper_handle.cancel()
+            _output_reaper_handle = None
 
     @app.post("/api/edit")
     async def edit_text(req: EditRequest):
@@ -719,3 +751,7 @@ def register_editor(
         except Exception as e:
             logger.error("获取引用失败: %s", e)
             raise HTTPException(500, f"获取引用失败: {e}")
+
+    return {
+        "shutdown": _cancel_output_reaper,
+    }
