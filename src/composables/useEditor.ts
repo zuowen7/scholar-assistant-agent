@@ -7,25 +7,31 @@ import { readSseStream } from '../utils/streamReader'
 const API = API_BASE
 
 // ── File save helper (works in both Tauri and browser) ──────────
-async function saveBlob(blob: Blob, defaultName: string): Promise<void> {
+async function saveBlob(blob: Blob, defaultName: string): Promise<string | null> {
   try {
     const { save } = await import('@tauri-apps/plugin-dialog')
     const { writeFile } = await import('@tauri-apps/plugin-fs')
-    const path = await save({ defaultPath: defaultName, filters: [{ name: 'Document', extensions: [defaultName.split('.').pop() || 'bin'] }] })
-    if (path) {
-      const buffer = await blob.arrayBuffer()
-      await writeFile(path, new Uint8Array(buffer))
-      return
-    }
-  } catch {
-    // Not in Tauri or dialog cancelled — fall through to browser download
+    const ext = defaultName.split('.').pop() || 'bin'
+    const path = await save({
+      defaultPath: defaultName,
+      filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
+    })
+    if (!path) return 'Cancelled'
+    const buffer = new Uint8Array(await blob.arrayBuffer())
+    await writeFile(path, buffer)
+    return null
+  } catch (e) {
+    console.warn('Tauri save failed, using browser fallback:', e)
   }
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
   a.download = defaultName
+  document.body.appendChild(a)
   a.click()
-  URL.revokeObjectURL(url)
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  return null
 }
 
 // ── 全局单例状态 ──────────────────────────────────────────────────
@@ -226,8 +232,7 @@ export function useEditor() {
     const blob = await downloadResp.blob()
 
     const defaultName = data.filename || 'export.docx'
-    await saveBlob(blob, defaultName)
-    return null
+    return await saveBlob(blob, defaultName)
   }
 
   // 内容变化时标记 dirty（由 Monaco 的 onDidChangeModelContent 调用）
