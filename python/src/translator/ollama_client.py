@@ -11,9 +11,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Sequence
 
 import httpx
@@ -21,21 +20,17 @@ import httpx
 logger = logging.getLogger(__name__)
 
 from src.translator._helpers import (
-    TranslationResult as TranslationResult,
-    _extract_term_pairs as _extract_term_pairs_impl,
-    _strip_think_tags as _strip_think_tags_impl,
-    _strip_code_block_wrapping as _strip_code_block_wrapping_impl,
-    _strip_preamble as _strip_preamble_impl,
-    _strip_context_leak as _strip_context_leak_impl,
-    _validate_translation as _validate_translation_impl,
-    _repair_truncation as _repair_truncation_impl,
-    _strip_empty_parentheses as _strip_empty_parentheses_impl,
-    _strip_trailing_summary as _strip_trailing_summary_impl,
-    _deduplicate_repetition as _deduplicate_repetition_impl,
-    _deduplicate_line_repetition as _deduplicate_line_repetition_impl,
-    _lines_match as _lines_match_impl,
-    _is_similar_sentences as _is_similar_sentences_impl,
-    _restore_paragraphs as _restore_paragraphs_impl,
+    TranslationResult,
+    _extract_term_pairs,
+    _strip_think_tags,
+    _strip_code_block_wrapping,
+    _strip_preamble,
+    _strip_context_leak,
+    _validate_translation,
+    _repair_truncation,
+    _strip_empty_parentheses,
+    _strip_trailing_summary,
+    _deduplicate_repetition,
 )
 
 MAX_RETRIES = 2
@@ -229,7 +224,7 @@ class OllamaClient:
 
         return "\n".join(parts)
 
-    def _call_api(self, text: str, prev_translation: str = "") -> TranslationResult:
+    def _build_prompt(self, text: str, prev_translation: str = "") -> str:
         prompt_parts = []
 
         if self._document_context:
@@ -247,9 +242,7 @@ class OllamaClient:
         prompt_parts.append(f"[请翻译以下内容]\n{text}")
         prompt = "".join(prompt_parts)
 
-        # Token 安全保护：如果 prompt 总长度超出上限，裁剪上下文
         if len(prompt) > _PROMPT_MAX_CHARS:
-            # 优先保留当前 chunk 文本，缩减上下文窗口
             ctx_budget = _PROMPT_MAX_CHARS - len(text) - 200
             if ctx_budget > 0 and prev_translation:
                 snippet = prev_translation[-min(ctx_budget, _CONTEXT_WINDOW_LEN):]
@@ -265,43 +258,59 @@ class OllamaClient:
             else:
                 prompt = f"[请翻译以下内容]\n{text}"
 
-        system = self._build_system_prompt()
+        return prompt
 
-        payload = {
+    def _build_api_payloads(self, prompt: str) -> tuple[dict, dict]:
+        system = self._build_system_prompt()
+        options = {
+            "temperature": self.temperature,
+            "num_predict": self.num_predict,
+            "repeat_penalty": 1.2,
+        }
+        chat_payload = {
+            "model": self.model,
+            "messages": (
+                ([{"role": "system", "content": system}] if system else [])
+                + [{"role": "user", "content": prompt}]
+            ),
+            "stream": False,
+            "options": options,
+        }
+        generate_payload = {
             "model": self.model,
             "prompt": prompt,
             "stream": False,
-            "options": {
-                "temperature": self.temperature,
-                "num_predict": self.num_predict,
-                "repeat_penalty": 1.2,
-            },
+            "options": options,
         }
         if system:
-            payload["system"] = system
+            generate_payload["system"] = system
+        return chat_payload, generate_payload
+
+    def _parse_response(self, data: dict, text: str) -> TranslationResult:
+        if "message" in data:
+            translated = (data.get("message") or {}).get("content") or ""
+        else:
+            translated = data.get("response") or ""
+        translated = self._post_process(translated.strip())
+        return TranslationResult(
+            original=text,
+            translated=translated,
+            model=data.get("model", self.model),
+            prompt_tokens=int(data.get("prompt_eval_count", 0) or 0),
+            completion_tokens=int(data.get("eval_count", 0) or 0),
+        )
+
+    def _call_api(self, text: str, prev_translation: str = "") -> TranslationResult:
+        prompt = self._build_prompt(text, prev_translation)
+        chat_payload, generate_payload = self._build_api_payloads(prompt)
 
         try:
             client = self._get_http_client()
-            # 优先走 Chat API：与 Qwen3 等模型的对话模板对齐，指令遵循通常优于裸 generate
-            chat_payload = {
-                "model": self.model,
-                "messages": (
-                    ([{"role": "system", "content": system}] if system else [])
-                    + [{"role": "user", "content": prompt}]
-                ),
-                "stream": False,
-                "options": {
-                    "temperature": self.temperature,
-                    "num_predict": self.num_predict,
-                    "repeat_penalty": 1.2,
-                },
-            }
             resp = client.post(f"{self.base_url}/api/chat", json=chat_payload)
             if resp.status_code >= 400:
-                # Chat API 失败，fallback 到 Generate API，保留原始错误信息
                 chat_error = f"Chat API HTTP {resp.status_code}"
                 try:
-                    resp = client.post(f"{self.base_url}/api/generate", json=payload)
+                    resp = client.post(f"{self.base_url}/api/generate", json=generate_payload)
                 except Exception:
                     raise ValueError(f"Chat API 和 Generate API 均失败（{chat_error}）")
             resp.raise_for_status()
@@ -318,29 +327,7 @@ class OllamaClient:
                 f"Ollama 请求超时 ({self.timeout}s)，模型可能过载或 num_predict 过大"
             ) from e
 
-        data = resp.json()
-        if "message" in data:
-            translated = (data.get("message") or {}).get("content") or ""
-        else:
-            translated = data.get("response") or ""
-        translated = translated.strip()
-
-        translated = _strip_think_tags(translated)
-        translated = _strip_code_block_wrapping(translated)
-        translated = _strip_preamble(translated)
-        translated = _strip_context_leak(translated)
-        translated = _deduplicate_repetition(translated)
-        translated = _strip_trailing_summary(translated)
-        translated = _strip_empty_parentheses(translated)
-        translated = _repair_truncation(translated)
-
-        return TranslationResult(
-            original=text,
-            translated=translated,
-            model=data.get("model", self.model),
-            prompt_tokens=int(data.get("prompt_eval_count", 0) or 0),
-            completion_tokens=int(data.get("eval_count", 0) or 0),
-        )
+        return self._parse_response(resp.json(), text)
 
     def health_check(self) -> bool:
         """检查 Ollama 服务是否在线（GET /api/tags）"""
@@ -368,67 +355,8 @@ class OllamaClient:
         self, text: str, prev_translation: str = "",
     ) -> dict:
         """异步调用 Ollama Chat API（不走重试，重试由外层 handle）"""
-        prompt_parts = []
-
-        if self._document_context:
-            prompt_parts.append(
-                f"[文档背景（不要翻译此部分）]\n{self._document_context}\n\n"
-            )
-
-        if prev_translation:
-            snippet = prev_translation[-_CONTEXT_WINDOW_LEN:]
-            prompt_parts.append(
-                f"[前文翻译参考（不要翻译此部分，仅用于保持术语和风格一致）]\n"
-                f"{snippet}\n\n"
-            )
-
-        prompt_parts.append(f"[请翻译以下内容]\n{text}")
-        prompt = "".join(prompt_parts)
-
-        # Token 安全保护
-        if len(prompt) > _PROMPT_MAX_CHARS:
-            ctx_budget = _PROMPT_MAX_CHARS - len(text) - 200
-            if ctx_budget > 0 and prev_translation:
-                snippet = prev_translation[-min(ctx_budget, _CONTEXT_WINDOW_LEN):]
-                prompt = (
-                    f"[前文翻译参考（不要翻译此部分）]\n{snippet}\n\n"
-                    f"[请翻译以下内容]\n{text}"
-                )
-            elif self._document_context and ctx_budget > 0:
-                prompt = (
-                    f"[文档背景（不要翻译此部分）]\n{self._document_context[:ctx_budget]}\n\n"
-                    f"[请翻译以下内容]\n{text}"
-                )
-            else:
-                prompt = f"[请翻译以下内容]\n{text}"
-
-        system = self._build_system_prompt()
-
-        chat_payload = {
-            "model": self.model,
-            "messages": (
-                ([{"role": "system", "content": system}] if system else [])
-                + [{"role": "user", "content": prompt}]
-            ),
-            "stream": False,
-            "options": {
-                "temperature": self.temperature,
-                "num_predict": self.num_predict,
-                "repeat_penalty": 1.2,
-            },
-        }
-        payload = {
-            "model": self.model,
-            "prompt": prompt,
-            "stream": False,
-            "options": {
-                "temperature": self.temperature,
-                "num_predict": self.num_predict,
-                "repeat_penalty": 1.2,
-            },
-        }
-        if system:
-            payload["system"] = system
+        prompt = self._build_prompt(text, prev_translation)
+        chat_payload, generate_payload = self._build_api_payloads(prompt)
 
         try:
             client = await self._get_async_http_client()
@@ -436,7 +364,7 @@ class OllamaClient:
             if resp.status_code >= 400:
                 chat_error = f"Chat API HTTP {resp.status_code}"
                 try:
-                    resp = await client.post(f"{self.base_url}/api/generate", json=payload)
+                    resp = await client.post(f"{self.base_url}/api/generate", json=generate_payload)
                 except Exception:
                     raise ValueError(f"Chat API 和 Generate API 均失败（{chat_error}）")
             resp.raise_for_status()
@@ -454,7 +382,7 @@ class OllamaClient:
         return resp.json()
 
     def _post_process(self, translated: str) -> str:
-        """同步后处理（与 _call_api 保持一致）"""
+        """翻译后处理流水线"""
         translated = _strip_think_tags(translated)
         translated = _strip_code_block_wrapping(translated)
         translated = _strip_preamble(translated)
@@ -483,21 +411,12 @@ class OllamaClient:
         for attempt in range(MAX_RETRIES + 1):
             try:
                 data = await self._call_api_async(text, ctx)
-                raw = (data.get("message") or {}).get("content") or data.get("response") or ""
-                translated = self._post_process(raw.strip())
-
-                result = TranslationResult(
-                    original=text,
-                    translated=translated,
-                    model=data.get("model", self.model),
-                    prompt_tokens=int(data.get("prompt_eval_count", 0) or 0),
-                    completion_tokens=int(data.get("eval_count", 0) or 0),
-                )
+                result = self._parse_response(data, text)
 
                 if not _validate_translation(result):
                     logger.warning(
                         "翻译结果过短 (attempt %d): original=%d chars, translated=%d chars",
-                        attempt + 1, len(text), len(translated),
+                        attempt + 1, len(text), len(result.translated),
                     )
                     if attempt < MAX_RETRIES:
                         await asyncio.sleep(_backoff_delay(attempt))
@@ -605,320 +524,3 @@ def translate(
         return client.translate(text)
     finally:
         client.close()
-
-
-# ---------------------------------------------------------------------------
-# 术语提取
-# ---------------------------------------------------------------------------
-
-def _extract_term_pairs(original: str, translated: str) -> list[tuple[str, str]]:
-    """从原文-译文对中提取可能的术语翻译对
-
-    策略: 找译文中「中文（英文）」模式的括号注解，
-    这些通常是模型按 system_prompt 要求标注的术语。
-    """
-    pairs: list[tuple[str, str]] = []
-    seen: set[str] = set()
-
-    pattern = re.compile(
-        r"([\u4e00-\u9fff][\u4e00-\u9fff\w\s]{1,20})"
-        r"[（(]"
-        r"([A-Za-z][A-Za-z\s\-/]+[A-Za-z])"
-        r"[）)]"
-    )
-    for m in pattern.finditer(translated):
-        zh_term = m.group(1).strip()
-        en_term = m.group(2).strip()
-        key = en_term.lower()
-        if key not in seen and len(en_term) > 2:
-            pairs.append((en_term, zh_term))
-            seen.add(key)
-
-    return pairs
-
-
-# ---------------------------------------------------------------------------
-# 后处理
-# ---------------------------------------------------------------------------
-
-def _strip_think_tags(text: str) -> str:
-    return _strip_think_tags_impl(text)
-
-
-def _strip_code_block_wrapping(text: str) -> str:
-    return _strip_code_block_wrapping_impl(text)
-
-
-def _strip_preamble(text: str) -> str:
-    return _strip_preamble_impl(text)
-
-
-def _strip_context_leak(text: str) -> str:
-    return _strip_context_leak_impl(text)
-
-
-def _validate_translation(result: TranslationResult) -> bool:
-    """校验翻译结果质量
-
-    多层校验:
-    1. 空值/极短检测
-    2. 截断检测（译文过短）
-    3. 未翻译检测（原文=译文）
-    4. 语言检测（无中文字符）
-    5. 格式幻觉检测（markdown 代码块包裹、多份重复翻译）
-    """
-    if not result.translated:
-        return False
-    orig = result.original
-    trans = result.translated
-    orig_len = len(orig)
-    trans_len = len(trans)
-
-    # 短块: 标题、图注等（< 30 字符）只做最低检查
-    if orig_len < 30:
-        return trans_len >= 1 and len(trans.strip()) > 0
-
-    # 原文公式/LaTeX/代码占比高时不做强校验
-    latexish = sum(1 for c in orig if c in "\\{}$[]_^") / max(orig_len, 1)
-    if latexish > 0.04:
-        return trans_len >= max(3, int(orig_len * 0.03))
-
-    # 译文太短 (原文 > 100 字符但译文不到 3%) — 明显截断
-    if orig_len > 100 and trans_len < orig_len * 0.03:
-        return False
-
-    # 译文与原文完全相同（去掉空白后） — 明显未翻译
-    orig_no_space = re.sub(r"\s+", "", orig)
-    trans_no_space = re.sub(r"\s+", "", trans)
-    if orig_no_space and orig_no_space == trans_no_space:
-        logger.warning("译文与原文完全相同，疑似未翻译")
-        return False
-
-    # CJK 占比检查: 如果完全没有中文字符且 ASCII 占比极高，判定未翻译
-    cjk_n = sum(1 for c in trans if "\u4e00" <= c <= "\u9fff")
-    cjk_ratio = cjk_n / max(trans_len, 1)
-    if cjk_ratio < 0.05 and orig_len > 100:
-        ascii_ratio = sum(1 for c in trans if c.isascii() and c.isalpha()) / max(trans_len, 1)
-        if ascii_ratio > 0.95:
-            logger.warning("译文 ASCII 占比 %.0f%% 且无中文，疑似未翻译: %.50s...", ascii_ratio * 100, trans)
-            return False
-
-    # 格式幻觉检测: LLM 用 markdown 代码块包裹翻译结果
-    stripped = trans.strip()
-    if stripped.startswith("```") and stripped.endswith("```"):
-        logger.warning("译文被 markdown 代码块包裹，疑似格式幻觉")
-        return False
-
-    # 重复翻译检测: 译文前半段和后半段高度重复（>80% 相同）
-    if trans_len > 400:
-        half = trans_len // 2
-        first_half = stripped[:half]
-        second_half = stripped[half:half * 2]
-        if first_half and second_half and len(first_half) > 50:
-            # 计算两半的前 100 字符重复率
-            shorter_len = min(len(first_half), len(second_half), 100)
-            overlap = sum(1 for a, b in zip(first_half[:shorter_len], second_half[:shorter_len]) if a == b)
-            if overlap / shorter_len > 0.8:
-                logger.warning("译文前后半段高度重复 (%.0f%%)，疑似重复翻译", overlap / shorter_len * 100)
-                return False
-
-    # 循环重复检测: 按句号分段后检查是否存在周期性重复
-    if trans_len > 600:
-        sents = re.split(r"(?<=[。！？])", stripped)
-        sents = [s.strip() for s in sents if s.strip()]
-        if len(sents) >= 6:
-            # 检查是否有连续 3+ 段相同内容循环出现
-            for unit_sz in range(1, min(len(sents) // 3, 20) + 1):
-                unit = sents[:unit_sz]
-                repeats = 0
-                for si in range(unit_sz, len(sents), unit_sz):
-                    chunk = sents[si:si + unit_sz]
-                    if not chunk:
-                        continue
-                    if _is_similar_sentences(unit, chunk):
-                        repeats += 1
-                    else:
-                        break
-                if repeats >= 2:
-                    logger.warning(
-                        "检测到循环重复 (单元=%d句, 重复%d次), 拒绝该翻译",
-                        unit_sz, repeats,
-                    )
-                    return False
-
-    return True
-
-
-def _repair_truncation(text: str) -> str:
-    if not text:
-        return text
-
-    n = len(text)
-    # 短文本（< 100 字符）不进行截断修复，避免误删标题或图注
-    if n < 100:
-        return text
-
-    zh_endings = ["。", "！", "？", "；", "…"]
-    en_endings = ["!", "?"]
-
-    last_zh = max((text.rfind(c) for c in zh_endings), default=-1)
-    last_en = max((text.rfind(c) for c in en_endings), default=-1)
-
-    # 对 "." 单独处理：排除小数点 (3.14)、缩写 (Fig. Dr.)、省略号 (...) 等误匹配
-    last_dot = text.rfind(".")
-    if last_dot >= 0:
-        before = text[:last_dot].rstrip()
-        # 排除小数点: 前面紧跟数字
-        if before and before[-1].isdigit():
-            last_dot = -1
-        # 排除省略号: 前面紧跟 .
-        elif before and before[-1] == ".":
-            last_dot = -1
-        # 排除常见缩写
-        elif before and re.search(
-            r"(?:Fig|Eq|Ref|Vol|No|Dr|Mr|Mrs|Prof|Sr|Jr|St|vs|etc|al|ed|e\.g|i\.e)$",
-            before, re.IGNORECASE
-        ):
-            last_dot = -1
-
-    last_en = max(last_en, last_dot)
-
-    last_sentence_end = max(last_zh, last_en)
-
-    # 仅当「最后一句边界」落在文末附近时尝试修剪，避免误删未打句号的整段译文
-    if last_sentence_end >= 0 and last_sentence_end < n - 1 and last_sentence_end >= int(n * 0.75):
-        tail = text[last_sentence_end + 1 :].strip()
-        tail_cjk = sum(1 for c in tail if "\u4e00" <= c <= "\u9fff")
-        if (
-            0 < len(tail) < min(120, int(n * 0.12))
-            and tail_cjk == 0
-            and not re.search(r"[\w\u4e00-\u9fff]{6,}", tail)
-        ):
-            logger.info("截断修复: 移除末尾疑似残缺片段 (%d 字符)", len(tail))
-            return text[: last_sentence_end + 1].rstrip()
-    return text
-
-
-def _strip_empty_parentheses(text: str) -> str:
-    return _strip_empty_parentheses_impl(text)
-
-
-def _strip_trailing_summary(text: str) -> str:
-    return _strip_trailing_summary_impl(text)
-
-
-def _deduplicate_repetition(text: str) -> str:
-    """检测并移除译文中的循环重复内容
-
-    模型有时陷入生成循环，同一段落重复几十次。
-    两级策略:
-    1. 行级重复检测: 按 \\n 分割，检测任意位置的连续重复块
-    2. 句级重复检测: 按句号分段，检测从头开始的周期性重复
-    """
-    if not text or len(text) < 300:
-        return text
-
-    # ── Level 1: 行级重复检测（检测文本任意位置的连续重复） ──
-    line_result = _deduplicate_line_repetition(text)
-    if len(line_result) < len(text) * 0.7:
-        return line_result
-
-    # ── Level 2: 句级重复检测（原有逻辑，检测从头开始的周期重复） ──
-    sentences = re.split(r"(?<=[。！？])", text)
-    sentences = [s.strip() for s in sentences if s.strip()]
-    if len(sentences) < 6:
-        return text
-
-    text_len = len(sentences)
-    for unit_size in range(1, text_len // 2 + 1):
-        if text_len < unit_size * 3:
-            break
-        unit = sentences[:unit_size]
-        is_repetitive = True
-        repeat_count = 0
-        for i in range(unit_size, text_len, unit_size):
-            chunk = sentences[i : i + unit_size]
-            if not chunk:
-                continue
-            if not _is_similar_sentences(unit, chunk):
-                is_repetitive = False
-                break
-            repeat_count += 1
-
-        if is_repetitive and repeat_count >= 2:
-            unique_text = "".join(unit)
-            logger.warning(
-                "检测到句级循环重复: 单元=%d句, 重复%d次, 保留第一份 (原文%d句→%d句)",
-                unit_size, repeat_count, text_len, unit_size,
-            )
-            return unique_text
-
-    return text
-
-
-def _deduplicate_line_repetition(text: str) -> str:
-    return _deduplicate_line_repetition_impl(text)
-
-
-def _lines_match(a: list[str], b: list[str]) -> bool:
-    return _lines_match_impl(a, b)
-
-
-def _is_similar_sentences(a: list[str], b: list[str]) -> bool:
-    return _is_similar_sentences_impl(a, b)
-
-
-def _restore_paragraphs(original: str, translated: str) -> str:
-    """译文缺少段落分隔时，按原文段落比例恢复 \n\n 分段。
-
-    模型常把多段译文合并为一段，此函数按原文各段的字符占比，
-    在中文句号/问号/感叹号处切割译文，恢复与原文对应的段落结构。
-    """
-    orig_paras = [p.strip() for p in original.split("\n\n") if p.strip()]
-    if len(orig_paras) <= 1:
-        return translated
-
-    # 译文已经有足够的段落分隔 → 无需修复
-    trans_paras = [p.strip() for p in translated.split("\n\n") if p.strip()]
-    if len(trans_paras) >= len(orig_paras):
-        return translated
-
-    # 找出译文中所有中文句末位置
-    sentence_ends = []
-    for i, c in enumerate(translated):
-        if c in "。！？；":
-            sentence_ends.append(i + 1)
-    if len(sentence_ends) < len(orig_paras) - 1:
-        return translated  # 句末太少，无法安全分割
-
-    # 按原文各段长度占比，在最近的句号处切分
-    total_orig = sum(len(p) for p in orig_paras)
-    cumulative = 0
-    split_positions: list[int] = []
-    used = set()
-    for para in orig_paras[:-1]:
-        cumulative += len(para)
-        ratio = cumulative / total_orig
-        target_char = int(len(translated) * ratio)
-        # 找距离目标位置最近的句末（且未被用过）
-        best = min(
-            (p for p in sentence_ends if p not in used),
-            key=lambda pos: abs(pos - target_char),
-            default=None,
-        )
-        if best is not None:
-            split_positions.append(best)
-            used.add(best)
-
-    if not split_positions:
-        return translated
-
-    # 按位置排序后拼接
-    result = []
-    prev = 0
-    for pos in sorted(split_positions):
-        result.append(translated[prev:pos].strip())
-        prev = pos
-    result.append(translated[prev:].strip())
-
-    return "\n\n".join(result)

@@ -37,17 +37,17 @@ class SessionState(Enum):
 
 
 # ---------------------------------------------------------------------------
-# SSE Event Type Constants (Phase 2: Event Protocol v2)
+# SSE Event Type Constants (Phase 2: Event Protocol)
 # ---------------------------------------------------------------------------
 
-# v1 事件 (保留兼容)
+# 基础事件类型（用于简单反馈）
 EVT_THINKING = "thinking"
 EVT_TOKEN = "token"
 EVT_TOOL_RESULT = "tool_result"
 EVT_RESPONSE = "response"
 EVT_ERROR = "error"
 
-# v2 新增事件
+# 会话管理事件（Phase 2: AgentSession）
 EVT_SESSION_STARTED = "session_started"
 EVT_TASK_STARTED = "task_started"
 EVT_THOUGHT = "thought"
@@ -106,16 +106,19 @@ class Message:
 class AgentEvent:
     """Agent SSE 事件 — ReAct 推理过程中流式返回的中间状态或最终结果。
 
-    v1 事件类型:
+    事件类型分类:
+
+    基础事件:
     - thinking:    Agent 正在推理（可选择性地展示思考过程）。
+    - token:       流式输出的 token 片段。
     - tool_result: 工具执行完毕，携带返回值或错误信息。
     - response:    Agent 的最终回答（ReAct 循环终止）。
     - error:       不可恢复的错误（如连接失败、超过最大步数）。
 
-    v2 新增事件类型:
+    会话管理事件 (AgentSession):
     - session_started: 会话开始。
     - task_started: 子任务开始。
-    - thought: 替代 v1 thinking，更精确。
+    - thought: Agent 的推理过程（替代 thinking，更精确）。
     - tool_call: Agent 决定调用某个工具。
     - await_approval: 等待用户审批。
     - approval_received: 收到审批决定。

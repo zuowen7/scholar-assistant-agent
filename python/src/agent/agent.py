@@ -61,6 +61,18 @@ from src.agent.trajectory import TrajectoryRecorder
 
 logger = logging.getLogger(__name__)
 
+
+@dataclass
+class StepResult:
+    """单步执行结果。"""
+    events: list[AgentEvent]
+    tool_calls: list[ToolCall]
+    tool_results: list[tuple[str, str, str]]  # (name, id, result)
+    is_final: bool = False
+    final_answer: str = ""
+    error: str = ""
+
+
 MAX_STEPS = 6
 TASK_MAX_STEPS = 50
 GLOBAL_MAX_STEPS = 200
@@ -182,7 +194,6 @@ class AgentLoop:
         self.api_format = api_format
 
         self.rag_store = rag_store
-        self._format_error_retry = False
 
     async def close(self) -> None:
         await self.llm.close()
@@ -191,16 +202,6 @@ class AgentLoop:
     # v2: Stateless single-step executor
     # ------------------------------------------------------------------
 
-    @dataclass
-    class StepResult:
-        """单步执行结果。"""
-        events: list[AgentEvent]
-        tool_calls: list[ToolCall]
-        tool_results: list[tuple[str, str, str]]  # (name, id, result)
-        is_final: bool = False
-        final_answer: str = ""
-        error: str = ""
-
     async def step(
         self,
         messages: list[Message],
@@ -208,12 +209,16 @@ class AgentLoop:
         step_num: int = 1,
         max_steps: int = TASK_MAX_STEPS,
         execute_tools: bool = True,
-    ) -> AgentLoop.StepResult:
+    ) -> StepResult:
         """执行单个 ReAct 步骤，返回结构化结果。
 
-        AgentSession.drive() 反复调用此方法驱动循环。
-        不修改 self 实例状态（除了 token_usage 累积），
-        所有可变状态由 AgentSession 管理。
+        这是 AgentLoop 的**核心执行方法**，由 AgentSession.drive() 反复调用
+        来驱动完整的推理循环。
+
+        设计原则：
+        - 无状态执行：不修改 self 实例状态（除了 token_usage 累积）
+        - 消息原地更新：直接在 messages 列表上追加 assistant/tool 消息
+        - 灵活工具执行：execute_tools=False 允许调用方先门控再执行
 
         Args:
             messages: 当前消息列表（会被原地追加 assistant + tool 消息）。
@@ -224,7 +229,7 @@ class AgentLoop:
         Returns:
             StepResult 包含本轮事件、工具调用和结果。
         """
-        result = self.StepResult(events=[], tool_calls=[], tool_results=[])
+        result = StepResult(events=[], tool_calls=[], tool_results=[])
         logger.info("ReAct step %d (session-driven)", step_num)
 
         # 滑动窗口上下文管理
@@ -313,176 +318,6 @@ class AgentLoop:
 
         return result
 
-    async def run(
-        self,
-        query: str,
-        history: list[Message] | None = None,
-    ) -> AsyncGenerator[AgentEvent, None]:
-        """执行 ReAct 推理循环，流式返回事件。"""
-        self.retry_manager.reset()
-        self._format_error_retry = False
-        self.llm.token_usage = TokenUsage()
-
-        self.trajectory_recorder.start(query, model=self.model)
-
-        messages = self._build_messages(query, history)
-
-        try:
-            for step in range(1, self.max_steps + 1):
-                logger.info("ReAct 步骤 %d/%d", step, self.max_steps)
-
-                # 滑动窗口上下文管理
-                messages = _trim_messages(messages)
-
-                # 调用 LLM（流式输出）
-                try:
-                    await self.hooks.trigger(HookContext(
-                        point=HookPoint.ON_LLM_CALL,
-                        data={"step": step, "message_count": len(messages)},
-                    ))
-
-                    tools = None if self._format_error_retry else self.tool_registry.to_ollama_tools() or None
-                    response = None
-                    async for token_event, full_response in self.llm.stream(messages, tools=tools):
-                        if token_event is not None:
-                            yield AgentEvent(type="token", content=token_event.get("content", ""))
-                        if full_response is not None:
-                            response = full_response
-                    if response is None:
-                        raise ValueError("LLM 流式响应未返回完整结果")
-                    self.llm.token_usage.accumulate(response)
-                    if self._format_error_retry:
-                        self._format_error_retry = False
-                        logger.info("工具调用已恢复（上一步无工具重试成功）")
-                    await self.hooks.trigger(HookContext(
-                        point=HookPoint.ON_LLM_RESPONSE,
-                        data={"step": step},
-                    ))
-                except Exception as e:
-                    logger.error("LLM 调用异常 [%s]: %s", type(e).__name__, e, exc_info=True)
-                    error_type = classify_error(e)
-                    recovery = get_recovery(error_type)
-
-                    await self.hooks.trigger(HookContext(
-                        point=HookPoint.ON_ERROR,
-                        data={"error_type": error_type.value, "error": str(e), "step": step},
-                    ))
-
-                    if error_type == ErrorType.CONTEXT_OVERFLOW:
-                        logger.warning("上下文溢出，滑动窗口裁剪后重试...")
-                        trimmed = _trim_messages(messages)
-                        if len(trimmed) < len(messages):
-                            messages = trimmed
-                            continue
-                        yield AgentEvent(type="error", content="上下文过长，无法处理，请简化问题。")
-                        return
-
-                    if error_type == ErrorType.FORMAT_ERROR and self.retry_manager.can_retry(error_type):
-                        delay = self.retry_manager.get_delay(error_type)
-                        feedback = self.retry_manager.get_feedback_message(error_type, str(e))
-                        self.retry_manager.record_attempt(error_type)
-                        logger.warning(
-                            "LLM 错误 [%s]: %s → %s (去掉工具后重试, 第 %d 次)",
-                            error_type.value, e, feedback,
-                            self.retry_manager._attempt_counts.get(error_type, 0),
-                        )
-                        yield AgentEvent(
-                            type="thinking",
-                            content=f"请求格式错误，尝试去掉工具后重新调用...",
-                        )
-                        await asyncio.sleep(delay)
-                        self._format_error_retry = True
-                        continue
-
-                    if recovery.action == "retry" and self.retry_manager.can_retry(error_type):
-                        delay = self.retry_manager.get_delay(error_type)
-                        feedback = self.retry_manager.get_feedback_message(error_type, str(e))
-                        self.retry_manager.record_attempt(error_type)
-                        logger.warning(
-                            "LLM 错误 [%s]: %s → %s (将在 %.1fs 后重试, 第 %d 次)",
-                            error_type.value, e, feedback, delay,
-                            self.retry_manager._attempt_counts.get(error_type, 0),
-                        )
-                        yield AgentEvent(
-                            type="thinking",
-                            content=f"遇到错误 ({feedback})，正在重试...",
-                        )
-                        await asyncio.sleep(delay)
-                        continue
-
-                    feedback = self.retry_manager.get_feedback_message(error_type, str(e))
-                    raw = str(e)
-                    logger.warning("LLM 错误 [%s]: %s → %s (终止)", error_type.value, e, feedback)
-                    display_msg = f"LLM 调用失败: {feedback}"
-                    if raw and raw not in display_msg:
-                        display_msg += f"\n详情: {raw[:300]}"
-                    yield AgentEvent(type="error", content=display_msg, metadata={"raw_error": raw, "error_type": error_type.value})
-                    return
-
-                # 解析 LLM 响应中的工具调用
-                tool_calls = extract_tool_calls(response)
-                if not tool_calls:
-                    tool_calls = self._parse_text_react(extract_text_content(response))
-
-                if not tool_calls:
-                    answer = extract_text_content(response)
-                    self._finalize_trajectory(query, answer, success=True)
-                    if answer:
-                        try:
-                            self.memory.add_memory(
-                                content=f"Q: {query}\nA: {answer[:2000]}",
-                                category="conversation",
-                                source="conversation",
-                                importance=0.5,
-                            )
-                        except Exception as e:
-                            logger.warning("长期记忆存储失败（不影响推理）: %s", e)
-                    yield AgentEvent(
-                        type="response",
-                        content=answer,
-                        metadata={"token_usage": self.llm.token_usage.to_dict()},
-                    )
-                    return
-
-                assistant_content = extract_text_content(response)
-                reasoning = (response.get("message") or {}).get("reasoning_content") or None
-                messages.append(Message(
-                    role="assistant",
-                    content=assistant_content,
-                    tool_calls=tool_calls,
-                    reasoning_content=reasoning,
-                ))
-
-                tool_results: list[tuple[str, str, str]] = []
-                if len(tool_calls) > 1:
-                    parallel_results = await self._execute_tools_parallel(tool_calls, query)
-                    for tc_name, tc_id, result in parallel_results:
-                        tool_results.append((tc_name, tc_id, result))
-                        yield AgentEvent(
-                            type="tool_result",
-                            content=result[:500] + ("..." if len(result) > 500 else ""),
-                            metadata={"tool_name": tc_name},
-                        )
-                else:
-                    for tc in tool_calls:
-                        result = await self._execute_single_tool(tc, query)
-                        tool_results.append((tc.name, tc.id, result))
-
-                for tc_name, tc_id, tc_result in tool_results:
-                    truncated = tc_result[:_TOOL_RESULT_MAX_CHARS]
-                    messages.append(Message(
-                        role="tool",
-                        content=truncated,
-                        tool_call_id=tc_id,
-                    ))
-
-            self._finalize_trajectory(query, "", success=False)
-            yield AgentEvent(
-                type="error",
-                content=f"推理步数超过上限 ({self.max_steps})，请简化问题或分步提问。",
-            )
-        except GeneratorExit:
-            raise
 
     # ------------------------------------------------------------------
     # 辅助方法
