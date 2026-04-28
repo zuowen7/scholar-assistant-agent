@@ -6,6 +6,28 @@ import { readSseStream } from '../utils/streamReader'
 
 const API = API_BASE
 
+// ── File save helper (works in both Tauri and browser) ──────────
+async function saveBlob(blob: Blob, defaultName: string): Promise<void> {
+  try {
+    const { save } = await import('@tauri-apps/plugin-dialog')
+    const { writeFile } = await import('@tauri-apps/plugin-fs')
+    const path = await save({ defaultPath: defaultName, filters: [{ name: 'Document', extensions: [defaultName.split('.').pop() || 'bin'] }] })
+    if (path) {
+      const buffer = await blob.arrayBuffer()
+      await writeFile(path, new Uint8Array(buffer))
+      return
+    }
+  } catch {
+    // Not in Tauri or dialog cancelled — fall through to browser download
+  }
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = defaultName
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 // ── 全局单例状态 ──────────────────────────────────────────────────
 
 const tabs = ref<EditorTab[]>([])
@@ -198,7 +220,13 @@ export function useEditor() {
     const data = await resp.json() as WordExportResponse
     if (!data.filename) return 'Word export did not return a filename'
 
-    window.location.href = `${API}/api/export/word/${encodeURIComponent(data.filename)}`
+    // Download the file
+    const downloadResp = await fetch(`${API}/api/export/word/${encodeURIComponent(data.filename)}`)
+    if (!downloadResp.ok) return 'Failed to download Word file'
+    const blob = await downloadResp.blob()
+
+    const defaultName = data.filename || 'export.docx'
+    await saveBlob(blob, defaultName)
     return null
   }
 

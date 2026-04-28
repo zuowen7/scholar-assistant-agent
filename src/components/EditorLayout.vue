@@ -326,6 +326,26 @@ import { useMindMap, mindMapToMarkdown, markdownToMindMapNodes } from '../compos
 import { API_BASE } from '../utils/api'
 import { readSseStream } from '../utils/streamReader'
 
+// saveBlob is not exported from useEditor, replicate here for PDF export
+async function saveBlob(blob: Blob, defaultName: string): Promise<void> {
+  try {
+    const { save } = await import('@tauri-apps/plugin-dialog')
+    const { writeFile } = await import('@tauri-apps/plugin-fs')
+    const path = await save({ defaultPath: defaultName, filters: [{ name: 'PDF', extensions: ['pdf'] }] })
+    if (path) {
+      const buffer = await blob.arrayBuffer()
+      await writeFile(path, new Uint8Array(buffer))
+      return
+    }
+  } catch {}
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = defaultName
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 const props = defineProps<{ isDark: boolean }>()
 const workspaceMode = ref<'editor' | 'mindmap'>('editor')
 const showProjectStart = ref(false)
@@ -795,15 +815,11 @@ async function handleExportPdf() {
       return
     }
     const blob = await resp.blob()
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
     const cd = resp.headers.get('content-disposition')
     const match = cd?.match(/filename="?([^"]+)"?/)
-    a.download = match ? match[1] : 'paper.pdf'
-    a.click()
-    URL.revokeObjectURL(url)
-    showExportToast('PDF downloaded')
+    const filename = match ? match[1] : 'paper.pdf'
+    await saveBlob(blob, filename)
+    showExportToast('PDF saved')
   } catch (e) {
     showExportToast(`PDF 导出失败: ${e}`)
   } finally {
