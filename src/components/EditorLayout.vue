@@ -327,6 +327,7 @@ import { API_BASE } from '../utils/api'
 import { readSseStream } from '../utils/streamReader'
 
 async function saveBlob(blob: Blob, defaultName: string): Promise<string | null> {
+  // Try Tauri: use save dialog, then write via @tauri-apps/plugin-fs
   try {
     const { save } = await import('@tauri-apps/plugin-dialog')
     const { writeFile } = await import('@tauri-apps/plugin-fs')
@@ -338,10 +339,14 @@ async function saveBlob(blob: Blob, defaultName: string): Promise<string | null>
     if (!path) return 'Cancelled'
     const buffer = new Uint8Array(await blob.arrayBuffer())
     await writeFile(path, buffer)
+    // Open with system default app
+    const { open } = await import('@tauri-apps/plugin-shell')
+    open(path)
     return null
   } catch (e) {
-    console.warn('Tauri save failed, using browser fallback:', e)
+    console.warn('Tauri save failed:', e)
   }
+  // Browser fallback
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -822,12 +827,11 @@ async function handleExportPdf() {
       return
     }
     const blob = await resp.blob()
-    const cd = resp.headers.get('content-disposition')
-    const match = cd?.match(/filename="?([^"]+)"?/)
-    const filename = match ? match[1] : 'paper.pdf'
+    const filename = 'paper.pdf'
     const saveErr = await saveBlob(blob, filename)
-    if (saveErr) showExportToast(saveErr === 'Cancelled' ? '已取消' : `保存失败: ${saveErr}`)
-    else showExportToast('PDF saved')
+    if (saveErr === 'Cancelled') { showExportToast('已取消'); return }
+    if (saveErr) { showExportToast(`保存失败: ${saveErr}`); return }
+    showExportToast('PDF saved')
   } catch (e) {
     showExportToast(`PDF 导出失败: ${e}`)
   } finally {
