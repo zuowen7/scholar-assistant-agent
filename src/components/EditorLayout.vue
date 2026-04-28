@@ -326,24 +326,31 @@ import { useMindMap, mindMapToMarkdown, markdownToMindMapNodes } from '../compos
 import { API_BASE } from '../utils/api'
 import { readSseStream } from '../utils/streamReader'
 
-// saveBlob is not exported from useEditor, replicate here for PDF export
-async function saveBlob(blob: Blob, defaultName: string): Promise<void> {
+async function saveBlob(blob: Blob, defaultName: string): Promise<string | null> {
   try {
     const { save } = await import('@tauri-apps/plugin-dialog')
     const { writeFile } = await import('@tauri-apps/plugin-fs')
-    const path = await save({ defaultPath: defaultName, filters: [{ name: 'PDF', extensions: ['pdf'] }] })
-    if (path) {
-      const buffer = await blob.arrayBuffer()
-      await writeFile(path, new Uint8Array(buffer))
-      return
-    }
-  } catch {}
+    const ext = defaultName.split('.').pop() || 'bin'
+    const path = await save({
+      defaultPath: defaultName,
+      filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
+    })
+    if (!path) return 'Cancelled'
+    const buffer = new Uint8Array(await blob.arrayBuffer())
+    await writeFile(path, buffer)
+    return null
+  } catch (e) {
+    console.warn('Tauri save failed, using browser fallback:', e)
+  }
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
   a.download = defaultName
+  document.body.appendChild(a)
   a.click()
-  URL.revokeObjectURL(url)
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  return null
 }
 
 const props = defineProps<{ isDark: boolean }>()
@@ -818,8 +825,9 @@ async function handleExportPdf() {
     const cd = resp.headers.get('content-disposition')
     const match = cd?.match(/filename="?([^"]+)"?/)
     const filename = match ? match[1] : 'paper.pdf'
-    await saveBlob(blob, filename)
-    showExportToast('PDF saved')
+    const saveErr = await saveBlob(blob, filename)
+    if (saveErr) showExportToast(saveErr === 'Cancelled' ? '已取消' : `保存失败: ${saveErr}`)
+    else showExportToast('PDF saved')
   } catch (e) {
     showExportToast(`PDF 导出失败: ${e}`)
   } finally {
