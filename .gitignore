@@ -37,6 +37,9 @@ python/data/output/*
 python/data/agent/
 data/agent/
 
+# Argument map 运行时数据
+python/data/argument_tree.json
+
 # 翻译记忆 SQLite（运行时自动生成）
 python/tm.db*
 
