@@ -14,6 +14,7 @@
     "core:window:allow-start-dragging",
     "dialog:default",
     "dialog:allow-save",
+    "shell:allow-open",
     {
       "identifier": "fs:allow-read-text-file",
       "allow": [
@@ -39,7 +40,8 @@
         { "path": "$DOCUMENT/**" },
         { "path": "$DESKTOP/**" },
         { "path": "$DOWNLOAD/**" },
-        { "path": "$APPDATA/**" }
+        { "path": "$APPDATA/**" },
+        { "path": "$HOME/**" }
       ]
     },
     {
