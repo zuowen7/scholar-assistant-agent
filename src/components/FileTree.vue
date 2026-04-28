@@ -41,7 +41,7 @@
         :depth="0"
         :active-file="activeFile"
         @select="handleSelect"
-        @rename="handleRename"
+        @action="handleAction"
       />
       <div v-if="searchQuery && filteredFiles.length === 0" class="tree-no-match">
         No matches for "{{ searchQuery }}"
@@ -61,14 +61,13 @@ import { useFileTree } from '../composables/useFileTree'
 import { useEditor } from '../composables/useEditor'
 import type { FileEntry } from '../types'
 
-const { files, rootDir, openFolder, readFileContent, createFile, renameFile, deleteFile } = useFileTree()
+const { files, rootDir, openFolder, readFileContent, createFile, renameFile, deleteFile, copyFileTo, setClipboard, getClipboard, clearClipboard, refresh } = useFileTree()
 const { openFile: openEditorFile, activeFile, renameTabPath, closeTab } = useEditor()
 
 defineEmits<{ (e: 'collapse'): void }>()
 
 const searchQuery = ref('')
 
-// 递归过滤：匹配的文件/目录 + 包含匹配子孙的目录
 function filterTree(entries: FileEntry[], query: string): FileEntry[] {
   if (!query) return entries
   const q = query.toLowerCase()
@@ -95,9 +94,7 @@ async function handleOpenFolder() {
     if (selected && typeof selected === 'string') {
       await openFolder(selected)
     }
-  } catch {
-    // dialog cancelled
-  }
+  } catch { /* cancelled */ }
 }
 
 async function handleOpenWorkspaceFolder(e: Event) {
@@ -130,12 +127,59 @@ async function handleRefresh() {
   }
 }
 
-async function handleRename(oldPath: string, newName: string) {
-  try {
-    const newPath = await renameFile(oldPath, newName)
-    renameTabPath(oldPath, newPath)
-  } catch (e) {
-    console.error('Rename failed:', e)
+async function handleAction(action: string, path: string, extra: string) {
+  switch (action) {
+    case 'cut':
+      setClipboard('cut', path, extra, false)
+      break
+
+    case 'copy':
+      setClipboard('copy', path, extra, false)
+      break
+
+    case 'paste': {
+      const cb = getClipboard()
+      if (!cb) return
+      try {
+        const newPath = await copyFileTo(cb.path, path)
+        // If it was a cut, delete source and clear clipboard
+        if (cb.action === 'cut') {
+          await deleteFile(cb.path)
+          closeTab(cb.path)
+          clearClipboard()
+        }
+      } catch (e) {
+        console.error('Paste failed:', e)
+      }
+      break
+    }
+
+    case 'rename':
+      try {
+        const newPath = await renameFile(path, extra)
+        renameTabPath(path, newPath)
+      } catch (e) {
+        console.error('Rename failed:', e)
+      }
+      break
+
+    case 'delete':
+      if (!confirm(`Delete "${extra}"?`)) return
+      try {
+        await deleteFile(path)
+        closeTab(path)
+      } catch (e) {
+        console.error('Delete failed:', e)
+      }
+      break
+
+    case 'copy-path':
+      try {
+        await navigator.clipboard.writeText(path)
+      } catch {
+        // Fallback: not available in some environments
+      }
+      break
   }
 }
 

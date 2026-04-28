@@ -4,6 +4,9 @@ import type { FileEntry } from '../types'
 const files = ref<FileEntry[]>([])
 const rootDir = ref<string | null>(null)
 
+// Clipboard state for cut/copy/paste
+const clipboard = ref<{ action: 'copy' | 'cut'; path: string; name: string; isDir: boolean } | null>(null)
+
 export function useFileTree() {
   async function openFolder(dirPath: string) {
     rootDir.value = dirPath
@@ -52,9 +55,7 @@ export function useFileTree() {
   async function createFile(dirPath: string, name: string): Promise<string> {
     const path = `${dirPath}/${name}`
     await writeFile(path, '')
-    if (rootDir.value) {
-      files.value = await readDir(rootDir.value)
-    }
+    await refresh()
     return path
   }
 
@@ -65,18 +66,43 @@ export function useFileTree() {
     const sep = oldPath.includes('\\') ? '\\' : '/'
     const newPath = `${dir}${sep}${newName}`
     await rename(oldPath, newPath)
-    if (rootDir.value) {
-      files.value = await readDir(rootDir.value)
-    }
+    await refresh()
     return newPath
   }
 
   async function deleteFile(path: string): Promise<void> {
     const { remove } = await import('@tauri-apps/plugin-fs')
     await remove(path)
+    await refresh()
+  }
+
+  async function copyFileTo(srcPath: string, destDir: string): Promise<string> {
+    const { copyFile } = await import('@tauri-apps/plugin-fs')
+    const lastSep = Math.max(srcPath.lastIndexOf('/'), srcPath.lastIndexOf('\\'))
+    const name = srcPath.substring(lastSep + 1)
+    const sep = destDir.includes('\\') ? '\\' : '/'
+    const destPath = await resolveUniqueName(destDir + sep + name)
+    await copyFile(srcPath, destPath)
+    await refresh()
+    return destPath
+  }
+
+  async function refresh() {
     if (rootDir.value) {
       files.value = await readDir(rootDir.value)
     }
+  }
+
+  function setClipboard(action: 'copy' | 'cut', path: string, name: string, isDir: boolean) {
+    clipboard.value = { action, path, name, isDir }
+  }
+
+  function getClipboard() {
+    return clipboard.value
+  }
+
+  function clearClipboard() {
+    clipboard.value = null
   }
 
   return {
@@ -89,5 +115,21 @@ export function useFileTree() {
     createFile,
     renameFile,
     deleteFile,
+    copyFileTo,
+    refresh,
+    setClipboard,
+    getClipboard,
+    clearClipboard,
   }
+}
+
+async function resolveUniqueName(destPath: string): Promise<string> {
+  const { exists } = await import('@tauri-apps/plugin-fs')
+  if (!await exists(destPath)) return destPath
+  const dotIdx = destPath.lastIndexOf('.')
+  const base = dotIdx > 0 ? destPath.substring(0, dotIdx) : destPath
+  const ext = dotIdx > 0 ? destPath.substring(dotIdx) : ''
+  let n = 1
+  while (await exists(`${base} (${n})${ext}`)) n++
+  return `${base} (${n})${ext}`
 }
