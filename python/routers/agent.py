@@ -584,9 +584,9 @@ def register_agent(
 
         try:
             if asyncio.iscoroutinefunction(tool_def.fn):
-                result = await asyncio.to_thread(tool_def.fn, **req.args)
+                result = await tool_def.fn(**req.args)
             else:
-                result = tool_def.fn(**req.args)
+                result = await asyncio.to_thread(tool_def.fn, **req.args)
             # result 是 JSON 字符串
             try:
                 return json.loads(result)

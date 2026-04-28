@@ -79,7 +79,7 @@ def register_editor(
     load_config,
     runtime_dir: Path,
     data_root: Path,
-    get_agent,
+    rag_store_getter,
 ) -> None:
     """Register editor-related routes."""
     output_dir = data_root / "output"
@@ -368,8 +368,8 @@ def register_editor(
     @app.post("/api/paper-assets/ingest")
     async def paper_assets_ingest():
         from paper_assets import ingest_paper_assets
-        agent = await get_agent()
-        return ingest_paper_assets(agent.rag)
+        rag_store = rag_store_getter()
+        return ingest_paper_assets(rag_store)
 
     @app.post("/api/paper-scaffold")
     async def paper_scaffold(req: PaperScaffoldRequest):
@@ -519,7 +519,7 @@ def register_editor(
 
     @app.get("/api/export/word/{filename}")
     async def download_word(filename: str):
-        safe_dir = runtime_dir / "data" / "output"
+        safe_dir = output_dir
         safe_path = (safe_dir / filename).resolve()
         if not str(safe_path).startswith(str(safe_dir.resolve())):
             raise HTTPException(403, "禁止访问该文件")
