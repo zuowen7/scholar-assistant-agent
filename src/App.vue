@@ -84,10 +84,10 @@
       />
 
       <!-- 翻译模式 -->
-      <TranslateView v-if="appMode === 'translate'" :health-ok="healthOk" :read-settings="readSettings" @restart-backend="handleRestartBackend" />
+      <TranslateView v-show="appMode === 'translate'" :health-ok="healthOk" :read-settings="readSettings" @restart-backend="handleRestartBackend" />
 
       <!-- 编辑器模式 -->
-      <EditorLayout v-if="appMode === 'editor'" :isDark="isDark" class="editor-mode" />
+      <EditorLayout v-show="appMode === 'editor'" :isDark="isDark" class="editor-mode" />
 
       <!-- Agent 聊天面板 -->
       <AgentPanel :open="showAgentChat" @update:open="showAgentChat = $event" @switch-to-editor="appMode = 'editor'" />
