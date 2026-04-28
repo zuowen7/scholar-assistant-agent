@@ -359,12 +359,45 @@ async function downloadResult(): Promise<void> {
   } catch {
     // 非 Tauri 环境：浏览器下载
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
+    const blobUrl = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = url
+    a.href = blobUrl
     a.download = `translated_${state.taskId}.md`
     a.click()
-    URL.revokeObjectURL(url)
+    URL.revokeObjectURL(blobUrl)
+  }
+}
+
+async function exportBilingualPdf(mode: 'below' | 'above' | 'replace' = 'below'): Promise<void> {
+  if (!state.taskId) return
+
+  try {
+    const resp = await fetch(`${API_URL}/api/export/bilingual_pdf`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task_id: state.taskId, mode }),
+    })
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: '导出失败' }))
+      throw new Error(err.detail || `导出失败 (${resp.status})`)
+    }
+
+    // Tauri 环境：让后端直接写入 runtime/output，由 Tauri 触发下载
+    // 非 Tauri 环境：浏览器下载 blob
+    if (!isTauri) {
+      const blob = await resp.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${state.taskId}_bilingual.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : '未知错误'
+    state.errorMessage = msg
+    setStatus('error')
   }
 }
 
@@ -414,6 +447,7 @@ export function useTranslate() {
     getConfig,
     updateConfig,
     getProviderPresets,
+    exportBilingualPdf,
   }
 }
 

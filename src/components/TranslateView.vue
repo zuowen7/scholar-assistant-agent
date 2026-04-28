@@ -127,6 +127,10 @@
             <template #icon-left><Download :size="13" :stroke-width="2" /></template>
             下载
           </UiButton>
+          <UiButton variant="secondary" size="sm" @click="doExportBilingualPdf('below')">
+            <template #icon-left><FileText :size="13" :stroke-width="2" /></template>
+            双语 PDF
+          </UiButton>
           <UiButton variant="secondary" size="sm" @click="reset">新翻译</UiButton>
         </div>
       </div>
@@ -174,7 +178,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { UploadCloud, AlertCircle, Check, CheckCircle, Download } from './ui/icons'
+import { UploadCloud, AlertCircle, Check, CheckCircle, Download, FileText } from './ui/icons'
 import UiButton from './ui/UiButton.vue'
 import UiSegmented from './ui/UiSegmented.vue'
 import { useTranslate } from '../composables/useTranslate'
@@ -189,10 +193,18 @@ defineEmits<{
   (e: 'restart-backend'): void
 }>()
 
-const { state, translate, reset, downloadResult, overallProgress } = useTranslate()
+const { state, translate, reset, downloadResult, overallProgress, exportBilingualPdf } = useTranslate()
 
 const viewMode = ref<'sentence' | 'parallel' | 'markdown'>('sentence')
 const zoneHover = ref(false)
+
+async function doExportBilingualPdf(mode: 'below' | 'above' | 'replace' = 'below') {
+  try {
+    await exportBilingualPdf(mode)
+  } catch (err) {
+    console.error('Bilingual PDF export failed:', err)
+  }
+}
 
 const stepLabels = ['解析文档', '清洗文本', '智能分块', '翻译', '格式化']
 const formatList = ['PDF', 'Word', 'PPT', 'Excel', 'TXT', 'Markdown', 'HTML', 'EPUB', 'LaTeX', 'JSON', '…']
