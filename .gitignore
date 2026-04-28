@@ -43,6 +43,9 @@ python/data/argument_tree.json
 # 翻译记忆 SQLite（运行时自动生成）
 python/tm.db*
 
+# CLI 入口（仅 api.py 是正式入口，main.py 是废弃的独立 CLI 包装）
+python/main.py
+
 # 环境变量
 .env
 
