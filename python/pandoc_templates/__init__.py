@@ -513,8 +513,7 @@ def markdown_to_latex(markdown_text: str, metadata: dict | None = None) -> dict:
 
     _doc_preamble = (
         r"\documentclass[12pt]{article}" + "\n" +
-        r"\usepackage[utf8]{inputenc}" + "\n" +
-        r"\usepackage[T1]{fontenc}" + "\n" +
+        r"\usepackage[UTF8]{ctex}" + "\n" +
         r"\usepackage{amsmath,amssymb,bm}" + "\n" +
         r"\usepackage{graphicx}" + "\n" +
         r"\usepackage{hyperref}" + "\n" +
@@ -633,8 +632,9 @@ def convert_markdown(
         cmd,
         "-f", "markdown",
         "-t", "latex",
-        "-s",  # standalone 输出
-        "--wrap=none",  # 不换行，保持可读性
+        "-s",
+        "--wrap=none",
+        "--pdf-engine=xelatex",
     ]
 
     # 指定模板（如果存在且 Pandoc 支持）
