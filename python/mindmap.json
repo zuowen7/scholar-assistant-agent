@@ -1,0 +1,19 @@
+{
+  "rootId": "mind-1777346890535",
+  "updatedAt": 1777348728985,
+  "nodes": {
+    "mind-1777346890535": {
+      "id": "mind-1777346890535",
+      "text": "中心主题",
+      "parentId": null,
+      "children": []
+    }
+  },
+  "positions": {
+    "mind-1777346890535": {
+      "x": 120,
+      "y": 120
+    }
+  },
+  "links": []
+}
