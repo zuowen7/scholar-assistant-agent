@@ -1,17 +1,32 @@
 <template>
-  <div class="agent-panel" :class="{ open }">
-    <div class="agent-header">
+  <div
+    class="agent-panel"
+    :class="{ open, floating: isFloating }"
+    :style="isFloating ? { top: floatPos.y + 'px', left: floatPos.x + 'px', right: 'auto' } : {}"
+  >
+    <div
+      class="agent-header"
+      :class="{ draggable: isFloating }"
+      @mousedown="startFloatDrag"
+    >
+      <GripVertical v-if="isFloating" :size="14" :stroke-width="1.6" class="drag-handle-icon" />
       <div class="agent-tabs">
         <button class="agent-tab" :class="{ active: tab === 'chat' }" @click="tab = 'chat'">对话</button>
         <button class="agent-tab" :class="{ active: tab === 'docs' }" @click="tab = 'docs'">知识库</button>
         <button class="agent-tab" :class="{ active: tab === 'templates' }" @click="tab = 'templates'">模板</button>
         <button class="agent-tab" :class="{ active: tab === 'sessions' }" @click="tab = 'sessions'; refreshSessions()">会话</button>
       </div>
-      <button class="agent-close-btn" @click="$emit('update:open', false)">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>
-      </button>
+      <div class="agent-header-actions">
+        <button class="agent-hdr-btn" :title="isFloating ? '停靠' : '浮动'" @click="toggleFloat">
+          <PinOff v-if="isFloating" :size="13" :stroke-width="1.8" />
+          <Pin v-else :size="13" :stroke-width="1.8" />
+        </button>
+        <button class="agent-close-btn" @click="$emit('update:open', false)" aria-label="关闭">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
     </div>
 
     <!-- Sessions Tab -->
@@ -169,11 +184,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import { useAgentChat } from '../composables/useAgentChat'
 import { useEditor } from '../composables/useEditor'
 import AgentApprovalInline from './AgentApprovalInline.vue'
 import AgentSessionList from './AgentSessionList.vue'
+import { Pin, PinOff, GripVertical } from './ui/icons'
 import { API_BASE } from '../utils/api'
 import type { AgentSessionInfo } from '../types'
 
@@ -185,6 +201,48 @@ defineEmits<{
   (e: 'update:open', value: boolean): void
   (e: 'switch-to-editor'): void
 }>()
+
+// ── Float mode ────────────────────────────────────────────────────────────────
+const isFloating = ref(false)
+const floatPos = ref({ x: 0, y: 80 })
+let _floatDragOffset = { x: 0, y: 0 }
+
+onMounted(() => {
+  isFloating.value = localStorage.getItem('agent-float') === '1'
+  const savedPos = localStorage.getItem('agent-float-pos')
+  if (savedPos) {
+    try { floatPos.value = JSON.parse(savedPos) } catch {}
+  } else {
+    floatPos.value = { x: Math.max(0, window.innerWidth - 420), y: 80 }
+  }
+})
+
+function toggleFloat() {
+  isFloating.value = !isFloating.value
+  localStorage.setItem('agent-float', isFloating.value ? '1' : '0')
+  if (isFloating.value) {
+    floatPos.value = { x: Math.max(0, window.innerWidth - 420), y: 80 }
+  }
+}
+
+function startFloatDrag(e: MouseEvent) {
+  if (!isFloating.value) return
+  e.preventDefault()
+  _floatDragOffset = { x: e.clientX - floatPos.value.x, y: e.clientY - floatPos.value.y }
+  const move = (me: MouseEvent) => {
+    floatPos.value = {
+      x: Math.max(0, Math.min(window.innerWidth - 380, me.clientX - _floatDragOffset.x)),
+      y: Math.max(0, Math.min(window.innerHeight - 100, me.clientY - _floatDragOffset.y)),
+    }
+  }
+  const up = () => {
+    document.removeEventListener('mousemove', move)
+    document.removeEventListener('mouseup', up)
+    localStorage.setItem('agent-float-pos', JSON.stringify(floatPos.value))
+  }
+  document.addEventListener('mousemove', move)
+  document.addEventListener('mouseup', up)
+}
 
 const {
   messages, sending, sessionId, pendingApproval,
@@ -352,7 +410,8 @@ watch(tab, (t) => {
 <style scoped>
 .agent-panel {
   position: fixed; top: 0; right: 0;
-  width: min(400px, 100vw); height: 100vh;
+  width: min(400px, 100vw); height: calc(100vh - 44px);
+  margin-top: 44px;
   background: var(--c-glass);
   border-left: 1px solid var(--c-glass-border);
   backdrop-filter: blur(var(--glass-blur));
@@ -360,28 +419,58 @@ watch(tab, (t) => {
   display: flex; flex-direction: column;
   z-index: 200;
   transform: translateX(100%);
-  transition: transform 0.3s ease;
+  transition: transform var(--motion-slow) var(--ease-spring);
 }
 .agent-panel.open { transform: translateX(0); }
 
-.agent-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 16px; border-bottom: 1px solid var(--c-surface-3);
+/* Floating mode: free-positioned window */
+.agent-panel.floating {
+  width: 380px;
+  height: 560px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--c-glass-border);
+  box-shadow: var(--elevation-4);
+  transform: none !important;
+  transition: box-shadow var(--motion-fast);
+  overflow: hidden;
 }
-.agent-tabs { display: flex; gap: 4px; }
+
+.agent-header {
+  display: flex; align-items: center; gap: 6px;
+  padding: 10px 14px; border-bottom: 1px solid var(--c-surface-3);
+  flex-shrink: 0;
+}
+.agent-header.draggable { cursor: move; user-select: none; }
+
+.drag-handle-icon { color: var(--c-text-3); flex-shrink: 0; }
+
+.agent-tabs { display: flex; gap: 2px; flex: 1; }
 .agent-tab {
-  padding: 5px 14px; border: none; border-radius: 6px;
-  font-size: 13px; font-weight: 500; cursor: pointer;
+  padding: 4px 12px; border: none; border-radius: var(--radius-sm);
+  font-size: var(--text-sm); font-weight: 500; cursor: pointer;
   background: transparent; color: var(--c-text-2);
-  transition: all 0.15s;
+  transition: all var(--motion-fast);
+  white-space: nowrap;
 }
 .agent-tab:hover { color: var(--c-text-0); }
 .agent-tab.active { background: var(--c-accent); color: #fff; }
+
+.agent-header-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+
+.agent-hdr-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px;
+  background: none; border: none; color: var(--c-text-3);
+  cursor: pointer; border-radius: 4px;
+  transition: all var(--motion-fast);
+}
+.agent-hdr-btn:hover { color: var(--c-text-0); background: var(--c-surface-2); }
 
 .agent-close-btn {
   background: none; border: none; color: var(--c-text-3);
   cursor: pointer; padding: 4px; border-radius: 4px;
   display: flex; align-items: center;
+  transition: all var(--motion-fast);
 }
 .agent-close-btn:hover { color: var(--c-text-0); background: var(--c-surface-2); }
 

@@ -2,6 +2,7 @@
   <span class="ui-icon-btn-wrap">
     <button
       class="ui-icon-btn"
+      :class="{ active }"
       :disabled="disabled"
       @click="$emit('click', $event)"
     >
@@ -15,6 +16,7 @@
 defineProps<{
   tooltip?: string
   disabled?: boolean
+  active?: boolean
 }>()
 
 defineEmits<{
@@ -32,17 +34,22 @@ defineEmits<{
   align-items: center;
   justify-content: center;
   width: 30px;
-  height: 30px;
+  height: 28px;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--c-text-3);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background var(--motion-fast) var(--ease-out),
+              color var(--motion-fast) var(--ease-out);
 }
 .ui-icon-btn:not(:disabled):hover {
-  background: var(--c-surface-2);
+  background: var(--c-surface-3);
   color: var(--c-text-0);
+}
+.ui-icon-btn.active {
+  background: var(--c-accent-soft);
+  color: var(--c-accent);
 }
 .ui-icon-btn:disabled {
   opacity: 0.42;
@@ -54,15 +61,15 @@ defineEmits<{
   left: 50%;
   transform: translateX(-50%);
   padding: 3px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--c-surface-0);
   color: var(--c-text-0);
   font-size: var(--text-xs);
   white-space: nowrap;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.15s;
-  box-shadow: var(--shadow-sm);
+  transition: opacity var(--motion-fast);
+  box-shadow: var(--elevation-2);
   z-index: 9999;
 }
 .ui-icon-btn-wrap:hover .ui-icon-tooltip {
