@@ -21,6 +21,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 from src.translator._helpers import (
+    TranslationResult as TranslationResult,
     _extract_term_pairs as _extract_term_pairs_impl,
     _strip_think_tags as _strip_think_tags_impl,
     _strip_code_block_wrapping as _strip_code_block_wrapping_impl,
@@ -53,14 +54,6 @@ def _backoff_delay(attempt: int) -> float:
     delay = RETRY_DELAY_BASE * (2 ** attempt)
     return min(delay, RETRY_DELAY_MAX)
 
-
-@dataclass
-class TranslationResult:
-    original: str
-    translated: str
-    model: str
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
 
 
 @dataclass

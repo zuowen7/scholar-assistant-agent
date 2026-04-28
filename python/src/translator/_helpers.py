@@ -32,6 +32,9 @@ class TranslationResult:
     """翻译结果数据结构。"""
     original: str = ""
     translated: str = ""
+    model: str = ""
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
 
 
 # ---------------------------------------------------------------------------

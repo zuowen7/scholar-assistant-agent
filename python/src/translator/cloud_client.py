@@ -11,9 +11,9 @@ from dataclasses import dataclass, field
 import httpx
 
 from src.translator.ollama_client import (
-    TranslationResult,
     Glossary,
 )
+from src.translator._helpers import TranslationResult
 from src.translator._helpers import (
     _extract_term_pairs,
     _strip_think_tags,
