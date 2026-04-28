@@ -535,10 +535,8 @@ def markdown_to_latex(markdown_text: str, metadata: dict | None = None) -> dict:
 
     _doc_preamble = (
         r"\documentclass[12pt]{article}" + "\n" +
-        r"\usepackage{fontspec}" + "\n" +
-        r"\setmainfont{SimSun}" + "\n" +
-        r"\usepackage{xeCJK}" + "\n" +
-        r"\setCJKmainfont{SimSun}" + "\n" +
+        r"\usepackage[UTF8]{inputenc}" + "\n" +
+        r"\usepackage[T1]{fontenc}" + "\n" +
         r"\usepackage{amsmath,amssymb,bm}" + "\n" +
         r"\usepackage{graphicx}" + "\n" +
         r"\usepackage{hyperref}" + "\n" +
@@ -610,14 +608,32 @@ def convert_markdown(
         }
     """
     if output_format == "pdf":
-        # PDF 模式：用纯 Python 转换器（包含 fontspec 中文支持），再编译
-        tex_result = markdown_to_latex(markdown_text, metadata)
+        # PDF 模式：Pandoc md→tex → 注入 CJK 字体 → Tectonic 编译
+        tex_result = convert_markdown(markdown_text, template_id, "tex", metadata)
         if not tex_result["success"]:
             return tex_result
-        pdf_result = compile_pdf(tex_result["tex"])
+
+        tex = tex_result["tex"]
+        cjk_preamble = (
+            r"\usepackage{fontspec}" + "\n" +
+            r"\setmainfont{SimSun}" + "\n" +
+            r"\usepackage{xeCJK}" + "\n" +
+            r"\setCJKmainfont{SimSun}" + "\n"
+        )
+        if r"\usepackage{fontspec}" not in tex:
+            def _inject_cjk(m):
+                return m.group(1) + cjk_preamble
+            tex = re.sub(
+                r"(\\documentclass[^\n]*\n)",
+                _inject_cjk,
+                tex,
+                count=1,
+            )
+
+        pdf_result = compile_pdf(tex)
         return {
             "success": pdf_result["success"],
-            "tex": tex_result["tex"],
+            "tex": tex,
             "pdf_path": pdf_result.get("pdf_path", ""),
             "error": pdf_result["error"],
             "output_path": pdf_result.get("pdf_path", ""),
@@ -659,7 +675,6 @@ def convert_markdown(
         "-t", "latex",
         "-s",
         "--wrap=none",
-        "--pdf-engine=xelatex",
     ]
 
     # 指定模板（如果存在且 Pandoc 支持）
