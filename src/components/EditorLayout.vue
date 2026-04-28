@@ -7,14 +7,14 @@
       :style="{ width: (sidebarCollapsed ? collapsedSidebarWidth : sidebarWidth) + 'px' }"
     >
       <button
+        v-if="sidebarCollapsed"
         class="sidebar-collapse-toggle"
-        :title="sidebarCollapsed ? '展开 Explorer' : '折叠 Explorer'"
-        @click="sidebarCollapsed = !sidebarCollapsed"
+        title="展开 Explorer"
+        @click="sidebarCollapsed = false"
       >
-        <ChevronRight v-if="sidebarCollapsed" :size="14" :stroke-width="2" />
-        <ChevronLeft v-else :size="14" :stroke-width="2" />
+        <ChevronRight :size="14" :stroke-width="2" />
       </button>
-      <FileTree v-if="!sidebarCollapsed" />
+      <FileTree v-if="!sidebarCollapsed" @collapse="sidebarCollapsed = true" />
       <button v-else class="sidebar-rail-button" @click="sidebarCollapsed = false">
         Explorer
       </button>
