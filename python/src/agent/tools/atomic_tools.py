@@ -223,6 +223,7 @@ def _web_fetch(url: str, extract_text: bool = True) -> str:
             timeout=_WEB_FETCH_TIMEOUT,
             follow_redirects=True,
             headers={"User-Agent": "ScholarAssistant/1.0"},
+            trust_env=False,
         ) as client:
             resp = client.get(url)
             resp.raise_for_status()
@@ -254,7 +255,7 @@ def _web_fetch(url: str, extract_text: bool = True) -> str:
 # ---------------------------------------------------------------------------
 
 def _web_search(query: str, max_results: int = _WEB_SEARCH_MAX_RESULTS) -> str:
-    """使用搜索引擎搜索信息。通过 DuckDuckGo 返回搜索结果摘要。
+    """使用搜索引擎搜索信息。通过 Bing 返回搜索结果摘要。
 
     Args:
         query: 搜索关键词（中英文均可）。
@@ -264,39 +265,31 @@ def _web_search(query: str, max_results: int = _WEB_SEARCH_MAX_RESULTS) -> str:
         with httpx.Client(
             timeout=15.0,
             follow_redirects=True,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; ScholarAssistant/1.0)"},
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            trust_env=False,
         ) as client:
-            # DuckDuckGo HTML 版本（无需 API Key）
             resp = client.get(
-                "https://html.duckduckgo.com/html/",
-                params={"q": query, "kl": "cn-zh"},
+                "https://cn.bing.com/search",
+                params={"q": query, "count": max_results},
             )
             resp.raise_for_status()
             html = resp.text
 
-        # 提取搜索结果
         results: list[str] = []
-        # DuckDuckGo HTML 结果格式
-        blocks = re.findall(
-            r'<a rel="nofollow" class="result__a"[^>]*>(.*?)</a>.*?'
-            r'<a class="result__snippet"[^>]*>(.*?)</a>',
+        titles = re.findall(
+            r'<h2[^>]*>\s*<a[^>]*href="(https?://[^"]+)"[^>]*h="ID=SERP[^"]*"[^>]*>(.*?)</a>\s*</h2>',
             html, re.DOTALL,
         )
-        for title_html, snippet_html in blocks[:max_results]:
-            title = re.sub(r"<[^>]+>", "", title_html).strip()
-            snippet = re.sub(r"<[^>]+>", "", snippet_html).strip()
+        snippets = re.findall(
+            r'<div class="b_caption">\s*<p[^>]*>(.*?)</p>\s*</div>',
+            html, re.DOTALL,
+        )
+        for i in range(min(len(titles), max_results)):
+            url = titles[i][0]
+            title = re.sub(r"<[^>]+>", "", titles[i][1]).strip()
+            snippet = re.sub(r"<[^>]+>", "", snippets[i]).strip() if i < len(snippets) else ""
             if title:
-                results.append(f"标题: {title}\n摘要: {snippet}")
-
-        if not results:
-            # 回退：尝试另一种格式
-            titles = re.findall(r'class="result__title"[^>]*>(.*?)</a>', html, re.DOTALL)
-            snippets = re.findall(r'class="result__snippet"[^>]*>(.*?)</a>', html, re.DOTALL)
-            for i in range(min(len(titles), max_results)):
-                title = re.sub(r"<[^>]+>", "", titles[i]).strip()
-                snippet = re.sub(r"<[^>]+>", "", snippets[i]).strip() if i < len(snippets) else ""
-                if title:
-                    results.append(f"标题: {title}\n摘要: {snippet}")
+                results.append(f"标题: {title}\n链接: {url}\n摘要: {snippet}")
 
         if not results:
             return "未找到相关结果。"

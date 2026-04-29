@@ -233,6 +233,7 @@ class AgentSession:
         """
         task_step = 0
         self.consecutive_errors = 0
+        _recent_tool_names: list[str] = []
 
         while (
             task_step < self.config.max_task_steps
@@ -282,6 +283,19 @@ class AgentSession:
                 continue
 
             self.consecutive_errors = 0
+
+            # 工具循环检测：同一工具连续调用 ≥3 次则注入提示
+            if step_result.tool_calls:
+                for tc in step_result.tool_calls:
+                    _recent_tool_names.append(tc.name)
+                if len(_recent_tool_names) >= 3:
+                    last3 = _recent_tool_names[-3:]
+                    if len(set(last3)) == 1:
+                        self.messages.append(Message(
+                            role="user",
+                            content=f"[系统提示] 你已连续 3 次调用 {last3[0]}，请不要再重复调用同一工具。基于已有信息直接给出最终回答。",
+                        ))
+                        _recent_tool_names.clear()
 
             # 无工具调用 → 最终回答
             if not step_result.tool_calls:
@@ -427,13 +441,48 @@ class AgentSession:
                     metadata={"tool_name": tc.name},
                 )
 
-        # 步数耗尽
+        # 步数耗尽 — 强制生成最终总结
         if task_step >= self.config.max_task_steps:
             yield AgentEvent(
                 type=EVT_WARNING,
-                content=f"任务步数达到上限 ({self.config.max_task_steps})",
+                content=f"任务步数达到上限 ({self.config.max_task_steps})，正在生成总结...",
                 metadata={"code": "TASK_STEP_LIMIT"},
             )
+            try:
+                # 追加一条提示消息，引导 LLM 生成总结
+                self.messages.append(Message(
+                    role="user",
+                    content="[系统提示] 已达到最大推理步数。请基于已收集的信息，直接给出最终回答，不要再调用任何工具。",
+                ))
+                final_step = await self.agent.step(
+                    self.messages,
+                    step_num=self.global_step + 1,
+                    max_steps=self.global_step + 1,
+                    execute_tools=False,
+                )
+                final_answer = ""
+                for ev in final_step.events:
+                    if ev.type == "response":
+                        final_answer = ev.content
+                        break
+                if final_answer:
+                    if self.agent.memory:
+                        try:
+                            self.agent.memory.add_memory(
+                                content=f"Q: {self._query}\nA: {final_answer[:2000]}",
+                                category="conversation",
+                                source="session",
+                                importance=0.5,
+                            )
+                        except Exception:
+                            pass
+                    yield AgentEvent(
+                        type=EVT_RESPONSE,
+                        content=final_answer,
+                        metadata={"task_id": task.id},
+                    )
+            except Exception as e:
+                logger.warning("步数耗尽后生成总结失败: %s", e)
 
     async def abort(self) -> None:
         """中止会话。"""
