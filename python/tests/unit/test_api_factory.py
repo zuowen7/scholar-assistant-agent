@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import os
+import sys
 import textwrap
 
 import pytest
 from fastapi import HTTPException
 from pathlib import Path
+
+_IS_WIN = sys.platform == "win32"
 
 
 # ── _mask_api_key / _is_masked ──────────────────────────────────────────
@@ -124,16 +127,19 @@ class TestValidateFilePath:
         f.write_text("ok")
         self._validate(f)
 
+    @pytest.mark.skipif(_IS_WIN, reason="Unix-specific path")
     def test_etc_blocked(self) -> None:
         with pytest.raises(HTTPException) as exc_info:
             self._validate(Path("/etc/passwd"))
         assert exc_info.value.status_code == 403
 
+    @pytest.mark.skipif(_IS_WIN, reason="Unix-specific path")
     def test_proc_blocked(self) -> None:
         with pytest.raises(HTTPException) as exc_info:
             self._validate(Path("/proc/1/cmdline"))
         assert exc_info.value.status_code == 403
 
+    @pytest.mark.skipif(_IS_WIN, reason="Unix-specific path")
     def test_dev_blocked(self) -> None:
         with pytest.raises(HTTPException) as exc_info:
             self._validate(Path("/dev/null"))
@@ -208,6 +214,7 @@ class TestValidateFilePath:
         if f.parent.exists():
             self._validate(f)
 
+    @pytest.mark.skipif(_IS_WIN, reason="Symlinks require admin on Windows")
     def test_symlink_to_etc_blocked(self, tmp_path: Path) -> None:
         link = tmp_path / "link_to_etc"
         link.symlink_to(Path("/etc"))
@@ -215,6 +222,7 @@ class TestValidateFilePath:
             self._validate(link / "passwd")
         assert exc_info.value.status_code == 403
 
+    @pytest.mark.skipif(_IS_WIN, reason="Symlinks require admin on Windows")
     def test_symlink_to_sensitive_ext_blocked(self, tmp_path: Path) -> None:
         target = tmp_path / "real.key"
         target.write_text("secret")
