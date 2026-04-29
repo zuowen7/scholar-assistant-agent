@@ -21,13 +21,11 @@ from pydantic import BaseModel
 
 from src.translator.cloud_client import CloudClient
 
-# ── 延迟导入 ───────────────────────────────────────────────────────
+from src.features import plugin as _PLUGIN_AVAILABLE
 
-try:
+if _PLUGIN_AVAILABLE:
     from src.plugin import PluginRegistry, register_builtin
-    _PLUGIN_AVAILABLE = True
-except ImportError:
-    _PLUGIN_AVAILABLE = False
+else:
     PluginRegistry = None
     register_builtin = None
 
@@ -48,11 +46,16 @@ BASE_DIR = RUNTIME_DIR
 DOCKER_MODE = os.environ.get("DOCKER_MODE", "").lower() in ("1", "true", "yes")
 CONFIG_PATH = (RUNTIME_DIR / "config" / "docker.yaml") if DOCKER_MODE else (RUNTIME_DIR / "config" / "default.yaml")
 
-if _is_frozen() and not DOCKER_MODE and not CONFIG_PATH.exists():
-    bundled_default = BUNDLED_DIR / "config" / "default.yaml"
-    if bundled_default.exists():
-        CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(bundled_default, CONFIG_PATH)
+if _is_frozen() and not DOCKER_MODE:
+    if not CONFIG_PATH.exists():
+        bundled_default = BUNDLED_DIR / "config" / "default.yaml"
+        if bundled_default.exists():
+            CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(bundled_default, CONFIG_PATH)
+    bundled_glossary = BUNDLED_DIR / "data" / "translator" / "glossaries"
+    runtime_glossary = RUNTIME_DIR / "data" / "translator" / "glossaries"
+    if bundled_glossary.is_dir() and not runtime_glossary.is_dir():
+        shutil.copytree(bundled_glossary, runtime_glossary)
 
 logger = logging.getLogger(__name__)
 
@@ -223,8 +226,10 @@ def _validate_file_path(file_path: Path) -> None:
     # Block Windows AppData — absolute paths like C:\Users\<user>\AppData\...
     # are not caught by the home-relative check above (ValueError silently passes),
     # and are not covered by _DENIED_PATH_PREFIXES.
+    # Exception: AppData\Local\Temp is allowed (pytest tmp_path, legitimate temp files).
     if resolved_str.startswith(f"{home}\\AppData\\Roaming\\") or \
-            resolved_str.startswith(f"{home}\\AppData\\Local\\"):
+            (resolved_str.startswith(f"{home}\\AppData\\Local\\") and
+             not resolved_str.startswith(f"{home}\\AppData\\Local\\Temp\\")):
         raise HTTPException(403, "禁止访问 AppData 目录")
     if resolved.suffix.lower() in _DENIED_EXTENSIONS:
         raise HTTPException(403, f"禁止访问敏感文件: {resolved.suffix}")

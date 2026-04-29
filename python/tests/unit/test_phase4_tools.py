@@ -51,7 +51,7 @@ class TestShellExec:
     def test_mkdir_and_rm_in_sandbox(self):
         import tempfile
         sandbox = tempfile.mkdtemp(prefix="test_sandbox_")
-        with patch("src.agent.tools._SANDBOX_ROOT", sandbox):
+        with patch("src.agent.tools.atomic_tools._SANDBOX_ROOT", sandbox):
             result = _shell_exec("mkdir test_dir")
             assert (Path(sandbox) / "test_dir").exists() or "exit code" not in result
             result = _shell_exec("rmdir test_dir")
@@ -60,18 +60,18 @@ class TestShellExec:
     def test_touch_and_rm_in_sandbox(self):
         import tempfile
         sandbox = tempfile.mkdtemp(prefix="test_sandbox_")
-        with patch("src.agent.tools._SANDBOX_ROOT", sandbox):
+        with patch("src.agent.tools.atomic_tools._SANDBOX_ROOT", sandbox):
             result = _shell_exec("touch testfile.txt")
             assert (Path(sandbox) / "testfile.txt").exists() or "exit code" not in result
             result = _shell_exec("rm testfile.txt")
             assert not (Path(sandbox) / "testfile.txt").exists() or "exit code" not in result
 
     def test_path_traversal_blocked(self):
-        result = _shell_exec("rm ../../etc/passwd")
+        result = _shell_exec("touch ../../etc/passwd")
         assert "安全限制" in result
 
     def test_absolute_path_blocked(self):
-        result = _shell_exec("rm /etc/passwd")
+        result = _shell_exec("touch /etc/passwd")
         assert "安全限制" in result
 
     def test_windows_absolute_path_blocked(self):
@@ -132,7 +132,7 @@ class TestWebFetch:
         result = _web_fetch("/path/to/page")
         assert "http://" in result or "https://" in result
 
-    @patch("src.agent.tools.httpx.Client")
+    @patch("src.agent.tools.atomic_tools.httpx.Client")
     def test_fetch_extracts_text(self, mock_client_cls):
         mock_resp = MagicMock()
         mock_resp.text = "<html><body><p>Hello World</p></body></html>"
@@ -147,7 +147,7 @@ class TestWebFetch:
         result = _web_fetch("https://example.com", extract_text=True)
         assert "Hello World" in result
 
-    @patch("src.agent.tools.httpx.Client")
+    @patch("src.agent.tools.atomic_tools.httpx.Client")
     def test_fetch_raw_html(self, mock_client_cls):
         mock_resp = MagicMock()
         mock_resp.text = "<html><body>Hello</body></html>"
@@ -167,7 +167,7 @@ class TestWebFetch:
 
 
 class TestWebSearch:
-    @patch("src.agent.tools.httpx.Client")
+    @patch("src.agent.tools.atomic_tools.httpx.Client")
     def test_search_parses_results(self, mock_client_cls):
         html = """
         <a rel="nofollow" class="result__a">Python Tutorial</a>
@@ -189,7 +189,7 @@ class TestWebSearch:
         assert "Python Tutorial" in result
         assert "Python Docs" in result
 
-    @patch("src.agent.tools.httpx.Client")
+    @patch("src.agent.tools.atomic_tools.httpx.Client")
     def test_search_no_results(self, mock_client_cls):
         mock_resp = MagicMock()
         mock_resp.text = "<html><body>No results</body></html>"

@@ -77,8 +77,9 @@ def register_argument(
     """Register argument mapping routes. Works in simple-fallback mode always,
     and upgrades to advanced mode when the argument module is available."""
 
-    # Try to import advanced argument subsystem
-    try:
+    from src.features import argument as _ARGUMENT_AVAILABLE
+
+    if _ARGUMENT_AVAILABLE:
         from src.argument.models import (
             CreateTreeRequest, UpsertNodeRequest, ExpandRequest,
             ObserveRequest, BindRequest, ReviewRequest, FlattenRequest,
@@ -90,9 +91,6 @@ def register_argument(
         from src.argument.observer import ArgumentObserver
         from src.argument.feedback_generator import FeedbackGenerator
         from src.argument.flatten import ArgumentFlattener
-        _ARGUMENT_AVAILABLE = True
-    except ImportError:
-        _ARGUMENT_AVAILABLE = False
 
     # Advanced argument routes (always available — argument module is bundled)
     if _ARGUMENT_AVAILABLE:

@@ -14,8 +14,9 @@ from sse_starlette.sse import EventSourceResponse
 
 logger = logging.getLogger(__name__)
 
-# Lazy imports — these may fail if chromadb is not installed
-try:
+from src.features import agent as _AGENT_AVAILABLE
+
+if _AGENT_AVAILABLE:
     from src.agent.agent import AgentLoop
     from src.agent.auto_processor import auto_process_message, enrich_system_prompt
     from src.agent.memory import MemoryManager
@@ -30,9 +31,6 @@ try:
     from src.agent.workspace import WorkspaceEnv
     from src.agent.change_journal import ChangeJournal
     from src.translator.cloud_client import PROVIDER_PRESETS
-    _AGENT_AVAILABLE = True
-except ImportError:
-    _AGENT_AVAILABLE = False
 
 _V2_TOOL_WHITELIST = frozenset({
     "read_file", "list_directory", "search_files",
