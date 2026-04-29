@@ -34,29 +34,39 @@ def register_mindmap(
 ) -> None:
     mindmap_path = runtime_dir / "mindmap.json"
 
-    def _get_cloud_client():
-        if not load_config or not build_cloud_client:
+    async def _llm_call(system_prompt: str, user_prompt: str) -> str | None:
+        if not load_config:
             return None
         config = load_config()
         trans_cfg = config.get("translator", {})
         cloud_cfg = trans_cfg.get("cloud", {})
-        if not cloud_cfg.get("api_key"):
-            return None
-        return build_cloud_client(trans_cfg, cloud_cfg)
-
-    async def _llm_call(system_prompt: str, user_prompt: str) -> str | None:
-        import asyncio
-        client = _get_cloud_client()
-        if not client:
+        base_url = cloud_cfg.get("base_url", "").rstrip("/")
+        api_key = (cloud_cfg.get("api_key") or "").strip()
+        model = cloud_cfg.get("model", "gpt-4o")
+        if not base_url or not api_key:
             return None
         try:
-            original_sp = client.system_prompt
-            client.system_prompt = system_prompt
-            client._chunk_index = 0
-            client._prev_translation = ""
-            result = await asyncio.to_thread(client.translate, user_prompt)
-            client.system_prompt = original_sp
-            return result.translated if result else None
+            import httpx
+            async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as http:
+                resp = await http.post(
+                    f"{base_url}/chat/completions",
+                    json={
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        "temperature": 0.3,
+                        "max_tokens": 2048,
+                    },
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {api_key}",
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                return data["choices"][0]["message"]["content"]
         except Exception as exc:
             logger.warning("Mind map LLM call failed: %s", exc)
             return None

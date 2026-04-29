@@ -27,6 +27,79 @@ export interface PendingApproval {
 
 export function useAgentChat() {
 
+  // ── Shared SSE event handler ──────────────────────────────────────
+
+  function createEventHandler(assistantMsgId: string) {
+    return function handleEvent(eventType: string, data: Record<string, unknown>): void {
+      const agentEvent: AgentEvent = {
+        type: (data.type as AgentEvent['type']) || eventType,
+        content: (data.content as string) || '',
+        event_id: data.event_id as string | undefined,
+        metadata: data.metadata as AgentEvent['metadata'] | undefined,
+      }
+
+      const msg = messages.value.find(m => m.id === assistantMsgId)
+      if (!msg) return
+
+      switch (eventType) {
+        case 'done': {
+          const tasksDone = agentEvent.metadata?.tasks_done
+          const usage = agentEvent.metadata?.token_usage
+          const parts: string[] = []
+          if (agentEvent.content) parts.push(agentEvent.content)
+          if (tasksDone != null) parts.push(`${tasksDone} tasks`)
+          if (usage) {
+            const u = usage as Record<string, number>
+            const total = u.total_tokens || (u.prompt_tokens || 0) + (u.completion_tokens || 0)
+            if (total) parts.push(`${total} tokens`)
+          }
+          if (!msg.content) {
+            msg.content = agentEvent.content || (parts.length ? parts.join(' · ') : '完成')
+          }
+          msg.isStreaming = false
+          msg.events = [...msg.events, agentEvent]
+          break
+        }
+        case 'error':
+          if (!msg.content) msg.content = agentEvent.content || '发生错误'
+          msg.isStreaming = false
+          msg.events = [...msg.events, agentEvent]
+          break
+        case 'aborted':
+          msg.content = agentEvent.content || '会话已中止'
+          msg.isStreaming = false
+          pendingApproval.value = null
+          msg.events = [...msg.events, agentEvent]
+          break
+        case 'response':
+          msg.content = agentEvent.content
+          msg.isStreaming = false
+          break
+        case 'session_started':
+          sessionId.value = (agentEvent.metadata?.session_id as string) || sessionId.value
+          break
+        case 'await_approval':
+          pendingApproval.value = {
+            event_id: agentEvent.event_id || '',
+            tool_name: (agentEvent.metadata?.tool_name as string) || (agentEvent.metadata?.tool as string) || '',
+            args: agentEvent.metadata?.args as Record<string, unknown>
+              || agentEvent.metadata?.arguments as Record<string, unknown>,
+            risk: agentEvent.metadata?.risk as string | undefined,
+            preview: agentEvent.metadata?.preview as Record<string, unknown> | undefined,
+          }
+          msg.events = [...msg.events, agentEvent]
+          break
+        case 'approval_received':
+          pendingApproval.value = null
+          msg.events = [...msg.events, agentEvent]
+          break
+        default:
+          msg.events = [...msg.events, agentEvent]
+          break
+      }
+    }
+  }
+
   // ── SSE streaming ────────────────────────────────────────────────
 
   async function sendMessage(
@@ -37,7 +110,6 @@ export function useAgentChat() {
   ): Promise<void> {
     if (!text.trim() || sending.value) return
 
-    // Clear pending approval if any
     pendingApproval.value = null
 
     messages.value.push({
@@ -68,98 +140,7 @@ export function useAgentChat() {
       .slice(-20)
       .map(m => ({ role: m.role, content: m.content }))
 
-    function handleEvent(eventType: string, data: Record<string, unknown>): void {
-      const agentEvent: AgentEvent = {
-        type: (data.type as AgentEvent['type']) || eventType,
-        content: (data.content as string) || '',
-        event_id: data.event_id as string | undefined,
-        metadata: data.metadata as AgentEvent['metadata'] | undefined,
-      }
-
-      const msg = messages.value.find(m => m.id === assistantMsg.id)
-      if (!msg) return
-
-      switch (eventType) {
-        // v2 terminal events
-        case 'done': {
-          const tasksDone = agentEvent.metadata?.tasks_done
-          const usage = agentEvent.metadata?.token_usage
-          const parts: string[] = []
-          if (agentEvent.content) parts.push(agentEvent.content)
-          if (tasksDone != null) parts.push(`${tasksDone} tasks`)
-          if (usage) {
-            const u = usage as Record<string, number>
-            const total = u.total_tokens || (u.prompt_tokens || 0) + (u.completion_tokens || 0)
-            if (total) parts.push(`${total} tokens`)
-          }
-          if (!msg.content) {
-            msg.content = agentEvent.content || (parts.length ? parts.join(' · ') : '完成')
-          }
-          msg.isStreaming = false
-          msg.events = [...msg.events, agentEvent]
-          break
-        }
-        case 'error':
-          if (!msg.content) msg.content = agentEvent.content || '发生错误'
-          msg.isStreaming = false
-          msg.events = [...msg.events, agentEvent]
-          break
-        case 'aborted':
-          msg.content = agentEvent.content || '会话已中止'
-          msg.isStreaming = false
-          pendingApproval.value = null
-          msg.events = [...msg.events, agentEvent]
-          break
-
-        // Legacy v1 terminal
-        case 'response':
-          msg.content = agentEvent.content
-          msg.isStreaming = false
-          break
-
-        // v2 session tracking
-        case 'session_started':
-          sessionId.value = (agentEvent.metadata?.session_id as string) || null
-          break
-
-        // v2 approval
-        case 'await_approval':
-          pendingApproval.value = {
-            event_id: agentEvent.event_id || '',
-            tool_name: (agentEvent.metadata?.tool_name as string) || (agentEvent.metadata?.tool as string) || '',
-            args: agentEvent.metadata?.args as Record<string, unknown>
-              || agentEvent.metadata?.arguments as Record<string, unknown>,
-            risk: agentEvent.metadata?.risk as string | undefined,
-            preview: agentEvent.metadata?.preview as Record<string, unknown> | undefined,
-          }
-          msg.events = [...msg.events, agentEvent]
-          break
-        case 'approval_received':
-          pendingApproval.value = null
-          msg.events = [...msg.events, agentEvent]
-          break
-
-        // v2 task lifecycle — attach to events stream
-        case 'task_started':
-        case 'task_done':
-        case 'thought':
-        case 'tool_call':
-        case 'tool_result':
-        case 'token':
-        case 'warning':
-          msg.events = [...msg.events, agentEvent]
-          break
-
-        // v1 / legacy types
-        case 'thinking':
-          msg.events = [...msg.events, agentEvent]
-          break
-
-        default:
-          msg.events = [...msg.events, agentEvent]
-          break
-      }
-    }
+    const handleEvent = createEventHandler(assistantMsg.id)
 
     try {
       const resp = await fetch(`${API_URL}/api/agent/v2/chat`, {
@@ -185,7 +166,6 @@ export function useAgentChat() {
 
       await readSseStream(reader, handleEvent)
 
-      // Fallback: stream ended without a terminal event
       const msg = messages.value.find(m => m.id === assistantMsg.id)
       if (msg?.isStreaming) {
         msg.isStreaming = false
@@ -292,54 +272,7 @@ export function useAgentChat() {
     abortController?.abort()
     abortController = new AbortController()
 
-    function handleEvent(eventType: string, data: Record<string, unknown>): void {
-      const agentEvent: AgentEvent = {
-        type: (data.type as AgentEvent['type']) || eventType,
-        content: (data.content as string) || '',
-        event_id: data.event_id as string | undefined,
-        metadata: data.metadata as AgentEvent['metadata'] | undefined,
-      }
-
-      const msg = messages.value.find(m => m.id === assistantMsg.id)
-      if (!msg) return
-
-      switch (eventType) {
-        case 'done':
-        case 'error':
-        case 'aborted': {
-          if (!msg.content) msg.content = agentEvent.content || '完成'
-          msg.isStreaming = false
-          pendingApproval.value = null
-          msg.events = [...msg.events, agentEvent]
-          break
-        }
-        case 'response':
-          if (!msg.content) msg.content = agentEvent.content
-          msg.isStreaming = false
-          break
-        case 'session_started':
-          sessionId.value = (agentEvent.metadata?.session_id as string) || targetSessionId
-          break
-        case 'await_approval':
-          pendingApproval.value = {
-            event_id: agentEvent.event_id || '',
-            tool_name: (agentEvent.metadata?.tool_name as string) || (agentEvent.metadata?.tool as string) || '',
-            args: agentEvent.metadata?.args as Record<string, unknown>
-              || agentEvent.metadata?.arguments as Record<string, unknown>,
-            risk: agentEvent.metadata?.risk as string | undefined,
-            preview: agentEvent.metadata?.preview as Record<string, unknown> | undefined,
-          }
-          msg.events = [...msg.events, agentEvent]
-          break
-        case 'approval_received':
-          pendingApproval.value = null
-          msg.events = [...msg.events, agentEvent]
-          break
-        default:
-          msg.events = [...msg.events, agentEvent]
-          break
-      }
-    }
+    const handleEvent = createEventHandler(assistantMsg.id)
 
     try {
       const resp = await fetch(`${API_URL}/api/agent/v2/resume/${targetSessionId}`, {

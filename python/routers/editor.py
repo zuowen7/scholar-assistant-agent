@@ -148,14 +148,14 @@ def register_editor(
                     media_type="text/event-stream",
                 )
             return EventSourceResponse(
-                _edit_stream_cloud(base_url, api_key, model, system_prompt, user_msg),
+                _stream_cloud(base_url, api_key, model, system_prompt, user_msg),
                 media_type="text/event-stream",
             )
         else:
             ollama_url = trans_cfg.get("ollama_base_url", "http://localhost:11434").rstrip("/")
             model = trans_cfg.get("model", "qwen3:8b")
             return EventSourceResponse(
-                _edit_stream_ollama(ollama_url, model, system_prompt, user_msg),
+                _stream_ollama(ollama_url, model, system_prompt, user_msg),
                 media_type="text/event-stream",
             )
 
@@ -165,7 +165,7 @@ def register_editor(
     async def _edit_error(msg: str) -> AsyncGenerator[dict, None]:
         yield {"event": "delta", "data": json.dumps({"content": msg}, ensure_ascii=False)}
 
-    async def _edit_stream_cloud(
+    async def _stream_cloud(
         base_url: str, api_key: str, model: str,
         system_prompt: str, user_msg: str,
     ) -> AsyncGenerator[dict, None]:
@@ -208,13 +208,13 @@ def register_editor(
                         except json.JSONDecodeError:
                             continue
         except Exception as e:
-            logger.error("Edit cloud stream error: %s", e)
+            logger.error("Cloud stream error: %s", e)
             if not full_content:
                 full_content = f"AI 处理失败（云端 API 错误）: {e}"
 
         yield {"event": "delta", "data": json.dumps({"content": full_content}, ensure_ascii=False)}
 
-    async def _edit_stream_ollama(
+    async def _stream_ollama(
         ollama_url: str, model: str,
         system_prompt: str, user_msg: str,
     ) -> AsyncGenerator[dict, None]:
@@ -247,11 +247,59 @@ def register_editor(
                         except json.JSONDecodeError:
                             continue
         except Exception as e:
-            logger.error("Edit Ollama stream error: %s", e)
+            logger.error("Ollama stream error: %s", e)
             if not full_content:
                 full_content = f"AI 处理失败（Ollama 未启动？）: {e}"
 
         yield {"event": "delta", "data": json.dumps({"content": full_content}, ensure_ascii=False)}
+
+    async def _call_cloud(
+        base_url: str, api_key: str, model: str,
+        system_prompt: str, user_msg: str,
+    ) -> str:
+        import httpx
+        if not base_url or not api_key:
+            raise RuntimeError("云端 API 未配置")
+        async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
+            resp = await client.post(
+                f"{base_url}/chat/completions",
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_msg},
+                    ],
+                    "temperature": 0.3,
+                    "max_tokens": 8192,
+                    "stream": False,
+                },
+                headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+    async def _call_ollama(
+        ollama_url: str, model: str,
+        system_prompt: str, user_msg: str,
+    ) -> str:
+        import httpx
+        async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
+            resp = await client.post(
+                f"{ollama_url}/api/chat",
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_msg},
+                    ],
+                    "stream": False,
+                    "options": {"temperature": 0.3, "num_predict": 8192},
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("message", {}).get("content", "")
 
     @app.post("/api/complete")
     async def complete_text(req: CompletionRequest):
@@ -464,54 +512,6 @@ def register_editor(
         except Exception as e:
             logger.error("Compliance check error: %s", e)
             return {"error": str(e), "report": None}
-
-    async def _call_cloud(
-        base_url: str, api_key: str, model: str,
-        system_prompt: str, user_msg: str,
-    ) -> str:
-        import httpx
-        if not base_url or not api_key:
-            raise RuntimeError("云端 API 未配置")
-        async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
-            resp = await client.post(
-                f"{base_url}/chat/completions",
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_msg},
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 8192,
-                    "stream": False,
-                },
-                headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return data.get("choices", [{}])[0].get("message", {}).get("content", "")
-
-    async def _call_ollama(
-        ollama_url: str, model: str,
-        system_prompt: str, user_msg: str,
-    ) -> str:
-        import httpx
-        async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
-            resp = await client.post(
-                f"{ollama_url}/api/chat",
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_msg},
-                    ],
-                    "stream": False,
-                    "options": {"temperature": 0.3, "num_predict": 8192},
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return data.get("message", {}).get("content", "")
 
     @app.post("/api/export/word")
     async def export_word(req: WordExportRequest):
@@ -733,5 +733,6 @@ def register_editor(
             raise HTTPException(500, f"获取引用失败: {e}")
 
     return {
+        "startup": _start_output_reaper,
         "shutdown": _cancel_output_reaper,
     }

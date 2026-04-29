@@ -128,7 +128,7 @@
             <template #icon-left><Download :size="13" :stroke-width="2" /></template>
             下载
           </UiButton>
-          <UiButton variant="secondary" size="sm" @click="doExportBilingualPdf()">
+          <UiButton variant="secondary" size="sm" @click="doExportBilingualDocx()">
             <template #icon-left><FileText :size="13" :stroke-width="2" /></template>
             双语 Word
           </UiButton>
@@ -199,14 +199,14 @@ defineEmits<{
   (e: 'open-agent-docs'): void
 }>()
 
-const { state, translate, reset, downloadResult, overallProgress, exportBilingualPdf } = useTranslate()
+const { state, translate, reset, downloadResult, overallProgress, exportBilingualDocx } = useTranslate()
 
 const viewMode = ref<'sentence' | 'parallel' | 'markdown'>('sentence')
 const zoneHover = ref(false)
 
-async function doExportBilingualPdf() {
+async function doExportBilingualDocx() {
   try {
-    await exportBilingualPdf()
+    await exportBilingualDocx()
   } catch (err) {
     console.error('Bilingual PDF export failed:', err)
   }

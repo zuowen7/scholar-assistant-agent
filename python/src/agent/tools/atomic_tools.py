@@ -1,4 +1,4 @@
-"""Phase 4 原子工具 — 低风险、沙箱化的原子操作工具。
+"""原子工具 — 低风险、沙箱化的原子操作工具。
 
 本模块实现了 Agent 的原子操作工具集，包括：
 - shell_exec: 白名单 shell 命令执行
@@ -89,7 +89,7 @@ def _shell_exec(command: str, timeout: int = _SHELL_TIMEOUT) -> str:
         return f"命令 '{base_cmd}' 不在白名单中。允许的命令: {allowed}"
 
     # 文件操作命令必须在沙箱内执行
-    sandbox_cmds = {"touch", "mkdir", "cp", "mv", "rm", "rmdir"}
+    sandbox_cmds = {"touch", "mkdir", "cp", "mv"}
     cwd = None
     if base_cmd in sandbox_cmds:
         path_error = _validate_sandbox_command(command)

@@ -164,7 +164,6 @@ class AgentLoop:
         temperature: float = 0.3,
         num_predict: int = 4096,
         timeout: float = 300.0,
-        context_compressor: Any | None = None,
         prompt_builder: PromptBuilder | None = None,
         memory_manager: MemoryManager | None = None,
         skill_registry: SkillRegistry | None = None,
@@ -316,7 +315,7 @@ class AgentLoop:
                 metadata={"tool": tc.name, "args": tc.arguments},
             ))
 
-        # Phase 3: 若调用方要求不执行，则由 AgentSession 门控后再执行
+        # 若调用方要求不执行，则由 AgentSession 门控后再执行
         if not execute_tools:
             return result
 

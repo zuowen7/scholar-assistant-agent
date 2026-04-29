@@ -233,7 +233,7 @@ class TrajectoryRecorder:
         return records[:limit]
 
     # ------------------------------------------------------------------
-    # Event stream recording (Phase 4: full event dual-write)
+    # Event stream recording (full event dual-write)
     # ------------------------------------------------------------------
 
     def start_event_stream(self, session_id: str, query: str, model: str = "") -> None:

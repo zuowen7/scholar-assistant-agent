@@ -122,11 +122,11 @@ async def test_sequential_prev_trans_chain():
 
 
 # ---------------------------------------------------------------------------
-# 4. Retry: single failure → retry succeeds → no fallback
+# 4. Single failure → fallback to original text (client handles retries)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.anyio
-async def test_retry_recovers():
+async def test_single_failure_fallback():
     client = _FlakyClient(fail_on=2, delay=0.01)
     chunks = [_MockChunk(f"c{i}") for i in range(4)]
 
@@ -135,8 +135,10 @@ async def test_retry_recovers():
         results.append(cr)
 
     assert len(results) == 4
-    assert results[2].error is None
-    assert not results[2].is_fallback
+    # _translate_one catches exceptions and returns fallback with error set
+    assert results[2].error is not None
+    assert results[2].is_fallback
+    assert results[2].result.original == results[2].result.translated
 
 
 # ---------------------------------------------------------------------------

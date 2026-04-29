@@ -22,7 +22,7 @@ from enum import Enum, auto
 
 
 # ---------------------------------------------------------------------------
-# Session State (Phase 2: AgentSession 状态机)
+# Session State (AgentSession 状态机)
 # ---------------------------------------------------------------------------
 
 
@@ -37,7 +37,7 @@ class SessionState(Enum):
 
 
 # ---------------------------------------------------------------------------
-# SSE Event Type Constants (Phase 2: Event Protocol)
+# SSE Event Type Constants (Event Protocol)
 # ---------------------------------------------------------------------------
 
 # 基础事件类型（用于简单反馈）
@@ -47,7 +47,7 @@ EVT_TOOL_RESULT = "tool_result"
 EVT_RESPONSE = "response"
 EVT_ERROR = "error"
 
-# 会话管理事件（Phase 2: AgentSession）
+# 会话管理事件（AgentSession）
 EVT_SESSION_STARTED = "session_started"
 EVT_TASK_STARTED = "task_started"
 EVT_THOUGHT = "thought"

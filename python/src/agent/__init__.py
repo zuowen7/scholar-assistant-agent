@@ -2,7 +2,6 @@
 
 核心推理:
 - **AgentLoop** (agent.py): ReAct 推理循环，双策略工具调用，轨迹记录
-- **ContextCompressor** (context_compressor.py): 比例阈值压缩器
 - **PromptBuilder** (prompt_builder.py): System Prompt 动态拼装
 
 记忆与自进化:
@@ -18,7 +17,6 @@
 所有 Agent 逻辑均为手写实现，不依赖 LangChain/LlamaIndex 等重量级框架。
 """
 
-from src.agent.context_compressor import CompressionResult, ContextCompressor
 from src.agent.error_classifier import ErrorType, RecoveryAction, RetryManager, classify_error, get_recovery
 from src.agent.hooks import HookContext, HookManager, HookPoint
 from src.agent.llm_client import LLMClient, TokenUsage
@@ -40,8 +38,6 @@ except ImportError:
 __all__ = [
     "AgentEvent",
     "AgentLoop",
-    "CompressionResult",
-    "ContextCompressor",
     "DocumentInfo",
     "ErrorType",
     "HookContext",
