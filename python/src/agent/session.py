@@ -234,6 +234,7 @@ class AgentSession:
         task_step = 0
         self.consecutive_errors = 0
         _recent_tool_names: list[str] = []
+        _loop_hint = ""
 
         while (
             task_step < self.config.max_task_steps
@@ -284,17 +285,14 @@ class AgentSession:
 
             self.consecutive_errors = 0
 
-            # 工具循环检测：同一工具连续调用 ≥3 次则注入提示
+            # 工具循环检测：同一工具连续调用 ≥3 次则标记提示
             if step_result.tool_calls:
                 for tc in step_result.tool_calls:
                     _recent_tool_names.append(tc.name)
                 if len(_recent_tool_names) >= 3:
                     last3 = _recent_tool_names[-3:]
                     if len(set(last3)) == 1:
-                        self.messages.append(Message(
-                            role="user",
-                            content=f"[系统提示] 你已连续 3 次调用 {last3[0]}，请不要再重复调用同一工具。基于已有信息直接给出最终回答。",
-                        ))
+                        _loop_hint = f"[系统提示] 你已连续 3 次调用 {last3[0]}，请不要再重复调用同一工具。基于已有信息直接给出最终回答。"
                         _recent_tool_names.clear()
 
             # 无工具调用 → 最终回答
@@ -440,6 +438,11 @@ class AgentSession:
                     content=result[:500] + ("..." if len(result) > 500 else ""),
                     metadata={"tool_name": tc.name},
                 )
+
+            # 循环检测提示：在所有 tool result 之后注入，不破坏消息序列
+            if _loop_hint:
+                self.messages.append(Message(role="user", content=_loop_hint))
+                _loop_hint = ""
 
         # 步数耗尽 — 强制生成最终总结
         if task_step >= self.config.max_task_steps:
