@@ -49,3 +49,17 @@ formatter:
   output_format: bilingual
   # 输出文件格式: txt | markdown | docx
   file_format: markdown
+
+# Zotero 文献管理 (可选)
+# 在 https://www.zotero.org/settings/keys 创建 API Key
+zotero:
+  api_key: ""
+  user_id: ""
+  style: "ieee"
+
+# Vision 图像分析 (可选)
+# 需要支持 vision 的模型，如 GPT-4o、Qwen-VL 等
+vision:
+  base_url: "https://api.openai.com/v1"
+  api_key: ""
+  model: "gpt-4o"

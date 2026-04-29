@@ -21,55 +21,55 @@ Input Text:
 
 Please output ONLY a valid JSON object in the exact format below (no markdown, no explanation):
 
-{{
-  "summary": {{
+{
+  "summary": {
     "total_characters": <number>,
     "total_words": <number>,
-    "total_ections": <number>,
+    "total_sections": <number>,
     "compliance_score": <number between 0-100>,
     "overall_status": "pass" | "warning" | "fail"
-  }},
-  "structure": {{
-    "required_sections": {{
-      "introduction": {{"found": true/false, "word_count": <number>, "issues": []}},
-      "related_work": {{"found": true/false, "word_count": <number>, "issues": []}},
-      "method": {{"found": true/false, "word_count": <number>, "issues": []}},
-      "experiment": {{"found": true/false, "word_count": <number>, "issues": []}},
-      "conclusion": {{"found": true/false, "word_count": <number>, "issues": []}}
-    }},
+  },
+  "structure": {
+    "required_sections": {
+      "introduction": {"found": true/false, "word_count": <number>, "issues": []},
+      "related_work": {"found": true/false, "word_count": <number>, "issues": []},
+      "method": {"found": true/false, "word_count": <number>, "issues": []},
+      "experiment": {"found": true/false, "word_count": <number>, "issues": []},
+      "conclusion": {"found": true/false, "word_count": <number>, "issues": []}
+    },
     "issues": [
-      {{"type": "missing_section" | "empty_section" | "unusual_order", "detail": "...", "severity": "error" | "warning"}}
+      {"type": "missing_section" | "empty_section" | "unusual_order", "detail": "...", "severity": "error" | "warning"}
     ]
-  }},
-  "terminology": {{
+  },
+  "terminology": {
     "consistent_terms": ["term1", "term2", ...],
     "inconsistent_terms": [
-      {{"term": "X", "variants": ["X", "x", "X"], "recommendation": "X", "severity": "warning"}}
+      {"term": "X", "variants": ["X", "x", "X"], "recommendation": "X", "severity": "warning"}
     ],
     "issues": []
-  }},
-  "citation": {{
+  },
+  "citation": {
     "format_issues": [
-      {{"text": "...", "issue": "missing year" | "inconsistent format" | "malformed", "severity": "warning"}}
+      {"text": "...", "issue": "missing year" | "inconsistent format" | "malformed", "severity": "warning"}
     ],
     "total_citations": <number>,
     "issues": []
-  }},
-  "hallucination_risk": {{
+  },
+  "hallucination_risk": {
     "flags": [
-      {{"text": "...", "risk": "vague_claim" | "unsupported_number" | "unverifiable_statement", "severity": "warning" | "error"}}
+      {"text": "...", "risk": "vague_claim" | "unsupported_number" | "unverifiable_statement", "severity": "warning" | "error"}
     ],
     "risk_level": "low" | "medium" | "high",
     "issues": []
-  }},
-  "readability": {{
+  },
+  "readability": {
     "avg_sentence_length": <number>,
     "long_sentences": [
-      {{"text": "...", "length": <number>, "suggestion": "..."}}
+      {"text": "...", "length": <number>, "suggestion": "..."}
     ],
     "issues": []
-  }}
-}}
+  }
+}
 
 4. Few-Shot Examples:
 
@@ -93,49 +93,49 @@ We achieve 85% accuracy...
 We presented a new method...
 
 Output:
-{{
-  "summary": {{
+{
+  "summary": {
     "total_characters": 250,
     "total_words": 45,
     "total_sections": 4,
     "compliance_score": 72,
     "overall_status": "warning"
-  }},
-  "structure": {{
-    "required_sections": {{
-      "introduction": {{"found": true, "word_count": 12, "issues": []}},
-      "related_work": {{"found": false, "word_count": 0, "issues": ["Section 'Related Work' or 'Background' not found. Most CVPR papers require reviewing prior work."]}},
-      "method": {{"found": true, "word_count": 8, "issues": []}},
-      "experiment": {{"found": true, "word_count": 5, "issues": []}},
-      "conclusion": {{"found": true, "word_count": 8, "issues": []}}
-    }},
+  },
+  "structure": {
+    "required_sections": {
+      "introduction": {"found": true, "word_count": 12, "issues": []},
+      "related_work": {"found": false, "word_count": 0, "issues": ["Section 'Related Work' or 'Background' not found. Most CVPR papers require reviewing prior work."]},
+      "method": {"found": true, "word_count": 8, "issues": []},
+      "experiment": {"found": true, "word_count": 5, "issues": []},
+      "conclusion": {"found": true, "word_count": 8, "issues": []}
+    },
     "issues": [
-      {{"type": "missing_section", "detail": "Related Work section is missing", "severity": "error"}}
+      {"type": "missing_section", "detail": "Related Work section is missing", "severity": "error"}
     ]
-  }},
-  "terminology": {{
+  },
+  "terminology": {
     "consistent_terms": ["context-aware", "rewriting", "large language models"],
     "inconsistent_terms": [],
     "issues": []
-  }},
-  "citation": {{
+  },
+  "citation": {
     "format_issues": [],
     "total_citations": 0,
     "issues": []
-  }},
-  "hallucination_risk": {{
+  },
+  "hallucination_risk": {
     "flags": [
-      {{"text": "We achieve 85% accuracy", "risk": "unsupported_number", "severity": "warning"}}
+      {"text": "We achieve 85% accuracy", "risk": "unsupported_number", "severity": "warning"}
     ],
     "risk_level": "medium",
     "issues": []
-  }},
-  "readability": {{
+  },
+  "readability": {
     "avg_sentence_length": 12,
     "long_sentences": [],
     "issues": []
-  }}
-}}
+  }
+}
 
 5. Notes:
 - `compliance_score` should reflect the overall paper quality (0-100)
