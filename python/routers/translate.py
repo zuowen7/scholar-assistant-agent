@@ -778,26 +778,34 @@ def register_translate(
                 for r in results
             ]
 
-            rag_store = _state["rag_store_getter"]()
-            if rag_store is not None:
-                try:
+            rag_ingested = False
+            try:
+                _ensure_fn = _state.get("ensure_rag_store")
+                rs = await _ensure_fn() if _ensure_fn else _state.get("rag_store_getter", lambda: None)()
+                if rs is not None:
                     src_lang = config.get("translator", {}).get("source_lang", "en")
                     src_label = "英文" if src_lang == "en" else src_lang
-                    rag_meta = {
-                        "title": f"[翻译] {task['filename']}",
-                        "source": "translation",
-                        "source_lang": src_label,
-                    }
                     dual_text = f"[原文]\n{clean_result.text}\n\n[译文]\n{content}"
-                    await asyncio.to_thread(
-                        rag_store.ingest_document,
-                        f"trans_{task_id}",
-                        dual_text,
-                        rag_meta,
-                    )
-                    logger.info("翻译结果已自动入库 RAG: trans_%s", task_id)
-                except Exception as rag_err:
-                    logger.warning("翻译结果入库 RAG 失败（不影响翻译）: %s", rag_err)
+                    _task_id_str = task_id
+                    _filename = task["filename"]
+                    logger.info("RAG ingest queued for trans_%s, text length=%d", _task_id_str, len(dual_text))
+
+                    async def _bg_ingest():
+                        try:
+                            await asyncio.to_thread(
+                                rs.ingest_document,
+                                f"trans_{_task_id_str}",
+                                dual_text,
+                                {"title": f"[翻译] {_filename}", "source": "translation", "source_lang": src_label},
+                            )
+                            logger.info("翻译结果已自动入库 RAG: trans_%s", _task_id_str)
+                        except Exception as exc:
+                            logger.warning("翻译结果入库 RAG 失败: %s", exc)
+
+                    asyncio.create_task(_bg_ingest())
+                    rag_ingested = True
+            except Exception as rag_err:
+                logger.warning("翻译结果入库 RAG 准备失败（不影响翻译）: %s", rag_err)
 
             yield {
                 "event": "complete",
@@ -805,6 +813,7 @@ def register_translate(
                     "task_id": task_id,
                     "output_path": str(out_path),
                     "content": content,
+                    "rag_ingested": rag_ingested,
                     "block_ids": [b.block_id for b in task.get("blocks", []) or []] if task.get("blocks") else None,
                     "chunks": [
                         {
@@ -1008,9 +1017,12 @@ def register_translate(
         output_dir = runtime_dir / "output"
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        results = t.get("chunks", [])
-        if not results:
+        raw_chunks = t.get("chunks", [])
+        if not raw_chunks:
             raise HTTPException(400, "未找到翻译结果")
+
+        from src.translator._helpers import TranslationResult
+        results = [TranslationResult(**c) if isinstance(c, dict) else c for c in raw_chunks]
 
         from src.formatter import format_output
         fmt_cfg = {}
@@ -1025,4 +1037,7 @@ def register_translate(
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
 
-    return {"tasks": tasks, "rag_store_getter": _state["rag_store_getter"], "tm_store": tm_store, "glossary_store": glossary_store}
+    _state["tasks"] = tasks
+    _state["tm_store"] = tm_store
+    _state["glossary_store"] = glossary_store
+    return _state
