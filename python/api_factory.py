@@ -232,6 +232,13 @@ _DENIED_EXTENSIONS = {".env", ".key", ".pem", ".p12", ".pfx", ".secret", ".crede
 
 
 def _validate_file_path(file_path: Path) -> None:
+    """Validate file paths for translate/editor endpoints.
+
+    Scope: /api/translate/path, editor file read/write.
+    Enforces: no system dirs, no hidden files, no sensitive extensions.
+    For agent workspace path resolution see WorkspaceEnv.resolve().
+    For command/tool risk classification see SecurityGate.classify().
+    """
     original = file_path
     resolved = file_path.resolve()
     resolved_str = str(resolved)
