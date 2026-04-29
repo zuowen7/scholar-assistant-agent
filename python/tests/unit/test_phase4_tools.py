@@ -170,10 +170,10 @@ class TestWebSearch:
     @patch("src.agent.tools.atomic_tools.httpx.Client")
     def test_search_parses_results(self, mock_client_cls):
         html = """
-        <a rel="nofollow" class="result__a">Python Tutorial</a>
-        <a class="result__snippet">Learn Python programming</a>
-        <a rel="nofollow" class="result__a">Python Docs</a>
-        <a class="result__snippet">Official documentation</a>
+        <h2><a href="https://example.com/python" h="ID=SERP,5120.1">Python Tutorial</a></h2>
+        <div class="b_caption"><p class="b_lineclamp2">Learn Python programming</p></div>
+        <h2><a href="https://example.com/docs" h="ID=SERP,5120.2">Python Docs</a></h2>
+        <div class="b_caption"><p class="b_lineclamp2">Official documentation</p></div>
         """
         mock_resp = MagicMock()
         mock_resp.text = html

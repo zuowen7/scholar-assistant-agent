@@ -187,7 +187,7 @@ import { UploadCloud, AlertCircle, Check, CheckCircle, Download, FileText } from
 import UiButton from './ui/UiButton.vue'
 import UiSegmented from './ui/UiSegmented.vue'
 import { useTranslate } from '../composables/useTranslate'
-import * as DOMPurify from 'dompurify'
+import DOMPurify from 'dompurify'
 
 const props = defineProps<{
   healthOk: boolean
