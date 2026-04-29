@@ -135,7 +135,11 @@
         </div>
       </div>
 
-      <!-- ── Sentence view ── -->
+      <!-- Export error banner (shown in done state) -->
+      <div v-if="state.errorMessage" class="export-error-banner">
+        <AlertCircle :size="14" :stroke-width="2" />
+        <span class="error-text">{{ state.errorMessage }}</span>
+      </div>
       <div v-if="viewMode === 'sentence' && allSentencePairs.length" class="sentence-view">
         <div
           v-for="(pair, i) in allSentencePairs"
@@ -526,6 +530,18 @@ function openFilePicker() {
   color: var(--c-danger);
 }
 .error-text { flex: 1; font-size: var(--text-sm); min-width: 0; }
+.export-error-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  margin: var(--space-2) 0;
+  background: var(--c-danger-bg);
+  border: 1px solid var(--c-danger-border);
+  border-radius: var(--radius-md);
+  color: var(--c-danger);
+  font-size: var(--text-sm);
+}
 
 /* ══════════════════════════════════════════════════════════
    WORKING

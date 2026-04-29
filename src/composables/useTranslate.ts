@@ -370,6 +370,7 @@ async function downloadResult(): Promise<void> {
 
 async function exportBilingualPdf(mode: 'below' | 'above' | 'replace' = 'below'): Promise<void> {
   if (!state.taskId) return
+  state.errorMessage = ''
 
   try {
     const resp = await fetch(`${API_URL}/api/export/bilingual_pdf`, {
@@ -380,24 +381,18 @@ async function exportBilingualPdf(mode: 'below' | 'above' | 'replace' = 'below')
 
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({ detail: '导出失败' }))
-      throw new Error(err.detail || `导出失败 (${resp.status})`)
+      const detail = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail)
+      throw new Error(detail || `导出失败 (${resp.status})`)
     }
 
-    // Tauri 环境：让后端直接写入 runtime/output，由 Tauri 触发下载
-    // 非 Tauri 环境：浏览器下载 blob
-    if (!isTauri) {
-      const blob = await resp.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${state.taskId}_bilingual.pdf`
-      a.click()
-      URL.revokeObjectURL(url)
-    }
+    const blob = await resp.blob()
+    const defaultName = `${state.taskId}_bilingual.pdf`
+    const { saveBlob } = await import('./useEditorIO')
+    const result = await saveBlob(blob, defaultName)
+    if (result === 'Cancelled') return
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : '未知错误'
     state.errorMessage = msg
-    setStatus('error')
   }
 }
 
