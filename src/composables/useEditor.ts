@@ -9,12 +9,11 @@
 import { API_BASE } from '../utils/api'
 import { readSseStream } from '../utils/streamReader'
 import {
-  monacoEditor, contentVersion, activeTab, content,
+  tabs, activeTabId, monacoEditor, contentVersion, activeTab, content, activeFile, isModified,
   selection, showAiPanel, aiLoading, aiResult, previousContent,
-  insertTextAtCursor, insertImage, getRange,
+  insertTextAtCursor, insertImage,
 } from './useEditorState'
 import {
-  tabs, activeTabId, activeFile, isModified,
   setEditorInstance, setContent, updateSelection, markClean, markDirty,
   openFile, openNewUntitled, closeTab, setActiveTab, renameTabPath, saveFile,
 } from './useEditorTabs'
@@ -83,7 +82,8 @@ function applyInlineDecoration(
 ) {
   const editor = monacoEditor.value
   if (!editor) return
-  const Range = getRange(editor)
+  const Range = (editor as any).monaco?.Range ??
+    class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
   inlineDecoration = editor.deltaDecorations([], [{
     range: new Range(startLine, startCol, endLine, endCol),
     options: { className: 'ai-inline-edit', inlineClassName: 'ai-inline-edit-char' },
@@ -115,7 +115,8 @@ export async function inlineEdit(instruction: string, taskType?: string): Promis
     })
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
     if (!resp.body) throw new Error('No response body')
-    const Range = getRange(editor)
+    const Range = (editor as any).monaco?.Range ??
+      class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
     const reader = resp.body.getReader()
     applyInlineDecoration(sel.startLine, sel.startCol, sel.endLine, sel.endCol)
     await readSseStream(reader, (_type, evt) => {
@@ -151,7 +152,8 @@ export function applyAiResult() {
   const editor = monacoEditor.value
   if (!editor || !aiResult.value) return
   const sel = selection.value
-  const Range = getRange(editor)
+  const Range = (editor as any).monaco?.Range ??
+    class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
   if (sel.text) {
     editor.executeEdits('ai-edit', [{
       range: new Range(sel.startLine, sel.startCol, sel.endLine, sel.endCol),
@@ -230,7 +232,8 @@ async function requestCompletion() {
     })
     if (currentContent !== textBefore) { clearGhostText(); return }
     currentSuggestion = suggestion
-    const Range = getRange(editor)
+    const Range = (editor as any).monaco?.Range ??
+      class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
     ghostDecoration = editor.deltaDecorations(ghostDecoration, [{
       range: new Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
       options: {
@@ -251,7 +254,8 @@ export function acceptGhostText(): boolean {
   if (!editor || !currentSuggestion) return false
   const pos = editor.getPosition()
   if (!pos) return false
-  const Range = getRange(editor)
+  const Range = (editor as any).monaco?.Range ??
+    class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
   editor.executeEdits('inline-completion', [{
     range: new Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
     text: currentSuggestion,
@@ -275,15 +279,13 @@ export function cleanup() {
 // ── Facade function (returns module-level singletons) ─────────────────────
 export function useEditor() {
   return {
-    // AI edit state
+    tabs, activeTabId, activeFile, isModified,
     showAiPanel, aiLoading, aiResult, previousContent,
     insertTextAtCursor, insertImage,
     monacoEditor, contentVersion, activeTab, content, selection,
-    aiEdit, inlineEdit, cancelAiEdit, applyAiResult, rejectAiResult, undoEdit,
-    triggerCompletion, acceptGhostText, onDidChangeContent, clearGhostText, cleanup,
-    // Tab management (from useEditorTabs)
-    tabs, activeTabId, activeFile, isModified,
     setEditorInstance, setContent, updateSelection, markClean, markDirty,
     openFile, openNewUntitled, closeTab, setActiveTab, renameTabPath, saveFile,
+    aiEdit, inlineEdit, cancelAiEdit, applyAiResult, rejectAiResult, undoEdit,
+    triggerCompletion, acceptGhostText, onDidChangeContent, clearGhostText, cleanup,
   }
 }

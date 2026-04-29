@@ -52,3 +52,23 @@ export function insertTextAtCursor(text: string): boolean {
 export function insertImage(url: string, alt = 'image') {
   return insertTextAtCursor(`\n![${alt}](${url})\n`)
 }
+
+export function useEditorState() {
+  return {
+    tabs,
+    activeTabId,
+    selection,
+    monacoEditor,
+    contentVersion,
+    activeTab,
+    content,
+    activeFile,
+    isModified,
+    showAiPanel,
+    aiLoading,
+    aiResult,
+    previousContent,
+    insertTextAtCursor,
+    insertImage,
+  }
+}

@@ -104,18 +104,18 @@
       </div>
       <div class="agent-input-area">
         <div v-if="contextText" class="agent-context-note">
-          Using editor {{ editorSelection.text ? 'selection' : 'document' }} as context ({{ contextText.length }} chars)
+          已使用编辑器{{ editorSelection.text ? '选区' : '文档' }}作为上下文（{{ contextText.length }} 字符）
         </div>
         <!-- File attachments -->
         <div class="agent-attachments" v-if="files.length">
           <div class="agent-file" v-for="f in files" :key="f.name">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
             <span>{{ f.name }}</span>
-            <button class="agent-file-remove" @click="removeFile(f.name)">×</button>
+            <button class="agent-file-remove" title="移除附件" @click="removeFile(f.name)">×</button>
           </div>
         </div>
         <div class="agent-input-row">
-          <button class="agent-attach-btn" @click="attachFile" title="Attach file" :disabled="sending">
+          <button class="agent-attach-btn" @click="attachFile" title="添加附件" :disabled="sending">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
           </button>
           <input

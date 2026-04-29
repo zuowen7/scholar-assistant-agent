@@ -2,14 +2,17 @@
   <section class="ai-hints">
     <div class="ai-hints-header">
       <div>
-        <div class="ai-hints-kicker">AI Hints</div>
-        <strong>思维链提醒</strong>
+        <div class="ai-hints-kicker">AI 提醒</div>
+        <strong>思维链检查</strong>
       </div>
       <span class="issue-count">{{ issues.length }}</span>
     </div>
 
-    <div v-if="loading" class="empty-state">正在检查思维链...</div>
-    <div v-else-if="!issues.length" class="empty-state">暂无提醒，结构看起来比较清晰。</div>
+    <div v-if="loading" class="empty-state busy">正在检查思维链...</div>
+    <div v-else-if="!issues.length" class="empty-state compact">
+      <span class="empty-badge">OK</span>
+      <span>暂无提醒，当前结构看起来比较清晰。</span>
+    </div>
     <button
       v-for="issue in issues"
       v-else
@@ -49,48 +52,80 @@ defineEmits<{
   flex-direction: column;
 }
 .ai-hints-header {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 8px;
+  margin-bottom: 6px;
 }
 .ai-hints-kicker {
   color: var(--accent);
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ai-hints-header strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.25;
 }
 .issue-count {
-  min-width: 22px;
-  height: 22px;
+  min-width: 20px;
+  height: 20px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--active-bg);
+  background: color-mix(in srgb, var(--active-bg) 70%, transparent);
   color: var(--accent);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
 }
 .empty-state {
   color: var(--text-secondary);
   font-size: 12px;
-  line-height: 1.5;
-  padding: 10px 0;
+  line-height: 1.45;
+}
+.empty-state.compact {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 9px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 48%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--toolbar-bg) 28%, transparent);
+}
+.empty-state.busy {
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--toolbar-bg) 28%, transparent);
+  padding: 8px;
+}
+.empty-badge {
+  min-width: 26px;
+  height: 18px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, #22c55e 14%, transparent);
+  color: #22c55e;
+  font-size: 10px;
+  font-weight: 800;
 }
 .issue-card {
   width: 100%;
   display: flex;
-  gap: 9px;
+  gap: 8px;
   align-items: flex-start;
-  margin-bottom: 8px;
-  border: 1px solid var(--border-color);
+  margin-bottom: 6px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 52%, transparent);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--toolbar-bg) 86%, transparent);
+  background: color-mix(in srgb, var(--toolbar-bg) 38%, transparent);
   color: var(--text-primary);
-  padding: 9px;
+  padding: 8px 9px;
   text-align: left;
   font: inherit;
   cursor: pointer;
@@ -102,8 +137,8 @@ defineEmits<{
   background: var(--hover-bg);
 }
 .issue-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   margin-top: 5px;
   border-radius: 999px;
   background: var(--accent);
@@ -119,7 +154,7 @@ defineEmits<{
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 .issue-content strong {
   font-size: 12px;
@@ -127,6 +162,6 @@ defineEmits<{
 .issue-content span {
   color: var(--text-secondary);
   font-size: 11px;
-  line-height: 1.45;
+  line-height: 1.42;
 }
 </style>

@@ -39,14 +39,14 @@
   <!-- Context menu -->
   <Teleport to="body">
     <div v-if="ctx.visible" class="ctx-menu" :style="{ left: ctx.x + 'px', top: ctx.y + 'px' }">
-      <button class="ctx-item" @click="action('cut')">Cut</button>
-      <button class="ctx-item" @click="action('copy')">Copy</button>
-      <button v-if="canPaste" class="ctx-item" @click="action('paste')">Paste</button>
+      <button class="ctx-item" @click="action('cut')">剪切</button>
+      <button class="ctx-item" @click="action('copy')">复制</button>
+      <button v-if="canPaste" class="ctx-item" @click="action('paste')">粘贴</button>
       <div v-if="canPaste" class="ctx-sep" />
-      <button class="ctx-item" @click="action('rename')">Rename</button>
-      <button class="ctx-item ctx-danger" @click="action('delete')">Delete</button>
+      <button class="ctx-item" @click="action('rename')">重命名</button>
+      <button class="ctx-item ctx-danger" @click="action('delete')">删除</button>
       <div class="ctx-sep" />
-      <button class="ctx-item" @click="action('copy-path')">Copy Path</button>
+      <button class="ctx-item" @click="action('copy-path')">复制路径</button>
     </div>
   </Teleport>
 </template>

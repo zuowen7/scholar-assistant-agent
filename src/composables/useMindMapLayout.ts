@@ -1,8 +1,8 @@
 import dagre from 'dagre'
 import { useMindMap } from './useMindMap'
 
-const NODE_W = 240
-const NODE_H = 80
+const NODE_W = 196
+const NODE_H = 62
 
 export function useMindMapLayout() {
   const { draftMindMap, commitNodePosition } = useMindMap()
