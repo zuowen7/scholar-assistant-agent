@@ -31,7 +31,7 @@
 
     <!-- Sessions Tab -->
     <div v-show="tab === 'sessions'" class="agent-sessions">
-      <AgentSessionList @resume="handleSessionResume" />
+      <AgentSessionList ref="sessionListRef" @resume="handleSessionResume" />
     </div>
 
     <!-- Chat Tab -->
@@ -277,6 +277,7 @@ const { selection: editorSelection, content: editorContent, activeTab: editorAct
 const tab = ref<'chat' | 'docs' | 'templates' | 'sessions'>('chat')
 const input = ref('')
 const messagesRef = ref<HTMLElement | null>(null)
+const sessionListRef = ref<InstanceType<typeof AgentSessionList> | null>(null)
 const sessions = ref<AgentSessionInfo[]>([])
 const files = ref<{ name: string; content: string }[]>([])
 const ragFileInput = ref<HTMLInputElement | null>(null)
@@ -366,6 +367,7 @@ async function handleApprovalDecision(decision: 'allow_once' | 'allow_session' |
 // ── Sessions ──
 async function refreshSessions() {
   sessions.value = await _fetchSessions()
+  sessionListRef.value?.fetchSessions()
 }
 
 async function handleSessionResume(sessionId: string) {
