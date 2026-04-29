@@ -370,6 +370,13 @@ def register_agent(
         if request.client.host not in ("127.0.0.1", "::1", "localhost"):
             raise HTTPException(403, "仅允许本地访问")
 
+        # Ensure session store is initialized
+        if not _shared:
+            try:
+                await _ensure_shared()
+            except Exception:
+                pass
+
         # In-memory sessions take priority
         result = {
             s.id: {
@@ -378,15 +385,16 @@ def register_agent(
                 "global_step": s.global_step,
                 "tasks_total": s.task_queue.total_count,
                 "tasks_done": s.task_queue.done_count,
+                "query": s._query,
                 "source": "memory",
             }
             for s in _session_pool.values()
         }
 
-        # Merge persisted sessions (not already in memory)
+        # Merge persisted sessions (including completed ones for history)
         if _session_store:
             try:
-                for stored in _session_store.list_sessions(exclude_done=True):
+                for stored in _session_store.list_sessions(exclude_done=False):
                     if stored["id"] not in result:
                         result[stored["id"]] = {
                             "id": stored["id"],
