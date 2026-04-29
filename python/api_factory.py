@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 import asyncio
 import collections
 import copy
@@ -242,8 +241,7 @@ def _validate_file_path(file_path: Path) -> None:
 
 def create_app(*, cloud_only: bool = False) -> FastAPI:
     _app_title = "Scholar Assistant API (cloud-only)" if cloud_only else "Scholar Assistant API"
-    parser = argparse.ArgumentParser(description=_app_title)
-    app = FastAPI(title=_app_title, version="0.4.2")
+    app = FastAPI(title=_app_title, version="0.3.1")
 
     @app.exception_handler(Exception)
     async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:

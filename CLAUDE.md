@@ -128,6 +128,16 @@ Key backend modules under `src/`:
 - **Glossary extraction**: Translations extract `Chinese(English)` term pairs and inject them as context for subsequent chunks.
 - **Windows proxy workaround**: `httpx` hangs on import when `HTTP_PROXY` env vars are set. `start_dev.bat` clears them before launching Tauri dev. Rust side also clears proxy vars in subprocess spawning.
 
+### Config Files
+
+Three config files serve distinct roles — do not confuse them:
+
+| File | Role | Tracked by git |
+|------|------|---------------|
+| `config/default.yaml` (repo root) | Source-of-truth defaults shipped with the repo. Edit here to change defaults for all environments. | Yes |
+| `python/config/default.yaml` | Runtime copy used by the Python backend. Auto-generated on first run (copied from repo root or PyInstaller bundle). | No (gitignored) |
+| `python/config/default.local.yaml` | User overrides merged on top of `default.yaml`. Created by the UI's Settings panel or manually. | No (gitignored) |
+
 ## Dependency Management
 
 Three files in `python/`:
