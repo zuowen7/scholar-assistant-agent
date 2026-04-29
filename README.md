@@ -16,7 +16,7 @@
 
 ### 翻译引擎
 - **本地** — Ollama + Qwen3，全程离线，无需 API Key
-- **云端** — OpenAI / Anthropic / DeepSeek / Moonshot / Gemini / xAI / Groq / Together / SiliconFlow / Novita / 火山方舟 / 百度千帆 / Azure / 自定义 (共 18 家供应商)
+- **云端** — OpenAI / Anthropic / DeepSeek / Moonshot / 智谱 / 通义千问 / Gemini / SiliconFlow / OpenRouter / Groq / Together / Mistral / xAI / Fireworks / DeepInfra / Perplexity / Novita / 火山方舟 / 百度千帆 / Azure / 自定义 (共 21 家供应商)
 - **Glossary 自动提取** — 翻译结果中提取 `中文(English)` 术语对，注入后续块翻译
 - **滑动上下文窗口** — 每块翻译携带前 N 块的摘要和术语表
 
@@ -62,12 +62,13 @@
 │   ├── src/main.rs               #   进程管理 (Python API + Ollama，自动清除代理环境变量)
 │   └── capabilities/             #   Tauri v2 权限配置
 ├── src/                          # Vue 3 前端
-│   ├── App.vue                   #   主界面薄壳（~630 行，管理全局状态）
+│   ├── App.vue                   #   主界面薄壳（~684 行，管理全局状态）
 │   ├── styles/tokens.css         #   Design Tokens（暗色/亮色主题）
 │   ├── composables/
 │   │   ├── useTranslate.ts       #   SSE 翻译管线状态管理（单例）
-│   │   ├── useAgentChat.ts       #   Agent SSE 对话状态管理
+│   │   ├── useAgentChat.ts       #   Agent SSE 对话状态管理（单例）
 │   │   ├── useEditor.ts          #   Monaco Editor + AI Panel（单例）
+│   │   ├── useAiPanelState.ts    #   AI Panel 独立状态管理
 │   │   ├── useFileTree.ts        #   文件树导航（单例）
 │   │   ├── useMindMap.ts         #   思维导图数据 + undo/redo（单例）
 │   │   ├── useMindMapKeyboard.ts #   思维导图键盘快捷键
@@ -77,7 +78,7 @@
 │   │   ├── AppTopBar.vue         #   顶栏（品牌/模式切换/引擎设置/窗口控制）
 │   │   ├── TranslateView.vue     #   翻译模式（上传/进度/结果三视图）
 │   │   ├── AgentPanel.vue        #   Agent 侧面板（对话/知识库/模板/会话）
-│   │   ├── EditorLayout.vue      #   编辑器布局（Monaco + AiPanel + FileTree）
+│   │   ├── EditorLayout.vue      #   编辑器布局（~657 行，Monaco + AiPanel + FileTree）
 │   │   ├── mindmap/              #   思维导图（Vue Flow 画布 + 自定义节点/边）
 │   │   ├── ui/                   #   UI 原语（Button/Input/Panel/Tooltip…）
 │   │   └── …                     #   MonacoEditor, AiPanel, ArgumentMap 等
@@ -91,24 +92,37 @@
 │   │   ├── translate.py          #   翻译/配置/健康检查路由
 │   │   ├── agent.py              #   Agent 对话/RAG/工具路由
 │   │   ├── editor.py             #   编辑/导出/Vision/Citation路由
-│   │   └── argument.py           #   动态逻辑引擎路由
+│   │   ├── argument.py           #   动态逻辑引擎路由
+│   │   └── mindmap.py            #   思维导图持久化 + AI 分析/扩展
 │   ├── main.py                   #   CLI 入口
 │   ├── config/default.yaml       #   默认配置
 │   ├── src/
 │   │   ├── parser/               #   16 格式解析器
 │   │   ├── cleaner/              #   17 阶段清洗管线
 │   │   ├── chunker/              #   3 策略切块 (sentence/paragraph/fixed)
-│   │   ├── translator/           #   Ollama + Cloud 双客户端 (18 家供应商)
+│   │   ├── translator/           #   Ollama + Cloud 双客户端 (21 家供应商)
 │   │   ├── formatter/            #   3 输出模式 + Pandoc 导出
 │   │   ├── agent/                #   ReAct Agent + RAG + Tools + Skills
+│   │   │   ├── agent.py          #     AgentLoop ReAct 引擎
+│   │   │   ├── session.py        #     会话管理 (断点续传/审批)
+│   │   │   ├── session_store.py  #     会话持久化 (JSON)
+│   │   │   ├── memory.py         #     短/长期记忆
+│   │   │   ├── skill_system.py   #     Skill 沉淀 (调度 → 匹配/持久化/自动提取子模块)
+│   │   │   ├── prompt_builder.py #     Prompt 组装
+│   │   │   ├── context_compressor.py # 上下文压缩
+│   │   │   ├── llm_client.py     #     统一 LLM 客户端 (按后端拆分为 _llm_*.py)
+│   │   │   ├── security_gate.py  #     工具执行安全门控
+│   │   │   ├── hooks.py          #     错误/重试 Hook
+│   │   │   ├── tools/            #     工具集 (core/atomic/builtin/workspace/registry)
+│   │   │   └── ...               #     mcp_server, rag, review_agent, trajectory, etc.
 │   │   ├── argument/             #   动态逻辑引擎 (树存储/扩展/审查/展开)
-│   │   ├── plugin/               #   MCP 风格插件注册 (16 内置工具)
+│   │   ├── plugin/               #   MCP 风格插件注册
 │   │   ├── citation/             #   引用索引器
 │   │   ├── zotero/               #   Zotero API 集成
 │   │   └── mcp/                  #   Vision 客户端 (多模态图像理解)
-│   ├── prompts/                  #   学术写作 Prompt 体系
-│   ├── data/paper_assets/        #   论文模板 + 组件库
-│   └── tests/                    #   单元测试 + 集成测试
+│   ├── prompts/                  #   学术写作 Prompt 体系 (loader + schemas + tasks_*)
+│   ├── data/paper_assets/        #   论文模板 (IEEE/ACM/NeurIPS/LNCS/通用)
+│   └── tests/                    #   单元测试 (38 个) + 集成测试 (6 个)
 ├── Dockerfile
 ├── docker-compose.yml
 └── package.json
@@ -229,6 +243,13 @@ MSYS_NO_PATHCONV=1 docker run --rm \
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `POST` | `/api/chat` | Agent SSE 对话 (ReAct 循环) |
+| `POST` | `/api/agent/v2/chat` | Agent V2 SSE 对话 (会话管理) |
+| `GET` | `/api/agent/v2/sessions` | 列出会话历史 |
+| `POST` | `/api/agent/v2/resume/{session_id}` | 恢复会话 |
+| `POST` | `/api/agent/v2/approve/{session_id}/{event_id}` | 审批工具调用 |
+| `POST` | `/api/agent/v2/abort/{session_id}` | 中止会话 |
+| `POST` | `/api/agent/v2/undo/{session_id}` | 撤销上一步 |
+| `POST` | `/api/agent/v2/tool` | 直接调用工具 |
 | `POST` | `/api/edit` | AI 驱动的 SSE 流式编辑 |
 | `POST` | `/api/complete` | 非流式 inline 补全 |
 | `GET` | `/api/agent/stats` | Agent 统计信息 |
@@ -284,6 +305,15 @@ MSYS_NO_PATHCONV=1 docker run --rm \
 | `POST` | `/api/vision/ocr` | OCR 文字提取 |
 | `POST` | `/api/vision/chart` | 图表分析 |
 | `POST` | `/api/vision/table` | 表格结构提取 |
+
+### 思维导图
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/api/mindmap/save` | 保存思维导图 |
+| `GET` | `/api/mindmap/load` | 加载思维导图 |
+| `DELETE` | `/api/mindmap` | 删除思维导图 |
+| `POST` | `/api/mindmap/analyze` | AI 分析思维导图 |
+| `POST` | `/api/mindmap/expand` | AI 扩展节点 |
 
 ### Zotero
 | 方法 | 路径 | 说明 |
@@ -341,9 +371,9 @@ npx vitest
 | 桌面端 | Tauri 2 (Rust) |
 | 后端 | Python 3.12, FastAPI, SSE |
 | 翻译（本地） | Ollama + Qwen3:8b |
-| 翻译（云端） | OpenAI / Anthropic / DeepSeek 等 18 家供应商 |
+| 翻译（云端） | OpenAI / Anthropic / DeepSeek 等 21 家供应商 |
 | PDF | PyMuPDF, pdfplumber |
 | 向量数据库 | ChromaDB + all-MiniLM-L6-v2（仅本地） |
-| LaTeX 导出 | Pandoc + 6 套官方模板 |
+| LaTeX 导出 | Pandoc + 6 套模板 (IEEE Conf/Journal, ACM, NeurIPS, LNCS, 通用) |
 | 思维导图 | Vue Flow + dagre 自动布局 |
 | 容器化 | Docker 多阶段构建 |
