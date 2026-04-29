@@ -51,10 +51,10 @@
                 <div class="section-content">
                   <div class="section-item">
                     <span class="label">必要章节:</span>
-                    <span>{{ report.structure.required_sections?.join(' · ') || '无' }}</span>
+                    <span>{{ formatSections(report.structure.required_sections) }}</span>
                   </div>
                   <div v-if="report.structure.issues?.length" class="issues">
-                    <span class="issue-tag warning" v-for="(issue, i) in report.structure.issues" :key="i">{{ issue }}</span>
+                    <span class="issue-tag warning" v-for="(issue, i) in report.structure.issues" :key="i">{{ typeof issue === 'object' ? issue.detail : issue }}</span>
                   </div>
                 </div>
               </div>
@@ -65,14 +65,14 @@
                 <div class="section-content">
                   <div class="section-item">
                     <span class="label">一致术语:</span>
-                    <span class="ok">{{ report.terminology.consistent_terms?.join(', ') || '无' }}</span>
+                    <span class="ok">{{ Array.isArray(report.terminology.consistent_terms) ? report.terminology.consistent_terms.join(', ') : '无' }}</span>
                   </div>
                   <div v-if="report.terminology.inconsistent_terms?.length" class="section-item">
                     <span class="label">不一致:</span>
-                    <span class="warn">{{ report.terminology.inconsistent_terms?.join(', ') }}</span>
+                    <span class="warn">{{ formatTermList(report.terminology.inconsistent_terms) }}</span>
                   </div>
                   <div v-if="report.terminology.issues?.length" class="issues">
-                    <span class="issue-tag warning" v-for="(issue, i) in report.terminology.issues" :key="i">{{ issue }}</span>
+                    <span class="issue-tag warning" v-for="(issue, i) in report.terminology.issues" :key="i">{{ fmt(issue) }}</span>
                   </div>
                 </div>
               </div>
@@ -86,10 +86,10 @@
                     <span>{{ report.citation.total_citations || 0 }}</span>
                   </div>
                   <div v-if="report.citation.format_issues?.length" class="issues">
-                    <span class="issue-tag warning" v-for="(issue, i) in report.citation.format_issues" :key="i">{{ issue }}</span>
+                    <span class="issue-tag warning" v-for="(issue, i) in report.citation.format_issues" :key="i">{{ fmt(issue) }}</span>
                   </div>
                   <div v-if="report.citation.issues?.length" class="issues">
-                    <span class="issue-tag error" v-for="(issue, i) in report.citation.issues" :key="i">{{ issue }}</span>
+                    <span class="issue-tag error" v-for="(issue, i) in report.citation.issues" :key="i">{{ fmt(issue) }}</span>
                   </div>
                 </div>
               </div>
@@ -105,10 +105,10 @@
                     </span>
                   </div>
                   <div v-if="report.hallucination_risk.flags?.length" class="issues">
-                    <span class="issue-tag error" v-for="(flag, i) in report.hallucination_risk.flags" :key="i">{{ flag }}</span>
+                    <span class="issue-tag error" v-for="(flag, i) in report.hallucination_risk.flags" :key="i">{{ fmt(flag) }}</span>
                   </div>
                   <div v-if="report.hallucination_risk.issues?.length" class="issues">
-                    <span class="issue-tag warning" v-for="(issue, i) in report.hallucination_risk.issues" :key="i">{{ issue }}</span>
+                    <span class="issue-tag warning" v-for="(issue, i) in report.hallucination_risk.issues" :key="i">{{ fmt(issue) }}</span>
                   </div>
                 </div>
               </div>
@@ -123,11 +123,11 @@
                   </div>
                   <div v-if="report.readability.long_sentences?.length" class="issues">
                     <span class="issue-tag info" v-for="(s, i) in report.readability.long_sentences.slice(0,3)" :key="i">
-                      {{ s.slice(0, 60) }}{{ s.length > 60 ? '...' : '' }}
+                      {{ (typeof s === 'string' ? s : s?.text || JSON.stringify(s)).slice(0, 60) }}{{ (typeof s === 'string' ? s : s?.text || '').length > 60 ? '...' : '' }}
                     </span>
                   </div>
                   <div v-if="report.readability.issues?.length" class="issues">
-                    <span class="issue-tag warning" v-for="(issue, i) in report.readability.issues" :key="i">{{ issue }}</span>
+                    <span class="issue-tag warning" v-for="(issue, i) in report.readability.issues" :key="i">{{ fmt(issue) }}</span>
                   </div>
                 </div>
               </div>
@@ -188,6 +188,23 @@ const riskLevelLabel = computed(() => {
   }
   return labels[level] || level
 })
+
+function formatSections(sections: Record<string, any> | null | undefined): string {
+  if (!sections) return '无'
+  const names = Object.keys(sections)
+  return names.length ? names.join(' · ') : '无'
+}
+
+function formatTermList(items: any[] | null | undefined): string {
+  if (!items?.length) return ''
+  return items.map(item => typeof item === 'string' ? item : item?.term || JSON.stringify(item)).join(', ')
+}
+
+function fmt(v: unknown): string {
+  if (typeof v === 'string') return v
+  if (typeof v === 'object' && v !== null) return (v as any).detail || (v as any).text || JSON.stringify(v)
+  return String(v ?? '')
+}
 </script>
 
 <style scoped>
