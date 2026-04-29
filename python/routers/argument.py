@@ -101,6 +101,8 @@ def register_argument(
         _feedback_generator = FeedbackGenerator()
         _argument_flattener = ArgumentFlattener()
         _flatten_tasks: dict[str, dict] = {}
+        _flatten_output_dir = data_root / "argument_output"
+        _flatten_output_dir.mkdir(parents=True, exist_ok=True)
 
         def _cleanup_flatten_tasks() -> None:
             done_ids = [tid for tid, t in _flatten_tasks.items() if t["status"] in ("done", "error")]
@@ -136,12 +138,14 @@ def register_argument(
         def _arg_error(status_code: int, detail: str, error_code: str):
             raise _ArgumentError(status_code, detail, error_code)
 
+        @app.get("/api/argument/tree")
         def argument_get_tree_advanced():
             tree = _astore.get_tree()
             if tree.root_id is None:
                 _arg_error(404, "Argument tree not found", "TREE_NOT_FOUND")
             return tree.model_dump()
 
+        @app.post("/api/argument/tree")
         def argument_create_tree_advanced(req: ArgumentTreeCreateRequest):
             _astore.create_tree(
                 topic=req.topic,
@@ -150,6 +154,7 @@ def register_argument(
             )
             return _astore.get_tree().model_dump()
 
+        @app.put("/api/argument/node")
         def argument_upsert_node_advanced(req: ArgumentNodeRequest):
             if req.id and req.parent_id:
                 parent = _astore.get_node(req.parent_id)
@@ -162,18 +167,21 @@ def register_argument(
             )
             return JSONResponse(content=node.model_dump(), status_code=200 if is_update else 201)
 
-        def argument_delete_node_advanced(node_id: str, cascade: bool):
+        @app.delete("/api/argument/node/{node_id}")
+        def argument_delete_node_advanced(node_id: str, cascade: bool = False):
             deleted = _astore.delete_node(node_id, cascade=cascade)
             if not deleted:
                 _arg_error(404, "Node not found", "NODE_NOT_FOUND")
             return {"deleted": deleted, "message": f"Deleted {len(deleted)} nodes"}
 
+        @app.get("/api/argument/node/{node_id}")
         def argument_get_node_advanced(node_id: str):
             node = _astore.get_node(node_id)
             if not node:
                 _arg_error(404, "Node not found", "NODE_NOT_FOUND")
             return node.model_dump()
 
+        @app.post("/api/argument/expand")
         async def argument_expand_advanced(req: ArgumentExpandRequest):
             cloud_client = _get_cloud_client_for_argument()
             result = await _argument_expander.expand(
@@ -186,6 +194,7 @@ def register_argument(
                 _arg_error(404, result["error"], "NODE_NOT_FOUND")
             return result
 
+        @app.post("/api/argument/observe")
         def argument_observe_advanced(req: ArgumentObserveRequest):
             return _argument_observer.observe(
                 node_id=req.node_id,
@@ -193,6 +202,7 @@ def register_argument(
                 rag_store=_ensure_rag_store(),
             )
 
+        @app.post("/api/argument/bind")
         def argument_bind_advanced(req: ArgumentBindRequest):
             node = _astore.get_node(req.node_id)
             if not node:
@@ -210,7 +220,7 @@ def register_argument(
                 node_id=req.node_id,
                 doc_id=req.doc_id,
                 citation_key=citation_key,
-                binding_type=req.binding_type.value,
+                binding_type=req.binding_type,
                 relevance_score=req.relevance_score,
             )
             if not updated:
@@ -222,12 +232,14 @@ def register_argument(
                 "reference": ref.model_dump() if ref else None,
             }
 
+        @app.delete("/api/argument/unbind/{node_id}/{doc_id}")
         def argument_unbind_advanced(node_id: str, doc_id: str):
             ok = _astore.unbind_reference(node_id, doc_id)
             if not ok:
                 _arg_error(404, "Node or reference not found", "NODE_NOT_FOUND")
             return {"node_id": node_id, "doc_id": doc_id, "message": "Reference unbound successfully"}
 
+        @app.post("/api/argument/review")
         async def argument_review_advanced(req: ArgumentReviewRequest):
             tree = _astore.get_tree()
             if not tree.root_id:
@@ -270,6 +282,7 @@ def register_argument(
                 "reviewed_at": _now_iso(),
             }
 
+        @app.post("/api/argument/flatten")
         def argument_flatten_advanced(req: ArgumentFlattenRequest):
             tree = _astore.get_tree()
             if not tree.root_id:
@@ -283,6 +296,7 @@ def register_argument(
             }
             return {"task_id": task_id, "status": "processing"}
 
+        @app.get("/api/argument/flatten/{task_id}")
         async def argument_flatten_stream_advanced(task_id: str):
             if task_id not in _flatten_tasks:
                 _arg_error(404, "Task not found", "TASK_NOT_FOUND")
@@ -299,7 +313,7 @@ def register_argument(
                         template=req.template,
                         style=req.style,
                         include_references=req.include_references,
-                        output_dir=output_dir,
+                        output_dir=str(_flatten_output_dir),
                         cloud_client=cloud_client,
                     ):
                         if event.get("event") == "complete":
@@ -316,6 +330,7 @@ def register_argument(
 
             return EventSourceResponse(_generate())
 
+        @app.get("/api/argument/download/{task_id}")
         def argument_download_advanced(task_id: str):
             if task_id not in _flatten_tasks:
                 _arg_error(404, "Task not found", "TASK_NOT_FOUND")
