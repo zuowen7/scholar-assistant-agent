@@ -4,23 +4,23 @@
       <input
         v-model="newTopic"
         class="arg-input"
-        placeholder="Argument topic"
+        placeholder="论证主题"
         @keydown.enter="createTree"
       />
-      <button class="arg-btn primary" :disabled="loading || !newTopic.trim()" @click="createTree">New</button>
+      <button class="arg-btn primary" :disabled="loading || !newTopic.trim()" @click="createTree">新建</button>
     </div>
 
     <div v-if="message" class="arg-message">{{ message }}</div>
 
     <div v-if="!tree" class="arg-empty">
-      Create an argument map to start expanding ideas into a paper structure.
+      新建一个论证图，把想法逐步展开成论文结构。
     </div>
 
     <template v-else>
       <div class="arg-actions">
-        <button class="arg-btn" :disabled="loading || !selectedNodeId" @click="expandSelected">AI Expand</button>
-        <button class="arg-btn" :disabled="loading || !selectedNodeId" @click="reviewSelected">Review Logic</button>
-        <button class="arg-btn" :disabled="loading" @click="flattenTree">Generate Draft</button>
+        <button class="arg-btn" :disabled="loading || !selectedNodeId" @click="expandSelected">AI 展开</button>
+        <button class="arg-btn" :disabled="loading || !selectedNodeId" @click="reviewSelected">逻辑审查</button>
+        <button class="arg-btn" :disabled="loading" @click="flattenTree">生成草稿</button>
       </div>
 
       <div class="arg-canvas">
@@ -36,23 +36,23 @@
           <span class="arg-node-title">{{ node.topic }}</span>
           <span class="arg-node-meta">
             {{ node.status }}
-            <template v-if="node.references.length"> · {{ node.references.length }} refs</template>
+            <template v-if="node.references.length"> · {{ node.references.length }} 条引用</template>
           </span>
         </button>
       </div>
 
       <div v-if="selectedNode" class="arg-detail">
         <label class="arg-label">
-          Topic
+          主题
           <input v-model="selectedDraft.topic" class="arg-input" />
         </label>
         <label class="arg-label">
-          Content
+          内容
           <textarea v-model="selectedDraft.content" class="arg-textarea" rows="4"></textarea>
         </label>
         <div class="arg-detail-actions">
-          <button class="arg-btn primary" :disabled="loading" @click="saveSelected">Save Node</button>
-          <button class="arg-btn" :disabled="loading" @click="observeSelected">Find References</button>
+          <button class="arg-btn primary" :disabled="loading" @click="saveSelected">保存节点</button>
+          <button class="arg-btn" :disabled="loading" @click="observeSelected">查找引用</button>
         </div>
         <div v-if="selectedNode.agent_feedback" class="arg-feedback">
           {{ selectedNode.agent_feedback }}
@@ -60,14 +60,14 @@
       </div>
 
       <div v-if="recommendations.length" class="arg-recs">
-        <div class="arg-section-title">Recommended references</div>
+        <div class="arg-section-title">推荐参考文献</div>
         <div v-for="rec in recommendations" :key="rec.doc_id" class="arg-rec">
           <div>
             <strong>{{ rec.title || rec.doc_id }}</strong>
             <span>{{ Math.round(rec.relevance_score * 100) }}%</span>
           </div>
           <p>{{ rec.excerpt }}</p>
-          <button class="arg-btn tiny" @click="bindReference(rec)">Bind</button>
+          <button class="arg-btn tiny" @click="bindReference(rec)">绑定</button>
         </div>
       </div>
     </template>
@@ -171,7 +171,7 @@ async function createTree() {
       body: JSON.stringify({ topic: newTopic.value.trim(), domain_tags: [] }),
     })
     selectNode(tree.value.root_id)
-    setMessage('Argument map created')
+    setMessage('论证图已创建')
   } catch (e) {
     setMessage(e instanceof Error ? e.message : String(e))
   } finally {
@@ -205,7 +205,7 @@ async function saveSelected() {
       }),
     })
     await loadTree()
-    setMessage('Node saved')
+    setMessage('节点已保存')
   } catch (e) {
     setMessage(e instanceof Error ? e.message : String(e))
   } finally {
@@ -223,7 +223,7 @@ async function expandSelected() {
       body: JSON.stringify({ node_id: selectedNodeId.value, max_children: 4 }),
     })
     await loadTree()
-    setMessage('Node expanded')
+    setMessage('节点已展开')
   } catch (e) {
     setMessage(e instanceof Error ? e.message : String(e))
   } finally {
@@ -241,7 +241,7 @@ async function reviewSelected() {
       body: JSON.stringify({ node_id: selectedNodeId.value, include_subtree: true }),
     })
     await loadTree()
-    setMessage('Logic review complete')
+    setMessage('逻辑审查完成')
   } catch (e) {
     setMessage(e instanceof Error ? e.message : String(e))
   } finally {
@@ -259,7 +259,7 @@ async function observeSelected() {
       body: JSON.stringify({ node_id: selectedNodeId.value, content_hint: selectedDraft.content }),
     })
     recommendations.value = data.recommendations
-    setMessage(data.recommendations.length ? `Found ${data.recommendations.length} references` : 'No strong reference match')
+    setMessage(data.recommendations.length ? `找到 ${data.recommendations.length} 条参考文献` : '没有匹配到强相关参考文献')
   } catch (e) {
     setMessage(e instanceof Error ? e.message : String(e))
   } finally {
@@ -280,7 +280,7 @@ async function bindReference(rec: Recommendation) {
     }),
   })
   await loadTree()
-  setMessage('Reference bound')
+  setMessage('参考文献已绑定')
 }
 
 async function flattenTree() {
@@ -292,7 +292,7 @@ async function flattenTree() {
       body: JSON.stringify({ node_id: 'root', template: 'markdown', include_references: true }),
     })
     window.open(`${API_BASE}/api/argument/download/${data.task_id}`, '_blank')
-    setMessage('Draft generated')
+    setMessage('草稿已生成')
   } catch (e) {
     setMessage(e instanceof Error ? e.message : String(e))
   } finally {

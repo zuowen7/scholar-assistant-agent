@@ -1,7 +1,7 @@
 <template>
   <div class="file-tree">
     <div class="tree-header">
-      <span class="tree-title" :title="rootDir || 'Explorer'">{{ rootDir ? rootDir.split(/[\\/]/).pop() : 'Explorer' }}</span>
+      <span class="tree-title" :title="rootDir || '资源管理器'">{{ rootDir ? rootDir.split(/[\\/]/).pop() : '资源管理器' }}</span>
       <div class="tree-actions">
         <button class="tree-btn" @click="handleNewFile" title="新建文件">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
@@ -25,7 +25,7 @@
       <input
         v-model="searchQuery"
         class="search-input"
-        placeholder="Search files..."
+        placeholder="搜索文件..."
         @keydown.escape="searchQuery = ''"
       />
       <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''">
@@ -44,12 +44,12 @@
         @action="handleAction"
       />
       <div v-if="searchQuery && filteredFiles.length === 0" class="tree-no-match">
-        No matches for "{{ searchQuery }}"
+        没有匹配 "{{ searchQuery }}" 的文件
       </div>
     </div>
     <div class="tree-empty" v-else>
-      <p>No folder opened</p>
-      <button class="tree-btn-open" @click="handleOpenFolder">Open Folder</button>
+      <p>未打开文件夹</p>
+      <button class="tree-btn-open" @click="handleOpenFolder">打开文件夹</button>
     </div>
   </div>
 </template>
@@ -115,7 +115,7 @@ async function handleNewFile() {
     await handleOpenFolder()
     return
   }
-  const name = prompt('File name:', 'untitled.md')
+  const name = prompt('文件名：', 'untitled.md')
   if (!name) return
   const path = await createFile(rootDir.value, name)
   openEditorFile(path, '')

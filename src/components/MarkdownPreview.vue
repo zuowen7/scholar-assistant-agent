@@ -1,7 +1,7 @@
 <template>
   <div class="preview-container">
     <div class="preview-header">
-      <span class="preview-title">Preview</span>
+      <span class="preview-title">预览</span>
     </div>
     <div class="preview-body" v-html="renderedHtml"></div>
   </div>
@@ -87,7 +87,7 @@ marked.use({ renderer })
 
 const renderedHtml = computed(() => {
   const src = debouncedContent.value
-  if (!src) return '<p class="empty-hint">Start writing...</p>'
+  if (!src) return '<p class="empty-hint">开始写作...</p>'
 
   const { text: mathExtracted, blocks } = extractMath(src)
   const raw = marked.parse(mathExtracted) as string
