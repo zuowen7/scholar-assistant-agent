@@ -412,6 +412,22 @@ export function useAgentChat() {
     }
   }
 
+  async function uploadRAGFile(file: File): Promise<{ ok: boolean; error?: string }> {
+    const form = new FormData()
+    form.append('file', file)
+    try {
+      const resp = await fetch(`${API_URL}/api/rag/upload`, { method: 'POST', body: form })
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: '上传失败' }))
+        return { ok: false, error: err.detail || `上传失败 (${resp.status})` }
+      }
+      await fetchRAGDocuments()
+      return { ok: true }
+    } catch (e: unknown) {
+      return { ok: false, error: e instanceof Error ? e.message : '网络错误' }
+    }
+  }
+
   return {
     messages,
     sending,
@@ -428,5 +444,6 @@ export function useAgentChat() {
     ragLoading,
     fetchRAGDocuments,
     deleteRAGDocument,
+    uploadRAGFile,
   }
 }

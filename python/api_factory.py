@@ -348,6 +348,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
     # Wire rag_store from agent into translate for auto-RAG ingest
     translate_state = state_translate
     translate_state["rag_store_getter"] = state_agent["get_rag_store"]
+    translate_state["ensure_rag_store"] = state_agent["ensure_rag_store"]
 
     from routers.editor import register_editor
     state_editor = register_editor(

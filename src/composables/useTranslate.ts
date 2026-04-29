@@ -38,6 +38,7 @@ function createState(): TranslateState {
     errorMessage: null,
     taskId: null,
     fallbackChunks: 0,
+    ragIngested: false,
   }
 }
 
@@ -244,6 +245,7 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
     case 'complete':
       state.finalContent = (data.content as string) ?? ''
       state.chunks = (data.chunks as { original: string; translated: string }[]) ?? []
+      state.ragIngested = (data.rag_ingested as boolean) ?? false
       setStatus('done')
       if (state.fallbackChunks > 0) {
         state.stepMessage = `翻译完成（警告：${state.fallbackChunks} 个块翻译失败，已保留原文）`

@@ -109,10 +109,13 @@ def register_agent(
                     chunk_size=rag_cfg.get("chunk_size", 512),
                     chunk_overlap=rag_cfg.get("chunk_overlap", 64),
                 )
+                logger.info("RAG store initialized at %s (collection=%s)", rag_dir, rag_cfg.get("collection_name", "scholar_docs"))
             except ModuleNotFoundError as e:
                 if e.name != "chromadb":
                     raise
                 logger.warning("chromadb not installed; Agent chat will run without RAG memory")
+            except Exception as e:
+                logger.warning("RAG store init failed: %s", e)
 
             # Persistent memory, skills, trajectory
             agent_data_dir = str(data_root / "agent")
@@ -532,7 +535,8 @@ def register_agent(
 
     @app.get("/api/rag/documents")
     async def list_rag_documents():
-        rag_store = _shared.get("rag_store") if _shared else None
+        shared = await _ensure_shared()
+        rag_store = shared.get("rag_store")
         if rag_store is None:
             return []
         docs = rag_store.list_documents()
@@ -543,7 +547,8 @@ def register_agent(
 
     @app.delete("/api/rag/documents/{doc_id}")
     async def delete_rag_document(doc_id: str):
-        rag_store = _shared.get("rag_store") if _shared else None
+        shared = await _ensure_shared()
+        rag_store = shared.get("rag_store")
         if rag_store is None:
             raise HTTPException(503, "RAG 未初始化")
         rag_store.delete_document(doc_id)
@@ -551,7 +556,8 @@ def register_agent(
 
     @app.post("/api/rag/ingest")
     async def rag_ingest(req: RAGIngestRequest):
-        rag_store = _shared.get("rag_store") if _shared else None
+        shared = await _ensure_shared()
+        rag_store = shared.get("rag_store")
         if rag_store is None:
             raise HTTPException(503, "RAG 未初始化")
         rag_store.ingest_document(
@@ -563,16 +569,43 @@ def register_agent(
 
     @app.post("/api/rag/upload")
     async def rag_upload(file: UploadFile = File(...)):
-        rag_store = _shared.get("rag_store") if _shared else None
+        shared = await _ensure_shared()
+        rag_store = shared.get("rag_store")
         if rag_store is None:
             raise HTTPException(503, "RAG 未初始化")
-        text_bytes = await file.read()
-        text = text_bytes.decode("utf-8", errors="replace")
-        doc_id = file.filename or "uploaded"
+
+        filename = file.filename or "uploaded"
+        suffix = Path(filename).suffix.lower()
+        text: str
+
+        if suffix in (".txt", ".md", ".log", ".csv", ".json", ".xml", ".html", ".htm", ".rtf", ".tex", ".srt"):
+            text_bytes = await file.read()
+            text = text_bytes.decode("utf-8", errors="replace")
+        else:
+            # PDF / DOCX / DOC / EPUB / PPTX / XLSX — save to temp, parse, delete
+            import tempfile, shutil
+            from src.parser.dispatcher import extract_document
+
+            tmp_dir = Path(tempfile.mkdtemp())
+            tmp_path = tmp_dir / filename
+            try:
+                with open(tmp_path, "wb") as f:
+                    shutil.copyfileobj(file.file, f)
+                doc = await asyncio.to_thread(extract_document, str(tmp_path))
+                text = doc.full_text
+            except Exception as e:
+                raise HTTPException(400, f"文件解析失败: {e}")
+            finally:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+
+        if not text.strip():
+            raise HTTPException(400, "文件内容为空")
+
+        doc_id = Path(filename).stem
         rag_store.ingest_document(
             doc_id=doc_id,
             text=text,
-            title=file.filename or "Uploaded document",
+            metadata={"title": filename, "source": "upload"},
         )
         return {"status": "ok", "doc_id": doc_id, "chars": len(text)}
 
@@ -628,7 +661,13 @@ def register_agent(
             _session_store.close()
         _shared.clear()
 
+    async def ensure_rag_store():
+        """Async getter that lazily initializes shared resources, then returns rag_store."""
+        shared = await _ensure_shared()
+        return shared.get("rag_store")
+
     return {
         "get_rag_store": get_rag_store,
+        "ensure_rag_store": ensure_rag_store,
         "shutdown": shutdown,
     }

@@ -203,6 +203,8 @@ def markdown_to_docx(
     title: str = "Scholar Assistant Export",
 ) -> Path:
     output_path = Path(output_path)
+    # Strip XML-incompatible control characters (keep \n \r \t)
+    markdown_text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', markdown_text)
     doc = Document()
 
     # ── 页面设置 ──
