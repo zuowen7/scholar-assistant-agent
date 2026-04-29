@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import shutil
+import time
 import uuid
 from pathlib import Path
 from typing import AsyncGenerator, Literal
@@ -104,9 +105,7 @@ def register_translate(
 ) -> dict:
     """Register translate/config/health routes. Returns shared state dict."""
     tasks: dict[str, dict] = {}
-    _busy_lock = asyncio.Lock()
-    _lock_orphaned = False
-    _lock_reaper_handle: asyncio.Task | None = None
+    _task_lock = asyncio.Lock()
     _state: dict = {"rag_store_getter": rag_store_getter}
 
     tm_store = TranslationMemory(runtime_dir / "tm.db")
@@ -128,40 +127,31 @@ def register_translate(
         for tid in done_ids[:excess]:
             del tasks[tid]
 
-    async def _acquire_busy_lock() -> None:
-        """Acquire _busy_lock, force-releasing stale lock if no tasks are running."""
-        nonlocal _busy_lock, _lock_orphaned
-        if _busy_lock.locked() or _lock_orphaned:
-            has_running = any(t["status"] == "running" for t in tasks.values())
+    async def _acquire_task_slot(task_id: str) -> None:
+        """Reserve a translation slot. Only one running task at a time."""
+        async with _task_lock:
+            has_running = any(
+                t["status"] == "running"
+                for tid, t in tasks.items()
+                if tid != task_id
+            )
             if has_running:
                 raise HTTPException(409, "已有翻译任务在运行，请等待完成")
-            logger.warning("Orphan lock detected, replacing with new lock")
-            _busy_lock = asyncio.Lock()
-            _lock_orphaned = False
-        await _busy_lock.acquire()
+            # Stale pending cleanup: if a pending task has no stream connected
+            # within 30s, mark it as expired so the next task can proceed.
+            stale_ids = [
+                tid for tid, t in tasks.items()
+                if t["status"] == "pending"
+                and tid != task_id
+                and (time.monotonic() - t.get("_created_at", 0)) > 30
+            ]
+            for tid in stale_ids:
+                logger.warning("Expiring stale pending task %s", tid)
+                tasks[tid]["status"] = "error"
+                tasks[tid]["error"] = "任务超时未启动"
 
-    async def _lock_reaper(delay: float = 60.0) -> None:
-        """Set _lock_orphaned flag if stream never connects within delay seconds.
-
-        The actual lock release is deferred until the next _acquire_busy_lock call
-        (which checks _lock_orphaned and replaces the stale lock).
-        """
-        await asyncio.sleep(delay)
-        if _busy_lock.locked():
-            logger.warning("Lock reaper: marking lock as orphaned after %.0fs", delay)
-            _lock_orphaned = True
-
-    def _start_reaper() -> None:
-        nonlocal _lock_reaper_handle
-        if _lock_reaper_handle is not None:
-            _lock_reaper_handle.cancel()
-        _lock_reaper_handle = asyncio.create_task(_lock_reaper())
-
-    def _cancel_reaper() -> None:
-        nonlocal _lock_reaper_handle
-        if _lock_reaper_handle is not None:
-            _lock_reaper_handle.cancel()
-            _lock_reaper_handle = None
+    def _mark_task_created(task_id: str) -> None:
+        tasks[task_id]["_created_at"] = time.monotonic()
 
     @app.get("/api/health")
     def health():
@@ -212,8 +202,6 @@ def register_translate(
             supported = ", ".join(sorted(SUPPORTED_EXTENSIONS.keys()))
             raise HTTPException(400, f"不支持的文件格式: {ext}。支持: {supported}")
 
-        await _acquire_busy_lock()
-
         task_id = uuid.uuid4().hex[:8]
         input_dir.mkdir(parents=True, exist_ok=True)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -236,13 +224,14 @@ def register_translate(
                 "content": None,
                 "error": None,
                 "filename": file.filename or "unknown",
-                "blocks": None,  # TextBlock list for PDF overlay
-                "layout_doc": None,  # DocumentContent from layout-aware extraction
+                "blocks": None,
+                "layout_doc": None,
             }
-            _start_reaper()
+            _mark_task_created(task_id)
             return {"task_id": task_id}
         except Exception:
-            _busy_lock.release()
+            if task_id in tasks:
+                tasks[task_id]["status"] = "error"
             raise
     @app.post("/api/translate/path")
     async def start_translate_path(payload: FilePathPayload):
@@ -255,8 +244,6 @@ def register_translate(
             raise HTTPException(400, f"不支持的文件格式: {file_path.suffix}。支持: {supported}")
         if file_path.stat().st_size > MAX_UPLOAD_SIZE:
             raise HTTPException(413, "文件过大，最大支持 200 MB")
-
-        await _acquire_busy_lock()
 
         task_id = uuid.uuid4().hex[:8]
         input_dir.mkdir(parents=True, exist_ok=True)
@@ -275,10 +262,11 @@ def register_translate(
                 "blocks": None,
                 "layout_doc": None,
             }
-            _start_reaper()
+            _mark_task_created(task_id)
             return {"task_id": task_id}
         except Exception:
-            _busy_lock.release()
+            if task_id in tasks:
+                tasks[task_id]["status"] = "error"
             raise
 
     async def _run_pipeline(task_id: str) -> AsyncGenerator[dict, None]:
@@ -599,17 +587,19 @@ def register_translate(
         if t["status"] == "running":
             raise HTTPException(409, "该任务已在运行中")
 
-        if not _busy_lock.locked():
-            raise HTTPException(409, "任务已超时释放，请重新上传")
-        _cancel_reaper()
+        if t["status"] not in ("pending", "error"):
+            raise HTTPException(409, f"任务状态为 {t['status']}，无法重新启动")
+
+        await _acquire_task_slot(task_id)
         pipeline = _run_pipeline(task_id)
 
         async def _wrapped() -> AsyncGenerator[dict, None]:
             try:
                 async for event in pipeline:
                     yield event
-            finally:
-                _busy_lock.release()
+            except Exception:
+                tasks[task_id]["status"] = "error"
+                raise
 
         return EventSourceResponse(
             _wrapped(),

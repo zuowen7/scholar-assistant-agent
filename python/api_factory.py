@@ -209,12 +209,30 @@ _DENIED_EXTENSIONS = {".env", ".key", ".pem", ".p12", ".pfx", ".secret", ".crede
 
 
 def _validate_file_path(file_path: Path) -> None:
+    original = file_path
     resolved = file_path.resolve()
     resolved_str = str(resolved)
+
+    # Symlink guard: reject if any component is a symlink pointing outside user home.
+    # resolve() follows symlinks, so if the resolved path diverges significantly
+    # from the original, it may be a symlink escape.
+    home = Path.home().resolve()
+    try:
+        resolved.relative_to(home)
+    except ValueError:
+        # Path is outside user home — only allow if under RUNTIME_DIR or temp.
+        try:
+            resolved.relative_to(RUNTIME_DIR)
+        except ValueError:
+            import tempfile
+            try:
+                resolved.relative_to(Path(tempfile.gettempdir()).resolve())
+            except ValueError:
+                raise HTTPException(403, "文件路径必须在用户目录、数据目录或临时目录内")
+
     for prefix in _DENIED_PATH_PREFIXES:
         if resolved_str.startswith(prefix):
             raise HTTPException(403, f"禁止访问系统目录: {prefix}")
-    home = Path.home().resolve()
     try:
         rel = resolved.relative_to(home)
         parts = rel.parts
@@ -223,8 +241,6 @@ def _validate_file_path(file_path: Path) -> None:
     except ValueError:
         pass
     # Block Windows AppData — absolute paths like C:\Users\<user>\AppData\...
-    # are not caught by the home-relative check above (ValueError silently passes),
-    # and are not covered by _DENIED_PATH_PREFIXES.
     # Exception: AppData\Local\Temp is allowed (pytest tmp_path, legitimate temp files).
     if resolved_str.startswith(f"{home}\\AppData\\Roaming\\") or \
             (resolved_str.startswith(f"{home}\\AppData\\Local\\") and

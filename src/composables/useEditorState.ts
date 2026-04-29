@@ -27,13 +27,19 @@ export const aiLoading = ref(false)
 export const aiResult = ref('')
 export const previousContent = ref('')
 
+// ── Monaco Range helper ──────────────────────────────────────────────────
+
+export function getRange(editor: any) {
+  return (editor as any).monaco?.Range ??
+    class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
+}
+
 // ── Text insertion helpers (依赖 Monaco editor 实例) ──────────────────
 
 export function insertTextAtCursor(text: string): boolean {
   const editor = monacoEditor.value
   if (!editor) return false
-  const Range = (editor as any).monaco?.Range ??
-    class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
+  const Range = getRange(editor)
   const pos = editor.getPosition()
   const range = pos
     ? new Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column)

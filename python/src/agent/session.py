@@ -28,6 +28,7 @@ from src.agent.models import (
     EVT_AWAIT_APPROVAL,
     EVT_DONE,
     EVT_ERROR,
+    EVT_RESPONSE,
     EVT_SESSION_STARTED,
     EVT_TASK_DONE,
     EVT_TASK_STARTED,
@@ -293,6 +294,11 @@ class AgentSession:
                             )
                         except Exception as e:
                             logger.warning("记忆存储失败（不影响推理）: %s", e)
+                    yield AgentEvent(
+                        type=EVT_RESPONSE,
+                        content=step_result.final_answer or "",
+                        metadata={"task_id": task.id},
+                    )
                     return
                 continue
 
