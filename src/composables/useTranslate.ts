@@ -370,7 +370,7 @@ async function downloadResult(): Promise<void> {
   }
 }
 
-async function exportBilingualPdf(mode: 'below' | 'above' | 'replace' = 'below'): Promise<void> {
+async function exportBilingualPdf(): Promise<void> {
   if (!state.taskId) return
   state.errorMessage = ''
 
@@ -378,7 +378,7 @@ async function exportBilingualPdf(mode: 'below' | 'above' | 'replace' = 'below')
     const resp = await fetch(`${API_URL}/api/export/bilingual_pdf`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task_id: state.taskId, mode, format: 'docx' }),
+      body: JSON.stringify({ task_id: state.taskId }),
     })
 
     if (!resp.ok) {

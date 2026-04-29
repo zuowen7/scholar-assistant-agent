@@ -7,7 +7,7 @@ import re
 from src.formatter.word_exporter import (
     markdown_to_docx,
     _parse_inline_format,
-    _apply_inline_format,
+    _apply_inline,
 )
 from docx import Document
 

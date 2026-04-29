@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import copy
-import hashlib
 import json
 import logging
 import os
-import re
 import shutil
 import time
 import uuid
@@ -44,282 +42,6 @@ class ConfigUpdate(BaseModel):
     translator: dict | None = None
     formatter: dict | None = None
     cloud: dict | None = None
-
-
-def _merge_blocks_to_paragraphs(blocks: list) -> list:
-    """Merge line-level blocks into paragraph-level blocks for overlay.
-
-    PDF blocks are extracted per-line with tiny gaps (2-3 pts) — too small
-    for overlay translations.  This groups consecutive lines into paragraphs
-    by detecting font changes, gap thresholds, and column boundaries.
-    Oversized blocks are re-split at sentence boundaries so the overlay has
-    room to render translated text between groups.
-    """
-    if not blocks:
-        return blocks
-
-    from src.parser.extractor import TextBlock
-    if all(b.height >= 20 for b in blocks):
-        return blocks
-
-    def _base_font(name: str) -> str:
-        return name.split("-")[0].split("+")[0].lower()
-
-    merged: list[TextBlock] = []
-    for block in blocks:
-        if not merged:
-            merged.append(block)
-            continue
-        prev = merged[-1]
-        gap = block.bbox[1] - prev.bbox[3]
-        x_overlap = prev.bbox[0] < block.bbox[2] and block.bbox[0] < prev.bbox[2]
-        same_font_family = _base_font(prev.font_name) == _base_font(block.font_name)
-        font_size_close = abs(prev.font_size - block.font_size) < 1.5
-
-        should_merge = (
-            block.page == prev.page
-            and x_overlap
-            and -2 <= gap <= 3
-            and same_font_family
-            and font_size_close
-        )
-
-        if should_merge:
-            new_bbox = (
-                min(prev.bbox[0], block.bbox[0]),
-                prev.bbox[1],
-                max(prev.bbox[2], block.bbox[2]),
-                max(prev.bbox[3], block.bbox[3]),
-            )
-            new_text = prev.text + " " + block.text
-            merged[-1] = TextBlock(
-                page=prev.page,
-                bbox=new_bbox,
-                text=new_text,
-                font_size=prev.font_size,
-                block_id=prev.block_id,
-                font_name=prev.font_name,
-            )
-        else:
-            merged.append(block)
-
-    # Re-split oversized blocks at sentence boundaries
-    MAX_BLOCK_HEIGHT = 150
-    final: list[TextBlock] = []
-    for block in merged:
-        if block.height <= MAX_BLOCK_HEIGHT:
-            final.append(block)
-            continue
-
-        text = block.text.strip()
-        # Split at sentence-ending punctuation
-        parts = re.split(r'(?<=[.!?])\s+', text)
-        if len(parts) <= 1:
-            final.append(block)
-            continue
-
-        n = len(parts)
-        total_h = block.height
-        per_part_h = total_h / n
-
-        for pi, part in enumerate(parts):
-            y0 = block.bbox[1] + pi * per_part_h
-            y1 = block.bbox[1] + (pi + 1) * per_part_h
-            bid = hashlib.md5(
-                f"{block.page}:{y0:.0f}:{part[:30]}".encode()
-            ).hexdigest()[:12]
-            final.append(TextBlock(
-                page=block.page,
-                bbox=(block.bbox[0], y0, block.bbox[2], y1),
-                text=part,
-                font_size=block.font_size,
-                block_id=bid,
-                font_name=block.font_name,
-            ))
-
-    logger.info("Merged %d line-blocks -> %d paragraph-blocks (after re-split: %d)",
-                len(blocks), len(merged), len(final))
-    return final
-
-
-def _normalize_for_matching(text: str) -> str:
-    """Collapse whitespace & de-hyphenate so cleaned text can match raw block text."""
-    text = re.sub(r'-\s+', '', text)      # "infor-\nmation" → "information"
-    text = re.sub(r'\s+', ' ', text)       # collapse all whitespace to single space
-    return text.strip()
-
-
-def _skeleton(text: str) -> str:
-    """Strip all non-alphanumeric characters for last-resort fuzzy matching."""
-    return re.sub(r'[^a-zA-Z0-9一-鿿]', '', text).lower()
-
-
-def _build_block_translations(
-    chunk_results: list[dict],
-    blocks: list,
-) -> dict[str, str]:
-    """Map block_id → translated text from chunk results.
-
-    Reconstruct block-level translations by splitting each chunk's
-    translated text at sentence boundaries (not arbitrary character positions)
-    across the blocks it contained.
-    """
-    if not chunk_results or not blocks:
-        return {}
-
-    block_texts: dict[str, str] = {b.block_id: b.text for b in blocks}
-    norm_block_texts: dict[str, str] = {
-        bid: _normalize_for_matching(txt) for bid, txt in block_texts.items()
-    }
-
-    block_order = [b.block_id for b in blocks if b.block_id in block_texts]
-
-    translations: dict[str, str] = {}
-
-    def _match_blocks(norm_orig: str, skeleton_orig: str) -> list[tuple[str, int]]:
-        matched = []
-        for bid in block_order:
-            if bid in translations:
-                continue
-            nb = norm_block_texts[bid]
-            if (norm_orig.startswith(nb[:50])
-                    or nb.startswith(norm_orig[:50])
-                    or (len(nb) >= 3 and nb in norm_orig)):
-                matched.append((bid, len(nb)))
-            elif len(nb) >= 10 and skeleton_orig and _skeleton(nb) in skeleton_orig:
-                matched.append((bid, len(nb)))
-        return matched
-
-    for chunk in chunk_results:
-        trans = chunk.get("translated", "")
-        orig = chunk.get("original", "")
-
-        if not trans or not orig:
-            continue
-
-        norm_orig = _normalize_for_matching(orig)
-        skeleton_orig = _skeleton(orig)
-
-        matched_blocks = _match_blocks(norm_orig, skeleton_orig)
-        if not matched_blocks:
-            continue
-
-        trans_parts = _split_translation_to_parts(trans, len(matched_blocks))
-
-        for i, (bid, _) in enumerate(matched_blocks):
-            if i < len(trans_parts):
-                translations[bid] = trans_parts[i]
-
-    # Second pass: assign remaining unmatched blocks proportional slices
-    # from the chunk whose skeleton overlaps most with the block's skeleton.
-    unmatched = [bid for bid in block_order if bid not in translations]
-    if unmatched:
-        for bid in unmatched:
-            sk_block = _skeleton(block_texts[bid])
-            if len(sk_block) < 8:
-                continue
-            best_chunk_idx = -1
-            best_overlap = 0
-            for ci, chunk in enumerate(chunk_results):
-                sk_chunk = _skeleton(chunk.get("original", ""))
-                if not sk_chunk:
-                    continue
-                overlap = sum(1 for i in range(len(sk_block) - 3)
-                              if sk_block[i:i+4] in sk_chunk)
-                if overlap > best_overlap:
-                    best_overlap = overlap
-                    best_chunk_idx = ci
-            if best_chunk_idx >= 0 and best_overlap >= len(sk_block) * 0.4:
-                translations[bid] = chunk_results[best_chunk_idx].get("translated", "")
-
-    return translations
-
-
-def _split_translation_to_parts(text: str, n_parts: int) -> list[str]:
-    """Split *text* into *n_parts* pieces at sentence/paragraph boundaries."""
-    if n_parts <= 1:
-        return [text]
-
-    # Split on paragraph boundaries first
-    para_breaks = [m.end() for m in re.finditer(r'\n\n+', text)]
-
-    if len(para_breaks) >= n_parts - 1:
-        # Enough paragraph breaks — use them
-        parts = []
-        prev = 0
-        chosen = _pick_evenly_spaced(para_breaks, n_parts - 1)
-        for pos in chosen:
-            parts.append(text[prev:pos].strip())
-            prev = pos
-        parts.append(text[prev:].strip())
-        return parts
-
-    # Split on sentence-ending punctuation (。.！!？?)
-    sent_breaks = [m.end() for m in re.finditer(r'[。.！!？?][\s]*', text)]
-
-    if len(sent_breaks) >= n_parts - 1:
-        parts = []
-        prev = 0
-        chosen = _pick_evenly_spaced(sent_breaks, n_parts - 1)
-        for pos in chosen:
-            parts.append(text[prev:pos].strip())
-            prev = pos
-        parts.append(text[prev:].strip())
-        return parts
-
-    # Fallback: proportional character split, but align to nearest sentence break
-    total = len(text)
-    target_positions = [int(total * (i + 1) / n_parts) for i in range(n_parts - 1)]
-    all_breaks = sorted(set(para_breaks + sent_breaks))
-
-    parts = []
-    prev = 0
-    for target in target_positions:
-        best = _snap_to_nearest(target, all_breaks, tolerance=max(20, total // (n_parts * 2)))
-        if best is None:
-            best = target
-        parts.append(text[prev:best].strip())
-        prev = best
-    parts.append(text[prev:].strip())
-    return parts
-
-
-def _pick_evenly_spaced(breaks: list[int], n: int) -> list[int]:
-    """Pick *n* positions from *breaks* that are most evenly spaced."""
-    if n <= 0:
-        return []
-    if n >= len(breaks):
-        return breaks[:n]
-
-    total = breaks[-1]
-    target = [int(total * (i + 1) / (n + 1)) for i in range(n)]
-    chosen = []
-    used = set()
-    for t in target:
-        best_idx = 0
-        best_dist = abs(breaks[0] - t)
-        for j, b in enumerate(breaks):
-            if j in used:
-                continue
-            d = abs(b - t)
-            if d < best_dist:
-                best_dist = d
-                best_idx = j
-        chosen.append(breaks[best_idx])
-        used.add(best_idx)
-    return sorted(chosen)
-
-
-def _snap_to_nearest(target: int, breaks: list[int], tolerance: int = 20) -> int | None:
-    """Find the break closest to *target* within *tolerance*."""
-    best = None
-    best_dist = tolerance
-    for b in breaks:
-        d = abs(b - target)
-        if d < best_dist:
-            best_dist = d
-            best = b
-    return best
 
 
 class FilePathPayload(BaseModel):
@@ -847,6 +569,7 @@ def register_translate(
         if t["status"] not in ("pending", "error"):
             raise HTTPException(409, f"任务状态为 {t['status']}，无法重新启动")
 
+        t["error"] = None  # clear stale error state before restart
         await _acquire_task_slot(task_id)
         pipeline = _run_pipeline(task_id)
 
@@ -1014,7 +737,7 @@ def register_translate(
         if t["status"] not in ("done", "done_with_warnings"):
             raise HTTPException(400, "翻译尚未完成")
 
-        output_dir = runtime_dir / "output"
+        output_dir = data_root / "output"
         output_dir.mkdir(parents=True, exist_ok=True)
 
         raw_chunks = t.get("chunks", [])

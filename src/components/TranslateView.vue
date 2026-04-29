@@ -128,7 +128,7 @@
             <template #icon-left><Download :size="13" :stroke-width="2" /></template>
             下载
           </UiButton>
-          <UiButton variant="secondary" size="sm" @click="doExportBilingualPdf('below')">
+          <UiButton variant="secondary" size="sm" @click="doExportBilingualPdf()">
             <template #icon-left><FileText :size="13" :stroke-width="2" /></template>
             双语 Word
           </UiButton>
@@ -187,7 +187,7 @@ import { UploadCloud, AlertCircle, Check, CheckCircle, Download, FileText } from
 import UiButton from './ui/UiButton.vue'
 import UiSegmented from './ui/UiSegmented.vue'
 import { useTranslate } from '../composables/useTranslate'
-import DOMPurify from 'dompurify'
+import * as DOMPurify from 'dompurify'
 
 const props = defineProps<{
   healthOk: boolean
@@ -204,9 +204,9 @@ const { state, translate, reset, downloadResult, overallProgress, exportBilingua
 const viewMode = ref<'sentence' | 'parallel' | 'markdown'>('sentence')
 const zoneHover = ref(false)
 
-async function doExportBilingualPdf(mode: 'below' | 'above' | 'replace' = 'below') {
+async function doExportBilingualPdf() {
   try {
-    await exportBilingualPdf(mode)
+    await exportBilingualPdf()
   } catch (err) {
     console.error('Bilingual PDF export failed:', err)
   }

@@ -32,20 +32,19 @@ async def _translate_one(
     prev_trans: str,
     index: int,
     total: int,
-    retry_delay: float = 2.0,
 ) -> ChunkResult:
-    """Translate a single chunk with one retry and fallback to original."""
+    """Translate a single chunk.
+
+    Retries and backoff are handled by the client itself (ollama_client and
+    cloud_client both implement MAX_RETRIES+1 attempts with exponential backoff).
+    This function only catches persistent failures and falls back to original text.
+    """
     try:
         result = await asyncio.to_thread(client.translate, text, prev_trans)
     except Exception as e:
-        logger.warning("块 %d/%d 翻译失败，尝试单独重试: %s", index + 1, total, e)
-        await asyncio.sleep(retry_delay)
-        try:
-            result = await asyncio.to_thread(client.translate, text, prev_trans)
-        except Exception as e2:
-            logger.error("块 %d/%d 重试仍失败: %s，保留原文", index + 1, total, e2)
-            result = TranslationResult(original=text, translated=text, model="")
-            return ChunkResult(index=index, result=result, error=str(e2), is_fallback=True)
+        logger.error("块 %d/%d 翻译失败（客户端重试耗尽）: %s，保留原文", index + 1, total, e)
+        result = TranslationResult(original=text, translated=text, model="")
+        return ChunkResult(index=index, result=result, error=str(e), is_fallback=True)
 
     is_fallback = result.original == result.translated
     return ChunkResult(index=index, result=result, is_fallback=is_fallback)
@@ -71,7 +70,7 @@ async def translate_chunks_parallel(
     if max_concurrency <= 1:
         prev_trans = ""
         for i, chunk in enumerate(chunks):
-            cr = await _translate_one(client, chunk.text, prev_trans, i, total, retry_delay)
+            cr = await _translate_one(client, chunk.text, prev_trans, i, total)
             yield cr
             prev_trans = cr.result.translated
             await asyncio.sleep(0.1)
@@ -84,7 +83,7 @@ async def translate_chunks_parallel(
 
     async def _run_chunk(index: int) -> None:
         async with semaphore:
-            cr = await _translate_one(client, chunks[index].text, "", index, total, retry_delay)
+            cr = await _translate_one(client, chunks[index].text, "", index, total)
         completed[index] = cr
 
     tasks = [asyncio.create_task(_run_chunk(i)) for i in range(total)]

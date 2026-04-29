@@ -148,6 +148,7 @@ class AgentLoop:
         skill_registry: SkillRegistry | None = None,
         trajectory_recorder: TrajectoryRecorder | None = None,
         rag_store: Any | None = None,
+        rag_top_k: int = 3,
         cloud_base_url: str = "",
         cloud_api_key: str = "",
         cloud_model: str = "",
@@ -194,6 +195,7 @@ class AgentLoop:
         self.api_format = api_format
 
         self.rag_store = rag_store
+        self.rag_top_k = rag_top_k
 
     async def close(self) -> None:
         await self.llm.close()
@@ -375,7 +377,7 @@ class AgentLoop:
 
         if self.rag_store is not None:
             try:
-                rag_results = self.rag_store.retrieve_context(query, top_k=3)
+                rag_results = self.rag_store.retrieve_context(query, top_k=self.rag_top_k)
                 if rag_results:
                     rag_parts: list[str] = []
                     for i, r in enumerate(rag_results):
