@@ -49,6 +49,7 @@ def _format_bilingual_md(results: list[TranslationResult]) -> str:
     """双语对照格式 — 先合并所有 chunk 并去重 overlap，再按段落对照输出
 
     标题行和数学公式块不使用引用格式，保持原始 Markdown 层级。
+    段落对之间用分隔线区分，避免视觉混淆。
     """
     merged_orig, merged_trans = _merge_chunks(results)
 
@@ -58,8 +59,11 @@ def _format_bilingual_md(results: list[TranslationResult]) -> str:
         orig = merged_orig[j] if j < len(merged_orig) else ""
         trans = merged_trans[j] if j < len(merged_trans) else ""
 
+        # Skip empty pairs entirely
+        if not orig and not trans:
+            continue
+
         if orig:
-            # 标题行或数学公式块: 不使用引用格式，保留层级
             if _is_heading_or_math(orig):
                 parts.append(orig)
             else:
@@ -69,6 +73,14 @@ def _format_bilingual_md(results: list[TranslationResult]) -> str:
         if trans:
             parts.append(trans)
             parts.append("")
+
+        # Separator between paragraph pairs (not after the last one)
+        if j < max_paras - 1:
+            next_orig = merged_orig[j + 1] if j + 1 < len(merged_orig) else ""
+            # Don't add separator before headings — they provide their own visual break
+            if not _is_heading_or_math(next_orig):
+                parts.append("---")
+                parts.append("")
 
     return "\n".join(parts)
 
