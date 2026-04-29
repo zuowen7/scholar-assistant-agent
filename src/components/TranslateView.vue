@@ -115,7 +115,7 @@
           <CheckCircle :size="16" :stroke-width="2.2" class="done-icon" />
           <span class="done-label">翻译完成</span>
           <span v-if="state.chunks.length" class="done-meta">{{ state.chunks.length }} 段 · {{ allSentencePairs.length }} 句</span>
-          <span class="done-rag-hint" @click="$emit('open-agent-docs')">已加入知识库</span>
+          <span v-if="state.ragIngested" class="done-rag-hint" @click="$emit('open-agent-docs')">已加入知识库</span>
         </div>
         <div class="result-bar-right">
           <UiSegmented

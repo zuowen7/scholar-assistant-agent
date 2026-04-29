@@ -119,6 +119,7 @@ class RAGStore:
         Returns:
             入库的文本块数量。
         """
+        logger.info("ingest_document started: doc_id=%s, text_len=%d", doc_id, len(text))
         if not text.strip():
             logger.warning("文档 %s 内容为空，跳过入库", doc_id)
             return 0
