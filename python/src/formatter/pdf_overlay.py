@@ -16,7 +16,7 @@ FONT_DIR = Path(__file__).parent.parent.parent / "assets" / "fonts"
 
 
 def _resolve_font_path(font_path: str | Path | None = None) -> str | None:
-    """Return the path to the CJK font file, or None to use Helvetica."""
+    """Return the path to the CJK font file, or None to use built-in CJK."""
     if font_path:
         p = Path(font_path)
         if p.exists():
@@ -30,8 +30,16 @@ def _resolve_font_path(font_path: str | Path | None = None) -> str | None:
     if legacy.exists():
         return str(legacy)
 
-    logger.warning("CJK font not found, falling back to Helvetica")
+    logger.warning("CJK font not found, falling back to built-in china-s")
     return None
+
+
+def _font_kwargs(font_path: str | None) -> dict:
+    """Build font-related kwargs for page.insert_textbox()."""
+    if font_path:
+        return {"fontfile": font_path, "fontname": "cjk-overlay"}
+    # PyMuPDF built-in Simplified Chinese — no font file needed
+    return {"fontname": "china-s"}
 
 
 def overlay_translation(
@@ -67,6 +75,8 @@ def overlay_translation(
         raise FileNotFoundError(f"Source PDF not found: {src_pdf}")
 
     resolved_font_path = _resolve_font_path(font_path)
+    logger.info("Bilingual overlay: font=%s, blocks=%d, translations=%d, mode=%s",
+                resolved_font_path or "built-in china-s", len(blocks), len(translations), mode)
 
     try:
         with fitz.open(src_pdf) as doc:
@@ -119,11 +129,8 @@ def _overlay_below(
         return
 
     rect = fitz.Rect(x0, start_y, x1, start_y + line_height * 3)
-    insert_kw: dict = dict(color=(0.2, 0.2, 0.5), align=fitz.TEXT_ALIGN_LEFT)
-    if font_path:
-        insert_kw["fontfile"] = font_path
-    else:
-        insert_kw["fontname"] = "Helvetica"
+    font_kw = _font_kwargs(font_path)
+    insert_kw: dict = dict(color=(0.2, 0.2, 0.5), align=fitz.TEXT_ALIGN_LEFT, **font_kw)
     rc = page.insert_textbox(rect, translated, fontsize=font_size, **insert_kw)
     if rc < 0:
         small_size = max(6.0, font_size * 0.8)
@@ -151,12 +158,9 @@ def _overlay_above(
     bg_rect = fitz.Rect(x0, bg_top, x1, y0)
     page.draw_rect(bg_rect, color=None, fill=(1, 1, 1), fill_opacity=0.95)
 
+    font_kw = _font_kwargs(font_path)
     insert_kw: dict = dict(fontsize=font_size, color=(0.2, 0.2, 0.5),
-                           align=fitz.TEXT_ALIGN_LEFT)
-    if font_path:
-        insert_kw["fontfile"] = font_path
-    else:
-        insert_kw["fontname"] = "Helvetica"
+                           align=fitz.TEXT_ALIGN_LEFT, **font_kw)
     page.insert_textbox(bg_rect, translated, **insert_kw)
 
 
@@ -180,12 +184,9 @@ def _overlay_replace(
     page.apply_redactions()
 
     text_rect = fitz.Rect(x0, y0, x1, y0 + (y1 - y0) * 1.5)
+    font_kw = _font_kwargs(font_path)
     insert_kw: dict = dict(fontsize=font_size, color=(0.1, 0.1, 0.4),
-                           align=fitz.TEXT_ALIGN_LEFT)
-    if font_path:
-        insert_kw["fontfile"] = font_path
-    else:
-        insert_kw["fontname"] = "Helvetica"
+                           align=fitz.TEXT_ALIGN_LEFT, **font_kw)
     page.insert_textbox(text_rect, translated, **insert_kw)
 
 
