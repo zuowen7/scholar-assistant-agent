@@ -97,6 +97,8 @@ class TestFuzzyMatch:
             return np.array(vecs, dtype=np.float32)
 
         tm._embed = mock_embed
+        tm._fuzzy_ok = True
+        tm._encoder = True  # bypass _get_encoder check
 
         # Insert stored pair directly with known embedding
         source_hash = hashlib.sha256("Hello world".encode()).hexdigest()
@@ -124,6 +126,8 @@ class TestFuzzyMatch:
             return np.array([vec_b if t == "query" else vec_a for t in texts], dtype=np.float32)
 
         tm._embed = mock_embed
+        tm._fuzzy_ok = True
+        tm._encoder = True
         source_hash = hashlib.sha256("stored text".encode()).hexdigest()
         blob = tm._vec_to_blob(vec_a)
         tm._conn.execute(

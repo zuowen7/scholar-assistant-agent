@@ -40,11 +40,18 @@ data/agent/
 # Argument map 运行时数据
 python/data/argument_tree.json
 
+# Mind map 运行时数据
+python/mindmap.json
+
 # 翻译记忆 SQLite（运行时自动生成）
 python/tm.db*
+python/tests/tm.db*
 
-# CLI 入口（仅 api.py 是正式入口，main.py 是废弃的独立 CLI 包装）
-python/main.py
+# 输出文件（翻译产物 PDF/DOCX 等）
+python/output/
+
+# 运行时目录（ChromaDB、agent data 等）
+python/runtime/
 
 # 环境变量
 .env
