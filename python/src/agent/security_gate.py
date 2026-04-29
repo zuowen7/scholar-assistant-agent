@@ -106,7 +106,13 @@ class SecurityGate:
         self._safe_tools = safe_tools or set()
 
     def classify(self, tool_name: str, args: dict[str, Any]) -> GateResult:
-        """判定单个工具调用的风险级别。"""
+        """判定单个工具调用的风险级别。
+
+        Scope: Agent tool-call risk gating (BANNED/MODERATE/DESTRUCTIVE/SAFE).
+        Enforces: command blacklist, path restrictions for file tools, network restrictions.
+        For translate/editor path validation see api_factory._validate_file_path().
+        For agent workspace path resolution see WorkspaceEnv.resolve().
+        """
         # 1. 检查工具默认风险
         base_risk = _TOOL_DEFAULT_RISK.get(tool_name)
 

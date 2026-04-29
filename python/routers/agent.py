@@ -139,7 +139,7 @@ def register_agent(
                 "workspace_root": workspace_root,
             })
 
-            # Session store (SQLite, Phase 4)
+            # Session store (SQLite)
             nonlocal _session_store
             _session_store = SessionStore(db_path=str(data_root / "agent" / "sessions.db"))
 
@@ -236,8 +236,10 @@ def register_agent(
     # ------------------------------------------------------------------
 
     @app.post("/api/agent/v2/chat")
-    async def v2_chat(req: ChatRequest):
+    async def v2_chat(req: ChatRequest, request: Request):
         """v2 SSE endpoint — AgentSession 状态机驱动，支持多任务编排。"""
+        if request.client.host not in ("127.0.0.1", "::1", "localhost"):
+            raise HTTPException(403, "仅限本机访问")
         if not _AGENT_AVAILABLE:
             raise HTTPException(503, "Agent 模块未安装，请安装 chromadb")
 
@@ -623,11 +625,11 @@ def register_agent(
             "max_steps": agent_cfg.get("max_steps", 6),
         }
 
-    # --- AWA v2: Direct tool invocation endpoint (for testing / Phase 1 validation) ---
+    # --- Direct tool invocation endpoint (for testing / validation) ---
 
     @app.post("/api/agent/v2/tool")
     async def v2_tool_invoke(req: V2ToolRequest, request: Request):
-        """直接调用 AWA v2 工作区工具（开发调试用）。"""
+        """直接调用工作区工具（开发调试用）。"""
         if request.client.host not in ("127.0.0.1", "::1", "localhost"):
             raise HTTPException(403, "仅允许本地访问")
         if not _AGENT_AVAILABLE:

@@ -130,7 +130,8 @@ def register_translate(
 
     @app.get("/api/health")
     def health():
-        payload = {"status": "ok", "version": "0.4.2"}
+        from src._version import __version__
+        payload = {"status": "ok", "version": __version__}
         if cloud_only:
             payload["mode"] = "cloud_only"
         return payload
@@ -524,7 +525,8 @@ def register_translate(
                         except Exception as exc:
                             logger.warning("翻译结果入库 RAG 失败: %s", exc)
 
-                    asyncio.create_task(_bg_ingest())
+                    _bg_task = asyncio.create_task(_bg_ingest())
+                    _bg_task.add_done_callback(lambda t: t.exception() if not t.cancelled() and t.exception() else None)
                     rag_ingested = True
             except Exception as rag_err:
                 logger.warning("翻译结果入库 RAG 准备失败（不影响翻译）: %s", rag_err)
@@ -729,8 +731,8 @@ def register_translate(
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
-    @app.post("/api/export/bilingual_pdf")
-    async def export_bilingual_pdf(payload: BilingualPdfPayload):
+    @app.post("/api/export/bilingual_docx")
+    async def export_bilingual_docx(payload: BilingualPdfPayload):
         if payload.task_id not in tasks:
             raise HTTPException(404, "任务不存在")
         t = tasks[payload.task_id]

@@ -195,6 +195,36 @@ class SessionStore:
     def close(self) -> None:
         self._conn.close()
 
+    @staticmethod
+    def _serialize_message(m) -> dict:
+        d: dict[str, Any] = {"role": m.role, "content": m.content}
+        if m.tool_call_id is not None:
+            d["tool_call_id"] = m.tool_call_id
+        if m.tool_calls:
+            d["tool_calls"] = [
+                {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
+                for tc in m.tool_calls
+            ]
+        if m.reasoning_content:
+            d["reasoning_content"] = m.reasoning_content
+        return d
+
+    @staticmethod
+    def _deserialize_message(raw: dict):
+        from src.agent.models import Message, ToolCall
+
+        tool_calls = None
+        tc_list = raw.get("tool_calls")
+        if tc_list:
+            tool_calls = [ToolCall(**tc) for tc in tc_list]
+        return Message(
+            role=raw["role"],
+            content=raw.get("content", ""),
+            tool_calls=tool_calls,
+            tool_call_id=raw.get("tool_call_id"),
+            reasoning_content=raw.get("reasoning_content"),
+        )
+
     def serialize_session(self, session, *, query: str = "") -> dict[str, Any]:
         """Serialize an AgentSession to a storable dict.
 
@@ -215,11 +245,7 @@ class SessionStore:
                 "approval_timeout": session.config.approval_timeout,
             },
             "messages": [
-                {
-                    "role": m.role,
-                    "content": m.content,
-                    "tool_call_id": m.tool_call_id,
-                }
+                _serialize_message(m)
                 for m in session.messages
             ],
             "task_queue": [
@@ -239,14 +265,7 @@ class SessionStore:
 
     def deserialize_messages(self, raw: list[dict]) -> list[Message]:
         """Convert stored message dicts back to Message objects."""
-        return [
-            Message(
-                role=m["role"],
-                content=m.get("content", ""),
-                tool_call_id=m.get("tool_call_id"),
-            )
-            for m in raw
-        ]
+        return [self._deserialize_message(m) for m in raw]
 
     def deserialize_task_queue(self, raw: list[dict]):
         """Rebuild a TaskQueue from stored task data."""

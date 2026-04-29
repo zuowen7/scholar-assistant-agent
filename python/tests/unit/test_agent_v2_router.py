@@ -81,21 +81,7 @@ def _make_app_with_agent_routes():
 
 
 class TestToolWhitelist:
-    def test_whitelist_includes_run_command_and_git_op(self):
-        from routers.agent import _V2_TOOL_WHITELIST
-        assert "run_command" in _V2_TOOL_WHITELIST
-        assert "git_op" in _V2_TOOL_WHITELIST
-
-    def test_whitelist_safe_tools(self):
-        from routers.agent import _V2_TOOL_WHITELIST
-        for tool in ["read_file", "list_directory", "search_files",
-                      "rag_retrieve", "web_search", "arxiv_search"]:
-            assert tool in _V2_TOOL_WHITELIST
-
-    def test_destructive_tools_not_in_whitelist(self):
-        from routers.agent import _V2_TOOL_WHITELIST
-        assert "str_replace" not in _V2_TOOL_WHITELIST
-        assert "write_file" not in _V2_TOOL_WHITELIST
+    """V2 tool whitelist was removed — registry handles tool gating now."""
 
 
 # ---------------------------------------------------------------------------

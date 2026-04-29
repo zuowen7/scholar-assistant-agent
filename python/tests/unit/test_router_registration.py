@@ -52,9 +52,9 @@ class TestRegisterTranslate:
             rag_store_getter=lambda: None,
         )
         routes = [r.path for r in app.routes]
-        assert "/api/translate/upload" in routes
-        assert "/api/translate/stream" in routes
-        assert "/api/translate/restart" in routes
+        assert "/api/translate" in routes
+        assert "/api/translate/path" in routes
+        assert "/api/translate/{task_id}/stream" in routes
         assert "/api/health" in routes
         assert "/api/config" in routes
         assert state is not None
@@ -98,8 +98,8 @@ class TestRegisterEditor:
             rag_store_getter=lambda: None,
         )
         routes = [r.path for r in app.routes]
-        assert "/api/edit/ai" in routes
-        assert "/api/edit/complete" in routes
+        assert "/api/edit" in routes
+        assert "/api/complete" in routes
         assert "/api/export/latex" in routes
         assert "/api/vision/analyze" in routes
         assert "/api/vision/ocr" in routes
@@ -123,8 +123,8 @@ class TestRegisterMindmap:
             build_cloud_client=_stub_build_cloud_client,
         )
         routes = [r.path for r in app.routes]
-        assert "/api/mindmap/trees" in routes
-        assert "/api/mindmap/nodes" in routes
+        assert "/api/mindmap/save" in routes
+        assert "/api/mindmap/load" in routes
         assert state is not None
 
 
@@ -176,10 +176,10 @@ class TestTranslateUploadValidation:
         )
         from fastapi.testclient import TestClient
         client = TestClient(app)
-        resp = client.post("/api/translate/upload")
+        resp = client.post("/api/translate")
         assert resp.status_code in (400, 422)  # FastAPI validates missing file
 
-    def test_restart_nonexistent_404(self):
+    def test_stream_nonexistent_404(self):
         from routers.translate import register_translate
 
         app = FastAPI()
@@ -197,6 +197,6 @@ class TestTranslateUploadValidation:
         )
         from fastapi.testclient import TestClient
         client = TestClient(app)
-        resp = client.post("/api/translate/restart/nonexistent")
+        resp = client.get("/api/translate/nonexistent/stream")
         assert resp.status_code == 404
         assert "不存在" in resp.json()["detail"]
