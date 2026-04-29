@@ -1,6 +1,5 @@
 <template>
   <div class="editor-toolbar" @click.stop>
-    <!-- Hidden file inputs -->
     <input
       ref="imageInputRef"
       class="hidden-file-input"
@@ -92,13 +91,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { FilePlus, Save, Eye, Bot, GitBranch, Workflow, MoreHorizontal } from './ui/icons'
 import { Image, Table, Sigma, Quote, Library, Code2, CheckCircle, Download } from './ui/icons'
 import UiDropdown from './ui/UiDropdown.vue'
 import type { DropdownItem } from './ui/UiDropdown.vue'
 
-const props = defineProps<{
+defineProps<{
   activeRightTab: string | null
   templates: { id: string; name: string }[]
   selectedTemplate: string
@@ -165,9 +164,6 @@ const moreItems = computed<DropdownItem[]>(() => [
   { text: 'LaTeX (.tex)', icon: Code2, onClick: () => emit('export-latex') },
   { text: 'PDF', icon: Download, onClick: () => emit('export-pdf') },
 ])
-
-// fix: computed is used before import — need to add it
-import { computed } from 'vue'
 </script>
 
 <style scoped>
