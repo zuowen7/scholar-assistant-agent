@@ -178,6 +178,7 @@ class AgentSession:
                     yield ev_aborted
                     self._dispatch_event(ev_aborted)
                     self._checkpoint()
+                    self.agent._finalize_trajectory(self._query, "", success=False)
                     return
 
                 self.task_queue.mark_done(task.id)
@@ -222,6 +223,7 @@ class AgentSession:
             yield ev_err
             self._dispatch_event(ev_err)
             self._checkpoint()
+            self.agent._finalize_trajectory(self._query, "", success=False)
 
     async def _drive_task(self, task) -> AsyncGenerator[AgentEvent, None]:
         """驱动单个任务的 ReAct 循环。

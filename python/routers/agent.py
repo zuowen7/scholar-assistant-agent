@@ -32,12 +32,6 @@ if _AGENT_AVAILABLE:
     from src.agent.change_journal import ChangeJournal
     from src.translator.cloud_client import PROVIDER_PRESETS
 
-_V2_TOOL_WHITELIST = frozenset({
-    "read_file", "list_directory", "search_files",
-    "rag_retrieve", "web_search", "arxiv_search",
-    "run_command", "git_op",
-})
-
 
 class ChatRequest(BaseModel):
     message: str = Field(max_length=100_000)
@@ -618,7 +612,7 @@ def register_agent(
         return {
             "available": True,
             "model": agent_cfg.get("model", "qwen3:8b"),
-            "max_steps": agent_cfg.get("max_steps", 10),
+            "max_steps": agent_cfg.get("max_steps", 6),
         }
 
     # --- AWA v2: Direct tool invocation endpoint (for testing / Phase 1 validation) ---
@@ -630,13 +624,14 @@ def register_agent(
             raise HTTPException(403, "仅允许本地访问")
         if not _AGENT_AVAILABLE:
             raise HTTPException(503, "Agent 模块未安装")
-        if req.tool not in _V2_TOOL_WHITELIST:
-            raise HTTPException(403, f"工具 '{req.tool}' 不在白名单中，允许: {sorted(_V2_TOOL_WHITELIST)}")
 
-        shared = await _ensure_shared()
+        shared = _shared
+        if shared is None or "tool_registry" not in shared:
+            shared = await _ensure_shared()
         tool_def = shared["tool_registry"].get(req.tool)
         if tool_def is None:
-            raise HTTPException(404, f"工具 '{req.tool}' 不存在")
+            available = sorted(shared["tool_registry"].list_tools())
+            raise HTTPException(404, f"工具 '{req.tool}' 不存在，允许: {available}")
 
         try:
             if asyncio.iscoroutinefunction(tool_def.fn):
