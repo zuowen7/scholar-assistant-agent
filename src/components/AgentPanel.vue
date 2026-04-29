@@ -106,25 +106,31 @@
         <div v-if="contextText" class="agent-context-note">
           Using editor {{ editorSelection.text ? 'selection' : 'document' }} as context ({{ contextText.length }} chars)
         </div>
-        <textarea
-          v-model="constraints"
-          class="agent-constraints"
-          :disabled="sending"
-          placeholder="Optional constraints, e.g. answer in Chinese under 200 words"
-          rows="2"
-        ></textarea>
-        <input
-          v-model="input"
-          @keydown.enter="sendMessage"
-          :disabled="sending"
-          placeholder="输入消息..."
-          class="agent-input"
-        />
-        <button class="agent-send-btn" @click="sendMessage" :disabled="sending || !input.trim()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-          </svg>
-        </button>
+        <!-- File attachments -->
+        <div class="agent-attachments" v-if="files.length">
+          <div class="agent-file" v-for="f in files" :key="f.name">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span>{{ f.name }}</span>
+            <button class="agent-file-remove" @click="removeFile(f.name)">×</button>
+          </div>
+        </div>
+        <div class="agent-input-row">
+          <button class="agent-attach-btn" @click="attachFile" title="Attach file" :disabled="sending">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          </button>
+          <input
+            v-model="input"
+            @keydown.enter="sendMessage"
+            :disabled="sending"
+            placeholder="输入消息..."
+            class="agent-input"
+          />
+          <button class="agent-send-btn" @click="sendMessage" :disabled="sending || !input.trim()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -260,9 +266,9 @@ const { selection: editorSelection, content: editorContent, activeTab: editorAct
 
 const tab = ref<'chat' | 'docs' | 'templates' | 'sessions'>('chat')
 const input = ref('')
-const constraints = ref('')
 const messagesRef = ref<HTMLElement | null>(null)
 const sessions = ref<AgentSessionInfo[]>([])
+const files = ref<{ name: string; content: string }[]>([])
 
 const contextText = computed(() => {
   if (!editorActiveTab.value) return ''
@@ -346,9 +352,44 @@ async function sendMessage() {
   const text = input.value.trim()
   if (!text || sending.value) return
   input.value = ''
-  await agentSendMessage(text, contextText.value, constraints.value)
+
+  // Build full message with file contents
+  let fullMsg = text
+  if (files.value.length) {
+    const ctx = files.value.map(f => `--- File: ${f.name} ---\n${f.content.slice(0, 12000)}\n--- End ---`).join('\n\n')
+    fullMsg = `${ctx}\n\n${text}`
+    files.value = []
+  }
+
+  await agentSendMessage(fullMsg, contextText.value, '')
   await nextTick()
   if (messagesRef.value) messagesRef.value.scrollTop = messagesRef.value.scrollHeight
+}
+
+// ── File operations ─────────────────────────────────────────
+async function attachFile() {
+  try {
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const selected = await open({
+      multiple: true,
+      filters: [{ name: 'Text', extensions: ['md','txt','tex','py','js','ts','json','yaml','yml','xml','html','css','csv','pdf'] }]
+    })
+    if (!selected) return
+    const paths = (Array.isArray(selected) ? selected : [selected]) as string[]
+    for (const p of paths) {
+      const name = p.split(/[\\/]/).pop() || p
+      if (files.value.some(f => f.name === name)) continue
+      try {
+        const { readTextFile } = await import('@tauri-apps/plugin-fs')
+        const content = await readTextFile(p)
+        files.value.push({ name, content })
+      } catch { /* skip unreadable files */ }
+    }
+  } catch { /* dialog not available */ }
+}
+
+function removeFile(name: string) {
+  files.value = files.value.filter(f => f.name !== name)
 }
 
 async function fetchDocs() {
@@ -610,14 +651,9 @@ watch(tab, (t) => {
   border-top: 1px solid var(--c-surface-3);
 }
 .agent-context-note { width: 100%; color: var(--c-text-3); font-size: 11px; }
-.agent-constraints {
-  width: 100%; padding: 8px 12px; border: 1px solid var(--c-surface-3);
-  border-radius: 8px; background: var(--c-surface-1);
-  color: var(--c-text-0); font-size: 12px; font-family: inherit;
-  resize: vertical; min-height: 54px; outline: none;
+.agent-input-row {
+  width: 100%; display: flex; gap: 8px; align-items: center;
 }
-.agent-constraints:focus { border-color: var(--c-accent); }
-.agent-constraints:disabled { opacity: 0.5; }
 .agent-input {
   flex: 1; padding: 8px 12px; border: 1px solid var(--c-surface-3);
   border-radius: 8px; background: var(--c-surface-1);
@@ -626,6 +662,17 @@ watch(tab, (t) => {
 }
 .agent-input:focus { border-color: var(--c-accent); }
 .agent-input:disabled { opacity: 0.5; }
+.agent-attach-btn {
+  width: 34px; height: 34px; border-radius: 8px;
+  background: none; border: 1px solid var(--c-surface-3);
+  color: var(--c-text-3); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; transition: all 0.15s;
+}
+.agent-attach-btn:hover:not(:disabled) {
+  background: var(--c-surface-2); color: var(--c-text-0);
+}
+.agent-attach-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .agent-send-btn {
   padding: 8px 12px; border: none; border-radius: 8px;
   background: var(--c-accent); color: #fff; cursor: pointer;
@@ -634,6 +681,23 @@ watch(tab, (t) => {
 }
 .agent-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .agent-send-btn:not(:disabled):hover { opacity: 0.85; }
+
+/* File attachments */
+.agent-attachments {
+  width: 100%; display: flex; gap: 6px; flex-wrap: wrap;
+  padding: 6px 0;
+}
+.agent-file {
+  display: flex; align-items: center; gap: 4px;
+  background: var(--c-surface-2); border: 1px solid var(--c-surface-3);
+  border-radius: 4px; padding: 3px 8px; font-size: 11px; color: var(--c-text-3);
+}
+.agent-file svg { flex-shrink: 0; }
+.agent-file-remove {
+  background: none; border: none; color: var(--c-text-3);
+  cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px;
+}
+.agent-file-remove:hover { color: var(--c-danger); }
 
 /* Docs tab */
 .agent-docs { flex: 1; overflow-y: auto; padding: 16px; }
