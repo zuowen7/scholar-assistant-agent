@@ -14,6 +14,14 @@ import {
   insertTextAtCursor, insertImage,
 } from './useEditorState'
 
+// ── Monaco Range helper ──────────────────────────────────────────────────
+
+/** Get the Monaco Range class from the editor instance, falling back to a minimal shim. */
+function getRange(editor: ReturnType<typeof monacoEditor.value>) {
+  return (editor as any).monaco?.Range ??
+    class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
+}
+
 // ── AI Edit ──────────────────────────────────────────────────────────────
 
 const _abortMap = new Map<string, AbortController>()
@@ -78,8 +86,7 @@ function applyInlineDecoration(
 ) {
   const editor = monacoEditor.value
   if (!editor) return
-  const Range = (editor as any).monaco?.Range ??
-    class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
+  const Range = getRange(editor)
   inlineDecoration = editor.deltaDecorations([], [{
     range: new Range(startLine, startCol, endLine, endCol),
     options: { className: 'ai-inline-edit', inlineClassName: 'ai-inline-edit-char' },
@@ -111,8 +118,7 @@ export async function inlineEdit(instruction: string, taskType?: string): Promis
     })
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
     if (!resp.body) throw new Error('No response body')
-    const Range = (editor as any).monaco?.Range ??
-      class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
+    const Range = getRange(editor)
     const reader = resp.body.getReader()
     applyInlineDecoration(sel.startLine, sel.startCol, sel.endLine, sel.endCol)
     await readSseStream(reader, (_type, evt) => {
@@ -148,8 +154,7 @@ export function applyAiResult() {
   const editor = monacoEditor.value
   if (!editor || !aiResult.value) return
   const sel = selection.value
-  const Range = (editor as any).monaco?.Range ??
-    class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
+  const Range = getRange(editor)
   if (sel.text) {
     editor.executeEdits('ai-edit', [{
       range: new Range(sel.startLine, sel.startCol, sel.endLine, sel.endCol),
@@ -228,8 +233,7 @@ async function requestCompletion() {
     })
     if (currentContent !== textBefore) { clearGhostText(); return }
     currentSuggestion = suggestion
-    const Range = (editor as any).monaco?.Range ??
-      class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
+    const Range = getRange(editor)
     ghostDecoration = editor.deltaDecorations(ghostDecoration, [{
       range: new Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
       options: {
@@ -250,8 +254,7 @@ export function acceptGhostText(): boolean {
   if (!editor || !currentSuggestion) return false
   const pos = editor.getPosition()
   if (!pos) return false
-  const Range = (editor as any).monaco?.Range ??
-    class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
+  const Range = getRange(editor)
   editor.executeEdits('inline-completion', [{
     range: new Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
     text: currentSuggestion,

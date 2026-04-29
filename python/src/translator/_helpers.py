@@ -496,3 +496,21 @@ def _restore_paragraphs(original: str, translated: str) -> str:
         trans_text = "\n\n".join(result)
 
     return trans_text
+
+
+def restore_paragraphs_if_needed(original: str, translated: str) -> str:
+    """为前端显示恢复译文段落结构（带启发式判断）。
+
+    如果 LLM 翻译时丢失了段落分隔符（\\n\\n），根据原文段落结构恢复。
+    仅当译文的段落数明显少于原文时才触发恢复，避免破坏已有的正确分段。
+    """
+    if not translated or not original:
+        return translated
+
+    orig_para_count = len([p for p in original.split("\n\n") if p.strip()])
+    trans_para_count = len([p for p in translated.split("\n\n") if p.strip()])
+
+    if trans_para_count < orig_para_count * 0.5:
+        return _restore_paragraphs(original, translated)
+
+    return translated
