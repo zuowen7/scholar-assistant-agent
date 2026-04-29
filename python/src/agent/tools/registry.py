@@ -339,7 +339,7 @@ BibTeX 条目：
     # --- Phase 4: web_search ---
     web_search_def = ToolDefinition(
         name="web_search",
-        description="使用搜索引擎搜索信息。通过 DuckDuckGo 返回搜索结果摘要。",
+        description="使用搜索引擎搜索信息。通过 Bing 返回搜索结果摘要。",
         parameters=_extract_schema_from_function(_web_search),
         fn=_web_search,
     )
