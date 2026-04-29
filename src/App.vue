@@ -176,8 +176,6 @@ const bgSettings = ref<BackgroundSettings>({
   opacity: 30,
 })
 
-const showSettings = ref(false)
-
 // --- 阅读设置 ---
 
 interface ReadSettings {

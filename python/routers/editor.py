@@ -586,11 +586,8 @@ def register_editor(
         media_type = content_types.get(ext, "application/octet-stream")
         return FileResponse(str(safe_path), media_type=media_type)
 
-    @app.post("/api/vision/analyze")
-    async def analyze_image(
-        file: UploadFile = File(...),
-        analysis_type: str = "general",
-    ):
+    async def _analyze_image_impl(file: UploadFile, analysis_type: str):
+        """Shared implementation for vision analysis endpoints."""
         assets_dir = data_root / "assets"
         assets_dir.mkdir(parents=True, exist_ok=True)
         ext = Path(file.filename).suffix.lower() if file.filename else ".png"
@@ -612,17 +609,24 @@ def register_editor(
             except PermissionError:
                 logger.warning("Vision temporary file is still locked, skip cleanup: %s", temp_path)
 
+    @app.post("/api/vision/analyze")
+    async def analyze_image(
+        file: UploadFile = File(...),
+        analysis_type: str = "general",
+    ):
+        return await _analyze_image_impl(file, analysis_type)
+
     @app.post("/api/vision/ocr")
     async def ocr_image(file: UploadFile = File(...)):
-        return await analyze_image(file, analysis_type="general")
+        return await _analyze_image_impl(file, analysis_type="general")
 
     @app.post("/api/vision/chart")
     async def analyze_chart(file: UploadFile = File(...)):
-        return await analyze_image(file, analysis_type="chart")
+        return await _analyze_image_impl(file, analysis_type="chart")
 
     @app.post("/api/vision/table")
     async def extract_table(file: UploadFile = File(...)):
-        return await analyze_image(file, analysis_type="table")
+        return await _analyze_image_impl(file, analysis_type="table")
 
     @app.put("/api/citation/index")
     async def index_citations(req: CitationIndexRequest):
