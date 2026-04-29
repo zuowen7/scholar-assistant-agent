@@ -189,6 +189,53 @@ def render_ghost_text_prompt(
     return sys_p, user
 
 
+# ── AI 编辑 (edit) ────────────────────────────────────────────────
+
+def render_edit_with_text_prompt(
+    text: str,
+    instruction: str,
+) -> tuple[str, str]:
+    """返回 (system_prompt, user_prompt)，用于 AI 编辑（有选中文本时）。"""
+    raw = _load_raw("tasks_edit/edit_with_text.md")
+    sys_p = _extract_system_prompt(raw) if raw else (
+        "你是一个学术写作助手。用户会提供一段文本和一条指令，"
+        "请严格根据指令处理文本。直接输出处理后的结果，不要添加解释或前言。"
+        "如果指令不是对文本进行编辑操作（如问候、闲聊、提问），请正常回复。"
+    )
+    user_t = _extract_user_template(raw) if raw else "--- 文本 ---\n{text}\n--- 指令 ---\n{instruction}"
+    user = _render_template(user_t, text=text, instruction=instruction)
+    return sys_p, user
+
+
+def render_edit_without_text_prompt(
+    instruction: str,
+) -> tuple[str, str]:
+    """返回 (system_prompt, user_prompt)，用于 AI 对话（无选中文本时）。"""
+    raw = _load_raw("tasks_edit/edit_without_text.md")
+    sys_p = _extract_system_prompt(raw) if raw else (
+        "你是一个学术研究助手，可以帮助用户进行学术写作、翻译、润色、"
+        "文献检索、论文大纲等任务。请用中文回复用户的问题。"
+    )
+    user_t = _extract_user_template(raw) if raw else "{instruction}"
+    user = _render_template(user_t, instruction=instruction)
+    return sys_p, user
+
+
+def render_auto_complete_prompt(
+    context: str,
+) -> str:
+    """返回用于自动补全的完整 prompt（单条 user 消息）。"""
+    raw = _load_raw("tasks_edit/auto_complete.md")
+    sys_p = _extract_system_prompt(raw) if raw else (
+        "You are an academic writing auto-complete assistant. "
+        "Continue the text naturally. Output ONLY the continuation, "
+        "no explanations, no markdown, no preamble."
+    )
+    user_t = _extract_user_template(raw) if raw else "Context:\n{context}"
+    user = _render_template(user_t, context=context)
+    return f"{sys_p}\n\n{user}"
+
+
 # ── 内容合规检查 ────────────────────────────────────────────────
 
 def render_compliance_prompt(

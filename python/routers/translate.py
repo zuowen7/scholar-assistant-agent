@@ -28,7 +28,7 @@ from src.translator.context import extract_document_context
 from src.translator.parallel_runner import translate_chunks_parallel
 from src.translator.memory_store import TranslationMemory
 from src.translator.glossary_store import GlossaryStore
-from src.translator._helpers import _restore_paragraphs
+from src.translator._helpers import restore_paragraphs_if_needed
 from src.translator._helpers import _extract_term_pairs
 
 logger = logging.getLogger(__name__)
@@ -122,25 +122,6 @@ def register_translate(
     data_root = runtime_dir / ("data_cloud" if cloud_only else "data")
     input_dir = data_root / "input"
     output_dir = data_root / "output"
-
-    def _restore_paragraphs_for_display(original: str, translated: str) -> str:
-        """为前端显示恢复译文段落结构
-
-        如果 LLM 翻译时丢失了段落分隔符（\n\n），根据原文段落结构恢复。
-        这确保前端按段落分割时，原文和译文段落数一致。
-        """
-        if not translated or not original:
-            return translated
-
-        # 检查译文是否已经有段落分隔符
-        orig_para_count = len([p for p in original.split("\n\n") if p.strip()])
-        trans_para_count = len([p for p in translated.split("\n\n") if p.strip()])
-
-        # 如果译段落落数明显少于原文，尝试恢复
-        if trans_para_count < orig_para_count * 0.5:
-            return _restore_paragraphs(original, translated)
-
-        return translated
 
     def _cleanup_tasks() -> None:
         done_ids = [tid for tid, t in tasks.items() if t["status"] in ("done", "error")]
@@ -554,7 +535,7 @@ def register_translate(
             task["chunks"] = [
                 {
                     "original": r.original,
-                    "translated": _restore_paragraphs_for_display(r.original, r.translated),
+                    "translated": restore_paragraphs_if_needed(r.original, r.translated),
                 }
                 for r in results
             ]
@@ -589,7 +570,7 @@ def register_translate(
                     "chunks": [
                         {
                             "original": r.original,
-                            "translated": _restore_paragraphs_for_display(r.original, r.translated),
+                            "translated": restore_paragraphs_if_needed(r.original, r.translated),
                         }
                         for r in results
                     ],
