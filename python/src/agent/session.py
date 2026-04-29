@@ -1,4 +1,4 @@
-"""AgentSession — 一次完整任务的会话对象（Phase 2: 状态机核心）。
+"""AgentSession — 一次完整任务的会话对象（状态机核心）。
 
 提供可暂停、可恢复、多任务编排的会话管理。
 
@@ -6,7 +6,7 @@
 - drive() 是对外的事件流 AsyncGenerator
 - 每个 Task 独立运行 ReAct 循环（调用 AgentLoop.step()）
 - 实例级状态隔离：两个 AgentSession 互不污染
-- 审批等待通过 asyncio.Future 实现（Phase 3 接入）
+- 审批等待通过 asyncio.Future 实现
 """
 
 from __future__ import annotations
@@ -228,7 +228,7 @@ class AgentSession:
     async def _drive_task(self, task) -> AsyncGenerator[AgentEvent, None]:
         """驱动单个任务的 ReAct 循环。
 
-        Phase 3: 工具调用前经 SecurityGate 门控 — BANNED 直接拒绝，
+        工具调用前经 SecurityGate 门控 — BANNED 直接拒绝，
         MODERATE/DESTRUCTIVE 触发 await_approval → Future 等待用户决定后再执行。
         """
         task_step = 0
@@ -255,7 +255,7 @@ class AgentSession:
                 self.messages,
                 step_num=self.global_step,
                 max_steps=self.config.max_global_steps,
-                execute_tools=False,  # Phase 3: 先门控，后执行
+                execute_tools=False,  # 先门控，后执行
             )
 
             # 转发推理事件（response → thought 避免前端提前终止）
@@ -316,7 +316,7 @@ class AgentSession:
                     return
                 continue
 
-            # ── Phase 3: SecurityGate + 审批执行 ──
+            # ── SecurityGate + 审批执行 ──
             # 先对每个工具做门控分类
             gated: list[tuple[Any, Any]] = []  # (ToolCall, gate_result)
             for tc in step_result.tool_calls:
@@ -545,7 +545,7 @@ class AgentSession:
         if skills is None:
             return None
         try:
-            # Record task pattern for auto-skill generation (Phase 4)
+            # Record task pattern for auto-skill generation (
             if self._query:
                 skills.record_pattern(
                     query=self._query,

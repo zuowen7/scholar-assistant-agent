@@ -57,6 +57,11 @@ class WorkspaceEnv:
     def resolve(self, p: str) -> Path:
         """将外部传入路径校验后映射到 root 内的绝对路径。
 
+        Scope: AWA v2 file-editing tools (read_file, write_file, str_replace, etc.).
+        Enforces: path stays within allowed_dirs, no denied_globs, file size limit.
+        For translate/editor path validation see api_factory._validate_file_path().
+        For command/tool risk classification see SecurityGate.classify().
+
         Raises:
             WorkspaceViolation: 路径逃逸、命中 denied_globs、或文件过大时。
         """

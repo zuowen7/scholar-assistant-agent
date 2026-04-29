@@ -315,7 +315,7 @@ class AgentLoop:
                 metadata={"tool": tc.name, "args": tc.arguments},
             ))
 
-        # Phase 3: 若调用方要求不执行，则由 AgentSession 门控后再执行
+        # 若调用方要求不执行，则由 AgentSession 门控后再执行
         if not execute_tools:
             return result
 

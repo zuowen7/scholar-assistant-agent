@@ -309,7 +309,7 @@ BibTeX 条目：
     except ImportError as e:
         logger.warning("特殊元素模块不可用: %s", e)
 
-    # --- Phase 4: shell_exec ---
+    # --- shell_exec ---
     shell_exec_def = ToolDefinition(
         name="shell_exec",
         description="执行白名单内的 shell 命令并返回输出。仅允许只读和低风险命令（ls/cat/grep/find/git 等）。",
@@ -318,7 +318,7 @@ BibTeX 条目：
     )
     registry.register(shell_exec_def)
 
-    # --- Phase 4: python_exec ---
+    # --- python_exec ---
     python_exec_def = ToolDefinition(
         name="python_exec",
         description="执行 Python 代码片段并返回输出。在受限环境中运行（禁止 os/subprocess 等），有超时保护。",
@@ -327,7 +327,7 @@ BibTeX 条目：
     )
     registry.register(python_exec_def)
 
-    # --- Phase 4: web_fetch ---
+    # --- web_fetch ---
     web_fetch_def = ToolDefinition(
         name="web_fetch",
         description="获取网页内容。支持 HTTP/HTTPS，可选提取纯文本或返回原始 HTML。",
@@ -336,7 +336,7 @@ BibTeX 条目：
     )
     registry.register(web_fetch_def)
 
-    # --- Phase 4: web_search ---
+    # --- web_search ---
     web_search_def = ToolDefinition(
         name="web_search",
         description="使用搜索引擎搜索信息。通过 Bing 返回搜索结果摘要。",
@@ -345,7 +345,7 @@ BibTeX 条目：
     )
     registry.register(web_search_def)
 
-    # --- Phase 4: export_pdf ---
+    # --- export_pdf ---
     export_pdf_def = ToolDefinition(
         name="export_pdf",
         description="将 Markdown 内容导出为 PDF 文件。使用 Pandoc + Tectonic 编译 LaTeX 生成 PDF。",
@@ -354,7 +354,7 @@ BibTeX 条目：
     )
     registry.register(export_pdf_def)
 
-    # --- Phase 4: manage_knowledge ---
+    # --- manage_knowledge ---
     if rag_store is not None:
         def manage_knowledge(
             action: str,
@@ -429,7 +429,7 @@ BibTeX 条目：
         )
         registry.register(manage_knowledge_def)
 
-    # --- AWA v2: 工作区工具 ---
+    # --- 工作区工具 ---
     # workspace_root 为空时回退到 ~/scholar_agent_files 沙箱目录
     import os
     effective_ws = workspace_root or os.environ.get(

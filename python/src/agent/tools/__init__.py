@@ -9,8 +9,8 @@
 为了保持向后兼容，本模块重新导出了所有原有的公共接口。
 原有的 tools.py 已被拆分为以下模块：
 - core.py: 核心框架（ToolDefinition, ToolRegistry, @tool 装饰器）
-- workspace_tools.py: AWA v2 工作区工具
-- atomic_tools.py: Phase 4 原子工具（shell_exec, python_exec, web_fetch 等）
+- workspace_tools.py: 工作区工具
+- atomic_tools.py: 原子工具（shell_exec, python_exec, web_fetch 等）
 - builtin_tools.py: 其他内置工具（arxiv, 文件操作等）
 - registry.py: create_default_registry 工厂函数
 
