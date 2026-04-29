@@ -236,8 +236,10 @@ def register_agent(
     # ------------------------------------------------------------------
 
     @app.post("/api/agent/v2/chat")
-    async def v2_chat(req: ChatRequest):
+    async def v2_chat(req: ChatRequest, request: Request):
         """v2 SSE endpoint — AgentSession 状态机驱动，支持多任务编排。"""
+        if request.client.host not in ("127.0.0.1", "::1", "localhost"):
+            raise HTTPException(403, "仅限本机访问")
         if not _AGENT_AVAILABLE:
             raise HTTPException(503, "Agent 模块未安装，请安装 chromadb")
 

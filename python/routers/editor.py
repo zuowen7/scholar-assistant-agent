@@ -733,5 +733,6 @@ def register_editor(
             raise HTTPException(500, f"获取引用失败: {e}")
 
     return {
+        "startup": _start_output_reaper,
         "shutdown": _cancel_output_reaper,
     }

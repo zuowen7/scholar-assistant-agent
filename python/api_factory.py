@@ -64,9 +64,6 @@ else:
 
 logger = logging.getLogger(__name__)
 
-MAX_TASKS = 10
-MAX_UPLOAD_SIZE = 200 * 1024 * 1024  # 200 MB
-
 # ── In-process rate limiter ──────────────────────────────────────────────────
 # Sliding-window counter, no external dependency.
 # Rate-limited paths: /api/translate, /api/agent/v2/chat, /api/rag/upload
@@ -187,9 +184,14 @@ def _apply_env_overrides(cfg: dict) -> None:
 
 def _save_config(config: dict) -> None:
     global _config_cache, _config_cache_mtime
+    save_copy = copy.deepcopy(config)
+    # Strip API keys from being written to default.yaml
+    cloud_cfg = save_copy.get("translator", {}).get("cloud", {})
+    if cloud_cfg.get("api_key"):
+        cloud_cfg["api_key"] = ""
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        yaml.dump(config, f, allow_unicode=True, default_flow_style=False)
+        yaml.dump(save_copy, f, allow_unicode=True, default_flow_style=False)
     _config_cache = copy.deepcopy(config)
     _config_cache_mtime = CONFIG_PATH.stat().st_mtime
 
@@ -277,15 +279,16 @@ def _validate_file_path(file_path: Path) -> None:
 
 
 def create_app(*, cloud_only: bool = False) -> FastAPI:
+    from src._version import __version__
     _app_title = "Scholar Assistant API (cloud-only)" if cloud_only else "Scholar Assistant API"
-    app = FastAPI(title=_app_title, version="0.3.1")
+    app = FastAPI(title=_app_title, version=__version__)
 
     @app.exception_handler(Exception)
     async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
         return JSONResponse(
             status_code=500,
-            content={"detail": f"服务器内部错误: {exc}"},
+            content={"detail": "服务器内部错误"},
         )
 
     allowed_origins = [
@@ -387,6 +390,12 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         load_config=_load_config,
         build_cloud_client=_build_cloud_client,
     )
+
+    @app.on_event("startup")
+    async def _startup():
+        startup_editor = state_editor.get("startup")
+        if startup_editor:
+            startup_editor()
 
     @app.on_event("shutdown")
     async def _shutdown():

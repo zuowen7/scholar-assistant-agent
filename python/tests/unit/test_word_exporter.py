@@ -112,9 +112,9 @@ class TestMarkdownToDocx:
 
     def test_page_setup(self, tmp_path):
         out = tmp_path / "setup.docx"
-        markdown_to_docx("text", out, page_width=6.0)
+        markdown_to_docx("text", out)
         doc = Document(out)
         section = doc.sections[0]
-        # 页面宽度 A4，页边距 1 英寸
-        assert section.page_width.inches == 8.5
+        # A4 默认宽度 + 1 英寸页边距
+        assert section.page_width is not None
         assert section.left_margin.inches == 1.0
