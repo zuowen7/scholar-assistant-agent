@@ -131,19 +131,11 @@ def register_editor(
         trans_cfg = config.get("translator", {})
         engine = trans_cfg.get("engine", "ollama")
 
+        from prompts.loader import render_edit_with_text_prompt, render_edit_without_text_prompt
         if text.strip():
-            system_prompt = (
-                "你是一个学术写作助手。用户会提供一段文本和一条指令，"
-                "请严格根据指令处理文本。直接输出处理后的结果，不要添加解释或前言。"
-                "如果指令不是对文本进行编辑操作（如问候、闲聊、提问），请正常回复。"
-            )
-            user_msg = f"--- 文本 ---\n{text}\n--- 指令 ---\n{instruction}"
+            system_prompt, user_msg = render_edit_with_text_prompt(text, instruction)
         else:
-            system_prompt = (
-                "你是一个学术研究助手，可以帮助用户进行学术写作、翻译、润色、"
-                "文献检索、论文大纲等任务。请用中文回复用户的问题。"
-            )
-            user_msg = instruction
+            system_prompt, user_msg = render_edit_without_text_prompt(instruction)
 
         if engine == "cloud":
             cloud_cfg = trans_cfg.get("cloud", {})
@@ -271,12 +263,8 @@ def register_editor(
         trans_cfg = config.get("translator", {})
         engine = trans_cfg.get("engine", "ollama")
 
-        prompt = (
-            "You are an academic writing auto-complete assistant. "
-            "Continue the text naturally. Output ONLY the continuation, "
-            "no explanations, no markdown, no preamble.\n\n"
-            f"Context:\n{context[-2000:]}"
-        )
+        from prompts.loader import render_auto_complete_prompt
+        prompt = render_auto_complete_prompt(context[-2000:])
 
         try:
             if engine == "cloud":
@@ -428,24 +416,12 @@ def register_editor(
             trans_cfg = config.get("translator", {})
             engine = trans_cfg.get("engine", "ollama")
 
-            user_msg = (
-                f"Paper Title: {req.title}\n"
-                f"Target Venue: {req.venue}\n"
-                f"Required Sections: {req.required_sections}\n"
-                f"Input Text:\n{req.markdown[:60000]}"
-            )
-
-            system_prompt = (
-                "You are an academic writing compliance auditor. Analyze the paper and "
-                "produce a structured JSON compliance report.\n\n"
-                "Output ONLY a valid JSON object with these top-level keys:\n"
-                '- "summary": {total_characters, total_words, total_sections, compliance_score (0-100), overall_status ("pass"|"warning"|"fail")}\n'
-                '- "structure": {required_sections (dict of section→{found, word_count, issues}), issues[]}\n'
-                '- "terminology": {consistent_terms[], inconsistent_terms[], issues[]}\n'
-                '- "citation": {total_citations, format_issues[], issues[]}\n'
-                '- "hallucination_risk": {flags[], risk_level ("low"|"medium"|"high"), issues[]}\n'
-                '- "readability": {avg_sentence_length, long_sentences[], issues[]}\n\n'
-                "Do NOT wrap the JSON in markdown fences. Output raw JSON only."
+            from prompts.loader import render_compliance_prompt
+            system_prompt, user_msg = render_compliance_prompt(
+                text=req.markdown[:60000],
+                title=req.title,
+                venue=req.venue,
+                required_sections=req.required_sections,
             )
 
             raw = ""
