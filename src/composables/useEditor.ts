@@ -11,16 +11,13 @@ import { readSseStream } from '../utils/streamReader'
 import {
   monacoEditor, contentVersion, activeTab, content,
   selection, showAiPanel, aiLoading, aiResult, previousContent,
-  insertTextAtCursor, insertImage,
+  insertTextAtCursor, insertImage, getRange,
 } from './useEditorState'
-
-// ── Monaco Range helper ──────────────────────────────────────────────────
-
-/** Get the Monaco Range class from the editor instance, falling back to a minimal shim. */
-function getRange(editor: ReturnType<typeof monacoEditor.value>) {
-  return (editor as any).monaco?.Range ??
-    class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
-}
+import {
+  tabs, activeTabId, activeFile, isModified,
+  setEditorInstance, setContent, updateSelection, markClean, markDirty,
+  openFile, openNewUntitled, closeTab, setActiveTab, renameTabPath, saveFile,
+} from './useEditorTabs'
 
 // ── AI Edit ──────────────────────────────────────────────────────────────
 
@@ -278,10 +275,15 @@ export function cleanup() {
 // ── Facade function (returns module-level singletons) ─────────────────────
 export function useEditor() {
   return {
+    // AI edit state
     showAiPanel, aiLoading, aiResult, previousContent,
     insertTextAtCursor, insertImage,
     monacoEditor, contentVersion, activeTab, content, selection,
     aiEdit, inlineEdit, cancelAiEdit, applyAiResult, rejectAiResult, undoEdit,
     triggerCompletion, acceptGhostText, onDidChangeContent, clearGhostText, cleanup,
+    // Tab management (from useEditorTabs)
+    tabs, activeTabId, activeFile, isModified,
+    setEditorInstance, setContent, updateSelection, markClean, markDirty,
+    openFile, openNewUntitled, closeTab, setActiveTab, renameTabPath, saveFile,
   }
 }
