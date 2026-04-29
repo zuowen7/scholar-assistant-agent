@@ -5,7 +5,7 @@ export interface WordExportResponse {
   filename?: string
 }
 
-async function saveBlob(blob: Blob, defaultName: string): Promise<string | null> {
+export async function saveBlob(blob: Blob, defaultName: string): Promise<string | null> {
   try {
     const { save } = await import('@tauri-apps/plugin-dialog')
     const { writeFile } = await import('@tauri-apps/plugin-fs')
