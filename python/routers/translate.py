@@ -28,8 +28,7 @@ from src.translator.context import extract_document_context
 from src.translator.parallel_runner import translate_chunks_parallel
 from src.translator.memory_store import TranslationMemory
 from src.translator.glossary_store import GlossaryStore
-from src.translator._helpers import restore_paragraphs_if_needed
-from src.translator._helpers import _extract_term_pairs
+from src.translator._helpers import restore_paragraphs_if_needed, _extract_term_pairs
 
 logger = logging.getLogger(__name__)
 
