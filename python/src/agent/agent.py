@@ -122,7 +122,29 @@ def _trim_messages(messages: list[Message]) -> list[Message]:
                 content=tail[i].content[:_TOOL_RESULT_SHORT],
                 tool_call_id=tail[i].tool_call_id,
             )
-    return head + tail
+    result = head + tail
+    # 安全检查：确保 assistant(tool_calls) 后紧跟对应的 tool 消息
+    # 如果序列不合法，去掉末尾不完整的消息块
+    i = 0
+    while i < len(result):
+        m = result[i]
+        if m.role == "assistant" and m.tool_calls:
+            tc_ids = {tc.id for tc in m.tool_calls}
+            # 检查紧随其后的 tool 消息是否覆盖所有 tool_call_id
+            j = i + 1
+            found_ids: set[str] = set()
+            while j < len(result) and result[j].role == "tool":
+                if result[j].tool_call_id:
+                    found_ids.add(result[j].tool_call_id)
+                j += 1
+            if not tc_ids.issubset(found_ids):
+                # 去掉这个不完整的 assistant 块及其后续 tool 消息
+                result = result[:i]
+                break
+            i = j
+        else:
+            i += 1
+    return result
 
 
 class AgentLoop:
