@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import math
 from pathlib import Path
 from typing import Literal
 
@@ -46,12 +45,31 @@ def _font_kwargs(font_path: str | None) -> dict:
     return {"fontname": "china-s"}
 
 
-def _estimate_text_width(text: str, font_size: float) -> float:
-    if not text:
-        return 0.0
-    cjk_ratio = sum(1 for c in text if "一" <= c <= "鿿") / max(len(text), 1)
-    char_w = font_size * (1.05 if cjk_ratio > 0.3 else 0.55)
-    return char_w * len(text)
+def _is_cjk(ch: str) -> bool:
+    cp = ord(ch)
+    return (
+        0x4E00 <= cp <= 0x9FFF    # CJK Unified Ideographs
+        or 0x3400 <= cp <= 0x4DBF  # CJK Extension A
+        or 0x3000 <= cp <= 0x303F  # CJK Symbols
+        or 0xFF00 <= cp <= 0xFFEF  # Fullwidth Forms
+        or 0x2E80 <= cp <= 0x2FDF  # CJK Radicals
+        or 0xF900 <= cp <= 0xFAFF  # CJK Compatibility Ideographs
+    )
+
+
+def _estimate_lines(text: str, avail_w: float, font_size: float) -> int:
+    """Simulate line wrapping with per-character width for accurate line count."""
+    if not text or avail_w <= 0:
+        return 1
+    current_w = 0.0
+    lines = 1
+    for ch in text:
+        cw = font_size * (1.05 if _is_cjk(ch) else 0.55)
+        current_w += cw
+        if current_w > avail_w:
+            lines += 1
+            current_w = cw
+    return lines
 
 
 def _fit_font_size(
@@ -71,7 +89,7 @@ def _fit_font_size(
     lo, hi = MIN_FONT_SIZE, max_fs
     for _ in range(15):
         mid = (lo + hi) / 2
-        n_lines = max(1.0, math.ceil(_estimate_text_width(text, mid) / avail_w))
+        n_lines = _estimate_lines(text, avail_w, mid)
         if n_lines * mid * LINE_HEIGHT_RATIO <= avail_h:
             lo = mid
         else:
