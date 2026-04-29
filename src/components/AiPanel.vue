@@ -4,16 +4,16 @@
     <div class="ac-header">
       <div class="ac-title-row">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-        <span class="ac-title">AI Chat</span>
+        <span class="ac-title">AI 对话</span>
       </div>
       <div class="ac-header-actions">
-        <button class="ac-icon-btn" @click="clearHistory" title="Clear" :disabled="messages.length===0||streaming">
+        <button class="ac-icon-btn" @click="clearHistory" title="清空" :disabled="messages.length===0||streaming">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
         </button>
-        <button class="ac-icon-btn" @click="$emit('undo')" title="Undo insert" :disabled="!canUndo">
+        <button class="ac-icon-btn" @click="$emit('undo')" title="撤销插入" :disabled="!canUndo">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 00-15-6.7L3 13"/></svg>
         </button>
-        <button class="ac-icon-btn" @click="$emit('close')" title="Close">
+        <button class="ac-icon-btn" @click="$emit('close')" title="关闭">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
       </div>
@@ -22,7 +22,7 @@
     <!-- Context bar -->
     <div class="ac-context" v-if="editorContext">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      <span>{{ editorContext.length }} chars from editor</span>
+      <span>已带入编辑器上下文：{{ editorContext.length }} 字符</span>
     </div>
 
     <!-- Messages -->
@@ -31,8 +31,8 @@
         <div class="ac-empty-icon">
           <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
         </div>
-        <p>Hi! I'm your academic writing assistant.</p>
-        <p class="ac-empty-sub">Type <code>/</code> for commands, <code>@</code> to reference files.</p>
+        <p>你好，我是你的学术写作助手。</p>
+        <p class="ac-empty-sub">输入 <code>/</code> 使用命令，输入 <code>@</code> 引用文件。</p>
       </div>
 
       <div v-for="msg in messages" :key="msg.id" class="ac-msg" :class="msg.role">
@@ -46,11 +46,11 @@
             <div v-if="!msg.isStreaming && msg.content" class="ac-actions">
               <button class="ac-action-btn" @click="$emit('insert', msg.content)">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-                Insert
+                插入
               </button>
               <button class="ac-action-btn" @click="copyText(msg.content)">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-                Copy
+                复制
               </button>
             </div>
           </template>
@@ -62,7 +62,7 @@
         <div class="ac-body">
           <div v-if="thinkingText" class="ac-thinking">{{ thinkingText }}</div>
           <div v-if="streamContent" class="ac-ai-bubble" v-html="renderMd(streamContent, 'streaming')"></div>
-          <div v-if="!streamContent && !thinkingText" class="ac-ai-bubble ac-waiting">Thinking...</div>
+          <div v-if="!streamContent && !thinkingText" class="ac-ai-bubble ac-waiting">思考中...</div>
           <div class="ac-cursor"></div>
         </div>
       </div>
@@ -73,22 +73,22 @@
       <div class="ac-file" v-for="f in files" :key="f.name">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         <span>{{ f.name }}</span>
-        <button class="ac-file-x" @click="removeFile(f.name)">×</button>
+        <button class="ac-file-x" title="移除附件" @click="removeFile(f.name)">×</button>
       </div>
     </div>
 
     <!-- Presets -->
     <div class="ac-presets" v-if="!streaming">
-      <button class="ac-preset" @click="sendPreset('polish')">Polish</button>
-      <button class="ac-preset" @click="sendPreset('expand')">Expand</button>
-      <button class="ac-preset" @click="sendPreset('review')">Review</button>
-      <button class="ac-preset" @click="sendPreset('en')">EN</button>
-      <button class="ac-preset" @click="sendPreset('zh')">ZH</button>
+      <button class="ac-preset" @click="sendPreset('polish')">润色</button>
+      <button class="ac-preset" @click="sendPreset('expand')">扩写</button>
+      <button class="ac-preset" @click="sendPreset('review')">审查</button>
+      <button class="ac-preset" @click="sendPreset('en')">英译</button>
+      <button class="ac-preset" @click="sendPreset('zh')">中译</button>
     </div>
 
     <!-- Input area -->
     <div class="ac-input-area">
-      <button class="ac-attach-btn" @click="attachFile" title="Attach file" :disabled="streaming">
+      <button class="ac-attach-btn" @click="attachFile" title="添加附件" :disabled="streaming">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
       </button>
       <div class="ac-input-wrap">
@@ -96,7 +96,7 @@
           ref="inputRef"
           v-model="input"
           class="ac-input"
-          placeholder="Ask anything... (/ for commands, @ to reference files)"
+          placeholder="输入问题...（/ 命令，@ 引用文件）"
           @keydown.enter.exact.prevent="send"
           @keydown.tab.exact.prevent="acceptSuggestion"
           @keydown.escape="dismissSuggestion"
@@ -165,16 +165,16 @@ const atMenu = ref(false)
 
 // ── Slash commands ──────────────────────────────────────────
 const commands = [
-  { cmd: '/explain', prompt: 'Please explain the following text in detail, breaking down the key concepts:', desc: 'Explain text' },
-  { cmd: '/fix', prompt: 'Please identify and fix any issues in the following text:', desc: 'Fix problems' },
-  { cmd: '/translate', prompt: 'Please translate the following text:', desc: 'Translate text' },
-  { cmd: '/polish', prompt: 'Please polish the following academic text, improving grammar, vocabulary and style:', desc: 'Polish writing' },
-  { cmd: '/expand', prompt: 'Please expand the following text with more details and academic depth:', desc: 'Expand content' },
-  { cmd: '/summarize', prompt: 'Please provide a concise summary of the following text:', desc: 'Summarize' },
-  { cmd: '/outline', prompt: 'Please generate a detailed outline for a paper on the following topic:', desc: 'Generate outline' },
-  { cmd: '/review', prompt: 'Please review the following academic text, identify issues and suggest improvements:', desc: 'Review text' },
-  { cmd: '/rewrite', prompt: 'Please rewrite the following text to improve clarity and flow:', desc: 'Rewrite text' },
-  { cmd: '/cite', prompt: 'Please generate proper academic citations (IEEE/APA/GB-T) for the following references:', desc: 'Format citations' },
+  { cmd: '/explain', prompt: 'Please explain the following text in detail, breaking down the key concepts:', desc: '解释文本' },
+  { cmd: '/fix', prompt: 'Please identify and fix any issues in the following text:', desc: '修复问题' },
+  { cmd: '/translate', prompt: 'Please translate the following text:', desc: '翻译文本' },
+  { cmd: '/polish', prompt: 'Please polish the following academic text, improving grammar, vocabulary and style:', desc: '润色写作' },
+  { cmd: '/expand', prompt: 'Please expand the following text with more details and academic depth:', desc: '扩写内容' },
+  { cmd: '/summarize', prompt: 'Please provide a concise summary of the following text:', desc: '总结内容' },
+  { cmd: '/outline', prompt: 'Please generate a detailed outline for a paper on the following topic:', desc: '生成提纲' },
+  { cmd: '/review', prompt: 'Please review the following academic text, identify issues and suggest improvements:', desc: '审查文本' },
+  { cmd: '/rewrite', prompt: 'Please rewrite the following text to improve clarity and flow:', desc: '改写文本' },
+  { cmd: '/cite', prompt: 'Please generate proper academic citations (IEEE/APA/GB-T) for the following references:', desc: '格式化引用' },
 ]
 
 const filteredCommands = computed(() => {
@@ -251,8 +251,8 @@ function renderMd(text: string, msgId: string): string {
     const displayLang = lang || 'text'
     return `<div class="ac-code-block" data-id="${id}">`
       + `<div class="ac-code-bar"><span class="ac-code-lang">${displayLang}</span>`
-      + `<button class="ac-code-btn ac-code-copy">Copy</button>`
-      + `<button class="ac-code-btn ac-code-insert">Insert</button>`
+      + `<button class="ac-code-btn ac-code-copy">复制</button>`
+      + `<button class="ac-code-btn ac-code-insert">插入</button>`
       + `</div>`
       + `<pre><code>${code}</code></pre></div>`
   })
@@ -347,23 +347,23 @@ async function doSend(text: string) {
       signal: aiAbortCtrl.value.signal,
     })
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ detail: 'Request failed' }))
+      const err = await resp.json().catch(() => ({ detail: '请求失败' }))
       throw new Error(err.detail || `HTTP ${resp.status}`)
     }
     const reader = resp.body?.getReader()
-    if (!reader) throw new Error('No response body')
+    if (!reader) throw new Error('响应内容为空')
 
     await readSseStream(reader, (evtType, d) => {
       if (evtType === 'token' && d.content) { streamContent.value += d.content as string; scrollBottom() }
       else if (evtType === 'response' && d.content) { streamContent.value = d.content as string }
-      else if (evtType === 'error') { streamContent.value = (d.content as string) || 'Error' }
+      else if (evtType === 'error') { streamContent.value = (d.content as string) || '错误' }
       else if (evtType === 'thinking' && d.content) { thinkingText.value = d.content as string }
-      else if (evtType === 'tool_call') { thinkingText.value = 'Calling: ' + (((d.metadata as Record<string, unknown>)?.tool_name as string) || '...') }
+      else if (evtType === 'tool_call') { thinkingText.value = '正在调用：' + (((d.metadata as Record<string, unknown>)?.tool_name as string) || '...') }
       else if (evtType === 'tool_result') { thinkingText.value = '' }
     })
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') return
-    streamContent.value = `Error: ${e instanceof Error ? e.message : String(e)}`
+    streamContent.value = `错误：${e instanceof Error ? e.message : String(e)}`
   } finally {
     streaming.value = false; thinkingText.value = ''
     if (streamContent.value) {
@@ -382,8 +382,8 @@ function handleCodeBlockClick(e: MouseEvent) {
   const code = block.querySelector('code')?.textContent ?? ''
   if (btn.classList.contains('ac-code-copy')) {
     navigator.clipboard.writeText(code).catch(() => {})
-    btn.textContent = 'Copied!'
-    setTimeout(() => { btn.textContent = 'Copy' }, 1500)
+    btn.textContent = '已复制'
+    setTimeout(() => { btn.textContent = '复制' }, 1500)
   } else if (btn.classList.contains('ac-code-insert')) {
     emit('insert', code)
   }

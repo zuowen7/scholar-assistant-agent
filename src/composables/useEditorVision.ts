@@ -1,4 +1,5 @@
 import { API_BASE } from '../utils/api'
+import { insertImage } from './useEditorState'
 
 export type VisionAnalysisType = 'general' | 'chart' | 'table' | 'formula'
 
@@ -62,5 +63,12 @@ export function useEditorVision() {
     return await resp.json() as VisionAnalysisResponse
   }
 
-  return { uploadImage, analyzeVision, ocrImage, analyzeChart, extractTableFromImage }
+  async function insertImageFile(file: File): Promise<ImageUploadResponse | null> {
+    const data = await uploadImage(file)
+    if (!data) return null
+    insertImage(data.url || data.path, data.filename || file.name)
+    return data
+  }
+
+  return { uploadImage, insertImageFile, analyzeVision, ocrImage, analyzeChart, extractTableFromImage }
 }

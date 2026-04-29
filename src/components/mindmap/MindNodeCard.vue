@@ -1,5 +1,5 @@
 <template>
-  <div class="mind-node" :class="[`depth-${data.depth}`, { selected, root: data.isRoot }]">
+  <div class="mind-node" :class="[`depth-${data.depth}`, { selected, root: data.isRoot, editing }]">
     <div class="color-bar" :style="{ background: barColor }"></div>
     <div class="node-body">
       <div class="node-header">
@@ -51,10 +51,9 @@ const selected = computed(() => selectedNodeId.value === props.id)
 const issueCount = computed(() => analysisIssuesByNode.value[props.id] ?? 0)
 
 const DEPTH_COLORS = ['#6366f1', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444']
+const DEPTH_ICONS = ['●', '◆', '■', '●', '◆', '■']
 const barColor = computed(() => DEPTH_COLORS[Math.min(props.data.depth, DEPTH_COLORS.length - 1)])
-
-const DEPTH_ICONS = ['◆', '▶', '●', '◇', '▷', '○']
-const icon = computed(() => props.data.isRoot ? '◆' : DEPTH_ICONS[Math.min(props.data.depth, 5)])
+const icon = computed(() => props.data.isRoot ? '●' : DEPTH_ICONS[Math.min(props.data.depth, 5)])
 
 function startEdit() {
   editing.value = true
@@ -89,26 +88,32 @@ defineExpose({ startEdit })
 <style scoped>
 .mind-node {
   display: flex;
-  min-width: 180px;
-  max-width: 300px;
+  min-width: 132px;
+  max-width: 276px;
   background: var(--c-surface-2);
-  border: 1px solid var(--c-surface-3);
+  border: 1px solid color-mix(in srgb, var(--c-surface-3) 88%, transparent);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.14);
   overflow: hidden;
-  transition: all 160ms var(--ease-out);
+  transition: transform 160ms var(--ease-out), box-shadow 160ms var(--ease-out), border-color 160ms var(--ease-out);
   cursor: grab;
 }
 .mind-node:hover {
   transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
   border-color: var(--c-surface-4);
 }
 .mind-node.selected {
   border-color: var(--c-accent);
-  box-shadow: 0 0 0 2px var(--c-accent-bg), var(--shadow-md);
+  box-shadow: 0 0 0 2px var(--c-accent-bg), 0 12px 28px rgba(0, 0, 0, 0.2);
+}
+.mind-node.editing {
+  border-color: color-mix(in srgb, var(--c-accent) 86%, #fff);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 22%, transparent), 0 12px 28px rgba(0, 0, 0, 0.22);
 }
 .mind-node.root {
+  min-width: 154px;
+  max-width: 300px;
   background: linear-gradient(135deg, var(--c-surface-2), var(--c-accent-bg));
 }
 
@@ -119,7 +124,7 @@ defineExpose({ startEdit })
 
 .node-body {
   flex: 1;
-  padding: var(--space-2) var(--space-3);
+  padding: 7px 10px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -130,40 +135,42 @@ defineExpose({ startEdit })
 .node-header {
   display: flex;
   align-items: flex-start;
-  gap: var(--space-2);
+  gap: 7px;
   min-width: 0;
   flex: 1;
 }
 
 .node-icon {
   color: var(--c-text-2);
-  font-size: var(--text-sm);
-  margin-top: 2px;
+  font-size: 10px;
+  margin-top: 5px;
 }
 
 .node-text {
-  font-size: var(--text-base);
+  font-size: 13px;
   color: var(--c-text-0);
   word-break: break-word;
-  line-height: 1.4;
+  line-height: 1.38;
   cursor: default;
 }
 .mind-node.root .node-text {
-  font-size: var(--text-lg);
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 650;
 }
 
 .node-input {
   flex: 1;
-  background: transparent;
-  border: none;
+  min-width: 0;
+  background: color-mix(in srgb, var(--c-surface-1) 78%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c-accent) 58%, transparent);
+  border-radius: 6px;
   outline: none;
   color: var(--c-text-0);
   font: inherit;
-  font-size: var(--text-base);
+  font-size: 13px;
   resize: none;
-  line-height: 1.4;
-  padding: 0;
+  line-height: 1.38;
+  padding: 3px 5px;
 }
 
 .node-badge {

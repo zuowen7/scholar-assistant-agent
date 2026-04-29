@@ -3,7 +3,7 @@
     <div class="project-start-dialog">
       <div class="project-start-header">
         <div>
-          <div class="welcome-kicker">New Project</div>
+          <div class="welcome-kicker">新建工程</div>
           <h3>新建工程</h3>
         </div>
         <button class="project-start-close" aria-label="关闭" @click="$emit('close')">

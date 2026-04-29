@@ -46,14 +46,14 @@ const selected = computed(() => props.selected)
 
 const edgeStyle = computed(() => {
   const base = isAssociation.value
-    ? { stroke: 'var(--c-accent)', strokeDasharray: '6 4', strokeWidth: 1.5, opacity: 0.7 }
-    : { stroke: 'var(--c-surface-4)', strokeWidth: 2 }
+    ? { stroke: 'var(--c-accent)', strokeDasharray: '6 5', strokeWidth: 1.35, opacity: 0.58 }
+    : { stroke: 'color-mix(in srgb, var(--c-surface-4) 82%, transparent)', strokeWidth: 1.8, opacity: 0.9 }
 
   if (selected.value) {
-    return { ...base, stroke: 'var(--c-danger)', strokeWidth: 3, opacity: 1 }
+    return { ...base, stroke: 'var(--c-danger)', strokeWidth: 2.6, opacity: 1 }
   }
   if (hovered.value) {
-    return { ...base, stroke: 'var(--c-warn)', strokeWidth: 3, opacity: 1 }
+    return { ...base, stroke: 'var(--c-warn)', strokeWidth: 2.6, opacity: 1 }
   }
   return base
 })

@@ -6,7 +6,6 @@
       role="dialog"
       aria-label="AI 编辑命令"
     >
-      <!-- 任务类型切换 -->
       <div class="cmd-task-tabs" role="tablist">
         <button
           v-for="t in taskTypes"
@@ -19,12 +18,10 @@
         >{{ t.label }}</button>
       </div>
 
-      <!-- 快捷说明 -->
       <div v-if="activeTask === 'coherence'" class="cmd-hint">
-        已自动传入前一段作为上下文
+        已自动带入前一段作为上下文
       </div>
 
-      <!-- 输入区 -->
       <div class="cmd-input-row">
         <input
           ref="inputRef"
@@ -36,12 +33,11 @@
           @keydown.stop
         />
         <button class="cmd-submit" @click="handleSubmit" :disabled="loading" aria-label="执行">
-          <span v-if="!loading">Apply</span>
+          <span v-if="!loading">应用</span>
           <span v-else class="cmd-spinner"></span>
         </button>
       </div>
 
-      <!-- 预设按钮 -->
       <div class="cmd-presets">
         <button
           v-for="p in currentTask.presets"
@@ -82,38 +78,38 @@ const taskTypes: TaskType[] = [
   {
     id: 'polish',
     label: '润色',
-    placeholder: 'AI instruction (Enter to apply, Esc to cancel)...',
+    placeholder: '输入 AI 指令，按 Enter 应用，Esc 取消...',
     presets: [
-      { label: 'Academic Polish', instruction: 'Polish for formal academic English' },
-      { label: 'Concise', instruction: 'Make more concise without losing meaning' },
-      { label: 'Fix Grammar', instruction: 'Fix grammar and improve clarity' },
+      { label: '学术润色', instruction: 'Polish for formal academic English' },
+      { label: '更简洁', instruction: 'Make more concise without losing meaning' },
+      { label: '修正语法', instruction: 'Fix grammar and improve clarity' },
     ],
   },
   {
     id: 'expand',
     label: '扩写',
-    placeholder: 'Describe how to expand...',
+    placeholder: '描述希望如何扩写...',
     presets: [
-      { label: 'Expand', instruction: 'Expand into a complete academic paragraph' },
-      { label: 'Shorten', instruction: 'Condense into fewer sentences' },
+      { label: '扩成段落', instruction: 'Expand into a complete academic paragraph' },
+      { label: '压缩表达', instruction: 'Condense into fewer sentences' },
     ],
   },
   {
     id: 'coherence',
     label: '连贯性',
-    placeholder: 'Describe the section goal...',
+    placeholder: '描述本节目标或衔接要求...',
     presets: [
-      { label: 'Connect to Prev', instruction: 'Improve transition from previous paragraph' },
-      { label: 'Section Flow', instruction: 'Better serve the section goal' },
+      { label: '衔接前文', instruction: 'Improve transition from previous paragraph' },
+      { label: '优化段落流', instruction: 'Better serve the section goal' },
     ],
   },
   {
     id: 'grammar',
     label: '语法',
-    placeholder: 'Describe the fix...',
+    placeholder: '描述需要修正的问题...',
     presets: [
-      { label: 'Fix Grammar', instruction: 'Fix grammar and spelling errors' },
-      { label: 'Improve Clarity', instruction: 'Improve sentence clarity and readability' },
+      { label: '修正语法', instruction: 'Fix grammar and spelling errors' },
+      { label: '提升清晰度', instruction: 'Improve sentence clarity and readability' },
     ],
   },
 ]
