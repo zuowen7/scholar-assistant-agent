@@ -80,21 +80,27 @@ class VisionClient:
         return {}
 
     def _get_credentials(self) -> tuple[str, str, str]:
-        """获取认证信息"""
+        """获取认证信息。优先读取 vision 专属配置，其次回退到 translator.cloud。"""
         config = self._load_config()
-        cloud = config.get("translator", {}).get("cloud", {})
+        vision_cfg = config.get("vision", {})
+        cloud_cfg = config.get("translator", {}).get("cloud", {})
 
-        api_key = self.api_key or cloud.get("api_key", "")
-        base_url = self.base_url
+        base_url = (vision_cfg.get("base_url", "").rstrip("/")
+                    or cloud_cfg.get("base_url", "").rstrip("/")
+                    or self.base_url)
+        api_key = (self.api_key
+                   or vision_cfg.get("api_key", "")
+                   or cloud_cfg.get("api_key", ""))
+        model = (vision_cfg.get("model", "")
+                 or cloud_cfg.get("model", "")
+                 or self.model)
+
         if not api_key:
-            # 尝试环境变量
             import os
             api_key = os.environ.get("OPENAI_API_KEY", "")
             base_url = os.environ.get("OPENAI_BASE_URL", base_url)
 
-        model = cloud.get("model", self.model) or "gpt-4o"
-
-        return base_url, api_key, model
+        return base_url, api_key, model or "gpt-4o"
 
     def _encode_image(self, image_path: str | Path) -> str:
         """将图片编码为 base64"""
@@ -159,14 +165,14 @@ class VisionClient:
         image_path: str | Path,
         analysis_type: str,
     ) -> VisionResult:
-        """使用 OpenAI GPT-4o Vision API 分析"""
-        importaiohttp = False
+        """使用 OpenAI-compatible Vision API 分析"""
+        use_httpx = False
         try:
             import aiohttp
         except ImportError:
             try:
                 import httpx
-                importaiohttp = True
+                use_httpx = True
             except ImportError:
                 raise ImportError("需要安装 aiohttp 或 httpx")
 
@@ -222,7 +228,7 @@ class VisionClient:
         ]
 
         try:
-            if importaiohttp:
+            if use_httpx:
                 async with httpx.AsyncClient(timeout=self.timeout) as client:
                     resp = await client.post(
                         f"{base_url}/chat/completions",
@@ -236,6 +242,8 @@ class VisionClient:
                             "max_tokens": 2048,
                         },
                     )
+                    resp.raise_for_status()
+                    result = resp.json()
             else:
                 async with aiohttp.ClientSession() as session:
                     async with session.post(
@@ -250,17 +258,14 @@ class VisionClient:
                             "max_tokens": 2048,
                         },
                     ) as resp:
+                        resp.raise_for_status()
                         result = await resp.json()
-
-            if importaiohttp:
-                resp.raise_for_status()
-                result = resp.json()
 
             content = result["choices"][0]["message"]["content"]
             return self._parse_vision_response(content, analysis_type)
 
         except Exception as e:
-            logger.error("OpenAI Vision API 调用失败: %s", e)
+            logger.error("Vision API 调用失败: %s", e)
             raise
 
     async def _analyze_claude(
