@@ -168,6 +168,7 @@ import MindMapCanvas from './mindmap/MindMapCanvas.vue'
 import { useMindMap, mindMapToMarkdown, setAnalysisIssues } from '../composables/useMindMap'
 import { useMindMapAnalysis, type MindMapAnalysisIssue } from '../composables/useMindMapAnalysis'
 import { useMindMapLayout } from '../composables/useMindMapLayout'
+import { useMindMapKeyboard } from '../composables/useMindMapKeyboard'
 
 const emit = defineEmits<{
   (e: 'enter-editor', outline: string): void
@@ -193,6 +194,7 @@ const {
 } = useMindMap()
 const { analyzeMindMap } = useMindMapAnalysis()
 const { autoLayout } = useMindMapLayout()
+const { onKeydown } = useMindMapKeyboard()
 
 const selectedText = ref('')
 const saveMessage = ref('')
@@ -257,6 +259,7 @@ onMounted(async () => {
   })
   canvasResizeObserver.observe(document.documentElement)
   window.addEventListener('resize', handleWindowResize)
+  window.addEventListener('keydown', onKeydown)
   clampPaneSizes()
   await loadFromBackend()
 })
@@ -264,6 +267,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   canvasResizeObserver?.disconnect()
   window.removeEventListener('resize', handleWindowResize)
+  window.removeEventListener('keydown', onKeydown)
 })
 
 function applyInspectorText() {
@@ -592,7 +596,7 @@ async function aiExpandSelectedNode() {
 }
 .mindmap-canvas-vf {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   width: 100%;
   height: 100%;
   min-width: 0;
