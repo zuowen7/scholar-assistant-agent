@@ -81,7 +81,30 @@ function setEditorInstance(editor: import('monaco-editor').editor.IStandaloneCod
 
 async function saveFile(): Promise<string | null> {
   const tab = activeTab.value
-  if (!tab || !tab.path) return '无法保存：请先导出到文件'
+  if (!tab) return null
+
+  // Untitled tab — prompt Save As dialog
+  if (!tab.path) {
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog')
+      const chosen = await save({
+        defaultPath: `${tab.name || 'untitled'}.md`,
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      })
+      if (!chosen) return null  // user cancelled
+      const { writeTextFile } = await import('@tauri-apps/plugin-fs')
+      await writeTextFile(chosen, tab.content)
+      tab.path = chosen
+      tab.id = chosen
+      tab.name = chosen.split(/[\\/]/).pop() || tab.name
+      tab.isModified = false
+      return null
+    } catch {
+      return '无法保存：请先导出到文件'
+    }
+  }
+
+  // Named tab — save in place
   const { writeTextFile } = await import('@tauri-apps/plugin-fs')
   await writeTextFile(tab.path, tab.content)
   tab.isModified = false

@@ -149,13 +149,28 @@ def _load_config() -> dict:
     return cfg
 
 
+def _strip_empty_strings(d: dict) -> dict:
+    """Remove keys with empty-string values so they don't clobber real values."""
+    result = {}
+    for k, v in d.items():
+        if isinstance(v, dict):
+            nested = _strip_empty_strings(v)
+            if nested:
+                result[k] = nested
+        elif v != "":
+            result[k] = v
+    return result
+
+
 def _apply_local_overrides(cfg: dict) -> None:
     """Merge default.local.yaml into cfg if it exists (never tracked by git)."""
     local_path = CONFIG_PATH.parent / "default.local.yaml"
     if local_path.exists():
         with open(local_path, encoding="utf-8") as f:
             local_cfg = yaml.safe_load(f) or {}
-        cfg.update(_deep_merge(cfg, local_cfg))
+        local_cfg = _strip_empty_strings(local_cfg)
+        if local_cfg:
+            cfg.update(_deep_merge(cfg, local_cfg))
 
 
 def _apply_env_overrides(cfg: dict) -> None:
@@ -209,12 +224,30 @@ _DENIED_EXTENSIONS = {".env", ".key", ".pem", ".p12", ".pfx", ".secret", ".crede
 
 
 def _validate_file_path(file_path: Path) -> None:
+    original = file_path
     resolved = file_path.resolve()
     resolved_str = str(resolved)
+
+    # Symlink guard: reject if any component is a symlink pointing outside user home.
+    # resolve() follows symlinks, so if the resolved path diverges significantly
+    # from the original, it may be a symlink escape.
+    home = Path.home().resolve()
+    try:
+        resolved.relative_to(home)
+    except ValueError:
+        # Path is outside user home — only allow if under RUNTIME_DIR or temp.
+        try:
+            resolved.relative_to(RUNTIME_DIR)
+        except ValueError:
+            import tempfile
+            try:
+                resolved.relative_to(Path(tempfile.gettempdir()).resolve())
+            except ValueError:
+                raise HTTPException(403, "文件路径必须在用户目录、数据目录或临时目录内")
+
     for prefix in _DENIED_PATH_PREFIXES:
         if resolved_str.startswith(prefix):
             raise HTTPException(403, f"禁止访问系统目录: {prefix}")
-    home = Path.home().resolve()
     try:
         rel = resolved.relative_to(home)
         parts = rel.parts
@@ -223,8 +256,6 @@ def _validate_file_path(file_path: Path) -> None:
     except ValueError:
         pass
     # Block Windows AppData — absolute paths like C:\Users\<user>\AppData\...
-    # are not caught by the home-relative check above (ValueError silently passes),
-    # and are not covered by _DENIED_PATH_PREFIXES.
     # Exception: AppData\Local\Temp is allowed (pytest tmp_path, legitimate temp files).
     if resolved_str.startswith(f"{home}\\AppData\\Roaming\\") or \
             (resolved_str.startswith(f"{home}\\AppData\\Local\\") and
