@@ -7,6 +7,7 @@ import copy
 import json
 import logging
 import os
+import re
 import shutil
 import time
 import uuid
@@ -50,18 +51,17 @@ def _build_block_translations(
 ) -> dict[str, str]:
     """Map block_id → translated text from chunk results.
 
-    We reconstruct block-level translations by splitting each chunk's
-    translated text proportionally across the blocks it contained.
-
-    Args:
-        chunk_results: list of dicts with 'original' and 'translated' keys.
-        blocks: sequence of objects with .block_id and .text attributes
-                (e.g. src.parser.extractor.TextBlock).
+    Reconstruct block-level translations by splitting each chunk's
+    translated text at sentence boundaries (not arbitrary character positions)
+    across the blocks it contained.
     """
     if not chunk_results or not blocks:
         return {}
 
     block_texts: dict[str, str] = {b.block_id: b.text for b in blocks}
+
+    # Build a mapping: block_id → original text length, preserving order
+    block_order = [b.block_id for b in blocks if b.block_id in block_texts]
 
     translations: dict[str, str] = {}
 
@@ -72,18 +72,115 @@ def _build_block_translations(
         if not trans or not orig:
             continue
 
-        for bid, btext in block_texts.items():
+        # Find blocks that belong to this chunk (in document order)
+        matched_blocks = []
+        for bid in block_order:
             if bid in translations:
                 continue
-            if orig.startswith(btext[:30]) or btext.startswith(orig[:30]) or (len(btext) >= 3 and btext in orig):
-                ratio = len(btext) / max(len(orig), 1)
-                chars_to_take = max(1, int(len(trans) * ratio))
-                translations[bid] = trans[:chars_to_take]
-                trans = trans[chars_to_take:]
-                if not trans:
-                    break
+            btext = block_texts[bid]
+            if (orig.startswith(btext[:30])
+                    or btext.startswith(orig[:30])
+                    or (len(btext) >= 3 and btext in orig)):
+                matched_blocks.append((bid, len(btext)))
+
+        if not matched_blocks:
+            continue
+
+        # Split translation at sentence/paragraph boundaries
+        trans_parts = _split_translation_to_parts(trans, len(matched_blocks))
+
+        for i, (bid, _) in enumerate(matched_blocks):
+            if i < len(trans_parts):
+                translations[bid] = trans_parts[i]
 
     return translations
+
+
+def _split_translation_to_parts(text: str, n_parts: int) -> list[str]:
+    """Split *text* into *n_parts* pieces at sentence/paragraph boundaries."""
+    if n_parts <= 1:
+        return [text]
+
+    # Split on paragraph boundaries first
+    para_breaks = [m.end() for m in re.finditer(r'\n\n+', text)]
+
+    if len(para_breaks) >= n_parts - 1:
+        # Enough paragraph breaks — use them
+        parts = []
+        prev = 0
+        chosen = _pick_evenly_spaced(para_breaks, n_parts - 1)
+        for pos in chosen:
+            parts.append(text[prev:pos].strip())
+            prev = pos
+        parts.append(text[prev:].strip())
+        return parts
+
+    # Split on sentence-ending punctuation (。.！!？?)
+    sent_breaks = [m.end() for m in re.finditer(r'[。.！!？?][\s]*', text)]
+
+    if len(sent_breaks) >= n_parts - 1:
+        parts = []
+        prev = 0
+        chosen = _pick_evenly_spaced(sent_breaks, n_parts - 1)
+        for pos in chosen:
+            parts.append(text[prev:pos].strip())
+            prev = pos
+        parts.append(text[prev:].strip())
+        return parts
+
+    # Fallback: proportional character split, but align to nearest sentence break
+    total = len(text)
+    target_positions = [int(total * (i + 1) / n_parts) for i in range(n_parts - 1)]
+    all_breaks = sorted(set(para_breaks + sent_breaks))
+
+    parts = []
+    prev = 0
+    for target in target_positions:
+        best = _snap_to_nearest(target, all_breaks, tolerance=max(20, total // (n_parts * 2)))
+        if best is None:
+            best = target
+        parts.append(text[prev:best].strip())
+        prev = best
+    parts.append(text[prev:].strip())
+    return parts
+
+
+def _pick_evenly_spaced(breaks: list[int], n: int) -> list[int]:
+    """Pick *n* positions from *breaks* that are most evenly spaced."""
+    if n <= 0:
+        return []
+    if n >= len(breaks):
+        return breaks[:n]
+
+    total = breaks[-1]
+    target = [int(total * (i + 1) / (n + 1)) for i in range(n)]
+    chosen = []
+    used = set()
+    for t in target:
+        best_idx = 0
+        best_dist = abs(breaks[0] - t)
+        for j, b in enumerate(breaks):
+            if j in used:
+                continue
+            d = abs(b - t)
+            if d < best_dist:
+                best_dist = d
+                best_idx = j
+        chosen.append(breaks[best_idx])
+        used.add(best_idx)
+    return sorted(chosen)
+
+
+def _snap_to_nearest(target: int, breaks: list[int], tolerance: int = 20) -> int | None:
+    """Find the break closest to *target* within *tolerance*."""
+    best = None
+    best_dist = tolerance
+    for b in breaks:
+        d = abs(b - target)
+        if d < best_dist:
+            best_dist = d
+            best = b
+    return best
 
 
 class FilePathPayload(BaseModel):
@@ -554,10 +651,11 @@ def register_translate(
                         "source_lang": src_label,
                     }
                     dual_text = f"[原文]\n{clean_result.text}\n\n[译文]\n{content}"
-                    rag_store.ingest_document(
-                        doc_id=f"trans_{task_id}",
-                        text=dual_text,
-                        metadata=rag_meta,
+                    await asyncio.to_thread(
+                        rag_store.ingest_document,
+                        f"trans_{task_id}",
+                        dual_text,
+                        rag_meta,
                     )
                     logger.info("翻译结果已自动入库 RAG: trans_%s", task_id)
                 except Exception as rag_err:
