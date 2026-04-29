@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import sqlite3
+import threading
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,6 +50,7 @@ class TranslationMemory:
         self._encoder = None
         self._encoder_dim: int | None = None
         self._fuzzy_ok: bool | None = None  # None = untested, set after first attempt
+        self._encoder_lock = threading.Lock()
 
     def _init_schema(self) -> None:
         self._conn.executescript("""
@@ -71,7 +73,12 @@ class TranslationMemory:
         self._conn.commit()
 
     def _get_encoder(self):
-        if self._fuzzy_ok is None:
+        if self._fuzzy_ok is not None:
+            return self._encoder
+        with self._encoder_lock:
+            # Double-check after acquiring lock
+            if self._fuzzy_ok is not None:
+                return self._encoder
             try:
                 from sentence_transformers import SentenceTransformer
                 self._encoder = SentenceTransformer("all-MiniLM-L6-v2")
@@ -81,6 +88,11 @@ class TranslationMemory:
                 logger.warning(
                     "sentence-transformers 未安装，TM 模糊匹配已禁用。"
                     " 可通过 `pip install sentence-transformers` 启用。"
+                )
+                self._fuzzy_ok = False
+            except Exception as exc:
+                logger.warning(
+                    "sentence-transformers 加载失败（TM 模糊匹配已禁用）: %s", exc,
                 )
                 self._fuzzy_ok = False
         return self._encoder
