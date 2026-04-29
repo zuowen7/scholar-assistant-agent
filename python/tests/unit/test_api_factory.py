@@ -113,6 +113,35 @@ class TestDeepMerge:
         assert result == {"a": 1}
 
 
+# ── _strip_empty_strings ───────────────────────────────────────────────
+
+
+class TestStripEmptyStrings:
+
+    def _strip(self, d: dict) -> dict:
+        from api_factory import _strip_empty_strings
+        return _strip_empty_strings(d)
+
+    def test_removes_empty_string_values(self) -> None:
+        result = self._strip({"translator": {"cloud": {"api_key": "", "base_url": "https://api.openai.com"}}})
+        assert result == {"translator": {"cloud": {"base_url": "https://api.openai.com"}}}
+
+    def test_removes_empty_nested_dict(self) -> None:
+        result = self._strip({"translator": {"cloud": {"api_key": ""}}})
+        assert result == {}
+
+    def test_keeps_non_empty_values(self) -> None:
+        d = {"translator": {"cloud": {"api_key": "sk-xxx", "model": "gpt-4o"}}}
+        assert self._strip(d) == d
+
+    def test_keeps_non_string_values(self) -> None:
+        d = {"a": 0, "b": False, "c": None}
+        assert self._strip(d) == {"a": 0, "b": False, "c": None}
+
+    def test_empty_input(self) -> None:
+        assert self._strip({}) == {}
+
+
 # ── _validate_file_path ────────────────────────────────────────────────
 
 
