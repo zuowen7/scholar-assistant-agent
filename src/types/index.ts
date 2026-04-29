@@ -61,6 +61,8 @@ export interface TranslateState {
   taskId: string | null
   /** Number of chunks that fell back to original text due to translation failure */
   fallbackChunks: number
+  /** Whether translation was successfully ingested into RAG knowledge base */
+  ragIngested: boolean
 }
 
 export interface AppConfig {

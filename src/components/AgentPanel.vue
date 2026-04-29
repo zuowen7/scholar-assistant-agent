@@ -138,8 +138,17 @@
     <div v-show="tab === 'docs'" class="agent-docs">
       <div class="docs-toolbar">
         <span class="docs-title">已入库文档</span>
-        <button class="btn ghost" @click="fetchDocs" :disabled="ragLoading">刷新</button>
+        <div class="docs-toolbar-actions">
+          <button class="btn primary" :disabled="ragUploading" @click="ragFileInput?.click()">
+            {{ ragUploading ? '上传中...' : '上传文件' }}
+          </button>
+          <button class="btn ghost" @click="fetchDocs" :disabled="ragLoading">刷新</button>
+        </div>
+        <input ref="ragFileInput" type="file" style="display:none"
+          accept=".pdf,.docx,.doc,.txt,.md,.log,.html,.htm,.epub,.rtf,.tex,.csv,.pptx,.xlsx,.srt,.json,.xml"
+          @change="handleRagUpload" />
       </div>
+      <div v-if="ragUploadError" class="docs-error">{{ ragUploadError }}</div>
       <div v-if="ragLoading" class="docs-loading">加载中...</div>
       <div v-else-if="ragDocuments.length === 0" class="docs-empty">暂无文档</div>
       <div v-else class="docs-list">
@@ -260,6 +269,7 @@ const {
   fetchSessions: _fetchSessions,
   fetchRAGDocuments: _fetchRAGDocs,
   deleteRAGDocument,
+  uploadRAGFile,
 } = useAgentChat()
 
 const { selection: editorSelection, content: editorContent, activeTab: editorActiveTab } = useEditor()
@@ -269,11 +279,29 @@ const input = ref('')
 const messagesRef = ref<HTMLElement | null>(null)
 const sessions = ref<AgentSessionInfo[]>([])
 const files = ref<{ name: string; content: string }[]>([])
+const ragFileInput = ref<HTMLInputElement | null>(null)
+const ragUploading = ref(false)
+const ragUploadError = ref('')
 
 const contextText = computed(() => {
   if (!editorActiveTab.value) return ''
   return editorSelection.value.text || editorContent.value
 })
+
+async function handleRagUpload() {
+  const fileInput = ragFileInput.value
+  if (!fileInput?.files?.length) return
+  const file = fileInput.files[0]
+  ragUploading.value = true
+  ragUploadError.value = ''
+  const result = await uploadRAGFile(file)
+  ragUploading.value = false
+  if (!result.ok) {
+    ragUploadError.value = result.error || '上传失败'
+    setTimeout(() => { ragUploadError.value = '' }, 4000)
+  }
+  fileInput.value = ''
+}
 
 // ── Tool descriptions ──
 const TOOL_DESCRIPTIONS: Record<string, string> = {
@@ -702,6 +730,8 @@ watch(tab, (t) => {
 /* Docs tab */
 .agent-docs { flex: 1; overflow-y: auto; padding: 16px; }
 .docs-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.docs-toolbar-actions { display: flex; gap: 6px; }
+.docs-error { text-align: center; color: var(--c-danger); font-size: 12px; padding: 8px; background: var(--c-danger-bg); border-radius: 6px; margin-bottom: 8px; }
 .docs-title { font-size: 13px; font-weight: 600; color: var(--c-text-0); }
 .docs-loading, .docs-empty { text-align: center; color: var(--c-text-3); padding: 40px; }
 .docs-list { display: flex; flex-direction: column; gap: 8px; }
