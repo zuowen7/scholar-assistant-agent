@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import hashlib
 import json
 import logging
 import os
@@ -45,6 +46,114 @@ class ConfigUpdate(BaseModel):
     cloud: dict | None = None
 
 
+def _merge_blocks_to_paragraphs(blocks: list) -> list:
+    """Merge line-level blocks into paragraph-level blocks for overlay.
+
+    PDF blocks are extracted per-line with tiny gaps (2-3 pts) — too small
+    for overlay translations.  This groups consecutive lines into paragraphs
+    by detecting font changes, gap thresholds, and column boundaries.
+    Oversized blocks are re-split at sentence boundaries so the overlay has
+    room to render translated text between groups.
+    """
+    if not blocks:
+        return blocks
+
+    from src.parser.extractor import TextBlock
+    if all(b.height >= 20 for b in blocks):
+        return blocks
+
+    def _base_font(name: str) -> str:
+        return name.split("-")[0].split("+")[0].lower()
+
+    merged: list[TextBlock] = []
+    for block in blocks:
+        if not merged:
+            merged.append(block)
+            continue
+        prev = merged[-1]
+        gap = block.bbox[1] - prev.bbox[3]
+        x_overlap = prev.bbox[0] < block.bbox[2] and block.bbox[0] < prev.bbox[2]
+        same_font_family = _base_font(prev.font_name) == _base_font(block.font_name)
+        font_size_close = abs(prev.font_size - block.font_size) < 1.5
+
+        should_merge = (
+            block.page == prev.page
+            and x_overlap
+            and -2 <= gap <= 3
+            and same_font_family
+            and font_size_close
+        )
+
+        if should_merge:
+            new_bbox = (
+                min(prev.bbox[0], block.bbox[0]),
+                prev.bbox[1],
+                max(prev.bbox[2], block.bbox[2]),
+                max(prev.bbox[3], block.bbox[3]),
+            )
+            new_text = prev.text + " " + block.text
+            merged[-1] = TextBlock(
+                page=prev.page,
+                bbox=new_bbox,
+                text=new_text,
+                font_size=prev.font_size,
+                block_id=prev.block_id,
+                font_name=prev.font_name,
+            )
+        else:
+            merged.append(block)
+
+    # Re-split oversized blocks at sentence boundaries
+    MAX_BLOCK_HEIGHT = 150
+    final: list[TextBlock] = []
+    for block in merged:
+        if block.height <= MAX_BLOCK_HEIGHT:
+            final.append(block)
+            continue
+
+        text = block.text.strip()
+        # Split at sentence-ending punctuation
+        parts = re.split(r'(?<=[.!?])\s+', text)
+        if len(parts) <= 1:
+            final.append(block)
+            continue
+
+        n = len(parts)
+        total_h = block.height
+        per_part_h = total_h / n
+
+        for pi, part in enumerate(parts):
+            y0 = block.bbox[1] + pi * per_part_h
+            y1 = block.bbox[1] + (pi + 1) * per_part_h
+            bid = hashlib.md5(
+                f"{block.page}:{y0:.0f}:{part[:30]}".encode()
+            ).hexdigest()[:12]
+            final.append(TextBlock(
+                page=block.page,
+                bbox=(block.bbox[0], y0, block.bbox[2], y1),
+                text=part,
+                font_size=block.font_size,
+                block_id=bid,
+                font_name=block.font_name,
+            ))
+
+    logger.info("Merged %d line-blocks -> %d paragraph-blocks (after re-split: %d)",
+                len(blocks), len(merged), len(final))
+    return final
+
+
+def _normalize_for_matching(text: str) -> str:
+    """Collapse whitespace & de-hyphenate so cleaned text can match raw block text."""
+    text = re.sub(r'-\s+', '', text)      # "infor-\nmation" → "information"
+    text = re.sub(r'\s+', ' ', text)       # collapse all whitespace to single space
+    return text.strip()
+
+
+def _skeleton(text: str) -> str:
+    """Strip all non-alphanumeric characters for last-resort fuzzy matching."""
+    return re.sub(r'[^a-zA-Z0-9一-鿿]', '', text).lower()
+
+
 def _build_block_translations(
     chunk_results: list[dict],
     blocks: list,
@@ -59,11 +168,27 @@ def _build_block_translations(
         return {}
 
     block_texts: dict[str, str] = {b.block_id: b.text for b in blocks}
+    norm_block_texts: dict[str, str] = {
+        bid: _normalize_for_matching(txt) for bid, txt in block_texts.items()
+    }
 
-    # Build a mapping: block_id → original text length, preserving order
     block_order = [b.block_id for b in blocks if b.block_id in block_texts]
 
     translations: dict[str, str] = {}
+
+    def _match_blocks(norm_orig: str, skeleton_orig: str) -> list[tuple[str, int]]:
+        matched = []
+        for bid in block_order:
+            if bid in translations:
+                continue
+            nb = norm_block_texts[bid]
+            if (norm_orig.startswith(nb[:50])
+                    or nb.startswith(norm_orig[:50])
+                    or (len(nb) >= 3 and nb in norm_orig)):
+                matched.append((bid, len(nb)))
+            elif len(nb) >= 10 and skeleton_orig and _skeleton(nb) in skeleton_orig:
+                matched.append((bid, len(nb)))
+        return matched
 
     for chunk in chunk_results:
         trans = chunk.get("translated", "")
@@ -72,26 +197,40 @@ def _build_block_translations(
         if not trans or not orig:
             continue
 
-        # Find blocks that belong to this chunk (in document order)
-        matched_blocks = []
-        for bid in block_order:
-            if bid in translations:
-                continue
-            btext = block_texts[bid]
-            if (orig.startswith(btext[:30])
-                    or btext.startswith(orig[:30])
-                    or (len(btext) >= 3 and btext in orig)):
-                matched_blocks.append((bid, len(btext)))
+        norm_orig = _normalize_for_matching(orig)
+        skeleton_orig = _skeleton(orig)
 
+        matched_blocks = _match_blocks(norm_orig, skeleton_orig)
         if not matched_blocks:
             continue
 
-        # Split translation at sentence/paragraph boundaries
         trans_parts = _split_translation_to_parts(trans, len(matched_blocks))
 
         for i, (bid, _) in enumerate(matched_blocks):
             if i < len(trans_parts):
                 translations[bid] = trans_parts[i]
+
+    # Second pass: assign remaining unmatched blocks proportional slices
+    # from the chunk whose skeleton overlaps most with the block's skeleton.
+    unmatched = [bid for bid in block_order if bid not in translations]
+    if unmatched:
+        for bid in unmatched:
+            sk_block = _skeleton(block_texts[bid])
+            if len(sk_block) < 8:
+                continue
+            best_chunk_idx = -1
+            best_overlap = 0
+            for ci, chunk in enumerate(chunk_results):
+                sk_chunk = _skeleton(chunk.get("original", ""))
+                if not sk_chunk:
+                    continue
+                overlap = sum(1 for i in range(len(sk_block) - 3)
+                              if sk_block[i:i+4] in sk_chunk)
+                if overlap > best_overlap:
+                    best_overlap = overlap
+                    best_chunk_idx = ci
+            if best_chunk_idx >= 0 and best_overlap >= len(sk_block) * 0.4:
+                translations[bid] = chunk_results[best_chunk_idx].get("translated", "")
 
     return translations
 
@@ -189,7 +328,6 @@ class FilePathPayload(BaseModel):
 
 class BilingualPdfPayload(BaseModel):
     task_id: str
-    mode: Literal["below", "above", "replace"] = "below"
 
 
 def register_translate(
@@ -866,48 +1004,25 @@ def register_translate(
         t = tasks[payload.task_id]
         if t["status"] not in ("done", "done_with_warnings"):
             raise HTTPException(400, "翻译尚未完成")
-        blocks = t.get("blocks")
-        if not blocks:
-            raise HTTPException(400, "该任务不支持双语 PDF 叠加导出（仅 PDF 翻译任务支持）")
-
-        input_path = t.get("input_path")
-        if not input_path or not Path(input_path).exists():
-            raise HTTPException(404, "源 PDF 文件已丢失")
-
-        # Build block_id → translated text mapping from completed chunks
-        # Re-read the output markdown and pair with block text
-        results_by_block = _build_block_translations(t.get("chunks", []), blocks)
-        if not results_by_block:
-            raise HTTPException(400, "未找到有效的翻译结果")
-
-        try:
-            from src.formatter.pdf_overlay import overlay_translation
-        except ImportError:
-            raise HTTPException(500, "PDF overlay 模块不可用")
 
         output_dir = runtime_dir / "output"
         output_dir.mkdir(parents=True, exist_ok=True)
-        out_pdf = output_dir / f"{payload.task_id}_bilingual.pdf"
-        tmp_pdf = output_dir / f"{payload.task_id}_bilingual.tmp.pdf"
 
-        try:
-            overlay_translation(
-                src_pdf=input_path,
-                blocks=blocks,
-                translations=results_by_block,
-                output=tmp_pdf,
-                mode=payload.mode,
-            )
-            if out_pdf.exists():
-                out_pdf.unlink()
-            tmp_pdf.rename(out_pdf)
-        except Exception as e:
-            raise HTTPException(500, f"PDF 叠加导出失败: {e}")
+        results = t.get("chunks", [])
+        if not results:
+            raise HTTPException(400, "未找到翻译结果")
 
+        from src.formatter import format_output
+        fmt_cfg = {}
+        content = format_output(results, output_format=fmt_cfg.get("output_format", "bilingual"))
+
+        from src.formatter.word_exporter import markdown_to_docx
+        out_docx = output_dir / f"{payload.task_id}_bilingual.docx"
+        markdown_to_docx(content, str(out_docx), title="Scholar Assistant 双语对照导出")
         return FileResponse(
-            out_pdf,
-            filename=f"{payload.task_id}_bilingual.pdf",
-            media_type="application/pdf",
+            out_docx,
+            filename=f"{payload.task_id}_bilingual.docx",
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
 
     return {"tasks": tasks, "rag_store_getter": _state["rag_store_getter"], "tm_store": tm_store, "glossary_store": glossary_store}

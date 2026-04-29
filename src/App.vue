@@ -84,7 +84,7 @@
       />
 
       <!-- 翻译模式 -->
-      <TranslateView v-show="appMode === 'translate'" :health-ok="healthOk" :read-settings="readSettings" @restart-backend="handleRestartBackend" />
+      <TranslateView v-show="appMode === 'translate'" :health-ok="healthOk" :read-settings="readSettings" @restart-backend="handleRestartBackend" @open-agent-docs="openAgentDocs" />
 
       <!-- 编辑器模式 -->
       <EditorLayout v-show="appMode === 'editor'" :isDark="isDark" class="editor-mode" />
@@ -116,6 +116,10 @@ const appMode = ref<AppMode>('editor')
 
 // ── Agent 聊天 ──────────────────────────────────────────────
 const showAgentChat = ref(false)
+
+function openAgentDocs() {
+  showAgentChat.value = true
+}
 const { cleanup: editorCleanup } = useEditor()
 
 const healthOk = ref(false)
