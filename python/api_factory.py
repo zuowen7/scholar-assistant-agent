@@ -149,13 +149,28 @@ def _load_config() -> dict:
     return cfg
 
 
+def _strip_empty_strings(d: dict) -> dict:
+    """Remove keys with empty-string values so they don't clobber real values."""
+    result = {}
+    for k, v in d.items():
+        if isinstance(v, dict):
+            nested = _strip_empty_strings(v)
+            if nested:
+                result[k] = nested
+        elif v != "":
+            result[k] = v
+    return result
+
+
 def _apply_local_overrides(cfg: dict) -> None:
     """Merge default.local.yaml into cfg if it exists (never tracked by git)."""
     local_path = CONFIG_PATH.parent / "default.local.yaml"
     if local_path.exists():
         with open(local_path, encoding="utf-8") as f:
             local_cfg = yaml.safe_load(f) or {}
-        cfg.update(_deep_merge(cfg, local_cfg))
+        local_cfg = _strip_empty_strings(local_cfg)
+        if local_cfg:
+            cfg.update(_deep_merge(cfg, local_cfg))
 
 
 def _apply_env_overrides(cfg: dict) -> None:
