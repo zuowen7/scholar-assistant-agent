@@ -90,6 +90,11 @@ class FilePathPayload(BaseModel):
     path: str = Field(max_length=1024)
 
 
+class BilingualPdfPayload(BaseModel):
+    task_id: str
+    mode: Literal["below", "above", "replace"] = "below"
+
+
 def register_translate(
     app: FastAPI,
     *,
@@ -125,7 +130,20 @@ def register_translate(
             return
         excess = len(done_ids) - MAX_TASKS
         for tid in done_ids[:excess]:
+            _remove_task_files(tid)
             del tasks[tid]
+
+    def _remove_task_files(task_id: str) -> None:
+        t = tasks.get(task_id)
+        if not t:
+            return
+        for key in ("input_path", "output_path"):
+            p = t.get(key)
+            if p:
+                try:
+                    Path(p).unlink(missing_ok=True)
+                except OSError:
+                    pass
 
     async def _acquire_task_slot(task_id: str) -> None:
         """Reserve a translation slot. Only one running task at a time."""
@@ -570,12 +588,6 @@ def register_translate(
                 "data": json.dumps({"message": str(e)}),
             }
         finally:
-            input_file = task.get("input_path")
-            if input_file:
-                try:
-                    Path(input_file).unlink(missing_ok=True)
-                except OSError:
-                    pass
             _cleanup_tasks()
 
     @app.get("/api/translate/{task_id}/stream")
@@ -749,10 +761,6 @@ def register_translate(
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
-    class BilingualPdfPayload(BaseModel):
-        task_id: str
-        mode: Literal["below", "above", "replace"] = "below"
-
     @app.post("/api/export/bilingual_pdf")
     async def export_bilingual_pdf(payload: BilingualPdfPayload):
         if payload.task_id not in tasks:
@@ -782,15 +790,19 @@ def register_translate(
         output_dir = runtime_dir / "output"
         output_dir.mkdir(parents=True, exist_ok=True)
         out_pdf = output_dir / f"{payload.task_id}_bilingual.pdf"
+        tmp_pdf = output_dir / f"{payload.task_id}_bilingual.tmp.pdf"
 
         try:
             overlay_translation(
                 src_pdf=input_path,
                 blocks=blocks,
                 translations=results_by_block,
-                output=out_pdf,
+                output=tmp_pdf,
                 mode=payload.mode,
             )
+            if out_pdf.exists():
+                out_pdf.unlink()
+            tmp_pdf.rename(out_pdf)
         except Exception as e:
             raise HTTPException(500, f"PDF 叠加导出失败: {e}")
 
