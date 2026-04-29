@@ -115,6 +115,7 @@
           <CheckCircle :size="16" :stroke-width="2.2" class="done-icon" />
           <span class="done-label">翻译完成</span>
           <span v-if="state.chunks.length" class="done-meta">{{ state.chunks.length }} 段 · {{ allSentencePairs.length }} 句</span>
+          <span class="done-rag-hint" @click="$emit('open-agent-docs')">已加入知识库</span>
         </div>
         <div class="result-bar-right">
           <UiSegmented
@@ -129,7 +130,7 @@
           </UiButton>
           <UiButton variant="secondary" size="sm" @click="doExportBilingualPdf('below')">
             <template #icon-left><FileText :size="13" :stroke-width="2" /></template>
-            双语 PDF
+            双语 Word
           </UiButton>
           <UiButton variant="secondary" size="sm" @click="reset">新翻译</UiButton>
         </div>
@@ -195,6 +196,7 @@ const props = defineProps<{
 
 defineEmits<{
   (e: 'restart-backend'): void
+  (e: 'open-agent-docs'): void
 }>()
 
 const { state, translate, reset, downloadResult, overallProgress, exportBilingualPdf } = useTranslate()
@@ -757,6 +759,12 @@ function openFilePicker() {
 .done-icon { color: var(--c-success); flex-shrink: 0; }
 .done-label { font-size: var(--text-base); font-weight: 600; color: var(--c-text-0); }
 .done-meta { font-size: var(--text-sm); color: var(--c-text-3); }
+.done-rag-hint {
+  font-size: var(--text-xs); color: var(--c-accent); cursor: pointer;
+  padding: 2px 8px; border-radius: 4px; border: 1px solid var(--c-accent);
+  transition: background 0.15s;
+}
+.done-rag-hint:hover { background: var(--c-accent-bg); }
 
 .result-bar-right {
   display: flex;

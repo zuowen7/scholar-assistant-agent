@@ -376,7 +376,7 @@ async function exportBilingualPdf(mode: 'below' | 'above' | 'replace' = 'below')
     const resp = await fetch(`${API_URL}/api/export/bilingual_pdf`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task_id: state.taskId, mode }),
+      body: JSON.stringify({ task_id: state.taskId, mode, format: 'docx' }),
     })
 
     if (!resp.ok) {
@@ -386,7 +386,7 @@ async function exportBilingualPdf(mode: 'below' | 'above' | 'replace' = 'below')
     }
 
     const blob = await resp.blob()
-    const defaultName = `${state.taskId}_bilingual.pdf`
+    const defaultName = `${state.taskId}_bilingual.docx`
     const { saveBlob } = await import('./useEditorIO')
     const result = await saveBlob(blob, defaultName)
     if (result === 'Cancelled') return
