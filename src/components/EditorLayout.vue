@@ -353,11 +353,20 @@ async function handleProcessCitations() {
 }
 
 async function handleZoteroInsert() {
+  try {
+    const status = await getZoteroStatus()
+    if (!status || status.connected === false) {
+      const msg = status?.message || '未配置'
+      showExportToast(`Zotero 未连接: ${msg}。请在 config/default.yaml 中配置 zotero.api_key 和 zotero.user_id`)
+      return
+    }
+  } catch {
+    showExportToast('Zotero 状态检查失败，请确认后端服务正常')
+    return
+  }
   const query = window.prompt('Search Zotero')
   if (!query?.trim()) return
   try {
-    const status = await getZoteroStatus()
-    if (status && status.connected === false) { showExportToast('Configure Zotero API first'); return }
     const items = await searchZotero(query.trim(), 5)
     const item = items[0]
     if (!item?.key) { showExportToast('No Zotero result'); return }
@@ -406,15 +415,19 @@ async function runComplianceCheck() {
       }),
     })
     const data = await resp.json()
+    console.debug('[Compliance] response:', JSON.stringify(data))
     if (data.error && (!data.report || !data.report.summary)) {
       complianceError.value = data.error || 'Compliance check failed'
     } else if (data.report?.summary) {
       complianceReport.value = data.report
     } else {
-      complianceError.value = 'LLM returned unexpected format'
+      complianceError.value = 'LLM returned unexpected format: ' + JSON.stringify(data).slice(0, 200)
     }
-  } catch (e) { complianceError.value = `请求失败: ${e}`
-  } finally { complianceLoading.value = false }
+  } catch (e) {
+    complianceError.value = `请求失败: ${e}`
+  } finally {
+    complianceLoading.value = false
+  }
 }
 
 function handleInsert(text: string) { aiResult.value = text; applyAiResult() }
