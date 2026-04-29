@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from src.translator.cloud_client import CloudClient
 
 from src.features import plugin as _PLUGIN_AVAILABLE
+from src.features import argument as _ARGUMENT_AVAILABLE
 
 if _PLUGIN_AVAILABLE:
     from src.plugin import PluginRegistry, register_builtin
@@ -55,6 +56,11 @@ if _is_frozen() and not DOCKER_MODE:
     runtime_glossary = RUNTIME_DIR / "data" / "translator" / "glossaries"
     if bundled_glossary.is_dir() and not runtime_glossary.is_dir():
         shutil.copytree(bundled_glossary, runtime_glossary)
+else:
+    # Dev / Docker mode: ensure glossary dir exists so load_yaml_dir doesn't silently no-op
+    glossary_dir = RUNTIME_DIR / "data" / "translator" / "glossaries"
+    if not glossary_dir.is_dir():
+        glossary_dir.mkdir(parents=True, exist_ok=True)
 
 logger = logging.getLogger(__name__)
 
@@ -345,7 +351,10 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         data_root=data_root,
     )
 
-    # Wire rag_store from agent into translate for auto-RAG ingest
+    # Wire rag_store from agent into translate for auto-RAG ingest.
+    # Must happen after both registers complete so both state dicts exist.
+    # translate_state and state_agent are independent dicts; we inject agent's
+    # getter into translate's _state so translate pipeline can use RAG.
     translate_state = state_translate
     translate_state["rag_store_getter"] = state_agent["get_rag_store"]
     translate_state["ensure_rag_store"] = state_agent["ensure_rag_store"]
@@ -360,15 +369,16 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         rag_store_getter=state_agent["get_rag_store"],
     )
 
-    from routers.argument import register_argument
-    register_argument(
-        app,
-        load_config=_load_config,
-        build_cloud_client=_build_cloud_client,
-        runtime_dir=RUNTIME_DIR,
-        data_root=data_root,
-        rag_store_getter=state_agent["get_rag_store"],
-    )
+    if _ARGUMENT_AVAILABLE:
+        from routers.argument import register_argument
+        register_argument(
+            app,
+            load_config=_load_config,
+            build_cloud_client=_build_cloud_client,
+            runtime_dir=RUNTIME_DIR,
+            data_root=data_root,
+            rag_store_getter=state_agent["get_rag_store"],
+        )
 
     from routers.mindmap import register_mindmap
     register_mindmap(
