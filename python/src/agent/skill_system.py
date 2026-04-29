@@ -6,394 +6,53 @@ Skill 是将 Agent 的"一次性执行"转化为"经验沉淀"的核心机制：
 - 持续积累：随使用增长，Agent 能力库越来越丰富
 - 催促机制：连续 N 轮未创建 Skill 时提醒 Agent 整理经验
 
-Skill 文件格式（SKILL.md）：
-```markdown
----
-name: translate_academic_paper
-trigger: 翻译学术论文、学术文本翻译
-created: 2026-04-24
----
-
-# 翻译学术论文
-
-## 步骤
-1. 使用 parse_document 提取论文全文
-2. 按段落切块，每块不超过 2000 token
-3. 逐块调用 translate_text，保留 LaTeX 公式
-4. 合并翻译结果
-
-## 注意事项
-- 数学公式 ($...$) 必须原样保留
-- 专有名词首次出现时标注英文原文
-```
+Internal structure (split since v0.3):
+- _skill_model.py       — Skill dataclass, _tokenize(), constants
+- _skill_persistence.py — load/parse/save/prune mixin
+- _skill_matching.py    — query/match/score mixin
+- _skill_auto.py        — nudge, pattern tracking, auto-generate, trajectory, context mixin
 """
 
 from __future__ import annotations
 
-import json
 import logging
-import re
-from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from src.agent._skill_auto import SkillAutoMixin
+from src.agent._skill_matching import SkillMatchingMixin
+from src.agent._skill_model import SKILL_DECAY_DAYS, SKILL_NUDGE_INTERVAL, Skill
+from src.agent._skill_persistence import SkillPersistenceMixin
+
 logger = logging.getLogger(__name__)
 
-# Skill 催促间隔（连续 N 轮对话未创建/更新 Skill 时提醒）
-SKILL_NUDGE_INTERVAL = 10
-# Skill 衰减阈值：超过此天数未使用则标记为 deprecated，不再注入 prompt
-SKILL_DECAY_DAYS = 30
+# Re-export for backward compatibility.
+__all__ = [
+    "Skill",
+    "SkillRegistry",
+    "SKILL_NUDGE_INTERVAL",
+    "SKILL_DECAY_DAYS",
+]
 
 
-def _tokenize(text: str) -> list[str]:
-    r"""中英文混合分词 — 英文按 \w+，中文按字符分词。
-
-    Args:
-        text: 待分词文本。
-
-    Returns:
-        词列表。
-    """
-    tokens: list[str] = []
-    i = 0
-    while i < len(text):
-        c = text[i]
-        code = ord(c)
-        if 0x4E00 <= code <= 0x9FFF or 0x3400 <= code <= 0x4DBF:
-            # CJK 统一表意文字，按字符分词
-            tokens.append(c)
-            i += 1
-        elif c.isalnum() or c == "_":
-            # 英文单词
-            j = i
-            while j < len(text) and (text[j].isalnum() or text[j] == "_"):
-                j += 1
-            tokens.append(text[i:j])
-            i = j
-        else:
-            i += 1
-    return tokens
-
-
-@dataclass
-class Skill:
-    """一个可复用的技能。
-
-    Attributes:
-        name: 技能名称（英文 snake_case，对应目录名）。
-        trigger: 触发条件描述。
-        description: 技能简述。
-        steps: 执行步骤列表。
-        notes: 注意事项列表。
-        created_at: 创建时间。
-        updated_at: 最后更新时间。
-        use_count: 累计使用次数。
-    """
-
-    name: str
-    trigger: str = ""
-    description: str = ""
-    steps: list[str] = field(default_factory=list)
-    notes: list[str] = field(default_factory=list)
-    created_at: str = ""
-    updated_at: str = ""
-    last_used_at: str = ""   # 最后一次被 match/increment_use 调用的日期
-    use_count: int = 0
-    deprecated: bool = False  # True = 超过 SKILL_DECAY_DAYS 天未使用，不注入 prompt
-
-    def to_markdown(self) -> str:
-        """序列化为 SKILL.md 格式。
-
-        Returns:
-            Markdown 格式的 Skill 描述。
-        """
-        frontmatter = [
-            f"name: {self.name}",
-            f"trigger: {self.trigger}",
-            f"created: {self.created_at}",
-            f"updated: {self.updated_at}",
-            f"last_used: {self.last_used_at}",
-            f"use_count: {self.use_count}",
-            f"deprecated: {str(self.deprecated).lower()}",
-        ]
-
-        lines = [
-            "---",
-            "\n".join(frontmatter),
-            "---",
-            "",
-            f"# {self.description or self.name}",
-            "",
-        ]
-
-        if self.steps:
-            lines.append("## 步骤")
-            for i, step in enumerate(self.steps, 1):
-                lines.append(f"{i}. {step}")
-            lines.append("")
-
-        if self.notes:
-            lines.append("## 注意事项")
-            for note in self.notes:
-                lines.append(f"- {note}")
-            lines.append("")
-
-        return "\n".join(lines)
-
-
-class SkillRegistry:
+class SkillRegistry(SkillPersistenceMixin, SkillMatchingMixin, SkillAutoMixin):
     """Skill 注册表 — 管理技能的加载、查询、生成和催促。
 
-    Attributes:
-        skills_dir: Skill 文件目录。
+    Composes four mixins:
+    - SkillPersistenceMixin  — I/O (load, parse, save, prune)
+    - SkillMatchingMixin     — query and match
+    - SkillAutoMixin         — nudge, pattern tracking, auto-generate, trajectory, context
     """
-
-    # 同模式重复 N 次后自动生成 Skill
-    _AUTO_SKILL_THRESHOLD = 3
 
     def __init__(self, skills_dir: str | Path = "data/agent/skills") -> None:
         self.skills_dir = Path(skills_dir)
         self.skills_dir.mkdir(parents=True, exist_ok=True)
         self._skills: dict[str, Skill] = {}
         self._iters_since_skill = 0
-        # Pattern tracker: normalized_key → list[{ts, query, success, error_type}]
         self._patterns: dict[str, list[dict]] = {}
-        # Tracks which patterns already auto-generated a skill (avoid duplicates)
         self._auto_generated: set[str] = set()
         self._load_all()
-
-    # ------------------------------------------------------------------
-    # 加载
-    # ------------------------------------------------------------------
-
-    def _load_all(self) -> None:
-        """从 skills/ 目录加载所有 Skill。"""
-        if not self.skills_dir.exists():
-            return
-
-        for skill_dir in self.skills_dir.iterdir():
-            if not skill_dir.is_dir():
-                continue
-            skill_file = skill_dir / "SKILL.md"
-            if skill_file.exists():
-                skill = self._parse_skill_file(skill_file)
-                if skill:
-                    self._skills[skill.name] = skill
-
-        if self._skills:
-            logger.info("已加载 %d 个 Skill: %s", len(self._skills), list(self._skills.keys()))
-        self._prune_stale()
-
-    def _prune_stale(self) -> None:
-        """将超过 SKILL_DECAY_DAYS 天未使用的 skill 标记为 deprecated。
-
-        deprecated skill 不再注入 prompt，但文件保留在磁盘上方便人工审查。
-        若 skill 再次被调用（increment_use），自动恢复为 active。
-        """
-        today = datetime.now()
-        for skill in self._skills.values():
-            # 用 last_used_at，若为空则退回 updated_at，再退回 created_at
-            date_str = skill.last_used_at or skill.updated_at or skill.created_at
-            if not date_str:
-                continue
-            try:
-                last = datetime.strptime(date_str, "%Y-%m-%d")
-            except ValueError:
-                continue
-            stale = (today - last).days > SKILL_DECAY_DAYS
-            if stale and not skill.deprecated:
-                skill.deprecated = True
-                self._save_skill(skill)
-                logger.info("Skill 已标记为过期（%d 天未使用）: %s", SKILL_DECAY_DAYS, skill.name)
-            elif not stale and skill.deprecated:
-                # 文件手动去掉 deprecated=true 后重新加载时恢复
-                skill.deprecated = False
-                self._save_skill(skill)
-                logger.info("Skill 已从过期状态恢复: %s", skill.name)
-
-    def _parse_skill_file(self, filepath: Path) -> Skill | None:
-        """解析 SKILL.md 文件。
-
-        Args:
-            filepath: SKILL.md 文件路径。
-
-        Returns:
-            Skill 实例，解析失败返回 None。
-        """
-        try:
-            content = filepath.read_text(encoding="utf-8")
-        except Exception as e:
-            logger.warning("读取 Skill 文件失败 %s: %s", filepath, e)
-            return None
-
-        # 解析 frontmatter
-        fm_match = re.match(r"---\s*\n(.*?)\n---", content, re.DOTALL)
-        if not fm_match:
-            return None
-
-        fm_text = fm_match.group(1)
-        body = content[fm_match.end():].strip()
-
-        # 简易 frontmatter 解析
-        fm: dict[str, str] = {}
-        for line in fm_text.split("\n"):
-            if ":" in line:
-                key, _, value = line.partition(":")
-                fm[key.strip()] = value.strip()
-
-        # 解析 body 中的步骤和注意事项
-        steps = self._extract_list_section(body, "步骤")
-        notes = self._extract_list_section(body, "注意事项")
-        description = self._extract_title(body)
-
-        return Skill(
-            name=fm.get("name", filepath.parent.name),
-            trigger=fm.get("trigger", ""),
-            description=description,
-            steps=steps,
-            notes=notes,
-            created_at=fm.get("created", ""),
-            updated_at=fm.get("updated", ""),
-            last_used_at=fm.get("last_used", ""),
-            use_count=int(fm.get("use_count", "0")),
-            deprecated=fm.get("deprecated", "false").lower() == "true",
-        )
-
-    @staticmethod
-    def _extract_list_section(text: str, header: str) -> list[str]:
-        """从 Markdown 中提取指定标题下的列表项。
-
-        Args:
-            text: Markdown 文本。
-            header: 标题文本。
-
-        Returns:
-            列表项内容列表。
-        """
-        items: list[str] = []
-        in_section = False
-        for line in text.split("\n"):
-            if line.strip().startswith(f"## {header}"):
-                in_section = True
-                continue
-            if in_section:
-                if line.strip().startswith("## "):
-                    break
-                # 匹配有序/无序列表
-                m = re.match(r"\s*(?:\d+\.\s*|-)\s*(.+)", line)
-                if m:
-                    items.append(m.group(1).strip())
-        return items
-
-    @staticmethod
-    def _extract_title(text: str) -> str:
-        """从 Markdown body 中提取一级标题。
-
-        Args:
-            text: Markdown 文本。
-
-        Returns:
-            标题文本。
-        """
-        m = re.search(r"^#\s+(.+)", text, re.MULTILINE)
-        return m.group(1).strip() if m else ""
-
-    # ------------------------------------------------------------------
-    # 查询
-    # ------------------------------------------------------------------
-
-    def get(self, name: str) -> Skill | None:
-        """按名称查询 Skill。
-
-        Args:
-            name: Skill 名称。
-
-        Returns:
-            Skill 实例或 None。
-        """
-        return self._skills.get(name)
-
-    def match(self, query: str) -> Skill | None:
-        """根据用户查询匹配最相关的 Skill。
-
-        匹配策略：
-        1. 关键词精确匹配：trigger 短语直接出现在 query 中
-        2. 关键词重合度：query 和 trigger 共享关键词的比例
-        3. 语义扩展：检查 description 和 name 是否匹配
-
-        Args:
-            query: 用户查询文本。
-
-        Returns:
-            匹配的 Skill 或 None。
-        """
-        if not self._skills:
-            return None
-
-        query_lower = query.lower()
-        query_tokens = set(_tokenize(query_lower))
-
-        best_match: Skill | None = None
-        best_score = 0.0
-
-        for skill in self._skills.values():
-            if skill.deprecated:
-                continue
-            score = self._compute_match_score(query_lower, query_tokens, skill)
-            if score > best_score:
-                best_score = score
-                best_match = skill
-
-        # 需要达到最低匹配阈值
-        return best_match if best_score >= 1.0 else None
-
-    def _compute_match_score(
-        self, query_lower: str, query_tokens: set[str], skill: Skill
-    ) -> float:
-        """计算查询与 Skill 的匹配分数。
-
-        Args:
-            query_lower: 小写的查询文本。
-            query_tokens: 查询的关键词集合。
-            skill: 待匹配的 Skill。
-
-        Returns:
-            匹配分数（>= 1.0 为有效匹配）。
-        """
-        score = 0.0
-
-        # 1. trigger 短语精确子串匹配（最高权重）
-        trigger_phrases = [p.strip() for p in skill.trigger.lower().split(",") if p.strip()]
-        for phrase in trigger_phrases:
-            if phrase in query_lower:
-                score += len(phrase) * 0.5
-
-        # 2. 关键词重合度
-        trigger_tokens = set(_tokenize(skill.trigger.lower()))
-        if query_tokens and trigger_tokens:
-            overlap = query_tokens & trigger_tokens
-            jaccard = len(overlap) / len(query_tokens | trigger_tokens)
-            score += jaccard * 10
-
-        # 3. description 关键词匹配
-        if skill.description:
-            desc_tokens = set(_tokenize(skill.description.lower()))
-            if query_tokens and desc_tokens:
-                desc_overlap = query_tokens & desc_tokens
-                score += len(desc_overlap) * 0.3
-
-        # 4. name 关键词匹配
-        name_tokens = set(_tokenize(skill.name.lower()))
-        if query_tokens and name_tokens:
-            name_overlap = query_tokens & name_tokens
-            score += len(name_overlap) * 0.5
-
-        return score
-
-    def list_skills(self) -> list[Skill]:
-        """返回所有已加载的 Skill 列表。"""
-        return list(self._skills.values())
 
     # ------------------------------------------------------------------
     # 创建和更新
@@ -407,18 +66,7 @@ class SkillRegistry:
         steps: list[str],
         notes: list[str] | None = None,
     ) -> Skill:
-        """创建新的 Skill 并保存到文件。
-
-        Args:
-            name: Skill 名称。
-            trigger: 触发条件。
-            description: 描述。
-            steps: 步骤列表。
-            notes: 注意事项。
-
-        Returns:
-            创建的 Skill 实例。
-        """
+        """创建新的 Skill 并保存到文件。"""
         now = datetime.now().strftime("%Y-%m-%d")
         skill = Skill(
             name=name,
@@ -436,15 +84,7 @@ class SkillRegistry:
         return skill
 
     def update_skill(self, name: str, **kwargs: Any) -> Skill | None:
-        """更新已有 Skill。
-
-        Args:
-            name: Skill 名称。
-            **kwargs: 要更新的字段。
-
-        Returns:
-            更新后的 Skill 或 None。
-        """
+        """更新已有 Skill。"""
         skill = self._skills.get(name)
         if skill is None:
             return None
@@ -460,11 +100,7 @@ class SkillRegistry:
         return skill
 
     def increment_use(self, name: str) -> None:
-        """增加 Skill 的使用计数，同时更新 last_used_at 并恢复 deprecated 状态。
-
-        Args:
-            name: Skill 名称。
-        """
+        """增加 Skill 的使用计数，同时更新 last_used_at 并恢复 deprecated 状态。"""
         skill = self._skills.get(name)
         if skill:
             skill.use_count += 1
@@ -473,239 +109,3 @@ class SkillRegistry:
                 skill.deprecated = False
                 logger.info("Skill 因使用而从过期状态恢复: %s", name)
             self._save_skill(skill)
-
-    def _save_skill(self, skill: Skill) -> None:
-        """将 Skill 保存为文件。
-
-        Args:
-            skill: 要保存的 Skill。
-        """
-        skill_dir = self.skills_dir / skill.name
-        skill_dir.mkdir(parents=True, exist_ok=True)
-        filepath = skill_dir / "SKILL.md"
-
-        try:
-            filepath.write_text(skill.to_markdown(), encoding="utf-8")
-        except Exception as e:
-            logger.error("保存 Skill 文件失败: %s", e)
-
-    # ------------------------------------------------------------------
-    # 催促机制
-    # ------------------------------------------------------------------
-
-    def nudge_check(self) -> str | None:
-        """检查是否需要催促 Agent 整理经验为 Skill。
-
-        每次对话后调用，返回催促提示或 None。
-
-        Returns:
-            催促提示文本，不需要催促时返回 None。
-        """
-        self._iters_since_skill += 1
-        if self._iters_since_skill >= SKILL_NUDGE_INTERVAL:
-            self._iters_since_skill = 0
-            return (
-                f"你已经连续 {SKILL_NUDGE_INTERVAL} 轮对话没有创建新的 Skill。"
-                "请回顾最近的对话，看看是否有值得沉淀的经验模式，"
-                "使用 create_skill 工具将其固化为可复用的 Skill。"
-            )
-        return None
-
-    # ------------------------------------------------------------------
-    # 模式追踪与自动生成
-    # ------------------------------------------------------------------
-
-    def record_pattern(
-        self,
-        query: str,
-        task_title: str = "",
-        success: bool = True,
-        tools_used: list[str] | None = None,
-        error_type: str | None = None,
-    ) -> Skill | None:
-        """记录一次任务执行模式，若同一模式重复 ≥3 次则自动生成 Skill。
-
-        Args:
-            query: 用户原始查询。
-            task_title: 任务标题。
-            success: 任务是否成功。
-            tools_used: 使用的工具列表。
-            error_type: 若失败，错误类型。
-
-        Returns:
-            若触发了自动生成，返回新 Skill；否则返回 None。
-        """
-        key = self._pattern_key(query, task_title)
-        entry = {
-            "ts": datetime.now().isoformat(timespec="seconds"),
-            "query": query[:200],
-            "task_title": task_title[:200],
-            "success": success,
-            "tools_used": tools_used or [],
-            "error_type": error_type,
-        }
-        self._patterns.setdefault(key, []).append(entry)
-
-        if key in self._auto_generated:
-            return None
-        if len(self._patterns[key]) < self._AUTO_SKILL_THRESHOLD:
-            return None
-        if self._skills.get(key):
-            return None
-
-        return self._auto_generate_skill(key)
-
-    @staticmethod
-    def _pattern_key(query: str, task_title: str = "") -> str:
-        """归一化查询/任务为模式键。"""
-        raw = (task_title or query).strip().lower()
-        # 去除时间戳、路径、数字等高度可变部分
-        raw = re.sub(r"/[^\s]+", "", raw)
-        raw = re.sub(r"\d{4}-\d{2}-\d{2}", "", raw)
-        raw = re.sub(r"\d+", "", raw)
-        # 去除文件系统非法字符，取前 60 字符
-        raw = re.sub(r"[#<>:\"/\\|?*\s]+", "_", raw).strip("_")
-        return f"pat_{raw[:60]}"
-
-    def _auto_generate_skill(self, key: str) -> Skill | None:
-        """根据重复模式自动生成 Skill。
-
-        Args:
-            key: 模式键。
-
-        Returns:
-            生成的 Skill 或 None。
-        """
-        entries = self._patterns.get(key, [])
-        if len(entries) < self._AUTO_SKILL_THRESHOLD:
-            return None
-
-        successes = sum(1 for e in entries if e["success"])
-        failures = sum(1 for e in entries if not e["success"])
-        all_tools: list[str] = []
-        all_errors: list[str] = []
-        for e in entries:
-            all_tools.extend(e["tools_used"])
-            if e["error_type"]:
-                all_errors.append(e["error_type"])
-
-        # 去重取 top tools
-        tool_counts: dict[str, int] = {}
-        for t in all_tools:
-            tool_counts[t] = tool_counts.get(t, 0) + 1
-        top_tools = sorted(tool_counts, key=tool_counts.get, reverse=True)[:5]
-
-        # 生成描述和步骤
-        sample_query = entries[0]["query"][:80]
-        trigger = sample_query
-        description = f"自动生成的技能: {sample_query[:40]}"
-
-        steps: list[str] = []
-        if top_tools:
-            steps.append(f"优先使用工具: {', '.join(top_tools)}")
-        if failures > 0:
-            steps.append(f"注意: {failures}/{len(entries)} 次执行失败，常见错误: {', '.join(set(all_errors[:3]))}")
-
-        notes = [
-            f"此 Skill 由系统自动生成（{len(entries)} 次重复模式触发）",
-            f"{successes} 次成功, {failures} 次失败",
-            "建议人工审核后更新步骤和注意事项",
-        ]
-
-        skill_name = key.replace("pat_", "auto_")[:64]
-        # Sanitize: remove any remaining filesystem-illegal characters
-        skill_name = re.sub(r"[#<>:\"/\\|?*]+", "_", skill_name).rstrip("._")
-        skill = self.create_skill(
-            name=skill_name,
-            trigger=trigger,
-            description=description,
-            steps=steps,
-            notes=notes,
-        )
-        self._auto_generated.add(key)
-        logger.info("Skill 自动生成（模式重复 %d 次）: %s → %s", len(entries), key, skill_name)
-        return skill
-
-    def get_skill_context(self, query: str = "") -> str:
-        """构建注入到 Prompt 的 Skill 上下文。
-
-        当匹配到相关 Skill 时，返回其步骤描述供 Agent 参考。
-
-        Args:
-            query: 用户查询（用于匹配）。
-
-        Returns:
-            Skill 上下文文本，无匹配时返回空字符串。
-        """
-        if not query:
-            skills = [s for s in self.list_skills() if not s.deprecated]
-            if not skills:
-                return ""
-            lines = ["已积累的技能:"]
-            for s in skills:
-                lines.append(f"- {s.name}: {s.description or s.trigger}")
-            return "\n".join(lines)
-
-        matched = self.match(query)
-        if matched:
-            self.increment_use(matched.name)
-            parts = [f"匹配到技能「{matched.description or matched.name}」:"]
-            if matched.steps:
-                for i, step in enumerate(matched.steps, 1):
-                    parts.append(f"  {i}. {step}")
-            if matched.notes:
-                parts.append("  注意:")
-                for note in matched.notes:
-                    parts.append(f"    - {note}")
-            return "\n".join(parts)
-
-        return ""
-
-    # ------------------------------------------------------------------
-    # 从轨迹生成 Skill（供 review_agent 调用）
-    # ------------------------------------------------------------------
-
-    def generate_from_trajectory(self, trajectory_data: dict) -> Skill | None:
-        """从任务轨迹数据中生成新的 Skill。
-
-        这是由 review_agent 在后台调用的高层接口。
-        轨迹数据需包含 conversations 和 metadata。
-
-        Args:
-            trajectory_data: 轨迹数据（ShareGPT 格式 + metadata）。
-
-        Returns:
-            生成的 Skill 或 None（不适合生成时）。
-        """
-        metadata = trajectory_data.get("metadata", {})
-        conversations = trajectory_data.get("conversations", [])
-
-        # 至少需要 3 轮对话才有价值生成 Skill
-        if len(conversations) < 3:
-            return None
-
-        # 提取工具调用信息
-        tool_calls: list[str] = []
-        for conv in conversations:
-            content = conv.get("value", "")
-            if "调用工具" in content or "tool" in conv.get("from", ""):
-                tool_calls.append(content[:100])
-
-        if not tool_calls:
-            return None
-
-        # 用查询的前 30 字符作为触发条件
-        query = metadata.get("query", "")
-        trigger = query[:50] if query else ""
-
-        # 生成 Skill（简化版，实际由 review_agent 的 LLM 做更好的提取）
-        name = f"auto_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        return Skill(
-            name=name,
-            trigger=trigger,
-            description=f"自动生成的技能（基于: {trigger[:30]}）",
-            steps=[f"参考轨迹中的工具调用: {tc}" for tc in tool_calls[:5]],
-            notes=["此 Skill 由系统自动生成，建议人工审核后更新"],
-            created_at=datetime.now().strftime("%Y-%m-%d"),
-            updated_at=datetime.now().strftime("%Y-%m-%d"),
-        )
