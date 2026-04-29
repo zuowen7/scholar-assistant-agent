@@ -169,7 +169,7 @@ import MindMapView from './MindMapView.vue'
 import { Eye, Bot, GitBranch, X, ChevronRight } from './ui/icons'
 
 // ── State composables ───────────────────────────────────────────────────
-import { useEditorState } from '../composables/useEditorState'
+import { activeTab, content, contentVersion, selection, previousContent, tabs, aiResult, insertTextAtCursor } from '../composables/useEditorState'
 import { useEditor } from '../composables/useEditor'
 import { useEditorVision } from '../composables/useEditorVision'
 import { useEditorCitation } from '../composables/useEditorCitation'
@@ -179,7 +179,6 @@ import { useMindMap, mindMapToMarkdown, markdownToMindMapNodes } from '../compos
 const props = defineProps<{ isDark: boolean }>()
 
 // ── Shared singleton state (single source of truth) ─────────────────────
-const { activeTab, content, contentVersion, selection, previousContent, tabs, aiResult, insertTextAtCursor } = useEditorState()
 
 // ── Tab / file operations ────────────────────────────────────────────────
 const {
