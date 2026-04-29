@@ -47,7 +47,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch, onBeforeUnmount } from 'vue'
 
 const props = defineProps<{
   position: { x: number; y: number }
@@ -59,6 +59,19 @@ const props = defineProps<{
 }>()
 
 const showHelp = ref(false)
+
+// Close shortcut panel when clicking outside
+const clickOutsideHandler = (e: MouseEvent) => {
+  const toolbar = document.querySelector('.floating-toolbar')
+  if (showHelp.value && toolbar && !toolbar.contains(e.target as Node)) {
+    showHelp.value = false
+  }
+}
+watch(showHelp, (val) => {
+  if (val) document.addEventListener('click', clickOutsideHandler)
+  else document.removeEventListener('click', clickOutsideHandler)
+})
+onBeforeUnmount(() => document.removeEventListener('click', clickOutsideHandler))
 
 const emit = defineEmits<{
   (e: 'update:position', value: { x: number; y: number }): void
@@ -119,8 +132,7 @@ function startDrag(event: PointerEvent) {
   flex-wrap: wrap;
   gap: 6px;
   max-width: calc(100% - 16px);
-  max-height: min(132px, calc(100% - 16px));
-  overflow: auto;
+  overflow: visible;
   min-height: 38px;
   padding: 6px;
   border: 1px solid var(--border-color);
