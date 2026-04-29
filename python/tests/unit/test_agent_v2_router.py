@@ -21,8 +21,9 @@ def _make_app_with_agent_routes():
     """构造注册了 agent router 的 FastAPI app，mock 掉 Agent 依赖。"""
     app = FastAPI()
 
-    # Mock agent 模块
+    # Mock agent 模块 + features flag
     mock_modules = {
+        "src.agent": MagicMock(__path__=["src/agent"]),
         "src.agent.agent": MagicMock(),
         "src.agent.context_compressor": MagicMock(),
         "src.agent.memory": MagicMock(),
@@ -37,6 +38,7 @@ def _make_app_with_agent_routes():
         "src.agent.change_journal": MagicMock(),
         "src.agent.llm_client": MagicMock(),
         "src.translator.cloud_client": MagicMock(PROVIDER_PRESETS={}),
+        "src.features": MagicMock(agent=True, plugin=False, argument=False, mcp=False),
     }
 
     with patch.dict("sys.modules", mock_modules):
@@ -44,8 +46,6 @@ def _make_app_with_agent_routes():
         import importlib
         import python.routers.agent as agent_router
         importlib.reload(agent_router)
-
-        agent_router._AGENT_AVAILABLE = True
 
         # 简化的 register — 不真正初始化 agent 子系统
         session_pool: dict = {}
