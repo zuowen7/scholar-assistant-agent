@@ -75,7 +75,7 @@ def _build_block_translations(
         for bid, btext in block_texts.items():
             if bid in translations:
                 continue
-            if orig.startswith(btext[:30]) or btext.startswith(orig[:30]):
+            if orig.startswith(btext[:30]) or btext.startswith(orig[:30]) or (len(btext) >= 3 and btext in orig):
                 ratio = len(btext) / max(len(orig), 1)
                 chars_to_take = max(1, int(len(trans) * ratio))
                 translations[bid] = trans[:chars_to_take]
@@ -115,8 +115,6 @@ def register_translate(
     # Glossary store — load seed glossaries from data/translator/glossaries/
     glossary_store = GlossaryStore()
     glossary_dir = runtime_dir / "data" / "translator" / "glossaries"
-    if not glossary_dir.is_dir():
-        glossary_dir = Path(__file__).resolve().parent.parent / "data" / "translator" / "glossaries"
     glossary_store.load_yaml_dir(glossary_dir)
 
     data_root = runtime_dir / ("data_cloud" if cloud_only else "data")

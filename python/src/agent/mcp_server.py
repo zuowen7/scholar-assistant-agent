@@ -37,9 +37,9 @@ if sys.executable.lower() == _windows_store_python.lower():
         print(f"错误: 请使用 Anaconda Python 运行此模块: {_conda_python}", file=sys.stderr)
         sys.exit(1)
 
-# Runtime check for MCP availability
-_mcp_runtime_available = False
-try:
+from src.features import mcp as _MCP_AVAILABLE
+
+if _MCP_AVAILABLE:
     from mcp.server import Server
     from mcp.server.stdio import stdio_server
     from mcp.types import (
@@ -48,11 +48,6 @@ try:
         Tool,
         ListToolsResult,
     )
-    _mcp_runtime_available = True
-except ImportError:
-    pass
-
-_MCP_AVAILABLE = _mcp_runtime_available
 
 logger = logging.getLogger(__name__)
 
