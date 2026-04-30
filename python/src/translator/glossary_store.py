@@ -349,9 +349,9 @@ class GlossaryStore:
         header = ET.SubElement(root, "martifHeader")
         fileDesc = ET.SubElement(header, "fileDesc")
         titleStmt = ET.SubElement(fileDesc, "titleStmt")
-        ET.SubElement(titleStmt, "title").text = "Scholar Assistant Glossary"
+        ET.SubElement(titleStmt, "title").text = "研墨 Glossary"
         sourceDesc = ET.SubElement(fileDesc, "sourceDesc")
-        ET.SubElement(sourceDesc, "p").text = "Exported from Scholar Assistant"
+        ET.SubElement(sourceDesc, "p").text = "Exported from 研墨"
 
         body = ET.SubElement(root, "text")
         body_el = ET.SubElement(body, "body")

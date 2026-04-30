@@ -279,14 +279,14 @@ class TranslationMemory:
 
         tmx = ET.Element("tmx", version="1.4")
         header = ET.SubElement(tmx, "header",
-                               creationtool="ScholarAssistant",
+                               creationtool="研墨",
                                creationtoolversion="0.4.2",
                                datatype="plaintext",
                                segtype="sentence",
                                adminlang="en",
                                srclang=source_lang,
                                o_tmf="unknown")
-        ET.SubElement(header, "note").text = "Exported from Scholar Assistant Translation Memory"
+        ET.SubElement(header, "note").text = "Exported from 研墨 Translation Memory"
 
         body = ET.SubElement(tmx, "body")
 

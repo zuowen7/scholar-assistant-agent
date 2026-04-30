@@ -1,4 +1,4 @@
-"""Executable entry point for the Scholar Assistant API.
+"""Executable entry point for the 研墨 API.
 
 The full FastAPI application lives in api_factory.py.  Keep this file small so
 Tauri, PyInstaller, and manual development all start the same app surface.
@@ -74,7 +74,7 @@ def _self_test(base_url: str) -> int:
 def main() -> None:
     global app
 
-    parser = argparse.ArgumentParser(description="Scholar Assistant API Server")
+    parser = argparse.ArgumentParser(description="研墨 API Server")
     parser.add_argument("--cloud-only", action="store_true", help="Cloud-only mode (no Ollama)")
     parser.add_argument("--port", type=int, default=18088)
     parser.add_argument("--host", type=str, default="127.0.0.1")

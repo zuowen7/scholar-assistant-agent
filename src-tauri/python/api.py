@@ -1,4 +1,4 @@
-"""Executable entry point for the local Scholar Assistant API.
+"""Executable entry point for the 研墨 API.
 
 The full FastAPI application lives in api_factory.py.  Keep this file small so
 Tauri, PyInstaller, and manual development all start the same app surface.
@@ -19,7 +19,7 @@ app = create_app(cloud_only=False)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Scholar Assistant API Server")
+    parser = argparse.ArgumentParser(description="研墨 API Server")
     parser.add_argument("--port", type=int, default=18088)
     parser.add_argument("--host", type=str, default="127.0.0.1")
     parser.add_argument("--static-dir", type=str, default=None, help="Optional frontend static directory")

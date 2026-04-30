@@ -46,7 +46,7 @@ class ComplianceRequest(BaseModel):
 
 class WordExportRequest(BaseModel):
     content: str = Field(max_length=2_000_000)
-    title: str = Field(default="Scholar Assistant Export", max_length=500)
+    title: str = Field(default="研墨导出", max_length=500)
 
 
 class CitationIndexRequest(BaseModel):

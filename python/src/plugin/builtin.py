@@ -303,9 +303,9 @@ def create_builtin_server() -> PluginServer:
     区别在于：这里的工具可以同时注册到 FastAPI 路由。
     """
     server = PluginServer(
-        name="scholar-assistant",
+        name="yanmo",
         version="0.3.1",
-        description="Scholar Assistant 学术翻译与研究辅助工具集",
+        description="研墨 学术翻译与研究辅助工具集",
         instructions="提供翻译、文档解析、文献检索、论文润色等功能。使用时需提供文件路径（绝对路径）。",
         tools=[
             ToolSpec(

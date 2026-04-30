@@ -755,7 +755,7 @@ def register_translate(
 
         from src.formatter.word_exporter import markdown_to_docx
         out_docx = output_dir / f"{payload.task_id}_bilingual.docx"
-        markdown_to_docx(content, str(out_docx), title="Scholar Assistant 双语对照导出")
+        markdown_to_docx(content, str(out_docx), title="研墨双语对照导出")
         return FileResponse(
             out_docx,
             filename=f"{payload.task_id}_bilingual.docx",

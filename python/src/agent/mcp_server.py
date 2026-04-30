@@ -165,7 +165,7 @@ async def main():
     server = Server(
         name=SERVER_NAME,
         version=SERVER_VERSION,
-        instructions="Scholar Assistant — 学术翻译与研究辅助 MCP 服务器",
+        instructions="研墨 — 学术翻译与研究辅助 MCP 服务器",
     )
 
     @server.list_tools()

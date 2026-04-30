@@ -3,8 +3,8 @@
 
     <!-- ── Left: Brand ──────────────────────────────────────── -->
     <div class="brand" data-tauri-drag-region>
-      <div class="logo" aria-hidden="true">S</div>
-      <span class="brand-name">Scholar</span>
+      <div class="logo" aria-hidden="true">研</div>
+      <span class="brand-name">研墨</span>
     </div>
 
     <!-- ── Center: Mode switch ─────────────────────────────── -->

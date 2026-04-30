@@ -222,7 +222,7 @@ def _web_fetch(url: str, extract_text: bool = True) -> str:
         with httpx.Client(
             timeout=_WEB_FETCH_TIMEOUT,
             follow_redirects=True,
-            headers={"User-Agent": "ScholarAssistant/1.0"},
+            headers={"User-Agent": "Yanmo/1.0"},
             trust_env=False,
         ) as client:
             resp = client.get(url)
