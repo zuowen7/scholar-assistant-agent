@@ -92,6 +92,15 @@
       <!-- Agent 聊天面板 -->
       <AgentPanel :open="showAgentChat" @update:open="showAgentChat = $event" @switch-to-editor="appMode = 'editor'" />
     </div>
+
+    <Transition name="app-loading-fade">
+      <InkBrushLoader
+        v-if="appBootLoading"
+        overlay
+        size="large"
+        text="正在整理思路..."
+      />
+    </Transition>
   </div>
 </template>
 
@@ -106,6 +115,7 @@ import EditorLayout from './components/EditorLayout.vue'
 import AgentPanel from './components/AgentPanel.vue'
 import TranslateView from './components/TranslateView.vue'
 import AppTopBar from './components/AppTopBar.vue'
+import InkBrushLoader from './components/InkBrushLoader.vue'
 import type { AppMode } from './types'
 import { API_BASE } from './utils/api'
 
@@ -133,6 +143,17 @@ const tectonicOk = ref(false)
 const tectonicChecking = ref(false)
 const globalDragging = ref(false)
 const isDark = ref(true)
+const appBootLoading = ref(true)
+const bootLoadingStartedAt = Date.now()
+const minBootLoadingMs = 1400
+
+function finishBootLoading() {
+  const elapsed = Date.now() - bootLoadingStartedAt
+  const delay = Math.max(0, minBootLoadingMs - elapsed)
+  window.setTimeout(() => {
+    appBootLoading.value = false
+  }, delay)
+}
 
 // --- Translation engine settings ---
 const engineType = ref<'ollama' | 'cloud'>('ollama')
@@ -345,6 +366,7 @@ let timer: ReturnType<typeof setInterval> | null = null
 let unlistenDragDrop: (() => void) | null = null
 
 onMounted(async () => {
+  try {
   // Load theme preference
   try {
     const saved = localStorage.getItem('theme')
@@ -408,6 +430,9 @@ onMounted(async () => {
     })
   } catch {
     // Non-Tauri environment: HTML5 drag fallback
+  }
+  } finally {
+    finishBootLoading()
   }
 })
 
@@ -667,6 +692,11 @@ body {
 .drag-fade-leave-active { transition: opacity var(--motion-base) var(--ease-out); }
 .drag-fade-enter-from,
 .drag-fade-leave-to { opacity: 0; }
+
+.app-loading-fade-enter-active,
+.app-loading-fade-leave-active { transition: opacity 0.32s ease; }
+.app-loading-fade-enter-from,
+.app-loading-fade-leave-to { opacity: 0; }
 
 /* ── Agent icon active state (kept here because it's part of topbar) ── */
 .editor-mode { flex: 1; min-height: 0; }
