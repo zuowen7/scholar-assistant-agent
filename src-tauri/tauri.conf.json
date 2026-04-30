@@ -36,7 +36,8 @@
     "active": true,
     "targets": ["nsis"],
     "resources": [
-      "python-dist"
+      "python-dist",
+      "D:\\cargo-target\\scholar-translate\\release\\WebView2Loader.dll"
     ],
     "icon": [
       "icons/icon.ico"
