@@ -130,7 +130,7 @@ class RAGIngestRequest(BaseModel):
 
 class WordExportRequest(BaseModel):
     content: str   # Markdown 格式文本
-    title: str = "Scholar Assistant Export"
+    title: str = "研墨导出"
 
 
 class CitationIndexRequest(BaseModel):
@@ -322,7 +322,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         for tid in done_ids[:excess]:
             del tasks[tid]
 
-    _app_title = "Scholar Assistant API (cloud-only)" if cloud_only else "Scholar Assistant API"
+    _app_title = "研墨 API (cloud-only)" if cloud_only else "研墨 API"
     parser = argparse.ArgumentParser(description=_app_title)
     app = FastAPI(title=_app_title, version="0.4.2")
 
@@ -1645,7 +1645,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
 
         Args:
             req.content: Markdown 格式文本
-            req.title: 文档标题（默认 "Scholar Assistant Export"）
+            req.title: 文档标题（默认 "研墨导出"）
 
         Returns:
             .docx 文件路径（30 分钟内有效）

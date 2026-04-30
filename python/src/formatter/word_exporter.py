@@ -200,7 +200,7 @@ def markdown_to_docx(
     markdown_text: str,
     output_path: str | Path,
     *,
-    title: str = "Scholar Assistant Export",
+    title: str = "研墨导出",
 ) -> Path:
     output_path = Path(output_path)
     # Strip XML-incompatible control characters (keep \n \r \t)

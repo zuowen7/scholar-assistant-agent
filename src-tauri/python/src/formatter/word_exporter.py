@@ -90,7 +90,7 @@ def markdown_to_docx(
     markdown_text: str,
     output_path: str | Path,
     *,
-    title: str = "Scholar Assistant Export",
+    title: str = "研墨导出",
     page_width: float = 6.5,  # inch, 正文宽度（留边距）
     font_name: str = "宋体",   # 正文字体（中文）
     code_font: str = "Consolas",

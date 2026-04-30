@@ -4,7 +4,7 @@
       <div class="welcome-hero">
         <GraduationCap :size="36" class="hero-icon" />
         <div class="hero-text">
-          <p class="hero-kicker">Scholar Workspace</p>
+          <p class="hero-kicker">研墨工作台</p>
           <h1 class="hero-title">开始写作</h1>
         </div>
       </div>

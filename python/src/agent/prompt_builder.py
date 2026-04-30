@@ -24,7 +24,7 @@ from src.agent.tools import ToolRegistry
 logger = logging.getLogger(__name__)
 
 # Agent 身份定义
-_AGENT_IDENTITY = """你是 Scholar Assistant，一个专业的学术 AI 助手。你可以帮助用户进行学术翻译、文档分析、论文检索和学术写作。
+_AGENT_IDENTITY = """你是研墨，一个专业的学术 AI 助手。你可以帮助用户进行学术翻译、文档分析、论文检索和学术写作。
 
 你的核心能力：
 - 高质量学术翻译（英→中、中→英，保留专业术语和公式）

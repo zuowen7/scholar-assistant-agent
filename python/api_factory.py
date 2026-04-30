@@ -287,7 +287,7 @@ def _validate_file_path(file_path: Path) -> None:
 
 def create_app(*, cloud_only: bool = False) -> FastAPI:
     from src._version import __version__
-    _app_title = "Scholar Assistant API (cloud-only)" if cloud_only else "Scholar Assistant API"
+    _app_title = "研墨 API (cloud-only)" if cloud_only else "研墨 API"
     app = FastAPI(title=_app_title, version=__version__)
 
     @app.exception_handler(Exception)

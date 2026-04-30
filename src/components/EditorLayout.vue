@@ -300,7 +300,7 @@ async function handleExportWord() {
   if (exportLoading.value) return
   exportLoading.value = true
   try {
-    const title = (activeTab.value?.name || 'Scholar Assistant Export').replace(/\.md$/i, '')
+    const title = (activeTab.value?.name || '研墨导出').replace(/\.md$/i, '')
     const err = await exportToWord(content.value, title)
     showExportToast(err || 'Word 导出已开始')
   } catch (e) { showExportToast(`Word 导出失败：${e}`)
