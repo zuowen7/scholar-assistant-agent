@@ -35,11 +35,16 @@ a = Analysis(
     binaries=_conda_dlls,
     datas=[
         (str(python_dir / "config" / "default.yaml"), "config"),
+        (str(python_dir / "config" / "docker.yaml"), "config"),
         # Pandoc 模板目录（包含 generic.tex 等期刊模板）
         (str(python_dir / "pandoc_templates"), "pandoc_templates"),
         # 论文模板素材库（模板源码 + Markdown/LaTeX/Text 范例）
         (str(python_dir / "data" / "paper_assets"), "data/paper_assets"),
+        # 翻译术语表
+        (str(python_dir / "data" / "translator" / "glossaries"), "data/translator/glossaries"),
         (str(python_dir / "prompts"), "prompts"),
+        # 插件目录（打包为空目录，保证 discover_plugins 不报错）
+        (str(python_dir / "plugins"), "plugins"),
     ],
     hiddenimports=[
         # FastAPI / uvicorn
@@ -54,6 +59,7 @@ a = Analysis(
         "starlette.responses",
         # PDF / document parsing
         "pdfplumber",
+        "fitz",
         "httpx",
         # Config / data
         "yaml",
@@ -76,20 +82,90 @@ a = Analysis(
         "chromadb.utils.batch_utils",
         "chromadb.utils.messageid_router",
         "chromadb.utils.ranking_utils",
+        "chromadb.api.rust",
+        "chromadb.telemetry.product.posthog",
         "hnswlib",
-        # Agent subsystems
+        # Agent core
         "src.agent.agent",
         "src.agent.models",
+        "src.agent.memory",
         "src.agent.rag",
         "src.agent.tools",
-        "src.agent.vram_manager",
-        "src.agent.memory",
-        "src.agent.tool_generator",
-        # Prompts library
-        "prompts.core",
+        "src.agent.tools.core",
+        "src.agent.tools.atomic_tools",
+        "src.agent.tools.builtin_tools",
+        "src.agent.tools.workspace_tools",
+        # Agent subsystems
+        "src.agent.auto_processor",
+        "src.agent.prompt_builder",
+        "src.agent.session",
+        "src.agent.session_store",
+        "src.agent.skill_system",
+        "src.agent.trajectory",
+        "src.agent.workspace",
+        "src.agent.change_journal",
+        "src.agent.error_classifier",
+        "src.agent.hooks",
+        "src.agent.security_gate",
+        "src.agent.task_queue",
+        "src.agent.special_elements",
+        "src.agent.review_agent",
+        # Agent internal submodules
+        "src.agent._elements_parser",
+        "src.agent._elements_tools",
+        "src.agent._elements_types",
+        "src.agent._elements_vision",
+        "src.agent._llm_anthropic",
+        "src.agent._llm_helpers",
+        "src.agent._llm_ollama",
+        "src.agent._llm_openai",
+        # Translator pipeline
+        "src.translator.parallel_runner",
+        "src.translator.memory_store",
+        "src.translator.glossary_store",
+        "src.translator._helpers",
+        "src.translator.context",
+        # Parser / cleaner / chunker / formatter
+        "src.parser.extractor",
+        "src.parser.dispatcher",
+        "src.cleaner",
+        "src.cleaner.pipeline",
+        "src.chunker",
+        "src.chunker.splitter",
+        "src.chunker.syntax_splitter",
+        "src.formatter.renderer",
+        "src.formatter.word_exporter",
+        # Citation / Zotero / MCP
+        "src.citation",
+        "src.citation.indexer",
+        "src.zotero",
+        "src.zotero.client",
+        "src.mcp",
+        "src.mcp.vision_client",
+        # Argument system
+        "src.argument.models",
+        "src.argument.store",
+        "src.argument.logic_checker",
+        "src.argument.expander",
+        "src.argument.observer",
+        "src.argument.feedback_generator",
+        "src.argument.flatten",
+        # Plugin system
+        "src.plugin",
+        "src.plugin.loader",
+        "src.plugin.registry",
+        "src.plugin.builtin",
+        # Optional OCR (inside try/except, invisible to static analysis)
+        "pytesseract",
+        "pdf2image",
+        "paddleocr",
+        # Optional async HTTP
+        "aiohttp",
         # Runtime endpoint helpers imported by api_factory routes
         "paper_assets",
         "pandoc_templates",
+        # Prompts
+        "prompts.loader",
     ],
     hookspath=[],
     hooksconfig={},
