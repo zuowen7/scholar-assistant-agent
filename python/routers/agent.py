@@ -105,11 +105,11 @@ def register_agent(
                 )
                 logger.info("RAG store initialized at %s (collection=%s)", rag_dir, rag_cfg.get("collection_name", "scholar_docs"))
             except ModuleNotFoundError as e:
-                if e.name != "chromadb":
+                if not e.name.startswith("chromadb"):
                     raise
-                logger.warning("chromadb not installed; Agent chat will run without RAG memory")
+                logger.warning("chromadb module missing (%s); Agent chat will run without RAG memory", e.name)
             except Exception as e:
-                logger.warning("RAG store init failed: %s", e)
+                logger.warning("RAG store init failed (non-fatal): %s", e)
 
             # Persistent memory, skills, trajectory
             agent_data_dir = str(data_root / "agent")

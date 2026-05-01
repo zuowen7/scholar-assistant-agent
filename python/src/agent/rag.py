@@ -80,7 +80,17 @@ class RAGStore:
         import chromadb
         from chromadb.utils import embedding_functions
 
-        self._client = chromadb.PersistentClient(path=str(self.persist_dir))
+        try:
+            self._client = chromadb.PersistentClient(path=str(self.persist_dir))
+        except ModuleNotFoundError:
+            # Re-raise module-not-found errors for chromadb submodules so
+            # callers can detect them reliably via e.name.startswith("chromadb")
+            raise
+        except Exception as e:
+            # Any other error (DLL missing, onnxruntime init failure, etc.)
+            # gets wrapped so callers that catch ModuleNotFoundError don't
+            # accidentally swallow these unrelated failures.
+            raise ModuleNotFoundError(f"chromadb.PersistentClient({self.persist_dir}) failed: {e}") from e
         # 使用 ChromaDB 默认的 Sentence Transformers 嵌入模型 (CPU, all-MiniLM-L6-v2)
         self._embedding_fn = embedding_functions.DefaultEmbeddingFunction()
         self._collection = self._client.get_or_create_collection(
