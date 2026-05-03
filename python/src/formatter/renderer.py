@@ -238,6 +238,98 @@ def _md_table_escape(text: str) -> str:
     return text
 
 
+def format_blocks(
+    block_translations: list,
+    output_format: str = "bilingual",
+) -> str:
+    """从对齐好的块翻译序列直接渲染 markdown
+
+    每块按其类型渲染：
+    - heading: 用 # / ## / ### 输出（双语：原文标题 + 译文标题，紧邻）
+    - formula/code/table: 仅输出原文（不翻译）
+    - paragraph/list/figure_caption: 按 output_format 输出双语对照
+
+    Args:
+        block_translations: list[BlockTranslation] 来自 block_translator
+        output_format: bilingual | translated_only | parallel
+
+    Returns:
+        markdown 字符串
+    """
+    if not block_translations:
+        return ""
+
+    parts: list[str] = []
+
+    for bt in block_translations:
+        type_ = bt.type
+        orig = bt.original
+        trans = bt.translated
+
+        # 不可翻译块：原样直通（保持原 markdown 语法）
+        if not bt.translatable:
+            parts.append(orig)
+            parts.append("")
+            continue
+
+        # 标题：双语展示但保留 markdown 标题语法
+        if type_ == "heading":
+            level = getattr(bt, "level", 0) or _detect_heading_level(orig)
+            prefix = "#" * max(1, min(level, 6))
+            stripped_orig = re.sub(r"^#{1,6}\s+", "", orig).strip()
+            stripped_trans = re.sub(r"^#{1,6}\s+", "", trans).strip() if trans else ""
+
+            if output_format == "translated_only":
+                parts.append(f"{prefix} {stripped_trans or stripped_orig}")
+            elif output_format == "parallel":
+                # 并排不适合标题，仍然双语紧邻
+                parts.append(f"{prefix} {stripped_orig}")
+                if stripped_trans:
+                    parts.append(f"{prefix} {stripped_trans}")
+            else:  # bilingual
+                parts.append(f"{prefix} {stripped_orig}")
+                if stripped_trans:
+                    parts.append(f"{prefix} {stripped_trans}")
+            parts.append("")
+            continue
+
+        # 普通段落 / 列表 / 图表标注
+        if output_format == "translated_only":
+            if trans.strip():
+                parts.append(trans)
+                parts.append("")
+            continue
+
+        if output_format == "parallel":
+            # 表格行：原文 | 译文
+            if not parts or not parts[-1].startswith("|"):
+                parts.append("| 原文 | 译文 |")
+                parts.append("| --- | --- |")
+            parts.append(f"| {_md_table_escape(orig)} | {_md_table_escape(trans)} |")
+            continue
+
+        # bilingual：原文用 blockquote，译文紧跟
+        if orig:
+            for line in orig.split("\n"):
+                parts.append(f"> {line}")
+            parts.append("")
+        if trans:
+            parts.append(trans)
+            parts.append("")
+
+    # 收尾：去多余空行
+    while parts and not parts[-1]:
+        parts.pop()
+
+    return "\n".join(parts)
+
+
+def _detect_heading_level(text: str) -> int:
+    """从已带 #/## 标记的文本中提取级别；无标记返回 2 (默认 H2)"""
+    m = re.match(r"^(#{1,6})\s+", text)
+    return len(m.group(1)) if m else 2
+
+
 def save_output(content: str, output_path: str | Path) -> Path:
     """将内容写入文件
 

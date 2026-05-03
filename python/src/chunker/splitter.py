@@ -32,6 +32,54 @@ class ChunkResult:
     references_text: str  # 未翻译的引用区原文
 
 
+# ── 类型化块（block-aware 翻译流的核心数据结构） ────────────────────────────
+
+# 块类型枚举（字符串常量，避免引入 Enum 依赖）
+BLOCK_PARAGRAPH = "paragraph"
+BLOCK_HEADING = "heading"
+BLOCK_FORMULA = "formula"        # $$...$$ / \[...\] / \begin{equation}...
+BLOCK_CODE = "code"              # ``` ... ```
+BLOCK_TABLE = "table"            # markdown 表格
+BLOCK_LIST = "list"              # 项目符号列表（整体作为一个块）
+BLOCK_FIGURE_CAPTION = "figure_caption"  # Figure 1 / Fig. 1 / Table 1 起始
+
+
+@dataclass
+class Block:
+    """类型化文本块——翻译管道的对齐单元
+
+    每个 Block 代表文档中的一个语义单元（段落、标题、公式、表格等）。
+    翻译时按块对齐，前端按块渲染，避免猜测式句子拆分。
+    """
+    id: str
+    type: str
+    text: str
+    level: int = 0           # 标题级别 (1-6)，非标题为 0
+    translatable: bool = True  # 公式/表格/代码默认不翻译
+
+
+@dataclass
+class BlockChunk:
+    """块感知 chunk——一个 chunk 由一组完整的 Block 组成
+
+    与传统 Chunk 相比，BlockChunk 携带 block_ids，使翻译结果可以
+    按块对齐回原文结构，而不是返回一坨黑盒文本。
+    """
+    index: int
+    text: str
+    char_count: int
+    estimated_tokens: int
+    block_ids: list[str]
+
+
+@dataclass
+class BlockChunkResult:
+    """块感知切块结果"""
+    blocks: list[Block]
+    chunks: list[BlockChunk]
+    references_text: str
+
+
 def _estimate_tokens(text: str) -> int:
     """估算文本的 token 数（中英文分开计算）。
 
@@ -380,3 +428,320 @@ def _make_chunk(index: int, parts: list[str]) -> Chunk:
         char_count=len(text),
         estimated_tokens=_estimate_tokens(text),
     )
+
+
+# ---------------------------------------------------------------------------
+# 类型化块解析（block-aware）
+# ---------------------------------------------------------------------------
+
+# 内部占位符前缀，用于在分段前保护跨段公式/代码块
+_PROTECT_PREFIX = "\x01BLOCK"
+_PROTECT_SUFFIX = "\x01"
+
+# 段落级启发式：标题判定阈值（字符数）
+_HEADING_MAX_CHARS = 100
+_HEADING_PUNCT_END = ".!?。！？:;；,"
+
+
+def _heading_level_from_marker(line: str) -> int:
+    """识别 markdown 标题标记 (#, ##...)，返回级别；不是标题返回 0"""
+    m = re.match(r"^(#{1,6})\s+\S", line)
+    return len(m.group(1)) if m else 0
+
+
+def _looks_like_pdf_heading(text: str) -> int:
+    """启发式识别 PDF 提取后无 markdown 标记的标题
+
+    返回级别 (1-3)；不是标题返回 0。
+
+    判据：
+    - 单行（无内部换行）
+    - 长度 < _HEADING_MAX_CHARS
+    - 不以句末标点结尾
+    - 满足以下任一：
+        * 形如 "1." / "1.1" / "1.2.3" / "II." 编号开头
+        * 全大写 ASCII 词组（如 "ABSTRACT", "INTRODUCTION", "METHODS"）
+        * 标题大小写（每个实词首字母大写）且词数 <= 10
+    """
+    s = text.strip()
+    if not s or "\n" in s or len(s) > _HEADING_MAX_CHARS:
+        return 0
+    if s[-1] in _HEADING_PUNCT_END:
+        # 允许 "1. Introduction" 这种以 "." 在编号后的形式
+        if not re.match(r"^\d+(\.\d+)*\.?\s+\S", s):
+            return 0
+
+    # 编号式: "1. Introduction" / "2.1 Methods" / "II. Background"
+    m = re.match(r"^(\d+(?:\.\d+)*)\.?\s+(.+)$", s)
+    if m:
+        depth = m.group(1).count(".") + 1
+        return min(depth, 3)
+    if re.match(r"^[IVXLCDM]+\.?\s+\S", s):
+        return 1
+
+    # 全大写 ASCII（学术文档常见 H1）
+    ascii_letters = sum(1 for c in s if c.isascii() and c.isalpha())
+    if ascii_letters >= 4 and ascii_letters / max(1, sum(1 for c in s if c.isalpha())) > 0.95:
+        if s.upper() == s and len(s.split()) <= 8:
+            return 1
+
+    # Title Case: "Conclusions and Future Work"
+    words = s.split()
+    if 1 < len(words) <= 10:
+        capitalized = sum(1 for w in words if w[:1].isupper())
+        if capitalized / len(words) >= 0.7:
+            return 2
+
+    return 0
+
+
+def _looks_like_table(text: str) -> bool:
+    """识别 markdown 表格：第一行多 |，第二行是分隔符"""
+    lines = text.split("\n")
+    if len(lines) < 2:
+        return False
+    first = lines[0].strip()
+    second = lines[1].strip()
+    return first.count("|") >= 2 and bool(re.match(r"^\|?[\s\-:|]+\|?$", second)) and "-" in second
+
+
+def _looks_like_list(text: str) -> bool:
+    """识别项目符号列表（首行为列表项即认为整段是列表）"""
+    first = text.split("\n", 1)[0].strip()
+    return bool(re.match(r"^[\-*•]\s+\S", first) or re.match(r"^\d+\.\s+\S", first))
+
+
+def _looks_like_figure_caption(text: str) -> bool:
+    """识别图表标注：'Figure 1' / 'Fig. 1' / 'Table 1' 起始"""
+    first = text.split("\n", 1)[0].strip()
+    return bool(re.match(r"^(?:Figure|Fig\.?|Table|图|表)\s*\d+[.:：\s]", first, re.IGNORECASE))
+
+
+def parse_blocks(text: str) -> list[Block]:
+    """将清洗后的文本解析为类型化块序列
+
+    支持类型: paragraph / heading / formula / code / table / list / figure_caption
+
+    跨段块（公式、代码）会被先行保护，避免被段落分隔切碎。
+    """
+    if not text or not text.strip():
+        return []
+
+    # 第一步：保护跨段块（用占位符替换内容）
+    protected = text
+    saved: dict[str, tuple[str, str]] = {}  # placeholder -> (type, content)
+    counter = [0]
+
+    def _protect(content: str, type_: str) -> str:
+        ph = f"{_PROTECT_PREFIX}{counter[0]}{_PROTECT_SUFFIX}"
+        saved[ph] = (type_, content)
+        counter[0] += 1
+        return ph
+
+    # 代码块: ``` ... ```
+    protected = re.sub(
+        r"```[\s\S]*?```",
+        lambda m: _protect(m.group(0), BLOCK_CODE),
+        protected,
+    )
+    # 公式块: $$ ... $$
+    protected = re.sub(
+        r"\$\$[\s\S]*?\$\$",
+        lambda m: _protect(m.group(0), BLOCK_FORMULA),
+        protected,
+    )
+    # 公式块: \[ ... \]
+    protected = re.sub(
+        r"\\\[[\s\S]*?\\\]",
+        lambda m: _protect(m.group(0), BLOCK_FORMULA),
+        protected,
+    )
+    # 公式环境: \begin{xxx} ... \end{xxx}
+    protected = re.sub(
+        r"\\begin\{(\w+)\}[\s\S]*?\\end\{\1\}",
+        lambda m: _protect(m.group(0), BLOCK_FORMULA),
+        protected,
+    )
+
+    # 第二步：按空行分段
+    paragraphs = re.split(r"\n{2,}", protected)
+
+    blocks: list[Block] = []
+    bid = 0
+
+    def _next_id() -> str:
+        nonlocal bid
+        i = bid
+        bid += 1
+        return f"b{i:04d}"
+
+    for para in paragraphs:
+        p = para.strip()
+        if not p:
+            continue
+
+        # 还原占位符（如果整段恰好就是一个占位符 → 独立块）
+        if p in saved:
+            type_, content = saved[p]
+            blocks.append(Block(_next_id(), type_, content.strip(), translatable=False))
+            continue
+
+        # 段落里嵌入的占位符也要还原（极少见但兼容处理）
+        if _PROTECT_PREFIX in p:
+            for ph, (_, content) in saved.items():
+                p = p.replace(ph, content)
+
+        # 类型识别（顺序很重要：先识别强模式，再 fallback 段落）
+        # 1. markdown 标题
+        lvl = _heading_level_from_marker(p)
+        if lvl:
+            blocks.append(Block(_next_id(), BLOCK_HEADING, p, level=lvl))
+            continue
+
+        # 2. 表格
+        if _looks_like_table(p):
+            blocks.append(Block(_next_id(), BLOCK_TABLE, p, translatable=False))
+            continue
+
+        # 3. PDF 启发式标题（无 markdown 标记的）
+        # 必须在列表检测之前——"1. Introduction" 同时匹配两者，标题优先
+        h = _looks_like_pdf_heading(p)
+        if h:
+            blocks.append(Block(_next_id(), BLOCK_HEADING, p, level=h))
+            continue
+
+        # 4. 列表（保持整段为一块，便于翻译时上下文）
+        if _looks_like_list(p):
+            blocks.append(Block(_next_id(), BLOCK_LIST, p))
+            continue
+
+        # 5. 图表标注
+        if _looks_like_figure_caption(p):
+            blocks.append(Block(_next_id(), BLOCK_FIGURE_CAPTION, p))
+            continue
+
+        # 6. 普通段落
+        blocks.append(Block(_next_id(), BLOCK_PARAGRAPH, p))
+
+    return blocks
+
+
+def pack_blocks_into_chunks(
+    blocks: list[Block],
+    max_tokens: int = 2048,
+    overlap_tokens: int = 128,
+) -> list[BlockChunk]:
+    """将块序列打包成翻译 chunk，保持块完整性
+
+    规则：
+    - 块边界永远不切断（即使单块超长也独立成 chunk）
+    - 同 chunk 内块用 \\n\\n 分隔，便于 LLM 保持段落结构
+    - 重叠以"块"为单位，不切句子
+    """
+    if not blocks:
+        return []
+
+    full_text = "\n\n".join(b.text for b in blocks)
+    chars_per_token = _estimate_chars_per_token(full_text)
+    max_chars = int(max_tokens * chars_per_token)
+    overlap_chars = int(overlap_tokens * chars_per_token)
+
+    chunks: list[BlockChunk] = []
+    current: list[Block] = []
+    current_chars = 0
+    idx = 0
+
+    def _flush_with_overlap() -> None:
+        nonlocal current, current_chars, idx
+        if not current:
+            return
+        text = "\n\n".join(b.text for b in current)
+        chunks.append(BlockChunk(
+            index=idx,
+            text=text,
+            char_count=len(text),
+            estimated_tokens=_estimate_tokens(text),
+            block_ids=[b.id for b in current],
+        ))
+        idx += 1
+        # 取末尾若干完整块作为下一 chunk 的 overlap
+        if overlap_chars > 0:
+            tail: list[Block] = []
+            total = 0
+            for b in reversed(current):
+                if total + len(b.text) > overlap_chars and tail:
+                    break
+                tail.insert(0, b)
+                total += len(b.text) + 2
+            current = tail
+            current_chars = total
+        else:
+            current = []
+            current_chars = 0
+
+    for block in blocks:
+        block_chars = len(block.text)
+        # 单块超限：先 flush 当前，再让超长块独占一 chunk
+        if block_chars > max_chars:
+            if current:
+                _flush_with_overlap()
+                current = []  # overlap 也清空，避免继续传播
+                current_chars = 0
+            chunks.append(BlockChunk(
+                index=idx,
+                text=block.text,
+                char_count=block_chars,
+                estimated_tokens=_estimate_tokens(block.text),
+                block_ids=[block.id],
+            ))
+            idx += 1
+            continue
+
+        # 加上这块会超 → 先 flush
+        if current and current_chars + block_chars + 2 > max_chars:
+            _flush_with_overlap()
+
+        current.append(block)
+        current_chars += block_chars + 2  # +2 for "\n\n"
+
+    if current:
+        # 最后一段：避免重复 overlap 段
+        text = "\n\n".join(b.text for b in current)
+        chunks.append(BlockChunk(
+            index=idx,
+            text=text,
+            char_count=len(text),
+            estimated_tokens=_estimate_tokens(text),
+            block_ids=[b.id for b in current],
+        ))
+
+    return chunks
+
+
+def chunk_text_with_blocks(
+    text: str,
+    max_tokens: int = 2048,
+    overlap_tokens: int = 128,
+    skip_references: bool = True,
+) -> BlockChunkResult:
+    """块感知切块——返回 (blocks, chunks, references)
+
+    与传统 chunk_text_full 的区别：
+    - 输出附带类型化块序列，每块有稳定 id 用于翻译后对齐
+    - chunk 由完整块组成，不会跨段切割
+    - 翻译器和前端都基于 blocks 做对齐渲染，告别"猜句子"
+
+    兼容性：旧的 chunk_text / chunk_text_full 仍可用。
+    """
+    body_text = text
+    references_text = ""
+
+    if skip_references:
+        body_text, references_text = _split_references(text)
+
+    if not body_text.strip():
+        return BlockChunkResult(blocks=[], chunks=[], references_text=references_text)
+
+    blocks = parse_blocks(body_text)
+    chunks = pack_blocks_into_chunks(blocks, max_tokens, overlap_tokens)
+    return BlockChunkResult(blocks=blocks, chunks=chunks, references_text=references_text)

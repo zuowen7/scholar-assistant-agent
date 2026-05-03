@@ -15,9 +15,44 @@ export interface CleanedEvent {
   has_references: boolean
 }
 
+export interface BlockData {
+  id: string
+  type: 'paragraph' | 'heading' | 'formula' | 'code' | 'table' | 'list' | 'figure_caption'
+  level?: number
+  translatable: boolean
+  original: string
+  translated: string
+}
+
 export interface ChunkedEvent {
   total_chunks: number
+  total_blocks: number
+  block_types: Record<string, number>
   references_chars: number
+  blocks: Array<{
+    id: string
+    type: BlockData['type']
+    level: number
+    translatable: boolean
+    original: string
+  }>
+  chunks: Array<{
+    index: number
+    block_ids: string[]
+    char_count: number
+    estimated_tokens: number
+  }>
+}
+
+export interface BlockTranslatedEvent {
+  chunk_index: number
+  block_id: string
+  type: BlockData['type']
+  translatable: boolean
+  original: string
+  translated: string
+  aligned?: boolean
+  source?: string
 }
 
 export interface ChunkDoneEvent {
@@ -26,13 +61,17 @@ export interface ChunkDoneEvent {
   original_preview: string
   translated_preview: string
   tokens: number
+  fallback?: boolean
+  aligned?: boolean
 }
 
 export interface CompleteEvent {
   task_id: string
   output_path: string
   content: string
+  blocks: BlockData[]
   chunks: { original: string; translated: string }[]
+  misalign_count?: number
 }
 
 export type TranslateStatus =
@@ -54,13 +93,20 @@ export interface TranslateState {
   parsedInfo: ParsedEvent | null
   totalChunks: number
   completedChunks: number
+  totalBlocks: number
+  completedBlocks: number
   translations: ChunkDoneEvent[]
   finalContent: string
+  /** 结构化块——文档原文骨架，翻译完成后 translated 字段被填充 */
+  blocks: BlockData[]
+  /** 向后兼容：旧的 chunks 字符串对（弃用中，由 blocks 派生） */
   chunks: { original: string; translated: string }[]
   errorMessage: string | null
   taskId: string | null
   /** Number of chunks that fell back to original text due to translation failure */
   fallbackChunks: number
+  /** Number of chunks where LLM output paragraph count != input block count */
+  misalignedChunks: number
   /** Whether translation was successfully ingested into RAG knowledge base */
   ragIngested: boolean
 }

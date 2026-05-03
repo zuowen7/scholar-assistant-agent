@@ -10,6 +10,9 @@ import type {
   ProgressEvent,
   ParsedEvent,
   ChunkDoneEvent,
+  BlockData,
+  ChunkedEvent,
+  BlockTranslatedEvent,
   AppConfig,
   CloudConfig,
   ProviderPreset,
@@ -32,12 +35,16 @@ function createState(): TranslateState {
     parsedInfo: null,
     totalChunks: 0,
     completedChunks: 0,
+    totalBlocks: 0,
+    completedBlocks: 0,
     translations: [],
     finalContent: '',
+    blocks: [],
     chunks: [],
     errorMessage: null,
     taskId: null,
     fallbackChunks: 0,
+    misalignedChunks: 0,
     ragIngested: false,
   }
 }
@@ -84,10 +91,13 @@ function overallProgress(): number {
   const stepBase = [0, 10, 28, 46, 64, 82]
   let pct = stepBase[state.currentStep] ?? 0
 
-  // Within step 4 (translating), subdivide by chunks
-  if (state.currentStep === 4 && state.totalChunks > 0) {
-    const chunkPct = (state.completedChunks / state.totalChunks) * 16
-    pct += chunkPct
+  // Within step 4 (translating), subdivide by blocks (or chunks fallback)
+  if (state.currentStep === 4) {
+    if (state.totalBlocks > 0) {
+      pct += (state.completedBlocks / state.totalBlocks) * 16
+    } else if (state.totalChunks > 0) {
+      pct += (state.completedChunks / state.totalChunks) * 16
+    }
   } else if (state.currentStep > 0) {
     pct += 14 // each non-translate step is ~14%
   }
@@ -218,10 +228,37 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
     case 'cleaned':
       state.stepMessage = `Cleaning complete, ${data.chars?.toLocaleString() ?? 0} characters`
       break
-    case 'chunked':
-      state.totalChunks = (data.total_chunks as number) ?? 0
-      state.stepMessage = `共 ${data.total_chunks} 个块`
+    case 'chunked': {
+      const ev = data as unknown as ChunkedEvent
+      state.totalChunks = ev.total_chunks ?? 0
+      state.totalBlocks = ev.total_blocks ?? 0
+      // 用原文初始化 blocks 骨架；translated 暂为空，待 block_translated 事件填充
+      state.blocks = (ev.blocks ?? []).map(b => ({
+        id: b.id,
+        type: b.type,
+        level: b.level,
+        translatable: b.translatable,
+        original: b.original,
+        translated: '',
+      }))
+      state.stepMessage = `共 ${state.totalChunks} 块、${state.totalBlocks} 段`
       break
+    }
+    case 'block_translated': {
+      const ev = data as unknown as BlockTranslatedEvent
+      const idx = state.blocks.findIndex(b => b.id === ev.block_id)
+      if (idx >= 0) {
+        const wasEmpty = !state.blocks[idx].translated
+        state.blocks[idx] = {
+          ...state.blocks[idx],
+          translated: ev.translated,
+          translatable: ev.translatable,
+          type: ev.type,
+        }
+        if (wasEmpty) state.completedBlocks += 1
+      }
+      break
+    }
     case 'chunk_done': {
       const chunk = data as unknown as ChunkDoneEvent
       const existingIdx = state.translations.findIndex(t => t.index === chunk.index)
@@ -234,6 +271,9 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       if ((data as Record<string, unknown>).fallback) {
         state.fallbackChunks += 1
         state.stepMessage = `Chunk ${chunk.index + 1}/${chunk.total} failed; original text was kept`
+      } else if ((data as Record<string, unknown>).aligned === false) {
+        state.misalignedChunks += 1
+        state.stepMessage = `Chunk ${chunk.index + 1}/${chunk.total} translated (alignment fallback)`
       } else {
         state.stepMessage = `Translated chunk ${chunk.index + 1}/${chunk.total}`
       }
@@ -244,11 +284,18 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       break
     case 'complete':
       state.finalContent = (data.content as string) ?? ''
+      // complete 事件用最终的 blocks 覆盖（修正流式过程中可能的不一致）
+      if (data.blocks) {
+        state.blocks = data.blocks as BlockData[]
+      }
       state.chunks = (data.chunks as { original: string; translated: string }[]) ?? []
       state.ragIngested = (data.rag_ingested as boolean) ?? false
       setStatus('done')
-      if (state.fallbackChunks > 0) {
-        state.stepMessage = `翻译完成（警告：${state.fallbackChunks} 个块翻译失败，已保留原文）`
+      if (state.fallbackChunks > 0 || state.misalignedChunks > 0) {
+        const parts: string[] = []
+        if (state.fallbackChunks > 0) parts.push(`${state.fallbackChunks} 块失败`)
+        if (state.misalignedChunks > 0) parts.push(`${state.misalignedChunks} 块对齐失败`)
+        state.stepMessage = `翻译完成（警告：${parts.join('、')}）`
       } else {
         state.stepMessage = '翻译完成'
       }

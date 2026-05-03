@@ -114,7 +114,10 @@
         <div class="result-bar-left">
           <CheckCircle :size="16" :stroke-width="2.2" class="done-icon" />
           <span class="done-label">翻译完成</span>
-          <span v-if="state.chunks.length" class="done-meta">{{ state.chunks.length }} 段 · {{ allSentencePairs.length }} 句</span>
+          <span v-if="state.blocks.length" class="done-meta">
+            {{ state.blocks.length }} 块 · {{ paragraphCount }} 段
+            <span v-if="state.misalignedChunks > 0" class="warn-tag">{{ state.misalignedChunks }} 块对齐回退</span>
+          </span>
           <span v-if="state.ragIngested" class="done-rag-hint" @click="$emit('open-agent-docs')">已加入知识库</span>
         </div>
         <div class="result-bar-right">
@@ -141,41 +144,42 @@
         <AlertCircle :size="14" :stroke-width="2" />
         <span class="error-text">{{ state.errorMessage }}</span>
       </div>
-      <div v-if="viewMode === 'sentence' && allSentencePairs.length" class="sentence-view">
+
+      <!-- ── 对照视图：按块（block-by-block alignment） ── -->
+      <div v-if="viewMode === 'bilingual'" class="block-view">
         <div
-          v-for="(pair, i) in allSentencePairs"
-          :key="i"
-          class="sent-pair"
+          v-for="(b, i) in renderableBlocks"
+          :key="b.id"
+          class="block-pair"
+          :class="['type-' + b.type, b.translatable ? '' : 'untranslatable']"
         >
-          <span class="sent-num">{{ i + 1 }}</span>
-          <div class="sent-body">
-            <p class="sent-orig">{{ pair.original }}</p>
-            <p class="sent-trans">{{ pair.translated }}</p>
+          <span class="block-num">{{ i + 1 }}</span>
+          <div class="block-body">
+            <!-- 标题：双语紧邻，保留层级感 -->
+            <template v-if="b.type === 'heading'">
+              <component :is="`h${Math.min(Math.max(b.level || 2, 1), 6)}`" class="block-heading-orig">{{ stripHeadingMark(b.original) }}</component>
+              <component v-if="b.translated" :is="`h${Math.min(Math.max(b.level || 2, 1), 6)}`" class="block-heading-trans">{{ stripHeadingMark(b.translated) }}</component>
+            </template>
+            <!-- 公式 / 代码 / 表格：原样渲染 markdown，不译 -->
+            <div v-else-if="!b.translatable" class="block-untranslated" v-html="renderBlock(b.original, b.type)" />
+            <!-- 普通段落 / 列表 / 图表标注：原文+译文 -->
+            <template v-else>
+              <div class="block-orig" v-html="renderBlock(b.original, b.type)" />
+              <div v-if="b.translated" class="block-trans" v-html="renderBlock(b.translated, b.type)" />
+              <div v-else class="block-pending">翻译中…</div>
+            </template>
           </div>
         </div>
       </div>
 
-      <!-- ── Parallel view ── -->
-      <div v-else-if="viewMode === 'parallel' && state.chunks.length" class="parallel-view">
-        <div v-for="(chunk, i) in state.chunks" :key="i" class="par-card">
-          <div class="par-card-head">
-            <span class="par-badge">{{ i + 1 }} / {{ state.chunks.length }}</span>
-          </div>
-          <div class="par-body">
-            <div class="par-col orig">
-              <p v-for="(para, pi) in chunk.original.split(/\n\n+/)" :key="'o'+pi">{{ para }}</p>
-            </div>
-            <div class="par-divider" />
-            <div class="par-col trans">
-              <p v-for="(para, pi) in chunk.translated.split(/\n\n+/)" :key="'t'+pi">{{ para }}</p>
-            </div>
-          </div>
-        </div>
+      <!-- ── 译文视图：纯译文阅读模式 ── -->
+      <div v-else-if="viewMode === 'translation'" class="reading-view">
+        <article class="prose" v-html="translationOnlyHtml" />
       </div>
 
-      <!-- ── Fulltext / Markdown view ── -->
-      <div v-else class="fulltext-view">
-        <article class="prose" v-html="renderedContent" />
+      <!-- ── 全文视图：双语 markdown 渲染（导出预览） ── -->
+      <div v-else class="reading-view">
+        <article class="prose" v-html="bilingualMarkdownHtml" />
       </div>
     </div>
   </main>
@@ -187,7 +191,7 @@ import { UploadCloud, AlertCircle, Check, CheckCircle, Download, FileText } from
 import UiButton from './ui/UiButton.vue'
 import UiSegmented from './ui/UiSegmented.vue'
 import { useTranslate } from '../composables/useTranslate'
-import DOMPurify from 'dompurify'
+import { renderMarkdown, renderBlock } from '../utils/markdown'
 
 const props = defineProps<{
   healthOk: boolean
@@ -201,7 +205,7 @@ defineEmits<{
 
 const { state, translate, reset, downloadResult, overallProgress, exportBilingualDocx } = useTranslate()
 
-const viewMode = ref<'sentence' | 'parallel' | 'markdown'>('sentence')
+const viewMode = ref<'bilingual' | 'translation' | 'markdown'>('bilingual')
 const zoneHover = ref(false)
 
 async function doExportBilingualDocx() {
@@ -216,8 +220,8 @@ const stepLabels = ['解析文档', '清洗文本', '智能分块', '翻译', '�
 const formatList = ['PDF', 'Word', 'PPT', 'Excel', 'TXT', 'Markdown', 'HTML', 'EPUB', 'LaTeX', 'JSON', '…']
 
 const viewOptions = [
-  { value: 'sentence' as const, label: '逐句' },
-  { value: 'parallel' as const, label: '段落' },
+  { value: 'bilingual' as const, label: '对照' },
+  { value: 'translation' as const, label: '译文' },
   { value: 'markdown' as const, label: '全文' },
 ]
 
@@ -230,156 +234,36 @@ const readStyleVars = computed(() => ({
   '--read-trans-color': props.readSettings.transColor,
 }))
 
-// ── Sentence splitting & alignment (unchanged logic) ──
+// ── Block-based rendering（不再做前端句子切分） ──
 
-interface SentencePair {
-  original: string
-  translated: string
-}
+/** 渲染时只展示真正有内容的块（即时翻译流中已到的块全展示，未到的也展示原文骨架） */
+const renderableBlocks = computed(() => state.blocks)
 
-function splitSentences(text: string, isChinese: boolean): string[] {
-  if (!text.trim()) return []
-  if (isChinese) {
-    return text.split(/(?<=[。！？；…\n])/g).map(s => s.trim()).filter(s => s.length > 0)
-  }
-  const abbrevs = [
-    'et al', 'etc', 'fig', 'eq', 'ref', 'vol', 'no', 'pp', 'cf',
-    'e.g', 'i.e', 'vs', 'al', 'ed', 'eds', 'rev', 'proc', 'inst',
-    'dept', 'univ', 'sci', 'tech', 'phys', 'chem', 'biol', 'med',
-    'hum', 'evol', 'anthrop', 'soc', 'pol', 'econ', 'psych',
-    'nat', 'int', 'inc', 'ltd', 'co', 'st', 'dr', 'mr', 'mrs',
-    'prof', 'sr', 'jr', 'ph', 'd.c', 'b.a', 'm.a',
-  ]
-  const placeholders: string[] = []
-  let protected_text = text
-
-  protected_text = protected_text.replace(/\b([A-Z])\.\s/g, (m) => {
-    const ph = `\x00PH${placeholders.length}\x00`
-    placeholders.push(m)
-    return ph
-  })
-
-  for (const abbr of abbrevs) {
-    const re = new RegExp(`\\b${abbr}\\.\\s`, 'gi')
-    protected_text = protected_text.replace(re, (m) => {
-      const ph = `\x00PH${placeholders.length}\x00`
-      placeholders.push(m)
-      return ph
-    })
-  }
-
-  let sentences = protected_text
-    .split(/(?<=[.!?])\s+|\n+/g)
-    .map(s => s.trim())
-    .filter(s => s.length > 0)
-
-  sentences = sentences.map(s => {
-    let restored = s
-    for (let i = placeholders.length - 1; i >= 0; i--) {
-      restored = restored.replace(`\x00PH${i}\x00`, placeholders[i])
-    }
-    return restored
-  })
-
-  sentences = sentences.filter(s => s.length >= 8 || /\b\w{3,}\b/.test(s))
-
-  const merged: string[] = []
-  for (const s of sentences) {
-    if (merged.length > 0 && s.length < 15 && !/^[A-Z]/.test(s)) {
-      merged[merged.length - 1] += ' ' + s
-    } else {
-      merged.push(s)
+/** 译文视图：把所有可翻译块的译文按 markdown 拼接渲染 */
+const translationOnlyHtml = computed(() => {
+  const parts: string[] = []
+  for (const b of state.blocks) {
+    if (!b.translatable) {
+      parts.push(b.original)  // 公式/代码/表格保留原样
+    } else if (b.translated) {
+      parts.push(b.type === 'heading' ? `${'#'.repeat(Math.min(Math.max(b.level || 2, 1), 6))} ${stripHeadingMark(b.translated)}` : b.translated)
     }
   }
-  return merged.filter(s => s.trim().length > 0)
-}
-
-function alignPairs(en: string[], zh: string[]): SentencePair[] {
-  const pairs: SentencePair[] = []
-  if (zh.length === 0 && en.length > 0) return [{ original: en.join(' '), translated: '' }]
-  if (en.length === 0 && zh.length > 0) return zh.map(z => ({ original: '', translated: z }))
-  if (en.length === zh.length) return en.map((e, i) => ({ original: e, translated: zh[i] }))
-
-  if (en.length > zh.length * 2 && zh.length > 0) {
-    for (let i = 0; i < zh.length - 1; i++) pairs.push({ original: en[i] ?? '', translated: zh[i] ?? '' })
-    const lastIdx = zh.length - 1
-    pairs.push({ original: en.slice(lastIdx).join(' '), translated: zh[lastIdx] ?? '' })
-    return pairs
-  }
-  if (zh.length > en.length * 2 && en.length > 0) {
-    for (let i = 0; i < en.length - 1; i++) pairs.push({ original: en[i] ?? '', translated: zh[i] ?? '' })
-    const lastIdx = en.length - 1
-    pairs.push({ original: en[lastIdx] ?? '', translated: zh.slice(lastIdx).join('') })
-    return pairs
-  }
-
-  const ratio = zh.length / en.length
-  let zhIdx = 0
-  for (let enI = 0; enI < en.length; enI++) {
-    const targetZh = Math.min(Math.round((enI + 1) * ratio), zh.length)
-    const zhEnd = Math.max(targetZh, zhIdx + 1)
-    pairs.push({ original: en[enI], translated: zh.slice(zhIdx, zhEnd).join('') })
-    zhIdx = zhEnd
-  }
-  while (zhIdx < zh.length) {
-    const last = pairs[pairs.length - 1]
-    if (last) last.translated += zh[zhIdx]; else pairs.push({ original: '', translated: zh[zhIdx] })
-    zhIdx++
-  }
-  return pairs
-}
-
-const allSentencePairs = computed<SentencePair[]>(() => {
-  const result: SentencePair[] = []
-  for (const chunk of state.chunks) {
-    const en = splitSentences(chunk.original, false)
-    const zh = splitSentences(chunk.translated, true)
-    if (en.length > 0 || zh.length > 0) result.push(...alignPairs(en, zh))
-  }
-  return result
+  return renderMarkdown(parts.join('\n\n'))
 })
 
-// ── Markdown rendering (unchanged logic) ──
+/** 全文视图：直接渲染后端格式化好的 bilingual markdown */
+const bilingualMarkdownHtml = computed(() => renderMarkdown(state.finalContent))
 
-const renderedContent = computed(() => renderMarkdown(state.finalContent))
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+/** 标题文本去掉 markdown 标记 */
+function stripHeadingMark(s: string): string {
+  return s.replace(/^#{1,6}\s+/, '').trim()
 }
 
-function renderMarkdown(md: string): string {
-  md = escapeHtml(md)
-  const extracted: string[] = []
-
-  function extract(re: RegExp, processor: (m: RegExpMatchArray) => string): void {
-    md = md.replace(re, (...args) => {
-      const ph = `\x00EX${extracted.length}\x00`
-      extracted.push(processor(args as unknown as RegExpMatchArray))
-      return ph
-    })
-  }
-
-  extract(/^(?:&gt;)+\s*(.+(?:(?:\n|^)(?:&gt;)+\s*.+)*)/gm, (m) => {
-    const lines = m[1].replace(/^(?:&gt;)+\s?/gm, '').split('\n')
-    const content = lines.map(l => l.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')).join('<br/>')
-    return `<blockquote>${content}</blockquote>`
-  })
-
-  md = md.replace(/^### (.+)$/gm, '<h3>$1</h3>')
-  md = md.replace(/^## (.+)$/gm, '<h2>$1</h2>')
-  md = md.replace(/^# (.+)$/gm, '<h1>$1</h1>')
-  md = md.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-  md = md.replace(/^---$/gm, '<hr/>')
-  md = md.replace(/\x00EX(\d+)\x00/g, (_: string, idx: string) => extracted[parseInt(idx)])
-  md = md.replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br/>')
-  md = `<p>${md}</p>`
-  md = md.replace(/<p>\s*(<h[1-3]>)/g, '$1').replace(/(<\/h[1-3]>)\s*<\/p>/g, '$1')
-  md = md.replace(/<p>\s*(<blockquote>)/g, '$1').replace(/(<\/blockquote>)\s*<\/p>/g, '$1')
-  md = md.replace(/<p>\s*(<hr\/>)/g, '$1').replace(/(<hr\/>)\s*<\/p>/g, '$1')
-  md = md.replace(/<p>\s*<\/p>/g, '')
-
-  return DOMPurify.sanitize(md)
-}
+/** 段落计数（仅 paragraph 类型）——用于显示元信息 */
+const paragraphCount = computed(() =>
+  state.blocks.filter(b => b.type === 'paragraph').length
+)
 
 // ── File picker ──
 
@@ -774,98 +658,141 @@ function openFilePicker() {
 }
 .bar-sep { width: 1px; height: 20px; background: var(--c-surface-3); }
 
-/* ── Sentence view ── */
-.sentence-view {
+/* ── Block view（核心：按块对照） ── */
+.block-view {
   flex: 1;
   overflow-y: auto;
-  max-width: 960px;
+  max-width: 1100px;
   width: 100%;
   margin: var(--space-4) auto 0;
+  padding-bottom: var(--space-6);
 }
 
-.sent-pair {
-  display: flex;
-  gap: var(--space-4);
-  padding: var(--space-4) var(--space-3);
+.block-pair {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3);
   border-radius: var(--radius-md);
   transition: background var(--motion-fast) var(--ease-out);
 }
-.sent-pair:hover { background: var(--c-surface-1); }
-.sent-pair + .sent-pair { border-top: 1px solid var(--c-surface-3); }
+.block-pair:hover { background: var(--c-surface-1); }
+.block-pair + .block-pair { border-top: 1px solid var(--c-surface-3); }
 
-.sent-num {
-  flex-shrink: 0;
-  width: 28px;
+.block-num {
   text-align: right;
   font-size: var(--text-xs);
   color: var(--c-text-3);
-  padding-top: 4px;
+  padding-top: 6px;
   font-variant-numeric: tabular-nums;
 }
-.sent-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
-.sent-orig {
+.block-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* 普通段落 */
+.block-orig {
   font-size: var(--text-sm);
   color: var(--c-text-2);
   line-height: var(--leading-relaxed);
-  white-space: pre-wrap;
   word-break: break-word;
   padding: var(--space-2) var(--space-3);
   background: var(--c-surface-2);
   border-radius: var(--radius-sm);
 }
-.sent-trans {
+.block-orig :deep(p) { margin: 0; }
+.block-orig :deep(p + p) { margin-top: var(--space-2); }
+
+.block-trans {
   font-size: var(--read-fs, 15px);
   color: var(--read-trans-color, var(--c-text-0));
   line-height: var(--read-lh, 1.9);
-  white-space: pre-wrap;
   word-break: break-word;
   font-family: var(--read-ff, system-ui);
   padding: var(--space-2) var(--space-3);
   border-left: 2px solid var(--c-accent);
 }
+.block-trans :deep(p) { margin: 0; }
+.block-trans :deep(p + p) { margin-top: var(--space-2); }
 
-/* ── Parallel view ── */
-.parallel-view {
-  flex: 1;
-  overflow-y: auto;
-  margin-top: var(--space-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
+.block-pending {
+  font-size: var(--text-xs);
+  color: var(--c-text-3);
+  font-style: italic;
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px dashed var(--c-surface-3);
 }
 
-.par-card {
-  border: 1px solid var(--c-surface-3);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  background: var(--c-surface-1);
+/* 标题块 — 双语并列展示，保持 h1/h2/h3 视觉层级 */
+.block-pair.type-heading .block-body { gap: var(--space-1); }
+.block-heading-orig {
+  margin: 0;
+  color: var(--c-text-2);
+  font-weight: 500;
 }
-.par-card-head {
-  padding: var(--space-2) var(--space-4);
-  border-bottom: 1px solid var(--c-surface-3);
+.block-heading-trans {
+  margin: 0 0 var(--space-2) 0;
+  color: var(--c-text-0);
+  font-family: var(--read-ff, system-ui);
+}
+
+/* 不可翻译块（公式/代码/表格）— 单栏原样展示 */
+.block-untranslated {
+  padding: var(--space-3) var(--space-4);
   background: var(--c-surface-2);
+  border: 1px solid var(--c-surface-3);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
 }
-.par-badge { font-size: var(--text-xs); color: var(--c-text-3); font-weight: 500; font-variant-numeric: tabular-nums; }
-.par-body { display: flex; min-height: 0; }
-.par-col {
-  flex: 1;
-  padding: var(--space-4) var(--space-5);
-  min-width: 0;
-  font-size: var(--text-base);
-  line-height: var(--leading-relaxed);
-  white-space: pre-wrap;
-  word-break: break-word;
+.block-untranslated :deep(pre) {
+  margin: 0;
+  background: transparent;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 13px;
 }
-.par-col p + p { margin-top: var(--space-3); }
-.par-col.orig p { color: var(--c-text-2); }
-.par-col.trans p { color: var(--c-text-0); font-family: var(--read-ff, system-ui); }
-.par-divider { width: 1px; background: var(--c-surface-3); flex-shrink: 0; }
+.block-untranslated :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+}
+.block-untranslated :deep(th),
+.block-untranslated :deep(td) {
+  border: 1px solid var(--c-surface-3);
+  padding: 4px 8px;
+  font-size: var(--text-sm);
+}
 
-/* ── Fulltext / Markdown view ── */
-.fulltext-view {
+/* 公式特殊样式 — KaTeX 默认居中对齐 */
+.block-pair.type-formula .block-untranslated {
+  text-align: center;
+  font-size: 1.05em;
+}
+
+/* 图表标注：弱化呈现 */
+.block-pair.type-figure_caption .block-orig,
+.block-pair.type-figure_caption .block-trans {
+  font-size: var(--text-sm);
+  font-style: italic;
+}
+
+/* ── Reading view（译文 / 全文 markdown） ── */
+.reading-view {
   flex: 1;
   overflow-y: auto;
   margin-top: var(--space-4);
+}
+
+/* 警告标签 */
+.warn-tag {
+  display: inline-block;
+  margin-left: var(--space-2);
+  padding: 1px 6px;
+  font-size: var(--text-xs);
+  background: var(--c-warning-bg, rgba(255,180,50,0.15));
+  color: var(--c-warning, #d49a2c);
+  border-radius: var(--radius-pill);
 }
 
 .prose {

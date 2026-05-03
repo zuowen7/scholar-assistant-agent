@@ -21,12 +21,15 @@ from sse_starlette.sse import EventSourceResponse
 from src.parser import extract_document, SUPPORTED_EXTENSIONS
 from src.parser.extractor import extract_document_with_layout
 from src.cleaner import clean_text_full
-from src.chunker import chunk_text_full
-from src.formatter import format_output
+from src.chunker import chunk_text_with_blocks
+from src.formatter import format_blocks, format_output
 from src.translator.ollama_client import OllamaClient, TranslationResult
 from src.translator.cloud_client import CloudClient, PROVIDER_PRESETS
 from src.translator.context import extract_document_context
-from src.translator.parallel_runner import translate_chunks_parallel
+from src.translator.block_translator import (
+    BlockTranslation,
+    translate_block_chunks_parallel,
+)
 from src.translator.memory_store import TranslationMemory
 from src.translator.glossary_store import GlossaryStore
 from src.translator._helpers import restore_paragraphs_if_needed, _extract_term_pairs
@@ -303,19 +306,48 @@ def register_translate(
                 "data": json.dumps({"step": 3, "total": 5, "message": "切块..."}),
             }
             chunker_cfg = config.get("chunker", {})
-            chunk_result = await asyncio.to_thread(
-                chunk_text_full,
+            block_result = await asyncio.to_thread(
+                chunk_text_with_blocks,
                 clean_result.text,
                 chunker_cfg.get("max_tokens", 2048),
                 chunker_cfg.get("overlap_tokens", 128),
-                chunker_cfg.get("strategy", "sentence"),
                 True,
             )
+            blocks_by_id = {b.id: b for b in block_result.blocks}
+            total_chunks = len(block_result.chunks)
+
+            # 类型分布统计——用于前端显示和调试
+            type_counts: dict[str, int] = {}
+            for b in block_result.blocks:
+                type_counts[b.type] = type_counts.get(b.type, 0) + 1
+
             yield {
                 "event": "chunked",
                 "data": json.dumps({
-                    "total_chunks": len(chunk_result.chunks),
-                    "references_chars": len(chunk_result.references_text),
+                    "total_chunks": total_chunks,
+                    "total_blocks": len(block_result.blocks),
+                    "block_types": type_counts,
+                    "references_chars": len(block_result.references_text),
+                    # 完整块清单——前端可以预先渲染原文骨架
+                    "blocks": [
+                        {
+                            "id": b.id,
+                            "type": b.type,
+                            "level": b.level,
+                            "translatable": b.translatable,
+                            "original": b.text,
+                        }
+                        for b in block_result.blocks
+                    ],
+                    "chunks": [
+                        {
+                            "index": c.index,
+                            "block_ids": c.block_ids,
+                            "char_count": c.char_count,
+                            "estimated_tokens": c.estimated_tokens,
+                        }
+                        for c in block_result.chunks
+                    ],
                 }),
             }
 
@@ -361,144 +393,208 @@ def register_translate(
                     if hasattr(client, "system_prompt"):
                         client.system_prompt = enhanced_sp
 
-            results_by_idx: dict[int, TranslationResult] = {}
             fallback_count = 0
-            total_chunks = len(chunk_result.chunks)
+            misalign_count = 0
             parallel_cfg = trans_cfg.get("parallel", {})
             max_concurrency = parallel_cfg.get("max_concurrency", 1)
 
             src_lang = trans_cfg.get("source_lang", "en")
             tgt_lang = trans_cfg.get("target_lang", "zh")
 
-            # TM lookup: separate chunks into TM-hits and LLM-needs
-            tm_hit_map: dict[int, tuple] = {}
-            llm_indices: list[int] = []
+            # 收集所有块的翻译结果（按 block_id 索引），便于后续重组
+            block_trans_by_id: dict[str, BlockTranslation] = {}
+
+            # TM 命中的 chunk（按 chunk.text 整体查询）
+            tm_hit_chunks: dict[int, str] = {}  # chunk_index -> hit.target
             llm_chunks: list = []
-            for i, chunk in enumerate(chunk_result.chunks):
+            for chunk in block_result.chunks:
                 hit = await asyncio.to_thread(
                     tm_store.lookup, chunk.text,
                     source_lang=src_lang, target_lang=tgt_lang,
                 )
                 if hit.match_type in ("exact", "fuzzy"):
-                    tm_hit_map[i] = (hit, chunk)
+                    tm_hit_chunks[chunk.index] = hit.target
+                    yield {
+                        "event": "chunk_tm_hit",
+                        "data": json.dumps({
+                            "index": chunk.index,
+                            "total": total_chunks,
+                            "match_type": hit.match_type,
+                            "score": round(hit.score, 3),
+                            "original_preview": chunk.text[:200],
+                            "translated_preview": hit.target[:200],
+                        }),
+                    }
                 else:
-                    llm_indices.append(i)
                     llm_chunks.append(chunk)
 
-            # Yield TM hits first (in order)
-            for i in sorted(tm_hit_map):
-                hit, chunk = tm_hit_map[i]
-                results_by_idx[i] = TranslationResult(
-                    original=chunk.text,
-                    translated=hit.target,
-                    model="tm",
-                )
-                yield {
-                    "event": "chunk_tm_hit",
-                    "data": json.dumps({
-                        "index": i,
-                        "total": total_chunks,
-                        "match_type": hit.match_type,
-                        "score": round(hit.score, 3),
-                        "original_preview": chunk.text[:200],
-                        "translated_preview": hit.target[:200],
-                    }),
-                }
+            # TM 命中的 chunk：按块比例分配 hit.target
+            from src.translator.block_translator import _align_translation_to_blocks
+            for cidx, hit_target in tm_hit_chunks.items():
+                chunk = next(c for c in block_result.chunks if c.index == cidx)
+                blocks = [blocks_by_id[bid] for bid in chunk.block_ids]
+                bts, _ = _align_translation_to_blocks(blocks, hit_target)
+                for bt in bts:
+                    block_trans_by_id[bt.block_id] = bt
+                    yield {
+                        "event": "block_translated",
+                        "data": json.dumps({
+                            "chunk_index": cidx,
+                            "block_id": bt.block_id,
+                            "type": bt.type,
+                            "translatable": bt.translatable,
+                            "original": bt.original,
+                            "translated": bt.translated,
+                            "source": "tm",
+                        }),
+                    }
 
-            # Translate remaining chunks via LLM
+            # 翻译剩余 chunk
             try:
                 if llm_chunks:
-                    async for cr in translate_chunks_parallel(
+                    async for cr in translate_block_chunks_parallel(
                         client,
                         llm_chunks,
+                        blocks_by_id,
                         max_concurrency=max_concurrency,
-                        retry_delay=parallel_cfg.get("retry_delay", 2.0),
                     ):
-                        orig_idx = llm_indices[cr.index]
                         if cr.error:
                             yield {
                                 "event": "chunk_error",
                                 "data": json.dumps({
-                                    "index": orig_idx,
+                                    "index": cr.chunk_index,
                                     "total": total_chunks,
                                     "error": cr.error,
                                 }),
                             }
                         if cr.is_fallback:
                             fallback_count += 1
-                        results_by_idx[orig_idx] = cr.result
+                        if not cr.aligned and not cr.is_fallback:
+                            misalign_count += 1
 
-                        # Glossary enforcement on translated text
+                        # 发送每块翻译结果
+                        for bt in cr.block_translations:
+                            block_trans_by_id[bt.block_id] = bt
+                            yield {
+                                "event": "block_translated",
+                                "data": json.dumps({
+                                    "chunk_index": cr.chunk_index,
+                                    "block_id": bt.block_id,
+                                    "type": bt.type,
+                                    "translatable": bt.translatable,
+                                    "original": bt.original,
+                                    "translated": bt.translated,
+                                    "aligned": cr.aligned,
+                                }),
+                            }
+
+                        # Glossary 校验在 chunk 级（合并所有块的译文）
                         if glossary_store:
-                            violations = glossary_store.enforce(
-                                cr.result.translated,
-                                original=cr.result.original,
-                            )
+                            chunk_orig = "\n\n".join(bt.original for bt in cr.block_translations if bt.translatable)
+                            chunk_trans = "\n\n".join(bt.translated for bt in cr.block_translations if bt.translatable)
+                            violations = glossary_store.enforce(chunk_trans, original=chunk_orig)
                             if violations:
                                 yield {
                                     "event": "glossary_violation",
                                     "data": json.dumps({
-                                        "index": orig_idx,
+                                        "index": cr.chunk_index,
                                         "total": total_chunks,
                                         "violations": violations,
                                     }),
                                 }
-                            # Feed learned term pairs as suggestions
-                            learned = _extract_term_pairs(cr.result.original, cr.result.translated)
+                            learned = _extract_term_pairs(chunk_orig, chunk_trans)
                             if learned:
                                 glossary_store.add_suggestions(learned)
 
+                        # 兼容：发送 chunk_done 事件供旧前端 fallback
+                        chunk_orig = "\n\n".join(bt.original for bt in cr.block_translations)
+                        chunk_trans = "\n\n".join(bt.translated for bt in cr.block_translations)
                         yield {
                             "event": "chunk_done",
                             "data": json.dumps({
-                                "index": orig_idx,
+                                "index": cr.chunk_index,
                                 "total": total_chunks,
-                                "original_preview": cr.result.original[:200],
-                                "translated_preview": cr.result.translated[:200],
-                                "tokens": cr.result.completion_tokens,
+                                "original_preview": chunk_orig[:200],
+                                "translated_preview": chunk_trans[:200],
+                                "tokens": cr.completion_tokens,
                                 "fallback": cr.is_fallback,
+                                "aligned": cr.aligned,
                             }),
                         }
             finally:
                 if hasattr(client, "close"):
                     client.close()
 
-            # Reconstruct results in original chunk order
-            results = [results_by_idx[i] for i in range(total_chunks)]
-
-            # Store LLM results in TM
-            for idx in llm_indices:
-                r = results_by_idx[idx]
-                try:
-                    await asyncio.to_thread(
-                        tm_store.store, r.original, r.translated,
-                        source_lang=src_lang, target_lang=tgt_lang,
+            # 构造按原始块顺序的扁平翻译列表
+            ordered_block_translations: list[BlockTranslation] = []
+            for b in block_result.blocks:
+                bt = block_trans_by_id.get(b.id)
+                if bt is None:
+                    # 未翻译（理论上不会发生，安全兜底）
+                    bt = BlockTranslation(
+                        block_id=b.id,
+                        type=b.type,
+                        original=b.text,
+                        translated=b.text,
+                        translatable=b.translatable,
                     )
-                except Exception:
-                    logger.debug("TM store failed for chunk %d (non-fatal)", idx)
+                ordered_block_translations.append(bt)
+
+            # 写入 TM：按 chunk 整体保存（保持向后兼容的 TM 结构）
+            for chunk in llm_chunks:
+                blocks = [blocks_by_id[bid] for bid in chunk.block_ids]
+                chunk_orig = "\n\n".join(b.text for b in blocks)
+                chunk_trans = "\n\n".join(
+                    block_trans_by_id[b.id].translated for b in blocks
+                    if b.id in block_trans_by_id
+                )
+                if chunk_orig and chunk_trans:
+                    try:
+                        await asyncio.to_thread(
+                            tm_store.store, chunk_orig, chunk_trans,
+                            source_lang=src_lang, target_lang=tgt_lang,
+                        )
+                    except Exception:
+                        logger.debug("TM store failed for chunk %d (non-fatal)", chunk.index)
 
             yield {
                 "event": "progress",
                 "data": json.dumps({"step": 5, "total": 5, "message": "生成输出..."}),
             }
             fmt_cfg = config.get("formatter", {})
-            content = format_output(
-                results,
+            content = format_blocks(
+                ordered_block_translations,
                 output_format=fmt_cfg.get("output_format", "bilingual"),
             )
 
             out_path = output_dir / f"{task_id}_translated.md"
             out_path.write_text(content, encoding="utf-8")
 
-            task["status"] = "done_with_warnings" if fallback_count else "done"
+            task["status"] = "done_with_warnings" if (fallback_count or misalign_count) else "done"
             task["fallback_count"] = fallback_count
+            task["misalign_count"] = misalign_count
             task["output_path"] = str(out_path)
+            task["block_translations"] = [
+                {
+                    "id": bt.block_id,
+                    "type": bt.type,
+                    "translatable": bt.translatable,
+                    "original": bt.original,
+                    "translated": bt.translated,
+                }
+                for bt in ordered_block_translations
+            ]
+            # 兼容字段：保留旧 chunks 结构供未升级的前端使用
             task["chunks"] = [
                 {
-                    "original": r.original,
-                    "translated": restore_paragraphs_if_needed(r.original, r.translated),
+                    "original": "\n\n".join(b.text for b in (blocks_by_id[bid] for bid in c.block_ids)),
+                    "translated": "\n\n".join(
+                        block_trans_by_id[bid].translated
+                        for bid in c.block_ids
+                        if bid in block_trans_by_id
+                    ),
                 }
-                for r in results
+                for c in block_result.chunks
             ]
 
             rag_ingested = False
@@ -539,13 +635,11 @@ def register_translate(
                     "content": content,
                     "rag_ingested": rag_ingested,
                     "block_ids": [b.block_id for b in task.get("blocks", []) or []] if task.get("blocks") else None,
-                    "chunks": [
-                        {
-                            "original": r.original,
-                            "translated": restore_paragraphs_if_needed(r.original, r.translated),
-                        }
-                        for r in results
-                    ],
+                    # 结构化 blocks——前端按块渲染的核心数据
+                    "blocks": task["block_translations"],
+                    # 向后兼容的扁平 chunks
+                    "chunks": task["chunks"],
+                    "misalign_count": misalign_count,
                 }),
             }
 
