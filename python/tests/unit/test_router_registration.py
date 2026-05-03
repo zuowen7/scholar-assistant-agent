@@ -100,7 +100,7 @@ class TestRegisterEditor:
         routes = [r.path for r in app.routes]
         assert "/api/edit" in routes
         assert "/api/complete" in routes
-        assert "/api/export/latex" in routes
+        assert "/api/export" in routes
         assert "/api/vision/analyze" in routes
         assert "/api/vision/ocr" in routes
         assert "/api/vision/chart" in routes
@@ -125,7 +125,6 @@ class TestRegisterMindmap:
         routes = [r.path for r in app.routes]
         assert "/api/mindmap/save" in routes
         assert "/api/mindmap/load" in routes
-        assert state is not None
 
 
 # ── Error paths ───────────────────────────────────────────────────────

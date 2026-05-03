@@ -57,11 +57,12 @@ def clean_text_full(raw_text: str) -> CleanResult:
     # 1.7 修复双栏提取导致的词内空格: "E pigenetic" → "Epigenetic"
     text = _fix_intra_word_spaces(text)
 
-    # 1.8 修复 PDF 无空格提取后的残留长连词
-    text = _fix_concatenated_words(text)
-
     # 2. 处理连字符断词: "infor-\nmation" → "information"
+    # 必须在 _fix_concatenated_words 之前，因为去断字可能产出新的长连词
     text = _fix_hyphenation(text)
+
+    # 2.5 修复 PDF 无空格提取后的残留长连词
+    text = _fix_concatenated_words(text)
 
     # 3. 合并段落内换行
     text = _merge_paragraph_lines(text)
@@ -568,31 +569,33 @@ def _remove_annotations(text: str) -> str:
     text = re.sub(r"^\^?\d{1,3}[a-z]?$", "", text, flags=re.MULTILINE)
     text = re.sub(r"^\[\d+\]$", "", text, flags=re.MULTILINE)
     # 致谢/注释/作者贡献/利益声明 等段落（整段删除）
+    # 注意：所有 header 模式都要求"单独占一行"——否则 "Acknowledgment of funding..." 这类
+    # 正文段落开头会被整段误删。每个模式末尾都加 `\s*:?\s*$`（允许尾部空格和可选冒号）。
     anno_section_headers = [
-        r"^Acknowledgments?\s*:?",
-        r"^Funding\s*:",
-        r"^Author\s+(?:Contributions?|Information)$",
-        r"^Competing\s+Interests?:?",
-        r"^Data\s+(?:Availability|Access)\s+Statement",
-        r"^Ethics\s+(?:Statement|Approval|Declarations?)",
-        r"^Consent\s+to\s+(?:Participate|Publish)",
-        r"^Conflicts?\s+of\s+Interests?",
-        r"^Financial\s+Disclosure",
-        r"^Declaration\s+of\s+",
-        r"^Supplementary\s+(?:Information|Data|Material|Note)",
-        r"^Footnotes?\s*:?",
-        r"^Notes?\s*:?",
-        r"^Additional\s+(?:Information|File)",
-        r"^Electronic\s+Supplementary",
-        r"^Supporting\s+Information",
-        r"^Author\s+e-mail",
-        r"^Correspondence",
-        r"^See\s+(?:also\s+)?(?:Appendix|Table|Figure|Fig\.?|Supplementary)",
+        r"^Acknowledgments?\s*:?\s*$",
+        r"^Funding\s*:\s*$",
+        r"^Author\s+(?:Contributions?|Information)\s*:?\s*$",
+        r"^Competing\s+Interests?\s*:?\s*$",
+        r"^Data\s+(?:Availability|Access)\s+Statement\s*:?\s*$",
+        r"^Ethics\s+(?:Statement|Approval|Declarations?)\s*:?\s*$",
+        r"^Consent\s+to\s+(?:Participate|Publish)\s*:?\s*$",
+        r"^Conflicts?\s+of\s+Interests?\s*:?\s*$",
+        r"^Financial\s+Disclosure\s*:?\s*$",
+        r"^Declaration\s+of\s+\w[\w\s]*\s*:?\s*$",
+        r"^Supplementary\s+(?:Information|Data|Material|Note)\s*:?\s*$",
+        r"^Footnotes?\s*:?\s*$",
+        r"^Notes?\s*:?\s*$",
+        r"^Additional\s+(?:Information|File)s?\s*:?\s*$",
+        r"^Electronic\s+Supplementary(?:\s+\w+)?\s*:?\s*$",
+        r"^Supporting\s+Information\s*:?\s*$",
+        r"^Author\s+e-?mail\s*:?\s*$",
+        r"^Correspondence\s*:?\s*$",
+        r"^See\s+(?:also\s+)?(?:Appendix|Table|Figure|Fig\.?|Supplementary)[^\n]*$",
     ]
     for pattern in anno_section_headers:
-        # 匹配该行及后续直到空行的内容
+        # 匹配 header 行及后续直到空行的内容（header 必须单独占行）
         text = re.sub(
-            pattern + r"[^\n]*(?:\n(?!\n)[^\n]*)*",
+            pattern + r"(?:\n(?!\n)[^\n]*)*",
             "", text, flags=re.MULTILINE | re.IGNORECASE,
         )
     # 删除单独的脚注内容行: "1 Author Name, Title, Journal (2020) pp. 1-10"

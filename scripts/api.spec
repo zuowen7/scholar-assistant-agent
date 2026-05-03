@@ -121,6 +121,7 @@ a = Analysis(
         "src.agent._llm_openai",
         # Translator pipeline
         "src.translator.parallel_runner",
+        "src.translator.block_translator",
         "src.translator.memory_store",
         "src.translator.glossary_store",
         "src.translator._helpers",

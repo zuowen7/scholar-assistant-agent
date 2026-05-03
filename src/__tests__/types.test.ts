@@ -62,12 +62,17 @@ describe('TranslateState default shape', () => {
     parsedInfo: null,
     totalChunks: 0,
     completedChunks: 0,
+    totalBlocks: 0,
+    completedBlocks: 0,
     translations: [],
     finalContent: '',
+    blocks: [],
     chunks: [],
     errorMessage: null,
     taskId: null,
     fallbackChunks: 0,
+    misalignedChunks: 0,
+    ragIngested: false,
   }
 
   it('has status idle by default', () => {
