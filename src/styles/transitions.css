@@ -45,6 +45,21 @@
 .v-spring-enter-from   { opacity: 0; transform: scale(0.6); }
 .v-spring-leave-to     { opacity: 0; transform: scale(0.96); }
 
+/* ── v-ink-bleed: 墨韵扩散（按钮、交互元素） ─────────────── */
+.v-ink-bleed-enter-active { transition: all 380ms var(--ease-brush); }
+.v-ink-bleed-leave-active { transition: all 220ms var(--ease-brush); }
+.v-ink-bleed-enter-from   { opacity: 0; transform: scale(0.8); filter: blur(8px); }
+.v-ink-bleed-leave-to     { opacity: 0; transform: scale(1.1); filter: blur(4px); }
+
+/* ── v-brush-stroke: 笔触动画（文本逐字显现） ────────────── */
+.v-brush-stroke-enter-active { transition: all 500ms var(--ease-brush); }
+.v-brush-stroke-leave-active { transition: all 200ms ease-in; }
+.v-brush-stroke-enter-from   {
+  opacity: 0;
+  clip-path: inset(0 100% 0 0);
+}
+.v-brush-stroke-leave-to     { opacity: 0; }
+
 /* ── v-unfurl: 宣纸展开（翻译完成） ─────────────────────── */
 .v-unfurl-enter-active { transition: clip-path 600ms var(--ease-emphasis), transform 600ms var(--ease-emphasis), opacity 300ms ease-out; }
 .v-unfurl-leave-active { transition: opacity var(--motion-fast) ease-in; }

@@ -659,16 +659,55 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Paper noise texture — adds depth to the flat dark background */
+/* ── Typography scale: 标题衬线 / 正文无衬线 ── */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-serif-zh), var(--font-serif);
+  font-weight: 600;
+  color: var(--c-text-0);
+  line-height: var(--leading-tight);
+}
+h1 { font-size: var(--text-display-lg); letter-spacing: var(--tracking-display); }
+h2 { font-size: var(--text-display); letter-spacing: var(--tracking-tight); }
+h3 { font-size: var(--text-2xl); }
+h4 { font-size: var(--text-xl); }
+h5 { font-size: var(--text-lg); }
+h6 { font-size: var(--text-base); }
+
+/* ── 版心容器：限制内容最大宽度，模拟古籍版面呼吸感 ── */
+.page-core {
+  max-width: var(--page-width);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: var(--page-gutter);
+  padding-right: var(--page-gutter);
+  width: 100%;
+}
+.page-core--wide {
+  max-width: var(--page-width-wide);
+}
+
+/* ── Rice paper texture (宣纸纤维纹理) ──
+   Three layers:
+   1. Fine grain — 砚石微粒 (fractalNoise, high freq)
+   2. Fiber streaks — 纸纤维 (anisotropic noise, low freq in X, higher in Y)
+   3. Speckles — 纸面杂质斑点 (turbulence with discrete alpha)
+   Combined opacity creates realistic handmade paper feel. */
 body::after {
   content: '';
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.045;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-size: 180px 180px;
+  opacity: 0.055;
+  background-image:
+    /* Layer 3: Speckles — occasional dark specks like paper impurities */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='turbulence' baseFrequency='0.95' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0.04 0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='discrete' tableValues='0 0 0 0 0 0 0 0 0 0 0 0 0 0 1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23s)'/%3E%3C/svg%3E"),
+    /* Layer 2: Fiber streaks — directional cellulose fibers */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.008 0.22' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23f)'/%3E%3C/svg%3E"),
+    /* Layer 1: Fine grain — 砚石微粒基底 */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='5' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23g)'/%3E%3C/svg%3E");
+  background-size: 300px 300px, 400px 400px, 300px 300px;
+  background-repeat: repeat;
 }
 
 .app {
@@ -787,7 +826,7 @@ body::after {
 /* Light mode global tweaks */
 [data-theme="light"] ::-webkit-scrollbar-thumb { background: var(--c-surface-5); }
 [data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: var(--c-surface-3); }
-[data-theme="light"] body::after { opacity: 0.028; }
+[data-theme="light"] body::after { opacity: 0.032; }
 /* ── View Transition (theme switch) ── */
 ::view-transition-old(root), ::view-transition-new(root) { mix-blend-mode: normal; }
 ::view-transition-new(root) { animation: vt-clip-in 320ms var(--ease-emphasis, cubic-bezier(0.2, 0, 0, 1)); }
