@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Scholar Assistant — privacy-first academic AI writing assistant (Tauri 0.3.1 / npm 0.2.0). Translates PDFs (parse -> clean -> chunk -> translate -> format via SSE), provides an AI editor (Monaco + Agent chat), and exports to LaTeX/Word. Runs as desktop app (Tauri manages Python + Ollama subprocesses) or standalone Python API.
+Scholar Assistant — privacy-first academic AI writing assistant (Tauri 0.3.1 / npm 0.2.1). Translates PDFs with DeepL-like experience (parse -> clean -> chunk -> translate -> format via SSE), provides an AI editor (Monaco + Agent chat), and exports to LaTeX/Word. Features sentence-level alignment, enhanced paragraph preservation, and flexible export options. Runs as desktop app (Tauri manages Python + Ollama subprocesses) or standalone Python API.
 
 ## Build Commands
 
@@ -37,8 +37,8 @@ npx tauri build                # Production build
 docker compose --project-name scholar-assistant build && docker compose up
 
 # Python CLI
-cd python && python main.py paper.pdf -o paper.md
-```
+cd python && python api.py     # Start API server on :18088
+``
 
 ## Architecture
 
@@ -59,7 +59,11 @@ cd python && python main.py paper.pdf -o paper.md
 
 **Translation pipeline** (5-step SSE, `useTranslate.ts` -> `routers/translate.py`):
 1. Parse -> 2. Clean -> 3. Chunk -> 4. Translate -> 5. Format
-SSE events: `progress` -> `parsed` -> `cleaned` -> `chunked` -> `chunk_done`(xN) -> `complete`
+SSE events: `progress` -> `parsed` -> `cleaned` -> `chunked` -> `block_translated`(xN) -> `complete`
+- **Block-aware translation**: Sentence-level alignment with hover highlighting (`src/utils/sentenceAlign.ts`)
+- **Enhanced prompts**: Paragraph structure preservation, reduced alignment failures
+- **Flexible export**: 4 formats (bilingual/translated-only × Markdown/Word) via unified dropdown
+- **Retry mechanism**: Failed blocks can be re-translated individually without full re-translation
 
 **Agent chat** (ReAct loop, `useAgentChat.ts` -> `routers/agent.py` -> `agent/agent.py`):
 SSE events stream tool calls and reasoning steps. Agent can use RAG, Zotero, arXiv search, file ops.
@@ -67,7 +71,7 @@ SSE events stream tool calls and reasoning steps. Agent can use RAG, Zotero, arX
 ### Backend Structure (`python/`)
 
 `api_factory.py` — `create_app()` factory: app setup, config loading, shared helpers, router registration. Routes are split into five modules under `routers/`, each exporting a `register_*` function receiving shared state (config getters, runtime dirs, RAG store):
-- `routers/translate.py` — translation pipeline, config CRUD, health, Ollama/cloud status
+- `routers/translate.py` — translation pipeline, config CRUD, health, Ollama/cloud status, export endpoints (bilingual/translation-only Word), retry failed blocks
 - `routers/agent.py` — Agent chat, RAG document management
 - `routers/editor.py` — AI edit, complete, export (LaTeX/PDF/Word), vision, citation, Zotero, paper scaffolding
 - `routers/argument.py` — Dynamic Argument Mapping (tree CRUD, expand, review, flatten)
@@ -79,7 +83,7 @@ Key backend modules under `src/`:
 - `parser/` — 16 format parsers, auto-detect single/dual column
 - `cleaner/` — 17-stage text pipeline
 - `chunker/` — 3 strategies (sentence/paragraph/fixed)
-- `translator/` — `ollama_client.py` + `cloud_client.py` (`PROVIDER_PRESETS`, 21 providers)
+- `translator/` — `ollama_client.py` + `cloud_client.py` (`PROVIDER_PRESETS`, 21 providers), `block_translator.py` (block-aware translation with status tracking, retry support)
 - `formatter/` — bilingual/translated-only/parallel output + `renderer.py` (PDF/LaTeX) + `word_exporter.py`
 - `agent/` — Core: `agent.py` (AgentLoop ReAct engine), `session.py` (session management, checkpoint/resume/approval), `session_store.py` (JSON persistence), `context_compressor.py`, `prompt_builder.py`, `models.py`. LLM clients: `llm_client.py` (unified interface) + per-backend mixins `_llm_anthropic.py`, `_llm_ollama.py`, `_llm_openai.py`, `_llm_helpers.py`. Memory+Evolution: `memory.py`, `skill_system.py` + sub-modules `_skill_auto.py`, `_skill_matching.py`, `_skill_model.py`, `_skill_persistence.py`, `trajectory.py`, `review_agent.py`. Tools+Resources: `tools/` (core, workspace_tools, atomic_tools, builtin_tools, registry), `rag.py`, `vram_manager.py`. Special elements (split from monolith): `_elements_parser.py`, `_elements_tools.py`, `_elements_types.py`, `_elements_vision.py`. Reliability: `error_classifier.py`, `hooks.py`, `security_gate.py`. Integration: `mcp_server.py`, `auto_processor.py`. Workspace: `workspace.py`, `bash_session.py`, `change_journal.py`, `task_queue.py`.
 - `plugin/` — MCP-style plugin registry (`registry.py`, `loader.py`, `builtin.py`)
@@ -92,7 +96,7 @@ Key backend modules under `src/`:
 
 - `App.vue` — Thin shell (~684 lines): wires AppTopBar, TranslateView, AgentPanel, EditorLayout. Manages app-wide state (theme, engine settings, drag-drop, background layer, health checks).
 - `composables/` — state stores; all major ones are **true singletons** (module-level state, shared app-wide):
-  - `useTranslate.ts` — singleton; SSE translation pipeline state + reconnect logic
+  - `useTranslate.ts` — singleton; SSE translation pipeline state + reconnect logic + export functions
   - `useEditor.ts` — singleton; Monaco instance, tabs, AI panel, ghost text completion; delegates to `useEditorIO.ts` / `useEditorVision.ts` / `useEditorCitation.ts` / `useEditorState.ts` / `useEditorTabs.ts` for sub-responsibilities
   - `useAiPanelState.ts` — AI Panel independent state management
   - `useFileTree.ts` — singleton; file system navigation
@@ -113,6 +117,7 @@ Key backend modules under `src/`:
 - `styles/tokens.css` — Design token system (`--c-*` colors, `--space-*`, `--radius-*`, `--text-*`, `--shadow-*`, `--ease-*`) with dark/light themes. Legacy aliases (`--bg`, `--text`, `--accent`, etc.) maintained for backward compat.
 - `utils/api.ts` — API base URL (auto-detects Tauri vs web)
 - `utils/streamReader.ts` — shared SSE stream parser used by `useTranslate.ts`, `useAgentChat.ts`, and other SSE consumers (6 call sites)
+- `utils/sentenceAlign.ts` — sentence-level alignment utilities for DeepL-like hover highlighting: `splitSentences()`, `findCorrespondingSentenceIdx()`
 - `types/index.ts` — Shared TypeScript types
 
 ### Tauri Layer (`src-tauri/`)
