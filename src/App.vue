@@ -20,11 +20,11 @@
       ></video>
     </div>
 
-    <!-- 环境光晕 — 缓慢漂移的墨色柔光 -->
-    <div class="ambient-orb" aria-hidden="true" />
+    <!-- 环境光晕 — 缓慢漂移的墨色柔光，鼠标微视差 -->
+    <div class="ambient-orb" :style="orbParallaxStyle" aria-hidden="true" />
 
     <!-- 墨粒子 — 漂浮的墨滴，如墨入水 -->
-    <div class="ink-particles" aria-hidden="true">
+    <div class="ink-particles" :style="particleParallaxStyle" aria-hidden="true">
       <span class="ink-particle" v-for="i in 15" :key="i" :style="{ '--i': i }" />
     </div>
 
@@ -179,6 +179,8 @@ const cloudChecking = ref(false)
 const tectonicOk = ref(false)
 const tectonicChecking = ref(false)
 const globalDragging = ref(false)
+const mouseX = ref(0)
+const mouseY = ref(0)
 const isDark = ref(true)
 function applyTheme(dark: boolean) {
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
@@ -309,6 +311,22 @@ const bgAssetUrl = computed(() => {
   }
 })
 
+// ── 鼠标微视差：光晕/粒子跟随鼠标 ──
+function onMouseMove(e: MouseEvent) {
+  mouseX.value = e.clientX
+  mouseY.value = e.clientY
+}
+const orbParallaxStyle = computed(() => {
+  const x = (mouseX.value / window.innerWidth - 0.5) * 22
+  const y = (mouseY.value / window.innerHeight - 0.5) * 22
+  return { transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)` }
+})
+const particleParallaxStyle = computed(() => {
+  const x = (mouseX.value / window.innerWidth - 0.5) * 14
+  const y = (mouseY.value / window.innerHeight - 0.5) * 14
+  return { transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)` }
+})
+
 const backgroundLayerStyle = computed(() => {
   const s: Record<string, string> = {}
   const opacity = bgSettings.value.opacity / 100
@@ -433,6 +451,9 @@ onMounted(async () => {
   // Load read settings
   loadReadSettings()
 
+  // Mouse parallax for ambient orbs / particles
+  window.addEventListener('mousemove', onMouseMove, { passive: true })
+
   // Listen for backend crash events (Tauri only)
   listenBackendCrash()
 
@@ -491,6 +512,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('mousemove', onMouseMove)
   if (timer) clearInterval(timer)
   if (unlistenDragDrop) unlistenDragDrop()
   cleanup()
@@ -765,6 +787,7 @@ body::after {
   filter: blur(70px);
   animation: orb-drift 28s ease-in-out infinite;
   opacity: 0.85;
+  transition: transform 1.2s var(--ease-out);
 }
 @keyframes orb-drift {
   0%   { top: -300px; left: -200px; transform: scale(1); }
@@ -803,6 +826,7 @@ body::after {
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
+  transition: transform 1.5s var(--ease-out);
 }
 .ink-particle {
   position: absolute;
