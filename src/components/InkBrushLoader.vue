@@ -305,8 +305,8 @@ onMounted(() => {
 :global([data-theme="light"]) .ink-brush-loader--overlay { background: var(--paper-0); }
 :global([data-theme="light"]) .splash-overlay {
   background:
-    radial-gradient(ellipse at 50% 45%, transparent 20%, rgba(245, 241, 232, 0.5) 70%),
-    linear-gradient(to bottom, rgba(245, 241, 232, 0.3) 0%, transparent 40%, transparent 60%, rgba(245, 241, 232, 0.6) 100%);
+    radial-gradient(ellipse at 50% 45%, transparent 20%, rgba(240, 235, 224, 0.5) 70%),
+    linear-gradient(to bottom, rgba(240, 235, 224, 0.3) 0%, transparent 40%, transparent 60%, rgba(240, 235, 224, 0.6) 100%);
 }
 :global([data-theme="light"]) .splash-title { color: var(--c-text-0); text-shadow: 0 2px 20px rgba(255, 255, 255, 0.4); }
 :global([data-theme="light"]) .ink-brush-loader__panel {
