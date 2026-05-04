@@ -1310,23 +1310,27 @@ function openFilePicker() {
   font-family: var(--read-ff, system-ui);
 }
 :deep(.prose) h1 {
-  font-size: var(--text-2xl);
+  font-family: var(--font-serif-zh), var(--font-serif);
+  font-size: var(--text-display);
   font-weight: 700;
-  margin: var(--space-6) 0 var(--space-4);
+  margin: var(--space-7) 0 var(--space-4);
   color: var(--c-text-0);
-  letter-spacing: -0.01em;
+  letter-spacing: var(--tracking-display);
   line-height: var(--leading-tight);
 }
 :deep(.prose) h2 {
-  font-size: var(--text-xl);
+  font-family: var(--font-serif-zh), var(--font-serif);
+  font-size: var(--text-2xl);
   font-weight: 600;
   margin: var(--space-6) 0 var(--space-3);
   color: var(--c-text-0);
   padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--c-surface-3);
+  letter-spacing: var(--tracking-tight);
 }
 :deep(.prose) h3 {
-  font-size: var(--text-lg);
+  font-family: var(--font-serif-zh), var(--font-serif);
+  font-size: var(--text-xl);
   font-weight: 600;
   margin: var(--space-5) 0 var(--space-2);
   color: var(--c-text-1);

@@ -138,16 +138,41 @@ const renderedHtml = computed(() => {
 .preview-body {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 24px;
+  padding: 24px var(--page-gutter);
   color: var(--text-primary);
   font-size: 14px;
   line-height: 1.7;
 }
+.preview-body :deep(> *) {
+  max-width: var(--page-width);
+  margin-left: auto;
+  margin-right: auto;
+}
 
-.preview-body :deep(h1) { font-size: 1.8em; margin: 0.8em 0 0.4em; border-bottom: 1px solid var(--border-color); padding-bottom: 0.3em; }
-.preview-body :deep(h2) { font-size: 1.4em; margin: 0.8em 0 0.4em; border-bottom: 1px solid var(--border-color); padding-bottom: 0.3em; }
-.preview-body :deep(h3) { font-size: 1.2em; margin: 0.6em 0 0.3em; }
-.preview-body :deep(h4) { font-size: 1.1em; margin: 0.5em 0 0.2em; }
+.preview-body :deep(h1) {
+  font-family: var(--font-serif-zh), var(--font-serif);
+  font-size: 1.8em; font-weight: 600;
+  margin: 1em 0 0.5em;
+  border-bottom: 1px solid var(--border-color); padding-bottom: 0.3em;
+  letter-spacing: var(--tracking-display);
+}
+.preview-body :deep(h2) {
+  font-family: var(--font-serif-zh), var(--font-serif);
+  font-size: 1.4em; font-weight: 600;
+  margin: 0.9em 0 0.4em;
+  border-bottom: 1px solid var(--border-color); padding-bottom: 0.3em;
+  letter-spacing: var(--tracking-tight);
+}
+.preview-body :deep(h3) {
+  font-family: var(--font-serif-zh), var(--font-serif);
+  font-size: 1.2em; font-weight: 600;
+  margin: 0.7em 0 0.3em;
+}
+.preview-body :deep(h4) {
+  font-family: var(--font-serif-zh), var(--font-serif);
+  font-size: 1.1em; font-weight: 600;
+  margin: 0.5em 0 0.2em;
+}
 .preview-body :deep(p) { margin: 0.6em 0; }
 .preview-body :deep(ul), .preview-body :deep(ol) { padding-left: 2em; margin: 0.5em 0; }
 .preview-body :deep(blockquote) { border-left: 3px solid var(--c-accent); padding-left: 1em; margin: 0.8em 0; color: var(--text-secondary); }

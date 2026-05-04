@@ -47,14 +47,41 @@ const iconSize = computed(() => (props.size === 'sm' ? 12 : props.size === 'lg' 
   font: inherit;
   font-weight: 500;
   cursor: pointer;
-  transition: background var(--motion-fast) var(--ease-out),
-              color var(--motion-fast) var(--ease-out),
-              border-color var(--motion-fast) var(--ease-out),
-              box-shadow var(--motion-fast) var(--ease-out),
-              transform var(--motion-fast) var(--ease-out);
+  position: relative;
+  transition: background var(--motion-fast) var(--ease-brush),
+              color var(--motion-fast) var(--ease-brush),
+              border-color var(--motion-fast) var(--ease-brush),
+              box-shadow var(--motion-fast) var(--ease-brush),
+              transform var(--motion-fast) var(--ease-brush);
   white-space: nowrap;
   user-select: none;
+  overflow: visible;
 }
+
+/* ── Ink bleed hover: 墨韵扩散 ── */
+.ui-btn::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: inherit;
+  background: radial-gradient(circle at center, var(--c-accent) 0%, transparent 70%);
+  opacity: 0;
+  transform: scale(0.75);
+  transition: opacity 380ms var(--ease-brush), transform 420ms var(--ease-brush);
+  pointer-events: none;
+  z-index: -1;
+  filter: blur(6px);
+}
+.ui-btn:not(:disabled):hover::after {
+  opacity: 0.14;
+  transform: scale(1.15);
+}
+.ui-btn:not(:disabled):active::after {
+  opacity: 0.22;
+  transform: scale(1.05);
+  transition: opacity 120ms var(--ease-brush), transform 140ms var(--ease-brush);
+}
+
 .ui-btn:disabled { opacity: 0.42; cursor: not-allowed; }
 .ui-btn:not(:disabled):hover { transform: translateY(-1px); }
 .ui-btn:not(:disabled):active { transform: scale(0.97); }

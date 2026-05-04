@@ -69,6 +69,7 @@
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-emphasis: cubic-bezier(0.2, 0, 0, 1);
+  --ease-brush: cubic-bezier(0.25, 0.1, 0.1, 1);   /* 落笔：快起慢收，模拟笔触顿挫 */
   --motion-fast: 120ms;
   --motion-base: 180ms;
   --motion-slow: 280ms;
@@ -77,6 +78,11 @@
 
   --glass-blur: 24px;
   --ring-focus: 0 0 0 3px;
+
+  /* Page layout — 版心 */
+  --page-width: 880px;          /* 正文版心最大宽度 */
+  --page-width-wide: 1200px;    /* 对照视图版心宽度 */
+  --page-gutter: 48px;          /* 版心两侧留白 */
 }
 
 /* ══════════════════════════════════════════════════════════════

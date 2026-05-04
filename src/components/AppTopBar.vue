@@ -550,10 +550,26 @@ const overallStatus = computed(() => {
   background: transparent;
   color: var(--c-text-3);
   cursor: pointer;
-  transition: background var(--motion-fast) var(--ease-out),
-              color var(--motion-fast) var(--ease-out);
+  position: relative;
+  transition: background var(--motion-fast) var(--ease-brush),
+              color var(--motion-fast) var(--ease-brush);
   flex-shrink: 0;
 }
+/* Ink bleed hover — 墨韵涟漪 */
+.topbar-icon-btn::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+  background: radial-gradient(circle at center, var(--c-accent) 0%, transparent 70%);
+  opacity: 0;
+  transform: scale(0.7);
+  transition: opacity 340ms var(--ease-brush), transform 380ms var(--ease-brush);
+  pointer-events: none;
+  z-index: -1;
+  filter: blur(5px);
+}
+.topbar-icon-btn:hover::after { opacity: 0.12; transform: scale(1.18); }
 .topbar-icon-btn:hover { background: var(--c-surface-2); color: var(--c-text-0); }
 .topbar-icon-btn.active { color: var(--c-accent-hover); background: var(--c-accent-bg); }
 
