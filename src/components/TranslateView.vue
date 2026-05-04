@@ -1,6 +1,16 @@
 <template>
   <main class="tv-main">
 
+    <!-- ── Ink splash — 文件拖入瞬间溅落 ── -->
+    <Transition name="v-splash">
+      <div v-if="splashActive" class="ink-splash" aria-hidden="true">
+        <span class="splash-ring" />
+        <span class="splash-ring splash-ring--2" />
+        <span class="splash-ring splash-ring--3" />
+        <span class="splash-drop" v-for="i in 16" :key="i" :style="{ '--i': i }" />
+      </div>
+    </Transition>
+
     <!-- ── Idle / Error ──────────────────────────────────────── -->
     <div v-if="state.status === 'idle' || state.status === 'error'" class="upload-scene">
       <div class="scene-mesh" aria-hidden="true" />
@@ -335,6 +345,15 @@ const retryingBlockIds = ref<Set<string>>(new Set())
 const sealVisible = ref(false)
 const unfurling = ref(false)
 const burstPhase = ref(false)
+const splashActive = ref(false)
+
+// 文件拖入溅落 — idle → uploading 瞬间触发
+watch(() => state.status, (newStatus, oldStatus) => {
+  if ((newStatus === 'uploading' || newStatus === 'parsing') && oldStatus === 'idle') {
+    splashActive.value = true
+    setTimeout(() => { splashActive.value = false }, 750)
+  }
+})
 
 // 卷轴展开 + 印章 + 墨粒子爆发 — 多阶段动画序列
 watch(() => state.status, (newStatus, oldStatus) => {
@@ -600,6 +619,73 @@ function openFilePicker() {
   min-height: 0;
   overflow: hidden;
 }
+
+/* ══════════════════════════════════════════════════════════
+   INK SPLASH — 文件拖入瞬间墨滴溅落
+═══════════════════════════════════════════════════════════ */
+.ink-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 溅落涟漪 — 3 层同心环逐层扩散 */
+.splash-ring {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  border: 3px solid var(--c-accent);
+  opacity: 0;
+  animation: splash-ripple 700ms var(--ease-brush) forwards;
+}
+.splash-ring--2 { animation-delay: 60ms; }
+.splash-ring--3 { animation-delay: 130ms; }
+@keyframes splash-ripple {
+  0%   { width: 0; height: 0; opacity: 0.7; border-width: 3px; }
+  60%  { opacity: 0.25; }
+  100% { width: 600px; height: 600px; opacity: 0; border-width: 0.5px; }
+}
+
+/* 溅落飞沫 — 16 颗墨滴沿径向飞出 */
+.splash-drop {
+  --angle: calc(var(--i, 1) * 22.5deg);
+  --dist: calc(40px + var(--i, 1) * 16px);
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c-accent);
+  opacity: 0;
+  animation: splash-droplet 650ms var(--ease-brush) forwards;
+  animation-delay: calc(var(--i, 1) * 22ms);
+}
+@keyframes splash-droplet {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0);
+  }
+  15% { opacity: 0.8; }
+  100% {
+    opacity: 0;
+    transform:
+      translate(
+        calc(-50% + cos(var(--angle)) * var(--dist)),
+        calc(-50% + sin(var(--angle)) * var(--dist))
+      )
+      scale(0.3);
+  }
+}
+
+/* 溅落进出场过渡 */
+.v-splash-enter-active { animation: splash-in 120ms var(--ease-brush); }
+.v-splash-leave-active { animation: splash-out 500ms var(--ease-out); }
+@keyframes splash-in  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes splash-out { from { opacity: 1; } to { opacity: 0; } }
 
 /* ══════════════════════════════════════════════════════════
    UPLOAD / IDLE — asymmetric two-column
