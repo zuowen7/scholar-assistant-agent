@@ -47,18 +47,23 @@
         没有匹配 "{{ searchQuery }}" 的文件
       </div>
     </div>
-    <div class="tree-empty" v-else>
-      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" class="tree-empty-icon"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
-      <p>未打开文件夹</p>
-      <p class="tree-empty-hint">打开一个文件夹以浏览文件</p>
-      <button class="tree-btn-open" @click="handleOpenFolder">打开文件夹</button>
-    </div>
+    <UiEmpty
+      v-else
+      :icon="FolderOpen"
+      icon-size="28"
+      title="未打开文件夹"
+      subtitle="Open a folder to browse your files."
+      action-label="打开文件夹"
+      @action="handleOpenFolder"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import FileTreeNode from './FileTreeNode.vue'
+import UiEmpty from './ui/UiEmpty.vue'
+import { FolderOpen } from './ui/icons'
 import { useFileTree } from '../composables/useFileTree'
 import { useEditor } from '../composables/useEditor'
 import type { FileEntry } from '../types'
@@ -293,31 +298,4 @@ onBeforeUnmount(() => {
   font-style: italic;
 }
 
-.tree-empty {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  color: var(--c-text-3);
-  font-size: 13px;
-  padding: 24px 16px;
-  text-align: center;
-}
-.tree-empty-icon { opacity: 0.3; margin-bottom: 4px; }
-.tree-empty-hint { font-size: 12px; color: var(--c-text-3); margin: 0; }
-
-.tree-btn-open {
-  background: var(--c-accent);
-  color: #fff;
-  border: none;
-  padding: 6px 16px;
-  border-radius: var(--radius-control);
-  cursor: pointer;
-  font-size: 13px;
-  margin-top: 4px;
-  transition: opacity var(--motion-fast);
-}
-.tree-btn-open:hover { opacity: 0.9; }
 </style>
