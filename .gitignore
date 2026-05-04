@@ -22,6 +22,14 @@ env/
 htmlcov/
 .coverage
 
+# 临时报告生成脚本
+gen_rpt.py
+generate_report.py
+improve_report.py
+rewrite_report.py
+*_报告.docx
+*_报告.pdf
+
 # 输出文件
 /output/
 *.out
