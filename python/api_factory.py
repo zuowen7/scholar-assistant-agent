@@ -408,9 +408,15 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
     async def _shutdown():
         shutdown_fn = state_agent.get("shutdown")
         if shutdown_fn:
-            await shutdown_fn()
+            try:
+                await shutdown_fn()
+            except Exception:
+                logger.exception("Agent shutdown failed")
         shutdown_editor = state_editor.get("shutdown")
         if shutdown_editor:
-            await shutdown_editor()
+            try:
+                shutdown_editor()
+            except Exception:
+                logger.exception("Editor shutdown failed")
 
     return app

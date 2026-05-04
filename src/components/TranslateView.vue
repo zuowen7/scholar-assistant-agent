@@ -292,11 +292,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, toRaw } from 'vue'
 import { UploadCloud, AlertCircle, Check, Download, FileText, ChevronDown } from './ui/icons'
 import UiButton from './ui/UiButton.vue'
 import UiSegmented from './ui/UiSegmented.vue'
 import UiDropdown from './ui/UiDropdown.vue'
+import { API_BASE } from '../utils/api'
 import { useTranslate } from '../composables/useTranslate'
 import { renderMarkdown, renderBlock } from '../utils/markdown'
 import { findCorrespondingSentenceIdx, splitSentences, type Sentence } from '../utils/sentenceAlign'
@@ -342,7 +343,7 @@ async function retryFailedBlock(blockId: string) {
   retryingBlockIds.value.add(blockId)
 
   try {
-    const resp = await fetch(`${API_URL}/api/translate/${state.taskId}/retry_block`, {
+    const resp = await fetch(`${API_BASE}/api/translate/${state.taskId}/retry_block`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ block_id: blockId }),
@@ -355,10 +356,12 @@ async function retryFailedBlock(blockId: string) {
 
     const result = await resp.json()
 
-    const block = state.blocks.find(b => b.id === blockId)
-    if (block) {
-      block.translated = result.translated
-      block.status = result.status
+    // toRaw unwraps readonly() for intentional mutation of reactive state
+    const s = toRaw(state) as any
+    const idx = s.blocks.findIndex((b: any) => b.id === blockId)
+    if (idx !== -1) {
+      s.blocks[idx].translated = result.translated
+      s.blocks[idx].status = result.status
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : '未知错误'
@@ -1000,6 +1003,22 @@ function openFilePicker() {
   box-shadow: 0 0 0 4px var(--c-accent-ring);
   animation: step-pulse 1.8s ease-in-out infinite;
 }
+/* 墨晕扩散 — 当前步骤的背景光晕 */
+.step.active .step-dot::before {
+  content: '';
+  position: absolute;
+  inset: -10px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--c-accent) 0%, transparent 70%);
+  opacity: 0;
+  animation: step-ink-bloom 2.2s ease-in-out infinite;
+  pointer-events: none;
+  z-index: -1;
+}
+@keyframes step-ink-bloom {
+  0%, 100% { opacity: 0; transform: scale(0.6); }
+  50%      { opacity: 0.08; transform: scale(1.3); }
+}
 @keyframes step-pulse {
   0%, 100% { box-shadow: 0 0 0 3px var(--c-accent-ring); }
   50% { box-shadow: 0 0 0 6px transparent; }
@@ -1028,7 +1047,6 @@ function openFilePicker() {
   height: 6px;
   background: var(--c-surface-2);
   border-radius: var(--radius-pill);
-  overflow: hidden;
   position: relative;
 }
 .progress-fill {
@@ -1037,7 +1055,8 @@ function openFilePicker() {
   background: var(--c-accent-gradient);
   transition: width 0.45s var(--ease-out);
   position: relative;
-  overflow: hidden;
+  overflow: visible;
+  box-shadow: 0 0 12px var(--c-accent-glow);
 }
 /* Shimmer overlay */
 .progress-fill::after {
@@ -1279,15 +1298,20 @@ function openFilePicker() {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-5);
-  padding: var(--space-3) 0;
-  border-bottom: 1px solid var(--c-surface-3);
+  padding: var(--space-4) 0;
+  transition: background var(--motion-fast) var(--ease-out);
 }
+/* 段落行交替微光 — 书简斑驳感 */
+.dual-row:nth-child(even) { background: var(--c-surface-2); }
+.dual-row + .dual-row { border-top: 1px solid var(--c-sent-border); }
+.dual-row:first-child { border-top: none; }
 
 .dual-orig {
   font-size: 14px;
   color: var(--c-text-2);
   line-height: 1.7;
   word-break: break-word;
+  padding-left: var(--space-2);
 }
 .dual-orig :deep(p) { margin: 0; }
 .dual-orig :deep(p + p) { margin-top: var(--space-2); }
@@ -1298,6 +1322,7 @@ function openFilePicker() {
   line-height: var(--read-lh, 1.8);
   word-break: break-word;
   font-family: var(--read-ff, system-ui);
+  padding-right: var(--space-2);
 }
 .dual-trans :deep(p) { margin: 0; }
 .dual-trans :deep(p + p) { margin-top: var(--space-2); }
@@ -1331,8 +1356,25 @@ function openFilePicker() {
   font-style: italic;
 }
 
-/* Headings */
-.dual-row.type-heading { grid-template-columns: 1fr; }
+/* Headings — 跨栏，加淡色底横线贯穿 */
+.dual-row.type-heading {
+  grid-template-columns: 1fr;
+  padding: var(--space-5) 0 var(--space-3);
+  margin-top: var(--space-3);
+  background: none;
+  position: relative;
+}
+.dual-row.type-heading + .dual-row { border-top: none; }
+.dual-row.type-heading::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(to right, var(--c-accent) 0%, var(--c-accent) 15%, transparent 60%);
+  opacity: 0.3;
+}
 .dual-heading-orig {
   margin: 0;
   color: var(--c-text-3);
@@ -1342,7 +1384,8 @@ function openFilePicker() {
 .dual-heading-trans {
   margin: var(--space-1) 0 0;
   color: var(--c-text-0);
-  font-family: var(--read-ff, system-ui);
+  font-family: var(--font-serif-zh), var(--font-serif);
+  font-weight: 600;
 }
 
 /* Untranslated blocks */

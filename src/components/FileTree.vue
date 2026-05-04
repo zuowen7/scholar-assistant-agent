@@ -50,7 +50,7 @@
     <UiEmpty
       v-else
       :icon="FolderOpen"
-      icon-size="28"
+      :icon-size="28"
       title="未打开文件夹"
       subtitle="Open a folder to browse your files."
       action-label="打开文件夹"
@@ -236,9 +236,25 @@ onBeforeUnmount(() => {
   border-radius: 4px;
   display: flex;
   align-items: center;
-  transition: background var(--motion-fast), color var(--motion-fast);
+  position: relative;
+  transition: background var(--motion-fast) var(--ease-out),
+              color var(--motion-fast) var(--ease-out);
 }
 .tree-btn:hover { background: var(--c-surface-2); color: var(--c-text-0); }
+/* 墨韵涟漪 */
+.tree-btn::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: radial-gradient(circle at center, var(--c-accent) 0%, transparent 70%);
+  opacity: 0;
+  transform: scale(0.7);
+  transition: opacity 300ms var(--ease-brush), transform 340ms var(--ease-brush);
+  pointer-events: none;
+  filter: blur(4px);
+}
+.tree-btn:hover::after { opacity: 0.1; transform: scale(1.15); }
 
 .tree-btn-sep {
   width: 1px;

@@ -90,36 +90,61 @@ defineExpose({ startEdit })
   display: flex;
   min-width: 132px;
   max-width: 276px;
-  background: var(--c-surface-2);
-  border: 1px solid color-mix(in srgb, var(--c-surface-3) 88%, transparent);
+  background: var(--c-surface-1);
+  border: 1px solid var(--c-sent-border);
   border-radius: var(--radius-md);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.14);
+  box-shadow: var(--elevation-1);
   overflow: hidden;
-  transition: transform 160ms var(--ease-out), box-shadow 160ms var(--ease-out), border-color 160ms var(--ease-out);
+  position: relative;
+  transition: transform 200ms var(--ease-spring), box-shadow 200ms var(--ease-out), border-color 200ms var(--ease-out);
   cursor: grab;
 }
+/* 墨韵涟漪 hover */
+.mind-node::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, var(--c-accent) 0%, transparent 70%);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+  transition: opacity 300ms var(--ease-brush);
+}
+.mind-node:hover::after { opacity: 0.04; }
+
 .mind-node:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+  transform: translateY(-2px);
+  box-shadow: var(--elevation-2);
   border-color: var(--c-surface-4);
 }
 .mind-node.selected {
   border-color: var(--c-accent);
-  box-shadow: 0 0 0 2px var(--c-accent-bg), 0 12px 28px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 0 0 2px var(--c-accent-ring), var(--elevation-2);
 }
 .mind-node.editing {
-  border-color: color-mix(in srgb, var(--c-accent) 86%, #fff);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 22%, transparent), 0 12px 28px rgba(0, 0, 0, 0.22);
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 3px var(--c-accent-ring), var(--elevation-2);
 }
 .mind-node.root {
   min-width: 154px;
   max-width: 300px;
-  background: linear-gradient(135deg, var(--c-surface-2), var(--c-accent-bg));
+  background: linear-gradient(135deg, var(--c-surface-2) 0%, var(--c-accent-bg2) 100%);
+  border-color: var(--c-surface-3);
 }
 
 .color-bar {
   width: 4px;
   flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+/* 光泽叠加 — 仿漆面高光 */
+.color-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.3) 0%, transparent 40%, rgba(0,0,0,0.15) 100%);
+  opacity: 0.5;
 }
 
 .node-body {
@@ -130,6 +155,8 @@ defineExpose({ startEdit })
   justify-content: space-between;
   gap: var(--space-2);
   min-width: 0;
+  position: relative;
+  z-index: 1;
 }
 
 .node-header {
@@ -144,6 +171,7 @@ defineExpose({ startEdit })
   color: var(--c-text-2);
   font-size: 10px;
   margin-top: 5px;
+  flex-shrink: 0;
 }
 
 .node-text {
@@ -156,14 +184,15 @@ defineExpose({ startEdit })
 .mind-node.root .node-text {
   font-size: 14px;
   font-weight: 650;
+  letter-spacing: var(--tracking-tight);
 }
 
 .node-input {
   flex: 1;
   min-width: 0;
-  background: color-mix(in srgb, var(--c-surface-1) 78%, transparent);
-  border: 1px solid color-mix(in srgb, var(--c-accent) 58%, transparent);
-  border-radius: 6px;
+  background: var(--c-surface-1);
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius-xs);
   outline: none;
   color: var(--c-text-0);
   font: inherit;
@@ -174,13 +203,15 @@ defineExpose({ startEdit })
 }
 
 .node-badge {
-  background: var(--c-warn);
-  color: var(--c-surface-0);
+  background: var(--c-warn-bg);
+  color: var(--c-warn-fg);
   font-size: var(--text-xs);
-  font-weight: 700;
+  font-weight: 600;
   padding: 1px 6px;
   border-radius: 999px;
+  border: 1px solid var(--c-warn-border);
   flex-shrink: 0;
+  line-height: 1.4;
 }
 
 .mind-handle {
@@ -189,9 +220,14 @@ defineExpose({ startEdit })
   background: var(--c-accent);
   border: 2px solid var(--c-surface-1);
   opacity: 0;
-  transition: opacity 160ms var(--ease-out);
+  border-radius: 50%;
+  transition: opacity 160ms var(--ease-out), transform 120ms var(--ease-spring);
+  transform: scale(0.6);
 }
 .mind-node:hover .mind-handle,
-.mind-node.selected .mind-handle { opacity: 1; }
+.mind-node.selected .mind-handle {
+  opacity: 1;
+  transform: scale(1);
+}
 .hidden-handle { opacity: 0 !important; pointer-events: none; }
 </style>

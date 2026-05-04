@@ -667,6 +667,13 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ── Focus indicator — 键盘可访问 ── */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+  border-radius: var(--radius-xs);
+}
+
 /* ── Typography scale: 标题衬线 / 正文无衬线 ── */
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-serif-zh), var(--font-serif);
@@ -931,16 +938,24 @@ body::after {
   min-height: 0;
 }
 
-/* ── Scrollbar ── */
-::-webkit-scrollbar { width: 5px; }
+/* ── Scrollbar — 研墨定制 ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--c-surface-3); border-radius: 3px; }
+::-webkit-scrollbar-thumb {
+  background: var(--c-surface-5);
+  border-radius: 3px;
+  transition: background var(--motion-fast) var(--ease-out);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--c-accent);
+}
+::-webkit-scrollbar-corner { background: transparent; }
 
 /* ── Light mode overrides ── */
 
 /* Light mode global tweaks */
-[data-theme="light"] ::-webkit-scrollbar-thumb { background: var(--c-surface-5); }
-[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: var(--c-surface-3); }
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: var(--c-surface-4); }
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: var(--c-accent); }
 [data-theme="light"] body::after { opacity: 0.032; }
 /* ── View Transition (theme switch) ── */
 ::view-transition-old(root), ::view-transition-new(root) { mix-blend-mode: normal; }
