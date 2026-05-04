@@ -8,6 +8,11 @@
       <div class="upload-hero">
         <!-- Left: serif hero -->
         <div class="hero-left">
+          <!-- Decorative ink brush stroke -->
+          <svg class="hero-brushstroke" viewBox="0 0 180 12" aria-hidden="true">
+            <path class="brushstroke-path" d="M2 6 C20 2 45 10 70 5 C95 0 120 8 145 4 C160 2 172 8 178 6"
+              fill="none" stroke="var(--c-accent)" stroke-width="2.5" stroke-linecap="round" opacity="0.35" />
+          </svg>
           <div class="hero-fishtail" aria-hidden="true" />
           <h2 class="hero-title">学术文献翻译</h2>
           <p class="hero-sub">Scholar Translator</p>
@@ -53,6 +58,22 @@
           </div>
           <!-- Orbiting highlight -->
           <div class="dz-orbit" aria-hidden="true" />
+
+          <!-- Ink drop animation — 墨滴溅落 -->
+          <div class="dz-inkdrop" aria-hidden="true">
+            <svg viewBox="0 0 24 32" class="inkdrop-svg">
+              <defs>
+                <filter id="drop-blur" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur stdDeviation="0.4" />
+                </filter>
+              </defs>
+              <!-- Drop body -->
+              <path class="inkdrop-shape" d="M12 2 C6 10 4 16 4 20 C4 25.5 7.6 30 12 30 C16.4 30 20 25.5 20 20 C20 16 18 10 12 2Z"
+                fill="var(--c-accent)" opacity="0.5" filter="url(#drop-blur)" />
+              <!-- Splash ring -->
+              <ellipse class="inkdrop-splash" cx="12" cy="28" rx="2" ry="1" fill="none" stroke="var(--c-accent)" stroke-width="1.5" opacity="0" />
+            </svg>
+          </div>
 
           <div class="dz-icon-wrap">
             <UploadCloud :size="28" :stroke-width="1.4" class="dz-icon" />
@@ -144,7 +165,7 @@
     <!-- ── Done ───────────────────────────────────────────────── -->
     <div v-else class="done-wrapper">
       <!-- Seal sits outside result-scene so clip-path unfurl doesn't clip it -->
-      <Transition name="v-spring">
+      <Transition name="v-stamp">
         <div v-if="sealVisible" class="done-seal" aria-hidden="true">
           <svg viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg" class="seal-svg">
             <defs>
@@ -598,6 +619,26 @@ function openFilePicker() {
   padding-left: var(--space-5);
 }
 
+/* Ink brush stroke decoration above title */
+.hero-brushstroke {
+  position: absolute;
+  top: -14px;
+  left: 14px;
+  width: 140px;
+  height: 14px;
+  overflow: visible;
+  pointer-events: none;
+}
+.brushstroke-path {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+  animation: brush-draw 1s var(--ease-brush) forwards;
+  animation-delay: 0.2s;
+}
+@keyframes brush-draw {
+  to { stroke-dashoffset: 0; }
+}
+
 .hero-fishtail {
   position: absolute;
   left: 0;
@@ -716,6 +757,66 @@ function openFilePicker() {
 @keyframes orbit {
   from { --orbit-angle: 0deg; }
   to   { --orbit-angle: 360deg; }
+}
+
+/* ── Ink drop animation: 墨滴溅落 ── */
+.dz-inkdrop {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 28px;
+  height: 36px;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+}
+.inkdrop-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.inkdrop-shape {
+  transform-origin: center bottom;
+}
+.inkdrop-splash {
+  transform-origin: center;
+}
+
+/* Trigger on drop-zone hover */
+.drop-zone:hover .dz-inkdrop,
+.drop-zone.hover .dz-inkdrop {
+  animation: inkdrop-fall 2.4s var(--ease-brush) infinite;
+}
+.drop-zone:hover .inkdrop-shape,
+.drop-zone.hover .inkdrop-shape {
+  animation: inkdrop-squish 2.4s var(--ease-brush) infinite;
+}
+.drop-zone:hover .inkdrop-splash,
+.drop-zone.hover .inkdrop-splash {
+  animation: inkdrop-ring 2.4s var(--ease-brush) infinite;
+}
+
+@keyframes inkdrop-fall {
+  0%    { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+  10%   { opacity: 0.7; }
+  35%   { opacity: 0.85; transform: translateX(-50%) translateY(32px); }
+  40%   { opacity: 0; transform: translateX(-50%) translateY(32px); }
+  100%  { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+}
+@keyframes inkdrop-squish {
+  0%, 35% { transform: scaleY(1) scaleX(1); }
+  38%     { transform: scaleY(0.4) scaleX(1.5); }
+  45%     { transform: scaleY(0.25) scaleX(2); }
+  55%     { transform: scaleY(0.15) scaleX(2.5); opacity: 0.4; }
+  70%     { transform: scaleY(1) scaleX(1); opacity: 0.5; }
+  100%    { transform: scaleY(1) scaleX(1); }
+}
+@keyframes inkdrop-ring {
+  0%, 39% { opacity: 0; transform: scale(0.3); }
+  42%     { opacity: 0.5; transform: scale(0.6); }
+  55%     { opacity: 0; transform: scale(3); }
+  100%    { opacity: 0; transform: scale(0.3); }
 }
 
 /* Register custom property for orbit animation */
@@ -1072,6 +1173,47 @@ function openFilePicker() {
   width: 56px;
   height: 56px;
   filter: drop-shadow(0 2px 6px rgba(200, 80, 58, 0.35));
+}
+
+/* ── Stamp transition: 落章动画 ── */
+.v-stamp-enter-active {
+  animation: stamp-down 520ms var(--ease-brush);
+}
+.v-stamp-leave-active {
+  transition: opacity 200ms ease-in, transform 200ms ease-in;
+}
+.v-stamp-leave-to {
+  opacity: 0;
+  transform: scale(0.8);
+}
+@keyframes stamp-down {
+  0%   { opacity: 0; transform: translateY(-24px) rotate(-8deg) scale(0.7); }
+  40%  { opacity: 1; transform: translateY(3px) rotate(1deg) scale(1.04); }
+  55%  { opacity: 1; transform: translateY(-1px) rotate(-0.5deg) scale(0.98); }
+  70%  { opacity: 1; transform: translateY(1px) rotate(0.2deg) scale(1.01); }
+  85%  { opacity: 1; transform: translateY(0) rotate(0deg) scale(0.995); }
+  100% { opacity: 1; transform: translateY(0) rotate(0deg) scale(1); }
+}
+
+/* Ink splash ring around seal when it lands */
+.done-seal::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--vermilion-0);
+  opacity: 0;
+  pointer-events: none;
+  animation: seal-splash 520ms var(--ease-brush) forwards;
+  animation-delay: 200ms;
+}
+@keyframes seal-splash {
+  0%   { width: 10px; height: 10px; opacity: 0.6; border-width: 2px; }
+  100% { width: 70px; height: 70px; opacity: 0; border-width: 0.5px; }
 }
 
 .result-bar {

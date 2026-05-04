@@ -20,6 +20,14 @@
       ></video>
     </div>
 
+    <!-- 环境光晕 — 缓慢漂移的墨色柔光 -->
+    <div class="ambient-orb" aria-hidden="true" />
+
+    <!-- 墨粒子 — 漂浮的墨滴，如墨入水 -->
+    <div class="ink-particles" aria-hidden="true">
+      <span class="ink-particle" v-for="i in 9" :key="i" :style="{ '--i': i }" />
+    </div>
+
     <!-- 内容遮罩层（半透明，保证可读性） -->
     <div class="content-overlay">
       <!-- 全局拖拽遮罩 -->
@@ -732,6 +740,113 @@ body::after {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* ── Ambient light orb — 砚池流光，缓慢漂移 ── */
+.ambient-orb {
+  position: fixed;
+  z-index: 0;
+  pointer-events: none;
+  width: 800px;
+  height: 800px;
+  border-radius: 50%;
+  background: radial-gradient(circle at center,
+    rgba(91, 108, 255, 0.07) 0%,
+    rgba(91, 108, 255, 0.03) 30%,
+    transparent 70%
+  );
+  filter: blur(60px);
+  animation: orb-drift 28s ease-in-out infinite;
+  opacity: 0.7;
+}
+@keyframes orb-drift {
+  0%   { top: -300px; left: -200px; transform: scale(1); }
+  25%  { top: 20%; left: 70%; transform: scale(1.2); }
+  50%  { top: 60%; left: 40%; transform: scale(0.85); }
+  75%  { top: 10%; left: 10%; transform: scale(1.1); }
+  100% { top: -300px; left: -200px; transform: scale(1); }
+}
+
+/* Second orb — 朱砂微光 */
+.ambient-orb::after {
+  content: '';
+  position: fixed;
+  width: 600px;
+  height: 600px;
+  border-radius: 50%;
+  background: radial-gradient(circle at center,
+    rgba(200, 80, 58, 0.04) 0%,
+    rgba(200, 80, 58, 0.01) 40%,
+    transparent 70%
+  );
+  filter: blur(80px);
+  animation: orb-drift-2 34s ease-in-out infinite;
+}
+@keyframes orb-drift-2 {
+  0%   { top: 70%; left: 80%; transform: scale(1.1); }
+  33%  { top: 10%; left: 30%; transform: scale(0.8); }
+  66%  { top: 50%; left: -100px; transform: scale(1.15); }
+  100% { top: 70%; left: 80%; transform: scale(1.1); }
+}
+
+/* ── Ink particles — 墨粒子漂浮，如墨入水 ── */
+.ink-particles {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.ink-particle {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 40%,
+    rgba(91, 108, 255, 0.12) 0%,
+    rgba(91, 108, 255, 0.04) 40%,
+    transparent 70%
+  );
+  filter: blur(3px);
+  /* Size, position, and animation driven by --i */
+  width: calc(30px + var(--i, 1) * 14px);
+  height: calc(30px + var(--i, 1) * 14px);
+  top: calc(var(--i, 1) * 11.1%);
+  left: calc((var(--i, 1) * 17px + 7px) * 3.7 % 100);
+  animation: particle-float calc(18s + var(--i, 1) * 3s) ease-in-out infinite;
+  animation-delay: calc(var(--i, 1) * -2.2s);
+  opacity: 0;
+}
+@keyframes particle-float {
+  0%   { transform: translate(0, 0) scale(0.6); opacity: 0; }
+  10%  { opacity: 0.7; }
+  25%  { transform: translate(40px, -30px) scale(1.1); opacity: 0.5; }
+  50%  { transform: translate(-25px, -60px) scale(0.85); opacity: 0.3; }
+  75%  { transform: translate(-50px, -15px) scale(1.05); opacity: 0.5; }
+  90%  { opacity: 0; }
+  100% { transform: translate(10px, 10px) scale(0.6); opacity: 0; }
+}
+
+/* Light mode adjustments */
+[data-theme="light"] .ambient-orb {
+  background: radial-gradient(circle at center,
+    rgba(91, 108, 255, 0.04) 0%,
+    rgba(91, 108, 255, 0.015) 30%,
+    transparent 70%
+  );
+  opacity: 0.5;
+}
+[data-theme="light"] .ambient-orb::after {
+  background: radial-gradient(circle at center,
+    rgba(200, 80, 58, 0.025) 0%,
+    rgba(200, 80, 58, 0.008) 40%,
+    transparent 70%
+  );
+}
+[data-theme="light"] .ink-particle {
+  background: radial-gradient(circle at 40% 40%,
+    rgba(91, 108, 255, 0.08) 0%,
+    rgba(91, 108, 255, 0.02) 40%,
+    transparent 70%
+  );
 }
 
 /* ── Content Overlay ── */
