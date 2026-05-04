@@ -6,7 +6,29 @@
     aria-live="polite"
     :aria-label="text"
   >
-    <div class="ink-brush-loader__panel">
+    <!-- Splash image background -->
+    <div v-if="overlay" class="splash-stage">
+      <img
+        :src="splashUrl"
+        alt=""
+        class="splash-image"
+        :class="{ 'splash-image--loaded': imageReady }"
+        @load="onImageLoad"
+      />
+      <div class="splash-overlay" />
+
+      <!-- Serif brand title -->
+      <div class="splash-brand" :class="{ 'splash-brand--visible': brandVisible }">
+        <div class="splash-pillar" />
+        <h1 class="splash-title">研墨</h1>
+      </div>
+      <p class="splash-subtitle" :class="{ 'splash-subtitle--visible': subtitleVisible }">
+        Scholar Translator
+      </p>
+    </div>
+
+    <!-- Non-overlay mode: compact loader -->
+    <div v-else class="ink-brush-loader__panel">
       <div class="ink-brush-loader__stage" aria-hidden="true">
         <svg class="ink-brush-loader__ring" viewBox="0 0 160 160">
           <defs>
@@ -18,92 +40,158 @@
             </linearGradient>
             <filter id="inkBloom" x="-18%" y="-18%" width="136%" height="136%">
               <feGaussianBlur stdDeviation="1.7" result="blur" />
-              <feColorMatrix
-                in="blur"
-                type="matrix"
-                values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 .48 0"
-              />
+              <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 .48 0" />
             </filter>
           </defs>
-
-          <path
-            class="ink-brush-loader__bloom"
-            d="M83 22 C113 23 137 47 138 76 C139 111 112 137 78 138 C45 139 22 113 23 80 C24 48 49 22 83 22"
-          />
-          <path
-            class="ink-brush-loader__stroke"
-            d="M83 22 C113 23 137 47 138 76 C139 111 112 137 78 138 C45 139 22 113 23 80 C24 48 49 22 83 22"
-          />
-          <path
-            class="ink-brush-loader__grain ink-brush-loader__grain--a"
-            d="M106 30 C123 40 134 56 136 74"
-          />
-          <path
-            class="ink-brush-loader__grain ink-brush-loader__grain--b"
-            d="M49 129 C34 119 24 101 24 82"
-          />
-          <path
-            class="ink-brush-loader__grain ink-brush-loader__grain--c"
-            d="M68 23 C52 28 38 39 30 54"
-          />
+          <path class="ink-brush-loader__bloom" d="M83 22 C113 23 137 47 138 76 C139 111 112 137 78 138 C45 139 22 113 23 80 C24 48 49 22 83 22" />
+          <path class="ink-brush-loader__stroke" d="M83 22 C113 23 137 47 138 76 C139 111 112 137 78 138 C45 139 22 113 23 80 C24 48 49 22 83 22" />
+          <path class="ink-brush-loader__grain ink-brush-loader__grain--a" d="M106 30 C123 40 134 56 136 74" />
+          <path class="ink-brush-loader__grain ink-brush-loader__grain--b" d="M49 129 C34 119 24 101 24 82" />
+          <path class="ink-brush-loader__grain ink-brush-loader__grain--c" d="M68 23 C52 28 38 39 30 54" />
         </svg>
-
-        <div class="ink-brush-loader__brush">
-          <svg viewBox="0 0 46 46">
-            <path class="ink-brush-loader__handle" d="M27 3 L34 10 L19 28 L13 23 Z" />
-            <path class="ink-brush-loader__ferrule" d="M16 22 L22 28 L17 34 L10 27 Z" />
-            <path class="ink-brush-loader__bristle" d="M10 27 C6 31 5 37 8 42 C13 39 17 36 17 34 Z" />
-            <path class="ink-brush-loader__bristle-tip" d="M8 42 C9 38 11 35 14 32" />
-          </svg>
-        </div>
       </div>
-
       <p v-if="text" class="ink-brush-loader__text">{{ text }}</p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import splashUrl from '../assets/splash-ink.png'
+
 withDefaults(defineProps<{
   text?: string
   size?: 'small' | 'medium' | 'large'
   overlay?: boolean
 }>(), {
-  text: '正在整理思路...',
+  text: '',
   size: 'medium',
   overlay: false,
+})
+
+const imageReady = ref(false)
+const brandVisible = ref(false)
+const subtitleVisible = ref(false)
+
+function onImageLoad() {
+  imageReady.value = true
+}
+
+onMounted(() => {
+  // Staggered entrance: brand at 400ms, subtitle at 800ms
+  setTimeout(() => { brandVisible.value = true }, 400)
+  setTimeout(() => { subtitleVisible.value = true }, 800)
 })
 </script>
 
 <style scoped>
-.ink-brush-loader {
-  --ink-size: 148px;
-  --ink-color: rgba(25, 25, 30, 0.9);
-  --ink-muted: rgba(108, 112, 132, 0.78);
-  --ink-panel: rgba(250, 250, 253, 0.72);
-  --ink-panel-border: rgba(120, 124, 145, 0.18);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--ink-color);
-}
-
+/* ══════════════════════════════════════════════════════════════
+   Overlay mode — full-screen splash
+   ══════════════════════════════════════════════════════════════ */
 .ink-brush-loader--overlay {
   position: fixed;
   inset: 0;
   z-index: 1200;
   width: 100vw;
   height: 100vh;
+  background: var(--ink-0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.splash-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.splash-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transform: scale(1.06);
+  transition: opacity 800ms var(--ease-out), transform 1400ms var(--ease-out);
+}
+.splash-image--loaded {
+  opacity: 0.35;
+  transform: scale(1);
+}
+
+.splash-overlay {
+  position: absolute;
+  inset: 0;
   background:
-    radial-gradient(circle at 50% 45%, rgba(120, 116, 255, 0.13), transparent 34%),
-    rgba(10, 11, 16, 0.74);
-  backdrop-filter: blur(14px) saturate(1.08);
-  -webkit-backdrop-filter: blur(14px) saturate(1.08);
-  color: rgba(238, 239, 245, 0.88);
-  --ink-color: rgba(232, 233, 240, 0.88);
-  --ink-muted: rgba(202, 205, 222, 0.72);
-  --ink-panel: rgba(18, 19, 27, 0.36);
-  --ink-panel-border: rgba(255, 255, 255, 0.08);
+    radial-gradient(ellipse at 50% 45%, transparent 20%, rgba(12, 13, 16, 0.6) 70%),
+    linear-gradient(to bottom, rgba(12, 13, 16, 0.3) 0%, transparent 40%, transparent 60%, rgba(12, 13, 16, 0.7) 100%);
+  pointer-events: none;
+}
+
+/* Brand group */
+.splash-brand {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 600ms var(--ease-out), transform 600ms var(--ease-out);
+}
+.splash-brand--visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.splash-pillar {
+  width: 4px;
+  height: 52px;
+  background: var(--accent-0);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.splash-title {
+  font-family: var(--font-serif-zh);
+  font-size: 64px;
+  font-weight: 700;
+  color: var(--c-text-0);
+  letter-spacing: var(--tracking-display);
+  line-height: 1;
+  text-shadow: 0 2px 20px rgba(0, 0, 0, 0.4);
+}
+
+.splash-subtitle {
+  font-family: 'EB Garamond', serif;
+  font-style: italic;
+  font-size: 20px;
+  color: var(--c-text-3);
+  letter-spacing: 0.02em;
+  margin-top: 12px;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 500ms var(--ease-out), transform 500ms var(--ease-out);
+}
+.splash-subtitle--visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Non-overlay mode — compact inline loader
+   ══════════════════════════════════════════════════════════════ */
+.ink-brush-loader {
+  --ink-size: 148px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .ink-brush-loader--small { --ink-size: 96px; }
@@ -116,14 +204,11 @@ withDefaults(defineProps<{
   align-items: center;
   gap: 14px;
   padding: 18px 22px;
-  border: 1px solid var(--ink-panel-border);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 22px;
-  background: var(--ink-panel);
+  background: rgba(18, 19, 27, 0.36);
   box-shadow: 0 28px 72px rgba(0, 0, 0, 0.24);
-}
-
-.ink-brush-loader:not(.ink-brush-loader--overlay) .ink-brush-loader__panel {
-  box-shadow: none;
+  color: rgba(232, 233, 240, 0.88);
 }
 
 .ink-brush-loader__stage {
@@ -137,7 +222,7 @@ withDefaults(defineProps<{
   inset: 0;
   width: 100%;
   height: 100%;
-  color: var(--ink-color);
+  color: rgba(232, 233, 240, 0.88);
   overflow: visible;
 }
 
@@ -178,45 +263,8 @@ withDefaults(defineProps<{
 .ink-brush-loader__grain--b { animation-delay: 0.54s; stroke-width: 4.4; }
 .ink-brush-loader__grain--c { animation-delay: 0.78s; stroke-width: 2.8; }
 
-.ink-brush-loader__brush {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  animation: brush-trace 2.45s cubic-bezier(0.62, 0, 0.24, 1) infinite;
-}
-
-.ink-brush-loader__brush svg {
-  position: absolute;
-  left: 50%;
-  top: 7%;
-  width: calc(var(--ink-size) * 0.25);
-  height: calc(var(--ink-size) * 0.25);
-  overflow: visible;
-  transform: translate(-12%, -44%) rotate(42deg);
-  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.28));
-}
-
-.ink-brush-loader__handle {
-  fill: #8a6043;
-}
-
-.ink-brush-loader__ferrule {
-  fill: #d6c3a3;
-}
-
-.ink-brush-loader__bristle {
-  fill: currentColor;
-}
-
-.ink-brush-loader__bristle-tip {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.28);
-  stroke-width: 1.2;
-  stroke-linecap: round;
-}
-
 .ink-brush-loader__text {
-  color: var(--ink-muted);
+  color: rgba(202, 205, 222, 0.72);
   font-size: 13px;
   letter-spacing: 0;
   line-height: 1.5;
@@ -224,107 +272,49 @@ withDefaults(defineProps<{
 }
 
 @keyframes ink-draw {
-  0% {
-    stroke-dashoffset: 372;
-    opacity: 0;
-  }
-  9% {
-    opacity: 0.96;
-  }
-  68% {
-    stroke-dashoffset: 0;
-    opacity: 0.96;
-  }
-  84% {
-    stroke-dashoffset: 0;
-    opacity: 0.82;
-  }
-  100% {
-    stroke-dashoffset: 0;
-    opacity: 0;
-  }
+  0%   { stroke-dashoffset: 372; opacity: 0; }
+  9%   { opacity: 0.96; }
+  68%  { stroke-dashoffset: 0; opacity: 0.96; }
+  84%  { stroke-dashoffset: 0; opacity: 0.82; }
+  100% { stroke-dashoffset: 0; opacity: 0; }
 }
 
 @keyframes ink-bloom {
-  0%, 50% {
-    opacity: 0;
-  }
-  70% {
-    opacity: 0.2;
-  }
-  86% {
-    opacity: 0.33;
-  }
-  100% {
-    opacity: 0;
-  }
+  0%, 50% { opacity: 0; }
+  70%     { opacity: 0.2; }
+  86%     { opacity: 0.33; }
+  100%    { opacity: 0; }
 }
 
 @keyframes ink-grain {
-  0%, 28% {
-    stroke-dashoffset: 78;
-    opacity: 0;
-  }
-  58% {
-    stroke-dashoffset: 0;
-    opacity: 0.24;
-  }
-  86% {
-    stroke-dashoffset: 0;
-    opacity: 0.12;
-  }
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes brush-trace {
-  0% {
-    opacity: 0;
-    transform: rotate(-8deg) scale(0.92);
-  }
-  8% {
-    opacity: 1;
-    transform: rotate(8deg) scale(1);
-  }
-  68% {
-    opacity: 1;
-    transform: rotate(352deg) scale(1);
-  }
-  84% {
-    opacity: 0;
-    transform: rotate(374deg) scale(0.96);
-  }
-  100% {
-    opacity: 0;
-    transform: rotate(374deg) scale(0.96);
-  }
+  0%, 28% { stroke-dashoffset: 78; opacity: 0; }
+  58%     { stroke-dashoffset: 0; opacity: 0.24; }
+  86%     { stroke-dashoffset: 0; opacity: 0.12; }
+  100%    { opacity: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ink-brush-loader__stroke,
-  .ink-brush-loader__bloom,
-  .ink-brush-loader__grain,
-  .ink-brush-loader__brush {
-    animation: none;
-  }
-
-  .ink-brush-loader__stroke {
-    stroke-dashoffset: 0;
-    opacity: 0.78;
-  }
-
-  .ink-brush-loader__bloom {
-    opacity: 0.16;
-  }
-
-  .ink-brush-loader__grain {
-    stroke-dashoffset: 0;
-    opacity: 0.16;
-  }
-
-  .ink-brush-loader__brush {
-    display: none;
-  }
+  .splash-image { transition: none; opacity: 0.35; transform: none; }
+  .splash-brand, .splash-subtitle { transition: none; opacity: 1; transform: none; }
+  .ink-brush-loader__stroke { animation: none; stroke-dashoffset: 0; opacity: 0.78; }
+  .ink-brush-loader__bloom  { animation: none; opacity: 0.16; }
+  .ink-brush-loader__grain  { animation: none; stroke-dashoffset: 0; opacity: 0.16; }
 }
+
+/* Light mode splash */
+:global([data-theme="light"]) .ink-brush-loader--overlay { background: var(--paper-0); }
+:global([data-theme="light"]) .splash-overlay {
+  background:
+    radial-gradient(ellipse at 50% 45%, transparent 20%, rgba(245, 241, 232, 0.5) 70%),
+    linear-gradient(to bottom, rgba(245, 241, 232, 0.3) 0%, transparent 40%, transparent 60%, rgba(245, 241, 232, 0.6) 100%);
+}
+:global([data-theme="light"]) .splash-title { color: var(--c-text-0); text-shadow: 0 2px 20px rgba(255, 255, 255, 0.4); }
+:global([data-theme="light"]) .ink-brush-loader__panel {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: var(--c-surface-3);
+  color: var(--c-text-0);
+  box-shadow: var(--elevation-3);
+}
+:global([data-theme="light"]) .ink-brush-loader__ring { color: var(--c-text-2); }
+:global([data-theme="light"]) .ink-brush-loader__text { color: var(--c-text-2); }
 </style>

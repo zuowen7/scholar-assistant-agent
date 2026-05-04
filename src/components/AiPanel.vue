@@ -444,15 +444,15 @@ watch(() => input.value, () => {
 .ac-ai-bubble :is(h2,h3,h4) { margin:8px 0 4px; }
 .ac-waiting { color:var(--text-secondary,#888); font-style:italic; }
 
-/* Code blocks with action bar */
-.ac-code-block { margin:8px 0; border-radius:6px; overflow:hidden; border:1px solid var(--border-color,#333); }
-.ac-code-bar { display:flex; justify-content:space-between; align-items:center; padding:4px 10px; background:var(--hover-bg,#2d2d2d); font-size:11px; }
-.ac-code-lang { color:var(--text-secondary,#888); }
-.ac-code-btn { background:none; border:none; color:var(--accent,#7c6ef0); cursor:pointer; font-size:11px; padding:2px 8px; border-radius:3px; }
-.ac-code-btn:hover { background:var(--accent-bg,rgba(124,110,240,.15)); }
-.ac-code-block pre { background:#0d0d0d; padding:10px; margin:0; overflow-x:auto; font-size:12px; line-height:1.5; }
-.ac-code-block code { background:none; padding:0; font-size:12px; }
-.ac-inline-code { background:rgba(255,255,255,.08); padding:1px 5px; border-radius:3px; font-size:12px; }
+/* Code blocks with action bar — :deep() needed because blocks are rendered via v-html */
+:deep(.ac-code-block) { margin:8px 0; border-radius:6px; overflow:hidden; border:1px solid var(--border-color,#333); }
+:deep(.ac-code-bar) { display:flex; justify-content:space-between; align-items:center; padding:4px 10px; background:var(--hover-bg,#2d2d2d); font-size:11px; }
+:deep(.ac-code-lang) { color:var(--text-secondary,#888); }
+:deep(.ac-code-btn) { background:none; border:none; color:var(--accent,#7c6ef0); cursor:pointer; font-size:11px; padding:2px 8px; border-radius:3px; }
+:deep(.ac-code-btn):hover { background:var(--accent-bg,rgba(124,110,240,.15)); }
+:deep(.ac-code-block pre) { background:var(--code-bg,#1a1a2e); color:var(--text-primary,#e0e0e0); padding:10px; margin:0; overflow-x:auto; font-size:12px; line-height:1.5; }
+:deep(.ac-code-block code) { background:none; padding:0; font-size:12px; color:inherit; }
+:deep(.ac-inline-code) { background:var(--c-surface-3); padding:1px 5px; border-radius:3px; font-size:12px; color:var(--c-text-1); }
 
 .ac-cursor { display:inline-block; width:2px; height:16px; background:var(--accent,#7c6ef0); margin-left:2px; margin-top:4px; animation:blink 1s step-end infinite; vertical-align:text-bottom; }
 @keyframes blink { 50% { opacity:0; } }
@@ -494,4 +494,10 @@ watch(() => input.value, () => {
 .ac-send-btn { width:34px; height:34px; border-radius:8px; background:var(--accent,#7c6ef0); border:none; color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 .ac-send-btn:hover { opacity:.9; }
 .ac-send-btn:disabled { opacity:.4; cursor:not-allowed; }
+
+/* ── Light mode ── */
+:global([data-theme="light"]) :deep(.ac-code-block pre) { background: var(--c-surface-0); color: var(--c-text-0); }
+:global([data-theme="light"]) :deep(.ac-inline-code) { background: var(--c-surface-3); }
+:global([data-theme="light"]) .ac-empty code { background: var(--c-surface-3); }
+:global([data-theme="light"]) .ac-menu { background: var(--c-surface-1); box-shadow: var(--elevation-3); }
 </style>

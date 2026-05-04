@@ -48,7 +48,9 @@
       </div>
     </div>
     <div class="tree-empty" v-else>
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" class="tree-empty-icon"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
       <p>未打开文件夹</p>
+      <p class="tree-empty-hint">打开一个文件夹以浏览文件</p>
       <button class="tree-btn-open" @click="handleOpenFolder">打开文件夹</button>
     </div>
   </div>
@@ -198,8 +200,8 @@ onBeforeUnmount(() => {
   flex-direction: column;
   height: 100%;
   width: 100%;
-  background: var(--sidebar-bg);
-  border-right: 1px solid var(--border-color);
+  background: var(--c-surface-0);
+  border-right: 1px solid var(--c-surface-3);
   user-select: none;
 }
 
@@ -208,14 +210,14 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--c-surface-3);
 }
 
 .tree-title {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: var(--text-secondary);
+  color: var(--c-text-3);
 }
 
 .tree-actions { display: flex; gap: 4px; }
@@ -223,19 +225,20 @@ onBeforeUnmount(() => {
 .tree-btn {
   background: none;
   border: none;
-  color: var(--text-secondary);
+  color: var(--c-text-3);
   cursor: pointer;
   padding: 4px;
   border-radius: 4px;
   display: flex;
   align-items: center;
+  transition: background var(--motion-fast), color var(--motion-fast);
 }
-.tree-btn:hover { background: var(--hover-bg); color: var(--text-primary); }
+.tree-btn:hover { background: var(--c-surface-2); color: var(--c-text-0); }
 
 .tree-btn-sep {
   width: 1px;
   height: 14px;
-  background: var(--border-color);
+  background: var(--c-surface-3);
   align-self: center;
 }
 
@@ -244,43 +247,49 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--sidebar-bg);
+  border-bottom: 1px solid var(--c-surface-3);
+  background: var(--c-surface-0);
 }
 
-.search-icon { color: var(--text-secondary); flex-shrink: 0; }
+.search-icon { color: var(--c-text-3); flex-shrink: 0; }
 
 .search-input {
   flex: 1;
-  background: var(--input-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  padding: 3px 8px;
-  color: var(--text-primary);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-surface-3);
+  border-radius: var(--radius-control);
+  padding: 4px 8px;
+  color: var(--c-text-0);
   font-size: 12px;
   outline: none;
+  transition: border-color var(--motion-fast) var(--ease-out),
+              box-shadow var(--motion-fast) var(--ease-out);
 }
-.search-input:focus { border-color: var(--accent); }
-.search-input::placeholder { color: var(--text-secondary); }
+.search-input:focus {
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 2px var(--c-accent-ring);
+}
+.search-input::placeholder { color: var(--c-text-3); }
 
 .search-clear {
   background: none;
   border: none;
-  color: var(--text-secondary);
+  color: var(--c-text-3);
   cursor: pointer;
   padding: 2px;
   border-radius: 3px;
   display: flex;
   align-items: center;
+  transition: color var(--motion-fast);
 }
-.search-clear:hover { color: var(--text-primary); }
+.search-clear:hover { color: var(--c-text-0); }
 
 .tree-body { flex: 1; overflow-y: auto; padding: 4px 0; }
 
 .tree-no-match {
   padding: 12px 16px;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--c-text-3);
   font-style: italic;
 }
 
@@ -290,19 +299,25 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  color: var(--text-secondary);
+  gap: 8px;
+  color: var(--c-text-3);
   font-size: 13px;
+  padding: 24px 16px;
+  text-align: center;
 }
+.tree-empty-icon { opacity: 0.3; margin-bottom: 4px; }
+.tree-empty-hint { font-size: 12px; color: var(--c-text-3); margin: 0; }
 
 .tree-btn-open {
-  background: var(--accent);
+  background: var(--c-accent);
   color: #fff;
   border: none;
   padding: 6px 16px;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   font-size: 13px;
+  margin-top: 4px;
+  transition: opacity var(--motion-fast);
 }
 .tree-btn-open:hover { opacity: 0.9; }
 </style>

@@ -1,4 +1,5 @@
 <template>
+  <div class="topbar-wrapper">
   <header class="topbar" data-tauri-drag-region>
 
     <!-- ── Left: Brand ──────────────────────────────────────── -->
@@ -13,6 +14,7 @@
         :model-value="appMode"
         :options="modeOptions"
         size="sm"
+        vermilion-indicator
         @update:model-value="$emit('update:appMode', $event as any)"
       />
     </div>
@@ -20,29 +22,75 @@
     <!-- ── Right: Actions ──────────────────────────────────── -->
     <div class="topbar-right">
 
-      <!-- Status cluster -->
-      <StatusCluster
-        :health-ok="healthOk"
-        :engine-type="engineType"
-        :ollama-ok="ollamaOk"
-        :ollama-loading="ollamaLoading"
-        :cloud-ok="cloudOk"
-        :tectonic-ok="tectonicOk"
-        :tectonic-checking="tectonicChecking"
-        @toggle-ollama="$emit('toggle-ollama')"
-        @handle-tectonic="$emit('handle-tectonic')"
-      />
+      <!-- Status dot + engine chip -->
+      <UiPopover ref="statusPopoverRef" :width="300" align="end" :offset="8">
+        <template #trigger>
+          <button class="status-trigger" :class="overallStatus" title="服务状态">
+            <span class="status-dot" />
+            <span class="status-label">{{ engineType === 'ollama' ? 'Ollama' : '云端' }}</span>
+          </button>
+        </template>
+        <div class="status-popover">
+          <div class="sp-header">
+            <span class="sp-title">服务状态</span>
+          </div>
+
+          <div class="status-rows">
+            <div class="status-row">
+              <span class="sr-dot" :class="healthOk ? 'ok' : 'off'" />
+              <span class="sr-label">后端</span>
+              <span class="sr-state">{{ healthOk ? '在线' : '离线' }}</span>
+            </div>
+            <template v-if="engineType === 'ollama'">
+              <div class="status-row">
+                <span class="sr-dot" :class="ollamaOk ? 'ok' : 'off'" />
+                <span class="sr-label">Ollama</span>
+                <span class="sr-state">
+                  <template v-if="ollamaLoading">启动中…</template>
+                  <template v-else>{{ ollamaOk ? '在线' : '离线' }}</template>
+                </span>
+                <UiButton v-if="!ollamaOk && !ollamaLoading" variant="ghost" size="sm" @click="$emit('toggle-ollama')">启动</UiButton>
+              </div>
+            </template>
+            <template v-else>
+              <div class="status-row">
+                <span class="sr-dot" :class="cloudOk ? 'ok' : 'off'" />
+                <span class="sr-label">云端 API</span>
+                <span class="sr-state">{{ cloudOk ? '已连接' : '未连接' }}</span>
+              </div>
+            </template>
+            <div class="status-row">
+              <span class="sr-dot" :class="tectonicOk ? 'ok' : 'off'" />
+              <span class="sr-label">LaTeX</span>
+              <span class="sr-state">{{ tectonicChecking ? '检测…' : tectonicOk ? '就绪' : '未安装' }}</span>
+              <UiButton v-if="!tectonicOk && !tectonicChecking" variant="ghost" size="sm" @click="$emit('handle-tectonic')">安装</UiButton>
+            </div>
+          </div>
+
+          <div class="sp-divider" />
+
+          <!-- Engine switch inside popover -->
+          <div class="sp-section-label">翻译引擎</div>
+          <UiSegmented
+            :model-value="engineType"
+            :options="engineOptions"
+            size="sm"
+            full
+            @update:model-value="$emit('update:engineType', $event as any); $emit('save-engine-settings')"
+          />
+        </div>
+      </UiPopover>
 
       <div class="topbar-sep" />
 
       <!-- Unified Settings popover -->
-      <UiPopover ref="settingsPopoverRef" :width="320" align="end" :offset="8">
+      <UiPopover ref="settingsPopoverRef" :width="380" align="end" :offset="8">
         <template #trigger>
           <button
             class="topbar-icon-btn"
             :class="{ active: settingsPopoverOpen }"
             title="设置"
-            @click="settingsPopoverOpen = !settingsPopoverOpen"
+            @click="settingsPopoverRef?.toggle()"
           >
             <Settings :size="15" :stroke-width="1.6" />
           </button>
@@ -75,52 +123,46 @@
               <div class="sp-section-label">云端配置</div>
               <div class="sp-field">
                 <label class="sp-label">供应商</label>
-                <select
-                  :value="cloudConfig.provider"
-                  class="sp-select"
-                  @change="$emit('provider-change'); $emit('update:cloudConfig', { ...cloudConfig, provider: ($event.target as HTMLSelectElement).value })"
+                <UiSelect
+                  :model-value="cloudConfig.provider"
+                  @update:model-value="$emit('provider-change'); $emit('update:cloudConfig', { ...cloudConfig, provider: $event })"
                 >
                   <option v-for="(preset, key) in providerPresets" :key="key" :value="key">{{ preset.name }}</option>
-                </select>
+                </UiSelect>
               </div>
               <div class="sp-field">
                 <label class="sp-label">API Key</label>
-                <input
+                <UiInput
                   type="password"
-                  :value="cloudConfig.api_key"
-                  class="sp-input"
+                  :model-value="cloudConfig.api_key"
                   placeholder="输入 API Key"
-                  @input="$emit('update:cloudConfig', { ...cloudConfig, api_key: ($event.target as HTMLInputElement).value })"
+                  @update:model-value="$emit('update:cloudConfig', { ...cloudConfig, api_key: $event })"
                 />
               </div>
               <div class="sp-field">
                 <label class="sp-label">Base URL</label>
-                <input
-                  type="text"
-                  :value="cloudConfig.base_url"
-                  class="sp-input"
+                <UiInput
+                  :model-value="cloudConfig.base_url"
                   placeholder="https://api.openai.com/v1"
-                  @input="$emit('update:cloudConfig', { ...cloudConfig, base_url: ($event.target as HTMLInputElement).value })"
+                  @update:model-value="$emit('update:cloudConfig', { ...cloudConfig, base_url: $event })"
                 />
               </div>
               <div class="sp-field">
                 <label class="sp-label">模型</label>
                 <div class="sp-row">
-                  <input
-                    type="text"
-                    :value="cloudConfig.model"
-                    class="sp-input"
+                  <UiInput
+                    :model-value="cloudConfig.model"
                     placeholder="gpt-4o"
-                    @input="$emit('update:cloudConfig', { ...cloudConfig, model: ($event.target as HTMLInputElement).value })"
+                    @update:model-value="$emit('update:cloudConfig', { ...cloudConfig, model: $event })"
                   />
-                  <select
+                  <UiSelect
                     v-if="providerPresets[cloudConfig.provider]?.models?.length"
-                    class="sp-select sp-select-narrow"
-                    @change="$emit('update:cloudConfig', { ...cloudConfig, model: ($event.target as HTMLSelectElement).value })"
+                    class="sp-select-narrow"
+                    @update:model-value="$emit('update:cloudConfig', { ...cloudConfig, model: $event })"
                   >
                     <option value="" disabled selected>预设</option>
                     <option v-for="m in providerPresets[cloudConfig.provider]?.models" :key="m" :value="m">{{ m }}</option>
-                  </select>
+                  </UiSelect>
                 </div>
               </div>
               <div class="sp-actions">
@@ -137,24 +179,34 @@
           <!-- Display tab -->
           <div v-show="settingsTab === 'display'" class="sp-body">
             <div class="sp-section-label">文字排版</div>
-            <div class="sp-slider">
-              <div class="sp-slider-label"><span>字号</span><span>{{ readSettings.fontSize }}px</span></div>
-              <input type="range" min="12" max="28" :value="readSettings.fontSize" class="sp-range" @input="$emit('font-size-change', $event)" />
-            </div>
-            <div class="sp-slider">
-              <div class="sp-slider-label"><span>行高</span><span>{{ readSettings.lineHeight }}</span></div>
-              <input type="range" min="14" max="32" :value="Math.round(readSettings.lineHeight * 10)" class="sp-range" @input="$emit('line-height-change', $event)" />
-            </div>
+            <UiSlider
+              label="字号"
+              :model-value="readSettings.fontSize"
+              :min="12"
+              :max="28"
+              suffix="px"
+              @update:model-value="$emit('font-size-change', $event)"
+            />
+            <UiSlider
+              label="行高"
+              :model-value="Math.round(readSettings.lineHeight * 10)"
+              :min="14"
+              :max="32"
+              @update:model-value="$emit('line-height-change', $event)"
+            />
             <div class="sp-field">
               <label class="sp-label">字体</label>
-              <select :value="readSettings.fontFamily" class="sp-select" @change="$emit('font-family-change', ($event.target as HTMLSelectElement).value)">
+              <UiSelect
+                :model-value="readSettings.fontFamily"
+                @update:model-value="$emit('font-family-change', $event)"
+              >
                 <option value="system-ui">系统默认</option>
                 <option value="'Noto Sans SC', sans-serif">思源黑体</option>
                 <option value="'Noto Serif SC', serif">思源宋体</option>
                 <option value="'LXGW WenKai', serif">霞鹜文楷</option>
                 <option value="'Microsoft YaHei', sans-serif">微软雅黑</option>
                 <option value="SimSun, serif">宋体</option>
-              </select>
+              </UiSelect>
             </div>
             <div class="sp-field">
               <label class="sp-label">译文颜色</label>
@@ -170,12 +222,10 @@
             <div class="sp-section-label">HTTP 代理</div>
             <div class="sp-field">
               <label class="sp-label">代理地址</label>
-              <input
-                type="text"
-                :value="proxyUrl"
-                class="sp-input"
+              <UiInput
+                :model-value="proxyUrl"
                 placeholder="http://127.0.0.1:7897 或留空"
-                @input="$emit('update:proxyUrl', ($event.target as HTMLInputElement).value)"
+                @update:model-value="$emit('update:proxyUrl', $event)"
               />
             </div>
             <div class="sp-actions">
@@ -198,10 +248,14 @@
               </UiButton>
             </div>
             <div v-if="bgSettings.path" class="sp-bg-path">{{ bgSettings.path.split(/[\\/]/).pop() }}</div>
-            <div class="sp-slider">
-              <div class="sp-slider-label"><span>不透明度</span><span>{{ bgSettings.opacity }}%</span></div>
-              <input type="range" min="5" max="100" :value="bgSettings.opacity" class="sp-range" @input="$emit('opacity-change', $event)" />
-            </div>
+            <UiSlider
+              label="不透明度"
+              :model-value="bgSettings.opacity"
+              :min="5"
+              :max="100"
+              suffix="%"
+              @update:model-value="$emit('opacity-change', $event)"
+            />
           </div>
         </div>
       </UiPopover>
@@ -220,7 +274,7 @@
       <button
         class="topbar-icon-btn"
         :title="isDark ? '切换日间模式' : '切换夜间模式'"
-        @click="$emit('toggle-theme')"
+        @click="$emit('toggle-theme', $event)"
       >
         <Sun v-if="isDark" :size="15" :stroke-width="1.6" />
         <Moon v-else :size="15" :stroke-width="1.6" />
@@ -240,6 +294,9 @@
       </div>
     </div>
   </header>
+  <!-- Separator line: fading gradient -->
+  <div class="topbar-fade-line" aria-hidden="true" />
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -248,10 +305,12 @@ import { Settings, Sun, Moon, Upload, Trash2, MessageSquare } from './ui/icons'
 import UiSegmented from './ui/UiSegmented.vue'
 import UiButton from './ui/UiButton.vue'
 import UiPopover from './ui/UiPopover.vue'
-import StatusCluster from './StatusCluster.vue'
+import UiInput from './ui/UiInput.vue'
+import UiSelect from './ui/UiSelect.vue'
+import UiSlider from './ui/UiSlider.vue'
 import type { AppMode } from '../types'
 
-defineProps<{
+const props = defineProps<{
   appMode: AppMode
   isDark: boolean
   showAgentChat: boolean
@@ -278,7 +337,7 @@ defineEmits<{
   (e: 'update:engineType', value: 'ollama' | 'cloud'): void
   (e: 'update:cloudConfig', value: any): void
   (e: 'update:proxyUrl', value: string): void
-  (e: 'toggle-theme'): void
+  (e: 'toggle-theme', event?: MouseEvent): void
   (e: 'toggle-ollama'): void
   (e: 'handle-tectonic'): void
   (e: 'save-engine-settings'): void
@@ -287,9 +346,9 @@ defineEmits<{
   (e: 'save-proxy'): void
   (e: 'pick-background'): void
   (e: 'clear-background'): void
-  (e: 'opacity-change', event: Event): void
-  (e: 'font-size-change', event: Event): void
-  (e: 'line-height-change', event: Event): void
+  (e: 'opacity-change', value: number): void
+  (e: 'font-size-change', value: number): void
+  (e: 'line-height-change', value: number): void
   (e: 'save-read-settings'): void
   (e: 'font-family-change', value: string): void
   (e: 'color-change', value: string): void
@@ -299,6 +358,7 @@ defineEmits<{
 }>()
 
 const settingsPopoverRef = ref<InstanceType<typeof UiPopover> | null>(null)
+const statusPopoverRef = ref<InstanceType<typeof UiPopover> | null>(null)
 const settingsPopoverOpen = computed(() => settingsPopoverRef.value?.open ?? false)
 const settingsTab = ref<'engine' | 'display' | 'network' | 'background'>('engine')
 
@@ -318,54 +378,76 @@ const engineOptions = [
   { value: 'ollama' as const, label: '本地 Ollama' },
   { value: 'cloud' as const, label: '云端 API' },
 ]
+
+const overallStatus = computed(() => {
+  if (!props.healthOk) return 'danger'
+  if (props.engineType === 'ollama' && !props.ollamaOk) return 'warn'
+  if (props.engineType === 'cloud' && !props.cloudOk) return 'warn'
+  return 'ok'
+})
 </script>
 
 <style scoped>
-/* ── Topbar shell ─────────────────────────────────────────── */
-.topbar {
-  display: flex;
-  align-items: center;
-  height: 44px;
-  padding: 0 12px 0 0;
-  gap: 0;
-  background: var(--topbar-bg);
-  border-bottom: 1px solid var(--c-surface-3);
+/* ── Topbar wrapper (provides margin for floating) ──────── */
+.topbar-wrapper {
   flex-shrink: 0;
   position: relative;
   z-index: 210;
+}
+
+/* ── Topbar shell — floating glass bar ─────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  height: 52px;
+  padding: 0 20px;
+  gap: 0;
+  background: color-mix(in srgb, var(--ink-1) 72%, transparent);
+  backdrop-filter: blur(20px) saturate(1.6);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  border: 1px solid var(--ink-4);
+  border-radius: var(--radius-card);
+  margin: 8px 12px 0;
   -webkit-app-region: drag;
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+
+/* ── Fade line separator ────────────────────────────────── */
+.topbar-fade-line {
+  height: 1px;
+  margin: 0 28px;
+  background: linear-gradient(to right, transparent, var(--ink-4) 20%, var(--ink-4) 80%, transparent);
 }
 
 /* ── Brand ────────────────────────────────────────────────── */
 .brand {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 14px 0 12px;
+  gap: 10px;
+  padding: 0 16px 0 4px;
   height: 100%;
   flex-shrink: 0;
-  border-right: 1px solid var(--c-surface-3);
+  border-right: 1px solid var(--ink-4);
 }
 .logo {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, var(--c-accent) 0%, #a78bfa 100%);
+  background: var(--c-accent-gradient);
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 12px;
+  font-size: 13px;
   color: #fff;
   flex-shrink: 0;
+  font-family: var(--font-serif-zh);
 }
 .brand-name {
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--c-text-0);
-  letter-spacing: 0.01em;
+  font-family: var(--font-serif-zh);
+  letter-spacing: var(--tracking-tight);
 }
 
 /* ── Center ───────────────────────────────────────────────── */
@@ -389,10 +471,72 @@ const engineOptions = [
 
 .topbar-sep {
   width: 1px;
-  height: 18px;
-  background: var(--c-surface-3);
+  height: 20px;
+  background: var(--ink-4);
   margin: 0 4px;
   flex-shrink: 0;
+}
+
+/* ── Status trigger ─────────────────────────────────────── */
+.status-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--c-surface-3);
+  border-radius: var(--radius-pill);
+  background: var(--c-surface-2);
+  color: var(--c-text-2);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out),
+              border-color var(--motion-fast) var(--ease-out);
+}
+.status-trigger:hover { background: var(--c-surface-3); }
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+}
+.status-trigger.ok .status-dot    { background: var(--c-success); box-shadow: 0 0 4px var(--c-success); }
+.status-trigger.warn .status-dot  { background: var(--c-warn);    box-shadow: 0 0 4px var(--c-warn); }
+.status-trigger.danger .status-dot{ background: var(--c-danger);  box-shadow: 0 0 4px var(--c-danger); }
+.status-label { font-feature-settings: "tnum"; }
+
+/* ── Status popover ─────────────────────────────────────── */
+.status-popover { display: flex; flex-direction: column; gap: 0; }
+.status-rows { display: flex; flex-direction: column; gap: var(--space-2); }
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+.sr-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.sr-dot.ok  { background: var(--c-success); }
+.sr-dot.off { background: var(--c-danger); }
+.sr-label {
+  font-size: var(--text-sm);
+  color: var(--c-text-1);
+  min-width: 60px;
+}
+.sr-state {
+  flex: 1;
+  font-size: var(--text-xs);
+  color: var(--c-text-3);
+}
+.sp-divider {
+  height: 1px;
+  background: var(--c-surface-3);
+  margin: var(--space-3) 0;
 }
 
 /* ── Icon buttons ─────────────────────────────────────────── */
@@ -400,9 +544,9 @@ const engineOptions = [
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius-sm);
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-control);
   border: none;
   background: transparent;
   color: var(--c-text-3);
@@ -419,23 +563,26 @@ const engineOptions = [
   display: flex;
   align-items: center;
   margin-left: 4px;
-  border-left: 1px solid var(--c-surface-3);
-  padding-left: 4px;
+  border-left: 1px solid var(--ink-4);
+  padding-left: 6px;
+  gap: 2px;
 }
 .win-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 30px;
+  width: 12px;
+  height: 12px;
   border: none;
   background: transparent;
   color: var(--c-text-3);
   cursor: pointer;
-  border-radius: var(--radius-xs);
+  border-radius: 50%;
   transition: background var(--motion-fast) var(--ease-out),
               color var(--motion-fast) var(--ease-out);
+  opacity: 0.5;
 }
+.window-controls:hover .win-btn { opacity: 1; width: 32px; height: 28px; border-radius: var(--radius-xs); }
 .win-btn:hover { background: var(--c-surface-2); color: var(--c-text-0); }
 .win-btn.close:hover { background: var(--c-danger); color: #fff; }
 
@@ -467,33 +614,9 @@ const engineOptions = [
 
 .sp-field { display: flex; flex-direction: column; gap: 5px; }
 .sp-label { font-size: var(--text-xs); color: var(--c-text-2); font-weight: 500; }
-.sp-input, .sp-select {
-  width: 100%;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--c-surface-3);
-  border-radius: var(--radius-sm);
-  background: var(--c-surface-2);
-  color: var(--c-text-0);
-  font: inherit;
-  font-size: var(--text-sm);
-  outline: none;
-  transition: border-color var(--motion-fast) var(--ease-out);
-  box-sizing: border-box;
-}
-.sp-input:focus, .sp-select:focus { border-color: var(--c-accent); }
-.sp-select {
-  cursor: pointer;
-  -webkit-appearance: none;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2371717a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 8px center;
-  padding-right: 26px;
-}
 
 .sp-row { display: flex; gap: 4px; }
-.sp-row .sp-input { flex: 1; min-width: 0; }
+.sp-row :deep(.ui-input-wrap) { flex: 1; min-width: 0; }
 .sp-select-narrow { width: 70px; flex-shrink: 0; }
 
 .sp-actions { display: flex; gap: 6px; }
@@ -506,38 +629,10 @@ const engineOptions = [
   padding: 5px 8px;
   border-radius: var(--radius-sm);
 }
-.sp-status.ok { color: var(--c-success); background: rgba(74, 222, 128, 0.09); }
+.sp-status.ok { color: var(--c-success); background: var(--c-success-bg); }
 .sp-status.off { color: var(--c-danger); background: var(--c-danger-bg); }
 .sp-error { font-size: var(--text-xs); color: var(--c-text-2); text-align: center; }
 .sp-hint { font-size: var(--text-xs); color: var(--c-text-3); line-height: var(--leading-normal); }
-
-.sp-slider { display: flex; flex-direction: column; gap: 6px; }
-.sp-slider-label {
-  display: flex;
-  justify-content: space-between;
-  font-size: var(--text-xs);
-  color: var(--c-text-2);
-}
-.sp-range {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--c-surface-3);
-  outline: none;
-  cursor: pointer;
-}
-.sp-range::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--c-accent);
-  cursor: pointer;
-  transition: transform var(--motion-fast) var(--ease-spring);
-}
-.sp-range::-webkit-slider-thumb:hover { transform: scale(1.25); }
 
 .sp-color-row { display: flex; align-items: center; gap: 8px; }
 .sp-color {
@@ -549,7 +644,7 @@ const engineOptions = [
   cursor: pointer;
   background: none;
 }
-.sp-color-hex { font-size: var(--text-xs); color: var(--c-text-3); font-family: ui-monospace, monospace; }
+.sp-color-hex { font-size: var(--text-xs); color: var(--c-text-3); font-family: var(--font-mono); }
 
 .sp-bg-path {
   font-size: var(--text-xs);
@@ -563,8 +658,13 @@ const engineOptions = [
 }
 
 /* ── Light mode ───────────────────────────────────────────── */
-:global(.light) .topbar {
-  --topbar-bg: rgba(255, 255, 255, 0.6);
+:global([data-theme="light"]) .topbar {
+  background: color-mix(in srgb, #ffffff 80%, transparent);
+  border-color: var(--border-color);
+  box-shadow: 0 1px 3px rgba(20, 20, 40, 0.06);
 }
-:global(.light) .brand-name { color: var(--c-text-1); }
+:global([data-theme="light"]) .topbar-fade-line {
+  background: linear-gradient(to right, transparent, var(--c-surface-3) 20%, var(--c-surface-3) 80%, transparent);
+}
+:global([data-theme="light"]) .brand-name { color: var(--c-text-0); }
 </style>

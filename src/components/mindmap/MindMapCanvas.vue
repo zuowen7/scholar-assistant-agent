@@ -310,7 +310,7 @@ function startMinimapDrag(event: PointerEvent) {
 .minimap-bar button:hover,
 .minimap-bar button.active {
   background: var(--hover-bg);
-  color: var(--accent);
+  color: var(--c-accent);
 }
 .mindmap-canvas-wrapper :deep(.mindmap-minimap) {
   position: relative !important;

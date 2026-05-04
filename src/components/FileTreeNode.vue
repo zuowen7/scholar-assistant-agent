@@ -140,19 +140,24 @@ function cancelRename() {
   cursor: pointer;
   font-size: 13px;
   color: var(--text-primary, #ccc);
+  transition: background var(--motion-fast) var(--ease-out),
+              box-shadow var(--motion-fast) var(--ease-out);
 }
-.tree-item:hover { background: var(--hover-bg, #2a2a2a); }
-.tree-item.active { background: var(--active-bg, #37373d); color: #fff; }
+.tree-item:hover {
+  background: var(--hover-bg, #2a2a2a);
+  box-shadow: inset 2px 0 0 var(--c-accent);
+}
+.tree-item.active { background: var(--active-bg, #37373d); color: var(--c-text-0); box-shadow: inset 2px 0 0 var(--c-accent); }
 .tree-icon { font-size: 12px; flex-shrink: 0; }
 .tree-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .rename-input {
   flex: 1;
   min-width: 0;
-  background: var(--input-bg, #1e1e1e);
-  border: 1px solid var(--accent, #0078d4);
+  background: var(--input-bg);
+  border: 1px solid var(--accent);
   border-radius: 3px;
-  color: var(--text-primary, #ccc);
+  color: var(--text-primary);
   font-size: 13px;
   font-family: inherit;
   padding: 0 4px;

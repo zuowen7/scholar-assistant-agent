@@ -1,7 +1,6 @@
 <template>
   <div
     class="app"
-    :class="{ light: !isDark }"
     @dragenter.prevent="onDragEnter"
     @dragleave.prevent="onDragLeave"
     @dragover.prevent
@@ -63,7 +62,7 @@
         @update:engine-type="engineType = $event"
         @update:cloud-config="cloudConfig = $event"
         @update:proxy-url="proxyUrl = $event"
-        @toggle-theme="toggleTheme"
+        @toggle-theme="toggleTheme($event)"
         @toggle-ollama="toggleOllama"
         @handle-tectonic="handleTectonic"
         @save-engine-settings="saveEngineSettings"
@@ -83,14 +82,42 @@
         @window-close="handleClose"
       />
 
-      <!-- 翻译模式 -->
-      <TranslateView v-show="appMode === 'translate'" :health-ok="healthOk" :read-settings="readSettings" @restart-backend="handleRestartBackend" @open-agent-docs="openAgentDocs" />
+      <!-- Translation recovery banner -->
+      <Transition name="v-slide-up">
+        <div v-if="showRecoveryBanner" class="recovery-banner">
+          <span class="recovery-text">检测到上次未关闭的翻译结果</span>
+          <div class="recovery-actions">
+            <UiButton variant="primary" size="sm" @click="showRecoveryBanner = false; appMode = 'translate'">恢复查看</UiButton>
+            <UiButton variant="ghost" size="sm" @click="showRecoveryBanner = false; discardPersisted()">丢弃</UiButton>
+          </div>
+        </div>
+      </Transition>
 
-      <!-- 编辑器模式 -->
-      <EditorLayout v-show="appMode === 'editor'" :isDark="isDark" class="editor-mode" />
+      <!-- 主内容区：KeepAlive 保留各模式状态，Transition 提供切换动画 -->
+      <div class="mode-container">
+        <Transition name="v-page-cross" mode="out-in">
+          <KeepAlive>
+            <TranslateView
+              v-if="appMode === 'translate'"
+              :health-ok="healthOk"
+              :read-settings="readSettings"
+              @restart-backend="handleRestartBackend"
+              @open-agent-docs="openAgentDocs"
+            />
+            <EditorLayout
+              v-else-if="appMode === 'editor'"
+              :isDark="isDark"
+              class="editor-mode"
+            />
+          </KeepAlive>
+        </Transition>
+      </div>
 
       <!-- Agent 聊天面板 -->
       <AgentPanel :open="showAgentChat" @update:open="showAgentChat = $event" @switch-to-editor="appMode = 'editor'" />
+
+      <!-- Global toast notifications -->
+      <UiToast />
     </div>
 
     <Transition name="app-loading-fade">
@@ -105,7 +132,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { open } from '@tauri-apps/plugin-dialog'
 import { convertFileSrc } from '@tauri-apps/api/core'
@@ -116,10 +143,12 @@ import AgentPanel from './components/AgentPanel.vue'
 import TranslateView from './components/TranslateView.vue'
 import AppTopBar from './components/AppTopBar.vue'
 import InkBrushLoader from './components/InkBrushLoader.vue'
+import UiButton from './components/ui/UiButton.vue'
+import UiToast from './components/ui/UiToast.vue'
 import type { AppMode } from './types'
 import { API_BASE } from './utils/api'
 
-const { state, translate, translateFromPath, cleanup, checkHealth, checkOllama, startOllama, checkCloudApi, getConfig, updateConfig, getProviderPresets, restartBackend, listenBackendCrash, setStatus, setError, setStepMessage } = useTranslate()
+const { state, translate, translateFromPath, cleanup, checkHealth, checkOllama, startOllama, checkCloudApi, getConfig, updateConfig, getProviderPresets, restartBackend, listenBackendCrash, setStatus, setError, setStepMessage, recoverTranslation, discardPersisted } = useTranslate()
 
 // ── 应用模式 ──────────────────────────────────────────────────
 const appMode = ref<AppMode>('editor')
@@ -143,15 +172,27 @@ const tectonicOk = ref(false)
 const tectonicChecking = ref(false)
 const globalDragging = ref(false)
 const isDark = ref(true)
+function applyTheme(dark: boolean) {
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+}
+watch(() => isDark.value, applyTheme, { immediate: true })
 const appBootLoading = ref(true)
 const bootLoadingStartedAt = Date.now()
 const minBootLoadingMs = 1400
+let bootSafetyTimer: ReturnType<typeof setTimeout> | null = null
+const showRecoveryBanner = ref(false)
 
 function finishBootLoading() {
+  if (bootSafetyTimer) { clearTimeout(bootSafetyTimer); bootSafetyTimer = null }
   const elapsed = Date.now() - bootLoadingStartedAt
   const delay = Math.max(0, minBootLoadingMs - elapsed)
-  window.setTimeout(() => {
+  window.setTimeout(async () => {
     appBootLoading.value = false
+    // Check for recoverable translation
+    const recovered = await recoverTranslation()
+    if (recovered) {
+      showRecoveryBanner.value = true
+    }
   }, delay)
 }
 
@@ -210,7 +251,7 @@ const readSettings = ref<ReadSettings>({
   fontSize: 16,
   lineHeight: 1.9,
   fontFamily: 'system-ui',
-  transColor: '#e4e4e7',
+  transColor: '',
 })
 
 function loadReadSettings() {
@@ -231,13 +272,13 @@ function saveReadSettings() {
   } catch (e) { console.warn('saveReadSettings failed:', e) }
 }
 
-function onFontSizeChange(e: Event) {
-  readSettings.value.fontSize = parseInt((e.target as HTMLInputElement).value, 10)
+function onFontSizeChange(value: number) {
+  readSettings.value.fontSize = value
   saveReadSettings()
 }
 
-function onLineHeightChange(e: Event) {
-  readSettings.value.lineHeight = parseInt((e.target as HTMLInputElement).value, 10) / 10
+function onLineHeightChange(value: number) {
+  readSettings.value.lineHeight = value / 10
   saveReadSettings()
 }
 
@@ -345,18 +386,17 @@ function clearBackground() {
   saveBgSettings()
 }
 
-function onOpacityChange(e: Event) {
-  const input = e.target as HTMLInputElement
-  bgSettings.value.opacity = parseInt(input.value, 10)
+function onOpacityChange(value: number) {
+  bgSettings.value.opacity = value
   saveBgSettings()
 }
 
 
-function toggleTheme() {
+function toggleTheme(_e?: MouseEvent) {
   isDark.value = !isDark.value
   try {
     localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
-  } catch (e) { console.warn('saveTheme failed:', e) }
+  } catch (err) { console.warn('saveTheme failed:', err) }
 }
 
 // --- 拖拽处理 ---
@@ -366,6 +406,12 @@ let timer: ReturnType<typeof setInterval> | null = null
 let unlistenDragDrop: (() => void) | null = null
 
 onMounted(async () => {
+  // 安全兜底：最多 5 秒后强制隐藏加载画面
+  bootSafetyTimer = setTimeout(() => {
+    if (appBootLoading.value) {
+      appBootLoading.value = false
+    }
+  }, 5000)
   try {
   // Load theme preference
   try {
@@ -605,14 +651,34 @@ async function handleRestartBackend() {
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 html, body { height: 100%; overflow: hidden; }
+html { background: var(--c-surface-0); opacity: 1 !important; }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  background: var(--bg); color: var(--text);
+  font-family: var(--font-sans), var(--font-zh);
+  background: var(--c-surface-0); color: var(--c-text-0);
   -webkit-font-smoothing: antialiased;
 }
 
-.app { height: 100vh; display: flex; flex-direction: column; position: relative; }
+/* Paper noise texture — adds depth to the flat dark background */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.028;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+}
+
+.app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: var(--c-surface-0);
+  color: var(--c-text-0);
+}
 
 /* ── Background Layer ── */
 .background-layer {
@@ -636,9 +702,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: var(--overlay-bg);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
+  background: var(--c-surface-0);
 }
 
 /* ── Drag Overlay ── */
@@ -693,22 +757,62 @@ body {
 .drag-fade-enter-from,
 .drag-fade-leave-to { opacity: 0; }
 
-.app-loading-fade-enter-active,
-.app-loading-fade-leave-active { transition: opacity 0.32s ease; }
-.app-loading-fade-enter-from,
-.app-loading-fade-leave-to { opacity: 0; }
+.app-loading-fade-enter-active { transition: opacity 320ms var(--ease-out); }
+.app-loading-fade-leave-active { transition: opacity 320ms var(--ease-out), transform 320ms var(--ease-out); }
+.app-loading-fade-enter-from { opacity: 0; }
+.app-loading-fade-leave-to { opacity: 0; transform: scale(0.96); }
 
 /* ── Agent icon active state (kept here because it's part of topbar) ── */
 .editor-mode { flex: 1; min-height: 0; }
 
+/* ── Mode container: KeepAlive + Transition ── */
+.mode-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.mode-container > * {
+  flex: 1;
+  min-height: 0;
+}
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: var(--c-surface-3); border-radius: 3px; }
 
-/* ── Light mode overrides (TopBar owns its own light overrides) ── */
+/* ── Light mode overrides ── */
 
-/* Ghost text inline completion */
-.ghost-text-suggestion { color: rgba(255,255,255,0.25) !important; font-style: italic; }
-.ghost-text-line { background: none !important; }
+/* Light mode global tweaks */
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: var(--c-surface-5); }
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: var(--c-surface-3); }
+[data-theme="light"] body::after { opacity: 0.015; }
+/* ── View Transition (theme switch) ── */
+::view-transition-old(root), ::view-transition-new(root) { mix-blend-mode: normal; }
+::view-transition-new(root) { animation: vt-clip-in 320ms var(--ease-emphasis, cubic-bezier(0.2, 0, 0, 1)); }
+@keyframes vt-clip-in {
+  from { clip-path: circle(0 at var(--vt-x, 50%) var(--vt-y, 50%)); }
+  to   { clip-path: circle(150vmax at var(--vt-x, 50%) var(--vt-y, 50%)); }
+}
+
+/* ── Recovery Banner ── */
+.recovery-banner {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 8px 16px;
+  background: color-mix(in srgb, var(--c-surface-1) 92%, transparent);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--c-surface-3);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--elevation-2);
+}
+.recovery-text { font-size: var(--text-sm); color: var(--c-text-1); }
+.recovery-actions { display: flex; gap: 4px; }
 </style>

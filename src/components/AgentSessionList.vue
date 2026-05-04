@@ -92,8 +92,8 @@ defineExpose({ fetchSessions })
 
 <style scoped>
 .session-list {
-  border-left: 1px solid var(--border-color, #e0e0e0);
-  background: var(--bg-secondary, #f8f9fa);
+  border-left: 1px solid var(--border-color);
+  background: var(--panel-bg);
   width: 220px;
   overflow-y: auto;
   font-size: 13px;
@@ -104,7 +104,7 @@ defineExpose({ fetchSessions })
   align-items: center;
   padding: 8px 12px;
   font-weight: 600;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  border-bottom: 1px solid var(--border-color);
 }
 .refresh-btn {
   background: none;
@@ -112,19 +112,21 @@ defineExpose({ fetchSessions })
   cursor: pointer;
   font-size: 16px;
   opacity: 0.6;
+  color: var(--text-primary);
 }
 .refresh-btn:hover { opacity: 1; }
 .refresh-btn:disabled { opacity: 0.3; cursor: default; }
 .session-item {
   padding: 8px 12px;
-  border-bottom: 1px solid var(--border-color, #eee);
+  border-bottom: 1px solid var(--border-color);
   cursor: default;
+  color: var(--text-primary);
 }
 .session-item.resumable {
   cursor: pointer;
 }
 .session-item.resumable:hover {
-  background: var(--bg-hover, rgba(0,0,0,0.04));
+  background: var(--hover-bg);
 }
 .session-main {
   display: flex;
@@ -145,15 +147,15 @@ defineExpose({ fetchSessions })
   text-transform: uppercase;
   white-space: nowrap;
 }
-.session-badge.done { background: #d4edda; color: #155724; }
-.session-badge.aborted { background: #f8d7da; color: #721c24; }
-.session-badge.executing { background: #cce5ff; color: #004085; }
-.session-badge.idle { background: #fff3cd; color: #856404; }
+.session-badge.done { background: var(--c-success-bg); color: var(--c-success); }
+.session-badge.aborted { background: var(--c-danger-bg); color: var(--c-danger); }
+.session-badge.executing { background: var(--c-info-bg); color: var(--c-info); }
+.session-badge.idle { background: var(--c-warn-bg); color: var(--c-warn); }
 .session-meta {
   display: flex;
   justify-content: space-between;
   font-size: 11px;
-  color: var(--text-secondary, #888);
+  color: var(--text-secondary);
   margin-top: 2px;
 }
 </style>

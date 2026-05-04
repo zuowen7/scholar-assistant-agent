@@ -47,7 +47,7 @@
           @decide="handleApprovalDecision"
         />
         <div v-if="messages.length === 0 && !sending" class="agent-empty">
-          <p>向 Agent 助手提问</p>
+          <p>Ask anything. The ink is ready.</p>
           <p class="hint">支持搜索文档、翻译文本、查询 arXiv 论文</p>
         </div>
         <div v-for="msg in messages" :key="msg.id" class="agent-msg" :class="msg.role">
@@ -481,16 +481,17 @@ watch(tab, (t) => {
 <style scoped>
 .agent-panel {
   position: fixed; top: 0; right: 0;
-  width: min(400px, 100vw); height: calc(100vh - 44px);
-  margin-top: 44px;
+  width: min(400px, 100vw); height: calc(100vh - 62px);
+  margin-top: 62px;
   background: var(--c-glass);
   border-left: 1px solid var(--c-glass-border);
+  box-shadow: inset 1px 0 0 var(--vermilion-0);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
   display: flex; flex-direction: column;
   z-index: 200;
   transform: translateX(100%);
-  transition: transform var(--motion-slow) var(--ease-spring);
+  transition: transform var(--motion-page, 320ms) var(--ease-spring);
 }
 .agent-panel.open { transform: translateX(0); }
 
@@ -551,7 +552,12 @@ watch(tab, (t) => {
   display: flex; flex-direction: column; gap: 12px;
 }
 .agent-empty { text-align: center; color: var(--c-text-3); padding: 40px 20px; }
-.agent-empty p { margin: 4px 0; }
+.agent-empty p:first-child {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 15px;
+  color: var(--c-text-2);
+}
 .agent-empty .hint { font-size: 12px; }
 
 .agent-msg { max-width: 90%; }
@@ -572,24 +578,62 @@ watch(tab, (t) => {
   border-bottom-left-radius: 4px;
 }
 
-/* Event stream */
+/* Event stream — ink-styled cards */
 .agent-event {
-  font-size: 12px; padding: 6px 10px;
-  margin-bottom: 6px; border-radius: 8px;
+  font-size: 12px; padding: 8px 12px;
+  margin-bottom: 6px; border-radius: var(--radius-md);
   background: var(--c-surface-1); border: 1px solid var(--c-surface-3);
+  position: relative;
+  animation: evt-fade-in var(--motion-base) var(--ease-out);
 }
+@keyframes evt-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* @property enables smooth mask-image gradient interpolation */
+@property --ink-stop {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+
 .agent-event.thinking {
-  color: var(--c-text-2); display: flex; align-items: center; gap: 6px;
-  font-style: normal; border-left: 3px solid var(--c-text-3);
+  --ink-stop: 100%;
+  color: var(--c-text-2); display: flex; align-items: flex-start; gap: 6px;
+  font-style: normal; border-left: 2px solid var(--accent-0);
+  mask-image: linear-gradient(to bottom, #000 var(--ink-stop), transparent calc(var(--ink-stop) + 16px));
+  -webkit-mask-image: linear-gradient(to bottom, #000 var(--ink-stop), transparent calc(var(--ink-stop) + 16px));
+  animation: evt-ink-bleed 400ms var(--ease-out) both;
+}
+@keyframes evt-ink-bleed {
+  from { --ink-stop: 0%; opacity: 0.3; }
+  to   { --ink-stop: 100%; opacity: 1; }
 }
 .agent-event.tool-call {
-  border-left: 3px solid var(--c-accent); background: color-mix(in srgb, var(--c-accent) 8%, var(--c-surface-1));
+  border-left: 2px solid #3b82f6; background: color-mix(in srgb, #3b82f6 6%, var(--c-surface-1));
+  animation: evt-slide-in-left 240ms var(--ease-out);
+}
+@keyframes evt-slide-in-left {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 .agent-event.tool-result {
-  border-left: 3px solid var(--c-success); background: color-mix(in srgb, var(--c-success) 8%, var(--c-surface-1));
+  border-left: 2px solid var(--c-success); background: color-mix(in srgb, var(--c-success) 6%, var(--c-surface-1));
+  animation: evt-scale-in 240ms var(--ease-spring);
+}
+@keyframes evt-scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
 }
 .agent-event.tool-result.evt-error {
-  border-left: 3px solid var(--c-danger); background: color-mix(in srgb, var(--c-danger) 8%, var(--c-surface-1));
+  border-left: 2px solid var(--vermilion-0); background: color-mix(in srgb, var(--vermilion-0) 6%, var(--c-surface-1));
+  animation: evt-shake 300ms var(--ease-out);
+}
+@keyframes evt-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-3px); }
+  40% { transform: translateX(3px); }
+  60% { transform: translateX(-1px); }
 }
 
 .evt-label {
@@ -598,11 +642,11 @@ watch(tab, (t) => {
 }
 .evt-thinking-dot {
   width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
-  background: var(--c-text-3); animation: evt-pulse 1.2s infinite;
+  background: var(--accent-0); animation: dot-breathe 1.6s ease-in-out infinite;
 }
-@keyframes evt-pulse {
-  0%, 80%, 100% { opacity: 0.4; transform: scale(0.8); }
-  40% { opacity: 1; transform: scale(1.1); }
+@keyframes dot-breathe {
+  0%, 100% { opacity: 0.3; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1); }
 }
 .evt-content-text { color: var(--c-text-2); }
 .evt-tool-header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
@@ -625,7 +669,7 @@ watch(tab, (t) => {
 /* Task lifecycle */
 .agent-event.task-lifecycle {
   display: flex; align-items: center; gap: 6px;
-  border-left: 3px solid var(--c-accent); background: color-mix(in srgb, var(--c-accent) 6%, var(--c-surface-1));
+  border-left: 2px solid var(--c-accent); background: color-mix(in srgb, var(--c-accent) 6%, var(--c-surface-1));
 }
 .agent-event.task-lifecycle.done {
   border-left-color: var(--c-success); background: color-mix(in srgb, var(--c-success) 6%, var(--c-surface-1));
@@ -648,8 +692,8 @@ watch(tab, (t) => {
 /* Warning */
 .agent-event.warning {
   display: flex; align-items: center; gap: 8px;
-  border-left: 3px solid var(--c-warn);
-  background: color-mix(in srgb, var(--c-warn) 8%, var(--c-surface-1));
+  border-left: 2px solid var(--c-warn);
+  background: color-mix(in srgb, var(--c-warn) 6%, var(--c-surface-1));
 }
 .evt-warning-icon { font-size: 14px; flex-shrink: 0; color: var(--c-warn); }
 

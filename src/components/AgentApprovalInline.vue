@@ -60,8 +60,8 @@ async function decide(decision: 'allow_once' | 'allow_session' | 'deny') {
 
 <style scoped>
 .approval-bar {
-  background: var(--surface, #1e1e1e);
-  border: 1px solid var(--warning-color, #f0a030);
+  background: var(--surface);
+  border: 1px solid var(--c-warn);
   border-radius: 10px;
   padding: 12px 14px;
   margin-bottom: 8px;
@@ -80,17 +80,17 @@ async function decide(decision: 'allow_once' | 'allow_session' | 'deny') {
 }
 .approval-icon {
   font-size: 16px;
-  color: var(--warning-color, #f0a030);
+  color: var(--c-warn);
 }
 .approval-label {
   font-size: 13px;
-  color: var(--text-secondary, #888);
+  color: var(--text-secondary);
 }
 .approval-tool {
   font-size: 13px;
   font-weight: 600;
-  color: var(--accent, #6366f1);
-  background: var(--surface2, #2d2d2d);
+  color: var(--accent);
+  background: var(--hover-bg);
   padding: 1px 6px;
   border-radius: 4px;
 }
@@ -101,14 +101,14 @@ async function decide(decision: 'allow_once' | 'allow_session' | 'deny') {
   border-radius: 3px;
   font-weight: 600;
 }
-.risk-safe { background: #d4edda; color: #155724; }
-.risk-moderate { background: #fff3cd; color: #856404; }
-.risk-destructive { background: #f8d7da; color: #721c24; }
-.risk-banned { background: #f8d7da; color: #721c24; }
+.risk-safe { background: var(--c-success-bg); color: var(--c-success); }
+.risk-moderate { background: var(--c-warn-bg); color: var(--c-warn); }
+.risk-destructive { background: var(--c-danger-bg); color: var(--c-danger); }
+.risk-banned { background: var(--c-danger-bg); color: var(--c-danger); }
 
 .approval-preview {
   margin-top: 8px;
-  background: var(--code-bg, #1a1a1a);
+  background: var(--code-bg);
   border-radius: 6px;
   padding: 8px 10px;
   max-height: 120px;
@@ -117,7 +117,7 @@ async function decide(decision: 'allow_once' | 'allow_session' | 'deny') {
 .approval-preview-code {
   font-size: 11px;
   font-family: monospace;
-  color: var(--text-secondary, #aaa);
+  color: var(--text-secondary);
   white-space: pre-wrap;
   word-break: break-all;
 }
@@ -146,15 +146,15 @@ async function decide(decision: 'allow_once' | 'allow_session' | 'deny') {
   opacity: 0.85;
 }
 .allow-once {
-  background: #4ade80;
-  color: #000;
+  background: var(--c-success);
+  color: #fff;
 }
 .allow-session {
-  background: #6366f1;
+  background: var(--c-accent);
   color: #fff;
 }
 .deny {
-  background: #f87171;
+  background: var(--c-danger);
   color: #fff;
 }
 </style>

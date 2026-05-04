@@ -1,5 +1,6 @@
 import { createApp } from 'vue'
 import './styles/tokens.css'
+import './styles/transitions.css'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'

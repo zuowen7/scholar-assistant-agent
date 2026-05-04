@@ -414,9 +414,9 @@ onBeforeUnmount(() => {
 
 <!-- ghost text 样式（需要全局作用域，不能 scoped）-->
 <style>
-/* Ghost text: gray inline suggestion after cursor */
+/* Ghost text: inline suggestion after cursor */
 .monaco-editor .ghost-text-suggestion {
-  color: rgba(200, 200, 200, 0.55) !important;
+  color: var(--c-text-3) !important;
   font-style: italic;
 }
 .monaco-editor .ghost-text-line {

@@ -1,0 +1,57 @@
+/*
+ * Global Vue Transition classes.
+ * Used via <Transition name="v-fade"> etc.
+ * All durations reference tokens.css motion variables.
+ */
+
+/* ── v-fade: 通用淡入淡出 ────────────────────────────────── */
+.v-fade-enter-active { transition: opacity var(--motion-base) var(--ease-out); }
+.v-fade-leave-active { transition: opacity var(--motion-fast) ease-in; }
+.v-fade-enter-from,
+.v-fade-leave-to      { opacity: 0; }
+
+/* ── v-slide-up: toast / hint ────────────────────────────── */
+.v-slide-up-enter-active { transition: all var(--motion-base) var(--ease-out); }
+.v-slide-up-leave-active { transition: all var(--motion-fast) ease-in; }
+.v-slide-up-enter-from   { opacity: 0; transform: translateY(8px); }
+.v-slide-up-leave-to     { opacity: 0; transform: translateY(4px); }
+
+/* ── v-scale-in: popover / dropdown / modal ──────────────── */
+.v-scale-in-enter-active { transition: all var(--motion-base) var(--ease-spring); }
+.v-scale-in-leave-active { transition: all var(--motion-fast) ease-in; }
+.v-scale-in-enter-from   { opacity: 0; transform: scale(0.97); }
+.v-scale-in-leave-to     { opacity: 0; transform: scale(0.99); }
+
+/* ── v-page-cross: 模式切换 / view 切换 ─────────────────── */
+.v-page-cross-enter-active { transition: all var(--motion-page) var(--ease-emphasis); }
+.v-page-cross-leave-active { transition: all var(--motion-base) ease-in; }
+.v-page-cross-enter-from   { opacity: 0; transform: translateX(8px); }
+.v-page-cross-leave-to     { opacity: 0; transform: translateX(-8px); }
+
+/* ── v-list-stagger: 列表批量渲染 ───────────────────────── */
+.v-list-stagger-enter-active {
+  transition: all var(--motion-base) var(--ease-out);
+  transition-delay: calc(var(--stagger-i, 0) * var(--motion-stagger));
+}
+.v-list-stagger-leave-active {
+  transition: all var(--motion-fast) ease-in;
+}
+.v-list-stagger-enter-from { opacity: 0; transform: translateY(6px); }
+.v-list-stagger-leave-to   { opacity: 0; }
+
+/* ── v-spring: 弹性弹出（印章、徽章） ───────────────────── */
+.v-spring-enter-active { transition: all 420ms var(--ease-spring); }
+.v-spring-leave-active { transition: all var(--motion-base) ease-in; }
+.v-spring-enter-from   { opacity: 0; transform: scale(0.6); }
+.v-spring-leave-to     { opacity: 0; transform: scale(0.96); }
+
+/* ── v-unfurl: 宣纸展开（翻译完成） ─────────────────────── */
+.v-unfurl-enter-active { transition: clip-path 600ms var(--ease-emphasis), transform 600ms var(--ease-emphasis), opacity 300ms ease-out; }
+.v-unfurl-leave-active { transition: opacity var(--motion-fast) ease-in; }
+.v-unfurl-enter-from {
+  opacity: 0;
+  clip-path: inset(0 0 100% 0);
+  transform: scaleY(0.98);
+  transform-origin: top;
+}
+.v-unfurl-leave-to { opacity: 0; }

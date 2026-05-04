@@ -6,9 +6,14 @@
       <div class="scene-mesh" aria-hidden="true" />
 
       <div class="upload-hero">
-        <h2 class="hero-title">学术文献翻译</h2>
-        <p class="hero-sub">上传文档，AI 逐步解析、翻译并生成对照译文</p>
+        <!-- Left: serif hero -->
+        <div class="hero-left">
+          <div class="hero-fishtail" aria-hidden="true" />
+          <h2 class="hero-title">学术文献翻译</h2>
+          <p class="hero-sub">Scholar Translator</p>
+        </div>
 
+        <!-- Right: drop-zone card -->
         <div
           class="drop-zone"
           :class="{ hover: zoneHover }"
@@ -20,23 +25,53 @@
           @dragenter.prevent="zoneHover = true"
           @dragleave="zoneHover = false"
         >
+          <!-- Ink bloom SVG background -->
+          <div class="dz-bloom" aria-hidden="true">
+            <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" class="bloom-svg">
+              <defs>
+                <radialGradient id="bloom-grad-a" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%"   stop-color="#5b6cff" stop-opacity="0.22"/>
+                  <stop offset="55%"  stop-color="#5b6cff" stop-opacity="0.10"/>
+                  <stop offset="100%" stop-color="#5b6cff" stop-opacity="0"/>
+                </radialGradient>
+                <radialGradient id="bloom-grad-b" cx="55%" cy="45%" r="50%">
+                  <stop offset="0%"   stop-color="#a78bfa" stop-opacity="0.14"/>
+                  <stop offset="100%" stop-color="#a78bfa" stop-opacity="0"/>
+                </radialGradient>
+                <filter id="ink-bloom" x="-30%" y="-30%" width="160%" height="160%">
+                  <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="4" seed="5" result="noise" />
+                  <feDisplacementMap in="SourceGraphic" in2="noise" scale="38" xChannelSelector="R" yChannelSelector="G" />
+                </filter>
+              </defs>
+              <!-- Soft background glow (no distortion) -->
+              <circle cx="100" cy="100" r="88" fill="url(#bloom-grad-a)" />
+              <!-- Distorted ink blot — main -->
+              <circle cx="100" cy="105" r="60" fill="rgba(91,108,255,0.18)" filter="url(#ink-bloom)" />
+              <!-- Purple accent blob -->
+              <circle cx="115" cy="82" r="42" fill="url(#bloom-grad-b)" filter="url(#ink-bloom)" />
+            </svg>
+          </div>
+          <!-- Orbiting highlight -->
+          <div class="dz-orbit" aria-hidden="true" />
+
           <div class="dz-icon-wrap">
             <UploadCloud :size="28" :stroke-width="1.4" class="dz-icon" />
           </div>
           <span class="dz-label">点击选择文件</span>
           <span class="dz-hint">或将文件拖入窗口任意位置</span>
         </div>
+      </div>
 
-        <div class="format-row">
-          <span v-for="fmt in formatList" :key="fmt" class="fmt-chip">{{ fmt }}</span>
-        </div>
+      <!-- Format chips -->
+      <div class="format-row">
+        <span v-for="fmt in formatList" :key="fmt" class="fmt-chip">{{ fmt }}</span>
+      </div>
 
-        <!-- Error banner -->
-        <div v-if="state.status === 'error' && state.errorMessage" class="error-banner">
-          <AlertCircle :size="14" :stroke-width="2" />
-          <span class="error-text">{{ state.errorMessage }}</span>
-          <UiButton v-if="!healthOk" variant="danger" size="sm" @click="$emit('restart-backend')">重启后端</UiButton>
-        </div>
+      <!-- Error banner -->
+      <div v-if="state.status === 'error' && state.errorMessage" class="error-banner">
+        <AlertCircle :size="14" :stroke-width="2" />
+        <span class="error-text">{{ state.errorMessage }}</span>
+        <UiButton v-if="!healthOk" variant="danger" size="sm" @click="$emit('restart-backend')">重启后端</UiButton>
       </div>
     </div>
 
@@ -93,7 +128,7 @@
         </div>
       </div>
 
-      <!-- Live preview：显示最新3个完整段落（P1-3） -->
+      <!-- Live preview -->
       <TransitionGroup v-if="state.blocks.filter(b => b.translated).length > 0" name="live-slide" tag="div" class="live-preview">
         <div
           v-for="b in state.blocks.filter(b => b.translated && b.translatable).slice(-3)"
@@ -107,17 +142,44 @@
     </div>
 
     <!-- ── Done ───────────────────────────────────────────────── -->
-    <div v-else class="result-scene" :style="readStyleVars">
+    <div v-else class="done-wrapper">
+      <!-- Seal sits outside result-scene so clip-path unfurl doesn't clip it -->
+      <Transition name="v-spring">
+        <div v-if="sealVisible" class="done-seal" aria-hidden="true">
+          <svg viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg" class="seal-svg">
+            <defs>
+              <filter id="stamp-rough" x="-5%" y="-5%" width="110%" height="110%">
+                <feTurbulence type="fractalNoise" baseFrequency="0.065" numOctaves="3" seed="8" result="noise"/>
+                <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.2" xChannelSelector="R" yChannelSelector="G"/>
+              </filter>
+            </defs>
+            <!-- Red field -->
+            <rect x="2" y="2" width="52" height="52" rx="3" fill="var(--vermilion-0)" filter="url(#stamp-rough)"/>
+            <!-- Outer border frame -->
+            <rect x="3.5" y="3.5" width="49" height="49" rx="2.5" fill="none" stroke="#fff" stroke-width="1.5" stroke-opacity="0.55"/>
+            <!-- Inner border frame -->
+            <rect x="7" y="7" width="42" height="42" rx="1.5" fill="none" stroke="#fff" stroke-width="0.8" stroke-opacity="0.35"/>
+            <!-- Horizontal divider -->
+            <line x1="10" y1="28" x2="46" y2="28" stroke="#fff" stroke-width="0.7" stroke-opacity="0.3"/>
+            <!-- Characters: larger, fill more space -->
+            <text x="28" y="19.5" text-anchor="middle" dominant-baseline="middle" fill="#fff" fill-opacity="0.95" font-family="var(--font-serif-zh)" font-size="15" font-weight="700" letter-spacing="0.5">研</text>
+            <text x="28" y="36.5" text-anchor="middle" dominant-baseline="middle" fill="#fff" fill-opacity="0.95" font-family="var(--font-serif-zh)" font-size="15" font-weight="700" letter-spacing="0.5">墨</text>
+          </svg>
+        </div>
+      </Transition>
+
+      <div class="result-scene" :class="{ unfurling }" :style="readStyleVars">
 
       <!-- Result action bar -->
       <div class="result-bar">
         <div class="result-bar-left">
-          <CheckCircle :size="16" :stroke-width="2.2" class="done-icon" />
-          <span class="done-label">翻译完成</span>
-          <span v-if="state.blocks.length" class="done-meta">
-            {{ state.blocks.length }} 块 · {{ paragraphCount }} 段
-            <span v-if="state.misalignedChunks > 0" class="warn-tag">{{ state.misalignedChunks }} 块对齐回退</span>
-          </span>
+          <div class="done-title-group">
+            <span class="done-label">翻译完成</span>
+            <span v-if="state.blocks.length" class="done-meta">
+              {{ state.blocks.length }} 块 · {{ paragraphCount }} 段
+            </span>
+          </div>
+          <span v-if="state.misalignedChunks > 0" class="warn-tag">{{ state.misalignedChunks }} 块对齐回退</span>
           <span v-if="state.ragIngested" class="done-rag-hint" @click="$emit('open-agent-docs')">已加入知识库</span>
         </div>
         <div class="result-bar-right">
@@ -136,78 +198,81 @@
               </UiButton>
             </template>
           </UiDropdown>
-          <UiButton variant="secondary" size="sm" @click="reset">新翻译</UiButton>
+          <UiButton variant="ghost" size="sm" @click="reset">新翻译</UiButton>
         </div>
       </div>
 
-      <!-- Export error banner (shown in done state) -->
+      <!-- Export error banner -->
       <div v-if="state.errorMessage" class="export-error-banner">
         <AlertCircle :size="14" :stroke-width="2" />
         <span class="error-text">{{ state.errorMessage }}</span>
       </div>
 
       <!-- ── 对照视图：左右双栏按块对齐 ── -->
-      <div v-if="viewMode === 'bilingual'" class="dual-view">
-        <div
-          v-for="(b, i) in renderableBlocks"
-          :key="b.id"
-          class="dual-row"
-          :class="['type-' + b.type]"
-        >
-          <!-- 标题：跨栏 -->
-          <template v-if="b.type === 'heading'">
-            <component :is="`h${Math.min(Math.max(b.level || 2, 1), 6)}`" class="dual-heading-orig">{{ stripHeadingMark(b.original) }}</component>
-            <component v-if="b.translated" :is="`h${Math.min(Math.max(b.level || 2, 1), 6)}`" class="dual-heading-trans">{{ stripHeadingMark(b.translated) }}</component>
-          </template>
-          <!-- 公式/代码/表格：跨栏单列居中 -->
-          <div v-else-if="!b.translatable" class="dual-untranslated" v-html="renderBlock(b.original, b.type)" />
-          <!-- 翻译失败：跨栏红色卡片 -->
-          <div v-else-if="b.status === 'failed'" class="dual-failed">
-            <div class="dual-orig" v-html="renderBlock(b.original, b.type)" />
-            <div class="failed-card">
-              <AlertCircle :size="14" :stroke-width="2" />
-              <span>翻译失败</span>
-              <UiButton
-                v-if="!retryingBlockIds.has(b.id)"
-                variant="secondary"
-                size="sm"
-                @click="retryFailedBlock(b.id)"
-              >
-                重试
-              </UiButton>
-              <span v-else class="retrying">重试中…</span>
+      <Transition name="v-fade" mode="out-in">
+        <div v-if="viewMode === 'bilingual'" key="bilingual" class="dual-view">
+          <div
+            v-for="(b, i) in renderableBlocks"
+            :key="b.id"
+            class="dual-row"
+            :class="['type-' + b.type]"
+          >
+            <!-- 标题：跨栏 -->
+            <template v-if="b.type === 'heading'">
+              <component :is="`h${Math.min(Math.max(b.level || 2, 1), 6)}`" class="dual-heading-orig">{{ stripHeadingMark(b.original) }}</component>
+              <component v-if="b.translated" :is="`h${Math.min(Math.max(b.level || 2, 1), 6)}`" class="dual-heading-trans">{{ stripHeadingMark(b.translated) }}</component>
+            </template>
+            <!-- 公式/代码/表格：跨栏单列居中 -->
+            <div v-else-if="!b.translatable" class="dual-untranslated" v-html="renderBlock(b.original, b.type)" />
+            <!-- 翻译失败：跨栏红色卡片 -->
+            <div v-else-if="b.status === 'failed'" class="dual-failed">
+              <div class="dual-orig" v-html="renderBlock(b.original, b.type)" />
+              <div class="failed-card">
+                <AlertCircle :size="14" :stroke-width="2" />
+                <span>翻译失败</span>
+                <UiButton
+                  v-if="!retryingBlockIds.has(b.id)"
+                  variant="secondary"
+                  size="sm"
+                  @click="retryFailedBlock(b.id)"
+                >
+                  重试
+                </UiButton>
+                <span v-else class="retrying">重试中…</span>
+              </div>
             </div>
+            <!-- 普通段落：左原 / 右译 -->
+            <template v-else>
+              <div
+                class="dual-orig"
+                v-html="renderSentenceMarked(b.original, 'en', b.id, 'orig')"
+                @mouseover="handleSentenceMouseEnter"
+                @mouseleave="clearSentHover()"
+              />
+              <div v-if="b.translated"
+                class="dual-trans"
+                v-html="renderSentenceMarked(b.translated, 'zh', b.id, 'trans')"
+                @mouseover="handleSentenceMouseEnter"
+                @mouseleave="clearSentHover()"
+              />
+              <div v-else class="dual-pending">翻译中…</div>
+            </template>
           </div>
-          <!-- 普通段落：左原 / 右译 -->
-          <template v-else>
-            <div
-              class="dual-orig"
-              v-html="renderSentenceMarked(b.original, 'en', b.id, 'orig')"
-              @mouseover="handleSentenceMouseEnter"
-              @mouseleave="clearSentHover()"
-            />
-            <div v-if="b.translated"
-              class="dual-trans"
-              v-html="renderSentenceMarked(b.translated, 'zh', b.id, 'trans')"
-              @mouseover="handleSentenceMouseEnter"
-              @mouseleave="clearSentHover()"
-            />
-            <div v-else class="dual-pending">翻译中…</div>
-          </template>
         </div>
-      </div>
 
-      <!-- ── 译文视图：纯译文阅读模式 ── -->
-      <div v-else class="reading-view">
-        <article class="prose" v-html="translationOnlyHtml" />
-      </div>
-    </div>
+        <!-- ── 译文视图：纯译文阅读模式 ── -->
+        <div v-else key="translation" class="reading-view">
+          <article class="prose" v-html="translationOnlyHtml" />
+        </div>
+      </Transition>
+      </div><!-- /result-scene -->
+    </div><!-- /done-wrapper -->
   </main>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { UploadCloud, AlertCircle, Check, CheckCircle, Download, FileText, ChevronDown } from './ui/icons'
+import { ref, computed, watch, onMounted } from 'vue'
+import { UploadCloud, AlertCircle, Check, Download, FileText, ChevronDown } from './ui/icons'
 import UiButton from './ui/UiButton.vue'
 import UiSegmented from './ui/UiSegmented.vue'
 import UiDropdown from './ui/UiDropdown.vue'
@@ -231,8 +296,25 @@ const { state, translate, reset, downloadResult, overallProgress, exportBilingua
 const viewMode = ref<'bilingual' | 'translation'>('bilingual')
 const zoneHover = ref(false)
 const retryingBlockIds = ref<Set<string>>(new Set())
+const sealVisible = ref(false)
+const unfurling = ref(false)
 
-// ── 失败块重试（P2-2） ──
+// Seal + unfurl animation: show when translation completes
+watch(() => state.status, (newStatus, oldStatus) => {
+  if (newStatus === 'done' && oldStatus !== 'done') {
+    unfurling.value = true
+    sealVisible.value = false
+    setTimeout(() => { sealVisible.value = true }, 300)
+    setTimeout(() => { unfurling.value = false }, 700)
+  }
+})
+
+onMounted(() => {
+  if (state.status === 'done') {
+    sealVisible.value = true
+  }
+})
+
 async function retryFailedBlock(blockId: string) {
   if (!state.taskId) return
 
@@ -252,7 +334,6 @@ async function retryFailedBlock(blockId: string) {
 
     const result = await resp.json()
 
-    // 更新本地状态
     const block = state.blocks.find(b => b.id === blockId)
     if (block) {
       block.translated = result.translated
@@ -266,7 +347,6 @@ async function retryFailedBlock(blockId: string) {
   }
 }
 
-// ── 导出菜单（P2-1） ──
 const exportMenuItems = computed<DropdownItem[]>(() => [
   {
     text: '双语 Markdown',
@@ -290,7 +370,6 @@ const exportMenuItems = computed<DropdownItem[]>(() => [
   },
 ])
 
-// ── 句对齐hover状态 ──
 interface HoveredPair {
   blockId: string
   origIdx: number
@@ -316,19 +395,20 @@ const viewOptions = [
 
 const progress = computed(() => overallProgress())
 
-const readStyleVars = computed(() => ({
-  '--read-fs': `${props.readSettings.fontSize}px`,
-  '--read-lh': props.readSettings.lineHeight,
-  '--read-ff': props.readSettings.fontFamily,
-  '--read-trans-color': props.readSettings.transColor,
-}))
+const readStyleVars = computed(() => {
+  const vars: Record<string, string | number> = {
+    '--read-fs': `${props.readSettings.fontSize}px`,
+    '--read-lh': props.readSettings.lineHeight,
+    '--read-ff': props.readSettings.fontFamily,
+  }
+  if (props.readSettings.transColor) {
+    vars['--read-trans-color'] = props.readSettings.transColor
+  }
+  return vars
+})
 
-// ── Block-based rendering（不再做前端句子切分） ──
-
-/** 渲染时只展示真正有内容的块（即时翻译流中已到的块全展示，未到的也展示原文骨架） */
 const renderableBlocks = computed(() => state.blocks)
 
-/** 译文视图：把所有可翻译块的译文按 markdown 拼接渲染，跳过失败块 */
 const translationOnlyHtml = computed(() => {
   const parts: string[] = []
   for (const b of state.blocks) {
@@ -342,13 +422,10 @@ const translationOnlyHtml = computed(() => {
   return renderMarkdown(parts.join('\n\n'))
 })
 
-/** 标题文本去掉 markdown 标记 */
 function stripHeadingMark(s: string): string {
   return s.replace(/^#{1,6}\s+/, '').trim()
 }
 
-// ── 句对齐hover处理 ──
-/** hover原文句子时，找到对应的译文句子 */
 function onSentHover(blockId: string, sentIdx: number, side: 'orig' | 'trans') {
   const block = state.blocks.find(b => b.id === blockId)
   if (!block || !block.translated) return
@@ -377,16 +454,13 @@ function onSentHover(blockId: string, sentIdx: number, side: 'orig' | 'trans') {
   }
 }
 
-/** 清除hover状态 */
 function clearSentHover() {
   hoveredPair.value = null
 }
 
-/** 渲染带句子标记的HTML（用于普通段落） */
 function renderSentenceMarked(text: string, lang: 'en' | 'zh', blockId: string, side: 'orig' | 'trans'): string {
   const sentences = splitSentences(text, lang)
   if (sentences.length <= 1) {
-    // 只有一句，使用原有渲染逻辑
     return text
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
@@ -404,7 +478,6 @@ function renderSentenceMarked(text: string, lang: 'en' | 'zh', blockId: string, 
   return parts.join(' ')
 }
 
-/** 处理句子mouseenter事件（事件委托） */
 function handleSentenceMouseEnter(e: MouseEvent) {
   const target = e.target as HTMLElement
   const sentIdxStr = target.getAttribute('data-sent-idx')
@@ -415,23 +488,17 @@ function handleSentenceMouseEnter(e: MouseEvent) {
 
   const sentIdx = parseInt(sentIdxStr, 10)
   onSentHover(blockId, sentIdx, side)
-
-  // 手动更新DOM高亮
   updateSentenceHighlight(blockId, side, sentIdx)
 }
 
-/** 更新句子高亮状态 */
 function updateSentenceHighlight(blockId: string, side: 'orig' | 'trans', sentIdx: number) {
-  // 清除之前的高亮
   document.querySelectorAll('.sent-active').forEach(el => {
     el.classList.remove('sent-active')
   })
 
-  // 找到对应的块
   const block = state.blocks.find(b => b.id === blockId)
   if (!block || !block.translated) return
 
-  // 计算对应的句子索引
   const otherSide = side === 'orig' ? 'trans' : 'orig'
   const lang = side === 'orig' ? 'en' : 'zh'
   const otherLang = side === 'orig' ? 'zh' : 'en'
@@ -450,32 +517,22 @@ function updateSentenceHighlight(blockId: string, side: 'orig' | 'trans', sentId
     sentIdx,
   )
 
-  // 高亮原文中的当前句子
   const origSentSelector = `.dual-orig [data-block-id="${blockId}"][data-side="orig"][data-sent-idx="${sentIdx}"]`
   const origSentEl = document.querySelector(origSentSelector)
-  if (origSentEl) {
-    origSentEl.classList.add('sent-active')
-  }
+  if (origSentEl) origSentEl.classList.add('sent-active')
 
-  // 高亮译文中的对应句子
   const transSentSelector = `.dual-trans [data-block-id="${blockId}"][data-side="trans"][data-sent-idx="${otherIdx}"]`
   const transSentEl = document.querySelector(transSentSelector)
-  if (transSentEl) {
-    transSentEl.classList.add('sent-active')
-  }
+  if (transSentEl) transSentEl.classList.add('sent-active')
 }
 
-/** 处理句子点击事件（暂不使用，保留接口） */
 function handleSentenceClick(e: MouseEvent) {
-  // 预留接口，可用于点击句子复制等操作
+  // reserved
 }
 
-/** 段落计数（仅 paragraph 类型）——用于显示元信息 */
 const paragraphCount = computed(() =>
   state.blocks.filter(b => b.type === 'paragraph').length
 )
-
-// ── File picker ──
 
 function openFilePicker() {
   const input = document.createElement('input')
@@ -500,83 +557,177 @@ function openFilePicker() {
 }
 
 /* ══════════════════════════════════════════════════════════
-   UPLOAD / IDLE
-══════════════════════════════════════════════════════════ */
+   UPLOAD / IDLE — asymmetric two-column
+═══════════════════════════════════════════════════════════ */
 .upload-scene {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   position: relative;
   overflow: hidden;
 }
 
-/* Ambient mesh gradient in the background */
 .scene-mesh {
   position: absolute;
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 60% 50% at 30% 60%, rgba(99,102,241,0.07) 0%, transparent 70%),
-    radial-gradient(ellipse 50% 40% at 75% 35%, rgba(167,139,250,0.05) 0%, transparent 65%);
+    radial-gradient(ellipse 60% 50% at 30% 60%, rgba(91,108,255,0.06) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 40% at 75% 35%, rgba(167,139,250,0.04) 0%, transparent 65%);
 }
 
 .upload-hero {
   position: relative;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-8);
   width: 100%;
-  max-width: 480px;
-  padding: var(--space-6) var(--space-4);
-  text-align: center;
+  max-width: 720px;
+  padding: var(--space-7) var(--space-4);
+}
+
+/* ── Hero left: serif title with fishtail accent ── */
+.hero-left {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  padding-left: var(--space-5);
+}
+
+.hero-fishtail {
+  position: absolute;
+  left: 0;
+  top: 4px;
+  width: 4px;
+  height: 32px;
+  background: var(--vermilion-0);
+  border-radius: 2px;
 }
 
 .hero-title {
-  font-size: var(--text-2xl);
+  font-family: var(--font-serif-zh);
+  font-size: var(--text-display-lg);
   font-weight: 700;
   color: var(--c-text-0);
-  letter-spacing: -0.02em;
-  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-display);
+  line-height: var(--leading-display);
   margin: 0;
-}
-.hero-sub {
-  font-size: var(--text-base);
-  color: var(--c-text-2);
-  line-height: var(--leading-normal);
-  margin: -var(--space-2) 0 0;
+  text-shadow:
+    0 0 40px rgba(91, 108, 255, 0.18),
+    0 2px 4px rgba(0, 0, 0, 0.4);
 }
 
+.hero-sub {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-style: italic;
+  font-weight: 400;
+  color: var(--c-text-3);
+  margin: 0;
+  letter-spacing: var(--tracking-tight);
+}
+
+/* ── Drop zone: glass card with ink bloom ── */
 .drop-zone {
-  width: 100%;
+  position: relative;
+  flex: 1;
+  min-width: 280px;
   padding: var(--space-6) var(--space-5);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space-2);
   background: var(--c-glass);
-  border: 2px dashed var(--c-glass-border);
-  border-radius: var(--radius-xl);
+  border: 1.5px dashed color-mix(in srgb, var(--accent-0) 40%, transparent);
+  border-radius: var(--radius-card);
   cursor: pointer;
   outline: none;
+  overflow: hidden;
   transition:
     border-color var(--motion-base) var(--ease-out),
     background var(--motion-base) var(--ease-out),
-    box-shadow var(--motion-base) var(--ease-out);
+    box-shadow var(--motion-base) var(--ease-out),
+    transform var(--motion-base) var(--ease-out);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 .drop-zone:hover,
 .drop-zone.hover {
-  border-color: var(--c-accent);
+  border-color: var(--accent-0);
   background: var(--c-accent-soft);
-  box-shadow: 0 0 48px rgba(99, 102, 241, 0.12);
+  box-shadow: 0 24px 48px var(--accent-glow), 0 1px 0 var(--accent-1) inset;
+  transform: translateY(-2px);
 }
 .drop-zone:hover .dz-icon,
-.drop-zone.hover .dz-icon { color: var(--c-accent-hover); }
+.drop-zone.hover .dz-icon { color: var(--accent-1); }
+
+/* Ink bloom SVG */
+.dz-bloom {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.6;
+  transition: opacity var(--motion-slow);
+}
+.drop-zone:hover .dz-bloom,
+.drop-zone.hover .dz-bloom { opacity: 1; }
+
+.bloom-svg {
+  width: 100%;
+  height: 100%;
+  animation: bloom-drift 18s ease-in-out infinite alternate;
+}
+.drop-zone:hover .bloom-svg,
+.drop-zone.hover .bloom-svg { animation-duration: 6s; }
+
+@keyframes bloom-drift {
+  0%   { transform: scale(1) rotate(0deg); }
+  100% { transform: scale(1.15) rotate(8deg); }
+}
+
+/* Orbiting border highlight */
+.dz-orbit {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-card);
+  pointer-events: none;
+  background: conic-gradient(from var(--orbit-angle, 0deg),
+    transparent 0%,
+    transparent 85%,
+    var(--accent-1) 94%,
+    var(--accent-0) 98%,
+    transparent 100%
+  );
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  padding: 2px;
+  animation: orbit 10s linear infinite;
+  opacity: 0.7;
+}
+.drop-zone:hover .dz-orbit,
+.drop-zone.hover .dz-orbit { opacity: 1; }
+
+@keyframes orbit {
+  from { --orbit-angle: 0deg; }
+  to   { --orbit-angle: 360deg; }
+}
+
+/* Register custom property for orbit animation */
+@property --orbit-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
 
 .dz-icon-wrap {
+  position: relative;
+  z-index: 1;
   width: 56px;
   height: 56px;
   border-radius: 50%;
@@ -590,12 +741,26 @@ function openFilePicker() {
 }
 .drop-zone:hover .dz-icon-wrap,
 .drop-zone.hover .dz-icon-wrap {
-  border-color: var(--c-accent);
+  border-color: var(--accent-0);
   background: var(--c-accent-soft);
 }
-.dz-icon { color: var(--c-text-3); transition: color var(--motion-base) var(--ease-out); }
-.dz-label { font-size: var(--text-base); font-weight: 600; color: var(--c-text-0); }
-.dz-hint { font-size: var(--text-sm); color: var(--c-text-3); }
+.dz-icon {
+  color: var(--c-text-3);
+  transition: color var(--motion-base) var(--ease-out);
+}
+.dz-label {
+  position: relative;
+  z-index: 1;
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--c-text-0);
+}
+.dz-hint {
+  position: relative;
+  z-index: 1;
+  font-size: var(--text-sm);
+  color: var(--c-text-3);
+}
 
 /* Format chips */
 .format-row {
@@ -603,6 +768,10 @@ function openFilePicker() {
   flex-wrap: wrap;
   justify-content: center;
   gap: var(--space-1);
+  margin-top: var(--space-4);
+  max-width: 720px;
+  padding: 0 var(--space-4);
+  font-feature-settings: "tnum";
 }
 .fmt-chip {
   padding: 2px 8px;
@@ -619,7 +788,9 @@ function openFilePicker() {
   align-items: center;
   gap: var(--space-2);
   width: 100%;
+  max-width: 720px;
   padding: var(--space-3) var(--space-4);
+  margin-top: var(--space-3);
   background: var(--c-danger-bg);
   border: 1px solid var(--c-danger-border);
   border-radius: var(--radius-lg);
@@ -660,7 +831,7 @@ function openFilePicker() {
   gap: var(--space-4);
   background: var(--c-surface-1);
   border: 1px solid var(--c-surface-3);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-card);
   padding: var(--space-5);
   box-shadow: var(--elevation-2);
 }
@@ -679,7 +850,6 @@ function openFilePicker() {
   position: relative;
 }
 
-/* Connecting line between steps */
 .step-connector {
   position: absolute;
   top: 15px;
@@ -713,8 +883,14 @@ function openFilePicker() {
 }
 .step.done .step-dot {
   border-color: var(--c-success);
-  background: rgba(74, 222, 128, 0.10);
+  background: var(--c-success-bg);
   color: var(--c-success);
+  animation: step-done-pop 400ms var(--ease-spring);
+}
+@keyframes step-done-pop {
+  0%   { transform: scale(0.85); }
+  60%  { transform: scale(1.15); }
+  100% { transform: scale(1); }
 }
 .step.active .step-dot {
   border-color: var(--c-accent);
@@ -752,12 +928,28 @@ function openFilePicker() {
   background: var(--c-surface-2);
   border-radius: var(--radius-pill);
   overflow: hidden;
+  position: relative;
 }
 .progress-fill {
   height: 100%;
   border-radius: var(--radius-pill);
-  background: linear-gradient(90deg, var(--c-accent), var(--c-accent-hover));
+  background: var(--c-accent-gradient);
   transition: width 0.45s var(--ease-out);
+  position: relative;
+  overflow: hidden;
+}
+/* Shimmer overlay */
+.progress-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.15) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: progress-shimmer 1.6s linear infinite;
+}
+@keyframes progress-shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
 }
 
 /* Chunk sub-progress */
@@ -793,7 +985,7 @@ function openFilePicker() {
 }
 .info-chip.accent { background: var(--c-accent-bg); border-color: transparent; color: var(--c-accent-hover); }
 
-/* Live preview */
+/* Live preview — stack-card */
 .live-preview {
   width: 100%;
   max-width: 560px;
@@ -807,6 +999,12 @@ function openFilePicker() {
   border: 1px solid var(--c-surface-3);
   border-left: 3px solid var(--c-accent);
   border-radius: var(--radius-md);
+  transition: transform var(--motion-base) var(--ease-out),
+              opacity var(--motion-base) var(--ease-out);
+}
+.live-item:not(:last-child) {
+  transform: scale(0.98);
+  opacity: 0.7;
 }
 .live-orig {
   font-size: var(--text-sm);
@@ -825,8 +1023,25 @@ function openFilePicker() {
 .live-slide-enter-from { opacity: 0; transform: translateY(8px); }
 
 /* ══════════════════════════════════════════════════════════
-   DONE / RESULT
+   DONE / RESULT — signature moment
 ══════════════════════════════════════════════════════════ */
+.done-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+}
+
+/* Seal absolute relative to done-wrapper, not clipped by result-scene */
+.done-wrapper .done-seal {
+  position: absolute;
+  top: 14px;
+  right: 20px;
+  z-index: 20;
+  pointer-events: none;
+}
+
 .result-scene {
   flex: 1;
   display: flex;
@@ -834,6 +1049,29 @@ function openFilePicker() {
   min-height: 0;
   overflow: hidden;
   padding: 0 var(--space-5) var(--space-5);
+  transform-origin: top;
+}
+/* Unfurl animation only when status just changed to done */
+.result-scene.unfurling {
+  animation: result-unfurl 600ms var(--ease-emphasis, cubic-bezier(0.2, 0, 0, 1));
+}
+
+@keyframes result-unfurl {
+  from {
+    clip-path: inset(0 0 100% 0);
+    transform: scaleY(0.98);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+    transform: scaleY(1);
+  }
+}
+
+/* ── Vermilion seal stamp ── */
+.seal-svg {
+  width: 56px;
+  height: 56px;
+  filter: drop-shadow(0 2px 6px rgba(200, 80, 58, 0.35));
 }
 
 .result-bar {
@@ -850,9 +1088,25 @@ function openFilePicker() {
   align-items: center;
   gap: var(--space-2);
 }
-.done-icon { color: var(--c-success); flex-shrink: 0; }
-.done-label { font-size: var(--text-base); font-weight: 600; color: var(--c-text-0); }
-.done-meta { font-size: var(--text-sm); color: var(--c-text-3); }
+.done-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.done-label {
+  font-family: var(--font-serif-zh);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--c-text-0);
+  letter-spacing: var(--tracking-tight);
+  text-shadow: 0 0 24px rgba(200, 80, 58, 0.12);
+}
+.done-meta {
+  font-family: var(--font-serif);
+  font-size: var(--text-xs);
+  font-style: italic;
+  color: var(--c-text-3);
+}
 .done-rag-hint {
   font-size: var(--text-xs); color: var(--c-accent); cursor: pointer;
   padding: 2px 8px; border-radius: 4px; border: 1px solid var(--c-accent);
@@ -868,7 +1122,7 @@ function openFilePicker() {
 }
 .bar-sep { width: 1px; height: 20px; background: var(--c-surface-3); }
 
-/* ── Dual view（左右双栏对照） ── */
+/* ── Dual view ── */
 .dual-view {
   flex: 1;
   overflow-y: auto;
@@ -906,10 +1160,10 @@ function openFilePicker() {
 .dual-trans :deep(p) { margin: 0; }
 .dual-trans :deep(p + p) { margin-top: var(--space-2); }
 
-/* 句子高亮样式 */
+/* Sentence highlighting with vermilion annotation line */
 .dual-orig :deep(.sent),
 .dual-trans :deep(.sent) {
-  transition: background-color 0.15s ease, border-radius 0.15s ease;
+  transition: background-color 0.15s ease, border-radius 0.15s ease, box-shadow 0.15s ease;
   padding: 1px 2px;
   border-radius: 2px;
   cursor: default;
@@ -917,13 +1171,16 @@ function openFilePicker() {
 
 .dual-orig :deep(.sent:hover),
 .dual-trans :deep(.sent:hover) {
-  background-color: var(--c-accent-soft, rgba(99, 102, 241, 0.08));
+  background-color: var(--c-accent-soft);
 }
 
-.dual-orig :deep(.sent.sent-active),
+.dual-orig :deep(.sent.sent-active) {
+  background-color: var(--c-accent-soft);
+  box-shadow: inset 2px 0 0 var(--vermilion-0);
+}
 .dual-trans :deep(.sent.sent-active) {
-  background-color: var(--c-accent-soft, rgba(99, 102, 241, 0.15));
-  box-shadow: 0 0 0 1px var(--c-accent-4, rgba(99, 102, 241, 0.2));
+  background-color: var(--c-accent-soft);
+  box-shadow: inset 2px 0 0 var(--vermilion-0);
 }
 
 .dual-pending {
@@ -932,7 +1189,7 @@ function openFilePicker() {
   font-style: italic;
 }
 
-/* 标题跨栏 */
+/* Headings */
 .dual-row.type-heading { grid-template-columns: 1fr; }
 .dual-heading-orig {
   margin: 0;
@@ -946,7 +1203,7 @@ function openFilePicker() {
   font-family: var(--read-ff, system-ui);
 }
 
-/* 公式/代码跨栏居中 */
+/* Untranslated blocks */
 .dual-untranslated {
   grid-column: 1 / -1;
   padding: var(--space-3);
@@ -957,7 +1214,7 @@ function openFilePicker() {
 .dual-untranslated :deep(pre) {
   margin: 0;
   background: transparent;
-  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
 }
 .dual-untranslated :deep(table) {
@@ -971,20 +1228,18 @@ function openFilePicker() {
   font-size: var(--text-sm);
 }
 
-/* 公式居中 */
 .dual-row.type-formula .dual-untranslated {
   text-align: center;
   font-size: 1.05em;
 }
 
-/* 翻译失败块 */
-/* 翻译失败块 */
+/* Failed blocks — vermilion left bar */
 .dual-failed {
   grid-column: 1 / -1;
   padding: var(--space-3);
-  background: var(--c-danger-soft, rgba(239, 68, 68, 0.05));
+  background: var(--c-danger-bg);
   border-radius: var(--radius-sm);
-  border-left: 3px solid var(--c-danger-5, #ef4444);
+  border-left: 3px solid var(--vermilion-0);
 }
 
 .dual-failed .dual-orig {
@@ -997,7 +1252,7 @@ function openFilePicker() {
   gap: var(--space-2);
   margin-top: var(--space-2);
   font-size: var(--text-sm);
-  color: var(--c-danger-5, #ef4444);
+  color: var(--c-danger);
 }
 
 .failed-card button {
@@ -1010,8 +1265,17 @@ function openFilePicker() {
   font-style: italic;
 }
 
-/* 窄屏自适应 */
+/* Narrow screens */
 @media (max-width: 900px) {
+  .upload-hero {
+    flex-direction: column;
+    text-align: center;
+    gap: var(--space-5);
+  }
+  .hero-left { padding-left: var(--space-4); align-items: center; }
+  .hero-fishtail { display: none; }
+  .hero-title { font-size: var(--text-display); }
+  .drop-zone { min-width: unset; width: 100%; }
   .dual-row { grid-template-columns: 1fr; gap: var(--space-2); }
   .dual-orig {
     padding-bottom: var(--space-2);
@@ -1020,21 +1284,20 @@ function openFilePicker() {
   .dual-failed { grid-template-columns: 1fr; }
 }
 
-/* ── Reading view（译文 / 全文 markdown） ── */
+/* ── Reading view ── */
 .reading-view {
   flex: 1;
   overflow-y: auto;
   margin-top: var(--space-4);
 }
 
-/* 警告标签 */
 .warn-tag {
   display: inline-block;
   margin-left: var(--space-2);
   padding: 1px 6px;
   font-size: var(--text-xs);
-  background: var(--c-warning-bg, rgba(255,180,50,0.15));
-  color: var(--c-warning, #d49a2c);
+  background: var(--c-warn-bg);
+  color: var(--c-warn);
   border-radius: var(--radius-pill);
 }
 
@@ -1082,5 +1345,34 @@ function openFilePicker() {
   border: none;
   border-top: 1px solid var(--c-surface-3);
   margin: var(--space-5) 0;
+}
+
+/* ══════════════════════════════════════════════════════════
+   LIGHT MODE OVERRIDES
+══════════════════════════════════════════════════════════ */
+:global([data-theme="light"]) .hero-title {
+  text-shadow: none;
+}
+:global([data-theme="light"]) .scene-mesh {
+  background:
+    radial-gradient(ellipse 60% 50% at 30% 60%, rgba(91,108,255,0.03) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 40% at 75% 35%, rgba(167,139,250,0.02) 0%, transparent 65%);
+}
+:global([data-theme="light"]) .drop-zone {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-color: rgba(91, 108, 255, 0.25);
+}
+:global([data-theme="light"]) .drop-zone:hover,
+:global([data-theme="light"]) .drop-zone.hover {
+  background: rgba(91, 108, 255, 0.06);
+  box-shadow: 0 12px 32px rgba(91, 108, 255, 0.10), 0 1px 0 rgba(91, 108, 255, 0.15) inset;
+}
+:global([data-theme="light"]) .progress-fill::after {
+  background: linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.06) 50%, transparent 100%);
+}
+:global([data-theme="light"]) .work-card {
+  box-shadow: var(--elevation-2);
 }
 </style>
