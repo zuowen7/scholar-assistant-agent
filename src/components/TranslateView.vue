@@ -164,7 +164,19 @@
 
     <!-- ── Done ───────────────────────────────────────────────── -->
     <div v-else class="done-wrapper">
-      <!-- Seal sits outside result-scene so clip-path unfurl doesn't clip it -->
+      <!-- 卷轴滚轴 — 上下两根装饰条 -->
+      <div class="scroll-roller scroll-roller--top" aria-hidden="true">
+        <div class="roller-knob roller-knob--left" />
+        <div class="roller-body" />
+        <div class="roller-knob roller-knob--right" />
+      </div>
+
+      <!-- 墨粒子爆发 — 翻译完成时从中心四散 -->
+      <div class="ink-burst" :class="{ 'ink-burst--active': burstPhase }" aria-hidden="true">
+        <span class="burst-dot" v-for="i in 20" :key="i" :style="{ '--i': i }" />
+      </div>
+
+      <!-- Seal 印章 -->
       <Transition name="v-stamp">
         <div v-if="sealVisible" class="done-seal" aria-hidden="true">
           <svg viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg" class="seal-svg">
@@ -174,15 +186,10 @@
                 <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.2" xChannelSelector="R" yChannelSelector="G"/>
               </filter>
             </defs>
-            <!-- Red field -->
             <rect x="2" y="2" width="52" height="52" rx="3" fill="var(--vermilion-0)" filter="url(#stamp-rough)"/>
-            <!-- Outer border frame -->
             <rect x="3.5" y="3.5" width="49" height="49" rx="2.5" fill="none" stroke="#fff" stroke-width="1.5" stroke-opacity="0.55"/>
-            <!-- Inner border frame -->
             <rect x="7" y="7" width="42" height="42" rx="1.5" fill="none" stroke="#fff" stroke-width="0.8" stroke-opacity="0.35"/>
-            <!-- Horizontal divider -->
             <line x1="10" y1="28" x2="46" y2="28" stroke="#fff" stroke-width="0.7" stroke-opacity="0.3"/>
-            <!-- Characters: larger, fill more space -->
             <text x="28" y="19.5" text-anchor="middle" dominant-baseline="middle" fill="#fff" fill-opacity="0.95" font-family="var(--font-serif-zh)" font-size="15" font-weight="700" letter-spacing="0.5">研</text>
             <text x="28" y="36.5" text-anchor="middle" dominant-baseline="middle" fill="#fff" fill-opacity="0.95" font-family="var(--font-serif-zh)" font-size="15" font-weight="700" letter-spacing="0.5">墨</text>
           </svg>
@@ -287,6 +294,13 @@
         </div>
       </Transition>
       </div><!-- /result-scene -->
+
+      <!-- 底部卷轴滚轴 -->
+      <div class="scroll-roller scroll-roller--bottom" aria-hidden="true">
+        <div class="roller-knob roller-knob--left" />
+        <div class="roller-body" />
+        <div class="roller-knob roller-knob--right" />
+      </div>
     </div><!-- /done-wrapper -->
   </main>
 </template>
@@ -320,14 +334,21 @@ const zoneHover = ref(false)
 const retryingBlockIds = ref<Set<string>>(new Set())
 const sealVisible = ref(false)
 const unfurling = ref(false)
+const burstPhase = ref(false)
 
-// Seal + unfurl animation: show when translation completes
+// 卷轴展开 + 印章 + 墨粒子爆发 — 多阶段动画序列
 watch(() => state.status, (newStatus, oldStatus) => {
   if (newStatus === 'done' && oldStatus !== 'done') {
+    burstPhase.value = false
     unfurling.value = true
     sealVisible.value = false
-    setTimeout(() => { sealVisible.value = true }, 300)
-    setTimeout(() => { unfurling.value = false }, 700)
+    // 阶段1: 卷轴展开 ~600ms
+    // 阶段2: 印章落下 (在卷轴展开中途开始)
+    setTimeout(() => { sealVisible.value = true }, 400)
+    // 阶段3: 墨粒子爆发 (印章落下后)
+    setTimeout(() => { burstPhase.value = true }, 750)
+    // 清理
+    setTimeout(() => { unfurling.value = false }, 800)
   }
 })
 
@@ -1144,6 +1165,7 @@ function openFilePicker() {
 
 /* ══════════════════════════════════════════════════════════
    DONE / RESULT — signature moment
+   Stage: flash → scroll unfurl → seal → ink burst
 ══════════════════════════════════════════════════════════ */
 .done-wrapper {
   flex: 1;
@@ -1151,17 +1173,55 @@ function openFilePicker() {
   flex-direction: column;
   min-height: 0;
   position: relative;
+  overflow: hidden;
 }
 
-/* Seal absolute relative to done-wrapper, not clipped by result-scene */
+/* ── Scroll rollers — 卷轴上下木轴装饰 ── */
+.scroll-roller {
+  position: relative;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  height: 10px;
+  margin: 0 var(--space-5);
+  opacity: 0;
+  animation: roller-slide-in 500ms var(--ease-emphasis) forwards;
+}
+.scroll-roller--top    { animation-delay: 0ms; }
+.scroll-roller--bottom { animation-delay: 120ms; }
+
+@keyframes roller-slide-in {
+  from { opacity: 0; transform: scaleX(0.3); }
+  to   { opacity: 1; transform: scaleX(1); }
+}
+
+.roller-body {
+  flex: 1;
+  height: 4px;
+  background: linear-gradient(to bottom, var(--c-surface-4), var(--c-surface-3) 40%, var(--c-surface-4));
+  border-radius: 2px;
+}
+
+.roller-knob {
+  width: 14px;
+  height: 10px;
+  background: linear-gradient(to bottom, var(--c-surface-3), var(--c-surface-4));
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.roller-knob--left  { margin-right: 4px; }
+.roller-knob--right { margin-left: 4px; }
+
+/* ── Seal — 印章定位 ── */
 .done-wrapper .done-seal {
   position: absolute;
-  top: 14px;
-  right: 20px;
+  top: 24px;
+  right: 28px;
   z-index: 20;
   pointer-events: none;
 }
 
+/* ── Result scene — 卷轴展开 ── */
 .result-scene {
   flex: 1;
   display: flex;
@@ -1169,34 +1229,74 @@ function openFilePicker() {
   min-height: 0;
   overflow: hidden;
   padding: 0 var(--space-5) var(--space-5);
-  transform-origin: top;
 }
-/* Unfurl animation only when status just changed to done */
 .result-scene.unfurling {
-  animation: result-unfurl 600ms var(--ease-emphasis, cubic-bezier(0.2, 0, 0, 1));
+  animation: scroll-unfurl 700ms var(--ease-emphasis);
 }
-
-@keyframes result-unfurl {
+@keyframes scroll-unfurl {
   from {
-    clip-path: inset(0 0 100% 0);
-    transform: scaleY(0.98);
+    clip-path: inset(48% 0 48% 0);
+    opacity: 0;
   }
   to {
     clip-path: inset(0 0 0 0);
-    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+/* ── Ink burst — 墨粒子爆发，从中心四散 ── */
+.ink-burst {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  overflow: hidden;
+}
+.burst-dot {
+  --angle: calc(var(--i, 1) * 18deg);
+  --dist: calc(60px + var(--i, 1) * 22px);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--c-accent);
+  opacity: 0;
+}
+.ink-burst--active .burst-dot {
+  animation: burst-fly 900ms var(--ease-brush) forwards;
+  animation-delay: calc(var(--i, 1) * 18ms);
+}
+@keyframes burst-fly {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0);
+  }
+  8% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0;
+    transform:
+      translate(
+        calc(-50% + cos(var(--angle)) * var(--dist)),
+        calc(-50% + sin(var(--angle)) * var(--dist))
+      )
+      scale(0.4);
   }
 }
 
 /* ── Vermilion seal stamp ── */
 .seal-svg {
-  width: 56px;
-  height: 56px;
-  filter: drop-shadow(0 2px 6px rgba(200, 80, 58, 0.35));
+  width: 64px;
+  height: 64px;
+  filter: drop-shadow(0 3px 10px rgba(200, 80, 58, 0.4));
 }
 
-/* ── Stamp transition: 落章动画 ── */
+/* ── Stamp transition ── */
 .v-stamp-enter-active {
-  animation: stamp-down 520ms var(--ease-brush);
+  animation: stamp-down 560ms var(--ease-brush);
 }
 .v-stamp-leave-active {
   transition: opacity 200ms ease-in, transform 200ms ease-in;
@@ -1206,15 +1306,15 @@ function openFilePicker() {
   transform: scale(0.8);
 }
 @keyframes stamp-down {
-  0%   { opacity: 0; transform: translateY(-24px) rotate(-8deg) scale(0.7); }
-  40%  { opacity: 1; transform: translateY(3px) rotate(1deg) scale(1.04); }
-  55%  { opacity: 1; transform: translateY(-1px) rotate(-0.5deg) scale(0.98); }
-  70%  { opacity: 1; transform: translateY(1px) rotate(0.2deg) scale(1.01); }
-  85%  { opacity: 1; transform: translateY(0) rotate(0deg) scale(0.995); }
+  0%   { opacity: 0; transform: translateY(-30px) rotate(-10deg) scale(0.65); }
+  35%  { opacity: 1; transform: translateY(4px) rotate(1.5deg) scale(1.05); }
+  50%  { opacity: 1; transform: translateY(-2px) rotate(-0.5deg) scale(0.97); }
+  65%  { opacity: 1; transform: translateY(1px) rotate(0.2deg) scale(1.01); }
+  80%  { opacity: 1; transform: translateY(0) rotate(0deg) scale(0.995); }
   100% { opacity: 1; transform: translateY(0) rotate(0deg) scale(1); }
 }
 
-/* Ink splash ring around seal when it lands */
+/* Ink splash ring around seal */
 .done-seal::after {
   content: '';
   position: absolute;
@@ -1227,11 +1327,12 @@ function openFilePicker() {
   border: 2px solid var(--vermilion-0);
   opacity: 0;
   pointer-events: none;
-  animation: seal-splash 520ms var(--ease-brush) forwards;
-  animation-delay: 200ms;
+  animation: seal-splash 640ms var(--ease-brush) forwards;
+  animation-delay: 260ms;
 }
 @keyframes seal-splash {
-  0%   { width: 10px; height: 10px; opacity: 0.6; border-width: 2px; }
+  0%   { width: 10px; height: 10px; opacity: 0.5; border-width: 2px; }
+  100% { width: 100px; height: 100px; opacity: 0; border-width: 1px; }
   100% { width: 70px; height: 70px; opacity: 0; border-width: 0.5px; }
 }
 
