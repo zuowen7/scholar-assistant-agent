@@ -130,13 +130,15 @@ defineExpose({ open, show, close, toggle })
 .ui-popover-panel {
   position: fixed;
   z-index: 1000;
-  background: var(--c-surface-1);
-  border: 1px solid var(--c-surface-3);
+  background: color-mix(in srgb, var(--c-surface-1) 88%, transparent);
+  border: 1px solid var(--c-glass-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--elevation-3);
   padding: var(--space-3);
   -webkit-app-region: no-drag;
-  animation: ui-popover-in var(--motion-base) var(--ease-out);
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  animation: ui-popover-in var(--motion-base) var(--ease-spring);
   transform-origin: top right;
   max-height: calc(100vh - 24px);
   overflow-y: auto;
@@ -149,7 +151,7 @@ defineExpose({ open, show, close, toggle })
   -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 @keyframes ui-popover-in {
-  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
 }
 </style>

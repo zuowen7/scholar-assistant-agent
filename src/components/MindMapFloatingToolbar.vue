@@ -216,11 +216,11 @@ function startDrag(event: PointerEvent) {
   line-height: 25px;
 }
 .ai-group {
-  border-color: color-mix(in srgb, var(--accent) 28%, var(--border-color));
+  border-color: color-mix(in srgb, var(--c-accent) 28%, var(--border-color));
   background: color-mix(in srgb, var(--active-bg) 32%, transparent);
 }
 .workflow-group {
-  border-color: color-mix(in srgb, var(--accent) 38%, var(--border-color));
+  border-color: color-mix(in srgb, var(--c-accent) 38%, var(--border-color));
 }
 .utility-group {
   background: color-mix(in srgb, var(--toolbar-bg) 38%, transparent);
@@ -240,8 +240,8 @@ button {
 button:hover:not(:disabled),
 button.active {
   background: var(--hover-bg);
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--c-accent);
+  color: var(--c-accent);
 }
 button:disabled {
   opacity: 0.42;
@@ -254,13 +254,13 @@ button:disabled {
 }
 .primary,
 .workflow-primary {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--c-accent);
+  border-color: var(--c-accent);
   color: #fff;
   font-weight: 650;
 }
 .workflow-primary {
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--c-accent) 18%, transparent);
 }
 .more-panel,
 .shortcut-panel {

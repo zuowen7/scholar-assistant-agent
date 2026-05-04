@@ -81,6 +81,7 @@ withDefaults(defineProps<{
 .dd-item:hover:not(.disabled) {
   background: var(--c-surface-2);
   color: var(--c-text-0);
+  box-shadow: inset 2px 0 0 var(--c-accent);
 }
 .dd-item.disabled { opacity: 0.45; cursor: not-allowed; }
 .dd-item.danger { color: var(--c-danger); }

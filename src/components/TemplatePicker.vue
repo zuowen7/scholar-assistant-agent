@@ -163,7 +163,7 @@ watch(() => props.visible, (v) => {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: var(--overlay-bg);
+  background: var(--c-overlay);
   backdrop-filter: blur(8px);
 }
 
@@ -172,11 +172,11 @@ watch(() => props.visible, (v) => {
   max-height: min(760px, 88vh);
   display: flex;
   flex-direction: column;
-  background: var(--surface);
+  background: var(--c-surface-1);
   color: var(--text-primary);
-  border: 1px solid var(--border);
+  border: 1px solid var(--c-surface-3);
   border-radius: 10px;
-  box-shadow: 0 28px 80px var(--shadow);
+  box-shadow: 0 28px 80px var(--c-shadow);
   overflow: hidden;
 }
 
@@ -186,14 +186,14 @@ watch(() => props.visible, (v) => {
   justify-content: space-between;
   gap: 16px;
   padding: 18px 20px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--c-surface-3);
 }
 
 .tp-header h3 {
   margin: 0;
   font-size: 18px;
   font-weight: 650;
-  color: var(--text);
+  color: var(--c-text-0);
 }
 
 .tp-header p {
@@ -234,19 +234,19 @@ watch(() => props.visible, (v) => {
   align-items: flex-start;
   width: 100%;
   padding: 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--c-surface-3);
   border-radius: 8px;
-  background: var(--surface2);
+  background: var(--c-surface-2);
   color: inherit;
   text-align: left;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s, transform 0.15s;
 }
-.tp-card:hover { border-color: var(--accent); background: var(--hover-bg); }
+.tp-card:hover { border-color: var(--c-accent); background: var(--hover-bg); }
 .tp-card.active {
-  border-color: var(--accent);
-  background: var(--accent-bg);
-  box-shadow: inset 0 0 0 1px var(--accent);
+  border-color: var(--c-accent);
+  background: var(--c-accent-bg);
+  box-shadow: inset 0 0 0 1px var(--c-accent);
 }
 
 .tp-card-icon {
@@ -256,8 +256,8 @@ watch(() => props.visible, (v) => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--accent-bg);
-  color: var(--accent2);
+  background: var(--c-accent-bg);
+  color: var(--c-accent-hover);
   font-size: 12px;
   font-weight: 700;
 }
@@ -270,7 +270,7 @@ watch(() => props.visible, (v) => {
 }
 
 .tp-card-name { font-size: 13px; font-weight: 650; color: var(--text-primary); }
-.tp-card-venue { font-size: 11px; color: var(--accent2); }
+.tp-card-venue { font-size: 11px; color: var(--c-accent-hover); }
 .tp-card-desc {
   font-size: 12px;
   color: var(--text-secondary);
@@ -284,7 +284,7 @@ watch(() => props.visible, (v) => {
 }
 
 .tp-options {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--c-surface-3);
   padding-top: 16px;
 }
 
@@ -301,14 +301,14 @@ watch(() => props.visible, (v) => {
   width: 100%;
   margin-top: 6px;
   padding: 10px 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--c-surface-3);
   border-radius: 7px;
   background: var(--input-bg);
   color: var(--text-primary);
   font-size: 13px;
   outline: none;
 }
-.tp-input:focus { border-color: var(--accent); }
+.tp-input:focus { border-color: var(--c-accent); }
 
 .tp-sections { margin-top: 14px; }
 .tp-checks {
@@ -326,7 +326,7 @@ watch(() => props.visible, (v) => {
   font-size: 13px;
   cursor: pointer;
 }
-.tp-check input { accent-color: var(--accent); }
+.tp-check input { accent-color: var(--c-accent); }
 
 .tp-footer {
   display: flex;
@@ -334,13 +334,13 @@ watch(() => props.visible, (v) => {
   justify-content: flex-end;
   gap: 8px;
   padding: 14px 20px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--c-surface-3);
 }
 
 .tp-error {
   flex: 1;
   min-width: 0;
-  color: var(--red);
+  color: var(--c-danger);
   font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
@@ -351,7 +351,7 @@ watch(() => props.visible, (v) => {
   height: 32px;
   padding: 0 16px;
   border-radius: 7px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--c-surface-3);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -360,13 +360,13 @@ watch(() => props.visible, (v) => {
 }
 .tp-btn:hover { background: var(--hover-bg); }
 .tp-btn-create {
-  border-color: var(--accent);
-  background: var(--accent);
+  border-color: var(--c-accent);
+  background: var(--c-accent);
   color: #fff;
 }
 .tp-btn-create:hover { opacity: 0.9; }
 .tp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.tp-btn-ghost { color: var(--accent2); }
+.tp-btn-ghost { color: var(--c-accent-hover); }
 
 @media (max-width: 720px) {
   .tp-grid { grid-template-columns: 1fr; }

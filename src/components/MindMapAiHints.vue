@@ -60,7 +60,7 @@ defineEmits<{
   margin-bottom: 6px;
 }
 .ai-hints-kicker {
-  color: var(--accent);
+  color: var(--c-accent);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -80,7 +80,7 @@ defineEmits<{
   align-items: center;
   justify-content: center;
   background: color-mix(in srgb, var(--active-bg) 70%, transparent);
-  color: var(--accent);
+  color: var(--c-accent);
   font-size: 11px;
   font-weight: 700;
 }
@@ -133,7 +133,7 @@ defineEmits<{
 }
 .issue-card:hover,
 .issue-card.active {
-  border-color: var(--accent);
+  border-color: var(--c-accent);
   background: var(--hover-bg);
 }
 .issue-dot {
@@ -141,14 +141,14 @@ defineEmits<{
   height: 7px;
   margin-top: 5px;
   border-radius: 999px;
-  background: var(--accent);
+  background: var(--c-accent);
   flex-shrink: 0;
 }
 .issue-card.warning .issue-dot {
-  background: #f59e0b;
+  background: var(--c-warn);
 }
 .issue-card.critical .issue-dot {
-  background: #ef4444;
+  background: var(--c-danger);
 }
 .issue-content {
   min-width: 0;

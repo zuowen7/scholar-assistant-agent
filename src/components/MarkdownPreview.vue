@@ -150,7 +150,7 @@ const renderedHtml = computed(() => {
 .preview-body :deep(h4) { font-size: 1.1em; margin: 0.5em 0 0.2em; }
 .preview-body :deep(p) { margin: 0.6em 0; }
 .preview-body :deep(ul), .preview-body :deep(ol) { padding-left: 2em; margin: 0.5em 0; }
-.preview-body :deep(blockquote) { border-left: 3px solid var(--accent); padding-left: 1em; margin: 0.8em 0; color: var(--text-secondary); }
+.preview-body :deep(blockquote) { border-left: 3px solid var(--c-accent); padding-left: 1em; margin: 0.8em 0; color: var(--text-secondary); }
 .preview-body :deep(code) { background: var(--code-bg); padding: 0.15em 0.4em; border-radius: 3px; font-size: 0.9em; }
 .preview-body :deep(pre) { background: var(--code-bg); padding: 1em; border-radius: 6px; overflow-x: auto; margin: 0.8em 0; }
 .preview-body :deep(pre code) { background: none; padding: 0; }
@@ -158,10 +158,10 @@ const renderedHtml = computed(() => {
 .preview-body :deep(th), .preview-body :deep(td) { border: 1px solid var(--border-color); padding: 0.5em 0.8em; text-align: left; }
 .preview-body :deep(th) { background: var(--code-bg); font-weight: 600; }
 .preview-body :deep(img) { max-width: 100%; border-radius: 4px; }
-.preview-body :deep(a) { color: var(--accent); text-decoration: none; }
+.preview-body :deep(a) { color: var(--c-accent); text-decoration: none; }
 .preview-body :deep(a:hover) { text-decoration: underline; }
 .preview-body :deep(.empty-hint) { color: var(--text-secondary); font-style: italic; }
-.preview-body :deep(.math-error) { color: #f87171; background: rgba(248,113,113,0.1); padding: 2px 6px; border-radius: 3px; }
+.preview-body :deep(.math-error) { color: var(--c-danger); background: var(--c-danger-bg); padding: 2px 6px; border-radius: 3px; }
 
 /* KaTeX display math centering */
 .preview-body :deep(.katex-display) {

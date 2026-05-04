@@ -322,10 +322,10 @@ onMounted(loadTree)
 .arg-textarea {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid var(--border);
+  border: 1px solid var(--c-surface-3);
   border-radius: 7px;
   background: var(--input-bg);
-  color: var(--text);
+  color: var(--c-text-0);
   padding: 8px 10px;
   font: inherit;
   font-size: 12px;
@@ -336,10 +336,10 @@ onMounted(loadTree)
   min-height: 80px;
 }
 .arg-btn {
-  border: 1px solid var(--border);
+  border: 1px solid var(--c-surface-3);
   border-radius: 7px;
-  background: var(--surface2);
-  color: var(--text);
+  background: var(--c-surface-2);
+  color: var(--c-text-0);
   padding: 7px 10px;
   font: inherit;
   font-size: 12px;
@@ -347,8 +347,8 @@ onMounted(loadTree)
   white-space: nowrap;
 }
 .arg-btn.primary {
-  border-color: var(--accent);
-  background: var(--accent);
+  border-color: var(--c-accent);
+  background: var(--c-accent);
   color: #fff;
 }
 .arg-btn:disabled {
@@ -360,21 +360,21 @@ onMounted(loadTree)
 }
 .arg-empty,
 .arg-message {
-  color: var(--text2);
+  color: var(--c-text-2);
   font-size: 12px;
   line-height: 1.5;
 }
 .arg-message {
-  color: var(--accent);
+  color: var(--c-accent);
 }
 .arg-canvas {
   flex: 1;
   min-height: 160px;
   overflow-y: auto;
-  border: 1px solid var(--border);
+  border: 1px solid var(--c-surface-3);
   border-radius: 8px;
   padding: 10px;
-  background: var(--surface);
+  background: var(--c-surface-1);
 }
 .arg-node {
   width: calc(100% - 4px);
@@ -383,16 +383,16 @@ onMounted(loadTree)
   gap: 3px;
   margin: 0 0 8px;
   padding: 9px 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--c-surface-3);
   border-left-width: 3px;
   border-radius: 8px;
-  background: var(--surface2);
-  color: var(--text);
+  background: var(--c-surface-2);
+  color: var(--c-text-0);
   text-align: left;
   cursor: pointer;
 }
 .arg-node.selected {
-  border-color: var(--accent);
+  border-color: var(--c-accent);
 }
 .arg-node.warning {
   border-left-color: #eab308;
@@ -411,7 +411,7 @@ onMounted(loadTree)
   font-weight: 650;
 }
 .arg-node-meta {
-  color: var(--text2);
+  color: var(--c-text-2);
   font-size: 11px;
 }
 .arg-detail,
@@ -419,35 +419,35 @@ onMounted(loadTree)
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--c-surface-3);
   padding-top: 10px;
 }
 .arg-label {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  color: var(--text2);
+  color: var(--c-text-2);
   font-size: 11px;
 }
 .arg-feedback {
   padding: 8px 10px;
   border-radius: 7px;
   background: rgba(234, 179, 8, 0.12);
-  color: var(--text);
+  color: var(--c-text-0);
   font-size: 12px;
   line-height: 1.5;
 }
 .arg-section-title {
-  color: var(--text2);
+  color: var(--c-text-2);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 .arg-rec {
   padding: 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--c-surface-3);
   border-radius: 7px;
-  background: var(--surface2);
+  background: var(--c-surface-2);
 }
 .arg-rec div {
   display: flex;
@@ -457,7 +457,7 @@ onMounted(loadTree)
 }
 .arg-rec p {
   margin: 5px 0 8px;
-  color: var(--text2);
+  color: var(--c-text-2);
   font-size: 11px;
   line-height: 1.5;
 }

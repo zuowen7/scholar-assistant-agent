@@ -23,17 +23,18 @@ defineEmits<{
 <style scoped>
 .ui-select {
   width: 100%;
-  height: 32px;
+  height: var(--control-md);
   padding: 0 28px 0 10px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--input-bg);
-  color: var(--text-primary);
+  border: 1px solid var(--c-surface-3);
+  border-radius: var(--radius-control);
+  background: var(--c-surface-2);
+  color: var(--c-text-0);
   font: inherit;
   font-size: var(--text-sm);
   outline: none;
   cursor: pointer;
-  transition: border-color 0.15s;
+  transition: box-shadow var(--motion-fast) var(--ease-out),
+              border-color var(--motion-fast) var(--ease-out);
   box-sizing: border-box;
   -webkit-appearance: none;
   appearance: none;
@@ -43,9 +44,12 @@ defineEmits<{
 }
 .ui-select:focus {
   border-color: var(--c-accent);
+  box-shadow: var(--ring-focus);
 }
 .ui-select:disabled {
-  opacity: 0.5;
+  opacity: 0.42;
   cursor: not-allowed;
 }
+
+:global([data-theme="light"]) .ui-select { background-color: var(--c-surface-2); }
 </style>

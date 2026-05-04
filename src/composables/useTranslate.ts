@@ -4,6 +4,7 @@ import { save } from '@tauri-apps/plugin-dialog'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { API_BASE } from '../utils/api'
 import { readSseStream } from '../utils/streamReader'
+import { persistTranslation, loadLastTranslation, clearPersistedTranslation } from './useTranslatePersist'
 import type {
   TranslateState,
   TranslateStatus,
@@ -300,6 +301,16 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       } else {
         state.stepMessage = '翻译完成'
       }
+      persistTranslation({
+        id: state.taskId || `result-${Date.now()}`,
+        finalContent: state.finalContent,
+        blocks: state.blocks,
+        chunks: state.chunks,
+        parsedInfo: state.parsedInfo,
+        stepMessage: state.stepMessage,
+        fallbackChunks: state.fallbackChunks,
+        misalignedChunks: state.misalignedChunks,
+      })
       break
     case 'error':
       if (state.status !== 'done') {
@@ -550,6 +561,8 @@ export function useTranslate() {
     setStatus,
     setError,
     setStepMessage,
+    recoverTranslation,
+    discardPersisted,
     // Cloud API
     checkCloudApi,
     getConfig,
@@ -559,6 +572,31 @@ export function useTranslate() {
     exportTranslationOnlyDocx,
     exportTranslationOnlyMarkdown,
   }
+}
+
+async function recoverTranslation(): Promise<boolean> {
+  const saved = await loadLastTranslation()
+  if (!saved) return false
+  Object.assign(state, {
+    status: 'done',
+    currentStep: 5,
+    totalSteps: 5,
+    stepMessage: saved.stepMessage || '翻译完成（已恢复）',
+    finalContent: saved.finalContent,
+    blocks: saved.blocks,
+    chunks: saved.chunks,
+    parsedInfo: saved.parsedInfo,
+    fallbackChunks: saved.fallbackChunks ?? 0,
+    misalignedChunks: saved.misalignedChunks ?? 0,
+    taskId: saved.id,
+  })
+  return true
+}
+
+async function discardPersisted(): Promise<void> {
+  const saved = await loadLastTranslation()
+  if (saved) await clearPersistedTranslation(saved.id)
+  reset()
 }
 
 // --- Cloud API ---

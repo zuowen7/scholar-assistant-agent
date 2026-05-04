@@ -5,19 +5,23 @@
     :type="type ?? 'button'"
     @click="$emit('click', $event)"
   >
-    <Loader2 v-if="loading" :size="iconSize" :stroke-width="2" class="btn-loader" />
-    <slot v-else name="icon-left" />
-    <slot />
-    <slot name="icon-right" />
+    <!-- Loading: three-dot breathing -->
+    <span v-if="loading" class="btn-loader-dots" aria-hidden="true">
+      <span class="btn-dot" /><span class="btn-dot" /><span class="btn-dot" />
+    </span>
+    <template v-else>
+      <span v-if="$slots['icon-left']" class="btn-icon"><slot name="icon-left" /></span>
+      <slot />
+      <slot name="icon-right" />
+    </template>
   </button>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Loader2 } from './icons'
 
 const props = defineProps<{
-  variant?: 'primary' | 'secondary' | 'ghost' | 'soft' | 'subtle' | 'danger'
+  variant?: 'primary' | 'secondary' | 'ghost' | 'soft' | 'subtle' | 'danger' | 'bezel'
   size?: 'sm' | 'md' | 'lg'
   disabled?: boolean
   loading?: boolean
@@ -39,7 +43,7 @@ const iconSize = computed(() => (props.size === 'sm' ? 12 : props.size === 'lg' 
   justify-content: center;
   gap: var(--space-2);
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   font: inherit;
   font-weight: 500;
   cursor: pointer;
@@ -52,17 +56,28 @@ const iconSize = computed(() => (props.size === 'sm' ? 12 : props.size === 'lg' 
   user-select: none;
 }
 .ui-btn:disabled { opacity: 0.42; cursor: not-allowed; }
-.ui-btn:not(:disabled):active { transform: translateY(1px); }
+.ui-btn:not(:disabled):hover { transform: translateY(-1px); }
+.ui-btn:not(:disabled):active { transform: scale(0.97); }
 .ui-btn:focus-visible { outline: none; box-shadow: var(--ring-focus); }
 
 /* Sizes */
-.lg { height: 36px; padding: 0 18px; font-size: var(--text-base); }
-.md { height: 30px; padding: 0 14px; font-size: var(--text-sm); }
-.sm { height: 24px; padding: 0 10px; font-size: var(--text-xs); }
+.lg { height: var(--control-lg); padding: 0 18px; font-size: var(--text-base); }
+.md { height: var(--control-md); padding: 0 14px; font-size: var(--text-sm); }
+.sm { height: var(--control-sm); padding: 0 10px; font-size: var(--text-xs); }
 
-.ui-btn.icon-only.lg { width: 36px; padding: 0; }
-.ui-btn.icon-only.md { width: 30px; padding: 0; }
-.ui-btn.icon-only.sm { width: 24px; padding: 0; }
+.ui-btn.icon-only.lg { width: var(--control-lg); padding: 0; }
+.ui-btn.icon-only.md { width: var(--control-md); padding: 0; }
+.ui-btn.icon-only.sm { width: var(--control-sm); padding: 0; }
+
+/* Icon entrance */
+.btn-icon {
+  display: inline-flex;
+  animation: btn-icon-in 0.3s var(--ease-out);
+}
+@keyframes btn-icon-in {
+  from { transform: rotate(-30deg); opacity: 0; }
+  to   { transform: rotate(0deg); opacity: 1; }
+}
 
 /* Variants */
 .primary {
@@ -80,6 +95,14 @@ const iconSize = computed(() => (props.size === 'sm' ? 12 : props.size === 'lg' 
   color: var(--c-text-0);
 }
 .secondary:not(:disabled):hover { background: var(--c-surface-3); border-color: var(--c-surface-4); }
+
+.bezel {
+  background: var(--c-surface-2);
+  border-color: var(--c-surface-3);
+  color: var(--c-text-0);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 1px 0 rgba(0,0,0,0.2);
+}
+.bezel:not(:disabled):hover { background: var(--c-surface-3); border-color: var(--c-surface-4); }
 
 .soft {
   background: var(--c-accent-bg);
@@ -108,8 +131,24 @@ const iconSize = computed(() => (props.size === 'sm' ? 12 : props.size === 'lg' 
 }
 .danger:not(:disabled):hover { background: var(--c-danger); color: #fff; border-color: var(--c-danger); }
 
-/* Loading */
+/* Loading: three-dot breathing */
 .ui-btn.loading { cursor: wait; }
-.btn-loader { animation: btn-spin 700ms linear infinite; flex-shrink: 0; }
-@keyframes btn-spin { to { transform: rotate(360deg); } }
+.btn-loader-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.btn-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: btn-dot-breathe 1.2s ease-in-out infinite;
+}
+.btn-dot:nth-child(2) { animation-delay: 0.15s; }
+.btn-dot:nth-child(3) { animation-delay: 0.3s; }
+@keyframes btn-dot-breathe {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1.1); }
+}
 </style>

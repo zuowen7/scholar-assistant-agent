@@ -97,7 +97,7 @@ const { tabs, activeTabId, setActiveTab, closeTab, openNewUntitled } = useEditor
 
 .tab-item:hover { background: var(--hover-bg); color: var(--c-text-1); }
 .tab-item.active { background: var(--editor-bg); color: var(--c-text-0); }
-.tab-item.active::after { background: var(--c-accent); }
+.tab-item.active::after { background: var(--vermilion-0); }
 
 .tab-icon { flex-shrink: 0; opacity: 0.45; }
 .tab-item.active .tab-icon { opacity: 0.7; color: var(--c-accent); }

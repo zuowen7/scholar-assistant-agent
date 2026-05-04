@@ -846,8 +846,8 @@ async function aiExpandSelectedNode() {
 .ai-collapse-button:hover,
 .outline-collapse-button:hover,
 .properties-collapse-button:hover {
-  color: var(--accent);
-  border-color: var(--accent);
+  color: var(--c-accent);
+  border-color: var(--c-accent);
 }
 .pane-splitter {
   position: relative;
@@ -863,7 +863,7 @@ async function aiExpandSelectedNode() {
   transition: background 0.15s;
 }
 .pane-splitter:hover::after {
-  background: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--c-accent) 55%, transparent);
 }
 .pane-splitter.vertical {
   width: 4px;
@@ -964,8 +964,8 @@ async function aiExpandSelectedNode() {
   cursor: pointer;
 }
 .properties-detail-button:hover {
-  color: var(--accent);
-  border-color: var(--accent);
+  color: var(--c-accent);
+  border-color: var(--c-accent);
 }
 .property-details {
   min-width: 0;
@@ -1007,7 +1007,7 @@ async function aiExpandSelectedNode() {
 .outline-node:hover,
 .outline-node.active {
   background: color-mix(in srgb, var(--hover-bg) 72%, transparent);
-  color: var(--accent);
+  color: var(--c-accent);
 }
 .collapse-toggle,
 .collapse-spacer {
@@ -1024,7 +1024,7 @@ async function aiExpandSelectedNode() {
 }
 .collapse-toggle:hover {
   background: var(--active-bg);
-  color: var(--accent);
+  color: var(--c-accent);
 }
 .outline-text {
   min-width: 0;
@@ -1051,7 +1051,7 @@ async function aiExpandSelectedNode() {
   outline: none;
 }
 .inspector-input:focus {
-  border-color: var(--accent);
+  border-color: var(--c-accent);
 }
 .inspector-meta-grid {
   min-width: 0;
