@@ -41,6 +41,7 @@ def clean_text_full(raw_text: str) -> CleanResult:
     4. 规范化空白字符
     5. 移除页码标记
     6. 检测引用区
+    6.7. 移除短噪声碎片 (图标签/坐标轴/列标题残留)
     7. 恢复段落分隔
     """
     text = raw_text
@@ -81,6 +82,9 @@ def clean_text_full(raw_text: str) -> CleanResult:
 
     # 6.6 移除期刊页脚 (版权、DOI、文章链接等)
     text = _remove_journal_footer(text)
+
+    # 6.7 移除短噪声碎片（图标签、坐标轴标注、列标题残留等）
+    text = _remove_noise_fragments(text)
 
     # 7. 压缩连续空行
     text = re.sub(r"\n{3,}", "\n\n", text)
@@ -330,6 +334,78 @@ def _remove_journal_footer(text: str) -> str:
     for pattern in footer_patterns:
         text = re.sub(pattern, "", text, flags=re.MULTILINE | re.IGNORECASE)
     return text
+
+
+def _remove_noise_fragments(text: str) -> str:
+    """移除 PDF 提取产生的短噪声段落（图标签、坐标轴碎片、列标题残留等）
+
+    典型模式（独立成段）:
+    - "ITE" — 坐标轴标签碎片
+    - "D S" — 双栏列表碎片
+    - "TAT" — 标注残留
+    - "EMD" — 各类缩写碎片
+    """
+    paragraphs = text.split("\n\n")
+    filtered = []
+    for para in paragraphs:
+        stripped = para.strip()
+        if stripped and _is_noise_fragment(stripped):
+            logger.debug("移除噪声碎片段落: %r", stripped[:40])
+            continue
+        filtered.append(para)
+    return "\n\n".join(filtered)
+
+
+# 已知有意义的短大写词（章节标题、通用缩写等），不视为噪声
+_MEANINGFUL_CAPS = frozenset({
+    # 章节标题
+    "ABSTRACT", "INTRODUCTION", "METHODS", "METHOD", "RESULTS", "RESULT",
+    "DISCUSSION", "CONCLUSION", "CONCLUSIONS", "REFERENCES", "APPENDIX",
+    "APPENDICES", "BACKGROUND", "MOTIVATION", "OVERVIEW", "SUMMARY",
+    "RELATED", "ACKNOWLEDGMENTS", "ACKNOWLEDGEMENTS", "FUNDING",
+    "NOTES", "NOTE", "SUPPLEMENTARY", "SUPPORTING", "LIMITATIONS",
+    # 表格 / 图
+    "TABLE", "FIGURE", "FIGURES", "TABLES", "BOX", "FIG",
+    # 常见学科缩写
+    "DNA", "RNA", "PCR", "MRI", "CT", "PET", "NMR", "UV", "IR",
+    "USA", "UK", "EU", "UN", "WHO", "CDC",
+    # 常见英文词（偶尔独立成段）
+    "THE", "AND", "OR", "NOT", "BUT",
+})
+
+
+def _is_noise_fragment(text: str) -> bool:
+    """判断一个段落是否为 PDF 提取的噪声碎片
+
+    条件（全部满足才判定为噪声）:
+    1. 单行（无换行），长度 ≤ 20 字符
+    2. 不含中文、数字、标点
+    3. 全大写字母（可含空格）
+    4. 去空格后字母数 ≤ 10
+    5. 不在已知有意义词表中
+    """
+    if "\n" in text:
+        return False
+    if len(text) > 20:
+        return False
+    if any("一" <= c <= "鿿" for c in text):
+        return False
+    if any(c.isdigit() for c in text):
+        return False
+    # 含标点（句号、括号、连字符等）通常有意义
+    if re.search(r"[^\w\s]", text):
+        return False
+
+    alpha_only = text.replace(" ", "")
+    if not alpha_only or not alpha_only.isalpha() or not alpha_only.isupper():
+        return False
+    if len(alpha_only) > 10:
+        return False
+
+    if text.strip().upper() in _MEANINGFUL_CAPS:
+        return False
+
+    return True
 
 
 def _fix_intra_word_spaces(text: str) -> str:

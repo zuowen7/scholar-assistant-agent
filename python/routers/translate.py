@@ -310,7 +310,7 @@ def register_translate(
                 chunk_text_with_blocks,
                 clean_result.text,
                 chunker_cfg.get("max_tokens", 2048),
-                chunker_cfg.get("overlap_tokens", 128),
+                0,  # overlap_tokens disabled in block-aware mode
                 True,
             )
             blocks_by_id = {b.id: b for b in block_result.blocks}
@@ -446,6 +446,7 @@ def register_translate(
                             "original": bt.original,
                             "translated": bt.translated,
                             "source": "tm",
+                            "status": bt.status,
                         }),
                     }
 
@@ -457,6 +458,7 @@ def register_translate(
                         llm_chunks,
                         blocks_by_id,
                         max_concurrency=max_concurrency,
+                        source_lang=src_lang,
                     ):
                         if cr.error:
                             yield {
@@ -485,6 +487,7 @@ def register_translate(
                                     "original": bt.original,
                                     "translated": bt.translated,
                                     "aligned": cr.aligned,
+                                    "status": bt.status,
                                 }),
                             }
 
@@ -537,6 +540,7 @@ def register_translate(
                         original=b.text,
                         translated=b.text,
                         translatable=b.translatable,
+                        status='ok',
                     )
                 ordered_block_translations.append(bt)
 
@@ -581,6 +585,7 @@ def register_translate(
                     "translatable": bt.translatable,
                     "original": bt.original,
                     "translated": bt.translated,
+                    "status": bt.status,
                 }
                 for bt in ordered_block_translations
             ]
@@ -855,6 +860,115 @@ def register_translate(
             filename=f"{payload.task_id}_bilingual.docx",
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
+
+    @app.post("/api/export/translation_only_docx")
+    async def export_translation_only_docx(payload: BilingualPdfPayload):
+        """导出纯译文Word文档（P2-1）"""
+        if payload.task_id not in tasks:
+            raise HTTPException(404, "任务不存在")
+        t = tasks[payload.task_id]
+        if t["status"] not in ("done", "done_with_warnings"):
+            raise HTTPException(400, "翻译尚未完成")
+
+        output_dir = data_root / "output"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        block_translations = t.get("block_translations", [])
+        if not block_translations:
+            raise HTTPException(400, "未找到翻译结果")
+
+        # 构建纯译文内容
+        from src.formatter.word_exporter import markdown_to_docx
+        parts = []
+        for bt in block_translations:
+            if bt.get("status") == "failed":
+                continue
+            if not bt.get("translatable"):
+                parts.append(bt.get("original", ""))
+            elif bt.get("translated"):
+                trans = bt["translated"]
+                # 移除标题标记
+                if bt.get("type") == "heading":
+                    level = bt.get("level", 2)
+                    trans = trans.lstrip("#").strip()
+                    parts.append(f"{'#' * min(max(level, 1), 6)} {trans}")
+                else:
+                    parts.append(trans)
+
+        content = "\n\n".join(parts)
+        out_docx = output_dir / f"{payload.task_id}_translation_only.docx"
+        markdown_to_docx(content, str(out_docx), title="研墨纯译文导出")
+        return FileResponse(
+            out_docx,
+            filename=f"{payload.task_id}_translation_only.docx",
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+
+    @app.post("/api/translate/{task_id}/retry_block")
+    async def retry_block_translation(task_id: str, payload: dict):
+        """重试单个失败块的翻译（P2-2）"""
+        if task_id not in tasks:
+            raise HTTPException(404, "任务不存在")
+
+        t = tasks[task_id]
+        block_id = payload.get("block_id")
+        if not block_id:
+            raise HTTPException(400, "缺少 block_id 参数")
+
+        # 查找目标块
+        block_translations = t.get("block_translations", [])
+        target_block = None
+        target_index = -1
+
+        for i, bt in enumerate(block_translations):
+            if bt.get("id") == block_id:
+                target_block = bt
+                target_index = i
+                break
+
+        if not target_block:
+            raise HTTPException(404, "块不存在")
+
+        # 调用LLM重译
+        translator_cfg = config.get("translator", {})
+        provider = translator_cfg.get("provider", "ollama")
+
+        if provider == "ollama":
+            client = OllamaClient(
+                base_url=translator_cfg.get("base_url", "http://localhost:11434"),
+                model=translator_cfg.get("model", "qwen3:8b"),
+                temperature=translator_cfg.get("temperature", 0.3),
+                num_predict=translator_cfg.get("num_predict", 16384),
+            )
+        else:
+            client = CloudClient(
+                provider=provider,
+                model=translator_cfg.get("model", "gpt-4o"),
+                api_key=translator_cfg.get("api_key", ""),
+                base_url=translator_cfg.get("base_url"),
+                temperature=translator_cfg.get("temperature", 0.3),
+                max_tokens=translator_cfg.get("max_tokens", 16384),
+            )
+
+        try:
+            result = client.translate(target_block.get("original", ""))
+            # 更新块翻译结果
+            block_translations[target_index]["translated"] = result.translated
+            block_translations[target_index]["status"] = "ok"
+
+            # 推送SSE事件通知前端
+            return {
+                "success": True,
+                "block_id": block_id,
+                "translated": result.translated,
+                "status": "ok",
+            }
+        except Exception as e:
+            logger.error(f"重试块翻译失败: {e}")
+            raise HTTPException(500, f"重试失败: {str(e)}")
+        finally:
+            if hasattr(client, "close"):
+                client.close()
 
     _state["tasks"] = tasks
     _state["tm_store"] = tm_store

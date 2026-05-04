@@ -127,7 +127,9 @@ class TestTranslateBlockChunk:
         result = asyncio.run(translate_block_chunk(client, chunk, {b.id: b for b in blocks}))
         assert result.is_fallback is True
         assert result.error is not None
-        assert result.block_translations[0].translated == "Source text."  # 原文直通
+        # P0-1: 失败时不再用原文占位，而是返回空字符串并标记为failed
+        assert result.block_translations[0].translated == ""
+        assert result.block_translations[0].status == "failed"
 
     def test_all_non_translatable_skips_llm(self) -> None:
         blocks = [

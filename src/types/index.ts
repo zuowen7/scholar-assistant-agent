@@ -22,6 +22,7 @@ export interface BlockData {
   translatable: boolean
   original: string
   translated: string
+  status?: 'ok' | 'failed' | 'partial'
 }
 
 export interface ChunkedEvent {
@@ -53,6 +54,7 @@ export interface BlockTranslatedEvent {
   translated: string
   aligned?: boolean
   source?: string
+  status?: 'ok' | 'failed' | 'partial'
 }
 
 export interface ChunkDoneEvent {

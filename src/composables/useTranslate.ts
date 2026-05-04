@@ -254,6 +254,7 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
           translated: ev.translated,
           translatable: ev.translatable,
           type: ev.type,
+          status: ev.status,
         }
         if (wasEmpty) state.completedBlocks += 1
       }
@@ -445,6 +446,69 @@ async function exportBilingualDocx(): Promise<void> {
   }
 }
 
+async function exportTranslationOnlyDocx(): Promise<void> {
+  if (!state.taskId) return
+  state.errorMessage = ''
+
+  try {
+    const resp = await fetch(`${API_URL}/api/export/translation_only_docx`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task_id: state.taskId }),
+    })
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: '导出失败' }))
+      const detail = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail)
+      throw new Error(detail || `导出失败 (${resp.status})`)
+    }
+
+    const blob = await resp.blob()
+    const defaultName = `${state.taskId}_translation_only.docx`
+    const { saveBlob } = await import('./useEditorIO')
+    const result = await saveBlob(blob, defaultName)
+    if (result === 'Cancelled') return
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : '未知错误'
+    state.errorMessage = msg
+  }
+}
+
+async function exportTranslationOnlyMarkdown(): Promise<void> {
+  if (!state.taskId) return
+
+  // 构建纯译文markdown
+  const parts: string[] = []
+  for (const b of state.blocks) {
+    if (b.status === 'failed') continue
+    if (!b.translatable) {
+      parts.push(b.original)
+    } else if (b.translated) {
+      parts.push(b.type === 'heading' ? `${'#'.repeat(Math.min(Math.max(b.level || 2, 1), 6))} ${b.translated.replace(/^#+\s+/, '').trim()}` : b.translated)
+    }
+  }
+  const content = parts.join('\n\n')
+
+  try {
+    const filePath = await save({
+      defaultPath: `translated_${state.taskId}.md`,
+      filters: [{ name: 'Markdown', extensions: ['md'] }, { name: 'All Files', extensions: ['*'] }],
+    })
+    if (!filePath) return
+
+    await invoke<string>('save_file', { path: filePath, content })
+  } catch {
+    // 非 Tauri 环境：浏览器下载
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
+    const blobUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = blobUrl
+    a.download = `translated_${state.taskId}.md`
+    a.click()
+    URL.revokeObjectURL(blobUrl)
+  }
+}
+
 async function restartBackend(): Promise<boolean> {
   try {
     await invoke<string>('restart_backend')
@@ -492,6 +556,8 @@ export function useTranslate() {
     updateConfig,
     getProviderPresets,
     exportBilingualDocx,
+    exportTranslationOnlyDocx,
+    exportTranslationOnlyMarkdown,
   }
 }
 

@@ -20,8 +20,6 @@ cleaner:
 chunker:
   # 每块最大 token 数 (面向 Qwen3)
   max_tokens: 2048
-  # 块间重叠 token 数
-  overlap_tokens: 128
   # 切块策略: sentence | paragraph | fixed
   strategy: sentence
 
@@ -45,7 +43,7 @@ translator:
 
 # 输出格式
 formatter:
-  # 输出格式: bilingual | translated_only | parallel
+  # 输出格式: bilingual | translated_only
   output_format: bilingual
   # 输出文件格式: txt | markdown | docx
   file_format: markdown

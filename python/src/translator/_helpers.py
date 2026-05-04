@@ -169,6 +169,46 @@ def _strip_context_leak(text: str) -> str:
     return text.strip()
 
 
+# 系统提示上下文标记正则——LLM 有时会原样"回声"这些标记
+_CTX_MARKER_RE = re.compile(
+    r"\[前文翻译参考[^\]]*\]"
+    r"|\[请翻译以下内容\]"
+    r"|\[文档背景[^\]]*\]",
+    re.DOTALL,
+)
+
+# LLM 拒绝翻译时的道歉/说明消息模式
+_REFUSAL_RE = re.compile(
+    r"^抱歉[，,][^。\n]*(?:不完整|无法[^。\n]*翻译|没有[^。\n]*内容|无意义|无法识别)",
+    re.MULTILINE,
+)
+
+
+def _is_mostly_english(text: str) -> bool:
+    if len(text) < 30:
+        return False
+    en_chars = sum(1 for c in text if c.isascii() and c.isalpha())
+    zh_chars = sum(1 for c in text if '一' <= c <= '鿿')
+    return en_chars / max(len(text), 1) > 0.6 and zh_chars / max(len(text), 1) < 0.1
+
+
+def _sanitize_llm_output(raw: str, source_lang: str = "en") -> str:
+    """Strip reasoning tags, prompt echoes, refusal messages, and leaked original text."""
+    raw = re.sub(r'<think\b[^>]*>[\s\S]*?</think\s*>', '', raw, flags=re.IGNORECASE)
+    raw = re.sub(r'<thinking>[\s\S]*?</thinking>', '', raw, flags=re.IGNORECASE)
+    # Strip context markers that LLM echoed from the system/user prompt
+    raw = _CTX_MARKER_RE.sub('', raw)
+    raw = re.sub(r'^(Translation|译文|中文译文|Here is the translation)[:：]\s*', '', raw.strip(), count=1)
+    # Detect refusal/apology messages → return empty so block gets marked failed
+    if _REFUSAL_RE.search(raw.strip()):
+        return ""
+    if source_lang == "en":
+        paras = raw.split('\n\n')
+        paras = [p for p in paras if not _is_mostly_english(p)]
+        raw = '\n\n'.join(paras)
+    return raw.strip()
+
+
 # ---------------------------------------------------------------------------
 # 后处理 — 质量校验与修复
 # ---------------------------------------------------------------------------
