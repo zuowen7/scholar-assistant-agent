@@ -2,7 +2,7 @@
 
 隐私优先的学术 AI 写作辅助平台。从翻译切入，覆盖阅读、写作、排版全流程。拖入 PDF，自动完成解析、清洗、翻译；切换到 Editor 模式，用 AI 润色、扩写、生成大纲；导出 LaTeX 模板直接投稿。
 
-- **版本**：Tauri 0.3.1 / npm 0.2.0
+- **版本**：Tauri 0.3.1 / npm 0.2.1 (DeepL-like 翻译体验完整版)
 - **许可**：不开源，私有项目
 
 ## 核心功能
@@ -11,12 +11,15 @@
 - **PDF 智能解析** — 16 种格式支持，自动检测单栏/双栏布局
 - **文本清洗** — 17 阶段管线，修复断行、移除水印/页眉页脚、处理连字符断词
 - **引用区跳过** — 自动识别 REFERENCES/BIBLIOGRAPHY 区域，原样保留不翻译
-- **双语对照输出** — Markdown blockquote 格式，原文/译文逐段对照
-- **实时进度** — SSE 流式推送 5 步管道进度
+- **DeepL-like 体验** — 左右双栏对照 + 句子悬停高亮，逐句精准对齐
+- **实时进度** — SSE 流式推送 5 步管道进度，完整段落实时预览
+- **失败块重试** — 翻译失败的块可单独重译，无需重新翻译全文
+- **多格式导出** — 双语 Markdown/Word、纯译文 Markdown/Word 四种格式
 
 ### 翻译引擎
 - **本地** — Ollama + Qwen3，全程离线，无需 API Key
 - **云端** — OpenAI / Anthropic / DeepSeek / Moonshot / 智谱 / 通义千问 / Gemini / SiliconFlow / OpenRouter / Groq / Together / Mistral / xAI / Fireworks / DeepInfra / Perplexity / Novita / 火山方舟 / 百度千帆 / Azure / 自定义 (共 21 家供应商)
+- **增强 Prompt** — 严格段落结构保持指令，显著降低对齐失败率
 - **Glossary 自动提取** — 翻译结果中提取 `中文(English)` 术语对，注入后续块翻译
 - **滑动上下文窗口** — 每块翻译携带前 N 块的摘要和术语表
 
