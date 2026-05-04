@@ -17,6 +17,20 @@
       />
       <div class="splash-overlay" />
 
+      <!-- 墨滴漂浮 — 启动时的微观墨韵 -->
+      <div class="splash-float-drops" aria-hidden="true">
+        <span class="splash-float-drop" v-for="i in 8" :key="i" :style="{ '--i': i }" />
+      </div>
+
+      <!-- 墨圈扩散 — 从中心向外逐层晕开 -->
+      <div class="splash-bloom-ring" aria-hidden="true" />
+
+      <!-- Brush stroke decoration -->
+      <svg class="splash-brush" viewBox="0 0 140 12" aria-hidden="true" :class="{ 'splash-brush--drawn': brandVisible }">
+        <path class="splash-brush-path" d="M2 6 C10 1 25 11 45 5 C60 1 75 9 95 5 C110 2 125 10 138 6"
+          fill="none" stroke="var(--c-accent)" stroke-width="3" stroke-linecap="round" />
+      </svg>
+
       <!-- Serif brand title -->
       <div class="splash-brand" :class="{ 'splash-brand--visible': brandVisible }">
         <div class="splash-pillar" />
@@ -133,6 +147,83 @@ onMounted(() => {
     radial-gradient(ellipse at 50% 45%, transparent 20%, rgba(12, 13, 16, 0.6) 70%),
     linear-gradient(to bottom, rgba(12, 13, 16, 0.3) 0%, transparent 40%, transparent 60%, rgba(12, 13, 16, 0.7) 100%);
   pointer-events: none;
+}
+
+/* ── Floating ink drops — 启动时墨滴漂浮 ── */
+.splash-float-drops {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.splash-float-drop {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 40%,
+    rgba(91, 108, 255, 0.14) 0%,
+    rgba(91, 108, 255, 0.04) 40%,
+    transparent 70%
+  );
+  filter: blur(2px);
+  width: calc(18px + var(--i) * 6px);
+  height: calc(18px + var(--i) * 6px);
+  top: calc(30% + var(--i) * 7%);
+  left: calc(20% + var(--i) * 7%);
+  animation: splash-drop-rise calc(10s + var(--i) * 2s) ease-in-out infinite;
+  animation-delay: calc(var(--i) * -1.3s);
+  opacity: 0;
+}
+@keyframes splash-drop-rise {
+  0%   { transform: translateY(80px) scale(0.5); opacity: 0; }
+  15%  { opacity: 0.6; }
+  50%  { transform: translateY(-30px) scale(1.1); opacity: 0.4; }
+  85%  { opacity: 0; }
+  100% { transform: translateY(-100px) scale(0.6); opacity: 0; }
+}
+
+/* ── Expanding ink bloom ring ── */
+.splash-bloom-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  border: 1.5px solid rgba(91, 108, 255, 0.2);
+  opacity: 0;
+  animation: splash-bloom-expand 4s var(--ease-brush) infinite;
+  pointer-events: none;
+}
+@keyframes splash-bloom-expand {
+  0%   { width: 0; height: 0; opacity: 0; }
+  15%  { opacity: 0.4; }
+  60%  { opacity: 0.1; }
+  100% { width: 500px; height: 500px; opacity: 0; }
+}
+
+/* ── Brush stroke SVG decoration ── */
+.splash-brush {
+  position: absolute;
+  width: 140px;
+  height: 12px;
+  opacity: 0;
+  transform: translateY(38px); /* sits below the pillar */
+  transition: opacity 400ms var(--ease-out);
+  pointer-events: none;
+  z-index: 2;
+}
+.splash-brush--drawn { opacity: 1; }
+.splash-brush-path {
+  stroke-dasharray: 220;
+  stroke-dashoffset: 220;
+  animation: splash-brush-draw 900ms var(--ease-brush) forwards;
+  animation-delay: 600ms;
+  opacity: 0.5;
+}
+@keyframes splash-brush-draw {
+  from { stroke-dashoffset: 220; }
+  to   { stroke-dashoffset: 0; }
 }
 
 /* Brand group */
