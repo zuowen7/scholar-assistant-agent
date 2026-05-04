@@ -20,6 +20,9 @@
       ></video>
     </div>
 
+    <!-- 自选背景时的宣纸纹理叠加层 — 统一质感 -->
+    <div v-if="bgSettings.path" class="bg-paper-overlay" aria-hidden="true" />
+
     <!-- 环境光晕 — 缓慢漂移的墨色柔光，鼠标微视差 -->
     <div class="ambient-orb" :style="orbParallaxStyle" aria-hidden="true" />
 
@@ -418,11 +421,30 @@ function onOpacityChange(value: number) {
 }
 
 
-function toggleTheme(_e?: MouseEvent) {
-  isDark.value = !isDark.value
-  try {
-    localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
-  } catch (err) { console.warn('saveTheme failed:', err) }
+function toggleTheme(e?: MouseEvent) {
+  const doc = document.documentElement
+  // Capture click position as circle-clip origin
+  if (e) {
+    doc.style.setProperty('--vt-x', `${e.clientX}px`)
+    doc.style.setProperty('--vt-y', `${e.clientY}px`)
+  } else {
+    doc.style.setProperty('--vt-x', '50%')
+    doc.style.setProperty('--vt-y', '50%')
+  }
+  // View Transition API: cinematic circle-clip dissolve
+  if ('startViewTransition' in document) {
+    ;(document as any).startViewTransition(() => {
+      isDark.value = !isDark.value
+      try {
+        localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
+      } catch (err) { console.warn('saveTheme failed:', err) }
+    })
+  } else {
+    isDark.value = !isDark.value
+    try {
+      localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
+    } catch (err) { console.warn('saveTheme failed:', err) }
+  }
 }
 
 // --- 拖拽处理 ---
@@ -771,6 +793,24 @@ body::after {
   object-fit: cover;
 }
 
+/* ── 自选背景宣纸纹理叠加 — 统一质感 ── */
+.bg-paper-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.09;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='turbulence' baseFrequency='0.95' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0.04 0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='discrete' tableValues='0 0 0 0 0 0 0 0 0 0 0 0 0 0 1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23s)'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.008 0.22' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23f)'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='5' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23g)'/%3E%3C/svg%3E");
+  background-size: 300px 300px, 400px 400px, 300px 300px;
+  background-repeat: repeat;
+}
+
+/* Light mode: reduce paper texture against lighter backgrounds */
+[data-theme="light"] .bg-paper-overlay { opacity: 0.055; }
+
 /* ── Ambient light orb — 砚池流光，缓慢漂移 ── */
 .ambient-orb {
   position: fixed;
@@ -980,12 +1020,46 @@ body::after {
 [data-theme="light"] ::-webkit-scrollbar-thumb { background: var(--c-surface-4); }
 [data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: var(--c-accent); }
 [data-theme="light"] body::after { opacity: 0.032; }
-/* ── View Transition (theme switch) ── */
-::view-transition-old(root), ::view-transition-new(root) { mix-blend-mode: normal; }
-::view-transition-new(root) { animation: vt-clip-in 320ms var(--ease-emphasis, cubic-bezier(0.2, 0, 0, 1)); }
-@keyframes vt-clip-in {
-  from { clip-path: circle(0 at var(--vt-x, 50%) var(--vt-y, 50%)); }
-  to   { clip-path: circle(150vmax at var(--vt-x, 50%) var(--vt-y, 50%)); }
+/* ── View Transition (theme switch) — 影视级墨染过渡 ── */
+::view-transition-old(root) {
+  animation: vt-old-out 480ms var(--ease-emphasis, cubic-bezier(0.22, 0, 0, 1));
+  mix-blend-mode: normal;
+}
+::view-transition-new(root) {
+  animation: vt-new-in 480ms var(--ease-emphasis, cubic-bezier(0.22, 0, 0, 1));
+  mix-blend-mode: normal;
+}
+/* Old theme: brief brightness surge then clip shrink */
+@keyframes vt-old-out {
+  0%   { filter: brightness(1); clip-path: circle(150vmax at var(--vt-x, 50%) var(--vt-y, 50%)); }
+  25%  { filter: brightness(1.35); }
+  60%  { filter: brightness(0.55); }
+  100% { filter: brightness(0); clip-path: circle(0 at var(--vt-x, 50%) var(--vt-y, 50%)); }
+}
+/* New theme: clip expand with glow surge → settle */
+@keyframes vt-new-in {
+  0%   { clip-path: circle(0 at var(--vt-x, 50%) var(--vt-y, 50%)); filter: brightness(1.5) saturate(0.7); }
+  30%  { filter: brightness(1.15) saturate(0.85); }
+  70%  { filter: brightness(0.92) saturate(0.95); }
+  100% { clip-path: circle(150vmax at var(--vt-x, 50%) var(--vt-y, 50%)); filter: brightness(1) saturate(1); }
+}
+/* Ink-bloom pseudo-element: radial glow ring at transition center */
+::view-transition-new(root)::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle 120px at var(--vt-x, 50%) var(--vt-y, 50%),
+    rgba(91, 108, 255, 0.18) 0%,
+    rgba(91, 108, 255, 0.06) 40%,
+    transparent 70%
+  );
+  animation: vt-glow-pulse 480ms ease-out forwards;
+}
+@keyframes vt-glow-pulse {
+  0%   { opacity: 0; }
+  25%  { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 /* ── Recovery Banner ── */
