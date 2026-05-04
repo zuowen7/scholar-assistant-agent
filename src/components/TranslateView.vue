@@ -1155,28 +1155,67 @@ function openFilePicker() {
   background: var(--c-surface-2);
   border-radius: var(--radius-pill);
   position: relative;
+  overflow: visible;
 }
 .progress-fill {
   height: 100%;
   border-radius: var(--radius-pill);
-  background: var(--c-accent-gradient);
-  transition: width 0.45s var(--ease-out);
+  /* 墨渗透渐变 — 左（已干，略深）→ 右（湿墨，亮） */
+  background:
+    linear-gradient(90deg,
+      rgba(91, 108, 255, 0.55) 0%,
+      rgba(91, 108, 255, 0.7) 60%,
+      rgba(120, 140, 255, 0.9) 85%,
+      rgba(160, 175, 255, 0.95) 100%
+    );
+  transition: width 0.45s var(--ease-brush);
   position: relative;
-  overflow: visible;
-  box-shadow: 0 0 12px var(--c-accent-glow);
+  box-shadow:
+    0 0 10px rgba(91, 108, 255, 0.25),  /* 湿墨光晕 */
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);  /* 表面张力高光 */
 }
-/* Shimmer overlay */
+
+/* Leading edge wet ink glow — 笔锋湿墨光点 */
+.progress-fill::before {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translate(50%, -50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(91, 108, 255, 0.35) 0%, transparent 70%);
+  filter: blur(3px);
+  animation: wet-edge-breathe 1.2s ease-in-out infinite;
+}
+@keyframes wet-edge-breathe {
+  0%, 100% { opacity: 0.5; transform: translate(50%, -50%) scale(0.9); }
+  50%      { opacity: 1; transform: translate(50%, -50%) scale(1.2); }
+}
+
+/* Shimmer — 宣纸吸墨渗化，非机械扫描 */
 .progress-fill::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.15) 50%, transparent 100%);
-  background-size: 200% 100%;
-  animation: progress-shimmer 1.6s linear infinite;
+  border-radius: inherit;
+  background:
+    linear-gradient(105deg,
+      transparent 0%,
+      transparent 30%,
+      rgba(255, 255, 255, 0.08) 45%,
+      rgba(255, 255, 255, 0.16) 50%,
+      rgba(255, 255, 255, 0.08) 55%,
+      transparent 70%,
+      transparent 100%
+    );
+  background-size: 250% 100%;
+  animation: ink-seep 2.4s ease-in-out infinite;
 }
-@keyframes progress-shimmer {
-  from { background-position: 200% 0; }
-  to   { background-position: -200% 0; }
+@keyframes ink-seep {
+  from { background-position: 250% 0; }
+  to   { background-position: -250% 0; }
 }
 
 /* Chunk sub-progress */
@@ -1744,9 +1783,6 @@ function openFilePicker() {
 :global([data-theme="light"]) .drop-zone.hover {
   background: rgba(91, 108, 255, 0.06);
   box-shadow: 0 12px 32px rgba(91, 108, 255, 0.10), 0 1px 0 rgba(91, 108, 255, 0.15) inset;
-}
-:global([data-theme="light"]) .progress-fill::after {
-  background: linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.06) 50%, transparent 100%);
 }
 :global([data-theme="light"]) .work-card {
   box-shadow: var(--elevation-2);
