@@ -90,7 +90,6 @@
             class="topbar-icon-btn"
             :class="{ active: settingsPopoverOpen }"
             title="设置"
-            @click="settingsPopoverRef?.toggle()"
           >
             <Settings :size="15" :stroke-width="1.6" />
           </button>
