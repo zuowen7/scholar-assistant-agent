@@ -666,7 +666,7 @@ body::after {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.028;
+  opacity: 0.045;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
   background-size: 180px 180px;
 }
@@ -787,7 +787,7 @@ body::after {
 /* Light mode global tweaks */
 [data-theme="light"] ::-webkit-scrollbar-thumb { background: var(--c-surface-5); }
 [data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: var(--c-surface-3); }
-[data-theme="light"] body::after { opacity: 0.015; }
+[data-theme="light"] body::after { opacity: 0.028; }
 /* ── View Transition (theme switch) ── */
 ::view-transition-old(root), ::view-transition-new(root) { mix-blend-mode: normal; }
 ::view-transition-new(root) { animation: vt-clip-in 320ms var(--ease-emphasis, cubic-bezier(0.2, 0, 0, 1)); }
