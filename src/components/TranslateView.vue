@@ -1284,9 +1284,29 @@ function openFilePicker() {
   line-height: var(--leading-relaxed);
 }
 
-/* Live slide transitions */
-.live-slide-enter-active { transition: all var(--motion-base) var(--ease-out); }
-.live-slide-enter-from { opacity: 0; transform: translateY(8px); }
+/* Live slide — 译文逐字浮现，如笔触从左向右书写 */
+.live-slide-enter-active {
+  animation: brush-write-in 550ms var(--ease-brush);
+}
+.live-slide-leave-active {
+  animation: brush-write-out 300ms var(--ease-out);
+}
+@keyframes brush-write-in {
+  from {
+    clip-path: inset(0 100% 0 0);
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes brush-write-out {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.96); }
+}
 
 /* ══════════════════════════════════════════════════════════
    DONE / RESULT — signature moment
