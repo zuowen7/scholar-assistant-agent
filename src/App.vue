@@ -25,7 +25,7 @@
 
     <!-- 墨粒子 — 漂浮的墨滴，如墨入水 -->
     <div class="ink-particles" aria-hidden="true">
-      <span class="ink-particle" v-for="i in 9" :key="i" :style="{ '--i': i }" />
+      <span class="ink-particle" v-for="i in 15" :key="i" :style="{ '--i': i }" />
     </div>
 
     <!-- 内容遮罩层（半透明，保证可读性） -->
@@ -754,17 +754,17 @@ body::after {
   position: fixed;
   z-index: 0;
   pointer-events: none;
-  width: 800px;
-  height: 800px;
+  width: 900px;
+  height: 900px;
   border-radius: 50%;
   background: radial-gradient(circle at center,
-    rgba(91, 108, 255, 0.07) 0%,
-    rgba(91, 108, 255, 0.03) 30%,
+    rgba(91, 108, 255, 0.10) 0%,
+    rgba(91, 108, 255, 0.05) 30%,
     transparent 70%
   );
-  filter: blur(60px);
+  filter: blur(70px);
   animation: orb-drift 28s ease-in-out infinite;
-  opacity: 0.7;
+  opacity: 0.85;
 }
 @keyframes orb-drift {
   0%   { top: -300px; left: -200px; transform: scale(1); }
@@ -778,12 +778,12 @@ body::after {
 .ambient-orb::after {
   content: '';
   position: fixed;
-  width: 600px;
-  height: 600px;
+  width: 700px;
+  height: 700px;
   border-radius: 50%;
   background: radial-gradient(circle at center,
-    rgba(200, 80, 58, 0.04) 0%,
-    rgba(200, 80, 58, 0.01) 40%,
+    rgba(200, 80, 58, 0.06) 0%,
+    rgba(200, 80, 58, 0.02) 40%,
     transparent 70%
   );
   filter: blur(80px);
@@ -808,12 +808,11 @@ body::after {
   position: absolute;
   border-radius: 50%;
   background: radial-gradient(circle at 40% 40%,
-    rgba(91, 108, 255, 0.12) 0%,
-    rgba(91, 108, 255, 0.04) 40%,
+    rgba(91, 108, 255, 0.15) 0%,
+    rgba(91, 108, 255, 0.06) 40%,
     transparent 70%
   );
   filter: blur(3px);
-  /* Size, position, and animation driven by --i */
   width: calc(30px + var(--i, 1) * 14px);
   height: calc(30px + var(--i, 1) * 14px);
   top: calc(var(--i, 1) * 11.1%);
@@ -824,10 +823,10 @@ body::after {
 }
 @keyframes particle-float {
   0%   { transform: translate(0, 0) scale(0.6); opacity: 0; }
-  10%  { opacity: 0.7; }
-  25%  { transform: translate(40px, -30px) scale(1.1); opacity: 0.5; }
-  50%  { transform: translate(-25px, -60px) scale(0.85); opacity: 0.3; }
-  75%  { transform: translate(-50px, -15px) scale(1.05); opacity: 0.5; }
+  10%  { opacity: 0.85; }
+  25%  { transform: translate(40px, -30px) scale(1.1); opacity: 0.6; }
+  50%  { transform: translate(-25px, -60px) scale(0.85); opacity: 0.35; }
+  75%  { transform: translate(-50px, -15px) scale(1.05); opacity: 0.6; }
   90%  { opacity: 0; }
   100% { transform: translate(10px, 10px) scale(0.6); opacity: 0; }
 }
@@ -835,23 +834,23 @@ body::after {
 /* Light mode adjustments */
 [data-theme="light"] .ambient-orb {
   background: radial-gradient(circle at center,
-    rgba(91, 108, 255, 0.04) 0%,
-    rgba(91, 108, 255, 0.015) 30%,
+    rgba(91, 108, 255, 0.06) 0%,
+    rgba(91, 108, 255, 0.02) 30%,
     transparent 70%
   );
-  opacity: 0.5;
+  opacity: 0.65;
 }
 [data-theme="light"] .ambient-orb::after {
   background: radial-gradient(circle at center,
-    rgba(200, 80, 58, 0.025) 0%,
-    rgba(200, 80, 58, 0.008) 40%,
+    rgba(200, 80, 58, 0.035) 0%,
+    rgba(200, 80, 58, 0.012) 40%,
     transparent 70%
   );
 }
 [data-theme="light"] .ink-particle {
   background: radial-gradient(circle at 40% 40%,
-    rgba(91, 108, 255, 0.08) 0%,
-    rgba(91, 108, 255, 0.02) 40%,
+    rgba(91, 108, 255, 0.10) 0%,
+    rgba(91, 108, 255, 0.03) 40%,
     transparent 70%
   );
 }
