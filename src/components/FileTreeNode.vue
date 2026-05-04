@@ -6,7 +6,7 @@
       :style="{ paddingLeft: depth * 16 + 8 + 'px' }"
       @click="handleClick"
     >
-      <span class="tree-icon">{{ entry.isDir ? (expanded ? '📂' : '📁') : '📄' }}</span>
+      <span class="tree-icon" :data-expanded="expanded || undefined">{{ entry.isDir ? (expanded ? '📂' : '📁') : '📄' }}</span>
       <template v-if="isRenaming">
         <input
           ref="renameInput"
@@ -140,16 +140,53 @@ function cancelRename() {
   cursor: pointer;
   font-size: 13px;
   color: var(--text-primary, #ccc);
+  position: relative;
   transition: background var(--motion-fast) var(--ease-out),
-              box-shadow var(--motion-fast) var(--ease-out);
+              color var(--motion-fast) var(--ease-out);
 }
-.tree-item:hover {
-  background: var(--hover-bg, #2a2a2a);
-  box-shadow: inset 2px 0 0 var(--c-accent);
+/* 左侧选中/悬浮指示条 */
+.tree-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--c-accent);
+  opacity: 0;
+  transform: scaleY(0.6);
+  transition: opacity var(--motion-fast) var(--ease-out),
+              transform var(--motion-base) var(--ease-spring);
 }
-.tree-item.active { background: var(--active-bg, #37373d); color: var(--c-text-0); box-shadow: inset 2px 0 0 var(--c-accent); }
-.tree-icon { font-size: 12px; flex-shrink: 0; }
+.tree-item:hover::before { opacity: 0.6; transform: scaleY(1); }
+.tree-item.active::before { opacity: 1; transform: scaleY(1); }
+.tree-item:hover { background: var(--hover-bg, #2a2a2a); color: var(--c-text-0); }
+.tree-item.active { background: var(--active-bg, #37373d); color: var(--c-text-0); }
+
+/* 墨韵涟漪 — 悬浮时从项中心扩散 */
+.tree-item::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), var(--c-accent) 0%, transparent 70%);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.tree-item:hover::after { opacity: 0.04; }
+
+.tree-item > * { position: relative; z-index: 1; }
+
+.tree-icon { font-size: 12px; flex-shrink: 0; filter: grayscale(0.3); }
+.tree-item.dir .tree-icon { filter: none; }
 .tree-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 文件夹展开过渡 */
+.tree-item.dir .tree-icon {
+  transition: transform var(--motion-base) var(--ease-spring);
+}
+.tree-item.dir[data-expanded] .tree-icon { transform: scale(1.1); }
 
 .rename-input {
   flex: 1;
@@ -168,12 +205,14 @@ function cancelRename() {
 .ctx-menu {
   position: fixed;
   z-index: 9999;
-  background: var(--panel-bg, #252526);
-  border: 1px solid var(--border-color, #3c3c3c);
-  border-radius: 6px;
-  padding: 4px 0;
+  background: var(--c-surface-1);
+  border: 1px solid var(--c-surface-3);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) 0;
   min-width: 160px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+  box-shadow: var(--elevation-3);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 .ctx-item {
   display: flex;
@@ -183,14 +222,16 @@ function cancelRename() {
   text-align: left;
   background: none;
   border: none;
-  color: var(--text-primary, #ccc);
+  color: var(--c-text-1);
   font-size: 13px;
   padding: 6px 16px;
   cursor: pointer;
   white-space: nowrap;
+  transition: background var(--motion-fast) var(--ease-out),
+              color var(--motion-fast) var(--ease-out);
 }
-.ctx-item:hover { background: var(--hover-bg, #2a2a2a); }
-.ctx-item.ctx-danger { color: #e06c75; }
-.ctx-item.ctx-danger:hover { background: rgba(224,108,117,0.12); }
-.ctx-sep { height: 1px; background: var(--border-color, #3c3c3c); margin: 4px 8px; }
+.ctx-item:hover { background: var(--c-surface-3); color: var(--c-text-0); }
+.ctx-item.ctx-danger { color: var(--c-danger); }
+.ctx-item.ctx-danger:hover { background: var(--c-danger-bg); }
+.ctx-sep { height: 1px; background: var(--c-surface-3); margin: 4px 8px; }
 </style>

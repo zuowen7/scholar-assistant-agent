@@ -77,7 +77,7 @@
   --motion-stagger: 40ms;
 
   --glass-blur: 24px;
-  --ring-focus: 0 0 0 3px;
+  --ring-focus: 0 0 0 3px var(--c-accent-ring);
 
   /* Page layout — 版心 */
   --page-width: 880px;          /* 正文版心最大宽度 */

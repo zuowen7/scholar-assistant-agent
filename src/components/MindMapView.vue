@@ -886,6 +886,9 @@ async function aiExpandSelectedNode() {
   height: 100%;
   min-width: 0;
   min-height: 260px;
+  /* 淡墨点阵 — 书法九宫格意境 */
+  background-image: radial-gradient(circle, var(--c-surface-3) 1px, transparent 1px);
+  background-size: 24px 24px;
 }
 .mindmap-properties {
   position: relative;
