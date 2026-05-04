@@ -208,8 +208,24 @@ class OllamaClient:
         - Level 3 (user prompt): 前文翻译滑动窗口
         """
         parts = []
-        if self.system_prompt:
+
+        # 默认翻译指令（如果用户未提供自定义system prompt）
+        if not self.system_prompt:
+            parts.append("You are a professional academic translator. Translate the given text from English to Chinese.")
+        else:
             parts.append(self.system_prompt)
+
+        # 段落结构保持指令（P1-2：降低段落对齐失败率）
+        parts.append("""
+CRITICAL: Preserve paragraph structure exactly.
+- Input has N paragraphs separated by blank lines (\\n\\n).
+- Output MUST have exactly N paragraphs separated by blank lines.
+- Do NOT merge paragraphs. Do NOT split paragraphs.
+- Do NOT add explanations, headers, or numbering.
+- Do NOT include the original text in your output.
+- Output ONLY the translation.
+
+严格保持段落结构：输入有 N 段（用空行分隔），输出必须也是 N 段。不要合并、不要拆分、不要加序号、不要返回原文。""")
 
         glossary_text = self._glossary.to_prompt_text()
         if glossary_text:
@@ -239,7 +255,9 @@ class OllamaClient:
                 f"{snippet}\n\n"
             )
 
-        prompt_parts.append(f"[请翻译以下内容]\n{text}")
+        # 计算段数并显式注明（P1-2：增强段落对齐）
+        paragraph_count = len([p for p in text.split("\n\n") if p.strip()])
+        prompt_parts.append(f"[请翻译以下内容（共 {paragraph_count} 段）]\n{text}")
         prompt = "".join(prompt_parts)
 
         if len(prompt) > _PROMPT_MAX_CHARS:

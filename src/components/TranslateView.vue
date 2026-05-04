@@ -93,15 +93,15 @@
         </div>
       </div>
 
-      <!-- Live preview -->
-      <TransitionGroup v-if="state.translations.length > 0" name="live-slide" tag="div" class="live-preview">
+      <!-- Live preview：显示最新3个完整段落（P1-3） -->
+      <TransitionGroup v-if="state.blocks.filter(b => b.translated).length > 0" name="live-slide" tag="div" class="live-preview">
         <div
-          v-for="t in state.translations.slice(-3)"
-          :key="t.index"
+          v-for="b in state.blocks.filter(b => b.translated && b.translatable).slice(-3)"
+          :key="b.id"
           class="live-item"
         >
-          <p class="live-orig">{{ t.original_preview }}</p>
-          <p class="live-trans">{{ t.translated_preview }}</p>
+          <p class="live-orig">{{ b.original.substring(0, 200) }}{{ b.original.length > 200 ? '...' : '' }}</p>
+          <p class="live-trans">{{ b.translated.substring(0, 200) }}{{ b.translated.length > 200 ? '...' : '' }}</p>
         </div>
       </TransitionGroup>
     </div>
@@ -127,14 +127,15 @@
             size="sm"
           />
           <div class="bar-sep" />
-          <UiButton variant="primary" size="sm" @click="downloadResult">
-            <template #icon-left><Download :size="13" :stroke-width="2" /></template>
-            下载
-          </UiButton>
-          <UiButton variant="secondary" size="sm" @click="doExportBilingualDocx()">
-            <template #icon-left><FileText :size="13" :stroke-width="2" /></template>
-            双语 Word
-          </UiButton>
+          <UiDropdown :items="exportMenuItems" align="end">
+            <template #trigger>
+              <UiButton variant="primary" size="sm">
+                <template #icon-left><Download :size="13" :stroke-width="2" /></template>
+                导出
+                <template #icon-right><ChevronDown :size="13" :stroke-width="2" /></template>
+              </UiButton>
+            </template>
+          </UiDropdown>
           <UiButton variant="secondary" size="sm" @click="reset">新翻译</UiButton>
         </div>
       </div>
@@ -145,41 +146,60 @@
         <span class="error-text">{{ state.errorMessage }}</span>
       </div>
 
-      <!-- ── 对照视图：按块（block-by-block alignment） ── -->
-      <div v-if="viewMode === 'bilingual'" class="block-view">
+      <!-- ── 对照视图：左右双栏按块对齐 ── -->
+      <div v-if="viewMode === 'bilingual'" class="dual-view">
         <div
           v-for="(b, i) in renderableBlocks"
           :key="b.id"
-          class="block-pair"
-          :class="['type-' + b.type, b.translatable ? '' : 'untranslatable']"
+          class="dual-row"
+          :class="['type-' + b.type]"
         >
-          <span class="block-num">{{ i + 1 }}</span>
-          <div class="block-body">
-            <!-- 标题：双语紧邻，保留层级感 -->
-            <template v-if="b.type === 'heading'">
-              <component :is="`h${Math.min(Math.max(b.level || 2, 1), 6)}`" class="block-heading-orig">{{ stripHeadingMark(b.original) }}</component>
-              <component v-if="b.translated" :is="`h${Math.min(Math.max(b.level || 2, 1), 6)}`" class="block-heading-trans">{{ stripHeadingMark(b.translated) }}</component>
-            </template>
-            <!-- 公式 / 代码 / 表格：原样渲染 markdown，不译 -->
-            <div v-else-if="!b.translatable" class="block-untranslated" v-html="renderBlock(b.original, b.type)" />
-            <!-- 普通段落 / 列表 / 图表标注：原文+译文 -->
-            <template v-else>
-              <div class="block-orig" v-html="renderBlock(b.original, b.type)" />
-              <div v-if="b.translated" class="block-trans" v-html="renderBlock(b.translated, b.type)" />
-              <div v-else class="block-pending">翻译中…</div>
-            </template>
+          <!-- 标题：跨栏 -->
+          <template v-if="b.type === 'heading'">
+            <component :is="`h${Math.min(Math.max(b.level || 2, 1), 6)}`" class="dual-heading-orig">{{ stripHeadingMark(b.original) }}</component>
+            <component v-if="b.translated" :is="`h${Math.min(Math.max(b.level || 2, 1), 6)}`" class="dual-heading-trans">{{ stripHeadingMark(b.translated) }}</component>
+          </template>
+          <!-- 公式/代码/表格：跨栏单列居中 -->
+          <div v-else-if="!b.translatable" class="dual-untranslated" v-html="renderBlock(b.original, b.type)" />
+          <!-- 翻译失败：跨栏红色卡片 -->
+          <div v-else-if="b.status === 'failed'" class="dual-failed">
+            <div class="dual-orig" v-html="renderBlock(b.original, b.type)" />
+            <div class="failed-card">
+              <AlertCircle :size="14" :stroke-width="2" />
+              <span>翻译失败</span>
+              <UiButton
+                v-if="!retryingBlockIds.has(b.id)"
+                variant="secondary"
+                size="sm"
+                @click="retryFailedBlock(b.id)"
+              >
+                重试
+              </UiButton>
+              <span v-else class="retrying">重试中…</span>
+            </div>
           </div>
+          <!-- 普通段落：左原 / 右译 -->
+          <template v-else>
+            <div
+              class="dual-orig"
+              v-html="renderSentenceMarked(b.original, 'en', b.id, 'orig')"
+              @mouseover="handleSentenceMouseEnter"
+              @mouseleave="clearSentHover()"
+            />
+            <div v-if="b.translated"
+              class="dual-trans"
+              v-html="renderSentenceMarked(b.translated, 'zh', b.id, 'trans')"
+              @mouseover="handleSentenceMouseEnter"
+              @mouseleave="clearSentHover()"
+            />
+            <div v-else class="dual-pending">翻译中…</div>
+          </template>
         </div>
       </div>
 
       <!-- ── 译文视图：纯译文阅读模式 ── -->
-      <div v-else-if="viewMode === 'translation'" class="reading-view">
-        <article class="prose" v-html="translationOnlyHtml" />
-      </div>
-
-      <!-- ── 全文视图：双语 markdown 渲染（导出预览） ── -->
       <div v-else class="reading-view">
-        <article class="prose" v-html="bilingualMarkdownHtml" />
+        <article class="prose" v-html="translationOnlyHtml" />
       </div>
     </div>
   </main>
@@ -187,11 +207,14 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { UploadCloud, AlertCircle, Check, CheckCircle, Download, FileText } from './ui/icons'
+import { UploadCloud, AlertCircle, Check, CheckCircle, Download, FileText, ChevronDown } from './ui/icons'
 import UiButton from './ui/UiButton.vue'
 import UiSegmented from './ui/UiSegmented.vue'
+import UiDropdown from './ui/UiDropdown.vue'
 import { useTranslate } from '../composables/useTranslate'
 import { renderMarkdown, renderBlock } from '../utils/markdown'
+import { findCorrespondingSentenceIdx, splitSentences, type Sentence } from '../utils/sentenceAlign'
+import type { DropdownItem } from './ui/UiDropdown.vue'
 
 const props = defineProps<{
   healthOk: boolean
@@ -203,10 +226,77 @@ defineEmits<{
   (e: 'open-agent-docs'): void
 }>()
 
-const { state, translate, reset, downloadResult, overallProgress, exportBilingualDocx } = useTranslate()
+const { state, translate, reset, downloadResult, overallProgress, exportBilingualDocx, exportTranslationOnlyDocx, exportTranslationOnlyMarkdown } = useTranslate()
 
-const viewMode = ref<'bilingual' | 'translation' | 'markdown'>('bilingual')
+const viewMode = ref<'bilingual' | 'translation'>('bilingual')
 const zoneHover = ref(false)
+const retryingBlockIds = ref<Set<string>>(new Set())
+
+// ── 失败块重试（P2-2） ──
+async function retryFailedBlock(blockId: string) {
+  if (!state.taskId) return
+
+  retryingBlockIds.value.add(blockId)
+
+  try {
+    const resp = await fetch(`${API_URL}/api/translate/${state.taskId}/retry_block`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ block_id: blockId }),
+    })
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: '重试失败' }))
+      throw new Error(err.detail || '重试失败')
+    }
+
+    const result = await resp.json()
+
+    // 更新本地状态
+    const block = state.blocks.find(b => b.id === blockId)
+    if (block) {
+      block.translated = result.translated
+      block.status = result.status
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : '未知错误'
+    console.error('重试块翻译失败:', msg)
+  } finally {
+    retryingBlockIds.value.delete(blockId)
+  }
+}
+
+// ── 导出菜单（P2-1） ──
+const exportMenuItems = computed<DropdownItem[]>(() => [
+  {
+    text: '双语 Markdown',
+    icon: FileText,
+    onClick: () => downloadResult(),
+  },
+  {
+    text: '双语 Word',
+    icon: FileText,
+    onClick: () => doExportBilingualDocx(),
+  },
+  {
+    text: '仅译文 Markdown',
+    icon: FileText,
+    onClick: () => exportTranslationOnlyMarkdown(),
+  },
+  {
+    text: '仅译文 Word',
+    icon: FileText,
+    onClick: () => exportTranslationOnlyDocx(),
+  },
+])
+
+// ── 句对齐hover状态 ──
+interface HoveredPair {
+  blockId: string
+  origIdx: number
+  transIdx: number
+}
+const hoveredPair = ref<HoveredPair | null>(null)
 
 async function doExportBilingualDocx() {
   try {
@@ -222,7 +312,6 @@ const formatList = ['PDF', 'Word', 'PPT', 'Excel', 'TXT', 'Markdown', 'HTML', 'E
 const viewOptions = [
   { value: 'bilingual' as const, label: '对照' },
   { value: 'translation' as const, label: '译文' },
-  { value: 'markdown' as const, label: '全文' },
 ]
 
 const progress = computed(() => overallProgress())
@@ -239,12 +328,13 @@ const readStyleVars = computed(() => ({
 /** 渲染时只展示真正有内容的块（即时翻译流中已到的块全展示，未到的也展示原文骨架） */
 const renderableBlocks = computed(() => state.blocks)
 
-/** 译文视图：把所有可翻译块的译文按 markdown 拼接渲染 */
+/** 译文视图：把所有可翻译块的译文按 markdown 拼接渲染，跳过失败块 */
 const translationOnlyHtml = computed(() => {
   const parts: string[] = []
   for (const b of state.blocks) {
+    if (b.status === 'failed') continue
     if (!b.translatable) {
-      parts.push(b.original)  // 公式/代码/表格保留原样
+      parts.push(b.original)
     } else if (b.translated) {
       parts.push(b.type === 'heading' ? `${'#'.repeat(Math.min(Math.max(b.level || 2, 1), 6))} ${stripHeadingMark(b.translated)}` : b.translated)
     }
@@ -252,12 +342,132 @@ const translationOnlyHtml = computed(() => {
   return renderMarkdown(parts.join('\n\n'))
 })
 
-/** 全文视图：直接渲染后端格式化好的 bilingual markdown */
-const bilingualMarkdownHtml = computed(() => renderMarkdown(state.finalContent))
-
 /** 标题文本去掉 markdown 标记 */
 function stripHeadingMark(s: string): string {
   return s.replace(/^#{1,6}\s+/, '').trim()
+}
+
+// ── 句对齐hover处理 ──
+/** hover原文句子时，找到对应的译文句子 */
+function onSentHover(blockId: string, sentIdx: number, side: 'orig' | 'trans') {
+  const block = state.blocks.find(b => b.id === blockId)
+  if (!block || !block.translated) return
+
+  const lang = side === 'orig' ? 'en' : 'zh'
+  const text = side === 'orig' ? block.original : block.translated
+  const otherText = side === 'orig' ? block.translated : block.original
+
+  const sentences = splitSentences(text, lang)
+  const otherSentences = splitSentences(otherText, lang === 'en' ? 'zh' : 'en')
+
+  if (sentIdx < 0 || sentIdx >= sentences.length) return
+
+  const otherIdx = findCorrespondingSentenceIdx(
+    sentences,
+    text.length,
+    otherSentences,
+    otherText.length,
+    sentIdx,
+  )
+
+  hoveredPair.value = {
+    blockId,
+    origIdx: side === 'orig' ? sentIdx : otherIdx,
+    transIdx: side === 'orig' ? otherIdx : sentIdx,
+  }
+}
+
+/** 清除hover状态 */
+function clearSentHover() {
+  hoveredPair.value = null
+}
+
+/** 渲染带句子标记的HTML（用于普通段落） */
+function renderSentenceMarked(text: string, lang: 'en' | 'zh', blockId: string, side: 'orig' | 'trans'): string {
+  const sentences = splitSentences(text, lang)
+  if (sentences.length <= 1) {
+    // 只有一句，使用原有渲染逻辑
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+  }
+
+  const parts = sentences.map((sent, idx) => {
+    const escaped = sent.text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+    return `<span data-sent-idx="${idx}" data-block-id="${blockId}" data-side="${side}" class="sent">${escaped}</span>`
+  })
+
+  return parts.join(' ')
+}
+
+/** 处理句子mouseenter事件（事件委托） */
+function handleSentenceMouseEnter(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  const sentIdxStr = target.getAttribute('data-sent-idx')
+  const blockId = target.getAttribute('data-block-id')
+  const side = target.getAttribute('data-side') as 'orig' | 'trans' | null
+
+  if (sentIdxStr === null || blockId === null || side === null) return
+
+  const sentIdx = parseInt(sentIdxStr, 10)
+  onSentHover(blockId, sentIdx, side)
+
+  // 手动更新DOM高亮
+  updateSentenceHighlight(blockId, side, sentIdx)
+}
+
+/** 更新句子高亮状态 */
+function updateSentenceHighlight(blockId: string, side: 'orig' | 'trans', sentIdx: number) {
+  // 清除之前的高亮
+  document.querySelectorAll('.sent-active').forEach(el => {
+    el.classList.remove('sent-active')
+  })
+
+  // 找到对应的块
+  const block = state.blocks.find(b => b.id === blockId)
+  if (!block || !block.translated) return
+
+  // 计算对应的句子索引
+  const otherSide = side === 'orig' ? 'trans' : 'orig'
+  const lang = side === 'orig' ? 'en' : 'zh'
+  const otherLang = side === 'orig' ? 'zh' : 'en'
+
+  const text = side === 'orig' ? block.original : block.translated
+  const otherText = side === 'orig' ? block.translated : block.original
+
+  const sentences = splitSentences(text, lang)
+  const otherSentences = splitSentences(otherText, otherLang)
+
+  const otherIdx = findCorrespondingSentenceIdx(
+    sentences,
+    text.length,
+    otherSentences,
+    otherText.length,
+    sentIdx,
+  )
+
+  // 高亮原文中的当前句子
+  const origSentSelector = `.dual-orig [data-block-id="${blockId}"][data-side="orig"][data-sent-idx="${sentIdx}"]`
+  const origSentEl = document.querySelector(origSentSelector)
+  if (origSentEl) {
+    origSentEl.classList.add('sent-active')
+  }
+
+  // 高亮译文中的对应句子
+  const transSentSelector = `.dual-trans [data-block-id="${blockId}"][data-side="trans"][data-sent-idx="${otherIdx}"]`
+  const transSentEl = document.querySelector(transSentSelector)
+  if (transSentEl) {
+    transSentEl.classList.add('sent-active')
+  }
+}
+
+/** 处理句子点击事件（暂不使用，保留接口） */
+function handleSentenceClick(e: MouseEvent) {
+  // 预留接口，可用于点击句子复制等操作
 }
 
 /** 段落计数（仅 paragraph 类型）——用于显示元信息 */
@@ -658,123 +868,156 @@ function openFilePicker() {
 }
 .bar-sep { width: 1px; height: 20px; background: var(--c-surface-3); }
 
-/* ── Block view（核心：按块对照） ── */
-.block-view {
+/* ── Dual view（左右双栏对照） ── */
+.dual-view {
   flex: 1;
   overflow-y: auto;
-  max-width: 1100px;
+  max-width: 1200px;
   width: 100%;
   margin: var(--space-4) auto 0;
+  padding: var(--space-4);
   padding-bottom: var(--space-6);
 }
 
-.block-pair {
+.dual-row {
   display: grid;
-  grid-template-columns: 32px 1fr;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-3);
-  border-radius: var(--radius-md);
-  transition: background var(--motion-fast) var(--ease-out);
-}
-.block-pair:hover { background: var(--c-surface-1); }
-.block-pair + .block-pair { border-top: 1px solid var(--c-surface-3); }
-
-.block-num {
-  text-align: right;
-  font-size: var(--text-xs);
-  color: var(--c-text-3);
-  padding-top: 6px;
-  font-variant-numeric: tabular-nums;
-}
-.block-body {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--c-surface-3);
 }
 
-/* 普通段落 */
-.block-orig {
-  font-size: var(--text-sm);
+.dual-orig {
+  font-size: 14px;
   color: var(--c-text-2);
-  line-height: var(--leading-relaxed);
+  line-height: 1.7;
   word-break: break-word;
-  padding: var(--space-2) var(--space-3);
-  background: var(--c-surface-2);
-  border-radius: var(--radius-sm);
 }
-.block-orig :deep(p) { margin: 0; }
-.block-orig :deep(p + p) { margin-top: var(--space-2); }
+.dual-orig :deep(p) { margin: 0; }
+.dual-orig :deep(p + p) { margin-top: var(--space-2); }
 
-.block-trans {
+.dual-trans {
   font-size: var(--read-fs, 15px);
   color: var(--read-trans-color, var(--c-text-0));
-  line-height: var(--read-lh, 1.9);
+  line-height: var(--read-lh, 1.8);
   word-break: break-word;
   font-family: var(--read-ff, system-ui);
-  padding: var(--space-2) var(--space-3);
-  border-left: 2px solid var(--c-accent);
 }
-.block-trans :deep(p) { margin: 0; }
-.block-trans :deep(p + p) { margin-top: var(--space-2); }
+.dual-trans :deep(p) { margin: 0; }
+.dual-trans :deep(p + p) { margin-top: var(--space-2); }
 
-.block-pending {
+/* 句子高亮样式 */
+.dual-orig :deep(.sent),
+.dual-trans :deep(.sent) {
+  transition: background-color 0.15s ease, border-radius 0.15s ease;
+  padding: 1px 2px;
+  border-radius: 2px;
+  cursor: default;
+}
+
+.dual-orig :deep(.sent:hover),
+.dual-trans :deep(.sent:hover) {
+  background-color: var(--c-accent-soft, rgba(99, 102, 241, 0.08));
+}
+
+.dual-orig :deep(.sent.sent-active),
+.dual-trans :deep(.sent.sent-active) {
+  background-color: var(--c-accent-soft, rgba(99, 102, 241, 0.15));
+  box-shadow: 0 0 0 1px var(--c-accent-4, rgba(99, 102, 241, 0.2));
+}
+
+.dual-pending {
   font-size: var(--text-xs);
   color: var(--c-text-3);
   font-style: italic;
-  padding: var(--space-2) var(--space-3);
-  border-left: 2px dashed var(--c-surface-3);
 }
 
-/* 标题块 — 双语并列展示，保持 h1/h2/h3 视觉层级 */
-.block-pair.type-heading .block-body { gap: var(--space-1); }
-.block-heading-orig {
+/* 标题跨栏 */
+.dual-row.type-heading { grid-template-columns: 1fr; }
+.dual-heading-orig {
   margin: 0;
-  color: var(--c-text-2);
-  font-weight: 500;
+  color: var(--c-text-3);
+  font-size: 0.85em;
+  font-weight: 400;
 }
-.block-heading-trans {
-  margin: 0 0 var(--space-2) 0;
+.dual-heading-trans {
+  margin: var(--space-1) 0 0;
   color: var(--c-text-0);
   font-family: var(--read-ff, system-ui);
 }
 
-/* 不可翻译块（公式/代码/表格）— 单栏原样展示 */
-.block-untranslated {
-  padding: var(--space-3) var(--space-4);
+/* 公式/代码跨栏居中 */
+.dual-untranslated {
+  grid-column: 1 / -1;
+  padding: var(--space-3);
   background: var(--c-surface-2);
-  border: 1px solid var(--c-surface-3);
   border-radius: var(--radius-sm);
   overflow-x: auto;
 }
-.block-untranslated :deep(pre) {
+.dual-untranslated :deep(pre) {
   margin: 0;
   background: transparent;
   font-family: ui-monospace, SFMono-Regular, monospace;
   font-size: 13px;
 }
-.block-untranslated :deep(table) {
+.dual-untranslated :deep(table) {
   border-collapse: collapse;
   width: 100%;
 }
-.block-untranslated :deep(th),
-.block-untranslated :deep(td) {
+.dual-untranslated :deep(th),
+.dual-untranslated :deep(td) {
   border: 1px solid var(--c-surface-3);
   padding: 4px 8px;
   font-size: var(--text-sm);
 }
 
-/* 公式特殊样式 — KaTeX 默认居中对齐 */
-.block-pair.type-formula .block-untranslated {
+/* 公式居中 */
+.dual-row.type-formula .dual-untranslated {
   text-align: center;
   font-size: 1.05em;
 }
 
-/* 图表标注：弱化呈现 */
-.block-pair.type-figure_caption .block-orig,
-.block-pair.type-figure_caption .block-trans {
+/* 翻译失败块 */
+/* 翻译失败块 */
+.dual-failed {
+  grid-column: 1 / -1;
+  padding: var(--space-3);
+  background: var(--c-danger-soft, rgba(239, 68, 68, 0.05));
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--c-danger-5, #ef4444);
+}
+
+.dual-failed .dual-orig {
+  padding: 0;
+}
+
+.failed-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
   font-size: var(--text-sm);
+  color: var(--c-danger-5, #ef4444);
+}
+
+.failed-card button {
+  margin-left: auto;
+}
+
+.retrying {
+  font-size: var(--text-xs);
+  color: var(--c-text-3);
   font-style: italic;
+}
+
+/* 窄屏自适应 */
+@media (max-width: 900px) {
+  .dual-row { grid-template-columns: 1fr; gap: var(--space-2); }
+  .dual-orig {
+    padding-bottom: var(--space-2);
+    border-bottom: 1px dashed var(--c-surface-3);
+  }
+  .dual-failed { grid-template-columns: 1fr; }
 }
 
 /* ── Reading view（译文 / 全文 markdown） ── */
