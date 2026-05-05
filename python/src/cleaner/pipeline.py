@@ -49,6 +49,9 @@ def clean_text_full(raw_text: str) -> CleanResult:
     # 1. 过滤水印
     text = _remove_watermarks(text)
 
+    # 1.3 修复 pdfplumber 编码损坏（Adobe 子集字体中 ' " — 被解码为 ��）
+    text = _fix_pdfplumber_encoding(text)
+
     # 1.5 移除 PDF 编码残留 (cid:N)
     text = _remove_cid_artifacts(text)
 
@@ -86,6 +89,9 @@ def clean_text_full(raw_text: str) -> CleanResult:
     # 6.7 移除短噪声碎片（图标签、坐标轴标注、列标题残留等）
     text = _remove_noise_fragments(text)
 
+    # 6.8 移除作者署名块（姓名 + 上标 + 机构 + 邮箱）
+    text = _remove_author_affiliations(text)
+
     # 7. 压缩连续空行
     text = re.sub(r"\n{3,}", "\n\n", text)
 
@@ -93,6 +99,13 @@ def clean_text_full(raw_text: str) -> CleanResult:
     ref_pos, ref_text = _detect_references(text)
     if ref_pos >= 0:
         text = text[:ref_pos].rstrip()
+    else:
+        # 8.1 检测 Perspectives 风格的内联编号引用（无 REFERENCES header）
+        from src.cleaner.article_splitter import detect_inline_refs
+        text, inline_refs = detect_inline_refs(text)
+        if inline_refs:
+            ref_text = inline_refs
+            ref_pos = len(text)
 
     # 8.5 移除末尾残留的期刊元数据（文章标题+作者+DOI 等引用格式行）
     text = _remove_trailing_citation(text)
@@ -100,6 +113,10 @@ def clean_text_full(raw_text: str) -> CleanResult:
     # 9. 修复首词截断（含段内截断词）
     text = _fix_truncated_first_word(text)
     text = _fix_truncated_words_in_text(text)
+    text = _fix_truncated_paragraph_starts(text)
+
+    # 10. 规范化 inline citation 空格: "( 12 )" → "(12)"
+    text = _normalize_citation_spacing(text)
 
     return CleanResult(
         text=text.strip(),
@@ -212,20 +229,46 @@ _WATERMARK_PATTERNS = [
 
 def _remove_watermarks(text: str) -> str:
     """移除水印和期刊页眉噪声"""
-    # 处理多行分散的 "Downloaded from ... on ..." 水印
-    # 模式: "Downloaded\nfrom\nurl\nat\nInstitute\n...\non\nMarch\n28,\n2026"
-# 修复: 移除 DOTALL（.+? 会跨行贪婪匹配，误删正文）
+    # 单行 "Downloaded from ... on ..." 水印
     text = re.sub(
         r"Downloaded\s+from\s+[^\n]+\s+on\s+\w+\s+\d+[^\n]*",
         "", text,
     )
-    # 多行变体: 每个词一行 (Science 期刊常见)
+    # 混合格式: "Downloaded from https://... at\n" + 多行机构名 + "on\n" + 日期
     text = re.sub(
-        r"^Downloaded\s*$\n^from\s*$\n.+?\n^on\s*$\n(?:.+\n)*?\d{4}\s*$",
+        r"Downloaded\s+from\s+https?://[^\n]+\s+at\s*\n"
+        r"(?:[A-Z][^\n]*\n){1,8}"
+        r"(?:on\s*\n)?"
+        r"(?:[A-Z][a-z]+\s*\n)?"
+        r"(?:\d+,?\s*\n)?"
+        r"\d{4}",
+        "", text, flags=re.MULTILINE,
+    )
+    # 多行变体: 每个词一行 (Science 期刊常见)
+    # "Downloaded\nfrom\nURL\nat\nInstitute\nof\n...\non\nMarch\n28,\n2026"
+    text = re.sub(
+        r"^Downloaded\s*$\n^from\s*$\n(?:.+\n)+?^on\s*$\n(?:.+\n)*?\d{4}\s*$",
         "", text, flags=re.MULTILINE,
     )
     for pattern in _WATERMARK_PATTERNS:
         text = re.sub(pattern, "", text, flags=re.MULTILINE)
+    return text
+
+
+def _fix_pdfplumber_encoding(text: str) -> str:
+    """修复 pdfplumber 提取 Adobe 子集字体时的编码错位
+
+    pdfplumber 将右单引号 '(U+2019)、右双引号 "(U+201D)、em-dash —(U+2014)
+    解码为 UTF-8 替换字符 U+FFFD (显示为 ��)。
+
+    策略：根据上下文恢复原始字符。
+    """
+    # 词内 + 跟英文常见后缀 → 撇号 (possessive/contraction)
+    text = re.sub(r"(\w)�(s|t|d|re|ve|ll|m)\b", r"\1’\2", text)
+    # 词与词之间 → em-dash
+    text = re.sub(r"(\w)�(\w)", r"\1—\2", text)
+    # 兜底 → 右双引号
+    text = text.replace("�", "”")
     return text
 
 
@@ -308,7 +351,21 @@ def _remove_orphan_unicode(text: str) -> str:
         if len(stripped) <= 5 and non_ascii > 0 and cjk == 0:
             continue  # 跳过孤立编码字符行
         cleaned.append(line)
-    return "\n".join(cleaned)
+    text = "\n".join(cleaned)
+
+    # Pass 2: regex 清理行内/行末噪声字符组合（PDF 页面边角噪声）
+    _NOISE_CHARS = "óñáéíúäëïöüåæœ"
+    noise_class = f"[{_NOISE_CHARS}]"
+    # 单独一行的噪声字符: "ó", "ñ ñ", "ó ó" 等
+    text = re.sub(
+        rf"^{noise_class}(?:\s+{noise_class})*\s*$", "", text, flags=re.MULTILINE
+    )
+    # 行末噪声: "...discovered. ó ó" → "...discovered."
+    text = re.sub(
+        rf"\s+{noise_class}\s+{noise_class}(?:\s+{noise_class})*\s*$",
+        "", text, flags=re.MULTILINE,
+    )
+    return text
 
 
 def _remove_journal_footer(text: str) -> str:
@@ -408,6 +465,53 @@ def _is_noise_fragment(text: str) -> bool:
     return True
 
 
+def _remove_author_affiliations(text: str) -> str:
+    """移除文章开头的作者署名块
+
+    模式:
+    - "Author Name¹²\\n¹Department of...\\n²Institute of..."
+    - "Author Name*\\n*Corresponding author. email: x@y.z"
+    - "Author Name¹*\\n¹Department\\n*Corresponding"
+    """
+    lines = text.split("\n")
+    # 从开头扫描，找到连续的作者/机构行
+    cutoff = 0
+    found_author = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            if found_author:
+                cutoff = i + 1
+            continue
+        # 作者行: "First Last¹*" or "First M. Last¹²³"
+        if re.match(
+            r"^[A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z]+"
+            r"(?:\s+(?:and|&|,)\s+[A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z]+)*"
+            r"[*¹²³⁴⁵⁶⁷⁸⁹⁰]+\.?\s*$",
+            stripped,
+        ):
+            found_author = True
+            cutoff = i + 1
+            continue
+        # 机构行: "¹Department of Biology, ..."
+        if re.match(r"^[*¹²³⁴⁵⁶⁷⁸⁹⁰]+\s*[A-Z]", stripped) and found_author:
+            cutoff = i + 1
+            continue
+        # 邮箱/通讯作者行
+        if re.match(r"^\*?\s*(?:Corresponding|email|Email|E-?mail)", stripped) and found_author:
+            cutoff = i + 1
+            continue
+        # ORCID 行
+        if "orcid.org" in stripped.lower() and found_author:
+            cutoff = i + 1
+            continue
+        break
+    if cutoff > 0 and found_author:
+        logger.info("移除作者署名块: %d 行", cutoff)
+        return "\n".join(lines[cutoff:])
+    return text
+
+
 def _fix_intra_word_spaces(text: str) -> str:
     """修复双栏 PDF 提取导致的词内空格
 
@@ -499,10 +603,17 @@ def _remove_trailing_citation(text: str) -> str:
     # 从末尾向前扫描，找到连续的引用格式行并移除
     cutoff = len(lines)
     found_citation = False
-    for i in range(len(lines) - 1, max(len(lines) - 10, -1), -1):
+    for i in range(len(lines) - 1, max(len(lines) - 15, -1), -1):
         line = lines[i].strip()
         if not line:
-            break
+            # 跳过尾部空行；如果已找到引用行，继续向前扫描
+            if found_citation:
+                cutoff = i
+                continue
+            # 跳过末尾的空行
+            if cutoff == len(lines):
+                cutoff = i
+            continue
         # 匹配: DOI 行
         if re.match(r"^doi:\s*10\.\d{4,}", line, re.IGNORECASE):
             cutoff = i
@@ -639,6 +750,48 @@ def _fix_truncated_first_word(text: str) -> str:
     return text
 
 
+def _fix_truncated_paragraph_starts(text: str) -> str:
+    """修复段落开头的单字母截断（如 "n 2023" → "In 2023"）
+
+    PDF 跨页时首字母丢失，留下单字母 + 内容。
+    """
+    _GUESS = {
+        "n": "In",
+        "t": "At",
+        "s": "As",
+        "f": "If",
+        "o": "To",
+        "b": "By",
+        "a": "A",
+    }
+
+    paragraphs = text.split("\n\n")
+    fixed = []
+    for para in paragraphs:
+        lines = para.split("\n")
+        new_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                new_lines.append(line)
+                continue
+            words = stripped.split()
+            if len(words) >= 2:
+                first = words[0]
+                rest = words[1:]
+                if len(first) == 1 and first.islower() and first in _GUESS:
+                    next_word = rest[0] if rest else ""
+                    if next_word and (next_word[0].isdigit() or next_word[0].isupper()):
+                        new_line = _GUESS[first] + " " + " ".join(rest)
+                        if new_line != stripped:
+                            logger.info("段首截断修复: '%s' → '%s'", stripped[:40], new_line[:40])
+                        new_lines.append(new_line)
+                        continue
+            new_lines.append(line)
+        fixed.append("\n".join(new_lines))
+    return "\n\n".join(fixed)
+
+
 def _remove_annotations(text: str) -> str:
     """移除脚注、致谢、注释、作者贡献等非正文段落"""
     # 脚注标记: 独立一行只有上标数字或 [数字] 或 上标 a/b/c
@@ -705,14 +858,21 @@ def _merge_paragraph_lines(text: str) -> str:
     merged: list[str] = []
     buffer = ""
 
-    for line in lines:
+    for i, line in enumerate(lines):
         stripped = line.strip()
         if not stripped:
-            # 空行 = 段落分隔
-            if buffer:
-                merged.append(buffer)
-                buffer = ""
-            merged.append("")
+            # 空行：先检查是否应忽略（前后行符合续行模式）
+            should_ignore = False
+            if buffer and i + 1 < len(lines):
+                next_line = lines[i + 1].strip()
+                if next_line and _is_continuation(buffer, next_line):
+                    should_ignore = True
+
+            if not should_ignore:
+                if buffer:
+                    merged.append(buffer)
+                    buffer = ""
+                merged.append("")
             continue
 
         if not buffer:
@@ -738,11 +898,66 @@ def _is_continuation(prev_line: str, current_line: str) -> bool:
     - 英文: 当前行以小写字母开头
     - 中文: 上一行未以句末标点结尾时视为续行
     - 上一行以句号、问号、感叹号结尾时，通常不是续行
-    - LaTeX 环境（\\begin/\\end）始终视为新段落
+    - LaTeX 环境始终视为新段落
+    - 当前行以小括号开头 → 强制续行（化学式、括号注释）
+    - 上一行以连词/介词/冠词结尾 → 强制续行
+    - 上一行以逗号结尾 → 续行
+    - 上一行末尾词被截断 → 续行
     """
     prev_stripped = prev_line.rstrip()
+    cur_stripped = current_line.lstrip()
 
-    # LaTeX 环境: \begin{...} 或 \end{...} 或 $$ 始终作为新段落边界
+    # R1: 当前行以小括号开头 → 强制续行（化学式、注释）
+    if cur_stripped.startswith("("):
+        return True
+
+    # R2: 上一行以介词/连词/冠词结尾 → 强制续行
+    if prev_stripped:
+        last_word = prev_stripped.split()[-1].lower().rstrip(",;:")
+        _CONNECTIVES = {
+            "to", "of", "in", "on", "at", "by", "for", "with", "and",
+            "or", "but", "the", "a", "an", "as", "from", "into",
+            "than", "that", "which", "where", "while",
+        }
+        if last_word in _CONNECTIVES:
+            return True
+
+    # R3: 末尾词被截断
+    if prev_stripped.endswith("-"):
+        return True
+    if re.search(r"-(?:le|tio|men|gra|sti|tro|spo|tive|ment|tion)$", prev_stripped):
+        return True
+
+    # R4: 上一行以逗号结尾 → 续行
+    if prev_stripped.endswith(","):
+        return True
+
+    # R5: 上一行以形容词/限定词结尾，下一行以名词开头 → 续行
+    # PDF 双栏提取时 "other" + "countries" 等常见断点
+    if prev_stripped:
+        last_word = prev_stripped.split()[-1].lower().rstrip(".,;:")
+        _ADJECTIVE_ENDINGS = {
+            "other", "many", "such", "these", "those", "some", "both", "all",
+            "western", "eastern", "northern", "southern", "central",
+            "global", "local", "human", "social", "mental", "physical",
+            "economic", "environmental", "several", "various",
+        }
+        if last_word in _ADJECTIVE_ENDINGS:
+            return True
+
+    # R6: 当前行以常见句中词开头（很少作为段落开头）→ 续行
+    if cur_stripped:
+        first_word = cur_stripped.split()[0].lower().rstrip(".,;:")
+        _MID_SENTENCE_STARTERS = {
+            "countries", "regions", "areas", "effects", "changes",
+            "mechanisms", "systems", "processes", "factors", "conditions",
+            "patterns", "which", "that", "this", "these", "those",
+            "australia", "africa", "europe", "asia", "america",
+        }
+        if first_word in _MID_SENTENCE_STARTERS:
+            return True
+
+    # LaTeX 环境
     if prev_stripped and re.match(r"^\\(?:begin|end)\{", prev_stripped):
         return False
     if current_line and re.match(r"^\\(?:begin|end)\{", current_line):
@@ -752,35 +967,27 @@ def _is_continuation(prev_line: str, current_line: str) -> bool:
     if current_line and current_line.strip() in ("$$", r"\[", r"\]"):
         return False
 
-    # 上一行以句末标点（含中文标点）结尾 → 新段落
+    # 上一行以句末标点结尾 → 新段落
     if prev_stripped and prev_stripped[-1] in ".!?。！？；":
         return False
 
     # 当前行首字符
     first_char = current_line[0]
 
-    # 中文文本: 非句末标点结尾时视为续行
-    if prev_stripped and '\u4e00' <= prev_stripped[-1] <= '\u9fff':
+    # 中文文本续行
+    if prev_stripped and "一" <= prev_stripped[-1] <= "鿿":
         return True
 
     # 当前行以大写字母开头 → 检查是否为新段落
     if first_char.isupper():
-        # 短行且不以标点结尾 → 像标题
         if _looks_like_heading(current_line):
             return False
-        # 上一行以句号结尾 + 当前行以大写开头 → 新段落
-        # 排除单字母续行情况（如 "I" + "n 2023"）
-        if prev_stripped and prev_stripped[-1] in ".!?。！？":
-            # 上一行是单字母 → 可能是续行（如 "I" + "n 2023"）
+        if prev_stripped and prev_stripped[-1] in ".!?。！？；":
             if len(prev_stripped) <= 3:
-                # 检查合并后是否像有效单词
                 combined = prev_stripped + current_line[:5]
-                # 如果合并后看起来像有效句子开头，则视为续行
                 if combined[:2].isalpha() and combined[2:5].isalpha():
                     return True
-            # 否则是新段落
             return False
-        # 长行以大写开头且单词数>3 → 可能是新段落
         word_count = len(current_line.split())
         if word_count > 3:
             return False
@@ -789,12 +996,13 @@ def _is_continuation(prev_line: str, current_line: str) -> bool:
     if first_char.islower():
         return True
 
-    # 中文行首也视为续行（中文没有大小写）
-    if '\u4e00' <= first_char <= '\u9fff':
+    # 中文行首也视为续行
+    if "一" <= first_char <= "鿿":
         return True
 
     # 默认视为新段落
     return False
+
 
 
 def _looks_like_heading(line: str) -> bool:
@@ -938,3 +1146,45 @@ def _fix_concatenated_words(text: str) -> str:
         return _split_long_word(word)
 
     return re.sub(r'\b[a-z]{20,}\b', _replace_long, text)
+
+
+def _normalize_citation_spacing(text: str) -> str:
+    """Normalize extra spaces inside inline citations from PDF extraction.
+
+    pdfplumber often extracts superscript citations with spacing artifacts:
+        "( 12 )"  →  "(12)"
+        "( 1 , 3 )"  →  "(1, 3)"
+    """
+    # Round brackets: ( 12 ) → (12), ( 1 , 3 ) → (1, 3)
+    text = re.sub(r"\(\s+(\d+(?:\s*[,–—-]\s*\d+)*)\s+\)", r"(\1)", text)
+    # Square brackets: [ 12 ] → [12]
+    text = re.sub(r"\[\s+(\d+(?:\s*[,–—-]\s*\d+)*)\s+\]", r"[\1]", text)
+    return text
+
+
+# ---------------------------------------------------------------------------
+# Citation placeholder protection / restoration
+# ---------------------------------------------------------------------------
+
+def protect_citations(text: str) -> tuple[str, list[str]]:
+    """Replace inline citations with rare-Unicode placeholders to prevent LLM rewrites.
+
+    Uses ⟦…⟧ (U+27E6/U+27E7 mathematical square brackets) as delimiters.
+    """
+    placeholders: list[str] = []
+
+    def _sub(m: re.Match) -> str:
+        idx = len(placeholders)
+        placeholders.append(m.group(0))
+        return f"⟦C{idx}⟧"
+
+    text = re.sub(r"\(\d+(?:\s*[,–—-]\s*\d+)*\)", _sub, text)
+    text = re.sub(r"\[\d+(?:\s*[,–—-]\s*\d+)*\]", _sub, text)
+    return text, placeholders
+
+
+def restore_citations(text: str, placeholders: list[str]) -> str:
+    """Restore citation placeholders back to original form."""
+    for i, c in enumerate(placeholders):
+        text = text.replace(f"⟦C{i}⟧", c)
+    return text

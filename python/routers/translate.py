@@ -278,6 +278,12 @@ def register_translate(
 
             raw_text = doc.full_text
             dual_pages = sum(1 for p in doc.pages if getattr(p, "is_dual_column", False))
+
+            # Article splitting: detect multi-article PDFs before cleaning
+            from src.parser.article_detector import extract_articles
+            raw_articles = await asyncio.to_thread(extract_articles, raw_text)
+            num_articles = len(raw_articles)
+
             yield {
                 "event": "parsed",
                 "data": json.dumps({
@@ -285,6 +291,7 @@ def register_translate(
                     "chars": len(raw_text),
                     "dual_column_pages": dual_pages,
                     "block_count": len(blocks),
+                    "articles": num_articles,
                 }),
             }
 
@@ -292,12 +299,61 @@ def register_translate(
                 "event": "progress",
                 "data": json.dumps({"step": 2, "total": 5, "message": "清洗文本..."}),
             }
-            clean_result = await asyncio.to_thread(clean_text_full, raw_text)
+
+            # Clean + chunk each article independently to prevent glossary pollution
+            chunker_cfg = config.get("chunker", {})
+            from src.chunker.splitter import Block, BlockChunk
+
+            all_blocks: list[Block] = []
+            all_chunks: list[BlockChunk] = []
+            all_refs: list[str] = []
+            total_clean_chars = 0
+            has_any_refs = False
+
+            for art_idx, raw_art in enumerate(raw_articles):
+                art_clean = await asyncio.to_thread(clean_text_full, raw_art)
+                total_clean_chars += len(art_clean.text)
+                if art_clean.has_references:
+                    has_any_refs = True
+                if art_clean.references_text:
+                    all_refs.append(art_clean.references_text)
+
+                art_result = await asyncio.to_thread(
+                    chunk_text_with_blocks,
+                    art_clean.text,
+                    chunker_cfg.get("max_tokens", 2048),
+                    0,
+                    True,
+                )
+
+                # Prefix block IDs with article index to avoid collisions
+                if num_articles > 1:
+                    for b in art_result.blocks:
+                        b.id = f"a{art_idx}_{b.id}"
+                    for c in art_result.chunks:
+                        c.block_ids = [f"a{art_idx}_{bid}" for bid in c.block_ids]
+
+                all_blocks.extend(art_result.blocks)
+                all_chunks.extend(art_result.chunks)
+
+            # Re-index chunks sequentially
+            for ci, c in enumerate(all_chunks):
+                c.index = ci
+
+            # Build a unified BlockChunkResult
+            from src.chunker.splitter import BlockChunkResult as BCR
+            block_result = BCR(
+                blocks=all_blocks,
+                chunks=all_chunks,
+                references_text="\n\n".join(all_refs),
+            )
+
             yield {
                 "event": "cleaned",
                 "data": json.dumps({
-                    "chars": len(clean_result.text),
-                    "has_references": clean_result.has_references,
+                    "chars": total_clean_chars,
+                    "has_references": has_any_refs,
+                    "articles": num_articles,
                 }),
             }
 
@@ -305,14 +361,7 @@ def register_translate(
                 "event": "progress",
                 "data": json.dumps({"step": 3, "total": 5, "message": "切块..."}),
             }
-            chunker_cfg = config.get("chunker", {})
-            block_result = await asyncio.to_thread(
-                chunk_text_with_blocks,
-                clean_result.text,
-                chunker_cfg.get("max_tokens", 2048),
-                0,  # overlap_tokens disabled in block-aware mode
-                True,
-            )
+
             blocks_by_id = {b.id: b for b in block_result.blocks}
             total_chunks = len(block_result.chunks)
 

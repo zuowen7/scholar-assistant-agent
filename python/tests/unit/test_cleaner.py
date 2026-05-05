@@ -1,6 +1,13 @@
 """文本清洗模块单元测试"""
 
-from src.cleaner.pipeline import clean_text, clean_text_full, _remove_watermarks, _detect_references
+from src.cleaner.pipeline import (
+    clean_text,
+    clean_text_full,
+    _remove_watermarks,
+    _detect_references,
+    _remove_orphan_unicode,
+    _is_continuation,
+)
 
 
 class TestFixHyphenation:
@@ -143,3 +150,69 @@ class TestCleanTextFull:
         assert "REFERENCES" in result.references_text
         # 正文部分应包含 body 但不含引用
         assert "Main body" in result.text
+
+
+class TestRemoveOrphanUnicode:
+    """P1-2: 噪声字符 ó ó 移除"""
+
+    def test_standalone_noise_removed(self):
+        text = "Some text.\nó ó\nMore text."
+        result = _remove_orphan_unicode(text)
+        assert "ó ó" not in result
+        assert "Some text." in result
+        assert "More text." in result
+
+    def test_inline_noise_at_line_end_removed(self):
+        text = "waiting to be discovered. ó ó"
+        result = _remove_orphan_unicode(text)
+        assert "ó ó" not in result
+        assert "waiting to be discovered." in result
+
+    def test_single_noise_char_removed(self):
+        text = "Text above\nñ\nText below"
+        result = _remove_orphan_unicode(text)
+        assert "ñ" not in result.split("\n")
+
+    def test_chinese_text_preserved(self):
+        text = "这是中文文本\n另一行中文"
+        result = _remove_orphan_unicode(text)
+        assert "中文" in result
+
+    def test_normal_accented_text_preserved(self):
+        text = "The role of café in culture."
+        result = _remove_orphan_unicode(text)
+        assert "café" in result
+
+
+class TestContinuationRules:
+    """P0-2: 形容词+名词续行规则"""
+
+    def test_other_countries_merged(self):
+        prev = "deficits in other"
+        cur = "countries (for example,"
+        assert _is_continuation(prev, cur) is True
+
+    def test_western_australia_merged(self):
+        prev = "drought in western"
+        cur = "Australia, and cool"
+        assert _is_continuation(prev, cur) is True
+
+    def test_these_effects_merged(self):
+        prev = "manifestations of these"
+        cur = "effects on society"
+        assert _is_continuation(prev, cur) is True
+
+    def test_mid_sentence_countries(self):
+        prev = "This affected many"
+        cur = "countries around the world"
+        assert _is_continuation(prev, cur) is True
+
+    def test_mid_sentence_which(self):
+        prev = "A complex system"
+        cur = "which includes many components"
+        assert _is_continuation(prev, cur) is True
+
+    def test_new_paragraph_not_merged(self):
+        prev = "This concludes the section."
+        cur = "Introduction to the next topic"
+        assert _is_continuation(prev, cur) is False
