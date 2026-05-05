@@ -13,6 +13,7 @@ import type {
   ChunkDoneEvent,
   BlockData,
   ChunkedEvent,
+  QAWarning,
   BlockTranslatedEvent,
   AppConfig,
   CloudConfig,
@@ -47,6 +48,8 @@ function createState(): TranslateState {
     fallbackChunks: 0,
     misalignedChunks: 0,
     ragIngested: false,
+    qaWarnings: [],
+    sectionMap: {},
   }
 }
 
@@ -279,6 +282,17 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       } else {
         state.stepMessage = `Translated chunk ${chunk.index + 1}/${chunk.total}`
       }
+      // P0: Track section type per chunk
+      const secType = (data as Record<string, unknown>).section_type as string | undefined
+      if (secType && secType !== 'unknown') {
+        state.sectionMap[chunk.index] = secType
+      }
+      break
+    }
+    case 'qa_warnings': {
+      // P0: Post-translation QA warnings
+      const qa = data as unknown as QAWarning
+      state.qaWarnings.push(qa)
       break
     }
     case 'chunk_error':
@@ -520,6 +534,66 @@ async function exportTranslationOnlyMarkdown(): Promise<void> {
   }
 }
 
+// ── P2: PPTX 导出 ──────────────────────────────────────────────────────
+
+async function exportPPTX(): Promise<void> {
+  if (!state.taskId) return
+  state.errorMessage = ''
+
+  try {
+    const resp = await fetch(`${API_URL}/api/export/pptx`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task_id: state.taskId }),
+    })
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: 'PPTX 导出失败' }))
+      const detail = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail)
+      throw new Error(detail || `PPTX 导出失败 (${resp.status})`)
+    }
+
+    const blob = await resp.blob()
+    const defaultName = `${state.taskId}_presentation.pptx`
+    const { saveBlob } = await import('./useEditorIO')
+    await saveBlob(blob, defaultName)
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : '未知错误'
+    state.errorMessage = msg
+  }
+}
+
+// ── P3: Data Availability 导出 ──────────────────────────────────────────
+
+async function exportDataAvailability(): Promise<void> {
+  if (!state.taskId) return
+  state.errorMessage = ''
+
+  try {
+    const resp = await fetch(`${API_URL}/api/export/data_availability`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task_id: state.taskId }),
+    })
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: 'Data Availability 生成失败' }))
+      const detail = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail)
+      throw new Error(detail || `生成失败 (${resp.status})`)
+    }
+
+    const data = await resp.json()
+    // 复制到剪贴板 + 保存为文件
+    const content = data.section || JSON.stringify(data, null, 2)
+    const { saveBlob } = await import('./useEditorIO')
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
+    await saveBlob(blob, `${state.taskId}_data_availability.md`)
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : '未知错误'
+    state.errorMessage = msg
+  }
+}
+
 async function restartBackend(): Promise<boolean> {
   try {
     await invoke<string>('restart_backend')
@@ -571,6 +645,9 @@ export function useTranslate() {
     exportBilingualDocx,
     exportTranslationOnlyDocx,
     exportTranslationOnlyMarkdown,
+    // P2-P3: New export formats
+    exportPPTX,
+    exportDataAvailability,
   }
 }
 

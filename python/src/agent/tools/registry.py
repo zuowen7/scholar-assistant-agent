@@ -299,6 +299,55 @@ BibTeX 条目：
     )
     registry.register(format_bibliography)
 
+    # --- 科研图表生成工具 (P3: 借鉴 nature-figure) ---
+    try:
+        from src.agent.tools.figure_tools import generate_figure, list_figure_types
+
+        def generate_scientific_figure(
+            figure_type: str = "bar",
+            figure_claim: str = "",
+            data_description: str = "",
+        ) -> str:
+            """生成发表级别的科研图表。支持 bar/line/scatter/heatmap/distribution/multipanel。
+
+            使用 nature-figure 方法：先定核心结论→选择图表类型→生成 Nature 风格脚本。
+            输出 SVG+PDF+PNG 三种格式，使用语义色板，确保文本可编辑。
+
+            Args:
+                figure_type: 图表类型 (bar/line/scatter/heatmap/distribution/multipanel)
+                figure_claim: 图表要辩护的一句话核心主张
+                data_description: 数据结构描述
+            """
+            return generate_figure(
+                figure_type=figure_type,
+                figure_claim=figure_claim,
+                data_description=data_description,
+            )
+
+        def list_available_figure_types() -> str:
+            """列出所有可用的科研图表类型及其特性。"""
+            return list_figure_types()
+
+        generate_scientific_figure._agent_tool_def = ToolDefinition(
+            name="generate_figure",
+            description="生成发表级别的科研图表 (bar/line/scatter/heatmap/distribution/multipanel)。使用 Nature 风格配色和排版。",
+            parameters=_extract_schema_from_function(generate_scientific_figure),
+            fn=generate_scientific_figure,
+        )
+        registry.register(generate_scientific_figure)
+
+        list_available_figure_types._agent_tool_def = ToolDefinition(
+            name="list_figure_types",
+            description="列出所有可用的科研图表类型及其特性。",
+            parameters=_extract_schema_from_function(list_available_figure_types),
+            fn=list_available_figure_types,
+        )
+        registry.register(list_available_figure_types)
+
+        logger.info("图表生成工具注册完成")
+    except ImportError as e:
+        logger.warning("图表生成工具不可用: %s", e)
+
     # --- 特殊元素处理工具 ---
     try:
         from src.agent.special_elements import build_special_elements_tools

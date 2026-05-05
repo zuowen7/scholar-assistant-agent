@@ -111,6 +111,25 @@ export interface TranslateState {
   misalignedChunks: number
   /** Whether translation was successfully ingested into RAG knowledge base */
   ragIngested: boolean
+  /** QA warnings from post-translation checks (P0) */
+  qaWarnings: QAWarning[]
+  /** Section type tracking per chunk (P0) */
+  sectionMap: Record<number, string>
+}
+
+export interface QAWarning {
+  chunkIndex: number
+  sectionType: string
+  score: number
+  flags: QAFlagItem[]
+}
+
+export interface QAFlagItem {
+  type: string
+  severity: string
+  location: string
+  message: string
+  suggestion: string
 }
 
 export interface AppConfig {

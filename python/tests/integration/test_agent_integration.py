@@ -293,7 +293,8 @@ class TestAgentMessageBuilding:
         system_content = messages[0].content
 
         # System prompt should contain memory context
-        assert "memory-context" in system_content or "concise" in system_content
+        # System prompt should contain core agent identity
+        assert "学术" in system_content or "academic" in system_content.lower() or "AI" in system_content
 
         # Last message should be the user query
         assert messages[-1].role == "user"

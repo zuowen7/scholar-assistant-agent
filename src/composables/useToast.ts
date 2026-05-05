@@ -7,7 +7,7 @@ export interface ToastItem {
   duration: number
 }
 
-const toasts = ref<ToastItem[]>([])
+export const toasts = ref<ToastItem[]>([])
 let nextId = 0
 
 export function useToast() {

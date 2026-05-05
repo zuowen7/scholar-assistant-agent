@@ -246,6 +246,43 @@
         <span class="error-text">{{ state.errorMessage }}</span>
       </div>
 
+      <!-- QA Warnings Panel (P0) -->
+      <Transition name="v-fade">
+        <div v-if="qaSummary.totalFlags > 0" class="qa-panel">
+          <details>
+            <summary class="qa-summary">
+              <AlertTriangle :size="14" :stroke-width="2" />
+              <span class="qa-title">翻译质量提醒</span>
+              <span class="qa-badge">{{ qaSummary.totalFlags }}</span>
+              <span class="qa-score">得分: {{ qaSummary.avgScore }}</span>
+            </summary>
+            <div class="qa-flags">
+              <div
+                v-for="(w, wi) in state.qaWarnings"
+                :key="wi"
+                class="qa-chunk"
+              >
+                <div class="qa-chunk-header">
+                  段落 {{ w.chunkIndex + 1 }}
+                  <span v-if="w.sectionType !== 'unknown'" class="qa-section-tag">{{ sectionLabel(w.sectionType) }}</span>
+                  <span class="qa-chunk-score">{{ w.score }} 分</span>
+                </div>
+                <div
+                  v-for="(f, fi) in w.flags"
+                  :key="fi"
+                  class="qa-flag"
+                  :class="'qa-' + f.severity"
+                >
+                  <span class="qa-flag-type">{{ flagTypeLabel(f.type) }}</span>
+                  <span class="qa-flag-msg">{{ f.message }}</span>
+                  <span v-if="f.suggestion" class="qa-flag-suggestion">→ {{ f.suggestion }}</span>
+                </div>
+              </div>
+            </div>
+          </details>
+        </div>
+      </Transition>
+
       <!-- ── 对照视图：左右双栏按块对齐 ── -->
       <Transition name="v-fade" mode="out-in">
         <div v-if="viewMode === 'bilingual'" key="bilingual" class="dual-view">
@@ -317,7 +354,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, toRaw } from 'vue'
-import { UploadCloud, AlertCircle, Check, Download, FileText, ChevronDown } from './ui/icons'
+import { UploadCloud, AlertCircle, Check, Download, FileText, ChevronDown, PresentationScreen, Database, AlertTriangle } from './ui/icons'
 import UiButton from './ui/UiButton.vue'
 import UiSegmented from './ui/UiSegmented.vue'
 import UiDropdown from './ui/UiDropdown.vue'
@@ -337,7 +374,7 @@ defineEmits<{
   (e: 'open-agent-docs'): void
 }>()
 
-const { state, translate, reset, downloadResult, overallProgress, exportBilingualDocx, exportTranslationOnlyDocx, exportTranslationOnlyMarkdown } = useTranslate()
+const { state, translate, reset, downloadResult, overallProgress, exportBilingualDocx, exportTranslationOnlyDocx, exportTranslationOnlyMarkdown, exportPPTX, exportDataAvailability } = useTranslate()
 
 const viewMode = ref<'bilingual' | 'translation'>('bilingual')
 const zoneHover = ref(false)
@@ -432,6 +469,17 @@ const exportMenuItems = computed<DropdownItem[]>(() => [
     icon: FileText,
     onClick: () => exportTranslationOnlyDocx(),
   },
+  { divider: true },
+  {
+    text: 'PPTX 演示文稿',
+    icon: PresentationScreen,
+    onClick: () => exportPPTX(),
+  },
+  {
+    text: 'Data Availability',
+    icon: Database,
+    onClick: () => exportDataAvailability(),
+  },
 ])
 
 interface HoveredPair {
@@ -451,6 +499,45 @@ async function doExportBilingualDocx() {
 
 const stepLabels = ['解析文档', '清洗文本', '智能分块', '翻译', '格式化']
 const formatList = ['PDF', 'Word', 'PPT', 'Excel', 'TXT', 'Markdown', 'HTML', 'EPUB', 'LaTeX', 'JSON', '…']
+
+// ── QA Helpers (P0) ──
+
+const qaSummary = computed(() => {
+  const warnings = state.qaWarnings
+  let totalFlags = 0
+  let totalScore = 0
+  for (const w of warnings) {
+    totalFlags += w.flags.length
+    totalScore += w.score
+  }
+  return {
+    totalFlags,
+    avgScore: warnings.length > 0 ? Math.round(totalScore / warnings.length) : 100,
+  }
+})
+
+function sectionLabel(sectionType: string): string {
+  const labels: Record<string, string> = {
+    introduction: '引言',
+    results: '结果',
+    discussion: '讨论',
+    methods: '方法',
+    conclusion: '结论',
+    abstract: '摘要',
+    references: '参考文献',
+  }
+  return labels[sectionType] || sectionType
+}
+
+function flagTypeLabel(type: string): string {
+  const labels: Record<string, string> = {
+    overclaim: '过度宣称',
+    sentence_length: '句长',
+    mixed_tense: '语法混用',
+    hedging: '动词语气',
+  }
+  return labels[type] || type
+}
 
 const viewOptions = [
   { value: 'bilingual' as const, label: '对照' },
@@ -1020,6 +1107,79 @@ function openFilePicker() {
   color: var(--c-danger);
   font-size: var(--text-sm);
 }
+
+/* ── QA Warnings Panel (P0) ── */
+.qa-panel {
+  margin: var(--space-3) 0;
+  border: 1px solid var(--c-amber-border, #e6c850);
+  border-radius: var(--radius-md);
+  background: var(--c-amber-bg, #fffdf0);
+  overflow: hidden;
+}
+.qa-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  user-select: none;
+  font-size: var(--text-sm);
+  color: var(--c-amber, #b08800);
+  list-style: none;
+}
+.qa-summary::-webkit-details-marker { display: none; }
+.qa-title { font-weight: 600; }
+.qa-badge {
+  background: var(--c-amber, #b08800);
+  color: #fff;
+  border-radius: 99px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.qa-score { margin-left: auto; opacity: 0.7; }
+.qa-flags { padding: 0 var(--space-3) var(--space-3); }
+.qa-chunk { margin-top: var(--space-2); }
+.qa-chunk-header {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--c-text-2);
+  margin-bottom: var(--space-1);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.qa-section-tag {
+  background: var(--c-accent-bg);
+  color: var(--c-accent);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 10px;
+}
+.qa-chunk-score { margin-left: auto; }
+.qa-flag {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: 3px 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+.qa-flag-type {
+  flex-shrink: 0;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--c-surface-2);
+  color: var(--c-text-2);
+}
+.qa-warning .qa-flag-type {
+  background: var(--c-amber-bg, #fff3cd);
+  color: var(--c-amber, #b08800);
+}
+.qa-flag-msg { color: var(--c-text-1); }
+.qa-flag-suggestion { color: var(--c-text-3); font-style: italic; }
 
 /* ══════════════════════════════════════════════════════════
    WORKING

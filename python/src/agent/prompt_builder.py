@@ -3,12 +3,18 @@
 核心原则：上下文信息密度最大化。不追求 prompt 有多长，
 只追求每一个 token 都在为当前决策服务。
 
+分层设计 (P2 — 借鉴 nature-skills):
+- Layer 1 (主指令): 身份定义 + ReAct + 模型适配 → 始终注入
+- Layer 2 (按需参考): 写作原则 / 短语库 / 图表原则 / 数据可用性 → 仅在任务匹配时注入
+- Layer 3 (上下文): 记忆 + 文档上下文 + 时间戳
+
 拼装流程：
 1. 身份定义（Agent 角色 + 核心能力描述）
 2. 工具指南（从 ToolRegistry 自动提取 + 模型适配指导）
 3. 记忆注入（MEMORY.md 长期记忆 + 对话摘要）
-4. 文档上下文（当前编辑的文档信息）
-5. 模型适配（针对不同模型的工具使用指导）
+4. 按需参考注入（根据当前任务类型自动加载对应参考文件）
+5. 文档上下文（当前编辑的文档信息）
+6. 模型适配（针对不同模型的工具使用指导）
 """
 
 from __future__ import annotations
@@ -22,6 +28,29 @@ from typing import Any
 from src.agent.tools import ToolRegistry
 
 logger = logging.getLogger(__name__)
+
+# ── 参考文件映射 ─────────────────────────────────────────────────────────────
+
+# (参考文件名, 触发关键词列表, 描述)
+_REFERENCE_FILES: list[tuple[str, list[str], str]] = [
+    ("writing_principles.md", [
+        "polish", "润色", "改写", "rewrite", "学术写作", "翻译",
+        "translate", "draft", "manuscript", "论文", "abstract", "introduction",
+        "discussion", "methods", "results", "conclusion",
+    ], "学术写作原则与章节职责"),
+    ("phrasebank.md", [
+        "polish", "润色", "改写", "rewrite", "措辞", "wording",
+        "hedging", "句式", "表达", "phrase", "transition",
+    ], "学术短语库与过渡词族"),
+    ("figure_principles.md", [
+        "figure", "图表", "plot", "可视化", "visualization",
+        "matplotlib", "ggplot", "作图", "subpanel",
+    ], "科研图表制作原则"),
+    ("data_availability.md", [
+        "data availability", "数据可用性", "dataset", "数据集",
+        "repository", "仓库", "accession", "DOI", "FAIR",
+    ], "数据可用性声明规范"),
+]
 
 # Agent 身份定义
 _AGENT_IDENTITY = """你是研墨，一个专业的学术 AI 助手。你可以帮助用户进行学术翻译、文档分析、论文检索和学术写作。
@@ -79,6 +108,8 @@ class PromptConfig:
         doc_context: 当前编辑文档的上下文信息。
         model_name: 当前使用的模型名称（用于模型适配）。
         extra_sections: 额外的自定义段落。
+        relevant_tasks: 当前对话相关的任务关键词列表（用于匹配参考文件）。
+        references_dir: 参考文件目录路径。
     """
 
     identity: str = _AGENT_IDENTITY
@@ -86,19 +117,22 @@ class PromptConfig:
     doc_context: str = ""
     model_name: str = ""
     extra_sections: dict[str, str] = field(default_factory=dict)
+    relevant_tasks: list[str] = field(default_factory=list)
+    references_dir: str = ""
 
 
 class PromptBuilder:
     """System Prompt 动态拼装器。
 
     根据运行时的上下文信息（工具、记忆、模型、文档）动态组装
-    最优的系统提示词。避免静态的超长 prompt 浪费 token。
+    最优的系统提示词。支持按需加载参考文件（layered design）。
 
     使用示例：
         builder = PromptBuilder(tool_registry=registry)
         system_prompt = builder.build(PromptConfig(
             model_name="qwen3:8b",
             memory_content="用户偏好中文回复...",
+            relevant_tasks=["polish", "translate"],
         ))
     """
 
@@ -106,28 +140,38 @@ class PromptBuilder:
         self,
         tool_registry: ToolRegistry | None = None,
         memory_file: str | Path | None = None,
+        references_dir: str | Path | None = None,
     ) -> None:
         """初始化 Prompt Builder。
 
         Args:
             tool_registry: 工具注册表（用于提取工具描述）。
             memory_file: MEMORY.md 文件路径（可选，自动加载）。
+            references_dir: 按需参考文件目录（可选）。
         """
         self.tool_registry = tool_registry
         self.memory_file = Path(memory_file) if memory_file else None
+        self.references_dir = Path(references_dir) if references_dir else None
+
+        # 自动检测 references 目录
+        if self.references_dir is None:
+            default_ref = Path(__file__).resolve().parent / "references"
+            if default_ref.exists():
+                self.references_dir = default_ref
 
     def build(self, config: PromptConfig) -> str:
-        """构建完整的系统提示词。
+        """构建完整的系统提示词（分层设计）。
 
         拼装顺序（每个段落非空时才添加）：
-        1. 身份定义
-        2. 工具列表
-        3. 模型适配指导
-        4. ReAct 行为指导
-        5. 记忆注入
-        6. 文档上下文
-        7. 额外段落
-        8. 时间戳
+        1. 身份定义 (Layer 1)
+        2. 按需参考注入 (Layer 2 — 根据 relevant_tasks 自动加载)
+        3. 工具列表 (Layer 1)
+        4. 模型适配指导 (Layer 1)
+        5. ReAct 行为指导 (Layer 1)
+        6. 记忆注入 (Layer 3)
+        7. 文档上下文 (Layer 3)
+        8. 额外段落
+        9. 时间戳
 
         Args:
             config: Prompt 配置。
@@ -137,25 +181,36 @@ class PromptBuilder:
         """
         sections: list[str] = []
 
-        # 1. 身份定义
+        # 1. 身份定义 (Layer 1)
         if config.identity:
             sections.append(config.identity)
 
-        # 2. 工具列表
+        # 2. 按需参考注入 (Layer 2)
+        refs_dir = config.references_dir or (
+            str(self.references_dir) if self.references_dir else ""
+        )
+        if config.relevant_tasks and refs_dir:
+            ref_section = self._build_references_section(
+                config.relevant_tasks, refs_dir
+            )
+            if ref_section:
+                sections.append(ref_section)
+
+        # 3. 工具列表 (Layer 1)
         if self.tool_registry:
             tools_section = self._build_tools_section()
             if tools_section:
                 sections.append(tools_section)
 
-        # 3. 模型适配指导
+        # 4. 模型适配指导 (Layer 1)
         model_guide = self._get_model_guide(config.model_name)
         if model_guide:
             sections.append(model_guide)
 
-        # 4. ReAct 行为指导
+        # 5. ReAct 行为指导 (Layer 1)
         sections.append(_REACT_INSTRUCTION)
 
-        # 5. 记忆注入
+        # 6. 记忆注入 (Layer 3)
         memory = config.memory_content
         if not memory and self.memory_file:
             memory = self._load_memory_file()
@@ -165,18 +220,88 @@ class PromptBuilder:
                 f"作为背景信息参考，不是新的用户输入]\n{memory}\n</memory-context>"
             )
 
-        # 6. 文档上下文
+        # 7. 文档上下文 (Layer 3)
         if config.doc_context:
             sections.append(f"<doc-context>\n{config.doc_context}\n</doc-context>")
 
-        # 7. 额外段落
+        # 8. 额外段落
         for title, content in config.extra_sections.items():
             sections.append(f"## {title}\n{content}")
 
-        # 8. 时间戳
+        # 9. 时间戳
         sections.append(f"当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
 
         return "\n\n".join(sections)
+
+    def _build_references_section(
+        self, tasks: list[str], refs_dir: str
+    ) -> str:
+        """根据当前任务关键词匹配并加载参考文件（Layer 2）。
+
+        每个参考文件有触发关键词列表，匹配到任一关键词即加载。
+        加载的参考内容被注入为 <reference> 标签段落。
+
+        Args:
+            tasks: 当前对话的任务关键词列表。
+            refs_dir: 参考文件目录路径。
+
+        Returns:
+            匹配到的参考内容拼接文本，无匹配时返回空字符串。
+        """
+        tasks_lower = " ".join(tasks).lower()
+        loaded: list[str] = []
+
+        for filename, keywords, description in _REFERENCE_FILES:
+            if any(kw.lower() in tasks_lower for kw in keywords):
+                filepath = Path(refs_dir) / filename
+                if filepath.exists():
+                    try:
+                        content = filepath.read_text(encoding="utf-8").strip()
+                        # 限制每个参考文件的内容长度
+                        max_chars = 2000
+                        if len(content) > max_chars:
+                            content = content[:max_chars] + "\n...[truncated]"
+                        loaded.append(
+                            f"<reference type=\"{description}\">\n{content}\n</reference>"
+                        )
+                    except Exception as e:
+                        logger.warning("加载参考文件 %s 失败: %s", filename, e)
+
+        if loaded:
+            logger.info("按需加载参考文件: %d 个 (tasks=%s)", len(loaded), tasks[:5])
+            return "\n\n".join(loaded)
+        return ""
+
+    def load_reference(self, filename: str) -> str:
+        """按文件名加载单个参考文件的内容。
+
+        Args:
+            filename: 参考文件名（如 "writing_principles.md"）。
+
+        Returns:
+            参考文件内容，文件不存在时返回空字符串。
+        """
+        if not self.references_dir:
+            return ""
+        filepath = self.references_dir / filename
+        if not filepath.exists():
+            return ""
+        try:
+            return filepath.read_text(encoding="utf-8").strip()
+        except Exception as e:
+            logger.warning("加载参考文件 %s 失败: %s", filename, e)
+            return ""
+
+    def list_available_references(self) -> list[dict[str, str]]:
+        """列出所有可用的参考文件及其描述。
+
+        Returns:
+            [{"filename": ..., "description": ..., "keywords": [...]}, ...]
+        """
+        return [
+            {"filename": fn, "description": desc, "keywords": kw}
+            for fn, kw, desc in _REFERENCE_FILES
+        ]
 
     def _build_tools_section(self) -> str:
         """从 ToolRegistry 自动构建工具描述段落。
