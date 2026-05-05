@@ -41,8 +41,15 @@ _SHELL_ALLOWED_COMMANDS = frozenset({
     "touch", "mkdir", "cp", "mv",
     # 开发工具
     "python", "python3", "pip", "pip3",
+    # git (read-only subcommands enforced below)
     "git",
-    # curl/wget 已由 SecurityGate 黑名单拦截，网络下载统一走 web_fetch 工具
+})
+
+# git subcommands allowed (read-only)
+_GIT_ALLOWED_SUBCOMMANDS = frozenset({
+    "status", "log", "diff", "show", "branch", "tag", "remote",
+    "stash", "blame", "shortlog", "describe", "reflog", "ls-files",
+    "ls-tree", "rev-parse", "config", "--version", "--help",
 })
 
 _SHELL_TIMEOUT = 30
@@ -88,6 +95,18 @@ def _shell_exec(command: str, timeout: int = _SHELL_TIMEOUT) -> str:
         allowed = ", ".join(sorted(_SHELL_ALLOWED_COMMANDS))
         return f"命令 '{base_cmd}' 不在白名单中。允许的命令: {allowed}"
 
+    # git: restrict to read-only subcommands
+    if base_cmd == "git":
+        parts = command.strip().split()
+        subcmd = ""
+        for p in parts[1:]:
+            if not p.startswith("-"):
+                subcmd = p
+                break
+        if subcmd not in _GIT_ALLOWED_SUBCOMMANDS:
+            allowed = ", ".join(sorted(_GIT_ALLOWED_SUBCOMMANDS))
+            return f"git 子命令 '{subcmd}' 不在白名单中。允许的只读子命令: {allowed}"
+
     # 文件操作命令必须在沙箱内执行
     sandbox_cmds = {"touch", "mkdir", "cp", "mv"}
     cwd = None
@@ -128,7 +147,7 @@ def _shell_exec(command: str, timeout: int = _SHELL_TIMEOUT) -> str:
 # ---------------------------------------------------------------------------
 
 def _python_exec(code: str, timeout: int = _PYTHON_EXEC_TIMEOUT) -> str:
-    """执行 Python 代码片段并返回输出。在受限环境中运行，有超时保护。
+    """执行 Python 代码片段并返回输出。使用子进程隔离，超时可真正终止。
 
     Args:
         code: 要执行的 Python 代码字符串。
@@ -146,7 +165,6 @@ def _python_exec(code: str, timeout: int = _PYTHON_EXEC_TIMEOUT) -> str:
         "os", "sys", "subprocess", "shutil", "pathlib",
         "socket", "http", "urllib", "ctypes", "multiprocessing",
     })
-    # Attribute names that enable sandbox escape via Python's object model
     _DANGEROUS_ATTRS = frozenset({
         "__import__", "__builtins__", "__globals__", "__locals__",
         "__code__", "__class__", "__base__", "__bases__", "__subclasses__",
@@ -171,51 +189,62 @@ def _python_exec(code: str, timeout: int = _PYTHON_EXEC_TIMEOUT) -> str:
             if node.id in _DANGEROUS_ATTRS:
                 return f"禁止使用受限名称: {node.id}"
 
-    # 受限全局命名空间
-    safe_globals: dict[str, Any] = {
-        "__builtins__": {
-            "print": print, "len": len, "range": range, "enumerate": enumerate,
-            "zip": zip, "map": map, "filter": filter, "sorted": sorted,
-            "reversed": reversed, "sum": sum, "min": min, "max": max,
-            "abs": abs, "round": round, "int": int, "float": float,
-            "str": str, "list": list, "dict": dict, "set": set, "tuple": tuple,
-            "bool": bool, "type": type, "isinstance": isinstance,
-            "True": True, "False": False, "None": None,
-        },
-    }
+    # Use subprocess for true process isolation — can be killed on timeout
+    import sys
+    import json
 
-    import io
-    import contextlib
+    # Wrapper script that runs user code with restricted builtins in a subprocess
+    _runner_code = (
+        "import sys, json, io, contextlib\n"
+        "code = json.loads(sys.argv[1])\n"
+        "safe_builtins = {\n"
+        "    'print': print, 'len': len, 'range': range, 'enumerate': enumerate,\n"
+        "    'zip': zip, 'map': map, 'filter': filter, 'sorted': sorted,\n"
+        "    'reversed': reversed, 'sum': sum, 'min': min, 'max': max,\n"
+        "    'abs': abs, 'round': round, 'int': int, 'float': float,\n"
+        "    'str': str, 'list': list, 'dict': dict, 'set': set, 'tuple': tuple,\n"
+        "    'bool': bool, 'type': type, 'isinstance': isinstance,\n"
+        "    'True': True, 'False': False, 'None': None,\n"
+        "    'repr': repr, 'hasattr': hasattr, 'getattr': getattr,\n"
+        "    'abs': abs, 'round': round, 'pow': pow, 'divmod': divmod,\n"
+        "    'hex': hex, 'oct': oct, 'bin': bin, 'chr': chr, 'ord': ord,\n"
+        "    'input': lambda *a: '',\n"
+        "}\n"
+        "buf = io.StringIO()\n"
+        "g = {'__builtins__': safe_builtins}\n"
+        "err = None\n"
+        "try:\n"
+        "    with contextlib.redirect_stdout(buf):\n"
+        "        exec(code, g)\n"
+        "except Exception as e:\n"
+        "    err = str(e)\n"
+        "out = buf.getvalue()\n"
+        "if err:\n"
+        "    out += f'\\n[执行错误] {err}'\n"
+        "sys.stdout.write(out)\n"
+    )
 
-    stdout_buf = io.StringIO()
-    safe_globals["_stdout"] = stdout_buf
-
-    # 用 threading 实现超时（subprocess 不适用于纯 Python eval）
-    exec_error: list[str] = []
-    exec_done = threading.Event()
-
-    def _run():
-        try:
-            with contextlib.redirect_stdout(stdout_buf):
-                exec(code, safe_globals)
-        except Exception as e:
-            exec_error.append(str(e))
-        finally:
-            exec_done.set()
-
-    thread = threading.Thread(target=_run, daemon=True)
-    thread.start()
-    finished = exec_done.wait(timeout=timeout)
-
-    if not finished:
-        return f"代码执行超时 ({timeout}s)，已终止。"
-
-    output = stdout_buf.getvalue()
-    if exec_error:
-        output += f"\n[执行错误] {exec_error[0]}"
-    if len(output) > _TOOL_RESULT_MAX_LEN:
-        output = output[:_TOOL_RESULT_MAX_LEN] + "\n...[输出已截断]"
-    return output or "(无输出)"
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", _runner_code, json.dumps(code, ensure_ascii=False)],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            encoding="utf-8",
+            errors="replace",
+        )
+        output = result.stdout
+        if result.stderr:
+            output += f"\n[stderr]\n{result.stderr}"
+        if result.returncode != 0:
+            output += f"\n[exit code: {result.returncode}]"
+        if len(output) > _TOOL_RESULT_MAX_LEN:
+            output = output[:_TOOL_RESULT_MAX_LEN] + "\n...[输出已截断]"
+        return output or "(无输出)"
+    except subprocess.TimeoutExpired:
+        return f"代码执行超时 ({timeout}s)，进程已终止。"
+    except Exception as e:
+        return f"代码执行失败: {e}"
 
 
 # ---------------------------------------------------------------------------
