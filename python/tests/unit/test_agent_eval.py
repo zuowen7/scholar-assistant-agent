@@ -199,8 +199,8 @@ class TestMemoryDedupAndPruning:
 
     def test_fuzzy_duplicate_rejected(self):
         mm = _make_memory_manager()
-        mm.add_memory("用户偏好使用中文回复，要求简洁明了", category="preference", importance=0.8)
-        id2 = mm.add_memory("用户偏好使用中文回复，要求简洁明了，不要啰嗦", category="preference", importance=0.8)
+        mm.add_memory("用户偏好使用中文回复，要求简洁明了", category="experience", source="review", importance=0.8)
+        id2 = mm.add_memory("用户偏好使用中文回复，要求简洁明了，不要啰嗦", category="experience", source="review", importance=0.8)
         assert id2 == 0, "高度相似的条目应被模糊去重拒绝"
 
     def test_different_content_accepted(self):
