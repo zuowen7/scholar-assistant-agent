@@ -223,17 +223,19 @@ const emit = defineEmits<{
 // ── Real OS window float (Tauri) ──────────────────────────────────────────────
 
 let _agentWindow: WebviewWindow | null = null
-let _unlistenClose: (() => void) | null = null
+let _toggleGuard = false
 
 async function openAgentWindow() {
   try {
-    // Build URL with session ID if available
+    // Build URL with session ID if available — use absolute URL for dev mode
     const params = new URLSearchParams({ 'agent-only': '1' })
     if (sessionId.value) {
       params.set('session', sessionId.value)
     }
 
-    const url = `/?${params.toString()}`
+    // Use absolute URL in dev mode to avoid Tauri path resolution issues
+    const base = window.location.origin
+    const url = `${base}/?${params.toString()}`
     console.log('[AgentPanel] Opening agent window:', url)
 
     _agentWindow = new WebviewWindow('agent', {
@@ -262,20 +264,25 @@ async function openAgentWindow() {
       }
     })
 
-    // Hide the inline panel
+    // Hide the inline panel (deferred to avoid double-click from reactive re-render)
+    await new Promise(r => setTimeout(r, 100))
     emit('update:open', false)
     localStorage.setItem('agent-float', '1')
   } catch (err) {
     console.error('[AgentPanel] Failed to open agent window:', err)
+    _agentWindow = null
   }
 }
 
 async function closeAgentWindow() {
   if (_agentWindow) {
-    await _agentWindow.close()
+    try {
+      await _agentWindow.close()
+    } catch (err) {
+      console.warn('[AgentPanel] Close agent window failed:', err)
+    }
     _agentWindow = null
   }
-  // Restore inline panel (destroyed event also fires this, but double-emit is harmless)
   if (!isStandalone.value) {
     emit('update:open', true)
   }
@@ -283,11 +290,17 @@ async function closeAgentWindow() {
 }
 
 function toggleFloat() {
+  if (_toggleGuard) return
+  _toggleGuard = true
   console.log('[AgentPanel] toggleFloat called, _agentWindow:', !!_agentWindow)
-  if (_agentWindow) {
-    closeAgentWindow()
-  } else {
-    openAgentWindow()
+  try {
+    if (_agentWindow) {
+      closeAgentWindow()
+    } else {
+      openAgentWindow()
+    }
+  } finally {
+    setTimeout(() => { _toggleGuard = false }, 500)
   }
 }
 
