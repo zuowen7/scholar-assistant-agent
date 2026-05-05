@@ -105,10 +105,10 @@ class ReviewAgent:
             trajectory_data: 任务轨迹数据。
 
         Returns:
-            asyncio.Task 或 None（无事件循环时）。
+            asyncio.Task 或 None（无运行中的事件循环时）。
         """
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             return loop.create_task(self._review(trajectory_data))
         except RuntimeError:
             logger.warning("无法获取事件循环，跳过后台审查")

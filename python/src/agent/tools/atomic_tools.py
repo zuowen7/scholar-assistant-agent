@@ -146,6 +146,13 @@ def _python_exec(code: str, timeout: int = _PYTHON_EXEC_TIMEOUT) -> str:
         "os", "sys", "subprocess", "shutil", "pathlib",
         "socket", "http", "urllib", "ctypes", "multiprocessing",
     })
+    # Attribute names that enable sandbox escape via Python's object model
+    _DANGEROUS_ATTRS = frozenset({
+        "__import__", "__builtins__", "__globals__", "__locals__",
+        "__code__", "__class__", "__base__", "__bases__", "__subclasses__",
+        "__mro__", "__dict__", "__reduce__", "__reduce_ex__",
+        "__init_subclass__", "__module__",
+    })
     for node in _ast.walk(tree):
         if isinstance(node, _ast.Import):
             for alias in node.names:
@@ -157,6 +164,12 @@ def _python_exec(code: str, timeout: int = _PYTHON_EXEC_TIMEOUT) -> str:
                 mod = node.module.split(".")[0]
                 if mod in _DANGEROUS_MODULES:
                     return f"禁止从模块导入: {mod}"
+        elif isinstance(node, _ast.Attribute):
+            if node.attr in _DANGEROUS_ATTRS:
+                return f"禁止访问受限属性: {node.attr}"
+        elif isinstance(node, _ast.Name):
+            if node.id in _DANGEROUS_ATTRS:
+                return f"禁止使用受限名称: {node.id}"
 
     # 受限全局命名空间
     safe_globals: dict[str, Any] = {

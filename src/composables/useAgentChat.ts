@@ -142,7 +142,16 @@ export function useAgentChat() {
 
     const handleEvent = createEventHandler(assistantMsg.id)
 
-    try {
+    const MAX_RETRIES = 2
+    let sessionStarted = false
+
+    // Wrap the handler to track whether session has started (for reconnect decisions)
+    const trackingHandler = (eventType: string, data: Record<string, unknown>) => {
+      if (eventType === 'session_started') sessionStarted = true
+      handleEvent(eventType, data)
+    }
+
+    const doFetch = async () => {
       const resp = await fetch(`${API_URL}/api/agent/v2/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -153,25 +162,72 @@ export function useAgentChat() {
           constraints: constraints?.trim() || undefined,
           workspace_root: workspaceRoot?.trim() || undefined,
         }),
-        signal: abortController.signal,
+        signal: abortController!.signal,
       })
-
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ detail: '请求失败' }))
         throw new Error(err.detail || `请求失败 (${resp.status})`)
       }
-
       const reader = resp.body?.getReader()
       if (!reader) throw new Error('无法读取响应流')
+      await readSseStream(reader, trackingHandler)
+    }
 
-      await readSseStream(reader, handleEvent)
+    try {
+      let lastErr: unknown = null
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (attempt > 0) {
+          // If session already started, use resume endpoint to avoid re-running the task
+          const sid = sessionId.value
+          if (sessionStarted && sid) {
+            const msg = messages.value.find(m => m.id === assistantMsg.id)
+            if (msg) msg.events.push({ type: 'warning', content: `网络中断，正在恢复会话... (${attempt}/${MAX_RETRIES})` } as AgentEvent)
+            try {
+              const resumeResp = await fetch(`${API_URL}/api/agent/v2/resume/${sid}`, {
+                method: 'POST',
+                signal: abortController!.signal,
+              })
+              if (resumeResp.ok) {
+                const reader = resumeResp.body?.getReader()
+                if (reader) {
+                  await readSseStream(reader, trackingHandler)
+                  lastErr = null
+                  break
+                }
+              }
+            } catch (_re) {
+              if (_re instanceof DOMException && _re.name === 'AbortError') return
+            }
+            await new Promise(r => setTimeout(r, attempt * 2000))
+            continue
+          }
+          // Session not yet started: retry original request after delay
+          const msg = messages.value.find(m => m.id === assistantMsg.id)
+          if (msg) msg.events.push({ type: 'warning', content: `网络错误，正在重试... (${attempt}/${MAX_RETRIES})` } as AgentEvent)
+          await new Promise(r => setTimeout(r, attempt * 2000))
+        }
+        try {
+          await doFetch()
+          lastErr = null
+          break
+        } catch (e) {
+          if (e instanceof DOMException && e.name === 'AbortError') return
+          // Only retry on network-level errors (TypeError = fetch failed), not HTTP errors
+          if (attempt < MAX_RETRIES && e instanceof TypeError) {
+            lastErr = e
+            continue
+          }
+          throw e
+        }
+      }
+      if (lastErr) throw lastErr
 
       const msg = messages.value.find(m => m.id === assistantMsg.id)
       if (msg?.isStreaming) {
         msg.isStreaming = false
         if (!msg.content) {
           const last = msg.events[msg.events.length - 1]
-          msg.content = last?.content || '完成'
+          msg.content = (last as AgentEvent | undefined)?.content || '完成'
         }
       }
     } catch (err) {
