@@ -16,6 +16,7 @@ Internal structure (split since v0.3):
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -52,6 +53,7 @@ class SkillRegistry(SkillPersistenceMixin, SkillMatchingMixin, SkillAutoMixin):
         self._iters_since_skill = 0
         self._patterns: dict[str, list[dict]] = {}
         self._auto_generated: set[str] = set()
+        self._lock = threading.RLock()
         self._load_all()
 
     # ------------------------------------------------------------------
@@ -67,45 +69,48 @@ class SkillRegistry(SkillPersistenceMixin, SkillMatchingMixin, SkillAutoMixin):
         notes: list[str] | None = None,
     ) -> Skill:
         """创建新的 Skill 并保存到文件。"""
-        now = datetime.now().strftime("%Y-%m-%d")
-        skill = Skill(
-            name=name,
-            trigger=trigger,
-            description=description,
-            steps=steps,
-            notes=notes or [],
-            created_at=now,
-            updated_at=now,
-        )
-        self._save_skill(skill)
-        self._skills[name] = skill
-        self._iters_since_skill = 0
-        logger.info("新 Skill 已创建: %s", name)
-        return skill
+        with self._lock:
+            now = datetime.now().strftime("%Y-%m-%d")
+            skill = Skill(
+                name=name,
+                trigger=trigger,
+                description=description,
+                steps=steps,
+                notes=notes or [],
+                created_at=now,
+                updated_at=now,
+            )
+            self._save_skill(skill)
+            self._skills[name] = skill
+            self._iters_since_skill = 0
+            logger.info("新 Skill 已创建: %s", name)
+            return skill
 
     def update_skill(self, name: str, **kwargs: Any) -> Skill | None:
         """更新已有 Skill。"""
-        skill = self._skills.get(name)
-        if skill is None:
-            return None
+        with self._lock:
+            skill = self._skills.get(name)
+            if skill is None:
+                return None
 
-        for key, value in kwargs.items():
-            if hasattr(skill, key):
-                setattr(skill, key, value)
+            for key, value in kwargs.items():
+                if hasattr(skill, key):
+                    setattr(skill, key, value)
 
-        skill.updated_at = datetime.now().strftime("%Y-%m-%d")
-        self._save_skill(skill)
-        self._iters_since_skill = 0
-        logger.info("Skill 已更新: %s", name)
-        return skill
+            skill.updated_at = datetime.now().strftime("%Y-%m-%d")
+            self._save_skill(skill)
+            self._iters_since_skill = 0
+            logger.info("Skill 已更新: %s", name)
+            return skill
 
     def increment_use(self, name: str) -> None:
         """增加 Skill 的使用计数，同时更新 last_used_at 并恢复 deprecated 状态。"""
-        skill = self._skills.get(name)
-        if skill:
-            skill.use_count += 1
-            skill.last_used_at = datetime.now().strftime("%Y-%m-%d")
-            if skill.deprecated:
-                skill.deprecated = False
-                logger.info("Skill 因使用而从过期状态恢复: %s", name)
-            self._save_skill(skill)
+        with self._lock:
+            skill = self._skills.get(name)
+            if skill:
+                skill.use_count += 1
+                skill.last_used_at = datetime.now().strftime("%Y-%m-%d")
+                if skill.deprecated:
+                    skill.deprecated = False
+                    logger.info("Skill 因使用而从过期状态恢复: %s", name)
+                self._save_skill(skill)

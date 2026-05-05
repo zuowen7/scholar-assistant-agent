@@ -167,6 +167,10 @@ class AgentLoop:
         self.rag_store = rag_store
         self.rag_top_k = rag_top_k
 
+        # Scratchpad: stores full tool results when output exceeds SCRATCHPAD_THRESHOLD
+        self._scratchpad: dict[str, str] = {}
+        self._scratchpad_step = 0
+
     async def close(self) -> None:
         await self.llm.close()
         await self.compressor.close()
@@ -308,9 +312,20 @@ class AgentLoop:
                 tc_result = await self._execute_single_tool(tc, "")
                 result.tool_results.append((tc.name, tc.id, tc_result))
 
-        # 追加 tool 消息 + tool_result 事件
+        # 追加 tool 消息 + tool_result 事件（超长结果存入 scratchpad）
+        _SCRATCHPAD_THRESHOLD = 2000
         for tc_name, tc_id, tc_result in result.tool_results:
-            truncated = tc_result[:_TOOL_RESULT_MAX_CHARS]
+            self._scratchpad_step += 1
+            if len(tc_result) > _SCRATCHPAD_THRESHOLD:
+                sp_key = f"{tc_name}_{self._scratchpad_step}"
+                self._scratchpad[sp_key] = tc_result
+                truncated = (
+                    tc_result[:_SCRATCHPAD_THRESHOLD]
+                    + f"\n...[输出过长已截断。完整结果已存入临时缓存 scratchpad[{sp_key}]，"
+                    "如需完整内容可重新调用该工具或使用 offset 参数]"
+                )
+            else:
+                truncated = tc_result
             messages.append(Message(role="tool", content=truncated, tool_call_id=tc_id))
             result.events.append(AgentEvent(
                 type="tool_result",
@@ -341,7 +356,39 @@ class AgentLoop:
         messages: list[Message] = []
 
         if self.prompt_builder and not self.system_prompt:
-            config = PromptConfig(model_name=self.model)
+            # Inject memory context
+            memory_ctx = ""
+            if self.memory:
+                try:
+                    memory_ctx = self.memory.get_memory_context(query)
+                except Exception as _me:
+                    logger.warning("记忆上下文获取失败: %s", _me)
+
+            # Inject matched skill as extra section
+            extra: dict[str, str] = {}
+            if self.skills:
+                try:
+                    matched_skill = self.skills.match(query)
+                    if matched_skill:
+                        self.skills.increment_use(matched_skill.name)
+                        skill_lines = [
+                            f"触发条件: {matched_skill.trigger}",
+                            f"描述: {matched_skill.description}",
+                            "执行步骤:",
+                            *[f"  {i + 1}. {s}" for i, s in enumerate(matched_skill.steps)],
+                        ]
+                        if matched_skill.notes:
+                            skill_lines += ["注意事项:", *[f"  - {n}" for n in matched_skill.notes]]
+                        extra["可用技能指导"] = "\n".join(skill_lines)
+                        logger.info("注入 Skill: %s", matched_skill.name)
+                except Exception as _se:
+                    logger.warning("Skill 匹配失败: %s", _se)
+
+            config = PromptConfig(
+                model_name=self.model,
+                memory_content=memory_ctx,
+                extra_sections=extra,
+            )
             system = self.prompt_builder.build(config)
         else:
             system = self.system_prompt
