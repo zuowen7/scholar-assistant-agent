@@ -1,5 +1,17 @@
 <template>
+  <!-- Agent 独立窗口：极简模式，无背景/粒子/拖拽 -->
+  <div v-if="isAgentOnly" class="app agent-only-mode">
+    <AgentPanel
+      :open="true"
+      :standalone="true"
+      @update:open="onAgentWindowClose"
+      @switch-to-editor="onAgentWindowClose"
+    />
+  </div>
+
+  <!-- 主窗口：完整布局 -->
   <div
+    v-else
     class="app"
     @dragenter.prevent="onDragEnter"
     @dragleave.prevent="onDragLeave"
@@ -166,6 +178,18 @@ const appMode = ref<AppMode>('editor')
 
 // ── Agent 聊天 ──────────────────────────────────────────────
 const showAgentChat = ref(false)
+
+// ── Agent 独立窗口模式 ──────────────────────────────────────
+const isAgentOnly = computed(() => {
+  const params = new URLSearchParams(window.location.search)
+  return params.get('agent-only') === '1'
+})
+
+async function onAgentWindowClose() {
+  if (isAgentOnly.value) {
+    await getCurrentWindow().close()
+  }
+}
 
 function openAgentDocs() {
   showAgentChat.value = true
@@ -776,6 +800,12 @@ body::after {
   position: relative;
   background: var(--c-surface-0);
   color: var(--c-text-0);
+}
+
+/* Agent 独立窗口：无背景/粒子/装饰 */
+.agent-only-mode {
+  background: var(--c-surface-1);
+  overflow: hidden;
 }
 
 /* ── Background Layer ── */

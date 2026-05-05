@@ -209,6 +209,10 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
+                // Only kill backend processes when the main window closes
+                if window.label() != "main" {
+                    return;
+                }
                 let state = window.state::<ManagedProcesses>();
                 {
                     let mut guard = state.python.lock().unwrap_or_else(|e| e.into_inner());
