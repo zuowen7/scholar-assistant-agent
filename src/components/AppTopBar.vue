@@ -124,7 +124,7 @@
                 <label class="sp-label">供应商</label>
                 <UiSelect
                   :model-value="cloudConfig.provider"
-                  @update:model-value="$emit('provider-change'); $emit('update:cloudConfig', { ...cloudConfig, provider: $event })"
+                  @update:model-value="$emit('update:cloudConfig', { ...cloudConfig, provider: $event }); $emit('provider-change', $event)"
                 >
                   <option v-for="(preset, key) in providerPresets" :key="key" :value="key">{{ preset.name }}</option>
                 </UiSelect>
@@ -341,7 +341,7 @@ defineEmits<{
   (e: 'handle-tectonic'): void
   (e: 'save-engine-settings'): void
   (e: 'test-cloud'): void
-  (e: 'provider-change'): void
+  (e: 'provider-change', provider: string): void
   (e: 'save-proxy'): void
   (e: 'pick-background'): void
   (e: 'clear-background'): void
