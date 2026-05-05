@@ -21,11 +21,18 @@ export default defineConfig({
       },
     },
     watch: {
-      ignored: ['**/python-dist/**', '**/src-tauri/python-dist/**'],
+      ignored: [
+        '**/python-dist/**',
+        '**/src-tauri/python-dist/**',
+        '**/src-tauri/target/**',
+        '**/build/**',
+        '**/src-tauri/resources/pandoc/**',
+      ],
     },
   },
   optimizeDeps: {
     include: ['monaco-editor'],
+    entries: ['index.html'],
   },
   build: {
     rollupOptions: {
