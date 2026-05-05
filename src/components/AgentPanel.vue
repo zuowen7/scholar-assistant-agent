@@ -5,6 +5,8 @@
   >
     <div
       class="agent-header"
+      :class="{ 'window-drag': isStandalone }"
+      @mousedown="onHeaderMouseDown"
     >
       <div class="agent-tabs">
         <button class="agent-tab" :class="{ active: tab === 'chat' }" @click="tab = 'chat'">对话</button>
@@ -13,16 +15,16 @@
         <button class="agent-tab" :class="{ active: tab === 'sessions' }" @click="tab = 'sessions'; refreshSessions()">会话</button>
       </div>
       <div class="agent-header-actions">
+        <!-- Standalone: dock back button -->
+        <button v-if="isStandalone" class="agent-hdr-btn" title="停靠回主窗口" @click="onDockBack">
+          <PinOff :size="13" :stroke-width="1.8" />
+        </button>
+        <!-- Main window: float out button -->
         <button v-if="!isStandalone" class="agent-hdr-btn" :title="_agentWindow ? '停靠' : '弹出独立窗口'" @click="toggleFloat">
           <PinOff v-if="_agentWindow" :size="13" :stroke-width="1.8" />
           <Pin v-else :size="13" :stroke-width="1.8" />
         </button>
-        <button v-if="isStandalone" class="agent-close-btn" @click="emit('update:open', false)" aria-label="关闭">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
-        <button v-else class="agent-close-btn" @click="$emit('update:open', false)" aria-label="关闭">
+        <button v-if="!isStandalone" class="agent-close-btn" @click="$emit('update:open', false)" aria-label="关闭">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -200,7 +202,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import { useAgentChat } from '../composables/useAgentChat'
 import { useEditor } from '../composables/useEditor'
 import AgentApprovalInline from './AgentApprovalInline.vue'
@@ -208,6 +210,7 @@ import AgentSessionList from './AgentSessionList.vue'
 import { Pin, PinOff } from './ui/icons'
 import { API_BASE } from '../utils/api'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import type { AgentSessionInfo } from '../types'
 
 const props = defineProps<{
@@ -238,23 +241,23 @@ async function openAgentWindow() {
     const sid = sessionId.value || '1'
     localStorage.setItem('agent-mode-pending', `${Date.now()}|${sid}`)
     const url = `${window.location.origin}/`
-    console.log('[AgentPanel] Opening agent window:', url)
 
     // If a previous agent window exists, close it first
-    try { await WebviewWindow.getByLabel('agent')?.close(); } catch {}
+    try { const old = await WebviewWindow.getByLabel('agent'); if (old) await old.close(); } catch {}
 
     _agentWindow = new WebviewWindow('agent', {
       url,
       title: 'Agent 助手',
-      width: 420,
-      height: 600,
+      width: 400,
+      height: 560,
       minWidth: 340,
       minHeight: 400,
       resizable: true,
-      decorations: true,
+      decorations: false,
+      shadow: false,
       center: true,
       visible: true,
-      skipTaskbar: false,
+      skipTaskbar: true,
     })
 
     // Wait for the window to actually be created on the Rust side
@@ -262,22 +265,17 @@ async function openAgentWindow() {
       const timeout = setTimeout(() => reject(new Error('Window creation timed out')), 5000)
       _agentWindow!.once('tauri://created', () => {
         clearTimeout(timeout)
-        console.log('[AgentPanel] Window fully created on Rust side')
         resolve()
       })
       _agentWindow!.once('tauri://error', (e) => {
         clearTimeout(timeout)
-        console.error('[AgentPanel] Window creation error:', e)
         reject(new Error(String(e)))
       })
     })
 
-    console.log('[AgentPanel] Window ready, label:', _agentWindow.label)
-
-    // When the agent window is destroyed (user clicked X or dock button),
+    // When the agent window is destroyed (user closed via dock-back),
     // restore the inline panel in the main window
     _agentWindow.once('tauri://destroyed', () => {
-      console.log('[AgentPanel] Agent window destroyed')
       _agentWindow = null
       if (!isStandalone.value) {
         emit('update:open', true)
@@ -289,7 +287,7 @@ async function openAgentWindow() {
     emit('update:open', false)
     localStorage.setItem('agent-float', '1')
   } catch (err) {
-    console.error('[AgentPanel] Failed to open agent window:', err)
+    console.error('Failed to open agent window:', err)
     _agentWindow = null
     localStorage.removeItem('agent-mode-pending')
   }
@@ -297,14 +295,12 @@ async function openAgentWindow() {
 
 async function closeAgentWindow() {
   try {
-    // Try to find the window by label (more reliable than JS reference)
-    const w = WebviewWindow.getByLabel('agent')
-    console.log('[AgentPanel] Close: getByLabel found:', !!w)
+    const w = await WebviewWindow.getByLabel('agent')
     if (w) {
       await w.close()
     }
   } catch (err) {
-    console.warn('[AgentPanel] Close agent window failed:', err)
+    console.warn('Close agent window failed:', err)
   }
   _agentWindow = null
   if (!isStandalone.value) {
@@ -316,7 +312,6 @@ async function closeAgentWindow() {
 function toggleFloat() {
   if (_toggleGuard) return
   _toggleGuard = true
-  console.log('[AgentPanel] toggleFloat called, _agentWindow:', !!_agentWindow)
   try {
     if (_agentWindow) {
       closeAgentWindow()
@@ -331,6 +326,22 @@ function toggleFloat() {
 // ── Standalone mode: read session from URL ────────────────────────────────────
 const isStandalone = computed(() => props.standalone === true)
 
+// Window drag for frameless standalone window
+function onHeaderMouseDown(e: MouseEvent) {
+  if (!isStandalone.value) return
+  // Don't start drag when clicking on buttons
+  const target = e.target as HTMLElement
+  if (target.closest('button')) return
+  getCurrentWindow().startDragging()
+}
+
+// Dock back: close standalone window, signal main window to restore inline panel
+async function onDockBack() {
+  localStorage.setItem('agent-dock-back', Date.now().toString())
+  await getCurrentWindow().close()
+}
+
+// Listen for dock-back signal from standalone window
 onMounted(async () => {
   if (isStandalone.value) {
     // Read session ID from localStorage and resume session
@@ -339,15 +350,17 @@ onMounted(async () => {
     if (sid) {
       await resumeSession(sid)
     }
+  } else {
+    // Main window: listen for dock-back signal from standalone window
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'agent-dock-back' && e.newValue) {
+        localStorage.removeItem('agent-dock-back')
+        emit('update:open', true)
+      }
+    })
   }
 })
 
-onUnmounted(() => {
-  if (_unlistenClose) {
-    _unlistenClose()
-    _unlistenClose = null
-  }
-})
 
 const {
   messages, sending, sessionId, pendingApproval,
@@ -585,17 +598,25 @@ watch(tab, (t) => {
 }
 .agent-panel.open { transform: translateX(0); }
 
-/* Standalone mode: fills the agent window without slide animation */
+/* Standalone mode: rounded floating panel look, drag header */
 .agent-panel.standalone {
   position: relative;
   width: 100%;
   height: 100vh;
   right: auto;
   top: auto;
+  margin-top: 0;
   transform: none !important;
-  border-radius: 0;
-  border: none;
-  box-shadow: none;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--c-glass-border);
+  box-shadow: var(--elevation-4);
+  overflow: hidden;
+}
+.agent-header.window-drag {
+  cursor: grab;
+}
+.agent-header.window-drag:active {
+  cursor: grabbing;
 }
 
 .agent-header {
