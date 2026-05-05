@@ -25,7 +25,7 @@
       />
 
       <template v-else>
-        <EditorTabs />
+        <EditorTabs v-if="activeTab" />
 
         <!-- Welcome screen (extracted to EditorWelcome.vue) -->
         <EditorWelcome
