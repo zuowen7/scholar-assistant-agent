@@ -89,13 +89,13 @@
    DARK THEME (default — :root)
    ══════════════════════════════════════════════════════════════ */
 :root {
-  /* Ink palette — 砚池色系：暖黑，不是冷灰 */
-  --ink-0: #0f0d0a;
-  --ink-1: #161410;
-  --ink-2: #1d1a15;
-  --ink-3: #28241e;
-  --ink-4: #36312b;
-  --ink-5: #4a4540;
+  /* Ink palette — 中性墨色：微暖不黄 */
+  --ink-0: #0d0d0f;
+  --ink-1: #131315;
+  --ink-2: #19191d;
+  --ink-3: #232328;
+  --ink-4: #2e2e34;
+  --ink-5: #42424a;
 
   /* Accent */
   --accent-0: #5b6cff;
@@ -111,19 +111,19 @@
   --paper-0: #f5f1e8;
   --paper-1: #ede7d6;
 
-  /* Surface — 砚石层级 */
-  --c-surface-0: #0f0d0a;
-  --c-surface-1: #161410;
-  --c-surface-2: #1d1a15;
-  --c-surface-3: #28241e;
-  --c-surface-4: #36312b;
-  --c-surface-5: #4a4540;
+  /* Surface — 墨石层级 */
+  --c-surface-0: #0d0d0f;
+  --c-surface-1: #131315;
+  --c-surface-2: #19191d;
+  --c-surface-3: #232328;
+  --c-surface-4: #2e2e34;
+  --c-surface-5: #42424a;
 
   /* Text — 墨色文本 */
-  --c-text-0: #ece4db;
-  --c-text-1: #cbc3b8;
-  --c-text-2: #8c857b;
-  --c-text-3: #5c5650;
+  --c-text-0: #e4e4ea;
+  --c-text-1: #b8b8c2;
+  --c-text-2: #85858f;
+  --c-text-3: #55555e;
 
   /* Accent (semantic) */
   --c-accent: #5b6cff;
@@ -157,20 +157,20 @@
   /* Derived composites */
   --c-accent-bg: rgba(91, 108, 255, 0.08);
   --c-accent-bg2: rgba(91, 108, 255, 0.05);
-  --c-overlay: rgba(15, 13, 10, 0.40);
+  --c-overlay: rgba(13, 13, 15, 0.40);
   --c-shadow: rgba(0, 0, 0, 0.55);
-  --c-sent-border: rgba(40, 36, 30, 0.25);
+  --c-sent-border: rgba(35, 35, 40, 0.25);
 
-  /* Glass — 半透砚石 */
-  --c-glass: rgba(22, 20, 16, 0.60);
-  --c-glass2: rgba(29, 26, 21, 0.50);
-  --c-glass-border: rgba(54, 49, 43, 0.50);
+  /* Glass — 半透墨石 */
+  --c-glass: rgba(19, 19, 21, 0.60);
+  --c-glass2: rgba(25, 25, 29, 0.50);
+  --c-glass-border: rgba(46, 46, 52, 0.50);
 
   /* Layer tokens */
-  --layer-1: #1d1a15;
-  --layer-2: #161410;
-  --layer-3: #28241e;
-  --layer-4: rgba(15, 13, 10, 0.75);
+  --layer-1: #19191d;
+  --layer-2: #131315;
+  --layer-3: #232328;
+  --layer-4: rgba(13, 13, 15, 0.75);
 
   /* Elevation — 墨色阴影 */
   --elevation-0: none;
@@ -180,22 +180,22 @@
   --elevation-4: 0 12px 32px rgba(0, 0, 0, 0.34), 0 24px 56px rgba(0, 0, 0, 0.30);
 
   /* Semantic aliases (editor UI) */
-  --editor-bg: #1d1a15;
-  --sidebar-bg: #161410;
-  --panel-bg: #1d1a15;
-  --toolbar-bg: #161410;
-  --border-color: #28241e;
-  --text-primary: #cbc3b8;
-  --text-secondary: #8c857b;
-  --hover-bg: #36312b;
-  --active-bg: #4a4540;
-  --code-bg: #28241e;
-  --input-bg: #28241e;
+  --editor-bg: #19191d;
+  --sidebar-bg: #131315;
+  --panel-bg: #19191d;
+  --toolbar-bg: #131315;
+  --border-color: #232328;
+  --text-primary: #b8b8c2;
+  --text-secondary: #85858f;
+  --hover-bg: #2e2e34;
+  --active-bg: #42424a;
+  --code-bg: #232328;
+  --input-bg: #232328;
 
   /* Legacy short aliases */
   --accent: #5b6cff;
   --accent-bg: rgba(91, 108, 255, 0.08);
-  --surface: #161410;
+  --surface: #131315;
 
   /* Shadow (legacy) */
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.55);
@@ -207,13 +207,13 @@
    LIGHT THEME
    ══════════════════════════════════════════════════════════════ */
 [data-theme="light"] {
-  /* Ink palette — 宣纸色系：米黄暖调，仿古籍纸页 */
-  --ink-0: #f0ebe0;
-  --ink-1: #faf7f2;
-  --ink-2: #f5f1e8;
-  --ink-3: #d9d1c5;
-  --ink-4: #c8bfb2;
-  --ink-5: #b0a89d;
+  /* Ink palette — 素纸色系：微暖中性白 */
+  --ink-0: #f0f0f3;
+  --ink-1: #fafafa;
+  --ink-2: #f4f4f7;
+  --ink-3: #d4d4da;
+  --ink-4: #c0c0c8;
+  --ink-5: #a8a8b2;
 
   /* Accent (same accent color, adjusted glow) */
   --accent-0: #5b6cff;
@@ -225,23 +225,23 @@
   --vermilion-0: #C8503A;
   --vermilion-1: #B84030;
 
-  /* Paper — 宣纸 */
-  --paper-0: #f0ebe0;
-  --paper-1: #e6dfd2;
+  /* Paper — 素纸 */
+  --paper-0: #f0f0f3;
+  --paper-1: #e4e4e8;
 
   /* Surface — 纸页层级：底→浮→顶逐层提亮 */
-  --c-surface-0: #f0ebe0;
-  --c-surface-1: #faf7f2;
-  --c-surface-2: #f5f1e8;
-  --c-surface-3: #d9d1c5;
-  --c-surface-4: #e5ded5;
-  --c-surface-5: #d0c8ba;
+  --c-surface-0: #f0f0f3;
+  --c-surface-1: #fafafa;
+  --c-surface-2: #f4f4f7;
+  --c-surface-3: #d4d4da;
+  --c-surface-4: #e2e2e6;
+  --c-surface-5: #ccccd2;
 
-  /* Text — 墨色：暖黑，不是冷灰黑 */
-  --c-text-0: #2c2416;
-  --c-text-1: #4a3f2f;
-  --c-text-2: #6b5f50;
-  --c-text-3: #8c8070;
+  /* Text — 中性墨色 */
+  --c-text-0: #1e1e26;
+  --c-text-1: #3a3a44;
+  --c-text-2: #5a5a66;
+  --c-text-3: #7a7a88;
 
   /* Accent (semantic) */
   --c-accent: #5b6cff;
@@ -275,50 +275,50 @@
   /* Derived composites */
   --c-accent-bg: rgba(91, 108, 255, 0.06);
   --c-accent-bg2: rgba(91, 108, 255, 0.04);
-  --c-overlay: rgba(240, 235, 224, 0.75);
-  --c-shadow: rgba(44, 36, 22, 0.10);
-  --c-sent-border: rgba(44, 36, 22, 0.06);
+  --c-overlay: rgba(240, 240, 243, 0.75);
+  --c-shadow: rgba(30, 30, 38, 0.10);
+  --c-sent-border: rgba(30, 30, 38, 0.06);
 
-  /* Glass — 半透宣纸 */
-  --c-glass: rgba(250, 247, 242, 0.88);
-  --c-glass2: rgba(245, 241, 232, 0.82);
-  --c-glass-border: rgba(200, 191, 178, 0.55);
+  /* Glass — 半透素纸 */
+  --c-glass: rgba(250, 250, 250, 0.88);
+  --c-glass2: rgba(244, 244, 247, 0.82);
+  --c-glass-border: rgba(192, 192, 200, 0.55);
 
   /* Layer tokens */
-  --layer-1: #e5ded5;
-  --layer-2: #f5f1e8;
-  --layer-3: #faf7f2;
-  --layer-4: rgba(240, 235, 224, 0.80);
+  --layer-1: #e2e2e6;
+  --layer-2: #f4f4f7;
+  --layer-3: #fafafa;
+  --layer-4: rgba(240, 240, 243, 0.80);
 
-  /* Elevation — 暖色投影 */
+  /* Elevation — 中性投影 */
   --elevation-0: none;
-  --elevation-1: 0 1px 2px rgba(44, 36, 22, 0.06);
-  --elevation-2: 0 2px 6px rgba(44, 36, 22, 0.08);
-  --elevation-3: 0 6px 18px rgba(44, 36, 22, 0.10);
-  --elevation-4: 0 12px 36px rgba(44, 36, 22, 0.14);
+  --elevation-1: 0 1px 2px rgba(30, 30, 38, 0.06);
+  --elevation-2: 0 2px 6px rgba(30, 30, 38, 0.08);
+  --elevation-3: 0 6px 18px rgba(30, 30, 38, 0.10);
+  --elevation-4: 0 12px 36px rgba(30, 30, 38, 0.14);
 
   /* Semantic aliases (editor UI) */
-  --editor-bg: #faf7f2;
-  --sidebar-bg: #f5f1e8;
-  --panel-bg: #faf7f2;
-  --toolbar-bg: #f5f1e8;
-  --border-color: #d0c8ba;
-  --text-primary: #4a3f2f;
-  --text-secondary: #6b5f50;
-  --hover-bg: #e5ded5;
-  --active-bg: #d9d1c5;
-  --code-bg: #f0ebe0;
-  --input-bg: #f5f1e8;
+  --editor-bg: #fafafa;
+  --sidebar-bg: #f4f4f7;
+  --panel-bg: #fafafa;
+  --toolbar-bg: #f4f4f7;
+  --border-color: #ccccd2;
+  --text-primary: #3a3a44;
+  --text-secondary: #5a5a66;
+  --hover-bg: #e2e2e6;
+  --active-bg: #d4d4da;
+  --code-bg: #f0f0f3;
+  --input-bg: #f4f4f7;
 
   /* Legacy short aliases */
   --accent: #5b6cff;
   --accent-bg: rgba(91, 108, 255, 0.06);
-  --surface: #faf7f2;
+  --surface: #fafafa;
 
   /* Shadow (legacy) */
-  --shadow-sm: 0 2px 8px rgba(44, 36, 22, 0.06);
-  --shadow-md: 0 8px 28px rgba(44, 36, 22, 0.08);
-  --shadow-lg: 0 18px 40px rgba(44, 36, 22, 0.12);
+  --shadow-sm: 0 2px 8px rgba(30, 30, 38, 0.06);
+  --shadow-md: 0 8px 28px rgba(30, 30, 38, 0.08);
+  --shadow-lg: 0 18px 40px rgba(30, 30, 38, 0.12);
 }
 
 /* ══════════════════════════════════════════════════════════════
