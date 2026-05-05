@@ -227,11 +227,12 @@ class TestChatEndpoint:
         t.start()
         t.join(timeout=10.0)
 
-        # Either we got a response (200/500/503) or a timeout/connection error
+        # Either we got a response (200/403/500/503) or a timeout/connection error
         # The key assertion: we should NOT get a 422 validation error
+        # 403 is expected from TestClient (host is "testclient", not 127.0.0.1)
         if result["status"] is not None:
-            assert result["status"] in (200, 500, 503), (
-                f"Expected 200/500/503, got {result['status']}"
+            assert result["status"] in (200, 403, 500, 503), (
+                f"Expected 200/403/500/503, got {result['status']}"
             )
         # If error, it should be a timeout (agent tries to connect to Ollama)
         # which is expected and acceptable for integration tests

@@ -185,6 +185,14 @@ def register_translate(
             supported = ", ".join(sorted(SUPPORTED_EXTENSIONS.keys()))
             raise HTTPException(400, f"不支持的文件格式: {ext}。支持: {supported}")
 
+        # Reject if a running or pending task already exists
+        has_active = any(
+            t["status"] in ("running", "pending")
+            for t in tasks.values()
+        )
+        if has_active:
+            raise HTTPException(409, "已有翻译任务在运行，请等待完成")
+
         task_id = uuid.uuid4().hex[:8]
         input_dir.mkdir(parents=True, exist_ok=True)
         output_dir.mkdir(parents=True, exist_ok=True)
