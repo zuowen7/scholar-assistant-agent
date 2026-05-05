@@ -207,6 +207,7 @@ import AgentApprovalInline from './AgentApprovalInline.vue'
 import AgentSessionList from './AgentSessionList.vue'
 import { Pin, PinOff } from './ui/icons'
 import { API_BASE } from '../utils/api'
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import type { AgentSessionInfo } from '../types'
 
 const props = defineProps<{
@@ -220,47 +221,53 @@ const emit = defineEmits<{
 }>()
 
 // ── Real OS window float (Tauri) ──────────────────────────────────────────────
-import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 
 let _agentWindow: WebviewWindow | null = null
 let _unlistenClose: (() => void) | null = null
 
 async function openAgentWindow() {
-
-  // Build URL with session ID if available
-  const params = new URLSearchParams({ 'agent-only': '1' })
-  if (sessionId.value) {
-    params.set('session', sessionId.value)
-  }
-
-  const url = `/?${params.toString()}`
-
-  _agentWindow = new WebviewWindow('agent', {
-    url,
-    title: 'Agent 助手',
-    width: 420,
-    height: 600,
-    minWidth: 340,
-    minHeight: 400,
-    resizable: true,
-    decorations: true,
-    center: true,
-    visible: true,
-    skipTaskbar: false,
-  })
-
-  // When the agent window is destroyed (user clicked X or dock button),
-  // restore the inline panel in the main window
-  _agentWindow.once('tauri://destroyed', () => {
-    _agentWindow = null
-    if (!isStandalone.value) {
-      emit('update:open', true)
+  try {
+    // Build URL with session ID if available
+    const params = new URLSearchParams({ 'agent-only': '1' })
+    if (sessionId.value) {
+      params.set('session', sessionId.value)
     }
-  })
 
-  // Hide the inline panel
-  emit('update:open', false)
-  localStorage.setItem('agent-float', '1')
+    const url = `/?${params.toString()}`
+    console.log('[AgentPanel] Opening agent window:', url)
+
+    _agentWindow = new WebviewWindow('agent', {
+      url,
+      title: 'Agent 助手',
+      width: 420,
+      height: 600,
+      minWidth: 340,
+      minHeight: 400,
+      resizable: true,
+      decorations: true,
+      center: true,
+      visible: true,
+      skipTaskbar: false,
+    })
+
+    console.log('[AgentPanel] Window created, label:', _agentWindow.label)
+
+    // When the agent window is destroyed (user clicked X or dock button),
+    // restore the inline panel in the main window
+    _agentWindow.once('tauri://destroyed', () => {
+      console.log('[AgentPanel] Agent window destroyed')
+      _agentWindow = null
+      if (!isStandalone.value) {
+        emit('update:open', true)
+      }
+    })
+
+    // Hide the inline panel
+    emit('update:open', false)
+    localStorage.setItem('agent-float', '1')
+  } catch (err) {
+    console.error('[AgentPanel] Failed to open agent window:', err)
+  }
 }
 
 async function closeAgentWindow() {
@@ -276,6 +283,7 @@ async function closeAgentWindow() {
 }
 
 function toggleFloat() {
+  console.log('[AgentPanel] toggleFloat called, _agentWindow:', !!_agentWindow)
   if (_agentWindow) {
     closeAgentWindow()
   } else {
