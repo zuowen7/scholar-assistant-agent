@@ -202,7 +202,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useAgentChat } from '../composables/useAgentChat'
 import { useEditor } from '../composables/useEditor'
 import AgentApprovalInline from './AgentApprovalInline.vue'
@@ -381,6 +381,22 @@ const tab = ref<'chat' | 'docs' | 'templates' | 'sessions'>('chat')
 const input = ref('')
 const messagesRef = ref<HTMLElement | null>(null)
 const sessionListRef = ref<InstanceType<typeof AgentSessionList> | null>(null)
+// 自动滚动：用户未手动上滚时保持跟底
+const _userScrolledUp = ref(false)
+
+function _scrollToBottom(smooth = false) {
+  const el = messagesRef.value
+  if (!el) return
+  el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'instant' })
+}
+
+function _onMessagesScroll() {
+  const el = messagesRef.value
+  if (!el) return
+  // 距离底部 60px 以内视为"在底部"
+  const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60
+  _userScrolledUp.value = !atBottom
+}
 const sessions = ref<AgentSessionInfo[]>([])
 const files = ref<{ name: string; content: string }[]>([])
 const ragFileInput = ref<HTMLInputElement | null>(null)
@@ -476,8 +492,9 @@ async function refreshSessions() {
 async function handleSessionResume(sessionId: string) {
   await resumeSession(sessionId)
   tab.value = 'chat'
+  _userScrolledUp.value = false
   await nextTick()
-  if (messagesRef.value) messagesRef.value.scrollTop = messagesRef.value.scrollHeight
+  _scrollToBottom()
 }
 
 // ── Send message ──
@@ -496,7 +513,7 @@ async function sendMessage() {
 
   await agentSendMessage(fullMsg, contextText.value, '')
   await nextTick()
-  if (messagesRef.value) messagesRef.value.scrollTop = messagesRef.value.scrollHeight
+  _scrollToBottom()
 }
 
 // ── File operations ─────────────────────────────────────────
@@ -578,6 +595,33 @@ watch(() => props.open, async (isOpen) => {
 
 watch(tab, (t) => {
   if (t === 'templates' && templates.value.length === 0) loadPaperTemplates()
+})
+
+// 流式输出自动跟底：监听 messages 深度变化，若用户没有手动上滚则自动滚底
+watch(
+  messages,
+  async () => {
+    if (_userScrolledUp.value) return
+    await nextTick()
+    _scrollToBottom()
+  },
+  { deep: true },
+)
+
+// 发送新消息时强制重置到底部（无论用户之前是否上滚）
+watch(sending, (nowSending) => {
+  if (nowSending) {
+    _userScrolledUp.value = false
+    nextTick(() => _scrollToBottom())
+  }
+})
+
+onMounted(() => {
+  messagesRef.value?.addEventListener('scroll', _onMessagesScroll, { passive: true })
+})
+
+onUnmounted(() => {
+  messagesRef.value?.removeEventListener('scroll', _onMessagesScroll)
 })
 </script>
 

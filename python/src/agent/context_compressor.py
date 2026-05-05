@@ -161,6 +161,56 @@ class ContextCompressor:
         threshold = int(self.max_window_tokens * self.threshold_percent)
         return current_tokens >= threshold
 
+    async def compress_messages(self, messages: list[Message]) -> list[Message]:
+        """压缩 Message 对象列表，替代 _trim_messages 滑动窗口。
+
+        与 compress() 不同，本方法直接处理 Message 对象，保持头部/尾部原样，
+        仅对中间区域生成摘要。若压缩未触发，原样返回同一列表。
+
+        Args:
+            messages: 当前对话的 Message 列表。
+
+        Returns:
+            压缩后的 Message 列表（头部 + 摘要 + 尾部）。
+        """
+        if not self.should_compress(messages):
+            return messages
+
+        total = len(messages)
+        head_end = min(self.protect_head_count, total)
+        tail_count = min(self.protect_tail_turns * 2, total - head_end)
+        tail_start = total - tail_count
+
+        if tail_start <= head_end:
+            return messages
+
+        # 调整 tail_start：避免把 assistant(tool_calls) → tool 对拆开
+        while tail_start > head_end and messages[tail_start].role == "tool":
+            tail_start -= 1
+
+        if tail_start <= head_end:
+            return messages
+
+        head = messages[:head_end]
+        middle_msgs = messages[head_end:tail_start]
+        tail = messages[tail_start:]
+
+        middle_dicts = [message_to_ollama_dict(m) for m in middle_msgs]
+        summary = await self._summarize_middle(middle_dicts)
+
+        original_tokens = self.estimate_tokens(messages)
+        summary_msg = Message(role="system", content=f"[CONTEXT SUMMARY]: {summary}")
+        compressed = head + [summary_msg] + tail
+
+        compressed_tokens = self.estimate_tokens(compressed)
+        logger.info(
+            "上下文压缩完成: %d → %d 条消息, %d → %d tokens (节省 %d%%)",
+            total, len(compressed),
+            original_tokens, compressed_tokens,
+            int((1 - compressed_tokens / original_tokens) * 100) if original_tokens > 0 else 0,
+        )
+        return compressed
+
     async def compress(self, messages: list[dict]) -> CompressionResult:
         """执行上下文压缩。
 

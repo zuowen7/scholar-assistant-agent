@@ -49,6 +49,7 @@ import time
 import uuid
 from typing import Any, AsyncGenerator
 
+from src.agent.context_compressor import ContextCompressor
 from src.agent.error_classifier import ErrorType, classify_error, get_recovery, RetryManager
 from src.agent.hooks import HookContext, HookManager, HookPoint
 from src.agent.llm_client import LLMClient, TokenUsage, extract_text_content, extract_tool_calls
@@ -78,73 +79,6 @@ TASK_MAX_STEPS = 50
 GLOBAL_MAX_STEPS = 200
 _MAX_HISTORY_TURNS = 10
 _TOOL_RESULT_MAX_CHARS = 4000
-_TOOL_RESULT_RECENT = 2
-_TOOL_RESULT_SHORT = 800
-_SLIDING_WINDOW_TAIL = 16
-_SLIDING_WINDOW_THRESHOLD = 22
-
-
-def _trim_messages(messages: list[Message]) -> list[Message]:
-    """滑动窗口裁剪，保证 tool/assistant 消息配对完整，旧工具结果截断。"""
-    if len(messages) <= _SLIDING_WINDOW_THRESHOLD:
-        return messages
-    head = messages[:2]
-    tail = messages[-_SLIDING_WINDOW_TAIL:]
-    # 从 head 末端收集已有的 tool_call_id
-    valid_ids: set[str] = set()
-    for m in head:
-        if m.tool_calls:
-            valid_ids.update(tc.id for tc in m.tool_calls)
-    # 从 tail 头部丢掉孤立的 tool 或引用不全的 assistant
-    while tail:
-        m = tail[0]
-        if m.role == "tool" and m.tool_call_id and m.tool_call_id not in valid_ids:
-            tail.pop(0)
-            continue
-        if m.role == "assistant" and m.tool_calls:
-            need = {tc.id for tc in m.tool_calls}
-            have = {x.tool_call_id for x in tail[1:] if x.role == "tool"}
-            if not need.issubset(have):
-                tail.pop(0)
-                continue
-            valid_ids.update(need)
-        elif m.role == "tool" and m.tool_call_id:
-            pass  # already covered by valid_ids check above
-        break
-    # 截断旧工具结果：最近 2 条保持原样，更早的截到 _TOOL_RESULT_SHORT
-    tool_msg_indices = [i for i, m in enumerate(tail) if m.role == "tool"]
-    recent_tool_count = 0
-    for i in reversed(tool_msg_indices):
-        recent_tool_count += 1
-        if recent_tool_count > _TOOL_RESULT_RECENT and len(tail[i].content) > _TOOL_RESULT_SHORT:
-            tail[i] = Message(
-                role="tool",
-                content=tail[i].content[:_TOOL_RESULT_SHORT],
-                tool_call_id=tail[i].tool_call_id,
-            )
-    result = head + tail
-    # 安全检查：确保 assistant(tool_calls) 后紧跟对应的 tool 消息
-    # 如果序列不合法，去掉末尾不完整的消息块
-    i = 0
-    while i < len(result):
-        m = result[i]
-        if m.role == "assistant" and m.tool_calls:
-            tc_ids = {tc.id for tc in m.tool_calls}
-            # 检查紧随其后的 tool 消息是否覆盖所有 tool_call_id
-            j = i + 1
-            found_ids: set[str] = set()
-            while j < len(result) and result[j].role == "tool":
-                if result[j].tool_call_id:
-                    found_ids.add(result[j].tool_call_id)
-                j += 1
-            if not tc_ids.issubset(found_ids):
-                # 去掉这个不完整的 assistant 块及其后续 tool 消息
-                result = result[:i]
-                break
-            i = j
-        else:
-            i += 1
-    return result
 
 
 class AgentLoop:
@@ -210,6 +144,21 @@ class AgentLoop:
         self.retry_manager = RetryManager()
         self.hooks = HookManager()
 
+        # 比例阈值上下文压缩器，替代旧的滑动窗口 _trim_messages
+        _window = 32_000
+        self.compressor = ContextCompressor(
+            max_window_tokens=_window,
+            threshold_percent=0.60,
+            protect_head_count=1,
+            protect_tail_turns=4,
+            summary_max_tokens=500,
+            ollama_base_url=ollama_base_url,
+            summary_model=model if not cloud_base_url else None,
+            cloud_base_url=cloud_base_url,
+            cloud_api_key=cloud_api_key,
+            cloud_model=cloud_model,
+        )
+
         self.cloud_base_url = cloud_base_url.rstrip("/") if cloud_base_url else ""
         self.cloud_api_key = cloud_api_key
         self.cloud_model = cloud_model
@@ -220,6 +169,7 @@ class AgentLoop:
 
     async def close(self) -> None:
         await self.llm.close()
+        await self.compressor.close()
 
     # ------------------------------------------------------------------
     # v2: Stateless single-step executor
@@ -255,28 +205,57 @@ class AgentLoop:
         result = StepResult(events=[], tool_calls=[], tool_results=[])
         logger.info("ReAct step %d (session-driven)", step_num)
 
-        # 滑动窗口上下文管理
-        messages[:] = _trim_messages(messages)
-
-        # LLM 调用
+        # 比例阈值上下文压缩（替代旧的滑动窗口 _trim_messages）
         try:
-            tools = self.tool_registry.to_ollama_tools() or None
-            response = None
-            token_events: list[AgentEvent] = []
-            async for token_event, full_response in self.llm.stream(messages, tools=tools):
-                if token_event is not None:
-                    ev = AgentEvent(type="token", content=token_event.get("content", ""))
-                    token_events.append(ev)
-                    result.events.append(ev)
-                if full_response is not None:
-                    response = full_response
-            if response is None:
-                raise ValueError("LLM 流式响应未返回完整结果")
-            self.llm.token_usage.accumulate(response)
-        except Exception as e:
-            logger.error("LLM 调用异常: %s", e, exc_info=True)
-            result.error = str(e)
-            result.events.append(AgentEvent(type="error", content=f"LLM 调用失败: {e}"))
+            messages[:] = await self.compressor.compress_messages(messages)
+        except Exception as _ce:
+            logger.warning("上下文压缩失败，跳过: %s", _ce)
+
+        # LLM 调用（含错误分类 + 指数退避重试）
+        tools = self.tool_registry.to_ollama_tools() or None
+        response = None
+        _llm_call_done = False
+        for _attempt in range(3):
+            try:
+                token_events: list[AgentEvent] = []
+                async for token_event, full_response in self.llm.stream(messages, tools=tools):
+                    if token_event is not None:
+                        ev = AgentEvent(type="token", content=token_event.get("content", ""))
+                        token_events.append(ev)
+                        result.events.append(ev)
+                    if full_response is not None:
+                        response = full_response
+                if response is None:
+                    raise ValueError("LLM 流式响应未返回完整结果")
+                self.llm.token_usage.accumulate(response)
+                self.retry_manager.reset()
+                _llm_call_done = True
+                break
+            except Exception as e:
+                err_type = classify_error(e)
+                if not self.retry_manager.can_retry(err_type):
+                    logger.error("LLM 不可恢复错误 [%s]: %s", err_type.value, e)
+                    result.error = str(e)
+                    result.events.append(AgentEvent(
+                        type="error",
+                        content=self.retry_manager.get_feedback_message(err_type, str(e)),
+                    ))
+                    return result
+                delay = self.retry_manager.get_delay(err_type)
+                self.retry_manager.record_attempt(err_type)
+                logger.warning(
+                    "LLM 错误 [%s], %.1fs 后重试 (attempt %d/3): %s",
+                    err_type.value, delay, _attempt + 1, e,
+                )
+                result.events.append(AgentEvent(
+                    type="warning",
+                    content=self.retry_manager.get_feedback_message(err_type, str(e)),
+                ))
+                await asyncio.sleep(delay)
+
+        if not _llm_call_done:
+            result.error = "LLM 调用多次重试后仍失败"
+            result.events.append(AgentEvent(type="error", content=result.error))
             return result
 
         # 解析工具调用
@@ -349,31 +328,6 @@ class AgentLoop:
     def _finalize_trajectory(self, query: str, answer: str, success: bool) -> None:
         self.trajectory_recorder.finish(answer, success=success)
         self.memory.save_conversation(query, answer, success=success)
-
-    def _rebuild_messages_from_dicts(self, dicts: list[dict]) -> list[Message]:
-        messages: list[Message] = []
-        for d in dicts:
-            role = d.get("role", "user")
-            content = d.get("content", "")
-            tool_calls = None
-            raw_calls = d.get("tool_calls")
-            if raw_calls:
-                tool_calls = []
-                for call in raw_calls:
-                    func = call.get("function", {})
-                    tool_calls.append(ToolCall(
-                        id=call.get("id", str(uuid.uuid4())[:8]),
-                        name=func.get("name", ""),
-                        arguments=func.get("arguments", {}),
-                    ))
-            messages.append(Message(
-                role=role,
-                content=content,
-                tool_calls=tool_calls,
-                tool_call_id=d.get("tool_call_id"),
-                reasoning_content=d.get("reasoning_content"),
-            ))
-        return messages
 
     # ------------------------------------------------------------------
     # 消息构建

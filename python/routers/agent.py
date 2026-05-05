@@ -23,6 +23,7 @@ if _AGENT_AVAILABLE:
     from src.agent.models import Message, SessionState
     from src.agent.prompt_builder import PromptBuilder
     from src.agent.rag import RAGStore
+    from src.agent.review_agent import ReviewAgent
     from src.agent.session import AgentSession, SessionConfig
     from src.agent.session_store import SessionStore
     from src.agent.skill_system import SkillRegistry
@@ -130,6 +131,19 @@ def register_agent(
                 workspace_root=workspace_root,
             )
 
+            # ReviewAgent — 后台异步审查（任务完成后沉淀记忆+Skill）
+            ollama_url_for_review = trans_cfg.get("ollama_base_url", "http://localhost:11434")
+            review_agent = ReviewAgent(
+                ollama_base_url=ollama_url_for_review,
+                model=agent_cfg.get("model", "qwen3:8b"),
+                memory_manager=memory_manager,
+                skill_registry=skill_registry,
+                cloud_base_url=cloud_cfg.get("base_url", "") if use_cloud else "",
+                cloud_api_key=(cloud_cfg.get("api_key") or "").strip() if use_cloud else "",
+                cloud_model=cloud_cfg.get("model", "") if use_cloud else "",
+                api_format="openai" if use_cloud else "openai",
+            )
+
             _shared.update({
                 "rag_store": rag_store,
                 "memory_manager": memory_manager,
@@ -137,6 +151,7 @@ def register_agent(
                 "trajectory_recorder": trajectory_recorder,
                 "tool_registry": tool_registry,
                 "workspace_root": workspace_root,
+                "review_agent": review_agent,
             })
 
             # Session store (SQLite)
@@ -330,8 +345,27 @@ def register_agent(
                     }
             finally:
                 _session_pool.pop(session.id, None)
-                trajectory.finish_event_stream(success=session.state == SessionState.DONE)
+                success = session.state == SessionState.DONE
+                trajectory.finish_event_stream(success=success)
                 await agent.close()
+
+                # 后台 ReviewAgent — 任务成功完成后异步审查，沉淀记忆和 Skill
+                if success:
+                    try:
+                        _review_agent: ReviewAgent = shared.get("review_agent")
+                        if _review_agent and trajectory._current is None:
+                            # trajectory.finish() 已经清空 _current；从最后保存的文件读 JSONL
+                            # 直接把 session messages 作为轨迹数据喂给 ReviewAgent
+                            _conv_data = {
+                                "conversations": [
+                                    {"from": m.role, "value": m.content}
+                                    for m in session.messages
+                                    if m.role in ("user", "assistant") and m.content
+                                ]
+                            }
+                            _review_agent.spawn_review(_conv_data)
+                    except Exception as _re:
+                        logger.debug("ReviewAgent spawn failed (non-fatal): %s", _re)
 
         return EventSourceResponse(
             _v2_stream(),

@@ -552,6 +552,141 @@ def _file_sha256(path: Path) -> str:
         return ""
 
 
+# ---------------------------------------------------------------------------
+# grep / glob 搜索工具
+# ---------------------------------------------------------------------------
+
+def _grep_files(
+    pattern: str,
+    workspace,
+    *,
+    path: str = ".",
+    glob: str = "*",
+    case_sensitive: bool = True,
+    max_results: int = 50,
+    context_lines: int = 0,
+) -> str:
+    """在工作区文件中正则搜索内容，返回匹配行。
+
+    Args:
+        pattern: 正则表达式或字面字符串。
+        workspace: WorkspaceEnv 实例（内部注入）。
+        path: 搜索根目录（相对项目根），默认 "."。
+        glob: 文件 glob 过滤，如 "*.py"，默认 "*"（全部文件）。
+        case_sensitive: 是否区分大小写，默认 True。
+        max_results: 最多返回匹配数，默认 50。
+        context_lines: 每条匹配上下各显示 N 行，默认 0。
+    """
+    import re as _re
+    from src.agent.workspace import WorkspaceViolation
+    import fnmatch
+
+    try:
+        root = workspace.resolve(path)
+    except WorkspaceViolation as e:
+        return json.dumps({"error": str(e)})
+
+    if not root.is_dir():
+        root = root.parent
+
+    flags = 0 if case_sensitive else _re.IGNORECASE
+    try:
+        regex = _re.compile(pattern, flags)
+    except _re.error as e:
+        return json.dumps({"error": f"invalid regex: {e}"})
+
+    matches: list[dict] = []
+    _BINARY_EXTS = {".pyc", ".exe", ".dll", ".so", ".bin", ".png", ".jpg", ".pdf", ".db"}
+
+    for filepath in sorted(root.rglob("*")):
+        if not filepath.is_file():
+            continue
+        if filepath.suffix.lower() in _BINARY_EXTS:
+            continue
+        if not fnmatch.fnmatch(filepath.name, glob):
+            continue
+        try:
+            rel = str(filepath.relative_to(workspace.root))
+        except ValueError:
+            continue
+
+        try:
+            text = filepath.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+
+        lines = text.splitlines()
+        for line_no, line in enumerate(lines, start=1):
+            if regex.search(line):
+                entry: dict = {"file": rel, "line": line_no, "content": line.rstrip()}
+                if context_lines > 0:
+                    ctx_start = max(0, line_no - 1 - context_lines)
+                    ctx_end = min(len(lines), line_no + context_lines)
+                    entry["context"] = lines[ctx_start:ctx_end]
+                matches.append(entry)
+                if len(matches) >= max_results:
+                    return json.dumps({
+                        "matches": matches,
+                        "total": len(matches),
+                        "truncated": True,
+                    }, ensure_ascii=False)
+
+    return json.dumps({
+        "matches": matches,
+        "total": len(matches),
+        "truncated": False,
+    }, ensure_ascii=False)
+
+
+def _glob_files(
+    pattern: str,
+    workspace,
+    *,
+    path: str = ".",
+    max_results: int = 200,
+) -> str:
+    """在工作区中按 glob 模式匹配文件路径。
+
+    Args:
+        pattern: glob 模式，如 "**/*.py" 或 "src/**/*.ts"。
+        workspace: WorkspaceEnv 实例（内部注入）。
+        path: 搜索根目录（相对项目根），默认 "."。
+        max_results: 最多返回条目数，默认 200。
+    """
+    from src.agent.workspace import WorkspaceViolation
+
+    try:
+        root = workspace.resolve(path)
+    except WorkspaceViolation as e:
+        return json.dumps({"error": str(e)})
+
+    if not root.is_dir():
+        root = root.parent
+
+    try:
+        found = sorted(root.glob(pattern))
+    except Exception as e:
+        return json.dumps({"error": f"glob failed: {e}"})
+
+    results: list[dict] = []
+    for p in found[:max_results]:
+        try:
+            rel = str(p.relative_to(workspace.root))
+        except ValueError:
+            continue
+        results.append({
+            "path": rel,
+            "type": "dir" if p.is_dir() else "file",
+            "size": p.stat().st_size if p.is_file() else None,
+        })
+
+    return json.dumps({
+        "matches": results,
+        "total": len(results),
+        "truncated": len(found) > max_results,
+    }, ensure_ascii=False)
+
+
 def _make_diff_preview(old_content: str, new_content: str, file_path: str) -> str:
     """生成 unified diff 预览。"""
     import difflib
