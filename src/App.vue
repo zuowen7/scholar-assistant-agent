@@ -180,10 +180,17 @@ const appMode = ref<AppMode>('editor')
 const showAgentChat = ref(false)
 
 // ── Agent 独立窗口模式 ──────────────────────────────────────
-const isAgentOnly = computed(() => {
-  const params = new URLSearchParams(window.location.search)
-  return params.get('agent-only') === '1'
-})
+const isAgentOnly = ref(false)
+// Check localStorage on mount — set by AgentPanel before opening the agent window
+const _agentModeFlag = localStorage.getItem('agent-mode-pending')
+if (_agentModeFlag) {
+  isAgentOnly.value = true
+  localStorage.removeItem('agent-mode-pending')
+  // Store session ID for the agent window to use
+  if (_agentModeFlag !== '1') {
+    localStorage.setItem('agent-session', _agentModeFlag)
+  }
+}
 
 async function onAgentWindowClose() {
   if (isAgentOnly.value) {

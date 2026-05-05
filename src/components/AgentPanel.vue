@@ -233,9 +233,9 @@ async function openAgentWindow() {
       params.set('session', sessionId.value)
     }
 
-    // Use the same scheme as the main window
-    const base = window.location.origin
-    const url = `${base}/?${params.toString()}`
+    // Signal to the new window that it's agent-only mode via localStorage
+    localStorage.setItem('agent-mode-pending', sessionId.value || '1')
+    const url = `${window.location.origin}/`
     console.log('[AgentPanel] Opening agent window:', url)
 
     // If a previous agent window exists, close it first
@@ -293,14 +293,17 @@ async function openAgentWindow() {
 }
 
 async function closeAgentWindow() {
-  if (_agentWindow) {
-    try {
-      await _agentWindow.close()
-    } catch (err) {
-      console.warn('[AgentPanel] Close agent window failed:', err)
+  try {
+    // Try to find the window by label (more reliable than JS reference)
+    const w = WebviewWindow.getByLabel('agent')
+    console.log('[AgentPanel] Close: getByLabel found:', !!w)
+    if (w) {
+      await w.close()
     }
-    _agentWindow = null
+  } catch (err) {
+    console.warn('[AgentPanel] Close agent window failed:', err)
   }
+  _agentWindow = null
   if (!isStandalone.value) {
     emit('update:open', true)
   }
@@ -327,9 +330,9 @@ const isStandalone = computed(() => props.standalone === true)
 
 onMounted(async () => {
   if (isStandalone.value) {
-    // Read session ID from URL params and resume session
-    const params = new URLSearchParams(window.location.search)
-    const sid = params.get('session')
+    // Read session ID from localStorage and resume session
+    const sid = localStorage.getItem('agent-session')
+    localStorage.removeItem('agent-session')
     if (sid) {
       await resumeSession(sid)
     }
