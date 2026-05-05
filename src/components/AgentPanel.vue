@@ -1,15 +1,11 @@
 <template>
   <div
     class="agent-panel"
-    :class="{ open, floating: isFloating }"
-    :style="isFloating ? { top: floatPos.y + 'px', left: floatPos.x + 'px', right: 'auto' } : {}"
+    :class="{ open, standalone: isStandalone }"
   >
     <div
       class="agent-header"
-      :class="{ draggable: isFloating }"
-      @mousedown="startFloatDrag"
     >
-      <GripVertical v-if="isFloating" :size="14" :stroke-width="1.6" class="drag-handle-icon" />
       <div class="agent-tabs">
         <button class="agent-tab" :class="{ active: tab === 'chat' }" @click="tab = 'chat'">对话</button>
         <button class="agent-tab" :class="{ active: tab === 'docs' }" @click="tab = 'docs'">知识库</button>
@@ -17,11 +13,16 @@
         <button class="agent-tab" :class="{ active: tab === 'sessions' }" @click="tab = 'sessions'; refreshSessions()">会话</button>
       </div>
       <div class="agent-header-actions">
-        <button class="agent-hdr-btn" :title="isFloating ? '停靠' : '浮动'" @click="toggleFloat">
-          <PinOff v-if="isFloating" :size="13" :stroke-width="1.8" />
+        <button v-if="!isStandalone" class="agent-hdr-btn" :title="_agentWindow ? '停靠' : '弹出独立窗口'" @click="toggleFloat">
+          <PinOff v-if="_agentWindow" :size="13" :stroke-width="1.8" />
           <Pin v-else :size="13" :stroke-width="1.8" />
         </button>
-        <button class="agent-close-btn" @click="$emit('update:open', false)" aria-label="关闭">
+        <button v-if="isStandalone" class="agent-close-btn" @click="emit('update:open', false)" aria-label="关闭">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+        <button v-else class="agent-close-btn" @click="$emit('update:open', false)" aria-label="关闭">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -199,65 +200,121 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useAgentChat } from '../composables/useAgentChat'
 import { useEditor } from '../composables/useEditor'
 import AgentApprovalInline from './AgentApprovalInline.vue'
 import AgentSessionList from './AgentSessionList.vue'
-import { Pin, PinOff, GripVertical } from './ui/icons'
+import { Pin, PinOff } from './ui/icons'
 import { API_BASE } from '../utils/api'
 import type { AgentSessionInfo } from '../types'
 
 const props = defineProps<{
   open: boolean
+  standalone?: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'update:open', value: boolean): void
   (e: 'switch-to-editor'): void
 }>()
 
-// ── Float mode ────────────────────────────────────────────────────────────────
-const isFloating = ref(false)
-const floatPos = ref({ x: 0, y: 80 })
-let _floatDragOffset = { x: 0, y: 0 }
+// ── Real OS window float (Tauri) ──────────────────────────────────────────────
+let _agentWindow: import('@tauri-apps/api/webviewWindow').WebviewWindow | null = null
+let _unlistenClose: (() => void) | null = null
 
-onMounted(() => {
-  isFloating.value = localStorage.getItem('agent-float') === '1'
-  const savedPos = localStorage.getItem('agent-float-pos')
-  if (savedPos) {
-    try { floatPos.value = JSON.parse(savedPos) } catch {}
+async function getTauriWebviewWindow() {
+  try {
+    const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow')
+    return WebviewWindow
+  } catch {
+    return null
+  }
+}
+
+async function openAgentWindow() {
+  const WebviewWindow = await getTauriWebviewWindow()
+  if (!WebviewWindow) {
+    // Not in Tauri (e.g. browser dev) — silently do nothing
+    return
+  }
+
+  // Build URL with session ID if available
+  const params = new URLSearchParams({ 'agent-only': '1' })
+  if (sessionId.value) {
+    params.set('session', sessionId.value)
+  }
+
+  const url = `/?${params.toString()}`
+
+  _agentWindow = new WebviewWindow('agent', {
+    url,
+    title: 'Agent 助手',
+    width: 420,
+    height: 600,
+    minWidth: 340,
+    minHeight: 400,
+    resizable: true,
+    decorations: true,
+    center: true,
+    visible: true,
+    skipTaskbar: false,
+  })
+
+  // When the agent window is destroyed (user clicked X or dock button),
+  // restore the inline panel in the main window
+  _agentWindow.once('tauri://destroyed', () => {
+    _agentWindow = null
+    if (!isStandalone.value) {
+      emit('update:open', true)
+    }
+  })
+
+  // Hide the inline panel
+  emit('update:open', false)
+  localStorage.setItem('agent-float', '1')
+}
+
+async function closeAgentWindow() {
+  if (_agentWindow) {
+    await _agentWindow.close()
+    _agentWindow = null
+  }
+  // Restore inline panel (destroyed event also fires this, but double-emit is harmless)
+  if (!isStandalone.value) {
+    emit('update:open', true)
+  }
+  localStorage.setItem('agent-float', '0')
+}
+
+function toggleFloat() {
+  if (_agentWindow) {
+    closeAgentWindow()
   } else {
-    floatPos.value = { x: Math.max(0, window.innerWidth - 420), y: 80 }
+    openAgentWindow()
+  }
+}
+
+// ── Standalone mode: read session from URL ────────────────────────────────────
+const isStandalone = computed(() => props.standalone === true)
+
+onMounted(async () => {
+  if (isStandalone.value) {
+    // Read session ID from URL params and resume session
+    const params = new URLSearchParams(window.location.search)
+    const sid = params.get('session')
+    if (sid) {
+      await resumeSession(sid)
+    }
   }
 })
 
-function toggleFloat() {
-  isFloating.value = !isFloating.value
-  localStorage.setItem('agent-float', isFloating.value ? '1' : '0')
-  if (isFloating.value) {
-    floatPos.value = { x: Math.max(0, window.innerWidth - 420), y: 80 }
+onUnmounted(() => {
+  if (_unlistenClose) {
+    _unlistenClose()
+    _unlistenClose = null
   }
-}
-
-function startFloatDrag(e: MouseEvent) {
-  if (!isFloating.value) return
-  e.preventDefault()
-  _floatDragOffset = { x: e.clientX - floatPos.value.x, y: e.clientY - floatPos.value.y }
-  const move = (me: MouseEvent) => {
-    floatPos.value = {
-      x: Math.max(0, Math.min(window.innerWidth - 380, me.clientX - _floatDragOffset.x)),
-      y: Math.max(0, Math.min(window.innerHeight - 100, me.clientY - _floatDragOffset.y)),
-    }
-  }
-  const up = () => {
-    document.removeEventListener('mousemove', move)
-    document.removeEventListener('mouseup', up)
-    localStorage.setItem('agent-float-pos', JSON.stringify(floatPos.value))
-  }
-  document.addEventListener('mousemove', move)
-  document.addEventListener('mouseup', up)
-}
+})
 
 const {
   messages, sending, sessionId, pendingApproval,
@@ -495,16 +552,17 @@ watch(tab, (t) => {
 }
 .agent-panel.open { transform: translateX(0); }
 
-/* Floating mode: free-positioned window */
-.agent-panel.floating {
-  width: 380px;
-  height: 560px;
-  border-radius: var(--radius-xl);
-  border: 1px solid var(--c-glass-border);
-  box-shadow: var(--elevation-4);
+/* Standalone mode: fills the agent window without slide animation */
+.agent-panel.standalone {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  right: auto;
+  top: auto;
   transform: none !important;
-  transition: box-shadow var(--motion-fast);
-  overflow: hidden;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
 }
 
 .agent-header {
@@ -512,9 +570,6 @@ watch(tab, (t) => {
   padding: 10px 14px; border-bottom: 1px solid var(--c-surface-3);
   flex-shrink: 0;
 }
-.agent-header.draggable { cursor: move; user-select: none; }
-
-.drag-handle-icon { color: var(--c-text-3); flex-shrink: 0; }
 
 .agent-tabs { display: flex; gap: 2px; flex: 1; }
 .agent-tab {
