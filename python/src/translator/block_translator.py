@@ -11,6 +11,11 @@
 - 每个 chunk 翻译时自动检测所属章节类型
 - 注入章节特定的翻译策略指令（Introduction/Results/Discussion/Methods 等）
 - 非翻译块（公式/代码/表格）原样直通，不进入 LLM。
+
+命题提取 (CN→EN):
+- source_lang="zh" 时自动分析原文逻辑结构（因果/对比/局限/含义）
+- 注入逻辑感知翻译指令，确保译文保留原文的逻辑关系
+- 非翻译块（公式/代码/表格）原样直通，不进入 LLM。
 """
 
 from __future__ import annotations
@@ -30,6 +35,10 @@ from src.translator.section_aware import (
     detect_section,
     detect_section_from_heading,
     get_section_prompt,
+)
+from src.translator.proposition_extractor import (
+    extract_propositions,
+    ExtractedLogic,
 )
 
 logger = logging.getLogger(__name__)
@@ -207,6 +216,42 @@ def _inject_section_prompt(chunk_input: str, section_ctx: SectionContext) -> str
     return section_prompt.strip() + "\n\n" + chunk_input
 
 
+def _build_logic_instruction(extracted: ExtractedLogic) -> str:
+    """从 ExtractedLogic 构建逻辑感知翻译指令（仅用于 CN→EN）。"""
+    parts: list[str] = []
+
+    if extracted.has_explicit_causality:
+        parts.append(
+            "[LOGIC: CAUSALITY] This text contains explicit cause-effect relationships. "
+            "Make causal links clear using 'therefore', 'thus', 'lead to', 'because', "
+            "'consequently'. Do not weaken causal claims unless the original does so."
+        )
+    if extracted.has_contrast:
+        parts.append(
+            "[LOGIC: CONTRAST] This text contains contrast/comparison. "
+            "Use 'however', 'in contrast', 'whereas', 'nevertheless' to mark the contrast."
+        )
+    if extracted.has_limitation:
+        parts.append(
+            "[LOGIC: LIMITATION] This text contains limitation/boundary statements. "
+            "Translate carefully — do not soften or remove limitations. "
+            "Use 'should be interpreted with caution', 'a limitation is', "
+            "'remains to be determined'."
+        )
+    if extracted.dominant_logic:
+        parts.append(
+            f"[DOMINANT LOGIC] The dominant rhetorical move is: {extracted.dominant_logic}"
+        )
+    prop_count = len(extracted.propositions)
+    if prop_count > 1:
+        parts.append(
+            f"[PROPOSITIONS] This text contains ~{prop_count} propositions. "
+            "Ensure each is clearly expressed. Do not merge distinct propositions."
+        )
+
+    return "\n".join(parts) if parts else ""
+
+
 async def translate_block_chunk(
     client,
     chunk: BlockChunk,
@@ -223,12 +268,22 @@ async def translate_block_chunk(
     blocks = [blocks_by_id[bid] for bid in chunk.block_ids]
     chunk_input = _build_chunk_input_text(blocks)
 
+    # 命题提取：CN→EN 时分析原文逻辑结构（在注入前分析原始文本）
+    logic_instruction = ""
+    if source_lang == "zh" and chunk_input.strip():
+        extracted = extract_propositions(chunk_input)
+        logic_instruction = _build_logic_instruction(extracted)
+
     # 章节感知：检测当前 chunk 所属章节并注入翻译策略
     section_ctx = _detect_chunk_section(blocks)
     if section_ctx.section_type == SectionType.UNKNOWN and prev_section != SectionType.UNKNOWN:
         section_ctx.section_type = prev_section
         section_ctx.confidence = 0.4  # 继承前文章节类型，置信度较低
     chunk_input = _inject_section_prompt(chunk_input, section_ctx)
+
+    # 注入逻辑感知指令（在章节指令之后）
+    if logic_instruction:
+        chunk_input = logic_instruction + "\n\n" + chunk_input
 
     # Protect inline citations from LLM rewrites
     chunk_input, citation_placeholders = protect_citations(chunk_input)
