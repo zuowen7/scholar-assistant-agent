@@ -22,7 +22,7 @@ from src.parser import extract_document, SUPPORTED_EXTENSIONS
 from src.parser.extractor import extract_document_with_layout
 from src.cleaner import clean_text_full
 from src.chunker import chunk_text_with_blocks
-from src.formatter import format_blocks, format_output
+from src.formatter import format_blocks, format_output, HAS_PPTX
 from src.translator.ollama_client import OllamaClient, TranslationResult
 from src.translator.cloud_client import CloudClient, PROVIDER_PRESETS
 from src.translator.context import extract_document_context
@@ -33,6 +33,10 @@ from src.translator.block_translator import (
 from src.translator.memory_store import TranslationMemory
 from src.translator.glossary_store import GlossaryStore
 from src.translator._helpers import restore_paragraphs_if_needed, _extract_term_pairs
+from src.translator.post_qa import (
+    run_post_translation_qa,
+    get_hedging_tier_for_section,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -558,6 +562,39 @@ def register_translate(
                             if learned:
                                 glossary_store.add_suggestions(learned)
 
+                        # 翻译后 QA (P0): 过度宣称/句长/混用检测
+                        chunk_trans_for_qa = "\n\n".join(
+                            bt.translated for bt in cr.block_translations if bt.translatable
+                        )
+                        if chunk_trans_for_qa.strip():
+                            hedging_tier = get_hedging_tier_for_section(cr.section_type)
+                            qa_result = run_post_translation_qa(
+                                translated=chunk_trans_for_qa,
+                                section_type=cr.section_type,
+                                source_lang=src_lang,
+                                expected_hedging_tier=hedging_tier,
+                            )
+                            if qa_result.has_warnings:
+                                yield {
+                                    "event": "qa_warnings",
+                                    "data": json.dumps({
+                                        "index": cr.chunk_index,
+                                        "total": total_chunks,
+                                        "section_type": cr.section_type,
+                                        "score": qa_result.score,
+                                        "flags": [
+                                            {
+                                                "type": f.type,
+                                                "severity": f.severity,
+                                                "location": f.location,
+                                                "message": f.message,
+                                                "suggestion": f.suggestion,
+                                            }
+                                            for f in qa_result.flags
+                                        ],
+                                    }),
+                                }
+
                         # 兼容：发送 chunk_done 事件供旧前端 fallback
                         chunk_orig = "\n\n".join(bt.original for bt in cr.block_translations)
                         chunk_trans = "\n\n".join(bt.translated for bt in cr.block_translations)
@@ -571,6 +608,7 @@ def register_translate(
                                 "tokens": cr.completion_tokens,
                                 "fallback": cr.is_fallback,
                                 "aligned": cr.aligned,
+                                "section_type": cr.section_type,
                             }),
                         }
             finally:
@@ -952,6 +990,119 @@ def register_translate(
             filename=f"{payload.task_id}_translation_only.docx",
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
+
+    @app.post("/api/export/pptx")
+    async def export_pptx(payload: BilingualPdfPayload):
+        """导出 PPTX 演示文稿（P2: 借鉴 nature-paper2ppt）"""
+        if not HAS_PPTX:
+            raise HTTPException(400, "python-pptx 未安装，请运行: pip install python-pptx")
+
+        if payload.task_id not in tasks:
+            raise HTTPException(404, "任务不存在")
+        t = tasks[payload.task_id]
+        if t["status"] not in ("done", "done_with_warnings"):
+            raise HTTPException(400, "翻译尚未完成")
+
+        output_dir = data_root / "output"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        block_translations = t.get("block_translations", [])
+        if not block_translations:
+            raise HTTPException(400, "未找到翻译结果")
+
+        # 从翻译结果构建幻灯片数据
+        slides_data: list[dict] = []
+        current_section: dict | None = None
+
+        for bt in block_translations:
+            if bt.get("type") == "heading":
+                # 新的章节
+                if current_section and current_section.get("key_points"):
+                    slides_data.append(current_section)
+                current_section = {
+                    "section_title": bt.get("translated") or bt.get("original", ""),
+                    "key_points": [],
+                    "notes": "",
+                }
+            elif current_section is not None:
+                text = bt.get("translated") or bt.get("original", "")
+                if text.strip():
+                    # 截取前 200 字符作为要点
+                    key_point = text.strip()[:200]
+                    if len(text.strip()) > 200:
+                        key_point += "..."
+                    current_section["key_points"].append(key_point)
+
+        # 不要忘记最后一个章节
+        if current_section and current_section.get("key_points"):
+            slides_data.append(current_section)
+
+        if not slides_data:
+            raise HTTPException(400, "无可导出的内容")
+
+        from src.formatter.pptx_exporter import export_translated_paper_to_pptx
+        out_pptx = output_dir / f"{payload.task_id}_presentation.pptx"
+        export_translated_paper_to_pptx(
+            out_pptx,
+            title=t.get("title", "学术报告"),
+            section_slides=slides_data,
+        )
+        return FileResponse(
+            out_pptx,
+            filename=f"{payload.task_id}_presentation.pptx",
+            media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        )
+
+    @app.post("/api/export/data_availability")
+    async def export_data_availability(payload: BilingualPdfPayload):
+        """生成 Data Availability 声明（P3: 借鉴 nature-data）"""
+        if payload.task_id not in tasks:
+            raise HTTPException(404, "任务不存在")
+        t = tasks[payload.task_id]
+        if t["status"] not in ("done", "done_with_warnings"):
+            raise HTTPException(400, "翻译尚未完成")
+
+        from src.formatter.data_availability import (
+            DatasetInfo,
+            AccessRoute,
+            format_data_availability_section,
+        )
+
+        # 从翻译结果中提取可能与数据相关的 block
+        block_translations = t.get("block_translations", [])
+        data_sections: list[str] = []
+        for bt in block_translations:
+            text = (bt.get("translated") or bt.get("original", "")).lower()
+            if any(kw in text for kw in [
+                "data", "dataset", "数据", "repository", "available",
+                "accession", "source data", "supplementary",
+            ]):
+                data_sections.append(bt.get("translated") or bt.get("original", ""))
+
+        # 生成声明框架
+        if data_sections:
+            # 有相关内容 → 生成含待确认项的框架
+            datasets = [
+                DatasetInfo(
+                    name="generated data",
+                    access_route=AccessRoute.PUBLIC_REPO,
+                    repository="",
+                    identifier="",
+                    description="raw and processed data supporting the findings",
+                )
+            ]
+            section = format_data_availability_section(
+                datasets=datasets,
+                output_format="nature",
+            )
+        else:
+            # 无相关内容 → 通用声明
+            section = format_data_availability_section(output_format="nature")
+
+        return {
+            "section": section,
+            "message": "请根据实际数据情况填写仓库名称、DOI/登录号等字段",
+        }
 
     @app.post("/api/translate/{task_id}/retry_block")
     async def retry_block_translation(task_id: str, payload: dict):

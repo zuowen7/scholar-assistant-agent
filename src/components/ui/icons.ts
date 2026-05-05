@@ -84,6 +84,10 @@ export {
   GitBranch,
   CornerDownRight,
 
+  // Export formats
+  Presentation as PresentationScreen,
+  Database,
+
   // Drag & drop
   CloudUpload as UploadCloud,
   Maximize2,

@@ -73,6 +73,8 @@ describe('TranslateState default shape', () => {
     fallbackChunks: 0,
     misalignedChunks: 0,
     ragIngested: false,
+    qaWarnings: [],
+    sectionMap: {},
   }
 
   it('has status idle by default', () => {

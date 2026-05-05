@@ -7,7 +7,10 @@
 - 数量不齐 → 按字符比例分配（兜底，与 _restore_paragraphs 同源）
 - 极端不齐 → 第一块拿全部译文，其余空（前端用 aligned=False 提示）
 
-非翻译块（公式/代码/表格）原样直通，不进入 LLM。
+章节感知翻译 (P0):
+- 每个 chunk 翻译时自动检测所属章节类型
+- 注入章节特定的翻译策略指令（Introduction/Results/Discussion/Methods 等）
+- 非翻译块（公式/代码/表格）原样直通，不进入 LLM。
 """
 
 from __future__ import annotations
@@ -21,6 +24,13 @@ from typing import AsyncGenerator
 from src.chunker import Block, BlockChunk
 from src.translator._helpers import TranslationResult, _sanitize_llm_output
 from src.cleaner.pipeline import protect_citations, restore_citations
+from src.translator.section_aware import (
+    SectionType,
+    SectionContext,
+    detect_section,
+    detect_section_from_heading,
+    get_section_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +57,7 @@ class ChunkBlockResult:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     model: str = ""
+    section_type: str = "unknown"    # 章节感知：当前 chunk 所属章节类型
 
     @property
     def chunk_text_original(self) -> str:
@@ -161,19 +172,63 @@ def _build_chunk_input_text(blocks: list[Block]) -> str:
     return "\n\n".join(b.text for b in blocks if b.translatable)
 
 
+def _detect_chunk_section(blocks: list[Block]) -> SectionContext:
+    """从 blocks 中检测当前 chunk 所属的章节类型。
+
+    优先从 heading 类型的 block 检测；如果没有 heading，从第一个可翻译 block
+    的文本内容检测；如果都检测不到，返回 UNKNOWN。
+    """
+    # 1. 优先从 heading block 检测
+    for b in blocks:
+        if b.type == "heading" and b.text.strip():
+            ctx = detect_section_from_heading(b.text)
+            if ctx.section_type != SectionType.UNKNOWN:
+                return ctx
+
+    # 2. 从第一个可翻译 block 的文本内容检测
+    for b in blocks:
+        if b.translatable and b.text.strip():
+            ctx = detect_section(b.text)
+            if ctx.section_type != SectionType.UNKNOWN:
+                return ctx
+
+    return SectionContext()
+
+
+def _inject_section_prompt(chunk_input: str, section_ctx: SectionContext) -> str:
+    """将章节感知翻译指令注入到 chunk 输入文本前面"""
+    if section_ctx.section_type == SectionType.UNKNOWN:
+        return chunk_input
+
+    section_prompt = get_section_prompt(section_ctx.section_type)
+    if not section_prompt:
+        return chunk_input
+
+    return section_prompt.strip() + "\n\n" + chunk_input
+
+
 async def translate_block_chunk(
     client,
     chunk: BlockChunk,
     blocks_by_id: dict[str, Block],
     prev_trans: str = "",
     source_lang: str = "en",
+    prev_section: SectionType = SectionType.UNKNOWN,
 ) -> ChunkBlockResult:
     """翻译一个 BlockChunk，返回按块对齐的结果
 
     沿用 client.translate 的同步重试逻辑（asyncio.to_thread），不复制重试代码。
+    自动检测章节类型并注入对应的翻译策略指令。
     """
     blocks = [blocks_by_id[bid] for bid in chunk.block_ids]
     chunk_input = _build_chunk_input_text(blocks)
+
+    # 章节感知：检测当前 chunk 所属章节并注入翻译策略
+    section_ctx = _detect_chunk_section(blocks)
+    if section_ctx.section_type == SectionType.UNKNOWN and prev_section != SectionType.UNKNOWN:
+        section_ctx.section_type = prev_section
+        section_ctx.confidence = 0.4  # 继承前文章节类型，置信度较低
+    chunk_input = _inject_section_prompt(chunk_input, section_ctx)
 
     # Protect inline citations from LLM rewrites
     chunk_input, citation_placeholders = protect_citations(chunk_input)
@@ -187,6 +242,7 @@ async def translate_block_chunk(
                 for b in blocks
             ],
             aligned=True,
+            section_type=section_ctx.section_type.value,
         )
 
     try:
@@ -204,6 +260,7 @@ async def translate_block_chunk(
             aligned=False,
             is_fallback=True,
             error=str(e),
+            section_type=section_ctx.section_type.value,
         )
 
     # Sanitize LLM output before alignment
@@ -251,6 +308,7 @@ async def translate_block_chunk(
                 prompt_tokens=result.prompt_tokens,
                 completion_tokens=result.completion_tokens,
                 model=result.model,
+                section_type=section_ctx.section_type.value,
             )
 
     is_fallback = result.original == result.translated
@@ -267,6 +325,7 @@ async def translate_block_chunk(
         prompt_tokens=result.prompt_tokens,
         completion_tokens=result.completion_tokens,
         model=result.model,
+        section_type=section_ctx.section_type.value,
     )
 
 
@@ -290,10 +349,14 @@ async def translate_block_chunks_parallel(
     # 串行路径
     if max_concurrency <= 1:
         prev_trans = ""
+        prev_section = SectionType.UNKNOWN
         for chunk in chunks:
-            cr = await translate_block_chunk(client, chunk, blocks_by_id, prev_trans, source_lang=source_lang)
+            cr = await translate_block_chunk(client, chunk, blocks_by_id, prev_trans,
+                                             source_lang=source_lang, prev_section=prev_section)
             yield cr
             prev_trans = cr.chunk_text_translated
+            if cr.section_type != "unknown":
+                prev_section = SectionType(cr.section_type)
             await asyncio.sleep(0.05)
         return
 
@@ -304,7 +367,8 @@ async def translate_block_chunks_parallel(
 
     async def _run(idx: int) -> None:
         async with sem:
-            cr = await translate_block_chunk(client, chunks[idx], blocks_by_id, "", source_lang=source_lang)
+            cr = await translate_block_chunk(client, chunks[idx], blocks_by_id, "",
+                                             source_lang=source_lang, prev_section=SectionType.UNKNOWN)
         completed[chunks[idx].index] = cr
 
     tasks = [asyncio.create_task(_run(i)) for i in range(total)]

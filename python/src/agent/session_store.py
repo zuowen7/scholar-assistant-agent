@@ -245,7 +245,7 @@ class SessionStore:
                 "approval_timeout": session.config.approval_timeout,
             },
             "messages": [
-                _serialize_message(m)
+                self._serialize_message(m)
                 for m in session.messages
             ],
             "task_queue": [
