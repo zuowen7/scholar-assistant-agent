@@ -22,6 +22,8 @@ from src.agent.tools.builtin_tools import _crawl_arxiv, _manage_knowledge
 from src.agent.tools.workspace_tools import (
     _build_git_command,
     _git_op,
+    _glob_files,
+    _grep_files,
     _list_directory,
     _read_file_v2,
     _run_command_v2,
@@ -566,9 +568,36 @@ BibTeX 条目：
         """
         return _git_op(operation, ws_env, args=args)
 
+    def grep_files(pattern: str, path: str = ".", glob: str = "*", case_sensitive: bool = True, max_results: int = 50, context_lines: int = 0) -> str:
+        """在工作区文件中正则搜索内容，返回匹配行。比 list+read 快 10 倍以上。
+
+        Args:
+            pattern: 正则表达式或字面字符串。
+            path: 搜索根目录（相对项目根），默认 "."。
+            glob: 文件过滤 glob，如 "*.py"，默认 "*"。
+            case_sensitive: 是否区分大小写，默认 True。
+            max_results: 最多返回匹配数，默认 50。
+            context_lines: 每条匹配上下各显示 N 行，默认 0。
+        """
+        return _grep_files(pattern, ws_env, path=path, glob=glob,
+                           case_sensitive=case_sensitive, max_results=max_results,
+                           context_lines=context_lines)
+
+    def glob_files(pattern: str, path: str = ".", max_results: int = 200) -> str:
+        """在工作区中按 glob 模式匹配文件路径，如 '**/*.py'。
+
+        Args:
+            pattern: glob 模式，如 "**/*.py" 或 "src/**/*.ts"。
+            path: 搜索根目录（相对项目根），默认 "."。
+            max_results: 最多返回条目数，默认 200。
+        """
+        return _glob_files(pattern, ws_env, path=path, max_results=max_results)
+
     for fn, tool_name, desc in [
         (read_file_v2, "read_file", "读取项目工作区内的文件，返回带行号的内容。支持 offset/limit 分页。"),
         (list_directory, "list_directory", "列出目录内容，返回带类型和大小的结构。支持递归和 glob 过滤。"),
+        (grep_files, "grep_files", "在工作区文件中正则搜索内容，返回匹配行。比 list+read 快 10 倍以上。支持 glob 文件过滤和上下文行。"),
+        (glob_files, "glob_files", "按 glob 模式匹配工作区文件路径，如 '**/*.py'、'src/**/*.ts'。"),
         (str_replace, "str_replace", "精确字符串替换。在文件中找到唯一匹配的旧字符串并替换。"),
         (write_file, "write_file", "整文件写入。用于新建文件或全量重写。会自动备份被覆盖的文件。"),
         (undo_last_change, "undo_last_change", "回退最近 N 次破坏性操作。从 .agent_backup 中恢复文件。"),

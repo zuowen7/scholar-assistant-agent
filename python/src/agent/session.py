@@ -18,7 +18,10 @@ from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator, Callable
 
+import hashlib
+
 from src.agent.agent import AgentLoop, GLOBAL_MAX_STEPS, TASK_MAX_STEPS, _TOOL_RESULT_MAX_CHARS
+from src.agent.error_classifier import classify_error, ErrorType
 from src.agent.change_journal import ChangeJournal
 from src.agent.hooks import HookContext, HookPoint
 from src.agent.models import (
@@ -233,7 +236,7 @@ class AgentSession:
         """
         task_step = 0
         self.consecutive_errors = 0
-        _recent_tool_names: list[str] = []
+        _recent_fingerprints: list[str] = []  # (tool_name, args_hash) 用于精确循环检测
         _loop_hint = ""
 
         while (
@@ -274,7 +277,14 @@ class AgentSession:
                 yield ev
 
             if step_result.error:
-                self.consecutive_errors += 1
+                # 区分错误类型：API 限流/超时不计入 consecutive_errors，工具/格式错误才计
+                _err_type = classify_error(Exception(step_result.error))
+                _is_transient = _err_type in (
+                    ErrorType.RATE_LIMIT, ErrorType.OVERLOADED,
+                    ErrorType.SERVER_ERROR, ErrorType.TIMEOUT,
+                )
+                if not _is_transient:
+                    self.consecutive_errors += 1
                 if self.consecutive_errors >= 5:
                     continue
                 yield AgentEvent(
@@ -285,15 +295,31 @@ class AgentSession:
 
             self.consecutive_errors = 0
 
-            # 工具循环检测：同一工具连续调用 ≥3 次则标记提示
+            # 工具循环检测：基于 (tool_name, args_hash) 精确匹配，连续 ≥2 次完全相同则提示
             if step_result.tool_calls:
+                import json as _json
                 for tc in step_result.tool_calls:
-                    _recent_tool_names.append(tc.name)
-                if len(_recent_tool_names) >= 3:
-                    last3 = _recent_tool_names[-3:]
-                    if len(set(last3)) == 1:
-                        _loop_hint = f"[系统提示] 你已连续 3 次调用 {last3[0]}，请不要再重复调用同一工具。基于已有信息直接给出最终回答。"
-                        _recent_tool_names.clear()
+                    _args_hash = hashlib.md5(
+                        _json.dumps(tc.arguments, sort_keys=True, ensure_ascii=False).encode()
+                    ).hexdigest()[:8]
+                    _recent_fingerprints.append(f"{tc.name}:{_args_hash}")
+                if len(_recent_fingerprints) >= 2:
+                    last2 = _recent_fingerprints[-2:]
+                    if last2[0] == last2[1]:
+                        _loop_hint = (
+                            f"[系统提示] 你已连续 2 次以完全相同的参数调用 {step_result.tool_calls[0].name}，"
+                            "结果不会改变。请基于已有信息直接给出最终回答，不要再重复调用。"
+                        )
+                        _recent_fingerprints.clear()
+                elif len(_recent_fingerprints) >= 3:
+                    # 退化检测：仅工具名相同（参数不同）连续 3 次也提示
+                    last3_names = [fp.split(":")[0] for fp in _recent_fingerprints[-3:]]
+                    if len(set(last3_names)) == 1:
+                        _loop_hint = (
+                            f"[系统提示] 你已连续 3 次调用 {last3_names[0]}，"
+                            "请考虑换一种方式或直接给出最终回答。"
+                        )
+                        _recent_fingerprints.clear()
 
             # 无工具调用 → 最终回答
             if not step_result.tool_calls:

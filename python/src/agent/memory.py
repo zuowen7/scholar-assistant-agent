@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import sqlite3
@@ -60,13 +61,14 @@ class MemoryManager:
         memory_file: MEMORY.md 文件路径。
     """
 
-    def __init__(self, data_dir: str | Path = "data/agent") -> None:
+    def __init__(self, data_dir: str | Path = "data/agent", rag_store: Any | None = None) -> None:
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.memory_file = self.data_dir / "MEMORY.md"
         self._db_path = self.data_dir / "memory.db"
         self._local = threading.local()
         self._write_lock = threading.Lock()
+        self._rag_store = rag_store  # 可选向量搜索后端（RAGStore，使用独立 collection）
         self._init_db()
 
     # ------------------------------------------------------------------
@@ -170,7 +172,7 @@ class MemoryManager:
     # ------------------------------------------------------------------
 
     def add_memory(self, content: str, category: str = "fact", source: str = "review", importance: float = 0.5) -> int:
-        """添加一条记忆。
+        """添加一条记忆，自动去重（相同内容不重复写入）。
 
         Args:
             content: 记忆内容。
@@ -179,32 +181,64 @@ class MemoryManager:
             importance: 重要性评分。
 
         Returns:
-            新记录的 ID。
+            新记录的 ID（重复内容返回 0）。
         """
         now = datetime.now().isoformat(timespec="seconds")
         with self._write_lock:
             conn = self._connect()
-            cursor = conn.execute(
-                "INSERT INTO memories (content, category, source, importance, created_at) VALUES (?, ?, ?, ?, ?)",
-                (content, category, source, importance, now),
-            )
-            conn.commit()
-            memory_id = cursor.lastrowid
-            logger.info("新记忆 #%d [%s]: %s", memory_id, category, content[:80])
-            return memory_id or 0
+            try:
+                cursor = conn.execute(
+                    "INSERT INTO memories (content, category, source, importance, created_at) VALUES (?, ?, ?, ?, ?)",
+                    (content, category, source, importance, now),
+                )
+                conn.commit()
+                memory_id = cursor.lastrowid
+                logger.info("新记忆 #%d [%s]: %s", memory_id, category, content[:80])
+
+                # 同步到向量 RAG（如果可用），便于语义检索
+                if self._rag_store is not None:
+                    try:
+                        _doc_id = f"mem_{hashlib.md5(content.encode()).hexdigest()[:12]}"
+                        self._rag_store.ingest_document(_doc_id, content,
+                                                        metadata={"category": category, "source": source})
+                    except Exception as _ve:
+                        logger.debug("记忆向量化失败（非致命）: %s", _ve)
+
+                return memory_id or 0
+            except sqlite3.IntegrityError:
+                # UNIQUE 约束冲突 → 内容已存在，静默跳过
+                return 0
 
     def search_memories(self, keywords: str, limit: int = 5) -> list[MemoryEntry]:
-        """按关键词搜索记忆。
-
-        简单的 LIKE 搜索，按重要性降序排列。
+        """搜索记忆：优先向量语义检索，降级回关键词 LIKE 搜索。
 
         Args:
-            keywords: 搜索关键词。
+            keywords: 搜索关键词或自然语言查询。
             limit: 返回上限。
 
         Returns:
             匹配的记忆列表。
         """
+        # 尝试向量检索（需要 rag_store 且有 memories collection）
+        if self._rag_store is not None:
+            try:
+                results = self._rag_store.retrieve_context(keywords, top_k=limit)
+                if results:
+                    entries: list[MemoryEntry] = []
+                    for r in results:
+                        entries.append(MemoryEntry(
+                            id=0,
+                            content=r.get("text", ""),
+                            category=r.get("metadata", {}).get("category", "fact"),
+                            source=r.get("metadata", {}).get("source", "review"),
+                            created_at="",
+                            importance=max(0.0, min(1.0, 1.0 - r.get("distance", 0.5))),
+                        ))
+                    return entries
+            except Exception as _ve:
+                logger.debug("向量记忆检索失败，降级为 LIKE: %s", _ve)
+
+        # 降级：SQLite LIKE 关键词搜索
         conn = self._connect()
         safe_keywords = (
             keywords.replace("\\", "\\\\")
