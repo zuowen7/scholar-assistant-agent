@@ -20,6 +20,7 @@ from typing import AsyncGenerator
 
 from src.chunker import Block, BlockChunk
 from src.translator._helpers import TranslationResult, _sanitize_llm_output
+from src.cleaner.pipeline import protect_citations, restore_citations
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +175,9 @@ async def translate_block_chunk(
     blocks = [blocks_by_id[bid] for bid in chunk.block_ids]
     chunk_input = _build_chunk_input_text(blocks)
 
+    # Protect inline citations from LLM rewrites
+    chunk_input, citation_placeholders = protect_citations(chunk_input)
+
     # 没有可翻译内容（整 chunk 全是公式/代码/表格）
     if not chunk_input.strip():
         return ChunkBlockResult(
@@ -204,6 +208,10 @@ async def translate_block_chunk(
 
     # Sanitize LLM output before alignment
     sanitized = _sanitize_llm_output(result.translated, source_lang=source_lang)
+
+    # Restore protected citations
+    if citation_placeholders:
+        sanitized = restore_citations(sanitized, citation_placeholders)
 
     block_trans, aligned = _align_translation_to_blocks(blocks, sanitized)
 

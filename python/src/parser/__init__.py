@@ -6,6 +6,7 @@ from src.parser.dispatcher import (
     get_supported_extensions,
     SUPPORTED_EXTENSIONS,
 )
+from src.parser.article_detector import detect_articles, extract_articles
 
 __all__ = [
     "extract_text",
@@ -13,4 +14,6 @@ __all__ = [
     "extract_document",
     "get_supported_extensions",
     "SUPPORTED_EXTENSIONS",
+    "detect_articles",
+    "extract_articles",
 ]

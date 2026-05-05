@@ -18,8 +18,10 @@ cleaner:
 
 # 文本切块
 chunker:
-  # 每块最大 token 数 (面向 Qwen3)
-  max_tokens: 2048
+  # 每块最大 token 数 (面向 Qwen3, block-aware 模式下缩小以提升对齐率)
+  max_tokens: 800
+  # block-aware 模式下必须为 0，否则同一 block 会被重复翻译
+  overlap_tokens: 0
   # 切块策略: sentence | paragraph | fixed
   strategy: sentence
 

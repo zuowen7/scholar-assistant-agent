@@ -466,6 +466,11 @@ def _looks_like_pdf_heading(text: str) -> int:
     s = text.strip()
     if not s or "\n" in s or len(s) > _HEADING_MAX_CHARS:
         return 0
+
+    # 排除: 含 "F. Last" 模式（人名如 "Laurie S. Huning"）
+    if re.search(r"\b[A-Z]\.\s+[A-Z][a-z]+\b", s):
+        return 0
+
     if s[-1] in _HEADING_PUNCT_END:
         # 允许 "1. Introduction" 这种以 "." 在编号后的形式
         if not re.match(r"^\d+(\.\d+)*\.?\s+\S", s):
@@ -640,6 +645,13 @@ def pack_blocks_into_chunks(
     """
     if not blocks:
         return []
+
+    if overlap_tokens > 0:
+        import logging
+        logging.getLogger(__name__).warning(
+            "overlap_tokens=%d 在 block-aware 模式下可能导致重复翻译，建议设置 overlap_tokens=0",
+            overlap_tokens,
+        )
 
     full_text = "\n\n".join(b.text for b in blocks)
     chars_per_token = _estimate_chars_per_token(full_text)
