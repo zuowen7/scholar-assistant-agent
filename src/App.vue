@@ -666,11 +666,13 @@ async function loadEngineSettings() {
     const t = config.translator
     engineType.value = (t.engine as 'ollama' | 'cloud') || 'ollama'
     if (t.cloud) {
+      const provider = t.cloud.provider || 'openai'
+      const preset = providerPresets.value[provider]
       cloudConfig.value = {
-        provider: t.cloud.provider || 'openai',
+        provider,
         api_key: t.cloud.api_key || '',
-        base_url: t.cloud.base_url || 'https://api.openai.com/v1',
-        model: t.cloud.model || 'gpt-4o',
+        base_url: t.cloud.base_url || preset?.base_url || 'https://api.openai.com/v1',
+        model: t.cloud.model || preset?.models?.[0] || 'gpt-4o',
         max_tokens: t.cloud.max_tokens || 16384,
       }
     }
@@ -701,12 +703,14 @@ async function saveProxy() {
   })
 }
 
-function onProviderChange() {
-  const preset = providerPresets.value[cloudConfig.value.provider]
+function onProviderChange(provider = cloudConfig.value.provider) {
+  const preset = providerPresets.value[provider]
   if (preset) {
-    cloudConfig.value.base_url = preset.base_url
-    if (preset.models.length > 0) {
-      cloudConfig.value.model = preset.models[0]
+    cloudConfig.value = {
+      ...cloudConfig.value,
+      provider,
+      base_url: preset.base_url,
+      model: preset.models.length > 0 ? preset.models[0] : cloudConfig.value.model,
     }
   }
 }

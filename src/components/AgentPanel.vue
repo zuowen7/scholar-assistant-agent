@@ -632,7 +632,7 @@ onUnmounted(() => {
   margin-top: 62px;
   background: var(--c-glass);
   border-left: 1px solid var(--c-glass-border);
-  box-shadow: inset 1px 0 0 var(--vermilion-0);
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--c-text-3) 16%, transparent);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
   display: flex; flex-direction: column;
