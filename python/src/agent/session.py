@@ -142,8 +142,14 @@ class AgentSession:
         # 构建初始消息
         self.messages = self.agent._build_messages(query, history)
 
-        # 单任务直接入队
-        self.task_queue.add(query)
+        # Task decomposition: split complex queries into sub-tasks
+        sub_tasks = self._decompose_query(query)
+        if sub_tasks and len(sub_tasks) > 1:
+            for st in sub_tasks:
+                self.task_queue.add(st)
+            logger.info("任务分解: %d 个子任务", len(sub_tasks))
+        else:
+            self.task_queue.add(query)
 
         self.state = SessionState.EXECUTING
         self._checkpoint()
@@ -583,6 +589,44 @@ class AgentSession:
             return skills.nudge_check()
         except Exception:
             return None
+
+    @staticmethod
+    def _decompose_query(query: str) -> list[str] | None:
+        """Lightweight rule-based task decomposition.
+
+        Splits queries that explicitly enumerate multiple steps into separate
+        sub-tasks.  Returns None (single-task) when no decomposition is needed.
+        """
+        import re as _re
+
+        # Pattern 1: numbered list "1. xxx  2. xxx" or "第一步xxx 第二步xxx"
+        # Split on the markers, keeping what follows
+        parts = _re.split(r"\s*(?:\d+[.)、]|第[一二三四五六七八九十]+步[：:]?)\s*", query)
+        parts = [p.strip() for p in parts if p.strip() and len(p.strip()) > 2]
+        if len(parts) >= 2:
+            return parts
+
+        # Pattern 2: Chinese semicolon or semicolon-separated distinct tasks
+        if "；" in query or "; " in query:
+            parts = _re.split(r"[；;]\s*", query)
+            parts = [p.strip() for p in parts if p.strip() and len(p.strip()) > 2]
+            if len(parts) >= 2:
+                return parts
+
+        # Pattern 3: explicit connector words indicating sequential tasks
+        connectors = ["然后", "接着", "之后", "再", "最后"]
+        parts = [query]
+        for conn in connectors:
+            new_parts: list[str] = []
+            for p in parts:
+                sub = p.split(conn, 1)
+                new_parts.extend(sub)
+            parts = new_parts
+        parts = [p.strip() for p in parts if p.strip() and len(p.strip()) > 2]
+        if len(parts) >= 3:
+            return parts
+
+        return None
 
     async def resume(
         self,

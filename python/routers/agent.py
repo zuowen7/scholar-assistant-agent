@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -70,7 +71,9 @@ def register_agent(
     _shared: dict = {}
     _init_lock = asyncio.Lock()
     _session_pool: dict[str, AgentSession] = {}
+    _session_pool_timestamps: dict[str, float] = {}
     _session_store: SessionStore | None = None
+    _SESSION_POOL_TTL = 3600  # 1 hour
 
     def get_rag_store():
         return _shared.get("rag_store")
@@ -160,6 +163,29 @@ def register_agent(
 
             logger.info("Agent shared resources initialized (rag=%s)", rag_dir)
             return _shared
+
+    # ------------------------------------------------------------------
+    # Session pool cleanup
+    # ------------------------------------------------------------------
+
+    def _cleanup_session_pool() -> int:
+        """Remove stale sessions from the pool. Returns count removed."""
+        now = time.monotonic()
+        stale_ids = [
+            sid for sid, ts in _session_pool_timestamps.items()
+            if now - ts > _SESSION_POOL_TTL
+        ]
+        for sid in stale_ids:
+            session = _session_pool.pop(sid, None)
+            _session_pool_timestamps.pop(sid, None)
+            if session is not None:
+                try:
+                    session.state = SessionState.ABORTED
+                except Exception:
+                    pass
+        if stale_ids:
+            logger.info("Session pool cleanup: removed %d stale sessions", len(stale_ids))
+        return len(stale_ids)
 
     # ------------------------------------------------------------------
     # Per-request AgentLoop factory
@@ -319,6 +345,8 @@ def register_agent(
             event_callback=_on_event,
         )
         _session_pool[session.id] = session
+        _session_pool_timestamps[session.id] = time.monotonic()
+        _cleanup_session_pool()
 
         # Update event stream filename with actual session id
         if trajectory._event_stream_path:
@@ -345,6 +373,7 @@ def register_agent(
                     }
             finally:
                 _session_pool.pop(session.id, None)
+                _session_pool_timestamps.pop(session.id, None)
                 success = session.state == SessionState.DONE
                 trajectory.finish_event_stream(success=success)
                 await agent.close()
@@ -467,6 +496,7 @@ def register_agent(
                 workspace_root=str(session.workspace.root) if session.workspace else None
             )
             _session_pool[session_id] = session
+            _session_pool_timestamps[session_id] = time.monotonic()
 
             async def _resume_stream() -> AsyncGenerator[dict, None]:
                 try:
@@ -484,6 +514,7 @@ def register_agent(
                         }
                 finally:
                     _session_pool.pop(session_id, None)
+                    _session_pool_timestamps.pop(session_id, None)
                     await agent.close()
 
             return EventSourceResponse(_resume_stream(), media_type="text/event-stream")
@@ -535,6 +566,7 @@ def register_agent(
         session.global_step = data["global_step"]
         session.state = SessionState.EXECUTING
         _session_pool[session_id] = session
+        _session_pool_timestamps[session_id] = time.monotonic()
 
         async def _restored_stream() -> AsyncGenerator[dict, None]:
             try:
@@ -552,6 +584,7 @@ def register_agent(
                     }
             finally:
                 _session_pool.pop(session_id, None)
+                _session_pool_timestamps.pop(session_id, None)
                 await agent.close()
 
         return EventSourceResponse(_restored_stream(), media_type="text/event-stream")

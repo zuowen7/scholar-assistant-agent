@@ -26,6 +26,9 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _MEMORY_MAX_CHARS = 3000
+_MEMORY_MAX_ROWS = 500
+_MEMORY_PRUNE_IMPORTANCE = 0.3
+_MEMORY_FUZZY_DUP_THRESHOLD = 0.6
 
 
 @dataclass
@@ -172,7 +175,7 @@ class MemoryManager:
     # ------------------------------------------------------------------
 
     def add_memory(self, content: str, category: str = "fact", source: str = "review", importance: float = 0.5) -> int:
-        """添加一条记忆，自动去重（相同内容不重复写入）。
+        """添加一条记忆，自动去重（精确+模糊）。
 
         Args:
             content: 记忆内容。
@@ -187,6 +190,10 @@ class MemoryManager:
         with self._write_lock:
             conn = self._connect()
             try:
+                # Fuzzy dedup: check if a similar memory already exists
+                if self._is_fuzzy_duplicate(conn, content):
+                    return 0
+
                 cursor = conn.execute(
                     "INSERT INTO memories (content, category, source, importance, created_at) VALUES (?, ?, ?, ?, ?)",
                     (content, category, source, importance, now),
@@ -204,9 +211,11 @@ class MemoryManager:
                     except Exception as _ve:
                         logger.debug("记忆向量化失败（非致命）: %s", _ve)
 
+                # Auto-prune if exceeding max rows
+                self._auto_prune(conn)
+
                 return memory_id or 0
             except sqlite3.IntegrityError:
-                # UNIQUE 约束冲突 → 内容已存在，静默跳过
                 return 0
 
     def search_memories(self, keywords: str, limit: int = 5) -> list[MemoryEntry]:
@@ -387,6 +396,66 @@ class MemoryManager:
         mem_count = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
         conv_count = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
         return {"memories_count": mem_count, "conversations_count": conv_count}
+
+    # ------------------------------------------------------------------
+    # 去重 & 修剪
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _char_ngrams(text: str, n: int = 2) -> set[str]:
+        """生成字符 n-gram 集合用于模糊匹配。Bigram (n=2) works well for CJK."""
+        text = text.lower().strip()
+        if len(text) < n:
+            return {text}
+        return {text[i:i + n] for i in range(len(text) - n + 1)}
+
+    @staticmethod
+    def _jaccard(set_a: set[str], set_b: set[str]) -> float:
+        """计算两个集合的 Jaccard 相似度。"""
+        if not set_a or not set_b:
+            return 0.0
+        return len(set_a & set_b) / len(set_a | set_b)
+
+    def _is_fuzzy_duplicate(self, conn: sqlite3.Connection, content: str) -> bool:
+        """检查新内容是否与已有记忆高度相似（模糊去重）。"""
+        # Skip fuzzy check for very short content
+        if len(content) < 10:
+            return False
+
+        new_ngrams = self._char_ngrams(content)
+
+        # Only check recent memories in same category (limit scan for performance)
+        rows = conn.execute(
+            "SELECT content FROM memories ORDER BY id DESC LIMIT 50"
+        ).fetchall()
+
+        for (existing,) in rows:
+            if len(existing) < 10:
+                continue
+            existing_ngrams = self._char_ngrams(existing)
+            sim = self._jaccard(new_ngrams, existing_ngrams)
+            if sim >= _MEMORY_FUZZY_DUP_THRESHOLD:
+                logger.debug("模糊去重: 新内容与已有记忆相似度 %.2f，跳过", sim)
+                return True
+        return False
+
+    def _auto_prune(self, conn: sqlite3.Connection) -> None:
+        """当记忆条数超过上限时，删除低重要性的旧记忆。"""
+        count = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
+        if count <= _MEMORY_MAX_ROWS:
+            return
+
+        # Delete oldest low-importance entries to get back under the limit
+        to_delete = count - _MEMORY_MAX_ROWS + 50  # delete extra to avoid frequent pruning
+        conn.execute(
+            "DELETE FROM memories WHERE id IN ("
+            "  SELECT id FROM memories WHERE importance <= ? ORDER BY id ASC LIMIT ?"
+            ")",
+            (_MEMORY_PRUNE_IMPORTANCE, to_delete),
+        )
+        conn.commit()
+        remaining = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
+        logger.info("记忆修剪: %d → %d 条 (阈值=%d)", count, remaining, _MEMORY_MAX_ROWS)
 
     def close(self) -> None:
         conn: sqlite3.Connection | None = getattr(self._local, "conn", None)

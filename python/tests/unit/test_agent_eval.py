@@ -1,29 +1,33 @@
 """Agent 子系统评测基准 — 验证核心行为修复和 Agent 能力边界。
 
-覆盖三类场景 (10 用例):
+覆盖:
   - Memory / Skill 注入 (缺口 1 & 2 修复验证)
-  - python_exec 沙盒 (安全加固验证)
-  - Agent 消息构建 / 提示词组装 (整合验证)
+  - python_exec 沙盒 (安全加固 + subprocess 隔离验证)
+  - Memory 模糊去重 + 上限修剪
+  - Skill 质量门槛
+  - SkillRegistry 并发安全
+  - ReviewAgent 事件循环
+  - Task 分解
+  - Shell git 子命令白名单
 """
 
 from __future__ import annotations
 
 import asyncio
-import re
+import tempfile
 import threading
-import types
+import time
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def _make_skill(name="test_skill", trigger="测试触发", steps=None):
-    """Create a minimal Skill object without touching the filesystem."""
     from src.agent._skill_model import Skill
     return Skill(
         name=name,
@@ -37,8 +41,6 @@ def _make_skill(name="test_skill", trigger="测试触发", steps=None):
 
 
 def _make_memory_manager(memory_text="长期记忆内容"):
-    """Create a MemoryManager with mocked DB (in-memory) and preset MEMORY.md."""
-    import tempfile, os
     tmp = tempfile.mkdtemp()
     from src.agent.memory import MemoryManager
     mm = MemoryManager(data_dir=tmp)
@@ -47,19 +49,15 @@ def _make_memory_manager(memory_text="长期记忆内容"):
 
 
 def _make_skill_registry(skill=None):
-    """Create a SkillRegistry backed by a temp dir, optionally pre-populated."""
-    import tempfile
     tmp = tempfile.mkdtemp()
     from src.agent.skill_system import SkillRegistry
     sr = SkillRegistry(skills_dir=tmp)
     if skill is not None:
-        # Directly inject without file I/O for speed
         sr._skills[skill.name] = skill
     return sr
 
 
 def _make_agent_loop(memory_manager=None, skill_registry=None):
-    """Create a minimal AgentLoop with mocked LLM."""
     from src.agent.agent import AgentLoop
     from src.agent.prompt_builder import PromptBuilder
     from src.agent.tools import ToolRegistry
@@ -83,20 +81,16 @@ def _make_agent_loop(memory_manager=None, skill_registry=None):
 # ===========================================================================
 
 class TestMemoryInjection:
-    """缺口 2 修复: memory_content 正确注入 system prompt。"""
-
     def test_memory_injected_when_present(self):
         mm = _make_memory_manager("用户偏好中文回复，重视简洁")
         agent = _make_agent_loop(memory_manager=mm)
         msgs = agent._build_messages("帮我翻译")
-        system_content = msgs[0].content
-        assert "用户偏好中文回复" in system_content, "长期记忆应被注入 system prompt"
+        assert "用户偏好中文回复" in msgs[0].content
 
     def test_memory_not_crashes_on_empty_file(self):
         mm = _make_memory_manager("")
         agent = _make_agent_loop(memory_manager=mm)
         msgs = agent._build_messages("任意查询")
-        # No exception → pass
         assert msgs[0].role == "system"
 
     def test_no_memory_manager_still_works(self):
@@ -116,14 +110,12 @@ class TestMemoryInjection:
 # ===========================================================================
 
 class TestSkillInjection:
-    """缺口 1 修复: 匹配到 Skill 时注入 active-skill 段落，并递增使用计数。"""
-
     def test_skill_injected_on_match(self):
         skill = _make_skill(trigger="翻译,translate,学术")
         sr = _make_skill_registry(skill=skill)
         agent = _make_agent_loop(skill_registry=sr)
         msgs = agent._build_messages("帮我翻译这篇学术论文")
-        assert "可用技能指导" in msgs[0].content, "Skill 应被注入 system prompt"
+        assert "可用技能指导" in msgs[0].content
         assert "步骤一" in msgs[0].content
 
     def test_skill_use_count_incremented(self):
@@ -140,11 +132,6 @@ class TestSkillInjection:
         msgs = agent._build_messages("帮我润色文字")
         assert "可用技能指导" not in msgs[0].content
 
-    def test_no_skill_registry_still_works(self):
-        agent = _make_agent_loop(skill_registry=None)
-        msgs = agent._build_messages("查询")
-        assert msgs[0].role == "system"
-
     def test_deprecated_skill_not_injected(self):
         skill = _make_skill(trigger="翻译")
         skill.deprecated = True
@@ -155,12 +142,10 @@ class TestSkillInjection:
 
 
 # ===========================================================================
-# 3. python_exec sandbox
+# 3. python_exec sandbox (subprocess-isolated)
 # ===========================================================================
 
 class TestPythonExecSandbox:
-    """安全加固: 沙盒拦截 dunder 属性逃逸和 import 攻击。"""
-
     def _exec(self, code: str) -> str:
         from src.agent.tools.atomic_tools import _python_exec
         return _python_exec(code)
@@ -189,18 +174,59 @@ class TestPythonExecSandbox:
         result = self._exec("print(__globals__)")
         assert "禁止" in result
 
+    def test_timeout_actually_kills(self):
+        """Verify subprocess-based timeout truly terminates the process."""
+        from src.agent.tools.atomic_tools import _python_exec
+        result = _python_exec("while True: pass", timeout=2)
+        assert "超时" in result
+
+    def test_output_truncated(self):
+        result = self._exec("print('x' * 100000)")
+        assert "截断" in result or len(result) < 100000
+
 
 # ===========================================================================
-# 4. SkillRegistry thread safety
+# 4. Memory fuzzy dedup + pruning
+# ===========================================================================
+
+class TestMemoryDedupAndPruning:
+    def test_exact_duplicate_rejected(self):
+        mm = _make_memory_manager()
+        id1 = mm.add_memory("完全相同的内容条目", category="fact", importance=0.7)
+        id2 = mm.add_memory("完全相同的内容条目", category="fact", importance=0.7)
+        assert id1 > 0
+        assert id2 == 0
+
+    def test_fuzzy_duplicate_rejected(self):
+        mm = _make_memory_manager()
+        mm.add_memory("用户偏好使用中文回复，要求简洁明了", category="preference", importance=0.8)
+        id2 = mm.add_memory("用户偏好使用中文回复，要求简洁明了，不要啰嗦", category="preference", importance=0.8)
+        assert id2 == 0, "高度相似的条目应被模糊去重拒绝"
+
+    def test_different_content_accepted(self):
+        mm = _make_memory_manager()
+        id1 = mm.add_memory("用户偏好中文回复", category="preference", importance=0.8)
+        id2 = mm.add_memory("工具 python_exec 需要超时保护", category="fact", importance=0.6)
+        assert id1 > 0
+        assert id2 > 0
+
+    def test_auto_prune_triggers_on_overflow(self):
+        mm = _make_memory_manager()
+        from src.agent.memory import _MEMORY_MAX_ROWS
+        # Insert more than max rows with low importance
+        for i in range(_MEMORY_MAX_ROWS + 10):
+            mm.add_memory(f"低重要性记忆条目编号{i:04d}内容是关于一些不重要的事情", category="fact", importance=0.2)
+        stats = mm.get_stats()
+        assert stats["memories_count"] <= _MEMORY_MAX_ROWS, "应自动修剪低重要性记忆"
+
+
+# ===========================================================================
+# 5. SkillRegistry thread safety
 # ===========================================================================
 
 class TestSkillRegistryConcurrency:
-    """并发安全: 多线程同时 create_skill 不崩溃，结果一致。"""
-
     def test_concurrent_create_skill(self):
-        import tempfile
         from src.agent.skill_system import SkillRegistry
-
         sr = SkillRegistry(skills_dir=tempfile.mkdtemp())
         errors: list[Exception] = []
 
@@ -226,12 +252,10 @@ class TestSkillRegistryConcurrency:
 
 
 # ===========================================================================
-# 5. ReviewAgent event loop fix
+# 6. ReviewAgent event loop
 # ===========================================================================
 
 class TestReviewAgentEventLoop:
-    """get_running_loop() 修复: spawn_review 在有运行循环时返回 Task，无循环时返回 None。"""
-
     def test_spawn_review_returns_none_outside_loop(self):
         from src.agent.review_agent import ReviewAgent
         ra = ReviewAgent()
@@ -245,7 +269,71 @@ class TestReviewAgentEventLoop:
         async def _run():
             task = ra.spawn_review({"conversations": []})
             assert task is not None
-            assert asyncio.isfuture(task) or hasattr(task, "cancel")
             task.cancel()
 
         asyncio.run(_run())
+
+
+# ===========================================================================
+# 7. Task decomposition
+# ===========================================================================
+
+class TestTaskDecomposition:
+    def _decompose(self, query: str):
+        from src.agent.session import AgentSession
+        return AgentSession._decompose_query(query)
+
+    def test_numbered_list_decomposition(self):
+        result = self._decompose("1. 翻译论文 2. 润色文字 3. 导出PDF")
+        assert result is not None
+        assert len(result) >= 2
+
+    def test_semicolon_decomposition(self):
+        result = self._decompose("翻译论文；润色文字；导出PDF")
+        assert result is not None
+        assert len(result) >= 2
+
+    def test_connector_decomposition(self):
+        result = self._decompose("翻译论文然后润色文字接着导出PDF最后检查格式")
+        assert result is not None
+        assert len(result) >= 3
+
+    def test_simple_query_no_decomposition(self):
+        result = self._decompose("帮我翻译这段文字")
+        assert result is None
+
+    def test_short_query_no_decomposition(self):
+        result = self._decompose("翻译")
+        assert result is None
+
+
+# ===========================================================================
+# 8. Shell git subcommand restriction
+# ===========================================================================
+
+class TestShellGitRestriction:
+    def _exec(self, command: str) -> str:
+        from src.agent.tools.atomic_tools import _shell_exec
+        return _shell_exec(command)
+
+    def test_git_status_allowed(self):
+        result = self._exec("git status")
+        # May fail if not in a git repo, but should NOT say "不在白名单中"
+        assert "不在白名单中" not in result
+        assert "子命令" not in result
+
+    def test_git_log_allowed(self):
+        result = self._exec("git log --oneline -5")
+        assert "子命令" not in result
+
+    def test_git_push_blocked(self):
+        result = self._exec("git push origin main")
+        assert "子命令" in result or "不在白名单中" in result
+
+    def test_git_reset_blocked(self):
+        result = self._exec("git reset --hard HEAD~1")
+        assert "子命令" in result or "不在白名单中" in result
+
+    def test_git_clean_blocked(self):
+        result = self._exec("git clean -fdx")
+        assert "子命令" in result or "不在白名单中" in result

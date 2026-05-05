@@ -311,6 +311,17 @@ export function useAgentChat() {
   async function resumeSession(targetSessionId: string): Promise<void> {
     if (sending.value) return
 
+    // Idempotency check: verify session is not already done before resuming
+    try {
+      const sessions = await fetchSessions()
+      const existing = sessions.find((s: AgentSessionInfo) => s.id === targetSessionId)
+      if (existing && (existing.state === 'DONE' || existing.state === 'ABORTED')) {
+        return // Session already completed, no need to resume
+      }
+    } catch {
+      // If session list fetch fails, proceed with resume attempt
+    }
+
     pendingApproval.value = null
     sessionId.value = targetSessionId
 
