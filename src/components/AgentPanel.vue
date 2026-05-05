@@ -233,10 +233,13 @@ async function openAgentWindow() {
       params.set('session', sessionId.value)
     }
 
-    // Use absolute URL in dev mode to avoid Tauri path resolution issues
+    // Use the same scheme as the main window
     const base = window.location.origin
     const url = `${base}/?${params.toString()}`
     console.log('[AgentPanel] Opening agent window:', url)
+
+    // If a previous agent window exists, close it first
+    try { await WebviewWindow.getByLabel('agent')?.close(); } catch {}
 
     _agentWindow = new WebviewWindow('agent', {
       url,
@@ -252,7 +255,22 @@ async function openAgentWindow() {
       skipTaskbar: false,
     })
 
-    console.log('[AgentPanel] Window created, label:', _agentWindow.label)
+    // Wait for the window to actually be created on the Rust side
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Window creation timed out')), 5000)
+      _agentWindow!.once('tauri://created', () => {
+        clearTimeout(timeout)
+        console.log('[AgentPanel] Window fully created on Rust side')
+        resolve()
+      })
+      _agentWindow!.once('tauri://error', (e) => {
+        clearTimeout(timeout)
+        console.error('[AgentPanel] Window creation error:', e)
+        reject(new Error(String(e)))
+      })
+    })
+
+    console.log('[AgentPanel] Window ready, label:', _agentWindow.label)
 
     // When the agent window is destroyed (user clicked X or dock button),
     // restore the inline panel in the main window
