@@ -33,6 +33,7 @@ export default defineConfig({
   optimizeDeps: {
     include: ['monaco-editor'],
     entries: ['index.html'],
+    exclude: ['@tauri-apps/api'],
   },
   build: {
     rollupOptions: {
