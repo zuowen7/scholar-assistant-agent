@@ -181,14 +181,23 @@ const showAgentChat = ref(false)
 
 // ── Agent 独立窗口模式 ──────────────────────────────────────
 const isAgentOnly = ref(false)
-// Check localStorage on mount — set by AgentPanel before opening the agent window
+// Check localStorage on mount — set by AgentPanel right before opening the agent window.
+// The flag is timestamped to prevent stale flags from crashed sessions.
 const _agentModeFlag = localStorage.getItem('agent-mode-pending')
 if (_agentModeFlag) {
-  isAgentOnly.value = true
-  localStorage.removeItem('agent-mode-pending')
-  // Store session ID for the agent window to use
-  if (_agentModeFlag !== '1') {
-    localStorage.setItem('agent-session', _agentModeFlag)
+  const [ts, sid] = _agentModeFlag.split('|')
+  const age = Date.now() - Number(ts)
+  // Only honor the flag if it's less than 5 seconds old (fresh from openAgentWindow)
+  if (age < 5000) {
+    isAgentOnly.value = true
+    localStorage.removeItem('agent-mode-pending')
+    if (sid && sid !== '1') {
+      localStorage.setItem('agent-session', sid)
+    }
+  } else {
+    // Stale flag from a crashed previous session — clean it up
+    localStorage.removeItem('agent-mode-pending')
+    localStorage.removeItem('agent-session')
   }
 }
 
