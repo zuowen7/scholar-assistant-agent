@@ -220,24 +220,12 @@ const emit = defineEmits<{
 }>()
 
 // ── Real OS window float (Tauri) ──────────────────────────────────────────────
-let _agentWindow: import('@tauri-apps/api/webviewWindow').WebviewWindow | null = null
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
+
+let _agentWindow: WebviewWindow | null = null
 let _unlistenClose: (() => void) | null = null
 
-async function getTauriWebviewWindow() {
-  try {
-    const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow')
-    return WebviewWindow
-  } catch {
-    return null
-  }
-}
-
 async function openAgentWindow() {
-  const WebviewWindow = await getTauriWebviewWindow()
-  if (!WebviewWindow) {
-    // Not in Tauri (e.g. browser dev) — silently do nothing
-    return
-  }
 
   // Build URL with session ID if available
   const params = new URLSearchParams({ 'agent-only': '1' })
