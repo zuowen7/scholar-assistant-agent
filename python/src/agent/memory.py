@@ -190,9 +190,10 @@ class MemoryManager:
         with self._write_lock:
             conn = self._connect()
             try:
-                # Fuzzy dedup: check if a similar memory already exists
-                if self._is_fuzzy_duplicate(conn, content):
-                    return 0
+                # Fuzzy dedup: only for review-sourced experience (the noisy category)
+                if source == "review" and category == "experience":
+                    if self._is_fuzzy_duplicate(conn, content):
+                        return 0
 
                 cursor = conn.execute(
                     "INSERT INTO memories (content, category, source, importance, created_at) VALUES (?, ?, ?, ?, ?)",
