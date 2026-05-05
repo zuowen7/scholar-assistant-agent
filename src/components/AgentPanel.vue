@@ -233,8 +233,10 @@ async function openAgentWindow() {
       params.set('session', sessionId.value)
     }
 
-    // Signal to the new window that it's agent-only mode via localStorage
-    localStorage.setItem('agent-mode-pending', sessionId.value || '1')
+    // Signal to the new window that it's agent-only mode via localStorage.
+    // Include a timestamp so stale flags from crashed sessions are ignored.
+    const sid = sessionId.value || '1'
+    localStorage.setItem('agent-mode-pending', `${Date.now()}|${sid}`)
     const url = `${window.location.origin}/`
     console.log('[AgentPanel] Opening agent window:', url)
 
@@ -289,6 +291,7 @@ async function openAgentWindow() {
   } catch (err) {
     console.error('[AgentPanel] Failed to open agent window:', err)
     _agentWindow = null
+    localStorage.removeItem('agent-mode-pending')
   }
 }
 
