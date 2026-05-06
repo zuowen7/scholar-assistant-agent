@@ -133,6 +133,7 @@ class FlattenRequest(BaseModel):
     template: str = "markdown"
     include_references: bool = True
     style: str = "IEEE"
+    latex_template: str = "generic_article"
 
 
 class RecommendationItem(BaseModel):

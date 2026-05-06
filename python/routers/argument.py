@@ -60,6 +60,7 @@ class ArgumentFlattenRequest(BaseModel):
     template: str = "markdown"
     include_references: bool = True
     style: str = "IEEE"
+    latex_template: str = "generic_article"
 
 
 MAX_FLATTEN_TASKS = 10
@@ -315,6 +316,8 @@ def register_argument(
                         include_references=req.include_references,
                         output_dir=str(_flatten_output_dir),
                         cloud_client=cloud_client,
+                        rag_store=_ensure_rag_store(),
+                        latex_template=req.latex_template,
                     ):
                         if event.get("event") == "complete":
                             import json as _json
