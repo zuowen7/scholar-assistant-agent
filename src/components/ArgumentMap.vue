@@ -23,6 +23,41 @@
         <button class="arg-btn" :disabled="loading" @click="flattenTree">生成草稿</button>
       </div>
 
+      <!-- 导出选项 -->
+      <div class="arg-export-opts">
+        <label class="arg-label-inline">
+          格式
+          <select v-model="flattenOpts.template" class="arg-select">
+            <option value="markdown">Markdown</option>
+            <option value="latex">LaTeX (.tex)</option>
+            <option value="docx">Word (.docx)</option>
+          </select>
+        </label>
+        <label v-if="flattenOpts.template === 'latex'" class="arg-label-inline">
+          模板
+          <select v-model="flattenOpts.latex_template" class="arg-select">
+            <option value="generic_article">Generic</option>
+            <option value="ieee_conference">IEEE Conference</option>
+            <option value="ieee_journal">IEEE Journal</option>
+            <option value="acm">ACM</option>
+            <option value="neurips">NeurIPS</option>
+            <option value="lncs">LNCS (Springer)</option>
+          </select>
+        </label>
+        <label class="arg-label-inline">
+          <input type="checkbox" v-model="flattenOpts.include_references" />
+          含参考文献
+        </label>
+      </div>
+
+      <!-- SSE 进度条 -->
+      <div v-if="flattenProgress.active" class="arg-progress">
+        <div class="arg-progress-bar">
+          <div class="arg-progress-fill" :style="{ width: flattenProgress.pct + '%' }"></div>
+        </div>
+        <span class="arg-progress-text">{{ flattenProgress.text }}</span>
+      </div>
+
       <div class="arg-canvas">
         <button
           v-for="node in orderedNodes"
@@ -77,6 +112,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { API_BASE } from '../utils/api'
+import { readSseStream } from '../utils/streamReader'
 
 interface ArgumentReference {
   doc_id: string
@@ -124,6 +160,20 @@ const message = ref('')
 const recommendations = ref<Recommendation[]>([])
 const selectedDraft = reactive({ topic: '', content: '' })
 
+const flattenOpts = reactive({
+  template: 'markdown' as 'markdown' | 'latex' | 'docx',
+  latex_template: 'generic_article',
+  include_references: true,
+})
+
+const flattenProgress = reactive({
+  active: false,
+  pct: 0,
+  text: '',
+  total: 0,
+  done: 0,
+})
+
 const selectedNode = computed(() => selectedNodeId.value && tree.value ? tree.value.nodes[selectedNodeId.value] : null)
 const orderedNodes = computed(() => {
   if (!tree.value) return []
@@ -143,7 +193,7 @@ function setMessage(text: string) {
   message.value = text
   window.setTimeout(() => {
     if (message.value === text) message.value = ''
-  }, 3000)
+  }, 4000)
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -285,18 +335,63 @@ async function bindReference(rec: Recommendation) {
 
 async function flattenTree() {
   loading.value = true
+  flattenProgress.active = true
+  flattenProgress.pct = 0
+  flattenProgress.done = 0
+  flattenProgress.total = orderedNodes.value.length || 1
+  flattenProgress.text = '正在启动降维展开…'
+
   try {
+    // Step 1: POST to start the task
     const data = await request<{ task_id: string }>('/api/argument/flatten', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ node_id: 'root', template: 'markdown', include_references: true }),
+      body: JSON.stringify({
+        node_id: 'root',
+        template: flattenOpts.template,
+        include_references: flattenOpts.include_references,
+        latex_template: flattenOpts.latex_template,
+      }),
     })
-    window.open(`${API_BASE}/api/argument/download/${data.task_id}`, '_blank')
-    setMessage('草稿已生成')
+
+    // Step 2: Open SSE stream to track progress
+    const sseResp = await fetch(`${API_BASE}/api/argument/flatten/${data.task_id}`)
+    if (sseResp.body) {
+      const reader = sseResp.body.getReader()
+      await readSseStream(reader, (eventType, eventData) => {
+        const d = eventData as Record<string, unknown>
+        if (eventType === 'node_processing') {
+          flattenProgress.text = `正在扩写节点…`
+        } else if (eventType === 'node_complete') {
+          flattenProgress.done++
+          flattenProgress.pct = Math.round((flattenProgress.done / flattenProgress.total) * 70)
+          flattenProgress.text = `扩写中 ${flattenProgress.done}/${flattenProgress.total}`
+        } else if (eventType === 'polish_start') {
+          flattenProgress.pct = 75
+          flattenProgress.text = '正在生成摘要与过渡…'
+        } else if (eventType === 'reference_processing') {
+          flattenProgress.pct = 85
+          flattenProgress.text = '正在处理参考文献…'
+        } else if (eventType === 'complete') {
+          flattenProgress.pct = 100
+          flattenProgress.text = '完成!'
+          const outputPath = d.output_path as string
+          if (outputPath) {
+            // Download the generated file
+            window.open(`${API_BASE}/api/argument/download/${data.task_id}`, '_blank')
+          }
+        }
+      })
+    }
+
+    setMessage('草稿生成完成')
   } catch (e) {
     setMessage(e instanceof Error ? e.message : String(e))
   } finally {
     loading.value = false
+    window.setTimeout(() => {
+      flattenProgress.active = false
+    }, 1500)
   }
 }
 
@@ -317,6 +412,55 @@ onMounted(loadTree)
 .arg-detail-actions {
   display: flex;
   gap: 8px;
+}
+.arg-export-opts {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.arg-label-inline {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--c-text-2);
+  font-size: 11px;
+  cursor: pointer;
+}
+.arg-select {
+  border: 1px solid var(--c-surface-3);
+  border-radius: 6px;
+  background: var(--c-surface-2);
+  color: var(--c-text-0);
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 11px;
+  outline: none;
+  cursor: pointer;
+}
+.arg-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.arg-progress-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--c-surface-3);
+  overflow: hidden;
+}
+.arg-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--c-accent);
+  transition: width 0.3s ease;
+}
+.arg-progress-text {
+  font-size: 11px;
+  color: var(--c-text-2);
+  white-space: nowrap;
+  min-width: 100px;
 }
 .arg-input,
 .arg-textarea {
