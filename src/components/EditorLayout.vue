@@ -522,29 +522,35 @@ function handlePaperScaffold(e: Event) {
 .sidebar-rail-button {
   position: absolute;
   left: 50%;
-  top: 44px;
+  top: 64px;
   transform: translateX(-50%) rotate(-90deg);
   transform-origin: center;
-  width: 104px;
-  height: 28px;
-  border: 1px solid color-mix(in srgb, var(--border-color) 58%, transparent);
-  border-radius: 9px 9px 0 0;
-  background: color-mix(in srgb, var(--toolbar-bg) 72%, transparent);
-  color: var(--c-text-3);
+  padding: 6px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 100px;
+  background: var(--c-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--c-text-2);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
   font: inherit;
   font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: all var(--motion-slow) var(--ease-spring);
 }
 .sidebar-rail-button:hover {
   color: var(--c-accent);
-  border-color: var(--c-accent);
-  background: color-mix(in srgb, var(--toolbar-bg) 86%, transparent);
+  background: var(--c-accent-soft);
+  border-color: rgba(91, 108, 255, 0.2);
+  box-shadow: 0 8px 24px rgba(91, 108, 255, 0.15);
+  transform: translateX(-50%) rotate(-90deg) translateY(-2px);
 }
 
 /* 鈹€鈹€ Editor center 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
@@ -568,27 +574,38 @@ function handlePaperScaffold(e: Event) {
 .rp-tab-bar {
   display: flex;
   align-items: center;
-  background: var(--sidebar-bg);
-  border-bottom: 1px solid var(--border-color);
+  background: transparent;
+  padding: 8px 12px;
+  gap: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
   flex-shrink: 0;
 }
 .rp-tab {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 36px;
-  padding: 0 14px;
-  border: none;
-  border-bottom: 2px solid transparent;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
   background: transparent;
   color: var(--c-text-3);
   font: inherit;
-  font-size: var(--text-sm);
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
-  transition: color var(--motion-fast), border-color var(--motion-fast), background var(--motion-fast);
+  transition: all var(--motion-fast) var(--ease-out);
 }
-.rp-tab:hover { color: var(--c-text-0); background: var(--hover-bg); }
-.rp-tab.active { color: var(--c-accent); border-bottom-color: var(--c-accent); }
+.rp-tab:hover {
+  color: var(--c-text-1);
+  background: rgba(255, 255, 255, 0.03);
+}
+.rp-tab.active {
+  color: var(--c-text-0);
+  background: var(--c-surface-3);
+  border-color: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2), inset 0 1px 1px rgba(255,255,255,0.05);
+}
 .rp-close {
   margin-left: auto;
   display: inline-flex;
@@ -608,13 +625,32 @@ function handlePaperScaffold(e: Event) {
 
 /* 鈹€鈹€ Resize handle 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 .resize-handle {
-  width: 4px;
+  width: 8px;
+  margin-left: -4px;
+  margin-right: -4px;
   cursor: col-resize;
   background: transparent;
-  transition: background 0.15s;
+  position: relative;
+  z-index: 10;
   flex-shrink: 0;
 }
-.resize-handle:hover { background: var(--c-accent); }
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0; left: 50%;
+  width: 1px;
+  background: var(--border-color);
+  transition: all var(--motion-base) var(--ease-out);
+  opacity: 0.3;
+}
+.resize-handle:hover::after,
+.resize-handle:active::after {
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--c-accent);
+  opacity: 1;
+  box-shadow: 0 0 8px var(--c-accent);
+}
 
 /* 鈹€鈹€ Responsive 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 @media (max-width: 1180px) {
