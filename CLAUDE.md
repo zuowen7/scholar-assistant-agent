@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Scholar Assistant — privacy-first academic AI writing assistant (Tauri 0.3.1 / npm 0.2.1). Translates PDFs with DeepL-like experience (parse -> clean -> chunk -> translate -> format via SSE), provides an AI editor (Monaco + Agent chat), and exports to LaTeX/Word. Features sentence-level alignment, enhanced paragraph preservation, and flexible export options. Runs as desktop app (Tauri manages Python + Ollama subprocesses) or standalone Python API.
+Scholar Assistant — privacy-first academic AI writing assistant (v0.3.1, single source `python/src/_version.py`).Translates PDFs with DeepL-like experience (parse -> clean -> chunk -> translate -> format via SSE), provides an AI editor (Monaco + Agent chat), and exports to LaTeX/Word. Features sentence-level alignment, enhanced paragraph preservation, and flexible export options. Runs as desktop app (Tauri manages Python + Ollama subprocesses) or standalone Python API.
 
 ## Build Commands
 
@@ -143,6 +143,27 @@ Three config files serve distinct roles — do not confuse them:
 | `config/default.yaml` (repo root) | Source-of-truth defaults shipped with the repo. Edit here to change defaults for all environments. | Yes |
 | `python/config/default.yaml` | Runtime copy used by the Python backend. Auto-generated on first run (copied from repo root or PyInstaller bundle). | No (gitignored) |
 | `python/config/default.local.yaml` | User overrides merged on top of `default.yaml`. Created by the UI's Settings panel or manually. | No (gitignored) |
+### Subsystem Maturity Matrix
+
+Use this as the canonical "what works / what's polished / what's a stub" map. Updated 2026-05-10.
+
+| # | Subsystem | Grade | Key evidence |
+|---|-----------|-------|--------------|
+| 1 | Translation pipeline (5-step SSE + multi-article split + citation placeholders + continuation rules + UTF-8 fix) | A | `routers/translate.py:295` multi-article via `parser/article_detector.extract_articles`; `block_translator.py:289,326` citation protect/restore; `cleaner/pipeline.py:258` pdfplumber encoding fix; `cleaner/pipeline.py:894-979` 6 continuation rules |
+| 2 | Argument Map (论证树 + 降维展开 + RAG context + 6 templates) | A | `argument/flatten.py:315` `_fetch_ref_context` real RAG retrieval, gracefully degrades when `rag_store is None`; 4-stage pipeline (classify → DFS expand → polish → format) |
+| 3 | Mind Map (Vue Flow + AI expand + dagre layout) | A- | LLM failure → hardcoded fallback nodes |
+| 4 | LaTeX/Word export (IEEE Conf/Journal, ACM, NeurIPS, LNCS, Generic + Tectonic) | A | `word_exporter.py`, `pandoc_templates`, `pptx_exporter` |
+| 5 | AI editor (Monaco + Ghost Text + AI Panel) | B | Completion quality average; debounce 1.5s |
+| 6 | Agent ReAct engine (ContextCompressor + SessionStore tool_calls + Skill review + Memory dedup) | B+ | `agent.py:149,176,214` ContextCompressor wired into `step()`; `session_store.py:199-225` tool_calls round-trip; `review_agent.py` skill quality gate |
+| 7 | 21 cloud LLM providers | B | Only OpenAI-compatible path tested end-to-end |
+| 8 | RAG knowledge base | C | `tools/registry.py:408-481` full impl when `rag_store` injected; placeholder when None |
+| 9 | Zotero integration | C | Requires user API key |
+| 10 | Vision / OCR | C | Depends on external MCP server |
+| 11 | Agent file-edit / shell tools | C | WorkspaceEnv permission-strict; can hang on long ops |
+
+### Known Defect Index
+
+Single-pointer index — do not duplicate the long lists.
 
 ## Dependency Management
 

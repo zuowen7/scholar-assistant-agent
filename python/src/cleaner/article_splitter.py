@@ -1,64 +1,14 @@
-"""Multi-article splitter — detect and split bundled PDFs containing multiple articles.
+"""Inline reference detector for Perspectives-style multi-article PDFs.
 
-Science Perspectives, Nature News & Views, and similar journal formats often
-bundle 3-5 short articles in a single PDF.  Without splitting, the translation
-pipeline merges them into one document, causing glossary pollution, chunk
-boundary errors, and broken paragraph alignment.
+Note: the *actual* multi-article splitter lives in `src.parser.article_detector`
+(`extract_articles`) and is wired into `routers/translate.py`. This module's
+sole remaining purpose is `detect_inline_refs`, which `cleaner/pipeline.py`
+calls as a fallback when no `REFERENCES` header is found.
 """
 
 from __future__ import annotations
 
 import re
-
-
-# Author name pattern: "First M. Last" or "First Last and First Last"
-_AUTHOR_RE = (
-    r"[A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z]+"
-    r"(?:\s+(?:and|&|,)\s+[A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z]+)*"
-)
-
-
-def split_articles(text: str) -> list[str]:
-    """Split cleaned text into independent articles.
-
-    Detection strategy: find interstitial blocks consisting of a short
-    title-like line followed by an author-byline line.  These appear between
-    bundled Perspectives articles (the original "Downloaded from" footer was
-    already stripped by the cleaner, so we match the title + author pattern
-    that remains).
-
-    Returns:
-        List of article texts.  If only one article is detected, returns [text].
-    """
-    # Strategy 1: title + author pattern (after watermark removal)
-    boundary = re.compile(
-        r"\n\n"
-        r"(?="
-        r"[A-Z][^\n]{10,80}\n+"          # Title line (10-80 chars, Title Case)
-        + _AUTHOR_RE +
-        r"\s*\n+"                         # Author byline
-        r")",
-    )
-    parts = boundary.split(text)
-    articles = [p.strip() for p in parts if p.strip()]
-
-    if len(articles) > 1:
-        return articles
-
-    # Strategy 2: if no split found, look for title + author at line start
-    # preceded by empty line (looser boundary)
-    boundary2 = re.compile(
-        r"\n\n"
-        r"(?="
-        r"[A-Z][^\n]{10,80}\n+"          # Title line
-        + _AUTHOR_RE +
-        r"\s*$"                           # End of author line
-        r")",
-        re.MULTILINE,
-    )
-    parts2 = boundary2.split(text)
-    articles2 = [p.strip() for p in parts2 if p.strip()]
-    return articles2 if len(articles2) > 1 else [text]
 
 
 def detect_inline_refs(article_text: str) -> tuple[str, str]:

@@ -240,10 +240,11 @@ class TestExportPdf:
 # ── manage_knowledge ──────────────────────────────────────────────
 
 
-class TestManageKnowledge:
     def test_placeholder_without_rag(self):
-        with pytest.raises(NotImplementedError, match="RAG 存储未注入"):
-            _manage_knowledge(action="list")
+        # 当 rag_store 未注入时，占位实现应返回友好提示而非抛错
+        result = _manage_knowledge(action="list")
+        assert "知识库未启用" in result
+        assert "manage_knowledge" in result
 
     def test_with_rag_list_empty(self):
         rag = MagicMock()
