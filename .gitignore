@@ -110,3 +110,7 @@ python/mindmap.json
 python/simple_test.py
 python/test_tools_import.py
 verify_tools.py
+
+python/nul_test/
+python/data/argument_output/
+*.docx
