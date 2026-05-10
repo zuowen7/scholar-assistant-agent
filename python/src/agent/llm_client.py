@@ -91,9 +91,10 @@ class LLMClient(OllamaMixin, OpenAIMixin, AnthropicMixin):
 
     async def _get_http_client(self) -> httpx.AsyncClient:
         if self._http_client is None or self._http_client.is_closed:
-            self._http_client = httpx.AsyncClient(
-                timeout=httpx.Timeout(self.timeout, connect=10.0),
-            )
+            kwargs: dict = {"timeout": httpx.Timeout(self.timeout, connect=10.0)}
+            if not self.use_cloud:
+                kwargs["proxy"] = None  # Ollama is localhost, bypass system proxy
+            self._http_client = httpx.AsyncClient(**kwargs)
         return self._http_client
 
     async def close(self) -> None:

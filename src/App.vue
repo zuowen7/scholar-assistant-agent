@@ -13,6 +13,7 @@
   <div
     v-else
     class="app"
+    :class="{ 'has-wallpaper': bgSettings.path }"
     @dragenter.prevent="onDragEnter"
     @dragleave.prevent="onDragLeave"
     @dragover.prevent
@@ -1131,4 +1132,28 @@ body::after {
 }
 .recovery-text { font-size: var(--text-sm); color: var(--c-text-1); }
 .recovery-actions { display: flex; gap: 4px; }
+
+/* ── Wallpaper-aware semi-transparent backgrounds ── */
+.app.has-wallpaper {
+  --editor-bg: rgba(19, 19, 21, 0.82);
+  --sidebar-bg: rgba(19, 19, 21, 0.75);
+  --toolbar-bg: rgba(19, 19, 21, 0.78);
+  --panel-bg: rgba(19, 19, 21, 0.80);
+  --border-color: rgba(46, 46, 52, 0.60);
+  --hover-bg: rgba(46, 46, 52, 0.70);
+  --active-bg: rgba(66, 66, 74, 0.70);
+  --code-bg: rgba(35, 35, 40, 0.75);
+  --input-bg: rgba(35, 35, 40, 0.75);
+}
+[data-theme="light"].has-wallpaper {
+  --editor-bg: rgba(250, 250, 250, 0.88);
+  --sidebar-bg: rgba(244, 244, 247, 0.85);
+  --toolbar-bg: rgba(244, 244, 247, 0.88);
+  --panel-bg: rgba(250, 250, 250, 0.88);
+  --border-color: rgba(204, 204, 210, 0.60);
+  --hover-bg: rgba(226, 226, 230, 0.80);
+  --active-bg: rgba(212, 212, 218, 0.80);
+  --code-bg: rgba(240, 240, 243, 0.85);
+  --input-bg: rgba(244, 244, 247, 0.85);
+}
 </style>
