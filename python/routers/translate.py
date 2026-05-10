@@ -444,6 +444,8 @@ def register_translate(
             doc_context = extract_document_context(raw_text)
             if doc_context:
                 client.set_document_context(doc_context)
+            # Persist for retry_block — same context as initial translation
+            task["doc_context"] = doc_context or ""
 
             # Inject glossary prompt into client's system prompt
             if glossary_store and len(glossary_store) > 0:
@@ -461,6 +463,8 @@ def register_translate(
 
             src_lang = trans_cfg.get("source_lang", "en")
             tgt_lang = trans_cfg.get("target_lang", "zh")
+            task["source_lang"] = src_lang
+            task["target_lang"] = tgt_lang
 
             # 收集所有块的翻译结果（按 block_id 索引），便于后续重组
             block_trans_by_id: dict[str, BlockTranslation] = {}
@@ -1114,7 +1118,7 @@ def register_translate(
 
     @app.post("/api/translate/{task_id}/retry_block")
     async def retry_block_translation(task_id: str, payload: dict):
-        """重试单个失败块的翻译（P2-2）"""
+        """重试单个失败块的翻译（与正常翻译同路径）"""
         if task_id not in tasks:
             raise HTTPException(404, "任务不存在")
 
@@ -1123,7 +1127,6 @@ def register_translate(
         if not block_id:
             raise HTTPException(400, "缺少 block_id 参数")
 
-        # 查找目标块
         block_translations = t.get("block_translations", [])
         target_block = None
         target_index = -1
@@ -1137,43 +1140,84 @@ def register_translate(
         if not target_block:
             raise HTTPException(404, "块不存在")
 
-        # 调用LLM重译
-        translator_cfg = config.get("translator", {})
-        provider = translator_cfg.get("provider", "ollama")
+        original_text = (target_block.get("original") or "").strip()
+        if not original_text:
+            raise HTTPException(400, "块原文为空，无法重试")
 
-        if provider == "ollama":
-            client = OllamaClient(
-                base_url=translator_cfg.get("base_url", "http://localhost:11434"),
-                model=translator_cfg.get("model", "qwen3:8b"),
-                temperature=translator_cfg.get("temperature", 0.3),
-                num_predict=translator_cfg.get("num_predict", 16384),
-            )
+        config = load_config()
+        trans_cfg = config.get("translator", {})
+        use_cloud = cloud_only or trans_cfg.get("engine", "ollama") == "cloud"
+
+        if use_cloud:
+            cloud_cfg = trans_cfg.get("cloud", {})
+            key = (cloud_cfg.get("api_key") or "").strip()
+            if not key:
+                raise HTTPException(400, "未配置云端 API Key，请在配置中设置 translator.cloud.api_key")
+            client = build_cloud_client(trans_cfg, cloud_cfg)
         else:
-            client = CloudClient(
-                provider=provider,
-                model=translator_cfg.get("model", "gpt-4o"),
-                api_key=translator_cfg.get("api_key", ""),
-                base_url=translator_cfg.get("base_url"),
-                temperature=translator_cfg.get("temperature", 0.3),
-                max_tokens=translator_cfg.get("max_tokens", 16384),
+            ollama_url = os.environ.get("OLLAMA_HOST") or trans_cfg.get(
+                "ollama_base_url", "http://localhost:11434"
             )
+            client = OllamaClient(
+                base_url=ollama_url,
+                model=trans_cfg.get("model", "qwen3:8b"),
+                temperature=trans_cfg.get("temperature", 0.3),
+                num_predict=trans_cfg.get("num_predict", 16384),
+                system_prompt=trans_cfg.get("system_prompt", ""),
+                timeout=trans_cfg.get("timeout", 300.0),
+            )
+
+        # Re-inject doc context + glossary so single-block retry has the same hints
+        doc_context = t.get("doc_context") or ""
+        if doc_context:
+            client.set_document_context(doc_context)
+
+        if glossary_store and len(glossary_store) > 0:
+            glossary_prompt = glossary_store.build_prompt_text()
+            if glossary_prompt:
+                existing_sp = trans_cfg.get("system_prompt", "")
+                enhanced_sp = (
+                    existing_sp + "\n\n" + glossary_prompt if existing_sp else glossary_prompt
+                )
+                if hasattr(client, "system_prompt"):
+                    client.system_prompt = enhanced_sp
+
+        src_lang = t.get("source_lang") or trans_cfg.get("source_lang", "en")
+
+        from src.translator._helpers import _sanitize_llm_output, _validate_translation
 
         try:
-            result = client.translate(target_block.get("original", ""))
-            # 更新块翻译结果
-            block_translations[target_index]["translated"] = result.translated
+            result = await asyncio.to_thread(client.translate, original_text, "")
+            # Sanitize and validate exactly like the main pipeline does
+            sanitized = _sanitize_llm_output(result.translated, source_lang=src_lang)
+            result.translated = sanitized
+
+            ok = bool(sanitized) and sanitized.strip() != original_text.strip() and _validate_translation(result)
+
+            if not ok:
+                # Persist failed status so retry button stays visible
+                block_translations[target_index]["translated"] = ""
+                block_translations[target_index]["status"] = "failed"
+                raise HTTPException(
+                    422,
+                    "重试结果未通过质量校验（译文为空 / 与原文相同 / 过短）。请检查模型或调小段落。",
+                )
+
+            block_translations[target_index]["translated"] = sanitized
             block_translations[target_index]["status"] = "ok"
 
-            # 推送SSE事件通知前端
             return {
                 "success": True,
                 "block_id": block_id,
-                "translated": result.translated,
+                "translated": sanitized,
                 "status": "ok",
             }
+        except HTTPException:
+            raise
         except Exception as e:
-            logger.error(f"重试块翻译失败: {e}")
-            raise HTTPException(500, f"重试失败: {str(e)}")
+            logger.error("重试块 %s 翻译失败: %s", block_id, e)
+            block_translations[target_index]["status"] = "failed"
+            raise HTTPException(500, f"重试失败: {e}")
         finally:
             if hasattr(client, "close"):
                 client.close()

@@ -292,7 +292,7 @@ class TestOllamaClientErrors:
                 with pytest.raises(ConnectionError):
                     client.translate("Hello world, test sentence.")
 
-        assert call_count == MAX_RETRIES + 1  # 1 initial + 2 retries
+        assert call_count == MAX_RETRIES + 1  # 1 initial + MAX_RETRIES retries
         client.close()
 
 

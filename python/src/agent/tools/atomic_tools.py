@@ -225,8 +225,10 @@ def _python_exec(code: str, timeout: int = _PYTHON_EXEC_TIMEOUT) -> str:
     )
 
     try:
+        # -X utf8: force UTF-8 mode in child so argv (with Chinese chars in
+        # the runner script) and stdout are decoded/encoded as UTF-8 on Windows.
         result = subprocess.run(
-            [sys.executable, "-c", _runner_code, json.dumps(code, ensure_ascii=False)],
+            [sys.executable, "-X", "utf8", "-c", _runner_code, json.dumps(code, ensure_ascii=False)],
             capture_output=True,
             text=True,
             timeout=timeout,
