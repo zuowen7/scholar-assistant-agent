@@ -102,8 +102,12 @@ def _manage_knowledge(
         query: 检索查询文本（retrieve 时必需）。
         top_k: 检索返回的最大结果数，默认 5。
     """
-    # 占位实现 — 由 create_default_registry 注入 RAG 存储实例
-    raise NotImplementedError("RAG 存储未注入")
+    # 当 create_default_registry(rag_store=None) 时使用本占位实现，返回友好提示
+    # 而非抛 NotImplementedError，避免 Agent 在用户未启用知识库时崩溃。
+    return (
+        "知识库未启用：请先在 Agent 设置中开启 RAG 知识库，"
+        "再使用 manage_knowledge 工具。"
+    )
 
 
 # 导出公共接口

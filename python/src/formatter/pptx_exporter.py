@@ -25,6 +25,30 @@ try:
     HAS_PPTX = True
 except ImportError:
     HAS_PPTX = False
+    # Stubs so this module can still be imported (and `HAS_PPTX` checked) when
+    # python-pptx isn't installed. Any actual export call must gate on HAS_PPTX.
+    Presentation = None  # type: ignore[assignment]
+
+    def Inches(x):  # type: ignore[no-redef]
+        return x
+
+    def Pt(x):  # type: ignore[no-redef]
+        return x
+
+    def Emu(x):  # type: ignore[no-redef]
+        return x
+
+    def RGBColor(*args, **kwargs):  # type: ignore[no-redef]
+        return None
+
+    class _EnumStub:
+        LEFT = CENTER = RIGHT = TOP = MIDDLE = BOTTOM = None
+
+        def __getattr__(self, _name):
+            return None
+
+    PP_ALIGN = _EnumStub()  # type: ignore[assignment]
+    MSO_ANCHOR = _EnumStub()  # type: ignore[assignment]
 
 
 # ── 设计常量 ──────────────────────────────────────────────────────────────────
