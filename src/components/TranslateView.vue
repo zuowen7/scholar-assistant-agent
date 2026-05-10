@@ -314,6 +314,9 @@
                   重试
                 </UiButton>
                 <span v-else class="retrying">重试中…</span>
+                <div v-if="retryErrors.get(b.id)" class="retry-error-msg">
+                  {{ retryErrors.get(b.id) }}
+                </div>
               </div>
             </div>
             <!-- 普通段落：左原 / 右译 -->
@@ -379,6 +382,7 @@ const { state, translate, reset, downloadResult, overallProgress, exportBilingua
 const viewMode = ref<'bilingual' | 'translation'>('bilingual')
 const zoneHover = ref(false)
 const retryingBlockIds = ref<Set<string>>(new Set())
+const retryErrors = ref<Map<string, string>>(new Map())
 const sealVisible = ref(false)
 const unfurling = ref(false)
 const burstPhase = ref(false)
@@ -418,6 +422,7 @@ async function retryFailedBlock(blockId: string) {
   if (!state.taskId) return
 
   retryingBlockIds.value.add(blockId)
+  retryErrors.value.delete(blockId)
 
   try {
     const resp = await fetch(`${API_BASE}/api/translate/${state.taskId}/retry_block`, {
@@ -427,8 +432,8 @@ async function retryFailedBlock(blockId: string) {
     })
 
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ detail: '重试失败' }))
-      throw new Error(err.detail || '重试失败')
+      const err = await resp.json().catch(() => ({ detail: `HTTP ${resp.status}` }))
+      throw new Error(err.detail || `重试失败 (HTTP ${resp.status})`)
     }
 
     const result = await resp.json()
@@ -443,6 +448,13 @@ async function retryFailedBlock(blockId: string) {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : '未知错误'
     console.error('重试块翻译失败:', msg)
+    // Keep status='failed' so the retry button stays visible; surface the reason inline
+    retryErrors.value.set(blockId, msg)
+    const s = toRaw(state) as any
+    const idx = s.blocks.findIndex((b: any) => b.id === blockId)
+    if (idx !== -1) {
+      s.blocks[idx].status = 'failed'
+    }
   } finally {
     retryingBlockIds.value.delete(blockId)
   }
@@ -1839,6 +1851,7 @@ function openFilePicker() {
 
 .failed-card {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
   margin-top: var(--space-2);
@@ -1848,6 +1861,15 @@ function openFilePicker() {
 
 .failed-card button {
   margin-left: auto;
+}
+
+.retry-error-msg {
+  flex-basis: 100%;
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--c-danger);
+  opacity: 0.85;
+  word-break: break-word;
 }
 
 .retrying {

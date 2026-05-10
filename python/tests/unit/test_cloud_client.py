@@ -179,7 +179,7 @@ class TestErrorPaths:
                 with pytest.raises(ConnectionError, match="无法连接云端 API"):
                     client.translate("Test")
 
-        assert call_count == 3  # 1 initial + 2 retries (MAX_RETRIES=2)
+        assert call_count == 4  # 1 initial + 3 retries (MAX_RETRIES=3)
 
     def test_http_4xx_raises_value_error(self):
         client = _make_client("openai")
@@ -238,7 +238,7 @@ class TestErrorPaths:
                 result = client.translate("Hello world, this is a test.")
 
         # After MAX_RETRIES exhausted it should return the (empty) result on last try
-        assert call_count == 3
+        assert call_count == 4
 
 
 # ---------------------------------------------------------------------------

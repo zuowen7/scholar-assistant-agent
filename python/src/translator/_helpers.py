@@ -230,9 +230,16 @@ def _validate_translation(result: "TranslationResult | Any") -> bool:
     if orig_len < 30:
         return trans_len >= 1 and len(translated.strip()) > 0
 
+    # Ratios computed once on the original
     latexish = sum(1 for c in original if c in "\\{}$[]_^") / max(orig_len, 1)
+    orig_cjk = sum(1 for c in original if "一" <= c <= "鿿")
+    orig_cjk_ratio = orig_cjk / max(orig_len, 1)
+    # 公式/代码密集的段落允许更短的译文
     if latexish > 0.04:
         return trans_len >= max(3, int(orig_len * 0.03))
+
+    # 原文本身就是中文为主（CN→EN 或保留体），不能用 CJK 比例衡量译文
+    source_is_cn = orig_cjk_ratio > 0.3
 
     if orig_len > 100 and trans_len < orig_len * 0.03:
         logger.warning("译文过短 (原文 %d 字符, 译文仅 %d 字符)", orig_len, trans_len)
@@ -244,13 +251,24 @@ def _validate_translation(result: "TranslationResult | Any") -> bool:
         logger.warning("译文与原文完全相同，疑似未翻译")
         return False
 
-    cjk_n = sum(1 for c in translated if "一" <= c <= "鿿")
-    cjk_ratio = cjk_n / max(trans_len, 1)
-    if cjk_ratio < 0.05 and orig_len > 100:
-        ascii_ratio = sum(1 for c in translated if c.isascii() and c.isalpha()) / max(trans_len, 1)
-        if ascii_ratio > 0.95:
-            logger.warning("译文 ASCII 占比 %.0f%% 且无中文，疑似未翻译: %.50s...", ascii_ratio * 100, translated)
-            return False
+    # 仅在 EN→ZH 场景启用 CJK 比例检查；放宽：原文专名/缩写密集时跳过
+    if not source_is_cn:
+        cjk_n = sum(1 for c in translated if "一" <= c <= "鿿")
+        cjk_ratio = cjk_n / max(trans_len, 1)
+        if cjk_ratio < 0.05 and orig_len > 100:
+            # 原文中已经有大量"非翻译" token（大写缩写、纯符号、URL、化学/数学符号），
+            # 译文 ASCII 占比天然偏高，不应判失败
+            non_translatable = sum(
+                1 for c in original
+                if c.isupper() or c in "\\{}$[]_^()<>|=+-*/%@#&"
+            ) / max(orig_len, 1)
+            if non_translatable > 0.25:
+                pass  # 放行
+            else:
+                ascii_ratio = sum(1 for c in translated if c.isascii() and c.isalpha()) / max(trans_len, 1)
+                if ascii_ratio > 0.95:
+                    logger.warning("译文 ASCII 占比 %.0f%% 且无中文，疑似未翻译: %.50s...", ascii_ratio * 100, translated)
+                    return False
 
     stripped = translated.strip()
     if stripped.startswith("```") and stripped.endswith("```"):

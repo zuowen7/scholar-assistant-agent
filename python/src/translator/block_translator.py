@@ -327,21 +327,32 @@ async def translate_block_chunk(
 
     block_trans, aligned = _align_translation_to_blocks(blocks, sanitized)
 
-    # Severe misalignment: retry each block individually (only for small chunks)
+    # Severe misalignment: retry each block individually (all chunk sizes)
     translatable_blocks = [b for b in blocks if b.translatable]
-    if not aligned and translatable_blocks and len(translatable_blocks) <= 4:
+    if not aligned and translatable_blocks:
         paras = _split_paragraphs(sanitized)
         ratio = abs(len(paras) - len(translatable_blocks)) / max(len(translatable_blocks), 1)
         if ratio > 0.5:
             logger.warning("Chunk %d severely misaligned (%d paras vs %d blocks), retrying per-block",
                            chunk.index, len(paras), len(translatable_blocks))
-            retry_results: list[str] = []
-            for b in translatable_blocks:
-                try:
-                    single = await asyncio.to_thread(client.translate, b.text, "")
-                    retry_results.append(_sanitize_llm_output(single.translated, source_lang=source_lang))
-                except Exception:
-                    retry_results.append("")
+
+            # Bounded concurrent per-block retries (cap at 4 to avoid overloading model)
+            sem = asyncio.Semaphore(4)
+
+            async def _retry_one(b: Block) -> str:
+                async with sem:
+                    try:
+                        single = await asyncio.to_thread(client.translate, b.text, "")
+                        return _sanitize_llm_output(single.translated, source_lang=source_lang)
+                    except Exception as e:
+                        logger.warning("Per-block retry failed for %s: %s", b.id, e)
+                        return ""
+
+            retry_results = await asyncio.gather(
+                *(_retry_one(b) for b in translatable_blocks),
+                return_exceptions=False,
+            )
+
             out: list[BlockTranslation] = []
             ri = 0
             for b in blocks:

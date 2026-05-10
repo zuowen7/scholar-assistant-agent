@@ -33,7 +33,7 @@ from src.translator._helpers import (
     _deduplicate_repetition,
 )
 
-MAX_RETRIES = 2
+MAX_RETRIES = 3
 RETRY_DELAY_BASE = 3.0  # 基础重试延迟（秒），指数退避倍增
 RETRY_DELAY_MAX = 30.0  # 最大重试延迟
 
@@ -170,7 +170,9 @@ class OllamaClient:
 
         for attempt in range(MAX_RETRIES + 1):
             try:
-                result = self._call_api(text, ctx)
+                # 最后一次尝试：丢掉 prev_translation 上下文，缩小 prompt 体积
+                effective_ctx = "" if attempt == MAX_RETRIES else ctx
+                result = self._call_api(text, effective_ctx)
                 if not _validate_translation(result):
                     logger.warning(
                         "翻译结果过短 (attempt %d): original=%d chars, translated=%d chars",
@@ -428,7 +430,8 @@ CRITICAL: Preserve paragraph structure exactly.
 
         for attempt in range(MAX_RETRIES + 1):
             try:
-                data = await self._call_api_async(text, ctx)
+                effective_ctx = "" if attempt == MAX_RETRIES else ctx
+                data = await self._call_api_async(text, effective_ctx)
                 result = self._parse_response(data, text)
 
                 if not _validate_translation(result):

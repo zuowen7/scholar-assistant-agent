@@ -29,7 +29,7 @@ from src.translator._helpers import (
 
 logger = logging.getLogger(__name__)
 
-MAX_RETRIES = 2
+MAX_RETRIES = 3
 RETRY_DELAY_BASE = 3.0
 RETRY_DELAY_MAX = 30.0
 _PROMPT_MAX_CHARS = 28_000
@@ -275,10 +275,11 @@ class CloudClient:
         for attempt in range(MAX_RETRIES + 1):
             try:
                 self._rate_limit_wait()
+                effective_ctx = "" if attempt == MAX_RETRIES else ctx
                 if self.api_format == "anthropic":
-                    result = self._call_anthropic(text, ctx)
+                    result = self._call_anthropic(text, effective_ctx)
                 else:
-                    result = self._call_openai_compatible(text, ctx)
+                    result = self._call_openai_compatible(text, effective_ctx)
 
                 if not _validate_translation(result):
                     logger.warning(
