@@ -396,7 +396,13 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         from routers.argument import register_argument_v2
         _v2_flag = bool(_load_config().get("features", {}).get("argument_map_v2", False))
         _graph_store = ArgGraphStore(runtime_dir=RUNTIME_DIR)
-        register_argument_v2(app, store=_graph_store, flag_enabled=_v2_flag)
+        register_argument_v2(
+            app,
+            store=_graph_store,
+            flag_enabled=_v2_flag,
+            load_config=_load_config,
+            build_cloud_client=_build_cloud_client,
+        )
     except Exception as _e:
         import logging as _logging
         _logging.getLogger(__name__).warning("argument_map_v2 setup skipped: %s", _e)

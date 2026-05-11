@@ -26,6 +26,12 @@
         :title="state.source.side === 'trans' ? '切换显示原文' : '切换显示译文'"
         @click="toggleSide"
       >{{ state.source.side === 'trans' ? '译 ⇄' : '原 ⇄' }}</button>
+      <button
+        class="extract-btn"
+        :disabled="!hasContent || !state.graph || state.extracting"
+        :title="state.graph ? '从当前原文提取 Toulmin 论证图' : '请先创建或打开一张论证图'"
+        @click="doExtract"
+      >{{ state.extracting ? '提取中…' : '提取论证' }}</button>
     </div>
 
     <!-- Paste input area -->
@@ -114,7 +120,11 @@ import {
 } from '../../composables/useArgumentMap'
 import { splitSentences } from '../../utils/sentenceAlign'
 
-const { state, addSpan, upsertNode } = useArgumentMap()
+const { state, addSpan, upsertNode, extractArgument } = useArgumentMap()
+
+async function doExtract() {
+  await extractArgument(state.source.text, state.source.label, state.source.side)
+}
 
 // ── Source load ────────────────────────────────────────────────────────────────
 
@@ -375,6 +385,22 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   cursor: pointer;
 }
 .source-side-toggle:hover { background: var(--c-surface-3); }
+
+.extract-btn {
+  margin-left: auto;
+  padding: 2px 9px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--c-accent);
+  background: var(--c-accent);
+  color: #fff;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 100ms;
+}
+.extract-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.extract-btn:not(:disabled):hover { opacity: 0.85; }
 
 /* Paste area */
 .source-paste-area {

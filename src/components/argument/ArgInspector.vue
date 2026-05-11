@@ -16,7 +16,27 @@
         </div>
       </div>
 
+      <!-- All graph issues -->
+      <div v-if="state.graph?.issues?.length" class="inspector-field">
+        <label class="inspector-label">问题清单 ({{ state.graph.issues.length }})</label>
+        <div
+          v-for="issue in state.graph.issues"
+          :key="issue.id"
+          class="inspector-issue"
+          :class="`sev-${issue.severity}`"
+        >
+          <span class="issue-sev">{{ sevLabel(issue.severity) }}</span>
+          <span class="issue-msg">{{ issue.message }}</span>
+          <p v-if="issue.suggestion" class="issue-sug">{{ issue.suggestion }}</p>
+        </div>
+      </div>
+
       <div class="inspector-actions">
+        <button
+          class="inspector-btn inspector-btn--primary"
+          :disabled="!state.graph || state.critiquing"
+          @click="doCritique"
+        >{{ state.critiquing ? '审查中…' : '批判审查' }}</button>
         <button class="inspector-btn" @click="$emit('auto-layout')">自动布局</button>
       </div>
     </template>
@@ -68,9 +88,29 @@
             </div>
           </div>
         </div>
+
+        <!-- Suggest candidates -->
+        <div v-if="suggestResult" class="inspector-field">
+          <label class="inspector-label">AI 建议 ({{ suggestResult.candidates.length }})</label>
+          <div
+            v-for="c in suggestResult.candidates"
+            :key="c.local_id"
+            class="suggest-candidate"
+          >
+            <div class="candidate-type" :class="`type-${c.node_type}`">{{ typeLabel(c.node_type) }}</div>
+            <div class="candidate-text">{{ c.text }}</div>
+            <button class="candidate-adopt-btn" @click="adoptCandidate(c)">采纳</button>
+          </div>
+          <button class="inspector-btn" style="font-size:11px; margin-top: 4px" @click="suggestResult = null">收起</button>
+        </div>
       </div>
 
       <div class="inspector-actions">
+        <button
+          class="inspector-btn"
+          :disabled="!selectedNode || suggesting"
+          @click="doSuggest"
+        >{{ suggesting ? '建议中…' : '建议下一个元素' }}</button>
         <button class="inspector-btn inspector-btn--danger" @click="deleteSelectedNode">删除节点</button>
       </div>
     </template>
@@ -97,12 +137,38 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { NodeType, RelationType } from '../../composables/useArgumentMap'
+import type { NodeType, RelationType, SuggestCandidate, SuggestResult } from '../../composables/useArgumentMap'
 import { useArgumentMap, focusSpan } from '../../composables/useArgumentMap'
 
 defineEmits<{ 'auto-layout': [] }>()
 
-const { state, upsertNode, deleteNode, deleteEdge, deleteSpan } = useArgumentMap()
+const { state, upsertNode, deleteNode, deleteEdge, deleteSpan, critiqueGraph, suggestElement } = useArgumentMap()
+
+// ── Critique ──────────────────────────────────────────────────────────────────
+
+async function doCritique() {
+  await critiqueGraph()
+}
+
+// ── Suggest ───────────────────────────────────────────────────────────────────
+
+const suggesting = ref(false)
+const suggestResult = ref<SuggestResult | null>(null)
+
+async function doSuggest() {
+  if (!selectedNode.value) return
+  suggesting.value = true
+  try {
+    suggestResult.value = await suggestElement(selectedNode.value.id)
+  } finally {
+    suggesting.value = false
+  }
+}
+
+async function adoptCandidate(c: SuggestCandidate) {
+  await upsertNode({ node_type: c.node_type, text: c.text, created_by: 'ai' })
+  suggestResult.value = null
+}
 
 const selectedNode = computed(() => state.graph?.nodes.find(n => n.id === state.selectedNodeId) ?? null)
 const selectedEdge = computed(() => state.graph?.edges.find(e => e.id === state.selectedEdgeId) ?? null)
@@ -311,4 +377,50 @@ async function removeSpan(spanId: string) {
 .inspector-btn:hover { background: var(--c-surface-3); }
 .inspector-btn--danger { color: var(--c-danger); border-color: var(--c-danger-bg); }
 .inspector-btn--danger:hover { background: var(--c-danger-bg); }
+.inspector-btn--primary { background: var(--c-accent); color: #fff; border-color: var(--c-accent); }
+.inspector-btn--primary:hover { opacity: 0.85; background: var(--c-accent); }
+.inspector-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.suggest-candidate {
+  background: var(--c-surface-2);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-left: 3px solid var(--c-accent);
+}
+
+.candidate-type {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.candidate-type.type-claim { color: var(--c-accent); }
+.candidate-type.type-grounds { color: #10b981; }
+.candidate-type.type-warrant { color: #3b82f6; }
+.candidate-type.type-backing { color: #93c5fd; }
+.candidate-type.type-qualifier { color: #f59e0b; }
+.candidate-type.type-rebuttal { color: var(--c-danger); }
+
+.candidate-text {
+  font-size: 12px;
+  color: var(--c-text-0);
+  line-height: 1.5;
+}
+
+.candidate-adopt-btn {
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--c-accent);
+  background: transparent;
+  color: var(--c-accent);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 100ms, color 100ms;
+}
+.candidate-adopt-btn:hover { background: var(--c-accent); color: #fff; }
 </style>
