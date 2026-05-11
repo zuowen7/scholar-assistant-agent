@@ -23,6 +23,48 @@ class V2CreateGraphRequest(BaseModel):
     source_doc: str | None = None
 
 
+# ── companion v3 request body models (module-level for FastAPI annotation resolution) ─
+
+class CompanionBuildLedgerRequest(BaseModel):
+    doc_id: str
+    doc_title: str = ""
+    text: str
+
+
+class CompanionRelocateRequest(BaseModel):
+    text: str
+
+
+class CompanionPromiseUpsertRequest(BaseModel):
+    id: str | None = None
+    text: str
+    kind: str
+    source_anchor_id: str
+    discharge_anchor_ids: list[str] = []
+    status: str = "unknown"
+    note: str | None = None
+
+
+class CompanionReviewRequest(BaseModel):
+    doc_id: str
+    doc_title: str = ""
+    text: str
+    venue: str | None = None
+    persona: str = "reviewer2"
+    focus: dict | None = None
+    checks: list[str] | None = None
+    session_id: str | None = None
+
+
+class CompanionUpdatePointRequest(BaseModel):
+    status: str
+
+
+class CompanionRebutRequest(BaseModel):
+    message: str
+    text: str = ""
+
+
 # v2 models imported eagerly at module level so that `from __future__ import
 # annotations` string-annotation resolution finds them in module globals.
 try:
@@ -254,3 +296,191 @@ def register_argument_v2(
         ct_map = {".md": "text/markdown", ".tex": "text/x-latex"}
         ct = ct_map.get(op.suffix, "text/plain")
         return FileResponse(op, media_type=ct, filename=op.name)
+
+
+# ── Argument Companion v3 端点 ────────────────────────────────────────────────
+
+
+def register_companion(
+    app: FastAPI,
+    *,
+    store,  # CompanionStore instance
+    flag_enabled: bool = False,
+    load_config=None,
+    build_cloud_client=None,
+) -> None:
+    """注册 Argument Companion v3 端点（/api/companion/*）。
+
+    仅当 flag_enabled=True 时注册；否则路径返回 404。
+    与 register_argument_v2 并存，不冲突。
+    """
+    if not flag_enabled:
+        return
+
+    def _get_cloud_client():
+        if load_config is None or build_cloud_client is None:
+            return None
+        config = load_config()
+        trans_cfg = config.get("translator", {})
+        cloud_cfg = trans_cfg.get("cloud", {})
+        if not cloud_cfg.get("api_key"):
+            return None
+        return build_cloud_client(trans_cfg, cloud_cfg)
+
+    # ── Ledger endpoints ───────────────────────────────────────────────────
+
+    @app.post("/api/companion/ledger/build")
+    async def companion_build_ledger(req: CompanionBuildLedgerRequest):
+        from src.argument.ledger import build_ledger, rebuild_ledger
+
+        cloud_client = _get_cloud_client()
+        fn = rebuild_ledger if store.get_ledger(req.doc_id) else build_ledger
+
+        async def _gen():
+            async for ev in fn(
+                doc_id=req.doc_id,
+                doc_title=req.doc_title,
+                text=req.text,
+                store=store,
+                cloud_client=cloud_client,
+            ):
+                yield {"event": ev["event"], "data": ev["data"]}
+
+        return EventSourceResponse(_gen())
+
+    @app.get("/api/companion/ledger/{doc_id}")
+    def companion_get_ledger(doc_id: str):
+        ledger = store.get_ledger(doc_id)
+        if ledger is None:
+            raise HTTPException(status_code=404, detail="Ledger not found")
+        return ledger.model_dump()
+
+    @app.put("/api/companion/ledger/{doc_id}/promise")
+    def companion_upsert_promise(doc_id: str, req: CompanionPromiseUpsertRequest):
+        from src.argument.companion_models import Promise
+        ledger = store.get_ledger(doc_id)
+        if ledger is None:
+            raise HTTPException(status_code=404, detail="Ledger not found")
+        kwargs = dict(
+            text=req.text,
+            kind=req.kind,
+            source_anchor_id=req.source_anchor_id,
+            discharge_anchor_ids=req.discharge_anchor_ids,
+            status=req.status,
+            note=req.note,
+            created_by="user",
+            user_overridden=True,
+        )
+        if req.id:
+            kwargs["id"] = req.id
+        p = Promise(**kwargs)  # type: ignore[arg-type]
+        store.upsert_promise(doc_id, p)
+        return p.model_dump()
+
+    @app.delete("/api/companion/ledger/{doc_id}/promise/{pid}")
+    def companion_delete_promise(doc_id: str, pid: str):
+        if store.get_ledger(doc_id) is None:
+            raise HTTPException(status_code=404, detail="Ledger not found")
+        store.delete_promise(doc_id, pid)
+        return {"ok": True}
+
+    @app.post("/api/companion/ledger/{doc_id}/relocate")
+    def companion_relocate(doc_id: str, req: CompanionRelocateRequest):
+        from src.argument.anchor import relocate_all
+        import hashlib
+        ledger = store.get_ledger(doc_id)
+        if ledger is None:
+            raise HTTPException(status_code=404, detail="Ledger not found")
+        ledger.anchors = relocate_all(ledger.anchors, req.text)
+        ledger.doc_hash = hashlib.sha1(req.text.encode()).hexdigest()[:16]
+        store.save_ledger(ledger)
+        return ledger.model_dump()
+
+    @app.delete("/api/companion/ledger/{doc_id}")
+    def companion_delete_ledger(doc_id: str):
+        if store.get_ledger(doc_id) is None:
+            raise HTTPException(status_code=404, detail="Ledger not found")
+        store.delete_ledger(doc_id)
+        return {"ok": True}
+
+    # ── Review endpoints ───────────────────────────────────────────────────
+
+    @app.post("/api/companion/review")
+    async def companion_review(req: CompanionReviewRequest):
+        from src.argument.reviewer import run_review
+
+        cloud_client = _get_cloud_client()
+        ledger = store.get_ledger(req.doc_id)
+
+        async def _gen():
+            async for ev in run_review(
+                doc_id=req.doc_id,
+                doc_title=req.doc_title,
+                text=req.text,
+                venue=req.venue,
+                persona=req.persona,
+                ledger=ledger,
+                store=store,
+                focus=req.focus,
+                checks=req.checks,
+                session_id=req.session_id,
+                cloud_client=cloud_client,
+            ):
+                yield {"event": ev["event"], "data": ev["data"]}
+
+        return EventSourceResponse(_gen())
+
+    @app.get("/api/companion/review/{session_id}")
+    def companion_get_review(session_id: str):
+        s = store.get_review(session_id)
+        if s is None:
+            raise HTTPException(status_code=404, detail="Review session not found")
+        return s.model_dump()
+
+    @app.get("/api/companion/reviews")
+    def companion_list_reviews(doc_id: str):
+        return store.list_reviews(doc_id)
+
+    @app.put("/api/companion/review/{session_id}/point/{pid}")
+    def companion_update_point(session_id: str, pid: str, req: CompanionUpdatePointRequest):
+        # Validate status value
+        valid_statuses = {"open", "rebutted", "accepted", "dismissed"}
+        if req.status not in valid_statuses:
+            raise HTTPException(status_code=422, detail=f"Invalid status: {req.status!r}")
+        s = store.get_review(session_id)
+        if s is None:
+            raise HTTPException(status_code=404, detail="Review session not found")
+        try:
+            store.update_point(session_id, pid, req.status)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Point not found")
+        return {"ok": True}
+
+    @app.post("/api/companion/review/{session_id}/point/{pid}/rebut")
+    async def companion_rebut(session_id: str, pid: str, req: CompanionRebutRequest):
+        from src.argument.reviewer import continue_rebuttal
+
+        cloud_client = _get_cloud_client()
+        s = store.get_review(session_id)
+        if s is None:
+            raise HTTPException(status_code=404, detail="Review session not found")
+
+        async def _gen():
+            async for ev in continue_rebuttal(
+                session_id=session_id,
+                point_id=pid,
+                author_message=req.message,
+                doc_text=req.text,
+                store=store,
+                cloud_client=cloud_client,
+            ):
+                yield {"event": ev["event"], "data": ev["data"]}
+
+        return EventSourceResponse(_gen())
+
+    @app.delete("/api/companion/review/{session_id}")
+    def companion_delete_review(session_id: str):
+        if store.get_review(session_id) is None:
+            raise HTTPException(status_code=404, detail="Review session not found")
+        store.delete_review(session_id)
+        return {"ok": True}
