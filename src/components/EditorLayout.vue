@@ -109,7 +109,7 @@
           @undo="handleUndo"
           @close="rightPanelTab = null"
         />
-        <ArgumentMap v-if="rightPanelTab === 'argument'" class="rp-content" />
+        <ArgumentMapMini v-if="rightPanelTab === 'argument'" class="rp-content" />
       </div>
     </template>
 
@@ -152,7 +152,7 @@ import MonacoEditor from './MonacoEditor.vue'
 import MarkdownPreview from './MarkdownPreview.vue'
 import FileTree from './FileTree.vue'
 import AiPanel from './AiPanel.vue'
-import ArgumentMap from './ArgumentMap.vue'
+import ArgumentMapMini from './argument/ArgumentMapMini.vue'
 import ComplianceModal from './ComplianceModal.vue'
 import TemplatePicker from './TemplatePicker.vue'
 import MindMapView from './MindMapView.vue'

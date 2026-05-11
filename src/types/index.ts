@@ -268,4 +268,4 @@ export interface EditStreamEvent {
   usage?: { prompt_tokens: number; completion_tokens: number }
 }
 
-export type AppMode = 'translate' | 'editor'
+export type AppMode = 'translate' | 'editor' | 'argument'
