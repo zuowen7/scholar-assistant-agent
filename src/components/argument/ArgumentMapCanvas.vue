@@ -28,7 +28,7 @@ import { VueFlow } from '@vue-flow/core'
 import type { Connection, NodeChange, NodeMouseEvent, EdgeMouseEvent } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
-import { useArgumentMap, inferRelationType, toFlowNodes, toFlowEdges } from '../../composables/useArgumentMap'
+import { useArgumentMap, inferRelationType, toFlowNodes, toFlowEdges, focusNode } from '../../composables/useArgumentMap'
 import type { RelationType } from '../../composables/useArgumentMap'
 import { useToast } from '../../composables/useToast'
 import ArgNodeCard from './ArgNodeCard.vue'
@@ -55,6 +55,7 @@ function onClickWrapper(e: MouseEvent) {
 function onNodeClick(e: NodeMouseEvent) {
   state.selectedNodeId = e.node.id
   state.selectedEdgeId = ''
+  focusNode(e.node.id)
 }
 
 function onEdgeClick(e: EdgeMouseEvent) {

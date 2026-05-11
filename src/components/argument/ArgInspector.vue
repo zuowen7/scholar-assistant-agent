@@ -52,10 +52,21 @@
           </div>
         </div>
 
-        <!-- Span list: Phase 3 placeholder -->
-        <div class="inspector-field inspector-placeholder">
-          <label class="inspector-label">原文引用</label>
-          <p class="placeholder-text">绑定原文段落（Phase 3 实现）</p>
+        <!-- Span list -->
+        <div v-if="selectedNode" class="inspector-field">
+          <label class="inspector-label">原文引用 ({{ nodeSpans.length }})</label>
+          <div v-if="!nodeSpans.length" class="placeholder-text">从原文面板选句绑定</div>
+          <div
+            v-for="span in nodeSpans"
+            :key="span.id"
+            class="inspector-span"
+          >
+            <span class="span-quote">「{{ span.quote.slice(0, 36) }}{{ span.quote.length > 36 ? '…' : '' }}」</span>
+            <div class="span-actions">
+              <button class="span-action-btn" :title="span.source_label || span.side" @click="jumpToSpan(span.id)">跳到原文</button>
+              <button class="span-action-btn span-action-btn--danger" @click="removeSpan(span.id)">解绑</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -87,11 +98,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { NodeType, RelationType } from '../../composables/useArgumentMap'
-import { useArgumentMap } from '../../composables/useArgumentMap'
+import { useArgumentMap, focusSpan } from '../../composables/useArgumentMap'
 
 defineEmits<{ 'auto-layout': [] }>()
 
-const { state, upsertNode, deleteNode, deleteEdge } = useArgumentMap()
+const { state, upsertNode, deleteNode, deleteEdge, deleteSpan } = useArgumentMap()
 
 const selectedNode = computed(() => state.graph?.nodes.find(n => n.id === state.selectedNodeId) ?? null)
 const selectedEdge = computed(() => state.graph?.edges.find(e => e.id === state.selectedEdgeId) ?? null)
@@ -147,6 +158,20 @@ async function deleteSelectedEdge() {
   const id = selectedEdge.value.id
   state.selectedEdgeId = ''
   await deleteEdge(id)
+}
+
+// ── Span list ─────────────────────────────────────────────────────────────────
+
+const nodeSpans = computed(() =>
+  (state.graph?.spans ?? []).filter(s => s.node_id === selectedNode.value?.id),
+)
+
+function jumpToSpan(spanId: string) {
+  focusSpan(spanId)
+}
+
+async function removeSpan(spanId: string) {
+  await deleteSpan(spanId)
 }
 </script>
 
@@ -219,6 +244,40 @@ async function deleteSelectedEdge() {
 
 .inspector-placeholder { opacity: 0.5; }
 .placeholder-text { font-size: 12px; color: var(--c-text-2); margin: 0; font-style: italic; }
+
+.inspector-span {
+  background: var(--c-surface-2);
+  border-radius: var(--radius-sm);
+  padding: 5px 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.span-quote {
+  font-size: 11px;
+  color: var(--c-text-1);
+  font-style: italic;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.span-actions { display: flex; gap: 4px; }
+
+.span-action-btn {
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--c-surface-3);
+  background: transparent;
+  color: var(--c-text-1);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+  transition: background 100ms;
+}
+.span-action-btn:hover { background: var(--c-surface-3); }
+.span-action-btn--danger { color: var(--c-danger); }
+.span-action-btn--danger:hover { background: var(--c-danger-bg); }
 
 .inspector-edge-rel {
   font-size: 12px;

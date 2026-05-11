@@ -49,8 +49,11 @@
       </div>
 
       <template v-else>
-        <!-- Two-column: canvas | inspector -->
+        <!-- Three-column: source | canvas | inspector -->
         <div class="arg-view-split">
+          <div class="arg-source-area">
+            <ArgSourcePane />
+          </div>
           <div class="arg-canvas-area">
             <ArgumentMapCanvas />
           </div>
@@ -90,6 +93,7 @@ import { useArgumentMap } from '../../composables/useArgumentMap'
 import { useArgumentLayout } from '../../composables/useArgumentLayout'
 import ArgumentMapCanvas from './ArgumentMapCanvas.vue'
 import ArgInspector from './ArgInspector.vue'
+import ArgSourcePane from './ArgSourcePane.vue'
 
 const { state, listGraphs, createGraph, loadGraph, upsertNode } = useArgumentMap()
 const { autoLayout } = useArgumentLayout()
@@ -246,6 +250,13 @@ function runAutoLayout() {
 .arg-view-split {
   display: flex;
   width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.arg-source-area {
+  width: 280px;
+  flex-shrink: 0;
   height: 100%;
   overflow: hidden;
 }
