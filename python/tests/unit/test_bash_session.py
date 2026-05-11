@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 from pathlib import Path
 
@@ -106,6 +107,7 @@ class TestCwdTracking:
         session.run_command("cd no_such_dir")
         assert session.cwd == original
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="pwd is Unix-only")
     def test_cwd_override_param(self, session, workspace):
         r = session.run_command("pwd", cwd="subdir")
         assert r.exit_code == 0
@@ -155,6 +157,7 @@ class TestEnvOverrides:
 
 
 class TestTimeout:
+    @pytest.mark.skipif(sys.platform == "win32", reason="sleep is Unix-only")
     def test_timeout_returns_error(self, session):
         r = session.run_command("sleep 30", timeout=1)
         assert r.exit_code == -1
