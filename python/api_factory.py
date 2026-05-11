@@ -390,6 +390,17 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
             rag_store_getter=state_agent["get_rag_store"],
         )
 
+    # Toulmin v2 — guarded by features.argument_map_v2 config flag
+    try:
+        from src.argument.graph_store import ArgGraphStore
+        from routers.argument import register_argument_v2
+        _v2_flag = bool(_load_config().get("features", {}).get("argument_map_v2", False))
+        _graph_store = ArgGraphStore(runtime_dir=RUNTIME_DIR)
+        register_argument_v2(app, store=_graph_store, flag_enabled=_v2_flag)
+    except Exception as _e:
+        import logging as _logging
+        _logging.getLogger(__name__).warning("argument_map_v2 setup skipped: %s", _e)
+
     from routers.mindmap import register_mindmap
     register_mindmap(
         app,
