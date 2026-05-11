@@ -198,3 +198,14 @@ python -m venv /tmp/test && /tmp/test/Scripts/pip install -r requirements-lock.t
 ### 论证地图 v2 重写（已完成 — 见 docs/argument-map-v2-spec.md）
 
 5 个 Phase 已全部完成（Phase 1–5），旧树实现已删除。当前实现为 Toulmin 图（v2 唯一版本）。
+
+### 论证陪练 v3（进行中 — 见 docs/argument-map-v3-spec.md）
+
+正在把"论证地图"的重心从"画布编辑器"转向"编辑器里的论证陪练"：①论证账本（abstract/intro 的承诺 ↔ 正文的兑付，带状态、锚定到句子）；②Reviewer‑2 对抗（会议校准的模拟评审，每条锚到句子，可逐条 rebuttal，reviewer 会被说服；含「质疑这句」/首尾一致 + gap 匹配/related work 定位检查/真实评审导入）；③现有 Toulmin 图/Vue Flow 在最后归并为"审稿模式"的可视化（承重路径 X 光），不删。实施约束：
+1. 不可大改一把梭。严格按 docs/argument-map-v3-spec.md 的 Phase 1→5 顺序，一个 Phase 一个 PR。
+2. 测试先行（TDD）。每个 Phase 先写失败的测试，再写实现让测试通过。锚定（anchor.py）是工程核心，必须有 exact/drifted/lost 三态的单测，不允许"写完再补测试"。
+3. 新代码暗发布。新功能全程挂在 config flag `features.argument_companion` 后（默认 false，Phase 4 完成才翻 true）。
+4. 旧代码不提前删。现有 ArgGraph / graph_store.py / ai_ops.py / critique.py / ArgumentMapView.vue / Vue Flow 画布在 Phase 5"审稿模式归并"前不动。
+5. 每个 PR 合并前门禁：`cd python && pytest tests/ -v` 全绿 + `npm run build` 成功 + `npx vitest` 全绿。任一失败不许合。
+6. 范围冻结。仅：anchoring、论证账本、Reviewer‑2 + rebuttal 循环 + 质疑这句 + 一致性/RW 检查、审稿模式归并 + 真实评审导入 —— 不附带无关重构/清理。
+7. 每个 Phase 完成后跑 /review 或 /security-review。
