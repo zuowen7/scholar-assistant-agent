@@ -1,5 +1,8 @@
 import { reactive, ref } from 'vue'
 import { API_BASE } from '../utils/api'
+import type { BlockData } from '../types/index'
+import { useTranslate } from './useTranslate'
+import { useEditor } from './useEditor'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -145,18 +148,43 @@ export function toFlowEdges(graph: ArgGraph): FlowEdge[] {
 
 // ── Singleton state ───────────────────────────────────────────────────────────
 
+interface SourceState {
+  mode: 'paste' | 'translation' | 'editor'
+  text: string
+  label: string
+  side: 'orig' | 'trans'
+  blocks: BlockData[]
+}
+
 interface ArgumentMapState {
   graph: ArgGraph | null
   graphList: GraphSummary[]
   selectedNodeId: string
   selectedEdgeId: string
+  /** Node IDs to highlight in the graph (driven by source pane hover/click) */
+  highlightNodeIds: string[]
+  /** Span ID currently hovered in source pane */
+  hoveredSpanId: string
+  /** Source text state for ArgSourcePane */
+  source: SourceState
 }
+
+const _defaultSource = (): SourceState => ({
+  mode: 'paste',
+  text: '',
+  label: '',
+  side: 'trans',
+  blocks: [],
+})
 
 const _state = reactive<ArgumentMapState>({
   graph: null,
   graphList: [],
   selectedNodeId: '',
   selectedEdgeId: '',
+  highlightNodeIds: [],
+  hoveredSpanId: '',
+  source: _defaultSource(),
 })
 
 const _history: ArgGraph[] = []
@@ -200,6 +228,9 @@ export function _resetForTesting() {
   _state.graphList = []
   _state.selectedNodeId = ''
   _state.selectedEdgeId = ''
+  _state.highlightNodeIds = []
+  _state.hoveredSpanId = ''
+  Object.assign(_state.source, _defaultSource())
   _history.length = 0
   _redoStack.length = 0
 }
@@ -354,6 +385,48 @@ async function deleteSpan(sid: string): Promise<void> {
   await fetch(`${API_BASE}/api/argument/graph/${_state.graph.id}/span/${sid}`, { method: 'DELETE' })
 }
 
+// ── Phase 3: source / focus helpers ──────────────────────────────────────────
+
+/** Highlight the given node in the source pane (empty string clears). */
+export function focusNode(nodeId: string): void {
+  _state.highlightNodeIds = nodeId ? [nodeId] : []
+}
+
+/** Highlight the node that owns this span. */
+export function focusSpan(spanId: string): void {
+  const span = _state.graph?.spans.find(s => s.id === spanId)
+  if (span) _state.highlightNodeIds = [span.node_id]
+}
+
+/** Set source to pasted text. */
+export function setPastedSource(text: string, label = '粘贴文本'): void {
+  _state.source.mode = 'paste'
+  _state.source.text = text
+  _state.source.label = label
+  _state.source.blocks = []
+}
+
+/** Load source from the last translation result. */
+export function loadSourceFromTranslation(): void {
+  const { state: ts } = useTranslate()
+  const blocks = [...(ts.blocks as BlockData[])]
+  _state.source.mode = 'translation'
+  _state.source.blocks = blocks
+  _state.source.side = 'trans'
+  _state.source.label = '上次翻译结果'
+  _state.source.text = blocks.map(b => b.translated || b.original).filter(Boolean).join('\n\n')
+}
+
+/** Load source from the currently active editor tab. */
+export function loadSourceFromEditor(): void {
+  const { activeTab } = useEditor()
+  const tab = activeTab.value as { content?: string; name?: string } | null
+  _state.source.mode = 'editor'
+  _state.source.text = tab?.content ?? ''
+  _state.source.label = tab?.name ?? '编辑器文件'
+  _state.source.blocks = []
+}
+
 // ── Composable (singleton) ────────────────────────────────────────────────────
 
 export function useArgumentMap() {
@@ -377,5 +450,11 @@ export function useArgumentMap() {
     deleteEdge,
     addSpan,
     deleteSpan,
+    // Phase 3: source / focus
+    focusNode,
+    focusSpan,
+    setPastedSource,
+    loadSourceFromTranslation,
+    loadSourceFromEditor,
   }
 }
