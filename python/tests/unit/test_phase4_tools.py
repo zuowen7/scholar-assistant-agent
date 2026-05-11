@@ -57,6 +57,7 @@ class TestShellExec:
             result = _shell_exec("rmdir test_dir")
             assert not (Path(sandbox) / "test_dir").exists() or "exit code" not in result
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="touch is Unix-only")
     def test_touch_and_rm_in_sandbox(self):
         import tempfile
         sandbox = tempfile.mkdtemp(prefix="test_sandbox_")
