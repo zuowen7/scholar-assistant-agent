@@ -150,7 +150,7 @@ Use this as the canonical "what works / what's polished / what's a stub" map. Up
 | # | Subsystem | Grade | Key evidence |
 |---|-----------|-------|--------------|
 | 1 | Translation pipeline (5-step SSE + multi-article split + citation placeholders + continuation rules + UTF-8 fix) | A | `routers/translate.py:295` multi-article via `parser/article_detector.extract_articles`; `block_translator.py:289,326` citation protect/restore; `cleaner/pipeline.py:258` pdfplumber encoding fix; `cleaner/pipeline.py:894-979` 6 continuation rules |
-| 2 | Argument Map (论证树 + 降维展开 + RAG context + 6 templates) | A | `argument/flatten.py:315` `_fetch_ref_context` real RAG retrieval, gracefully degrades when `rag_store is None`; 4-stage pipeline (classify → DFS expand → polish → format) |
+| 2 | Argument Map (Toulmin v2: typed nodes/edges + span↔node mapping + AI extract/critique/suggest + graph→draft flatten) | A | `argument/ai_ops.py` SSE extract; `argument/critique.py` 6-rule structural check + LLM fallacy; `argument/flatten_graph.py` graph→draft; `components/argument/` Vue Flow canvas + Inspector + SourcePane |
 | 3 | Mind Map (Vue Flow + AI expand + dagre layout) | A- | LLM failure → hardcoded fallback nodes |
 | 4 | LaTeX/Word export (IEEE Conf/Journal, ACM, NeurIPS, LNCS, Generic + Tectonic) | A | `word_exporter.py`, `pandoc_templates`, `pptx_exporter` |
 | 5 | AI editor (Monaco + Ghost Text + AI Panel) | B | Completion quality average; debounce 1.5s |
@@ -195,14 +195,6 @@ python -m venv /tmp/test && /tmp/test/Scripts/pip install -r requirements-lock.t
 - Ollama with `ollama pull qwen3:8b` for local translation
 - Node.js 18+, Rust 1.80+ for desktop development
 
-### 论证地图 v2 重写约束（进行中 — 见 docs/argument-map-v2-spec.md）
+### 论证地图 v2 重写（已完成 — 见 docs/argument-map-v2-spec.md）
 
-正在用 5 个独立 PR 把"论证地图"从缩进大纲树重写为 Toulmin 论证图。实施时必须遵守：
-
-1. **不可大改一把梭**。严格按 `docs/argument-map-v2-spec.md` 的 Phase 1→5 顺序，一个 Phase 一个 PR。
-2. **测试先行（TDD）**。每个 Phase 必须先写失败的测试，再写实现让测试通过。不允许"写完主程序再补测试"。
-3. **新代码暗发布**。新论证图功能全程挂在 config flag `features.argument_map_v2` 后面（默认 false，直到 Phase 4 完成才在 default.yaml 翻 true）。
-4. **旧代码不提前删**。旧的 `/api/argument/*` 树端点、`ArgumentMap.vue`、`expander.py` / `logic_checker.py` / `feedback_generator.py` / `flatten.py`（树版）只在最后的 cleanup Phase（Phase 5 尾）删除，且必须在新路径经手工 e2e 验证可用之后。
-5. **每个 PR 合并前的门禁**：`cd python && pytest tests/ -v` 全绿 + `npm run build` 成功 + `npx vitest` 全绿。任一失败不许合。
-6. **范围冻结**。不在本次重写里附带无关重构/清理。Toulmin 六元、原文 span↔节点映射、Vue Flow 图视图、AI 提取/批判/建议、图→草稿 flatten —— 仅此而已。
-7. 每个 Phase 完成后跑 `/full-review` 或 `/security-review`。
+5 个 Phase 已全部完成（Phase 1–5），旧树实现已删除。当前实现为 Toulmin 图（v2 唯一版本）。

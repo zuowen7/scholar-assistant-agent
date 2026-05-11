@@ -21,7 +21,6 @@ from pydantic import BaseModel
 from src.translator.cloud_client import CloudClient
 
 from src.features import plugin as _PLUGIN_AVAILABLE
-from src.features import argument as _ARGUMENT_AVAILABLE
 
 if _PLUGIN_AVAILABLE:
     from src.plugin import PluginRegistry, register_builtin
@@ -379,22 +378,11 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         rag_store_getter=state_agent["get_rag_store"],
     )
 
-    if _ARGUMENT_AVAILABLE:
-        from routers.argument import register_argument
-        register_argument(
-            app,
-            load_config=_load_config,
-            build_cloud_client=_build_cloud_client,
-            runtime_dir=RUNTIME_DIR,
-            data_root=data_root,
-            rag_store_getter=state_agent["get_rag_store"],
-        )
-
-    # Toulmin v2 — guarded by features.argument_map_v2 config flag
+    # Toulmin v2 argument graph (sole implementation)
     try:
         from src.argument.graph_store import ArgGraphStore
         from routers.argument import register_argument_v2
-        _v2_flag = bool(_load_config().get("features", {}).get("argument_map_v2", False))
+        _v2_flag = True  # v2 is now the only version; flag retained for graceful degradation
         _graph_store = ArgGraphStore(runtime_dir=RUNTIME_DIR)
         register_argument_v2(
             app,
@@ -402,6 +390,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
             flag_enabled=_v2_flag,
             load_config=_load_config,
             build_cloud_client=_build_cloud_client,
+            runtime_dir=RUNTIME_DIR,
         )
     except Exception as _e:
         import logging as _logging
