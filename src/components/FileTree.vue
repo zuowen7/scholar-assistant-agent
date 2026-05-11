@@ -205,7 +205,7 @@ onBeforeUnmount(() => {
   flex-direction: column;
   height: 100%;
   width: 100%;
-  background: var(--c-surface-0);
+  background: var(--sidebar-bg);
   border-right: 1px solid var(--c-surface-3);
   user-select: none;
 }
@@ -269,7 +269,7 @@ onBeforeUnmount(() => {
   gap: 6px;
   padding: 4px 10px;
   border-bottom: 1px solid var(--c-surface-3);
-  background: var(--c-surface-0);
+  background: var(--sidebar-bg);
 }
 
 .search-icon { color: var(--c-text-3); flex-shrink: 0; }

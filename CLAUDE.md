@@ -150,7 +150,7 @@ Use this as the canonical "what works / what's polished / what's a stub" map. Up
 | # | Subsystem | Grade | Key evidence |
 |---|-----------|-------|--------------|
 | 1 | Translation pipeline (5-step SSE + multi-article split + citation placeholders + continuation rules + UTF-8 fix) | A | `routers/translate.py:295` multi-article via `parser/article_detector.extract_articles`; `block_translator.py:289,326` citation protect/restore; `cleaner/pipeline.py:258` pdfplumber encoding fix; `cleaner/pipeline.py:894-979` 6 continuation rules |
-| 2 | Argument Map (论证树 + 降维展开 + RAG context + 6 templates) | A | `argument/flatten.py:315` `_fetch_ref_context` real RAG retrieval, gracefully degrades when `rag_store is None`; 4-stage pipeline (classify → DFS expand → polish → format) |
+| 2 | Argument Map (Toulmin v2: typed nodes/edges + span↔node mapping + AI extract/critique/suggest + graph→draft flatten) | A | `argument/ai_ops.py` SSE extract; `argument/critique.py` 6-rule structural check + LLM fallacy; `argument/flatten_graph.py` graph→draft; `components/argument/` Vue Flow canvas + Inspector + SourcePane |
 | 3 | Mind Map (Vue Flow + AI expand + dagre layout) | A- | LLM failure → hardcoded fallback nodes |
 | 4 | LaTeX/Word export (IEEE Conf/Journal, ACM, NeurIPS, LNCS, Generic + Tectonic) | A | `word_exporter.py`, `pandoc_templates`, `pptx_exporter` |
 | 5 | AI editor (Monaco + Ghost Text + AI Panel) | B | Completion quality average; debounce 1.5s |
@@ -194,3 +194,7 @@ python -m venv /tmp/test && /tmp/test/Scripts/pip install -r requirements-lock.t
 - Python 3.12+
 - Ollama with `ollama pull qwen3:8b` for local translation
 - Node.js 18+, Rust 1.80+ for desktop development
+
+### 论证地图 v2 重写（已完成 — 见 docs/argument-map-v2-spec.md）
+
+5 个 Phase 已全部完成（Phase 1–5），旧树实现已删除。当前实现为 Toulmin 图（v2 唯一版本）。

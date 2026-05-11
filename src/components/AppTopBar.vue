@@ -300,6 +300,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { argMapV2Enabled } from '../composables/useArgumentMap'
 import { Settings, Sun, Moon, Upload, Trash2, MessageSquare } from './ui/icons'
 import UiSegmented from './ui/UiSegmented.vue'
 import UiButton from './ui/UiButton.vue'
@@ -361,10 +362,11 @@ const statusPopoverRef = ref<InstanceType<typeof UiPopover> | null>(null)
 const settingsPopoverOpen = computed(() => settingsPopoverRef.value?.open ?? false)
 const settingsTab = ref<'engine' | 'display' | 'network' | 'background'>('engine')
 
-const modeOptions = [
+const modeOptions = computed(() => [
   { value: 'translate' as AppMode, label: '翻译' },
   { value: 'editor' as AppMode, label: '编辑' },
-]
+  ...(argMapV2Enabled.value ? [{ value: 'argument' as AppMode, label: '论证' }] : []),
+])
 
 const settingsTabOptions = [
   { value: 'engine', label: '引擎' },
