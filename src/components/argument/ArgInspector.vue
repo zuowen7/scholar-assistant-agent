@@ -31,13 +31,32 @@
         </div>
       </div>
 
+      <!-- Export template selector -->
+      <div v-if="state.graph" class="inspector-field">
+        <label class="inspector-label">导出格式</label>
+        <select v-model="exportTemplate" class="inspector-select">
+          <option value="markdown">Markdown (.md)</option>
+          <option value="latex">LaTeX (.tex)</option>
+        </select>
+      </div>
+
       <div class="inspector-actions">
         <button
           class="inspector-btn inspector-btn--primary"
           :disabled="!state.graph || state.critiquing"
           @click="doCritique"
         >{{ state.critiquing ? '审查中…' : '批判审查' }}</button>
+        <button
+          class="inspector-btn"
+          :disabled="!state.graph || exporting"
+          @click="doExport"
+        >{{ exporting ? '生成中…' : '导出草稿' }}</button>
         <button class="inspector-btn" @click="$emit('auto-layout')">自动布局</button>
+      </div>
+
+      <!-- Export status -->
+      <div v-if="exportMsg" class="export-msg" :class="{ 'export-msg--ok': exportOk }">
+        {{ exportMsg }}
       </div>
     </template>
 
@@ -139,6 +158,8 @@
 import { computed, ref, watch } from 'vue'
 import type { NodeType, RelationType, SuggestCandidate, SuggestResult } from '../../composables/useArgumentMap'
 import { useArgumentMap, focusSpan } from '../../composables/useArgumentMap'
+import { API_BASE } from '../../utils/api'
+import { readSseStream } from '../../utils/streamReader'
 
 defineEmits<{ 'auto-layout': [] }>()
 
@@ -148,6 +169,43 @@ const { state, upsertNode, deleteNode, deleteEdge, deleteSpan, critiqueGraph, su
 
 async function doCritique() {
   await critiqueGraph()
+}
+
+// ── Export draft ──────────────────────────────────────────────────────────────
+
+const exportTemplate = ref<'markdown' | 'latex'>('markdown')
+const exporting = ref(false)
+const exportMsg = ref('')
+const exportOk = ref(false)
+
+async function doExport() {
+  if (!state.graph) return
+  exporting.value = true
+  exportMsg.value = '生成中…'
+  exportOk.value = false
+
+  try {
+    const res = await fetch(`${API_BASE}/api/argument/graph/${state.graph.id}/flatten`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ template: exportTemplate.value, title: state.graph.title }),
+    })
+    if (!res.body) { exportMsg.value = '请求失败'; return }
+
+    await readSseStream(res.body.getReader(), (eventType, data) => {
+      if (eventType === 'complete') {
+        const d = data as { output_path?: string; word_count?: number }
+        exportOk.value = true
+        exportMsg.value = `草稿已生成（${d.word_count ?? 0} 字）`
+      } else if (eventType === 'error') {
+        exportMsg.value = '导出失败：' + String((data as { message?: string }).message ?? '')
+      }
+    })
+  } catch (e) {
+    exportMsg.value = '导出失败'
+  } finally {
+    exporting.value = false
+  }
 }
 
 // ── Suggest ───────────────────────────────────────────────────────────────────
@@ -423,4 +481,27 @@ async function removeSpan(spanId: string) {
   transition: background 100ms, color 100ms;
 }
 .candidate-adopt-btn:hover { background: var(--c-accent); color: #fff; }
+
+.inspector-select {
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-surface-3);
+  border-radius: var(--radius-sm);
+  color: var(--c-text-0);
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+  outline: none;
+  cursor: pointer;
+}
+.inspector-select:focus { border-color: var(--c-accent); }
+
+.export-msg {
+  font-size: 11px;
+  color: var(--c-text-2);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--c-surface-2);
+  text-align: center;
+}
+.export-msg--ok { color: #10b981; background: color-mix(in srgb, #10b981 12%, transparent); }
 </style>
