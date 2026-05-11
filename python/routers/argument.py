@@ -17,6 +17,24 @@ from sse_starlette.sse import EventSourceResponse
 logger = logging.getLogger(__name__)
 
 
+# ── v2 request body models (module-level so FastAPI can resolve annotations) ─
+
+class V2CreateGraphRequest(BaseModel):
+    title: str = "未命名论证图"
+    source_doc: str | None = None
+
+
+# v2 models imported eagerly at module level so that `from __future__ import
+# annotations` string-annotation resolution finds them in module globals.
+try:
+    from src.argument.models_v2 import ArgNode, ArgEdge, SpanMapping  # noqa: F401
+    _V2_MODELS_AVAILABLE = True
+except ImportError:
+    _V2_MODELS_AVAILABLE = False
+
+
+# ── v1 request body models ───────────────────────────────────────────────────
+
 class ArgumentTreeCreateRequest(BaseModel):
     topic: str
     domain_tags: list[str] = []
@@ -360,3 +378,98 @@ def register_argument(
                 "node_id": node_id,
                 "references": [r.model_dump() for r in node.references],
             }
+
+
+# ── Toulmin v2 端点（feature flag 控制） ─────────────────────────────────────
+
+
+def register_argument_v2(
+    app: FastAPI,
+    *,
+    store,  # ArgGraphStore instance
+    flag_enabled: bool = False,
+) -> None:
+    """注册 Toulmin 论证图 v2 CRUD 端点。
+
+    仅当 flag_enabled=True 时注册；否则所有 /api/argument/* v2 路径返回 404。
+    与旧树端点并存，不冲突。
+    """
+    if not flag_enabled:
+        return
+
+    @app.get("/api/argument/graphs")
+    def v2_list_graphs():
+        return store.list_graphs()
+
+    @app.post("/api/argument/graph")
+    def v2_create_graph(req: V2CreateGraphRequest):
+        g = store.create(title=req.title, source_doc=req.source_doc)
+        return g.model_dump()
+
+    @app.get("/api/argument/graph/{gid}")
+    def v2_get_graph(gid: str):
+        g = store.get(gid)
+        if g is None:
+            raise HTTPException(status_code=404, detail="Graph not found")
+        return g.model_dump()
+
+    @app.delete("/api/argument/graph/{gid}")
+    def v2_delete_graph(gid: str):
+        if store.get(gid) is None:
+            raise HTTPException(status_code=404, detail="Graph not found")
+        store.delete(gid)
+        return {"ok": True}
+
+    @app.put("/api/argument/graph/{gid}/node")
+    def v2_upsert_node(gid: str, req: ArgNode):
+        if store.get(gid) is None:
+            raise HTTPException(status_code=404, detail="Graph not found")
+        node = store.upsert_node(gid, req)
+        return node.model_dump()
+
+    @app.delete("/api/argument/graph/{gid}/node/{nid}")
+    def v2_delete_node(gid: str, nid: str):
+        if store.get(gid) is None:
+            raise HTTPException(status_code=404, detail="Graph not found")
+        try:
+            store.delete_node(gid, nid)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Node not found")
+        return {"ok": True}
+
+    @app.put("/api/argument/graph/{gid}/edge")
+    def v2_upsert_edge(gid: str, req: ArgEdge):
+        if store.get(gid) is None:
+            raise HTTPException(status_code=404, detail="Graph not found")
+        try:
+            edge = store.upsert_edge(gid, req)
+        except ValueError as exc:
+            msg = str(exc)
+            if "invalid_edge" in msg or "self_loop" in msg or "self loop" in msg or "duplicate" in msg:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": "invalid_edge", "detail": msg},
+                )
+            raise HTTPException(status_code=400, detail=msg)
+        return edge.model_dump()
+
+    @app.delete("/api/argument/graph/{gid}/edge/{eid}")
+    def v2_delete_edge(gid: str, eid: str):
+        if store.get(gid) is None:
+            raise HTTPException(status_code=404, detail="Graph not found")
+        store.delete_edge(gid, eid)
+        return {"ok": True}
+
+    @app.put("/api/argument/graph/{gid}/span")
+    def v2_add_span(gid: str, req: SpanMapping):
+        if store.get(gid) is None:
+            raise HTTPException(status_code=404, detail="Graph not found")
+        span = store.add_span(gid, req)
+        return span.model_dump()
+
+    @app.delete("/api/argument/graph/{gid}/span/{sid}")
+    def v2_delete_span(gid: str, sid: str):
+        if store.get(gid) is None:
+            raise HTTPException(status_code=404, detail="Graph not found")
+        store.delete_span(gid, sid)
+        return {"ok": True}
