@@ -388,14 +388,26 @@ def register_argument_v2(
     *,
     store,  # ArgGraphStore instance
     flag_enabled: bool = False,
+    load_config=None,
+    build_cloud_client=None,
 ) -> None:
-    """注册 Toulmin 论证图 v2 CRUD 端点。
+    """注册 Toulmin 论证图 v2 CRUD + AI 端点。
 
     仅当 flag_enabled=True 时注册；否则所有 /api/argument/* v2 路径返回 404。
     与旧树端点并存，不冲突。
     """
     if not flag_enabled:
         return
+
+    def _get_cloud_client():
+        if load_config is None or build_cloud_client is None:
+            return None
+        config = load_config()
+        trans_cfg = config.get("translator", {})
+        cloud_cfg = trans_cfg.get("cloud", {})
+        if not cloud_cfg.get("api_key"):
+            return None
+        return build_cloud_client(trans_cfg, cloud_cfg)
 
     @app.get("/api/argument/graphs")
     def v2_list_graphs():
@@ -473,3 +485,64 @@ def register_argument_v2(
             raise HTTPException(status_code=404, detail="Graph not found")
         store.delete_span(gid, sid)
         return {"ok": True}
+
+    # ── AI 端点 ─────────────────────────────────────────────────────────────
+
+    class ExtractRequest(BaseModel):
+        text: str
+        source_label: str | None = None
+        side: str = "trans"
+
+    class CritiqueRequest(BaseModel):
+        pass  # currently whole-graph critique only
+
+    class SuggestRequest(BaseModel):
+        node_id: str
+
+    @app.post("/api/argument/graph/{gid}/extract")
+    async def v2_extract(gid: str, req: ExtractRequest):
+        if store.get(gid) is None:
+            raise HTTPException(status_code=404, detail="Graph not found")
+        from src.argument.ai_ops import extract_argument
+
+        cloud_client = _get_cloud_client()
+
+        async def _gen():
+            async for ev in extract_argument(
+                gid=gid,
+                text=req.text,
+                source_label=req.source_label,
+                side=req.side,
+                store=store,
+                cloud_client=cloud_client,
+            ):
+                yield {"event": ev["event"], "data": ev["data"]}
+
+        return EventSourceResponse(_gen())
+
+    @app.post("/api/argument/graph/{gid}/critique")
+    async def v2_critique(gid: str):
+        g = store.get(gid)
+        if g is None:
+            raise HTTPException(status_code=404, detail="Graph not found")
+        from src.argument.critique import critique_graph
+
+        cloud_client = _get_cloud_client()
+        issues = await critique_graph(g, cloud_client=cloud_client)
+        store.set_issues(gid, issues)
+        return {"issues": [i.model_dump() for i in issues]}
+
+    @app.post("/api/argument/graph/{gid}/suggest")
+    async def v2_suggest(gid: str, req: SuggestRequest):
+        if store.get(gid) is None:
+            raise HTTPException(status_code=404, detail="Graph not found")
+        from src.argument.ai_ops import suggest_element
+
+        cloud_client = _get_cloud_client()
+        result = await suggest_element(
+            graph_id=gid,
+            node_id=req.node_id,
+            store=store,
+            cloud_client=cloud_client,
+        )
+        return result

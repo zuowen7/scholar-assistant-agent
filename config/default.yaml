@@ -67,4 +67,4 @@ vision:
 # Feature flags
 features:
   # Toulmin 论证图 v2（重写中）。false = 旧缩进树模式；true = 新 Vue Flow 图模式
-  argument_map_v2: false
+  argument_map_v2: true

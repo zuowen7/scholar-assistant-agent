@@ -1,5 +1,6 @@
 import { reactive, ref } from 'vue'
 import { API_BASE } from '../utils/api'
+import { readSseStream } from '../utils/streamReader'
 import type { BlockData } from '../types/index'
 import { useTranslate } from './useTranslate'
 import { useEditor } from './useEditor'
@@ -70,6 +71,18 @@ export interface GraphSummary {
   node_count: number
   updated_at: number
   source_doc?: string | null
+}
+
+export interface SuggestCandidate {
+  local_id: string
+  node_type: NodeType
+  text: string
+  created_by: 'ai'
+}
+
+export interface SuggestResult {
+  candidates: SuggestCandidate[]
+  suggested_edges: Array<{ source: string; target: string; relation: string }>
 }
 
 export interface FlowNode {
@@ -167,6 +180,10 @@ interface ArgumentMapState {
   hoveredSpanId: string
   /** Source text state for ArgSourcePane */
   source: SourceState
+  /** True while extract SSE is in progress */
+  extracting: boolean
+  /** True while critique request is in progress */
+  critiquing: boolean
 }
 
 const _defaultSource = (): SourceState => ({
@@ -185,6 +202,8 @@ const _state = reactive<ArgumentMapState>({
   highlightNodeIds: [],
   hoveredSpanId: '',
   source: _defaultSource(),
+  extracting: false,
+  critiquing: false,
 })
 
 const _history: ArgGraph[] = []
@@ -230,6 +249,8 @@ export function _resetForTesting() {
   _state.selectedEdgeId = ''
   _state.highlightNodeIds = []
   _state.hoveredSpanId = ''
+  _state.extracting = false
+  _state.critiquing = false
   Object.assign(_state.source, _defaultSource())
   _history.length = 0
   _redoStack.length = 0
@@ -427,6 +448,101 @@ export function loadSourceFromEditor(): void {
   _state.source.blocks = []
 }
 
+// ── Phase 4: AI operations ────────────────────────────────────────────────────
+
+/**
+ * Extract a Toulmin argument graph from source text via SSE.
+ * Streams node/edge/span events into local state, then reloads the graph.
+ */
+async function extractArgument(
+  text: string,
+  sourcLabel?: string,
+  side: 'orig' | 'trans' = 'trans',
+): Promise<void> {
+  if (!_state.graph) throw new Error('No graph loaded')
+  _state.extracting = true
+
+  // Clear current nodes/edges/spans for fresh extraction
+  _state.graph.nodes = []
+  _state.graph.edges = []
+  _state.graph.spans = []
+
+  const gid = _state.graph.id
+  try {
+    const res = await fetch(`${API_BASE}/api/argument/graph/${gid}/extract`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, source_label: sourcLabel, side }),
+    })
+    if (!res.body) return
+
+    await readSseStream(res.body.getReader(), (eventType, data) => {
+      if (!_state.graph) return
+      if (eventType === 'node') {
+        _state.graph.nodes.push(data as unknown as ArgNode)
+      } else if (eventType === 'edge') {
+        _state.graph.edges.push(data as unknown as ArgEdge)
+      } else if (eventType === 'span') {
+        _state.graph.spans.push(data as unknown as SpanMapping)
+      }
+    })
+
+    // Reload from server to confirm persisted state
+    await loadGraph(gid)
+  } finally {
+    _state.extracting = false
+  }
+}
+
+/**
+ * Run structural + LLM critique of the current graph.
+ * Issues are written to the graph by the backend and stored in the refreshed graph.
+ */
+async function critiqueGraph(): Promise<ArgIssue[]> {
+  if (!_state.graph) return []
+  _state.critiquing = true
+  try {
+    const res = await fetch(
+      `${API_BASE}/api/argument/graph/${_state.graph.id}/critique`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' } },
+    )
+    if (!res.ok) return []
+    const body = await res.json() as { issues: ArgIssue[] }
+    // Update issue_ids on local nodes
+    if (_state.graph) {
+      for (const node of _state.graph.nodes) node.issue_ids = []
+      for (const issue of body.issues) {
+        if (issue.node_id) {
+          const node = _state.graph.nodes.find(n => n.id === issue.node_id)
+          if (node && !node.issue_ids.includes(issue.id)) node.issue_ids.push(issue.id)
+        }
+      }
+      _state.graph.issues = body.issues
+    }
+    return body.issues
+  } finally {
+    _state.critiquing = false
+  }
+}
+
+/**
+ * Suggest next Toulmin elements for a given node.
+ * Does NOT save to store — frontend shows candidates for user to accept.
+ */
+async function suggestElement(nodeId: string): Promise<SuggestResult> {
+  if (!_state.graph) return { candidates: [], suggested_edges: [] }
+  const res = await fetch(
+    `${API_BASE}/api/argument/graph/${_state.graph.id}/suggest`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ node_id: nodeId }),
+    },
+  )
+  if (!res.ok) return { candidates: [], suggested_edges: [] }
+  return res.json() as Promise<SuggestResult>
+}
+
 // ── Composable (singleton) ────────────────────────────────────────────────────
 
 export function useArgumentMap() {
@@ -456,5 +572,9 @@ export function useArgumentMap() {
     setPastedSource,
     loadSourceFromTranslation,
     loadSourceFromEditor,
+    // Phase 4: AI operations
+    extractArgument,
+    critiqueGraph,
+    suggestElement,
   }
 }
