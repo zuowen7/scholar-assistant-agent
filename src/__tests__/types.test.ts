@@ -113,6 +113,7 @@ describe('EditorTab interface', () => {
       name: 'file.md',
       content: '# Hello',
       isModified: false,
+      docId: '/path/to/file.md',
     }
 
     expect(tab.id).toBeTypeOf('string')
@@ -129,6 +130,7 @@ describe('EditorTab interface', () => {
       name: 'Untitled',
       content: '',
       isModified: false,
+      docId: 'untitled-1',
     }
 
     expect(untitled.path).toBeNull()
@@ -141,6 +143,7 @@ describe('EditorTab interface', () => {
       name: 'Untitled',
       content: 'some text',
       isModified: true,
+      docId: 'untitled-999',
     }
 
     expect(tab.id).not.toBe(tab.path)
