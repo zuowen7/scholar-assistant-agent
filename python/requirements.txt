@@ -28,11 +28,10 @@ python-docx==1.2.0
 python-pptx==1.0.2
 striprtf==0.0.29
 
-# OCR fallback — optional, see requirements-ocr.txt
+# OCR fallback optional, see requirements-ocr.txt
 
 # MCP Server support (stdio transport for Claude Code / Cursor IDE integration)
 mcp==1.27.0
 
 # Agent workspace tools: diff preview generation
 unidiff==0.7.5
-

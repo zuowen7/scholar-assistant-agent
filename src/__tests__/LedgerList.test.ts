@@ -37,10 +37,14 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 
 import { _resetForTesting } from '../composables/useArgumentCompanion'
 import LedgerList from '../components/argument/LedgerList.vue'
+import type { Ledger, Promise as ArgPromise, PromiseStatus } from '../types'
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
-function makePromise(id: string, status: string) {
+function makePromise(id: string, status: PromiseStatus): ArgPromise {
+  const severity: ArgPromise['severity'] = status === 'unpaid' || status === 'mismatch' ? 'error'
+    : status === 'partial' ? 'warning' : 'info'
+
   return {
     id,
     text: `Promise ${id} text`,
@@ -48,15 +52,14 @@ function makePromise(id: string, status: string) {
     source_anchor_id: `a_${id}`,
     discharge_anchor_ids: [],
     status,
-    severity: status === 'unpaid' || status === 'mismatch' ? 'error'
-      : status === 'partial' ? 'warning' : 'info',
+    severity,
     note: status === 'mismatch' ? 'Numbers do not match' : null,
     created_by: 'ai',
     user_overridden: false,
   }
 }
 
-function makeLedger(promises: ReturnType<typeof makePromise>[]) {
+function makeLedger(promises: ArgPromise[]): Ledger {
   return {
     id: 'L_test',
     doc_id: 'doc1',

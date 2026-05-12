@@ -37,6 +37,7 @@ import {
   useArgumentCompanion,
   _resetForTesting,
 } from '../composables/useArgumentCompanion'
+import type { RebuttalTurn, ReviewPoint, ReviewSession } from '../types'
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -393,6 +394,7 @@ describe('useArgumentCompanion', () => {
         try { return JSON.parse((c[1] as { body: string }).body).focus !== undefined } catch { return false }
       })
       expect(reviewCall).toBeDefined()
+      if (!reviewCall) throw new Error('Expected scoped review fetch call')
       const callBody = JSON.parse(reviewCall[1].body)
       expect(callBody.focus).toBe('This is the selected sentence.')
     })
@@ -422,13 +424,13 @@ describe('useArgumentCompanion', () => {
 
   describe('rebut', () => {
     function makeReview() {
-      const point = {
+      const point: ReviewPoint = {
         id: 'rp_001', severity: 'major' as const, category: 'baseline' as const,
         title: 'Missing baselines', detail: 'No comparison.',
         anchor_id: null, status: 'open' as const, source: 'llm' as const,
-        reviewer_label: null, thread: [],
+        reviewer_label: null, thread: [] as RebuttalTurn[],
       }
-      const review = {
+      const review: ReviewSession = {
         id: 'S_001',
         doc_id: 'doc1',
         doc_title: 'Paper',

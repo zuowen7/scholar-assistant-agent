@@ -28,13 +28,11 @@ def _stub_is_masked(_cfg):
 def _stub_validate_file_path(_p):
     pass
 
-RUNTIME_DIR = Path(__file__).parent.parent  # python/
-
 
 # ── translate router ──────────────────────────────────────────────────
 
 class TestRegisterTranslate:
-    def test_routes_registered(self):
+    def test_routes_registered(self, tmp_path: Path):
         """Happy path: register_translate adds expected endpoints."""
         from routers.translate import register_translate
 
@@ -48,7 +46,7 @@ class TestRegisterTranslate:
             mask_api_key=_stub_mask_api_key,
             is_masked=_stub_is_masked,
             validate_file_path=_stub_validate_file_path,
-            runtime_dir=RUNTIME_DIR,
+            runtime_dir=tmp_path,
             rag_store_getter=lambda: None,
         )
         routes = [r.path for r in app.routes]
@@ -59,7 +57,7 @@ class TestRegisterTranslate:
         assert "/api/config" in routes
         assert state is not None
 
-    def test_state_keys(self):
+    def test_state_keys(self, tmp_path: Path):
         """After registration, state dict has expected keys."""
         from routers.translate import register_translate
 
@@ -73,7 +71,7 @@ class TestRegisterTranslate:
             mask_api_key=_stub_mask_api_key,
             is_masked=_stub_is_masked,
             validate_file_path=_stub_validate_file_path,
-            runtime_dir=RUNTIME_DIR,
+            runtime_dir=tmp_path,
             rag_store_getter=lambda: None,
         )
         assert "tasks" in state
@@ -84,7 +82,7 @@ class TestRegisterTranslate:
 # ── editor router ─────────────────────────────────────────────────────
 
 class TestRegisterEditor:
-    def test_routes_registered(self):
+    def test_routes_registered(self, tmp_path: Path):
         """Happy path: register_editor adds expected endpoints."""
         from routers.editor import register_editor
 
@@ -93,8 +91,8 @@ class TestRegisterEditor:
             app,
             cloud_only=False,
             load_config=_stub_load_config,
-            runtime_dir=RUNTIME_DIR,
-            data_root=RUNTIME_DIR / "data",
+            runtime_dir=tmp_path,
+            data_root=tmp_path / "data",
             rag_store_getter=lambda: None,
         )
         routes = [r.path for r in app.routes]
@@ -111,14 +109,14 @@ class TestRegisterEditor:
 # ── mindmap router ────────────────────────────────────────────────────
 
 class TestRegisterMindmap:
-    def test_routes_registered(self):
+    def test_routes_registered(self, tmp_path: Path):
         """Happy path: register_mindmap adds expected endpoints."""
         from routers.mindmap import register_mindmap
 
         app = FastAPI()
         state = register_mindmap(
             app,
-            runtime_dir=RUNTIME_DIR,
+            runtime_dir=tmp_path,
             load_config=_stub_load_config,
             build_cloud_client=_stub_build_cloud_client,
         )
@@ -131,7 +129,7 @@ class TestRegisterMindmap:
 
 class TestRouterHealthEndpoint:
     """Verify /api/health returns ok when no tasks are running."""
-    def test_health_ok(self):
+    def test_health_ok(self, tmp_path: Path):
         from routers.translate import register_translate
 
         app = FastAPI()
@@ -144,7 +142,7 @@ class TestRouterHealthEndpoint:
             mask_api_key=_stub_mask_api_key,
             is_masked=_stub_is_masked,
             validate_file_path=_stub_validate_file_path,
-            runtime_dir=RUNTIME_DIR,
+            runtime_dir=tmp_path,
             rag_store_getter=lambda: None,
         )
         from fastapi.testclient import TestClient
@@ -157,7 +155,7 @@ class TestRouterHealthEndpoint:
 
 class TestTranslateUploadValidation:
     """Verify /api/translate/upload rejects invalid payloads."""
-    def test_no_file_400(self):
+    def test_no_file_400(self, tmp_path: Path):
         from routers.translate import register_translate
 
         app = FastAPI()
@@ -170,7 +168,7 @@ class TestTranslateUploadValidation:
             mask_api_key=_stub_mask_api_key,
             is_masked=_stub_is_masked,
             validate_file_path=_stub_validate_file_path,
-            runtime_dir=RUNTIME_DIR,
+            runtime_dir=tmp_path,
             rag_store_getter=lambda: None,
         )
         from fastapi.testclient import TestClient
@@ -178,7 +176,7 @@ class TestTranslateUploadValidation:
         resp = client.post("/api/translate")
         assert resp.status_code in (400, 422)  # FastAPI validates missing file
 
-    def test_stream_nonexistent_404(self):
+    def test_stream_nonexistent_404(self, tmp_path: Path):
         from routers.translate import register_translate
 
         app = FastAPI()
@@ -191,7 +189,7 @@ class TestTranslateUploadValidation:
             mask_api_key=_stub_mask_api_key,
             is_masked=_stub_is_masked,
             validate_file_path=_stub_validate_file_path,
-            runtime_dir=RUNTIME_DIR,
+            runtime_dir=tmp_path,
             rag_store_getter=lambda: None,
         )
         from fastapi.testclient import TestClient

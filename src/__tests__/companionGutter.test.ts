@@ -87,6 +87,15 @@ function makeMockModel(lineMap: Record<number, number>) {
   }
 }
 
+function hoverText(
+  message: { value: string } | { value: string }[] | null | undefined,
+): string {
+  if (!message) return ''
+  return Array.isArray(message)
+    ? message.map(item => item.value).join('\n')
+    : message.value
+}
+
 /** Mock monaco namespace with Range class. */
 const mockMonaco = {
   Range: class Range {
@@ -126,7 +135,7 @@ describe('computeCompanionDecorations', () => {
     expect(result).toHaveLength(1)
     const deco = result[0]
     expect(deco.options.glyphMarginClassName).toContain('unpaid')
-    expect(deco.options.glyphMarginHoverMessage?.value).toContain('No evidence found')
+    expect(hoverText(deco.options.glyphMarginHoverMessage)).toContain('No evidence found')
   })
 
   it('emits glyph for mismatch promise', () => {
@@ -235,7 +244,7 @@ describe('computeCompanionDecorations', () => {
 
     expect(result).toHaveLength(1)
     expect(result[0].options.glyphMarginClassName).toContain('review')
-    expect(result[0].options.glyphMarginHoverMessage?.value).toContain('Review point rp_001')
+    expect(hoverText(result[0].options.glyphMarginHoverMessage)).toContain('Review point rp_001')
   })
 
   it('does NOT emit glyph for accepted/dismissed review point', () => {
@@ -279,7 +288,7 @@ describe('computeCompanionDecorations', () => {
     // Should be merged to 1 decoration, not 2
     expect(result).toHaveLength(1)
     // Merged hover should contain both notes
-    const hover = result[0].options.glyphMarginHoverMessage?.value ?? ''
+    const hover = hoverText(result[0].options.glyphMarginHoverMessage)
     expect(hover).toContain('note 1')
     expect(hover).toContain('note 2')
   })
