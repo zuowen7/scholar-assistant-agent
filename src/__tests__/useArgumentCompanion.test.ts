@@ -417,4 +417,128 @@ describe('useArgumentCompanion', () => {
       expect(companion.state.review!.points.length).toBeGreaterThanOrEqual(1)
     })
   })
+
+  // ── rebut ─────────────────────────────────────────────────────────────────
+
+  describe('rebut', () => {
+    function makeReview() {
+      const point = {
+        id: 'rp_001', severity: 'major' as const, category: 'baseline' as const,
+        title: 'Missing baselines', detail: 'No comparison.',
+        anchor_id: null, status: 'open' as const, source: 'llm' as const,
+        reviewer_label: null, thread: [],
+      }
+      const review = {
+        id: 'S_001',
+        doc_id: 'doc1',
+        doc_title: 'Paper',
+        venue: null,
+        persona: 'reviewer2' as const,
+        checks: ['llm'],
+        points: [point],
+        anchors: [],
+        doc_hash: null,
+        created_at: Date.now() / 1000,
+      }
+      return { review, point }
+    }
+
+    it('appends author turn then reviewer turn to point.thread', async () => {
+      const { review, point } = makeReview()
+      const stream = makeSseStream([
+        { event: 'reviewer_reply', data: { text: 'Still not convinced.' } },
+        { event: 'status', data: { status: 'open' } },
+        { event: 'complete', data: {} },
+      ])
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: stream }))
+
+      const companion = useArgumentCompanion()
+      companion.setDoc('doc1', 'Paper')
+      companion.state.review = review as never
+
+      await companion.rebut('rp_001', 'We added baselines.', 'full paper')
+
+      expect(point.thread).toHaveLength(2)
+      expect(point.thread[0].role).toBe('author')
+      expect(point.thread[0].text).toBe('We added baselines.')
+      expect(point.thread[1].role).toBe('reviewer')
+      expect(point.thread[1].text).toBe('Still not convinced.')
+    })
+
+    it('sets point.status to rebutted when status event says rebutted', async () => {
+      const { review, point } = makeReview()
+      const stream = makeSseStream([
+        { event: 'reviewer_reply', data: { text: 'This point can be considered rebutted.' } },
+        { event: 'status', data: { status: 'rebutted' } },
+        { event: 'complete', data: {} },
+      ])
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: stream }))
+
+      const companion = useArgumentCompanion()
+      companion.setDoc('doc1', 'Paper')
+      companion.state.review = review as never
+
+      await companion.rebut('rp_001', 'We convinced you.', 'full text')
+
+      expect(point.status).toBe('rebutted')
+    })
+
+    it('sets rebuttalSending to pointId during SSE and clears after', async () => {
+      const { review } = makeReview()
+      const stream = makeSseStream([
+        { event: 'reviewer_reply', data: { text: 'Reply.' } },
+        { event: 'status', data: { status: 'open' } },
+        { event: 'complete', data: {} },
+      ])
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: stream }))
+
+      const companion = useArgumentCompanion()
+      companion.setDoc('doc1', 'Paper')
+      companion.state.review = review as never
+
+      const p = companion.rebut('rp_001', 'msg', 'text')
+      const lockDuring = companion.state.rebuttalSending
+      await p
+
+      expect(lockDuring).toBe('rp_001')
+      expect(companion.state.rebuttalSending).toBe('')
+    })
+
+    it('does nothing if rebuttalSending is already set (lock)', async () => {
+      const { review } = makeReview()
+
+      const companion = useArgumentCompanion()
+      companion.setDoc('doc1', 'Paper')
+      companion.state.review = review as never
+      companion.state.rebuttalSending = 'other_point'
+
+      // Stub fetch AFTER setDoc so we only capture rebut-related calls
+      const mockFetch = vi.fn()
+      vi.stubGlobal('fetch', mockFetch)
+
+      await companion.rebut('rp_001', 'msg', 'text')
+
+      // rebut must NOT have made a fetch call (lock prevents it)
+      const rebutCalls = mockFetch.mock.calls.filter((c: unknown[]) =>
+        (c[0] as string).includes('/rebut'),
+      )
+      expect(rebutCalls).toHaveLength(0)
+    })
+
+    it('clears rebuttalSending even when fetch fails', async () => {
+      const { review } = makeReview()
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, body: null }))
+
+      const companion = useArgumentCompanion()
+      companion.setDoc('doc1', 'Paper')
+      companion.state.review = review as never
+
+      await companion.rebut('rp_001', 'msg', 'text')
+
+      expect(companion.state.rebuttalSending).toBe('')
+    })
+  })
 })

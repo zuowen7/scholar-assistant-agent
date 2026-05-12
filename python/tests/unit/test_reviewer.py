@@ -486,3 +486,184 @@ class TestRunReview:
         event_types = [e["event"] for e in events]
         assert "error" not in event_types
         assert "complete" in event_types
+
+
+# ── continue_rebuttal ─────────────────────────────────────────────────────────
+
+class TestContinueRebuttal:
+    def _make_session_with_point(self, tmp_path: Path):
+        from src.argument.companion_store import CompanionStore
+        store = CompanionStore(runtime_dir=tmp_path)
+        rp = ReviewPoint(
+            severity="major", category="baseline",
+            title="Missing baselines", detail="No comparison to prior work.",
+            anchor_id=None, status="open", source="llm",
+        )
+        session = ReviewSession(doc_id="doc1", points=[rp])
+        store.save_review(session)
+        return store, session, rp
+
+    @pytest.mark.asyncio
+    async def test_appends_author_and_reviewer_turns(self, tmp_path):
+        from src.argument.reviewer import continue_rebuttal
+        store, session, rp = self._make_session_with_point(tmp_path)
+
+        with patch("src.argument.reviewer.call_llm_chat",
+                   new=AsyncMock(return_value="Your rebuttal is insufficient.")):
+            events = []
+            async for ev in continue_rebuttal(
+                session_id=session.id,
+                point_id=rp.id,
+                author_message="We added baselines X and Y.",
+                doc_text=SAMPLE_TEXT,
+                store=store,
+            ):
+                events.append(ev)
+
+        event_types = [e["event"] for e in events]
+        assert "reviewer_reply" in event_types
+        assert "status" in event_types
+        assert "complete" in event_types
+
+        # Thread should have both author and reviewer turns
+        updated = store.get_review(session.id)
+        updated_point = next(p for p in updated.points if p.id == rp.id)
+        roles = [t.role for t in updated_point.thread]
+        assert "author" in roles
+        assert "reviewer" in roles
+
+    @pytest.mark.asyncio
+    async def test_author_turn_appears_before_reviewer_turn(self, tmp_path):
+        from src.argument.reviewer import continue_rebuttal
+        store, session, rp = self._make_session_with_point(tmp_path)
+
+        with patch("src.argument.reviewer.call_llm_chat",
+                   new=AsyncMock(return_value="Still not convinced.")):
+            async for ev in continue_rebuttal(
+                session_id=session.id,
+                point_id=rp.id,
+                author_message="We addressed this.",
+                doc_text=SAMPLE_TEXT,
+                store=store,
+            ):
+                pass
+
+        updated = store.get_review(session.id)
+        point = next(p for p in updated.points if p.id == rp.id)
+        assert point.thread[0].role == "author"
+        assert point.thread[1].role == "reviewer"
+
+    @pytest.mark.asyncio
+    async def test_surrender_signal_changes_status_to_rebutted(self, tmp_path):
+        from src.argument.reviewer import continue_rebuttal
+        store, session, rp = self._make_session_with_point(tmp_path)
+
+        surrender_reply = "这点可以认为已 rebutted — 你补的实验确实证明了这点。"
+        with patch("src.argument.reviewer.call_llm_chat",
+                   new=AsyncMock(return_value=surrender_reply)):
+            events = []
+            async for ev in continue_rebuttal(
+                session_id=session.id,
+                point_id=rp.id,
+                author_message="We added baselines.",
+                doc_text=SAMPLE_TEXT,
+                store=store,
+            ):
+                events.append(ev)
+
+        # status event should say rebutted
+        status_events = [e for e in events if e["event"] == "status"]
+        assert len(status_events) == 1
+        import json
+        assert json.loads(status_events[0]["data"])["status"] == "rebutted"
+
+        # point in store should be updated
+        updated = store.get_review(session.id)
+        point = next(p for p in updated.points if p.id == rp.id)
+        assert point.status == "rebutted"
+
+    @pytest.mark.asyncio
+    async def test_no_surrender_keeps_status_open(self, tmp_path):
+        from src.argument.reviewer import continue_rebuttal
+        store, session, rp = self._make_session_with_point(tmp_path)
+
+        with patch("src.argument.reviewer.call_llm_chat",
+                   new=AsyncMock(return_value="I am still not satisfied.")):
+            events = []
+            async for ev in continue_rebuttal(
+                session_id=session.id,
+                point_id=rp.id,
+                author_message="We tried.",
+                doc_text=SAMPLE_TEXT,
+                store=store,
+            ):
+                events.append(ev)
+
+        import json
+        status_events = [e for e in events if e["event"] == "status"]
+        assert json.loads(status_events[0]["data"])["status"] == "open"
+
+        updated = store.get_review(session.id)
+        point = next(p for p in updated.points if p.id == rp.id)
+        assert point.status == "open"
+
+    @pytest.mark.asyncio
+    async def test_session_persisted_with_thread(self, tmp_path):
+        from src.argument.reviewer import continue_rebuttal
+        store, session, rp = self._make_session_with_point(tmp_path)
+
+        with patch("src.argument.reviewer.call_llm_chat",
+                   new=AsyncMock(return_value="Your response is noted.")):
+            async for _ in continue_rebuttal(
+                session_id=session.id,
+                point_id=rp.id,
+                author_message="Our clarification.",
+                doc_text=SAMPLE_TEXT,
+                store=store,
+            ):
+                pass
+
+        # Reload from disk to verify persistence
+        store2 = type(store)(runtime_dir=tmp_path)
+        reloaded = store2.get_review(session.id)
+        assert reloaded is not None
+        point = next(p for p in reloaded.points if p.id == rp.id)
+        assert len(point.thread) == 2
+
+    @pytest.mark.asyncio
+    async def test_session_not_found_yields_error(self, tmp_path):
+        from src.argument.reviewer import continue_rebuttal
+        store = type(self._make_session_with_point(tmp_path)[0])(runtime_dir=tmp_path)
+
+        events = []
+        async for ev in continue_rebuttal(
+            session_id="nonexistent_session_xyz",
+            point_id="any_point",
+            author_message="msg",
+            doc_text="text",
+            store=store,
+        ):
+            events.append(ev)
+
+        assert any(e["event"] == "error" for e in events)
+
+    @pytest.mark.asyncio
+    async def test_llm_unavailable_still_completes(self, tmp_path):
+        from src.argument.reviewer import continue_rebuttal
+        store, session, rp = self._make_session_with_point(tmp_path)
+
+        with patch("src.argument.reviewer.call_llm_chat",
+                   new=AsyncMock(side_effect=Exception("LLM down"))):
+            events = []
+            async for ev in continue_rebuttal(
+                session_id=session.id,
+                point_id=rp.id,
+                author_message="msg",
+                doc_text=SAMPLE_TEXT,
+                store=store,
+            ):
+                events.append(ev)
+
+        event_types = [e["event"] for e in events]
+        assert "complete" in event_types
+        assert "reviewer_reply" in event_types

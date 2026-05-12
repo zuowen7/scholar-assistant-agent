@@ -39,7 +39,7 @@
       {{ point.status === 'open' ? '标记状态' : '重新打开' }}
     </button>
 
-    <!-- Rebuttal section (Phase 4 full impl; Phase 3 placeholder) -->
+    <!-- Rebuttal section -->
     <div v-if="point.status === 'open' || point.thread.length > 0" class="rebuttal-section">
       <!-- Thread history -->
       <div
@@ -52,22 +52,70 @@
         <span class="turn-text">{{ turn.text }}</span>
       </div>
 
-      <!-- Rebuttal input placeholder -->
-      <div v-if="point.status === 'open'" class="rebuttal-placeholder">
-        <span class="rebuttal-hint">反驳 rebuttal（Phase 4 启用）</span>
-      </div>
+      <!-- Mini-chat input (open points only) -->
+      <template v-if="point.status === 'open'">
+        <!-- Sending / loading indicator -->
+        <div v-if="isSending" class="rebut-sending">
+          <span class="rebut-thinking">思考中 thinking…</span>
+        </div>
+
+        <!-- Expand button (collapsed by default, not sending) -->
+        <button
+          v-else-if="!chatExpanded"
+          class="rebut-expand-btn"
+          data-rebut-btn
+          @click="chatExpanded = true"
+        >
+          反驳 rebuttal
+        </button>
+
+        <!-- Expanded chat input -->
+        <div v-else class="rebut-input-row">
+          <textarea
+            v-model="rebuttalText"
+            class="rebut-textarea"
+            data-rebut-input
+            placeholder="输入反驳意见…"
+            rows="3"
+            :disabled="isSending"
+          />
+          <div class="rebut-actions">
+            <span v-if="isSending" class="rebut-thinking">思考中 thinking…</span>
+            <button
+              class="rebut-send-btn"
+              data-rebut-send
+              :disabled="isSending || !rebuttalText.trim()"
+              @click="sendRebuttal"
+            >
+              发送
+            </button>
+          </div>
+        </div>
+      </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref, computed } from 'vue'
 import type { ReviewPoint } from '../../types'
 
-const props = defineProps<{ point: ReviewPoint }>()
+const props = defineProps<{
+  point: ReviewPoint
+  rebuttalSending?: string
+  content?: string
+}>()
+
 const emit = defineEmits<{
   focusAnchor: [anchorId: string]
   updatePointStatus: [status: string]
+  rebut: [pointId: string, message: string]
 }>()
+
+const chatExpanded = ref(false)
+const rebuttalText = ref('')
+
+const isSending = computed(() => props.rebuttalSending === props.point.id)
 
 const SEVERITY_LABEL: Record<string, string> = {
   minor: 'minor 轻微',
@@ -101,6 +149,14 @@ const STATUS_CYCLE: Record<string, string> = {
 function cycleStatus() {
   const next = STATUS_CYCLE[props.point.status] ?? 'open'
   emit('updatePointStatus', next)
+}
+
+function sendRebuttal() {
+  const msg = rebuttalText.value.trim()
+  if (!msg || isSending.value) return
+  emit('rebut', props.point.id, msg)
+  rebuttalText.value = ''
+  chatExpanded.value = false
 }
 </script>
 
@@ -188,10 +244,68 @@ function cycleStatus() {
   color: var(--c-text-2, #6b7280);
 }
 
-.rebuttal-placeholder {
+.rebut-expand-btn {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: var(--radius-xs, 2px);
+  border: 1px dashed var(--c-border, #d1d5db);
+  background: transparent;
+  cursor: pointer;
+  color: var(--c-text-3, #9ca3af);
+  margin-top: var(--space-1, 4px);
+}
+
+.rebut-expand-btn:hover {
+  color: var(--c-accent, #6366f1);
+  border-color: var(--c-accent, #6366f1);
+}
+
+.rebut-input-row {
+  margin-top: var(--space-2, 8px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+}
+
+.rebut-textarea {
+  width: 100%;
+  font-size: 13px;
   padding: var(--space-2, 8px);
+  border: 1px solid var(--c-border, #d1d5db);
+  border-radius: var(--radius-xs, 2px);
+  background: var(--c-bg, #fff);
+  color: var(--c-text, #111);
+  resize: vertical;
+  font-family: inherit;
+}
+
+.rebut-textarea:disabled { opacity: 0.5; }
+
+.rebut-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  justify-content: flex-end;
+}
+
+.rebut-thinking {
   font-size: 12px;
   color: var(--c-text-3, #9ca3af);
   font-style: italic;
+}
+
+.rebut-send-btn {
+  font-size: 12px;
+  padding: 3px 12px;
+  border-radius: var(--radius-xs, 2px);
+  border: 1px solid var(--c-accent, #6366f1);
+  background: var(--c-accent, #6366f1);
+  color: #fff;
+  cursor: pointer;
+}
+
+.rebut-send-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 </style>
