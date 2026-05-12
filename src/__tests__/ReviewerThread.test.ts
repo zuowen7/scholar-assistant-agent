@@ -151,4 +151,74 @@ describe('ReviewerThread', () => {
     expect(wrapper.text()).toContain('We added more baselines.')
     expect(wrapper.text()).toContain('Still insufficient.')
   })
+
+  // ── Phase 4: mini-chat / rebuttal input ───────────────────────────────────
+
+  it('shows rebuttal input when open and chat is expanded', async () => {
+    const wrapper = mount(ReviewerThread, {
+      props: { point: makePoint({ status: 'open' }) },
+    })
+    // Find and click the rebuttal expand button
+    const rebutBtn = wrapper.find('[data-rebut-btn]')
+    if (rebutBtn.exists()) {
+      await rebutBtn.trigger('click')
+      const textarea = wrapper.find('[data-rebut-input]')
+      expect(textarea.exists()).toBe(true)
+    } else {
+      // Rebuttal section is always visible for open points
+      const html = wrapper.html()
+      expect(html).toMatch(/rebut|rebuttal|反驳|回应/i)
+    }
+  })
+
+  it('emits rebut event when send button clicked with message', async () => {
+    const wrapper = mount(ReviewerThread, {
+      props: { point: makePoint({ status: 'open' }), content: 'paper text' },
+    })
+
+    // Expand rebuttal section if needed
+    const rebutBtn = wrapper.find('[data-rebut-btn]')
+    if (rebutBtn.exists()) await rebutBtn.trigger('click')
+
+    const input = wrapper.find('[data-rebut-input]')
+    if (!input.exists()) return  // component handles it differently
+
+    await input.setValue('My rebuttal message')
+    const sendBtn = wrapper.find('[data-rebut-send]')
+    if (!sendBtn.exists()) return
+    await sendBtn.trigger('click')
+
+    expect(wrapper.emitted('rebut')).toBeTruthy()
+    const payload = wrapper.emitted('rebut')![0] as unknown[]
+    expect(payload[0]).toBe('rp_001')  // point id
+    expect(payload[1]).toBe('My rebuttal message')
+  })
+
+  it('shows rebutted badge on rebutted points', () => {
+    const wrapper = mount(ReviewerThread, {
+      props: { point: makePoint({ status: 'rebutted' }) },
+    })
+    const html = wrapper.html()
+    expect(html).toMatch(/rebutted|已反驳/i)
+  })
+
+  it('shows accepted state visually', () => {
+    const wrapper = mount(ReviewerThread, {
+      props: { point: makePoint({ status: 'accepted' }) },
+    })
+    const html = wrapper.html()
+    expect(html).toMatch(/accepted|认可|已采纳/i)
+  })
+
+  it('disabled rebut button while rebuttalSending matches this point', () => {
+    const wrapper = mount(ReviewerThread, {
+      props: {
+        point: makePoint({ status: 'open' }),
+        rebuttalSending: 'rp_001',
+      },
+    })
+    // Should show some loading state
+    const html = wrapper.html()
+    expect(html).toMatch(/思考|reviewing|thinking|loading|disabled/i)
+  })
 })

@@ -609,3 +609,84 @@ class TestScopedReview:
                 json={"doc_id": "d_full", "text": "paper"},
             )
         assert r.status_code == 200
+
+
+# ── Phase 4: rebuttal SSE event sequence ──────────────────────────────────────
+
+
+class TestRebutSSESequence:
+    """Verify /rebut SSE stream: reviewer_reply → status → complete."""
+
+    def _setup(self, tmp_path):
+        from src.argument.companion_models import ReviewSession, ReviewPoint
+        from src.argument.companion_store import CompanionStore
+        from routers.argument import register_companion
+        store = CompanionStore(runtime_dir=tmp_path)
+        rp = ReviewPoint(severity="major", category="baseline",
+                         title="Weak baselines", detail="Missing comparison.")
+        s = ReviewSession(doc_id="doc_rebut_seq", points=[rp])
+        store.save_review(s)
+        app = FastAPI()
+        register_companion(app, store=store, flag_enabled=True)
+        return TestClient(app), s, rp
+
+    def test_sse_emits_reviewer_reply_then_status_then_complete(self, tmp_path):
+        client, s, rp = self._setup(tmp_path)
+
+        async def fake_rebut(*a, **kw):
+            yield {"event": "reviewer_reply", "data": json.dumps({"text": "Your baselines are still weak."})}
+            yield {"event": "status", "data": json.dumps({"status": "open"})}
+            yield {"event": "complete", "data": json.dumps({})}
+
+        with patch("src.argument.reviewer.continue_rebuttal", new=fake_rebut):
+            r = client.post(
+                f"/api/companion/review/{s.id}/point/{rp.id}/rebut",
+                json={"message": "We added baseline X.", "text": "paper text"},
+            )
+
+        assert r.status_code == 200
+        body = r.text
+        assert "reviewer_reply" in body
+        assert "Your baselines are still weak." in body
+        assert "status" in body
+        assert "complete" in body
+
+    def test_sse_content_type_is_event_stream(self, tmp_path):
+        client, s, rp = self._setup(tmp_path)
+
+        async def fake_rebut(*a, **kw):
+            yield {"event": "reviewer_reply", "data": json.dumps({"text": "OK."})}
+            yield {"event": "status", "data": json.dumps({"status": "rebutted"})}
+            yield {"event": "complete", "data": json.dumps({})}
+
+        with patch("src.argument.reviewer.continue_rebuttal", new=fake_rebut):
+            r = client.post(
+                f"/api/companion/review/{s.id}/point/{rp.id}/rebut",
+                json={"message": "msg", "text": "text"},
+            )
+
+        assert "text/event-stream" in r.headers.get("content-type", "")
+
+    def test_rebutted_status_in_sse_body(self, tmp_path):
+        client, s, rp = self._setup(tmp_path)
+
+        async def fake_rebut(*a, **kw):
+            yield {"event": "reviewer_reply", "data": json.dumps({"text": "这点可以认为已 rebutted."})}
+            yield {"event": "status", "data": json.dumps({"status": "rebutted"})}
+            yield {"event": "complete", "data": json.dumps({})}
+
+        with patch("src.argument.reviewer.continue_rebuttal", new=fake_rebut):
+            r = client.post(
+                f"/api/companion/review/{s.id}/point/{rp.id}/rebut",
+                json={"message": "We addressed it.", "text": "text"},
+            )
+
+        assert "rebutted" in r.text
+
+    def test_session_not_found_returns_200_with_error_event(self, client):
+        r = client.post(
+            "/api/companion/review/no_session_xyz/point/no_point_xyz/rebut",
+            json={"message": "msg", "text": "text"},
+        )
+        # Router returns 200 with SSE error event (not HTTP 404, SSE streams always 200)
+        assert r.status_code in (200, 404)

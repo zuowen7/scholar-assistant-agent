@@ -51,7 +51,7 @@ class CompanionReviewRequest(BaseModel):
     text: str
     venue: str | None = None
     persona: str = "reviewer2"
-    focus: dict | None = None
+    focus: str | dict | None = None
     checks: list[str] | None = None
     session_id: str | None = None
 

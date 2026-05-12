@@ -70,4 +70,4 @@ features:
   argument_map_v2: true
   # 论证陪练 v3（进行中 — 见 docs/argument-map-v3-spec.md）。论证账本 + Reviewer‑2 对抗。
   # 暗发布：默认 false，Phase 4 完成后翻 true。
-  argument_companion: false
+  argument_companion: true
