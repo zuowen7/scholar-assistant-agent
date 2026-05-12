@@ -177,7 +177,11 @@ async function listReviews(): Promise<void> {
   } catch { /* ignore */ }
 }
 
-async function runReview(text: string, venue: string | null, persona: string): Promise<void> {
+async function runReview(
+  text: string,
+  venue: string | null = null,
+  persona = 'reviewer2',
+): Promise<void> {
   if (!state.docId) return
   state.reviewing = true
   try {
