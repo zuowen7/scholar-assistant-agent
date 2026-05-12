@@ -35,8 +35,54 @@
     </div>
 
     <!-- Reviewer 2 sub-page (Phase 3) -->
-    <div v-else class="sub-page reviewer-placeholder">
-      <p class="placeholder-text">Reviewer 2 对抗功能将在 Phase 3 开放。</p>
+    <div v-else class="sub-page reviewer-page">
+      <!-- Venue + persona controls -->
+      <div class="reviewer-controls">
+        <select v-model="venue" class="ctrl-select">
+          <option value="">通用 (Generic)</option>
+          <option value="NeurIPS">NeurIPS</option>
+          <option value="ICML">ICML</option>
+          <option value="ICLR">ICLR</option>
+          <option value="ACL">ACL</option>
+          <option value="CVPR">CVPR</option>
+          <option value="KDD">KDD</option>
+          <option value="CHI">CHI</option>
+        </select>
+        <select v-model="persona" class="ctrl-select">
+          <option value="reviewer2">Reviewer 2 (苛刻)</option>
+          <option value="ac">AC (均衡)</option>
+          <option value="domain_expert">领域专家</option>
+          <option value="friendly">友好评审</option>
+        </select>
+        <button
+          class="run-review-btn"
+          :disabled="companion.state.reviewing"
+          @click="handleRunReview"
+        >
+          {{ companion.state.reviewing ? '评审中…' : '红队这篇' }}
+        </button>
+      </div>
+
+      <!-- Review point list -->
+      <div v-if="companion.state.review && companion.state.review.points.length > 0" class="point-list">
+        <ReviewerThread
+          v-for="point in companion.state.review.points"
+          :key="point.id"
+          :point="point"
+          @focus-anchor="companion.focusAnchor"
+          @update-point-status="(s) => updatePointStatus(point.id, s)"
+        />
+      </div>
+
+      <!-- Empty state -->
+      <div v-else-if="!companion.state.reviewing" class="reviewer-empty">
+        <p class="empty-hint">点击「红队这篇」开始模拟同行评审。</p>
+      </div>
+
+      <!-- Loading state -->
+      <div v-if="companion.state.reviewing" class="reviewing-hint">
+        评审中，每条意见实时出现…
+      </div>
     </div>
   </div>
 </template>
@@ -45,9 +91,12 @@
 import { ref } from 'vue'
 import { useArgumentCompanion } from '../../composables/useArgumentCompanion'
 import LedgerList from './LedgerList.vue'
+import ReviewerThread from './ReviewerThread.vue'
 
 const companion = useArgumentCompanion()
 const activeSubTab = ref<'ledger' | 'reviewer'>('ledger')
+const venue = ref<string>('')
+const persona = ref<string>('reviewer2')
 
 const props = defineProps<{
   content: string
@@ -55,6 +104,26 @@ const props = defineProps<{
 
 async function handleAnalyze() {
   await companion.buildOrRebuildLedger(props.content)
+}
+
+async function handleRunReview() {
+  await companion.runReview(props.content, venue.value || null, persona.value)
+}
+
+async function updatePointStatus(pointId: string, status: string) {
+  if (!companion.state.review) return
+  const sid = companion.state.review.id
+  if (!sid) return
+  try {
+    const { API_BASE } = await import('../../utils/api')
+    await fetch(`${API_BASE}/api/companion/review/${sid}/point/${pointId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    })
+    const point = companion.state.review.points.find(p => p.id === pointId)
+    if (point) point.status = status as typeof point.status
+  } catch { /* ignore network errors */ }
 }
 </script>
 
@@ -120,14 +189,80 @@ async function handleAnalyze() {
   overflow-y: auto;
 }
 
-.reviewer-placeholder {
+.reviewer-page {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+}
+
+.reviewer-controls {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.ctrl-select {
+  flex: 1;
+  min-width: 80px;
+  padding: 3px 6px;
+  font-size: 11px;
+  border: 1px solid var(--border, #2a2a2a);
+  background: var(--bg-2, #1a1a1a);
+  color: var(--text, #ccc);
+  border-radius: 3px;
+}
+
+.run-review-btn {
+  padding: 3px 10px;
+  font-size: 11px;
+  border-radius: 3px;
+  border: 1px solid var(--accent, #60a5fa);
+  background: transparent;
+  color: var(--accent, #60a5fa);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.run-review-btn:hover:not(:disabled) {
+  background: var(--accent, #60a5fa);
+  color: #000;
+}
+
+.run-review-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.point-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.reviewer-empty {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex: 1;
 }
 
-.placeholder-text {
+.empty-hint {
   color: var(--text-dim, #666);
   font-size: 12px;
+  text-align: center;
+}
+
+.reviewing-hint {
+  font-size: 11px;
+  color: var(--accent, #60a5fa);
+  text-align: center;
+  padding: 8px 0;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 </style>
