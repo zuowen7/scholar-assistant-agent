@@ -19,6 +19,8 @@ import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import CommandPalette from './CommandPalette.vue'
 import { useEditor } from '../composables/useEditor'
 import { API_BASE } from '../utils/api'
+import { useArgumentCompanion } from '../composables/useArgumentCompanion'
+import { computeCompanionDecorations } from '../composables/companionGutter'
 
 // 配置 Monaco Web Worker（解决 Tauri 环境下 worker 无法创建的问题）
 self.MonacoEnvironment = {
@@ -39,6 +41,39 @@ const {
 } = useEditor()
 
 let editor: monaco.editor.IStandaloneCodeEditor | null = null
+const companion = useArgumentCompanion()
+
+// Gutter decorations for argument companion
+let companionDecorations: string[] = []
+
+function updateCompanionDecorations() {
+  if (!editor) return
+  const model = editor.getModel()
+  if (!model) return
+  const decos = computeCompanionDecorations(
+    companion.state.ledger,
+    companion.state.review,
+    monaco,
+    model,
+  )
+  companionDecorations = editor.deltaDecorations(companionDecorations, decos)
+}
+
+// Reveal + flash an anchor range in the editor
+function revealAnchor(start: number, end: number) {
+  if (!editor) return
+  const model = editor.getModel()
+  if (!model) return
+  const p1 = model.getPositionAt(start)
+  const p2 = model.getPositionAt(end)
+  const range = new monaco.Range(p1.lineNumber, p1.column, p2.lineNumber, p2.column)
+  editor.revealRangeInCenter(range)
+  const flashDeco = editor.deltaDecorations([], [{
+    range,
+    options: { className: 'arg-flash', isWholeLine: false },
+  }])
+  setTimeout(() => editor?.deltaDecorations(flashDeco, []), 1200)
+}
 
 // Ctrl+K Palette
 const showPalette = ref(false)
@@ -68,6 +103,7 @@ onMounted(() => {
     lineHeight: 22,
     fontFamily: "'Consolas', 'Courier New', monospace",
     lineNumbers: 'on',
+    glyphMargin: true,
     scrollBeyondLastLine: false,
     smoothScrolling: true,
     padding: { top: 16, bottom: 16 },
@@ -121,6 +157,61 @@ onMounted(() => {
   })
 
   setEditorInstance(editor)
+
+  // ── Argument companion gutter ─────────────────────────────────────────
+  // Glyph click → notify companion to focus the item in the sidebar
+  editor.onMouseDown((e) => {
+    if (e.target.type !== monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) return
+    const lineNumber = e.target.position?.lineNumber
+    if (!lineNumber) return
+    // Find which promise/point lives on this line
+    const model = editor!.getModel()
+    if (!model) return
+    // Check promises
+    if (companion.state.ledger) {
+      for (const promise of companion.state.ledger.promises) {
+        const anchor = companion.state.ledger.anchors.find(a => a.id === promise.source_anchor_id)
+        if (anchor?.char_start !== null && anchor?.char_start !== undefined && anchor.status !== 'lost') {
+          const pos = model.getPositionAt(anchor.char_start)
+          if (pos.lineNumber === lineNumber) {
+            companion.focusFromGutter('promise', promise.id)
+            return
+          }
+        }
+      }
+    }
+    // Check review points
+    if (companion.state.review) {
+      for (const point of companion.state.review.points) {
+        if (!point.anchor_id) continue
+        const anchor = companion.state.review.anchors.find(a => a.id === point.anchor_id)
+        if (anchor?.char_start !== null && anchor?.char_start !== undefined && anchor.status !== 'lost') {
+          const pos = model.getPositionAt(anchor.char_start)
+          if (pos.lineNumber === lineNumber) {
+            companion.focusFromGutter('point', point.id)
+            return
+          }
+        }
+      }
+    }
+  })
+
+  // ── 质疑这句 — scoped Reviewer-2 review ─────────────────────────────────
+  editor.addAction({
+    id: 'companion-scoped-review',
+    label: '质疑这句 (Reviewer-2)',
+    contextMenuGroupId: 'argument',
+    contextMenuOrder: 1,
+    precondition: 'editorHasSelection',
+    run: async (ed) => {
+      const sel = ed.getSelection()
+      if (!sel) return
+      const selectedText = ed.getModel()?.getValueInRange(sel) || ''
+      if (!selectedText.trim()) return
+      const fullText = ed.getModel()?.getValue() || ''
+      await companion.scopedReview(selectedText, fullText)
+    },
+  })
 
   editor.onDidChangeModelContent(() => {
     if (!editor) return
@@ -384,6 +475,17 @@ async function handlePaletteSubmit(payload: { instruction: string; taskType: str
 
 watch(() => props.theme, (t) => { if (t) monaco.editor.setTheme(t) })
 
+// ── Argument companion watchers ────────────────────────────────────────────
+watch(
+  [() => companion.state.ledger, () => companion.state.review],
+  () => updateCompanionDecorations(),
+)
+
+watch(
+  () => companion.state.flashAnchor,
+  (v) => { if (v) revealAnchor(v.start, v.end) },
+)
+
 // 切换 tab 时加载对应内容
 watch(activeTabId, () => {
   if (!editor) return
@@ -422,4 +524,15 @@ onBeforeUnmount(() => {
 .monaco-editor .ghost-text-line {
   background: transparent !important;
 }
+
+/* Argument companion gutter glyphs */
+.monaco-editor .arg-gutter-promise-unpaid { background: #f87171; border-radius: 50%; width: 10px !important; height: 10px !important; margin-top: 6px; }
+.monaco-editor .arg-gutter-promise-mismatch { background: #fb923c; border-radius: 50%; width: 10px !important; height: 10px !important; margin-top: 6px; }
+.monaco-editor .arg-gutter-promise-partial { background: #fbbf24; border-radius: 50%; width: 10px !important; height: 10px !important; margin-top: 6px; }
+.monaco-editor .arg-gutter-review-fatal { background: #f87171; clip-path: polygon(50% 0%, 0% 100%, 100% 100%); width: 10px !important; height: 10px !important; margin-top: 6px; }
+.monaco-editor .arg-gutter-review-major { background: #fb923c; clip-path: polygon(50% 0%, 0% 100%, 100% 100%); width: 10px !important; height: 10px !important; margin-top: 6px; }
+.monaco-editor .arg-gutter-review-minor { background: #6b7280; clip-path: polygon(50% 0%, 0% 100%, 100% 100%); width: 10px !important; height: 10px !important; margin-top: 6px; }
+
+/* Flash highlight when jumping to anchor */
+.monaco-editor .arg-flash { background: rgba(96, 165, 250, 0.25) !important; }
 </style>
