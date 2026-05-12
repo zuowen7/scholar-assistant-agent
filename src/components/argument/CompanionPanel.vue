@@ -31,7 +31,16 @@
         :building="companion.state.building"
         @analyze="handleAnalyze"
         @focus-anchor="companion.focusAnchor"
+        @suggest-experiment="handleSuggestExperiment"
       />
+      <!-- Experiment suggestion popup -->
+      <div v-if="experimentSuggestion" class="suggestion-popup">
+        <div class="suggestion-header">
+          实验设计建议
+          <button class="suggestion-close" @click="experimentSuggestion = ''">✕</button>
+        </div>
+        <pre class="suggestion-body">{{ experimentSuggestion }}</pre>
+      </div>
     </div>
 
     <!-- Reviewer 2 sub-page (Phase 3) -->
@@ -65,12 +74,24 @@
 
       <!-- Review point list -->
       <div v-if="companion.state.review && companion.state.review.points.length > 0" class="point-list">
+        <div class="point-list-toolbar">
+          <button
+            v-if="companion.state.review?.id"
+            class="download-btn"
+            @click="handleDownload"
+          >
+            ↓ 导出 rebuttal
+          </button>
+        </div>
         <ReviewerThread
           v-for="point in companion.state.review.points"
           :key="point.id"
           :point="point"
+          :rebuttal-sending="companion.state.rebuttalSending"
+          :content="props.content"
           @focus-anchor="companion.focusAnchor"
           @update-point-status="(s) => updatePointStatus(point.id, s)"
+          @rebut="(pid, msg) => handleRebut(pid, msg)"
         />
       </div>
 
@@ -118,6 +139,7 @@ const activeSubTab = ref<'ledger' | 'reviewer'>('ledger')
 const venue = ref<string>('')
 const persona = ref<string>('reviewer2')
 const importText = ref<string>('')
+const experimentSuggestion = ref<string>('')
 
 const props = defineProps<{
   content: string
@@ -136,6 +158,40 @@ async function handleImportReviews() {
   if (!raw) return
   await companion.importReviews(raw, props.content)
   importText.value = ''
+}
+
+async function handleRebut(pointId: string, message: string) {
+  await companion.rebut(pointId, message, props.content)
+}
+
+async function handleSuggestExperiment(promiseId: string) {
+  const ledger = companion.state.ledger
+  if (!ledger) return
+  const promise = ledger.promises.find(p => p.id === promiseId)
+  if (!promise) return
+  try {
+    const { API_BASE } = await import('../../utils/api')
+    const resp = await fetch(
+      `${API_BASE}/api/companion/ledger/${encodeURIComponent(companion.state.docId)}/promise/${promiseId}/suggest-experiment`,
+      { method: 'POST' },
+    )
+    if (!resp.ok) return
+    const data = await resp.json()
+    experimentSuggestion.value = data.suggestion ?? ''
+  } catch { /* ignore */ }
+}
+
+async function handleDownload() {
+  const sid = companion.state.review?.id
+  if (!sid) return
+  try {
+    const { API_BASE } = await import('../../utils/api')
+    const url = `${API_BASE}/api/companion/download/review/${sid}`
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'rebuttal.md'
+    a.click()
+  } catch { /* ignore */ }
 }
 
 async function updatePointStatus(pointId: string, status: string) {
@@ -215,6 +271,7 @@ async function updatePointStatus(pointId: string, status: string) {
 .sub-page {
   flex: 1;
   overflow-y: auto;
+  position: relative;
 }
 
 .reviewer-page {
@@ -341,5 +398,73 @@ async function updatePointStatus(pointId: string, status: string) {
 .import-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.point-list-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border, #2a2a2a);
+  flex-shrink: 0;
+}
+
+.download-btn {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  border: 1px solid var(--border, #444);
+  background: none;
+  color: var(--text-dim, #888);
+  cursor: pointer;
+}
+
+.download-btn:hover {
+  color: var(--accent, #60a5fa);
+  border-color: var(--accent, #60a5fa);
+}
+
+.suggestion-popup {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  right: 8px;
+  background: var(--bg-2, #1e1e1e);
+  border: 1px solid var(--border, #3a3a3a);
+  border-radius: 4px;
+  z-index: 10;
+  max-height: 200px;
+  display: flex;
+  flex-direction: column;
+}
+
+.suggestion-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text, #ccc);
+  border-bottom: 1px solid var(--border, #333);
+  flex-shrink: 0;
+}
+
+.suggestion-close {
+  background: none;
+  border: none;
+  color: var(--text-dim, #888);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+}
+
+.suggestion-body {
+  font-size: 11px;
+  color: var(--text, #ccc);
+  padding: 6px 8px;
+  margin: 0;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  line-height: 1.5;
 }
 </style>
