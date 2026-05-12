@@ -133,6 +133,7 @@
               :isDark="isDark"
               class="editor-mode"
             />
+            <ArgumentMapView v-else-if="appMode === 'argument'" class="arg-mode" />
           </KeepAlive>
         </Transition>
       </div>
@@ -157,6 +158,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { checkArgumentMapV2Flag, _openFullArgMapTick } from './composables/useArgumentMap'
+import ArgumentMapView from './components/argument/ArgumentMapView.vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { open } from '@tauri-apps/plugin-dialog'
 import { convertFileSrc } from '@tauri-apps/api/core'
@@ -230,6 +233,7 @@ function applyTheme(dark: boolean) {
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
 }
 watch(() => isDark.value, applyTheme, { immediate: true })
+watch(_openFullArgMapTick, () => { appMode.value = 'argument' })
 const appBootLoading = ref(true)
 const bootLoadingStartedAt = Date.now()
 const minBootLoadingMs = 1400
@@ -495,6 +499,7 @@ let timer: ReturnType<typeof setInterval> | null = null
 let unlistenDragDrop: (() => void) | null = null
 
 onMounted(async () => {
+  checkArgumentMapV2Flag().catch(() => {})
   // 安全兜底：最多 5 秒后强制隐藏加载画面
   bootSafetyTimer = setTimeout(() => {
     if (appBootLoading.value) {

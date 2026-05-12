@@ -145,12 +145,12 @@ Three config files serve distinct roles — do not confuse them:
 | `python/config/default.local.yaml` | User overrides merged on top of `default.yaml`. Created by the UI's Settings panel or manually. | No (gitignored) |
 ### Subsystem Maturity Matrix
 
-Use this as the canonical "what works / what's polished / what's a stub" map. Updated 2026-05-10.
+Use this as the canonical "what works / what's polished / what's a stub" map. Updated 2026-05-12.
 
 | # | Subsystem | Grade | Key evidence |
 |---|-----------|-------|--------------|
 | 1 | Translation pipeline (5-step SSE + multi-article split + citation placeholders + continuation rules + UTF-8 fix) | A | `routers/translate.py:295` multi-article via `parser/article_detector.extract_articles`; `block_translator.py:289,326` citation protect/restore; `cleaner/pipeline.py:258` pdfplumber encoding fix; `cleaner/pipeline.py:894-979` 6 continuation rules |
-| 2 | Argument Map (论证树 + 降维展开 + RAG context + 6 templates) | A | `argument/flatten.py:315` `_fetch_ref_context` real RAG retrieval, gracefully degrades when `rag_store is None`; 4-stage pipeline (classify → DFS expand → polish → format) |
+| 2 | 论证陪练 v3（账本 + Reviewer‑2 对抗 + Toulmin X 光 / 真实评审导入）| A | `argument/ledger.py` SSE 账本; `argument/reviewer.py` run_review/continue_rebuttal/import_real_reviews; `argument/anchor.py` 三态锚定; `components/argument/CompanionPanel + LedgerList + ReviewerThread.vue` + 完整 rebuttal mini-chat; features.argument_companion=true |
 | 3 | Mind Map (Vue Flow + AI expand + dagre layout) | A- | LLM failure → hardcoded fallback nodes |
 | 4 | LaTeX/Word export (IEEE Conf/Journal, ACM, NeurIPS, LNCS, Generic + Tectonic) | A | `word_exporter.py`, `pandoc_templates`, `pptx_exporter` |
 | 5 | AI editor (Monaco + Ghost Text + AI Panel) | B | Completion quality average; debounce 1.5s |
@@ -194,3 +194,9 @@ python -m venv /tmp/test && /tmp/test/Scripts/pip install -r requirements-lock.t
 - Python 3.12+
 - Ollama with `ollama pull qwen3:8b` for local translation
 - Node.js 18+, Rust 1.80+ for desktop development
+
+### 论证陪练 v3（已完成 — 见 docs/argument-map-v3-spec.md）
+
+5 个 Phase（Phase 0–5）全部完成。功能包括：论证账本（承诺 ↔ 兑付，三态锚定）、Reviewer‑2 对抗（会议校准评审 + rebuttal mini-chat，reviewer 会被说服）、质疑这句/一致性/gap/RW 检查、真实评审导入（import_real_reviews）、实验缺口建议（suggest_experiment）、rebuttal 包导出（/download）。Toulmin v2 图（ArgGraph/Vue Flow）保留并复用为"审稿模式"可视化（ArgSourcePane 已有"从编辑器载入"入口）。features.argument_companion=true（已发布）。E2E 集成测试：`python/tests/integration/test_companion_e2e.py` 27 个测试覆盖全部 `/api/companion/*` 端点（pytest 1550 passed）。
+
+论证地图 v2（见 docs/argument-map-v2-spec.md）：5 个 Phase 已全部完成，旧树实现已删除。当前 Toulmin 图 = v2 唯一版本，在论证陪练 v3 "审稿模式"中继续使用。

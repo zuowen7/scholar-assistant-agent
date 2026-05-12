@@ -50,6 +50,10 @@ data/agent/
 
 # Argument map 运行时数据
 python/data/argument_tree.json
+python/argument_graphs/
+
+# Code review dumps (临时产物)
+docs/code-review-*.md
 
 # Mind map 运行时数据
 python/mindmap.json

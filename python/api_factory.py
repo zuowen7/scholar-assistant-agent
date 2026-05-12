@@ -21,7 +21,6 @@ from pydantic import BaseModel
 from src.translator.cloud_client import CloudClient
 
 from src.features import plugin as _PLUGIN_AVAILABLE
-from src.features import argument as _ARGUMENT_AVAILABLE
 
 if _PLUGIN_AVAILABLE:
     from src.plugin import PluginRegistry, register_builtin
@@ -379,16 +378,40 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         rag_store_getter=state_agent["get_rag_store"],
     )
 
-    if _ARGUMENT_AVAILABLE:
-        from routers.argument import register_argument
-        register_argument(
+    # Toulmin v2 argument graph (sole implementation)
+    try:
+        from src.argument.graph_store import ArgGraphStore
+        from routers.argument import register_argument_v2
+        _v2_flag = True  # v2 is now the only version; flag retained for graceful degradation
+        _graph_store = ArgGraphStore(runtime_dir=RUNTIME_DIR)
+        register_argument_v2(
             app,
+            store=_graph_store,
+            flag_enabled=_v2_flag,
             load_config=_load_config,
             build_cloud_client=_build_cloud_client,
             runtime_dir=RUNTIME_DIR,
-            data_root=data_root,
-            rag_store_getter=state_agent["get_rag_store"],
         )
+    except Exception as _e:
+        import logging as _logging
+        _logging.getLogger(__name__).warning("argument_map_v2 setup skipped: %s", _e)
+
+    # Argument Companion v3 (账本 + Reviewer-2 + rebuttal + import + suggest)
+    try:
+        from src.argument.companion_store import CompanionStore
+        from routers.argument import register_companion
+        _companion_flag = bool(_load_config().get("features", {}).get("argument_companion", False))
+        _companion_store = CompanionStore(runtime_dir=RUNTIME_DIR)
+        register_companion(
+            app,
+            store=_companion_store,
+            flag_enabled=_companion_flag,
+            load_config=_load_config,
+            build_cloud_client=_build_cloud_client,
+        )
+    except Exception as _e:
+        import logging as _logging
+        _logging.getLogger(__name__).warning("argument_companion setup skipped: %s", _e)
 
     from routers.mindmap import register_mindmap
     register_mindmap(

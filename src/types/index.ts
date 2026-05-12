@@ -232,6 +232,98 @@ export interface RAGDocument {
   metadata: Record<string, unknown>
 }
 
+// ── 论证陪练 v3 类型 ──────────────────────────────────────────────
+
+export interface Anchor {
+  id: string
+  doc_id: string
+  char_start: number | null
+  char_end: number | null
+  quote: string
+  context_before: string
+  context_after: string
+  section_path: string | null
+  status: 'anchored' | 'drifted' | 'lost'
+}
+
+export type NodeKind = 'contribution' | 'claim' | 'hypothesis' | 'gap_statement' | 'scope'
+export type PromiseStatus = 'paid' | 'partial' | 'unpaid' | 'mismatch' | 'unknown'
+
+export interface Promise {
+  id: string
+  text: string
+  kind: NodeKind
+  source_anchor_id: string
+  discharge_anchor_ids: string[]
+  status: PromiseStatus
+  severity: 'info' | 'warning' | 'error'
+  note: string | null
+  created_by: 'user' | 'ai'
+  user_overridden: boolean
+}
+
+export interface Ledger {
+  id: string
+  doc_id: string
+  doc_title: string
+  promises: Promise[]
+  anchors: Anchor[]
+  doc_hash: string | null
+  last_built_at: number
+}
+
+export type PointSeverity = 'minor' | 'major' | 'fatal'
+export type PointCategory =
+  | 'motivation' | 'novelty' | 'baseline' | 'ablation' | 'soundness'
+  | 'claim_overreach' | 'missing_related_work' | 'reproducibility'
+  | 'experiment_design' | 'writing_clarity'
+  | 'inconsistency' | 'gap_mismatch' | 'weak_positioning' | 'term_drift' | 'other'
+export type PointStatus = 'open' | 'rebutted' | 'accepted' | 'dismissed'
+export type PointSource = 'llm' | 'ledger_check' | 'coherence_check' | 'rw_check' | 'scoped' | 'imported'
+
+export interface RebuttalTurn {
+  id: string
+  role: 'author' | 'reviewer'
+  text: string
+  created_at: number
+}
+
+export interface ReviewPoint {
+  id: string
+  severity: PointSeverity
+  category: PointCategory
+  title: string
+  detail: string
+  anchor_id: string | null
+  status: PointStatus
+  source: PointSource
+  reviewer_label: string | null
+  thread: RebuttalTurn[]
+}
+
+export interface ReviewSession {
+  id: string
+  doc_id: string
+  doc_title: string
+  venue: string | null
+  persona: 'reviewer2' | 'ac' | 'domain_expert' | 'friendly' | 'real'
+  checks: string[]
+  points: ReviewPoint[]
+  anchors: Anchor[]
+  doc_hash: string | null
+  created_at: number
+}
+
+export interface ReviewSummary {
+  session_id: string
+  venue: string | null
+  persona: string
+  point_count: number
+  open_count: number
+  rebutted_count: number
+  created_at: number
+}
+
 // ── 编辑器 / Scholar Cursor 类型 ─────────────────────────────────
 
 export interface EditorTab {
@@ -240,6 +332,7 @@ export interface EditorTab {
   name: string
   content: string
   isModified: boolean
+  docId: string     // stable id for argument companion keying
 }
 
 export interface FileEntry {
@@ -268,4 +361,4 @@ export interface EditStreamEvent {
   usage?: { prompt_tokens: number; completion_tokens: number }
 }
 
-export type AppMode = 'translate' | 'editor'
+export type AppMode = 'translate' | 'editor' | 'argument'
