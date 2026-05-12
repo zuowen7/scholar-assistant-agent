@@ -83,6 +83,26 @@
       <div v-if="companion.state.reviewing" class="reviewing-hint">
         评审中，每条意见实时出现…
       </div>
+
+      <!-- Import real reviews section -->
+      <div class="import-section">
+        <div class="import-label">导入真实审稿意见</div>
+        <textarea
+          v-model="importText"
+          class="import-textarea"
+          data-import-textarea
+          placeholder="粘贴真实审稿意见…"
+          rows="4"
+        />
+        <button
+          class="import-btn"
+          data-import-btn
+          :disabled="!importText.trim() || companion.state.reviewing"
+          @click="handleImportReviews"
+        >
+          {{ companion.state.reviewing ? '导入中…' : '导入审稿意见' }}
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -97,6 +117,7 @@ const companion = useArgumentCompanion()
 const activeSubTab = ref<'ledger' | 'reviewer'>('ledger')
 const venue = ref<string>('')
 const persona = ref<string>('reviewer2')
+const importText = ref<string>('')
 
 const props = defineProps<{
   content: string
@@ -108,6 +129,13 @@ async function handleAnalyze() {
 
 async function handleRunReview() {
   await companion.runReview(props.content, venue.value || null, persona.value)
+}
+
+async function handleImportReviews() {
+  const raw = importText.value.trim()
+  if (!raw) return
+  await companion.importReviews(raw, props.content)
+  importText.value = ''
 }
 
 async function updatePointStatus(pointId: string, status: string) {
@@ -264,5 +292,54 @@ async function updatePointStatus(pointId: string, status: string) {
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
+}
+
+.import-section {
+  flex-shrink: 0;
+  padding: 8px;
+  border-top: 1px solid var(--border, #2a2a2a);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.import-label {
+  font-size: 10px;
+  color: var(--text-dim, #666);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.import-textarea {
+  font-size: 11px;
+  padding: 4px 6px;
+  border: 1px solid var(--border, #2a2a2a);
+  background: var(--bg-2, #1a1a1a);
+  color: var(--text, #ccc);
+  border-radius: 3px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.import-btn {
+  align-self: flex-end;
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 3px;
+  border: 1px solid var(--border, #444);
+  background: none;
+  color: var(--text-dim, #888);
+  cursor: pointer;
+}
+
+.import-btn:hover:not(:disabled) {
+  color: var(--accent, #60a5fa);
+  border-color: var(--accent, #60a5fa);
+}
+
+.import-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 </style>

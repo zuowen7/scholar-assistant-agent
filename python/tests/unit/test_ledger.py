@@ -383,3 +383,53 @@ class TestRebuildLedger:
             if relocated:
                 # Re-located anchor should have updated char_start to match new_text
                 assert relocated.char_start != 50 or relocated.status in ("anchored", "drifted", "lost")
+
+
+# ── Phase 5: suggest_experiment_for_promise ───────────────────────────────────
+
+
+class TestSuggestExperiment:
+    @pytest.mark.asyncio
+    async def test_returns_suggestion_text_for_partial_promise(self, tmp_path):
+        from src.argument.ledger import suggest_experiment_for_promise
+        from unittest.mock import AsyncMock, patch
+
+        suggestion = "You need to run N=1e6 scale experiments."
+        with patch("src.argument.ledger.call_llm_chat",
+                   new=AsyncMock(return_value=suggestion)):
+            result = await suggest_experiment_for_promise(
+                promise_text="Our method scales to N=1e6.",
+                promise_note="Only tested at N=1e5.",
+            )
+
+        assert result == suggestion
+
+    @pytest.mark.asyncio
+    async def test_returns_suggestion_for_unpaid_promise(self, tmp_path):
+        from src.argument.ledger import suggest_experiment_for_promise
+        from unittest.mock import AsyncMock, patch
+
+        suggestion = "Design ablation on scaling factor."
+        with patch("src.argument.ledger.call_llm_chat",
+                   new=AsyncMock(return_value=suggestion)):
+            result = await suggest_experiment_for_promise(
+                promise_text="We show convergence guarantees.",
+                promise_note=None,
+            )
+
+        assert len(result) > 0
+
+    @pytest.mark.asyncio
+    async def test_llm_unavailable_returns_fallback_string(self, tmp_path):
+        from src.argument.ledger import suggest_experiment_for_promise
+        from unittest.mock import AsyncMock, patch
+
+        with patch("src.argument.ledger.call_llm_chat",
+                   new=AsyncMock(side_effect=Exception("LLM down"))):
+            result = await suggest_experiment_for_promise(
+                promise_text="some promise",
+                promise_note=None,
+            )
+
+        # Should not raise; returns some non-empty string
+        assert isinstance(result, str)

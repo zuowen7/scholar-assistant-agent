@@ -52,6 +52,14 @@
             >
               → 兑付处
             </button>
+            <button
+              v-if="promise.status === 'unpaid' || promise.status === 'partial'"
+              class="suggest-btn"
+              data-suggest-btn
+              @click="$emit('suggestExperiment', promise.id)"
+            >
+              怎么补满
+            </button>
             <span
               v-if="isLost(promise)"
               class="lost-badge"
@@ -76,6 +84,7 @@ const props = defineProps<{
 defineEmits<{
   analyze: []
   focusAnchor: [anchorId: string]
+  suggestExperiment: [promiseId: string]
 }>()
 
 const STATUS_ORDER: PromiseStatus[] = ['unpaid', 'mismatch', 'partial', 'paid', 'unknown']
@@ -252,7 +261,7 @@ function isLost(promise: ArgPromise): boolean {
   gap: 4px;
 }
 
-.jump-btn {
+.jump-btn, .suggest-btn {
   font-size: 10px;
   padding: 2px 6px;
   border-radius: 3px;
@@ -263,7 +272,7 @@ function isLost(promise: ArgPromise): boolean {
   white-space: nowrap;
 }
 
-.jump-btn:hover {
+.jump-btn:hover, .suggest-btn:hover {
   color: var(--accent, #60a5fa);
   border-color: var(--accent, #60a5fa);
 }

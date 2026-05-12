@@ -335,6 +335,54 @@ async function rebut(pointId: string, message: string, text: string): Promise<vo
   }
 }
 
+async function importReviews(reviewsRaw: string, text: string): Promise<void> {
+  if (!state.docId) return
+  state.reviewing = true
+  try {
+    const resp = await fetch(`${API_BASE}/api/companion/review/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        doc_id: state.docId,
+        doc_title: state.docTitle,
+        text,
+        reviews_raw: reviewsRaw,
+      }),
+    })
+    if (!resp.ok || !resp.body) { state.reviewing = false; return }
+
+    if (!state.review) {
+      state.review = {
+        id: '',
+        doc_id: state.docId,
+        doc_title: state.docTitle,
+        venue: null,
+        persona: 'real' as const,
+        checks: ['imported'],
+        points: [],
+        anchors: [],
+        doc_hash: simpleHash(text),
+        created_at: Date.now() / 1000,
+      }
+    }
+
+    await readSseStream(resp.body.getReader(), (eventType, data) => {
+      if (eventType === 'review_point') {
+        state.review!.points.push(data as unknown as import('../types').ReviewPoint)
+      } else if (eventType === 'complete') {
+        const d = data as Record<string, unknown>
+        if (d['session_id'] && !state.review!.id) {
+          state.review!.id = d['session_id'] as string
+        }
+      }
+    })
+
+    await listReviews()
+  } finally {
+    state.reviewing = false
+  }
+}
+
 // ── Editor bridge ─────────────────────────────────────────────────────────
 
 function focusAnchor(anchorId: string): void {
@@ -416,6 +464,7 @@ export function useArgumentCompanion() {
     listReviews,
     updatePointStatus,
     rebut,
+    importReviews,
     focusAnchor,
     focusFromGutter,
     onEditorEdit,

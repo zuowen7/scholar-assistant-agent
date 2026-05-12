@@ -65,6 +65,13 @@ class CompanionRebutRequest(BaseModel):
     text: str = ""
 
 
+class CompanionImportReviewsRequest(BaseModel):
+    doc_id: str
+    doc_title: str = ""
+    text: str
+    reviews_raw: str
+
+
 # v2 models imported eagerly at module level so that `from __future__ import
 # annotations` string-annotation resolution finds them in module globals.
 try:
@@ -484,3 +491,80 @@ def register_companion(
             raise HTTPException(status_code=404, detail="Review session not found")
         store.delete_review(session_id)
         return {"ok": True}
+
+    # ── Phase 5 endpoints ─────────────────────────────────────────────────────
+
+    @app.post("/api/companion/review/import")
+    async def companion_import_reviews(req: CompanionImportReviewsRequest):
+        from src.argument.reviewer import import_real_reviews
+
+        cloud_client = _get_cloud_client()
+
+        async def _gen():
+            async for ev in import_real_reviews(
+                doc_id=req.doc_id,
+                doc_title=req.doc_title,
+                text=req.text,
+                reviews_raw=req.reviews_raw,
+                store=store,
+                cloud_client=cloud_client,
+            ):
+                yield {"event": ev["event"], "data": ev["data"]}
+
+        return EventSourceResponse(_gen())
+
+    @app.get("/api/companion/download/review/{session_id}")
+    def companion_download_review(session_id: str):
+        session = store.get_review(session_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="Review session not found")
+
+        lines: list[str] = [
+            f"# Rebuttal Draft — {session.doc_title or session.doc_id}",
+            f"Session: {session.id}  |  Persona: {session.persona}",
+            "",
+        ]
+        for point in session.points:
+            label = f" [{point.reviewer_label}]" if point.reviewer_label else ""
+            lines.append(f"## [{point.severity.upper()}]{label} {point.title}")
+            lines.append(f"*Category: {point.category} · Status: {point.status}*")
+            lines.append("")
+            lines.append(point.detail)
+            if point.thread:
+                lines.append("")
+                lines.append("### Discussion")
+                for turn in point.thread:
+                    role_label = "**Author**" if turn.role == "author" else "**Reviewer**"
+                    lines.append(f"{role_label}: {turn.text}")
+            lines.append("")
+            lines.append("---")
+            lines.append("")
+
+        content = "\n".join(lines)
+        tmp = Path("/tmp") if Path("/tmp").exists() else Path(".")
+        out_file = tmp / f"rebuttal_{session_id[:8]}.md"
+        out_file.write_text(content, encoding="utf-8")
+        return FileResponse(
+            str(out_file),
+            media_type="text/markdown",
+            filename=f"rebuttal_{session.doc_title or session_id[:8]}.md",
+        )
+
+    @app.post("/api/companion/ledger/{doc_id}/promise/{pid}/suggest-experiment")
+    async def companion_suggest_experiment(doc_id: str, pid: str):
+        from src.argument.ledger import suggest_experiment_for_promise
+
+        ledger = store.get_ledger(doc_id)
+        if ledger is None:
+            raise HTTPException(status_code=404, detail="Ledger not found")
+        promise = next((p for p in ledger.promises if p.id == pid), None)
+        if promise is None:
+            raise HTTPException(status_code=404, detail="Promise not found")
+
+        cloud_client = _get_cloud_client()
+        suggestion = await suggest_experiment_for_promise(
+            promise_text=promise.text,
+            promise_note=promise.note,
+            cloud_client=cloud_client,
+        )
+        return {"suggestion": suggestion}

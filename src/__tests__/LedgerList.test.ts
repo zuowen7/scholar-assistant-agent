@@ -184,4 +184,48 @@ describe('LedgerList', () => {
 
     expect(wrapper.text()).toContain('Numbers do not match')
   })
+
+  // ── Phase 5: "怎么补满" suggest experiment ─────────────────────────────────
+
+  it('shows 怎么补满 button for unpaid promise', () => {
+    const promises = [makePromise('p1', 'unpaid')]
+    const ledger = makeLedger(promises)
+    const wrapper = mount(LedgerList, {
+      props: { ledger, building: false },
+    })
+    const btn = wrapper.find('[data-suggest-btn]')
+    expect(btn.exists()).toBe(true)
+  })
+
+  it('shows 怎么补满 button for partial promise', () => {
+    const promises = [makePromise('p1', 'partial')]
+    const ledger = makeLedger(promises)
+    const wrapper = mount(LedgerList, {
+      props: { ledger, building: false },
+    })
+    const btn = wrapper.find('[data-suggest-btn]')
+    expect(btn.exists()).toBe(true)
+  })
+
+  it('does not show 怎么补满 button for paid promise', () => {
+    const promises = [makePromise('p1', 'paid')]
+    const ledger = makeLedger(promises)
+    const wrapper = mount(LedgerList, {
+      props: { ledger, building: false },
+    })
+    const btn = wrapper.find('[data-suggest-btn]')
+    expect(btn.exists()).toBe(false)
+  })
+
+  it('emits suggestExperiment with promise id when 怎么补满 clicked', async () => {
+    const promises = [makePromise('p1', 'unpaid')]
+    const ledger = makeLedger(promises)
+    const wrapper = mount(LedgerList, {
+      props: { ledger, building: false },
+    })
+    const btn = wrapper.find('[data-suggest-btn]')
+    await btn.trigger('click')
+    expect(wrapper.emitted('suggestExperiment')).toBeTruthy()
+    expect(wrapper.emitted('suggestExperiment')![0]).toEqual(['p1'])
+  })
 })
