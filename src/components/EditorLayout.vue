@@ -86,7 +86,7 @@
             <Bot :size="13" :stroke-width="1.7" /> AI 编辑
           </button>
           <button class="rp-tab" :class="{ active: rightPanelTab === 'argument' }" @click="rightPanelTab = 'argument'">
-            <GitBranch :size="13" :stroke-width="1.7" /> 论证
+            <GitBranch :size="13" :stroke-width="1.7" /> 论证陪练
           </button>
           <button class="rp-close" title="关闭面板" @click="rightPanelTab = null">
             <X :size="13" :stroke-width="2" />
@@ -109,7 +109,7 @@
           @undo="handleUndo"
           @close="rightPanelTab = null"
         />
-        <ArgumentMapMini v-if="rightPanelTab === 'argument'" class="rp-content" />
+        <CompanionPanel v-if="rightPanelTab === 'argument'" :content="content" class="rp-content" />
       </div>
     </template>
 
@@ -140,7 +140,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 
 // 鈹€鈹€ Layout sub-components 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 import EditorWelcome from './EditorWelcome.vue'
@@ -153,6 +153,7 @@ import MarkdownPreview from './MarkdownPreview.vue'
 import FileTree from './FileTree.vue'
 import AiPanel from './AiPanel.vue'
 import ArgumentMapMini from './argument/ArgumentMapMini.vue'
+import CompanionPanel from './argument/CompanionPanel.vue'
 import ComplianceModal from './ComplianceModal.vue'
 import TemplatePicker from './TemplatePicker.vue'
 import MindMapView from './MindMapView.vue'
@@ -167,6 +168,7 @@ import { useEditorVision } from '../composables/useEditorVision'
 import { useEditorCitation } from '../composables/useEditorCitation'
 import { useEditorIO } from '../composables/useEditorIO'
 import { useMindMap, mindMapToMarkdown, markdownToMindMapNodes } from '../composables/useMindMap'
+import { useArgumentCompanion } from '../composables/useArgumentCompanion'
 
 const props = defineProps<{ isDark: boolean }>()
 
@@ -413,7 +415,16 @@ async function runComplianceCheck() {
 function handleInsert(text: string) { aiResult.value = text; applyAiResult() }
 function handleUndo() { undoEdit() }
 
-function onContentChange(_value: string) {}
+const companion = useArgumentCompanion()
+
+// Wire argument companion: setDoc on tab switch, onEditorEdit on content change
+watch(activeTab, (tab) => {
+  if (tab?.docId) companion.setDoc(tab.docId, tab.name)
+}, { immediate: true })
+
+function onContentChange(value: string) {
+  companion.onEditorEdit(value)
+}
 function onSelectionChange(_sel: unknown) {}
 
 function insertTable() {

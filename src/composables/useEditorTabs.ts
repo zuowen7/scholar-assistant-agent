@@ -37,13 +37,14 @@ function openFile(path: string, text = '') {
     return
   }
   const name = path.split(/[\\/]/).pop() || 'Untitled'
-  tabs.value.push({ id: path, path, name, content: text, isModified: false })
+  tabs.value.push({ id: path, path, name, content: text, isModified: false, docId: path })
   activeTabId.value = path
 }
 
 function openNewUntitled() {
   const id = `untitled-${Date.now()}`
-  tabs.value.push({ id, path: null, name: 'Untitled', content: '', isModified: false })
+  const docId = `untitled-${crypto.randomUUID()}`
+  tabs.value.push({ id, path: null, name: 'Untitled', content: '', isModified: false, docId })
   activeTabId.value = id
 }
 
