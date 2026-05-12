@@ -396,6 +396,23 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         import logging as _logging
         _logging.getLogger(__name__).warning("argument_map_v2 setup skipped: %s", _e)
 
+    # Argument Companion v3 (账本 + Reviewer-2 + rebuttal + import + suggest)
+    try:
+        from src.argument.companion_store import CompanionStore
+        from routers.argument import register_companion
+        _companion_flag = bool(_load_config().get("features", {}).get("argument_companion", False))
+        _companion_store = CompanionStore(runtime_dir=RUNTIME_DIR)
+        register_companion(
+            app,
+            store=_companion_store,
+            flag_enabled=_companion_flag,
+            load_config=_load_config,
+            build_cloud_client=_build_cloud_client,
+        )
+    except Exception as _e:
+        import logging as _logging
+        _logging.getLogger(__name__).warning("argument_companion setup skipped: %s", _e)
+
     from routers.mindmap import register_mindmap
     register_mindmap(
         app,
