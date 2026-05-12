@@ -295,4 +295,126 @@ describe('useArgumentCompanion', () => {
       expect(companion.state.ledger).not.toBeNull()
     })
   })
+
+  // ── runReview ─────────────────────────────────────────────────────────────
+
+  describe('runReview', () => {
+    it('fills state.review.points from SSE review_point events', async () => {
+      const rp1 = {
+        id: 'rp_001', severity: 'major', category: 'baseline',
+        title: 'Missing baselines', detail: 'No comparison.',
+        anchor_id: null, status: 'open', source: 'llm',
+        reviewer_label: null, thread: [],
+      }
+      const rp2 = {
+        id: 'rp_002', severity: 'minor', category: 'writing_clarity',
+        title: 'Unclear prose', detail: 'Section 3 is unclear.',
+        anchor_id: null, status: 'open', source: 'llm',
+        reviewer_label: null, thread: [],
+      }
+      const stream = makeSseStream([
+        { event: 'review_point', data: rp1 },
+        { event: 'review_point', data: rp2 },
+        { event: 'complete', data: { session_id: 'S_test', by_category: { baseline: 1 }, warnings: [] } },
+      ])
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: stream }))
+
+      const companion = useArgumentCompanion()
+      companion.setDoc('doc1', 'Test Paper')
+
+      await companion.runReview('paper text here')
+
+      expect(companion.state.review).not.toBeNull()
+      expect(companion.state.review!.points).toHaveLength(2)
+      expect(companion.state.review!.points[0].id).toBe('rp_001')
+      expect(companion.state.reviewing).toBe(false)
+    })
+
+    it('sets reviewing=true during stream and false after', async () => {
+      const stream = makeSseStream([
+        { event: 'review_point', data: {
+          id: 'rp_x', severity: 'minor', category: 'other', title: 'T', detail: 'D',
+          anchor_id: null, status: 'open', source: 'llm', reviewer_label: null, thread: [],
+        }},
+        { event: 'complete', data: { session_id: 'S_x', by_category: {}, warnings: [] } },
+      ])
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: stream }))
+
+      const companion = useArgumentCompanion()
+      companion.setDoc('doc1', 'Paper')
+
+      const p = companion.runReview('text')
+      const reviewingDuringStream = companion.state.reviewing
+      await p
+
+      expect(reviewingDuringStream).toBe(true)
+      expect(companion.state.reviewing).toBe(false)
+    })
+
+    it('handles error event gracefully without crashing', async () => {
+      const stream = makeSseStream([
+        { event: 'error', data: { message: 'LLM unavailable' } },
+      ])
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: stream }))
+
+      const companion = useArgumentCompanion()
+      companion.setDoc('doc1', 'Paper')
+
+      await expect(companion.runReview('text')).resolves.not.toThrow()
+      expect(companion.state.reviewing).toBe(false)
+    })
+  })
+
+  // ── scopedReview ──────────────────────────────────────────────────────────
+
+  describe('scopedReview', () => {
+    it('sends focus text to /api/companion/review', async () => {
+      const stream = makeSseStream([
+        { event: 'review_point', data: {
+          id: 'rp_sc', severity: 'major', category: 'soundness', title: 'Overreach',
+          detail: 'This sentence is unsupported.', anchor_id: null, status: 'open',
+          source: 'scoped', reviewer_label: null, thread: [],
+        }},
+        { event: 'complete', data: { session_id: 'S_sc', by_category: {}, warnings: [] } },
+      ])
+
+      const mockFetch = vi.fn().mockResolvedValue({ ok: true, body: stream })
+      vi.stubGlobal('fetch', mockFetch)
+
+      const companion = useArgumentCompanion()
+      companion.setDoc('doc1', 'Paper')
+
+      await companion.scopedReview('This is the selected sentence.', 'full paper text')
+
+      expect(mockFetch).toHaveBeenCalled()
+      const reviewCall = mockFetch.mock.calls.find((c: unknown[]) => {
+        try { return JSON.parse((c[1] as { body: string }).body).focus !== undefined } catch { return false }
+      })
+      expect(reviewCall).toBeDefined()
+      const callBody = JSON.parse(reviewCall[1].body)
+      expect(callBody.focus).toBe('This is the selected sentence.')
+    })
+
+    it('adds scoped points to existing review or creates new review', async () => {
+      const stream = makeSseStream([
+        { event: 'review_point', data: {
+          id: 'rp_sc2', severity: 'minor', category: 'other', title: 'T', detail: 'D',
+          anchor_id: null, status: 'open', source: 'scoped', reviewer_label: null, thread: [],
+        }},
+        { event: 'complete', data: { session_id: 'S_sc2', by_category: {}, warnings: [] } },
+      ])
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: stream }))
+
+      const companion = useArgumentCompanion()
+      companion.setDoc('doc1', 'Paper')
+
+      await companion.scopedReview('selected text', 'full paper')
+
+      expect(companion.state.review).not.toBeNull()
+      expect(companion.state.review!.points.length).toBeGreaterThanOrEqual(1)
+    })
+  })
 })

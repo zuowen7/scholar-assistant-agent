@@ -196,6 +196,23 @@ onMounted(() => {
     }
   })
 
+  // ── 质疑这句 — scoped Reviewer-2 review ─────────────────────────────────
+  editor.addAction({
+    id: 'companion-scoped-review',
+    label: '质疑这句 (Reviewer-2)',
+    contextMenuGroupId: 'argument',
+    contextMenuOrder: 1,
+    precondition: 'editorHasSelection',
+    run: async (ed) => {
+      const sel = ed.getSelection()
+      if (!sel) return
+      const selectedText = ed.getModel()?.getValueInRange(sel) || ''
+      if (!selectedText.trim()) return
+      const fullText = ed.getModel()?.getValue() || ''
+      await companion.scopedReview(selectedText, fullText)
+    },
+  })
+
   editor.onDidChangeModelContent(() => {
     if (!editor) return
     setContent(editor.getValue())

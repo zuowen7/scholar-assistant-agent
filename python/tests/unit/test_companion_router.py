@@ -460,3 +460,152 @@ class TestDeleteEndpoints:
     def test_delete_review_not_found_returns_404(self, client):
         r = client.delete("/api/companion/review/nonexistent_session_xyz")
         assert r.status_code == 404
+
+
+# ── Phase 3: SSE event sequence ──────────────────────────────────────────────
+
+
+class TestReviewSSESequence:
+    """Verify that the /review SSE stream emits review_point events then complete."""
+
+    def test_sse_emits_review_points_then_complete(self, tmp_path):
+        async def fake_review(*a, **kw):
+            yield {
+                "event": "review_point",
+                "data": json.dumps({
+                    "id": "rp_001", "severity": "major", "category": "baseline",
+                    "title": "Missing baselines", "detail": "No comparison to prior work.",
+                    "anchor_id": None, "status": "open", "source": "llm",
+                    "reviewer_label": None, "thread": [],
+                }),
+            }
+            yield {
+                "event": "review_point",
+                "data": json.dumps({
+                    "id": "rp_002", "severity": "minor", "category": "writing_clarity",
+                    "title": "Unclear notation", "detail": "Section 3 notation undefined.",
+                    "anchor_id": None, "status": "open", "source": "llm",
+                    "reviewer_label": None, "thread": [],
+                }),
+            }
+            yield {
+                "event": "complete",
+                "data": json.dumps({
+                    "session_id": "S_seq_test",
+                    "by_category": {"baseline": 1, "writing_clarity": 1},
+                    "warnings": [],
+                }),
+            }
+
+        app = _build_app(tmp_path)
+        with patch("src.argument.reviewer.run_review", new=fake_review):
+            client = TestClient(app)
+            r = client.post(
+                "/api/companion/review",
+                json={"doc_id": "d_seq", "text": "Full paper text here."},
+            )
+        assert r.status_code == 200
+        body = r.text
+        assert "review_point" in body
+        assert "Missing baselines" in body
+        assert "Unclear notation" in body
+        assert "session_id" in body
+        assert "by_category" in body
+
+    def test_complete_event_contains_session_id(self, tmp_path):
+        async def fake_review(*a, **kw):
+            yield {
+                "event": "complete",
+                "data": json.dumps({
+                    "session_id": "S_known_id",
+                    "by_category": {"soundness": 1},
+                    "warnings": [],
+                }),
+            }
+
+        app = _build_app(tmp_path)
+        with patch("src.argument.reviewer.run_review", new=fake_review):
+            client = TestClient(app)
+            r = client.post(
+                "/api/companion/review",
+                json={"doc_id": "d_cid", "text": "text"},
+            )
+        assert "S_known_id" in r.text
+
+
+# ── Phase 3: scoped review (focus parameter) ──────────────────────────────────
+
+
+class TestScopedReview:
+    """Verify that /review accepts optional focus param → source='scoped' on points."""
+
+    def test_scoped_review_returns_200(self, tmp_path):
+        async def fake_review(*a, **kw):
+            focus = kw.get("focus") or (a[3] if len(a) > 3 else None)
+            source = "scoped" if focus else "llm"
+            yield {
+                "event": "review_point",
+                "data": json.dumps({
+                    "id": "rp_sc", "severity": "major", "category": "claim_overreach",
+                    "title": "Overreach", "detail": "Claim not supported.",
+                    "anchor_id": None, "status": "open", "source": source,
+                    "reviewer_label": None, "thread": [],
+                }),
+            }
+            yield {
+                "event": "complete",
+                "data": json.dumps({"session_id": "S_scoped", "by_category": {}, "warnings": []}),
+            }
+
+        app = _build_app(tmp_path)
+        with patch("src.argument.reviewer.run_review", new=fake_review):
+            client = TestClient(app)
+            r = client.post(
+                "/api/companion/review",
+                json={"doc_id": "d_sc", "text": "paper", "focus": "This claim is overstated."},
+            )
+        assert r.status_code == 200
+
+    def test_scoped_points_have_source_scoped(self, tmp_path):
+        async def fake_review(doc_id, text, ledger=None, focus=None, **kw):
+            source = "scoped" if focus else "llm"
+            yield {
+                "event": "review_point",
+                "data": json.dumps({
+                    "id": "rp_src", "severity": "minor", "category": "other",
+                    "title": "T", "detail": "D", "anchor_id": None,
+                    "status": "open", "source": source,
+                    "reviewer_label": None, "thread": [],
+                }),
+            }
+            yield {
+                "event": "complete",
+                "data": json.dumps({"session_id": "S_s2", "by_category": {}, "warnings": []}),
+            }
+
+        app = _build_app(tmp_path)
+        with patch("src.argument.reviewer.run_review", new=fake_review):
+            client = TestClient(app)
+            r = client.post(
+                "/api/companion/review",
+                json={"doc_id": "d_s2", "text": "paper", "focus": "Suspect sentence."},
+            )
+        assert r.status_code == 200
+        assert '"scoped"' in r.text
+
+    def test_review_without_focus_defaults_to_full(self, tmp_path):
+        async def fake_review(doc_id, text, ledger=None, focus=None, **kw):
+            assert focus is None
+            yield {
+                "event": "complete",
+                "data": json.dumps({"session_id": "S_full", "by_category": {}, "warnings": []}),
+            }
+
+        app = _build_app(tmp_path)
+        with patch("src.argument.reviewer.run_review", new=fake_review):
+            client = TestClient(app)
+            r = client.post(
+                "/api/companion/review",
+                json={"doc_id": "d_full", "text": "paper"},
+            )
+        assert r.status_code == 200

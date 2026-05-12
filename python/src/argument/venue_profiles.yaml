@@ -1,0 +1,63 @@
+# Argument Companion — venue calibration profiles (Phase 3)
+# Each entry describes the review culture and hard requirements for that venue.
+
+generic: |
+  This is a rigorous academic venue. Focus on: soundness of methodology,
+  statistical validity, significance of contribution, clarity of writing,
+  and reproducibility of experiments. Be thorough but fair.
+
+NeurIPS: |
+  NeurIPS emphasises theoretical novelty and empirical rigour.
+  Key concerns: (1) novelty beyond incremental improvement;
+  (2) solid ablations isolating each contribution;
+  (3) correct and complete statistical reporting (mean ± std, seeds);
+  (4) reproducibility (code, hyperparams, compute budget);
+  (5) discussion of limitations and broader impact.
+
+ICML: |
+  ICML values machine-learning methodology with strong theoretical or
+  empirical foundations. Key concerns: (1) clear problem formulation;
+  (2) theoretical guarantees or rigorous empirical analysis;
+  (3) comparison to strong, up-to-date baselines;
+  (4) generalisation claims backed by multiple datasets;
+  (5) clarity and reproducibility.
+
+ICLR: |
+  ICLR uses open peer review and rewards reproducible, open-science work.
+  Key concerns: (1) open-source code (expected, not optional);
+  (2) ablation completeness;
+  (3) fair comparison (same compute budget, same data splits);
+  (4) addressing reviewer comments from prior submissions if applicable;
+  (5) theoretical insight or strong empirical justification.
+
+ACL: |
+  ACL covers Natural Language Processing and Computational Linguistics.
+  Key concerns: (1) linguistic validity and task definition;
+  (2) comparison to strong NLP baselines (including fine-tuned LLMs);
+  (3) human evaluation where automatic metrics are insufficient;
+  (4) dataset construction quality and annotation agreement;
+  (5) cross-lingual / multilingual scope if applicable.
+
+CVPR: |
+  CVPR covers Computer Vision and Pattern Recognition.
+  Key concerns: (1) benchmark performance with reproducible protocol;
+  (2) ablation study isolating visual components;
+  (3) qualitative results showing failure modes;
+  (4) comparison on standard benchmarks (ImageNet, COCO, etc.);
+  (5) efficiency (FLOPs, params, inference time) reported.
+
+KDD: |
+  KDD emphasises knowledge discovery and data mining with real-world impact.
+  Key concerns: (1) scalability to large datasets;
+  (2) evaluation on real industrial data (not just academic benchmarks);
+  (3) interpretability / explainability of results;
+  (4) practical deployment considerations;
+  (5) novelty relative to data mining literature.
+
+CHI: |
+  CHI focuses on Human-Computer Interaction with mixed-methods evaluation.
+  Key concerns: (1) user study design (participants, tasks, measures);
+  (2) ecological validity (lab vs. real-world setting);
+  (3) qualitative analysis rigour (thematic analysis, grounded theory);
+  (4) ethical considerations for human subjects;
+  (5) contribution to HCI theory or design guidelines.

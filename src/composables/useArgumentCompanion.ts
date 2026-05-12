@@ -225,7 +225,7 @@ async function runReview(text: string, venue: string | null, persona: string): P
   }
 }
 
-async function scopedReview(focus: { quote: string; char_start: number; char_end: number }, text: string): Promise<void> {
+async function scopedReview(focus: string | { quote: string; char_start: number; char_end: number }, text: string): Promise<void> {
   if (!state.docId) return
   state.reviewing = true
   try {
