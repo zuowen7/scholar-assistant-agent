@@ -690,3 +690,153 @@ class TestRebutSSESequence:
         )
         # Router returns 200 with SSE error event (not HTTP 404, SSE streams always 200)
         assert r.status_code in (200, 404)
+
+
+# ── Phase 5: /review/import SSE ───────────────────────────────────────────────
+
+
+class TestImportReviewRoute:
+    """POST /api/companion/review/import → SSE review_point* → complete."""
+
+    def _setup(self, tmp_path):
+        from routers.argument import register_companion
+        from src.argument.companion_store import CompanionStore
+        app = FastAPI()
+        store = CompanionStore(runtime_dir=tmp_path)
+        register_companion(app, store=store, flag_enabled=True)
+        return TestClient(app), store
+
+    def test_import_review_returns_200_sse(self, tmp_path):
+        client, store = self._setup(tmp_path)
+
+        async def fake_import(*a, **kw):
+            from src.argument.companion_models import ReviewPoint
+            rp = ReviewPoint(severity="major", category="baseline",
+                             title="Missing baseline", detail="Compare with XYZ.",
+                             source="imported", reviewer_label="Reviewer 1")
+            yield {"event": "review_point", "data": rp.model_dump_json()}
+            yield {"event": "complete", "data": json.dumps({"session_id": "R_fake"})}
+
+        with patch("src.argument.reviewer.import_real_reviews", new=fake_import):
+            r = client.post(
+                "/api/companion/review/import",
+                json={"doc_id": "d1", "text": "paper", "reviews_raw": "Reviewer 1: ..."},
+            )
+
+        assert r.status_code == 200
+        assert "review_point" in r.text
+        assert "complete" in r.text
+
+    def test_import_review_sse_content_type(self, tmp_path):
+        client, store = self._setup(tmp_path)
+
+        async def fake_import(*a, **kw):
+            yield {"event": "complete", "data": json.dumps({"session_id": "R_x"})}
+
+        with patch("src.argument.reviewer.import_real_reviews", new=fake_import):
+            r = client.post(
+                "/api/companion/review/import",
+                json={"doc_id": "d1", "text": "paper", "reviews_raw": "some text"},
+            )
+
+        assert "text/event-stream" in r.headers.get("content-type", "")
+
+    def test_import_review_missing_reviews_raw_returns_422(self, tmp_path):
+        client, store = self._setup(tmp_path)
+        r = client.post(
+            "/api/companion/review/import",
+            json={"doc_id": "d1", "text": "paper"},  # missing reviews_raw
+        )
+        assert r.status_code == 422
+
+
+# ── Phase 5: /download/review/{sid} ──────────────────────────────────────────
+
+
+class TestDownloadReviewRoute:
+    """GET /api/companion/download/review/{sid} → markdown file."""
+
+    def _setup(self, tmp_path):
+        from routers.argument import register_companion
+        from src.argument.companion_store import CompanionStore
+        from src.argument.companion_models import ReviewSession, ReviewPoint, RebuttalTurn
+        app = FastAPI()
+        store = CompanionStore(runtime_dir=tmp_path)
+        rp = ReviewPoint(severity="major", category="baseline",
+                         title="Missing baseline", detail="Compare with XYZ.",
+                         thread=[
+                             RebuttalTurn(role="author", text="We added baseline A."),
+                             RebuttalTurn(role="reviewer", text="Insufficient."),
+                         ])
+        s = ReviewSession(doc_id="d1", points=[rp])
+        store.save_review(s)
+        register_companion(app, store=store, flag_enabled=True)
+        return TestClient(app), s
+
+    def test_download_returns_200(self, tmp_path):
+        client, s = self._setup(tmp_path)
+        r = client.get(f"/api/companion/download/review/{s.id}")
+        assert r.status_code == 200
+
+    def test_download_contains_markdown_content(self, tmp_path):
+        client, s = self._setup(tmp_path)
+        r = client.get(f"/api/companion/download/review/{s.id}")
+        text = r.text
+        # Should contain the point title and thread turns
+        assert "Missing baseline" in text
+        assert "We added baseline A." in text
+
+    def test_download_session_not_found_returns_404(self, tmp_path):
+        client, _ = self._setup(tmp_path)
+        r = client.get("/api/companion/download/review/nonexistent_session_xyz")
+        assert r.status_code == 404
+
+
+# ── Phase 5: /ledger/{doc_id}/promise/{pid}/suggest-experiment ───────────────
+
+
+class TestSuggestExperimentRoute:
+    """POST /api/companion/ledger/{doc_id}/promise/{pid}/suggest-experiment → {suggestion}."""
+
+    def _setup(self, tmp_path):
+        from routers.argument import register_companion
+        from src.argument.companion_store import CompanionStore
+        from src.argument.companion_models import Ledger, Promise
+        from src.argument.anchor import make_anchor_from_quote
+        app = FastAPI()
+        store = CompanionStore(runtime_dir=tmp_path)
+        anchor = make_anchor_from_quote("d1", "Some paper text here.", "Some paper text")
+        promise = Promise(text="Our method scales to N=1e6.", kind="contribution",
+                         source_anchor_id=anchor.id, status="partial")
+        ledger = Ledger(doc_id="d1", promises=[promise], anchors=[anchor])
+        store.save_ledger(ledger)
+        register_companion(app, store=store, flag_enabled=True)
+        return TestClient(app), promise
+
+    def test_suggest_experiment_returns_200_with_suggestion(self, tmp_path):
+        client, promise = self._setup(tmp_path)
+
+        with patch("src.argument.ledger.suggest_experiment_for_promise",
+                   new=AsyncMock(return_value="Run N=1e6 scale experiment.")):
+            r = client.post(
+                f"/api/companion/ledger/d1/promise/{promise.id}/suggest-experiment",
+            )
+
+        assert r.status_code == 200
+        body = r.json()
+        assert "suggestion" in body
+        assert body["suggestion"] == "Run N=1e6 scale experiment."
+
+    def test_suggest_experiment_promise_not_found_404(self, tmp_path):
+        client, _ = self._setup(tmp_path)
+        r = client.post(
+            "/api/companion/ledger/d1/promise/nonexistent_pid/suggest-experiment",
+        )
+        assert r.status_code == 404
+
+    def test_suggest_experiment_ledger_not_found_404(self, tmp_path):
+        client, _ = self._setup(tmp_path)
+        r = client.post(
+            "/api/companion/ledger/no_such_doc/promise/any_pid/suggest-experiment",
+        )
+        assert r.status_code == 404

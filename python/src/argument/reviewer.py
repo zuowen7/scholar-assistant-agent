@@ -446,3 +446,91 @@ async def continue_rebuttal(
     yield {"event": "reviewer_reply", "data": json.dumps({"text": reply})}
     yield {"event": "status", "data": json.dumps({"status": new_status})}
     yield {"event": "complete", "data": json.dumps({})}
+
+
+# ── Phase 5: import real reviews ─────────────────────────────────────────────
+
+async def import_real_reviews(
+    doc_id: str,
+    doc_title: str,
+    text: str,
+    reviews_raw: str,
+    store: CompanionStore,
+    cloud_client: Any = None,
+    ollama_client: Any = None,
+) -> AsyncIterator[dict]:
+    """SSE: review_point* → complete.
+
+    Parse pasted real reviewer comments into a persona='real' ReviewSession.
+    Yields error (and saves nothing) if LLM is unavailable or JSON is malformed.
+    """
+    from .anchor import make_anchor_from_quote
+    from .companion_models import RebuttalTurn, ReviewPoint, ReviewSession
+
+    prompt = (
+        "以下是一篇论文收到的真实审稿意见（可能来自多位 reviewer）。\n"
+        f"---\n{reviews_raw[:4000]}\n---\n"
+        "请将每条具体 concern 拆成结构化条目。输出严格 JSON 数组，每项：\n"
+        '{"reviewer_label":"Reviewer 1","severity":"minor|major|fatal",'
+        '"category":"baseline|novelty|soundness|experiment_design|writing_clarity|other",'
+        '"title":"一行摘要","detail":"完整意见（可精简）",'
+        '"quote_from_paper":"对应论文里的句子，找不到留空字符串"}。\n'
+        "只输出 JSON，不含其它文字。"
+    )
+
+    try:
+        raw = await call_llm_chat(prompt, cloud_client, ollama_client, max_tokens=2048, temperature=0.2)
+    except Exception as exc:
+        yield {"event": "error", "data": json.dumps({"message": f"LLM unavailable: {exc}"})}
+        return
+
+    try:
+        items = json.loads(raw)
+        if not isinstance(items, list):
+            raise ValueError("expected list")
+    except Exception as exc:
+        yield {"event": "error", "data": json.dumps({"message": f"JSON parse failed: {exc}"})}
+        return
+
+    session = ReviewSession(
+        doc_id=doc_id,
+        doc_title=doc_title,
+        venue=None,
+        persona="real",
+        checks=["imported"],
+    )
+
+    for item in items:
+        try:
+            severity = item.get("severity", "major")
+            category = item.get("category", "other")
+            title = item.get("title", "")
+            detail = item.get("detail", "")
+            quote = item.get("quote_from_paper", "")
+            reviewer_label = item.get("reviewer_label") or None
+
+            if not title or not detail:
+                continue
+
+            anchor_id = None
+            if quote:
+                anchor = make_anchor_from_quote(doc_id, text, quote)
+                session.anchors.append(anchor)
+                anchor_id = anchor.id
+
+            point = ReviewPoint(
+                severity=severity,
+                category=category,
+                title=title,
+                detail=detail,
+                anchor_id=anchor_id,
+                source="imported",
+                reviewer_label=reviewer_label,
+            )
+            session.points.append(point)
+            yield {"event": "review_point", "data": point.model_dump_json()}
+        except Exception:
+            continue
+
+    store.save_review(session)
+    yield {"event": "complete", "data": json.dumps({"session_id": session.id})}

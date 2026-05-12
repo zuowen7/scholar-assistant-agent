@@ -667,3 +667,145 @@ class TestContinueRebuttal:
         event_types = [e["event"] for e in events]
         assert "complete" in event_types
         assert "reviewer_reply" in event_types
+
+
+# ── Phase 5: import_real_reviews ─────────────────────────────────────────────
+
+
+class TestImportRealReviews:
+    REAL_REVIEWS_RAW = """
+Reviewer 1: The paper lacks baseline comparisons. You should compare with XYZ.
+Reviewer 2: The theoretical analysis in Section 3 appears to be flawed.
+"""
+
+    LLM_IMPORT_RESP = json.dumps([
+        {
+            "reviewer_label": "Reviewer 1",
+            "severity": "major",
+            "category": "baseline",
+            "title": "Missing baseline comparison",
+            "detail": "The paper lacks baseline comparisons with XYZ.",
+            "quote_from_paper": "We outperform all baselines",
+        },
+        {
+            "reviewer_label": "Reviewer 2",
+            "severity": "fatal",
+            "category": "soundness",
+            "title": "Flawed theoretical analysis",
+            "detail": "Section 3 analysis is flawed.",
+            "quote_from_paper": "",
+        },
+    ])
+
+    def _make_store(self, tmp_path):
+        from src.argument.companion_store import CompanionStore
+        return CompanionStore(runtime_dir=tmp_path)
+
+    @pytest.mark.asyncio
+    async def test_import_yields_review_point_events(self, tmp_path):
+        from src.argument.reviewer import import_real_reviews
+        store = self._make_store(tmp_path)
+
+        with patch("src.argument.reviewer.call_llm_chat",
+                   new=AsyncMock(return_value=self.LLM_IMPORT_RESP)):
+            events = []
+            async for ev in import_real_reviews(
+                doc_id="doc1", doc_title="Paper", text=SAMPLE_TEXT,
+                reviews_raw=self.REAL_REVIEWS_RAW, store=store,
+            ):
+                events.append(ev)
+
+        point_events = [e for e in events if e["event"] == "review_point"]
+        assert len(point_events) == 2
+
+    @pytest.mark.asyncio
+    async def test_import_sets_reviewer_label(self, tmp_path):
+        from src.argument.reviewer import import_real_reviews
+        store = self._make_store(tmp_path)
+
+        with patch("src.argument.reviewer.call_llm_chat",
+                   new=AsyncMock(return_value=self.LLM_IMPORT_RESP)):
+            events = []
+            async for ev in import_real_reviews(
+                doc_id="doc1", doc_title="Paper", text=SAMPLE_TEXT,
+                reviews_raw=self.REAL_REVIEWS_RAW, store=store,
+            ):
+                events.append(ev)
+
+        point_events = [e for e in events if e["event"] == "review_point"]
+        labels = [json.loads(e["data"])["reviewer_label"] for e in point_events]
+        assert "Reviewer 1" in labels
+        assert "Reviewer 2" in labels
+
+    @pytest.mark.asyncio
+    async def test_import_creates_real_persona_session(self, tmp_path):
+        from src.argument.reviewer import import_real_reviews
+        store = self._make_store(tmp_path)
+
+        with patch("src.argument.reviewer.call_llm_chat",
+                   new=AsyncMock(return_value=self.LLM_IMPORT_RESP)):
+            events = []
+            async for ev in import_real_reviews(
+                doc_id="doc1", doc_title="Paper", text=SAMPLE_TEXT,
+                reviews_raw=self.REAL_REVIEWS_RAW, store=store,
+            ):
+                events.append(ev)
+
+        complete_events = [e for e in events if e["event"] == "complete"]
+        assert complete_events
+        sid = json.loads(complete_events[0]["data"])["session_id"]
+        session = store.get_review(sid)
+        assert session is not None
+        assert session.persona == "real"
+
+    @pytest.mark.asyncio
+    async def test_import_points_have_source_imported(self, tmp_path):
+        from src.argument.reviewer import import_real_reviews
+        store = self._make_store(tmp_path)
+
+        with patch("src.argument.reviewer.call_llm_chat",
+                   new=AsyncMock(return_value=self.LLM_IMPORT_RESP)):
+            events = []
+            async for ev in import_real_reviews(
+                doc_id="doc1", doc_title="Paper", text=SAMPLE_TEXT,
+                reviews_raw=self.REAL_REVIEWS_RAW, store=store,
+            ):
+                events.append(ev)
+
+        point_events = [e for e in events if e["event"] == "review_point"]
+        sources = [json.loads(e["data"])["source"] for e in point_events]
+        assert all(s == "imported" for s in sources)
+
+    @pytest.mark.asyncio
+    async def test_import_llm_unavailable_yields_error_no_dirty_data(self, tmp_path):
+        from src.argument.reviewer import import_real_reviews
+        store = self._make_store(tmp_path)
+
+        with patch("src.argument.reviewer.call_llm_chat",
+                   new=AsyncMock(side_effect=Exception("LLM down"))):
+            events = []
+            async for ev in import_real_reviews(
+                doc_id="doc1", doc_title="Paper", text=SAMPLE_TEXT,
+                reviews_raw=self.REAL_REVIEWS_RAW, store=store,
+            ):
+                events.append(ev)
+
+        assert any(e["event"] == "error" for e in events)
+        assert len(store.list_reviews("doc1")) == 0
+
+    @pytest.mark.asyncio
+    async def test_import_malformed_json_yields_error(self, tmp_path):
+        from src.argument.reviewer import import_real_reviews
+        store = self._make_store(tmp_path)
+
+        with patch("src.argument.reviewer.call_llm_chat",
+                   new=AsyncMock(return_value="}}not json{{")):
+            events = []
+            async for ev in import_real_reviews(
+                doc_id="doc1", doc_title="Paper", text=SAMPLE_TEXT,
+                reviews_raw=self.REAL_REVIEWS_RAW, store=store,
+            ):
+                events.append(ev)
+
+        assert any(e["event"] == "error" for e in events)
+        assert len(store.list_reviews("doc1")) == 0

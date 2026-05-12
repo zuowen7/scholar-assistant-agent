@@ -324,3 +324,28 @@ async def rebuild_ledger(
             fresh_ledger.anchors.append(a)
 
     store.save_ledger(fresh_ledger)
+
+
+# ── Phase 5: suggest experiment ───────────────────────────────────────────────
+
+async def suggest_experiment_for_promise(
+    promise_text: str,
+    promise_note: str | None,
+    cloud_client: Any = None,
+    ollama_client: Any = None,
+) -> str:
+    """Return an experiment suggestion for a partial/unpaid promise.
+
+    Falls back to a non-empty placeholder string if the LLM is unavailable.
+    """
+    note_part = f"\n现有覆盖情况：{promise_note}" if promise_note else ""
+    prompt = (
+        f"这篇论文立了如下承诺但尚未完全兑付：\n「{promise_text}」{note_part}\n\n"
+        "请给出实验设计建议，格式分三段：\n"
+        "【当前已覆盖条件】...\n【还需要的条件】...\n【建议实验设计】..."
+    )
+    try:
+        result = await call_llm_chat(prompt, cloud_client, ollama_client, max_tokens=512, temperature=0.4)
+        return result or "（LLM 返回为空，请手动填写建议）"
+    except Exception as exc:
+        return f"（LLM 不可用：{exc}；请手动补充实验设计。）"
