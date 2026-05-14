@@ -90,19 +90,25 @@ def register_editor(
     async def _output_file_reaper(delay: float = 300.0) -> None:
         """Periodically delete Word export files older than 30 minutes."""
         while True:
-            await asyncio.sleep(delay)
-            if not output_dir.exists():
-                continue
-            now = time.time()
-            for path in output_dir.iterdir():
-                if path.suffix.lower() != ".docx":
+            try:
+                await asyncio.sleep(delay)
+                if not output_dir.exists():
                     continue
-                try:
-                    age_minutes = (now - path.stat().st_mtime) / 60
-                    if age_minutes > 30:
-                        path.unlink(missing_ok=True)
-                except Exception:
-                    pass
+                now = time.time()
+                for path in output_dir.iterdir():
+                    if path.suffix.lower() != ".docx":
+                        continue
+                    try:
+                        age_minutes = (now - path.stat().st_mtime) / 60
+                        if age_minutes > 30:
+                            path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:
+                logger.warning("output_file_reaper error (restarting): %s", exc)
+                await asyncio.sleep(60)
 
     def _start_output_reaper() -> None:
         nonlocal _output_reaper_handle

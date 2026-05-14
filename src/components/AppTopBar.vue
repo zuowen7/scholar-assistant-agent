@@ -25,7 +25,7 @@
       <!-- Status dot + engine chip -->
       <UiPopover ref="statusPopoverRef" :width="300" align="end" :offset="8">
         <template #trigger>
-          <button class="status-trigger" :class="overallStatus" title="服务状态">
+          <button class="status-trigger" :class="overallStatus" title="服务状态" aria-label="服务状态">
             <span class="status-dot" />
             <span class="status-label">{{ engineType === 'ollama' ? 'Ollama' : '云端' }}</span>
           </button>
@@ -281,13 +281,13 @@
 
       <!-- Window controls -->
       <div class="window-controls">
-        <button class="win-btn minimize" title="最小化" @click="$emit('window-minimize')">
+        <button class="win-btn minimize" title="最小化" aria-label="最小化窗口" @click="$emit('window-minimize')">
           <svg width="10" height="10" viewBox="0 0 10 10"><line x1="2" y1="5" x2="8" y2="5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
         </button>
-        <button class="win-btn maximize" title="最大化" @click="$emit('window-maximize')">
+        <button class="win-btn maximize" title="最大化" aria-label="最大化窗口" @click="$emit('window-maximize')">
           <svg width="10" height="10" viewBox="0 0 10 10"><rect x="2" y="2" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1.2" rx="1"/></svg>
         </button>
-        <button class="win-btn close" title="关闭" @click="$emit('window-close')">
+        <button class="win-btn close" title="关闭" aria-label="关闭窗口" @click="$emit('window-close')">
           <svg width="10" height="10" viewBox="0 0 10 10"><line x1="2.5" y1="2.5" x2="7.5" y2="7.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><line x1="7.5" y1="2.5" x2="2.5" y2="7.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
         </button>
       </div>

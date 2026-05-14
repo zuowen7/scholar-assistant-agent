@@ -1,6 +1,7 @@
 export async function readSseStream(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   onEvent: (eventType: string, data: Record<string, unknown>) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   const decoder = new TextDecoder()
   let buffer = ''
@@ -18,10 +19,17 @@ export async function readSseStream(
     dataBuffer = ''
   }
 
+  const onAbort = () => { reader.cancel().catch(() => {}) }
+  if (signal) {
+    if (signal.aborted) { reader.cancel().catch(() => {}); return }
+    signal.addEventListener('abort', onAbort, { once: true })
+  }
+
   try {
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
+      if (signal?.aborted) break
 
       buffer += decoder.decode(value, { stream: true })
       const lines = buffer.split('\n')
@@ -42,6 +50,7 @@ export async function readSseStream(
     }
     flush()
   } finally {
+    if (signal) signal.removeEventListener('abort', onAbort)
     reader.cancel().catch(() => {})
   }
 }

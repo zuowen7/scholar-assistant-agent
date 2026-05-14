@@ -8,7 +8,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onUnmounted } from 'vue'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import katex from 'katex'
@@ -27,6 +27,10 @@ watch(() => [props.content, props.version], (v) => {
   if (debounceTimer) clearTimeout(debounceTimer)
   debounceTimer = setTimeout(() => { debouncedContent.value = v[0] as string }, 80)
 }, { immediate: true })
+
+onUnmounted(() => {
+  if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
+})
 
 // Extract math blocks before Markdown parsing, replace with placeholders
 function extractMath(text: string): { text: string; blocks: string[] } {
@@ -105,9 +109,20 @@ const renderedHtml = computed(() => {
     ADD_ATTR: ['display', 'mathvariant', 'linethickness', 'notation', 'lspace', 'rspace', 'width', 'height', 'depth', 'voffset', 'align', 'columnalign', 'rowspacing', 'columnspacing', 'class', 'xmlns'],
   })
 
-  // Restore KaTeX blocks
+  // Restore KaTeX blocks, then sanitize once more to catch any XSS in KaTeX output
   protectedHtml = protectedHtml.replace(/\x00KX(\d+)\x00/g, (_, idx) => katexBlocks[parseInt(idx)])
-  return protectedHtml
+  return DOMPurify.sanitize(protectedHtml, {
+    ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac',
+               'munder', 'mover', 'munderover', 'mtext', 'mspace', 'mstyle', 'mpadded',
+               'mphantom', 'mfenced', 'menclose', 'msqrt', 'mroot', 'mtable', 'mtr', 'mtd',
+               'annotation', 'mglyph', 'ms', 'merror', 'mlabeledtr', 'maction',
+               'span', 'svg', 'path', 'line', 'rect', 'circle', 'use', 'defs', 'g'],
+    ADD_ATTR: ['display', 'mathvariant', 'linethickness', 'notation', 'lspace', 'rspace',
+               'width', 'height', 'depth', 'voffset', 'align', 'columnalign', 'rowspacing',
+               'columnspacing', 'class', 'xmlns', 'viewBox', 'preserveAspectRatio',
+               'aria-hidden', 'focusable', 'd', 'stroke', 'fill', 'stroke-width',
+               'x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r'],
+  })
 })
 </script>
 

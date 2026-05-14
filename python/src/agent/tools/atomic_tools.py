@@ -39,8 +39,7 @@ _SHELL_ALLOWED_COMMANDS = frozenset({
     "pwd", "whoami", "date", "uname",
     # 文件操作（限制在沙箱内；rm/rmdir 已由 SecurityGate 黑名单拦截，此处不再列入）
     "touch", "mkdir", "cp", "mv",
-    # 开发工具
-    "python", "python3", "pip", "pip3",
+    # 开发工具（python/pip 移除：通过 python_exec 工具执行，避免绕过沙箱）
     # git (read-only subcommands enforced below)
     "git",
 })

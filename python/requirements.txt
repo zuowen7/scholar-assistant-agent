@@ -17,8 +17,7 @@ uvicorn[standard]==0.42.0
 sse-starlette==3.3.4
 python-multipart==0.0.22
 
-# Desktop packaging
-pyinstaller==6.20.0
+# Dev/packaging deps: see requirements-dev.txt
 
 # Optional document parsers for non-PDF formats
 beautifulsoup4==4.14.3

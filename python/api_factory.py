@@ -136,16 +136,20 @@ def _load_config() -> dict:
     global _config_cache, _config_cache_mtime
     if CONFIG_PATH.exists():
         mtime = CONFIG_PATH.stat().st_mtime
-        if _config_cache is not None and mtime == _config_cache_mtime:
-            cfg = copy.deepcopy(_config_cache)
-            _apply_local_overrides(cfg)
-            _apply_env_overrides(cfg)
-            return cfg
+        with _config_read_lock:
+            if _config_cache is not None and mtime == _config_cache_mtime:
+                cfg = copy.deepcopy(_config_cache)
+                _apply_local_overrides(cfg)
+                _apply_env_overrides(cfg)
+                return cfg
         with open(CONFIG_PATH, encoding="utf-8") as f:
-            _config_cache = yaml.safe_load(f) or {}
-            _validate_config(_config_cache)
+            new_cache = yaml.safe_load(f) or {}
+            _validate_config(new_cache)
+        with _config_read_lock:
+            _config_cache = new_cache
             _config_cache_mtime = mtime
-    cfg = copy.deepcopy(_config_cache or {})
+    with _config_read_lock:
+        cfg = copy.deepcopy(_config_cache or {})
     _apply_local_overrides(cfg)
     _apply_env_overrides(cfg)
     return cfg
@@ -181,6 +185,10 @@ def _apply_env_overrides(cfg: dict) -> None:
         cfg.setdefault("translator", {}).setdefault("cloud", {})["api_key"] = env_key
 
 
+_save_config_lock = threading.Lock()
+_config_read_lock = threading.Lock()
+
+
 def _save_config(config: dict) -> None:
     global _config_cache, _config_cache_mtime
     save_copy = copy.deepcopy(config)
@@ -189,10 +197,24 @@ def _save_config(config: dict) -> None:
     if cloud_cfg.get("api_key"):
         cloud_cfg["api_key"] = ""
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        yaml.dump(save_copy, f, allow_unicode=True, default_flow_style=False)
-    _config_cache = copy.deepcopy(config)
-    _config_cache_mtime = CONFIG_PATH.stat().st_mtime
+    with _save_config_lock:
+        import tempfile as _tempfile
+        tmp_fd, tmp_name = _tempfile.mkstemp(dir=CONFIG_PATH.parent, suffix=".tmp")
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                yaml.dump(save_copy, f, allow_unicode=True, default_flow_style=False)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_name, CONFIG_PATH)
+        except Exception:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
+        with _config_read_lock:
+            _config_cache = copy.deepcopy(config)
+            _config_cache_mtime = CONFIG_PATH.stat().st_mtime
 
 
 def _build_cloud_client(trans_cfg: dict, cloud_cfg: dict) -> CloudClient:
@@ -211,7 +233,9 @@ def _build_cloud_client(trans_cfg: dict, cloud_cfg: dict) -> CloudClient:
 def _mask_api_key(config: dict) -> None:
     cloud_cfg = config.get("translator", {}).get("cloud", {})
     api_key = cloud_cfg.get("api_key", "")
-    if api_key and len(api_key) > 8:
+    if api_key and len(api_key) > 12:
+        cloud_cfg["api_key"] = api_key[:8] + "****" + api_key[-4:]
+    elif api_key and len(api_key) > 8:
         cloud_cfg["api_key"] = api_key[:4] + "****" + api_key[-4:]
 
 
@@ -239,12 +263,28 @@ def _validate_file_path(file_path: Path) -> None:
     For command/tool risk classification see SecurityGate.classify().
     """
     original = file_path
+    # Symlink TOCTOU guard: reject symlinks before resolve() follows them.
+    # lstat() does not follow the final symlink, so we can detect it.
+    try:
+        if file_path.exists() and file_path.lstat().st_mode != file_path.stat().st_mode:
+            raise HTTPException(403, "禁止访问符号链接文件")
+    except OSError:
+        pass
+    # Also walk every component to reject any intermediate symlink
+    try:
+        parts = file_path.parts
+        for i in range(1, len(parts) + 1):
+            candidate = Path(*parts[:i])
+            if candidate.exists() and candidate.is_symlink():
+                raise HTTPException(403, f"禁止访问包含符号链接的路径: {candidate}")
+    except HTTPException:
+        raise
+    except OSError:
+        pass
+
     resolved = file_path.resolve()
     resolved_str = str(resolved)
 
-    # Symlink guard: reject if any component is a symlink pointing outside user home.
-    # resolve() follows symlinks, so if the resolved path diverges significantly
-    # from the original, it may be a symlink escape.
     home = Path.home().resolve()
     try:
         resolved.relative_to(home)
@@ -426,6 +466,19 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         startup_editor = state_editor.get("startup")
         if startup_editor:
             startup_editor()
+        # M17: API key startup validation — warn clearly if cloud engine selected but key missing
+        try:
+            cfg = _load_config()
+            engine = cfg.get("translator", {}).get("engine", "ollama")
+            if engine == "cloud":
+                api_key = cfg.get("translator", {}).get("cloud", {}).get("api_key", "")
+                if not api_key:
+                    logger.warning(
+                        "⚠️  翻译引擎设置为 cloud 但未配置 API key。"
+                        "请在设置面板填入 API key，否则翻译请求将失败。"
+                    )
+        except Exception:
+            pass
 
     @app.on_event("shutdown")
     async def _shutdown():

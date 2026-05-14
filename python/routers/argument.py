@@ -210,15 +210,19 @@ def register_argument_v2(
         cloud_client = _get_cloud_client()
 
         async def _gen():
-            async for ev in extract_argument(
-                gid=gid,
-                text=req.text,
-                source_label=req.source_label,
-                side=req.side,
-                store=store,
-                cloud_client=cloud_client,
-            ):
-                yield {"event": ev["event"], "data": ev["data"]}
+            try:
+                async for ev in extract_argument(
+                    gid=gid,
+                    text=req.text,
+                    source_label=req.source_label,
+                    side=req.side,
+                    store=store,
+                    cloud_client=cloud_client,
+                ):
+                    yield {"event": ev["event"], "data": ev["data"]}
+            except Exception:
+                logger.exception("v2_extract AI 调用失败 gid=%s", gid)
+                yield {"event": "error", "data": json.dumps({"message": "服务内部错误，请重试"})}
 
         return EventSourceResponse(_gen())
 
@@ -230,9 +234,15 @@ def register_argument_v2(
         from src.argument.critique import critique_graph
 
         cloud_client = _get_cloud_client()
-        issues = await critique_graph(g, cloud_client=cloud_client)
-        store.set_issues(gid, issues)
-        return {"issues": [i.model_dump() for i in issues]}
+        try:
+            issues = await critique_graph(g, cloud_client=cloud_client)
+            store.set_issues(gid, issues)
+            return {"issues": [i.model_dump() for i in issues]}
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("v2_critique AI 调用失败 gid=%s", gid)
+            raise HTTPException(500, "服务内部错误，请重试")
 
     @app.post("/api/argument/graph/{gid}/suggest")
     async def v2_suggest(gid: str, req: SuggestRequest):
@@ -241,13 +251,19 @@ def register_argument_v2(
         from src.argument.ai_ops import suggest_element
 
         cloud_client = _get_cloud_client()
-        result = await suggest_element(
-            graph_id=gid,
-            node_id=req.node_id,
-            store=store,
-            cloud_client=cloud_client,
-        )
-        return result
+        try:
+            result = await suggest_element(
+                graph_id=gid,
+                node_id=req.node_id,
+                store=store,
+                cloud_client=cloud_client,
+            )
+            return result
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("v2_suggest AI 调用失败 gid=%s node=%s", gid, req.node_id)
+            raise HTTPException(500, "服务内部错误，请重试")
 
     # ── Flatten 端点（图→草稿） ─────────────────────────────────────────────
 
@@ -344,14 +360,18 @@ def register_companion(
         fn = rebuild_ledger if store.get_ledger(req.doc_id) else build_ledger
 
         async def _gen():
-            async for ev in fn(
-                doc_id=req.doc_id,
-                doc_title=req.doc_title,
-                text=req.text,
-                store=store,
-                cloud_client=cloud_client,
-            ):
-                yield {"event": ev["event"], "data": ev["data"]}
+            try:
+                async for ev in fn(
+                    doc_id=req.doc_id,
+                    doc_title=req.doc_title,
+                    text=req.text,
+                    store=store,
+                    cloud_client=cloud_client,
+                ):
+                    yield {"event": ev["event"], "data": ev["data"]}
+            except Exception:
+                logger.exception("companion_build_ledger AI 调用失败 doc_id=%s", req.doc_id)
+                yield {"event": "error", "data": json.dumps({"message": "服务内部错误，请重试"})}
 
         return EventSourceResponse(_gen())
 
@@ -420,20 +440,24 @@ def register_companion(
         ledger = store.get_ledger(req.doc_id)
 
         async def _gen():
-            async for ev in run_review(
-                doc_id=req.doc_id,
-                doc_title=req.doc_title,
-                text=req.text,
-                venue=req.venue,
-                persona=req.persona,
-                ledger=ledger,
-                store=store,
-                focus=req.focus,
-                checks=req.checks,
-                session_id=req.session_id,
-                cloud_client=cloud_client,
-            ):
-                yield {"event": ev["event"], "data": ev["data"]}
+            try:
+                async for ev in run_review(
+                    doc_id=req.doc_id,
+                    doc_title=req.doc_title,
+                    text=req.text,
+                    venue=req.venue,
+                    persona=req.persona,
+                    ledger=ledger,
+                    store=store,
+                    focus=req.focus,
+                    checks=req.checks,
+                    session_id=req.session_id,
+                    cloud_client=cloud_client,
+                ):
+                    yield {"event": ev["event"], "data": ev["data"]}
+            except Exception:
+                logger.exception("companion_review AI 调用失败 doc_id=%s", req.doc_id)
+                yield {"event": "error", "data": json.dumps({"message": "服务内部错误，请重试"})}
 
         return EventSourceResponse(_gen())
 
@@ -473,15 +497,19 @@ def register_companion(
             raise HTTPException(status_code=404, detail="Review session not found")
 
         async def _gen():
-            async for ev in continue_rebuttal(
-                session_id=session_id,
-                point_id=pid,
-                author_message=req.message,
-                doc_text=req.text,
-                store=store,
-                cloud_client=cloud_client,
-            ):
-                yield {"event": ev["event"], "data": ev["data"]}
+            try:
+                async for ev in continue_rebuttal(
+                    session_id=session_id,
+                    point_id=pid,
+                    author_message=req.message,
+                    doc_text=req.text,
+                    store=store,
+                    cloud_client=cloud_client,
+                ):
+                    yield {"event": ev["event"], "data": ev["data"]}
+            except Exception:
+                logger.exception("companion_rebut AI 调用失败 session=%s pid=%s", session_id, pid)
+                yield {"event": "error", "data": json.dumps({"message": "服务内部错误，请重试"})}
 
         return EventSourceResponse(_gen())
 
@@ -501,15 +529,19 @@ def register_companion(
         cloud_client = _get_cloud_client()
 
         async def _gen():
-            async for ev in import_real_reviews(
-                doc_id=req.doc_id,
-                doc_title=req.doc_title,
-                text=req.text,
-                reviews_raw=req.reviews_raw,
-                store=store,
-                cloud_client=cloud_client,
-            ):
-                yield {"event": ev["event"], "data": ev["data"]}
+            try:
+                async for ev in import_real_reviews(
+                    doc_id=req.doc_id,
+                    doc_title=req.doc_title,
+                    text=req.text,
+                    reviews_raw=req.reviews_raw,
+                    store=store,
+                    cloud_client=cloud_client,
+                ):
+                    yield {"event": ev["event"], "data": ev["data"]}
+            except Exception:
+                logger.exception("companion_import_reviews AI 调用失败 doc_id=%s", req.doc_id)
+                yield {"event": "error", "data": json.dumps({"message": "服务内部错误，请重试"})}
 
         return EventSourceResponse(_gen())
 
@@ -562,9 +594,15 @@ def register_companion(
             raise HTTPException(status_code=404, detail="Promise not found")
 
         cloud_client = _get_cloud_client()
-        suggestion = await suggest_experiment_for_promise(
-            promise_text=promise.text,
-            promise_note=promise.note,
-            cloud_client=cloud_client,
-        )
-        return {"suggestion": suggestion}
+        try:
+            suggestion = await suggest_experiment_for_promise(
+                promise_text=promise.text,
+                promise_note=promise.note,
+                cloud_client=cloud_client,
+            )
+            return {"suggestion": suggestion}
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("companion_suggest_experiment AI 调用失败 doc_id=%s pid=%s", doc_id, pid)
+            raise HTTPException(500, "服务内部错误，请重试")

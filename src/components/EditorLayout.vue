@@ -219,8 +219,23 @@ const complianceReport = ref<Record<string, unknown> | null>(null)
 const showTemplatePicker = ref(false)
 const showProjectStart = ref(false)
 
+// M12 fix: only map stable identity fields (name/path) so this computed does NOT
+// invalidate on every keystroke when tab content changes.  AiPanel needs `content`
+// only when the user actually selects a file via @-mention; it accesses it through
+// the `content` field which we populate lazily via a getter below.
 const workspaceFiles = computed(() =>
-  tabs.value.map(t => ({ name: t.name || t.path?.split(/[\\/]/).pop() || 'untitled', content: t.content }))
+  tabs.value.map(t => {
+    const name = t.name || t.path?.split(/[\\/]/).pop() || 'untitled'
+    // Expose content as a lazy getter so Vue's reactivity system does not track
+    // it as a dependency of this computed — content is large and changes on every
+    // edit, but only matters when a user explicitly @-mentions the file.
+    const tab = t
+    return Object.defineProperty({ name }, 'content', {
+      get() { return tab.content },
+      enumerable: true,
+      configurable: true,
+    }) as { name: string; content?: string }
+  })
 )
 
 // 鈹€鈹€ Event handlers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
@@ -447,11 +462,16 @@ function showExportToast(msg: string) {
 const sidebarWidth = ref(296)
 const panelWidth = ref(300)
 
-let _activeResizeMove: ((e: MouseEvent) => void) | null = null
-let _activeResizeUp: (() => void) | null = null
+let _resizeAbortController: AbortController | null = null
 
 function startResize(e: MouseEvent, target: 'sidebar' | 'panel') {
   e.preventDefault()
+  // 取消上一次未完成的 resize，防止快速多次点击导致监听器堆积
+  if (_resizeAbortController) {
+    _resizeAbortController.abort()
+  }
+  _resizeAbortController = new AbortController()
+  const signal = _resizeAbortController.signal
   const startX = e.clientX
   const startWidth = target === 'sidebar' ? sidebarWidth.value : panelWidth.value
   function onMouseMove(e: MouseEvent) {
@@ -464,11 +484,10 @@ function startResize(e: MouseEvent, target: 'sidebar' | 'panel') {
   function onMouseUp() {
     document.removeEventListener('mousemove', onMouseMove)
     document.removeEventListener('mouseup', onMouseUp)
-    _activeResizeMove = null; _activeResizeUp = null
+    _resizeAbortController = null
   }
-  _activeResizeMove = onMouseMove; _activeResizeUp = onMouseUp
-  document.addEventListener('mousemove', onMouseMove)
-  document.addEventListener('mouseup', onMouseUp)
+  document.addEventListener('mousemove', onMouseMove, { signal })
+  document.addEventListener('mouseup', onMouseUp, { signal })
 }
 
 // 鈹€鈹€ Keyboard 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
@@ -492,8 +511,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('paper-scaffold', handlePaperScaffold as EventListener)
-  if (_activeResizeMove) document.removeEventListener('mousemove', _activeResizeMove)
-  if (_activeResizeUp) document.removeEventListener('mouseup', _activeResizeUp)
+  if (_resizeAbortController) { _resizeAbortController.abort(); _resizeAbortController = null }
 })
 
 function handlePaperScaffold(e: Event) {

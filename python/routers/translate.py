@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 
 MAX_TASKS = 10
 MAX_UPLOAD_SIZE = 200 * 1024 * 1024  # 200 MB
+_RAG_INGEST_SEMAPHORE = asyncio.Semaphore(3)  # 最多 3 个并发 RAG 入库任务
 
 
 class ConfigUpdate(BaseModel):
@@ -714,19 +715,23 @@ def register_translate(
                     logger.info("RAG ingest queued for trans_%s, text length=%d", _task_id_str, len(dual_text))
 
                     async def _bg_ingest():
-                        try:
-                            await asyncio.to_thread(
-                                rs.ingest_document,
-                                f"trans_{_task_id_str}",
-                                dual_text,
-                                {"title": f"[翻译] {_filename}", "source": "translation", "source_lang": src_label},
-                            )
-                            logger.info("翻译结果已自动入库 RAG: trans_%s", _task_id_str)
-                        except Exception as exc:
-                            logger.warning("翻译结果入库 RAG 失败: %s", exc)
+                        async with _RAG_INGEST_SEMAPHORE:
+                            try:
+                                await asyncio.to_thread(
+                                    rs.ingest_document,
+                                    f"trans_{_task_id_str}",
+                                    dual_text,
+                                    {"title": f"[翻译] {_filename}", "source": "translation", "source_lang": src_label},
+                                )
+                                logger.info("翻译结果已自动入库 RAG: trans_%s", _task_id_str)
+                            except Exception as exc:
+                                logger.warning("翻译结果入库 RAG 失败: %s", exc)
 
                     _bg_task = asyncio.create_task(_bg_ingest())
-                    _bg_task.add_done_callback(lambda t: t.exception() if not t.cancelled() and t.exception() else None)
+                    def _log_bg_exc(t: asyncio.Task) -> None:
+                        if not t.cancelled() and t.exception():
+                            logger.error("RAG 后台入库失败: %s", t.exception(), exc_info=t.exception())
+                    _bg_task.add_done_callback(_log_bg_exc)
                     rag_ingested = True
             except Exception as rag_err:
                 logger.warning("翻译结果入库 RAG 准备失败（不影响翻译）: %s", rag_err)
@@ -750,9 +755,10 @@ def register_translate(
         except Exception as e:
             task["status"] = "error"
             task["error"] = str(e)
+            logger.exception("翻译管道异常")
             yield {
                 "event": "error",
-                "data": json.dumps({"message": str(e)}),
+                "data": json.dumps({"message": "翻译失败，请稍后重试"}),
             }
         finally:
             _cleanup_tasks()
@@ -1214,10 +1220,10 @@ def register_translate(
             }
         except HTTPException:
             raise
-        except Exception as e:
-            logger.error("重试块 %s 翻译失败: %s", block_id, e)
+        except Exception:
+            logger.exception("重试块翻译异常 block_id=%s", block_id)
             block_translations[target_index]["status"] = "failed"
-            raise HTTPException(500, f"重试失败: {e}")
+            raise HTTPException(500, "块重试失败，请稍后重试")
         finally:
             if hasattr(client, "close"):
                 client.close()
