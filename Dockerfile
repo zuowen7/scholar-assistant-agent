@@ -2,7 +2,7 @@
 # 多阶段构建：依赖安装 → 运行镜像
 
 # ---- 阶段1: 安装依赖 ----
-FROM python:3.12-slim AS builder
+FROM python:3.12.10-slim AS builder
 
 WORKDIR /build
 COPY python/requirements-lock.txt .
@@ -11,7 +11,7 @@ RUN pip install --no-cache-dir --timeout 120 \
     --prefix=/install -r requirements-lock.txt
 
 # ---- 阶段2: 运行镜像 ----
-FROM python:3.12-slim
+FROM python:3.12.10-slim
 
 LABEL maintainer="zuowen"
 LABEL description="Scholar Assistant - 学术文献智能翻译工具"

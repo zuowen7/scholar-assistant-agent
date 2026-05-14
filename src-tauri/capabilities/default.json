@@ -41,8 +41,7 @@
         { "path": "$DOCUMENT/**" },
         { "path": "$DESKTOP/**" },
         { "path": "$DOWNLOAD/**" },
-        { "path": "$APPDATA/**" },
-        { "path": "$HOME/**" }
+        { "path": "$APPDATA/**" }
       ]
     },
     {
@@ -61,8 +60,7 @@
         { "path": "$DOCUMENT/**" },
         { "path": "$DESKTOP/**" },
         { "path": "$DOWNLOAD/**" },
-        { "path": "$APPDATA/**" },
-        { "path": "$HOME/**" }
+        { "path": "$APPDATA/**" }
       ]
     },
     {
@@ -71,8 +69,7 @@
         { "path": "$DOCUMENT/**" },
         { "path": "$DESKTOP/**" },
         { "path": "$DOWNLOAD/**" },
-        { "path": "$APPDATA/**" },
-        { "path": "$HOME/**" }
+        { "path": "$APPDATA/**" }
       ]
     },
     {
@@ -81,8 +78,7 @@
         { "path": "$DOCUMENT/**" },
         { "path": "$DESKTOP/**" },
         { "path": "$DOWNLOAD/**" },
-        { "path": "$APPDATA/**" },
-        { "path": "$HOME/**" }
+        { "path": "$APPDATA/**" }
       ]
     },
     {
@@ -91,8 +87,7 @@
         { "path": "$DOCUMENT/**" },
         { "path": "$DESKTOP/**" },
         { "path": "$DOWNLOAD/**" },
-        { "path": "$APPDATA/**" },
-        { "path": "$HOME/**" }
+        { "path": "$APPDATA/**" }
       ]
     },
     {
@@ -101,8 +96,7 @@
         { "path": "$DOCUMENT/**" },
         { "path": "$DESKTOP/**" },
         { "path": "$DOWNLOAD/**" },
-        { "path": "$APPDATA/**" },
-        { "path": "$HOME/**" }
+        { "path": "$APPDATA/**" }
       ]
     }
   ]

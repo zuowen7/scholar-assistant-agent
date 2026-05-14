@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import type { AgentChatMessage, AgentEvent, AgentSessionInfo, RAGDocument } from '../types'
 import { API_BASE } from '../utils/api'
 import { readSseStream } from '../utils/streamReader'
@@ -15,7 +15,9 @@ let abortController: AbortController | null = null
 
 // v2 state
 const sessionId = ref<string | null>(null)
-const pendingApproval = ref<PendingApproval | null>(null)
+// Per-session approval state: keyed by sessionId so concurrent/switching sessions
+// cannot pollute each other's approval status (M11 fix).
+const _approvalBySession = new Map<string, PendingApproval | null>()
 
 export interface PendingApproval {
   event_id: string
@@ -26,6 +28,28 @@ export interface PendingApproval {
 }
 
 export function useAgentChat() {
+
+  // ── Per-session pendingApproval (M11 fix) ────────────────────────
+  // A reactive ref that always reflects the approval state of the *current* session.
+  // All reads/writes go through the helpers below so switching sessions never
+  // leaks an approval from a previous session.
+  const pendingApproval = ref<PendingApproval | null>(null)
+
+  function _setApproval(value: PendingApproval | null) {
+    const sid = sessionId.value
+    if (sid) _approvalBySession.set(sid, value)
+    pendingApproval.value = value
+  }
+
+  function _clearApproval() {
+    _setApproval(null)
+  }
+
+  // When sessionId changes (e.g. user switches to a different session via resumeSession
+  // or a new session starts), sync pendingApproval to whatever was stored for that session.
+  watch(sessionId, (newSid) => {
+    pendingApproval.value = (newSid ? (_approvalBySession.get(newSid) ?? null) : null)
+  })
 
   // ── Shared SSE event handler ──────────────────────────────────────
 
@@ -68,7 +92,7 @@ export function useAgentChat() {
         case 'aborted':
           msg.content = agentEvent.content || '会话已中止'
           msg.isStreaming = false
-          pendingApproval.value = null
+          _clearApproval()
           msg.events = [...msg.events, agentEvent]
           break
         case 'response':
@@ -79,18 +103,18 @@ export function useAgentChat() {
           sessionId.value = (agentEvent.metadata?.session_id as string) || sessionId.value
           break
         case 'await_approval':
-          pendingApproval.value = {
+          _setApproval({
             event_id: agentEvent.event_id || '',
             tool_name: (agentEvent.metadata?.tool_name as string) || (agentEvent.metadata?.tool as string) || '',
             args: agentEvent.metadata?.args as Record<string, unknown>
               || agentEvent.metadata?.arguments as Record<string, unknown>,
             risk: agentEvent.metadata?.risk as string | undefined,
             preview: agentEvent.metadata?.preview as Record<string, unknown> | undefined,
-          }
+          })
           msg.events = [...msg.events, agentEvent]
           break
         case 'approval_received':
-          pendingApproval.value = null
+          _clearApproval()
           msg.events = [...msg.events, agentEvent]
           break
         default:
@@ -110,7 +134,7 @@ export function useAgentChat() {
   ): Promise<void> {
     if (!text.trim() || sending.value) return
 
-    pendingApproval.value = null
+    _clearApproval()
 
     messages.value.push({
       id: crypto.randomUUID(),
@@ -190,9 +214,14 @@ export function useAgentChat() {
               if (resumeResp.ok) {
                 const reader = resumeResp.body?.getReader()
                 if (reader) {
-                  await readSseStream(reader, trackingHandler)
-                  lastErr = null
-                  break
+                  try {
+                    await readSseStream(reader, trackingHandler, abortController?.signal)
+                    lastErr = null
+                    break
+                  } catch (streamErr) {
+                    if (streamErr instanceof DOMException && streamErr.name === 'AbortError') return
+                    lastErr = streamErr
+                  }
                 }
               }
             } catch (_re) {
@@ -240,7 +269,7 @@ export function useAgentChat() {
     } finally {
       sending.value = false
       abortController = null
-      pendingApproval.value = null
+      _clearApproval()
     }
   }
 
@@ -251,7 +280,7 @@ export function useAgentChat() {
   function clearHistory(): void {
     messages.value = []
     sessionId.value = null
-    pendingApproval.value = null
+    _clearApproval()
   }
 
   // ── v2 Approval ──────────────────────────────────────────────────
@@ -274,7 +303,7 @@ export function useAgentChat() {
         },
       )
       if (resp.ok) {
-        pendingApproval.value = null
+        _clearApproval()
         return true
       }
     } catch (e) {
@@ -294,7 +323,7 @@ export function useAgentChat() {
     try {
       const resp = await fetch(`${API_URL}/api/agent/v2/abort/${sid}`, { method: 'POST' })
       if (resp.ok) {
-        pendingApproval.value = null
+        _clearApproval()
         stopGenerating()
         return true
       }
@@ -322,7 +351,7 @@ export function useAgentChat() {
       // If session list fetch fails, proceed with resume attempt
     }
 
-    pendingApproval.value = null
+    _clearApproval()
     sessionId.value = targetSessionId
 
     const assistantMsg: AgentChatMessage = {

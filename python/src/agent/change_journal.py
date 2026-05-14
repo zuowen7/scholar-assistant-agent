@@ -81,7 +81,8 @@ class ChangeJournal:
             if isinstance(existing, dict):
                 existing.update(meta)
                 meta = existing
-        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        from src.utils.atomic_io import atomic_write_json
+        atomic_write_json(meta_path, meta)
 
         return str(backup_file)
 

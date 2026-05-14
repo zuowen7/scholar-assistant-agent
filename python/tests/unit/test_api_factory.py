@@ -23,11 +23,13 @@ class TestMaskApiKey:
         _mask_api_key(cfg)
 
     def test_long_key_masked(self) -> None:
+        # >12 chars: show head8 + **** + tail4
         cfg = {"translator": {"cloud": {"api_key": "sk-1234567890abcdef"}}}
         self._mask(cfg)
-        assert cfg["translator"]["cloud"]["api_key"] == "sk-1****cdef"
+        assert cfg["translator"]["cloud"]["api_key"] == "sk-12345****cdef"
 
     def test_short_key_not_masked(self) -> None:
+        # <=8 chars: unchanged
         cfg = {"translator": {"cloud": {"api_key": "short"}}}
         self._mask(cfg)
         assert cfg["translator"]["cloud"]["api_key"] == "short"
@@ -45,11 +47,13 @@ class TestMaskApiKey:
         self._mask({})
 
     def test_exactly_8_chars_not_masked(self) -> None:
+        # exactly 8 chars: not > 8, so unchanged
         cfg = {"translator": {"cloud": {"api_key": "12345678"}}}
         self._mask(cfg)
         assert cfg["translator"]["cloud"]["api_key"] == "12345678"
 
     def test_exactly_9_chars_masked(self) -> None:
+        # 9-12 chars: show head4 + **** + tail4
         cfg = {"translator": {"cloud": {"api_key": "123456789"}}}
         self._mask(cfg)
         assert cfg["translator"]["cloud"]["api_key"] == "1234****6789"

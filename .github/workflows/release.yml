@@ -53,7 +53,10 @@ jobs:
           python-version: '3.12'
 
       - name: Install Python dependencies
-        run: pip install -r python/requirements.txt pyinstaller
+        run: pip install -r python/requirements-lock.txt -r python/requirements-dev.txt
+
+      - name: Security audit
+        run: pip install pip-audit && pip-audit -r python/requirements-lock.txt --ignore-vuln PYSEC-2024-111
 
       - name: Build and release
         uses: tauri-apps/tauri-action@v0

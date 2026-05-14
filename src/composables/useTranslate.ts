@@ -24,9 +24,10 @@ import type {
 const isTauri = '__TAURI_INTERNALS__' in window
 const API_URL = API_BASE
 
-// SSE 自动重连参数
+// SSE 自动重连参数（指数退避：2s → 4s → 8s，总超时 30s）
 const SSE_RECONNECT_MAX_ATTEMPTS = 3
-const SSE_RECONNECT_DELAY_MS = 2000
+const SSE_RECONNECT_BASE_DELAY_MS = 2000
+const SSE_RECONNECT_TOTAL_TIMEOUT_MS = 30000
 
 function createState(): TranslateState {
   return {
@@ -194,8 +195,9 @@ async function startStream(taskId: string, attempt: number = 0): Promise<void> {
     }
 
     if (state.status !== 'done' && state.status !== 'idle' && attempt < SSE_RECONNECT_MAX_ATTEMPTS) {
-      state.stepMessage = `连接中断，正在重试 (${attempt + 1}/${SSE_RECONNECT_MAX_ATTEMPTS})...`
-      await new Promise(r => setTimeout(r, SSE_RECONNECT_DELAY_MS))
+      const delay = Math.min(SSE_RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt), SSE_RECONNECT_TOTAL_TIMEOUT_MS)
+      state.stepMessage = `连接中断，正在重试 (${attempt + 1}/${SSE_RECONNECT_MAX_ATTEMPTS})… ${Math.round(delay / 1000)}s 后重连`
+      await new Promise(r => setTimeout(r, delay))
       // Re-check: user may have called reset() during the wait
       if (abortController === null) return
 

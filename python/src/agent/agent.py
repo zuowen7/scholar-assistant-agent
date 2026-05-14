@@ -500,13 +500,15 @@ class AgentLoop:
             raw_args = action_match.group(2).strip()
             arguments: dict = {}
             try:
+                if len(raw_args) > 1_000_000:
+                    raise ValueError("tool args too large")
                 parsed = json.loads(raw_args)
                 if isinstance(parsed, dict):
                     arguments = parsed
                 else:
                     arguments = {"input": str(parsed)}
-            except json.JSONDecodeError:
-                arguments = {"input": raw_args}
+            except (json.JSONDecodeError, ValueError):
+                arguments = {"input": raw_args[:4096]}
 
             if self.tool_registry.get(tool_name):
                 tool_calls.append(ToolCall(

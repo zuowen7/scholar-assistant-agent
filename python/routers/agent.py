@@ -59,6 +59,25 @@ class ApproveRequest(BaseModel):
     reason: str | None = None
 
 
+_AGENT_LOCALHOST_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "::ffff:127.0.0.1"})
+
+# 可选 Bearer token 鉴权：如果启动时设置了 SCHOLAR_AGENT_TOKEN 环境变量，
+# 所有 /api/agent/* 端点额外要求 Authorization: Bearer <token>。
+import os as _os
+_AGENT_TOKEN: str | None = _os.environ.get("SCHOLAR_AGENT_TOKEN", "").strip() or None
+
+
+def _check_agent_auth(request: Request) -> None:
+    """统一鉴权：host 白名单 + 可选 Bearer token。"""
+    host = (request.client.host if request.client else "") or ""
+    if host not in _AGENT_LOCALHOST_HOSTS:
+        raise HTTPException(403, "仅限本机访问")
+    if _AGENT_TOKEN:
+        auth = request.headers.get("Authorization", "")
+        if not auth.startswith("Bearer ") or auth[7:] != _AGENT_TOKEN:
+            raise HTTPException(401, "Agent 鉴权失败：缺少或错误的 Bearer token")
+
+
 def register_agent(
     app: FastAPI,
     *,
@@ -187,6 +206,36 @@ def register_agent(
             logger.info("Session pool cleanup: removed %d stale sessions", len(stale_ids))
         return len(stale_ids)
 
+    # 后台 Session 池周期回收任务（每 600s 扫一次；LRU 上限 50 个活跃会话）
+    _MAX_SESSION_POOL_SIZE = 50
+    _REAPER_INTERVAL = 600
+
+    async def _session_pool_reaper() -> None:
+        while True:
+            await asyncio.sleep(_REAPER_INTERVAL)
+            try:
+                _cleanup_session_pool()
+                # LRU 超限时驱逐最旧的会话
+                if len(_session_pool) > _MAX_SESSION_POOL_SIZE:
+                    sorted_ids = sorted(_session_pool_timestamps, key=lambda k: _session_pool_timestamps[k])
+                    evict = sorted_ids[:len(_session_pool) - _MAX_SESSION_POOL_SIZE]
+                    for sid in evict:
+                        s = _session_pool.pop(sid, None)
+                        _session_pool_timestamps.pop(sid, None)
+                        if s is not None:
+                            try:
+                                s.state = SessionState.ABORTED
+                            except Exception:
+                                pass
+                    if evict:
+                        logger.info("Session pool LRU eviction: removed %d sessions", len(evict))
+            except Exception as exc:
+                logger.warning("session_pool_reaper error (non-fatal): %s", exc)
+
+    @app.on_event("startup")
+    async def _start_reaper() -> None:
+        asyncio.create_task(_session_pool_reaper())
+
     # ------------------------------------------------------------------
     # Per-request AgentLoop factory
     # ------------------------------------------------------------------
@@ -279,8 +328,7 @@ def register_agent(
     @app.post("/api/agent/v2/chat")
     async def v2_chat(req: ChatRequest, request: Request):
         """v2 SSE endpoint — AgentSession 状态机驱动，支持多任务编排。"""
-        if request.client.host not in ("127.0.0.1", "::1", "localhost"):
-            raise HTTPException(403, "仅限本机访问")
+        _check_agent_auth(request)
         if not _AGENT_AVAILABLE:
             raise HTTPException(503, "Agent 模块未安装，请安装 chromadb")
 
@@ -404,8 +452,7 @@ def register_agent(
     @app.post("/api/agent/v2/approve/{session_id}/{event_id}")
     async def v2_approve(session_id: str, event_id: str, req: ApproveRequest, request: Request):
         """v2 审批回流端点。"""
-        if request.client.host not in ("127.0.0.1", "::1", "localhost"):
-            raise HTTPException(403, "仅允许本地访问")
+        _check_agent_auth(request)
         if not _AGENT_AVAILABLE:
             raise HTTPException(503, "Agent 模块未安装")
         session = _session_pool.get(session_id)
@@ -419,8 +466,7 @@ def register_agent(
     @app.post("/api/agent/v2/abort/{session_id}")
     async def v2_abort(session_id: str, request: Request):
         """v2 会话中止端点。"""
-        if request.client.host not in ("127.0.0.1", "::1", "localhost"):
-            raise HTTPException(403, "仅允许本地访问")
+        _check_agent_auth(request)
         if not _AGENT_AVAILABLE:
             raise HTTPException(503, "Agent 模块未安装")
         session = _session_pool.get(session_id)
@@ -432,8 +478,7 @@ def register_agent(
     @app.get("/api/agent/v2/sessions")
     async def v2_list_sessions(request: Request):
         """列出所有 v2 sessions（内存 + 持久化）。"""
-        if request.client.host not in ("127.0.0.1", "::1", "localhost"):
-            raise HTTPException(403, "仅允许本地访问")
+        _check_agent_auth(request)
 
         # Ensure session store is initialized
         if not _shared:
@@ -481,8 +526,7 @@ def register_agent(
     @app.post("/api/agent/v2/resume/{session_id}")
     async def v2_resume(session_id: str, request: Request):
         """Resume a paused/persisted session via SSE."""
-        if request.client.host not in ("127.0.0.1", "::1", "localhost"):
-            raise HTTPException(403, "仅允许本地访问")
+        _check_agent_auth(request)
         if not _AGENT_AVAILABLE:
             raise HTTPException(503, "Agent 模块未安装")
 
@@ -592,8 +636,7 @@ def register_agent(
     @app.post("/api/agent/v2/undo/{session_id}")
     async def v2_undo(session_id: str, request: Request):
         """v2 Undo 端点 — 回退最近 N 次破坏性操作。"""
-        if request.client.host not in ("127.0.0.1", "::1", "localhost"):
-            raise HTTPException(403, "仅允许本地访问")
+        _check_agent_auth(request)
         if not _AGENT_AVAILABLE:
             raise HTTPException(503, "Agent 模块未安装")
         session = _session_pool.get(session_id)
@@ -697,8 +740,7 @@ def register_agent(
     @app.post("/api/agent/v2/tool")
     async def v2_tool_invoke(req: V2ToolRequest, request: Request):
         """直接调用工作区工具（开发调试用）。"""
-        if request.client.host not in ("127.0.0.1", "::1", "localhost"):
-            raise HTTPException(403, "仅允许本地访问")
+        _check_agent_auth(request)
         if not _AGENT_AVAILABLE:
             raise HTTPException(503, "Agent 模块未安装")
 

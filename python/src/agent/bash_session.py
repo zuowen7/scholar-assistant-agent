@@ -36,8 +36,18 @@ _PROXY_ENV_VARS = frozenset({
     "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy",
 })
 
-# cd 命令解析
-_CD_RE = re.compile(r'^\s*(?:cd|pushd)\s+(.+?)(?:\s*&&.+)?\s*$')
+# cd 命令解析（支持 cd -、cd --、带引号路径、cd dir && cmd 形式）
+_CD_RE = re.compile(r'^\s*(?:cd|pushd)\s+((?:[^\s;&|]|\\.)+(?:\s+(?:[^\s;&|]|\\.)+)*)(?:\s*[;&|].+)?\s*$')
+
+# Shell 注入检测：禁止命令替换（$()、反引号）和 eval
+_INJECTION_RE = re.compile(r'\$\(|\`|(?<!\w)eval\s', re.IGNORECASE)
+
+
+def _detect_injection(command: str) -> str | None:
+    """检查命令是否含有 shell 注入模式。返回错误信息或 None（通过）。"""
+    if _INJECTION_RE.search(command):
+        return "禁止使用命令替换（$()、反引号、eval）— shell 注入防护"
+    return None
 
 
 @dataclass
@@ -111,6 +121,19 @@ class BashSession:
 
         # 构建环境变量
         env = self._build_env()
+
+        # 注入防护：拒绝命令替换模式
+        injection_err = _detect_injection(command)
+        if injection_err:
+            logger.warning("bash_session injection guard blocked command: %r", command)
+            return CommandResult(
+                command=command,
+                exit_code=1,
+                stdout="",
+                stderr=f"安全拒绝: {injection_err}",
+                duration_ms=0,
+                cwd_after=str(self._cwd),
+            )
 
         start = time.monotonic()
         try:

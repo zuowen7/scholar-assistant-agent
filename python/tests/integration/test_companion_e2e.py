@@ -157,9 +157,12 @@ def _parse_sse(text: str) -> list[dict]:
     return events
 
 
-# ── Shared mutable state (populated by earlier tests in each class) ───────────
+# ── Shared mutable state (populated by earlier tests, scoped per module run) ──
 
-_state: dict = {}
+@pytest.fixture(scope="module")
+def state():
+    return {}
+
 
 DOC_ID = "e2e_test_doc"
 DOC_TITLE = "E2E Test Paper"
@@ -189,7 +192,7 @@ class TestLedgerEndpoints:
         types = [e.get("event") for e in events]
         assert "promise" in types or "complete" in types, f"No promise/complete in {types}"
 
-    def test_build_ledger_stores_promise(self, client):
+    def test_build_ledger_stores_promise(self, client, state):
         """After build, GET ledger should return promises stored by real build_ledger."""
         mock = _ledger_llm_side_effect()
         with patch("src.argument.ledger.call_llm_chat", mock):
@@ -202,13 +205,13 @@ class TestLedgerEndpoints:
         data = resp.json()
         assert data["doc_id"] == DOC_ID
         assert len(data["promises"]) >= 1
-        _state["promise_id"] = data["promises"][0]["id"]
+        state["promise_id"] = data["promises"][0]["id"]
 
     def test_get_ledger_404_unknown_doc(self, client):
         resp = client.get("/api/companion/ledger/no_such_doc_xyz")
         assert resp.status_code == 404
 
-    def test_upsert_promise(self, client):
+    def test_upsert_promise(self, client, state):
         resp = client.put(
             f"/api/companion/ledger/{DOC_ID}/promise",
             json={
@@ -222,10 +225,10 @@ class TestLedgerEndpoints:
         data = resp.json()
         assert data["text"] == "Manual promise for testing"
         assert data["user_overridden"] is True
-        _state["manual_promise_id"] = data["id"]
+        state["manual_promise_id"] = data["id"]
 
-    def test_delete_promise(self, client):
-        pid = _state.get("manual_promise_id")
+    def test_delete_promise(self, client, state):
+        pid = state.get("manual_promise_id")
         if not pid:
             pytest.skip("No manual promise created")
         resp = client.delete(f"/api/companion/ledger/{DOC_ID}/promise/{pid}")
@@ -246,7 +249,7 @@ class TestLedgerEndpoints:
 
 class TestReviewEndpoints:
 
-    def test_run_review_sse_200(self, client):
+    def test_run_review_sse_200(self, client, state):
         mock = _review_llm_side_effect()
         with patch("src.argument.reviewer.call_llm_chat", mock):
             resp = client.post(
@@ -274,11 +277,11 @@ class TestReviewEndpoints:
             # data is a JSON string that failed to parse
             sid = json.loads(data).get("session_id") if isinstance(data, str) else None
         assert sid, f"No session_id in complete event: {complete_ev}"
-        _state["session_id"] = sid
+        state["session_id"] = sid
 
-    def test_review_has_at_least_one_point(self, client):
+    def test_review_has_at_least_one_point(self, client, state):
         """The deterministic rw_check adds 'no Related Work section' → at least 1 point."""
-        sid = _state.get("session_id")
+        sid = state.get("session_id")
         if not sid:
             pytest.skip("No session created")
         resp = client.get(f"/api/companion/review/{sid}")
@@ -286,7 +289,7 @@ class TestReviewEndpoints:
         data = resp.json()
         assert data["id"] == sid
         assert len(data["points"]) >= 1
-        _state["point_id"] = data["points"][0]["id"]
+        state["point_id"] = data["points"][0]["id"]
 
     def test_get_review_session_404(self, client):
         resp = client.get("/api/companion/review/no_such_session_xyz")
@@ -298,9 +301,9 @@ class TestReviewEndpoints:
         assert isinstance(resp.json(), list)
         assert len(resp.json()) >= 1
 
-    def test_update_point_status_accepted(self, client):
-        sid = _state.get("session_id")
-        pid = _state.get("point_id")
+    def test_update_point_status_accepted(self, client, state):
+        sid = state.get("session_id")
+        pid = state.get("point_id")
         if not sid or not pid:
             pytest.skip("No session/point created")
         resp = client.put(
@@ -310,9 +313,9 @@ class TestReviewEndpoints:
         assert resp.status_code == 200
         assert resp.json()["ok"] is True
 
-    def test_update_point_status_invalid(self, client):
-        sid = _state.get("session_id")
-        pid = _state.get("point_id")
+    def test_update_point_status_invalid(self, client, state):
+        sid = state.get("session_id")
+        pid = state.get("point_id")
         if not sid or not pid:
             pytest.skip("No session/point created")
         resp = client.put(
@@ -321,9 +324,9 @@ class TestReviewEndpoints:
         )
         assert resp.status_code == 422
 
-    def test_rebut_sse_200(self, client):
-        sid = _state.get("session_id")
-        pid = _state.get("point_id")
+    def test_rebut_sse_200(self, client, state):
+        sid = state.get("session_id")
+        pid = state.get("point_id")
         if not sid or not pid:
             pytest.skip("No session/point created")
 
@@ -351,7 +354,7 @@ class TestReviewEndpoints:
 
 class TestPhase5Endpoints:
 
-    def test_import_reviews_sse_200(self, client):
+    def test_import_reviews_sse_200(self, client, state):
         mock = AsyncMock(return_value=_IMPORT_JSON)
         with patch("src.argument.reviewer.call_llm_chat", mock):
             resp = client.post(
@@ -376,7 +379,7 @@ class TestPhase5Endpoints:
             data = json.loads(data)
         sid = data.get("session_id")
         assert sid, f"No session_id: {complete_ev}"
-        _state["imported_session_id"] = sid
+        state["imported_session_id"] = sid
 
     def test_import_reviews_422_missing_field(self, client):
         resp = client.post(
@@ -385,8 +388,8 @@ class TestPhase5Endpoints:
         )
         assert resp.status_code == 422
 
-    def test_import_reviews_point_source_imported(self, client):
-        sid = _state.get("imported_session_id")
+    def test_import_reviews_point_source_imported(self, client, state):
+        sid = state.get("imported_session_id")
         if not sid:
             pytest.skip("No imported session created")
         resp = client.get(f"/api/companion/review/{sid}")
@@ -395,8 +398,8 @@ class TestPhase5Endpoints:
         sources = [p["source"] for p in data["points"]]
         assert all(s == "imported" for s in sources), f"Expected imported, got {sources}"
 
-    def test_import_reviews_reviewer_label_set(self, client):
-        sid = _state.get("imported_session_id")
+    def test_import_reviews_reviewer_label_set(self, client, state):
+        sid = state.get("imported_session_id")
         if not sid:
             pytest.skip("No imported session created")
         resp = client.get(f"/api/companion/review/{sid}")
@@ -405,8 +408,8 @@ class TestPhase5Endpoints:
         labels = [p.get("reviewer_label") for p in data["points"]]
         assert any(l is not None for l in labels), f"No reviewer_label set: {labels}"
 
-    def test_download_review_200(self, client):
-        sid = _state.get("session_id")
+    def test_download_review_200(self, client, state):
+        sid = state.get("session_id")
         if not sid:
             pytest.skip("No review session created")
         resp = client.get(f"/api/companion/download/review/{sid}")
@@ -418,8 +421,8 @@ class TestPhase5Endpoints:
         resp = client.get("/api/companion/download/review/no_such_session_xyz")
         assert resp.status_code == 404
 
-    def test_suggest_experiment_200(self, client):
-        pid = _state.get("promise_id")
+    def test_suggest_experiment_200(self, client, state):
+        pid = state.get("promise_id")
         if not pid:
             pytest.skip("No promise created")
         mock = AsyncMock(return_value=_SUGGEST_JSON)
@@ -449,16 +452,16 @@ class TestPhase5Endpoints:
 
 class TestDeleteEndpoints:
 
-    def test_delete_review_session(self, client):
-        sid = _state.get("session_id")
+    def test_delete_review_session(self, client, state):
+        sid = state.get("session_id")
         if not sid:
             pytest.skip("No session created")
         resp = client.delete(f"/api/companion/review/{sid}")
         assert resp.status_code == 200
         assert resp.json()["ok"] is True
 
-    def test_deleted_review_is_gone(self, client):
-        sid = _state.get("session_id")
+    def test_deleted_review_is_gone(self, client, state):
+        sid = state.get("session_id")
         if not sid:
             pytest.skip("No session to verify deletion")
         resp = client.get(f"/api/companion/review/{sid}")
