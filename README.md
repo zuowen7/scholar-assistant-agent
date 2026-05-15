@@ -2,7 +2,7 @@
 
 隐私优先的学术 AI 写作辅助平台。从翻译切入，覆盖阅读、写作、排版全流程。拖入 PDF，自动完成解析、清洗、翻译；切换到 Editor 模式，用 AI 润色、扩写、生成大纲；导出 LaTeX 模板直接投稿。
 
-- **版本**：Tauri 0.3.2（论证陪练 v3 Phase 0–5 全部完成，E2E 端到端测试覆盖）
+- **版本**：v0.3.2（论证陪练 v3 Phase 0–5 全部完成，E2E 端对端测试覆盖，安全加固 + 可观测性增强）
 - **许可**：不开源，私有项目
 
 ## 核心功能
@@ -65,6 +65,11 @@
 - **自动布局** — dagre 算法一键整理
 - **快捷键** — Tab 添加子节点、Enter 添加兄弟、F2 编辑、Delete 删除悬停连线、方向键导航
 - **Markdown 桥接** — 思维导图 ↔ Argument Map 双向同步
+
+### 调试 & 可观测性
+- **日志落文件** — 后端日志写入 `RUNTIME_DIR/logs/app.log`（10 MB × 5 备份轮转，每行携带 trace_id）
+- **访问日志** — 每个 HTTP 请求记录 method/path/status/耗时
+- **调试面板** — 顶栏 Terminal 图标按钮，显示前端错误历史（时间戳 + 级别）和后端日志；有未读错误时红色数字徽标提示
 
 ### 部署
 - **桌面端** — Tauri 2 打包，自动管理 Python 后端和 Ollama 进程
@@ -141,7 +146,7 @@
 │   │   └── mcp/                  #   Vision 客户端 (多模态图像理解)
 │   ├── prompts/                  #   学术写作 Prompt 体系 (loader + schemas + tasks_*)
 │   ├── data/paper_assets/        #   论文模板 (IEEE/ACM/NeurIPS/LNCS/通用)
-│   └── tests/                    #   单元测试 + 集成测试（含 E2E companion），pytest 1550 通过
+│   └── tests/                    #   单元测试 + 集成测试（含 E2E companion），pytest 1624 passed / 11 skipped
 ├── Dockerfile
 ├── docker-compose.yml
 └── package.json
@@ -361,6 +366,11 @@ MSYS_NO_PATHCONV=1 docker run --rm \
 | `GET` | `/api/zotero/item/{key}/bibtex` | 获取 BibTeX |
 | `POST` | `/api/zotero/export` | 导出条目到文件 |
 | `POST` | `/api/zotero/citations` | 提取引用 |
+
+### 调试
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/api/logs` | 返回最近 N 行后端日志 + 日志文件路径 |
 
 ### 其他
 | 方法 | 路径 | 说明 |

@@ -108,6 +108,7 @@ Key backend modules under `src/`:
   - `useArgumentMap.ts` — singleton; Toulmin v2 graph state (CRUD, undo/redo, flow adapters, SSE extraction, critique, suggest); spans `focusNode`/`focusSpan` for source-pane highlighting
   - `useArgumentCompanion.ts` — singleton; companion state (docId auto-assign, ledger build/rebuild SSE)
   - `useArgumentLayout.ts` — dagre auto-layout with dynamic node sizing and relation-aware edge minlen (Toulmin hierarchy)
+  - `useToast.ts` — singleton; toast 通知 + `errorLog` ring buffer (最近 50 条 warn/danger，带时间戳，供 DebugPanel 消费)
 - `components/` — extracted from the former monolithic App.vue:
   - `AppTopBar.vue` — brand, mode switch, engine/display settings panels, health pills, window controls
   - `TranslateView.vue` — upload drop card, progress/step indicators, result views (sentence/parallel/markdown), sentence splitting, markdown rendering
@@ -116,6 +117,7 @@ Key backend modules under `src/`:
   - `mindmap/` — MindMapCanvas (Vue Flow), MindNodeCard, MindEdge
   - `MindMapView.vue`, `MindMapFloatingToolbar.vue`, `MindMapAiHints.vue`
   - `ui/` — design-system primitives: UiButton, UiCard, UiDropdown, UiIconButton, UiInput, UiPanel, UiPill, UiPopover, UiSegmented, UiSelect, UiTextarea, UiTooltip
+  - `DebugPanel.vue` — 独立调试面板组件（前端错误历史 + 后端日志，在 AppTopBar 中以 `<DebugPanel />` 引入）
   - Other: MonacoEditor, AiPanel, FileTree, FileTreeNode, MarkdownPreview, ArgumentMap, EditorTabs, EditorToolbar, EditorWelcome, EditorNewProject, EditorCompliance, CommandPalette, TemplatePicker, ComplianceModal, AgentSessionList, AgentApprovalInline, StatusCluster
 - `styles/tokens.css` — Design token system (`--c-*` colors, `--space-*`, `--radius-*`, `--text-*`, `--shadow-*`, `--ease-*`) with dark/light themes. Legacy aliases (`--bg`, `--text`, `--accent`, etc.) maintained for backward compat.
 - `utils/api.ts` — API base URL (auto-detects Tauri vs web)
@@ -200,7 +202,7 @@ python -m venv /tmp/test && /tmp/test/Scripts/pip install -r requirements-lock.t
 
 ### 论证陪练 v3（已完成 — 见 docs/argument-map-v3-spec.md）
 
-5 个 Phase（Phase 0–5）全部完成。功能包括：论证账本（承诺 ↔ 兑付，三态锚定）、Reviewer‑2 对抗（会议校准评审 + rebuttal mini-chat，reviewer 会被说服）、质疑这句/一致性/gap/RW 检查、真实评审导入（import_real_reviews）、实验缺口建议（suggest_experiment）、rebuttal 包导出（/download）。Toulmin v2 图（ArgGraph/Vue Flow）保留并复用为"审稿模式"可视化（ArgSourcePane 已有"从编辑器载入"入口）。features.argument_companion=true（已发布）。E2E 集成测试：`python/tests/integration/test_companion_e2e.py` 27 个测试覆盖全部 `/api/companion/*` 端点（pytest 1550 passed）。
+5 个 Phase（Phase 0–5）全部完成。功能包括：论证账本（承诺 ↔ 兑付，三态锚定）、Reviewer‑2 对抗（会议校准评审 + rebuttal mini-chat，reviewer 会被说服）、质疑这句/一致性/gap/RW 检查、真实评审导入（import_real_reviews）、实验缺口建议（suggest_experiment）、rebuttal 包导出（/download）。Toulmin v2 图（ArgGraph/Vue Flow）保留并复用为"审稿模式"可视化（ArgSourcePane 已有"从编辑器载入"入口）。features.argument_companion=true（已发布）。E2E 集成测试：`python/tests/integration/test_companion_e2e.py` 27 个测试覆盖全部 `/api/companion/*` 端点（pytest 1624 passed / 11 skipped）。
 
 论证地图 v2（见 docs/argument-map-v2-spec.md）：5 个 Phase 已全部完成，旧树实现已删除。当前 Toulmin 图 = v2 唯一版本，在论证陪练 v3 "审稿模式"中继续使用。
 
@@ -214,3 +216,20 @@ python -m venv /tmp/test && /tmp/test/Scripts/pip install -r requirements-lock.t
 - `ArgInspector.vue` — "采纳"新建节点定位到选中节点附近并自动创建 connecting edge
 - `api_factory.py` — API key 持久化到 `default.local.yaml` 避免 reload 丢失
 - `src-tauri/src/main.rs` — 启动前 `kill_port_owner()` 清理僵尸 Python 进程
+
+安全 + 质量修复批次 (2026-05-15 Round 2，pytest 1624 passed / 11 skipped)：
+- `tauri.dev.conf.json` — dev CSP 去掉 `unsafe-eval`
+- `graph_store.py` / `companion_store.py` — 所有写方法加 `threading.RLock` 防并发丢数据
+- `routers/translate.py` — SSE 任务槽位：`_run_pipeline` finally 块标记 error，过期任务清理顺序修正（先清 stale 再查 has_running），文件大小检查前置到 has_active 检查之前（保证 413 优先于 409）
+- `api_factory.py` — `_TraceIdFilter` 覆盖 exc_info traceback 中的 Bearer token；`_validate_config` 补全 engine/timeout/model/max_tokens 四项校验；500 响应体携带 trace_id
+- `cloud_client.py` — `_redact_key()` 屏蔽 api_key 出现在日志 warning 中
+- `bash_session.py` — `_INJECTION_RE` 补全 `$((` / `$'...'` / `<<<` / `${}` / `>()` / `<()` / `eval` / newline 等注入模式
+- `src-tauri/src/main.rs` — Python 路径 NUL 字节断言
+- `useArgumentCompanion.ts` — 所有 catch 改 `pushError`/`pushWarning`，消除静默失败
+- `sentenceAlign.ts` — `escapeHtml` 改为纯字符串 replace，去掉 DOM 依赖
+- `routers/agent.py` — `ChatRequest.message` 加 `min_length=1`
+
+可观测性增强 (2026-05-15)：
+- `api_factory.py` — `RotatingFileHandler`：日志写入 `RUNTIME_DIR/logs/app.log`（10 MB × 5 备份），统一日志格式带 trace_id；`trace_id_middleware` 记录每个请求 method/path/status/耗时；新增 `GET /api/logs` 端点返回最近 N 行 + 文件路径
+- `useToast.ts` — 新增 `errorLog` ring buffer（最多 50 条 warn/danger）、`unreadErrorCount`、`clearErrorLog()`、`markErrorsRead()`
+- `DebugPanel.vue`（新文件）— 顶栏调试面板：前端错误历史（带时间戳/级别/消息）+ 后端日志查看（拉取 `/api/logs`）+ 打开日志目录按钮；有未读错误时显示红色数字徽标
