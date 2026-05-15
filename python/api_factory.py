@@ -197,6 +197,29 @@ def _validate_config(cfg: dict) -> None:
         if not isinstance(max_steps, int) or max_steps < 1:
             raise ValueError(f"agent.max_steps must be a positive integer, got {max_steps!r}")
 
+    # translator.engine: if present, must be 'ollama' or 'cloud'
+    engine = trans.get("engine")
+    if engine is not None and engine not in ("ollama", "cloud"):
+        raise ValueError(f"translator.engine must be 'ollama' or 'cloud', got {engine!r}")
+
+    # translator.timeout: if present, must be positive number
+    timeout = trans.get("timeout")
+    if timeout is not None:
+        if not isinstance(timeout, (int, float)) or timeout <= 0:
+            raise ValueError(f"translator.timeout must be a positive number, got {timeout!r}")
+
+    # agent.model: if present, must be a non-empty string
+    a_model = agent.get("model")
+    if a_model is not None and (not isinstance(a_model, str) or not a_model.strip()):
+        raise ValueError(f"agent.model must be a non-empty string, got {a_model!r}")
+
+    # chunker.max_tokens: if present, must be positive int
+    chunker = cfg.get("chunker", {})
+    max_tok = chunker.get("max_tokens")
+    if max_tok is not None:
+        if not isinstance(max_tok, int) or max_tok < 1:
+            raise ValueError(f"chunker.max_tokens must be a positive integer, got {max_tok!r}")
+
 
 def _load_config() -> dict:
     global _config_cache, _config_cache_mtime
@@ -456,10 +479,14 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
 
     @app.exception_handler(Exception)
     async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-        logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+        trace_id = _trace_id_ctx.get("-")
+        logger.exception(
+            "Unhandled exception on %s %s (trace=%s)",
+            request.method, request.url.path, trace_id,
+        )
         return JSONResponse(
             status_code=500,
-            content={"detail": "服务器内部错误"},
+            content={"detail": "服务器内部错误", "trace_id": trace_id},
         )
 
     allowed_origins = [

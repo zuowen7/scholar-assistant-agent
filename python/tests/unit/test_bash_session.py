@@ -272,3 +272,67 @@ class TestEnvInjectionGuard:
     def test_allowed_env_var(self, session):
         session.run_command("export MYAPP_VAR=safe_value")
         assert session._env_overrides.get("MYAPP_VAR") == "safe_value"
+
+
+# ---------------------------------------------------------------------------
+# 注入模式扩展覆盖（C-2 fix：$((  $'  <<<  ${）
+# ---------------------------------------------------------------------------
+
+
+class TestInjectionDetectionPatterns:
+    """直接测试 _detect_injection 函数——覆盖最近扩展的正则。"""
+
+    def _check_blocked(self, cmd: str):
+        from src.agent.bash_session import _detect_injection
+        result = _detect_injection(cmd)
+        assert result is not None, f"Expected injection detected for: {cmd!r}"
+
+    def _check_allowed(self, cmd: str):
+        from src.agent.bash_session import _detect_injection
+        result = _detect_injection(cmd)
+        assert result is None, f"Expected no injection for: {cmd!r}"
+
+    # 旧有模式
+    def test_command_sub_dollar_paren(self):
+        self._check_blocked("echo $(whoami)")
+
+    def test_backtick_sub(self):
+        self._check_blocked("echo `whoami`")
+
+    def test_eval_blocked(self):
+        self._check_blocked("eval rm -rf /")
+
+    def test_newline_blocked(self):
+        self._check_blocked("echo hi\nrm -rf /")
+
+    def test_null_blocked(self):
+        self._check_blocked("echo hi\x00rm")
+
+    # 新增模式
+    def test_arithmetic_substitution_blocked(self):
+        self._check_blocked("echo $((1+1))")
+
+    def test_ansi_c_quoting_blocked(self):
+        self._check_blocked("echo $'\\n'")
+
+    def test_here_string_blocked(self):
+        self._check_blocked("cat <<< secret")
+
+    def test_parameter_expansion_blocked(self):
+        self._check_blocked("echo ${HOME}")
+
+    def test_parameter_expansion_colon_blocked(self):
+        self._check_blocked("echo ${PATH:0:5}")
+
+    # 合法命令不应被误杀
+    def test_normal_echo_allowed(self):
+        self._check_allowed("echo hello world")
+
+    def test_ls_allowed(self):
+        self._check_allowed("ls -la")
+
+    def test_grep_allowed(self):
+        self._check_allowed("grep -r pattern ./src")
+
+    def test_python_script_allowed(self):
+        self._check_allowed("python script.py --arg value")
