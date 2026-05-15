@@ -209,6 +209,15 @@ def register_translate(
             supported = ", ".join(sorted(SUPPORTED_EXTENSIONS.keys()))
             raise HTTPException(400, f"不支持的文件格式: {ext}。支持: {supported}")
 
+        # Read file into memory first so size validation runs before task-slot check
+        _, max_upload_bytes, _ = _get_limits()
+        file_data = bytearray()
+        while chunk := file.file.read(1024 * 1024):
+            file_data.extend(chunk)
+            if len(file_data) > max_upload_bytes:
+                max_mb = max_upload_bytes // (1024 * 1024)
+                raise HTTPException(413, f"文件过大，最大支持 {max_mb} MB")
+
         # Reject if a running or pending task already exists
         has_active = any(
             t["status"] in ("running", "pending")
@@ -224,15 +233,7 @@ def register_translate(
         input_file = input_dir / f"{task_id}_{file.filename}"
         try:
             with open(input_file, "wb") as f:
-                total = 0
-                while chunk := file.file.read(1024 * 1024):
-                    total += len(chunk)
-                    _, max_upload_bytes, _ = _get_limits()
-                    if total > max_upload_bytes:
-                        input_file.unlink(missing_ok=True)
-                        max_mb = max_upload_bytes // (1024 * 1024)
-                        raise HTTPException(413, f"文件过大，最大支持 {max_mb} MB")
-                    f.write(chunk)
+                f.write(file_data)
 
             tasks[task_id] = {
                 "status": "pending",
