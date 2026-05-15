@@ -34,7 +34,11 @@ async def call_llm_chat(
     if ollama_client is not None:
         try:
             result = ollama_client.translate(prompt)
-            return result.text if hasattr(result, "text") else str(result)
+            if hasattr(result, "translated"):
+                return result.translated
+            if hasattr(result, "text"):
+                return result.text
+            return str(result)
         except Exception as e:
             logger.warning("Ollama fallback failed: %s", e)
 
