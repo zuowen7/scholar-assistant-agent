@@ -1,9 +1,80 @@
 {
-  "id": "L_f73fd58664",
+  "id": "L_87fbb681b2",
   "doc_id": "C:\\Users\\zuowen\\Desktop/新建 文本文档 (2).md",
   "doc_title": "新建 文本文档 (2).md",
-  "promises": [],
-  "anchors": [],
+  "promises": [
+    {
+      "id": "p_9f31b6fb4d",
+      "text": "揭示产业结构在“经济—就业”传导链条中的枢纽作用，验证“服务业主导型经济更利于大学生就业”的假说",
+      "kind": "contribution",
+      "source_anchor_id": "a_5e42b8a007",
+      "discharge_anchor_ids": [],
+      "status": "unknown",
+      "severity": "info",
+      "note": null,
+      "created_by": "ai",
+      "user_overridden": false
+    },
+    {
+      "id": "p_fb6049fc58",
+      "text": "运用省级面板数据控制不可观测的地区固定效应，缓解遗漏变量偏误",
+      "kind": "contribution",
+      "source_anchor_id": "a_04f472436a",
+      "discharge_anchor_ids": [],
+      "status": "unknown",
+      "severity": "info",
+      "note": null,
+      "created_by": "ai",
+      "user_overridden": false
+    },
+    {
+      "id": "p_2bc3eea6d1",
+      "text": "为地方政府通过产业结构优化提升大学生就业质量提供差异化路径依据",
+      "kind": "contribution",
+      "source_anchor_id": "a_4a440f8fa9",
+      "discharge_anchor_ids": [],
+      "status": "unknown",
+      "severity": "info",
+      "note": null,
+      "created_by": "ai",
+      "user_overridden": false
+    }
+  ],
+  "anchors": [
+    {
+      "id": "a_5e42b8a007",
+      "doc_id": "C:\\Users\\zuowen\\Desktop/新建 文本文档 (2).md",
+      "char_start": 1184,
+      "char_end": 1232,
+      "quote": "揭示产业结构在“经济—就业”传导链条中的枢纽作用，验证“服务业主导型经济更利于大学生就业”的假说",
+      "context_before": "基准，通过构建双向固定效应模型展开实证检验。相较于已有研究，本文的边际贡献在于：\r\n\t理论层面：",
+      "context_after": "；\r\n\t方法层面：运用省级面板数据控制不可观测的地区固定效应，缓解遗漏变量偏误；\r\n\t政策层面：",
+      "section_path": null,
+      "status": "anchored"
+    },
+    {
+      "id": "a_04f472436a",
+      "doc_id": "C:\\Users\\zuowen\\Desktop/新建 文本文档 (2).md",
+      "char_start": 1241,
+      "char_end": 1271,
+      "quote": "运用省级面板数据控制不可观测的地区固定效应，缓解遗漏变量偏误",
+      "context_before": "济—就业”传导链条中的枢纽作用，验证“服务业主导型经济更利于大学生就业”的假说；\r\n\t方法层面：",
+      "context_after": "；\r\n\t政策层面：为地方政府通过产业结构优化提升大学生就业质量提供差异化路径依据。\r\n二、文献综",
+      "section_path": null,
+      "status": "anchored"
+    },
+    {
+      "id": "a_4a440f8fa9",
+      "doc_id": "C:\\Users\\zuowen\\Desktop/新建 文本文档 (2).md",
+      "char_start": 1280,
+      "char_end": 1311,
+      "quote": "为地方政府通过产业结构优化提升大学生就业质量提供差异化路径依据",
+      "context_before": "；\r\n\t方法层面：运用省级面板数据控制不可观测的地区固定效应，缓解遗漏变量偏误；\r\n\t政策层面：",
+      "context_after": "。\r\n二、文献综述与研究假说\r\n（一）经济发展水平与大学生就业：直接效应之争\r\n现有研究对经济发",
+      "section_path": null,
+      "status": "anchored"
+    }
+  ],
   "doc_hash": "0bb57a1c05b7764b",
-  "last_built_at": 1778819934.3425431
+  "last_built_at": 1778824280.9844506
 }
