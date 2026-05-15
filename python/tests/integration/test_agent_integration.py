@@ -59,6 +59,7 @@ def registry():
 @pytest.fixture
 def rag_store(temp_dir):
     """RAGStore using a temporary directory for ChromaDB storage."""
+    pytest.importorskip("chromadb", reason="chromadb is an optional RAG dependency")
     return RAGStore(
         persist_dir=temp_dir,
         collection_name="test_collection",
@@ -301,6 +302,7 @@ class TestAgentMessageBuilding:
 
     def test_agent_build_messages_with_rag(self, temp_dir):
         """Inject RAG store, verify context injection in messages."""
+        pytest.importorskip("chromadb", reason="chromadb is an optional RAG dependency")
         # Create RAG store with a document
         rag = RAGStore(
             persist_dir=temp_dir,

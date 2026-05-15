@@ -22,9 +22,6 @@ mod process_management {
 
 #[cfg(test)]
 mod save_file_validation {
-    use std::io::Write;
-    use tempfile::TempDir;
-
     /// save_file must reject non-md/txt extensions.
     #[test]
     fn rejects_unsupported_extension() {
