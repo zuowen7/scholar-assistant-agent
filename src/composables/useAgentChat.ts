@@ -1,6 +1,7 @@
 import { ref, watch } from 'vue'
 import type { AgentChatMessage, AgentEvent, AgentSessionInfo, RAGDocument } from '../types'
 import { API_BASE } from '../utils/api'
+import { logger } from '../utils/logger'
 import { readSseStream } from '../utils/streamReader'
 
 const API_URL = API_BASE
@@ -39,6 +40,7 @@ export function _resetForTesting(): void {
   _approvalBySession.clear()
 }
 
+/** Agent chat composable (singleton). Manages ReAct loop SSE streaming, session lifecycle, per-session approval state, and RAG documents. */
 export function useAgentChat() {
 
   // ── Per-session pendingApproval (M11 fix) ────────────────────────
@@ -319,7 +321,7 @@ export function useAgentChat() {
         return true
       }
     } catch (e) {
-      console.warn('sendApproval failed:', e)
+      logger.warn('sendApproval failed', { error: e })
     }
     return false
   }
@@ -340,7 +342,7 @@ export function useAgentChat() {
         return true
       }
     } catch (e) {
-      console.warn('abortSession failed:', e)
+      logger.warn('abortSession failed', { error: e })
     }
     // 即使后端 abort 失败，也中止前端流
     stopGenerating()
@@ -426,7 +428,7 @@ export function useAgentChat() {
       const resp = await fetch(`${API_URL}/api/agent/v2/sessions`)
       if (resp.ok) return await resp.json()
     } catch (e) {
-      console.warn('fetchSessions failed:', e)
+      logger.warn('fetchSessions failed', { error: e })
     }
     return []
   }
@@ -440,7 +442,7 @@ export function useAgentChat() {
       if (resp.ok) {
         ragDocuments.value = await resp.json()
       }
-    } catch (e) { console.warn('agentFetchDocs failed:', e) }
+    } catch (e) { logger.warn('agentFetchDocs failed', { error: e }) }
     finally {
       ragLoading.value = false
     }

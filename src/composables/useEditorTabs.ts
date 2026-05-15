@@ -4,7 +4,7 @@
  * 状态来源：useEditorState（单一真实源）
  * 导出的函数构成 EditorLayout / MonacoEditor 等组件的 API。
  */
-import type { EditorSelection, EditorTab } from '../types'
+import type { EditorSelection } from '../types'
 import {
   tabs, activeTabId, selection, monacoEditor, contentVersion,
   activeTab, content, activeFile, isModified,

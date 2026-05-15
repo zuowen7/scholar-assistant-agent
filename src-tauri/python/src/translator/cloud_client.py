@@ -6,8 +6,10 @@ import logging
 import re
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 import httpx
+import yaml
 
 from src.translator.ollama_client import (
     TranslationResult,
@@ -41,137 +43,22 @@ def _backoff_delay(attempt: int) -> float:
     delay = RETRY_DELAY_BASE * (2 ** attempt)
     return min(delay, RETRY_DELAY_MAX)
 
-# ── 供应商预设 ──
+# ── 供应商预设（从 YAML 懒加载） ──
 
-PROVIDER_PRESETS: dict[str, dict] = {
-    "openai": {
-        "name": "OpenAI",
-        "base_url": "https://api.openai.com/v1",
-        "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "o3-mini"],
-        "api_format": "openai",
-    },
-    "anthropic": {
-        "name": "Anthropic Claude",
-        "base_url": "https://api.anthropic.com",
-        "models": ["claude-sonnet-4-20250514", "claude-haiku-4-20250414"],
-        "api_format": "anthropic",
-    },
-    "deepseek": {
-        "name": "DeepSeek",
-        "base_url": "https://api.deepseek.com/v1",
-        "models": ["deepseek-v4-pro", "deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"],
-        "api_format": "openai",
-    },
-    "moonshot": {
-        "name": "Moonshot / Kimi",
-        "base_url": "https://api.moonshot.cn/v1",
-        "models": ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"],
-        "api_format": "openai",
-    },
-    "zhipu": {
-        "name": "智谱 ChatGLM",
-        "base_url": "https://open.bigmodel.cn/api/paas/v4",
-        "models": ["glm-4-plus", "glm-4-flash", "glm-4-long"],
-        "api_format": "openai",
-    },
-    "qwen": {
-        "name": "通义千问",
-        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "models": ["qwen-plus", "qwen-turbo", "qwen-max"],
-        "api_format": "openai",
-    },
-    "gemini": {
-        "name": "Google Gemini",
-        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "models": ["gemini-2.0-flash", "gemini-2.5-pro-preview-06-05"],
-        "api_format": "openai",
-    },
-    "siliconflow": {
-        "name": "SiliconFlow 硅基流动",
-        "base_url": "https://api.siliconflow.cn/v1",
-        "models": ["Qwen/Qwen3-235B-A22B", "deepseek-ai/DeepSeek-V3"],
-        "api_format": "openai",
-    },
-    # ── 更多 OpenAI-Compatible 聚合 / 云厂商 ──
-    "openrouter": {
-        "name": "OpenRouter",
-        "base_url": "https://openrouter.ai/api/v1",
-        "models": ["openai/gpt-4o", "anthropic/claude-3.5-sonnet", "google/gemini-2.0-flash-001"],
-        "api_format": "openai",
-    },
-    "groq": {
-        "name": "Groq",
-        "base_url": "https://api.groq.com/openai/v1",
-        "models": ["llama-3.3-70b-versatile", "mixtral-8x7b-32768"],
-        "api_format": "openai",
-    },
-    "together": {
-        "name": "Together AI",
-        "base_url": "https://api.together.xyz/v1",
-        "models": ["meta-llama/Llama-3.3-70B-Instruct-Turbo"],
-        "api_format": "openai",
-    },
-    "mistral": {
-        "name": "Mistral AI",
-        "base_url": "https://api.mistral.ai/v1",
-        "models": ["mistral-large-latest", "mistral-small-latest"],
-        "api_format": "openai",
-    },
-    "xai": {
-        "name": "xAI (Grok)",
-        "base_url": "https://api.x.ai/v1",
-        "models": ["grok-2-latest", "grok-2-vision-latest"],
-        "api_format": "openai",
-    },
-    "fireworks": {
-        "name": "Fireworks AI",
-        "base_url": "https://api.fireworks.ai/inference/v1",
-        "models": ["accounts/fireworks/models/llama-v3p3-70b-instruct"],
-        "api_format": "openai",
-    },
-    "deepinfra": {
-        "name": "DeepInfra",
-        "base_url": "https://api.deepinfra.com/v1/openai",
-        "models": ["meta-llama/Meta-Llama-3.1-70B-Instruct"],
-        "api_format": "openai",
-    },
-    "perplexity": {
-        "name": "Perplexity",
-        "base_url": "https://api.perplexity.ai",
-        "models": ["sonar", "sonar-pro"],
-        "api_format": "openai",
-    },
-    "novita": {
-        "name": "Novita AI",
-        "base_url": "https://api.novita.ai/v3/openai",
-        "models": ["meta-llama/llama-3.1-70b-instruct"],
-        "api_format": "openai",
-    },
-    "volcengine_ark": {
-        "name": "火山方舟 (豆包)",
-        "base_url": "https://ark.cn-beijing.volces.com/api/v3",
-        "models": ["doubao-pro-32k"],
-        "api_format": "openai",
-    },
-    "baidu_qianfan": {
-        "name": "百度千帆 (兼容 OpenAI)",
-        "base_url": "https://qianfan.baidubce.com/v2",
-        "models": ["ernie-4.0-8k"],
-        "api_format": "openai",
-    },
-    "azure_openai": {
-        "name": "Azure OpenAI (需填资源专属 endpoint)",
-        "base_url": "",
-        "models": ["gpt-4o"],
-        "api_format": "openai",
-    },
-    "custom": {
-        "name": "自定义 (任意 OpenAI 兼容网关)",
-        "base_url": "",
-        "models": [],
-        "api_format": "openai",
-    },
-}
+_PROVIDERS_YAML = Path(__file__).resolve().parents[4] / "config" / "providers.yaml"
+
+
+def _load_provider_presets() -> dict[str, dict]:
+    """从 config/providers.yaml 加载供应商预设，找不到则返回空字典。"""
+    try:
+        with open(_PROVIDERS_YAML, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        logger.warning("providers.yaml not found at %s, using empty presets", _PROVIDERS_YAML)
+        return {}
+
+
+PROVIDER_PRESETS: dict[str, dict] = _load_provider_presets()
 
 
 class CloudClient:

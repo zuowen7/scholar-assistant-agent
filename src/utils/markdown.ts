@@ -111,7 +111,7 @@ export function renderMarkdown(src: string): string {
  * 把单个块（已知 type）渲染为 HTML
  * 用于按块呈现时，根据类型选择渲染方式
  */
-export function renderBlock(text: string, type: string): string {
+export function renderBlock(text: string, _type?: string): string {
   if (!text) return ''
   // 不可翻译块（公式/代码/表格）也走完整 markdown 渲染（KaTeX 会处理 $$...$$）
   return renderMarkdown(text)

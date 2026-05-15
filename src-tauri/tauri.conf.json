@@ -26,7 +26,13 @@
       "assetProtocol": {
         "enable": true,
         "scope": {
-          "allow": ["$PICTURE/**", "$VIDEO/**", "$DOWNLOAD/**", "$DESKTOP/**", "$DOCUMENT/**"]
+          "allow": [
+            "$PICTURE/**",
+            "$VIDEO/**",
+            "$DOWNLOAD/Scholar*/**",
+            "$DESKTOP/Scholar*/**",
+            "$DOCUMENT/.scholar_assistant/**"
+          ]
         }
       },
       "dangerousDisableAssetCspModification": false

@@ -342,6 +342,8 @@ async function onDockBack() {
 }
 
 // Listen for dock-back signal from standalone window
+let _unlistenStorage: (() => void) | null = null
+
 onMounted(async () => {
   if (isStandalone.value) {
     // Read session ID from localStorage and resume session
@@ -352,12 +354,14 @@ onMounted(async () => {
     }
   } else {
     // Main window: listen for dock-back signal from standalone window
-    window.addEventListener('storage', (e) => {
+    const handler = (e: StorageEvent) => {
       if (e.key === 'agent-dock-back' && e.newValue) {
         localStorage.removeItem('agent-dock-back')
         emit('update:open', true)
       }
-    })
+    }
+    window.addEventListener('storage', handler)
+    _unlistenStorage = () => window.removeEventListener('storage', handler)
   }
 })
 
@@ -622,6 +626,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   messagesRef.value?.removeEventListener('scroll', _onMessagesScroll)
+  _unlistenStorage?.()
+  _unlistenStorage = null
 })
 </script>
 

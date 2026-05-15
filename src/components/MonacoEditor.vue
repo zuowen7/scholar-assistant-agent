@@ -89,6 +89,7 @@ let ghostDecoration: string[] = []
 let ghostText = ''
 let lastGhostTrigger = 0
 let _clearingGhost = false
+let _inlineCompletionsDisposable: { dispose(): void } | null = null
 
 onMounted(() => {
   if (!editorContainer.value) return
@@ -118,7 +119,7 @@ onMounted(() => {
 
   // ── 注册 AI Inline Completions Provider ──────────────────────
   // 让 Monaco 的内联补全直接走 AI 补全 API，实现 VS Code/Cursor 风格
-  monaco.languages.registerInlineCompletionsProvider('markdown', {
+  _inlineCompletionsDisposable = monaco.languages.registerInlineCompletionsProvider('markdown', {
     provideInlineCompletions: async (model, position, _context) => {
       if (showPalette.value) return { items: [] }
       const lineContent = model.getLineContent(position.lineNumber)
@@ -503,9 +504,16 @@ watch(content, (v) => {
 })
 
 onBeforeUnmount(() => {
-  if (ghostDebounceTimer) clearTimeout(ghostDebounceTimer)
-  if (autoGhostTimer) clearTimeout(autoGhostTimer)
+  if (ghostDebounceTimer) { clearTimeout(ghostDebounceTimer); ghostDebounceTimer = null }
+  if (autoGhostTimer) { clearTimeout(autoGhostTimer); autoGhostTimer = null }
+  if (editor && ghostDecoration.length) {
+    editor.deltaDecorations(ghostDecoration, [])
+    ghostDecoration = []
+  }
+  _inlineCompletionsDisposable?.dispose()
+  _inlineCompletionsDisposable = null
   editor?.dispose()
+  editor = null
 })
 </script>
 

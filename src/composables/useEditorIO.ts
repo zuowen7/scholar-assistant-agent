@@ -1,4 +1,3 @@
-import { ref } from 'vue'
 import { API_BASE } from '../utils/api'
 
 export interface WordExportResponse {

@@ -131,8 +131,8 @@ def register_agent(
                 if not e.name.startswith("chromadb"):
                     raise
                 logger.warning("chromadb module missing (%s); Agent chat will run without RAG memory", e.name)
-            except Exception as e:
-                logger.warning("RAG store init failed (non-fatal): %s", e)
+            except Exception:
+                logger.exception("RAG store init failed (non-fatal)")
 
             # Persistent memory, skills, trajectory
             agent_data_dir = str(data_root / "agent")
@@ -232,9 +232,10 @@ def register_agent(
             except Exception as exc:
                 logger.warning("session_pool_reaper error (non-fatal): %s", exc)
 
-    @app.on_event("startup")
     async def _start_reaper() -> None:
         asyncio.create_task(_session_pool_reaper())
+
+    app.router.on_startup.append(_start_reaper)
 
     # ------------------------------------------------------------------
     # Per-request AgentLoop factory
@@ -354,13 +355,18 @@ def register_agent(
         # Auto-detect and process special elements (images, tables, citations)
         # before passing to AgentLoop, so their analysis results are in context.
         try:
-            auto_result = await auto_process_message(message, req.context_text)
+            auto_result = await asyncio.wait_for(
+                auto_process_message(message, req.context_text),
+                timeout=30,
+            )
             if auto_result.has_special_elements and auto_result.needs_agent:
                 # Prepend analysis results to the message so the agent sees them
                 element_summary = "\n".join(auto_result.tool_results)
                 message = f"[特殊元素分析结果]\n{element_summary}\n\n[原始用户消息]\n{message}"
                 logger.info("auto_processor detected %d special elements: %s",
                              len(auto_result.detected_elements), auto_result.detected_elements)
+        except asyncio.TimeoutError:
+            logger.warning("auto_process_message timed out (30s), skipping pre-processing")
         except Exception as e:
             logger.warning("auto_process_message failed (non-fatal): %s", e)
 

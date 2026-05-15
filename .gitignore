@@ -71,9 +71,10 @@ python/runtime/
 # 环境变量
 .env
 
-# 运行时配置（可能含 API Key，不入库）
+# 运行时配置：default.yaml 是运行时副本（从 repo 根 config/default.yaml 生成），
+# local.yaml 含 API Key，两者均不入库
 python/config/default.yaml
-python/config/*.local.yaml
+python/config/default.local.yaml
 
 # 模型权重
 *.bin

@@ -15,7 +15,7 @@ def mask_key(key: str) -> str:
         return key[:8] + "****" + key[-4:]
     if len(key) > 8:
         return key[:4] + "****" + key[-4:]
-    return "****"
+    return key
 
 
 def is_masked(value: str) -> bool:
