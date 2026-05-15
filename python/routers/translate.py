@@ -124,13 +124,18 @@ def register_translate(
     async def _acquire_task_slot(task_id: str) -> None:
         """Reserve a translation slot. Only one running task at a time."""
         async with _task_lock:
-            has_running = any(
-                t["status"] == "running"
-                for tid, t in tasks.items()
-                if tid != task_id
-            )
-            if has_running:
-                raise HTTPException(409, "已有翻译任务在运行，请等待完成")
+            # Expire stale tasks BEFORE checking has_running, so a stuck task
+            # doesn't permanently block the slot.
+            stale_running = [
+                tid for tid, t in tasks.items()
+                if t["status"] == "running"
+                and tid != task_id
+                and (time.monotonic() - t.get("_created_at", 0)) > 1800
+            ]
+            for tid in stale_running:
+                logger.warning("Expiring stale running task %s (>30 min)", tid)
+                tasks[tid]["status"] = "error"
+                tasks[tid]["error"] = "任务超时（>30分钟）"
             # Stale pending cleanup: if a pending task has no stream connected
             # within 30s, mark it as expired so the next task can proceed.
             stale_ids = [
@@ -143,6 +148,13 @@ def register_translate(
                 logger.warning("Expiring stale pending task %s", tid)
                 tasks[tid]["status"] = "error"
                 tasks[tid]["error"] = "任务超时未启动"
+            has_running = any(
+                t["status"] == "running"
+                for tid, t in tasks.items()
+                if tid != task_id
+            )
+            if has_running:
+                raise HTTPException(409, "已有翻译任务在运行，请等待完成")
 
     def _mark_task_created(task_id: str) -> None:
         tasks[task_id]["_created_at"] = time.monotonic()
@@ -782,6 +794,13 @@ def register_translate(
                 "data": json.dumps({"message": "翻译失败，请稍后重试"}),
             }
         finally:
+            # If the generator exited abnormally (client disconnect, early exception),
+            # the status may still be "running". Forcibly mark it done so the slot
+            # is released for the next translation.
+            if task.get("status") == "running":
+                task["status"] = "error"
+                if not task.get("error"):
+                    task["error"] = "任务被中断或客户端断开连接"
             _cleanup_tasks()
 
     @app.get("/api/translate/{task_id}/stream")

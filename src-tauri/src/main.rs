@@ -352,6 +352,9 @@ fn spawn_python_inner<R: tauri::Runtime, M: Manager<R>>(
             .to_str()
             .ok_or("Path contains invalid characters")?
             .to_string();
+        if api_str.contains('\0') {
+            return Err("Python path contains NUL byte, cannot spawn process".to_string());
+        }
         let python_cmd = if cfg!(windows) { "python" } else { "python3" };
         eprintln!("[INFO] Dev mode: {} {} --port 18088", python_cmd, api_str);
 
@@ -378,6 +381,9 @@ fn spawn_python_inner<R: tauri::Runtime, M: Manager<R>>(
             .to_str()
             .ok_or("Path contains invalid characters")?
             .to_string();
+        if api_str.contains('\0') {
+            return Err("Backend path contains NUL byte, cannot spawn process".to_string());
+        }
         eprintln!("[INFO] Release mode: {} --port 18088", api_str);
 
         build_command(&api_str, &["--port", "18088"])

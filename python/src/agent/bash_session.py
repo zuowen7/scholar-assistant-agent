@@ -43,7 +43,15 @@ _CMD_SPLIT_RE = re.compile(r'\s*(?:&&|;|\|)\s*')
 
 # Shell 注入检测：禁止命令替换、换行符注入等危险模式
 _INJECTION_RE = re.compile(
-    r'\$\(|`|(?<!\w)eval\s|[\n\r\x00]|\$\{IFS\}|>\(|<\(',
+    r'\$\('           # command substitution $(...)
+    r'|`'             # backtick command substitution
+    r'|\$\(\('        # arithmetic $((
+    r"|\$'"           # ANSI-C quoting $'...'
+    r'|<<<'           # here-string
+    r'|\$\{'          # parameter expansion ${...}
+    r'|(?<!\w)eval\s' # eval builtin
+    r'|[\n\r\x00]'   # newline/null injection
+    r'|>\(|<\(',      # process substitution
     re.IGNORECASE,
 )
 

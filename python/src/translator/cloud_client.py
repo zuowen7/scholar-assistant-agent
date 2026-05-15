@@ -150,6 +150,12 @@ class CloudClient:
             self._http_client.close()
             self._http_client = None
 
+    def _redact_key(self, text: str) -> str:
+        """Replace the raw API key with *** in error messages to prevent log leakage."""
+        if self.api_key and len(self.api_key) > 8 and self.api_key in text:
+            return text.replace(self.api_key, "***")
+        return text
+
     def _rate_limit_wait(self) -> None:
         """确保同一 provider+key 的两个请求之间至少间隔 _RATE_LIMIT_INTERVAL 秒。
         使用模块级 limiter，跨 CloudClient 实例持久生效。"""
@@ -191,7 +197,7 @@ class CloudClient:
                 last_error = e
                 if attempt < MAX_RETRIES:
                     delay = _backoff_delay(attempt)
-                    logger.warning("翻译失败，%.1f 秒后重试 (attempt %d): %s", delay, attempt + 1, e)
+                    logger.warning("翻译失败，%.1f 秒后重试 (attempt %d): %s", delay, attempt + 1, self._redact_key(str(e)))
                     time.sleep(delay)
 
         raise last_error or ValueError("翻译失败")

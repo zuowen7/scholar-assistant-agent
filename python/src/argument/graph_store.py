@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 import time
 from pathlib import Path
 
@@ -30,6 +31,7 @@ class ArgGraphStore:
         self._graphs_dir = Path(runtime_dir) / "argument_graphs"
         self._graphs_dir.mkdir(parents=True, exist_ok=True)
         self._cache: dict[str, ArgGraph] = {}
+        self._lock = threading.RLock()
         self._load_all()
 
     # ── 内部 IO ───────────────────────────────────────────────────────────────
@@ -59,10 +61,11 @@ class ArgGraphStore:
     # ── 图 CRUD ───────────────────────────────────────────────────────────────
 
     def create(self, title: str = "未命名论证图", source_doc: str | None = None) -> ArgGraph:
-        g = ArgGraph(title=title, source_doc=source_doc)
-        self._cache[g.id] = g
-        self._flush(g.id)
-        return g
+        with self._lock:
+            g = ArgGraph(title=title, source_doc=source_doc)
+            self._cache[g.id] = g
+            self._flush(g.id)
+            return g
 
     def get(self, gid: str) -> ArgGraph | None:
         return self._cache.get(gid)
@@ -80,36 +83,39 @@ class ArgGraphStore:
         ]
 
     def delete(self, gid: str) -> None:
-        self._cache.pop(gid, None)
-        path = self._graphs_dir / f"{gid}.json"
-        if path.exists():
-            path.unlink()
+        with self._lock:
+            self._cache.pop(gid, None)
+            path = self._graphs_dir / f"{gid}.json"
+            if path.exists():
+                path.unlink()
 
     # ── 节点 CRUD ─────────────────────────────────────────────────────────────
 
     def upsert_node(self, gid: str, node: ArgNode) -> ArgNode:
-        g = self._cache[gid]
-        existing = next((n for n in g.nodes if n.id == node.id), None)
-        if existing is None:
-            g.nodes.append(node)
-        else:
-            idx = g.nodes.index(existing)
-            g.nodes[idx] = node
-        self._flush(gid)
-        return node
+        with self._lock:
+            g = self._cache[gid]
+            existing = next((n for n in g.nodes if n.id == node.id), None)
+            if existing is None:
+                g.nodes.append(node)
+            else:
+                idx = g.nodes.index(existing)
+                g.nodes[idx] = node
+            self._flush(gid)
+            return node
 
     def delete_node(self, gid: str, nid: str) -> None:
-        g = self._cache[gid]
-        node = next((n for n in g.nodes if n.id == nid), None)
-        if node is None:
-            raise KeyError(nid)
-        g.nodes = [n for n in g.nodes if n.id != nid]
-        # cascade: remove incident edges
-        g.edges = [e for e in g.edges if e.source_id != nid and e.target_id != nid]
-        # cascade: remove spans and issues linked to this node
-        g.spans = [s for s in g.spans if s.node_id != nid]
-        g.issues = [i for i in g.issues if i.node_id != nid]
-        self._flush(gid)
+        with self._lock:
+            g = self._cache[gid]
+            node = next((n for n in g.nodes if n.id == nid), None)
+            if node is None:
+                raise KeyError(nid)
+            g.nodes = [n for n in g.nodes if n.id != nid]
+            # cascade: remove incident edges
+            g.edges = [e for e in g.edges if e.source_id != nid and e.target_id != nid]
+            # cascade: remove spans and issues linked to this node
+            g.spans = [s for s in g.spans if s.node_id != nid]
+            g.issues = [i for i in g.issues if i.node_id != nid]
+            self._flush(gid)
 
     # ── 边 CRUD + 校验 ────────────────────────────────────────────────────────
 
@@ -118,59 +124,63 @@ class ArgGraphStore:
         return n.node_type if n else None
 
     def upsert_edge(self, gid: str, edge: ArgEdge) -> ArgEdge:
-        g = self._cache[gid]
+        with self._lock:
+            g = self._cache[gid]
 
-        if edge.source_id == edge.target_id:
-            raise ValueError("self_loop: source and target must differ")
+            if edge.source_id == edge.target_id:
+                raise ValueError("self_loop: source and target must differ")
 
-        src_type = self._node_type(g, edge.source_id)
-        tgt_type = self._node_type(g, edge.target_id)
-        allowed = ALLOWED_EDGES.get(edge.relation_type, set())
-        if (src_type, tgt_type) not in allowed:
-            raise ValueError(
-                f"invalid_edge: ({src_type}, {tgt_type}) not allowed for '{edge.relation_type}'"
+            src_type = self._node_type(g, edge.source_id)
+            tgt_type = self._node_type(g, edge.target_id)
+            allowed = ALLOWED_EDGES.get(edge.relation_type, set())
+            if (src_type, tgt_type) not in allowed:
+                raise ValueError(
+                    f"invalid_edge: ({src_type}, {tgt_type}) not allowed for '{edge.relation_type}'"
+                )
+
+            # duplicate check (same source/target/type, different id)
+            dup = next(
+                (
+                    e for e in g.edges
+                    if e.source_id == edge.source_id
+                    and e.target_id == edge.target_id
+                    and e.relation_type == edge.relation_type
+                    and e.id != edge.id
+                ),
+                None,
             )
+            if dup:
+                raise ValueError("duplicate: edge with same source/target/relation already exists")
 
-        # duplicate check (same source/target/type, different id)
-        dup = next(
-            (
-                e for e in g.edges
-                if e.source_id == edge.source_id
-                and e.target_id == edge.target_id
-                and e.relation_type == edge.relation_type
-                and e.id != edge.id
-            ),
-            None,
-        )
-        if dup:
-            raise ValueError("duplicate: edge with same source/target/relation already exists")
-
-        existing = next((e for e in g.edges if e.id == edge.id), None)
-        if existing is None:
-            g.edges.append(edge)
-        else:
-            idx = g.edges.index(existing)
-            g.edges[idx] = edge
-        self._flush(gid)
-        return edge
+            existing = next((e for e in g.edges if e.id == edge.id), None)
+            if existing is None:
+                g.edges.append(edge)
+            else:
+                idx = g.edges.index(existing)
+                g.edges[idx] = edge
+            self._flush(gid)
+            return edge
 
     def delete_edge(self, gid: str, eid: str) -> None:
-        g = self._cache[gid]
-        g.edges = [e for e in g.edges if e.id != eid]
-        self._flush(gid)
+        with self._lock:
+            g = self._cache[gid]
+            g.edges = [e for e in g.edges if e.id != eid]
+            self._flush(gid)
 
     # ── Span CRUD ─────────────────────────────────────────────────────────────
 
     def add_span(self, gid: str, span: SpanMapping) -> SpanMapping:
-        g = self._cache[gid]
-        g.spans.append(span)
-        self._flush(gid)
-        return span
+        with self._lock:
+            g = self._cache[gid]
+            g.spans.append(span)
+            self._flush(gid)
+            return span
 
     def delete_span(self, gid: str, sid: str) -> None:
-        g = self._cache[gid]
-        g.spans = [s for s in g.spans if s.id != sid]
-        self._flush(gid)
+        with self._lock:
+            g = self._cache[gid]
+            g.spans = [s for s in g.spans if s.id != sid]
+            self._flush(gid)
 
     # ── 批量写入（AI 提取用） ─────────────────────────────────────────────────
 
@@ -181,25 +191,27 @@ class ArgGraphStore:
         edges: list[ArgEdge],
         spans: list[SpanMapping],
     ) -> ArgGraph:
-        g = self._cache[gid]
-        g.nodes = nodes
-        g.edges = edges
-        g.spans = spans
-        self._flush(gid)
-        return g
+        with self._lock:
+            g = self._cache[gid]
+            g.nodes = nodes
+            g.edges = edges
+            g.spans = spans
+            self._flush(gid)
+            return g
 
     # ── 问题（critique 用） ───────────────────────────────────────────────────
 
     def set_issues(self, gid: str, issues: list[ArgIssue]) -> None:
-        g = self._cache[gid]
-        # Clear existing issue_ids from all nodes
-        for node in g.nodes:
-            node.issue_ids = []
-        g.issues = issues
-        # Re-link issue_ids to nodes
-        for issue in issues:
-            if issue.node_id:
-                node = next((n for n in g.nodes if n.id == issue.node_id), None)
-                if node and issue.id not in node.issue_ids:
-                    node.issue_ids.append(issue.id)
-        self._flush(gid)
+        with self._lock:
+            g = self._cache[gid]
+            # Clear existing issue_ids from all nodes
+            for node in g.nodes:
+                node.issue_ids = []
+            g.issues = issues
+            # Re-link issue_ids to nodes
+            for issue in issues:
+                if issue.node_id:
+                    node = next((n for n in g.nodes if n.id == issue.node_id), None)
+                    if node and issue.id not in node.issue_ids:
+                        node.issue_ids.append(issue.id)
+            self._flush(gid)
