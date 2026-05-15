@@ -29,7 +29,7 @@
       <button
         class="extract-btn"
         :disabled="!hasContent || !state.graph || state.extracting"
-        :title="state.graph ? '从当前原文提取 Toulmin 论证图' : '请先创建或打开一张论证图'"
+        :title="!state.graph ? '请先创建或打开一张论证图' : !hasContent ? '请先点击上方按钮加载原文（从翻译结果/从编辑器/粘贴文本）' : '从当前原文提取 Toulmin 论证图'"
         @click="doExtract"
       >{{ state.extracting ? '提取中…' : '提取论证' }}</button>
     </div>
