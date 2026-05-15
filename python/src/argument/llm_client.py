@@ -91,13 +91,14 @@ async def _direct_cloud_chat(
     content, reasoning, finish = await _do_request(max_tokens)
 
     # Reasoning models (e.g. deepseek-v4-pro) may exhaust max_tokens on
-    # chain-of-thought, leaving content empty. Retry with 4x tokens.
+    # chain-of-thought, leaving content empty. Retry with 2x tokens.
     if not content and reasoning and finish == "length":
+        retry_tokens = max(max_tokens * 2, 32768)
         logger.warning(
             "Model %s exhausted %d tokens on reasoning, retrying with %d",
-            model, max_tokens, max_tokens * 4,
+            model, max_tokens, retry_tokens,
         )
-        content, _, _ = await _do_request(max(max_tokens * 4, 16384))
+        content, _, _ = await _do_request(retry_tokens)
 
     if not content and reasoning:
         content = reasoning
