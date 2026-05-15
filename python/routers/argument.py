@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 import uuid
 from pathlib import Path
@@ -357,6 +358,8 @@ def register_companion(
         from src.argument.ledger import build_ledger, rebuild_ledger
 
         cloud_client = _get_cloud_client()
+        logger.info("companion_build_ledger doc_id=%s has_cloud=%s text_len=%d",
+                     req.doc_id, cloud_client is not None, len(req.text or ""))
         fn = rebuild_ledger if store.get_ledger(req.doc_id) else build_ledger
 
         async def _gen():

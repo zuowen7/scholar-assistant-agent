@@ -93,10 +93,15 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
     }
 
     await readSseStream(resp.body.getReader(), (eventType, data) => {
+      if (eventType === 'error') {
+        const msg = (data as Record<string, unknown>)['message'] as string || '未知错误'
+        console.warn('[companion] build ledger error:', msg)
+        state.building = false
+        return
+      }
       if (eventType === 'promise') {
         const p = data as unknown as ArgPromise
         ledger.promises.push(p)
-        // collect anchor if embedded
         if ((data as Record<string, unknown>)['anchor']) {
           ledger.anchors.push((data as Record<string, unknown>)['anchor'] as Anchor)
         }
