@@ -34,6 +34,8 @@ translator:
   temperature: 0.3
   # 最大并发翻译块数（建议 2-4，Ollama 单实例 4 较稳）
   max_concurrency: 4
+  parallel:
+    max_concurrency: 3
   num_predict: 4096
   # 翻译提示词模板
   system_prompt: |
