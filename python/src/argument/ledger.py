@@ -40,7 +40,9 @@ def _extract_promise_zone(text: str) -> tuple[str, str]:
     """Split text into (promise_zone, body_zone)."""
     m = _PROMISE_SECTION_RE.search(text)
     if not m:
-        cut = max(1, len(text) // 4)
+        # Use up to 3000 chars as the promise zone (not a fixed fraction —
+        # 1/4 of a short text would truncate mid-sentence and break extraction).
+        cut = min(len(text), 3000)
         return text[:cut], text[cut:]
     start = m.start()
     # Find next same-level or higher header after abstract/intro
@@ -76,11 +78,10 @@ async def build_ledger(
 
     # ── LLM #1: extract promises ──────────────────────────────────────────────
     prompt1 = (
-        "你是学术论证分析专家。从这篇论文的 abstract/intro 提取作者立下的承诺（contribution / 核心 claim / 假设 / gap 陈述 / 适用范围）。\n\n"
+        "你是学术论证分析专家。从这篇论文提取作者立下的承诺（contribution, claim, hypothesis, gap_statement, scope 之一）。\n\n"
         f"文本：\n{promise_zone[:3000]}\n\n"
         "输出严格 JSON（不含其他文字）：\n"
-        '{"promises":[{"local_id":"p1","kind":"contribution|claim|hypothesis|gap_statement|scope",'
-        '"text":"承诺原话(可适度归一)","verbatim_quote":"abstract/intro 里的精确子串"}]}'
+        '{"promises":[{"local_id":"p1","kind":"contribution","text":"承诺原话(可适度归一)","verbatim_quote":"文中的精确子串"}]}'
     )
 
     raw1 = ""
