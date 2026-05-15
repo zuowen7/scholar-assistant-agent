@@ -146,6 +146,7 @@ const props = defineProps<{
 }>()
 
 async function handleAnalyze() {
+  console.log('[companion] handleAnalyze called, content length:', props.content?.length ?? 0)
   await companion.buildOrRebuildLedger(props.content)
 }
 
