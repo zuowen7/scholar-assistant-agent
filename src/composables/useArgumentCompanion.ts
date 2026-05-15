@@ -58,6 +58,7 @@ function findAnchor(anchors: Anchor[], id: string): Anchor | undefined {
 // ── API calls ─────────────────────────────────────────────────────────────
 
 async function buildOrRebuildLedger(text: string): Promise<void> {
+  console.log('[companion] buildOrRebuildLedger called, docId:', state.docId, 'textLen:', text?.length ?? 0)
   if (!state.docId) {
     state.docId = `untitled-${crypto.randomUUID()}`
     state.docTitle = 'Untitled'
