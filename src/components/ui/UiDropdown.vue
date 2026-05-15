@@ -30,17 +30,9 @@
 
 <script setup lang="ts">
 import UiPopover from './UiPopover.vue'
+import type { DropdownItem } from './UiDropdown.types'
 
-export interface DropdownItem {
-  text?: string
-  icon?: any
-  shortcut?: string
-  danger?: boolean
-  disabled?: boolean
-  onClick?: () => void
-  divider?: boolean
-  label?: string
-}
+export type { DropdownItem }
 
 withDefaults(defineProps<{
   items?: DropdownItem[]

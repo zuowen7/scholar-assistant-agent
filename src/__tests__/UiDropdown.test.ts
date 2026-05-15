@@ -2,7 +2,7 @@ import { afterEach, describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import UiDropdown from '../components/ui/UiDropdown.vue'
-import type { DropdownItem } from '../components/ui/UiDropdown.vue'
+import type { DropdownItem } from '../components/ui/UiDropdown.types'
 
 describe('UiDropdown', () => {
   const items: DropdownItem[] = [
