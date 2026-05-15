@@ -27,6 +27,18 @@ export interface PendingApproval {
   preview?: Record<string, unknown>
 }
 
+/** Reset all module-level singleton state — for use in tests only. */
+export function _resetForTesting(): void {
+  abortController?.abort()
+  abortController = null
+  messages.value = []
+  sending.value = false
+  ragDocuments.value = []
+  ragLoading.value = false
+  sessionId.value = null
+  _approvalBySession.clear()
+}
+
 export function useAgentChat() {
 
   // ── Per-session pendingApproval (M11 fix) ────────────────────────

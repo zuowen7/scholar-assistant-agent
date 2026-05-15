@@ -272,7 +272,7 @@ def register_translate(
             ext = Path(input_path).suffix.lower()
             fmt_name = SUPPORTED_EXTENSIONS.get(ext, "文档")
             yield {
-                "event": "progress",
+                "event": "translate.progress",
                 "data": json.dumps({"step": 1, "total": 5, "message": f"解析 {fmt_name}..."}),
             }
 
@@ -298,7 +298,7 @@ def register_translate(
             num_articles = len(raw_articles)
 
             yield {
-                "event": "parsed",
+                "event": "translate.parsed",
                 "data": json.dumps({
                     "pages": doc.page_count,
                     "chars": len(raw_text),
@@ -309,7 +309,7 @@ def register_translate(
             }
 
             yield {
-                "event": "progress",
+                "event": "translate.progress",
                 "data": json.dumps({"step": 2, "total": 5, "message": "清洗文本..."}),
             }
 
@@ -362,7 +362,7 @@ def register_translate(
             )
 
             yield {
-                "event": "cleaned",
+                "event": "translate.cleaned",
                 "data": json.dumps({
                     "chars": total_clean_chars,
                     "has_references": has_any_refs,
@@ -371,7 +371,7 @@ def register_translate(
             }
 
             yield {
-                "event": "progress",
+                "event": "translate.progress",
                 "data": json.dumps({"step": 3, "total": 5, "message": "切块..."}),
             }
 
@@ -384,7 +384,7 @@ def register_translate(
                 type_counts[b.type] = type_counts.get(b.type, 0) + 1
 
             yield {
-                "event": "chunked",
+                "event": "translate.chunked",
                 "data": json.dumps({
                     "total_chunks": total_chunks,
                     "total_blocks": len(block_result.blocks),
@@ -414,7 +414,7 @@ def register_translate(
             }
 
             yield {
-                "event": "progress",
+                "event": "translate.progress",
                 "data": json.dumps({"step": 4, "total": 5, "message": "翻译中..."}),
             }
             trans_cfg = config.get("translator", {})
@@ -481,7 +481,7 @@ def register_translate(
                 if hit.match_type in ("exact", "fuzzy"):
                     tm_hit_chunks[chunk.index] = hit.target
                     yield {
-                        "event": "chunk_tm_hit",
+                        "event": "translate.chunk_tm_hit",
                         "data": json.dumps({
                             "index": chunk.index,
                             "total": total_chunks,
@@ -503,7 +503,7 @@ def register_translate(
                 for bt in bts:
                     block_trans_by_id[bt.block_id] = bt
                     yield {
-                        "event": "block_translated",
+                        "event": "translate.block_translated",
                         "data": json.dumps({
                             "chunk_index": cidx,
                             "block_id": bt.block_id,
@@ -528,7 +528,7 @@ def register_translate(
                     ):
                         if cr.error:
                             yield {
-                                "event": "chunk_error",
+                                "event": "translate.chunk_error",
                                 "data": json.dumps({
                                     "index": cr.chunk_index,
                                     "total": total_chunks,
@@ -544,7 +544,7 @@ def register_translate(
                         for bt in cr.block_translations:
                             block_trans_by_id[bt.block_id] = bt
                             yield {
-                                "event": "block_translated",
+                                "event": "translate.block_translated",
                                 "data": json.dumps({
                                     "chunk_index": cr.chunk_index,
                                     "block_id": bt.block_id,
@@ -564,7 +564,7 @@ def register_translate(
                             violations = glossary_store.enforce(chunk_trans, original=chunk_orig)
                             if violations:
                                 yield {
-                                    "event": "glossary_violation",
+                                    "event": "translate.glossary_violation",
                                     "data": json.dumps({
                                         "index": cr.chunk_index,
                                         "total": total_chunks,
@@ -589,7 +589,7 @@ def register_translate(
                             )
                             if qa_result.has_warnings:
                                 yield {
-                                    "event": "qa_warnings",
+                                    "event": "translate.qa_warnings",
                                     "data": json.dumps({
                                         "index": cr.chunk_index,
                                         "total": total_chunks,
@@ -612,7 +612,7 @@ def register_translate(
                         chunk_orig = "\n\n".join(bt.original for bt in cr.block_translations)
                         chunk_trans = "\n\n".join(bt.translated for bt in cr.block_translations)
                         yield {
-                            "event": "chunk_done",
+                            "event": "translate.chunk_done",
                             "data": json.dumps({
                                 "index": cr.chunk_index,
                                 "total": total_chunks,
@@ -662,7 +662,7 @@ def register_translate(
                         logger.debug("TM store failed for chunk %d (non-fatal)", chunk.index)
 
             yield {
-                "event": "progress",
+                "event": "translate.progress",
                 "data": json.dumps({"step": 5, "total": 5, "message": "生成输出..."}),
             }
             fmt_cfg = config.get("formatter", {})
@@ -737,7 +737,7 @@ def register_translate(
                 logger.warning("翻译结果入库 RAG 准备失败（不影响翻译）: %s", rag_err)
 
             yield {
-                "event": "complete",
+                "event": "translate.complete",
                 "data": json.dumps({
                     "task_id": task_id,
                     "output_path": str(out_path),
@@ -757,7 +757,7 @@ def register_translate(
             task["error"] = str(e)
             logger.exception("翻译管道异常")
             yield {
-                "event": "error",
+                "event": "translate.error",
                 "data": json.dumps({"message": "翻译失败，请稍后重试"}),
             }
         finally:

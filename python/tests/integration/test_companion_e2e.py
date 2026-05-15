@@ -475,3 +475,140 @@ class TestDeleteEndpoints:
     def test_delete_ledger_404_after_delete(self, client):
         resp = client.delete(f"/api/companion/ledger/{DOC_ID}")
         assert resp.status_code == 404
+
+
+# ── 5. Contract tests (pre-recorded LLM responses) ───────────────────────────
+#
+# These tests verify that the API contract (response shape, required fields)
+# does not regress when internal logic changes.  All LLM calls are replaced
+# with deterministic pre-recorded responses so no live model is required.
+
+_CONTRACT_DOC_ID = "contract_test_doc"
+_CONTRACT_DOC_TEXT = (
+    "We introduce ContractNet, a graph-based method (C1). "
+    "We achieve 92% accuracy on BenchX (C2). "
+    "Baselines used: prior art from 2021 (C3)."
+)
+
+# Pre-recorded LLM responses — exact bytes the mock will return
+_CONTRACT_LEDGER_PROMISES = json.dumps({
+    "promises": [
+        {"local_id": "c1", "kind": "contribution", "text": "We introduce ContractNet",
+         "verbatim_quote": "We introduce ContractNet"},
+        {"local_id": "c2", "kind": "claim", "text": "92% accuracy on BenchX",
+         "verbatim_quote": "achieve 92% accuracy on BenchX"},
+    ]
+})
+_CONTRACT_LEDGER_DISCHARGE = json.dumps([
+    {"promise_local_id": "c1", "status": "paid", "discharge_quotes": ["ContractNet"], "note": ""},
+    {"promise_local_id": "c2", "status": "unpaid", "discharge_quotes": [], "note": "Not proven"},
+])
+_CONTRACT_REVIEW_COHERENCE = "[]"
+_CONTRACT_REVIEW_MAIN = json.dumps([{
+    "category": "method",
+    "severity": "minor",
+    "title": "Missing ablation",
+    "detail": "No ablation study provided.",
+    "verbatim_quote": "",
+}])
+
+
+def _contract_ledger_mock():
+    calls = [_CONTRACT_LEDGER_PROMISES, _CONTRACT_LEDGER_DISCHARGE]
+    it = iter(calls)
+    async def _m(prompt, *args, **kwargs):
+        try:
+            return next(it)
+        except StopIteration:
+            return "[]"
+    return _m
+
+
+def _contract_review_mock():
+    calls = [_CONTRACT_REVIEW_COHERENCE, _CONTRACT_REVIEW_MAIN]
+    it = iter(calls)
+    async def _m(prompt, *args, **kwargs):
+        try:
+            return next(it)
+        except StopIteration:
+            return "[]"
+    return _m
+
+
+class TestContractShapes:
+    """Contract tests: verify API response shapes using pre-recorded LLM responses."""
+
+    def test_ledger_build_sse_event_schema(self, client):
+        """build_ledger SSE stream must emit promise/discharge events with required fields."""
+        with patch("src.argument.ledger.call_llm_chat", _contract_ledger_mock()):
+            resp = client.post(
+                "/api/companion/ledger/build",
+                json={
+                    "doc_id": _CONTRACT_DOC_ID,
+                    "doc_title": "Contract Test Paper",
+                    "text": _CONTRACT_DOC_TEXT,
+                },
+            )
+        assert resp.status_code == 200, resp.text
+        events = _parse_sse(resp.text)
+        event_types = {e.get("event") for e in events}
+        assert "complete" in event_types, f"Missing 'complete' event; got {event_types}"
+
+        # Verify ledger persisted with required schema fields
+        ledger_resp = client.get(f"/api/companion/ledger/{_CONTRACT_DOC_ID}")
+        assert ledger_resp.status_code == 200
+        ledger = ledger_resp.json()
+        assert "doc_id" in ledger and ledger["doc_id"] == _CONTRACT_DOC_ID
+        assert "promises" in ledger and isinstance(ledger["promises"], list)
+        for p in ledger["promises"]:
+            for field in ("id", "text", "kind", "status"):
+                assert field in p, f"Promise missing required field '{field}': {p}"
+
+    def test_review_run_sse_event_schema(self, client, state):
+        """run_review SSE stream must emit review_point events with required fields."""
+        # Ensure ledger exists (build if needed)
+        ledger_resp = client.get(f"/api/companion/ledger/{_CONTRACT_DOC_ID}")
+        if ledger_resp.status_code != 200:
+            with patch("src.argument.ledger.call_llm_chat", _contract_ledger_mock()):
+                client.post(
+                    "/api/companion/ledger/build",
+                    json={"doc_id": _CONTRACT_DOC_ID,
+                          "doc_title": "Contract Test Paper",
+                          "text": _CONTRACT_DOC_TEXT},
+                )
+
+        with patch("src.argument.reviewer.call_llm_chat", _contract_review_mock()):
+            resp = client.post(
+                "/api/companion/review",
+                json={
+                    "doc_id": _CONTRACT_DOC_ID,
+                    "doc_title": "Contract Test Paper",
+                    "text": _CONTRACT_DOC_TEXT,
+                    "venue": "ICLR 2025",
+                    "reuse_session_id": None,
+                },
+            )
+        assert resp.status_code == 200, resp.text
+        events = _parse_sse(resp.text)
+        event_types = {e.get("event") for e in events}
+        assert "complete" in event_types, f"Missing 'complete'; got {event_types}"
+
+        # Review points must have required fields
+        point_events = [e for e in events if e.get("event") == "review_point"]
+        for ev in point_events:
+            d = ev.get("data", {})
+            for field in ("id", "category", "severity", "title"):
+                assert field in d, f"review_point missing '{field}': {d}"
+
+        # Cleanup
+        if point_events:
+            sid_event = next((e for e in events if e.get("event") == "session_id"), None)
+            if sid_event:
+                state["contract_session_id"] = sid_event.get("data", {}).get("session_id")
+
+    def test_cleanup_contract_fixtures(self, client, state):
+        """Clean up contract test data."""
+        sid = state.get("contract_session_id")
+        if sid:
+            client.delete(f"/api/companion/review/{sid}")
+        client.delete(f"/api/companion/ledger/{_CONTRACT_DOC_ID}")

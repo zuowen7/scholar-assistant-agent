@@ -441,22 +441,45 @@ class MemoryManager:
         return False
 
     def _auto_prune(self, conn: sqlite3.Connection) -> None:
-        """当记忆条数超过上限时，删除低重要性的旧记忆。"""
+        """当记忆条数超过上限时，归档低重要性旧记忆到 JSONL 文件后再删除。"""
         count = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
         if count <= _MEMORY_MAX_ROWS:
             return
 
-        # Delete oldest low-importance entries to get back under the limit
-        to_delete = count - _MEMORY_MAX_ROWS + 50  # delete extra to avoid frequent pruning
-        conn.execute(
-            "DELETE FROM memories WHERE id IN ("
-            "  SELECT id FROM memories WHERE importance <= ? ORDER BY id ASC LIMIT ?"
-            ")",
+        to_delete = count - _MEMORY_MAX_ROWS + 50  # extra buffer to avoid frequent pruning
+        rows = conn.execute(
+            "SELECT id, content, category, source, importance, created_at "
+            "FROM memories WHERE importance <= ? ORDER BY id ASC LIMIT ?",
             (_MEMORY_PRUNE_IMPORTANCE, to_delete),
-        )
+        ).fetchall()
+        if not rows:
+            return
+
+        # Archive to JSONL before deleting so entries can be recovered
+        archive_path = self.data_dir / "memory_archive.jsonl"
+        archived_at = datetime.now().isoformat(timespec="seconds")
+        try:
+            with open(archive_path, "a", encoding="utf-8") as f:
+                for row in rows:
+                    entry = {
+                        "id": row["id"],
+                        "content": row["content"],
+                        "category": row["category"],
+                        "source": row["source"],
+                        "importance": row["importance"],
+                        "created_at": row["created_at"],
+                        "archived_at": archived_at,
+                    }
+                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except Exception as exc:
+            logger.warning("记忆归档写入失败（非致命）: %s", exc)
+
+        ids = [row["id"] for row in rows]
+        placeholders = ",".join("?" * len(ids))
+        conn.execute(f"DELETE FROM memories WHERE id IN ({placeholders})", ids)
         conn.commit()
         remaining = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
-        logger.info("记忆修剪: %d → %d 条 (阈值=%d)", count, remaining, _MEMORY_MAX_ROWS)
+        logger.info("记忆修剪+归档: %d → %d 条 (归档 %d 条到 memory_archive.jsonl)", count, remaining, len(ids))
 
     def close(self) -> None:
         conn: sqlite3.Connection | None = getattr(self._local, "conn", None)

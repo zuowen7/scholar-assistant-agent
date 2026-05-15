@@ -220,7 +220,7 @@ async function startStream(taskId: string, attempt: number = 0): Promise<void> {
 
 function handleSseEvent(event: string, data: Record<string, unknown>): void {
   switch (event) {
-    case 'progress': {
+    case 'translate.progress': {
       const p = data as unknown as ProgressEvent
       state.currentStep = p.step
       state.totalSteps = p.total
@@ -228,13 +228,13 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       setStatus(stepToStatus(p.step))
       break
     }
-    case 'parsed':
+    case 'translate.parsed':
       state.parsedInfo = data as unknown as ParsedEvent
       break
-    case 'cleaned':
+    case 'translate.cleaned':
       state.stepMessage = `Cleaning complete, ${data.chars?.toLocaleString() ?? 0} characters`
       break
-    case 'chunked': {
+    case 'translate.chunked': {
       const ev = data as unknown as ChunkedEvent
       state.totalChunks = ev.total_chunks ?? 0
       state.totalBlocks = ev.total_blocks ?? 0
@@ -250,7 +250,7 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       state.stepMessage = `共 ${state.totalChunks} 块、${state.totalBlocks} 段`
       break
     }
-    case 'block_translated': {
+    case 'translate.block_translated': {
       const ev = data as unknown as BlockTranslatedEvent
       const idx = state.blocks.findIndex(b => b.id === ev.block_id)
       if (idx >= 0) {
@@ -266,7 +266,7 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       }
       break
     }
-    case 'chunk_done': {
+    case 'translate.chunk_done': {
       const chunk = data as unknown as ChunkDoneEvent
       const existingIdx = state.translations.findIndex(t => t.index === chunk.index)
       if (existingIdx >= 0) {
@@ -291,16 +291,16 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       }
       break
     }
-    case 'qa_warnings': {
+    case 'translate.qa_warnings': {
       // P0: Post-translation QA warnings
       const qa = data as unknown as QAWarning
       state.qaWarnings.push(qa)
       break
     }
-    case 'chunk_error':
+    case 'translate.chunk_error':
       console.warn(`Translation chunk ${(data as Record<string, unknown>).index}/${(data as Record<string, unknown>).total} failed:`, (data as Record<string, unknown>).error)
       break
-    case 'complete':
+    case 'translate.complete':
       state.finalContent = (data.content as string) ?? ''
       // complete 事件用最终的 blocks 覆盖（修正流式过程中可能的不一致）
       if (data.blocks) {
@@ -328,7 +328,7 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
         misalignedChunks: state.misalignedChunks,
       })
       break
-    case 'error':
+    case 'translate.error':
       if (state.status !== 'done') {
         state.errorMessage = (data.message as string) ?? '未知错误'
         setStatus('error')
@@ -651,6 +651,19 @@ export function useTranslate() {
     exportPPTX,
     exportDataAvailability,
   }
+}
+
+/** Reset all singleton state — for use in tests only. */
+export function _resetForTesting(): void {
+  if (abortController) {
+    abortController.abort()
+    abortController = null
+  }
+  if (crashListener) {
+    crashListener()
+    crashListener = null
+  }
+  Object.assign(state, createState())
 }
 
 async function recoverTranslation(): Promise<boolean> {
