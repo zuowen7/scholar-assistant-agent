@@ -132,6 +132,7 @@ import DOMPurify from 'dompurify'
 import { readSseStream } from '../utils/streamReader'
 import { aiMessages, aiStreaming, aiStreamContent, aiThinkingText, aiAbortCtrl } from '../composables/useAiPanelState'
 import type { AiPanelMsg } from '../composables/useAiPanelState'
+import { API_BASE } from '../utils/api'
 
 const props = defineProps<{
   editorContext: string
@@ -149,7 +150,7 @@ type Msg = AiPanelMsg
 
 interface FileRef { name: string; content: string }
 
-const API = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:18088').replace(/\/$/, '')
+const API = API_BASE
 
 const messages = aiMessages
 const streaming = aiStreaming
@@ -235,6 +236,7 @@ function acceptSuggestion() {
 
 // ── Markdown renderer with code block actions ───────────────
 let blockCounter = 0
+const _blockEpoch = Date.now()
 
 function esc(s: string) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -247,7 +249,7 @@ function renderMd(text: string, msgId: string): string {
 
   // Code blocks with action buttons
   h = h.replace(/```(\w*)\n([\s\S]*?)```/g, (_match, lang: string, code: string) => {
-    const id = `${msgId}-cb-${blockCounter++}`
+    const id = `${_blockEpoch}-${msgId}-cb-${blockCounter++}`
     const displayLang = lang || 'text'
     return `<div class="ac-code-block" data-id="${id}">`
       + `<div class="ac-code-bar"><span class="ac-code-lang">${displayLang}</span>`

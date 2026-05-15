@@ -8,9 +8,7 @@ Tests:
 """
 
 import io
-import shutil
 import sys
-import tempfile
 import threading
 from pathlib import Path
 from unittest.mock import patch
@@ -22,12 +20,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 
 @pytest.fixture(scope="module")
-def client():
+def client(tmp_path_factory):
     """Create a TestClient for the FastAPI app."""
     from api_factory import create_app
 
-    test_dir = tempfile.mkdtemp()
-    config_dir = Path(test_dir) / "config"
+    test_dir = tmp_path_factory.mktemp("concurrency")
+    config_dir = test_dir / "config"
     config_dir.mkdir(parents=True, exist_ok=True)
     config_file = config_dir / "default.yaml"
     config_file.write_text(
@@ -42,14 +40,12 @@ def client():
 
     with (
         patch("api_factory.CONFIG_PATH", config_file),
-        patch("api_factory.RUNTIME_DIR", Path(test_dir)),
-        patch("api_factory.BASE_DIR", Path(test_dir)),
+        patch("api_factory.RUNTIME_DIR", test_dir),
+        patch("api_factory.BASE_DIR", test_dir),
     ):
         app = create_app()
         c = TestClient(app)
         yield c
-
-    shutil.rmtree(test_dir, ignore_errors=True)
 
 
 # ── Pydantic Field Validation (B3) ────────────────────────────────────────

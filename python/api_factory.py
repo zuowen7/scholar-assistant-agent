@@ -84,12 +84,33 @@ logger = logging.getLogger(__name__)
 # ── Per-request trace_id ─────────────────────────────────────────────────────
 _trace_id_ctx: ContextVar[str] = ContextVar("trace_id", default="-")
 
+import re as _re
+
 
 class _TraceIdFilter(logging.Filter):
-    """Inject trace_id into every log record so log lines can be correlated to requests."""
+    """Inject trace_id into every log record and mask Bearer tokens."""
+
+    _BEARER_RE = _re.compile(r'Bearer\s+\S+', _re.IGNORECASE)
 
     def filter(self, record: logging.LogRecord) -> bool:
         record.trace_id = _trace_id_ctx.get("-")
+        if isinstance(record.msg, str):
+            record.msg = self._BEARER_RE.sub("Bearer ***", record.msg)
+        if record.args:
+            try:
+                args = record.args
+                if isinstance(args, tuple):
+                    record.args = tuple(
+                        self._BEARER_RE.sub("Bearer ***", a) if isinstance(a, str) else a
+                        for a in args
+                    )
+                elif isinstance(args, dict):
+                    record.args = {
+                        k: (self._BEARER_RE.sub("Bearer ***", v) if isinstance(v, str) else v)
+                        for k, v in args.items()
+                    }
+            except Exception:
+                pass
         return True
 
 
@@ -98,10 +119,9 @@ class _TraceIdFilter(logging.Filter):
 # Rate-limited paths: /api/translate, /api/agent/v2/chat, /api/rag/upload
 _RATE_LIMITED_PREFIXES = ("/api/translate", "/api/agent/v2/chat", "/api/rag/upload")
 _RATE_LIMIT_RPM = 30  # max requests per minute per remote IP
+_RATE_LIMIT_MAX_IPS = 10_000  # bounded to prevent OOM from forged X-Forwarded-For
 
-_rl_windows: dict[str, collections.deque] = collections.defaultdict(
-    lambda: collections.deque()
-)
+_rl_windows: dict[str, collections.deque] = {}
 _rl_lock = threading.Lock()
 
 
@@ -110,6 +130,12 @@ def _check_rate_limit(client_ip: str) -> bool:
     now = time.monotonic()
     cutoff = now - 60.0
     with _rl_lock:
+        if client_ip not in _rl_windows:
+            if len(_rl_windows) >= _RATE_LIMIT_MAX_IPS:
+                # Drop the oldest entry to stay bounded
+                oldest = next(iter(_rl_windows))
+                del _rl_windows[oldest]
+            _rl_windows[client_ip] = collections.deque()
         dq = _rl_windows[client_ip]
         while dq and dq[0] < cutoff:
             dq.popleft()
@@ -260,17 +286,15 @@ def _build_cloud_client(trans_cfg: dict, cloud_cfg: dict) -> CloudClient:
     )
 
 
+from src.utils.secrets import mask_config as _mask_api_key_impl, is_masked as _is_masked_impl
+
+
 def _mask_api_key(config: dict) -> None:
-    cloud_cfg = config.get("translator", {}).get("cloud", {})
-    api_key = cloud_cfg.get("api_key", "")
-    if api_key and len(api_key) > 12:
-        cloud_cfg["api_key"] = api_key[:8] + "****" + api_key[-4:]
-    elif api_key and len(api_key) > 8:
-        cloud_cfg["api_key"] = api_key[:4] + "****" + api_key[-4:]
+    _mask_api_key_impl(config)
 
 
 def _is_masked(value: str) -> bool:
-    return "****" in value
+    return _is_masked_impl(value)
 
 
 _DENIED_PATH_PREFIXES = (
@@ -357,9 +381,48 @@ def _validate_file_path(file_path: Path) -> None:
 
 
 def create_app(*, cloud_only: bool = False) -> FastAPI:
+    from contextlib import asynccontextmanager
     from src._version import __version__
+
     _app_title = "研墨 API (cloud-only)" if cloud_only else "研墨 API"
-    app = FastAPI(title=_app_title, version=__version__)
+
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI):
+        # startup
+        state_editor = app.state._state_editor if hasattr(app.state, "_state_editor") else {}
+        startup_editor = state_editor.get("startup")
+        if startup_editor:
+            startup_editor()
+        try:
+            cfg = _load_config()
+            engine = cfg.get("translator", {}).get("engine", "ollama")
+            if engine == "cloud":
+                api_key = cfg.get("translator", {}).get("cloud", {}).get("api_key", "")
+                if not api_key:
+                    logger.warning(
+                        "⚠️  翻译引擎设置为 cloud 但未配置 API key。"
+                        "请在设置面板填入 API key，否则翻译请求将失败。"
+                    )
+        except Exception:
+            pass
+        yield
+        # shutdown
+        state_agent = getattr(app.state, "_state_agent", {})
+        state_editor2 = getattr(app.state, "_state_editor", {})
+        shutdown_fn = state_agent.get("shutdown")
+        if shutdown_fn:
+            try:
+                await shutdown_fn()
+            except Exception:
+                logger.exception("Agent shutdown failed")
+        shutdown_editor = state_editor2.get("shutdown")
+        if shutdown_editor:
+            try:
+                shutdown_editor()
+            except Exception:
+                logger.exception("Editor shutdown failed")
+
+    app = FastAPI(title=_app_title, version=__version__, lifespan=_lifespan)
 
     @app.exception_handler(Exception)
     async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -511,38 +574,8 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         build_cloud_client=_build_cloud_client,
     )
 
-    @app.on_event("startup")
-    async def _startup():
-        startup_editor = state_editor.get("startup")
-        if startup_editor:
-            startup_editor()
-        # M17: API key startup validation — warn clearly if cloud engine selected but key missing
-        try:
-            cfg = _load_config()
-            engine = cfg.get("translator", {}).get("engine", "ollama")
-            if engine == "cloud":
-                api_key = cfg.get("translator", {}).get("cloud", {}).get("api_key", "")
-                if not api_key:
-                    logger.warning(
-                        "⚠️  翻译引擎设置为 cloud 但未配置 API key。"
-                        "请在设置面板填入 API key，否则翻译请求将失败。"
-                    )
-        except Exception:
-            pass
-
-    @app.on_event("shutdown")
-    async def _shutdown():
-        shutdown_fn = state_agent.get("shutdown")
-        if shutdown_fn:
-            try:
-                await shutdown_fn()
-            except Exception:
-                logger.exception("Agent shutdown failed")
-        shutdown_editor = state_editor.get("shutdown")
-        if shutdown_editor:
-            try:
-                shutdown_editor()
-            except Exception:
-                logger.exception("Editor shutdown failed")
+    # Wire lifecycle state so lifespan context manager can access them
+    app.state._state_agent = state_agent
+    app.state._state_editor = state_editor
 
     return app
