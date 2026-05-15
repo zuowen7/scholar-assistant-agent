@@ -68,12 +68,14 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
     return
   }
   state.building = true
+  console.log('[companion] setting building=true, about to fetch...')
   try {
     const resp = await fetch(`${API_BASE}/api/companion/ledger/build`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ doc_id: state.docId, doc_title: state.docTitle, text }),
     })
+    console.log('[companion] fetch returned:', resp.status, 'hasBody:', !!resp.body)
     if (!resp.ok || !resp.body) {
       const errBody = resp.body ? '' : ' (no body)'
       console.warn('[companion] build ledger failed:', resp.status, errBody)
