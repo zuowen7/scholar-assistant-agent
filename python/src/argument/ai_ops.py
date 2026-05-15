@@ -1,7 +1,5 @@
 """AI 辅助操作：提取论证图（SSE）、建议元素、批判审查。"""
 
-from __future__ import annotations
-
 import difflib
 import json
 import logging
@@ -83,7 +81,7 @@ async def extract_argument(
     raw = ""
     try:
         raw = await call_llm_chat(
-            prompt, cloud_client, ollama_client, max_tokens=2048, temperature=0.3
+            prompt, cloud_client, ollama_client, max_tokens=8192, temperature=0.3
         )
     except Exception as exc:
         yield {"event": "error", "data": json.dumps({"message": f"LLM 调用失败: {exc}"})}
@@ -104,7 +102,7 @@ async def extract_argument(
                         f"请只输出有效的 JSON 对象，不要任何解释文字：\n{raw[:500]}",
                         cloud_client,
                         ollama_client,
-                        max_tokens=2048,
+                        max_tokens=8192,
                         temperature=0.1,
                     )
                 except Exception:
