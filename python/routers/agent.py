@@ -36,7 +36,7 @@ if _AGENT_AVAILABLE:
 
 
 class ChatRequest(BaseModel):
-    message: str = Field(max_length=100_000)
+    message: str = Field(min_length=1, max_length=100_000)
     history: list[dict] | None = Field(default=None, max_length=50)
     context_text: str | None = Field(default=None, max_length=500_000)
     constraints: str | None = Field(default=None, max_length=10_000)
