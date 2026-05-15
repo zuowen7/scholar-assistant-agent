@@ -1,7 +1,5 @@
 """Argument Mapping routes — Toulmin v2 graph (sole implementation)."""
 
-from __future__ import annotations
-
 import json
 import logging
 import os
