@@ -380,6 +380,7 @@ def register_companion(
 
         cloud_client = _get_cloud_client()
         ollama_client = _get_ollama_client() if cloud_client is None else None
+        print(f"[companion] build_ledger called: doc_id={req.doc_id} has_cloud={cloud_client is not None} has_ollama={ollama_client is not None} text_len={len(req.text or '')}", flush=True)
         logger.info("companion_build_ledger doc_id=%s has_cloud=%s has_ollama=%s text_len=%d",
                      req.doc_id, cloud_client is not None, ollama_client is not None, len(req.text or ""))
         fn = rebuild_ledger if store.get_ledger(req.doc_id) else build_ledger
