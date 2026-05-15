@@ -196,32 +196,52 @@ const hasContent = computed(() => renderedBlocks.value.some(b => b.sentences.len
 
 // ── Span ↔ sentence mapping ────────────────────────────────────────────────────
 
+function _matchSpanToSentences(
+  map: Map<string, { nodeId: string; spanId: string }>,
+  span: { node_id: string; id: string; char_start?: number | null; char_end?: number | null; quote?: string },
+  text: string,
+  blockId: string,
+) {
+  const sentences = splitSentences(text, detectLang(text))
+  if (span.char_start != null && span.char_end != null) {
+    for (let i = 0; i < sentences.length; i++) {
+      const s = sentences[i]
+      if (s.end > span.char_start && s.start < span.char_end) {
+        map.set(`${blockId}:${i}`, { nodeId: span.node_id, spanId: span.id })
+      }
+    }
+  } else if (span.quote) {
+    const q = span.quote.slice(0, 30)
+    for (let i = 0; i < sentences.length; i++) {
+      if (sentences[i].text.includes(q) || span.quote.includes(sentences[i].text.slice(0, 30))) {
+        map.set(`${blockId}:${i}`, { nodeId: span.node_id, spanId: span.id })
+      }
+    }
+  }
+}
+
 const spanSentenceMap = computed(() => {
   const map = new Map<string, { nodeId: string; spanId: string }>()
   if (!state.graph) return map
 
-  for (const span of state.graph.spans) {
-    if (!span.block_id) continue
-    const block = state.source.blocks.find(b => b.id === span.block_id)
-    if (!block) continue
-    const text = state.source.side === 'trans' ? (block.translated || block.original) : (block.original || block.translated)
-    if (!text) continue
-    const sentences = splitSentences(text, detectLang(text))
+  // Determine the default block ID for spans without block_id (from extraction)
+  const defaultBlockId =
+    state.source.mode === 'paste' || state.source.mode === 'editor'
+      ? '_virtual_'
+      : null
 
-    if (span.char_start != null && span.char_end != null) {
-      for (let i = 0; i < sentences.length; i++) {
-        const s = sentences[i]
-        if (s.end > span.char_start && s.start < span.char_end) {
-          map.set(`${span.block_id}:${i}`, { nodeId: span.node_id, spanId: span.id })
-        }
-      }
-    } else if (span.quote) {
-      const q = span.quote.slice(0, 30)
-      for (let i = 0; i < sentences.length; i++) {
-        if (sentences[i].text.includes(q) || span.quote.includes(sentences[i].text.slice(0, 30))) {
-          map.set(`${span.block_id}:${i}`, { nodeId: span.node_id, spanId: span.id })
-        }
-      }
+  for (const span of state.graph.spans) {
+    if (span.block_id) {
+      const block = state.source.blocks.find(b => b.id === span.block_id)
+      if (!block) continue
+      const text = state.source.side === 'trans'
+        ? (block.translated || block.original)
+        : (block.original || block.translated)
+      if (!text) continue
+      _matchSpanToSentences(map, span, text, span.block_id)
+    } else if (defaultBlockId && state.source.text) {
+      // Spans without block_id (from AI extraction) match against paste/editor source text
+      _matchSpanToSentences(map, span, state.source.text, defaultBlockId)
     }
   }
   return map

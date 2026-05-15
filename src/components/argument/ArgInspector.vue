@@ -157,13 +157,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { NodeType, RelationType, SuggestCandidate, SuggestResult } from '../../composables/useArgumentMap'
-import { useArgumentMap, focusSpan } from '../../composables/useArgumentMap'
+import { useArgumentMap, focusSpan, inferRelationType } from '../../composables/useArgumentMap'
 import { API_BASE } from '../../utils/api'
 import { readSseStream } from '../../utils/streamReader'
 
 defineEmits<{ 'auto-layout': [] }>()
 
-const { state, upsertNode, deleteNode, deleteEdge, deleteSpan, critiqueGraph, suggestElement } = useArgumentMap()
+const { state, upsertNode, deleteNode, deleteEdge, deleteSpan, critiqueGraph, suggestElement, upsertEdge } = useArgumentMap()
 
 // ── Critique ──────────────────────────────────────────────────────────────────
 
@@ -224,7 +224,29 @@ async function doSuggest() {
 }
 
 async function adoptCandidate(c: SuggestCandidate) {
-  await upsertNode({ node_type: c.node_type, text: c.text, created_by: 'ai' })
+  // Position near the selected node with a small offset
+  const selPos = selectedNode.value?.position
+  const pos = selPos ? { x: selPos.x + 220, y: selPos.y + 40 } : { x: 100, y: 100 }
+  const adopted = await upsertNode({
+    node_type: c.node_type,
+    text: c.text,
+    created_by: 'ai',
+    position: pos,
+  })
+  // Create edges from suggested_edges that reference this candidate
+  if (suggestResult.value?.suggested_edges) {
+    for (const se of suggestResult.value.suggested_edges) {
+      if (se.source === c.local_id) {
+        try {
+          const relType = (se.relation as RelationType)
+            || inferRelationType(c.node_type, selectedNode.value?.node_type ?? '')
+          if (relType) {
+            await upsertEdge({ source_id: adopted.id, target_id: se.target, relation_type: relType })
+          }
+        } catch { /* ignore */ }
+      }
+    }
+  }
   suggestResult.value = null
 }
 
