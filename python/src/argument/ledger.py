@@ -91,7 +91,7 @@ async def build_ledger(
                 prompt1 if attempt == 0
                 else f"请只输出有效的 JSON 对象：\n{raw1[:500]}",
                 cloud_client, ollama_client,
-                max_tokens=1024, temperature=0.3,
+                max_tokens=4096, temperature=0.3,
             )
             if raw1.strip():
                 m = re.search(r"\{[\s\S]*\}", raw1)
@@ -162,7 +162,7 @@ async def build_ledger(
                 prompt2 if attempt == 0
                 else f"请只输出有效的 JSON 数组：\n{raw2[:500]}",
                 cloud_client, ollama_client,
-                max_tokens=1500, temperature=0.3,
+                max_tokens=4096, temperature=0.3,
             )
             if raw2.strip():
                 m2 = re.search(r"\[[\s\S]*\]", raw2)
@@ -349,7 +349,7 @@ async def suggest_experiment_for_promise(
         "【当前已覆盖条件】...\n【还需要的条件】...\n【建议实验设计】..."
     )
     try:
-        result = await call_llm_chat(prompt, cloud_client, ollama_client, max_tokens=512, temperature=0.4)
+        result = await call_llm_chat(prompt, cloud_client, ollama_client, max_tokens=4096, temperature=0.4)
         return result or "（LLM 返回为空，请手动填写建议）"
     except Exception as exc:
         return f"（LLM 不可用：{exc}；请手动补充实验设计。）"

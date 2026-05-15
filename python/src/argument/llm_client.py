@@ -76,12 +76,29 @@ async def _direct_cloud_chat(
         payload = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens}
         url = f"{base_url}/chat/completions"
 
-    async with httpx.AsyncClient(timeout=timeout) as http:
-        resp = await http.post(url, headers=headers, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
+    async def _do_request(tokens: int) -> tuple[str, str, str]:
+        p = {**payload, "max_tokens": tokens}
+        async with httpx.AsyncClient(timeout=timeout) as http:
+            resp = await http.post(url, headers=headers, json=p)
+            resp.raise_for_status()
+            data = resp.json()
+        if api_format == "anthropic":
+            return data.get("content", [{}])[0].get("text", ""), "", ""
+        msg = data.get("choices", [{}])[0].get("message", {})
+        finish = data.get("choices", [{}])[0].get("finish_reason", "")
+        return msg.get("content", ""), msg.get("reasoning_content", ""), finish
 
-    if api_format == "anthropic":
-        return data.get("content", [{}])[0].get("text", "")
-    else:
-        return data.get("choices", [{}])[0].get("message", {}).get("content", "")
+    content, reasoning, finish = await _do_request(max_tokens)
+
+    # Reasoning models (e.g. deepseek-v4-pro) may exhaust max_tokens on
+    # chain-of-thought, leaving content empty. Retry with 4x tokens.
+    if not content and reasoning and finish == "length":
+        logger.warning(
+            "Model %s exhausted %d tokens on reasoning, retrying with %d",
+            model, max_tokens, max_tokens * 4,
+        )
+        content, _, _ = await _do_request(max(max_tokens * 4, 16384))
+
+    if not content and reasoning:
+        content = reasoning
+    return content
