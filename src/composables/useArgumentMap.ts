@@ -469,13 +469,16 @@ async function extractArgument(
 
   const gid = _state.graph.id
   try {
+    const abort = new AbortController()
     const res = await fetch(`${API_BASE}/api/argument/graph/${gid}/extract`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, source_label: sourcLabel, side }),
+      signal: abort.signal,
     })
     if (!res.body) return
 
+    let streamDone = false
     await readSseStream(res.body.getReader(), (eventType, data) => {
       if (!_state.graph) return
       if (eventType === 'node') {
@@ -484,8 +487,10 @@ async function extractArgument(
         _state.graph.edges.push(data as unknown as ArgEdge)
       } else if (eventType === 'span') {
         _state.graph.spans.push(data as unknown as SpanMapping)
+      } else if (eventType === 'complete' || eventType === 'error') {
+        streamDone = true
       }
-    })
+    }, abort.signal, () => streamDone)
 
     // Reload from server to confirm persisted state
     await loadGraph(gid)
