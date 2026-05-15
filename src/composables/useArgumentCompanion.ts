@@ -59,9 +59,12 @@ function findAnchor(anchors: Anchor[], id: string): Anchor | undefined {
 
 async function buildOrRebuildLedger(text: string): Promise<void> {
   if (!state.docId) {
-    // Auto-assign a docId if missing (e.g. fresh tab with no prior setDoc call)
     state.docId = `untitled-${crypto.randomUUID()}`
     state.docTitle = 'Untitled'
+  }
+  if (!text.trim()) {
+    console.warn('[companion] buildOrRebuildLedger skipped: empty text')
+    return
   }
   state.building = true
   try {
@@ -71,6 +74,8 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
       body: JSON.stringify({ doc_id: state.docId, doc_title: state.docTitle, text }),
     })
     if (!resp.ok || !resp.body) {
+      const errBody = resp.body ? '' : ' (no body)'
+      console.warn('[companion] build ledger failed:', resp.status, errBody)
       state.building = false
       return
     }
