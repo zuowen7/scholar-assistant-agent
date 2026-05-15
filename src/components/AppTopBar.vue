@@ -269,6 +269,54 @@
         <MessageSquare :size="15" :stroke-width="1.6" />
       </button>
 
+      <!-- Debug panel -->
+      <UiPopover ref="debugPopoverRef" :width="400" align="end" :offset="8" @open="onDebugOpen">
+        <template #trigger>
+          <button
+            class="topbar-icon-btn"
+            :class="{ active: debugPopoverOpen, 'has-errors': unreadErrorCount > 0 }"
+            title="调试面板"
+          >
+            <Terminal :size="15" :stroke-width="1.6" />
+            <span v-if="unreadErrorCount > 0" class="error-badge">{{ unreadErrorCount > 99 ? '99+' : unreadErrorCount }}</span>
+          </button>
+        </template>
+        <div class="debug-panel">
+          <div class="sp-header">
+            <span class="sp-title">调试面板</span>
+            <div style="display:flex;gap:6px;align-items:center">
+              <UiSegmented v-model="debugTab" :options="debugTabOptions" size="sm" />
+              <button class="dp-clear-btn" title="清空" @click="clearErrorLog()">清空</button>
+            </div>
+          </div>
+
+          <!-- 前端错误 tab -->
+          <div v-show="debugTab === 'frontend'" class="dp-log-list">
+            <div v-if="errorLog.length === 0" class="dp-empty">暂无错误记录</div>
+            <div v-for="entry in errorLog" :key="entry.id" class="dp-entry" :class="entry.level">
+              <span class="dp-ts">{{ entry.ts }}</span>
+              <span class="dp-badge" :class="entry.level">{{ entry.level === 'danger' ? 'ERR' : 'WARN' }}</span>
+              <span class="dp-msg">{{ entry.message }}</span>
+            </div>
+          </div>
+
+          <!-- 后端日志 tab -->
+          <div v-show="debugTab === 'backend'" class="dp-log-list">
+            <div v-if="backendLogLoading" class="dp-empty">加载中…</div>
+            <div v-else-if="backendLogError" class="dp-empty dp-error">{{ backendLogError }}</div>
+            <template v-else>
+              <div class="dp-log-path" :title="backendLogPath">
+                <span class="dp-path-label">日志文件：</span>
+                <span class="dp-path-value">{{ backendLogPath }}</span>
+                <button class="dp-open-btn" @click="openLogFolder">打开目录</button>
+              </div>
+              <div v-if="backendLogLines.length === 0" class="dp-empty">暂无日志</div>
+              <div v-for="(line, i) in backendLogLines" :key="i" class="dp-line">{{ line }}</div>
+            </template>
+          </div>
+        </div>
+      </UiPopover>
+
       <!-- Theme toggle -->
       <button
         class="topbar-icon-btn"
@@ -299,15 +347,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { argMapV2Enabled } from '../composables/useArgumentMap'
-import { Settings, Sun, Moon, Upload, Trash2, MessageSquare } from './ui/icons'
+import { errorLog, unreadErrorCount, clearErrorLog, markErrorsRead } from '../composables/useToast'
+import { Settings, Sun, Moon, Upload, Trash2, MessageSquare, Terminal } from './ui/icons'
 import UiSegmented from './ui/UiSegmented.vue'
 import UiButton from './ui/UiButton.vue'
 import UiPopover from './ui/UiPopover.vue'
 import UiInput from './ui/UiInput.vue'
 import UiSelect from './ui/UiSelect.vue'
 import UiSlider from './ui/UiSlider.vue'
+import { apiBase } from '../utils/api'
 import type { AppMode } from '../types'
 
 const props = defineProps<{
@@ -359,8 +409,57 @@ defineEmits<{
 
 const settingsPopoverRef = ref<InstanceType<typeof UiPopover> | null>(null)
 const statusPopoverRef = ref<InstanceType<typeof UiPopover> | null>(null)
+const debugPopoverRef = ref<InstanceType<typeof UiPopover> | null>(null)
 const settingsPopoverOpen = computed(() => settingsPopoverRef.value?.open ?? false)
+const debugPopoverOpen = computed(() => debugPopoverRef.value?.open ?? false)
 const settingsTab = ref<'engine' | 'display' | 'network' | 'background'>('engine')
+
+// ── Debug panel ────────────────────────────────────────────────────────────
+const debugTab = ref<'frontend' | 'backend'>('frontend')
+const debugTabOptions = [
+  { value: 'frontend', label: '前端错误' },
+  { value: 'backend', label: '后端日志' },
+]
+const backendLogLines = ref<string[]>([])
+const backendLogPath = ref('')
+const backendLogLoading = ref(false)
+const backendLogError = ref('')
+
+async function fetchBackendLogs() {
+  backendLogLoading.value = true
+  backendLogError.value = ''
+  try {
+    const res = await fetch(`${apiBase}/api/logs?n=100`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const data = await res.json()
+    backendLogLines.value = data.lines ?? []
+    backendLogPath.value = data.path ?? ''
+  } catch (e) {
+    backendLogError.value = e instanceof Error ? e.message : '获取日志失败'
+  } finally {
+    backendLogLoading.value = false
+  }
+}
+
+function onDebugOpen() {
+  markErrorsRead()
+  if (debugTab.value === 'backend') fetchBackendLogs()
+}
+
+watch(debugTab, (tab) => {
+  if (tab === 'backend' && debugPopoverOpen.value) fetchBackendLogs()
+})
+
+async function openLogFolder() {
+  if (!backendLogPath.value) return
+  try {
+    const { open } = await import('@tauri-apps/plugin-shell')
+    const dir = backendLogPath.value.replace(/[/\\][^/\\]+$/, '')
+    await open(dir)
+  } catch {
+    // Non-Tauri environment: silently ignore
+  }
+}
 
 const modeOptions = computed(() => [
   { value: 'translate' as AppMode, label: '翻译' },
@@ -684,4 +783,136 @@ const overallStatus = computed(() => {
   background: linear-gradient(to right, transparent, var(--c-surface-3) 20%, var(--c-surface-3) 80%, transparent);
 }
 :global([data-theme="light"]) .brand-name { color: var(--c-text-0); }
+
+/* ── Error badge on debug button ──────────────────────────── */
+.error-badge {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--c-danger);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  pointer-events: none;
+}
+.topbar-icon-btn.has-errors { color: var(--c-danger); }
+
+/* ── Debug panel ──────────────────────────────────────────── */
+.debug-panel { display: flex; flex-direction: column; gap: 0; }
+
+.dp-log-list {
+  max-height: 340px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+  scrollbar-width: thin;
+}
+
+.dp-empty {
+  padding: 20px 0;
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--c-text-3);
+}
+.dp-empty.dp-error { color: var(--c-danger); }
+
+.dp-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.dp-entry:hover { background: var(--c-surface-2); }
+.dp-entry.danger { border-left: 2px solid var(--c-danger); }
+.dp-entry.warn   { border-left: 2px solid var(--c-warn); }
+
+.dp-ts {
+  color: var(--c-text-3);
+  font-size: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding-top: 1px;
+}
+.dp-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.dp-badge.danger { background: color-mix(in srgb, var(--c-danger) 15%, transparent); color: var(--c-danger); }
+.dp-badge.warn   { background: color-mix(in srgb, var(--c-warn) 15%, transparent);   color: var(--c-warn); }
+
+.dp-msg {
+  color: var(--c-text-1);
+  word-break: break-all;
+  flex: 1;
+}
+
+.dp-clear-btn {
+  border: 1px solid var(--c-surface-3);
+  background: transparent;
+  color: var(--c-text-3);
+  font-size: var(--text-xs);
+  padding: 2px 8px;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+.dp-clear-btn:hover { background: var(--c-surface-2); color: var(--c-text-1); }
+
+.dp-log-path {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 6px;
+  font-size: 10px;
+  color: var(--c-text-3);
+  border-bottom: 1px solid var(--c-surface-3);
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+.dp-path-label { flex-shrink: 0; }
+.dp-path-value {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--c-text-2);
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+}
+.dp-open-btn {
+  border: 1px solid var(--c-surface-3);
+  background: transparent;
+  color: var(--c-text-3);
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.dp-open-btn:hover { background: var(--c-surface-2); color: var(--c-text-1); }
+
+.dp-line {
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  color: var(--c-text-2);
+  padding: 1px 6px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.6;
+}
+.dp-line:hover { background: var(--c-surface-2); }
 </style>

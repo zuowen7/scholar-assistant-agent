@@ -102,6 +102,9 @@ export {
   Paperclip,
   Mic,
 
+  // Debug
+  Terminal,
+
   // Toggle / panel
   PanelLeft,
   PanelRight,
