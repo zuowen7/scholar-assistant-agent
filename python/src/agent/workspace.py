@@ -8,6 +8,7 @@ WorkspaceEnv 作为 Agent 工具层的路径校验和权限网关：
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -58,19 +59,34 @@ class WorkspaceEnv:
         """将外部传入路径校验后映射到 root 内的绝对路径。
 
         Scope: AWA v2 file-editing tools (read_file, write_file, str_replace, etc.).
-        Enforces: path stays within allowed_dirs, no denied_globs, file size limit.
+        Enforces: path stays within allowed_dirs, no denied_globs, no symlink escapes.
         For translate/editor path validation see api_factory._validate_file_path().
         For command/tool risk classification see SecurityGate.classify().
 
         Raises:
-            WorkspaceViolation: 路径逃逸、命中 denied_globs、或文件过大时。
+            WorkspaceViolation: 路径逃逸、命中 denied_globs、symlink 逃逸时。
         """
         raw = Path(p)
         candidate = raw if raw.is_absolute() else (self.root / raw)
-        resolved = candidate.resolve()
+        resolved = candidate.resolve(strict=False)
 
         if not any(self._is_within(resolved, base) for base in self.allowed_dirs):
             raise WorkspaceViolation(f"path outside workspace: {p}")
+
+        # 逐级检查 symlink 是否逃出 allowed_dirs
+        cur = candidate
+        while True:
+            if cur.is_symlink():
+                try:
+                    link_target = Path(os.readlink(cur)).resolve()
+                except OSError:
+                    link_target = cur.resolve(strict=False)
+                if not any(self._is_within(link_target, base) for base in self.allowed_dirs):
+                    raise WorkspaceViolation(f"symlink escape detected: {cur} -> {link_target}")
+            parent = cur.parent
+            if parent == cur:
+                break
+            cur = parent
 
         for pat in self.denied_globs:
             if self._matches_glob(resolved, pat):
@@ -93,25 +109,23 @@ class WorkspaceEnv:
             return False
 
     def _matches_glob(self, resolved: Path, pattern: str) -> bool:
-        """检查路径是否匹配 denied glob 模式。"""
-        import fnmatch
+        """检查路径是否匹配 denied glob 模式（使用 PurePath.match）。"""
+        from pathlib import PurePosixPath
 
-        # 路径的相对形式（相对于 root）
         try:
-            rel = str(resolved.relative_to(self.root)).replace("\\", "/")
+            rel = resolved.relative_to(self.root)
         except ValueError:
             return False
 
-        # 同时匹配完整相对路径和文件名
-        if fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(resolved.name, pattern):
+        rel_posix = PurePosixPath(rel.as_posix())
+
+        # 直接用 pathlib match（支持 ** 通配符）
+        if rel_posix.match(pattern):
             return True
 
-        # 检查父目录是否匹配（如 .git/objects/**）
-        parts = rel.split("/")
-        for i in range(1, len(parts)):
-            prefix = "/".join(parts[:i])
-            if fnmatch.fnmatch(prefix + "/**", pattern):
-                return True
+        # 同时匹配纯文件名（e.g. ".env" 匹配任意深度的 .env 文件）
+        if PurePosixPath(resolved.name).match(pattern):
+            return True
 
         return False
 

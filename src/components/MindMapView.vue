@@ -374,6 +374,8 @@ onBeforeUnmount(() => {
   canvasResizeObserver?.disconnect()
   window.removeEventListener('resize', handleWindowResize)
   window.removeEventListener('keydown', onKeydown)
+  _paneResizeCleanup?.()
+  _paneResizeCleanup = null
 })
 
 function applyInspectorText() {
@@ -462,6 +464,8 @@ function clampPaneSizes() {
   clampMiniMapPosition()
 }
 
+let _paneResizeCleanup: (() => void) | null = null
+
 function startPaneResize(event: PointerEvent, target: PaneResizeTarget) {
   event.preventDefault()
   const startX = event.clientX
@@ -486,11 +490,13 @@ function startPaneResize(event: PointerEvent, target: PaneResizeTarget) {
     window.removeEventListener('pointermove', move)
     window.removeEventListener('pointerup', up)
     window.removeEventListener('pointercancel', up)
+    _paneResizeCleanup = null
   }
 
   window.addEventListener('pointermove', move)
   window.addEventListener('pointerup', up)
   window.addEventListener('pointercancel', up)
+  _paneResizeCleanup = up
 }
 
 function clampToolbarPosition() {

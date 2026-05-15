@@ -1,110 +1,37 @@
 <template>
   <div class="argument-map">
-    <div class="arg-toolbar">
-      <input
-        v-model="newTopic"
-        class="arg-input"
-        placeholder="论证主题"
-        @keydown.enter="createTree"
+    <ArgumentMapToolbar
+      :tree="tree"
+      :loading="loading"
+      :selected-node-id="selectedNodeId"
+      v-model="newTopic"
+      :flatten-opts="flattenOpts"
+      :flatten-progress="flattenProgress"
+      :message="message"
+      @create="createTree"
+      @expand="expandSelected"
+      @review="reviewSelected"
+      @flatten="flattenTree"
+      @update:flatten-opts="onFlattenOptsUpdate"
+    />
+
+    <template v-if="tree">
+      <ArgumentMapCanvas
+        :ordered-nodes="orderedNodes"
+        :selected-node-id="selectedNodeId"
+        @select="selectNode"
       />
-      <button class="arg-btn primary" :disabled="loading || !newTopic.trim()" @click="createTree">新建</button>
-    </div>
 
-    <div v-if="message" class="arg-message">{{ message }}</div>
-
-    <div v-if="!tree" class="arg-empty">
-      新建一个论证图，把想法逐步展开成论文结构。
-    </div>
-
-    <template v-else>
-      <div class="arg-actions">
-        <button class="arg-btn" :disabled="loading || !selectedNodeId" @click="expandSelected">AI 展开</button>
-        <button class="arg-btn" :disabled="loading || !selectedNodeId" @click="reviewSelected">逻辑审查</button>
-        <button class="arg-btn" :disabled="loading" @click="flattenTree">生成草稿</button>
-      </div>
-
-      <!-- 导出选项 -->
-      <div class="arg-export-opts">
-        <label class="arg-label-inline">
-          格式
-          <select v-model="flattenOpts.template" class="arg-select">
-            <option value="markdown">Markdown</option>
-            <option value="latex">LaTeX (.tex)</option>
-            <option value="docx">Word (.docx)</option>
-          </select>
-        </label>
-        <label v-if="flattenOpts.template === 'latex'" class="arg-label-inline">
-          模板
-          <select v-model="flattenOpts.latex_template" class="arg-select">
-            <option value="generic_article">Generic</option>
-            <option value="ieee_conference">IEEE Conference</option>
-            <option value="ieee_journal">IEEE Journal</option>
-            <option value="acm">ACM</option>
-            <option value="neurips">NeurIPS</option>
-            <option value="lncs">LNCS (Springer)</option>
-          </select>
-        </label>
-        <label class="arg-label-inline">
-          <input type="checkbox" v-model="flattenOpts.include_references" />
-          含参考文献
-        </label>
-      </div>
-
-      <!-- SSE 进度条 -->
-      <div v-if="flattenProgress.active" class="arg-progress">
-        <div class="arg-progress-bar">
-          <div class="arg-progress-fill" :style="{ width: flattenProgress.pct + '%' }"></div>
-        </div>
-        <span class="arg-progress-text">{{ flattenProgress.text }}</span>
-      </div>
-
-      <div class="arg-canvas">
-        <button
-          v-for="node in orderedNodes"
-          :key="node.id"
-          type="button"
-          class="arg-node"
-          :class="[node.logic_status, { selected: node.id === selectedNodeId, bound: node.references.length > 0 }]"
-          :style="{ marginLeft: `${node.depth * 18}px` }"
-          @click="selectNode(node.id)"
-        >
-          <span class="arg-node-title">{{ node.topic }}</span>
-          <span class="arg-node-meta">
-            {{ node.status }}
-            <template v-if="node.references.length"> · {{ node.references.length }} 条引用</template>
-          </span>
-        </button>
-      </div>
-
-      <div v-if="selectedNode" class="arg-detail">
-        <label class="arg-label">
-          主题
-          <input v-model="selectedDraft.topic" class="arg-input" />
-        </label>
-        <label class="arg-label">
-          内容
-          <textarea v-model="selectedDraft.content" class="arg-textarea" rows="4"></textarea>
-        </label>
-        <div class="arg-detail-actions">
-          <button class="arg-btn primary" :disabled="loading" @click="saveSelected">保存节点</button>
-          <button class="arg-btn" :disabled="loading" @click="observeSelected">查找引用</button>
-        </div>
-        <div v-if="selectedNode.agent_feedback" class="arg-feedback">
-          {{ selectedNode.agent_feedback }}
-        </div>
-      </div>
-
-      <div v-if="recommendations.length" class="arg-recs">
-        <div class="arg-section-title">推荐参考文献</div>
-        <div v-for="rec in recommendations" :key="rec.doc_id" class="arg-rec">
-          <div>
-            <strong>{{ rec.title || rec.doc_id }}</strong>
-            <span>{{ Math.round(rec.relevance_score * 100) }}%</span>
-          </div>
-          <p>{{ rec.excerpt }}</p>
-          <button class="arg-btn tiny" @click="bindReference(rec)">绑定</button>
-        </div>
-      </div>
+      <ArgumentMapNodeEditor
+        :selected-node="selectedNode"
+        :selected-draft="selectedDraft"
+        :loading="loading"
+        :recommendations="recommendations"
+        @save="saveSelected"
+        @observe="observeSelected"
+        @bind="bindReference"
+        @update:selected-draft="onSelectedDraftUpdate"
+      />
     </template>
   </div>
 </template>
@@ -113,6 +40,9 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { API_BASE } from '../utils/api'
 import { readSseStream } from '../utils/streamReader'
+import ArgumentMapToolbar from './ArgumentMapToolbar.vue'
+import ArgumentMapCanvas from './ArgumentMapCanvas.vue'
+import ArgumentMapNodeEditor from './ArgumentMapNodeEditor.vue'
 
 interface ArgumentReference {
   doc_id: string
@@ -188,6 +118,17 @@ const orderedNodes = computed(() => {
   visit(tree.value.root_id)
   return output
 })
+
+function onFlattenOptsUpdate(val: { template: string; latex_template: string; include_references: boolean }) {
+  flattenOpts.template = val.template as 'markdown' | 'latex' | 'docx'
+  flattenOpts.latex_template = val.latex_template
+  flattenOpts.include_references = val.include_references
+}
+
+function onSelectedDraftUpdate(val: { topic: string; content: string }) {
+  selectedDraft.topic = val.topic
+  selectedDraft.content = val.content
+}
 
 function setMessage(text: string) {
   message.value = text
@@ -407,19 +348,21 @@ onMounted(loadTree)
   padding: 14px;
   overflow: hidden;
 }
-.arg-toolbar,
-.arg-actions,
-.arg-detail-actions {
+
+/* ── ArgumentMapToolbar :deep() ── */
+.argument-map :deep(.arg-toolbar),
+.argument-map :deep(.arg-actions),
+.argument-map :deep(.arg-detail-actions) {
   display: flex;
   gap: 8px;
 }
-.arg-export-opts {
+.argument-map :deep(.arg-export-opts) {
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
 }
-.arg-label-inline {
+.argument-map :deep(.arg-label-inline) {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -427,7 +370,7 @@ onMounted(loadTree)
   font-size: 11px;
   cursor: pointer;
 }
-.arg-select {
+.argument-map :deep(.arg-select) {
   border: 1px solid var(--c-surface-3);
   border-radius: 6px;
   background: var(--c-surface-2);
@@ -438,32 +381,32 @@ onMounted(loadTree)
   outline: none;
   cursor: pointer;
 }
-.arg-progress {
+.argument-map :deep(.arg-progress) {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.arg-progress-bar {
+.argument-map :deep(.arg-progress-bar) {
   flex: 1;
   height: 6px;
   border-radius: 3px;
   background: var(--c-surface-3);
   overflow: hidden;
 }
-.arg-progress-fill {
+.argument-map :deep(.arg-progress-fill) {
   height: 100%;
   border-radius: 3px;
   background: var(--c-accent);
   transition: width 0.3s ease;
 }
-.arg-progress-text {
+.argument-map :deep(.arg-progress-text) {
   font-size: 11px;
   color: var(--c-text-2);
   white-space: nowrap;
   min-width: 100px;
 }
-.arg-input,
-.arg-textarea {
+.argument-map :deep(.arg-input),
+.argument-map :deep(.arg-textarea) {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid var(--c-surface-3);
@@ -475,11 +418,11 @@ onMounted(loadTree)
   font-size: 12px;
   outline: none;
 }
-.arg-textarea {
+.argument-map :deep(.arg-textarea) {
   resize: vertical;
   min-height: 80px;
 }
-.arg-btn {
+.argument-map :deep(.arg-btn) {
   border: 1px solid var(--c-surface-3);
   border-radius: 7px;
   background: var(--c-surface-2);
@@ -490,28 +433,30 @@ onMounted(loadTree)
   cursor: pointer;
   white-space: nowrap;
 }
-.arg-btn.primary {
+.argument-map :deep(.arg-btn.primary) {
   border-color: var(--c-accent);
   background: var(--c-accent);
   color: #fff;
 }
-.arg-btn:disabled {
+.argument-map :deep(.arg-btn:disabled) {
   opacity: 0.5;
   cursor: not-allowed;
 }
-.arg-btn.tiny {
+.argument-map :deep(.arg-btn.tiny) {
   padding: 4px 8px;
 }
-.arg-empty,
-.arg-message {
+.argument-map :deep(.arg-empty),
+.argument-map :deep(.arg-message) {
   color: var(--c-text-2);
   font-size: 12px;
   line-height: 1.5;
 }
-.arg-message {
+.argument-map :deep(.arg-message) {
   color: var(--c-accent);
 }
-.arg-canvas {
+
+/* ── ArgumentMapCanvas :deep() ── */
+.argument-map :deep(.arg-canvas) {
   flex: 1;
   min-height: 160px;
   overflow-y: auto;
@@ -520,7 +465,7 @@ onMounted(loadTree)
   padding: 10px;
   background: var(--c-surface-1);
 }
-.arg-node {
+.argument-map :deep(.arg-node) {
   width: calc(100% - 4px);
   display: flex;
   flex-direction: column;
@@ -535,45 +480,47 @@ onMounted(loadTree)
   text-align: left;
   cursor: pointer;
 }
-.arg-node.selected {
+.argument-map :deep(.arg-node.selected) {
   border-color: var(--c-accent);
 }
-.arg-node.warning {
+.argument-map :deep(.arg-node.warning) {
   border-left-color: #eab308;
 }
-.arg-node.error {
+.argument-map :deep(.arg-node.error) {
   border-left-color: #ef4444;
 }
-.arg-node.pass {
+.argument-map :deep(.arg-node.pass) {
   border-left-color: #22c55e;
 }
-.arg-node.bound {
+.argument-map :deep(.arg-node.bound) {
   box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.35);
 }
-.arg-node-title {
+.argument-map :deep(.arg-node-title) {
   font-size: 13px;
   font-weight: 650;
 }
-.arg-node-meta {
+.argument-map :deep(.arg-node-meta) {
   color: var(--c-text-2);
   font-size: 11px;
 }
-.arg-detail,
-.arg-recs {
+
+/* ── ArgumentMapNodeEditor :deep() ── */
+.argument-map :deep(.arg-detail),
+.argument-map :deep(.arg-recs) {
   display: flex;
   flex-direction: column;
   gap: 8px;
   border-top: 1px solid var(--c-surface-3);
   padding-top: 10px;
 }
-.arg-label {
+.argument-map :deep(.arg-label) {
   display: flex;
   flex-direction: column;
   gap: 5px;
   color: var(--c-text-2);
   font-size: 11px;
 }
-.arg-feedback {
+.argument-map :deep(.arg-feedback) {
   padding: 8px 10px;
   border-radius: 7px;
   background: rgba(234, 179, 8, 0.12);
@@ -581,25 +528,25 @@ onMounted(loadTree)
   font-size: 12px;
   line-height: 1.5;
 }
-.arg-section-title {
+.argument-map :deep(.arg-section-title) {
   color: var(--c-text-2);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
-.arg-rec {
+.argument-map :deep(.arg-rec) {
   padding: 8px;
   border: 1px solid var(--c-surface-3);
   border-radius: 7px;
   background: var(--c-surface-2);
 }
-.arg-rec div {
+.argument-map :deep(.arg-rec div) {
   display: flex;
   justify-content: space-between;
   gap: 8px;
   font-size: 12px;
 }
-.arg-rec p {
+.argument-map :deep(.arg-rec p) {
   margin: 5px 0 8px;
   color: var(--c-text-2);
   font-size: 11px;

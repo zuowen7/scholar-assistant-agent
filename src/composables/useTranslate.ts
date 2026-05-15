@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { save } from '@tauri-apps/plugin-dialog'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { API_BASE } from '../utils/api'
+import { logger } from '../utils/logger'
 import { readSseStream } from '../utils/streamReader'
 import { persistTranslation, loadLastTranslation, clearPersistedTranslation } from './useTranslatePersist'
 import { toastFromError } from './useToast'
@@ -318,7 +319,7 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       break
     }
     case 'translate.chunk_error':
-      console.warn(`Translation chunk ${(data as Record<string, unknown>).index}/${(data as Record<string, unknown>).total} failed:`, (data as Record<string, unknown>).error)
+      logger.warn(`Translation chunk ${(data as Record<string, unknown>).index}/${(data as Record<string, unknown>).total} failed`, { error: (data as Record<string, unknown>).error })
       break
     case 'translate.complete':
       state.finalContent = (data.content as string) ?? ''
@@ -642,6 +643,7 @@ function listenBackendCrash(): void {
   }).then(fn => { crashListener = fn }).catch(() => {})
 }
 
+/** Translation pipeline composable (singleton). Manages the 5-step SSE pipeline (parse→clean→chunk→translate→format) with auto-reconnect, retry, and export. */
 export function useTranslate() {
   return {
     state: readonly(state),

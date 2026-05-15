@@ -36,6 +36,7 @@ export default defineConfig({
     exclude: ['@tauri-apps/api'],
   },
   build: {
+    sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks: {

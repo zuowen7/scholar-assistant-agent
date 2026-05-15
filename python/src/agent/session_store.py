@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -53,9 +54,10 @@ class SessionStore:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn.execute("PRAGMA synchronous=FULL")
         self._conn.executescript(_SCHEMA)
         self._conn.row_factory = sqlite3.Row
+        self._write_lock = threading.RLock()
         logger.info("SessionStore initialized at %s", self.db_path)
 
     def save(self, session_data: dict[str, Any]) -> None:
@@ -82,24 +84,25 @@ class SessionStore:
             "query": session_data.get("query", ""),
         }
 
-        self._conn.execute(
-            """INSERT INTO sessions (id, state, config_json, messages, task_queue,
-               global_step, workspace_root, created_at, updated_at, query)
-               VALUES (:id, :state, :config_json, :messages, :task_queue,
-               :global_step, :workspace_root, :created_at, :updated_at, :query)
-               ON CONFLICT(id) DO UPDATE SET
-                 state=excluded.state,
-                 config_json=excluded.config_json,
-                 messages=excluded.messages,
-                 task_queue=excluded.task_queue,
-                 global_step=excluded.global_step,
-                 workspace_root=excluded.workspace_root,
-                 updated_at=excluded.updated_at,
-                 query=excluded.query
-            """,
-            row,
-        )
-        self._conn.commit()
+        with self._write_lock:
+            self._conn.execute(
+                """INSERT INTO sessions (id, state, config_json, messages, task_queue,
+                   global_step, workspace_root, created_at, updated_at, query)
+                   VALUES (:id, :state, :config_json, :messages, :task_queue,
+                   :global_step, :workspace_root, :created_at, :updated_at, :query)
+                   ON CONFLICT(id) DO UPDATE SET
+                     state=excluded.state,
+                     config_json=excluded.config_json,
+                     messages=excluded.messages,
+                     task_queue=excluded.task_queue,
+                     global_step=excluded.global_step,
+                     workspace_root=excluded.workspace_root,
+                     updated_at=excluded.updated_at,
+                     query=excluded.query
+                """,
+                row,
+            )
+            self._conn.commit()
 
     def load(self, session_id: str) -> dict[str, Any] | None:
         """Load a session by id.
@@ -178,9 +181,10 @@ class SessionStore:
         Returns:
             True if a row was deleted.
         """
-        cur = self._conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
-        self._conn.commit()
-        return cur.rowcount > 0
+        with self._write_lock:
+            cur = self._conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+            self._conn.commit()
+            return cur.rowcount > 0
 
     def _load_task_queue(self, session_id: str) -> list[dict]:
         """Load task queue for a session from the main row."""
@@ -193,7 +197,14 @@ class SessionStore:
         return json.loads(row["task_queue"])
 
     def close(self) -> None:
-        self._conn.close()
+        with self._write_lock:
+            self._conn.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
 
     @staticmethod
     def _serialize_message(m) -> dict:

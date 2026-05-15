@@ -4,7 +4,7 @@
  *
  * Pure: no side effects, no imports from singleton composables. Easy to unit test.
  */
-import type { Ledger, ReviewSession, Anchor, Promise, ReviewPoint } from '../types'
+import type { Ledger, ReviewSession, Anchor } from '../types'
 
 type MonacoNS = typeof import('monaco-editor')
 type ITextModel = import('monaco-editor').editor.ITextModel

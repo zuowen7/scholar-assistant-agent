@@ -34,6 +34,7 @@ function _signalFor(key: string): AbortSignal {
   return ctrl.signal
 }
 
+/** Send an AI edit instruction for the current selection; streams result back to the editor. */
 export async function aiEdit(
   instruction: string,
   text?: string,
@@ -244,6 +245,7 @@ async function requestCompletion() {
   } catch { clearGhostText() } finally { _abortMap.delete('completion') }
 }
 
+/** Request inline ghost-text completion at the current cursor position. */
 export function triggerCompletion() {
   if (completionTimer) clearTimeout(completionTimer)
   completionTimer = setTimeout(requestCompletion, 1500)

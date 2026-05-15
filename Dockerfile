@@ -15,6 +15,9 @@ FROM python:3.12.10-slim
 
 LABEL maintainer="zuowen"
 LABEL description="Scholar Assistant - 学术文献智能翻译工具"
+LABEL org.opencontainers.image.source="https://github.com/zuowen7/scholar-assistant"
+LABEL org.opencontainers.image.version="0.3.1"
+LABEL org.opencontainers.image.revision=""
 
 # 创建非 root 用户
 RUN groupadd -r appuser && useradd -r -g appuser -m appuser
