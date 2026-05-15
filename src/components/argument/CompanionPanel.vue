@@ -16,6 +16,13 @@
       >
         Reviewer 2
       </button>
+      <button
+        class="sub-tab"
+        :class="{ active: activeSubTab === 'graph' }"
+        @click="activeSubTab = 'graph'"
+      >
+        论证图
+      </button>
     </div>
 
     <!-- Staleness banner -->
@@ -41,6 +48,11 @@
         </div>
         <pre class="suggestion-body">{{ experimentSuggestion }}</pre>
       </div>
+    </div>
+
+    <!-- Toulmin graph sub-page -->
+    <div v-else-if="activeSubTab === 'graph'" class="sub-page">
+      <ArgumentMapMini />
     </div>
 
     <!-- Reviewer 2 sub-page (Phase 3) -->
@@ -133,9 +145,10 @@ import { ref } from 'vue'
 import { useArgumentCompanion } from '../../composables/useArgumentCompanion'
 import LedgerList from './LedgerList.vue'
 import ReviewerThread from './ReviewerThread.vue'
+import ArgumentMapMini from './ArgumentMapMini.vue'
 
 const companion = useArgumentCompanion()
-const activeSubTab = ref<'ledger' | 'reviewer'>('ledger')
+const activeSubTab = ref<'ledger' | 'reviewer' | 'graph'>('ledger')
 const venue = ref<string>('')
 const persona = ref<string>('reviewer2')
 const importText = ref<string>('')
