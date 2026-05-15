@@ -16,36 +16,48 @@
       <p>尚无论证图</p>
       <button
         class="arg-mini-extract-btn"
-        :disabled="!hasContent"
+        :disabled="!hasContent || state.extracting"
+        :title="hasContent ? '从当前编辑器内容提取 Toulmin 论证结构' : '请先在编辑器中打开文档'"
         @click="doExtract"
       >
-        从论文提取论证图
+        {{ state.extracting ? '提取中…' : '从论文提取论证图' }}
       </button>
+      <p v-if="!hasContent" class="arg-mini-hint">请先在编辑器中打开文档</p>
+      <p v-if="extractError" class="arg-mini-error">{{ extractError }}</p>
       <button class="arg-mini-open" @click="openFull">前往论证地图</button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useArgumentMap, requestOpenFullArgMap } from '../../composables/useArgumentMap'
+import { computed, ref } from 'vue'
+import { useArgumentMap, requestOpenFullArgMap, loadSourceFromEditor } from '../../composables/useArgumentMap'
 import ArgumentMapCanvas from './ArgumentMapCanvas.vue'
 
 const props = defineProps<{ content?: string }>()
 
 const { state, createGraph, extractArgument } = useArgumentMap()
 
+const extractError = ref('')
+
 const hasContent = computed(() => !!(props.content?.trim()))
 
 async function doExtract() {
   if (!props.content?.trim()) return
+  extractError.value = ''
   try {
     await createGraph('论证图', undefined)
     await extractArgument(props.content)
-  } catch { /* ignore */ }
+  } catch (e) {
+    extractError.value = e instanceof Error ? e.message : '提取失败，请检查后端连接'
+  }
 }
 
-function openFull() { requestOpenFullArgMap() }
+function openFull() {
+  // Pre-load editor content so the extract button is immediately usable in full view
+  if (props.content?.trim()) loadSourceFromEditor()
+  requestOpenFullArgMap()
+}
 </script>
 
 <style scoped>
@@ -123,5 +135,20 @@ function openFull() { requestOpenFullArgMap() }
   gap: 10px;
   color: var(--c-text-2);
   font-size: 13px;
+}
+
+.arg-mini-hint {
+  font-size: 11px;
+  color: var(--c-text-2);
+  margin: 0;
+  font-style: italic;
+}
+
+.arg-mini-error {
+  font-size: 11px;
+  color: var(--c-danger);
+  margin: 0;
+  text-align: center;
+  max-width: 200px;
 }
 </style>
