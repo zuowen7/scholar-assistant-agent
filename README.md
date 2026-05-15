@@ -30,13 +30,13 @@
 - **AI 润色 / 扩写 / 连贯性改写 / 合规检查** — 通过 AI Panel 对选中文本操作
 - **Inline Ghost Text** — Monaco Editor 打字后 1.5s 自动请求补全建议，Tab 接受 ghost 文本
 
-### 动态逻辑引擎 (Dynamic Argument Mapping)
-- **论证树** — 创建/编辑/删除论证节点，构建层次化论证结构
-- **AI 扩展** — 基于节点内容自动生成子论点
-- **证据绑定** — 将 RAG 知识库文档绑定到节点作为文献依据
-- **逻辑审查** — AI 检测论证链中的逻辑跳跃和不自洽
-- **降维展开** — 将论证树自动展开为结构化论文初稿（SSE 流式）
-- **观测反馈** — 对节点添加观测记录和评审意见
+### 动态逻辑引擎 (Dynamic Argument Mapping v2)
+- **Toulmin 论证图** — 节点（主张/依据/论证保证/支撑/限定/反驳）+ 关系（支持/保证/支撑/限定/反驳/回应），Vue Flow 画布可视化
+- **AI 自动提取** — 从原文 SSE 流式提取 Toulmin 结构，claim/grounds/warrant/backing/rebuttal 自动识别
+- **批判审查** — AI 检测论证图中的结构问题和逻辑漏洞
+- **AI 建议** — 对选中节点建议下一个 Toulmin 元素（如为 claim 建议 grounds）
+- **手动编辑** — 创建/编辑节点和关系，拖拽调整布局，原文面板逐句绑定
+- **导出草稿** — Toulmin 图降维展开为结构化 Markdown/LaTeX 论文初稿（SSE 流式）
 
 ### 编辑器
 - **Monaco Editor** — 全功能代码编辑器，支持 Markdown 语法高亮
@@ -89,7 +89,10 @@
 │   │   ├── useMindMap.ts         #   思维导图数据 + undo/redo（单例）
 │   │   ├── useMindMapKeyboard.ts #   思维导图键盘快捷键
 │   │   ├── useMindMapLayout.ts   #   dagre 自动布局
-│   │   └── useMindMapAnalysis.ts #   AI 分析集成
+│   │   ├── useMindMapAnalysis.ts #   AI 分析集成
+│   │   ├── useArgumentMap.ts     #   Toulmin v2 论证图状态（单例，SSE 提取/审查/建议）
+│   │   ├── useArgumentCompanion.ts # 论证陪练账本状态（单例，SSE 构建/重建）
+│   │   └── useArgumentLayout.ts  #   Toulmin dagre 布局（动态节点+关系分层）
 │   ├── components/
 │   │   ├── AppTopBar.vue         #   顶栏（品牌/模式切换/引擎设置/窗口控制）
 │   │   ├── TranslateView.vue     #   翻译模式（上传/进度/结果三视图）
@@ -131,7 +134,7 @@
 │   │   │   ├── hooks.py          #     错误/重试 Hook
 │   │   │   ├── tools/            #     工具集 (core/atomic/builtin/workspace/registry)
 │   │   │   └── ...               #     mcp_server, rag, review_agent, trajectory, etc.
-│   │   ├── argument/             #   动态逻辑引擎 v2 + 论证陪练 v3 (anchor/ledger/reviewer/companion_store)
+│   │   ├── argument/             #   论证地图 v2 + 论证陪练 v3 (llm_client, ai_ops, ledger, reviewer, anchor, companion_store, graph_store)
 │   │   ├── plugin/               #   MCP 风格插件注册
 │   │   ├── citation/             #   引用索引器
 │   │   ├── zotero/               #   Zotero API 集成
@@ -278,23 +281,23 @@ MSYS_NO_PATHCONV=1 docker run --rm \
 | `POST` | `/api/rag/ingest` | 向 RAG 存入文本 |
 | `DELETE` | `/api/rag/documents/{doc_id}` | 删除 RAG 文档 |
 
-### 动态逻辑引擎
+### 动态逻辑引擎 (v2)
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `POST` | `/api/argument/tree` | 创建论证树 |
-| `GET` | `/api/argument/tree` | 获取论证树 |
-| `PUT` | `/api/argument/node` | 创建/更新节点 |
-| `GET` | `/api/argument/node/{id}` | 获取节点详情 |
-| `DELETE` | `/api/argument/node/{id}` | 删除节点 |
-| `POST` | `/api/argument/expand` | AI 扩展子论点 |
-| `POST` | `/api/argument/observe` | 添加观测记录 |
-| `POST` | `/api/argument/bind` | 绑定文献到节点 |
-| `DELETE` | `/api/argument/bind/{node_id}/{doc_id}` | 解绑文献 |
-| `GET` | `/api/argument/recommendations/{node_id}` | 推荐相关文献 |
-| `POST` | `/api/argument/review` | AI 逻辑审查 |
-| `POST` | `/api/argument/flatten` | 降维展开为论文 |
-| `GET` | `/api/argument/flatten/{task_id}/stream` | SSE 展开进度 |
-| `GET` | `/api/argument/download/{task_id}` | 下载展开结果 |
+| `POST` | `/api/argument/graph` | 创建论证图 |
+| `GET` | `/api/argument/graph/{gid}` | 获取论证图 |
+| `GET` | `/api/argument/graphs` | 列出所有论证图 |
+| `DELETE` | `/api/argument/graph/{gid}` | 删除论证图 |
+| `PUT` | `/api/argument/graph/{gid}/node` | 创建/更新节点 |
+| `DELETE` | `/api/argument/graph/{gid}/node/{nid}` | 删除节点 |
+| `PUT` | `/api/argument/graph/{gid}/edge` | 创建/更新关系 |
+| `DELETE` | `/api/argument/graph/{gid}/edge/{eid}` | 删除关系 |
+| `PUT` | `/api/argument/graph/{gid}/span` | 创建原文绑定 |
+| `DELETE` | `/api/argument/graph/{gid}/span/{sid}` | 删除原文绑定 |
+| `POST` | `/api/argument/graph/{gid}/extract` | SSE 提取 Toulmin 论证图 |
+| `POST` | `/api/argument/graph/{gid}/critique` | AI 批判审查 |
+| `POST` | `/api/argument/graph/{gid}/suggest` | AI 建议下一个元素 |
+| `POST` | `/api/argument/graph/{gid}/flatten` | SSE 降维展开为论文草稿 |
 
 ### 论文写作
 | 方法 | 路径 | 说明 |

@@ -74,7 +74,7 @@ SSE events stream tool calls and reasoning steps. Agent can use RAG, Zotero, arX
 - `routers/translate.py` — translation pipeline, config CRUD, health, Ollama/cloud status, export endpoints (bilingual/translation-only Word), retry failed blocks
 - `routers/agent.py` — Agent chat, RAG document management
 - `routers/editor.py` — AI edit, complete, export (LaTeX/PDF/Word), vision, citation, Zotero, paper scaffolding
-- `routers/argument.py` — Dynamic Argument Mapping (tree CRUD, expand, review, flatten)
+- `routers/argument.py` — Argument Map v2 graph CRUD (node/edge/span) + Toulmin extraction SSE + critique + suggest + flatten/export + Companion v3 (ledger SSE, reviewer, rebuttal, import reviews)
 - `routers/mindmap.py` — Mind map CRUD, AI expand, layout
 
 `api.py` — entry point used by Tauri and standalone. Uses **delayed imports** for optional subsystems (Agent, Plugin): they set `_AGENT_AVAILABLE = False` on ImportError, so translation works without them.
@@ -87,7 +87,7 @@ Key backend modules under `src/`:
 - `formatter/` — bilingual/translated-only/parallel output + `renderer.py` (PDF/LaTeX) + `word_exporter.py`
 - `agent/` — Core: `agent.py` (AgentLoop ReAct engine), `session.py` (session management, checkpoint/resume/approval), `session_store.py` (JSON persistence), `context_compressor.py`, `prompt_builder.py`, `models.py`. LLM clients: `llm_client.py` (unified interface) + per-backend mixins `_llm_anthropic.py`, `_llm_ollama.py`, `_llm_openai.py`, `_llm_helpers.py`. Memory+Evolution: `memory.py`, `skill_system.py` + sub-modules `_skill_auto.py`, `_skill_matching.py`, `_skill_model.py`, `_skill_persistence.py`, `trajectory.py`, `review_agent.py`. Tools+Resources: `tools/` (core, workspace_tools, atomic_tools, builtin_tools, registry), `rag.py`, `vram_manager.py`. Special elements (split from monolith): `_elements_parser.py`, `_elements_tools.py`, `_elements_types.py`, `_elements_vision.py`. Reliability: `error_classifier.py`, `hooks.py`, `security_gate.py`. Integration: `mcp_server.py`, `auto_processor.py`. Workspace: `workspace.py`, `bash_session.py`, `change_journal.py`, `task_queue.py`.
 - `plugin/` — MCP-style plugin registry (`registry.py`, `loader.py`, `builtin.py`)
-- `argument/` — Dynamic Argument Mapping: tree store, logic checker, expander, observer, feedback generator, flattener
+- `argument/` — Argument Map v2 + Companion v3: `llm_client.py` (cloud/Ollama with reasoning-model auto-retry), `ai_ops.py` (Toulmin extraction SSE + element suggestion), `ledger.py` (promise ledger SSE), `reviewer.py` (Reviewer-2 adversarial review + rebuttal), `anchor.py` (3-state fuzzy relocation), `companion_store.py`, `graph_store.py`, `models_v2.py`
 - `citation/`, `zotero/`, `mcp/vision_client.py` — citation indexer, Zotero API client, multi-modal image analysis
 - `prompts/` — Academic writing prompt templates (polish, expand, etc.)
 - `config/default.yaml` — All runtime configuration
@@ -105,6 +105,9 @@ Key backend modules under `src/`:
   - `useMindMapKeyboard.ts` — keyboard handler (Tab/Enter/F2/arrows/Ctrl+Z)
   - `useMindMapLayout.ts` — dagre auto-layout
   - `useMindMapAnalysis.ts` — AI analysis integration
+  - `useArgumentMap.ts` — singleton; Toulmin v2 graph state (CRUD, undo/redo, flow adapters, SSE extraction, critique, suggest); spans `focusNode`/`focusSpan` for source-pane highlighting
+  - `useArgumentCompanion.ts` — singleton; companion state (docId auto-assign, ledger build/rebuild SSE)
+  - `useArgumentLayout.ts` — dagre auto-layout with dynamic node sizing and relation-aware edge minlen (Toulmin hierarchy)
 - `components/` — extracted from the former monolithic App.vue:
   - `AppTopBar.vue` — brand, mode switch, engine/display settings panels, health pills, window controls
   - `TranslateView.vue` — upload drop card, progress/step indicators, result views (sentence/parallel/markdown), sentence splitting, markdown rendering
@@ -145,7 +148,7 @@ Three config files serve distinct roles — do not confuse them:
 | `python/config/default.local.yaml` | User overrides merged on top of `default.yaml`. Created by the UI's Settings panel or manually. | No (gitignored) |
 ### Subsystem Maturity Matrix
 
-Use this as the canonical "what works / what's polished / what's a stub" map. Updated 2026-05-12.
+Use this as the canonical "what works / what's polished / what's a stub" map. Updated 2026-05-15.
 
 | # | Subsystem | Grade | Key evidence |
 |---|-----------|-------|--------------|
@@ -200,3 +203,14 @@ python -m venv /tmp/test && /tmp/test/Scripts/pip install -r requirements-lock.t
 5 个 Phase（Phase 0–5）全部完成。功能包括：论证账本（承诺 ↔ 兑付，三态锚定）、Reviewer‑2 对抗（会议校准评审 + rebuttal mini-chat，reviewer 会被说服）、质疑这句/一致性/gap/RW 检查、真实评审导入（import_real_reviews）、实验缺口建议（suggest_experiment）、rebuttal 包导出（/download）。Toulmin v2 图（ArgGraph/Vue Flow）保留并复用为"审稿模式"可视化（ArgSourcePane 已有"从编辑器载入"入口）。features.argument_companion=true（已发布）。E2E 集成测试：`python/tests/integration/test_companion_e2e.py` 27 个测试覆盖全部 `/api/companion/*` 端点（pytest 1550 passed）。
 
 论证地图 v2（见 docs/argument-map-v2-spec.md）：5 个 Phase 已全部完成，旧树实现已删除。当前 Toulmin 图 = v2 唯一版本，在论证陪练 v3 "审稿模式"中继续使用。
+
+近期修复 (2026-05-15)：
+- `llm_client.py` — reasoning 模型（deepseek-v4-pro）chain-of-thought 耗尽 token 后自动 2x 重试；Ollama fallback 修复 `result.translated` 属性
+- `ai_ops.py` — 移除 `from __future__ import annotations` 避免 FastAPI 422；max_tokens 提升至 16384
+- `ledger.py` — `_extract_promise_zone` 短文本截断修复（`//4` → `min(len, 3000)`）
+- `useArgumentMap.ts` — SSE extractArgument 增加 `isDone` 回调避免流挂起
+- `useArgumentLayout.ts` — 动态节点尺寸（150-320×56-140）+ 关系感知 edge minlen
+- `ArgSourcePane.vue` — `spanSentenceMap` 处理无 block_id 的提取 span（paste/editor 模式回退到 `_virtual_` block）
+- `ArgInspector.vue` — "采纳"新建节点定位到选中节点附近并自动创建 connecting edge
+- `api_factory.py` — API key 持久化到 `default.local.yaml` 避免 reload 丢失
+- `src-tauri/src/main.rs` — 启动前 `kill_port_owner()` 清理僵尸 Python 进程
