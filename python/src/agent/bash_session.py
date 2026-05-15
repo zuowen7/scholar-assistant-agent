@@ -17,7 +17,9 @@ import asyncio
 import json
 import logging
 import os
+import platform
 import re
+import shlex
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -36,18 +38,38 @@ _PROXY_ENV_VARS = frozenset({
     "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy",
 })
 
-# cd 命令解析（支持 cd -、cd --、带引号路径、cd dir && cmd 形式）
-_CD_RE = re.compile(r'^\s*(?:cd|pushd)\s+((?:[^\s;&|]|\\.)+(?:\s+(?:[^\s;&|]|\\.)+)*)(?:\s*[;&|].+)?\s*$')
+# cd 命令拆分：用于 _extract_cd_target 中提取第一段命令（&& / ; / | 之前的部分）
+_CMD_SPLIT_RE = re.compile(r'\s*(?:&&|;|\|)\s*')
 
-# Shell 注入检测：禁止命令替换（$()、反引号）和 eval
-_INJECTION_RE = re.compile(r'\$\(|\`|(?<!\w)eval\s', re.IGNORECASE)
+# Shell 注入检测：禁止命令替换、换行符注入等危险模式
+_INJECTION_RE = re.compile(
+    r'\$\(|`|(?<!\w)eval\s|[\n\r\x00]|\$\{IFS\}|>\(|<\(',
+    re.IGNORECASE,
+)
+
+# 不允许通过 export/set 覆盖的系统关键环境变量
+_FORBIDDEN_ENV_KEYS = frozenset({
+    "PATH", "HOME", "USER", "SHELL", "COMSPEC",
+    "PATHEXT", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH",
+    "SYSTEMROOT", "WINDIR", "TEMP", "TMP",
+    "PYTHONHOME", "PYTHONPATH",
+})
+
+_IS_WINDOWS = platform.system() == "Windows"
 
 
 def _detect_injection(command: str) -> str | None:
     """检查命令是否含有 shell 注入模式。返回错误信息或 None（通过）。"""
     if _INJECTION_RE.search(command):
-        return "禁止使用命令替换（$()、反引号、eval）— shell 注入防护"
+        return "禁止使用命令替换、换行注入等危险模式 — shell 注入防护"
     return None
+
+
+def _build_shell_args(command: str) -> list[str]:
+    """将命令字符串包装为 shell 调用参数列表（shell=False 安全模式）。"""
+    if _IS_WINDOWS:
+        return ["cmd", "/c", command]
+    return ["/bin/sh", "-c", command]
 
 
 @dataclass
@@ -138,8 +160,8 @@ class BashSession:
         start = time.monotonic()
         try:
             proc = subprocess.run(
-                command,
-                shell=True,
+                _build_shell_args(command),
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
@@ -226,16 +248,21 @@ class BashSession:
         return env
 
     def _extract_cd_target(self, command: str) -> str | None:
-        """从命令中提取 cd/pushd 目标。"""
-        stripped = command.strip()
-        m = _CD_RE.match(stripped)
-        if m:
-            return m.group(1).strip().strip('"').strip("'")
-        # cd 或 pushd 后跟 &&
-        parts = stripped.split("&&", 1)
-        first = parts[0].strip()
-        if first.startswith("cd ") or first.startswith("pushd "):
-            target = first.split(None, 1)[1].strip().strip('"').strip("'")
+        """从命令中提取 cd/pushd 目标，用 shlex 正确处理带空格的引号路径。
+
+        posix=not _IS_WINDOWS: Windows 路径含反斜杠，不能使用 POSIX 转义规则。
+        非 POSIX 模式下 shlex 保留引号，故额外剥离首尾单/双引号。
+        """
+        first = _CMD_SPLIT_RE.split(command.strip(), maxsplit=1)[0].strip()
+        try:
+            parts = shlex.split(first, posix=not _IS_WINDOWS)
+        except ValueError:
+            parts = first.split()
+        if len(parts) >= 2 and parts[0] in ("cd", "pushd"):
+            target = parts[1]
+            # Non-POSIX mode keeps surrounding quotes; strip them
+            if len(target) >= 2 and target[0] == target[-1] and target[0] in ('"', "'"):
+                target = target[1:-1]
             return target
         return None
 
@@ -258,12 +285,20 @@ class BashSession:
         return None
 
     def _parse_env_changes(self, command: str) -> None:
-        """从 export/set 命令提取环境变量变更。"""
+        """从 export/set 命令提取环境变量变更（带白名单过滤）。"""
         stripped = command.strip()
-        # export KEY=VALUE 或 set KEY=VALUE
         m = re.match(r'^(?:export|set)\s+(\w+)=(.*)$', stripped)
-        if m:
-            self._env_overrides[m.group(1)] = m.group(2)
+        if not m:
+            return
+        key = m.group(1)
+        value = m.group(2)
+        if key in _FORBIDDEN_ENV_KEYS:
+            logger.warning("Blocked env override of protected key: %s", key)
+            return
+        if any(c in value for c in ('\n', '\r', '\x00')) or '$(' in value or '`' in value:
+            logger.warning("Blocked env override with dangerous value for key: %s", key)
+            return
+        self._env_overrides[key] = value
 
     def _is_within(self, path: Path) -> bool:
         try:

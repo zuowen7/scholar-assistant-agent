@@ -40,8 +40,10 @@ from src.translator.post_qa import (
 
 logger = logging.getLogger(__name__)
 
-MAX_TASKS = 10
-MAX_UPLOAD_SIZE = 200 * 1024 * 1024  # 200 MB
+# Fallback constants; overridden at runtime by config values (translate.max_tasks etc.)
+_DEFAULT_MAX_TASKS = 10
+_DEFAULT_MAX_UPLOAD_MB = 200
+_DEFAULT_MAX_PDF_PAGES = 500
 _RAG_INGEST_SEMAPHORE = asyncio.Semaphore(3)  # 最多 3 个并发 RAG 入库任务
 
 
@@ -89,11 +91,20 @@ def register_translate(
     input_dir = data_root / "input"
     output_dir = data_root / "output"
 
+    def _get_limits() -> tuple[int, int, int]:
+        """Return (max_tasks, max_upload_bytes, max_pdf_pages) from runtime config."""
+        cfg = load_config().get("translate", {})
+        max_tasks = int(cfg.get("max_tasks", _DEFAULT_MAX_TASKS))
+        max_upload_bytes = int(cfg.get("max_upload_mb", _DEFAULT_MAX_UPLOAD_MB)) * 1024 * 1024
+        max_pdf_pages = int(cfg.get("max_pdf_pages", _DEFAULT_MAX_PDF_PAGES))
+        return max_tasks, max_upload_bytes, max_pdf_pages
+
     def _cleanup_tasks() -> None:
+        max_tasks, _, _ = _get_limits()
         done_ids = [tid for tid, t in tasks.items() if t["status"] in ("done", "error")]
-        if len(done_ids) <= MAX_TASKS:
+        if len(done_ids) <= max_tasks:
             return
-        excess = len(done_ids) - MAX_TASKS
+        excess = len(done_ids) - max_tasks
         for tid in done_ids[:excess]:
             _remove_task_files(tid)
             del tasks[tid]
@@ -204,9 +215,11 @@ def register_translate(
                 total = 0
                 while chunk := file.file.read(1024 * 1024):
                     total += len(chunk)
-                    if total > MAX_UPLOAD_SIZE:
+                    _, max_upload_bytes, _ = _get_limits()
+                    if total > max_upload_bytes:
                         input_file.unlink(missing_ok=True)
-                        raise HTTPException(413, "文件过大，最大支持 200 MB")
+                        max_mb = max_upload_bytes // (1024 * 1024)
+                        raise HTTPException(413, f"文件过大，最大支持 {max_mb} MB")
                     f.write(chunk)
 
             tasks[task_id] = {
@@ -234,8 +247,10 @@ def register_translate(
         if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
             supported = ", ".join(sorted(SUPPORTED_EXTENSIONS.keys()))
             raise HTTPException(400, f"不支持的文件格式: {file_path.suffix}。支持: {supported}")
-        if file_path.stat().st_size > MAX_UPLOAD_SIZE:
-            raise HTTPException(413, "文件过大，最大支持 200 MB")
+        _, max_upload_bytes, _ = _get_limits()
+        if file_path.stat().st_size > max_upload_bytes:
+            max_mb = max_upload_bytes // (1024 * 1024)
+            raise HTTPException(413, f"文件过大，最大支持 {max_mb} MB")
 
         task_id = uuid.uuid4().hex[:8]
         input_dir.mkdir(parents=True, exist_ok=True)
@@ -280,6 +295,12 @@ def register_translate(
             if ext == ".pdf":
                 layout_doc, blocks = await asyncio.to_thread(extract_document_with_layout, input_path)
                 doc = layout_doc
+                _, _, max_pdf_pages = _get_limits()
+                if doc.page_count > max_pdf_pages:
+                    raise ValueError(
+                        f"PDF 页数 ({doc.page_count}) 超过限制 ({max_pdf_pages} 页)，"
+                        "请分割文件后重试。"
+                    )
                 task["blocks"] = blocks
                 task["layout_doc"] = layout_doc
                 block_ids_in_page = len(blocks)
@@ -813,6 +834,8 @@ def register_translate(
             new_api_key = cfg.cloud.get("api_key", "")
             if new_api_key and is_masked(new_api_key):
                 cfg.cloud["api_key"] = existing_cloud.get("api_key", "")
+            elif new_api_key and new_api_key != existing_cloud.get("api_key", ""):
+                logger.info("[AUDIT] API key updated for provider=%s", cfg.cloud.get("provider", "unknown"))
             trans["cloud"] = {**existing_cloud, **cfg.cloud}
         if cloud_only:
             current.setdefault("translator", {})["engine"] = "cloud"

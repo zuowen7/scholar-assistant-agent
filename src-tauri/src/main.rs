@@ -28,11 +28,44 @@ fn kill_tree(pid: u32) {
     }
 }
 
+fn wait_or_kill(child: &mut std::process::Child, timeout: std::time::Duration) {
+    // Ask the process to exit gracefully first
+    #[cfg(not(windows))]
+    {
+        let _ = std::process::Command::new("kill")
+            .args(["-TERM", &child.id().to_string()])
+            .status();
+    }
+    #[cfg(windows)]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/PID", &child.id().to_string()])
+            .status();
+    }
+
+    // Poll for up to `timeout` for a graceful exit, then force-kill
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => return, // process exited
+            Ok(None) => {}
+            Err(_) => break,
+        }
+        if std::time::Instant::now() >= deadline {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    kill_child(child);
+}
+
 fn kill_child(child: &mut std::process::Child) {
     let pid = child.id();
     if child.kill().is_err() {
         kill_tree(pid);
     }
+    // Reap the zombie so the OS cleans up the entry from the process table
+    let _ = child.wait();
 }
 
 fn is_port_listening(port: u16, timeout_ms: u64) -> bool {
@@ -164,7 +197,7 @@ fn save_file(path: String, content: String) -> Result<String, String> {
 fn stop_ollama(window: tauri::WebviewWindow, state: tauri::State<'_, ManagedProcesses>) -> Result<String, String> {
     require_main_window(&window)?;
     if let Some(mut child) = lock_state!(state.ollama).take() {
-        kill_child(&mut child);
+        wait_or_kill(&mut child, std::time::Duration::from_secs(3));
         Ok("stopped".into())
     } else {
         Ok("not running".into())
@@ -230,13 +263,13 @@ pub fn run() {
                 {
                     let mut guard = state.python.lock().unwrap_or_else(|e| e.into_inner());
                     if let Some(mut child) = guard.take() {
-                        kill_child(&mut child);
+                        wait_or_kill(&mut child, std::time::Duration::from_secs(5));
                     }
                 }
                 {
                     let mut guard = state.ollama.lock().unwrap_or_else(|e| e.into_inner());
                     if let Some(mut child) = guard.take() {
-                        kill_child(&mut child);
+                        wait_or_kill(&mut child, std::time::Duration::from_secs(3));
                     }
                 }
             }

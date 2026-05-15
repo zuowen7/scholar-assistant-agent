@@ -1,10 +1,12 @@
-﻿import { reactive, readonly } from 'vue'
+﻿import { reactive, readonly, markRaw } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { save } from '@tauri-apps/plugin-dialog'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { API_BASE } from '../utils/api'
 import { readSseStream } from '../utils/streamReader'
 import { persistTranslation, loadLastTranslation, clearPersistedTranslation } from './useTranslatePersist'
+import { toastFromError } from './useToast'
+import { validateTranslateUpload, extractApiErrorMessage } from '../utils/validation'
 import type {
   TranslateState,
   TranslateStatus,
@@ -57,12 +59,16 @@ function createState(): TranslateState {
 const state = reactive<TranslateState>(createState())
 let abortController: AbortController | null = null
 let crashListener: UnlistenFn | null = null
+let _currentStreamId = 0
+let _isReconnecting = false
 
 function reset(): void {
   if (abortController) {
     abortController.abort()
     abortController = null
   }
+  _currentStreamId++
+  _isReconnecting = false
   Object.assign(state, createState())
 }
 
@@ -163,11 +169,11 @@ async function uploadPdf(file: File): Promise<string> {
   })
 
   if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ detail: '上传失败' }))
-    throw new Error(err.detail || `上传失败 (${resp.status})`)
+    const body = await resp.json().catch(() => ({ detail: '上传失败' }))
+    throw new Error(extractApiErrorMessage(body) || `上传失败 (${resp.status})`)
   }
 
-  const data = await resp.json()
+  const data = validateTranslateUpload(await resp.json())
   state.taskId = data.task_id
   return data.task_id
 }
@@ -175,6 +181,8 @@ async function uploadPdf(file: File): Promise<string> {
 async function startStream(taskId: string, attempt: number = 0): Promise<void> {
   abortController?.abort()
   abortController = new AbortController()
+  const myStreamId = ++_currentStreamId
+
   const resp = await fetch(`${API_URL}/api/translate/${taskId}/stream`, {
     signal: abortController.signal,
   })
@@ -188,27 +196,35 @@ async function startStream(taskId: string, attempt: number = 0): Promise<void> {
   if (!reader) throw new Error('Unable to read response stream')
 
   try {
-    await readSseStream(reader, handleSseEvent)
+    await readSseStream(reader, (event, data) => {
+      // Discard events from stale streams
+      if (myStreamId !== _currentStreamId) return
+      handleSseEvent(event, data)
+    })
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
       return
     }
+    // Stale stream — silently discard
+    if (myStreamId !== _currentStreamId) return
 
     if (state.status !== 'done' && state.status !== 'idle' && attempt < SSE_RECONNECT_MAX_ATTEMPTS) {
-      const delay = Math.min(SSE_RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt), SSE_RECONNECT_TOTAL_TIMEOUT_MS)
-      state.stepMessage = `连接中断，正在重试 (${attempt + 1}/${SSE_RECONNECT_MAX_ATTEMPTS})… ${Math.round(delay / 1000)}s 后重连`
-      await new Promise(r => setTimeout(r, delay))
-      // Re-check: user may have called reset() during the wait
-      if (abortController === null) return
+      if (_isReconnecting) return
+      _isReconnecting = true
+      try {
+        const delay = Math.min(SSE_RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt), SSE_RECONNECT_TOTAL_TIMEOUT_MS)
+        state.stepMessage = `连接中断，正在重试 (${attempt + 1}/${SSE_RECONNECT_MAX_ATTEMPTS})… ${Math.round(delay / 1000)}s 后重连`
+        await new Promise(r => setTimeout(r, delay))
+        if (abortController === null || myStreamId !== _currentStreamId) return
 
-      const stillAlive = await checkHealth()
-      if (stillAlive) {
-        try {
+        const stillAlive = await checkHealth()
+        if (stillAlive) {
+          _isReconnecting = false
           await startStream(taskId, attempt + 1)
           return
-        } catch {
-          // ignore reconnect failure
         }
+      } finally {
+        _isReconnecting = false
       }
     }
 
@@ -238,8 +254,8 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       const ev = data as unknown as ChunkedEvent
       state.totalChunks = ev.total_chunks ?? 0
       state.totalBlocks = ev.total_blocks ?? 0
-      // 用原文初始化 blocks 骨架；translated 暂为空，待 block_translated 事件填充
-      state.blocks = (ev.blocks ?? []).map(b => ({
+      // 用原文初始化 blocks 骨架；markRaw 防止 Vue 深度追踪大数组内部属性
+      state.blocks = (ev.blocks ?? []).map(b => markRaw({
         id: b.id,
         type: b.type,
         level: b.level,
@@ -255,13 +271,17 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       const idx = state.blocks.findIndex(b => b.id === ev.block_id)
       if (idx >= 0) {
         const wasEmpty = !state.blocks[idx].translated
-        state.blocks[idx] = {
+        const updated = markRaw({
           ...state.blocks[idx],
           translated: ev.translated,
           translatable: ev.translatable,
           type: ev.type,
           status: ev.status,
-        }
+        })
+        // Replace whole array to trigger shallowRef/reactive update cleanly
+        const newBlocks = [...state.blocks]
+        newBlocks[idx] = updated
+        state.blocks = newBlocks
         if (wasEmpty) state.completedBlocks += 1
       }
       break
@@ -371,6 +391,7 @@ async function translate(file: File): Promise<void> {
       const msg = err instanceof Error ? err.message : '未知错误'
       state.errorMessage = msg
       setStatus('error')
+      toastFromError(err)
     }
   }
 }
@@ -416,6 +437,7 @@ async function translateFromPath(filePath: string): Promise<void> {
       const msg = err instanceof Error ? err.message : '未知错误'
       state.errorMessage = msg
       setStatus('error')
+      toastFromError(err)
     }
   }
 }

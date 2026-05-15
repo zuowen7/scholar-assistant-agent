@@ -198,3 +198,77 @@ class TestBashSessionManager:
         mgr.get_or_create("a")
         mgr.get_or_create("b")
         assert mgr.active_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Shell 注入防护（C2）
+# ---------------------------------------------------------------------------
+
+
+class TestInjectionGuard:
+    def test_command_substitution_dollar_paren(self, session):
+        r = session.run_command("echo $(id)")
+        assert r.exit_code == 1
+        assert "安全拒绝" in r.stderr
+
+    def test_command_substitution_backtick(self, session):
+        r = session.run_command("echo `id`")
+        assert r.exit_code == 1
+
+    def test_newline_injection(self, session):
+        r = session.run_command("echo hello\nrm -rf /")
+        assert r.exit_code == 1
+
+    def test_eval_injection(self, session):
+        r = session.run_command("eval 'id'")
+        assert r.exit_code == 1
+
+
+# ---------------------------------------------------------------------------
+# shlex cd 解析（L1）
+# ---------------------------------------------------------------------------
+
+
+class TestCdShlex:
+    def test_cd_quoted_path(self, session, workspace):
+        """cd 带引号路径（空格路径）应能正确解析。"""
+        spaced = workspace / "sub dir"
+        spaced.mkdir()
+        # _extract_cd_target should strip quotes via shlex
+        target = session._extract_cd_target("cd 'sub dir'")
+        assert target == "sub dir"
+
+    def test_cd_double_quoted_path(self, session, workspace):
+        target = session._extract_cd_target('cd "sub dir"')
+        assert target == "sub dir"
+
+    def test_cd_and_command(self, session, workspace):
+        target = session._extract_cd_target("cd subdir && ls")
+        assert target == "subdir"
+
+    def test_pushd_shlex(self, session, workspace):
+        target = session._extract_cd_target("pushd subdir")
+        assert target == "subdir"
+
+
+# ---------------------------------------------------------------------------
+# 环境变量白名单注入防护（H6）
+# ---------------------------------------------------------------------------
+
+
+class TestEnvInjectionGuard:
+    def test_path_hijack_blocked(self, session):
+        session.run_command("export PATH=/tmp/evil:$PATH")
+        assert "PATH" not in session._env_overrides
+
+    def test_command_substitution_in_value_blocked(self, session):
+        session.run_command("export MYVAR=$(id)")
+        assert "MYVAR" not in session._env_overrides
+
+    def test_newline_in_value_blocked(self, session):
+        session.run_command("export MYVAR=hello\nworld")
+        assert "MYVAR" not in session._env_overrides
+
+    def test_allowed_env_var(self, session):
+        session.run_command("export MYAPP_VAR=safe_value")
+        assert session._env_overrides.get("MYAPP_VAR") == "safe_value"

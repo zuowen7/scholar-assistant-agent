@@ -583,6 +583,7 @@ onUnmounted(() => {
   window.removeEventListener('mousemove', onMouseMove)
   if (timer) clearInterval(timer)
   if (unlistenDragDrop) unlistenDragDrop()
+  if (bootSafetyTimer) { clearTimeout(bootSafetyTimer); bootSafetyTimer = null }
   cleanup()
   editorCleanup()
 })
@@ -800,14 +801,10 @@ h6 { font-size: var(--text-base); }
    1. Fine grain — 砚石微粒 (fractalNoise, high freq)
    2. Fiber streaks — 纸纤维 (anisotropic noise, low freq in X, higher in Y)
    3. Speckles — 纸面杂质斑点 (turbulence with discrete alpha)
-   Combined opacity creates realistic handmade paper feel. */
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0.055;
+   Combined opacity creates realistic handmade paper feel.
+   SVG layers are shared between body::after (default bg) and .bg-paper-overlay (custom bg). */
+body::after,
+.bg-paper-overlay {
   background-image:
     /* Layer 3: Speckles — occasional dark specks like paper impurities */
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='turbulence' baseFrequency='0.95' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0.04 0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='discrete' tableValues='0 0 0 0 0 0 0 0 0 0 0 0 0 0 1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23s)'/%3E%3C/svg%3E"),
@@ -817,6 +814,15 @@ body::after {
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='5' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23g)'/%3E%3C/svg%3E");
   background-size: 300px 300px, 400px 400px, 300px 300px;
   background-repeat: repeat;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.055;
 }
 
 .app {
@@ -850,18 +856,13 @@ body::after {
 }
 
 /* ── 自选背景宣纸纹理叠加 — 统一质感 ── */
+/* background-image/size/repeat shared with body::after via the combined selector above */
 .bg-paper-overlay {
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
   opacity: 0.09;
-  background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='turbulence' baseFrequency='0.95' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0.04 0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='discrete' tableValues='0 0 0 0 0 0 0 0 0 0 0 0 0 0 1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23s)'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.008 0.22' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23f)'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='5' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23g)'/%3E%3C/svg%3E");
-  background-size: 300px 300px, 400px 400px, 300px 300px;
-  background-repeat: repeat;
 }
 
 /* Light mode: reduce paper texture against lighter backgrounds */

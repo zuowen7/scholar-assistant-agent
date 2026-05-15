@@ -9,7 +9,7 @@ import re
 import time
 import uuid
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Literal
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
@@ -17,6 +17,31 @@ from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 logger = logging.getLogger(__name__)
+
+# ── Lightweight pydantic schemas for LLM response parsing (H5) ──────────────
+
+class _CloudDelta(BaseModel):
+    content: str = ""
+
+class _CloudChoice(BaseModel):
+    delta: _CloudDelta = _CloudDelta()
+    message: _CloudDelta = _CloudDelta()  # non-streaming path
+
+class _CloudResponse(BaseModel):
+    choices: list[_CloudChoice] = []
+
+class _OllamaMessage(BaseModel):
+    content: str = ""
+
+class _OllamaChunk(BaseModel):
+    message: _OllamaMessage = _OllamaMessage()
+    done: bool = False
+
+class _ComplianceReport(BaseModel):
+    overall_score: float | int | None = None
+    sections: list | None = None
+
+    model_config = {"extra": "allow"}
 
 
 class EditRequest(BaseModel):
@@ -154,14 +179,14 @@ def register_editor(
                     media_type="text/event-stream",
                 )
             return EventSourceResponse(
-                _stream_cloud(base_url, api_key, model, system_prompt, user_msg),
+                _stream_llm("cloud", f"{base_url}/chat/completions", model, system_prompt, user_msg, api_key=api_key),
                 media_type="text/event-stream",
             )
         else:
             ollama_url = trans_cfg.get("ollama_base_url", "http://localhost:11434").rstrip("/")
             model = trans_cfg.get("model", "qwen3:8b")
             return EventSourceResponse(
-                _stream_ollama(ollama_url, model, system_prompt, user_msg),
+                _stream_llm("ollama", f"{ollama_url}/api/chat", model, system_prompt, user_msg),
                 media_type="text/event-stream",
             )
 
@@ -171,91 +196,80 @@ def register_editor(
     async def _edit_error(msg: str) -> AsyncGenerator[dict, None]:
         yield {"event": "delta", "data": json.dumps({"content": msg}, ensure_ascii=False)}
 
-    async def _stream_cloud(
-        base_url: str, api_key: str, model: str,
-        system_prompt: str, user_msg: str,
+    async def _stream_llm(
+        backend: Literal["cloud", "ollama"],
+        endpoint: str,
+        model: str,
+        system_prompt: str,
+        user_msg: str,
+        *,
+        api_key: str = "",
     ) -> AsyncGenerator[dict, None]:
+        """Unified streaming generator for cloud (OpenAI-compatible) and Ollama backends."""
         import httpx
         full_content = ""
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
-                async with client.stream(
-                    "POST",
-                    f"{base_url}/chat/completions",
-                    json={
-                        "model": model,
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_msg},
-                        ],
-                        "temperature": 0.3,
-                        "max_tokens": 8192,
-                        "stream": True,
-                    },
-                    headers={
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {api_key}",
-                    },
-                ) as resp:
+                if backend == "cloud":
+                    request_kwargs = dict(
+                        json={
+                            "model": model,
+                            "messages": [
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_msg},
+                            ],
+                            "temperature": 0.3,
+                            "max_tokens": 8192,
+                            "stream": True,
+                        },
+                        headers={
+                            "Content-Type": "application/json",
+                            "Authorization": f"Bearer {api_key}",
+                        },
+                    )
+                else:
+                    request_kwargs = dict(
+                        json={
+                            "model": model,
+                            "messages": [
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_msg},
+                            ],
+                            "stream": True,
+                            "options": {"temperature": 0.3, "num_predict": 8192},
+                        },
+                    )
+
+                async with client.stream("POST", endpoint, **request_kwargs) as resp:
                     resp.raise_for_status()
-                    async for line in resp.aiter_lines():
-                        if not line.startswith("data:"):
-                            continue
-                        data_str = line[5:].strip()
-                        if data_str == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(data_str)
-                            delta = chunk.get("choices", [{}])[0].get("delta", {})
-                            token = delta.get("content", "")
-                            if token:
-                                full_content += token
-                                yield {"event": "delta", "data": json.dumps({"content": full_content}, ensure_ascii=False)}
-                        except json.JSONDecodeError:
-                            continue
-        except Exception as e:
-            logger.error("Cloud stream error: %s", e)
-            if not full_content:
-                full_content = f"AI 处理失败（云端 API 错误）: {e}"
-
-        yield {"event": "delta", "data": json.dumps({"content": full_content}, ensure_ascii=False)}
-
-    async def _stream_ollama(
-        ollama_url: str, model: str,
-        system_prompt: str, user_msg: str,
-    ) -> AsyncGenerator[dict, None]:
-        import httpx
-        full_content = ""
-        try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
-                async with client.stream(
-                    "POST",
-                    f"{ollama_url}/api/chat",
-                    json={
-                        "model": model,
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_msg},
-                        ],
-                        "stream": True,
-                        "options": {"temperature": 0.3, "num_predict": 8192},
-                    },
-                ) as resp:
                     async for line in resp.aiter_lines():
                         if not line.strip():
                             continue
-                        try:
-                            chunk = json.loads(line)
-                            token = chunk.get("message", {}).get("content", "")
-                            if token:
-                                full_content += token
-                                yield {"event": "delta", "data": json.dumps({"content": full_content}, ensure_ascii=False)}
-                        except json.JSONDecodeError:
-                            continue
+                        if backend == "cloud":
+                            if not line.startswith("data:"):
+                                continue
+                            data_str = line[5:].strip()
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                parsed = _CloudResponse.model_validate(json.loads(data_str))
+                                token = parsed.choices[0].delta.content if parsed.choices else ""
+                            except Exception:
+                                continue
+                        else:
+                            try:
+                                parsed = _OllamaChunk.model_validate(json.loads(line))
+                                token = parsed.message.content
+                            except Exception:
+                                continue
+                        if token:
+                            full_content += token
+                            yield {"event": "delta", "data": json.dumps({"content": full_content}, ensure_ascii=False)}
         except Exception as e:
-            logger.error("Ollama stream error: %s", e)
-            if not full_content:
-                full_content = f"AI 处理失败（Ollama 未启动？）: {e}"
+            label = "云端 API" if backend == "cloud" else "Ollama（未启动？）"
+            logger.exception("%s stream error", label)
+            yield {"event": "error", "data": json.dumps({"message": f"{label} 错误: {e}"}, ensure_ascii=False)}
+            return
 
         yield {"event": "delta", "data": json.dumps({"content": full_content}, ensure_ascii=False)}
 
@@ -282,8 +296,8 @@ def register_editor(
                 headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
             )
             resp.raise_for_status()
-            data = resp.json()
-            return data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            parsed = _CloudResponse.model_validate(resp.json())
+            return parsed.choices[0].message.content if parsed.choices else ""
 
     async def _call_ollama(
         ollama_url: str, model: str,
@@ -304,8 +318,8 @@ def register_editor(
                 },
             )
             resp.raise_for_status()
-            data = resp.json()
-            return data.get("message", {}).get("content", "")
+            parsed = _OllamaChunk.model_validate(resp.json())
+            return parsed.message.content
 
     @app.post("/api/complete")
     async def complete_text(req: CompletionRequest):

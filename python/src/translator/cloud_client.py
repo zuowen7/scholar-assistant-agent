@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import threading
@@ -49,10 +50,11 @@ class _ProviderRateLimiter:
     last_time: float = 0.0
 
 
-# Module-level registry: one limiter per (base_url + api_key_prefix) combination.
-# Survives CloudClient reconstruction across pipeline calls.
+# Module-level registry: one limiter per (base_url + api_key_hash) combination.
+# Bounded to _RL_MAX_ENTRIES to prevent unbounded growth (e.g. many rotated keys).
 _rate_limiters: dict[str, _ProviderRateLimiter] = {}
 _rate_limiters_registry_lock = threading.Lock()
+_RL_MAX_ENTRIES = 256
 
 
 def _get_limiter(key: str) -> _ProviderRateLimiter:
@@ -60,6 +62,10 @@ def _get_limiter(key: str) -> _ProviderRateLimiter:
         return _rate_limiters[key]
     with _rate_limiters_registry_lock:
         if key not in _rate_limiters:
+            if len(_rate_limiters) >= _RL_MAX_ENTRIES:
+                # FIFO eviction: drop the oldest entry
+                oldest = next(iter(_rate_limiters))
+                del _rate_limiters[oldest]
             _rate_limiters[key] = _ProviderRateLimiter()
         return _rate_limiters[key]
 
@@ -241,8 +247,9 @@ class CloudClient:
         self._glossary = Glossary()  # 与 OllamaClient 使用相同的 Glossary 类
         self._chunk_index = 0
         self._http_client: httpx.Client | None = None
-        # Rate limiter key: stable across client reconstruction, private (only first 8 chars of key)
-        self._rate_limiter_key = f"{base_url}:{api_key[:8]}"
+        # Rate limiter key: hashed so same prefix (e.g. "sk-proj-") doesn't collide across users
+        _key_hash = hashlib.sha256(api_key.encode()).hexdigest()[:16]
+        self._rate_limiter_key = f"{base_url}:{_key_hash}"
 
     def _get_http_client(self) -> httpx.Client:
         """懒加载复用 httpx 连接（走系统代理，需安装 socksio 支持 SOCKS）"""
