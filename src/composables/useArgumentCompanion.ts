@@ -95,7 +95,9 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
       last_built_at: Date.now() / 1000,
     }
 
+    let eventCount = 0
     await readSseStream(resp.body.getReader(), (eventType, data) => {
+      eventCount++
       if (eventType === 'error') {
         const msg = (data as Record<string, unknown>)['message'] as string || '未知错误'
         console.warn('[companion] build ledger error:', msg)
@@ -114,8 +116,8 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
         const d = data as Record<string, unknown>
         if (d['ledger_id']) ledger.id = d['ledger_id'] as string
       }
-      // error events: just let it fall through; building resets below
     })
+    console.log('[companion] readSseStream done, events received:', eventCount)
 
     state.ledger = ledger
     state.ledgerStale = false
