@@ -28,8 +28,7 @@ from api_factory import create_app
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s [%(trace_id)s]: %(message)s",
-    defaults={"trace_id": "-"},
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
 
