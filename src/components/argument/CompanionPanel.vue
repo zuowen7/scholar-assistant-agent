@@ -52,7 +52,7 @@
 
     <!-- Toulmin graph sub-page -->
     <div v-else-if="activeSubTab === 'graph'" class="sub-page">
-      <ArgumentMapMini />
+      <ArgumentMapMini :content="content" />
     </div>
 
     <!-- Reviewer 2 sub-page (Phase 3) -->
