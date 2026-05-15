@@ -248,7 +248,8 @@ _config_read_lock = threading.Lock()
 def _save_config(config: dict) -> None:
     global _config_cache, _config_cache_mtime
     save_copy = copy.deepcopy(config)
-    # Strip API keys from being written to default.yaml
+    # Strip API keys from default.yaml, but persist them in default.local.yaml
+    original_api_key = save_copy.get("translator", {}).get("cloud", {}).get("api_key", "")
     cloud_cfg = save_copy.get("translator", {}).get("cloud", {})
     if cloud_cfg.get("api_key"):
         cloud_cfg["api_key"] = ""
@@ -268,6 +269,25 @@ def _save_config(config: dict) -> None:
             except OSError:
                 pass
             raise
+        # Persist API key to default.local.yaml so it survives config reloads
+        local_path = CONFIG_PATH.parent / "default.local.yaml"
+        if original_api_key:
+            local_data = {"translator": {"cloud": {"api_key": original_api_key}}}
+            with open(local_path, "w", encoding="utf-8") as f:
+                yaml.dump(local_data, f, allow_unicode=True, default_flow_style=False)
+        elif local_path.exists():
+            # Key was cleared — remove it from local overrides
+            try:
+                with open(local_path, encoding="utf-8") as f:
+                    local_data = yaml.safe_load(f) or {}
+                local_data.setdefault("translator", {}).setdefault("cloud", {}).pop("api_key", None)
+                if local_data.get("translator", {}).get("cloud"):
+                    with open(local_path, "w", encoding="utf-8") as f:
+                        yaml.dump(local_data, f, allow_unicode=True, default_flow_style=False)
+                else:
+                    local_path.unlink()
+            except Exception:
+                pass
         with _config_read_lock:
             _config_cache = copy.deepcopy(config)
             _config_cache_mtime = CONFIG_PATH.stat().st_mtime
