@@ -7,8 +7,26 @@ export interface ToastItem {
   duration: number
 }
 
+export interface ErrorLogEntry {
+  id: number
+  level: 'warn' | 'danger'
+  message: string
+  ts: string
+}
+
 export const toasts = ref<ToastItem[]>([])
+export const errorLog = ref<ErrorLogEntry[]>([])
+export const unreadErrorCount = ref(0)
 let nextId = 0
+
+export function clearErrorLog() {
+  errorLog.value = []
+  unreadErrorCount.value = 0
+}
+
+export function markErrorsRead() {
+  unreadErrorCount.value = 0
+}
 
 export function useToast() {
   function show(level: ToastItem['level'], message: string, duration = 3000) {
@@ -16,6 +34,12 @@ export function useToast() {
     toasts.value.push({ id, level, message, duration })
     if (duration > 0) {
       setTimeout(() => dismiss(id), duration)
+    }
+    if (level === 'danger' || level === 'warn') {
+      const ts = new Date().toLocaleTimeString('zh-CN', { hour12: false })
+      errorLog.value.unshift({ id, level, message, ts })
+      if (errorLog.value.length > 50) errorLog.value.length = 50
+      unreadErrorCount.value++
     }
   }
 

@@ -505,18 +505,49 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
     # Install trace_id filter on all root logging handlers so every log line
     # carries the request's trace_id for easy grep correlation.
     _trace_filter = _TraceIdFilter()
+    _log_fmt = logging.Formatter(
+        "%(asctime)s %(levelname)-8s [%(trace_id)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     for _h in logging.root.handlers or [logging.StreamHandler()]:
         _h.addFilter(_trace_filter)
+        if not _h.formatter:
+            _h.setFormatter(_log_fmt)
     if not logging.root.handlers:
         _sh = logging.StreamHandler()
         _sh.addFilter(_trace_filter)
+        _sh.setFormatter(_log_fmt)
         logging.root.addHandler(_sh)
+
+    # Rotating file handler: RUNTIME_DIR/logs/app.log, 10 MB × 5 backups
+    from logging.handlers import RotatingFileHandler as _RFH
+    _log_dir = RUNTIME_DIR / "logs"
+    _log_dir.mkdir(parents=True, exist_ok=True)
+    _fh = _RFH(
+        str(_log_dir / "app.log"),
+        maxBytes=10 * 1024 * 1024,
+        backupCount=5,
+        encoding="utf-8",
+    )
+    _fh.setFormatter(_log_fmt)
+    _fh.addFilter(_trace_filter)
+    logging.root.addHandler(_fh)
+    if logging.root.level == logging.WARNING or logging.root.level == 0:
+        logging.root.setLevel(logging.INFO)
 
     @app.middleware("http")
     async def trace_id_middleware(request: Request, call_next):
         trace_id = uuid.uuid4().hex[:8]
         _trace_id_ctx.set(trace_id)
+        t0 = time.monotonic()
         response = await call_next(request)
+        elapsed = time.monotonic() - t0
+        # Skip noisy SSE streaming paths to avoid flooding the log
+        if not request.url.path.endswith("/stream"):
+            logger.info(
+                "ACCESS %s %s → %d (%.3fs)",
+                request.method, request.url.path, response.status_code, elapsed,
+            )
         response.headers["X-Trace-Id"] = trace_id
         return response
 
@@ -630,6 +661,21 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         load_config=_load_config,
         build_cloud_client=_build_cloud_client,
     )
+
+    # ── Debug / observability endpoints ─────────────────────────────────────
+
+    @app.get("/api/logs")
+    def get_recent_logs(n: int = 200):
+        """Return last N lines from the rotating log file and the file path."""
+        log_file = RUNTIME_DIR / "logs" / "app.log"
+        if not log_file.exists():
+            return {"lines": [], "path": str(log_file)}
+        try:
+            text = log_file.read_text(encoding="utf-8", errors="replace")
+            lines = text.splitlines()
+            return {"lines": lines[-n:], "path": str(log_file)}
+        except Exception as exc:
+            return {"lines": [f"[读取日志失败: {exc}]"], "path": str(log_file)}
 
     # Wire lifecycle state so lifespan context manager can access them
     app.state._state_agent = state_agent
