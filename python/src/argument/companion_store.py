@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -28,6 +29,7 @@ class CompanionStore:
 
         self._ledgers: dict[str, Ledger] = {}
         self._reviews: dict[str, ReviewSession] = {}
+        self._lock = threading.RLock()
         self._load_all()
 
     # ── internal ──────────────────────────────────────────────────────────────
@@ -72,8 +74,9 @@ class CompanionStore:
         return self._ledgers.get(doc_id)
 
     def save_ledger(self, ledger: Ledger) -> None:
-        self._ledgers[ledger.doc_id] = ledger
-        self._flush_ledger(ledger)
+        with self._lock:
+            self._ledgers[ledger.doc_id] = ledger
+            self._flush_ledger(ledger)
 
     def list_ledgers(self) -> list[dict]:
         result = []
@@ -87,27 +90,30 @@ class CompanionStore:
         return result
 
     def delete_ledger(self, doc_id: str) -> None:
-        self._ledgers.pop(doc_id, None)
-        path = self._ledger_dir / f"{_safe(doc_id)}.json"
-        path.unlink(missing_ok=True)
+        with self._lock:
+            self._ledgers.pop(doc_id, None)
+            path = self._ledger_dir / f"{_safe(doc_id)}.json"
+            path.unlink(missing_ok=True)
 
     def upsert_promise(self, doc_id: str, promise: Promise) -> None:
-        ledger = self._ledgers.get(doc_id)
-        if ledger is None:
-            raise KeyError(f"Ledger not found for doc_id={doc_id!r}")
-        existing = {p.id: i for i, p in enumerate(ledger.promises)}
-        if promise.id in existing:
-            ledger.promises[existing[promise.id]] = promise
-        else:
-            ledger.promises.append(promise)
-        self._flush_ledger(ledger)
+        with self._lock:
+            ledger = self._ledgers.get(doc_id)
+            if ledger is None:
+                raise KeyError(f"Ledger not found for doc_id={doc_id!r}")
+            existing = {p.id: i for i, p in enumerate(ledger.promises)}
+            if promise.id in existing:
+                ledger.promises[existing[promise.id]] = promise
+            else:
+                ledger.promises.append(promise)
+            self._flush_ledger(ledger)
 
     def delete_promise(self, doc_id: str, pid: str) -> None:
-        ledger = self._ledgers.get(doc_id)
-        if ledger is None:
-            return
-        ledger.promises = [p for p in ledger.promises if p.id != pid]
-        self._flush_ledger(ledger)
+        with self._lock:
+            ledger = self._ledgers.get(doc_id)
+            if ledger is None:
+                return
+            ledger.promises = [p for p in ledger.promises if p.id != pid]
+            self._flush_ledger(ledger)
 
     # ── Review API ────────────────────────────────────────────────────────────
 
@@ -115,8 +121,9 @@ class CompanionStore:
         return self._reviews.get(session_id)
 
     def save_review(self, session: ReviewSession) -> None:
-        self._reviews[session.id] = session
-        self._flush_review(session)
+        with self._lock:
+            self._reviews[session.id] = session
+            self._flush_review(session)
 
     def list_reviews(self, doc_id: str) -> list[dict]:
         result = []
@@ -135,30 +142,33 @@ class CompanionStore:
         return result
 
     def delete_review(self, session_id: str) -> None:
-        self._reviews.pop(session_id, None)
-        path = self._review_dir / f"{session_id}.json"
-        path.unlink(missing_ok=True)
+        with self._lock:
+            self._reviews.pop(session_id, None)
+            path = self._review_dir / f"{session_id}.json"
+            path.unlink(missing_ok=True)
 
     def update_point(self, session_id: str, pid: str, status: str) -> None:
-        session = self._reviews.get(session_id)
-        if session is None:
-            raise KeyError(f"Session not found: {session_id!r}")
-        for p in session.points:
-            if p.id == pid:
-                p.status = status  # type: ignore[assignment]
-                self._flush_review(session)
-                return
-        raise KeyError(f"Point not found: {pid!r}")
+        with self._lock:
+            session = self._reviews.get(session_id)
+            if session is None:
+                raise KeyError(f"Session not found: {session_id!r}")
+            for p in session.points:
+                if p.id == pid:
+                    p.status = status  # type: ignore[assignment]
+                    self._flush_review(session)
+                    return
+            raise KeyError(f"Point not found: {pid!r}")
 
     def append_turns(
         self, session_id: str, pid: str, turns: list[RebuttalTurn]
     ) -> None:
-        session = self._reviews.get(session_id)
-        if session is None:
-            raise KeyError(f"Session not found: {session_id!r}")
-        for p in session.points:
-            if p.id == pid:
-                p.thread.extend(turns)
-                self._flush_review(session)
-                return
-        raise KeyError(f"Point not found: {pid!r}")
+        with self._lock:
+            session = self._reviews.get(session_id)
+            if session is None:
+                raise KeyError(f"Session not found: {session_id!r}")
+            for p in session.points:
+                if p.id == pid:
+                    p.thread.extend(turns)
+                    self._flush_review(session)
+                    return
+            raise KeyError(f"Point not found: {pid!r}")

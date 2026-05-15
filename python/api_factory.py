@@ -111,6 +111,16 @@ class _TraceIdFilter(logging.Filter):
                     }
             except Exception:
                 pass
+        # Mask secrets that might appear in tracebacks / exc_info
+        if record.exc_info:
+            import traceback as _tb
+            try:
+                formatted = ''.join(_tb.format_exception(*record.exc_info))
+                if self._BEARER_RE.search(formatted):
+                    record.exc_text = self._BEARER_RE.sub("Bearer ***", formatted)
+                    record.exc_info = None
+            except Exception:
+                pass
         return True
 
 

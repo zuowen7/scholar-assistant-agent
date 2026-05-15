@@ -8,6 +8,7 @@ import { reactive } from 'vue'
 import { API_BASE } from '../utils/api'
 import { readSseStream } from '../utils/streamReader'
 import type { Ledger, ReviewSession, ReviewSummary, Anchor, Promise as ArgPromise } from '../types'
+import { useToast } from './useToast'
 
 // ── SHA-1-lite hash (16 hex chars) for doc staleness detection ────────────
 
@@ -47,6 +48,8 @@ const state = reactive<CompanionState>({
   flashAnchor: null,
 })
 
+const { pushError, pushWarning } = useToast()
+
 let _debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 // ── Internal helpers ──────────────────────────────────────────────────────
@@ -77,8 +80,8 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
     })
     console.log('[companion] fetch returned:', resp.status, 'hasBody:', !!resp.body)
     if (!resp.ok || !resp.body) {
-      const errBody = resp.body ? '' : ' (no body)'
-      console.warn('[companion] build ledger failed:', resp.status, errBody)
+      console.warn('[companion] build ledger failed:', resp.status)
+      pushError(`构建论证账本失败（${resp.status}）`)
       state.building = false
       return
     }
@@ -101,6 +104,7 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
       if (eventType === 'error') {
         const msg = (data as Record<string, unknown>)['message'] as string || '未知错误'
         console.warn('[companion] build ledger error:', msg)
+        pushError(`构建论证账本失败：${msg}`)
         state.building = false
         return
       }
@@ -121,6 +125,7 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
 
     if (ledger.promises.length === 0 && eventCount > 0) {
       console.warn('[companion] LLM returned 0 promises — LLM may be unavailable or text too short')
+      pushWarning('AI 未提取到任何承诺，请确认 LLM 配置正确或文本内容足够。')
     }
     state.ledger = ledger
     state.ledgerStale = false
@@ -159,7 +164,7 @@ async function upsertPromise(promise: Partial<ArgPromise>): Promise<void> {
     const idx = state.ledger.promises.findIndex(p => p.id === updated.id)
     if (idx >= 0) state.ledger.promises[idx] = updated
     else state.ledger.promises.push(updated)
-  } catch { /* ignore */ }
+  } catch (e) { pushError('保存承诺失败，请重试。'); console.warn('[companion] upsertPromise error:', e) }
 }
 
 async function deletePromise(pid: string): Promise<void> {
@@ -170,7 +175,7 @@ async function deletePromise(pid: string): Promise<void> {
       { method: 'DELETE' },
     )
     state.ledger.promises = state.ledger.promises.filter(p => p.id !== pid)
-  } catch { /* ignore */ }
+  } catch (e) { pushError('删除承诺失败，请重试。'); console.warn('[companion] deletePromise error:', e) }
 }
 
 async function relocate(text: string): Promise<void> {
@@ -187,7 +192,7 @@ async function relocate(text: string): Promise<void> {
     if (!resp.ok) return
     const updated = await resp.json() as Ledger
     state.ledger = updated
-  } catch { /* ignore */ }
+  } catch (e) { pushError('锚点重定位失败，请重试。'); console.warn('[companion] relocate error:', e) }
 }
 
 async function listReviews(): Promise<void> {
@@ -196,7 +201,7 @@ async function listReviews(): Promise<void> {
     const resp = await fetch(`${API_BASE}/api/companion/reviews?doc_id=${encodeURIComponent(state.docId)}`)
     if (!resp.ok) return
     state.reviewList = await resp.json() as ReviewSummary[]
-  } catch { /* ignore */ }
+  } catch (e) { pushError('加载评审列表失败。'); console.warn('[companion] listReviews error:', e) }
 }
 
 async function runReview(
@@ -317,7 +322,7 @@ async function updatePointStatus(pointId: string, status: import('../types').Poi
     )
     const point = state.review.points.find(p => p.id === pointId)
     if (point) point.status = status
-  } catch { /* ignore */ }
+  } catch (e) { pushError('更新评审意见状态失败。'); console.warn('[companion] updatePointStatus error:', e) }
 }
 
 async function rebut(pointId: string, message: string, text: string): Promise<void> {
