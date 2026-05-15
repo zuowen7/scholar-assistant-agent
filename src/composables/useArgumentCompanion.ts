@@ -58,7 +58,11 @@ function findAnchor(anchors: Anchor[], id: string): Anchor | undefined {
 // ── API calls ─────────────────────────────────────────────────────────────
 
 async function buildOrRebuildLedger(text: string): Promise<void> {
-  if (!state.docId) return
+  if (!state.docId) {
+    // Auto-assign a docId if missing (e.g. fresh tab with no prior setDoc call)
+    state.docId = `untitled-${crypto.randomUUID()}`
+    state.docTitle = 'Untitled'
+  }
   state.building = true
   try {
     const resp = await fetch(`${API_BASE}/api/companion/ledger/build`, {
@@ -182,7 +186,10 @@ async function runReview(
   venue: string | null = null,
   persona = 'reviewer2',
 ): Promise<void> {
-  if (!state.docId) return
+  if (!state.docId) {
+    state.docId = `untitled-${crypto.randomUUID()}`
+    state.docTitle = 'Untitled'
+  }
   state.reviewing = true
   try {
     const resp = await fetch(`${API_BASE}/api/companion/review`, {
