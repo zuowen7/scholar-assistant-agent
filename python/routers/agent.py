@@ -767,6 +767,41 @@ def register_agent(
         except Exception as e:
             raise HTTPException(500, f"工具执行失败: {e}")
 
+    @app.get("/api/debug/state")
+    async def debug_state(request: Request):
+        """系统诊断端点 — 受 agent token 鉴权保护。"""
+        _check_agent_auth(request)
+        import sys
+        import platform
+        import time as _t
+
+        result: dict = {
+            "timestamp": __import__("datetime").datetime.now().isoformat(),
+            "python_version": sys.version.split()[0],
+            "platform": platform.platform(),
+            "agent_available": _AGENT_AVAILABLE,
+            "session_pool": {
+                "size": len(_session_pool),
+                "max_size": _MAX_SESSION_POOL_SIZE,
+                "sessions": [
+                    {
+                        "id": sid,
+                        "state": s.state.value if hasattr(s.state, "value") else str(s.state),
+                        "age_s": round(_t.monotonic() - _session_pool_timestamps.get(sid, 0), 1),
+                    }
+                    for sid, s in _session_pool.items()
+                ],
+            },
+        }
+
+        if _shared:
+            mem_mgr = _shared.get("memory_manager")
+            result["memory"] = mem_mgr.get_stats() if mem_mgr else {}
+            result["shared_resources"] = list(_shared.keys())
+            result["rag_available"] = _shared.get("rag_store") is not None
+
+        return result
+
     async def shutdown():
         mm = _shared.get("memory_manager")
         if mm:

@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' http://localhost:18088 http://127.0.0.1:18088 http://localhost:11434 ws://localhost:11434; img-src 'self' data: blob: asset: https://asset.localhost http://localhost:18088 http://127.0.0.1:18088; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self';",
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; connect-src 'self' http://localhost:18088 http://127.0.0.1:18088; img-src 'self' data: blob: asset: https://asset.localhost http://localhost:18088 http://127.0.0.1:18088; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self';",
       "assetProtocol": {
         "enable": true,
         "scope": {

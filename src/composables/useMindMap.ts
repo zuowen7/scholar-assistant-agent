@@ -163,6 +163,17 @@ export function markdownToMindMapNodes(md: string): { text: string; children: { 
   return root
 }
 
+/** Reset all module-level singleton state — for use in tests only. */
+export function _resetForTesting(): void {
+  draftMindMap.value = createDefaultMap()
+  savedMindMap.value = null
+  selectedNodeId.value = draftMindMap.value.rootId
+  viewport.value = { pan: { x: 80, y: 80 }, zoom: 1, toolbar: { x: 24, y: 18 } }
+  history.value = []
+  redoStack.value = []
+  externalIssues.value = []
+}
+
 export function useMindMap() {
   const selectedNode = computed(() => draftMindMap.value.nodes[selectedNodeId.value] ?? null)
   const hasSavedMindMap = computed(() => savedMindMap.value !== null)

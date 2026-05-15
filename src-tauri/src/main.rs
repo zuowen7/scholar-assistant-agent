@@ -50,6 +50,16 @@ macro_rules! lock_state {
 
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+/// Reject calls that did not originate from the main window.
+/// Sensitive management commands (start/stop Ollama, restart backend) should
+/// only be invocable from the primary UI window, not from any embedded webview.
+fn require_main_window(window: &tauri::WebviewWindow) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("This command is restricted to the main application window".into());
+    }
+    Ok(())
+}
+
 fn build_command(program: &str, args: &[&str]) -> std::process::Command {
     let mut cmd = std::process::Command::new(program);
     cmd.args(args);
@@ -90,7 +100,8 @@ fn pipe_output(child: &mut std::process::Child, label: &str) {
 }
 
 #[tauri::command]
-fn start_ollama(state: tauri::State<'_, ManagedProcesses>) -> Result<String, String> {
+fn start_ollama(window: tauri::WebviewWindow, state: tauri::State<'_, ManagedProcesses>) -> Result<String, String> {
+    require_main_window(&window)?;
     if lock_state!(state.ollama).is_some() || is_port_listening(11434, 2000) {
         return Ok("already running".into());
     }
@@ -150,7 +161,8 @@ fn save_file(path: String, content: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn stop_ollama(state: tauri::State<'_, ManagedProcesses>) -> Result<String, String> {
+fn stop_ollama(window: tauri::WebviewWindow, state: tauri::State<'_, ManagedProcesses>) -> Result<String, String> {
+    require_main_window(&window)?;
     if let Some(mut child) = lock_state!(state.ollama).take() {
         kill_child(&mut child);
         Ok("stopped".into())
@@ -160,7 +172,8 @@ fn stop_ollama(state: tauri::State<'_, ManagedProcesses>) -> Result<String, Stri
 }
 
 #[tauri::command]
-fn restart_backend(app: tauri::AppHandle) -> Result<String, String> {
+fn restart_backend(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Result<String, String> {
+    require_main_window(&window)?;
     let state = app.state::<ManagedProcesses>();
 
     if let Some(mut child) = lock_state!(state.python).take() {

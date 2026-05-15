@@ -26,7 +26,11 @@ os.environ.setdefault("ANONYMIZED_TELEMETRY", "FALSE")
 
 from api_factory import create_app
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s [%(trace_id)s]: %(message)s",
+    defaults={"trace_id": "-"},
+)
 logger = logging.getLogger(__name__)
 
 # Module-level app for uvicorn/gunicorn ``import app`` compatibility.

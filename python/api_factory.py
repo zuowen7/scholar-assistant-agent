@@ -10,6 +10,8 @@ import os
 import shutil
 import time
 import threading
+import uuid
+from contextvars import ContextVar
 from pathlib import Path
 
 import yaml
@@ -36,7 +38,23 @@ def _is_frozen() -> bool:
 if _is_frozen():
     import sys as _sys
     BUNDLED_DIR = Path(_sys._MEIPASS)
-    RUNTIME_DIR = Path(_sys.executable).parent
+    # Use %LOCALAPPDATA%\YanMo as the writable runtime dir so config/data
+    # are not stored beside the exe (which may be in read-only Program Files).
+    _local_app = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or ""
+    _exe_dir = Path(_sys.executable).parent
+    if _local_app:
+        RUNTIME_DIR = Path(_local_app) / "YanMo"
+        RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+        # One-time migration: copy config from beside-exe to new location on upgrade
+        _legacy_cfg_dir = _exe_dir / "config"
+        _new_cfg_dir = RUNTIME_DIR / "config"
+        if _legacy_cfg_dir.is_dir() and not _new_cfg_dir.exists():
+            try:
+                shutil.copytree(_legacy_cfg_dir, _new_cfg_dir)
+            except Exception:
+                pass
+    else:
+        RUNTIME_DIR = _exe_dir
 else:
     BUNDLED_DIR = Path(__file__).parent
     RUNTIME_DIR = Path(__file__).parent
@@ -62,6 +80,18 @@ else:
         glossary_dir.mkdir(parents=True, exist_ok=True)
 
 logger = logging.getLogger(__name__)
+
+# ── Per-request trace_id ─────────────────────────────────────────────────────
+_trace_id_ctx: ContextVar[str] = ContextVar("trace_id", default="-")
+
+
+class _TraceIdFilter(logging.Filter):
+    """Inject trace_id into every log record so log lines can be correlated to requests."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.trace_id = _trace_id_ctx.get("-")
+        return True
+
 
 # ── In-process rate limiter ──────────────────────────────────────────────────
 # Sliding-window counter, no external dependency.
@@ -310,10 +340,12 @@ def _validate_file_path(file_path: Path) -> None:
     except ValueError:
         pass
     # Block Windows AppData — absolute paths like C:\Users\<user>\AppData\...
-    # Exception: AppData\Local\Temp is allowed (pytest tmp_path, legitimate temp files).
+    # Exceptions: AppData\Local\Temp (temp files) and RUNTIME_DIR (app user-data).
+    _runtime_str = str(RUNTIME_DIR.resolve())
     if resolved_str.startswith(f"{home}\\AppData\\Roaming\\") or \
             (resolved_str.startswith(f"{home}\\AppData\\Local\\") and
-             not resolved_str.startswith(f"{home}\\AppData\\Local\\Temp\\")):
+             not resolved_str.startswith(f"{home}\\AppData\\Local\\Temp\\") and
+             not resolved_str.startswith(_runtime_str)):
         raise HTTPException(403, "禁止访问 AppData 目录")
     if resolved.suffix.lower() in _DENIED_EXTENSIONS:
         raise HTTPException(403, f"禁止访问敏感文件: {resolved.suffix}")
@@ -349,6 +381,24 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Content-Type", "Authorization"],
     )
+
+    # Install trace_id filter on all root logging handlers so every log line
+    # carries the request's trace_id for easy grep correlation.
+    _trace_filter = _TraceIdFilter()
+    for _h in logging.root.handlers or [logging.StreamHandler()]:
+        _h.addFilter(_trace_filter)
+    if not logging.root.handlers:
+        _sh = logging.StreamHandler()
+        _sh.addFilter(_trace_filter)
+        logging.root.addHandler(_sh)
+
+    @app.middleware("http")
+    async def trace_id_middleware(request: Request, call_next):
+        trace_id = uuid.uuid4().hex[:8]
+        _trace_id_ctx.set(trace_id)
+        response = await call_next(request)
+        response.headers["X-Trace-Id"] = trace_id
+        return response
 
     @app.middleware("http")
     async def rate_limit_middleware(request: Request, call_next):
