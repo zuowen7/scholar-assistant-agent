@@ -294,3 +294,52 @@ class TestRateLimiter:
         assert slept, "Expected at least one sleep call"
         assert slept[0] > 0
         assert slept[0] <= _RATE_LIMIT_INTERVAL + 0.01
+
+
+# ---------------------------------------------------------------------------
+# API Key 脱敏（防止泄露到日志）
+# ---------------------------------------------------------------------------
+
+class TestRedactKey:
+    """测试 _redact_key 方法防止 API key 泄露到日志。"""
+
+    def _make_client(self, api_key: str = "sk-super-secret-key-1234567890") -> CloudClient:
+        return CloudClient(
+            provider="openai",
+            base_url="https://api.openai.com/v1",
+            api_key=api_key,
+            model="gpt-4o",
+        )
+
+    def test_redacts_key_in_message(self):
+        client = self._make_client("sk-super-secret-key-1234567890")
+        msg = "Error: Authorization failed with sk-super-secret-key-1234567890"
+        result = client._redact_key(msg)
+        assert "sk-super-secret-key-1234567890" not in result
+        assert "***" in result
+
+    def test_no_false_positive_on_clean_message(self):
+        client = self._make_client("sk-super-secret-key-1234567890")
+        msg = "Connection timeout after 30s"
+        result = client._redact_key(msg)
+        assert result == msg  # unchanged
+
+    def test_empty_key_no_crash(self):
+        client = self._make_client("")
+        msg = "Some error message"
+        result = client._redact_key(msg)
+        assert result == msg
+
+    def test_short_key_not_redacted(self):
+        # 少于 8 字符的 key 不脱敏（避免误匹配短字符串）
+        client = self._make_client("abc")
+        msg = "Error with abc"
+        result = client._redact_key(msg)
+        assert result == msg  # short key not redacted
+
+    def test_multiple_occurrences_all_redacted(self):
+        client = self._make_client("sk-super-secret-key-1234567890")
+        msg = "key=sk-super-secret-key-1234567890 repeated sk-super-secret-key-1234567890"
+        result = client._redact_key(msg)
+        assert "sk-super-secret-key-1234567890" not in result
+        assert result.count("***") == 2

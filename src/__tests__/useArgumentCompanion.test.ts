@@ -544,3 +544,171 @@ describe('useArgumentCompanion', () => {
     })
   })
 })
+
+// ── Toast 错误提示测试 ────────────────────────────────────────────────────────
+
+import { toasts } from '../composables/useToast'
+
+describe('Error toast notifications', () => {
+  beforeEach(() => {
+    _resetForTesting()
+    // 清空上轮遗留的 toast（toasts 是 useToast.ts module-level ref）
+    toasts.value = []
+    vi.restoreAllMocks()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  // ── buildOrRebuildLedger: HTTP 失败 ─────────────────────────────────────
+
+  it('buildOrRebuildLedger: HTTP 失败时推送 pushError toast', async () => {
+    const companion = useArgumentCompanion()
+    companion.setDoc('doc-http-fail', 'Test Title')
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      body: null,
+    }))
+
+    await companion.buildOrRebuildLedger('Some text content here.')
+
+    const errorToast = toasts.value.find(t => t.level === 'danger')
+    expect(errorToast).toBeDefined()
+    expect(errorToast?.message).toContain('503')
+  })
+
+  // ── buildOrRebuildLedger: SSE error 事件 ────────────────────────────────
+
+  it('buildOrRebuildLedger: SSE error 事件时推送 pushError toast', async () => {
+    const companion = useArgumentCompanion()
+    companion.setDoc('doc-sse-error', 'Test')
+
+    const stream = makeSseStream([
+      { event: 'error', data: { message: 'LLM unavailable' } },
+    ])
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: stream,
+    }))
+
+    toasts.value = []
+    await companion.buildOrRebuildLedger('Some meaningful text here.')
+
+    const errorToast = toasts.value.find(t => t.level === 'danger')
+    expect(errorToast).toBeDefined()
+    expect(errorToast?.message).toContain('LLM unavailable')
+  })
+
+  // ── buildOrRebuildLedger: 0 promises (LLM 无输出) ───────────────────────
+
+  it('buildOrRebuildLedger: SSE 返回 0 promises 时推送 pushWarning toast', async () => {
+    const companion = useArgumentCompanion()
+    companion.setDoc('doc-zero-promises', 'Test')
+
+    // complete event with no preceding promise events
+    const stream = makeSseStream([
+      { event: 'complete', data: { promise_count: 0, by_status: {}, warnings: [] } },
+    ])
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: stream,
+    }))
+
+    toasts.value = []
+    await companion.buildOrRebuildLedger('Some text with enough content here.')
+
+    const warnToast = toasts.value.find(t => t.level === 'warn')
+    expect(warnToast).toBeDefined()
+    expect(warnToast?.message).toContain('AI')
+  })
+
+  // ── upsertPromise: catch 块推送 pushError ───────────────────────────────
+
+  it('upsertPromise: fetch 抛出异常时推送 pushError toast', async () => {
+    const ledger = makeLedger({ promises: [makePromise()] })
+    const companion = useArgumentCompanion()
+    companion.setDoc('doc-upsert-err', 'Test')
+    companion.state.ledger = ledger as never
+
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network error')))
+
+    await companion.upsertPromise({ id: 'p_test001', text: 'Updated text' })
+
+    const errorToast = toasts.value.find(t => t.level === 'danger')
+    expect(errorToast).toBeDefined()
+    expect(errorToast?.message).toContain('承诺')
+  })
+
+  // ── deletePromise: catch 块推送 pushError ───────────────────────────────
+
+  it('deletePromise: fetch 抛出异常时推送 pushError toast', async () => {
+    const ledger = makeLedger({ promises: [makePromise()] })
+    const companion = useArgumentCompanion()
+    companion.setDoc('doc-delete-err', 'Test')
+    companion.state.ledger = ledger as never
+
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network error')))
+
+    await companion.deletePromise('p_test001')
+
+    const errorToast = toasts.value.find(t => t.level === 'danger')
+    expect(errorToast).toBeDefined()
+    expect(errorToast?.message).toContain('承诺')
+  })
+
+  // ── relocate: catch 块推送 pushError ────────────────────────────────────
+
+  it('relocate: fetch 抛出异常时推送 pushError toast', async () => {
+    const ledger = makeLedger()
+    const companion = useArgumentCompanion()
+    companion.setDoc('doc-relocate-err', 'Test')
+    companion.state.ledger = ledger as never
+
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network error')))
+
+    await companion.relocate('some text')
+
+    const errorToast = toasts.value.find(t => t.level === 'danger')
+    expect(errorToast).toBeDefined()
+    expect(errorToast?.message).toContain('锚点')
+  })
+
+  // ── updatePointStatus: catch 块推送 pushError ───────────────────────────
+
+  it('updatePointStatus: fetch 抛出异常时推送 pushError toast', async () => {
+    const { review } = (() => {
+      const point = {
+        id: 'rp_us', severity: 'major' as const, category: 'baseline' as const,
+        title: 'T', detail: 'D', anchor_id: null, status: 'open' as const,
+        source: 'llm' as const, reviewer_label: null, thread: [] as import('../types').RebuttalTurn[],
+      }
+      const r: import('../types').ReviewSession = {
+        id: 'S_us', doc_id: 'doc1', doc_title: 'P',
+        venue: null, persona: 'reviewer2' as const, checks: ['llm'],
+        points: [point], anchors: [], doc_hash: null,
+        created_at: Date.now() / 1000,
+      }
+      return { review: r, point }
+    })()
+
+    const companion = useArgumentCompanion()
+    companion.setDoc('doc-status-err', 'Test')
+    companion.state.review = review as never
+
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network error')))
+
+    await companion.updatePointStatus('rp_us', 'rebutted')
+
+    const errorToast = toasts.value.find(t => t.level === 'danger')
+    expect(errorToast).toBeDefined()
+    expect(errorToast?.message).toContain('状态')
+  })
+})
