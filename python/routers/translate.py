@@ -743,7 +743,8 @@ def register_translate(
                 if rs is not None:
                     src_lang = config.get("translator", {}).get("source_lang", "en")
                     src_label = "英文" if src_lang == "en" else src_lang
-                    dual_text = f"[原文]\n{clean_result.text}\n\n[译文]\n{content}"
+                    original_text = "\n\n".join(b.text for b in all_blocks if b.translatable)
+                    dual_text = f"[原文]\n{original_text}\n\n[译文]\n{content}"
                     _task_id_str = task_id
                     _filename = task["filename"]
                     logger.info("RAG ingest queued for trans_%s, text length=%d", _task_id_str, len(dual_text))

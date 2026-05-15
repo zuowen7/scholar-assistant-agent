@@ -309,3 +309,72 @@ class TestTranslateSSEPipeline:
             data = json.loads(block_events[0]["data"])
             for field in ("block_id", "type", "translatable", "original", "translated"):
                 assert field in data, f"Missing field '{field}' in block_translated event"
+
+    def test_rag_ingested_true_in_complete_event(self, client):
+        """translate.complete 事件中 rag_ingested 为 True（知识库自动入库）。"""
+        from src.translator.block_translator import BlockTranslation, ChunkBlockResult
+
+        mock_cr = ChunkBlockResult(
+            chunk_index=0,
+            block_translations=[
+                BlockTranslation(
+                    block_id="b_0",
+                    type="paragraph",
+                    original="RAG ingest test sentence.",
+                    translated="RAG 入库测试句。",
+                    translatable=True,
+                    status="ok",
+                )
+            ],
+            aligned=True,
+            is_fallback=False,
+        )
+
+        with patch(_PARALLEL_TARGET, _make_mock_generator(mock_cr)):
+            task_id = _upload(client, "RAG ingest test sentence.")
+            body = _consume(client, task_id)
+
+        events = _parse_sse_events(body)
+        complete_events = [e for e in events if e.get("event") == "translate.complete"]
+        assert complete_events, "translate.complete event not found in SSE stream"
+
+        data = json.loads(complete_events[0]["data"])
+        assert "rag_ingested" in data, "rag_ingested field missing from translate.complete"
+        assert data["rag_ingested"] is True, (
+            "rag_ingested should be True — RAG store not wired correctly into translate pipeline"
+        )
+
+    def test_rag_documents_list_includes_translated_file(self, client):
+        """翻译完成后 /api/rag/documents 包含刚入库的文档（知识库 UI 列表）。"""
+        import time
+        from src.translator.block_translator import BlockTranslation, ChunkBlockResult
+
+        mock_cr = ChunkBlockResult(
+            chunk_index=0,
+            block_translations=[
+                BlockTranslation(
+                    block_id="b_0",
+                    type="paragraph",
+                    original="Scholar assistant document listing test.",
+                    translated="Scholar 助手文档列表测试。",
+                    translatable=True,
+                    status="ok",
+                )
+            ],
+            aligned=True,
+            is_fallback=False,
+        )
+
+        with patch(_PARALLEL_TARGET, _make_mock_generator(mock_cr)):
+            task_id = _upload(client, "Scholar assistant document listing test.")
+            _consume(client, task_id)
+
+        # Allow background ingest task to complete
+        time.sleep(1.0)
+
+        resp = client.get("/api/rag/documents")
+        assert resp.status_code == 200
+        docs = resp.json()
+        assert isinstance(docs, list)
+        trans_docs = [d for d in docs if d.get("id", "").startswith("trans_")]
+        assert trans_docs, f"No trans_* document found in RAG list after translation. docs={docs}"
