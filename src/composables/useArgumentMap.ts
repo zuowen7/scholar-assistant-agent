@@ -233,7 +233,7 @@ export const argMapV2Enabled = ref(false)
 
 export async function checkArgumentMapV2Flag(): Promise<void> {
   try {
-    const res = await fetch(`${API_BASE}/api/translate/config`)
+    const res = await fetch(`${API_BASE}/api/config`)
     if (!res.ok) return
     const cfg = await res.json()
     argMapV2Enabled.value = Boolean(cfg?.features?.argument_map_v2)
@@ -243,6 +243,7 @@ export async function checkArgumentMapV2Flag(): Promise<void> {
 }
 
 export function _resetForTesting() {
+  argMapV2Enabled.value = false
   _state.graph = null
   _state.graphList = []
   _state.selectedNodeId = ''
