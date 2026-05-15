@@ -56,7 +56,7 @@ import { errorLog, unreadErrorCount, clearErrorLog, markErrorsRead } from '../co
 import { Terminal } from './ui/icons'
 import UiPopover from './ui/UiPopover.vue'
 import UiSegmented from './ui/UiSegmented.vue'
-import { apiBase } from '../utils/api'
+import { API_BASE as apiBase } from '../utils/api'
 
 const popoverRef = ref<InstanceType<typeof UiPopover> | null>(null)
 const isOpen = computed(() => popoverRef.value?.open ?? false)

@@ -1,12 +1,13 @@
 <template>
   <div
     class="agent-panel"
-    :class="{ open, standalone: isStandalone }"
+    :class="{ open: open && !isFloating, standalone: isStandalone, floating: isFloating }"
+    :style="isFloating ? { left: floatX + 'px', top: floatY + 'px' } : {}"
   >
     <div
       class="agent-header"
-      :class="{ 'window-drag': isStandalone }"
-      @mousedown="onHeaderMouseDown"
+      :class="{ draggable: isStandalone || isFloating }"
+      @mousedown="_headerMouseDown"
     >
       <div class="agent-tabs">
         <button class="agent-tab" :class="{ active: tab === 'chat' }" @click="tab = 'chat'">对话</button>
@@ -15,16 +16,16 @@
         <button class="agent-tab" :class="{ active: tab === 'sessions' }" @click="tab = 'sessions'; refreshSessions()">会话</button>
       </div>
       <div class="agent-header-actions">
-        <!-- Standalone: dock back button -->
+        <!-- Standalone window: dock back to main -->
         <button v-if="isStandalone" class="agent-hdr-btn" title="停靠回主窗口" @click="onDockBack">
           <PinOff :size="13" :stroke-width="1.8" />
         </button>
-        <!-- Main window: float out button -->
-        <button v-if="!isStandalone" class="agent-hdr-btn" :title="_agentWindow ? '停靠' : '弹出独立窗口'" @click="toggleFloat">
-          <PinOff v-if="_agentWindow" :size="13" :stroke-width="1.8" />
+        <!-- Main window: float / dock toggle -->
+        <button v-if="!isStandalone" class="agent-hdr-btn" :title="isFloating ? '停靠回侧边' : '弹出浮动窗口'" @click="toggleFloat">
+          <PinOff v-if="isFloating" :size="13" :stroke-width="1.8" />
           <Pin v-else :size="13" :stroke-width="1.8" />
         </button>
-        <button v-if="!isStandalone" class="agent-close-btn" @click="$emit('update:open', false)" aria-label="关闭">
+        <button v-if="!isStandalone && !isFloating" class="agent-close-btn" @click="$emit('update:open', false)" aria-label="关闭">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -209,9 +210,10 @@ import AgentApprovalInline from './AgentApprovalInline.vue'
 import AgentSessionList from './AgentSessionList.vue'
 import { Pin, PinOff } from './ui/icons'
 import { API_BASE } from '../utils/api'
-import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { getCurrentWindow } from '@tauri-apps/api/window'
 import type { AgentSessionInfo } from '../types'
+
+// Tauri is available when window.__TAURI_INTERNALS__ exists
+const _isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
 const props = defineProps<{
   open: boolean
@@ -223,137 +225,164 @@ const emit = defineEmits<{
   (e: 'switch-to-editor'): void
 }>()
 
-// ── Real OS window float (Tauri) ──────────────────────────────────────────────
+// ── Floating panel: native OS window (Tauri) or in-app overlay (web) ─────────
 
-let _agentWindow: WebviewWindow | null = null
-let _toggleGuard = false
+const isStandalone = computed(() => props.standalone === true)
+
+// In-app float fallback (web mode only)
+const isFloating = ref(false)
+const floatX = ref(0)
+const floatY = ref(0)
+let _dragActive = false
+let _dragOffX = 0
+let _dragOffY = 0
+
+// Tauri native OS window ref
+let _agentWindow: import('@tauri-apps/api/webviewWindow').WebviewWindow | null = null
 
 async function openAgentWindow() {
-  try {
-    // Build URL with session ID if available — use absolute URL for dev mode
-    const params = new URLSearchParams({ 'agent-only': '1' })
-    if (sessionId.value) {
-      params.set('session', sessionId.value)
-    }
+  const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow')
 
-    // Signal to the new window that it's agent-only mode via localStorage.
-    // Include a timestamp so stale flags from crashed sessions are ignored.
-    const sid = sessionId.value || '1'
-    sessionStorage.setItem('agent-mode-pending', `${Date.now()}|${sid}`)
-    const url = `${window.location.origin}/`
+  // Close any existing agent window first
+  try { const old = await WebviewWindow.getByLabel('agent'); if (old) await old.close() } catch {}
 
-    // If a previous agent window exists, close it first
-    try { const old = await WebviewWindow.getByLabel('agent'); if (old) await old.close(); } catch {}
+  // Pass agent-only flag and optional session via URL params — sessionStorage is
+  // window-isolated in Tauri so URL params are the only reliable cross-window channel.
+  const params = new URLSearchParams({ 'agent-only': '1' })
+  const { sessionId } = useAgentChat()
+  if (sessionId.value) params.set('session', sessionId.value)
+  const url = `${window.location.origin}/?${params}`
 
-    _agentWindow = new WebviewWindow('agent', {
-      url,
-      title: 'Agent 助手',
-      width: 400,
-      height: 560,
-      minWidth: 340,
-      minHeight: 400,
-      resizable: true,
-      decorations: false,
-      shadow: false,
-      center: true,
-      visible: true,
-      skipTaskbar: true,
-    })
+  _agentWindow = new WebviewWindow('agent', {
+    url,
+    title: 'Agent 助手',
+    width: 400,
+    height: 560,
+    minWidth: 320,
+    minHeight: 400,
+    resizable: true,
+    decorations: false,
+    shadow: true,
+    center: true,
+    visible: true,
+    skipTaskbar: false,
+    alwaysOnTop: true,
+  })
 
-    // Wait for the window to actually be created on the Rust side
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Window creation timed out')), 5000)
-      _agentWindow!.once('tauri://created', () => {
-        clearTimeout(timeout)
-        resolve()
-      })
-      _agentWindow!.once('tauri://error', (e) => {
-        clearTimeout(timeout)
-        reject(new Error(String(e)))
-      })
-    })
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('window timeout')), 5000)
+    _agentWindow!.once('tauri://created', () => { clearTimeout(timeout); resolve() })
+    _agentWindow!.once('tauri://error', (e) => { clearTimeout(timeout); reject(new Error(String(e))) })
+  })
 
-    // When the agent window is destroyed (user closed via dock-back),
-    // restore the inline panel in the main window
-    _agentWindow.once('tauri://destroyed', () => {
-      _agentWindow = null
-      if (!isStandalone.value) {
-        emit('update:open', true)
-      }
-    })
-
-    // Hide the inline panel (deferred to avoid double-click from reactive re-render)
-    await new Promise(r => setTimeout(r, 100))
-    emit('update:open', false)
-    localStorage.setItem('agent-float', '1')
-  } catch (err) {
-    console.error('Failed to open agent window:', err)
+  _agentWindow.once('tauri://destroyed', () => {
     _agentWindow = null
-    sessionStorage.removeItem('agent-mode-pending')
-  }
+    emit('update:open', true)
+  })
+
+  emit('update:open', false)
 }
 
 async function closeAgentWindow() {
   try {
+    const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow')
     const w = await WebviewWindow.getByLabel('agent')
-    if (w) {
-      await w.close()
-    }
-  } catch (err) {
-    console.warn('Close agent window failed:', err)
-  }
+    if (w) await w.close()
+  } catch {}
   _agentWindow = null
-  if (!isStandalone.value) {
-    emit('update:open', true)
-  }
-  localStorage.setItem('agent-float', '0')
+  emit('update:open', true)
 }
 
-function toggleFloat() {
-  if (_toggleGuard) return
-  _toggleGuard = true
-  try {
+async function toggleFloat() {
+  if (_isTauri) {
+    // Desktop: use real OS window so it can move outside app bounds
     if (_agentWindow) {
-      closeAgentWindow()
+      await closeAgentWindow()
     } else {
-      openAgentWindow()
+      try {
+        await openAgentWindow()
+      } catch (err) {
+        console.error('Failed to open agent window:', err)
+        _agentWindow = null
+        // Tauri failed — fall through to in-app float
+        _openInAppFloat()
+      }
     }
-  } finally {
-    setTimeout(() => { _toggleGuard = false }, 500)
+  } else {
+    // Browser: in-app draggable overlay
+    if (isFloating.value) {
+      isFloating.value = false
+      emit('update:open', true)
+    } else {
+      _openInAppFloat()
+    }
   }
 }
 
-// ── Standalone mode: read session from URL ────────────────────────────────────
-const isStandalone = computed(() => props.standalone === true)
+function _openInAppFloat() {
+  floatX.value = Math.max(0, window.innerWidth - 440)
+  floatY.value = 80
+  isFloating.value = true
+}
 
-// Window drag for frameless standalone window
+// In-app drag (web fallback only)
 function onHeaderMouseDown(e: MouseEvent) {
-  if (!isStandalone.value) return
-  // Don't start drag when clicking on buttons
   const target = e.target as HTMLElement
   if (target.closest('button')) return
-  getCurrentWindow().startDragging()
+  if (!isFloating.value) return
+  _dragActive = true
+  _dragOffX = e.clientX - floatX.value
+  _dragOffY = e.clientY - floatY.value
+  window.addEventListener('mousemove', _onDragMove)
+  window.addEventListener('mouseup', _onDragUp, { once: true })
+  e.preventDefault()
 }
 
-// Dock back: close standalone window, signal main window to restore inline panel
+function _onDragMove(e: MouseEvent) {
+  if (!_dragActive) return
+  floatX.value = Math.max(0, Math.min(e.clientX - _dragOffX, window.innerWidth - 380))
+  floatY.value = Math.max(0, Math.min(e.clientY - _dragOffY, window.innerHeight - 100))
+}
+
+function _onDragUp() {
+  _dragActive = false
+  window.removeEventListener('mousemove', _onDragMove)
+}
+
+// Standalone window: drag via Tauri OS-level API
+function onHeaderMouseDown_standalone(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  if (target.closest('button')) return
+  import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+    getCurrentWindow().startDragging()
+  })
+}
+
+function _headerMouseDown(e: MouseEvent) {
+  if (isStandalone.value) {
+    onHeaderMouseDown_standalone(e)
+  } else {
+    onHeaderMouseDown(e)
+  }
+}
+
+// Standalone: dock back to main window
 async function onDockBack() {
+  const { getCurrentWindow } = await import('@tauri-apps/api/window')
   localStorage.setItem('agent-dock-back', Date.now().toString())
   await getCurrentWindow().close()
 }
 
-// Listen for dock-back signal from standalone window
 let _unlistenStorage: (() => void) | null = null
 
 onMounted(async () => {
   if (isStandalone.value) {
-    // Read session ID from localStorage and resume session
-    const sid = localStorage.getItem('agent-session')
-    localStorage.removeItem('agent-session')
-    if (sid) {
-      await resumeSession(sid)
-    }
+    // Read session from URL params (passed by openAgentWindow)
+    const params = new URLSearchParams(window.location.search)
+    const sid = params.get('session')
+    if (sid) await resumeSession(sid)
   } else {
-    // Main window: listen for dock-back signal from standalone window
+    // Listen for dock-back signal from standalone window
     const handler = (e: StorageEvent) => {
       if (e.key === 'agent-dock-back' && e.newValue) {
         localStorage.removeItem('agent-dock-back')
@@ -367,7 +396,7 @@ onMounted(async () => {
 
 
 const {
-  messages, sending, sessionId, pendingApproval,
+  messages, sending, pendingApproval,
   ragDocuments, ragLoading,
   sendMessage: agentSendMessage,
   stopGenerating, clearHistory,
@@ -626,6 +655,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   messagesRef.value?.removeEventListener('scroll', _onMessagesScroll)
+  window.removeEventListener('mousemove', _onDragMove)
+  window.removeEventListener('mouseup', _onDragUp)
   _unlistenStorage?.()
   _unlistenStorage = null
 })
@@ -648,7 +679,7 @@ onUnmounted(() => {
 }
 .agent-panel.open { transform: translateX(0); }
 
-/* Standalone mode: rounded floating panel look, drag header */
+/* Standalone mode: rounded floating panel look */
 .agent-panel.standalone {
   position: relative;
   width: 100%;
@@ -662,10 +693,26 @@ onUnmounted(() => {
   box-shadow: var(--elevation-4);
   overflow: hidden;
 }
-.agent-header.window-drag {
-  cursor: grab;
+
+/* In-app floating mode: draggable overlay */
+.agent-panel.floating {
+  right: auto;
+  top: auto;
+  width: 400px;
+  height: 560px;
+  margin-top: 0;
+  transform: none !important;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--c-glass-border);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.06);
+  overflow: hidden;
+  z-index: 500;
 }
-.agent-header.window-drag:active {
+.agent-header.draggable {
+  cursor: grab;
+  user-select: none;
+}
+.agent-header.draggable:active {
   cursor: grabbing;
 }
 

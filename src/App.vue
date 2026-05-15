@@ -185,23 +185,15 @@ const showAgentChat = ref(false)
 
 // ── Agent 独立窗口模式 ──────────────────────────────────────
 const isAgentOnly = ref(false)
-// Check localStorage on mount — set by AgentPanel right before opening the agent window.
-// The flag is timestamped to prevent stale flags from crashed sessions.
-const _agentModeFlag = sessionStorage.getItem('agent-mode-pending')
-if (_agentModeFlag) {
-  const [ts, sid] = _agentModeFlag.split('|')
-  const age = Date.now() - Number(ts)
-  // Only honor the flag if it's less than 5 seconds old (fresh from openAgentWindow)
-  if (age < 5000) {
+// Detect agent-only mode via URL param — set by AgentPanel's openAgentWindow().
+// URL params survive cross-window navigation in Tauri (unlike sessionStorage which is window-isolated).
+{
+  const _params = new URLSearchParams(window.location.search)
+  if (_params.get('agent-only') === '1') {
     isAgentOnly.value = true
-    sessionStorage.removeItem('agent-mode-pending')
-    if (sid && sid !== '1') {
-      localStorage.setItem('agent-session', sid)
-    }
-  } else {
-    // Stale flag from a crashed previous session — clean it up
-    sessionStorage.removeItem('agent-mode-pending')
-    localStorage.removeItem('agent-session')
+    // Clean the URL so refreshing doesn't re-enter agent-only mode accidentally
+    const cleanUrl = window.location.pathname
+    window.history.replaceState({}, '', cleanUrl)
   }
 }
 
