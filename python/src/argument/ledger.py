@@ -121,6 +121,9 @@ async def build_ledger(
     raw_promises = parsed1.get("promises", [])
     if not raw_promises:
         # No promises found — complete with zero
+        print(f"[companion] build_ledger LLM raw response (len={len(raw1)}): {raw1[:500]}", flush=True)
+        logger.warning("companion build_ledger 0 promises raw1(500)=%s", raw1[:500])
+        # No promises found — complete with zero
         ledger = Ledger(
             doc_id=doc_id,
             doc_title=doc_title,
