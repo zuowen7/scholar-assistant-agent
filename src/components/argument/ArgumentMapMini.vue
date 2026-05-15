@@ -9,18 +9,41 @@
         <ArgumentMapCanvas :readonly="true" />
       </div>
     </template>
+    <div v-else-if="state.extracting" class="arg-mini-empty">
+      <p>正在提取论证结构…</p>
+    </div>
     <div v-else class="arg-mini-empty">
       <p>尚无论证图</p>
+      <button
+        class="arg-mini-extract-btn"
+        :disabled="!hasContent"
+        @click="doExtract"
+      >
+        从论文提取论证图
+      </button>
       <button class="arg-mini-open" @click="openFull">前往论证地图</button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useArgumentMap, requestOpenFullArgMap } from '../../composables/useArgumentMap'
 import ArgumentMapCanvas from './ArgumentMapCanvas.vue'
 
-const { state } = useArgumentMap()
+const props = defineProps<{ content?: string }>()
+
+const { state, createGraph, extractArgument } = useArgumentMap()
+
+const hasContent = computed(() => !!(props.content?.trim()))
+
+async function doExtract() {
+  if (!props.content?.trim()) return
+  try {
+    await createGraph('论证图', undefined)
+    await extractArgument(props.content)
+  } catch { /* ignore */ }
+}
 
 function openFull() { requestOpenFullArgMap() }
 </script>
@@ -66,6 +89,25 @@ function openFull() { requestOpenFullArgMap() }
   flex-shrink: 0;
 }
 .arg-mini-open:hover { background: var(--c-accent-bg2); }
+
+.arg-mini-extract-btn {
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--c-accent);
+  background: transparent;
+  color: var(--c-accent);
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+.arg-mini-extract-btn:hover:not(:disabled) {
+  background: var(--c-accent);
+  color: #000;
+}
+.arg-mini-extract-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 
 .arg-mini-canvas {
   flex: 1;
