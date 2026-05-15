@@ -347,9 +347,30 @@ def register_companion(
         config = load_config()
         trans_cfg = config.get("translator", {})
         cloud_cfg = trans_cfg.get("cloud", {})
-        if not cloud_cfg.get("api_key"):
+        if cloud_cfg.get("api_key"):
+            return build_cloud_client(trans_cfg, cloud_cfg)
+        return None
+
+    def _get_ollama_client():
+        if load_config is None:
             return None
-        return build_cloud_client(trans_cfg, cloud_cfg)
+        config = load_config()
+        trans_cfg = config.get("translator", {})
+        try:
+            from src.translator.ollama_client import OllamaClient
+            ollama_url = os.environ.get("OLLAMA_HOST") or trans_cfg.get(
+                "ollama_base_url", "http://localhost:11434"
+            )
+            return OllamaClient(
+                base_url=ollama_url,
+                model=trans_cfg.get("model", "qwen3:8b"),
+                temperature=trans_cfg.get("temperature", 0.3),
+                system_prompt=trans_cfg.get("system_prompt", ""),
+                timeout=trans_cfg.get("timeout", 300.0),
+            )
+        except Exception as e:
+            logger.warning("Ollama client creation failed: %s", e)
+            return None
 
     # ── Ledger endpoints ───────────────────────────────────────────────────
 
@@ -358,8 +379,9 @@ def register_companion(
         from src.argument.ledger import build_ledger, rebuild_ledger
 
         cloud_client = _get_cloud_client()
-        logger.info("companion_build_ledger doc_id=%s has_cloud=%s text_len=%d",
-                     req.doc_id, cloud_client is not None, len(req.text or ""))
+        ollama_client = _get_ollama_client() if cloud_client is None else None
+        logger.info("companion_build_ledger doc_id=%s has_cloud=%s has_ollama=%s text_len=%d",
+                     req.doc_id, cloud_client is not None, ollama_client is not None, len(req.text or ""))
         fn = rebuild_ledger if store.get_ledger(req.doc_id) else build_ledger
 
         async def _gen():
@@ -370,6 +392,7 @@ def register_companion(
                     text=req.text,
                     store=store,
                     cloud_client=cloud_client,
+                    ollama_client=ollama_client,
                 ):
                     yield {"event": ev["event"], "data": ev["data"]}
             except Exception:
