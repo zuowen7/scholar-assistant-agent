@@ -304,11 +304,44 @@ fn spawn_ollama(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn kill_port_owner(port: u16) {
+    // On Windows, find and kill any process listening on the given port
+    #[cfg(windows)]
+    {
+        let output = std::process::Command::new("netstat")
+            .args(["-ano"])
+            .output();
+        if let Ok(out) = output {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            for line in stdout.lines() {
+                let addr = format!("127.0.0.1:{}", port);
+                if line.contains("LISTENING") && line.contains(&addr) {
+                    if let Some(pid_str) = line.split_whitespace().last() {
+                        if let Ok(pid) = pid_str.parse::<u32>() {
+                            eprintln!("[INFO] Killing stale process PID={} on port {}", pid, port);
+                            let _ = std::process::Command::new("taskkill")
+                                .args(["/F", "/PID", &pid.to_string()])
+                                .status();
+                            // Wait briefly for port to be released
+                            std::thread::sleep(std::time::Duration::from_millis(500));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn spawn_python_inner<R: tauri::Runtime, M: Manager<R>>(
     app: &M,
     app_handle: Option<&tauri::AppHandle<R>>,
 ) -> Result<String, String> {
     let python_dir = resolve_python_dir();
+
+    // Kill any stale process on port 18088 before spawning a new one
+    if is_port_listening(18088, 500) {
+        kill_port_owner(18088);
+    }
 
     let mut child = if cfg!(debug_assertions) {
         let api_path = python_dir.join("api.py");
