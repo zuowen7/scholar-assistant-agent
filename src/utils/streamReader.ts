@@ -2,6 +2,7 @@ export async function readSseStream(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   onEvent: (eventType: string, data: Record<string, unknown>) => void,
   signal?: AbortSignal,
+  isDone?: () => boolean,
 ): Promise<void> {
   const decoder = new TextDecoder()
   let buffer = ''
@@ -30,6 +31,7 @@ export async function readSseStream(
       const { done, value } = await reader.read()
       if (done) break
       if (signal?.aborted) break
+      if (isDone?.()) { reader.cancel().catch(() => {}); break }
 
       buffer += decoder.decode(value, { stream: true })
       const lines = buffer.split('\n')

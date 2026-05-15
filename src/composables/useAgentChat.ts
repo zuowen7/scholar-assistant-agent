@@ -183,9 +183,11 @@ export function useAgentChat() {
     const MAX_RETRIES = 2
     let sessionStarted = false
 
-    // Wrap the handler to track whether session has started (for reconnect decisions)
+    let streamDone = false
+    // Wrap the handler to track session start and detect stream completion
     const trackingHandler = (eventType: string, data: Record<string, unknown>) => {
       if (eventType === 'session_started') sessionStarted = true
+      if (eventType === 'done' || eventType === 'error' || eventType === 'aborted') streamDone = true
       handleEvent(eventType, data)
     }
 
@@ -208,7 +210,7 @@ export function useAgentChat() {
       }
       const reader = resp.body?.getReader()
       if (!reader) throw new Error('无法读取响应流')
-      await readSseStream(reader, trackingHandler)
+      await readSseStream(reader, trackingHandler, undefined, () => streamDone)
     }
 
     try {
