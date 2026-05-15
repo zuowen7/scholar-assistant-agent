@@ -14,6 +14,8 @@ import {
   inferRelationType,
   useArgumentMap,
   _resetForTesting,
+  argMapV2Enabled,
+  checkArgumentMapV2Flag,
 } from '../composables/useArgumentMap'
 import type { ArgNode, ArgEdge, ArgGraph, NodeType, RelationType } from '../composables/useArgumentMap'
 
@@ -218,6 +220,50 @@ describe('inferRelationType', () => {
 })
 
 // ── undo / redo ───────────────────────────────────────────────────────────────
+
+describe('checkArgumentMapV2Flag', () => {
+  beforeEach(() => {
+    _resetForTesting()
+    vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('loads the argument map v2 flag from /api/config', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ features: { argument_map_v2: true } }),
+    } as Response)
+
+    await checkArgumentMapV2Flag()
+
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:18088/api/config')
+    expect(argMapV2Enabled.value).toBe(true)
+  })
+
+  it('keeps the existing flag value on non-OK responses', async () => {
+    argMapV2Enabled.value = true
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      json: async () => ({ features: { argument_map_v2: false } }),
+    } as Response)
+
+    await checkArgumentMapV2Flag()
+
+    expect(argMapV2Enabled.value).toBe(true)
+  })
+
+  it('disables the flag when config loading throws', async () => {
+    argMapV2Enabled.value = true
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network down'))
+
+    await checkArgumentMapV2Flag()
+
+    expect(argMapV2Enabled.value).toBe(false)
+  })
+})
 
 describe('useArgumentMap undo/redo', () => {
   beforeEach(() => {

@@ -23,6 +23,7 @@ Hook 点:
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -157,8 +158,13 @@ class HookManager:
         hooks = self._hooks.get(ctx.point, [])
         for hook_fn in hooks:
             try:
+                if inspect.iscoroutinefunction(hook_fn):
+                    logger.debug("跳过异步 Hook: %s", hook_fn.__name__)
+                    continue
                 result = hook_fn(ctx)
-                if asyncio.iscoroutine(result):
+                if inspect.isawaitable(result):
+                    if hasattr(result, "close"):
+                        result.close()
                     logger.debug("跳过异步 Hook: %s", hook_fn.__name__)
                     continue
             except Exception as e:
