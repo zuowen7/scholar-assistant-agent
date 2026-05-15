@@ -117,8 +117,11 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
         if (d['ledger_id']) ledger.id = d['ledger_id'] as string
       }
     })
-    console.log('[companion] readSseStream done, events received:', eventCount)
+    console.log('[companion] readSseStream done, events received:', eventCount, 'promises:', ledger.promises.length)
 
+    if (ledger.promises.length === 0 && eventCount > 0) {
+      console.warn('[companion] LLM returned 0 promises — LLM may be unavailable or text too short')
+    }
     state.ledger = ledger
     state.ledgerStale = false
   } finally {
