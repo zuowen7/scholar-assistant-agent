@@ -81,7 +81,7 @@ async def extract_argument(
     raw = ""
     try:
         raw = await call_llm_chat(
-            prompt, cloud_client, ollama_client, max_tokens=8192, temperature=0.3
+            prompt, cloud_client, ollama_client, max_tokens=16384, temperature=0.3
         )
     except Exception as exc:
         yield {"event": "error", "data": json.dumps({"message": f"LLM 调用失败: {exc}"})}
@@ -102,7 +102,7 @@ async def extract_argument(
                         f"请只输出有效的 JSON 对象，不要任何解释文字：\n{raw[:500]}",
                         cloud_client,
                         ollama_client,
-                        max_tokens=8192,
+                        max_tokens=16384,
                         temperature=0.1,
                     )
                 except Exception:
