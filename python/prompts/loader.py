@@ -359,3 +359,41 @@ def parse_llm_output(raw: str) -> dict:
         result["main_text"] = raw.strip()
 
     return result
+
+
+# ── Schema validation utility (Phase B) ────────────────────────────────────
+
+def validate_prompt_schema(name: str, strict: bool = False) -> list[str]:
+    """Validate a prompt file against the 6-layer PromptSpec schema.
+
+    Args:
+        name: relative path from prompts/ dir (e.g. "tasks_polish/academic_polish.md")
+        strict: if True, raise PromptSchemaError on missing layer; if False, return as warning
+    Returns:
+        list of warning strings (empty = fully valid)
+    """
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+
+    try:
+        from src.prompts.schema import PromptSpec, PromptSchemaError
+    except ImportError:
+        return ["schema module not available (src.prompts.schema)"]
+
+    raw = _load_raw(name)
+    if not raw:
+        return [f"File not found: {name}"]
+
+    try:
+        spec = PromptSpec.from_yaml_frontmatter(raw)
+    except PromptSchemaError as e:
+        msg = f"Schema error in {name}: {e}"
+        if strict:
+            raise
+        _log.warning(msg)
+        return [msg]
+
+    warnings = spec.validate()
+    for w in warnings:
+        _log.warning("Prompt schema warning in %s: %s", name, w)
+    return warnings

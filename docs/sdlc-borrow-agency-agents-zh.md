@@ -10,8 +10,8 @@
 | Phase | 主题 | 主要产出 | 测试增量 | 预估 | 状态 |
 |---|---|---|---|---|---|
 | 0 | 文档落仓 + 分支建立 | 本文件 + `feature/sdlc-borrow-agency-agents-zh` | 0 | 30 min | [x] |
-| A | 翻译 prompt 5 规则 + 外部模板 | `prompts/tasks_translate/` + author-year 引用保护 | 15 unit | 1–2 天 | [ ] |
-| B | 6 层 Prompt 骨架 + eval 框架 | `prompts/schema.py` + `tests/eval/` | 18 unit | 2–3 天 | [ ] |
+| A | 翻译 prompt 5 规则 + 外部模板 | `prompts/tasks_translate/` + author-year 引用保护 | 15 unit | 1–2 天 | [x] |
+| B | 6 层 Prompt 骨架 + eval 框架 | `prompts/schema.py` + `tests/eval/` | 18 unit | 2–3 天 | [x] |
 | C | Agent Skill 三层文件分解 | `data/agent/skills/<name>/{SOUL,AGENTS,IDENTITY}.md` | 12 unit | 2–3 天 | [ ] |
 | D | Reviewer-2 DAG 三角度并行 | `_reviewer_perspectives.py` + 3 个 `.md` | 13 unit + 3 e2e | 2–3 天 | [ ] |
 
@@ -266,3 +266,5 @@ npx tauri dev
 ## 变更日志
 
 - **2026-05-18 Phase 0**：建分支 `feature/sdlc-borrow-agency-agents-zh`；落地本文档
+- **2026-05-18 Phase A**：29 tests green (A1-A15)；新增 `_prompt_loader.py` + `academic_translate.md` + 7 section partials；扩展 `protect_citations` author-year regex；回归 133 passed
+- **2026-05-18 Phase B**：32 tests green (B1-B10 × 22 + E1-E8 × 10)；新增 `src/prompts/schema.py` (PromptSpec + PromptSchemaError)；6 个 tasks_*.md 加 YAML frontmatter；新增 `tests/eval/runner.py` + 5 个 YAML case 文件；eval runner 验证 translate/polish 套件 5/5 pass；回归 1514 passed / 8 skipped

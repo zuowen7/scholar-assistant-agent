@@ -1,0 +1,10 @@
+id: "t002_no_code_translation"
+description: "Code blocks must not be translated"
+suite: "translate"
+input: "The function ```def hello(): pass``` computes values."
+mock_output: "该函数 ```def hello(): pass``` 计算值。"
+assertions:
+  - type: contains
+    value: "def hello(): pass"
+  - type: regex_match
+    pattern: "```def hello\\(\\): pass```"
