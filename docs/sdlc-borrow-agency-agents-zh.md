@@ -13,7 +13,7 @@
 | A | 翻译 prompt 5 规则 + 外部模板 | `prompts/tasks_translate/` + author-year 引用保护 | 15 unit | 1–2 天 | [x] |
 | B | 6 层 Prompt 骨架 + eval 框架 | `prompts/schema.py` + `tests/eval/` | 18 unit | 2–3 天 | [x] |
 | C | Agent Skill 三层文件分解 | `data/agent/skills/<name>/{SOUL,AGENTS,IDENTITY}.md` | 12 unit | 2–3 天 | [x] |
-| D | Reviewer-2 DAG 三角度并行 | `_reviewer_perspectives.py` + 3 个 `.md` | 13 unit + 3 e2e | 2–3 天 | [ ] |
+| D | Reviewer-2 DAG 三角度并行 | `_reviewer_perspectives.py` + 3 个 `.md` | 13 unit + 3 e2e | 2–3 天 | [x] |
 
 **总测试增量**：58 unit + 3 integration（全 mock，不依赖真实 LLM）
 **回归基线**：`pytest python/tests/unit/ -q` 现状 1624 passed / 11 skipped，每 Phase 不能下降
@@ -269,3 +269,4 @@ npx tauri dev
 - **2026-05-18 Phase A**：29 tests green (A1-A15)；新增 `_prompt_loader.py` + `academic_translate.md` + 7 section partials；扩展 `protect_citations` author-year regex；回归 133 passed
 - **2026-05-18 Phase B**：32 tests green (B1-B10 × 22 + E1-E8 × 10)；新增 `src/prompts/schema.py` (PromptSpec + PromptSchemaError)；6 个 tasks_*.md 加 YAML frontmatter；新增 `tests/eval/runner.py` + 5 个 YAML case 文件；eval runner 验证 translate/polish 套件 5/5 pass；回归 1514 passed / 8 skipped
 - **2026-05-18 Phase C**：12 tests green (C1-C12)；`Skill` dataclass 加 `soul_path/agents_path/identity_path`；`_skill_persistence.py` 支持 IDENTITY.md 三层检测；`_skill_migrate.py` SKILL.md→三层迁移脚本；`prompt_builder.py` `PromptConfig` 加 `active_skills/relevant_skill_names/skill_token_budget`；`_build_skill_section()` SOUL 常驻 + AGENTS 按需；示例 skill `example_translate_skill/{SOUL,AGENTS,IDENTITY}.md`；回归 1516 passed / 8 skipped
+- **2026-05-18 Phase D**：13 tests green (D1-D10 unit + E1-E3 integration)；新增 `_reviewer_perspectives.py`（run_method/experiment/writing_perspective + aggregate_perspectives）；`reviewer.py` 加 `run_review_parallel()`（asyncio.gather 三角度 + 去重聚合）；`ReviewPoint` 加 `perspective` 字段；4 个 `prompts/tasks_review/*.md`；30 个 companion e2e 全过；回归 1526 passed / 8 skipped

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -534,3 +535,68 @@ async def import_real_reviews(
 
     store.save_review(session)
     yield {"event": "complete", "data": json.dumps({"session_id": session.id})}
+
+
+# ── parallel three-perspective review ─────────────────────────────────────────
+
+async def run_review_parallel(
+    doc_id: str,
+    text: str,
+    venue: "str | None" = None,
+    persona: str = "reviewer2",
+    ledger: "Ledger | None" = None,
+    store: CompanionStore = None,  # type: ignore[assignment]
+    *,
+    doc_title: str = "",
+    session_id: "str | None" = None,
+    cloud_client: Any = None,
+    ollama_client: Any = None,
+) -> AsyncIterator[dict]:
+    """SSE: Parallel three-perspective review (method / experiment / writing).
+
+    Runs three reviewer angles via asyncio.gather, then aggregates and deduplicates.
+    Falls back gracefully if one perspective fails.
+    """
+    import asyncio as _asyncio
+
+    from ._reviewer_perspectives import (
+        aggregate_perspectives,
+        run_experiment_perspective,
+        run_method_perspective,
+        run_writing_perspective,
+    )
+
+    venue_profile = _load_venue_profile(venue)
+    new_points: list[ReviewPoint] = []
+
+    # 1. Deterministic ledger check (fast, no LLM)
+    for rp in ledger_cross_check(ledger):
+        new_points.append(rp)
+        yield {"event": "review_point", "data": rp.model_dump_json()}
+
+    # 2. Three perspectives in parallel
+    results = await _asyncio.gather(
+        run_method_perspective(text, venue_profile, cloud_client, ollama_client),
+        run_experiment_perspective(text, venue_profile, cloud_client, ollama_client),
+        run_writing_perspective(text, venue_profile, cloud_client, ollama_client),
+        return_exceptions=True,
+    )
+
+    method_pts = results[0] if not isinstance(results[0], Exception) else []
+    experiment_pts = results[1] if not isinstance(results[1], Exception) else []
+    writing_pts = results[2] if not isinstance(results[2], Exception) else []
+
+    logger.info(
+        "parallel review: method=%d experiment=%d writing=%d",
+        len(method_pts), len(experiment_pts), len(writing_pts),
+    )
+
+    aggregated = aggregate_perspectives(method_pts, experiment_pts, writing_pts)
+
+    for rp in aggregated:
+        new_points.append(rp)
+        yield {"event": "review_point", "data": rp.model_dump_json()}
+
+    yield _build_complete_event(
+        new_points, session_id, doc_id, doc_title, venue, persona, ["parallel"], store
+    )
