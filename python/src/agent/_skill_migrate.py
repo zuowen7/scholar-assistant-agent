@@ -83,7 +83,7 @@ def migrate_skills_dir(skills_dir: Path, dry_run: bool = False) -> dict:
         try:
             parsed = _parse_legacy(skill_md)
             fm = parsed["fm"]
-            name = fm.get("name", skill_dir.name)
+            name = fm.get("name") or skill_dir.name
             description = (parsed["description"] or name)[:200]
 
             # Build IDENTITY.md

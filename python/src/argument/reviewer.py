@@ -214,10 +214,12 @@ def _parse_llm_points(raw: str, *, source: str) -> list[ReviewPoint]:
             continue
         try:
             severity = item.get("severity", "minor")
-            category = item.get("category", "other")
+            category = item.get("category")
+            if not category:
+                continue  # discard items missing category
             title = item.get("title", "")
             detail = item.get("detail", "")
-            if not title or not detail or not category:
+            if not title or not detail:
                 continue  # discard malformed items
             points.append(ReviewPoint(
                 severity=severity,  # type: ignore[arg-type]
