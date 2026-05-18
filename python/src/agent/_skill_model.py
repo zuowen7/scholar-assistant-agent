@@ -46,6 +46,9 @@ class Skill:
     last_used_at: str = ""
     use_count: int = 0
     deprecated: bool = False
+    soul_path: str = ""      # absolute path to SOUL.md (empty = not three-layer)
+    agents_path: str = ""    # absolute path to AGENTS.md
+    identity_path: str = ""  # absolute path to IDENTITY.md
 
     def to_markdown(self) -> str:
         """序列化为 SKILL.md 格式。"""

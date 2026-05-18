@@ -298,6 +298,7 @@ export interface ReviewPoint {
   status: PointStatus
   source: PointSource
   reviewer_label: string | null
+  perspective: 'method' | 'experiment' | 'writing' | 'aggregated' | null
   thread: RebuttalTurn[]
 }
 

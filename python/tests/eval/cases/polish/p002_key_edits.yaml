@@ -1,0 +1,10 @@
+id: "p002_key_edits"
+description: "Polished output must contain [Key Edits] section"
+suite: "polish"
+input: "We achieved good result on many dataset."
+mock_output: "[Revised Paragraph]\nWe achieved strong results across multiple datasets.\n\n[Key Edits]\n- Corrected grammar: 'good result' → 'strong results'.\n- Plural 'datasets' used for consistency."
+assertions:
+  - type: contains
+    value: "[Key Edits]"
+  - type: regex_match
+    pattern: "- .+"

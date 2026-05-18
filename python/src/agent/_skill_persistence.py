@@ -27,15 +27,57 @@ class SkillPersistenceMixin:
         for skill_dir in self.skills_dir.iterdir():
             if not skill_dir.is_dir():
                 continue
-            skill_file = skill_dir / "SKILL.md"
-            if skill_file.exists():
-                skill = self._parse_skill_file(skill_file)
-                if skill:
-                    self._skills[skill.name] = skill
+            if (skill_dir / "IDENTITY.md").exists():
+                skill = self._load_three_layer_skill(skill_dir)
+            elif (skill_dir / "SKILL.md").exists():
+                skill = self._parse_skill_file(skill_dir / "SKILL.md")
+            else:
+                continue
+            if skill:
+                self._skills[skill.name] = skill
 
         if self._skills:
             logger.info("已加载 %d 个 Skill: %s", len(self._skills), list(self._skills.keys()))
         self._prune_stale()
+
+    def _load_three_layer_skill(self, skill_dir: Path) -> Skill | None:
+        """Load a three-layer skill from IDENTITY.md (SOUL/AGENTS read lazily)."""
+        identity_path = skill_dir / "IDENTITY.md"
+        try:
+            content = identity_path.read_text(encoding="utf-8")
+        except Exception as e:
+            logger.warning("读取 IDENTITY.md 失败 %s: %s", identity_path, e)
+            return None
+
+        # Parse optional frontmatter using simple key: value parsing (not YAML)
+        # to avoid crashing on invalid YAML (C11 requirement)
+        fm: dict[str, str] = {}
+        body = content
+        fm_match = re.match(r"---\s*\n(.*?)\n---\s*\n?", content, re.DOTALL)
+        if fm_match:
+            fm_text = fm_match.group(1)
+            body = content[fm_match.end():].strip()
+            for line in fm_text.split("\n"):
+                if ":" in line:
+                    key, _, value = line.partition(":")
+                    fm[key.strip()] = value.strip()
+
+        name = fm.get("name", skill_dir.name)
+        description = body[:200] if body else ""
+
+        return Skill(
+            name=name,
+            trigger=fm.get("trigger", ""),
+            description=description,
+            created_at=fm.get("created", ""),
+            updated_at=fm.get("updated", ""),
+            last_used_at=fm.get("last_used", ""),
+            use_count=int(fm.get("use_count", "0") or "0"),
+            deprecated=fm.get("deprecated", "false").lower() == "true",
+            soul_path=str(skill_dir / "SOUL.md"),
+            agents_path=str(skill_dir / "AGENTS.md"),
+            identity_path=str(identity_path),
+        )
 
     def _prune_stale(self) -> None:
         """将超过 SKILL_DECAY_DAYS 天未使用的 skill 标记为 deprecated。"""
@@ -120,11 +162,37 @@ class SkillPersistenceMixin:
         return m.group(1).strip() if m else ""
 
     def _save_skill(self, skill: Skill) -> None:
-        """将 Skill 保存为文件。"""
+        """将 Skill 保存为文件。
+
+        三层 Skill（identity_path 已设且文件存在）→ 更新 IDENTITY.md frontmatter。
+        传统 Skill → 写 SKILL.md（原有逻辑不变）。
+        """
+        # Three-layer skill: update IDENTITY.md frontmatter only
+        if skill.identity_path and Path(skill.identity_path).exists():
+            try:
+                content = Path(skill.identity_path).read_text(encoding="utf-8")
+                fm_match = re.match(r"---\s*\n(.*?)\n---\s*\n?", content, re.DOTALL)
+                body = content[fm_match.end():] if fm_match else content
+                new_fm = (
+                    f"name: {skill.name}\n"
+                    f"trigger: {skill.trigger}\n"
+                    f"created: {skill.created_at}\n"
+                    f"updated: {skill.updated_at}\n"
+                    f"last_used: {skill.last_used_at}\n"
+                    f"use_count: {skill.use_count}\n"
+                    f"deprecated: {str(skill.deprecated).lower()}"
+                )
+                Path(skill.identity_path).write_text(
+                    f"---\n{new_fm}\n---\n{body}", encoding="utf-8"
+                )
+                return
+            except Exception as e:
+                logger.warning("更新 IDENTITY.md 失败，回退到 SKILL.md: %s", e)
+
+        # Legacy skill: write SKILL.md
         skill_dir = self.skills_dir / skill.name
         skill_dir.mkdir(parents=True, exist_ok=True)
         filepath = skill_dir / "SKILL.md"
-
         try:
             filepath.write_text(skill.to_markdown(), encoding="utf-8")
         except Exception as e:

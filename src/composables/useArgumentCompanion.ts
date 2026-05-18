@@ -208,6 +208,7 @@ async function runReview(
   text: string,
   venue: string | null = null,
   persona = 'reviewer2',
+  mode: 'serial' | 'parallel' = 'serial',
 ): Promise<void> {
   if (!state.docId) {
     state.docId = `untitled-${crypto.randomUUID()}`
@@ -224,6 +225,7 @@ async function runReview(
         text,
         venue,
         persona,
+        mode,
       }),
     })
     if (!resp.ok || !resp.body) { state.reviewing = false; return }
