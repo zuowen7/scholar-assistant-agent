@@ -75,6 +75,10 @@
           <option value="domain_expert">领域专家</option>
           <option value="friendly">友好评审</option>
         </select>
+        <select v-model="reviewMode" class="ctrl-select">
+          <option value="serial">单角度</option>
+          <option value="parallel">三角度并行</option>
+        </select>
         <button
           class="run-review-btn"
           :disabled="companion.state.reviewing"
@@ -151,6 +155,7 @@ const companion = useArgumentCompanion()
 const activeSubTab = ref<'ledger' | 'reviewer' | 'graph'>('ledger')
 const venue = ref<string>('')
 const persona = ref<string>('reviewer2')
+const reviewMode = ref<'serial' | 'parallel'>('serial')
 const importText = ref<string>('')
 const experimentSuggestion = ref<string>('')
 
@@ -164,7 +169,7 @@ async function handleAnalyze() {
 }
 
 async function handleRunReview() {
-  await companion.runReview(props.content, venue.value || null, persona.value)
+  await companion.runReview(props.content, venue.value || null, persona.value, reviewMode.value)
 }
 
 async function handleImportReviews() {
