@@ -31,13 +31,16 @@ async def run_method_perspective(
 ) -> list[ReviewPoint]:
     """LLM review focused on methodology and theoretical soundness."""
     template = _load_prompt("perspective_method.md")
-    prompt = template or (
-        "You are Reviewer-2 focusing ONLY on methodology and theoretical soundness.\n"
-        f"Venue: {venue_profile[:400]}\n\nPaper:\n{text[:3000]}\n\n"
-        "Focus: research design, approach validity, theoretical grounding, logical soundness of methods.\n"
-        "Return ONLY a JSON array (possibly []): "
-        '[{"category":...,"severity":"minor|major|fatal","title":...,"detail":...}]'
-    )
+    if template:
+        prompt = template.replace("{venue}", venue_profile[:400]).replace("{text}", text[:3000])
+    else:
+        prompt = (
+            "You are Reviewer-2 focusing ONLY on methodology and theoretical soundness.\n"
+            f"Venue: {venue_profile[:400]}\n\nPaper:\n{text[:3000]}\n\n"
+            "Focus: research design, approach validity, theoretical grounding, logical soundness of methods.\n"
+            "Return ONLY a JSON array (possibly []): "
+            '[{"category":...,"severity":"minor|major|fatal","title":...,"detail":...}]'
+        )
     try:
         raw = await call_llm_chat(prompt, cloud_client, ollama_client, max_tokens=1024, temperature=0.4)
     except Exception as exc:
@@ -54,13 +57,16 @@ async def run_experiment_perspective(
 ) -> list[ReviewPoint]:
     """LLM review focused on experiments and evaluation."""
     template = _load_prompt("perspective_experiment.md")
-    prompt = template or (
-        "You are Reviewer-2 focusing ONLY on experiments and evaluation.\n"
-        f"Venue: {venue_profile[:400]}\n\nPaper:\n{text[:3000]}\n\n"
-        "Focus: baselines, ablation studies, experimental setup, reproducibility, statistical significance.\n"
-        "Return ONLY a JSON array (possibly []): "
-        '[{"category":...,"severity":"minor|major|fatal","title":...,"detail":...}]'
-    )
+    if template:
+        prompt = template.replace("{venue}", venue_profile[:400]).replace("{text}", text[:3000])
+    else:
+        prompt = (
+            "You are Reviewer-2 focusing ONLY on experiments and evaluation.\n"
+            f"Venue: {venue_profile[:400]}\n\nPaper:\n{text[:3000]}\n\n"
+            "Focus: baselines, ablation studies, experimental setup, reproducibility, statistical significance.\n"
+            "Return ONLY a JSON array (possibly []): "
+            '[{"category":...,"severity":"minor|major|fatal","title":...,"detail":...}]'
+        )
     try:
         raw = await call_llm_chat(prompt, cloud_client, ollama_client, max_tokens=1024, temperature=0.4)
     except Exception as exc:
@@ -77,13 +83,16 @@ async def run_writing_perspective(
 ) -> list[ReviewPoint]:
     """LLM review focused on writing quality and presentation."""
     template = _load_prompt("perspective_writing.md")
-    prompt = template or (
-        "You are Reviewer-2 focusing ONLY on writing quality and presentation clarity.\n"
-        f"Venue: {venue_profile[:400]}\n\nPaper:\n{text[:3000]}\n\n"
-        "Focus: clarity, structure, language quality, figure captions, related work positioning.\n"
-        "Return ONLY a JSON array (possibly []): "
-        '[{"category":...,"severity":"minor|major|fatal","title":...,"detail":...}]'
-    )
+    if template:
+        prompt = template.replace("{venue}", venue_profile[:400]).replace("{text}", text[:3000])
+    else:
+        prompt = (
+            "You are Reviewer-2 focusing ONLY on writing quality and presentation clarity.\n"
+            f"Venue: {venue_profile[:400]}\n\nPaper:\n{text[:3000]}\n\n"
+            "Focus: clarity, structure, language quality, figure captions, related work positioning.\n"
+            "Return ONLY a JSON array (possibly []): "
+            '[{"category":...,"severity":"minor|major|fatal","title":...,"detail":...}]'
+        )
     try:
         raw = await call_llm_chat(prompt, cloud_client, ollama_client, max_tokens=1024, temperature=0.4)
     except Exception as exc:
