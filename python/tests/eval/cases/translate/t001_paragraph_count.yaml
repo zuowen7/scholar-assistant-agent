@@ -1,0 +1,11 @@
+id: "t001_paragraph_count"
+description: "Translation must preserve paragraph count (2 paragraphs in, 2 out)"
+suite: "translate"
+input: "First paragraph here.\n\nSecond paragraph here."
+mock_output: "第一段在这里。\n\n第二段在这里。"
+assertions:
+  - type: contains
+    value: "\n\n"
+  - type: length_range
+    min: 5
+    max: 500

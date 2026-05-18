@@ -1,0 +1,10 @@
+id: "t003_citation_preserved"
+description: "Numeric citations must be preserved as-is"
+suite: "translate"
+input: "This result was shown by Smith et al. [1] in 2020."
+mock_output: "这一结果由 Smith 等人 [1] 于 2020 年证明。"
+assertions:
+  - type: contains
+    value: "[1]"
+  - type: not_contains
+    value: "【1】"
