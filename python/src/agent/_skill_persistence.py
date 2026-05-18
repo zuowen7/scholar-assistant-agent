@@ -164,7 +164,7 @@ class SkillPersistenceMixin:
     def _save_skill(self, skill: Skill) -> None:
         """将 Skill 保存为文件。
 
-        三层 Skill（identity_path 已设且文件存在）→ 仅更新 IDENTITY.md frontmatter。
+        三层 Skill（identity_path 已设且文件存在）→ 更新 IDENTITY.md frontmatter。
         传统 Skill → 写 SKILL.md（原有逻辑不变）。
         """
         # Three-layer skill: update IDENTITY.md frontmatter only
@@ -172,21 +172,20 @@ class SkillPersistenceMixin:
             try:
                 content = Path(skill.identity_path).read_text(encoding="utf-8")
                 fm_match = re.match(r"---\s*\n(.*?)\n---\s*\n?", content, re.DOTALL)
-                if fm_match:
-                    body = content[fm_match.end():]
-                    new_fm = (
-                        f"name: {skill.name}\n"
-                        f"trigger: {skill.trigger}\n"
-                        f"created: {skill.created_at}\n"
-                        f"updated: {skill.updated_at}\n"
-                        f"last_used: {skill.last_used_at}\n"
-                        f"use_count: {skill.use_count}\n"
-                        f"deprecated: {str(skill.deprecated).lower()}"
-                    )
-                    Path(skill.identity_path).write_text(
-                        f"---\n{new_fm}\n---\n{body}", encoding="utf-8"
-                    )
-                    return
+                body = content[fm_match.end():] if fm_match else content
+                new_fm = (
+                    f"name: {skill.name}\n"
+                    f"trigger: {skill.trigger}\n"
+                    f"created: {skill.created_at}\n"
+                    f"updated: {skill.updated_at}\n"
+                    f"last_used: {skill.last_used_at}\n"
+                    f"use_count: {skill.use_count}\n"
+                    f"deprecated: {str(skill.deprecated).lower()}"
+                )
+                Path(skill.identity_path).write_text(
+                    f"---\n{new_fm}\n---\n{body}", encoding="utf-8"
+                )
+                return
             except Exception as e:
                 logger.warning("更新 IDENTITY.md 失败，回退到 SKILL.md: %s", e)
 
