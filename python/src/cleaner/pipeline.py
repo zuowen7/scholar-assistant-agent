@@ -1180,6 +1180,16 @@ def protect_citations(text: str) -> tuple[str, list[str]]:
 
     text = re.sub(r"\(\d+(?:\s*[,–—-]\s*\d+)*\)", _sub, text)
     text = re.sub(r"\[\d+(?:\s*[,–—-]\s*\d+)*\]", _sub, text)
+    # Author-year: [Smith, 2020], [Smith et al., 2020a], [Smith and Jones, 2020]
+    text = re.sub(
+        r"\[[A-Z][a-zA-Z]+(?:\s+et\s+al\.?)?(?:\s+and\s+[A-Z][a-zA-Z]+)?,\s*\d{4}[a-z]?\]",
+        _sub, text
+    )
+    # Author-year: (Smith and Jones, 2019), (Smith, 2020a)
+    text = re.sub(
+        r"\([A-Z][a-zA-Z]+(?:\s+and\s+[A-Z][a-zA-Z]+)?,\s*\d{4}[a-z]?\)",
+        _sub, text
+    )
     return text, placeholders
 
 

@@ -1,0 +1,42 @@
+chunker:
+  max_tokens: 2048
+  overlap_tokens: 0
+  strategy: sentence
+features:
+  argument_companion: true
+  argument_map_v2: true
+  parallel_review: false
+translator:
+  cloud:
+    api_key: ''
+    base_url: https://api.deepseek.com/v1
+    max_tokens: 16384
+    model: deepseek-chat
+    provider: deepseek
+  engine: cloud
+  parallel:
+    max_concurrency: 1
+    retry_delay: 2.0
+  system_prompt: 'You are a professional academic translator. Translate the following
+    English text to Chinese.
+
+    Rules:
+
+    1. Preserve all technical terms, formulas, and citations exactly as-is.
+
+    2. Keep the original paragraph structure (use blank lines between paragraphs exactly
+    as in the source).
+
+    3. Use natural, fluent Chinese suitable for academic contexts.
+
+    4. Translate sentence by sentence, do not skip or summarize any content.
+
+    '
+vision:
+  api_key: ''
+  base_url: https://api.openai.com/v1
+  model: gpt-4o
+zotero:
+  api_key: ''
+  style: ieee
+  user_id: ''

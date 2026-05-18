@@ -21,6 +21,9 @@ class SkillMatchingMixin:
         1. 关键词精确匹配：trigger 短语直接出现在 query 中
         2. 关键词重合度：query 和 trigger 共享关键词的比例
         3. 语义扩展：检查 description 和 name 是否匹配
+
+        注：三层 Skill 的匹配仅使用从 IDENTITY.md 加载到内存的 description/trigger/name 数据，
+        不做额外文件 I/O。SOUL/AGENTS 内容由 PromptBuilder 按需读取。
         """
         if not self._skills:
             return None

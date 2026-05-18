@@ -1,0 +1,11 @@
+id: "p001_revised_paragraph"
+description: "Polished output must contain [Revised Paragraph] tag"
+suite: "polish"
+input: "Our method use context to help rewriting."
+mock_output: "[Revised Paragraph]\nOur method leverages contextual information to assist in paragraph rewriting.\n\n[Key Edits]\n- Improved formal tone."
+assertions:
+  - type: contains
+    value: "[Revised Paragraph]"
+  - type: length_range
+    min: 20
+    max: 2000

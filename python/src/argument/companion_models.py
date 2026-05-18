@@ -80,6 +80,7 @@ class ReviewPoint(BaseModel):
     status: PointStatus = "open"
     source: PointSource = "llm"
     reviewer_label: Optional[str] = None
+    perspective: Optional[Literal["method", "experiment", "writing", "aggregated"]] = None
     thread: list[RebuttalTurn] = Field(default_factory=list)
 
 
