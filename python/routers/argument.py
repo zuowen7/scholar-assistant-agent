@@ -507,6 +507,7 @@ def register_companion(
                         checks=req.checks,
                         session_id=req.session_id,
                         cloud_client=cloud_client,
+                        ollama_client=ollama_client,
                     ):
                         yield {"event": ev["event"], "data": ev["data"]}
             except Exception:
