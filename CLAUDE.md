@@ -83,13 +83,13 @@ Key backend modules under `src/`:
 - `parser/` — 16 format parsers, auto-detect single/dual column
 - `cleaner/` — 17-stage text pipeline
 - `chunker/` — 3 strategies (sentence/paragraph/fixed)
-- `translator/` — `ollama_client.py` + `cloud_client.py` (`PROVIDER_PRESETS`, 21 providers), `block_translator.py` (block-aware translation with status tracking, retry support)
+- `translator/` — `ollama_client.py` + `cloud_client.py` (`PROVIDER_PRESETS`, 21 providers), `block_translator.py` (block-aware translation with status tracking, retry support), `_prompt_loader.py` (template + partial assembly)
 - `formatter/` — bilingual/translated-only/parallel output + `renderer.py` (PDF/LaTeX) + `word_exporter.py`
-- `agent/` — Core: `agent.py` (AgentLoop ReAct engine), `session.py` (session management, checkpoint/resume/approval), `session_store.py` (JSON persistence), `context_compressor.py`, `prompt_builder.py`, `models.py`. LLM clients: `llm_client.py` (unified interface) + per-backend mixins `_llm_anthropic.py`, `_llm_ollama.py`, `_llm_openai.py`, `_llm_helpers.py`. Memory+Evolution: `memory.py`, `skill_system.py` + sub-modules `_skill_auto.py`, `_skill_matching.py`, `_skill_model.py`, `_skill_persistence.py`, `trajectory.py`, `review_agent.py`. Tools+Resources: `tools/` (core, workspace_tools, atomic_tools, builtin_tools, registry), `rag.py`, `vram_manager.py`. Special elements (split from monolith): `_elements_parser.py`, `_elements_tools.py`, `_elements_types.py`, `_elements_vision.py`. Reliability: `error_classifier.py`, `hooks.py`, `security_gate.py`. Integration: `mcp_server.py`, `auto_processor.py`. Workspace: `workspace.py`, `bash_session.py`, `change_journal.py`, `task_queue.py`.
+- `agent/` — Core: `agent.py` (AgentLoop ReAct engine), `session.py` (session management, checkpoint/resume/approval), `session_store.py` (JSON persistence), `context_compressor.py`, `prompt_builder.py` (Skill SOUL/AGENTS injection), `models.py`. LLM clients: `llm_client.py` (unified interface) + per-backend mixins `_llm_anthropic.py`, `_llm_ollama.py`, `_llm_openai.py`, `_llm_helpers.py`. Memory+Evolution: `memory.py`, `skill_system.py` + sub-modules `_skill_auto.py`, `_skill_matching.py`, `_skill_model.py` (three-layer paths), `_skill_persistence.py` (IDENTITY.md/SKILL.md detection), `_skill_migrate.py` (legacy→three-layer), `trajectory.py`, `review_agent.py`. Tools+Resources: `tools/` (core, workspace_tools, atomic_tools, builtin_tools, registry), `rag.py`, `vram_manager.py`. Special elements (split from monolith): `_elements_parser.py`, `_elements_tools.py`, `_elements_types.py`, `_elements_vision.py`. Reliability: `error_classifier.py`, `hooks.py`, `security_gate.py`. Integration: `mcp_server.py`, `auto_processor.py`. Workspace: `workspace.py`, `bash_session.py`, `change_journal.py`, `task_queue.py`.
 - `plugin/` — MCP-style plugin registry (`registry.py`, `loader.py`, `builtin.py`)
-- `argument/` — Argument Map v2 + Companion v3: `llm_client.py` (cloud/Ollama with reasoning-model auto-retry), `ai_ops.py` (Toulmin extraction SSE + element suggestion), `ledger.py` (promise ledger SSE), `reviewer.py` (Reviewer-2 adversarial review + rebuttal), `anchor.py` (3-state fuzzy relocation), `companion_store.py`, `graph_store.py`, `models_v2.py`
+- `argument/` — Argument Map v2 + Companion v3: `llm_client.py` (cloud/Ollama with reasoning-model auto-retry), `ai_ops.py` (Toulmin extraction SSE + element suggestion), `ledger.py` (promise ledger SSE), `reviewer.py` (Reviewer-2 serial + parallel review, rebuttal, import_real_reviews), `_reviewer_perspectives.py` (method/experiment/writing + aggregate), `anchor.py` (3-state fuzzy relocation), `companion_store.py`, `graph_store.py`, `models_v2.py`
 - `citation/`, `zotero/`, `mcp/vision_client.py` — citation indexer, Zotero API client, multi-modal image analysis
-- `prompts/` — Academic writing prompt templates (polish, expand, etc.)
+- `prompts/` — Academic writing prompt templates with 6-layer YAML frontmatter schema (polish, expand, coherence, edit, compliance, translate, review); `src/prompts/schema.py` enforces PromptSpec
 - `config/default.yaml` — All runtime configuration
 
 ### Frontend Structure (`src/`)
@@ -150,16 +150,16 @@ Three config files serve distinct roles — do not confuse them:
 | `python/config/default.local.yaml` | User overrides merged on top of `default.yaml`. Created by the UI's Settings panel or manually. | No (gitignored) |
 ### Subsystem Maturity Matrix
 
-Use this as the canonical "what works / what's polished / what's a stub" map. Updated 2026-05-15.
+Use this as the canonical "what works / what's polished / what's a stub" map. Updated 2026-05-19.
 
 | # | Subsystem | Grade | Key evidence |
 |---|-----------|-------|--------------|
 | 1 | Translation pipeline (5-step SSE + multi-article split + citation placeholders + continuation rules + UTF-8 fix) | A | `routers/translate.py:295` multi-article via `parser/article_detector.extract_articles`; `block_translator.py:289,326` citation protect/restore; `cleaner/pipeline.py:258` pdfplumber encoding fix; `cleaner/pipeline.py:894-979` 6 continuation rules |
-| 2 | 论证陪练 v3（账本 + Reviewer‑2 对抗 + Toulmin X 光 / 真实评审导入）| A | `argument/ledger.py` SSE 账本; `argument/reviewer.py` run_review/continue_rebuttal/import_real_reviews; `argument/anchor.py` 三态锚定; `components/argument/CompanionPanel + LedgerList + ReviewerThread.vue` + 完整 rebuttal mini-chat; features.argument_companion=true |
+| 2 | 论证陪练 v3（账本 + Reviewer‑2 对抗 + 三角度并行评审 + Toulmin X 光 / 真实评审导入）| A | `argument/ledger.py` SSE 账本; `argument/reviewer.py` run_review/run_review_parallel/continue_rebuttal/import_real_reviews; `argument/_reviewer_perspectives.py` method/experiment/writing 三角度 asyncio.gather; `argument/anchor.py` 三态锚定; `components/argument/CompanionPanel + LedgerList + ReviewerThread.vue` + 完整 rebuttal mini-chat; features.argument_companion=true; features.parallel_review 灰度开关 |
 | 3 | Mind Map (Vue Flow + AI expand + dagre layout) | A- | LLM failure → hardcoded fallback nodes |
 | 4 | LaTeX/Word export (IEEE Conf/Journal, ACM, NeurIPS, LNCS, Generic + Tectonic) | A | `word_exporter.py`, `pandoc_templates`, `pptx_exporter` |
 | 5 | AI editor (Monaco + Ghost Text + AI Panel) | B | Completion quality average; debounce 1.5s |
-| 6 | Agent ReAct engine (ContextCompressor + SessionStore tool_calls + Skill review + Memory dedup) | B+ | `agent.py:149,176,214` ContextCompressor wired into `step()`; `session_store.py:199-225` tool_calls round-trip; `review_agent.py` skill quality gate |
+| 6 | Agent ReAct engine (ContextCompressor + SessionStore tool_calls + Skill 三层分解 + review + Memory dedup) | A- | `agent.py:149,176,214` ContextCompressor wired into `step()`; `session_store.py:199-225` tool_calls round-trip; `review_agent.py` skill quality gate; `agent/_skill_model.py` SOUL/AGENTS/IDENTITY 三层; `prompt_builder.py` skill injection |
 | 7 | 21 cloud LLM providers | B | Only OpenAI-compatible path tested end-to-end |
 | 8 | RAG knowledge base | C | `tools/registry.py:408-481` full impl when `rag_store` injected; placeholder when None |
 | 9 | Zotero integration | C | Requires user API key |
@@ -233,3 +233,11 @@ python -m venv /tmp/test && /tmp/test/Scripts/pip install -r requirements-lock.t
 - `api_factory.py` — `RotatingFileHandler`：日志写入 `RUNTIME_DIR/logs/app.log`（10 MB × 5 备份），统一日志格式带 trace_id；`trace_id_middleware` 记录每个请求 method/path/status/耗时；新增 `GET /api/logs` 端点返回最近 N 行 + 文件路径
 - `useToast.ts` — 新增 `errorLog` ring buffer（最多 50 条 warn/danger）、`unreadErrorCount`、`clearErrorLog()`、`markErrorsRead()`
 - `DebugPanel.vue`（新文件）— 顶栏调试面板：前端错误历史（带时间戳/级别/消息）+ 后端日志查看（拉取 `/api/logs`）+ 打开日志目录按钮；有未读错误时显示红色数字徽标
+
+agency-agents-zh SDLC 改造 (2026-05-18–19，分支 `feature/sdlc-borrow-agency-agents-zh`，4 Phase 全部完成)：
+- **Phase A** — 翻译 prompt 5 规则外部模板化：`prompts/tasks_translate/academic_translate.md` + 7 个 section partials + `_prompt_loader.py`；`protect_citations` 扩展 author-year 引用保护；15 unit tests
+- **Phase B** — 6 层 Prompt 骨架 + eval 框架：`src/prompts/schema.py` (PromptSpec)；6 个 tasks_*.md 加 YAML frontmatter；`tests/eval/runner.py` + YAML eval case；22 schema + 10 eval tests
+- **Phase C** — Skill 三层文件分解：`_skill_model.py` 加 soul_path/agents_path/identity_path；`_skill_persistence.py` IDENTITY.md 检测；`_skill_migrate.py` 迁移脚本；`prompt_builder.py` active_skills/relevant_skill_names/skill_token_budget + SOUL 常驻/AGENTS 按需；12 unit tests
+- **Phase D** — Reviewer 三角度并行：`_reviewer_perspectives.py` (method/experiment/writing + aggregate)；`run_review_parallel()` asyncio.gather + 去重；`ReviewPoint.perspective` 字段；4 个 prompt templates；路由接入 `POST /api/companion/review` mode=parallel + features.parallel_review 灰度开关；前端 CompanionPanel 下拉框切换；10 unit + 3 e2e tests
+- **Bug fix pass** — 修 5 个 bug（_save_skill 写错文件 / _skill_migrate 空 name / _parse_llm_points 缺 category / 模板占位符未替换 / 串行路径缺 ollama_client）+ 40 adversarial tests
+- 回归：1559 unit passed / 8 skipped + 326 vitest passed；计划详情见 `docs/sdlc-borrow-agency-agents-zh.md`

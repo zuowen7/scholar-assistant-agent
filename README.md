@@ -2,7 +2,7 @@
 
 隐私优先的学术 AI 写作辅助平台。从翻译切入，覆盖阅读、写作、排版全流程。拖入 PDF，自动完成解析、清洗、翻译；切换到 Editor 模式，用 AI 润色、扩写、生成大纲；导出 LaTeX 模板直接投稿。
 
-- **版本**：v0.3.2（论证陪练 v3 Phase 0–5 全部完成，E2E 端对端测试覆盖，安全加固 + 可观测性增强）
+- **版本**：v0.3.2（论证陪练 v3 Phase 0–5 全部完成，agency-agents-zh 4-Phase SDLC 改造完成，三角度并行评审上线）
 - **许可**：不开源，私有项目
 
 ## 核心功能
@@ -26,7 +26,7 @@
 ### 学术写作 AI
 - **Agent 对话** — 基于 ReAct 循环的智能助手，可调用工具、检索知识库
 - **RAG 知识库** — ChromaDB + 本地嵌入，文档自动分块索引；翻译后自动入库；支持手动上传/删除文件
-- **Skill 系统** — 从任务轨迹中沉淀可复用经验，支持多信号匹配
+- **Skill 系统** — 从任务轨迹中沉淀可复用经验，三层文件分解（IDENTITY/SOUL/AGENTS），按相关性注入 prompt
 - **AI 润色 / 扩写 / 连贯性改写 / 合规检查** — 通过 AI Panel 对选中文本操作
 - **Inline Ghost Text** — Monaco Editor 打字后 1.5s 自动请求补全建议，Tab 接受 ghost 文本
 
@@ -49,13 +49,13 @@
 > 把"论证地图"的重心从自由画布转向**编辑器里的全程陪练**：AI 主动发现问题，用户只需回应。
 
 - **论证账本（Claim Ledger）** — 自动提取 abstract/intro 中每条承诺，追踪正文是否兑付（paid / partial / unpaid / mismatch），每条锚定到精确字符偏移；改稿后用模糊重定位（anchored → drifted → lost 三态）保持锚点存活，行为类似 `git blame` 之于论证
-- **Reviewer‑2 对抗** — 7 种会议校准的模拟评审（NeurIPS / ICML / ICLR / ACL / CVPR / KDD / CHI），每条批评锚到具体句子；作者逐条起草 rebuttal，reviewer 会推回或被说服；含首尾一致性 / gap 匹配 / related work 定位检查
+- **Reviewer‑2 对抗** — 7 种会议校准的模拟评审（NeurIPS / ICML / ICLR / ACL / CVPR / KDD / CHI），每条批评锚到具体句子；作者逐条起草 rebuttal，reviewer 会推回或被说服；含首尾一致性 / gap 匹配 / related work 定位检查；支持三角度并行评审（method/experiment/writing）并自动去重聚合
 - **真实评审导入** — 粘贴真实 reviewer 意见，AI 结构化拆解为可逐条 rebuttal 的条目，persona=real
 - **实验缺口建议** — 对每条 unpaid / partial 承诺，AI 给出具体实验设计方案（"怎么补满"）
 - **Rebuttal 包导出** — 一键下载含所有批评点 + rebuttal 草稿的 Markdown 文件
 - **全栈端对端验证** — `test_companion_e2e.py`：27 个集成测试覆盖全部 `/api/companion/*` 端点，真实 Store 写入 + SSE 序列化全程跑通，仅 mock LLM 调用
 
-**状态**：Phase 0–5 全部完成，`features.argument_companion=true` 已发布，pytest 1550 通过。
+**状态**：Phase 0–5 全部完成，`features.argument_companion=true` 已发布，pytest 1559 unit passed + 326 vitest passed。
 
 ### 思维导图
 - **Vue Flow 画布** — 自定义节点卡片 + 连线（树边/关联线），支持拖拽、缩放、小地图
@@ -132,21 +132,21 @@
 │   │   │   ├── session_store.py  #     会话持久化 (JSON)
 │   │   │   ├── memory.py         #     短/长期记忆
 │   │   │   ├── skill_system.py   #     Skill 沉淀 (调度 → 匹配/持久化/自动提取子模块)
-│   │   │   ├── prompt_builder.py #     Prompt 组装
+│   │   │   ├── prompt_builder.py #     Prompt 组装 (Skill SOUL/AGENTS 注入)
 │   │   │   ├── context_compressor.py # 上下文压缩
 │   │   │   ├── llm_client.py     #     统一 LLM 客户端 (按后端拆分为 _llm_*.py)
 │   │   │   ├── security_gate.py  #     工具执行安全门控
 │   │   │   ├── hooks.py          #     错误/重试 Hook
 │   │   │   ├── tools/            #     工具集 (core/atomic/builtin/workspace/registry)
 │   │   │   └── ...               #     mcp_server, rag, review_agent, trajectory, etc.
-│   │   ├── argument/             #   论证地图 v2 + 论证陪练 v3 (llm_client, ai_ops, ledger, reviewer, anchor, companion_store, graph_store)
+│   │   ├── argument/             #   论证地图 v2 + 论证陪练 v3 (llm_client, ai_ops, ledger, reviewer, _reviewer_perspectives, anchor, companion_store, graph_store)
 │   │   ├── plugin/               #   MCP 风格插件注册
 │   │   ├── citation/             #   引用索引器
 │   │   ├── zotero/               #   Zotero API 集成
 │   │   └── mcp/                  #   Vision 客户端 (多模态图像理解)
-│   ├── prompts/                  #   学术写作 Prompt 体系 (loader + schemas + tasks_*)
+│   ├── prompts/                  #   学术写作 Prompt 体系 (6层骨架 + YAML frontmatter + eval runner)
 │   ├── data/paper_assets/        #   论文模板 (IEEE/ACM/NeurIPS/LNCS/通用)
-│   └── tests/                    #   单元测试 + 集成测试（含 E2E companion），pytest 1624 passed / 11 skipped
+│   └── tests/                    #   单元测试 + 集成测试（含 E2E companion + adversarial），pytest 1559 passed / 8 skipped
 ├── Dockerfile
 ├── docker-compose.yml
 └── package.json
@@ -339,7 +339,7 @@ MSYS_NO_PATHCONV=1 docker run --rm \
 | `DELETE` | `/api/companion/ledger/{doc_id}/promise/{pid}` | 删除承诺 |
 | `POST` | `/api/companion/ledger/{doc_id}/relocate` | 改稿后重定位所有锚点 |
 | `POST` | `/api/companion/ledger/{doc_id}/promise/{pid}/suggest-experiment` | 实验缺口建议 |
-| `POST` | `/api/companion/review` | SSE 模拟评审（review_point* → complete） |
+| `POST` | `/api/companion/review` | SSE 模拟评审（review_point* → complete）；`mode: "parallel"` 启用三角度并行 |
 | `GET` | `/api/companion/review/{session_id}` | 获取评审会话 |
 | `GET` | `/api/companion/reviews` | 列出文档评审历史 |
 | `PUT` | `/api/companion/review/{sid}/point/{pid}` | 更新批评点状态 |
@@ -399,6 +399,7 @@ MSYS_NO_PATHCONV=1 docker run --rm \
 | `formatter.output_format` | bilingual | 输出格式 |
 | `agent.enabled` | true | 是否启用 Agent |
 | `rag.enabled` | true | 是否启用 RAG（仅本地） |
+| `features.parallel_review` | false | 三角度并行评审（需在 `default.local.yaml` 启用） |
 
 ## 测试
 
