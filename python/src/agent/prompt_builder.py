@@ -23,9 +23,12 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.agent.tools import ToolRegistry
+
+if TYPE_CHECKING:
+    from src.agent._skill_model import Skill
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +113,9 @@ class PromptConfig:
         extra_sections: 额外的自定义段落。
         relevant_tasks: 当前对话相关的任务关键词列表（用于匹配参考文件）。
         references_dir: 参考文件目录路径。
+        active_skills: 当前激活的 Skill 列表（三层 Skill 支持：SOUL 始终注入，AGENTS 按需注入）。
+        relevant_skill_names: 当前与任务相关的 Skill 名称集合（其 AGENTS.md 将被注入）。
+        skill_token_budget: Skill 注入的字符预算（默认 4000）。超出时截断最低优先级内容。
     """
 
     identity: str = _AGENT_IDENTITY
@@ -119,6 +125,12 @@ class PromptConfig:
     extra_sections: dict[str, str] = field(default_factory=dict)
     relevant_tasks: list[str] = field(default_factory=list)
     references_dir: str = ""
+    active_skills: list = field(default_factory=list)
+    # list[Skill] — skills whose SOUL is always injected
+    relevant_skill_names: set = field(default_factory=set)
+    # set[str] — names of skills that also get AGENTS injected
+    skill_token_budget: int = 4000
+    # max chars to use for skill injection section
 
 
 class PromptBuilder:
@@ -185,6 +197,16 @@ class PromptBuilder:
         if config.identity:
             sections.append(config.identity)
 
+        # 1b. Skill injection (SOUL always, AGENTS when relevant)
+        if config.active_skills:
+            skill_section = self._build_skill_section(
+                config.active_skills,
+                config.relevant_skill_names,
+                config.skill_token_budget,
+            )
+            if skill_section:
+                sections.append(skill_section)
+
         # 2. 按需参考注入 (Layer 2)
         refs_dir = config.references_dir or (
             str(self.references_dir) if self.references_dir else ""
@@ -232,6 +254,50 @@ class PromptBuilder:
         sections.append(f"当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
 
         return "\n\n".join(sections)
+
+    def _build_skill_section(
+        self,
+        active_skills: list,
+        relevant_skill_names: set,
+        budget: int,
+    ) -> str:
+        """Inject SOUL for all active skills; AGENTS for relevant ones only.
+
+        Respects skill_token_budget (max chars). Returns wrapped in <skills> tags.
+        """
+        from pathlib import Path
+
+        parts: list[str] = []
+        chars_used = 0
+
+        for skill in active_skills:
+            soul_path = getattr(skill, "soul_path", "")
+            if soul_path and Path(soul_path).exists():
+                try:
+                    soul_content = Path(soul_path).read_text(encoding="utf-8").strip()
+                    if chars_used + len(soul_content) <= budget:
+                        parts.append(soul_content)
+                        chars_used += len(soul_content)
+                except Exception:
+                    pass
+
+        for skill in active_skills:
+            skill_name = getattr(skill, "name", "")
+            if skill_name not in relevant_skill_names:
+                continue
+            agents_path = getattr(skill, "agents_path", "")
+            if agents_path and Path(agents_path).exists():
+                try:
+                    agents_content = Path(agents_path).read_text(encoding="utf-8").strip()
+                    if chars_used + len(agents_content) <= budget:
+                        parts.append(agents_content)
+                        chars_used += len(agents_content)
+                except Exception:
+                    pass
+
+        if not parts:
+            return ""
+        return "<skills>\n" + "\n\n".join(parts) + "\n</skills>"
 
     def _build_references_section(
         self, tasks: list[str], refs_dir: str
