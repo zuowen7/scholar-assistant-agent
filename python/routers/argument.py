@@ -6,6 +6,7 @@ import os
 import time
 import uuid
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
@@ -53,6 +54,7 @@ class CompanionReviewRequest(BaseModel):
     focus: str | dict | None = None
     checks: list[str] | None = None
     session_id: str | None = None
+    mode: Literal["serial", "parallel"] = "serial"
 
 
 class CompanionUpdatePointRequest(BaseModel):
@@ -459,27 +461,54 @@ def register_companion(
 
     @app.post("/api/companion/review")
     async def companion_review(req: CompanionReviewRequest):
-        from src.argument.reviewer import run_review
-
         cloud_client = _get_cloud_client()
+        ollama_client = _get_ollama_client()
         ledger = store.get_ledger(req.doc_id)
+
+        # Determine whether to use parallel review
+        use_parallel = req.mode == "parallel"
+        if use_parallel:
+            # Config flag gates the feature
+            if load_config:
+                cfg = load_config()
+                if not cfg.get("features", {}).get("parallel_review", False):
+                    use_parallel = False
 
         async def _gen():
             try:
-                async for ev in run_review(
-                    doc_id=req.doc_id,
-                    doc_title=req.doc_title,
-                    text=req.text,
-                    venue=req.venue,
-                    persona=req.persona,
-                    ledger=ledger,
-                    store=store,
-                    focus=req.focus,
-                    checks=req.checks,
-                    session_id=req.session_id,
-                    cloud_client=cloud_client,
-                ):
-                    yield {"event": ev["event"], "data": ev["data"]}
+                if use_parallel:
+                    from src.argument.reviewer import run_review_parallel
+                    async for ev in run_review_parallel(
+                        doc_id=req.doc_id,
+                        doc_title=req.doc_title,
+                        text=req.text,
+                        venue=req.venue,
+                        persona=req.persona,
+                        ledger=ledger,
+                        store=store,
+                        focus=req.focus,
+                        checks=req.checks,
+                        session_id=req.session_id,
+                        cloud_client=cloud_client,
+                        ollama_client=ollama_client,
+                    ):
+                        yield {"event": ev["event"], "data": ev["data"]}
+                else:
+                    from src.argument.reviewer import run_review
+                    async for ev in run_review(
+                        doc_id=req.doc_id,
+                        doc_title=req.doc_title,
+                        text=req.text,
+                        venue=req.venue,
+                        persona=req.persona,
+                        ledger=ledger,
+                        store=store,
+                        focus=req.focus,
+                        checks=req.checks,
+                        session_id=req.session_id,
+                        cloud_client=cloud_client,
+                    ):
+                        yield {"event": ev["event"], "data": ev["data"]}
             except Exception:
                 logger.exception("companion_review AI 调用失败 doc_id=%s", req.doc_id)
                 yield {"event": "error", "data": json.dumps({"message": "服务内部错误，请重试"})}

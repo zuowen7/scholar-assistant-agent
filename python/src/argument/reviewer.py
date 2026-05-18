@@ -550,6 +550,8 @@ async def run_review_parallel(
     store: CompanionStore = None,  # type: ignore[assignment]
     *,
     doc_title: str = "",
+    focus: "str | dict | None" = None,
+    checks: "list[str] | None" = None,
     session_id: "str | None" = None,
     cloud_client: Any = None,
     ollama_client: Any = None,
@@ -570,6 +572,17 @@ async def run_review_parallel(
 
     venue_profile = _load_venue_profile(venue)
     new_points: list[ReviewPoint] = []
+
+    # Scoped / focused review: delegate to serial run_review
+    if focus is not None:
+        async for ev in run_review(
+            doc_id=doc_id, text=text, venue=venue, persona=persona,
+            ledger=ledger, store=store, doc_title=doc_title, focus=focus,
+            checks=checks, session_id=session_id,
+            cloud_client=cloud_client, ollama_client=ollama_client,
+        ):
+            yield ev
+        return
 
     # 1. Deterministic ledger check (fast, no LLM)
     for rp in ledger_cross_check(ledger):
@@ -600,5 +613,6 @@ async def run_review_parallel(
         yield {"event": "review_point", "data": rp.model_dump_json()}
 
     yield _build_complete_event(
-        new_points, session_id, doc_id, doc_title, venue, persona, ["parallel"], store
+        new_points, session_id, doc_id, doc_title, venue, persona,
+        checks if checks else ["parallel"], store
     )
