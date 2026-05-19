@@ -14,7 +14,7 @@ export async function readSseStream(
     try {
       onEvent(currentEvent || 'data', JSON.parse(dataBuffer))
     } catch {
-      // skip malformed JSON
+      console.warn('[streamReader] malformed JSON in SSE event, skipping:', dataBuffer.slice(0, 120))
     }
     currentEvent = ''
     dataBuffer = ''

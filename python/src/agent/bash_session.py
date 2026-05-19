@@ -42,16 +42,19 @@ _PROXY_ENV_VARS = frozenset({
 _CMD_SPLIT_RE = re.compile(r'\s*(?:&&|;|\|)\s*')
 
 # Shell 注入检测：禁止命令替换、换行符注入等危险模式
+# bash/POSIX 模式（Linux/macOS）和 cmd.exe 模式（Windows）都覆盖
 _INJECTION_RE = re.compile(
-    r'\$\('           # command substitution $(...)
-    r'|`'             # backtick command substitution
-    r'|\$\(\('        # arithmetic $((
-    r"|\$'"           # ANSI-C quoting $'...'
-    r'|<<<'           # here-string
-    r'|\$\{'          # parameter expansion ${...}
-    r'|(?<!\w)eval\s' # eval builtin
-    r'|[\n\r\x00]'   # newline/null injection
-    r'|>\(|<\(',      # process substitution
+    r'\$\('           # bash command substitution $(...)
+    r'|`'             # bash backtick command substitution
+    r'|\$\(\('        # bash arithmetic $((
+    r"|\$'"           # bash ANSI-C quoting $'...'
+    r'|<<<'           # bash here-string
+    r'|\$\{'          # bash parameter expansion ${...}
+    r'|(?<!\w)eval\s' # bash eval builtin
+    r'|[\n\r\x00]'   # newline/null injection (both platforms)
+    r'|>\(|<\('       # bash process substitution
+    r'|%[^%\s]{1,32}%'  # cmd.exe %VAR% environment variable expansion
+    ,
     re.IGNORECASE,
 )
 

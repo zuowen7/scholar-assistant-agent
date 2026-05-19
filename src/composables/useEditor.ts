@@ -62,7 +62,7 @@ export async function aiEdit(
     const reader = resp.body.getReader()
     await readSseStream(reader, (_type, evt) => {
       if (evt.content) aiResult.value = evt.content as string
-    })
+    }, signal)
     if (!aiResult.value) aiResult.value = 'AI 未返回结果，请重试。'
   } catch (e: unknown) {
     if ((e as Error).name === 'AbortError') return

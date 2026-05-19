@@ -428,6 +428,10 @@ def _validate_file_path(file_path: Path) -> None:
         raise HTTPException(403, f"禁止访问敏感文件: {resolved.suffix}")
     if resolved.name.startswith("."):
         raise HTTPException(403, "禁止访问隐藏文件")
+    # Block Windows reserved device names (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
+    import re as _path_re
+    if _path_re.match(r"(?i)^(CON|PRN|AUX|NUL|COM\d|LPT\d)(\.|$)", resolved.stem):
+        raise HTTPException(403, f"禁止访问 Windows 保留设备名: {resolved.stem}")
 
 
 # ── App factory ─────────────────────────────────────────────────────
@@ -476,6 +480,14 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
                 logger.exception("Editor shutdown failed")
 
     app = FastAPI(title=_app_title, version=__version__, lifespan=_lifespan)
+
+    @app.exception_handler(HTTPException)
+    async def _http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+        trace_id = _trace_id_ctx.get("-")
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail, "trace_id": trace_id},
+        )
 
     @app.exception_handler(Exception)
     async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:

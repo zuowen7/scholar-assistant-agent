@@ -247,6 +247,20 @@ pub fn run() {
             if let Err(e) = spawn_python_inner(&handle, Some(&handle)) {
                 eprintln!("[ERROR] spawn Python: {}", e);
                 eprintln!("[ERROR] Please make sure Python is installed and available in PATH.");
+                // Emit backend-crashed after a short delay so the frontend window
+                // has time to mount its event listener before the event fires.
+                let h2 = handle.clone();
+                let msg = e.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(2000));
+                    let _ = h2.emit(
+                        "backend-crashed",
+                        serde_json::json!({
+                            "message": msg,
+                            "exit_status": "startup_timeout"
+                        }),
+                    );
+                });
             }
             if let Err(e) = spawn_ollama(app) {
                 eprintln!("[WARN] spawn Ollama: {} (it may already be running)", e);
@@ -435,8 +449,9 @@ fn spawn_python_inner<R: tauri::Runtime, M: Manager<R>>(
             return Ok(format!("Python backend started (PID={})", pid));
         }
     }
-    Ok(format!(
-        "Python process started but was not ready within 15 seconds (PID={})",
+    Err(format!(
+        "Python process started but was not ready within 15 seconds (PID={}). \
+        Check the backend logs or restart the application.",
         pid
     ))
 }

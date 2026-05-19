@@ -4,6 +4,9 @@ import { readSseStream } from '../utils/streamReader'
 import type { BlockData } from '../types/index'
 import { useTranslate } from './useTranslate'
 import { useEditor } from './useEditor'
+import { useToast } from './useToast'
+
+const { pushError } = useToast()
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -469,8 +472,8 @@ async function extractArgument(
   _state.graph.spans = []
 
   const gid = _state.graph.id
+  const abort = new AbortController()
   try {
-    const abort = new AbortController()
     const res = await fetch(`${API_BASE}/api/argument/graph/${gid}/extract`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -495,7 +498,11 @@ async function extractArgument(
 
     // Reload from server to confirm persisted state
     await loadGraph(gid)
+  } catch (err: unknown) {
+    if (err instanceof DOMException && err.name === 'AbortError') return
+    pushError(`提取论证失败：${err instanceof Error ? err.message : String(err)}`)
   } finally {
+    abort.abort()
     _state.extracting = false
   }
 }

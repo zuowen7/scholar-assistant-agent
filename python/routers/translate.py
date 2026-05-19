@@ -920,11 +920,12 @@ def register_translate(
     @app.get("/api/tm/export")
     async def tm_export(source_lang: str = "en", target_lang: str = "zh"):
         import tempfile
+        from starlette.background import BackgroundTask
         tmp = tempfile.NamedTemporaryFile(suffix=".tmx", delete=False)
         tmp_path = tmp.name
         tmp.close()
         try:
-            count = await asyncio.to_thread(
+            await asyncio.to_thread(
                 tm_store.export_tmx, tmp_path,
                 source_lang=source_lang, target_lang=target_lang,
             )
@@ -932,6 +933,7 @@ def register_translate(
                 tmp_path,
                 filename="translation_memory.tmx",
                 media_type="application/xml",
+                background=BackgroundTask(Path(tmp_path).unlink, missing_ok=True),
             )
         except Exception as e:
             Path(tmp_path).unlink(missing_ok=True)

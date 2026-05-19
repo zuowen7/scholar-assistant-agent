@@ -70,6 +70,10 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
     console.warn('[companion] buildOrRebuildLedger skipped: empty text')
     return
   }
+  if (text.length > 5_000_000) {
+    pushError('文本过长（超过 5 MB），请缩短后重试。')
+    return
+  }
   state.building = true
   console.log('[companion] setting building=true, about to fetch...')
   try {
@@ -159,7 +163,7 @@ async function upsertPromise(promise: Partial<ArgPromise>): Promise<void> {
         body: JSON.stringify(promise),
       },
     )
-    if (!resp.ok) return
+    if (!resp.ok) { pushError(`保存承诺失败（${resp.status}）`); return }
     const updated = await resp.json() as ArgPromise
     const idx = state.ledger.promises.findIndex(p => p.id === updated.id)
     if (idx >= 0) state.ledger.promises[idx] = updated
@@ -254,6 +258,10 @@ async function runReview(
       }
     })
 
+    if (!session.id) {
+      pushError('评审会话未初始化（未收到 complete 事件），请重试。')
+      return
+    }
     state.review = session
     await listReviews()
   } finally {
@@ -346,7 +354,7 @@ async function rebut(pointId: string, message: string, text: string): Promise<vo
     await readSseStream(resp.body.getReader(), (eventType, data) => {
       if (eventType === 'reviewer_reply' && point) {
         point.thread.push({
-          id: `rt_${Date.now()}`,
+          id: `rt_${crypto.randomUUID()}`,
           role: 'reviewer',
           text: (data as Record<string, unknown>)['text'] as string ?? '',
           created_at: Date.now() / 1000,
