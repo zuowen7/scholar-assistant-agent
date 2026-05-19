@@ -11,6 +11,8 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from pydantic import BaseModel, Field
+from pydantic import field_validator
+from typing import Literal
 from sse_starlette.sse import EventSourceResponse
 
 logger = logging.getLogger(__name__)
@@ -55,7 +57,7 @@ class V2ToolRequest(BaseModel):
 
 
 class ApproveRequest(BaseModel):
-    decision: str  # "allow_once" | "allow_session" | "deny"
+    decision: Literal["allow_once", "allow_session", "deny"]
     reason: str | None = None
 
 
@@ -590,6 +592,7 @@ def register_agent(
                 journal = ChangeJournal(backup_root=workspace.backup_root_path())
             except Exception as e:
                 logger.warning("Resume workspace 初始化失败: %s", e)
+                raise HTTPException(400, f"工作区 '{ws_root}' 不可访问，请检查路径是否存在：{e}")
 
         config = SessionConfig(
             max_task_steps=data["config"].get("max_task_steps", 50),

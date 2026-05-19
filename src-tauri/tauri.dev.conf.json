@@ -29,9 +29,9 @@
           "allow": [
             "$PICTURE/**",
             "$VIDEO/**",
-            "$DOWNLOAD/**",
-            "$DESKTOP/**",
-            "$DOCUMENT/**"
+            "$DOWNLOAD/Scholar*/**",
+            "$DESKTOP/Scholar*/**",
+            "$DOCUMENT/.scholar_assistant/**"
           ]
         }
       },
