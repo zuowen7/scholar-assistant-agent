@@ -87,13 +87,19 @@ function setEditorInstance(editor: import('monaco-editor').editor.IStandaloneCod
  * For the active tab the Monaco model value is also updated in-place.
  */
 async function reloadOpenTabs(): Promise<void> {
-  const { readTextFile } = await import('@tauri-apps/plugin-fs')
+  let readTextFile: ((path: string) => Promise<string>) | null = null
+  try {
+    const fs = await import('@tauri-apps/plugin-fs')
+    readTextFile = fs.readTextFile
+  } catch {
+    return  // Not running in Tauri — file reload not available in web mode
+  }
   for (const tab of tabs.value) {
     if (!tab.path) continue
     // Skip tabs with unsaved user edits to avoid clobbering their work.
     if (tab.isModified) continue
     try {
-      const fresh = await readTextFile(tab.path)
+      const fresh = await readTextFile!(tab.path)
       if (fresh === tab.content) continue  // no change — skip expensive Monaco update
       tab.content = fresh
       contentVersion.value++
