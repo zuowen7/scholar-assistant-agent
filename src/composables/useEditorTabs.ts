@@ -80,6 +80,39 @@ function setEditorInstance(editor: import('monaco-editor').editor.IStandaloneCod
   monacoEditor.value = editor
 }
 
+/**
+ * Reload all open tabs that have a path by re-reading from disk.
+ * Called after the Agent writes/modifies files so Monaco shows fresh content.
+ * Only reloads tabs that are NOT modified (unsaved user edits are preserved).
+ * For the active tab the Monaco model value is also updated in-place.
+ */
+async function reloadOpenTabs(): Promise<void> {
+  const { readTextFile } = await import('@tauri-apps/plugin-fs')
+  for (const tab of tabs.value) {
+    if (!tab.path) continue
+    // Skip tabs with unsaved user edits to avoid clobbering their work.
+    if (tab.isModified) continue
+    try {
+      const fresh = await readTextFile(tab.path)
+      if (fresh === tab.content) continue  // no change — skip expensive Monaco update
+      tab.content = fresh
+      contentVersion.value++
+      // If this is the active tab, push the new content into Monaco immediately.
+      if (tab.id === activeTabId.value && monacoEditor.value) {
+        const model = monacoEditor.value.getModel()
+        if (model) {
+          // Preserve cursor position across the reload.
+          const pos = monacoEditor.value.getPosition()
+          model.setValue(fresh)
+          if (pos) monacoEditor.value.setPosition(pos)
+        }
+      }
+    } catch {
+      // File may have been deleted or path changed — silently skip.
+    }
+  }
+}
+
 async function saveFile(): Promise<string | null> {
   const tab = activeTab.value
   if (!tab) return null
@@ -117,4 +150,5 @@ export {
   monacoEditor, contentVersion, selection,
   setEditorInstance, setContent, updateSelection, markClean, markDirty,
   openFile, openNewUntitled, closeTab, setActiveTab, renameTabPath, saveFile,
+  reloadOpenTabs,
 }

@@ -416,7 +416,7 @@ const {
   uploadRAGFile,
 } = useAgentChat()
 
-const { selection: editorSelection, content: editorContent, activeTab: editorActiveTab } = useEditor()
+const { selection: editorSelection, content: editorContent, activeTab: editorActiveTab, reloadOpenTabs } = useEditor()
 
 const { rootDir, refresh: refreshFileTree } = useFileTree()
 
@@ -477,9 +477,6 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   parse_document: '解析文档文件，提取纯文本内容',
   search_documents: '检索文献库（历史翻译收录的论文）',
   crawl_arxiv: '搜索 arXiv 学术论文',
-  polish_text: '润色文本',
-  generate_outline: '生成论文大纲',
-  summarize_text: '摘要文本',
   read_file: '读取项目文件内容',
   write_file: '写入文件到项目',
   str_replace: '精确修改文件内容',
@@ -560,6 +557,9 @@ async function sendMessage() {
   if (!text || sending.value) return
   input.value = ''
 
+  // Reset mid-stream file-write event counter for this new task.
+  _lastSeenToolResultCount = 0
+
   // Pass file paths to agent — let it read with read_file tool
   let fullMsg = text
   if (files.value.length) {
@@ -570,6 +570,7 @@ async function sendMessage() {
 
   await agentSendMessage(fullMsg, contextText.value, '', rootDir.value || undefined)
   refreshFileTree()
+  reloadOpenTabs()
   await nextTick()
   _scrollToBottom()
 }
@@ -669,6 +670,34 @@ watch(sending, (nowSending) => {
     nextTick(() => _scrollToBottom())
   }
 })
+
+// Mid-stream refresh: when the Agent completes a file-write tool call, immediately
+// refresh the file tree and reload any open Monaco tabs so the user sees changes
+// without waiting for the full task to finish.
+const _FILE_WRITE_TOOLS = new Set(['write_file', 'str_replace', 'create_file'])
+let _lastSeenToolResultCount = 0
+
+watch(
+  messages,
+  () => {
+    if (!sending.value) return
+    // Count tool_result events across all streaming messages for file-writing tools.
+    let count = 0
+    for (const msg of messages.value) {
+      for (const evt of msg.events) {
+        if (evt.type === 'tool_result' && _FILE_WRITE_TOOLS.has((evt.metadata?.tool_name as string) || '')) {
+          count++
+        }
+      }
+    }
+    if (count > _lastSeenToolResultCount) {
+      _lastSeenToolResultCount = count
+      refreshFileTree()
+      reloadOpenTabs()
+    }
+  },
+  { deep: true },
+)
 
 onMounted(() => {
   messagesRef.value?.addEventListener('scroll', _onMessagesScroll, { passive: true })

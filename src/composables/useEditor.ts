@@ -16,6 +16,7 @@ import {
 import {
   setEditorInstance, setContent, updateSelection, markClean, markDirty,
   openFile, openNewUntitled, closeTab, setActiveTab, renameTabPath, saveFile,
+  reloadOpenTabs,
 } from './useEditorTabs'
 
 // ── AI Edit ──────────────────────────────────────────────────────────────
@@ -289,5 +290,6 @@ export function useEditor() {
     openFile, openNewUntitled, closeTab, setActiveTab, renameTabPath, saveFile,
     aiEdit, inlineEdit, cancelAiEdit, applyAiResult, rejectAiResult, undoEdit,
     triggerCompletion, acceptGhostText, onDidChangeContent, clearGhostText, cleanup,
+    reloadOpenTabs,
   }
 }

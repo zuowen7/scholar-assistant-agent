@@ -5,10 +5,7 @@
 - 解析文档 (parse_document)
 - 文档检索 (search_documents)
 - arXiv 搜索 (crawl_arxiv)
-- 文本润色 (polish_text)
-- 文本摘要 (summarize_text)
-- 大纲生成 (generate_outline)
-- 段落扩写 (expand_section)
+- 参考文献格式化 (format_bibliography)
 
 使用 stdio 传输（stdin/stdout），与 Claude Code / Cursor 等 IDE 无缝集成。
 运行方式: python -m src.agent.mcp_server

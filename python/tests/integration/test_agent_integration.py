@@ -120,10 +120,6 @@ class TestToolRegistryDefaults:
             "parse_document": {"file_path": "nonexistent_test.pdf"},
             "search_documents": {"query": "test query", "top_k": 1},
             "crawl_arxiv": {"query": "test", "max_results": 1},
-            "polish_text": {"text": "test", "style": "academic"},
-            "summarize_text": {"text": "A short test sentence.", "max_sentences": 1},
-            "generate_outline": {"topic": "test topic", "sections": 2},
-            "expand_section": {"section": "test section", "context": ""},
             "write_file": {"file_path": "test_out.txt", "content": "hello"},
             "read_file": {"file_path": "nonexistent_file.txt"},
             "format_bibliography": {
