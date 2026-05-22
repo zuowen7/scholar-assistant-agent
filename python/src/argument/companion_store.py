@@ -73,6 +73,29 @@ class CompanionStore:
     def get_ledger(self, doc_id: str) -> Optional[Ledger]:
         return self._ledgers.get(doc_id)
 
+    def get_ledger_by_path(self, file_path: str) -> Optional[Ledger]:
+        """按文件路径查找账本（doc_id 对已打开文件即为其路径）。
+
+        先精确匹配，再 resolve 后比较，吸收 / vs \\ 和相对/绝对差异。
+        """
+        if not file_path:
+            return None
+        direct = self._ledgers.get(file_path)
+        if direct is not None:
+            return direct
+        from pathlib import Path
+        try:
+            target = Path(file_path).resolve()
+        except Exception:
+            return None
+        for doc_id, ledger in self._ledgers.items():
+            try:
+                if Path(doc_id).resolve() == target:
+                    return ledger
+            except Exception:
+                continue
+        return None
+
     def save_ledger(self, ledger: Ledger) -> None:
         with self._lock:
             self._ledgers[ledger.doc_id] = ledger

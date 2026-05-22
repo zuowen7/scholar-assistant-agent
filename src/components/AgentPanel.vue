@@ -476,6 +476,8 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   translate_text: '翻译文本为指定语言',
   parse_document: '解析文档文件，提取纯文本内容',
   search_documents: '检索文献库（历史翻译收录的论文）',
+  read_argument_graph: '读取论文论证图（Toulmin 结构 + 逻辑漏洞分析）',
+  read_argument_ledger: '读取论证账本（承诺 ↔ 兑付状态）',
   crawl_arxiv: '搜索 arXiv 学术论文',
   read_file: '读取项目文件内容',
   write_file: '写入文件到项目',

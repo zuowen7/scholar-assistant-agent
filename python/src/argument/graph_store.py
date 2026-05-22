@@ -70,6 +70,36 @@ class ArgGraphStore:
     def get(self, gid: str) -> ArgGraph | None:
         return self._cache.get(gid)
 
+    def get_by_source_doc(self, source_doc: str) -> ArgGraph | None:
+        """按 source_doc（文件路径）查找论证图，返回最近更新的一个。
+
+        先尝试字符串精确匹配，再尝试路径 resolve 后比较（吸收 / vs \\、
+        相对/绝对路径差异）。多个匹配时取 updated_at 最大者。
+        """
+        if not source_doc:
+            return None
+        target = None
+        try:
+            target = Path(source_doc).resolve()
+        except Exception:
+            target = None
+        matches: list[ArgGraph] = []
+        for g in self._cache.values():
+            if not g.source_doc:
+                continue
+            if g.source_doc == source_doc:
+                matches.append(g)
+                continue
+            if target is not None:
+                try:
+                    if Path(g.source_doc).resolve() == target:
+                        matches.append(g)
+                except Exception:
+                    pass
+        if not matches:
+            return None
+        return max(matches, key=lambda g: g.updated_at)
+
     def list_graphs(self) -> list[dict]:
         return [
             {
