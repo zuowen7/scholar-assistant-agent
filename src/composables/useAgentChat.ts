@@ -25,6 +25,7 @@ export interface PendingApproval {
   tool_name: string
   args?: Record<string, unknown>
   risk?: string
+  reason?: string
   preview?: Record<string, unknown>
 }
 
@@ -123,6 +124,7 @@ export function useAgentChat() {
             args: agentEvent.metadata?.args as Record<string, unknown>
               || agentEvent.metadata?.arguments as Record<string, unknown>,
             risk: agentEvent.metadata?.risk as string | undefined,
+            reason: agentEvent.metadata?.reason as string | undefined,
             preview: agentEvent.metadata?.preview as Record<string, unknown> | undefined,
           })
           msg.events = [...msg.events, agentEvent]

@@ -9,12 +9,17 @@ WorkspaceEnv 作为 Agent 工具层的路径校验和权限网关：
 from __future__ import annotations
 
 import os
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 
 
 class WorkspaceViolation(Exception):
     """路径违反工作区约束时抛出。"""
+
+
+# Set to True (via token) when user has approved an out-of-workspace tool call.
+workspace_escape_allowed: ContextVar[bool] = ContextVar('workspace_escape_allowed', default=False)
 
 
 @dataclass(frozen=True)
@@ -63,6 +68,9 @@ class WorkspaceEnv:
         For translate/editor path validation see api_factory._validate_file_path().
         For command/tool risk classification see SecurityGate.classify().
 
+        When workspace_escape_allowed ContextVar is True (set after user approval),
+        out-of-workspace paths are allowed and symlink/denied_glob checks are skipped.
+
         Raises:
             WorkspaceViolation: 路径逃逸、命中 denied_globs、symlink 逃逸时。
         """
@@ -70,8 +78,14 @@ class WorkspaceEnv:
         candidate = raw if raw.is_absolute() else (self.root / raw)
         resolved = candidate.resolve(strict=False)
 
-        if not any(self._is_within(resolved, base) for base in self.allowed_dirs):
-            raise WorkspaceViolation(f"path outside workspace: {p}")
+        within_workspace = any(self._is_within(resolved, base) for base in self.allowed_dirs)
+
+        if not within_workspace:
+            if not workspace_escape_allowed.get():
+                raise WorkspaceViolation(f"path outside workspace: {p}")
+            # User approved out-of-workspace access — return immediately,
+            # skip symlink and denied_glob checks (which assume workspace-relative paths).
+            return resolved
 
         # 逐级检查 symlink 是否逃出 allowed_dirs
         cur = candidate

@@ -44,7 +44,7 @@ from src.agent.models import (
 )
 from src.agent.security_gate import SecurityGate, ToolRiskLevel
 from src.agent.task_queue import TaskQueue
-from src.agent.workspace import WorkspaceEnv
+from src.agent.workspace import WorkspaceEnv, workspace_escape_allowed
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +106,7 @@ class AgentSession:
         self.pending_approvals: dict[str, Any] = {}
         self.approved_categories: set[str] = set()
         self.consecutive_errors = 0
-        self.security_gate = SecurityGate()
+        self.security_gate = SecurityGate(workspace_root=str(workspace.root) if workspace else "")
 
         self._store = session_store
         self._event_callback = event_callback
@@ -370,7 +370,7 @@ class AgentSession:
                     )
                     logger.warning("SecurityGate banned: %s %s → %s", tc.name, tc.arguments, gate.reason)
                     continue
-                if (
+                if gate.force_approval or (
                     not self.config.auto_approve
                     and gate.needs_approval
                     and "*" not in self.approved_categories
@@ -458,8 +458,14 @@ class AgentSession:
                 if decision == "abort":
                     raise SessionAborted()
 
-                # allow_once → 执行
-                result = await self.agent._execute_single_tool(tc, self._query)
+                # allow_once (or allow_session) → 执行
+                # For workspace-escape approvals, temporarily allow out-of-workspace path resolution.
+                _escape_token = workspace_escape_allowed.set(True) if gate.force_approval else None
+                try:
+                    result = await self.agent._execute_single_tool(tc, self._query)
+                finally:
+                    if _escape_token is not None:
+                        workspace_escape_allowed.reset(_escape_token)
                 self.messages.append(Message(
                     role="tool",
                     content=result[:_TOOL_RESULT_MAX_CHARS],

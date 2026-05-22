@@ -6,6 +6,7 @@
       <code class="approval-tool">{{ pending.tool_name }}</code>
       <span v-if="pending.risk" class="approval-risk" :class="'risk-' + pending.risk">{{ pending.risk }}</span>
     </div>
+    <div v-if="pending.reason" class="approval-reason">{{ pending.reason }}</div>
     <div v-if="previewText" class="approval-preview">
       <code class="approval-preview-code">{{ previewText }}</code>
     </div>
@@ -106,6 +107,11 @@ async function decide(decision: 'allow_once' | 'allow_session' | 'deny') {
 .risk-destructive { background: var(--c-danger-bg); color: var(--c-danger); }
 .risk-banned { background: var(--c-danger-bg); color: var(--c-danger); }
 
+.approval-reason {
+  font-size: 12px;
+  color: var(--c-warn);
+  margin-top: 6px;
+}
 .approval-preview {
   margin-top: 8px;
   background: var(--code-bg);
