@@ -396,23 +396,6 @@ class AgentLoop:
                 tool_names = [t.name for t in self.tool_registry.list_tools()]
                 system += f"\n\n可用工具: {', '.join(tool_names)}"
         messages.append(Message(role="system", content=system))
-
-        if self.rag_store is not None:
-            try:
-                rag_results = self.rag_store.retrieve_context(query, top_k=self.rag_top_k)
-                if rag_results:
-                    rag_parts: list[str] = []
-                    for i, r in enumerate(rag_results):
-                        rag_parts.append(f"[文档片段 {i + 1}]\n{r['text']}")
-                    rag_context = "\n\n---\n\n".join(rag_parts)
-                    messages.append(Message(
-                        role="system",
-                        content=f"以下是从知识库检索到的相关文档片段，可作为回答参考:\n\n{rag_context}",
-                    ))
-                    logger.info("RAG 自动注入: %d 个片段", len(rag_results))
-            except Exception as e:
-                logger.warning("RAG 自动注入失败: %s", e)
-
         if history:
             recent = history[-(_MAX_HISTORY_TURNS * 2):]
             messages.extend(recent)

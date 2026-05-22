@@ -301,7 +301,7 @@ class TestAgentMessageBuilding:
         assert messages[-1].role == "user"
 
     def test_agent_build_messages_with_rag(self, temp_dir):
-        """Inject RAG store, verify context injection in messages."""
+        """RAG store is NOT auto-injected into messages; search_documents tool is used instead."""
         pytest.importorskip("chromadb", reason="chromadb is an optional RAG dependency")
         # Create RAG store with a document
         rag = RAGStore(
@@ -326,16 +326,16 @@ class TestAgentMessageBuilding:
 
         messages = loop._build_messages("What is machine learning?")
 
-        # Should have system messages, possibly one with RAG context
+        # Should have at least one system message (the base system prompt)
         system_msgs = [m for m in messages if m.role == "system"]
         assert len(system_msgs) >= 1
 
-        # At least one system message should reference the knowledge base
-        rag_context_found = any(
-            "知识库" in m.content or "文档片段" in m.content or "Machine learning" in m.content
+        # RAG content must NOT be auto-injected — use search_documents tool instead
+        rag_auto_injected = any(
+            "知识库" in m.content or "文档片段" in m.content
             for m in system_msgs
         )
-        assert rag_context_found, "RAG context should be injected into messages"
+        assert not rag_auto_injected, "RAG context must NOT be auto-injected into messages"
 
     def test_agent_build_messages_with_history(self, agent_loop):
         """Verify history messages are included (with truncation)."""
