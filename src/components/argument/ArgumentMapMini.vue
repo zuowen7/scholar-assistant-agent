@@ -32,11 +32,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useArgumentMap, requestOpenFullArgMap, loadSourceFromEditor } from '../../composables/useArgumentMap'
+import { useEditor } from '../../composables/useEditor'
 import ArgumentMapCanvas from './ArgumentMapCanvas.vue'
 
 const props = defineProps<{ content?: string }>()
 
 const { state, createGraph, extractArgument } = useArgumentMap()
+const { activeTab } = useEditor()
 
 const extractError = ref('')
 
@@ -46,7 +48,9 @@ async function doExtract() {
   if (!props.content?.trim()) return
   extractError.value = ''
   try {
-    await createGraph('论证图', undefined)
+    // Bind the graph to the active file path so the Agent can locate it by file
+    // (read_argument_graph(file_path=...)). Untitled tabs have no path → undefined.
+    await createGraph('论证图', activeTab.value?.path ?? undefined)
     await extractArgument(props.content)
   } catch (e) {
     extractError.value = e instanceof Error ? e.message : '提取失败，请检查后端连接'

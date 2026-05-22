@@ -604,6 +604,13 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         rag_store_getter=lambda: None,
     )
 
+    # Argument graph / companion stores — created below (after agent), but the
+    # Agent tool registry needs them. Declare here so the getter lambdas close
+    # over these names; they'll be reassigned once the stores are built. Same
+    # lazy-closure pattern as rag_store_getter.
+    _graph_store = None
+    _companion_store = None
+
     from routers.agent import register_agent
     state_agent = register_agent(
         app,
@@ -611,6 +618,8 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         load_config=_load_config,
         runtime_dir=RUNTIME_DIR,
         data_root=data_root,
+        graph_store_getter=lambda: _graph_store,
+        companion_store_getter=lambda: _companion_store,
     )
 
     # Wire rag_store from agent into translate for auto-RAG ingest.

@@ -35,6 +35,127 @@ from src.agent.tools.workspace_tools import (
 logger = logging.getLogger(__name__)
 
 
+def _format_argument_graph(g: Any) -> str:
+    """把 ArgGraph 渲染成 Agent 友好的文本：节点 + 边 + 结构 gap + 已存 AI issues。"""
+    node_map = {n.id: n for n in g.nodes}
+    lines: list[str] = [
+        f"== 论证图: \"{g.title}\" ({len(g.nodes)} 节点, {len(g.edges)} 边) ==",
+    ]
+    if g.source_doc:
+        lines.append(f"绑定文件: {g.source_doc}")
+
+    lines.append("\n节点:")
+    for n in g.nodes:
+        text = (n.text or "").strip().replace("\n", " ")
+        if len(text) > 90:
+            text = text[:90] + "…"
+        lines.append(f"  [{n.node_type}] {n.id} {text}")
+
+    if g.edges:
+        lines.append("\n边:")
+        for e in g.edges:
+            s = node_map.get(e.source_id)
+            t = node_map.get(e.target_id)
+            s_lbl = f"{e.source_id}({s.node_type})" if s else e.source_id
+            t_lbl = f"{e.target_id}({t.node_type})" if t else e.target_id
+            lines.append(f"  {s_lbl} --{e.relation_type}--> {t_lbl}")
+
+    # ── 结构 gap 分析（确定性、免费，不调 AI）──
+    incoming: dict[str, list] = {}
+    outgoing: dict[str, list] = {}
+    for e in g.edges:
+        incoming.setdefault(e.target_id, []).append(e)
+        outgoing.setdefault(e.source_id, []).append(e)
+    connected = {e.source_id for e in g.edges} | {e.target_id for e in g.edges}
+
+    unsupported_claims = [
+        n for n in g.nodes
+        if n.node_type == "claim"
+        and not any(e.relation_type in ("supports", "warrants") for e in incoming.get(n.id, []))
+    ]
+    floating_grounds = [
+        n for n in g.nodes
+        if n.node_type == "grounds"
+        and not any(e.relation_type == "supports" for e in outgoing.get(n.id, []))
+    ]
+    unanswered_rebuttals = [
+        n for n in g.nodes
+        if n.node_type == "rebuttal"
+        and not any(e.relation_type == "counters" for e in incoming.get(n.id, []))
+    ]
+    isolated = [n for n in g.nodes if n.id not in connected]
+
+    def _brief(n) -> str:
+        t = (n.text or "").strip().replace("\n", " ")
+        return f"{n.id}: \"{t[:70] + '…' if len(t) > 70 else t}\""
+
+    gap_lines: list[str] = []
+    if unsupported_claims:
+        gap_lines.append("❌ 悬空主张（无 grounds/warrant 支撑）:")
+        gap_lines += [f"   {_brief(n)}" for n in unsupported_claims]
+    if floating_grounds:
+        gap_lines.append("⚠️ 未接入图的证据（grounds 未连到任何 claim）:")
+        gap_lines += [f"   {_brief(n)}" for n in floating_grounds]
+    if unanswered_rebuttals:
+        gap_lines.append("❓ 未回应的反驳（rebuttal 无 counter）:")
+        gap_lines += [f"   {_brief(n)}" for n in unanswered_rebuttals]
+    if isolated:
+        gap_lines.append("🔗 孤立节点（无任何边）:")
+        gap_lines += [f"   [{n.node_type}] {_brief(n)}" for n in isolated]
+
+    lines.append("\n== Gap 分析 ==")
+    lines.append("\n".join(gap_lines) if gap_lines else "  结构完整：无悬空主张/未接入证据/未回应反驳/孤立节点。")
+
+    # ── 已存的 AI critique issues（如有）──
+    issues = getattr(g, "issues", None) or []
+    if issues:
+        lines.append(f"\n== 已记录的 AI 审查问题 ({len(issues)} 条) ==")
+        for iss in issues:
+            sev = getattr(iss, "severity", "info")
+            cat = getattr(iss, "category", "other")
+            msg = getattr(iss, "message", "")
+            lines.append(f"  [{sev}] {cat}: {msg}")
+
+    return "\n".join(lines)
+
+
+def _format_argument_ledger(ledger: Any) -> str:
+    """把 Ledger 渲染成 Agent 友好的文本：承诺按兑付状态分组。"""
+    promises = list(ledger.promises)
+    groups: dict[str, list] = {"unpaid": [], "mismatch": [], "partial": [], "paid": [], "unknown": []}
+    for p in promises:
+        groups.setdefault(p.status, []).append(p)
+
+    title = ledger.doc_title or ledger.doc_id
+    counts = " | ".join(
+        f"{len(groups[s])} {s}" for s in ("paid", "partial", "unpaid", "mismatch", "unknown") if groups.get(s)
+    )
+    lines = [f"== 论证账本: \"{title}\" ({len(promises)} 条承诺) ==", f"状态分布: {counts}"]
+
+    labels = {
+        "unpaid": "✗ 未兑付 (UNPAID)",
+        "mismatch": "✗ 与正文不符 (MISMATCH)",
+        "partial": "⚠️ 部分兑付 (PARTIAL)",
+        "paid": "✓ 已兑付 (PAID)",
+        "unknown": "? 未判定 (UNKNOWN)",
+    }
+    # 优先展示问题项（unpaid/mismatch/partial），paid 放后
+    for status in ("unpaid", "mismatch", "partial", "paid", "unknown"):
+        items = groups.get(status) or []
+        if not items:
+            continue
+        lines.append(f"\n{labels[status]} ({len(items)}):")
+        for p in items:
+            text = (p.text or "").strip().replace("\n", " ")
+            if len(text) > 100:
+                text = text[:100] + "…"
+            lines.append(f"  [{p.id}] {text}")
+            if getattr(p, "note", None):
+                note = p.note.strip().replace("\n", " ")
+                lines.append(f"        → {note[:120]}")
+    return "\n".join(lines)
+
+
 def create_default_registry(
     ollama_client: Any | None = None,
     cloud_client: Any | None = None,
@@ -45,6 +166,8 @@ def create_default_registry(
     cloud_api_key: str = "",
     cloud_model: str = "",
     workspace_root: str = "",
+    graph_store: Any | None = None,
+    companion_store: Any | None = None,
 ) -> ToolRegistry:
     """创建包含所有默认工具的注册表。
 
@@ -160,6 +283,93 @@ def create_default_registry(
             fn=search_documents,
         )
         registry.register(search_documents)
+
+    # --- 论证图工具（Agent 的"符号表"）---
+    if graph_store is not None:
+
+        def read_argument_graph(file_path: str = "", graph_id: str = "") -> str:
+            """读取论文的 Toulmin 论证图，了解论证结构和逻辑漏洞。这是论文的"符号表"：claim（主张）、grounds（依据）、warrant（论证保证）、backing（支撑）、rebuttal（反驳）之间的支撑关系。
+
+            用它来回答"我的论证哪里有漏洞"、"哪个主张还没有证据支撑"、"有没有没回应的反驳"。
+
+            Args:
+                file_path: 论文文件路径（优先）。返回该文件对应的论证图 + gap 分析。
+                graph_id: 论证图 ID（可选）。当你已从列表得到具体 ID 时用。
+                          两者都为空时，列出所有可用论证图供你选择。
+            """
+            try:
+                if graph_id:
+                    g = graph_store.get(graph_id)
+                elif file_path:
+                    g = graph_store.get_by_source_doc(file_path)
+                else:
+                    graphs = graph_store.list_graphs()
+                    if not graphs:
+                        return "暂无论证图。用户需先在编辑器的论证面板中提取论证图。"
+                    lines = [f"共 {len(graphs)} 个论证图："]
+                    for gi in sorted(graphs, key=lambda x: x.get("updated_at", 0), reverse=True):
+                        lines.append(
+                            f"  • {gi['id']} — \"{gi['title']}\" "
+                            f"({gi['node_count']} 节点, source_doc={gi.get('source_doc') or '未绑定'})"
+                        )
+                    lines.append("\n传入 file_path 或 graph_id 获取完整结构 + gap 分析。")
+                    return "\n".join(lines)
+                if g is None:
+                    return f"未找到对应论证图（file_path={file_path!r}, graph_id={graph_id!r}）。可不带参数调用以列出全部。"
+                return _format_argument_graph(g)
+            except Exception as e:
+                return f"读取论证图失败: {e}"
+
+        read_argument_graph._agent_tool_def = ToolDefinition(
+            name="read_argument_graph",
+            description="读取论文的 Toulmin 论证图（claim/grounds/warrant/backing/rebuttal 及支撑关系）+ 结构 gap 分析（悬空主张/未接入证据/未回应反驳/孤立节点）。用于精准定位论证漏洞。传 file_path 按文件查，无参列出全部。",
+            parameters=_extract_schema_from_function(read_argument_graph),
+            fn=read_argument_graph,
+        )
+        registry.register(read_argument_graph)
+
+    # --- 论证账本工具（承诺 ↔ 兑付追踪）---
+    if companion_store is not None:
+
+        def read_argument_ledger(file_path: str = "", doc_id: str = "") -> str:
+            """读取论文的论证账本：abstract/intro 里的每条承诺，以及正文是否兑付（paid 已兑付 / partial 部分 / unpaid 未兑付 / mismatch 与正文不符）。
+
+            用它来回答"我在摘要里承诺了什么但正文没做到"、"哪些 claim 过度宣称"。这是给出改稿建议的最强信号。
+
+            Args:
+                file_path: 论文文件路径（优先，对已打开文件 doc_id 即为路径）。
+                doc_id: 账本 doc_id（可选）。两者都为空时列出所有账本。
+            """
+            try:
+                if doc_id:
+                    ledger = companion_store.get_ledger(doc_id)
+                elif file_path:
+                    ledger = companion_store.get_ledger_by_path(file_path)
+                else:
+                    ledgers = companion_store.list_ledgers()
+                    if not ledgers:
+                        return "暂无论证账本。用户需先在编辑器的论证陪练面板中构建账本。"
+                    lines = [f"共 {len(ledgers)} 个论证账本："]
+                    for li in sorted(ledgers, key=lambda x: x.get("last_built_at", 0), reverse=True):
+                        lines.append(
+                            f"  • doc_id={li['doc_id']} — \"{li.get('doc_title') or '无标题'}\" "
+                            f"({li['promise_count']} 条承诺)"
+                        )
+                    lines.append("\n传入 file_path 或 doc_id 查看承诺兑付状态。")
+                    return "\n".join(lines)
+                if ledger is None:
+                    return f"未找到对应账本（file_path={file_path!r}, doc_id={doc_id!r}）。可不带参数调用以列出全部。"
+                return _format_argument_ledger(ledger)
+            except Exception as e:
+                return f"读取论证账本失败: {e}"
+
+        read_argument_ledger._agent_tool_def = ToolDefinition(
+            name="read_argument_ledger",
+            description="读取论文的论证账本：abstract/intro 承诺 ↔ 正文兑付状态（paid/partial/unpaid/mismatch）。用于发现过度宣称、未兑付承诺。传 file_path 按文件查，无参列出全部。",
+            parameters=_extract_schema_from_function(read_argument_ledger),
+            fn=read_argument_ledger,
+        )
+        registry.register(read_argument_ledger)
 
     # --- arXiv 爬取工具 ---
     crawl_tool_def = ToolDefinition(

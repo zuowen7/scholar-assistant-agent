@@ -87,8 +87,16 @@ def register_agent(
     load_config,
     runtime_dir: Path,
     data_root: Path,
+    graph_store_getter=None,
+    companion_store_getter=None,
 ) -> dict:
-    """Register Agent chat + RAG routes. Returns state dict with rag_store getter."""
+    """Register Agent chat + RAG routes. Returns state dict with rag_store getter.
+
+    graph_store_getter / companion_store_getter: lazy getters returning the
+    ArgGraphStore / CompanionStore once api_factory has created them (they are
+    registered after this function, so direct injection isn't possible — same
+    closure pattern as rag_store).
+    """
     _shared: dict = {}
     _init_lock = asyncio.Lock()
     _session_pool: dict[str, AgentSession] = {}
@@ -153,6 +161,8 @@ def register_agent(
                 cloud_api_key=(cloud_cfg.get("api_key") or "").strip() if use_cloud else "",
                 cloud_model=cloud_cfg.get("model", "gpt-4o") if use_cloud else "",
                 workspace_root=workspace_root,
+                graph_store=graph_store_getter() if graph_store_getter else None,
+                companion_store=companion_store_getter() if companion_store_getter else None,
             )
 
             # ReviewAgent — 后台异步审查（任务完成后沉淀记忆+Skill）
@@ -273,6 +283,8 @@ def register_agent(
                 cloud_api_key=(cloud_cfg_for_tools.get("api_key") or "").strip() if use_cloud else "",
                 cloud_model=cloud_cfg_for_tools.get("model", "gpt-4o") if use_cloud else "",
                 workspace_root=effective_workspace,
+                graph_store=graph_store_getter() if graph_store_getter else None,
+                companion_store=companion_store_getter() if companion_store_getter else None,
             )
             logger.info("Agent 使用请求级工作区: %s", effective_workspace)
         else:
