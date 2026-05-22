@@ -2,7 +2,7 @@
 
 隐私优先的学术 AI 写作辅助平台。从翻译切入，覆盖阅读、写作、排版全流程。拖入 PDF，自动完成解析、清洗、翻译；切换到 Editor 模式，用 AI 润色、扩写、生成大纲；导出 LaTeX 模板直接投稿。
 
-- **版本**：v0.3.2（论证陪练 v3 Phase 0–5 全部完成，agency-agents-zh 4-Phase SDLC 改造完成，三角度并行评审上线）
+- **版本**：v0.3.2（Agent 工作区文件工具链接通 — "写论文版 Claude Code" 范式落地；越界审批、Monaco 实时刷新、RAG 降级为按需文献库；论证陪练 v3 + agency-agents-zh SDLC 改造全部完成）
 - **许可**：不开源，私有项目
 
 ## 核心功能
@@ -23,10 +23,14 @@
 - **Glossary 自动提取** — 翻译结果中提取 `中文(English)` 术语对，注入后续块翻译
 - **滑动上下文窗口** — 每块翻译携带前 N 块的摘要和术语表
 
-### 学术写作 AI
-- **Agent 对话** — 基于 ReAct 循环的智能助手，可调用工具、检索知识库
-- **RAG 知识库** — ChromaDB + 本地嵌入，文档自动分块索引；翻译后自动入库；支持手动上传/删除文件
-- **Skill 系统** — 从任务轨迹中沉淀可复用经验，三层文件分解（IDENTITY/SOUL/AGENTS），按相关性注入 prompt
+### 学术写作 AI（Agent 为核心）
+
+> **定位：写论文版的 Claude Code。** 把科研项目当 workspace，Agent 像 Claude Code 修代码一样直接读/写 PDF、草稿、bib、数据文件，替你读文献、改稿、管引用。
+
+- **Agent 工作区文件操作** — 打开项目文件夹后，Agent 可直接调用 `read_file / grep_files / str_replace / write_file / git_op` 等工具读写项目内文件，Agent 完成后编辑器实时刷新（Monaco mid-stream reload）
+- **workspace 边界 & 越界审批** — 所有文件操作严格锁定在项目根目录内；访问项目外路径触发审批弹窗（Allow once / Allow session / Deny），行为与 Claude Code 一致
+- **ReAct 智能推理** — 多步工具调用循环，支持任务拆解、断点续跑、Skill 三层注入（SOUL/AGENTS/IDENTITY）、上下文压缩
+- **文献库（RAG）** — 翻译完成后自动将双语全文收录进本地向量库；Agent 按需调用 `search_documents` 跨文献检索，不自动注入每轮上下文；支持手动上传/删除文件
 - **AI 润色 / 扩写 / 连贯性改写 / 合规检查** — 通过 AI Panel 对选中文本操作
 - **Inline Ghost Text** — Monaco Editor 打字后 1.5s 自动请求补全建议，Tab 接受 ghost 文本
 

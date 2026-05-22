@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Scholar Assistant — privacy-first academic AI writing assistant (v0.3.1, single source `python/src/_version.py`).Translates PDFs with DeepL-like experience (parse -> clean -> chunk -> translate -> format via SSE), provides an AI editor (Monaco + Agent chat), and exports to LaTeX/Word. Features sentence-level alignment, enhanced paragraph preservation, and flexible export options. Runs as desktop app (Tauri manages Python + Ollama subprocesses) or standalone Python API.
+Scholar Assistant — privacy-first academic AI writing assistant (v0.3.2, single source `python/src/_version.py`). Core paradigm: **"Claude Code for papers"** — Agent directly reads/writes workspace files (PDF/drafts/bib/data) like Claude Code edits source code. Translates PDFs with DeepL-like experience (parse -> clean -> chunk -> translate -> format via SSE), provides an AI editor (Monaco + Agent chat with workspace file tools), and exports to LaTeX/Word. Runs as desktop app (Tauri manages Python + Ollama subprocesses) or standalone Python API.
 
 ## Build Commands
 
@@ -66,7 +66,7 @@ SSE events: `progress` -> `parsed` -> `cleaned` -> `chunked` -> `block_translate
 - **Retry mechanism**: Failed blocks can be re-translated individually without full re-translation
 
 **Agent chat** (ReAct loop, `useAgentChat.ts` -> `routers/agent.py` -> `agent/agent.py`):
-SSE events stream tool calls and reasoning steps. Agent can use RAG, Zotero, arXiv search, file ops.
+SSE events stream tool calls and reasoning steps. Agent operates on the user's open project folder (`workspace_root` from `useFileTree.rootDir`), calling `read_file / grep_files / str_replace / write_file / git_op` directly. Workspace boundary enforced by `WorkspaceEnv.resolve()`; out-of-workspace paths trigger `force_approval=True` in `SecurityGate` → `await_approval` SSE event → user approves via `AgentApprovalInline`. RAG (`search_documents`) is on-demand for long-term literature library, not auto-injected per turn. Monaco editor reloads open tabs mid-stream on each `write_file`/`str_replace` tool result.
 
 ### Backend Structure (`python/`)
 
@@ -150,7 +150,7 @@ Three config files serve distinct roles — do not confuse them:
 | `python/config/default.local.yaml` | User overrides merged on top of `default.yaml`. Created by the UI's Settings panel or manually. | No (gitignored) |
 ### Subsystem Maturity Matrix
 
-Use this as the canonical "what works / what's polished / what's a stub" map. Updated 2026-05-19.
+Use this as the canonical "what works / what's polished / what's a stub" map. Updated 2026-05-23.
 
 | # | Subsystem | Grade | Key evidence |
 |---|-----------|-------|--------------|
@@ -158,13 +158,13 @@ Use this as the canonical "what works / what's polished / what's a stub" map. Up
 | 2 | 论证陪练 v3（账本 + Reviewer‑2 对抗 + 三角度并行评审 + Toulmin X 光 / 真实评审导入）| A | `argument/ledger.py` SSE 账本; `argument/reviewer.py` run_review/run_review_parallel/continue_rebuttal/import_real_reviews; `argument/_reviewer_perspectives.py` method/experiment/writing 三角度 asyncio.gather; `argument/anchor.py` 三态锚定; `components/argument/CompanionPanel + LedgerList + ReviewerThread.vue` + 完整 rebuttal mini-chat; features.argument_companion=true; features.parallel_review 灰度开关 |
 | 3 | Mind Map (Vue Flow + AI expand + dagre layout) | A- | LLM failure → hardcoded fallback nodes |
 | 4 | LaTeX/Word export (IEEE Conf/Journal, ACM, NeurIPS, LNCS, Generic + Tectonic) | A | `word_exporter.py`, `pandoc_templates`, `pptx_exporter` |
-| 5 | AI editor (Monaco + Ghost Text + AI Panel) | B | Completion quality average; debounce 1.5s |
+| 5 | AI editor (Monaco + Ghost Text + AI Panel + mid-stream reload) | B+ | `useEditorTabs.reloadOpenTabs()` refreshes open tabs after each Agent write; completion quality average |
 | 6 | Agent ReAct engine (ContextCompressor + SessionStore tool_calls + Skill 三层分解 + review + Memory dedup) | A- | `agent.py:149,176,214` ContextCompressor wired into `step()`; `session_store.py:199-225` tool_calls round-trip; `review_agent.py` skill quality gate; `agent/_skill_model.py` SOUL/AGENTS/IDENTITY 三层; `prompt_builder.py` skill injection |
 | 7 | 21 cloud LLM providers | B | Only OpenAI-compatible path tested end-to-end |
-| 8 | RAG knowledge base | C | `tools/registry.py:408-481` full impl when `rag_store` injected; placeholder when None |
+| 8 | RAG / 文献库 | B- | Demoted to on-demand `search_documents` tool (no longer auto-injected); translation auto-ingest intact; `tools/registry.py` full impl when `rag_store` injected |
 | 9 | Zotero integration | C | Requires user API key |
 | 10 | Vision / OCR | C | Depends on external MCP server |
-| 11 | Agent file-edit / shell tools | C | WorkspaceEnv permission-strict; can hang on long ops |
+| 11 | Agent workspace file tools (read/write/grep/str_replace/git_op + boundary approval) | B | E2E verified: workspace_root wired from `useFileTree.rootDir`; `SecurityGate.force_approval` + `WorkspaceEnv` ContextVar; `await_approval` SSE → frontend `AgentApprovalInline` → `POST /approve` → ContextVar bypass; 1752 pytest passed |
 
 ### Known Defect Index
 
@@ -241,3 +241,12 @@ agency-agents-zh SDLC 改造 (2026-05-18–19，分支 `feature/sdlc-borrow-agen
 - **Phase D** — Reviewer 三角度并行：`_reviewer_perspectives.py` (method/experiment/writing + aggregate)；`run_review_parallel()` asyncio.gather + 去重；`ReviewPoint.perspective` 字段；4 个 prompt templates；路由接入 `POST /api/companion/review` mode=parallel + features.parallel_review 灰度开关；前端 CompanionPanel 下拉框切换；10 unit + 3 e2e tests
 - **Bug fix pass** — 修 5 个 bug（_save_skill 写错文件 / _skill_migrate 空 name / _parse_llm_points 缺 category / 模板占位符未替换 / 串行路径缺 ollama_client）+ 40 adversarial tests
 - 回归：1559 unit passed / 8 skipped + 326 vitest passed；计划详情见 `docs/sdlc-borrow-agency-agents-zh.md`
+
+"Claude Code for Papers" 改造 (2026-05-22–23，5刀计划，main 分支)：
+- **里程碑1** — workspace_root 接线：`AgentPanel.vue` 补传 `useFileTree.rootDir` → `useAgentChat.sendMessage` 第4参数 → `routers/agent.py._create_agent`；attachFile 改为只存路径（Agent 自己 read_file）；`refreshFileTree()` 在 sendMessage 后自动调用
+- **里程碑2 (RAG 再平衡)** — 删除 `agent.py._build_messages` 中 RAG 自动注入块；`search_documents` 描述改为"跨文献长期回忆，当前项目用 read_file"；翻译自动入库保留（差异化护城河）
+- **里程碑1.5 (越界审批)** — `security_gate.py`：`GateResult.force_approval` + `SecurityGate(workspace_root)` + `_check_workspace_escape()`；`workspace.py`：`workspace_escape_allowed: ContextVar[bool]`，resolve() 越界时查 ContextVar；`session.py`：SecurityGate 接收 workspace.root，`force_approval` 绕过 `auto_approve` 强制审批，审批通过后 ContextVar token 包裹工具执行；前端 `PendingApproval.reason` 字段补传，`AgentApprovalInline` 橙色显示原因
+- **里程碑3 第4刀** — `useEditorTabs.reloadOpenTabs()`：Agent 每次 write_file/str_replace 完成立即刷新文件树 + Monaco（mid-stream watcher），有未保存修改的 tab 跳过；Tauri-only 动态 import 含 web 模式兜底
+- **里程碑3 第5刀** — 删除 polish_text / summarize_text / expand_section / generate_outline（93行），同步清理 TOOL_DESCRIPTIONS + 集成测试 safe_args + mcp_server.py 注释；format_bibliography 保留
+- **UI 适配** — "知识库" tab 改名"文献库"；workspace 状态栏（绿点 + 项目名 / "未打开项目"）；空状态 workspace 感知文案；TOOL_DESCRIPTIONS 覆盖所有19个工具
+- 验证：1752 pytest passed / 11 skipped；326 vitest passed；E2E SSE 测试：越界路径 → await_approval → approve → ContextVar bypass → tool_result 全链路通过；计划详情见 `docs/claude-code-pivot-todo.md`

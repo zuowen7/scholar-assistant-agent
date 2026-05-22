@@ -1,7 +1,7 @@
 # Claude Code for Papers — 改造 TODO
 
 > 本文件防止上下文丢失。记录战略方向、已完成、待完成、关键决策。
-> 最后更新：2026-05-22（里程碑 1.5 完成）
+> 最后更新：2026-05-23（5刀计划全部完成，E2E 验证通过）
 
 ## 战略定位
 
@@ -62,14 +62,12 @@
 - [x] 前端 `AgentApprovalInline`（已有）自动复用，无需改动
 - 验证：1566 passed / 8 skipped ✅
 
-### 里程碑 3 — 打磨
-- [ ] **第 4 刀**：确认文件树/编辑器在 Agent 写完后正确刷新
-  （目前 refreshFileTree 在 sendMessage 完成后调用，但需验证 Monaco 编辑器
-  是否需要额外的 reload 信号）
-- [ ] **第 5 刀**：清理魔法按钮残留工具
-  `python/src/agent/tools/registry.py` 里的 polish_text/summarize_text/
-  expand_section/generate_outline — grep 确认无其他调用方后删除
-  （format_bibliography 有实用价值，保留）
+### 里程碑 3 — 打磨 ✅
+- [x] **第 4 刀**：Monaco mid-stream 刷新 — `useEditorTabs.reloadOpenTabs()`；
+  Agent 每次 write_file/str_replace 完成后立即刷新文件树 + Monaco 编辑器；
+  有未保存修改的 tab 自动跳过；Tauri-only 动态 import 有 web 模式兜底
+- [x] **第 5 刀**：删除 polish_text / summarize_text / expand_section / generate_outline
+  （共 93 行）；同步清理 TOOL_DESCRIPTIONS 和集成测试；format_bibliography 保留
 
 ### 更长远
 - [ ] 论证图（Toulmin 提取）→ Agent 的"符号表"：让 Agent 能通过论证图导航论文结构
