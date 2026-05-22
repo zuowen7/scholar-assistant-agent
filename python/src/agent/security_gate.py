@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from pathlib import Path
 from typing import Any
 
 
@@ -82,6 +83,16 @@ _TOOL_DEFAULT_RISK: dict[str, ToolRiskLevel] = {
     "python_exec": ToolRiskLevel.MODERATE,
 }
 
+# 文件工具路径参数名映射 — 用于 workspace 逃逸检测
+_FILE_TOOL_PATH_ARGS: dict[str, str] = {
+    "read_file": "file_path",
+    "write_file": "file_path",
+    "str_replace": "file_path",
+    "grep_files": "path",
+    "glob_files": "path",
+    "list_directory": "path",
+}
+
 
 @dataclass
 class GateResult:
@@ -90,6 +101,7 @@ class GateResult:
     reason: str = ""
     needs_approval: bool = False
     is_banned: bool = False
+    force_approval: bool = False
 
 
 class SecurityGate:
@@ -102,17 +114,53 @@ class SecurityGate:
             # 触发 await_approval 流程
     """
 
-    def __init__(self, safe_tools: set[str] | None = None):
+    def __init__(self, safe_tools: set[str] | None = None, workspace_root: str = ""):
         self._safe_tools = safe_tools or set()
+        self._workspace_root = Path(workspace_root).resolve() if workspace_root else None
 
     def classify(self, tool_name: str, args: dict[str, Any]) -> GateResult:
-        """判定单个工具调用的风险级别。
+        """判定单个工具调用的风险级别，含 workspace 逃逸检测。
 
         Scope: Agent tool-call risk gating (BANNED/MODERATE/DESTRUCTIVE/SAFE).
         Enforces: command blacklist, path restrictions for file tools, network restrictions.
         For translate/editor path validation see api_factory._validate_file_path().
         For agent workspace path resolution see WorkspaceEnv.resolve().
         """
+        result = self._classify_raw(tool_name, args)
+        # Workspace-escape check: override to force_approval (unless already banned)
+        if not result.is_banned and self._check_workspace_escape(tool_name, args):
+            return GateResult(
+                risk=ToolRiskLevel.MODERATE,
+                reason=f"'{tool_name}' accesses path outside workspace root — requires user approval",
+                needs_approval=True,
+                force_approval=True,
+            )
+        return result
+
+    def _check_workspace_escape(self, tool_name: str, args: dict) -> bool:
+        """Return True if the tool would access a path outside workspace_root."""
+        if self._workspace_root is None:
+            return False
+        arg_name = _FILE_TOOL_PATH_ARGS.get(tool_name)
+        if not arg_name:
+            return False
+        p_str = str(args.get(arg_name, "")).strip()
+        if not p_str:
+            return False
+        raw = Path(p_str)
+        candidate = raw if raw.is_absolute() else (self._workspace_root / raw)
+        try:
+            resolved = candidate.resolve(strict=False)
+        except Exception:
+            return False
+        try:
+            resolved.relative_to(self._workspace_root)
+            return False  # within workspace
+        except ValueError:
+            return True  # outside workspace — needs approval
+
+    def _classify_raw(self, tool_name: str, args: dict[str, Any]) -> GateResult:
+        """内部风险分类（不含 workspace 逃逸检测）。"""
         # 1. 检查工具默认风险
         base_risk = _TOOL_DEFAULT_RISK.get(tool_name)
 

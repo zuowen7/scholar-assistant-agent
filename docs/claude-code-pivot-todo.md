@@ -1,7 +1,7 @@
 # Claude Code for Papers — 改造 TODO
 
 > 本文件防止上下文丢失。记录战略方向、已完成、待完成、关键决策。
-> 最后更新：2026-05-22
+> 最后更新：2026-05-22（里程碑 1.5 完成）
 
 ## 战略定位
 
@@ -46,15 +46,21 @@
 
 ## 待完成
 
-### 里程碑 1.5 — 越界审批（Claude Code 风格边界）
+### 里程碑 1.5 — 越界审批（Claude Code 风格边界）✅
 **决策**：默认严格锁在 rootDir 内；越界需用户审批才执行（和 Claude Code 一致）
 
-需改：
-- [ ] `python/routers/agent.py:399` — `SessionConfig(auto_approve=True)` 改为
-  对文件操作非全自动（否则审批弹窗永远不触发）
-- [ ] `python/src/agent/workspace.py` — `WorkspaceEnv.resolve()` 越界从
-  硬抛 WorkspaceViolation 改为返回需审批信号，走 SecurityGate → await_approval
-- [ ] 前端 `AgentApprovalInline`（已有）复用，展示越界原因 + 允许/拒绝
+已完成：
+- [x] `python/src/agent/security_gate.py` — `GateResult` 新增 `force_approval: bool`；
+  `SecurityGate.__init__` 新增 `workspace_root` 参数；
+  `classify()` 拆出 `_classify_raw()`，外层检测路径越界 → `force_approval=True`；
+  `_FILE_TOOL_PATH_ARGS` 映射各工具路径参数名（file_path / path，已核对 registry.py）
+- [x] `python/src/agent/workspace.py` — 新增 `workspace_escape_allowed: ContextVar[bool]`；
+  `resolve()` 越界时先查 ContextVar，已审批则放行（跳过 symlink+glob 检查）
+- [x] `python/src/agent/session.py` — `SecurityGate(workspace_root=...)` 从 workspace.root 读取；
+  `_drive_task()` 排序时 `gate.force_approval` 绕过 `auto_approve`，强制进审批队列；
+  审批通过后用 ContextVar token 包裹 `_execute_single_tool`，finally 重置
+- [x] 前端 `AgentApprovalInline`（已有）自动复用，无需改动
+- 验证：1566 passed / 8 skipped ✅
 
 ### 里程碑 3 — 打磨
 - [ ] **第 4 刀**：确认文件树/编辑器在 Agent 写完后正确刷新
