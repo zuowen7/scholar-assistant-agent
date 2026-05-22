@@ -136,7 +136,7 @@ def create_default_registry(
     if rag_store is not None:
 
         def search_documents(query: str, top_k: int = 5) -> str:
-            """在已入库的文档中检索与查询相关的段落。基于向量相似度匹配，返回最相关的文本片段。
+            """检索你的个人文献库（历史翻译收录的论文）。仅当需要回忆当前项目之外、历史读过的文献时调用；当前项目的文件请优先用 read_file / grep_files 直接读取，速度更快、结果更精确。
 
             Args:
                 query: 查询文本（中英文均可）。
@@ -155,7 +155,7 @@ def create_default_registry(
 
         search_documents._agent_tool_def = ToolDefinition(
             name="search_documents",
-            description="在已入库的文档中检索与查询相关的段落。基于向量相似度匹配，返回最相关的文本片段。",
+            description="检索你的个人文献库（历史翻译收录的论文）。仅当需要回忆当前项目之外、历史读过的文献时调用；当前项目的文件请优先用 read_file / grep_files 直接读取，速度更快、结果更精确。",
             parameters=_extract_schema_from_function(search_documents),
             fn=search_documents,
         )

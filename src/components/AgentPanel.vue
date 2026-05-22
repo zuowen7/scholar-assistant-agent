@@ -11,7 +11,7 @@
     >
       <div class="agent-tabs">
         <button class="agent-tab" :class="{ active: tab === 'chat' }" @click="tab = 'chat'">对话</button>
-        <button class="agent-tab" :class="{ active: tab === 'docs' }" @click="tab = 'docs'">知识库</button>
+        <button class="agent-tab" :class="{ active: tab === 'docs' }" @click="tab = 'docs'">文献库</button>
         <button class="agent-tab" :class="{ active: tab === 'templates' }" @click="tab = 'templates'">模板</button>
         <button class="agent-tab" :class="{ active: tab === 'sessions' }" @click="tab = 'sessions'; refreshSessions()">会话</button>
       </div>
@@ -51,8 +51,9 @@
           @decide="handleApprovalDecision"
         />
         <div v-if="messages.length === 0 && !sending" class="agent-empty">
-          <p>Ask anything. The ink is ready.</p>
-          <p class="hint">支持搜索文档、翻译文本、查询 arXiv 论文</p>
+          <p>向 Agent 提问，它会直接在项目里读写文件</p>
+          <p class="hint" v-if="workspaceName">工作区：{{ workspaceName }}</p>
+          <p class="hint warn" v-else>请先在编辑器中打开一个项目文件夹</p>
         </div>
         <div v-for="msg in messages" :key="msg.id" class="agent-msg" :class="msg.role">
           <template v-for="(evt, i) in msg.events" :key="i">
@@ -107,6 +108,11 @@
         </div>
       </div>
       <div class="agent-input-area">
+        <div class="agent-workspace-bar" :class="{ active: !!workspaceName, inactive: !workspaceName }">
+          <span class="ws-dot"></span>
+          <span class="ws-name" v-if="workspaceName">{{ workspaceName }}</span>
+          <span class="ws-name muted" v-else>未打开项目</span>
+        </div>
         <div v-if="contextText" class="agent-context-note">
           已使用编辑器{{ editorSelection.text ? '选区' : '文档' }}作为上下文（{{ contextText.length }} 字符）
         </div>
@@ -141,7 +147,8 @@
     <!-- Docs Tab -->
     <div v-show="tab === 'docs'" class="agent-docs">
       <div class="docs-toolbar">
-        <span class="docs-title">已入库文档</span>
+        <span class="docs-title">文献库</span>
+        <span class="docs-subtitle">历史翻译自动收录，供 Agent 跨文献检索</span>
         <div class="docs-toolbar-actions">
           <button class="btn primary" :disabled="ragUploading" @click="ragFileInput?.click()">
             {{ ragUploading ? '上传中...' : '上传文件' }}
@@ -206,6 +213,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useAgentChat } from '../composables/useAgentChat'
 import { useEditor } from '../composables/useEditor'
+import { useFileTree } from '../composables/useFileTree'
 import AgentApprovalInline from './AgentApprovalInline.vue'
 import AgentSessionList from './AgentSessionList.vue'
 import { Pin, PinOff } from './ui/icons'
@@ -410,6 +418,13 @@ const {
 
 const { selection: editorSelection, content: editorContent, activeTab: editorActiveTab } = useEditor()
 
+const { rootDir, refresh: refreshFileTree } = useFileTree()
+
+const workspaceName = computed(() => {
+  if (!rootDir.value) return null
+  return rootDir.value.split(/[\\/]/).filter(Boolean).pop() || rootDir.value
+})
+
 const tab = ref<'chat' | 'docs' | 'templates' | 'sessions'>('chat')
 const input = ref('')
 const messagesRef = ref<HTMLElement | null>(null)
@@ -431,7 +446,7 @@ function _onMessagesScroll() {
   _userScrolledUp.value = !atBottom
 }
 const sessions = ref<AgentSessionInfo[]>([])
-const files = ref<{ name: string; content: string }[]>([])
+const files = ref<{ name: string; path: string }[]>([])
 const ragFileInput = ref<HTMLInputElement | null>(null)
 const ragUploading = ref(false)
 const ragUploadError = ref('')
@@ -460,14 +475,23 @@ async function handleRagUpload() {
 const TOOL_DESCRIPTIONS: Record<string, string> = {
   translate_text: '翻译文本为指定语言',
   parse_document: '解析文档文件，提取纯文本内容',
-  search_documents: '在已入库文档中检索相关内容',
+  search_documents: '检索文献库（历史翻译收录的论文）',
   crawl_arxiv: '搜索 arXiv 学术论文',
-  polish_text: '润色文本，使其更加学术化',
-  generate_outline: '根据研究主题生成论文大纲',
-  summarize_text: '对长文本进行摘要',
-  save_file: '将文本内容保存到文件',
-  read_file: '读取文本文件内容',
-  search_paper_templates: '检索论文模板和写作范例',
+  polish_text: '润色文本',
+  generate_outline: '生成论文大纲',
+  summarize_text: '摘要文本',
+  read_file: '读取项目文件内容',
+  write_file: '写入文件到项目',
+  str_replace: '精确修改文件内容',
+  grep_files: '在项目文件中搜索内容',
+  glob_files: '列出匹配的项目文件',
+  list_directory: '列出目录结构',
+  run_command: '执行 shell 命令',
+  git_op: 'Git 操作',
+  undo_last_change: '撤销最近的文件修改',
+  export_pdf: '导出为 PDF',
+  web_fetch: '获取网页内容',
+  web_search: '搜索引擎检索',
 }
 
 function getToolDescription(toolName?: string): string {
@@ -536,15 +560,16 @@ async function sendMessage() {
   if (!text || sending.value) return
   input.value = ''
 
-  // Build full message with file contents
+  // Pass file paths to agent — let it read with read_file tool
   let fullMsg = text
   if (files.value.length) {
-    const ctx = files.value.map(f => `--- File: ${f.name} ---\n${f.content.slice(0, 12000)}\n--- End ---`).join('\n\n')
-    fullMsg = `${ctx}\n\n${text}`
+    const pathList = files.value.map(f => `- ${f.path}`).join('\n')
+    fullMsg = `${text}\n\n[附件文件，请用 read_file 工具读取：\n${pathList}]`
     files.value = []
   }
 
-  await agentSendMessage(fullMsg, contextText.value, '')
+  await agentSendMessage(fullMsg, contextText.value, '', rootDir.value || undefined)
+  refreshFileTree()
   await nextTick()
   _scrollToBottom()
 }
@@ -562,11 +587,7 @@ async function attachFile() {
     for (const p of paths) {
       const name = p.split(/[\\/]/).pop() || p
       if (files.value.some(f => f.name === name)) continue
-      try {
-        const { readTextFile } = await import('@tauri-apps/plugin-fs')
-        const content = await readTextFile(p)
-        files.value.push({ name, content })
-      } catch { /* skip unreadable files */ }
+      files.value.push({ name, path: p })
     }
   } catch { /* dialog not available */ }
 }
@@ -1080,4 +1101,31 @@ onUnmounted(() => {
 .btn.ghost:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn.primary { background: var(--c-accent); color: #fff; }
 .btn.primary:hover { opacity: 0.88; }
+
+/* Workspace status bar */
+.agent-workspace-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  font-size: 11px;
+  border-bottom: 1px solid var(--c-glass-border);
+  background: transparent;
+}
+.ws-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c-text-muted);
+  flex-shrink: 0;
+}
+.agent-workspace-bar.active .ws-dot { background: #4ade80; }
+.ws-name { color: var(--c-text-secondary); font-family: var(--font-mono, monospace); }
+.ws-name.muted { color: var(--c-text-muted); font-style: italic; }
+.docs-subtitle {
+  font-size: 11px;
+  color: var(--c-text-muted);
+  margin-top: 2px;
+}
+.hint.warn { color: var(--c-warn, #f59e0b); }
 </style>
