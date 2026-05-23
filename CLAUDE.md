@@ -101,7 +101,7 @@ Key backend modules under `src/`:
   - `useAiPanelState.ts` — AI Panel independent state management
   - `useFileTree.ts` — singleton; file system navigation
   - `useAgentChat.ts` — singleton (module-level refs); Agent SSE chat state + session/approval state
-  - `useMindMap.ts` — singleton; mind map data (CRUD, undo/redo, flow adapters `toFlowNodes`/`toFlowEdges`)
+  - `useMindMap.ts` — singleton; mind map data (CRUD, undo/redo, flow adapters `toFlowNodes`/`toFlowEdges`, `mindMapToMarkdown`/`markdownToMindMapNodes` bidirectional sync with `body` field per node)
   - `useMindMapKeyboard.ts` — keyboard handler (Tab/Enter/F2/arrows/Ctrl+Z)
   - `useMindMapLayout.ts` — dagre auto-layout
   - `useMindMapAnalysis.ts` — AI analysis integration
@@ -114,7 +114,7 @@ Key backend modules under `src/`:
   - `TranslateView.vue` — upload drop card, progress/step indicators, result views (sentence/parallel/markdown), sentence splitting, markdown rendering
   - `AgentPanel.vue` — agent chat/docs/templates/sessions side panel (self-contained via `useAgentChat()`)
   - `EditorLayout.vue` — editor mode layout (~657 lines): FileTree sidebar + MonacoEditor + AiPanel right panel + ArgumentMap, with tab management and keyboard shortcuts
-  - `mindmap/` — MindMapCanvas (Vue Flow), MindNodeCard, MindEdge
+  - `mindmap/` — MindMapCanvas (Vue Flow), MindNodeCard (collapsible body textarea), MindEdge
   - `MindMapView.vue`, `MindMapFloatingToolbar.vue`, `MindMapAiHints.vue`
   - `ui/` — design-system primitives: UiButton, UiCard, UiDropdown, UiIconButton, UiInput, UiPanel, UiPill, UiPopover, UiSegmented, UiSelect, UiTextarea, UiTooltip
   - `DebugPanel.vue` — 独立调试面板组件（前端错误历史 + 后端日志，在 AppTopBar 中以 `<DebugPanel />` 引入）
@@ -156,7 +156,7 @@ Use this as the canonical "what works / what's polished / what's a stub" map. Up
 |---|-----------|-------|--------------|
 | 1 | Translation pipeline (5-step SSE + multi-article split + citation placeholders + continuation rules + UTF-8 fix) | A | `routers/translate.py:295` multi-article via `parser/article_detector.extract_articles`; `block_translator.py:289,326` citation protect/restore; `cleaner/pipeline.py:258` pdfplumber encoding fix; `cleaner/pipeline.py:894-979` 6 continuation rules |
 | 2 | 论证陪练 v3（账本 + Reviewer‑2 对抗 + 三角度并行评审 + Toulmin X 光 / 真实评审导入）| A | `argument/ledger.py` SSE 账本（anchor SSE 事件修复）; `argument/reviewer.py` run_review/run_review_parallel/continue_rebuttal/import_real_reviews; `argument/_reviewer_perspectives.py` method/experiment/writing 三角度 asyncio.gather; `argument/anchor.py` 三态锚定; `components/argument/CompanionPanel + LedgerList + ReviewerThread.vue` + 完整 rebuttal mini-chat; features.argument_companion=true; features.parallel_review 灰度开关; **ledger 路由全部用 `?doc_id=` query param** |
-| 3 | Mind Map (Vue Flow + AI expand + dagre layout) | A- | LLM failure → hardcoded fallback nodes |
+| 3 | Mind Map (Vue Flow + AI expand + dagre layout + node body + editor sync) | A | `MindMapNode.body` field; `mindMapToMarkdown`/`markdownToMindMapNodes` round-trip with body; `MindNodeCard` collapsible body textarea; `skipNextBackendLoad` prevents `loadFromBackend` overwriting editor→mindmap data |
 | 4 | LaTeX/Word export (IEEE Conf/Journal, ACM, NeurIPS, LNCS, Generic + Tectonic) | A | `word_exporter.py`, `pandoc_templates`, `pptx_exporter` |
 | 5 | AI editor (Monaco + Ghost Text + AI Panel + mid-stream reload) | B+ | `useEditorTabs.reloadOpenTabs()` refreshes open tabs after each Agent write; completion quality average |
 | 6 | Agent ReAct engine (ContextCompressor + SessionStore tool_calls + Skill 三层分解 + review + Memory dedup + greeting guard) | A- | `agent.py:149,176,214` ContextCompressor wired into `step()`; `session_store.py:199-225` tool_calls round-trip; `review_agent.py` skill quality gate; `agent/_skill_model.py` SOUL/AGENTS/IDENTITY 三层; `prompt_builder.py` skill injection + 原则 #0 问候不调工具 |
@@ -268,3 +268,11 @@ agency-agents-zh SDLC 改造 (2026-05-18–19，分支 `feature/sdlc-borrow-agen
 - `ledger.py` — **实际补上 anchor SSE 事件**（此前 CLAUDE.md 声称已做但代码并未实现）：`build_ledger` 在 src_anchor + 每个 discharge anchor 处 yield `anchor` 事件；`rebuild_ledger` 透传 `anchor`。修复前端 `ledger.anchors` 恒空导致"跳转原文/兑付处"按钮全失效
 - `LedgerList.vue` / `CompanionPanel.vue` — 通篇未定义的旧 CSS 变量（`--border`/`--bg-2`/`--text-dim`/`--text`/`--accent`）全部映射到规范 `--c-*` token（修复浅色主题不可读）；账本列表加入场动效（`promise-in`）、hover 过渡、sticky 工具栏
 - 验证：1582 pytest passed / 8 skipped；326 vitest passed
+
+思维导图节点正文 + 编辑器双向同步 (2026-05-24)：
+- `useMindMap.ts` — `MindMapNode` 新增可选 `body?: string` 字段；新增 `updateNodeBody(id, body)` 方法；`mindMapToMarkdown` 输出 heading + body 段落；`markdownToMindMapNodes` 解析 heading 间段落文本存入 body（返回 `MindMapTreeNode { text, body, children[] }`）；`cloneMap` 深拷贝 body；`toFlowNodes` 传递 body 到 flow node data；新增 `skipNextBackendLoad()` 防止 `loadFromBackend` 覆盖编辑器构建的数据
+- `MindNodeCard.vue` — 节点右侧 `▸` 展开/收起按钮（有正文时高亮）；展开后显示可编辑 textarea（`nodrag nowheel`）；收起时显示首行预览（≤40 字）；`bodyPreview`/`draftBody` 直接从 store 读取，不依赖 Vue Flow data prop
+- `MindMapCanvas.vue` — 改用 `watch(nodes) → setNodes` + `watch(edges) → setEdges` 强制同步 Vue Flow 节点数据
+- `EditorLayout.vue` — `openMindMapFromEditor` 递归 `buildTreeNode` 构建带 body 节点树；`enterEditorFromMindMap` 恢复使用 outline（现在含完整正文）；调用 `skipNextBackendLoad()` 防覆盖；`handleExportPdf` 增加 tectonic 状态重检
+- `pandoc_templates/__init__.py` — PDF 导出预处理：去掉 markdown 水平分隔线（`---` → 避免 `Misplaced \noalign`）；转义裸 `&`（论文引用 `Author & Coauthor, Year` → 避免 `Misplaced alignment tab`）
+- 验证：1582 pytest passed / 8 skipped；345 vitest passed
