@@ -62,8 +62,8 @@ def ledger_cross_check(ledger: "Ledger | None") -> list[ReviewPoint]:
                 severity="major",
                 category="claim_overreach",
                 source="ledger_check",
-                title="Claimed contribution not demonstrated",
-                detail=f"承诺「{p.text}」在全文未找到对应的实验/论证。",
+                title="声称的贡献在正文中未得到验证",
+                detail=f"承诺「{p.text}」在全文未找到对应的实验/论证，审稿人可能将其视为未兑现的承诺。",
                 anchor_id=p.source_anchor_id,
             ))
         elif p.status == "mismatch":
@@ -71,8 +71,8 @@ def ledger_cross_check(ledger: "Ledger | None") -> list[ReviewPoint]:
                 severity="major",
                 category="claim_overreach",
                 source="ledger_check",
-                title="Claim does not match the evidence",
-                detail=f"承诺「{p.text}」兑现了但与声称不符：{p.note or ''}",
+                title="实验结果与声明不符",
+                detail=f"承诺「{p.text}」有相关实验，但结果与声称存在出入：{p.note or '（无额外说明）'}",
                 anchor_id=p.source_anchor_id,
             ))
     return points
@@ -101,19 +101,18 @@ async def coherence_check(
         promise_summary = "Promised contributions:\n" + "\n".join(items)
 
     prompt = (
-        "You are a rigorous academic reviewer. Analyse the following paper sections "
-        "for internal coherence issues.\n\n"
-        f"ABSTRACT:\n{abstract[:1200]}\n\n"
-        f"INTRODUCTION:\n{intro[:1200]}\n\n"
-        f"CONCLUSION:\n{conclusion[:1200]}\n\n"
+        "你是一位严格的学术审稿人。分析以下论文各章节之间的内部一致性问题。\n\n"
+        f"摘要（ABSTRACT）：\n{abstract[:1200]}\n\n"
+        f"引言（INTRODUCTION）：\n{intro[:1200]}\n\n"
+        f"结论（CONCLUSION）：\n{conclusion[:1200]}\n\n"
         f"{promise_summary}\n\n"
-        "Find issues in these categories (only):\n"
-        "- inconsistency: abstract/intro/conclusion contradict each other\n"
-        "- gap_mismatch: a stated gap is not addressed in experiments\n"
-        "- term_drift: key terminology changes meaning across sections\n\n"
-        "Return a JSON array (possibly empty) of objects with fields:\n"
-        "  category, severity (minor/major/fatal), title, detail, verbatim_quote\n"
-        "Return [] if no issues found. Return ONLY the JSON array, no prose."
+        "只检查以下类别的问题：\n"
+        "- inconsistency：摘要/引言/结论之间存在矛盾\n"
+        "- gap_mismatch：论文声称的研究空白在实验部分未得到解决\n"
+        "- term_drift：关键术语在各章节中含义发生偏移\n\n"
+        "输出 JSON 数组（可以为空），每项字段：\n"
+        "  category, severity (minor/major/fatal), title（中文）, detail（中文）, verbatim_quote\n"
+        "没有问题时返回 []。只输出 JSON 数组，不含其他文字。"
     )
 
     try:
@@ -144,9 +143,8 @@ async def related_work_check(
             severity="info" if _any_rw_elsewhere(text) else "major",
             category="missing_related_work",
             source="rw_check",
-            title="No dedicated Related Work section found",
-            detail="The paper lacks a clearly labelled Related Work section. "
-                   "Reviewers may penalise inadequate literature coverage.",
+            title="缺少独立的相关工作章节",
+            detail="论文中没有明确标注的「相关工作」章节，审稿人可能认为文献覆盖不足。",
         ))
         return points
 
@@ -157,22 +155,21 @@ async def related_work_check(
             severity="major",
             category="weak_positioning",
             source="rw_check",
-            title="Related Work lacks contrast with prior art",
-            detail="No paragraph in the Related Work section contains a contrast marker "
-                   "(e.g. 'However', 'In contrast', '然而'). The section reads as a "
-                   "summary rather than positioning your work against prior art.",
+            title="相关工作缺乏与已有工作的对比区分",
+            detail="相关工作章节的各段落均未包含对比性标记词（如 However、In contrast、然而等），"
+                   "读起来像罗列综述，而非将本文与已有工作进行明确对比。",
         ))
 
     # LLM check: deeper positioning critique
     prompt = (
-        "You are a rigorous academic reviewer. Analyse this Related Work section:\n\n"
+        "你是一位严格的学术审稿人。分析以下相关工作章节：\n\n"
         f"{rw_text[:2000]}\n\n"
-        "Check for:\n"
-        "- weak_positioning: false or overstated comparisons to prior work\n"
-        "- missing_related_work: obvious missing citations or sub-fields\n\n"
-        "Return a JSON array (possibly empty) with fields:\n"
-        "  category, severity (minor/major/fatal), title, detail, verbatim_quote\n"
-        "Return ONLY the JSON array, no prose."
+        "检查以下问题：\n"
+        "- weak_positioning：对已有工作的比较存在夸大或不实之处\n"
+        "- missing_related_work：明显遗漏的重要引用或子领域\n\n"
+        "输出 JSON 数组（可以为空），每项字段：\n"
+        "  category, severity (minor/major/fatal), title（中文）, detail（中文）, verbatim_quote\n"
+        "只输出 JSON 数组，不含其他文字。"
     )
     try:
         raw = await call_llm_chat(prompt, cloud_client, ollama_client, max_tokens=1024, temperature=0.3)
@@ -265,13 +262,12 @@ async def run_review(
     if focus is not None:
         focus_text = focus if isinstance(focus, str) else focus.get("quote", "")
         focus_prompt = (
-            f"You are a rigorous Reviewer-2. The author asks you to scrutinise "
-            f"this specific sentence:\n\n\"{focus_text}\"\n\n"
-            f"Venue context: {venue_profile[:400]}\n\n"
-            "Identify any issues: unsupported claims, logical gaps, ambiguous language, "
-            "overreach, or missing evidence. Return a JSON array (possibly empty) with:\n"
-            "  category, severity (minor/major/fatal), title, detail, verbatim_quote\n"
-            "Return ONLY the JSON array."
+            f"你是一位苛刻的学术审稿人（Reviewer 2）。作者请你审查以下这句话：\n\n「{focus_text}」\n\n"
+            f"投稿场景：{venue_profile[:400]}\n\n"
+            "找出其中的问题：无依据的声明、逻辑漏洞、表达模糊、声称过度或缺乏实验支撑。\n"
+            "输出 JSON 数组（可以为空），每项字段：\n"
+            "  category, severity (minor/major/fatal), title（中文）, detail（中文）, verbatim_quote\n"
+            "只输出 JSON 数组，不含其他文字。"
         )
         try:
             raw = await call_llm_chat(focus_prompt, cloud_client, ollama_client,
@@ -311,18 +307,17 @@ async def run_review(
     # 4. General LLM review
     if "llm" in checks:
         prompt = (
-            f"You are a rigorous Reviewer-2 for {venue or 'a top-tier academic venue'}.\n"
-            f"Venue guidelines: {venue_profile[:600]}\n\n"
-            f"Paper text (may be truncated):\n{text[:4000]}\n\n"
-            "Write a thorough review. Focus on soundness, novelty, baselines, "
-            "experiment design, and writing clarity. Do NOT repeat issues that are "
-            "already obvious from the abstract alone.\n\n"
-            "Return a JSON array (possibly empty) with fields:\n"
-            "  category, severity (minor/major/fatal), title, detail, verbatim_quote\n"
-            "Valid categories: motivation, novelty, baseline, ablation, soundness, "
+            f"你是一位投稿到 {venue or '顶级学术期刊/会议'} 的苛刻审稿人（Reviewer 2）。\n"
+            f"投稿要求参考：{venue_profile[:600]}\n\n"
+            f"论文正文（可能截断）：\n{text[:4000]}\n\n"
+            "请写一份详细的审稿意见，重点关注：方法可靠性、创新性、基线对比、"
+            "实验设计和写作清晰度。不要重复只从摘要就能看出的问题。\n\n"
+            "输出 JSON 数组（可以为空），每项字段：\n"
+            "  category, severity (minor/major/fatal), title（中文，一行摘要）, detail（中文，具体说明）, verbatim_quote\n"
+            "有效 category 值：motivation, novelty, baseline, ablation, soundness, "
             "claim_overreach, missing_related_work, reproducibility, experiment_design, "
             "writing_clarity, inconsistency, gap_mismatch, weak_positioning, term_drift, other\n"
-            "Return ONLY the JSON array."
+            "只输出 JSON 数组，不含其他文字。"
         )
         try:
             raw = await call_llm_chat(prompt, cloud_client, ollama_client,

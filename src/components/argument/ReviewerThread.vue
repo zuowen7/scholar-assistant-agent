@@ -1,47 +1,58 @@
 <template>
-  <div class="reviewer-thread" :class="`severity-${point.severity} status-${point.status}`">
-    <!-- Header row: severity + category + source badges -->
-    <div class="thread-header">
-      <span class="badge badge-severity" :class="`badge-${point.severity}`">
-        {{ SEVERITY_LABEL[point.severity] || point.severity }}
-      </span>
-      <span class="badge badge-category">{{ point.category }}</span>
-      <span class="badge badge-source" :class="`badge-source-${point.source}`">
-        {{ SOURCE_LABEL[point.source] || point.source }}
-      </span>
-      <span v-if="point.status !== 'open'" class="badge badge-status" :class="`badge-status-${point.status}`">
-        {{ STATUS_LABEL[point.status] || point.status }}
-      </span>
+  <div class="review-card" :class="`sev-${point.severity}`">
+    <!-- Header -->
+    <div class="card-header">
+      <span class="sev-pip" :class="`pip-${point.severity}`"></span>
+      <span class="card-category">{{ categoryLabel }}</span>
+      <span class="card-source" :class="`src-${point.source}`">{{ sourceLabel }}</span>
+      <div class="header-spacer"></div>
+      <!-- Status selector -->
+      <div class="status-wrap" ref="statusWrapRef">
+        <button class="status-chip" :class="`chip-${point.status}`" @click="toggleStatusMenu">
+          {{ STATUS_LABEL[point.status] }}
+          <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor" class="chip-caret">
+            <path d="M0 2.5 L4 6.5 L8 2.5Z"/>
+          </svg>
+        </button>
+        <div v-if="showMenu" class="status-menu">
+          <button
+            v-for="opt in statusOptions"
+            :key="opt.value"
+            class="menu-item"
+            :class="{ active: opt.value === point.status }"
+            @click="setStatus(opt.value)"
+          >{{ opt.label }}</button>
+        </div>
+      </div>
     </div>
 
     <!-- Title -->
-    <div class="thread-title">{{ point.title }}</div>
+    <div class="card-title">{{ point.title }}</div>
 
     <!-- Detail -->
-    <div class="thread-detail">{{ point.detail }}</div>
+    <div class="card-detail" :class="{ collapsed: !detailExpanded && point.detail.length > 200 }">
+      {{ detailExpanded || point.detail.length <= 200 ? point.detail : point.detail.slice(0, 200) + '…' }}
+    </div>
+    <button
+      v-if="point.detail.length > 200"
+      class="expand-btn"
+      @click="detailExpanded = !detailExpanded"
+    >{{ detailExpanded ? '收起' : '展开全文' }}</button>
 
-    <!-- Anchor link -->
+    <!-- Anchor -->
     <button
       v-if="point.anchor_id"
-      class="anchor-link"
-      data-anchor-btn
+      class="anchor-btn"
       @click="$emit('focusAnchor', point.anchor_id!)"
     >
-      跳转到原文位置
+      <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M4 8h8M10 5l3 3-3 3"/>
+      </svg>
+      定位原文
     </button>
 
-    <!-- Status action button -->
-    <button
-      class="status-btn"
-      data-status-btn
-      @click="cycleStatus"
-    >
-      {{ point.status === 'open' ? '标记状态' : '重新打开' }}
-    </button>
-
-    <!-- Rebuttal section -->
-    <div v-if="point.status === 'open' || point.thread.length > 0" class="rebuttal-section">
-      <!-- Thread history -->
+    <!-- Thread -->
+    <div v-if="point.thread.length > 0" class="thread-list">
       <div
         v-for="turn in point.thread"
         :key="turn.id"
@@ -51,44 +62,34 @@
         <span class="turn-role">{{ turn.role === 'author' ? '作者' : 'Reviewer' }}</span>
         <span class="turn-text">{{ turn.text }}</span>
       </div>
+    </div>
 
-      <!-- Mini-chat input (open points only) -->
-      <template v-if="point.status === 'open'">
-        <!-- Sending / loading indicator -->
-        <div v-if="isSending" class="rebut-sending">
-          <span class="rebut-thinking">思考中 thinking…</span>
-        </div>
-
-        <!-- Expand button (collapsed by default, not sending) -->
+    <!-- Rebuttal input -->
+    <div class="rebuttal-area">
+      <div v-if="isSending" class="rebut-sending">
+        <span class="dot-wave"><i></i><i></i><i></i></span>
+        <span class="sending-text">Reviewer 思考中…</span>
+      </div>
+      <template v-else-if="canRebut">
         <button
-          v-else-if="!chatExpanded"
-          class="rebut-expand-btn"
-          data-rebut-btn
+          v-if="!chatExpanded"
+          class="rebut-toggle"
           @click="chatExpanded = true"
-        >
-          反驳 rebuttal
-        </button>
-
-        <!-- Expanded chat input -->
-        <div v-else class="rebut-input-row">
+        >+ 反驳</button>
+        <div v-else class="rebut-input-wrap">
           <textarea
             v-model="rebuttalText"
-            class="rebut-textarea"
-            data-rebut-input
-            placeholder="输入反驳意见…"
+            class="rebut-input"
+            placeholder="写下你的反驳理由…"
             rows="3"
-            :disabled="isSending"
           />
           <div class="rebut-actions">
-            <span v-if="isSending" class="rebut-thinking">思考中 thinking…</span>
+            <button class="rebut-cancel" @click="chatExpanded = false">取消</button>
             <button
-              class="rebut-send-btn"
-              data-rebut-send
-              :disabled="isSending || !rebuttalText.trim()"
+              class="rebut-send"
+              :disabled="!rebuttalText.trim()"
               @click="sendRebuttal"
-            >
-              发送
-            </button>
+            >发送</button>
           </div>
         </div>
       </template>
@@ -97,13 +98,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { ReviewPoint } from '../../types'
 
 const props = defineProps<{
   point: ReviewPoint
   rebuttalSending?: string
-  content?: string
 }>()
 
 const emit = defineEmits<{
@@ -114,198 +114,368 @@ const emit = defineEmits<{
 
 const chatExpanded = ref(false)
 const rebuttalText = ref('')
+const detailExpanded = ref(false)
+const showMenu = ref(false)
+const statusWrapRef = ref<HTMLElement>()
 
 const isSending = computed(() => props.rebuttalSending === props.point.id)
 
-const SEVERITY_LABEL: Record<string, string> = {
-  minor: 'minor 轻微',
-  major: 'major 严重',
-  fatal: 'fatal 致命',
+// Can rebut unless status is accepted or dismissed
+const canRebut = computed(() =>
+  props.point.status !== 'accepted' && props.point.status !== 'dismissed'
+)
+
+const CATEGORY_LABEL: Record<string, string> = {
+  motivation: '动机',
+  novelty: '创新性',
+  baseline: '基线',
+  ablation: '消融实验',
+  soundness: '可靠性',
+  claim_overreach: '声称过度',
+  missing_related_work: '相关工作',
+  reproducibility: '可复现',
+  experiment_design: '实验设计',
+  writing_clarity: '写作清晰度',
+  inconsistency: '内部矛盾',
+  gap_mismatch: '差距不符',
+  weak_positioning: '定位偏弱',
+  term_drift: '术语漂移',
+  other: '其他',
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  open: 'open',
-  rebutted: 'rebutted 已反驳',
-  accepted: 'accepted 认可',
-  dismissed: 'dismissed 忽略',
+  open: '待处理',
+  rebutted: '已反驳',
+  accepted: '已认可',
+  dismissed: '已忽略',
 }
 
 const SOURCE_LABEL: Record<string, string> = {
-  llm: 'llm',
-  ledger_check: 'ledger 账本',
-  coherence_check: 'coherence',
-  rw_check: 'rw',
-  scoped: 'scoped 质疑',
-  imported: 'imported',
+  llm: 'AI',
+  ledger_check: '账本核查',
+  coherence_check: '一致性',
+  rw_check: '相关工作',
+  scoped: '局部质疑',
+  imported: '导入',
 }
 
-const STATUS_CYCLE: Record<string, string> = {
-  open: 'rebutted',
-  rebutted: 'accepted',
-  accepted: 'dismissed',
-  dismissed: 'open',
+const categoryLabel = computed(() => CATEGORY_LABEL[props.point.category] ?? props.point.category)
+const sourceLabel = computed(() => SOURCE_LABEL[props.point.source] ?? props.point.source)
+
+const statusOptions = computed(() => {
+  const all = [
+    { value: 'open', label: '待处理' },
+    { value: 'rebutted', label: '已反驳' },
+    { value: 'accepted', label: '已认可' },
+    { value: 'dismissed', label: '已忽略' },
+  ]
+  return all.filter(o => o.value !== props.point.status)
+})
+
+function toggleStatusMenu() {
+  showMenu.value = !showMenu.value
 }
 
-function cycleStatus() {
-  const next = STATUS_CYCLE[props.point.status] ?? 'open'
-  emit('updatePointStatus', next)
+function setStatus(status: string) {
+  showMenu.value = false
+  emit('updatePointStatus', status)
 }
 
 function sendRebuttal() {
   const msg = rebuttalText.value.trim()
-  if (!msg || isSending.value) return
+  if (!msg) return
   emit('rebut', props.point.id, msg)
   rebuttalText.value = ''
   chatExpanded.value = false
 }
+
+function onClickOutside(e: MouseEvent) {
+  if (statusWrapRef.value && !statusWrapRef.value.contains(e.target as Node)) {
+    showMenu.value = false
+  }
+}
+
+onMounted(() => document.addEventListener('mousedown', onClickOutside))
+onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
 </script>
 
 <style scoped>
-.reviewer-thread {
-  padding: var(--space-3, 10px);
-  border-left: 3px solid var(--c-border, #ccc);
-  margin-bottom: var(--space-2, 8px);
-  border-radius: var(--radius-sm, 4px);
-  background: var(--c-surface, #fafafa);
+.review-card {
+  position: relative;
+  border-left: 3px solid var(--c-border, #333);
+  border-radius: 0 8px 8px 0;
+  background: var(--c-surface-1, #181818);
+  margin-bottom: 8px;
+  padding: 10px 12px 8px;
+  animation: card-enter 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.reviewer-thread.severity-major { border-left-color: var(--c-warning, #f59e0b); }
-.reviewer-thread.severity-fatal { border-left-color: var(--c-error, #ef4444); }
-.reviewer-thread.status-rebutted { opacity: 0.6; }
+@keyframes card-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
-.thread-header {
+.sev-fatal { border-left-color: var(--c-error, #ef4444); }
+.sev-major { border-left-color: var(--c-warning, #f59e0b); }
+.sev-minor { border-left-color: color-mix(in srgb, var(--c-accent) 70%, transparent); }
+.sev-info  { border-left-color: var(--c-border, #333); }
+
+/* ── Header ── */
+.card-header {
   display: flex;
-  gap: var(--space-1, 4px);
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
   flex-wrap: wrap;
-  margin-bottom: var(--space-2, 8px);
 }
 
-.badge {
-  padding: 2px 6px;
-  border-radius: var(--radius-xs, 2px);
-  font-size: 11px;
-  font-weight: 600;
+.sev-pip {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.pip-fatal { background: var(--c-error, #ef4444); }
+.pip-major { background: var(--c-warning, #f59e0b); }
+.pip-minor { background: var(--c-accent, #6366f1); opacity: 0.7; }
+.pip-info  { background: var(--c-text-3, #555); }
+
+.card-category {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
+  color: var(--c-text-2, #888);
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--c-surface-2, #232323);
 }
 
-.badge-minor { background: var(--c-info-bg, #dbeafe); color: var(--c-info, #1d4ed8); }
-.badge-major { background: var(--c-warning-bg, #fef3c7); color: var(--c-warning, #92400e); }
-.badge-fatal { background: var(--c-error-bg, #fee2e2); color: var(--c-error, #991b1b); }
+.card-source {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--c-surface-2, #232323);
+  color: var(--c-text-3, #666);
+}
+.src-ledger_check { color: color-mix(in srgb, var(--c-accent) 80%, #fff); }
+.src-scoped       { color: var(--c-warning, #f59e0b); }
 
-.badge-source { background: var(--c-surface-2, #e5e7eb); color: var(--c-text-2, #6b7280); }
-.badge-source-scoped { background: var(--c-accent-bg, #ede9fe); color: var(--c-accent, #7c3aed); }
-.badge-source-ledger_check { background: var(--c-info-bg, #dbeafe); color: var(--c-info, #1d4ed8); }
+.header-spacer { flex: 1; }
 
-.badge-category { background: var(--c-surface-3, #f3f4f6); color: var(--c-text, #374151); }
-.badge-status-rebutted { background: var(--c-success-bg, #d1fae5); color: var(--c-success, #065f46); }
-.badge-status-accepted { background: var(--c-info-bg, #dbeafe); color: var(--c-info, #1d4ed8); }
+/* ── Status chip ── */
+.status-wrap { position: relative; }
 
-.thread-title {
+.status-chip {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
   font-weight: 600;
-  margin-bottom: var(--space-1, 4px);
-  color: var(--c-text, #111);
-}
-
-.thread-detail {
-  font-size: 13px;
-  color: var(--c-text-2, #6b7280);
-  margin-bottom: var(--space-2, 8px);
-  line-height: 1.5;
-}
-
-.anchor-link, .status-btn {
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: var(--radius-xs, 2px);
-  border: 1px solid var(--c-border, #d1d5db);
-  background: transparent;
+  padding: 2px 6px;
+  border-radius: 12px;
+  border: 1px solid var(--c-border, #333);
+  background: var(--c-surface-2, #232323);
+  color: var(--c-text-2, #999);
   cursor: pointer;
-  margin-right: var(--space-1, 4px);
+  white-space: nowrap;
+  transition: border-color 0.15s;
+}
+.status-chip:hover { border-color: var(--c-accent, #6366f1); color: var(--c-accent, #6366f1); }
+.chip-caret { opacity: 0.5; flex-shrink: 0; }
+
+.chip-rebutted  { border-color: #22c55e44; color: #4ade80; background: #0f2a1a; }
+.chip-accepted  { border-color: #3b82f644; color: #60a5fa; background: #0f1e2e; }
+.chip-dismissed { border-color: #55555544; color: #888; }
+
+.status-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  background: var(--c-surface-2, #1e1e1e);
+  border: 1px solid var(--c-border, #333);
+  border-radius: 6px;
+  overflow: hidden;
+  z-index: 50;
+  min-width: 90px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+.menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--c-text-2, #bbb);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.menu-item:hover, .menu-item.active { background: var(--c-surface-3, #2a2a2a); color: var(--c-text, #e5e7eb); }
+
+/* ── Content ── */
+.card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-text, #e5e7eb);
+  margin-bottom: 5px;
+  line-height: 1.4;
+}
+
+.card-detail {
+  font-size: 12px;
+  color: var(--c-text-2, #9ca3af);
+  line-height: 1.6;
+  margin-bottom: 6px;
+}
+
+.expand-btn {
+  font-size: 11px;
   color: var(--c-accent, #6366f1);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 6px;
 }
 
-.anchor-link:hover, .status-btn:hover {
-  background: var(--c-surface-2, #f3f4f6);
+.anchor-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--c-text-3, #666);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 4px;
+  transition: color 0.15s;
 }
+.anchor-btn:hover { color: var(--c-accent, #6366f1); }
 
-.rebuttal-section { margin-top: var(--space-2, 8px); }
+/* ── Thread ── */
+.thread-list {
+  border-top: 1px solid var(--c-border, #2a2a2a);
+  margin-top: 8px;
+  padding-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 
 .thread-turn {
   display: flex;
-  gap: var(--space-2, 8px);
+  gap: 8px;
   font-size: 12px;
-  padding: var(--space-1, 4px) 0;
-  border-top: 1px solid var(--c-border, #e5e7eb);
+  align-items: flex-start;
 }
 
 .turn-role {
   font-weight: 600;
-  min-width: 60px;
-  color: var(--c-text-2, #6b7280);
+  font-size: 10px;
+  min-width: 46px;
+  padding-top: 2px;
+  flex-shrink: 0;
+}
+.turn-author .turn-role { color: var(--c-accent, #6366f1); }
+.turn-reviewer .turn-role { color: var(--c-warning, #f59e0b); }
+
+.turn-text {
+  color: var(--c-text-2, #ccc);
+  line-height: 1.5;
+  flex: 1;
 }
 
-.rebut-expand-btn {
-  font-size: 12px;
+/* ── Rebuttal area ── */
+.rebuttal-area { margin-top: 8px; }
+
+.rebut-sending {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+.sending-text { font-size: 11px; color: var(--c-text-3, #777); font-style: italic; }
+
+.dot-wave { display: flex; gap: 4px; align-items: center; }
+.dot-wave i {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--c-accent, #6366f1); display: block;
+  animation: wave-bounce 1.1s ease-in-out infinite;
+}
+.dot-wave i:nth-child(2) { animation-delay: 0.18s; }
+.dot-wave i:nth-child(3) { animation-delay: 0.36s; }
+@keyframes wave-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.25; }
+  30%            { transform: translateY(-5px); opacity: 1; }
+}
+
+.rebut-toggle {
+  font-size: 11px;
+  color: var(--c-text-3, #666);
+  background: none;
+  border: 1px dashed var(--c-border, #333);
+  border-radius: 4px;
   padding: 3px 10px;
-  border-radius: var(--radius-xs, 2px);
-  border: 1px dashed var(--c-border, #d1d5db);
-  background: transparent;
   cursor: pointer;
-  color: var(--c-text-3, #9ca3af);
-  margin-top: var(--space-1, 4px);
+  transition: color 0.15s, border-color 0.15s;
 }
+.rebut-toggle:hover { color: var(--c-accent, #6366f1); border-color: var(--c-accent, #6366f1); }
 
-.rebut-expand-btn:hover {
-  color: var(--c-accent, #6366f1);
-  border-color: var(--c-accent, #6366f1);
-}
-
-.rebut-input-row {
-  margin-top: var(--space-2, 8px);
+.rebut-input-wrap {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1, 4px);
+  gap: 6px;
+  margin-top: 4px;
 }
 
-.rebut-textarea {
+.rebut-input {
   width: 100%;
-  font-size: 13px;
-  padding: var(--space-2, 8px);
-  border: 1px solid var(--c-border, #d1d5db);
-  border-radius: var(--radius-xs, 2px);
-  background: var(--c-bg, #fff);
-  color: var(--c-text, #111);
+  box-sizing: border-box;
+  font-size: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--c-border, #333);
+  border-radius: 6px;
+  background: var(--c-surface-2, #222);
+  color: var(--c-text, #e5e7eb);
   resize: vertical;
   font-family: inherit;
+  line-height: 1.5;
+  outline: none;
+  transition: border-color 0.15s;
 }
-
-.rebut-textarea:disabled { opacity: 0.5; }
+.rebut-input:focus { border-color: var(--c-accent, #6366f1); }
 
 .rebut-actions {
   display: flex;
-  align-items: center;
-  gap: var(--space-2, 8px);
   justify-content: flex-end;
+  gap: 6px;
 }
 
-.rebut-thinking {
-  font-size: 12px;
-  color: var(--c-text-3, #9ca3af);
-  font-style: italic;
+.rebut-cancel {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--c-border, #333);
+  background: none;
+  color: var(--c-text-3, #777);
+  cursor: pointer;
 }
+.rebut-cancel:hover { color: var(--c-text, #ccc); }
 
-.rebut-send-btn {
-  font-size: 12px;
+.rebut-send {
+  font-size: 11px;
   padding: 3px 12px;
-  border-radius: var(--radius-xs, 2px);
-  border: 1px solid var(--c-accent, #6366f1);
+  border-radius: 4px;
+  border: none;
   background: var(--c-accent, #6366f1);
   color: #fff;
   cursor: pointer;
+  transition: opacity 0.15s;
 }
-
-.rebut-send-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
+.rebut-send:disabled { opacity: 0.35; cursor: not-allowed; }
+.rebut-send:not(:disabled):hover { opacity: 0.85; }
 </style>
