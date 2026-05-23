@@ -122,10 +122,8 @@
         <p class="empty-hint">点击「红队这篇」开始模拟同行评审。</p>
       </div>
 
-      <!-- Loading state -->
-      <div v-if="companion.state.reviewing" class="reviewing-hint">
-        评审中，每条意见实时出现…
-      </div>
+      <!-- Streaming progress bar -->
+      <div v-if="companion.state.reviewing" class="reviewing-scan-bar"></div>
 
       <!-- Import real reviews section -->
       <div class="import-section">
@@ -216,10 +214,17 @@ async function handleDownload() {
   try {
     const { API_BASE } = await import('../../utils/api')
     const url = `${API_BASE}/api/companion/download/review/${sid}`
+    const resp = await fetch(url)
+    if (!resp.ok) return
+    const blob = await resp.blob()
+    const blobUrl = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = url
+    a.href = blobUrl
     a.download = 'rebuttal.md'
+    document.body.appendChild(a)
     a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(blobUrl)
   } catch { /* ignore */ }
 }
 
@@ -400,17 +405,23 @@ async function updatePointStatus(pointId: string, status: string) {
   text-align: center;
 }
 
-.reviewing-hint {
-  font-size: 11px;
-  color: var(--accent, #60a5fa);
-  text-align: center;
-  padding: 8px 0;
-  animation: pulse 1.5s infinite;
+.reviewing-scan-bar {
+  height: 2px;
+  flex-shrink: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--c-accent, #6366f1) 45%,
+    color-mix(in srgb, var(--c-accent, #6366f1) 40%, transparent) 60%,
+    transparent 100%
+  );
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: review-scan 1.4s ease-in-out infinite;
 }
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+@keyframes review-scan {
+  0%   { background-position: -40% 0; }
+  100% { background-position: 140% 0; }
 }
 
 .import-section {

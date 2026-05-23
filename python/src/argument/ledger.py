@@ -143,17 +143,38 @@ async def build_ledger(
         return
 
     # ── LLM #2: discharge resolution ─────────────────────────────────────────
+    # Sample body: head + middle + tail so experiments/results sections are visible
+    def _sample_body(body: str, total: int = 6000) -> str:
+        if len(body) <= total:
+            return body
+        chunk = total // 3
+        mid = len(body) // 2
+        return (
+            body[:chunk]
+            + f"\n\n[... 中间省略 {mid - chunk} 字符 ...]\n\n"
+            + body[mid - chunk // 2: mid + chunk // 2]
+            + f"\n\n[... 省略至末尾 ...]\n\n"
+            + body[-chunk:]
+        )
+
+    body_sample = _sample_body(body_zone)
     promises_summary = "\n".join(
         f"- (id={p.get('local_id','?')}) {p.get('text','')}"
         for p in raw_promises
     )
     prompt2 = (
-        "对以下每条承诺，在正文里找兑现位置，判断状态。\n\n"
+        "你是严格的学术审稿人。对以下每条承诺，在论文正文里找兑现证据，按以下标准判断状态：\n\n"
+        "状态标准（从严判断，不要宽泛认为'有相关内容'就算 paid）：\n"
+        "- unpaid：正文里完全没有对应的实验/证明/数据，或该 section 尚未写出\n"
+        "- partial：有相关内容但不完整——例如缺少消融实验、某基线没比较、某场景没覆盖\n"
+        "- mismatch：正文给出的结果与承诺相矛盾，或结论被限定条件稀释到名存实亡\n"
+        "- paid：正文有完整的实验结果/严格证明/充分数据直接支撑该承诺，审稿人挑不出漏洞\n\n"
         f"承诺列表：\n{promises_summary}\n\n"
-        f"论文正文（截断）：\n{body_zone[:4000]}\n\n"
+        f"论文正文（首段+中段+末段采样）：\n{body_sample}\n\n"
         "输出严格 JSON 数组（不含其他文字），每项：\n"
-        '{"promise_local_id":"p1","status":"paid|partial|unpaid|mismatch",'
-        '"discharge_quotes":["正文精确子串"],"note":"一行说明（mismatch 时说差在哪）"}'
+        '{"promise_local_id":"p1","status":"unpaid|partial|mismatch|paid",'
+        '"discharge_quotes":["正文精确子串，找不到则空数组"],'
+        '"note":"一行具体说明：paid 时说证据在哪；unpaid/partial 时说缺什么"}'
     )
 
     raw2 = ""

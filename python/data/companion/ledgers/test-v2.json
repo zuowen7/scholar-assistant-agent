@@ -1,0 +1,34 @@
+{
+  "id": "L_676abf27d1",
+  "doc_id": "test-v2",
+  "doc_title": "Test",
+  "promises": [
+    {
+      "id": "p_3a080f07c2",
+      "text": "We propose a novel method for NMT that reduces hallucination by 40%.",
+      "kind": "contribution",
+      "source_anchor_id": "a_8b0dd0dff1",
+      "discharge_anchor_ids": [],
+      "status": "unpaid",
+      "severity": "error",
+      "note": "正文为空，未提供任何内容，无法确认兑现情况",
+      "created_by": "ai",
+      "user_overridden": false
+    }
+  ],
+  "anchors": [
+    {
+      "id": "a_8b0dd0dff1",
+      "doc_id": "test-v2",
+      "char_start": null,
+      "char_end": null,
+      "quote": "",
+      "context_before": "",
+      "context_after": "",
+      "section_path": null,
+      "status": "lost"
+    }
+  ],
+  "doc_hash": "1ac8fa5afcdc1144",
+  "last_built_at": 1778824100.221199
+}

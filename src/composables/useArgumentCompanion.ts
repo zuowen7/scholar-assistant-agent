@@ -219,6 +219,19 @@ async function runReview(
     state.docTitle = 'Untitled'
   }
   state.reviewing = true
+  // Initialize review immediately so points appear live as they stream in
+  state.review = {
+    id: '',
+    doc_id: state.docId,
+    doc_title: state.docTitle,
+    venue,
+    persona: persona as ReviewSession['persona'],
+    checks: ['llm'],
+    points: [],
+    anchors: [],
+    doc_hash: simpleHash(text),
+    created_at: Date.now() / 1000,
+  }
   try {
     const resp = await fetch(`${API_BASE}/api/companion/review`, {
       method: 'POST',
@@ -234,35 +247,22 @@ async function runReview(
     })
     if (!resp.ok || !resp.body) { state.reviewing = false; return }
 
-    let session: ReviewSession = {
-      id: '',
-      doc_id: state.docId,
-      doc_title: state.docTitle,
-      venue,
-      persona: persona as ReviewSession['persona'],
-      checks: ['llm'],
-      points: [],
-      anchors: [],
-      doc_hash: simpleHash(text),
-      created_at: Date.now() / 1000,
-    }
-
     await readSseStream(resp.body.getReader(), (eventType, data) => {
       if (eventType === 'review_point') {
-        session.points.push(data as unknown as import('../types').ReviewPoint)
+        state.review!.points.push(data as unknown as import('../types').ReviewPoint)
       } else if (eventType === 'anchor') {
-        session.anchors.push(data as unknown as Anchor)
+        state.review!.anchors.push(data as unknown as Anchor)
       } else if (eventType === 'complete') {
         const d = data as Record<string, unknown>
-        if (d['session_id']) session.id = d['session_id'] as string
+        if (d['session_id']) state.review!.id = d['session_id'] as string
       }
     })
 
-    if (!session.id) {
+    if (!state.review.id) {
       pushError('评审会话未初始化（未收到 complete 事件），请重试。')
+      state.review = null
       return
     }
-    state.review = session
     await listReviews()
   } finally {
     state.reviewing = false
@@ -382,6 +382,20 @@ async function rebut(pointId: string, message: string, text: string): Promise<vo
 async function importReviews(reviewsRaw: string, text: string): Promise<void> {
   if (!state.docId) return
   state.reviewing = true
+  if (!state.review) {
+    state.review = {
+      id: '',
+      doc_id: state.docId,
+      doc_title: state.docTitle,
+      venue: null,
+      persona: 'real' as const,
+      checks: ['imported'],
+      points: [],
+      anchors: [],
+      doc_hash: simpleHash(text),
+      created_at: Date.now() / 1000,
+    }
+  }
   try {
     const resp = await fetch(`${API_BASE}/api/companion/review/import`, {
       method: 'POST',
@@ -394,21 +408,6 @@ async function importReviews(reviewsRaw: string, text: string): Promise<void> {
       }),
     })
     if (!resp.ok || !resp.body) { state.reviewing = false; return }
-
-    if (!state.review) {
-      state.review = {
-        id: '',
-        doc_id: state.docId,
-        doc_title: state.docTitle,
-        venue: null,
-        persona: 'real' as const,
-        checks: ['imported'],
-        points: [],
-        anchors: [],
-        doc_hash: simpleHash(text),
-        created_at: Date.now() / 1000,
-      }
-    }
 
     await readSseStream(resp.body.getReader(), (eventType, data) => {
       if (eventType === 'review_point') {

@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -628,8 +629,7 @@ def register_companion(
             lines.append("")
 
         content = "\n".join(lines)
-        tmp = Path("/tmp") if Path("/tmp").exists() else Path(".")
-        out_file = tmp / f"rebuttal_{session_id[:8]}.md"
+        out_file = Path(tempfile.gettempdir()) / f"rebuttal_{session_id[:8]}.md"
         out_file.write_text(content, encoding="utf-8")
         return FileResponse(
             str(out_file),
