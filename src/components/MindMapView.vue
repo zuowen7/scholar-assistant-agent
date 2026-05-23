@@ -456,7 +456,7 @@ function clampPaneSizes() {
 
   if (width < 760) {
     outlineMode.value = 'hidden'
-    aiPanelOpen.value = false
+    if (analysisIssues.value.length === 0) aiPanelOpen.value = false
   } else if (width < 1040 && outlineMode.value === 'expanded') {
     outlineMode.value = 'hidden'
   }
@@ -626,6 +626,7 @@ function markSaved() {
 async function runMindMapAnalysis() {
   analysisLoading.value = true
   activeIssueId.value = ''
+  aiPanelOpen.value = true
   try {
     analysisIssues.value = await analyzeMindMap(draftMindMap.value)
     setAnalysisIssues(analysisIssues.value)
