@@ -610,8 +610,13 @@ def convert_markdown(
         }
     """
     if output_format == "pdf":
-        # PDF 模式：Pandoc md→tex → 清理 pdfTeX 专用包 → 注入 CJK → Tectonic 编译
-        tex_result = convert_markdown(markdown_text, template_id, "tex", metadata)
+        # Strip horizontal rules (---) — pandoc converts them to \hline which
+        # is only valid inside tabular and causes "Misplaced \noalign" errors.
+        cleaned_md = re.sub(r"^[ \t]*(?:---|\*\*\*|___)\s*$", "", markdown_text, flags=re.MULTILINE)
+        # Escape bare & in text (pandoc leaves them unescaped in paragraphs,
+        # but & is a special LaTeX character). Skip lines that look like HTML entities.
+        cleaned_md = re.sub(r"&(?!(?:amp|lt|gt|nbsp|quot|#\d+);)", r"\\&", cleaned_md)
+        tex_result = convert_markdown(cleaned_md, template_id, "tex", metadata)
         if not tex_result["success"]:
             return tex_result
 
