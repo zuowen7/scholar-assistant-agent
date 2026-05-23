@@ -359,7 +359,15 @@ def register_agent(
             ]
 
         message = req.message
-        if req.context_text or req.constraints:
+        _is_trivial = len(req.message.strip()) <= 30 and any(
+            req.message.strip().lower() == p or
+            req.message.strip().lower() in (p + s for s in ("", "！", "!", "。", "."))
+            for p in ("你好", "您好", "嗨", "hi", "hello", "hey",
+                       "谢谢", "感谢", "thanks", "thank you", "thx",
+                       "好的", "ok", "okay", "嗯", "哦", "bye",
+                       "早上好", "下午好", "晚上好")
+        )
+        if not _is_trivial and (req.context_text or req.constraints):
             enhancements: list[str] = []
             if req.context_text:
                 enhancements.append(f"[参考文本]\n{req.context_text}")
