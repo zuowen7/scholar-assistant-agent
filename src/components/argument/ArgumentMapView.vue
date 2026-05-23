@@ -307,7 +307,7 @@ function runAutoLayout() {
 .arg-dialog-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--c-overlay);
   z-index: 9999;
   display: flex;
   align-items: center;
