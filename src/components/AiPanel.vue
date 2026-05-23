@@ -160,6 +160,7 @@ import { useFileTree } from '../composables/useFileTree'
 
 const props = defineProps<{
   editorContext: string
+  activeFile?: string | null
   canUndo?: boolean
   workspaceFiles?: { name: string; content?: string }[]
 }>()
@@ -378,6 +379,7 @@ async function doSend(text: string) {
         message: text,
         history,
         context_text: props.editorContext?.trim() || undefined,
+        context_file: props.activeFile?.trim() || undefined,
         workspace_root: rootDir.value?.trim() || undefined,
       }),
       signal: aiAbortCtrl.value.signal,

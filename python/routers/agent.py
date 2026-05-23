@@ -41,6 +41,7 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=100_000)
     history: list[dict] | None = Field(default=None, max_length=50)
     context_text: str | None = Field(default=None, max_length=500_000)
+    context_file: str | None = Field(default=None, max_length=4_000)
     constraints: str | None = Field(default=None, max_length=10_000)
     workspace_root: str | None = None
 
@@ -367,8 +368,10 @@ def register_agent(
                        "好的", "ok", "okay", "嗯", "哦", "bye",
                        "早上好", "下午好", "晚上好")
         )
-        if not _is_trivial and (req.context_text or req.constraints):
+        if not _is_trivial and (req.context_text or req.constraints or req.context_file):
             enhancements: list[str] = []
+            if req.context_file:
+                enhancements.append(f"[当前编辑文件] {req.context_file}")
             if req.context_text:
                 enhancements.append(f"[参考文本]\n{req.context_text}")
             if req.constraints:
