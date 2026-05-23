@@ -141,7 +141,7 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
 async function getLedger(): Promise<void> {
   if (!state.docId) return
   try {
-    const resp = await fetch(`${API_BASE}/api/companion/ledger/${encodeURIComponent(state.docId)}`)
+    const resp = await fetch(`${API_BASE}/api/companion/ledger?doc_id=${encodeURIComponent(state.docId)}`)
     if (!resp.ok) {
       state.ledger = null
       return
@@ -156,7 +156,7 @@ async function upsertPromise(promise: Partial<ArgPromise>): Promise<void> {
   if (!state.docId || !state.ledger) return
   try {
     const resp = await fetch(
-      `${API_BASE}/api/companion/ledger/${encodeURIComponent(state.docId)}/promise`,
+      `${API_BASE}/api/companion/ledger/promise?doc_id=${encodeURIComponent(state.docId)}`,
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -175,7 +175,7 @@ async function deletePromise(pid: string): Promise<void> {
   if (!state.docId || !state.ledger) return
   try {
     await fetch(
-      `${API_BASE}/api/companion/ledger/${encodeURIComponent(state.docId)}/promise/${pid}`,
+      `${API_BASE}/api/companion/ledger/promise/${pid}?doc_id=${encodeURIComponent(state.docId)}`,
       { method: 'DELETE' },
     )
     state.ledger.promises = state.ledger.promises.filter(p => p.id !== pid)
@@ -186,7 +186,7 @@ async function relocate(text: string): Promise<void> {
   if (!state.docId || !state.ledger) return
   try {
     const resp = await fetch(
-      `${API_BASE}/api/companion/ledger/${encodeURIComponent(state.docId)}/relocate`,
+      `${API_BASE}/api/companion/ledger/relocate?doc_id=${encodeURIComponent(state.docId)}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

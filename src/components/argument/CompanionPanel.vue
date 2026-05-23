@@ -199,7 +199,7 @@ async function handleSuggestExperiment(promiseId: string) {
   try {
     const { API_BASE } = await import('../../utils/api')
     const resp = await fetch(
-      `${API_BASE}/api/companion/ledger/${encodeURIComponent(companion.state.docId)}/promise/${promiseId}/suggest-experiment`,
+      `${API_BASE}/api/companion/ledger/promise/${promiseId}/suggest-experiment?doc_id=${encodeURIComponent(companion.state.docId)}`,
       { method: 'POST' },
     )
     if (!resp.ok) return

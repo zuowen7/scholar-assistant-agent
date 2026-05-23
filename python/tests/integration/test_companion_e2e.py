@@ -200,7 +200,7 @@ class TestLedgerEndpoints:
                 "/api/companion/ledger/build",
                 json={"doc_id": DOC_ID, "doc_title": DOC_TITLE, "text": DOC_TEXT},
             )
-        resp = client.get(f"/api/companion/ledger/{DOC_ID}")
+        resp = client.get(f"/api/companion/ledger?doc_id={DOC_ID}")
         assert resp.status_code == 200
         data = resp.json()
         assert data["doc_id"] == DOC_ID
@@ -208,12 +208,12 @@ class TestLedgerEndpoints:
         state["promise_id"] = data["promises"][0]["id"]
 
     def test_get_ledger_404_unknown_doc(self, client):
-        resp = client.get("/api/companion/ledger/no_such_doc_xyz")
+        resp = client.get("/api/companion/ledger?doc_id=no_such_doc_xyz")
         assert resp.status_code == 404
 
     def test_upsert_promise(self, client, state):
         resp = client.put(
-            f"/api/companion/ledger/{DOC_ID}/promise",
+            f"/api/companion/ledger/promise?doc_id={DOC_ID}",
             json={
                 "text": "Manual promise for testing",
                 "kind": "claim",
@@ -231,13 +231,13 @@ class TestLedgerEndpoints:
         pid = state.get("manual_promise_id")
         if not pid:
             pytest.skip("No manual promise created")
-        resp = client.delete(f"/api/companion/ledger/{DOC_ID}/promise/{pid}")
+        resp = client.delete(f"/api/companion/ledger/promise/{pid}?doc_id={DOC_ID}")
         assert resp.status_code == 200
         assert resp.json()["ok"] is True
 
     def test_relocate(self, client):
         resp = client.post(
-            f"/api/companion/ledger/{DOC_ID}/relocate",
+            f"/api/companion/ledger/relocate?doc_id={DOC_ID}",
             json={"text": DOC_TEXT + " (updated)"},
         )
         assert resp.status_code == 200
@@ -428,7 +428,7 @@ class TestPhase5Endpoints:
         mock = AsyncMock(return_value=_SUGGEST_JSON)
         with patch("src.argument.ledger.suggest_experiment_for_promise", mock):
             resp = client.post(
-                f"/api/companion/ledger/{DOC_ID}/promise/{pid}/suggest-experiment",
+                f"/api/companion/ledger/promise/{pid}/suggest-experiment?doc_id={DOC_ID}",
             )
         assert resp.status_code == 200
         data = resp.json()
@@ -437,13 +437,13 @@ class TestPhase5Endpoints:
 
     def test_suggest_experiment_404_missing_ledger(self, client):
         resp = client.post(
-            "/api/companion/ledger/no_such_doc/promise/p_fake/suggest-experiment",
+            "/api/companion/ledger/promise/p_fake/suggest-experiment?doc_id=no_such_doc",
         )
         assert resp.status_code == 404
 
     def test_suggest_experiment_404_missing_promise(self, client):
         resp = client.post(
-            f"/api/companion/ledger/{DOC_ID}/promise/no_such_promise/suggest-experiment",
+            f"/api/companion/ledger/promise/no_such_promise/suggest-experiment?doc_id={DOC_ID}",
         )
         assert resp.status_code == 404
 
@@ -468,12 +468,12 @@ class TestDeleteEndpoints:
         assert resp.status_code == 404
 
     def test_delete_ledger(self, client):
-        resp = client.delete(f"/api/companion/ledger/{DOC_ID}")
+        resp = client.delete(f"/api/companion/ledger?doc_id={DOC_ID}")
         assert resp.status_code == 200
         assert resp.json()["ok"] is True
 
     def test_delete_ledger_404_after_delete(self, client):
-        resp = client.delete(f"/api/companion/ledger/{DOC_ID}")
+        resp = client.delete(f"/api/companion/ledger?doc_id={DOC_ID}")
         assert resp.status_code == 404
 
 
@@ -555,7 +555,7 @@ class TestContractShapes:
         assert "complete" in event_types, f"Missing 'complete' event; got {event_types}"
 
         # Verify ledger persisted with required schema fields
-        ledger_resp = client.get(f"/api/companion/ledger/{_CONTRACT_DOC_ID}")
+        ledger_resp = client.get(f"/api/companion/ledger?doc_id={_CONTRACT_DOC_ID}")
         assert ledger_resp.status_code == 200
         ledger = ledger_resp.json()
         assert "doc_id" in ledger and ledger["doc_id"] == _CONTRACT_DOC_ID
@@ -567,7 +567,7 @@ class TestContractShapes:
     def test_review_run_sse_event_schema(self, client, state):
         """run_review SSE stream must emit review_point events with required fields."""
         # Ensure ledger exists (build if needed)
-        ledger_resp = client.get(f"/api/companion/ledger/{_CONTRACT_DOC_ID}")
+        ledger_resp = client.get(f"/api/companion/ledger?doc_id={_CONTRACT_DOC_ID}")
         if ledger_resp.status_code != 200:
             with patch("src.argument.ledger.call_llm_chat", _contract_ledger_mock()):
                 client.post(
@@ -611,4 +611,4 @@ class TestContractShapes:
         sid = state.get("contract_session_id")
         if sid:
             client.delete(f"/api/companion/review/{sid}")
-        client.delete(f"/api/companion/ledger/{_CONTRACT_DOC_ID}")
+        client.delete(f"/api/companion/ledger?doc_id={_CONTRACT_DOC_ID}")

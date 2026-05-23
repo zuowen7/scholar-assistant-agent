@@ -8,7 +8,7 @@
       <div class="header-spacer"></div>
       <!-- Status selector -->
       <div class="status-wrap" ref="statusWrapRef">
-        <button class="status-chip" :class="`chip-${point.status}`" @click="toggleStatusMenu">
+        <button class="status-chip" data-status-btn :class="`chip-${point.status}`" @click="toggleStatusMenu">
           {{ STATUS_LABEL[point.status] }}
           <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor" class="chip-caret">
             <path d="M0 2.5 L4 6.5 L8 2.5Z"/>
@@ -43,6 +43,7 @@
     <button
       v-if="point.anchor_id"
       class="anchor-btn"
+      data-anchor-btn
       @click="$emit('focusAnchor', point.anchor_id!)"
     >
       <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
