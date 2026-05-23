@@ -389,13 +389,25 @@ async function doSend(text: string) {
     const reader = resp.body?.getReader()
     if (!reader) throw new Error('响应内容为空')
 
+    let hasToolActivity = false
+    let tokenBuffer = ''
     await readSseStream(reader, (evtType, d) => {
       const meta = d.metadata as Record<string, unknown> | undefined
-      if (evtType === 'token' && d.content) { streamContent.value += d.content as string; scrollBottom() }
-      else if (evtType === 'response' && d.content) { streamContent.value = d.content as string }
+      if (evtType === 'token' && d.content) {
+        if (!hasToolActivity) {
+          tokenBuffer += d.content as string
+          streamContent.value = tokenBuffer
+          scrollBottom()
+        }
+      }
+      else if (evtType === 'response' && d.content) { streamContent.value = d.content as string; tokenBuffer = '' }
       else if (evtType === 'error') { streamContent.value = (d.content as string) || '错误' }
       else if ((evtType === 'thought' || evtType === 'thinking') && d.content) { thinkingText.value = d.content as string }
-      else if (evtType === 'tool_call') { thinkingText.value = '正在调用：' + ((meta?.tool_name as string) || (meta?.tool as string) || '...') }
+      else if (evtType === 'tool_call') {
+        hasToolActivity = true
+        tokenBuffer = ''
+        thinkingText.value = '正在调用：' + ((meta?.tool_name as string) || (meta?.tool as string) || '...')
+      }
       else if (evtType === 'tool_result') { thinkingText.value = '' }
       else if (evtType === 'session_started') {
         acSessionId.value = (meta?.session_id as string) || acSessionId.value
