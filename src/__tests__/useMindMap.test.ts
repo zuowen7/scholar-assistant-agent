@@ -278,3 +278,45 @@ describe('toFlowNodes carries body', () => {
     expect(rootNode.data.body).toBe('Flow body text')
   })
 })
+
+// ─── Real-world paper: yolo 发展历史 ────────────────────────
+
+describe('real paper: yolo markdown', () => {
+  it('parses h1/h2/h3 hierarchy with body', () => {
+    const md = `# YOLO 目标检测算法发展历史文献综述
+
+## 一、引言
+
+目标检测是计算机视觉领域的核心任务之一。
+
+## 二、YOLO 的起源
+
+### 2.1 两阶段检测方法的局限
+
+在 YOLO 提出之前，主流方法以 R-CNN 为代表。
+
+### 2.2 YOLOv1
+
+2016 年，提出了 YOLOv1。`
+
+    const tree = markdownToMindMapNodes(md)
+    expect(tree).not.toBeNull()
+    expect(tree!.text).toBe('YOLO 目标检测算法发展历史文献综述')
+    expect(tree!.body).toBe('')
+    expect(tree!.children.length).toBe(2)
+
+    const intro = tree!.children[0]
+    expect(intro.text).toBe('一、引言')
+    expect(intro.body).toBe('目标检测是计算机视觉领域的核心任务之一。')
+
+    const origin = tree!.children[1]
+    expect(origin.text).toBe('二、YOLO 的起源')
+    expect(origin.body).toBe('')
+    expect(origin.children.length).toBe(2)
+
+    expect(origin.children[0].text).toBe('2.1 两阶段检测方法的局限')
+    expect(origin.children[0].body).toBe('在 YOLO 提出之前，主流方法以 R-CNN 为代表。')
+    expect(origin.children[1].text).toBe('2.2 YOLOv1')
+    expect(origin.children[1].body).toBe('2016 年，提出了 YOLOv1。')
+  })
+})

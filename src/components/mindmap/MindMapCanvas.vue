@@ -99,13 +99,16 @@ const {
   addAssociationLink, removeAssociationLink, detachChild,
 } = useMindMap()
 
-const { getSelectedEdges, zoomIn, zoomOut, fitView, setViewport } = useVueFlow()
+const { getSelectedEdges, zoomIn, zoomOut, fitView, setViewport, setNodes, setEdges } = useVueFlow()
 
 const nodeTypes = { mindNode: markRaw(MindNodeCard) }
 const edgeTypes = { mindEdge: markRaw(MindEdge) }
 
 const nodes = computed(() => toFlowNodes(draftMindMap.value))
 const edges = computed(() => toFlowEdges(draftMindMap.value))
+
+watch(nodes, (n) => setNodes(n), { immediate: true })
+watch(edges, (e) => setEdges(e), { immediate: true })
 const miniMapSize = computed(() => {
   if (props.minimap.size === 'large') return { width: 176, height: 116 }
   if (props.minimap.size === 'small') return { width: 104, height: 66 }
