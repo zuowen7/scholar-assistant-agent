@@ -97,6 +97,7 @@
           :connection-from-id="connectionFromId"
           :minimap="miniMap"
           :view-command="viewCommand"
+          :expanding-node-id="expandingNode ? selectedNodeId : ''"
           @update:connection-from-id="connectionFromId = $event"
           @toggle-minimap="toggleMiniMap"
           @set-minimap-size="setMiniMapSize"

@@ -7,13 +7,13 @@
         <span class="ac-title">AI 对话</span>
       </div>
       <div class="ac-header-actions">
-        <button class="ac-icon-btn" @click="clearHistory" title="清空" :disabled="messages.length===0||streaming">
+        <button class="ac-icon-btn u-interactive" @click="clearHistory" title="清空" :disabled="messages.length===0||streaming">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
         </button>
-        <button class="ac-icon-btn" @click="$emit('undo')" title="撤销插入" :disabled="!canUndo">
+        <button class="ac-icon-btn u-interactive" @click="$emit('undo')" title="撤销插入" :disabled="!canUndo">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 00-15-6.7L3 13"/></svg>
         </button>
-        <button class="ac-icon-btn" @click="$emit('close')" title="关闭">
+        <button class="ac-icon-btn u-interactive" @click="$emit('close')" title="关闭">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
       </div>
@@ -30,13 +30,15 @@
 
     <!-- Messages -->
     <div class="ac-messages" ref="messagesRef" @click="handleCodeBlockClick">
-      <div v-if="messages.length===0 && !streaming" class="ac-empty">
-        <div class="ac-empty-icon">
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+      <Transition name="v-fade">
+        <div v-if="messages.length===0 && !streaming" class="ac-empty">
+          <div class="ac-empty-icon anim-pop-in">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+          </div>
+          <p class="ac-empty-title anim-fade-in-up">你好，我是你的学术写作助手。</p>
+          <p class="ac-empty-sub anim-fade-in-up">输入 <code>/</code> 使用命令，输入 <code>@</code> 引用文件。</p>
         </div>
-        <p>你好，我是你的学术写作助手。</p>
-        <p class="ac-empty-sub">输入 <code>/</code> 使用命令，输入 <code>@</code> 引用文件。</p>
-      </div>
+      </Transition>
 
       <div v-for="msg in messages" :key="msg.id" class="ac-msg" :class="msg.role">
         <div class="ac-avatar">{{ msg.role==='user'?'U':'AI' }}</div>
@@ -47,13 +49,14 @@
             <div class="ac-ai-bubble" v-html="renderMd(msg.content, msg.id)"></div>
             <div v-if="msg.isStreaming" class="ac-cursor"></div>
             <div v-if="!msg.isStreaming && msg.content" class="ac-actions">
-              <button class="ac-action-btn" @click="$emit('insert', msg.content)">
+              <button class="ac-action-btn u-interactive" @click="$emit('insert', msg.content)">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
                 插入
               </button>
-              <button class="ac-action-btn" @click="copyText(msg.content)">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-                复制
+              <button class="ac-action-btn u-interactive" :class="{ copied: copiedId === msg.id }" @click="copyText(msg.content, msg.id)">
+                <svg v-if="copiedId === msg.id" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                {{ copiedId === msg.id ? '已复制' : '复制' }}
               </button>
             </div>
           </template>
@@ -82,25 +85,29 @@
 
     <!-- File chips -->
     <div class="ac-attachments" v-if="files.length">
-      <div class="ac-file" v-for="f in files" :key="f.name">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        <span>{{ f.name }}</span>
-        <button class="ac-file-x" title="移除附件" @click="removeFile(f.name)">×</button>
-      </div>
+      <TransitionGroup name="v-spring">
+        <div class="ac-file u-interactive" v-for="f in files" :key="f.name">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <span>{{ f.name }}</span>
+          <button class="ac-file-x" title="移除附件" @click="removeFile(f.name)">×</button>
+        </div>
+      </TransitionGroup>
     </div>
 
     <!-- Presets -->
-    <div class="ac-presets" v-if="!streaming">
-      <button class="ac-preset" @click="sendPreset('polish')">润色</button>
-      <button class="ac-preset" @click="sendPreset('expand')">扩写</button>
-      <button class="ac-preset" @click="sendPreset('review')">审查</button>
-      <button class="ac-preset" @click="sendPreset('en')">英译</button>
-      <button class="ac-preset" @click="sendPreset('zh')">中译</button>
-    </div>
+    <Transition name="v-slide-up">
+      <div class="ac-presets anim-stagger" v-if="!streaming">
+        <button class="ac-preset u-interactive" style="--stagger-i:0" @click="sendPreset('polish')">润色</button>
+        <button class="ac-preset u-interactive" style="--stagger-i:1" @click="sendPreset('expand')">扩写</button>
+        <button class="ac-preset u-interactive" style="--stagger-i:2" @click="sendPreset('review')">审查</button>
+        <button class="ac-preset u-interactive" style="--stagger-i:3" @click="sendPreset('en')">英译</button>
+        <button class="ac-preset u-interactive" style="--stagger-i:4" @click="sendPreset('zh')">中译</button>
+      </div>
+    </Transition>
 
     <!-- Input area -->
     <div class="ac-input-area">
-      <button class="ac-attach-btn" @click="attachFile" title="添加附件" :disabled="streaming">
+      <button class="ac-attach-btn u-interactive" @click="attachFile" title="添加附件" :disabled="streaming">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
       </button>
       <div class="ac-input-wrap">
@@ -117,22 +124,26 @@
           rows="1"
         />
         <!-- Slash command menu -->
-        <div v-if="slashMenu" class="ac-menu ac-slash-menu">
-          <div v-for="cmd in filteredCommands" :key="cmd.cmd" class="ac-menu-item" @click="applyCommand(cmd)">
-            <span class="ac-menu-cmd">{{ cmd.cmd }}</span>
-            <span class="ac-menu-desc">{{ cmd.desc }}</span>
+        <Transition name="v-scale-in">
+          <div v-if="slashMenu" class="ac-menu ac-slash-menu">
+            <div v-for="(cmd, i) in filteredCommands" :key="cmd.cmd" class="ac-menu-item anim-fade-in-up anim-stagger" :style="{ '--stagger-i': i }" @click="applyCommand(cmd)">
+              <span class="ac-menu-cmd">{{ cmd.cmd }}</span>
+              <span class="ac-menu-desc">{{ cmd.desc }}</span>
+            </div>
           </div>
-        </div>
+        </Transition>
         <!-- @ reference menu -->
-        <div v-if="atMenu" class="ac-menu ac-at-menu">
-          <div v-for="f in filteredFiles" :key="f.name" class="ac-menu-item" @click="applyFileRef(f)">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-            <span>{{ f.name }}</span>
+        <Transition name="v-scale-in">
+          <div v-if="atMenu" class="ac-menu ac-at-menu">
+            <div v-for="(f, i) in filteredFiles" :key="f.name" class="ac-menu-item anim-fade-in-up anim-stagger" :style="{ '--stagger-i': i }" @click="applyFileRef(f)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span>{{ f.name }}</span>
+            </div>
           </div>
-        </div>
+        </Transition>
       </div>
       <button
-        class="ac-send-btn"
+        class="ac-send-btn u-interactive"
         :class="{ stopping: streaming }"
         @click="streaming ? stopStream() : send()"
         :disabled="!streaming && !input.trim()"
@@ -188,6 +199,8 @@ const inputRef = ref<HTMLTextAreaElement>()
 const messagesRef = ref<HTMLElement>()
 const slashMenu = ref(false)
 const atMenu = ref(false)
+const copiedId = ref<string | null>(null)
+let copiedTimer: ReturnType<typeof setTimeout> | null = null
 const acSessionId = ref<string | null>(null)
 const pendingApproval = ref<PendingApproval | null>(null)
 const { rootDir } = useFileTree()
@@ -345,15 +358,71 @@ async function send() {
 async function sendPreset(action: string) {
   if (streaming.value) return
   const ctx = props.editorContext?.trim()
-  const prompts: Record<string, string> = {
-    polish: 'Please polish the following academic text:',
-    expand: 'Please expand the following text with more details:',
-    review: 'Please review the following academic text:',
-    en: 'Please translate into fluent academic English:',
-    zh: 'Please translate into fluent academic Chinese:',
+  // 预设按钮是纯文本改写 —— 走一次性无工具的 /api/edit，
+  // 绝不进 Agent ReAct 循环（否则 LLM 会尝试调 write_file 创建文档→死循环）。
+  const instructions: Record<string, string> = {
+    polish: '润色这段学术文本，改进语法、用词和流畅度，保持原意不变。只返回润色后的文本。',
+    expand: '扩展这段学术文本，补充更多细节、论证和支撑。只返回扩展后的文本。',
+    review: '审阅这段学术文本，逐条指出存在的问题并给出具体的改进建议。',
+    en: '将以下内容翻译成流畅、地道的学术英文。只返回译文。',
+    zh: '将以下内容翻译成流畅、地道的学术中文。只返回译文。',
   }
-  const fullMsg = ctx ? `${prompts[action] || action}\n\n${ctx}` : (prompts[action] || action)
-  await doSend(fullMsg)
+  const labels: Record<string, string> = {
+    polish: '润色选中文本', expand: '扩写选中文本', review: '审阅选中文本',
+    en: '翻译为英文', zh: '翻译为中文',
+  }
+  const instruction = instructions[action] || action
+  if (!ctx) {
+    messages.value.push({ id: crypto.randomUUID(), role: 'assistant', content: '请先在编辑器中打开或选中要处理的文本。' })
+    scrollBottom()
+    return
+  }
+  await doEdit(instruction, ctx, labels[action] || action)
+}
+
+// 一次性文本改写：调用 /api/edit（无工具、不可能循环），流式写入聊天面板。
+async function doEdit(instruction: string, text: string, label: string) {
+  pendingApproval.value = null
+  messages.value.push({ id: crypto.randomUUID(), role: 'user', content: label })
+  scrollBottom()
+
+  streaming.value = true
+  streamContent.value = ''
+  thinkingText.value = ''
+  aiAbortCtrl.value = new AbortController()
+
+  try {
+    const resp = await fetch(`${API}/api/edit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, instruction }),
+      signal: aiAbortCtrl.value.signal,
+    })
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: '请求失败' }))
+      throw new Error(err.detail || `HTTP ${resp.status}`)
+    }
+    const reader = resp.body?.getReader()
+    if (!reader) throw new Error('响应内容为空')
+    await readSseStream(reader, (evtType, d) => {
+      if (evtType === 'delta' && d.content !== undefined) {
+        // /api/edit 的 delta 携带累计全文
+        streamContent.value = (d.content as string).replace(/<think\b[^>]*>[\s\S]*?<\/think\s*>/g, '').trim()
+        scrollBottom()
+      } else if (evtType === 'error') {
+        streamContent.value = (d.message as string) || (d.content as string) || '错误'
+      }
+    })
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') return
+    streamContent.value = `错误：${e instanceof Error ? e.message : String(e)}`
+  } finally {
+    streaming.value = false; thinkingText.value = ''
+    if (streamContent.value) {
+      messages.value.push({ id: crypto.randomUUID(), role: 'assistant', content: streamContent.value })
+    }
+    streamContent.value = ''; aiAbortCtrl.value = null; scrollBottom()
+  }
 }
 
 async function doSend(text: string) {
@@ -483,7 +552,14 @@ async function handleApprovalDecision(decision: 'allow_once' | 'allow_session' |
 }
 
 function clearHistory() { messages.value = []; streamContent.value = '' }
-function copyText(t: string) { navigator.clipboard.writeText(t).catch(() => {}) }
+function copyText(t: string, id?: string) {
+  navigator.clipboard.writeText(t).catch(() => {})
+  if (id) {
+    copiedId.value = id
+    if (copiedTimer) clearTimeout(copiedTimer)
+    copiedTimer = setTimeout(() => { copiedId.value = null }, 1500)
+  }
+}
 function scrollBottom() { nextTick(() => { if (messagesRef.value) messagesRef.value.scrollTop = messagesRef.value.scrollHeight }) }
 
 watch(() => input.value, () => {
@@ -497,107 +573,127 @@ watch(() => input.value, () => {
 </script>
 
 <style scoped>
-.ai-chat-panel { display:flex; flex-direction:column; height:100%; background:var(--panel-bg,#1e1e1e); border-left:1px solid var(--border-color,#333); font-size:13px; }
+.ai-chat-panel { display:flex; flex-direction:column; height:100%; background:var(--c-surface-2); border-left:1px solid var(--c-surface-3); font-size:var(--text-md); }
 
 /* Header */
-.ac-header { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border-bottom:1px solid var(--border-color,#333); }
-.ac-title-row { display:flex; align-items:center; gap:8px; color:var(--text-primary,#e0e0e0); }
-.ac-title { font-weight:600; font-size:14px; }
-.ac-header-actions { display:flex; gap:4px; }
-.ac-icon-btn { background:none; border:none; color:var(--text-secondary,#888); cursor:pointer; padding:4px; border-radius:4px; display:flex; }
-.ac-icon-btn:hover { background:var(--hover-bg,#2d2d2d); color:var(--text-primary,#e0e0e0); }
+.ac-header { display:flex; align-items:center; justify-content:space-between; padding:var(--space-3); border-bottom:1px solid var(--c-surface-3); }
+.ac-title-row { display:flex; align-items:center; gap:var(--space-2); color:var(--c-text-0); }
+.ac-title { font-weight:600; font-size:var(--text-base); }
+.ac-header-actions { display:flex; gap:var(--space-1); }
+.ac-icon-btn { background:none; border:none; color:var(--c-text-2); cursor:pointer; padding:var(--space-1); border-radius:var(--radius-xs); display:flex; }
+.ac-icon-btn:not(:disabled):hover { background:var(--c-surface-4); color:var(--c-text-0); }
+.ac-icon-btn:focus-visible { outline:none; box-shadow:var(--ring-focus); color:var(--c-text-0); }
 .ac-icon-btn:disabled { opacity:.3; cursor:not-allowed; }
 
 /* Context */
-.ac-context { display:flex; align-items:center; gap:6px; padding:6px 12px; font-size:11px; color:var(--accent,#7c6ef0); background:var(--accent-bg,rgba(124,110,240,.1)); border-bottom:1px solid var(--border-color,#333); }
+.ac-context { display:flex; align-items:center; gap:var(--space-2); padding:var(--space-2) var(--space-3); font-size:var(--text-xs); color:var(--c-accent); background:var(--c-accent-soft); border-bottom:1px solid var(--c-surface-3); }
+.ac-context svg { flex-shrink:0; }
 
 /* Messages */
-.ac-messages { flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:12px; }
-.ac-empty { text-align:center; padding:40px 20px; color:var(--text-secondary,#888); }
-.ac-empty-icon { margin-bottom:12px; opacity:.4; }
-.ac-empty p { margin:4px 0; font-size:14px; }
-.ac-empty-sub { font-size:12px!important; opacity:.7; }
-.ac-empty code { background:rgba(255,255,255,.08); padding:2px 6px; border-radius:3px; font-size:12px; }
+.ac-messages { flex:1; overflow-y:auto; padding:var(--space-3); display:flex; flex-direction:column; gap:var(--space-3); }
+.ac-empty { text-align:center; padding:var(--space-7) var(--space-5); color:var(--c-text-2); }
+.ac-empty-icon { margin-bottom:var(--space-3); color:var(--c-accent); opacity:.55; animation: ac-float 3.6s var(--ease-smooth) infinite; }
+@keyframes ac-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .ac-empty-icon { animation: none; } }
+.ac-empty p { margin:var(--space-1) 0; font-size:var(--text-base); }
+.ac-empty-title { color:var(--c-text-1); }
+.ac-empty-sub { font-size:var(--text-sm)!important; color:var(--c-text-2); animation-delay:.08s; }
+.ac-empty code { background:var(--c-surface-3); color:var(--c-accent-hover); padding:var(--space-0) var(--space-2); border-radius:var(--radius-xs); font-size:var(--text-sm); font-family:var(--font-mono); }
 
 /* Message bubble */
-.ac-msg { display:flex; gap:10px; max-width:100%; }
+.ac-msg { display:flex; gap:var(--space-2); max-width:100%; animation: ac-msg-in var(--motion-slow) var(--ease-out) both; }
+@keyframes ac-msg-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) { .ac-msg { animation: none; } }
 .ac-msg.user { flex-direction:row-reverse; }
-.ac-avatar { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0; }
-.ac-msg.user .ac-avatar { background:var(--accent,#7c6ef0); color:#fff; }
-.ac-msg.assistant .ac-avatar { background:var(--hover-bg,#2d2d2d); color:var(--text-primary,#e0e0e0); border:1px solid var(--border-color,#333); }
+.ac-avatar { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:var(--text-xs); font-weight:700; flex-shrink:0; }
+.ac-msg.user .ac-avatar { background:var(--c-accent); color:#fff; }
+.ac-msg.assistant .ac-avatar { background:var(--c-surface-4); color:var(--c-text-0); border:1px solid var(--c-surface-3); }
 
 .ac-body { min-width:0; max-width:88%; }
 .ac-msg.user .ac-body { text-align:right; }
 
-.ac-user-bubble { display:inline-block; text-align:left; background:var(--accent,#7c6ef0); color:#fff; padding:8px 12px; border-radius:12px 12px 4px 12px; font-size:13px; line-height:1.5; word-break:break-word; white-space:pre-wrap; }
+.ac-user-bubble { display:inline-block; text-align:left; background:var(--c-accent); color:#fff; padding:var(--space-2) var(--space-3); border-radius:var(--radius-lg) var(--radius-lg) var(--radius-xs) var(--radius-lg); font-size:var(--text-md); line-height:var(--leading-snug); word-break:break-word; white-space:pre-wrap; }
 
-.ac-thinking { font-size:12px; color:var(--accent,#7c6ef0); opacity:.8; margin-bottom:4px; padding:4px 8px; border-left:2px solid var(--accent,#7c6ef0); }
+.ac-thinking { font-size:var(--text-sm); color:var(--c-accent); margin-bottom:var(--space-1); padding:var(--space-1) var(--space-2); border-left:2px solid var(--c-accent); background:var(--c-accent-soft); border-radius:0 var(--radius-xs) var(--radius-xs) 0; }
 
-.ac-ai-bubble { background:var(--code-bg,#1a1a2e); border:1px solid var(--border-color,#333); padding:10px 12px; border-radius:12px; font-size:13px; line-height:1.6; word-break:break-word; color:var(--text-primary,#e0e0e0); }
-.ac-ai-bubble :is(h2,h3,h4) { margin:8px 0 4px; }
-.ac-waiting { color:var(--text-secondary,#888); font-style:italic; }
+.ac-ai-bubble { background:var(--c-surface-3); border:1px solid var(--c-surface-4); padding:var(--space-2) var(--space-3); border-radius:var(--radius-lg); font-size:var(--text-md); line-height:var(--leading-relaxed); word-break:break-word; color:var(--c-text-0); }
+.ac-ai-bubble :is(h2,h3,h4) { margin:var(--space-2) 0 var(--space-1); color:var(--c-text-0); }
+.ac-waiting { color:var(--c-text-2); font-style:italic; }
 
 /* Code blocks with action bar — :deep() needed because blocks are rendered via v-html */
-:deep(.ac-code-block) { margin:8px 0; border-radius:6px; overflow:hidden; border:1px solid var(--border-color,#333); }
-:deep(.ac-code-bar) { display:flex; justify-content:space-between; align-items:center; padding:4px 10px; background:var(--hover-bg,#2d2d2d); font-size:11px; }
-:deep(.ac-code-lang) { color:var(--text-secondary,#888); }
-:deep(.ac-code-btn) { background:none; border:none; color:var(--accent,#7c6ef0); cursor:pointer; font-size:11px; padding:2px 8px; border-radius:3px; }
-:deep(.ac-code-btn):hover { background:var(--accent-bg,rgba(124,110,240,.15)); }
-:deep(.ac-code-block pre) { background:var(--code-bg,#1a1a2e); color:var(--text-primary,#e0e0e0); padding:10px; margin:0; overflow-x:auto; font-size:12px; line-height:1.5; }
-:deep(.ac-code-block code) { background:none; padding:0; font-size:12px; color:inherit; }
-:deep(.ac-inline-code) { background:var(--c-surface-3); padding:1px 5px; border-radius:3px; font-size:12px; color:var(--c-text-1); }
+:deep(.ac-code-block) { margin:var(--space-2) 0; border-radius:var(--radius-sm); overflow:hidden; border:1px solid var(--c-surface-4); }
+:deep(.ac-code-bar) { display:flex; justify-content:space-between; align-items:center; padding:var(--space-1) var(--space-3); background:var(--c-surface-4); font-size:var(--text-xs); }
+:deep(.ac-code-lang) { color:var(--c-text-2); font-family:var(--font-mono); }
+:deep(.ac-code-btn) { background:none; border:none; color:var(--c-accent); cursor:pointer; font-size:var(--text-xs); padding:var(--space-0) var(--space-2); border-radius:var(--radius-xs); transition:background var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-brush); }
+:deep(.ac-code-btn):hover { background:var(--c-accent-soft); }
+:deep(.ac-code-btn):active { transform:scale(0.94); }
+:deep(.ac-code-block pre) { background:var(--c-surface-2); color:var(--c-text-0); padding:var(--space-3); margin:0; overflow-x:auto; font-size:var(--text-sm); line-height:var(--leading-normal); font-family:var(--font-mono); }
+:deep(.ac-code-block code) { background:none; padding:0; font-size:var(--text-sm); color:inherit; }
+:deep(.ac-inline-code) { background:var(--c-surface-3); padding:1px 5px; border-radius:var(--radius-xs); font-size:var(--text-sm); color:var(--c-text-1); font-family:var(--font-mono); }
 
-.ac-cursor { display:inline-block; width:2px; height:16px; background:var(--accent,#7c6ef0); margin-left:2px; margin-top:4px; animation:blink 1s step-end infinite; vertical-align:text-bottom; }
-@keyframes blink { 50% { opacity:0; } }
+.ac-cursor { display:inline-block; width:2px; height:16px; background:var(--c-accent); margin-left:2px; margin-top:var(--space-1); animation:ac-blink 1s step-end infinite; vertical-align:text-bottom; }
+@keyframes ac-blink { 50% { opacity:0; } }
 
-.ac-actions { display:flex; gap:6px; margin-top:6px; }
-.ac-action-btn { background:none; border:1px solid var(--border-color,#333); color:var(--text-secondary,#888); padding:3px 8px; border-radius:4px; font-size:11px; cursor:pointer; display:flex; align-items:center; gap:4px; }
-.ac-action-btn:hover { background:var(--hover-bg,#2d2d2d); color:var(--text-primary,#e0e0e0); border-color:var(--accent,#7c6ef0); }
+.ac-actions { display:flex; gap:var(--space-2); margin-top:var(--space-2); }
+.ac-action-btn { background:none; border:1px solid var(--c-surface-4); color:var(--c-text-2); padding:var(--space-1) var(--space-2); border-radius:var(--radius-xs); font-size:var(--text-xs); cursor:pointer; display:flex; align-items:center; gap:var(--space-1); }
+.ac-action-btn:not(:disabled):hover { background:var(--c-surface-3); color:var(--c-text-0); border-color:var(--c-accent); }
+.ac-action-btn:focus-visible { outline:none; box-shadow:var(--ring-focus); border-color:var(--c-accent); }
+.ac-action-btn.copied { color:var(--c-success); border-color:var(--c-success-border); background:var(--c-success-bg); }
 
 /* File attachments */
-.ac-attachments { display:flex; gap:6px; flex-wrap:wrap; padding:6px 12px; border-top:1px solid var(--border-color,#333); }
-.ac-file { display:flex; align-items:center; gap:4px; background:var(--code-bg,#1a1a2e); border:1px solid var(--border-color,#333); border-radius:4px; padding:3px 8px; font-size:11px; color:var(--text-secondary,#888); }
-.ac-file-x { background:none; border:none; color:var(--text-secondary,#888); cursor:pointer; font-size:14px; line-height:1; padding:0 2px; }
-.ac-file-x:hover { color:var(--text-primary,#e0e0e0); }
+.ac-attachments { display:flex; gap:var(--space-2); flex-wrap:wrap; padding:var(--space-2) var(--space-3); border-top:1px solid var(--c-surface-3); }
+.ac-file { display:flex; align-items:center; gap:var(--space-1); background:var(--c-surface-3); border:1px solid var(--c-surface-4); border-radius:var(--radius-xs); padding:var(--space-1) var(--space-2); font-size:var(--text-xs); color:var(--c-text-1); }
+.ac-file:hover { border-color:var(--c-accent); }
+.ac-file svg { flex-shrink:0; color:var(--c-text-2); }
+.ac-file-x { background:none; border:none; color:var(--c-text-2); cursor:pointer; font-size:var(--text-base); line-height:1; padding:0 var(--space-0); border-radius:var(--radius-xs); transition:color var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out); }
+.ac-file-x:hover { color:var(--c-danger); background:var(--c-danger-bg); }
 
 /* Presets */
-.ac-presets { display:flex; gap:6px; flex-wrap:wrap; padding:8px 12px; border-top:1px solid var(--border-color,#333); }
-.ac-preset { background:var(--hover-bg,#2d2d2d); border:1px solid var(--border-color,#333); border-radius:14px; padding:4px 12px; color:var(--text-secondary,#888); font-size:12px; cursor:pointer; transition:all .15s; }
-.ac-preset:hover { border-color:var(--accent,#7c6ef0); color:var(--text-primary,#e0e0e0); }
+.ac-presets { display:flex; gap:var(--space-2); flex-wrap:wrap; padding:var(--space-2) var(--space-3); border-top:1px solid var(--c-surface-3); }
+.ac-preset { background:var(--c-surface-3); border:1px solid var(--c-surface-4); border-radius:var(--radius-pill); padding:var(--space-1) var(--space-3); color:var(--c-text-1); font-size:var(--text-sm); cursor:pointer; }
+.ac-preset:not(:disabled):hover { border-color:var(--c-accent); color:var(--c-text-0); background:var(--c-accent-soft); }
+.ac-preset:focus-visible { outline:none; box-shadow:var(--ring-focus); border-color:var(--c-accent); }
 
 /* Input */
-.ac-input-area { display:flex; align-items:flex-end; gap:6px; padding:10px 12px; border-top:1px solid var(--border-color,#333); }
-.ac-attach-btn { width:34px; height:34px; border-radius:8px; background:none; border:1px solid var(--border-color,#333); color:var(--text-secondary,#888); cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-.ac-attach-btn:hover { background:var(--hover-bg,#2d2d2d); color:var(--text-primary,#e0e0e0); }
+.ac-input-area { display:flex; align-items:flex-end; gap:var(--space-2); padding:var(--space-3); border-top:1px solid var(--c-surface-3); }
+.ac-attach-btn { width:34px; height:34px; border-radius:var(--radius-sm); background:none; border:1px solid var(--c-surface-4); color:var(--c-text-2); cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.ac-attach-btn:not(:disabled):hover { background:var(--c-surface-3); color:var(--c-text-0); border-color:var(--c-accent); }
+.ac-attach-btn:focus-visible { outline:none; box-shadow:var(--ring-focus); border-color:var(--c-accent); }
 .ac-attach-btn:disabled { opacity:.4; cursor:not-allowed; }
 
 .ac-input-wrap { flex:1; position:relative; }
-.ac-input { width:100%; background:var(--input-bg,#2d2d2d); border:1px solid var(--border-color,#333); border-radius:8px; padding:8px 12px; color:var(--text-primary,#e0e0e0); font-size:13px; font-family:inherit; line-height:1.4; resize:none; outline:none; max-height:120px; box-sizing:border-box; }
-.ac-input:focus { border-color:var(--accent,#7c6ef0); }
-.ac-input::placeholder { color:var(--text-secondary,#888); }
+.ac-input { width:100%; background:var(--c-surface-3); border:1px solid var(--c-surface-4); border-radius:var(--radius-sm); padding:var(--space-2) var(--space-3); color:var(--c-text-0); font-size:var(--text-md); font-family:inherit; line-height:var(--leading-snug); resize:none; outline:none; max-height:120px; box-sizing:border-box; transition:border-color var(--motion-base) var(--ease-out), box-shadow var(--motion-base) var(--ease-out); }
+.ac-input:focus { border-color:var(--c-accent); box-shadow:var(--ring-focus); }
+.ac-input::placeholder { color:var(--c-text-3); }
 .ac-input:disabled { opacity:.5; }
 
 /* Dropdown menus */
-.ac-menu { position:absolute; bottom:100%; left:0; right:0; background:var(--surface,#252535); border:1px solid var(--border-color,#333); border-radius:8px; max-height:240px; overflow-y:auto; margin-bottom:4px; box-shadow:0 -8px 24px rgba(0,0,0,.3); z-index:10; }
-.ac-menu-item { display:flex; align-items:center; gap:10px; padding:8px 12px; cursor:pointer; font-size:12px; color:var(--text-primary,#e0e0e0); }
-.ac-menu-item:hover { background:var(--hover-bg,#2d2d2d); }
-.ac-menu-cmd { font-weight:600; color:var(--accent,#7c6ef0); min-width:80px; }
-.ac-menu-desc { color:var(--text-secondary,#888); }
+.ac-menu { position:absolute; bottom:100%; left:0; right:0; transform-origin:bottom center; background:var(--c-surface-3); border:1px solid var(--c-surface-4); border-radius:var(--radius-sm); max-height:240px; overflow-y:auto; margin-bottom:var(--space-1); box-shadow:var(--elevation-3); z-index:10; }
+.ac-menu-item { display:flex; align-items:center; gap:var(--space-3); padding:var(--space-2) var(--space-3); cursor:pointer; font-size:var(--text-sm); color:var(--c-text-0); transition:background var(--motion-fast) var(--ease-out); }
+.ac-menu-item:hover { background:var(--c-accent-soft); }
+.ac-menu-item svg { flex-shrink:0; color:var(--c-text-2); }
+.ac-menu-cmd { font-weight:600; color:var(--c-accent); min-width:80px; font-family:var(--font-mono); }
+.ac-menu-desc { color:var(--c-text-2); }
 
-.ac-send-btn { width:34px; height:34px; border-radius:8px; background:var(--accent,#7c6ef0); border:none; color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition: background 0.15s; }
-.ac-send-btn:hover { opacity:.9; }
+.ac-send-btn { width:34px; height:34px; border-radius:var(--radius-sm); background:var(--c-accent); border:none; color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.ac-send-btn:not(:disabled):hover { background:var(--c-accent-hover); }
+.ac-send-btn:focus-visible { outline:none; box-shadow:var(--ring-focus); }
 .ac-send-btn:disabled { opacity:.4; cursor:not-allowed; }
-.ac-send-btn.stopping { background: var(--c-danger, #ef4444); animation: stop-ring 1.8s ease-in-out infinite; }
+.ac-send-btn.stopping { background: var(--c-danger); animation: stop-ring 1.8s ease-in-out infinite; }
 @keyframes stop-ring {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
-  50%       { box-shadow: 0 0 0 5px rgba(239,68,68,0); }
+  0%, 100% { box-shadow: 0 0 0 0 var(--c-danger-border); }
+  50%       { box-shadow: 0 0 0 5px transparent; }
 }
+@media (prefers-reduced-motion: reduce) { .ac-send-btn.stopping { animation: none; } }
 
 /* Thinking scan bar */
 .ac-thinking-bar {
   height: 2px;
   flex-shrink: 0;
-  background: linear-gradient(90deg, transparent 0%, var(--accent,#7c6ef0) 45%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, var(--c-accent) 45%, transparent 100%);
   background-size: 40% 100%;
   background-repeat: no-repeat;
   animation: ac-scan 1.4s ease-in-out infinite;
@@ -606,12 +702,13 @@ watch(() => input.value, () => {
   0%   { background-position: -40% 0; }
   100% { background-position: 140% 0; }
 }
+@media (prefers-reduced-motion: reduce) { .ac-thinking-bar { animation: none; background-position: 50% 0; } }
 
 /* Wave dots (used in waiting state) */
-.dot-wave { display: inline-flex; gap: 4px; align-items: center; padding: 2px 0; }
+.dot-wave { display: inline-flex; gap: var(--space-1); align-items: center; padding: var(--space-0) 0; }
 .dot-wave i {
   width: 6px; height: 6px; border-radius: 50%;
-  background: var(--accent,#7c6ef0); display: block;
+  background: var(--c-accent); display: block;
   animation: ac-wave 1.1s ease-in-out infinite;
 }
 .dot-wave i:nth-child(2) { animation-delay: 0.18s; }
@@ -620,10 +717,5 @@ watch(() => input.value, () => {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
   30%            { transform: translateY(-5px); opacity: 1; }
 }
-
-/* ── Light mode ── */
-:global([data-theme="light"]) :deep(.ac-code-block pre) { background: var(--c-surface-0); color: var(--c-text-0); }
-:global([data-theme="light"]) :deep(.ac-inline-code) { background: var(--c-surface-3); }
-:global([data-theme="light"]) .ac-empty code { background: var(--c-surface-3); }
-:global([data-theme="light"]) .ac-menu { background: var(--c-surface-1); box-shadow: var(--elevation-3); }
+@media (prefers-reduced-motion: reduce) { .dot-wave i { animation: none; opacity: .7; } }
 </style>

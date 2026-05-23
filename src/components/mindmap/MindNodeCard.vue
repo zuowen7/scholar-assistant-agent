@@ -1,5 +1,8 @@
 <template>
-  <div class="mind-node" :class="[`depth-${data.depth}`, { selected, root: data.isRoot, editing }]">
+  <div
+    class="mind-node anim-pop-in"
+    :class="[`depth-${data.depth}`, { selected, root: data.isRoot, editing, expanding }]"
+  >
     <div class="color-bar" :style="{ background: barColor }"></div>
     <div class="node-body">
       <div class="node-header">
@@ -18,8 +21,19 @@
         />
         <span v-else class="node-text nodrag" @dblclick="startEdit">{{ data.text }}</span>
       </div>
-      <span v-if="issueCount" class="node-badge">{{ issueCount }}</span>
+      <span v-if="expanding" class="node-spinner" role="status" aria-label="AI 展开中">
+        <UiSpinner size="sm" />
+      </span>
+      <span v-else-if="issueCount" class="node-badge">{{ issueCount }}</span>
     </div>
+
+    <!-- AI 展开加载反馈：底部扫描条 + 微光文字 -->
+    <Transition name="v-fade">
+      <div v-if="expanding" class="node-expanding-overlay">
+        <span class="node-expanding-label anim-shimmer-text">AI 生成子主题</span>
+        <span class="anim-scan-bar node-expanding-scan" />
+      </div>
+    </Transition>
 
     <Handle type="target" :position="Position.Left" class="mind-handle" />
     <Handle type="source" :position="Position.Right" class="mind-handle" />
@@ -29,10 +43,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, inject, nextTick, ref, type Ref } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import type { NodeProps } from '@vue-flow/core'
 import { useMindMap } from '../../composables/useMindMap'
+import UiSpinner from '../ui/UiSpinner.vue'
 
 const props = defineProps<NodeProps<{
   text: string
@@ -43,11 +58,14 @@ const props = defineProps<NodeProps<{
 
 const { commitNodeText, selectedNodeId, analysisIssuesByNode } = useMindMap()
 
+const expandingNodeId = inject<Ref<string>>('expandingNodeId', ref(''))
+
 const editing = ref(false)
 const draftText = ref('')
 const inputRef = ref<HTMLTextAreaElement>()
 
 const selected = computed(() => selectedNodeId.value === props.id)
+const expanding = computed(() => !!expandingNodeId.value && expandingNodeId.value === props.id)
 const issueCount = computed(() => analysisIssuesByNode.value[props.id] ?? 0)
 
 const DEPTH_COLORS = ['#6366f1', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444']
@@ -96,9 +114,13 @@ defineExpose({ startEdit })
   box-shadow: var(--elevation-1);
   overflow: hidden;
   position: relative;
-  transition: transform 200ms var(--ease-spring), box-shadow 200ms var(--ease-out), border-color 200ms var(--ease-out);
+  transition: transform 200ms var(--ease-spring),
+              box-shadow 220ms var(--ease-out),
+              border-color 200ms var(--ease-out),
+              background 200ms var(--ease-out);
   cursor: grab;
 }
+.mind-node:active { cursor: grabbing; }
 /* 墨韵涟漪 hover */
 .mind-node::after {
   content: '';
@@ -110,20 +132,38 @@ defineExpose({ startEdit })
   z-index: 0;
   transition: opacity 300ms var(--ease-brush);
 }
-.mind-node:hover::after { opacity: 0.04; }
+.mind-node:hover::after { opacity: 0.05; }
 
 .mind-node:hover {
   transform: translateY(-2px);
   box-shadow: var(--elevation-2);
   border-color: var(--c-surface-4);
 }
+.mind-node:active { transform: scale(0.985); }
+.mind-node:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus), var(--elevation-2);
+  border-color: var(--c-accent);
+}
 .mind-node.selected {
   border-color: var(--c-accent);
   box-shadow: 0 0 0 2px var(--c-accent-ring), var(--elevation-2);
 }
+.mind-node.selected:hover {
+  box-shadow: 0 0 0 2px var(--c-accent-ring), var(--elevation-3);
+}
 .mind-node.editing {
   border-color: var(--c-accent);
   box-shadow: 0 0 0 3px var(--c-accent-ring), var(--elevation-2);
+}
+/* AI 展开中：脉动光环包裹整张卡片 */
+.mind-node.expanding {
+  border-color: var(--c-accent);
+  animation: node-busy-pulse 1.4s var(--ease-smooth) infinite;
+}
+@keyframes node-busy-pulse {
+  0%, 100% { box-shadow: 0 0 0 1px var(--c-accent-soft), var(--elevation-2); }
+  50%      { box-shadow: 0 0 0 4px var(--c-accent-soft), var(--elevation-3); }
 }
 .mind-node.root {
   min-width: 154px;
@@ -212,6 +252,37 @@ defineExpose({ startEdit })
   border: 1px solid var(--c-warn-border);
   flex-shrink: 0;
   line-height: 1.4;
+  animation: anim-pop-in 360ms var(--ease-spring) both;
+}
+
+.node-spinner {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* AI 展开加载条 — 覆盖于卡片底部 */
+.node-expanding-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 3px 8px 4px;
+  background: linear-gradient(to top, var(--c-accent-soft), transparent);
+  pointer-events: none;
+}
+.node-expanding-label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.node-expanding-scan {
+  width: 100%;
+  border-radius: var(--radius-pill);
 }
 
 .mind-handle {
@@ -229,5 +300,18 @@ defineExpose({ startEdit })
   opacity: 1;
   transform: scale(1);
 }
+.mind-node:hover .mind-handle { transform: scale(1.12); }
+.mind-handle:hover {
+  transform: scale(1.35) !important;
+  box-shadow: 0 0 0 4px var(--c-accent-soft);
+}
 .hidden-handle { opacity: 0 !important; pointer-events: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mind-node,
+  .mind-node.expanding { animation: none; transition: none; }
+  .mind-node:hover { transform: none; }
+  .mind-node:active { transform: none; }
+  .node-badge { animation: none; }
+}
 </style>

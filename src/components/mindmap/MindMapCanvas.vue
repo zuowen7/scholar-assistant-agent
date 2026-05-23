@@ -78,11 +78,14 @@ import {
 } from '../../composables/useMindMap'
 import { useMindMapKeyboard } from '../../composables/useMindMapKeyboard'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   connectionFromId: string
   minimap: { collapsed: boolean; size: 'small' | 'medium' | 'large'; x: number; y: number }
   viewCommand: { seq: number; type: 'zoom-in' | 'zoom-out' | 'reset-view' | 'fit-view' | '' }
-}>()
+  expandingNodeId?: string
+}>(), {
+  expandingNodeId: '',
+})
 
 const emit = defineEmits<{
   (e: 'update:connectionFromId', value: string): void
@@ -111,6 +114,9 @@ const miniMapSize = computed(() => {
 
 const hoveredEdgeId = ref('')
 provide('hoveredEdgeId', hoveredEdgeId)
+
+const expandingNodeId = computed(() => props.expandingNodeId)
+provide('expandingNodeId', expandingNodeId)
 
 watch(() => props.viewCommand.seq, () => {
   if (props.viewCommand.type === 'zoom-in') zoomIn()

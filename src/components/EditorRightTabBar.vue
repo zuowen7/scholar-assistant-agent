@@ -45,10 +45,11 @@ const emit = defineEmits<{
   background: transparent;
   padding: 8px 12px;
   gap: 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--c-surface-2);
   flex-shrink: 0;
 }
 .rp-tab {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -62,18 +63,40 @@ const emit = defineEmits<{
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: all var(--motion-fast) var(--ease-out);
+  transition: color var(--motion-fast) var(--ease-out),
+              background var(--motion-fast) var(--ease-out),
+              border-color var(--motion-fast) var(--ease-out),
+              transform var(--motion-fast) var(--ease-spring);
+}
+/* sliding underline indicator */
+.rp-tab::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  right: 50%;
+  bottom: 3px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--c-accent);
+  opacity: 0;
+  transition: left var(--motion-base) var(--ease-spring),
+              right var(--motion-base) var(--ease-spring),
+              opacity var(--motion-fast);
 }
 .rp-tab:hover {
   color: var(--c-text-1);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--c-surface-2);
 }
+.rp-tab:active { transform: scale(0.96); }
+.rp-tab:focus-visible { outline: none; box-shadow: var(--ring-focus); }
 .rp-tab.active {
   color: var(--c-text-0);
   background: var(--c-surface-3);
-  border-color: rgba(255, 255, 255, 0.06);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+  border-color: var(--c-surface-4);
+  box-shadow: var(--elevation-1);
 }
+.rp-tab.active::after { left: 12px; right: 12px; opacity: 0.8; }
+.rp-tab.active :deep(svg) { color: var(--c-accent); }
 .rp-close {
   margin-left: auto;
   display: inline-flex;
@@ -87,9 +110,17 @@ const emit = defineEmits<{
   background: transparent;
   color: var(--c-text-3);
   cursor: pointer;
+  transition: background var(--motion-fast), color var(--motion-fast), transform var(--motion-fast) var(--ease-spring);
 }
 .rp-close:hover {
-  background: var(--hover-bg);
+  background: var(--c-danger-bg);
   color: var(--c-danger);
+  transform: rotate(90deg);
+}
+.rp-close:active { transform: scale(0.85); }
+.rp-close:focus-visible { outline: none; box-shadow: var(--ring-focus); }
+
+@media (prefers-reduced-motion: reduce) {
+  .rp-close:hover { transform: none; }
 }
 </style>

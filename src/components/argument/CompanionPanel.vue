@@ -86,16 +86,21 @@
           <option value="parallel">三角度并行</option>
         </select>
         <button
-          class="run-review-btn"
+          class="run-review-btn u-interactive"
           :disabled="companion.state.reviewing"
           @click="handleRunReview"
         >
-          {{ companion.state.reviewing ? '评审中…' : '红队这篇' }}
+          <span v-if="companion.state.reviewing" class="rv-loading">
+            <span class="rv-dots"><i /><i /><i /></span>
+            <span class="anim-shimmer-text">评审中</span>
+          </span>
+          <span v-else>红队这篇</span>
         </button>
       </div>
 
       <!-- Review point list -->
       <div v-if="companion.state.review && companion.state.review.points.length > 0" class="point-list">
+        <div v-if="companion.state.reviewing" class="anim-scan-bar point-list-scan" />
         <div class="point-list-toolbar">
           <button
             v-if="companion.state.review?.id"
@@ -117,13 +122,23 @@
         />
       </div>
 
-      <!-- Empty state -->
-      <div v-else-if="!companion.state.reviewing" class="reviewer-empty">
-        <p class="empty-hint">点击「红队这篇」开始模拟同行评审。</p>
+      <!-- 评审中且尚无意见：骨架卡片 + 状态提示 -->
+      <div v-else-if="companion.state.reviewing" class="reviewing-block">
+        <div class="anim-scan-bar" />
+        <div class="reviewing-status">
+          <UiSpinner size="sm" :label="reviewMode === 'parallel' ? '三位审稿人正在并行通读' : 'Reviewer 2 正在逐段审阅'" />
+        </div>
+        <div v-for="i in 3" :key="i" class="rv-sk-card" :style="{ '--stagger-i': i }">
+          <UiSkeleton shape="line" width="30%" height="11px" />
+          <UiSkeleton shape="line" width="94%" height="11px" />
+          <UiSkeleton shape="line" width="70%" height="11px" />
+        </div>
       </div>
 
-      <!-- Streaming progress bar -->
-      <div v-if="companion.state.reviewing" class="reviewing-scan-bar"></div>
+      <!-- Empty state -->
+      <div v-else class="reviewer-empty">
+        <p class="empty-hint">点击「红队这篇」开始模拟同行评审。</p>
+      </div>
 
       <!-- Import real reviews section -->
       <div class="import-section">
@@ -155,6 +170,8 @@ import { useArgumentMap } from '../../composables/useArgumentMap'
 import LedgerList from './LedgerList.vue'
 import ReviewerThread from './ReviewerThread.vue'
 import ArgumentMapMini from './ArgumentMapMini.vue'
+import UiSpinner from '../ui/UiSpinner.vue'
+import UiSkeleton from '../ui/UiSkeleton.vue'
 
 const companion = useArgumentCompanion()
 const { state: argState } = useArgumentMap()
@@ -257,7 +274,7 @@ async function updatePointStatus(pointId: string, status: string) {
 .sub-tab-bar {
   display: flex;
   gap: 0;
-  border-bottom: 1px solid var(--border, #2a2a2a);
+  border-bottom: 1px solid var(--c-surface-3);
   flex-shrink: 0;
 }
 
@@ -300,18 +317,20 @@ async function updatePointStatus(pointId: string, status: string) {
   font-size: 11px;
   border: none;
   background: none;
-  color: var(--text-dim, #888);
+  color: var(--c-text-2);
   cursor: pointer;
   border-bottom: 2px solid transparent;
+  transition: color var(--motion-fast) var(--ease-out), border-color var(--motion-base) var(--ease-out), background var(--motion-fast) ease;
 }
 
 .sub-tab.active {
-  color: var(--accent, #60a5fa);
-  border-bottom-color: var(--accent, #60a5fa);
+  color: var(--c-accent);
+  border-bottom-color: var(--c-accent);
 }
 
 .sub-tab:hover:not(.active) {
-  color: var(--text, #ccc);
+  color: var(--c-text-1);
+  background: var(--c-surface-2);
 }
 
 .stale-banner {
@@ -360,27 +379,29 @@ async function updatePointStatus(pointId: string, status: string) {
   min-width: 80px;
   padding: 3px 6px;
   font-size: 11px;
-  border: 1px solid var(--border, #2a2a2a);
-  background: var(--bg-2, #1a1a1a);
-  color: var(--text, #ccc);
+  border: 1px solid var(--c-surface-3);
+  background: var(--c-surface-2);
+  color: var(--c-text-1);
   border-radius: 3px;
 }
 
 .run-review-btn {
   padding: 3px 10px;
   font-size: 11px;
-  border-radius: 3px;
-  border: 1px solid var(--accent, #60a5fa);
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--c-accent);
   background: transparent;
-  color: var(--accent, #60a5fa);
+  color: var(--c-accent);
   cursor: pointer;
   white-space: nowrap;
+  transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-brush);
 }
 
 .run-review-btn:hover:not(:disabled) {
-  background: var(--accent, #60a5fa);
-  color: #000;
+  background: var(--c-accent);
+  color: #fff;
 }
+.run-review-btn:active:not(:disabled) { transform: scale(0.96); }
 
 .run-review-btn:disabled {
   opacity: 0.5;
@@ -400,34 +421,51 @@ async function updatePointStatus(pointId: string, status: string) {
 }
 
 .empty-hint {
-  color: var(--text-dim, #666);
+  color: var(--c-text-3);
   font-size: 12px;
   text-align: center;
 }
 
-.reviewing-scan-bar {
-  height: 2px;
-  flex-shrink: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--c-accent, #6366f1) 45%,
-    color-mix(in srgb, var(--c-accent, #6366f1) 40%, transparent) 60%,
-    transparent 100%
-  );
-  background-size: 40% 100%;
-  background-repeat: no-repeat;
-  animation: review-scan 1.4s ease-in-out infinite;
+/* 评审加载态 */
+.rv-loading { display: inline-flex; align-items: center; gap: var(--space-2); }
+.rv-dots { display: inline-flex; gap: 3px; }
+.rv-dots i {
+  width: 4px; height: 4px; border-radius: 50%;
+  background: currentColor; opacity: 0.4;
+  animation: al-breathe 1.2s ease-in-out infinite;
 }
-@keyframes review-scan {
-  0%   { background-position: -40% 0; }
-  100% { background-position: 140% 0; }
+.rv-dots i:nth-child(2) { animation-delay: 0.15s; }
+.rv-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes al-breathe {
+  0%, 80%, 100% { opacity: 0.35; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1.15); }
 }
+
+.reviewing-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  overflow-y: auto;
+}
+.reviewing-status { padding: var(--space-1) 0; }
+.rv-sk-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--c-surface-3);
+  border-radius: var(--radius-md);
+  background: var(--c-surface-1);
+  animation: anim-fade-in-up var(--motion-slow) var(--ease-out) both;
+  animation-delay: calc(var(--stagger-i, 0) * 110ms);
+}
+.point-list-scan { flex-shrink: 0; }
 
 .import-section {
   flex-shrink: 0;
   padding: 8px;
-  border-top: 1px solid var(--border, #2a2a2a);
+  border-top: 1px solid var(--c-surface-3);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -435,7 +473,7 @@ async function updatePointStatus(pointId: string, status: string) {
 
 .import-label {
   font-size: 10px;
-  color: var(--text-dim, #666);
+  color: var(--c-text-3);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -444,9 +482,9 @@ async function updatePointStatus(pointId: string, status: string) {
 .import-textarea {
   font-size: 11px;
   padding: 4px 6px;
-  border: 1px solid var(--border, #2a2a2a);
-  background: var(--bg-2, #1a1a1a);
-  color: var(--text, #ccc);
+  border: 1px solid var(--c-surface-3);
+  background: var(--c-surface-2);
+  color: var(--c-text-1);
   border-radius: 3px;
   resize: vertical;
   font-family: inherit;
@@ -456,16 +494,18 @@ async function updatePointStatus(pointId: string, status: string) {
   align-self: flex-end;
   font-size: 11px;
   padding: 3px 10px;
-  border-radius: 3px;
-  border: 1px solid var(--border, #444);
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--c-surface-4);
   background: none;
-  color: var(--text-dim, #888);
+  color: var(--c-text-2);
   cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-brush);
 }
+.import-btn:active:not(:disabled) { transform: scale(0.96); }
 
 .import-btn:hover:not(:disabled) {
-  color: var(--accent, #60a5fa);
-  border-color: var(--accent, #60a5fa);
+  color: var(--c-accent);
+  border-color: var(--c-accent);
 }
 
 .import-btn:disabled {
@@ -477,34 +517,39 @@ async function updatePointStatus(pointId: string, status: string) {
   display: flex;
   justify-content: flex-end;
   padding: 4px 8px;
-  border-bottom: 1px solid var(--border, #2a2a2a);
+  border-bottom: 1px solid var(--c-surface-3);
   flex-shrink: 0;
 }
 
 .download-btn {
   font-size: 10px;
   padding: 2px 8px;
-  border-radius: 3px;
-  border: 1px solid var(--border, #444);
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--c-surface-4);
   background: none;
-  color: var(--text-dim, #888);
+  color: var(--c-text-2);
   cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out), background var(--motion-fast) ease, transform var(--motion-fast) var(--ease-brush);
 }
 
 .download-btn:hover {
-  color: var(--accent, #60a5fa);
-  border-color: var(--accent, #60a5fa);
+  color: var(--c-accent);
+  border-color: var(--c-accent);
+  background: var(--c-accent-soft);
 }
+.download-btn:active { transform: scale(0.95); }
 
 .suggestion-popup {
   position: absolute;
   bottom: 8px;
   left: 8px;
   right: 8px;
-  background: var(--bg-2, #1e1e1e);
-  border: 1px solid var(--border, #3a3a3a);
-  border-radius: 4px;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-surface-4);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elevation-3, 0 8px 24px rgba(0,0,0,0.3));
   z-index: 10;
+  animation: anim-fade-in-up var(--motion-base) var(--ease-spring) both;
   max-height: 200px;
   display: flex;
   flex-direction: column;
@@ -517,15 +562,15 @@ async function updatePointStatus(pointId: string, status: string) {
   padding: 4px 8px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--text, #ccc);
-  border-bottom: 1px solid var(--border, #333);
+  color: var(--c-text-1);
+  border-bottom: 1px solid var(--c-surface-3);
   flex-shrink: 0;
 }
 
 .suggestion-close {
   background: none;
   border: none;
-  color: var(--text-dim, #888);
+  color: var(--c-text-2);
   cursor: pointer;
   font-size: 12px;
   padding: 0 2px;
@@ -533,7 +578,7 @@ async function updatePointStatus(pointId: string, status: string) {
 
 .suggestion-body {
   font-size: 11px;
-  color: var(--text, #ccc);
+  color: var(--c-text-1);
   padding: 6px 8px;
   margin: 0;
   overflow-y: auto;

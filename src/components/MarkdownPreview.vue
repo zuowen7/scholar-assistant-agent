@@ -3,7 +3,7 @@
     <div class="preview-header">
       <span class="preview-title">预览</span>
     </div>
-    <div class="preview-body" v-html="renderedHtml"></div>
+    <div class="preview-body" :key="renderKey" v-html="renderedHtml"></div>
   </div>
 </template>
 

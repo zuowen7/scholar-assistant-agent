@@ -16,10 +16,10 @@
     />
 
     <div class="tb-left">
-      <button class="tb-btn" title="新建论文" aria-label="新建论文" @click="$emit('new-paper')">
+      <button class="tb-btn u-interactive" title="新建论文" aria-label="新建论文" @click="$emit('new-paper')">
         <FilePlus :size="15" :stroke-width="1.7" />
       </button>
-      <button class="tb-btn" title="保存 (Ctrl+S)" aria-label="保存" @click="$emit('save')">
+      <button class="tb-btn u-interactive" title="保存 (Ctrl+S)" aria-label="保存" @click="$emit('save')">
         <Save :size="15" :stroke-width="1.7" />
       </button>
       <div class="tb-divider" />
@@ -27,10 +27,15 @@
     </div>
 
     <div class="tb-right">
-      <div v-if="message" class="export-toast">{{ message }}</div>
+      <Transition name="v-slide-up">
+        <div v-if="exportLoading" class="export-status">
+          <UiSpinner size="sm" label="导出中" />
+        </div>
+        <div v-else-if="message" class="export-toast">{{ message }}</div>
+      </Transition>
 
       <button
-        class="tb-btn"
+        class="tb-btn u-interactive"
         title="思维导图"
         aria-label="思维导图"
         @click="$emit('open-mindmap')"
@@ -38,7 +43,7 @@
         <Workflow :size="15" :stroke-width="1.7" />
       </button>
       <button
-        class="tb-btn"
+        class="tb-btn u-interactive"
         :class="{ active: activeRightTab === 'preview' }"
         title="预览"
         aria-label="预览"
@@ -47,7 +52,7 @@
         <Eye :size="15" :stroke-width="1.7" />
       </button>
       <button
-        class="tb-btn"
+        class="tb-btn u-interactive"
         :class="{ active: activeRightTab === 'ai' }"
         title="AI 编辑"
         aria-label="AI 编辑面板"
@@ -56,7 +61,7 @@
         <Bot :size="15" :stroke-width="1.7" />
       </button>
       <button
-        class="tb-btn"
+        class="tb-btn u-interactive"
         :class="{ active: activeRightTab === 'argument' }"
         title="论证导图"
         aria-label="论证导图"
@@ -68,7 +73,7 @@
 
       <UiDropdown :items="moreItems" :width="230" align="end">
         <template #trigger>
-          <button class="tb-btn" title="更多工具" aria-label="更多工具">
+          <button class="tb-btn u-interactive" title="更多工具" aria-label="更多工具">
             <MoreHorizontal :size="15" :stroke-width="1.7" />
           </button>
         </template>
@@ -95,6 +100,7 @@ import { computed, ref } from 'vue'
 import { FilePlus, Save, Eye, Bot, GitBranch, Workflow, MoreHorizontal } from './ui/icons'
 import { Image, Table, Sigma, Quote, Library, Code2, CheckCircle, Download } from './ui/icons'
 import UiDropdown from './ui/UiDropdown.vue'
+import UiSpinner from './ui/UiSpinner.vue'
 import type { DropdownItem } from './ui/UiDropdown.vue'
 
 defineProps<{
@@ -173,8 +179,8 @@ const moreItems = computed<DropdownItem[]>(() => [
   justify-content: space-between;
   gap: 4px;
   padding: 4px 8px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--toolbar-bg);
+  border-bottom: 1px solid var(--c-surface-3);
+  background: var(--c-surface-1);
   min-height: 40px;
   flex-shrink: 0;
 }
@@ -200,14 +206,15 @@ const moreItems = computed<DropdownItem[]>(() => [
               color var(--motion-fast) var(--ease-out);
   flex-shrink: 0;
 }
-.tb-btn:hover { background: var(--hover-bg); color: var(--c-text-0); }
-.tb-btn.active { background: var(--c-accent-soft); color: var(--c-accent); }
+.tb-btn:hover { background: var(--c-surface-4); color: var(--c-text-0); }
+.tb-btn:focus-visible { outline: none; box-shadow: var(--ring-focus); }
+.tb-btn.active { background: var(--c-accent-soft); color: var(--c-accent); box-shadow: inset 0 0 0 1px var(--c-accent-soft); }
 .tb-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .tb-divider {
   width: 1px;
   height: 16px;
-  background: var(--border-color);
+  background: var(--c-surface-3);
   margin: 0 4px;
   flex-shrink: 0;
 }
@@ -217,7 +224,7 @@ const moreItems = computed<DropdownItem[]>(() => [
   align-items: center;
   height: 20px;
   padding: 0 6px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--c-surface-3);
   border-radius: 4px;
   background: var(--c-surface-4);
   color: var(--c-text-3);
@@ -228,13 +235,23 @@ const moreItems = computed<DropdownItem[]>(() => [
   flex-shrink: 0;
 }
 
+.export-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--c-accent-soft);
+  border: 1px solid var(--c-accent-soft);
+  white-space: nowrap;
+}
+
 .export-toast {
   font-size: 11px;
   color: var(--c-success);
   padding: 3px 8px;
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--c-success) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--c-success) 25%, transparent);
+  background: var(--c-success-bg);
+  border: 1px solid var(--c-success-border);
   white-space: nowrap;
   max-width: 200px;
   overflow: hidden;

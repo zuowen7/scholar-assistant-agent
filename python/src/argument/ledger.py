@@ -226,6 +226,8 @@ async def build_ledger(
         # Source anchor
         src_anchor = make_anchor_from_quote(doc_id, text, verbatim)
         new_anchors.append(src_anchor)
+        # 先把锚点流给前端，否则 ledger.anchors 为空、定位按钮失效
+        yield {"event": "anchor", "data": src_anchor.model_dump_json()}
 
         # Discharge
         dis_info = discharge_map.get(local_id, {})
@@ -238,6 +240,7 @@ async def build_ledger(
             da = make_anchor_from_quote(doc_id, text, str(dq))
             new_anchors.append(da)
             dis_ids.append(da.id)
+            yield {"event": "anchor", "data": da.model_dump_json()}
 
         severity = _STATUS_SEVERITY.get(status, "info")
 
@@ -322,7 +325,9 @@ async def rebuild_ledger(
             yield ev
             return
         last_event = ev
-        if ev["event"] == "promise":
+        if ev["event"] == "anchor":
+            yield ev
+        elif ev["event"] == "promise":
             new_promise_events.append(ev)
             yield ev
 

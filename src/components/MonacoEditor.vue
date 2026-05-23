@@ -541,6 +541,18 @@ onBeforeUnmount(() => {
 .monaco-editor .arg-gutter-review-major { background: #fb923c; clip-path: polygon(50% 0%, 0% 100%, 100% 100%); width: 10px !important; height: 10px !important; margin-top: 6px; }
 .monaco-editor .arg-gutter-review-minor { background: #6b7280; clip-path: polygon(50% 0%, 0% 100%, 100% 100%); width: 10px !important; height: 10px !important; margin-top: 6px; }
 
-/* Flash highlight when jumping to anchor */
-.monaco-editor .arg-flash { background: rgba(96, 165, 250, 0.25) !important; }
+/* Flash highlight when jumping to anchor — 活泼脉冲后淡出 */
+.monaco-editor .arg-flash {
+  background: var(--c-accent-soft) !important;
+  border-radius: 3px;
+  animation: arg-flash-pulse 1.2s var(--ease-out, cubic-bezier(0.16,1,0.3,1)) 1;
+}
+@keyframes arg-flash-pulse {
+  0%   { background: color-mix(in srgb, var(--c-accent) 45%, transparent) !important; box-shadow: 0 0 0 3px var(--c-accent-soft); }
+  30%  { background: color-mix(in srgb, var(--c-accent) 35%, transparent) !important; }
+  100% { background: transparent !important; box-shadow: 0 0 0 0 transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .monaco-editor .arg-flash { animation: none; }
+}
 </style>

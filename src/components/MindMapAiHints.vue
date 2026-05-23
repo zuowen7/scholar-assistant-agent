@@ -8,30 +8,48 @@
       <span class="issue-count">{{ issues.length }}</span>
     </div>
 
-    <div v-if="loading" class="empty-state busy">正在检查思维链...</div>
-    <div v-else-if="!issues.length" class="empty-state compact">
+    <div v-if="loading" class="hints-loading">
+      <div class="hints-loading-head">
+        <UiSpinner size="sm" />
+        <span class="anim-shimmer-text">正在检查思维链</span>
+      </div>
+      <div class="hints-skeletons">
+        <div v-for="n in 3" :key="n" class="skeleton-card" :style="{ '--stagger-i': n - 1 }">
+          <UiSkeleton shape="circle" width="7" height="7" />
+          <div class="skeleton-lines">
+            <UiSkeleton shape="line" width="58%" height="9" />
+            <UiSkeleton shape="line" width="88%" height="8" />
+          </div>
+        </div>
+      </div>
+    </div>
+    <div v-else-if="!issues.length" class="empty-state compact anim-fade-in-up">
       <span class="empty-badge">OK</span>
       <span>暂无提醒，当前结构看起来比较清晰。</span>
     </div>
-    <button
-      v-for="issue in issues"
-      v-else
-      :key="issue.id"
-      class="issue-card"
-      :class="[issue.severity, { active: issue.id === activeIssueId }]"
-      @click="$emit('select-issue', issue)"
-    >
-      <span class="issue-dot" />
-      <span class="issue-content">
-        <strong>{{ issue.title }}</strong>
-        <span>{{ issue.message }}</span>
-      </span>
-    </button>
+    <TransitionGroup v-else name="v-list-stagger" tag="div" class="issue-list" appear>
+      <button
+        v-for="(issue, i) in issues"
+        :key="issue.id"
+        class="issue-card u-interactive"
+        :class="[issue.severity, { active: issue.id === activeIssueId }]"
+        :style="{ '--stagger-i': i }"
+        @click="$emit('select-issue', issue)"
+      >
+        <span class="issue-dot" />
+        <span class="issue-content">
+          <strong>{{ issue.title }}</strong>
+          <span>{{ issue.message }}</span>
+        </span>
+      </button>
+    </TransitionGroup>
   </section>
 </template>
 
 <script setup lang="ts">
 import type { MindMapAnalysisIssue } from '../composables/useMindMapAnalysis'
+import UiSpinner from './ui/UiSpinner.vue'
+import UiSkeleton from './ui/UiSkeleton.vue'
 
 defineProps<{
   issues: MindMapAnalysisIssue[]
@@ -98,11 +116,6 @@ defineEmits<{
   border-radius: 8px;
   background: color-mix(in srgb, var(--toolbar-bg) 28%, transparent);
 }
-.empty-state.busy {
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--toolbar-bg) 28%, transparent);
-  padding: 8px;
-}
 .empty-badge {
   min-width: 26px;
   height: 18px;
@@ -110,10 +123,48 @@ defineEmits<{
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, #22c55e 14%, transparent);
-  color: #22c55e;
+  background: var(--c-success-bg);
+  color: var(--c-success-fg);
   font-size: 10px;
   font-weight: 800;
+}
+
+/* ── 加载状态：spinner + 骨架卡片 ───────────────────── */
+.hints-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hints-loading-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.hints-skeletons {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.skeleton-card {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 9px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 42%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--toolbar-bg) 24%, transparent);
+  animation: anim-fade-in-up var(--motion-slow) var(--ease-out) both;
+  animation-delay: calc(var(--stagger-i, 0) * var(--motion-stagger));
+}
+.skeleton-card :deep(.ui-skeleton.circle) { margin-top: 4px; }
+.skeleton-lines {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 .issue-card {
   width: 100%;
