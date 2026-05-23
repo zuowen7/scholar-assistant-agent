@@ -1,40 +1,40 @@
 {
-  "id": "L_a51b769f05",
+  "id": "L_e4c2e640f4",
   "doc_id": "C:\\Users\\zuowen\\Desktop/新建 文本文档 (2).md",
   "doc_title": "新建 文本文档 (2).md",
   "promises": [
     {
-      "id": "p_8dec86edeb",
+      "id": "p_56fa9e38e9",
       "text": "揭示产业结构在“经济—就业”传导链条中的枢纽作用，验证“服务业主导型经济更利于大学生就业”的假说；运用省级面板数据控制不可观测的地区固定效应，缓解遗漏变量偏误；为地方政府通过产业结构优化提升大学生就业质量提供差异化路径依据。",
       "kind": "contribution",
-      "source_anchor_id": "a_eb5549aaca",
+      "source_anchor_id": "a_35d308b57d",
       "discharge_anchor_ids": [
-        "a_1de14764b8",
-        "a_07bc03f87e",
-        "a_a9a0d5cc6b",
-        "a_e16f2a9716"
+        "a_0fdca65510",
+        "a_fc44f38e81",
+        "a_98956b9d63",
+        "a_d0fb1e576a"
       ],
-      "status": "paid",
-      "severity": "info",
-      "note": "正文验证了服务业占比对就业率的显著促进作用，使用了省级面板固定效应模型，并给出了差异化门槛效应结论，完全兑现承诺。",
+      "status": "partial",
+      "severity": "warning",
+      "note": "正文验证了服务业占比对就业率的正向作用（H2），并使用了省级面板固定效应模型缓解遗漏变量偏误，也给出了差异化路径的边际效应测算。但承诺中'揭示产业结构在经济—就业传导链条中的枢纽作用'需要更明确的机制检验（如中介效应或交互项分解），目前仅通过交乘项间接体现；'服务业主导型经济更利于大学生就业'的假说验证中，未区分服务业内部结构（如高端vs低端服务业）；'为地方政府提供差异化路径依据'仅给出了东中西部分样本回归，但缺少针对不同产业结构水平的具体政策模拟或门槛效应检验。因此整体为partial。",
       "created_by": "ai",
       "user_overridden": false
     }
   ],
   "anchors": [
     {
-      "id": "a_eb5549aaca",
+      "id": "a_35d308b57d",
       "doc_id": "C:\\Users\\zuowen\\Desktop/新建 文本文档 (2).md",
       "char_start": null,
       "char_end": null,
-      "quote": "相较于已有研究，本文的边际贡献在于：理论层面：揭示产业结构在“经济—就业”传导链条中的枢纽作用，验证“服务业主导型经济更利于大学生就业”的假说；方法层面：运用省级面板数据控制不可观测的地区固定效应，缓解遗漏变量偏误；政策层面：为地方政府通过产业结构优化提升大学生就业质量提供差异化路径依据。",
+      "quote": "相较于已有研究，本文的边际贡献在于：\n\t理论层面：揭示产业结构在“经济—就业”传导链条中的枢纽作用，验证“服务业主导型经济更利于大学生就业”的假说；\n\t方法层面：运用省级面板数据控制不可观测的地区固定效应，缓解遗漏变量偏误；\n\t政策层面：为地方政府通过产业结构优化提升大学生就业质量提供差异化路径依据。",
       "context_before": "",
       "context_after": "",
       "section_path": null,
       "status": "lost"
     },
     {
-      "id": "a_1de14764b8",
+      "id": "a_0fdca65510",
       "doc_id": "C:\\Users\\zuowen\\Desktop/新建 文本文档 (2).md",
       "char_start": 6298,
       "char_end": 6318,
@@ -45,18 +45,18 @@
       "status": "anchored"
     },
     {
-      "id": "a_07bc03f87e",
+      "id": "a_fc44f38e81",
       "doc_id": "C:\\Users\\zuowen\\Desktop/新建 文本文档 (2).md",
-      "char_start": 6320,
-      "char_end": 6367,
-      "quote": "服务业占比提升1%对就业率的促进效应（0.176个百分点）相当于人均GDP增长1.92%的效果",
-      "context_before": "结论与政策启示\r\n（一）核心结论（创新性归纳）\r\n\t产业结构升级是大学生就业的“第一推动力”\r\n",
-      "context_after": "（基于模型2弹性系数计算）；\r\n机制解释：现代服务业每亿元增加值创造大学生岗位数是制造业的2.3",
+      "char_start": 5852,
+      "char_end": 5901,
+      "quote": "服务业占比每提高1个百分点，就业率显著上升0.176个百分点（t=3.25），贡献度超经济规模变量",
+      "context_before": "但在加入交乘项后显著性减弱，暗示其作用依赖产业结构条件。\r\n\t产业结构主导作用（H2成立）：\r\n",
+      "context_after": "。\r\n\t调节效应验证（H3成立）：\r\n交乘项系数显著为正（0.037, p<0.05），表明服务",
       "section_path": null,
       "status": "anchored"
     },
     {
-      "id": "a_a9a0d5cc6b",
+      "id": "a_98956b9d63",
       "doc_id": "C:\\Users\\zuowen\\Desktop/新建 文本文档 (2).md",
       "char_start": 5121,
       "char_end": 5137,
@@ -67,17 +67,17 @@
       "status": "anchored"
     },
     {
-      "id": "a_e16f2a9716",
+      "id": "a_d0fb1e576a",
       "doc_id": "C:\\Users\\zuowen\\Desktop/新建 文本文档 (2).md",
       "char_start": 5967,
-      "char_end": 6032,
-      "quote": "边际效应测算：当服务业占比>50%时，人均GDP增长1%可带动就业率提升0.12%以上；占比<40%时，该效应降至0.05%以下。",
+      "char_end": 6031,
+      "quote": "边际效应测算：当服务业占比>50%时，人均GDP增长1%可带动就业率提升0.12%以上；占比<40%时，该效应降至0.05%以下",
       "context_before": "\n交乘项系数显著为正（0.037, p<0.05），表明服务业占比强化了经济增长的就业拉动。\r\n",
-      "context_after": "\r\n \r\n服务业占比趋势图\r\n（三）稳健性检验（表4）\r\n检验方法\tIn（人均GDP）\t服务业占",
+      "context_after": "。\r\n \r\n服务业占比趋势图\r\n（三）稳健性检验（表4）\r\n检验方法\tIn（人均GDP）\t服务业",
       "section_path": null,
       "status": "anchored"
     }
   ],
   "doc_hash": "0bb57a1c05b7764b",
-  "last_built_at": 1779506054.0815437
+  "last_built_at": 1779508434.1629336
 }

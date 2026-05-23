@@ -403,14 +403,14 @@ def register_companion(
 
         return EventSourceResponse(_gen())
 
-    @app.get("/api/companion/ledger/{doc_id}")
+    @app.get("/api/companion/ledger")
     def companion_get_ledger(doc_id: str):
         ledger = store.get_ledger(doc_id)
         if ledger is None:
             raise HTTPException(status_code=404, detail="Ledger not found")
         return ledger.model_dump()
 
-    @app.put("/api/companion/ledger/{doc_id}/promise")
+    @app.put("/api/companion/ledger/promise")
     def companion_upsert_promise(doc_id: str, req: CompanionPromiseUpsertRequest):
         from src.argument.companion_models import Promise
         ledger = store.get_ledger(doc_id)
@@ -432,14 +432,14 @@ def register_companion(
         store.upsert_promise(doc_id, p)
         return p.model_dump()
 
-    @app.delete("/api/companion/ledger/{doc_id}/promise/{pid}")
-    def companion_delete_promise(doc_id: str, pid: str):
+    @app.delete("/api/companion/ledger/promise/{pid}")
+    def companion_delete_promise(pid: str, doc_id: str):
         if store.get_ledger(doc_id) is None:
             raise HTTPException(status_code=404, detail="Ledger not found")
         store.delete_promise(doc_id, pid)
         return {"ok": True}
 
-    @app.post("/api/companion/ledger/{doc_id}/relocate")
+    @app.post("/api/companion/ledger/relocate")
     def companion_relocate(doc_id: str, req: CompanionRelocateRequest):
         from src.argument.anchor import relocate_all
         import hashlib
@@ -451,7 +451,7 @@ def register_companion(
         store.save_ledger(ledger)
         return ledger.model_dump()
 
-    @app.delete("/api/companion/ledger/{doc_id}")
+    @app.delete("/api/companion/ledger")
     def companion_delete_ledger(doc_id: str):
         if store.get_ledger(doc_id) is None:
             raise HTTPException(status_code=404, detail="Ledger not found")
@@ -637,8 +637,8 @@ def register_companion(
             filename=f"rebuttal_{session.doc_title or session_id[:8]}.md",
         )
 
-    @app.post("/api/companion/ledger/{doc_id}/promise/{pid}/suggest-experiment")
-    async def companion_suggest_experiment(doc_id: str, pid: str):
+    @app.post("/api/companion/ledger/promise/{pid}/suggest-experiment")
+    async def companion_suggest_experiment(pid: str, doc_id: str):
         from src.argument.ledger import suggest_experiment_for_promise
 
         ledger = store.get_ledger(doc_id)

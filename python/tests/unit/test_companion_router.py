@@ -55,7 +55,7 @@ class TestFeatureFlagOff:
         assert r.status_code == 404
 
     def test_get_ledger_returns_404(self, client_off):
-        r = client_off.get("/api/companion/ledger/d1")
+        r = client_off.get("/api/companion/ledger?doc_id=d1")
         assert r.status_code == 404
 
     def test_review_returns_404(self, client_off):
@@ -143,7 +143,7 @@ class TestLedgerBuildEndpoint:
 
 class TestGetLedger:
     def test_404_when_not_found(self, client):
-        r = client.get("/api/companion/ledger/no_such_doc")
+        r = client.get("/api/companion/ledger?doc_id=no_such_doc")
         assert r.status_code == 404
 
     def test_returns_ledger_when_exists(self, tmp_path):
@@ -156,7 +156,7 @@ class TestGetLedger:
         app = FastAPI()
         register_companion(app, store=store, flag_enabled=True)
         client = TestClient(app)
-        r = client.get("/api/companion/ledger/doc_present")
+        r = client.get("/api/companion/ledger?doc_id=doc_present")
         assert r.status_code == 200
         data = r.json()
         assert data["doc_id"] == "doc_present"
@@ -179,7 +179,7 @@ class TestPromiseEndpoints:
 
     def test_put_promise_creates_new(self, tmp_path):
         client, store = self._setup(tmp_path)
-        r = client.put("/api/companion/ledger/doc_p/promise", json={
+        r = client.put("/api/companion/ledger/promise?doc_id=doc_p", json={
             "text": "We show X.", "kind": "contribution",
             "source_anchor_id": "a_001",
         })
@@ -190,7 +190,7 @@ class TestPromiseEndpoints:
 
     def test_put_promise_sets_user_overridden(self, tmp_path):
         client, store = self._setup(tmp_path)
-        r = client.put("/api/companion/ledger/doc_p/promise", json={
+        r = client.put("/api/companion/ledger/promise?doc_id=doc_p", json={
             "text": "User edited.", "kind": "claim",
             "source_anchor_id": "a_001",
         })
@@ -200,16 +200,16 @@ class TestPromiseEndpoints:
 
     def test_delete_promise(self, tmp_path):
         client, store = self._setup(tmp_path)
-        r_put = client.put("/api/companion/ledger/doc_p/promise", json={
+        r_put = client.put("/api/companion/ledger/promise?doc_id=doc_p", json={
             "text": "To delete.", "kind": "scope",
             "source_anchor_id": "a_001",
         })
         pid = r_put.json()["id"]
-        r_del = client.delete(f"/api/companion/ledger/doc_p/promise/{pid}")
+        r_del = client.delete(f"/api/companion/ledger/promise/{pid}?doc_id=doc_p")
         assert r_del.status_code == 200
 
     def test_put_promise_on_missing_ledger_returns_404(self, client):
-        r = client.put("/api/companion/ledger/no_doc/promise", json={
+        r = client.put("/api/companion/ledger/promise?doc_id=no_doc", json={
             "text": "t.", "kind": "claim", "source_anchor_id": "a_001",
         })
         assert r.status_code == 404
@@ -230,7 +230,7 @@ class TestRelocateEndpoint:
         app = FastAPI()
         register_companion(app, store=store, flag_enabled=True)
         client = TestClient(app)
-        r = client.post("/api/companion/ledger/doc_rel/relocate",
+        r = client.post("/api/companion/ledger/relocate?doc_id=doc_rel",
                         json={"text": "New text: original phrase at a different position."})
         assert r.status_code == 200
         data = r.json()
@@ -238,7 +238,7 @@ class TestRelocateEndpoint:
         assert "anchors" in data
 
     def test_relocate_404_for_missing_ledger(self, client):
-        r = client.post("/api/companion/ledger/no_doc/relocate",
+        r = client.post("/api/companion/ledger/relocate?doc_id=no_doc",
                         json={"text": "some text"})
         assert r.status_code == 404
 
@@ -435,12 +435,12 @@ class TestDeleteEndpoints:
         app = FastAPI()
         register_companion(app, store=store, flag_enabled=True)
         client = TestClient(app)
-        r = client.delete("/api/companion/ledger/doc_del")
+        r = client.delete("/api/companion/ledger?doc_id=doc_del")
         assert r.status_code == 200
         assert store.get_ledger("doc_del") is None
 
     def test_delete_ledger_not_found_returns_404(self, client):
-        r = client.delete("/api/companion/ledger/no_such")
+        r = client.delete("/api/companion/ledger?doc_id=no_such")
         assert r.status_code == 404
 
     def test_delete_review(self, tmp_path):
@@ -819,7 +819,7 @@ class TestSuggestExperimentRoute:
         with patch("src.argument.ledger.suggest_experiment_for_promise",
                    new=AsyncMock(return_value="Run N=1e6 scale experiment.")):
             r = client.post(
-                f"/api/companion/ledger/d1/promise/{promise.id}/suggest-experiment",
+                f"/api/companion/ledger/promise/{promise.id}/suggest-experiment?doc_id=d1",
             )
 
         assert r.status_code == 200
@@ -830,13 +830,13 @@ class TestSuggestExperimentRoute:
     def test_suggest_experiment_promise_not_found_404(self, tmp_path):
         client, _ = self._setup(tmp_path)
         r = client.post(
-            "/api/companion/ledger/d1/promise/nonexistent_pid/suggest-experiment",
+            "/api/companion/ledger/promise/nonexistent_pid/suggest-experiment?doc_id=d1",
         )
         assert r.status_code == 404
 
     def test_suggest_experiment_ledger_not_found_404(self, tmp_path):
         client, _ = self._setup(tmp_path)
         r = client.post(
-            "/api/companion/ledger/no_such_doc/promise/any_pid/suggest-experiment",
+            "/api/companion/ledger/promise/any_pid/suggest-experiment?doc_id=no_such_doc",
         )
         assert r.status_code == 404

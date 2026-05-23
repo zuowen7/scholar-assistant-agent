@@ -113,6 +113,9 @@ describe('ReviewerThread', () => {
     const statusBtn = wrapper.find('[data-status-btn]')
     expect(statusBtn.exists()).toBe(true)
     await statusBtn.trigger('click')
+    const menuItem = wrapper.find('.menu-item')
+    expect(menuItem.exists()).toBe(true)
+    await menuItem.trigger('click')
     expect(wrapper.emitted('updatePointStatus')).toBeTruthy()
   })
 
