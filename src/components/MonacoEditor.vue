@@ -13,7 +13,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import * as monaco from 'monaco-editor'
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import CommandPalette from './CommandPalette.vue'
@@ -90,6 +90,7 @@ let ghostText = ''
 let lastGhostTrigger = 0
 let _clearingGhost = false
 let _inlineCompletionsDisposable: { dispose(): void } | null = null
+let _monacoUpdating = false  // guard: skip watch(content) when change originated from Monaco
 
 onMounted(() => {
   if (!editorContainer.value) return
@@ -216,9 +217,11 @@ onMounted(() => {
 
   editor.onDidChangeModelContent(() => {
     if (!editor) return
+    _monacoUpdating = true
     setContent(editor.getValue())
     markDirty()
     if (props.onDidChangeContent) props.onDidChangeContent()
+    nextTick(() => { _monacoUpdating = false })
   })
 
   editor.onDidChangeCursorSelection(() => {
@@ -490,17 +493,24 @@ watch(
 // 切换 tab 时加载对应内容
 watch(activeTabId, () => {
   if (!editor) return
+  _monacoUpdating = true
   const tab = useEditor().activeTab.value
   if (tab && editor.getValue() !== tab.content) {
     editor.setValue(tab.content)
   }
+  nextTick(() => { _monacoUpdating = false })
 })
 
-// content 变化时同步到 Monaco（来自 undo/其他 tab 等外部来源）
+// content 变化时同步到 Monaco（来自 Agent write_file / str_replace 等外部来源）
+// 跳过来自 Monaco 自身的变化（undo/redo/typing），避免清空 undo stack
 watch(content, (v) => {
-  if (!editor) return
+  if (!editor || _monacoUpdating) return
   const model = editor.getModel()
-  if (model && model.getValue() !== v) model.setValue(v)
+  if (model && model.getValue() !== v) {
+    const pos = editor.getPosition()
+    model.setValue(v)
+    if (pos) editor.setPosition(pos)
+  }
 })
 
 onBeforeUnmount(() => {

@@ -1,0 +1,203 @@
+{
+  "id": "L_e682a9c552",
+  "doc_id": "C:\\Users\\zuowen\\Desktop\\新建文件夹/yolo发展历史.md",
+  "doc_title": "yolo发展历史.md",
+  "promises": [
+    {
+      "id": "p_89da6c1ec6",
+      "text": "本文旨在系统梳理 YOLO 系列算法的发展脉络，分析各版本的核心创新与改进，并展望其未来发展趋势。",
+      "kind": "scope",
+      "source_anchor_id": "a_a5426f5ac9",
+      "discharge_anchor_ids": [
+        "a_55fcc989cb",
+        "a_6a7dd5a03b",
+        "a_521d300144",
+        "a_8c17de71b7",
+        "a_a208f5fb60",
+        "a_370af8ff2a",
+        "a_069daa15ab",
+        "a_f1d6202070",
+        "a_dc167bd664",
+        "a_18ecee1439",
+        "a_44466968e6",
+        "a_52c72b70fb",
+        "a_04dad7754e",
+        "a_d8774b9e7f"
+      ],
+      "status": "paid",
+      "severity": "info",
+      "note": "正文从第4节开始系统梳理了YOLOv4至YOLOv13共10个版本的发展脉络，每个版本均详细列出了核心创新与改进（如CSPDarknet、E-ELAN、PGI、区域注意力、超图计算等），并在第6节通过表格和总结性段落分析了骨干网络演进、检测范式转变和多尺度策略演进，完整覆盖了承诺中'系统梳理发展脉络'、'分析核心创新与改进'以及'展望未来发展趋势'（通过介绍最新版本YOLOv12/v13体现）三项要求，未发现漏洞。",
+      "created_by": "ai",
+      "user_overridden": false
+    }
+  ],
+  "anchors": [
+    {
+      "id": "a_a5426f5ac9",
+      "doc_id": "C:\\Users\\zuowen\\Desktop\\新建文件夹/yolo发展历史.md",
+      "char_start": 513,
+      "char_end": 562,
+      "quote": "本文旨在系统梳理 YOLO 系列算法的发展脉络，分析各版本的核心创新与改进，并展望其未来发展趋势。",
+      "context_before": "3，在检测速度、精度、模型轻量化等方面持续突破，成为工业界和学术界最广泛使用的目标检测框架之一。",
+      "context_after": "\r\n\r\n---\r\n\r\n## 二、YOLO 的起源：从两阶段到单阶段的范式转变\r\n\r\n### 2.",
+      "section_path": "一、引言",
+      "status": "anchored"
+    },
+    {
+      "id": "a_55fcc989cb",
+      "doc_id": "C:\\Users\\zuowen\\Desktop\\新建文件夹/yolo发展历史.md",
+      "char_start": 513,
+      "char_end": 562,
+      "quote": "本文旨在系统梳理 YOLO 系列算法的发展脉络，分析各版本的核心创新与改进，并展望其未来发展趋势。",
+      "context_before": "3，在检测速度、精度、模型轻量化等方面持续突破，成为工业界和学术界最广泛使用的目标检测框架之一。",
+      "context_after": "\r\n\r\n---\r\n\r\n## 二、YOLO 的起源：从两阶段到单阶段的范式转变\r\n\r\n### 2.",
+      "section_path": "一、引言",
+      "status": "anchored"
+    },
+    {
+      "id": "a_6a7dd5a03b",
+      "doc_id": "C:\\Users\\zuowen\\Desktop\\新建文件夹/yolo发展历史.md",
+      "char_start": 3121,
+      "char_end": 3159,
+      "quote": "YOLOv4 系统性地整合了当时最先进的检测技术，堪称\"工程优化的百科全书\"",
+      "context_before": "原 YOLO 的维护者 Alexey Bochkovskiy 与台湾中央研究院合作完成。\r\n\r\n",
+      "context_after": "：\r\n- **CSPDarknet-53 骨干网络**：引入跨阶段局部网络（Cross Stag",
+      "section_path": "4.1 YOLOv4：工程优化的集大成者（2020）",
+      "status": "anchored"
+    },
+    {
+      "id": "a_521d300144",
+      "doc_id": "C:\\Users\\zuowen\\Desktop\\新建文件夹/yolo发展历史.md",
+      "char_start": 3806,
+      "char_end": 3821,
+      "quote": "YOLOv5 的主要贡献在于：",
+      "context_before": "借出色的易用性和社区支持，YOLOv5 迅速成为实际应用中最流行的 YOLO 版本之一。\r\n\r\n",
+      "context_after": "\r\n- **统一的 PyTorch 实现**：使用 PyTorch 框架重写，降低了使用门槛。\r",
+      "section_path": "4.2 YOLOv5：Ultralytics 的工程化实践（2020）",
+      "status": "anchored"
+    },
+    {
+      "id": "a_8c17de71b7",
+      "doc_id": "C:\\Users\\zuowen\\Desktop\\新建文件夹/yolo发展历史.md",
+      "char_start": 4207,
+      "char_end": 4229,
+      "quote": "YOLOv6 针对工业部署场景进行了专门优化",
+      "context_before": " for Industrial Applications\"*（Li et al., 2022）。",
+      "context_after": "：\r\n- **EfficientRep 骨干网络**：设计了高效的重复结构，在速度和精度之间取得",
+      "section_path": "4.3 YOLOv6：美团的技术贡献（2022）",
+      "status": "anchored"
+    },
+    {
+      "id": "a_a208f5fb60",
+      "doc_id": "C:\\Users\\zuowen\\Desktop\\新建文件夹/yolo发展历史.md",
+      "char_start": 4668,
+      "char_end": 4681,
+      "quote": "YOLOv7 的核心创新：",
+      "context_before": "ctors\"*（Wang et al., 2022），由 YOLOv4 的原班团队打造。\r\n\r\n",
+      "context_after": "\r\n- **E-ELAN（Extended Efficient Layer Aggregatio",
+      "section_path": "4.4 YOLOv7：超越实时检测的边界（2022）",
+      "status": "anchored"
+    },
+    {
+      "id": "a_370af8ff2a",
+      "doc_id": "C:\\Users\\zuowen\\Desktop\\新建文件夹/yolo发展历史.md",
+      "char_start": 5172,
+      "char_end": 5185,
+      "quote": "YOLOv8 的主要改进：",
+      "context_before": "8 并非一篇学术论文，而是 Ultralytics 团队基于多年工程经验推出的统一框架。\r\n\r\n",
+      "context_after": "\r\n- **C2f 模块**：借鉴 ELAN 设计思想，替代 YOLOv5 的 C3 模块，在保",
+      "section_path": "5.1 YOLOv8：Ultralytics 的全面升级（2023）",
+      "status": "anchored"
+    },
+    {
+      "id": "a_069daa15ab",
+      "doc_id": "C:\\Users\\zuowen\\Desktop\\新建文件夹/yolo发展历史.md",
+      "char_start": 5784,
+      "char_end": 5799,
+      "quote": "YOLOv9 的两大核心创新：",
+      "context_before": "on\"*（Wang et al., 2024），由 YOLOv4/v7 的原班团队推出。\r\n\r\n",
+      "context_after": "\r\n- **PGI（Programmable Gradient Information，可编程梯",
+      "section_path": "5.2 YOLOv9：可编程梯度信息（2024）",
+      "status": "anchored"
+    },
+    {
+      "id": "a_f1d6202070",
+      "doc_id": "C:\\Users\\zuowen\\Desktop\\新建文件夹/yolo发展历史.md",
+      "char_start": 6259,
+      "char_end": 6273,
+      "quote": "YOLOv10 的核心贡献：",
+      "context_before": "tion\"*（Wang et al., 2024），被 NeurIPS 2024 接收。\r\n\r\n",
+      "context_after": "\r\n- **NMS-Free 训练**：提出一致的双重分配策略（Consistent Dual ",
+      "section_path": "5.3 YOLOv10：端到端实时检测（2024）",
+      "status": "anchored"
+    },
+    {
+      "id": "a_dc167bd664",
+      "doc_id": "C:\\Users\\zuowen\\Desktop\\新建文件夹/yolo发展历史.md",
+      "char_start": 6608,
+      "char_end": 6629,
+      "quote": "YOLO11 在模型架构上进行了进一步优化",
+      "context_before": "tralytics 发布了 YOLO11（即 YOLOv11），这是 YOLOv8 的升级版本。",
+      "context_after": "，在保持 Ultralytics 统一框架的同时，提升了检测精度和推理速度。YOLO11 继续支",
+      "section_path": "5.4 YOLO11：Ultralytics 的持续进化（2024）",
+      "status": "anchored"
+    },
+    {
+      "id": "a_18ecee1439",
+      "doc_id": "C:\\Users\\zuowen\\Desktop\\新建文件夹/yolo发展历史.md",
+      "char_start": 6862,
+      "char_end": 6894,
+      "quote": "YOLOv12 实现了从 CNN 主导向注意力机制主导的范式转变",
+      "context_before": "ime Object Detectors\"* 发布，被 NeurIPS 2025 接收。\r\n\r\n",
+      "context_after": "：\r\n- **以注意力为核心的架构**：将传统 YOLO 中的 CNN 骨干网络替换为基于注意力",
+      "section_path": "5.5 YOLOv12：注意力机制为核心的突破（2025）",
+      "status": "anchored"
+    },
+    {
+      "id": "a_44466968e6",
+      "doc_id": "C:\\Users\\zuowen\\Desktop\\新建文件夹/yolo发展历史.md",
+      "char_start": 7260,
+      "char_end": 7273,
+      "quote": "YOLOv13 的创新点：",
+      "context_before": " and End-to-End Information Collaboration\"*。\r\n\r\n",
+      "context_after": "\r\n- **超图计算（Hypergraph Computation）**：引入超图神经网络，建模",
+      "section_path": "5.6 YOLOv13：超图计算与端到端协作（2025）",
+      "status": "anchored"
+    },
+    {
+      "id": "a_52c72b70fb",
+      "doc_id": "C:\\Users\\zuowen\\Desktop\\新建文件夹/yolo发展历史.md",
+      "char_start": 8099,
+      "char_end": 8160,
+      "quote": "YOLO 系列经历了从 **Anchor-Based → Anchor-Free → NMS-Free** 的检测范式演变",
+      "context_before": "| v13 | 超图计算骨干 | 高阶关系建模 |\r\n\r\n### 6.2 检测范式的转变\r\n\r\n",
+      "context_after": "：\r\n- **YOLOv1**：无锚框，直接回归坐标\r\n- **YOLOv2-v7**：基于锚框",
+      "section_path": "6.2 检测范式的转变",
+      "status": "anchored"
+    },
+    {
+      "id": "a_04dad7754e",
+      "doc_id": "C:\\Users\\zuowen\\Desktop\\新建文件夹/yolo发展历史.md",
+      "char_start": 7553,
+      "char_end": 7570,
+      "quote": "骨干网络（Backbone）的演进",
+      "context_before": ".5%。\r\n\r\n---\r\n\r\n## 六、YOLO 系列技术演进的关键脉络\r\n\r\n### 6.1 ",
+      "context_after": "\r\n\r\n| 版本 | 骨干网络 | 核心特点 |\r\n|------|---------|----",
+      "section_path": "6.1",
+      "status": "anchored"
+    },
+    {
+      "id": "a_d8774b9e7f",
+      "doc_id": "C:\\Users\\zuowen\\Desktop\\新建文件夹/yolo发展历史.md",
+      "char_start": 8302,
+      "char_end": 8312,
+      "quote": "多尺度检测策略的演进",
+      "context_before": "e）\r\n- **YOLOv10**：端到端无 NMS（NMS-Free）\r\n\r\n### 6.3 ",
+      "context_after": "\r\n\r\n- **YOLOv1**：单尺度检测，对小目标不友好\r\n- **YOLOv2**：单尺度",
+      "section_path": "6.3",
+      "status": "anchored"
+    }
+  ],
+  "doc_hash": "7bd223cda0ba9002",
+  "last_built_at": 1779551781.9113197
+}
