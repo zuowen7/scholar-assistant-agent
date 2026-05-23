@@ -138,6 +138,7 @@ async function saveFile(): Promise<string | null> {
       tab.id = chosen
       tab.name = chosen.split(/[\\/]/).pop() || tab.name
       tab.isModified = false
+      activeTabId.value = chosen
       return null
     } catch {
       return '无法保存：请先导出到文件'
