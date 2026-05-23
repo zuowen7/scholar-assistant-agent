@@ -26,7 +26,11 @@ _STATUS_SEVERITY = {
 }
 
 _PROMISE_SECTION_RE = re.compile(
-    r"^#{1,3}\s*(abstract|introduction|intro)\b",
+    r"^#{1,3}\s*(abstract|摘要|introduction|引言|研究背景|研究动机|intro|background|motivation)\b",
+    re.IGNORECASE | re.MULTILINE,
+)
+_METHOD_RE = re.compile(
+    r"^#{1,3}\s*(method|approach|methodology|方法|实验|experiment|3\s|4\s)\b",
     re.IGNORECASE | re.MULTILINE,
 )
 _HEADER_RE = re.compile(r"^#{1,3}\s+", re.MULTILINE)
@@ -37,20 +41,31 @@ def _doc_hash(text: str) -> str:
 
 
 def _extract_promise_zone(text: str) -> tuple[str, str]:
-    """Split text into (promise_zone, body_zone)."""
+    """Split text into (promise_zone, body_zone).
+
+    Promise zone covers everything from the start up to (but not including)
+    the methods/approach section — typically abstract, introduction, motivation,
+    and related work all contain claims and contributions.
+    """
+    # Try to find where methods/approach starts
+    m_method = _METHOD_RE.search(text)
+    if m_method:
+        return text[:m_method.start()], text[m_method.start():]
+
+    # Fallback: find first promise-related section and go to next major section
     m = _PROMISE_SECTION_RE.search(text)
     if not m:
-        # Use up to 3000 chars as the promise zone (not a fixed fraction —
-        # 1/4 of a short text would truncate mid-sentence and break extraction).
-        cut = min(len(text), 3000)
+        cut = min(len(text), 6000)
         return text[:cut], text[cut:]
     start = m.start()
-    # Find next same-level or higher header after abstract/intro
-    headers_after = list(_HEADER_RE.finditer(text, m.end()))
-    if headers_after:
-        end = headers_after[0].start()
-        return text[start:end], text[end:]
-    return text[start:], ""
+    # Collect subsequent headers until a non-promise section
+    for h in _HEADER_RE.finditer(text, m.end()):
+        header_text = h.group().strip().lstrip('#').strip()
+        if _METHOD_RE.search(h.group()):
+            return text[start:h.start()], text[h.start():]
+    # No method header found — use first 40% of text as promise zone
+    cut = min(len(text), max(6000, len(text) * 2 // 5))
+    return text[:cut], text[cut:]
 
 
 async def _call_with_retry(
@@ -77,9 +92,20 @@ async def build_ledger(
     promise_zone, body_zone = _extract_promise_zone(text)
 
     # ── LLM #1: extract promises ──────────────────────────────────────────────
+    # Use up to 6000 chars of the promise zone (abstract + intro + motivation + related work)
+    pz_text = promise_zone[:6000] if len(promise_zone) > 6000 else promise_zone
     prompt1 = (
-        "你是学术论证分析专家。从这篇论文提取作者立下的承诺（contribution, claim, hypothesis, gap_statement, scope 之一）。\n\n"
-        f"文本：\n{promise_zone[:3000]}\n\n"
+        "你是学术论证分析专家。从这篇论文的前半部分（摘要、引言、动机、研究背景等）全面提取作者立下的所有承诺。\n\n"
+        "承诺类型说明：\n"
+        "- contribution: 具体贡献声明（'我们提出了…'、'本文的贡献包括…'）\n"
+        "- claim: 学术主张或断言（'X 优于 Y'、'该方法能解决…'）\n"
+        "- hypothesis: 待验证假设（'我们假设…'、'预期…'）\n"
+        "- gap_statement: 指出的研究空白（'现有方法未解决…'、'缺乏…'）\n"
+        "- scope: 范围限定或边界声明（'本文聚焦于…'、'不包括…'）\n\n"
+        "请仔细阅读全文，不要遗漏。一篇论文通常有 5-15 条承诺，分布在多个段落中。\n"
+        "特别注意：贡献列表、'we propose'、'we demonstrate'、'our approach'、'主要创新'、"
+        "'本文旨在'、'与现有方法不同'等表述都应提取。\n\n"
+        f"文本：\n{pz_text}\n\n"
         "输出严格 JSON（不含其他文字）：\n"
         '{"promises":[{"local_id":"p1","kind":"contribution","text":"承诺原话(可适度归一)","verbatim_quote":"文中的精确子串"}]}'
     )
@@ -144,7 +170,7 @@ async def build_ledger(
 
     # ── LLM #2: discharge resolution ─────────────────────────────────────────
     # Sample body: head + middle + tail so experiments/results sections are visible
-    def _sample_body(body: str, total: int = 6000) -> str:
+    def _sample_body(body: str, total: int = 8000) -> str:
         if len(body) <= total:
             return body
         chunk = total // 3

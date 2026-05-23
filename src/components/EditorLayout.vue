@@ -174,10 +174,11 @@ const { aiEdit, applyAiResult, undoEdit } = useEditor()
 const { analyzeVision, uploadImage, insertImageFile } = useEditorVision()
 const { processCitations, previewCitations, getZoteroStatus, searchZotero } = useEditorCitation()
 const { exportToWord, exportLatex, exportPdf, loadExportTemplates } = useEditorIO()
-const { resetMindMap, loadSavedMindMap, saveMindMap, addChild, updateNodeText } = useMindMap()
+const { resetMindMap, loadSavedMindMap, saveMindMap, addChild, updateNodeText, updateNodeBody } = useMindMap()
 
 // 鈹€鈹€ Workspace mode 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 const workspaceMode = ref<'editor' | 'mindmap'>('editor')
+let _contentBeforeMindMap = ''
 const sidebarCollapsed = ref(false)
 const collapsedSidebarWidth = 44
 
@@ -263,10 +264,23 @@ function enterEditorFromMindMap(outline: string) {
   nextTick(() => {
     if (activeTab.value && outline.trim()) setContent(outline)
   })
+  _contentBeforeMindMap = ''
+}
+
+function buildTreeNode(parentId: string, node: import('../composables/useMindMap').MindMapTreeNode) {
+  const mm = useMindMap()
+  addChild(parentId)
+  const nodeId = mm.selectedNodeId.value
+  updateNodeText(nodeId, node.text)
+  if (node.body) updateNodeBody(nodeId, node.body)
+  for (const child of node.children) {
+    buildTreeNode(nodeId, child)
+  }
 }
 
 function openMindMapFromEditor() {
   sidebarCollapsed.value = true
+  _contentBeforeMindMap = content.value
   const md = content.value
   if (md.trim()) {
     const tree = markdownToMindMapNodes(md)
@@ -274,14 +288,9 @@ function openMindMapFromEditor() {
       resetMindMap(tree.text)
       const mm = useMindMap()
       const rootId = mm.draftMindMap.value.rootId
+      if (tree.body) updateNodeBody(rootId, tree.body)
       for (const child of tree.children) {
-        addChild(rootId)
-        const newNodeId = mm.selectedNodeId.value
-        updateNodeText(newNodeId, child.text)
-        for (const grandChild of child.children) {
-          addChild(newNodeId)
-          updateNodeText(mm.selectedNodeId.value, grandChild.text)
-        }
+        buildTreeNode(rootId, child)
       }
       mm.selectNode(rootId)
     } else {
