@@ -145,10 +145,14 @@ async function saveFile(): Promise<string | null> {
   }
 
   // Named tab — save in place
-  const { writeTextFile } = await import('@tauri-apps/plugin-fs')
-  await writeTextFile(tab.path, tab.content)
-  tab.isModified = false
-  return null
+  try {
+    const { writeTextFile } = await import('@tauri-apps/plugin-fs')
+    await writeTextFile(tab.path, tab.content)
+    tab.isModified = false
+    return null
+  } catch {
+    return '保存失败：文件可能被其他程序占用或路径无权限'
+  }
 }
 
 export {
