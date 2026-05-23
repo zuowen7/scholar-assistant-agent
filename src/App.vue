@@ -1135,6 +1135,9 @@ body::after {
 .recovery-actions { display: flex; gap: 4px; }
 
 /* ── Wallpaper-aware semi-transparent backgrounds ── */
+.app.has-wallpaper .content-overlay {
+  background: transparent;
+}
 .app.has-wallpaper {
   --editor-bg: rgba(19, 19, 21, 0.82);
   --sidebar-bg: rgba(19, 19, 21, 0.75);
@@ -1146,7 +1149,7 @@ body::after {
   --code-bg: rgba(35, 35, 40, 0.75);
   --input-bg: rgba(35, 35, 40, 0.75);
 }
-[data-theme="light"].has-wallpaper {
+[data-theme="light"] .app.has-wallpaper {
   --editor-bg: rgba(250, 250, 250, 0.88);
   --sidebar-bg: rgba(244, 244, 247, 0.85);
   --toolbar-bg: rgba(244, 244, 247, 0.88);

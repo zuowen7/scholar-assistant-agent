@@ -338,8 +338,8 @@ async function updatePointStatus(pointId: string, status: string) {
   align-items: center;
   justify-content: space-between;
   padding: 4px 12px;
-  background: #3a2f00;
-  color: #fbbf24;
+  background: var(--c-warn-bg);
+  color: var(--c-warn);
   font-size: 11px;
   flex-shrink: 0;
 }

@@ -295,11 +295,11 @@ onMounted(() => {
   align-items: center;
   gap: 14px;
   padding: 18px 22px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--c-surface-3);
   border-radius: 22px;
-  background: rgba(18, 19, 27, 0.36);
-  box-shadow: 0 28px 72px rgba(0, 0, 0, 0.24);
-  color: rgba(232, 233, 240, 0.88);
+  background: var(--c-overlay);
+  box-shadow: 0 28px 72px var(--c-shadow);
+  color: var(--c-text-1);
 }
 
 .ink-brush-loader__stage {

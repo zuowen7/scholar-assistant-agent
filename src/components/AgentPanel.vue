@@ -807,7 +807,7 @@ onUnmounted(() => {
 
 .agent-tabs {
   display: flex; gap: 4px; flex: 1;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--c-surface-2);
   padding: 4px;
   border-radius: 12px;
 }
@@ -888,10 +888,10 @@ onUnmounted(() => {
 .agent-event {
   font-size: 12px; padding: 8px 12px;
   margin-bottom: 8px; border-radius: 10px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-surface-3);
   backdrop-filter: blur(8px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px var(--c-shadow);
   position: relative;
   animation: evt-fade-in var(--motion-base) var(--ease-out);
 }
@@ -1117,7 +1117,7 @@ onUnmounted(() => {
   flex-shrink: 0; transition: all 0.15s;
 }
 .agent-attach-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.05); color: var(--c-text-0);
+  background: var(--c-surface-2); color: var(--c-text-0);
 }
 .agent-attach-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .agent-send-btn {

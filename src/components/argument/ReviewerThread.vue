@@ -285,9 +285,9 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
 .status-chip:hover { border-color: var(--c-accent, #6366f1); color: var(--c-accent, #6366f1); }
 .chip-caret { opacity: 0.5; flex-shrink: 0; }
 
-.chip-rebutted  { border-color: #22c55e44; color: #4ade80; background: #0f2a1a; }
-.chip-accepted  { border-color: #3b82f644; color: #60a5fa; background: #0f1e2e; }
-.chip-dismissed { border-color: #55555544; color: #888; }
+.chip-rebutted  { border-color: rgba(34, 197, 94, 0.27); color: var(--c-success); background: var(--c-success-bg); }
+.chip-accepted  { border-color: rgba(59, 130, 246, 0.27); color: var(--c-accent); background: var(--c-accent-soft); }
+.chip-dismissed { border-color: rgba(85, 85, 85, 0.27); color: var(--c-text-3); }
 
 .status-menu {
   position: absolute;
