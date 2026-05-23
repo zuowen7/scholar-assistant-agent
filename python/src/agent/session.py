@@ -50,6 +50,24 @@ logger = logging.getLogger(__name__)
 
 _APPROVAL_TIMEOUT = 600  # seconds
 
+_TRIVIAL_CHAT_PATTERNS = (
+    "你好", "您好", "嗨", "哈喽", "hey", "hi", "hello",
+    "谢谢", "感谢", "thanks", "thank you", "thx",
+    "好的", "ok", "okay", "嗯", "哦", "拜拜", "bye",
+    "早上好", "下午好", "晚上好", "good morning", "good evening",
+)
+
+
+def _is_trivial_chat(text: str) -> bool:
+    """问候/感谢/闲聊 → 不应触发工具调用的短消息。"""
+    s = text.strip().lower()
+    if not s or len(s) > 30:
+        return False
+    for p in _TRIVIAL_CHAT_PATTERNS:
+        if s == p or s == p + "！" or s == p + "!" or s == p + "。" or s == p + ".":
+            return True
+    return False
+
 
 class SessionAborted(Exception):
     """用户主动中止会话。"""
@@ -240,6 +258,28 @@ class AgentSession:
         工具调用前经 SecurityGate 门控 — BANNED 直接拒绝，
         MODERATE/DESTRUCTIVE 触发 await_approval → Future 等待用户决定后再执行。
         """
+        # ── Trivial chat short-circuit ──
+        # Greetings / thanks: call LLM WITHOUT tools so the model
+        # physically cannot enter a tool-calling ReAct loop.
+        if _is_trivial_chat(task.title):
+            logger.info("Trivial chat, skipping ReAct: %.40s", task.title)
+            try:
+                msgs = self.agent._build_messages(task.title, None)
+                buf = ""
+                async for tok, full in self.agent.llm.stream(msgs, tools=None):
+                    if tok:
+                        c = tok.get("content", "")
+                        if c:
+                            buf += c
+                            yield AgentEvent(type="token", content=c, metadata={"task_id": task.id})
+                    if full:
+                        buf = (full.get("message") or {}).get("content", buf)
+                yield AgentEvent(type=EVT_RESPONSE, content=buf, metadata={"task_id": task.id})
+            except Exception as e:
+                logger.warning("Trivial chat fallback: %s", e)
+                yield AgentEvent(type=EVT_ERROR, content=str(e))
+            return
+
         task_step = 0
         self.consecutive_errors = 0
         _recent_fingerprints: list[str] = []  # (tool_name, args_hash) 用于精确循环检测
