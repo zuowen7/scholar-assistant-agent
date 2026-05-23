@@ -2,7 +2,7 @@
 
 隐私优先的学术 AI 写作辅助平台。从翻译切入，覆盖阅读、写作、排版全流程。拖入 PDF，自动完成解析、清洗、翻译；切换到 Editor 模式，用 AI 润色、扩写、生成大纲；导出 LaTeX 模板直接投稿。
 
-- **版本**：v0.3.2（Agent 工作区文件工具链接通 — "写论文版 Claude Code" 范式落地；越界审批、Monaco 实时刷新、RAG 降级为按需文献库；论证陪练 v3 + agency-agents-zh SDLC 改造全部完成）
+- **版本**：v0.3.2（Agent 工作区文件工具链接通 — "写论文版 Claude Code" 范式落地；越界审批、Monaco 实时刷新、RAG 降级为按需文献库；论证陪练 v3 + agency-agents-zh SDLC 改造全部完成；账本锚点 SSE 修复 + doc_id 路由 query param 修复 + Agent 问候循环修复）
 - **许可**：不开源，私有项目
 
 ## 核心功能
@@ -59,7 +59,7 @@
 - **Rebuttal 包导出** — 一键下载含所有批评点 + rebuttal 草稿的 Markdown 文件
 - **全栈端对端验证** — `test_companion_e2e.py`：27 个集成测试覆盖全部 `/api/companion/*` 端点，真实 Store 写入 + SSE 序列化全程跑通，仅 mock LLM 调用
 
-**状态**：Phase 0–5 全部完成，`features.argument_companion=true` 已发布，pytest 1559 unit passed + 326 vitest passed。
+**状态**：Phase 0–5 全部完成，`features.argument_companion=true` 已发布，pytest 1582 unit passed + 326 vitest passed。
 
 ### 思维导图
 - **Vue Flow 画布** — 自定义节点卡片 + 连线（树边/关联线），支持拖拽、缩放、小地图
@@ -150,7 +150,7 @@
 │   │   └── mcp/                  #   Vision 客户端 (多模态图像理解)
 │   ├── prompts/                  #   学术写作 Prompt 体系 (6层骨架 + YAML frontmatter + eval runner)
 │   ├── data/paper_assets/        #   论文模板 (IEEE/ACM/NeurIPS/LNCS/通用)
-│   └── tests/                    #   单元测试 + 集成测试（含 E2E companion + adversarial），pytest 1559 passed / 8 skipped
+│   └── tests/                    #   单元测试 + 集成测试（含 E2E companion + adversarial），pytest 1582 passed / 8 skipped
 ├── Dockerfile
 ├── docker-compose.yml
 └── package.json
@@ -337,12 +337,12 @@ MSYS_NO_PATHCONV=1 docker run --rm \
 ### 论证陪练（Argument Companion v3）
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `POST` | `/api/companion/ledger/build` | SSE 构建论证账本（promise* → complete） |
-| `GET` | `/api/companion/ledger/{doc_id}` | 获取账本 |
-| `PUT` | `/api/companion/ledger/{doc_id}/promise` | 新增/更新承诺条目 |
-| `DELETE` | `/api/companion/ledger/{doc_id}/promise/{pid}` | 删除承诺 |
-| `POST` | `/api/companion/ledger/{doc_id}/relocate` | 改稿后重定位所有锚点 |
-| `POST` | `/api/companion/ledger/{doc_id}/promise/{pid}/suggest-experiment` | 实验缺口建议 |
+| `POST` | `/api/companion/ledger/build` | SSE 构建论证账本（anchor* → promise* → complete） |
+| `GET` | `/api/companion/ledger?doc_id=` | 获取账本 |
+| `PUT` | `/api/companion/ledger/promise?doc_id=` | 新增/更新承诺条目 |
+| `DELETE` | `/api/companion/ledger/promise/{pid}?doc_id=` | 删除承诺 |
+| `POST` | `/api/companion/ledger/relocate?doc_id=` | 改稿后重定位所有锚点 |
+| `POST` | `/api/companion/ledger/promise/{pid}/suggest-experiment?doc_id=` | 实验缺口建议 |
 | `POST` | `/api/companion/review` | SSE 模拟评审（review_point* → complete）；`mode: "parallel"` 启用三角度并行 |
 | `GET` | `/api/companion/review/{session_id}` | 获取评审会话 |
 | `GET` | `/api/companion/reviews` | 列出文档评审历史 |

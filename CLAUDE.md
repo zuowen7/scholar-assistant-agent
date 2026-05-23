@@ -74,7 +74,7 @@ SSE event types (defined in `agent/models.py`): `session_started` (metadata.sess
 - `routers/translate.py` — translation pipeline, config CRUD, health, Ollama/cloud status, export endpoints (bilingual/translation-only Word), retry failed blocks
 - `routers/agent.py` — Agent chat, RAG document management
 - `routers/editor.py` — AI edit, complete, export (LaTeX/PDF/Word), vision, citation, Zotero, paper scaffolding
-- `routers/argument.py` — Argument Map v2 graph CRUD (node/edge/span) + Toulmin extraction SSE + critique + suggest + flatten/export + Companion v3 (ledger SSE, reviewer, rebuttal, import reviews)
+- `routers/argument.py` — Argument Map v2 graph CRUD (node/edge/span) + Toulmin extraction SSE + critique + suggest + flatten/export + Companion v3 (ledger SSE, reviewer, rebuttal, import reviews). **Ledger routes use `?doc_id=` query param** (not path param).
 - `routers/mindmap.py` — Mind map CRUD, AI expand, layout
 
 `api.py` — entry point used by Tauri and standalone. Uses **delayed imports** for optional subsystems (Agent, Plugin): they set `_AGENT_AVAILABLE = False` on ImportError, so translation works without them.
@@ -87,7 +87,7 @@ Key backend modules under `src/`:
 - `formatter/` — bilingual/translated-only/parallel output + `renderer.py` (PDF/LaTeX) + `word_exporter.py`
 - `agent/` — Core: `agent.py` (AgentLoop ReAct engine), `session.py` (session management, checkpoint/resume/approval), `session_store.py` (JSON persistence), `context_compressor.py`, `prompt_builder.py` (Skill SOUL/AGENTS injection), `models.py`. LLM clients: `llm_client.py` (unified interface) + per-backend mixins `_llm_anthropic.py`, `_llm_ollama.py`, `_llm_openai.py`, `_llm_helpers.py`. Memory+Evolution: `memory.py`, `skill_system.py` + sub-modules `_skill_auto.py`, `_skill_matching.py`, `_skill_model.py` (three-layer paths), `_skill_persistence.py` (IDENTITY.md/SKILL.md detection), `_skill_migrate.py` (legacy→three-layer), `trajectory.py`, `review_agent.py`. Tools+Resources: `tools/` (core, workspace_tools, atomic_tools, builtin_tools, registry), `rag.py`, `vram_manager.py`. Special elements (split from monolith): `_elements_parser.py`, `_elements_tools.py`, `_elements_types.py`, `_elements_vision.py`. Reliability: `error_classifier.py`, `hooks.py`, `security_gate.py`. Integration: `mcp_server.py`, `auto_processor.py`. Workspace: `workspace.py`, `bash_session.py`, `change_journal.py`, `task_queue.py`.
 - `plugin/` — MCP-style plugin registry (`registry.py`, `loader.py`, `builtin.py`)
-- `argument/` — Argument Map v2 + Companion v3: `llm_client.py` (cloud/Ollama with reasoning-model auto-retry), `ai_ops.py` (Toulmin extraction SSE + element suggestion), `ledger.py` (promise ledger SSE), `reviewer.py` (Reviewer-2 serial + parallel review, rebuttal, import_real_reviews), `_reviewer_perspectives.py` (method/experiment/writing + aggregate), `anchor.py` (3-state fuzzy relocation), `companion_store.py`, `graph_store.py`, `models_v2.py`
+- `argument/` — Argument Map v2 + Companion v3: `llm_client.py` (cloud/Ollama with reasoning-model auto-retry), `ai_ops.py` (Toulmin extraction SSE + element suggestion), `ledger.py` (promise ledger SSE — yields anchor events before each promise), `reviewer.py` (Reviewer-2 serial + parallel review, rebuttal, import_real_reviews), `_reviewer_perspectives.py` (method/experiment/writing + aggregate), `anchor.py` (3-state fuzzy relocation), `companion_store.py`, `graph_store.py`, `models_v2.py`. **All ledger routes use `?doc_id=` query param** (not path param) because doc_id is a full file path that may contain `/`.
 - `citation/`, `zotero/`, `mcp/vision_client.py` — citation indexer, Zotero API client, multi-modal image analysis
 - `prompts/` — Academic writing prompt templates with 6-layer YAML frontmatter schema (polish, expand, coherence, edit, compliance, translate, review); `src/prompts/schema.py` enforces PromptSpec
 - `config/default.yaml` — All runtime configuration
@@ -155,11 +155,11 @@ Use this as the canonical "what works / what's polished / what's a stub" map. Up
 | # | Subsystem | Grade | Key evidence |
 |---|-----------|-------|--------------|
 | 1 | Translation pipeline (5-step SSE + multi-article split + citation placeholders + continuation rules + UTF-8 fix) | A | `routers/translate.py:295` multi-article via `parser/article_detector.extract_articles`; `block_translator.py:289,326` citation protect/restore; `cleaner/pipeline.py:258` pdfplumber encoding fix; `cleaner/pipeline.py:894-979` 6 continuation rules |
-| 2 | 论证陪练 v3（账本 + Reviewer‑2 对抗 + 三角度并行评审 + Toulmin X 光 / 真实评审导入）| A | `argument/ledger.py` SSE 账本; `argument/reviewer.py` run_review/run_review_parallel/continue_rebuttal/import_real_reviews; `argument/_reviewer_perspectives.py` method/experiment/writing 三角度 asyncio.gather; `argument/anchor.py` 三态锚定; `components/argument/CompanionPanel + LedgerList + ReviewerThread.vue` + 完整 rebuttal mini-chat; features.argument_companion=true; features.parallel_review 灰度开关 |
+| 2 | 论证陪练 v3（账本 + Reviewer‑2 对抗 + 三角度并行评审 + Toulmin X 光 / 真实评审导入）| A | `argument/ledger.py` SSE 账本（anchor SSE 事件修复）; `argument/reviewer.py` run_review/run_review_parallel/continue_rebuttal/import_real_reviews; `argument/_reviewer_perspectives.py` method/experiment/writing 三角度 asyncio.gather; `argument/anchor.py` 三态锚定; `components/argument/CompanionPanel + LedgerList + ReviewerThread.vue` + 完整 rebuttal mini-chat; features.argument_companion=true; features.parallel_review 灰度开关; **ledger 路由全部用 `?doc_id=` query param** |
 | 3 | Mind Map (Vue Flow + AI expand + dagre layout) | A- | LLM failure → hardcoded fallback nodes |
 | 4 | LaTeX/Word export (IEEE Conf/Journal, ACM, NeurIPS, LNCS, Generic + Tectonic) | A | `word_exporter.py`, `pandoc_templates`, `pptx_exporter` |
 | 5 | AI editor (Monaco + Ghost Text + AI Panel + mid-stream reload) | B+ | `useEditorTabs.reloadOpenTabs()` refreshes open tabs after each Agent write; completion quality average |
-| 6 | Agent ReAct engine (ContextCompressor + SessionStore tool_calls + Skill 三层分解 + review + Memory dedup) | A- | `agent.py:149,176,214` ContextCompressor wired into `step()`; `session_store.py:199-225` tool_calls round-trip; `review_agent.py` skill quality gate; `agent/_skill_model.py` SOUL/AGENTS/IDENTITY 三层; `prompt_builder.py` skill injection |
+| 6 | Agent ReAct engine (ContextCompressor + SessionStore tool_calls + Skill 三层分解 + review + Memory dedup + greeting guard) | A- | `agent.py:149,176,214` ContextCompressor wired into `step()`; `session_store.py:199-225` tool_calls round-trip; `review_agent.py` skill quality gate; `agent/_skill_model.py` SOUL/AGENTS/IDENTITY 三层; `prompt_builder.py` skill injection + 原则 #0 问候不调工具 |
 | 7 | 21 cloud LLM providers | B | Only OpenAI-compatible path tested end-to-end |
 | 8 | RAG / 文献库 | B- | Demoted to on-demand `search_documents` tool (no longer auto-injected); translation auto-ingest intact; `tools/registry.py` full impl when `rag_store` injected |
 | 9 | Zotero integration | C | Requires user API key |
@@ -202,7 +202,7 @@ python -m venv /tmp/test && /tmp/test/Scripts/pip install -r requirements-lock.t
 
 ### 论证陪练 v3（已完成 — 见 docs/argument-map-v3-spec.md）
 
-5 个 Phase（Phase 0–5）全部完成。功能包括：论证账本（承诺 ↔ 兑付，三态锚定）、Reviewer‑2 对抗（会议校准评审 + rebuttal mini-chat，reviewer 会被说服）、质疑这句/一致性/gap/RW 检查、真实评审导入（import_real_reviews）、实验缺口建议（suggest_experiment）、rebuttal 包导出（/download）。Toulmin v2 图（ArgGraph/Vue Flow）保留并复用为"审稿模式"可视化（ArgSourcePane 已有"从编辑器载入"入口）。features.argument_companion=true（已发布）。E2E 集成测试：`python/tests/integration/test_companion_e2e.py` 27 个测试覆盖全部 `/api/companion/*` 端点（pytest 1624 passed / 11 skipped）。
+5 个 Phase（Phase 0–5）全部完成。功能包括：论证账本（承诺 ↔ 兑付，三态锚定）、Reviewer‑2 对抗（会议校准评审 + rebuttal mini-chat，reviewer 会被说服）、质疑这句/一致性/gap/RW 检查、真实评审导入（import_real_reviews）、实验缺口建议（suggest_experiment）、rebuttal 包导出（/download）。Toulmin v2 图（ArgGraph/Vue Flow）保留并复用为"审稿模式"可视化（ArgSourcePane 已有"从编辑器载入"入口）。features.argument_companion=true（已发布）。E2E 集成测试：`python/tests/integration/test_companion_e2e.py` 27 个测试覆盖全部 `/api/companion/*` 端点（pytest 1582 passed / 8 skipped）。**注意**：所有 ledger 路由的 `doc_id` 使用 query param（`?doc_id=`），因为 doc_id 可能是包含 `/` 的完整文件路径。`build_ledger` SSE 流在每个 promise 事件前先 yield anchor 事件，前端 `ledger.anchors` 才能正确填充。
 
 论证地图 v2（见 docs/argument-map-v2-spec.md）：5 个 Phase 已全部完成，旧树实现已删除。当前 Toulmin 图 = v2 唯一版本，在论证陪练 v3 "审稿模式"中继续使用。
 
@@ -250,3 +250,14 @@ agency-agents-zh SDLC 改造 (2026-05-18–19，分支 `feature/sdlc-borrow-agen
 - **里程碑3 第5刀** — 删除 polish_text / summarize_text / expand_section / generate_outline（93行），同步清理 TOOL_DESCRIPTIONS + 集成测试 safe_args + mcp_server.py 注释；format_bibliography 保留
 - **UI 适配** — "知识库" tab 改名"文献库"；workspace 状态栏（绿点 + 项目名 / "未打开项目"）；空状态 workspace 感知文案；TOOL_DESCRIPTIONS 覆盖所有19个工具
 - 验证：1752 pytest passed / 11 skipped；326 vitest passed；E2E SSE 测试：越界路径 → await_approval → approve → ContextVar bypass → tool_result 全链路通过；计划详情见 `docs/claude-code-pivot-todo.md`
+
+论证陪练 + Agent 修复 (2026-05-23)：
+- `prompt_builder.py` — Agent 身份原则 #0：问候/闲聊直接回复，不调工具；DeepSeek/Qwen 模型指导同步补齐，修复"你好"触发无限工具调用循环
+- `ledger.py` — `build_ledger` 在每个 promise 事件前 yield anchor SSE 事件；`rebuild_ledger` 同步透传 anchor 事件；修复前端 `ledger.anchors` 始终为空导致定位按钮失效
+- `routers/argument.py` — 所有 ledger 路由的 `doc_id` 从 URL path param 改为 query param（`?doc_id=`），修复 doc_id 为完整文件路径（含 `/`）时路由 404
+- `ReviewerThread.vue` — UI 重写为卡片式设计（展开折叠、状态下拉菜单、rebuttal 输入）；CSS 变量修正（`--c-error` → 硬编码 `#ef4444`，`--c-warning` → `--c-warn`，`--c-border` → `--c-surface-4`，`--c-text` → `--c-text-0`）
+- `CompanionPanel.vue` — 评审进度条替代文字提示；blob 下载修复 Windows 兼容；移除多余 content prop
+- `useArgumentCompanion.ts` — review 对象提前初始化，SSE 流式推入 points 实时显示
+- `reviewer.py` — ledger_cross_check / coherence_check 标题和 prompt 中文化；discharge prompt 从严判断标准 + 首/中/尾采样替代截断
+- `argument.py` — rebuttal 下载用 `tempfile.gettempdir()` 替代硬编码 `/tmp`
+- 验证：1582 pytest passed / 8 skipped；326 vitest passed

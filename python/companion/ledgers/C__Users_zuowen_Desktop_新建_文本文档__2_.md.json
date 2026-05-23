@@ -1,40 +1,44 @@
 {
-  "id": "L_e4c2e640f4",
+  "id": "L_d1d31a9b80",
   "doc_id": "C:\\Users\\zuowen\\Desktop/新建 文本文档 (2).md",
   "doc_title": "新建 文本文档 (2).md",
   "promises": [
     {
-      "id": "p_56fa9e38e9",
+      "id": "p_6265935974",
       "text": "揭示产业结构在“经济—就业”传导链条中的枢纽作用，验证“服务业主导型经济更利于大学生就业”的假说；运用省级面板数据控制不可观测的地区固定效应，缓解遗漏变量偏误；为地方政府通过产业结构优化提升大学生就业质量提供差异化路径依据。",
       "kind": "contribution",
-      "source_anchor_id": "a_35d308b57d",
+      "source_anchor_id": "a_aa8370629a",
       "discharge_anchor_ids": [
-        "a_0fdca65510",
-        "a_fc44f38e81",
-        "a_98956b9d63",
-        "a_d0fb1e576a"
+        "a_99174a2c16",
+        "a_a8ab511ac8",
+        "a_de92a98fac",
+        "a_8bb02b370a",
+        "a_b52ad7a028",
+        "a_4df4265afa",
+        "a_3cf89da14e",
+        "a_a547f4fe52"
       ],
       "status": "partial",
       "severity": "warning",
-      "note": "正文验证了服务业占比对就业率的正向作用（H2），并使用了省级面板固定效应模型缓解遗漏变量偏误，也给出了差异化路径的边际效应测算。但承诺中'揭示产业结构在经济—就业传导链条中的枢纽作用'需要更明确的机制检验（如中介效应或交互项分解），目前仅通过交乘项间接体现；'服务业主导型经济更利于大学生就业'的假说验证中，未区分服务业内部结构（如高端vs低端服务业）；'为地方政府提供差异化路径依据'仅给出了东中西部分样本回归，但缺少针对不同产业结构水平的具体政策模拟或门槛效应检验。因此整体为partial。",
+      "note": "正文验证了产业结构在就业中的枢纽作用，支持了“服务业主导型经济更利于大学生就业”的假说（H2、H3成立），并使用了省级面板数据与固定效应模型缓解遗漏变量偏误。但承诺中“为地方政府通过产业结构优化提升大学生就业质量提供差异化路径依据”仅体现在政策建议部分，缺乏针对不同省份的实证异质性分析（如分省边际效应或具体路径模拟），且未对“就业质量”进行多维测量（仅用就业率单一指标），因此属于部分兑现。",
       "created_by": "ai",
       "user_overridden": false
     }
   ],
   "anchors": [
     {
-      "id": "a_35d308b57d",
+      "id": "a_aa8370629a",
       "doc_id": "C:\\Users\\zuowen\\Desktop/新建 文本文档 (2).md",
       "char_start": null,
       "char_end": null,
-      "quote": "相较于已有研究，本文的边际贡献在于：\n\t理论层面：揭示产业结构在“经济—就业”传导链条中的枢纽作用，验证“服务业主导型经济更利于大学生就业”的假说；\n\t方法层面：运用省级面板数据控制不可观测的地区固定效应，缓解遗漏变量偏误；\n\t政策层面：为地方政府通过产业结构优化提升大学生就业质量提供差异化路径依据。",
+      "quote": "相较于已有研究，本文的边际贡献在于：理论层面：揭示产业结构在“经济—就业”传导链条中的枢纽作用，验证“服务业主导型经济更利于大学生就业”的假说；方法层面：运用省级面板数据控制不可观测的地区固定效应，缓解遗漏变量偏误；政策层面：为地方政府通过产业结构优化提升大学生就业质量提供差异化路径依据。",
       "context_before": "",
       "context_after": "",
       "section_path": null,
       "status": "lost"
     },
     {
-      "id": "a_0fdca65510",
+      "id": "a_99174a2c16",
       "doc_id": "C:\\Users\\zuowen\\Desktop/新建 文本文档 (2).md",
       "char_start": 6298,
       "char_end": 6318,
@@ -45,18 +49,51 @@
       "status": "anchored"
     },
     {
-      "id": "a_fc44f38e81",
+      "id": "a_a8ab511ac8",
       "doc_id": "C:\\Users\\zuowen\\Desktop/新建 文本文档 (2).md",
-      "char_start": 5852,
-      "char_end": 5901,
-      "quote": "服务业占比每提高1个百分点，就业率显著上升0.176个百分点（t=3.25），贡献度超经济规模变量",
-      "context_before": "但在加入交乘项后显著性减弱，暗示其作用依赖产业结构条件。\r\n\t产业结构主导作用（H2成立）：\r\n",
-      "context_after": "。\r\n\t调节效应验证（H3成立）：\r\n交乘项系数显著为正（0.037, p<0.05），表明服务",
+      "char_start": 6320,
+      "char_end": 6367,
+      "quote": "服务业占比提升1%对就业率的促进效应（0.176个百分点）相当于人均GDP增长1.92%的效果",
+      "context_before": "结论与政策启示\r\n（一）核心结论（创新性归纳）\r\n\t产业结构升级是大学生就业的“第一推动力”\r\n",
+      "context_after": "（基于模型2弹性系数计算）；\r\n机制解释：现代服务业每亿元增加值创造大学生岗位数是制造业的2.3",
       "section_path": null,
       "status": "anchored"
     },
     {
-      "id": "a_98956b9d63",
+      "id": "a_de92a98fac",
+      "doc_id": "C:\\Users\\zuowen\\Desktop/新建 文本文档 (2).md",
+      "char_start": 6388,
+      "char_end": 6416,
+      "quote": "现代服务业每亿元增加值创造大学生岗位数是制造业的2.3倍",
+      "context_before": ".176个百分点）相当于人均GDP增长1.92%的效果（基于模型2弹性系数计算）；\r\n机制解释：",
+      "context_after": "（据2023年《中国劳动统计年鉴》测算）。\r\n\t经济增长的就业效应存在“双重门槛”\r\n门槛难度\t",
+      "section_path": null,
+      "status": "anchored"
+    },
+    {
+      "id": "a_8bb02b370a",
+      "doc_id": "C:\\Users\\zuowen\\Desktop/新建 文本文档 (2).md",
+      "char_start": 6440,
+      "char_end": 6457,
+      "quote": "经济增长的就业效应存在“双重门槛”",
+      "context_before": "业每亿元增加值创造大学生岗位数是制造业的2.3倍（据2023年《中国劳动统计年鉴》测算）。\r\n\t",
+      "context_after": "\r\n门槛难度\t临界值\t低于临界值效应\t高于临界值效应\r\n产业结构\t服务业占比>50%\t经济增速对",
+      "section_path": null,
+      "status": "anchored"
+    },
+    {
+      "id": "a_b52ad7a028",
+      "doc_id": "C:\\Users\\zuowen\\Desktop/新建 文本文档 (2).md",
+      "char_start": 6592,
+      "char_end": 6610,
+      "quote": "区域分化源于“产业—人才”适配度断裂",
+      "context_before": "展阶段\t人均GDP>8万元\t服务业拉动效率低（弹性0.11）\t拉动效率跃升（弹性0.24）\r\n\t",
+      "context_after": "\r\n东部形成 “高技能服务业—高质量就业” 闭环（如2023年广东数字经济吸纳46.2%应届生）",
+      "section_path": null,
+      "status": "anchored"
+    },
+    {
+      "id": "a_4df4265afa",
       "doc_id": "C:\\Users\\zuowen\\Desktop/新建 文本文档 (2).md",
       "char_start": 5121,
       "char_end": 5137,
@@ -67,17 +104,28 @@
       "status": "anchored"
     },
     {
-      "id": "a_d0fb1e576a",
+      "id": "a_3cf89da14e",
       "doc_id": "C:\\Users\\zuowen\\Desktop/新建 文本文档 (2).md",
-      "char_start": 5967,
-      "char_end": 6031,
-      "quote": "边际效应测算：当服务业占比>50%时，人均GDP增长1%可带动就业率提升0.12%以上；占比<40%时，该效应降至0.05%以下",
-      "context_before": "\n交乘项系数显著为正（0.037, p<0.05），表明服务业占比强化了经济增长的就业拉动。\r\n",
-      "context_after": "。\r\n \r\n服务业占比趋势图\r\n（三）稳健性检验（表4）\r\n检验方法\tIn（人均GDP）\t服务业",
+      "char_start": 3563,
+      "char_end": 3587,
+      "quote": "xtset province_code year",
+      "context_before": "ode province, gen(province_code)  // 文本省份转数字编码\r\n",
+      "context_after": "\r\n\r\n* 描述性统计（输出至Word）\r\nasdoc sum employment ln_gd",
+      "section_path": null,
+      "status": "anchored"
+    },
+    {
+      "id": "a_a547f4fe52",
+      "doc_id": "C:\\Users\\zuowen\\Desktop/新建 文本文档 (2).md",
+      "char_start": 3724,
+      "char_end": 3772,
+      "quote": "xtreg employment ln_gdp service_ratio, fe robust",
+      "context_before": "_rate, replace\r\n2. 基准回归（逐步加入控制变量）\r\n* 模型1：仅核心变量\r\n",
+      "context_after": "\r\nest store m1\r\n\r\n* 模型2：加入控制变量\r\nxtreg employment",
       "section_path": null,
       "status": "anchored"
     }
   ],
   "doc_hash": "0bb57a1c05b7764b",
-  "last_built_at": 1779508434.1629336
+  "last_built_at": 1779509575.2287319
 }
