@@ -28,10 +28,14 @@
       >{{ state.source.side === 'trans' ? '译 ⇄' : '原 ⇄' }}</button>
       <button
         class="extract-btn"
+        :class="{ 'is-extracting': state.extracting }"
         :disabled="!hasContent || !state.graph || state.extracting"
         :title="!state.graph ? '请先创建或打开一张论证图' : !hasContent ? '请先点击上方按钮加载原文（从翻译结果/从编辑器/粘贴文本）' : '从当前原文提取 Toulmin 论证图'"
         @click="doExtract"
-      >{{ state.extracting ? '提取中…' : '提取论证' }}</button>
+      >
+        <span v-if="state.extracting" class="extract-spinner"></span>
+        {{ state.extracting ? '提取中' : '提取论证' }}
+      </button>
     </div>
 
     <!-- Paste input area -->
@@ -49,8 +53,11 @@
       </div>
     </div>
 
+    <!-- Scanning bar during extraction -->
+    <div v-if="state.extracting" class="extract-scanning-bar"></div>
+
     <!-- Rendered sentence content -->
-    <div ref="containerRef" class="source-content">
+    <div ref="containerRef" class="source-content" :class="{ extracting: state.extracting }">
       <div v-if="!hasContent" class="source-empty">
         选择原文来源后，点击句子可将其绑定到论证节点
       </div>
@@ -406,6 +413,31 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
 }
 .source-side-toggle:hover { background: var(--c-surface-3); }
 
+.extract-scanning-bar {
+  height: 2px;
+  flex-shrink: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--c-accent) 45%,
+    color-mix(in srgb, var(--c-accent) 50%, transparent) 60%,
+    transparent 100%
+  );
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: extract-scan 1.4s ease-in-out infinite;
+}
+@keyframes extract-scan {
+  0%   { background-position: -40% 0; }
+  100% { background-position: 140% 0; }
+}
+
+.source-content.extracting {
+  opacity: 0.55;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
 .extract-btn {
   margin-left: auto;
   padding: 2px 9px;
@@ -418,9 +450,25 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   cursor: pointer;
   white-space: nowrap;
   transition: opacity 100ms;
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 .extract-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.extract-btn:not(:disabled):hover { opacity: 0.85; }
+.extract-btn.is-extracting { cursor: wait; }
+.extract-btn:not(:disabled):not(.is-extracting):hover { opacity: 0.85; }
+
+.extract-spinner {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  animation: spinner-spin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spinner-spin {
+  to { transform: rotate(360deg); }
+}
 
 /* Paste area */
 .source-paste-area {

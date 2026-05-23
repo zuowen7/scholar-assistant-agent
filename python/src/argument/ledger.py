@@ -135,6 +135,7 @@ async def build_ledger(
         )
         store.save_ledger(ledger)
         yield {"event": "complete", "data": json.dumps({
+            "ledger_id": ledger.id,
             "promise_count": 0,
             "by_status": {},
             "warnings": ["LLM 未提取到承诺"],
@@ -247,6 +248,7 @@ async def build_ledger(
     )
     store.save_ledger(ledger)
     yield {"event": "complete", "data": json.dumps({
+        "ledger_id": ledger.id,
         "promise_count": len(new_promises),
         "by_status": by_status,
         "warnings": warnings,

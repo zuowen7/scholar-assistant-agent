@@ -3,14 +3,23 @@
     <template v-if="state.graph">
       <div class="arg-mini-header">
         <span class="arg-mini-title">{{ state.graph.title }}</span>
+        <span
+          v-if="state.graph.source_doc"
+          class="arg-mini-linked"
+          title="论证图已关联文档，Agent 可直接读取"
+        ></span>
         <button class="arg-mini-open" @click="openFull">全屏打开</button>
       </div>
       <div class="arg-mini-canvas">
         <ArgumentMapCanvas :readonly="true" />
       </div>
     </template>
-    <div v-else-if="state.extracting" class="arg-mini-empty">
-      <p>正在提取论证结构…</p>
+    <div v-else-if="state.extracting" class="arg-mini-extracting">
+      <div class="arg-mini-extract-pill">
+        <span class="dot-wave"><i></i><i></i><i></i></span>
+        <span class="arg-mini-extract-text">正在提取论证结构</span>
+      </div>
+      <div class="arg-mini-extract-track"></div>
     </div>
     <div v-else class="arg-mini-empty">
       <p>尚无论证图</p>
@@ -106,6 +115,28 @@ function openFull() {
 }
 .arg-mini-open:hover { background: var(--c-accent-bg2); }
 
+.arg-mini-linked {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4ade80;
+  cursor: help;
+  flex-shrink: 0;
+}
+.arg-mini-linked::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1.5px solid #4ade80;
+  animation: sonar-ring 1.8s ease-out infinite;
+}
+@keyframes sonar-ring {
+  0%   { transform: scale(1);   opacity: 0.7; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+
 .arg-mini-extract-btn {
   font-size: 12px;
   padding: 6px 14px;
@@ -154,5 +185,68 @@ function openFull() {
   margin: 0;
   text-align: center;
   max-width: 200px;
+}
+
+/* Extracting state */
+.arg-mini-extracting {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+}
+
+.arg-mini-extract-pill {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 20px;
+  background: color-mix(in srgb, var(--c-accent) 10%, var(--c-surface-1));
+  border: 1px solid color-mix(in srgb, var(--c-accent) 28%, transparent);
+  border-radius: 20px;
+  animation: pill-appear 0.25s ease-out;
+}
+@keyframes pill-appear {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.arg-mini-extract-text {
+  font-size: 12px;
+  color: var(--c-text-1);
+  white-space: nowrap;
+}
+
+.dot-wave { display: flex; gap: 4px; align-items: center; }
+.dot-wave i {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--c-accent); display: block;
+  animation: wave-bounce 1.1s ease-in-out infinite;
+}
+.dot-wave i:nth-child(2) { animation-delay: 0.18s; }
+.dot-wave i:nth-child(3) { animation-delay: 0.36s; }
+@keyframes wave-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.25; }
+  30%            { transform: translateY(-5px); opacity: 1; }
+}
+
+.arg-mini-extract-track {
+  width: 100px;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--c-accent) 45%,
+    transparent 100%
+  );
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: extract-scan 1.4s ease-in-out infinite;
+  border-radius: 1px;
+}
+@keyframes extract-scan {
+  0%   { background-position: -40% 0; }
+  100% { background-position: 140% 0; }
 }
 </style>

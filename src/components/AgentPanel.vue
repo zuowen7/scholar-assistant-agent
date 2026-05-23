@@ -40,16 +40,12 @@
 
     <!-- Chat Tab -->
     <div v-show="tab === 'chat'" class="agent-chat">
-      <div class="agent-messages" ref="messagesRef">
+      <div v-if="sending && !pendingApproval" class="agent-thinking-bar"></div>
+      <div class="agent-messages" ref="messagesRef" @scroll="_onMessagesScroll">
         <div v-if="currentStatus && sending && !pendingApproval" class="agent-status-bar">
-          <span class="dot-pulse"></span>
+          <span class="status-dots"><i></i><i></i><i></i></span>
           <span class="agent-status-text">{{ currentStatus }}</span>
         </div>
-        <AgentApprovalInline
-          v-if="sending"
-          :pending="pendingApproval"
-          @decide="handleApprovalDecision"
-        />
         <div v-if="messages.length === 0 && !sending" class="agent-empty">
           <p>向 Agent 提问，它会直接在项目里读写文件</p>
           <p class="hint" v-if="workspaceName">工作区：{{ workspaceName }}</p>
@@ -103,10 +99,16 @@
           </template>
           <div v-if="msg.content" class="agent-bubble">{{ msg.content }}</div>
           <div v-if="msg.isStreaming" class="agent-streaming">
-            <span class="dot-pulse"></span>
+            <span class="dot-wave"><i></i><i></i><i></i></span>
           </div>
         </div>
       </div>
+      <!-- Approval bar: anchored between messages and input, always visible -->
+      <AgentApprovalInline
+        v-if="pendingApproval"
+        :pending="pendingApproval"
+        @decide="handleApprovalDecision"
+      />
       <div class="agent-input-area">
         <div class="agent-workspace-bar" :class="{ active: !!workspaceName, inactive: !workspaceName }">
           <span class="ws-dot"></span>
@@ -135,8 +137,17 @@
             placeholder="输入消息..."
             class="agent-input"
           />
-          <button class="agent-send-btn" @click="sendMessage" :disabled="sending || !input.trim()">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <button
+            class="agent-send-btn"
+            :class="{ stopping: sending }"
+            @click="sending ? abortSession() : sendMessage()"
+            :disabled="!sending && !input.trim()"
+            :title="sending ? '停止生成' : '发送'"
+          >
+            <svg v-if="sending" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="3" y="3" width="18" height="18" rx="3"/>
+            </svg>
+            <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
             </svg>
           </button>
@@ -673,6 +684,11 @@ watch(sending, (nowSending) => {
   }
 })
 
+// 审批弹出时停止自动滚底 — 让用户看清 tool_call 上下文
+watch(pendingApproval, (val) => {
+  if (val) _userScrolledUp.value = true
+})
+
 // Mid-stream refresh: when the Agent completes a file-write tool call, immediately
 // refresh the file tree and reload any open Monaco tabs so the user sees changes
 // without waiting for the full task to finish.
@@ -701,12 +717,7 @@ watch(
   { deep: true },
 )
 
-onMounted(() => {
-  messagesRef.value?.addEventListener('scroll', _onMessagesScroll, { passive: true })
-})
-
 onUnmounted(() => {
-  messagesRef.value?.removeEventListener('scroll', _onMessagesScroll)
   window.removeEventListener('mousemove', _onDragMove)
   window.removeEventListener('mouseup', _onDragUp)
   _unlistenStorage?.()
@@ -979,23 +990,71 @@ onUnmounted(() => {
 
 .agent-sessions { flex: 1; overflow-y: auto; padding: 0; }
 
+/* Thinking progress bar — scanning gradient across the top of the chat area */
+.agent-thinking-bar {
+  height: 2px;
+  flex-shrink: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--c-accent) 45%,
+    color-mix(in srgb, var(--c-accent) 50%, transparent) 60%,
+    transparent 100%
+  );
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: thinking-scan 1.4s ease-in-out infinite;
+}
+@keyframes thinking-scan {
+  0%   { background-position: -40% 0; }
+  100% { background-position: 140% 0; }
+}
+
 .agent-status-bar {
   display: flex; align-items: center; gap: 8px;
   padding: 6px 14px; margin-bottom: 8px;
   background: color-mix(in srgb, var(--c-accent) 12%, var(--c-surface-1));
   border: 1px solid color-mix(in srgb, var(--c-accent) 30%, transparent);
   border-radius: 20px; width: fit-content; max-width: 100%;
+  position: relative; overflow: hidden;
+}
+.agent-status-bar::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.07) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer-sweep 2s linear infinite;
+  pointer-events: none;
+}
+@keyframes shimmer-sweep {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 .agent-status-text { font-size: 12px; color: var(--c-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
 
-.agent-streaming { display: flex; padding: 8px 14px; }
-.dot-pulse {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--c-accent); animation: dot-pulse 1.2s infinite;
+/* Three-dot wave — status bar */
+.status-dots { display: flex; gap: 3px; align-items: center; flex-shrink: 0; }
+.status-dots i {
+  width: 4px; height: 4px; border-radius: 50%;
+  background: var(--c-accent); display: block;
+  animation: wave-bounce 1.1s ease-in-out infinite;
 }
-@keyframes dot-pulse {
-  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
-  40% { opacity: 1; transform: scale(1); }
+.status-dots i:nth-child(2) { animation-delay: 0.15s; }
+.status-dots i:nth-child(3) { animation-delay: 0.30s; }
+
+/* Three-dot wave — streaming indicator */
+.agent-streaming { display: flex; padding: 8px 14px; }
+.dot-wave { display: flex; gap: 5px; align-items: center; }
+.dot-wave i {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--c-accent); display: block;
+  animation: wave-bounce 1.1s ease-in-out infinite;
+}
+.dot-wave i:nth-child(2) { animation-delay: 0.18s; }
+.dot-wave i:nth-child(3) { animation-delay: 0.36s; }
+@keyframes wave-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.25; }
+  30%            { transform: translateY(-6px); opacity: 1; }
 }
 
 /* Input area — suspended inkstone */
@@ -1050,10 +1109,20 @@ onUnmounted(() => {
   background: var(--c-accent); color: #fff; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   box-shadow: 0 4px 12px var(--accent-glow);
-  transition: opacity 0.15s;
+  transition: background 0.2s, box-shadow 0.2s, opacity 0.15s;
 }
 .agent-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .agent-send-btn:not(:disabled):hover { opacity: 0.85; }
+.agent-send-btn.stopping {
+  background: var(--c-surface-3);
+  box-shadow: 0 0 0 0 rgba(91,108,255,0);
+  animation: stop-ring 1.6s ease-out infinite;
+}
+@keyframes stop-ring {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c-accent) 50%, transparent); }
+  70%  { box-shadow: 0 0 0 8px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
 
 /* File attachments */
 .agent-attachments {

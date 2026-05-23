@@ -71,6 +71,7 @@ def _make_agent_loop(memory_manager=None, skill_registry=None):
     loop.skills = skill_registry
     loop.rag_store = None
     loop.rag_top_k = 3
+    loop.workspace_root = ""
     loop._scratchpad = {}
     loop._scratchpad_step = 0
     return loop

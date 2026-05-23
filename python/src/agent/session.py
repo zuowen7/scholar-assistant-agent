@@ -248,6 +248,7 @@ class AgentSession:
         while (
             task_step < self.config.max_task_steps
             and self.global_step < self.config.max_global_steps
+            and self.state != SessionState.ABORTED
         ):
             task_step += 1
             self.global_step += 1
@@ -266,6 +267,9 @@ class AgentSession:
                 max_steps=self.config.max_global_steps,
                 execute_tools=False,  # 先门控，后执行
             )
+
+            if self.state == SessionState.ABORTED:
+                raise SessionAborted()
 
             # 转发推理事件（response → thought 避免前端提前终止）
             for ev in step_result.events:
@@ -410,6 +414,8 @@ class AgentSession:
                         content=result[:500] + ("..." if len(result) > 500 else ""),
                         metadata={"tool_name": tc.name},
                     )
+                if self.state == SessionState.ABORTED:
+                    raise SessionAborted()
 
             # 需要审批的工具 → 串行（避免审批顺序错乱）
             for tc, gate in needs_approval_list:
@@ -419,7 +425,7 @@ class AgentSession:
                     content=f"Agent 想要执行 '{tc.name}'",
                     event_id=evt_id,
                     metadata={
-                        "tool": tc.name,
+                        "tool_name": tc.name,
                         "args": tc.arguments,
                         "risk": gate.risk.name.lower(),
                         "reason": gate.reason,
@@ -476,6 +482,8 @@ class AgentSession:
                     content=result[:500] + ("..." if len(result) > 500 else ""),
                     metadata={"tool_name": tc.name},
                 )
+                if self.state == SessionState.ABORTED:
+                    raise SessionAborted()
 
             # 循环检测提示：在所有 tool result 之后注入，不破坏消息序列
             if _loop_hint:

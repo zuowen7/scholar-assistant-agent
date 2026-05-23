@@ -25,6 +25,9 @@
       <span>已带入编辑器上下文：{{ editorContext.length }} 字符</span>
     </div>
 
+    <!-- Thinking scan bar -->
+    <div v-if="streaming" class="ac-thinking-bar"></div>
+
     <!-- Messages -->
     <div class="ac-messages" ref="messagesRef" @click="handleCodeBlockClick">
       <div v-if="messages.length===0 && !streaming" class="ac-empty">
@@ -62,11 +65,20 @@
         <div class="ac-body">
           <div v-if="thinkingText" class="ac-thinking">{{ thinkingText }}</div>
           <div v-if="streamContent" class="ac-ai-bubble" v-html="renderMd(streamContent, 'streaming')"></div>
-          <div v-if="!streamContent && !thinkingText" class="ac-ai-bubble ac-waiting">思考中...</div>
+          <div v-if="!streamContent && !thinkingText" class="ac-ai-bubble ac-waiting">
+            <span class="dot-wave"><i></i><i></i><i></i></span>
+          </div>
           <div class="ac-cursor"></div>
         </div>
       </div>
     </div>
+
+    <!-- Approval bar -->
+    <AgentApprovalInline
+      v-if="pendingApproval"
+      :pending="pendingApproval"
+      @decide="handleApprovalDecision"
+    />
 
     <!-- File chips -->
     <div class="ac-attachments" v-if="files.length">
@@ -119,8 +131,17 @@
           </div>
         </div>
       </div>
-      <button class="ac-send-btn" @click="send" :disabled="streaming || !input.trim()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>
+      <button
+        class="ac-send-btn"
+        :class="{ stopping: streaming }"
+        @click="streaming ? stopStream() : send()"
+        :disabled="!streaming && !input.trim()"
+        :title="streaming ? '停止生成' : '发送'"
+      >
+        <svg v-if="streaming" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="3" y="3" width="18" height="18" rx="3"/>
+        </svg>
+        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>
       </button>
     </div>
   </div>
@@ -133,6 +154,9 @@ import { readSseStream } from '../utils/streamReader'
 import { aiMessages, aiStreaming, aiStreamContent, aiThinkingText, aiAbortCtrl } from '../composables/useAiPanelState'
 import type { AiPanelMsg } from '../composables/useAiPanelState'
 import { API_BASE } from '../utils/api'
+import AgentApprovalInline from './AgentApprovalInline.vue'
+import type { PendingApproval } from '../composables/useAgentChat'
+import { useFileTree } from '../composables/useFileTree'
 
 const props = defineProps<{
   editorContext: string
@@ -163,6 +187,9 @@ const inputRef = ref<HTMLTextAreaElement>()
 const messagesRef = ref<HTMLElement>()
 const slashMenu = ref(false)
 const atMenu = ref(false)
+const acSessionId = ref<string | null>(null)
+const pendingApproval = ref<PendingApproval | null>(null)
+const { rootDir } = useFileTree()
 
 // ── Slash commands ──────────────────────────────────────────
 const commands = [
@@ -329,6 +356,8 @@ async function sendPreset(action: string) {
 }
 
 async function doSend(text: string) {
+  pendingApproval.value = null
+  acSessionId.value = null
   messages.value.push({ id: crypto.randomUUID(), role: 'user', content: text })
   scrollBottom()
 
@@ -345,7 +374,12 @@ async function doSend(text: string) {
     const resp = await fetch(`${API}/api/agent/v2/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, history, context_text: props.editorContext?.trim() || undefined }),
+      body: JSON.stringify({
+        message: text,
+        history,
+        context_text: props.editorContext?.trim() || undefined,
+        workspace_root: rootDir.value?.trim() || undefined,
+      }),
       signal: aiAbortCtrl.value.signal,
     })
     if (!resp.ok) {
@@ -356,12 +390,27 @@ async function doSend(text: string) {
     if (!reader) throw new Error('响应内容为空')
 
     await readSseStream(reader, (evtType, d) => {
+      const meta = d.metadata as Record<string, unknown> | undefined
       if (evtType === 'token' && d.content) { streamContent.value += d.content as string; scrollBottom() }
       else if (evtType === 'response' && d.content) { streamContent.value = d.content as string }
       else if (evtType === 'error') { streamContent.value = (d.content as string) || '错误' }
-      else if (evtType === 'thinking' && d.content) { thinkingText.value = d.content as string }
-      else if (evtType === 'tool_call') { thinkingText.value = '正在调用：' + (((d.metadata as Record<string, unknown>)?.tool_name as string) || '...') }
+      else if ((evtType === 'thought' || evtType === 'thinking') && d.content) { thinkingText.value = d.content as string }
+      else if (evtType === 'tool_call') { thinkingText.value = '正在调用：' + ((meta?.tool_name as string) || (meta?.tool as string) || '...') }
       else if (evtType === 'tool_result') { thinkingText.value = '' }
+      else if (evtType === 'session_started') {
+        acSessionId.value = (meta?.session_id as string) || acSessionId.value
+      }
+      else if (evtType === 'await_approval') {
+        pendingApproval.value = {
+          event_id: d.event_id as string || '',
+          tool_name: (meta?.tool_name as string) || (meta?.tool as string) || '',
+          args: (meta?.args ?? meta?.arguments) as Record<string, unknown> | undefined,
+          risk: meta?.risk as string | undefined,
+          reason: meta?.reason as string | undefined,
+          preview: meta?.preview as Record<string, unknown> | undefined,
+        }
+      }
+      else if (evtType === 'approval_received') { pendingApproval.value = null }
     })
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') return
@@ -389,6 +438,24 @@ function handleCodeBlockClick(e: MouseEvent) {
   } else if (btn.classList.contains('ac-code-insert')) {
     emit('insert', code)
   }
+}
+
+function stopStream() {
+  aiAbortCtrl.value?.abort()
+}
+
+async function handleApprovalDecision(decision: 'allow_once' | 'allow_session' | 'deny') {
+  const sid = acSessionId.value
+  const eventId = pendingApproval.value?.event_id
+  if (!sid || !eventId) return
+  pendingApproval.value = null
+  try {
+    await fetch(`${API}/api/agent/v2/approve/${sid}/${eventId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision }),
+    })
+  } catch { /* non-fatal */ }
 }
 
 function clearHistory() { messages.value = []; streamContent.value = '' }
@@ -493,9 +560,42 @@ watch(() => input.value, () => {
 .ac-menu-cmd { font-weight:600; color:var(--accent,#7c6ef0); min-width:80px; }
 .ac-menu-desc { color:var(--text-secondary,#888); }
 
-.ac-send-btn { width:34px; height:34px; border-radius:8px; background:var(--accent,#7c6ef0); border:none; color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.ac-send-btn { width:34px; height:34px; border-radius:8px; background:var(--accent,#7c6ef0); border:none; color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition: background 0.15s; }
 .ac-send-btn:hover { opacity:.9; }
 .ac-send-btn:disabled { opacity:.4; cursor:not-allowed; }
+.ac-send-btn.stopping { background: var(--c-danger, #ef4444); animation: stop-ring 1.8s ease-in-out infinite; }
+@keyframes stop-ring {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+  50%       { box-shadow: 0 0 0 5px rgba(239,68,68,0); }
+}
+
+/* Thinking scan bar */
+.ac-thinking-bar {
+  height: 2px;
+  flex-shrink: 0;
+  background: linear-gradient(90deg, transparent 0%, var(--accent,#7c6ef0) 45%, transparent 100%);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: ac-scan 1.4s ease-in-out infinite;
+}
+@keyframes ac-scan {
+  0%   { background-position: -40% 0; }
+  100% { background-position: 140% 0; }
+}
+
+/* Wave dots (used in waiting state) */
+.dot-wave { display: inline-flex; gap: 4px; align-items: center; padding: 2px 0; }
+.dot-wave i {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent,#7c6ef0); display: block;
+  animation: ac-wave 1.1s ease-in-out infinite;
+}
+.dot-wave i:nth-child(2) { animation-delay: 0.18s; }
+.dot-wave i:nth-child(3) { animation-delay: 0.36s; }
+@keyframes ac-wave {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
+  30%            { transform: translateY(-5px); opacity: 1; }
+}
 
 /* ── Light mode ── */
 :global([data-theme="light"]) :deep(.ac-code-block pre) { background: var(--c-surface-0); color: var(--c-text-0); }

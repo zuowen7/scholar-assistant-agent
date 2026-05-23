@@ -59,14 +59,14 @@ cd python && python api.py     # Start API server on :18088
 
 **Translation pipeline** (5-step SSE, `useTranslate.ts` -> `routers/translate.py`):
 1. Parse -> 2. Clean -> 3. Chunk -> 4. Translate -> 5. Format
-SSE events: `progress` -> `parsed` -> `cleaned` -> `chunked` -> `block_translated`(xN) -> `complete`
+SSE events (all prefixed `translate.`): `translate.progress` -> `translate.parsed` -> `translate.cleaned` -> `translate.chunked` -> `translate.block_translated`(xN) -> `translate.complete`. Per-block side events: `translate.chunk_done` / `translate.chunk_error` / `translate.qa_warnings`; fatal: `translate.error`. `useTranslate.ts` switches on these exact prefixed names — keep backend (`routers/translate.py`) and frontend in sync.
 - **Block-aware translation**: Sentence-level alignment with hover highlighting (`src/utils/sentenceAlign.ts`)
 - **Enhanced prompts**: Paragraph structure preservation, reduced alignment failures
 - **Flexible export**: 4 formats (bilingual/translated-only × Markdown/Word) via unified dropdown
 - **Retry mechanism**: Failed blocks can be re-translated individually without full re-translation
 
 **Agent chat** (ReAct loop, `useAgentChat.ts` -> `routers/agent.py` -> `agent/agent.py`):
-SSE events stream tool calls and reasoning steps. Agent operates on the user's open project folder (`workspace_root` from `useFileTree.rootDir`), calling `read_file / grep_files / str_replace / write_file / git_op` directly. Workspace boundary enforced by `WorkspaceEnv.resolve()`; out-of-workspace paths trigger `force_approval=True` in `SecurityGate` → `await_approval` SSE event → user approves via `AgentApprovalInline`. RAG (`search_documents`) is on-demand for long-term literature library, not auto-injected per turn. Monaco editor reloads open tabs mid-stream on each `write_file`/`str_replace` tool result.
+SSE event types (defined in `agent/models.py`): `session_started` (metadata.session_id) / `task_started` / `token` / `thought` / `tool_call` / `tool_result` / `await_approval` / `approval_received` / `task_done` / `response` / `warning` / `error` / `done` / `aborted`. **Tool-name metadata key is canonical `tool_name`** across `tool_call` / `tool_result` / `await_approval` (do not reintroduce a bare `tool` key). SSE events stream tool calls and reasoning steps. Agent operates on the user's open project folder (`workspace_root` from `useFileTree.rootDir`), calling `read_file / grep_files / str_replace / write_file / git_op` directly. Workspace boundary enforced by `WorkspaceEnv.resolve()`; out-of-workspace paths trigger `force_approval=True` in `SecurityGate` → `await_approval` SSE event → user approves via `AgentApprovalInline`. RAG (`search_documents`) is on-demand for long-term literature library, not auto-injected per turn. Monaco editor reloads open tabs mid-stream on each `write_file`/`str_replace` tool result.
 
 ### Backend Structure (`python/`)
 
