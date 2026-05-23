@@ -330,6 +330,7 @@ def register_agent(
             cloud_model=cloud_cfg.get("model", "gpt-4o") if use_cloud else "",
             api_format=PROVIDER_PRESETS.get(cloud_cfg.get("provider", "openai"), {}).get("api_format", "openai") if use_cloud else "openai",
             memory_dir=str(data_root / "agent" / "memory"),
+            workspace_root=effective_workspace,
         )
 
     # ------------------------------------------------------------------

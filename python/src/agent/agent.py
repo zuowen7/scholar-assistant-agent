@@ -109,6 +109,7 @@ class AgentLoop:
         cloud_model: str = "",
         api_format: str = "openai",
         memory_dir: str = "",
+        workspace_root: str = "",
     ) -> None:
         self.ollama_base_url = ollama_base_url.rstrip("/")
         self.model = model
@@ -137,6 +138,7 @@ class AgentLoop:
             tool_registry=self.tool_registry,
         )
 
+        self.workspace_root = workspace_root.strip()
         self.memory = memory_manager or MemoryManager()
         self.skills = skill_registry or SkillRegistry()
         self.trajectory_recorder = trajectory_recorder or TrajectoryRecorder()
@@ -295,7 +297,7 @@ class AgentLoop:
             result.events.append(AgentEvent(
                 type="tool_call",
                 content="",
-                metadata={"tool": tc.name, "args": tc.arguments},
+                metadata={"tool_name": tc.name, "args": tc.arguments},
             ))
 
         # 若调用方要求不执行，则由 AgentSession 门控后再执行
@@ -384,9 +386,20 @@ class AgentLoop:
                 except Exception as _se:
                     logger.warning("Skill 匹配失败: %s", _se)
 
+            doc_ctx = ""
+            if self.workspace_root:
+                doc_ctx = (
+                    f"当前工作区根目录: {self.workspace_root}\n"
+                    "可用工具提示: 用 read_file/list_directory 读取工作区文件；"
+                    "用 read_argument_graph(file_path=<论文路径>) 读取论证图；"
+                    "用 read_argument_ledger(file_path=<论文路径>) 读取论证账本。"
+                    "路径均为绝对路径。"
+                )
+
             config = PromptConfig(
                 model_name=self.model,
                 memory_content=memory_ctx,
+                doc_context=doc_ctx,
                 extra_sections=extra,
             )
             system = self.prompt_builder.build(config)

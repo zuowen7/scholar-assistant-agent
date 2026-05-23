@@ -25,6 +25,12 @@
       </button>
     </div>
 
+    <!-- Agent link status -->
+    <div v-if="agentLinked" class="agent-link-bar">
+      <span class="agent-link-dot"></span>
+      <span>论证图已关联文档，Agent 可读取</span>
+    </div>
+
     <!-- Staleness banner -->
     <div v-if="companion.state.ledgerStale" class="stale-banner">
       草稿已改，可能过期
@@ -145,13 +151,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useArgumentCompanion } from '../../composables/useArgumentCompanion'
+import { useArgumentMap } from '../../composables/useArgumentMap'
 import LedgerList from './LedgerList.vue'
 import ReviewerThread from './ReviewerThread.vue'
 import ArgumentMapMini from './ArgumentMapMini.vue'
 
 const companion = useArgumentCompanion()
+const { state: argState } = useArgumentMap()
+
+const agentLinked = computed(() => !!argState.graph?.source_doc)
 const activeSubTab = ref<'ledger' | 'reviewer' | 'graph'>('ledger')
 const venue = ref<string>('')
 const persona = ref<string>('reviewer2')
@@ -244,6 +254,39 @@ async function updatePointStatus(pointId: string, status: string) {
   gap: 0;
   border-bottom: 1px solid var(--border, #2a2a2a);
   flex-shrink: 0;
+}
+
+.agent-link-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 10px;
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.07);
+  border-bottom: 1px solid rgba(74, 222, 128, 0.14);
+  flex-shrink: 0;
+}
+
+.agent-link-dot {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4ade80;
+  flex-shrink: 0;
+}
+.agent-link-dot::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1.5px solid #4ade80;
+  animation: sonar-ring 1.8s ease-out infinite;
+}
+@keyframes sonar-ring {
+  0%   { transform: scale(1);   opacity: 0.7; }
+  100% { transform: scale(2.6); opacity: 0; }
 }
 
 .sub-tab {
