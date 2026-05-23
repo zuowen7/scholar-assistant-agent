@@ -162,6 +162,7 @@ import { checkArgumentMapV2Flag, _openFullArgMapTick } from './composables/useAr
 import ArgumentMapView from './components/argument/ArgumentMapView.vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { open } from '@tauri-apps/plugin-dialog'
+import { useToast } from './composables/useToast'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useTranslate } from './composables/useTranslate'
 import { useEditor } from './composables/useEditor'
@@ -176,6 +177,7 @@ import type { AppMode } from './types'
 import { API_BASE } from './utils/api'
 
 const { state, translate, translateFromPath, cleanup, checkHealth, checkOllama, startOllama, checkCloudApi, getConfig, updateConfig, getProviderPresets, restartBackend, listenBackendCrash, setStatus, setError, setStepMessage, recoverTranslation, discardPersisted } = useTranslate()
+const { pushError } = useToast()
 
 // ── 应用模式 ──────────────────────────────────────────────────
 const appMode = ref<AppMode>('editor')
@@ -442,8 +444,9 @@ async function pickBackground() {
       opacity: bgSettings.value.opacity,
     }
     saveBgSettings()
-  } catch {
-    // dialog not available in non-Tauri
+  } catch (err) {
+    // Show error to user - might be browser mode or permission issue
+    pushError('背景选择失败，请确保在 Tauri 桌面版中使用')
   }
 }
 
