@@ -152,7 +152,7 @@ import { useEditor } from '../composables/useEditor'
 import { useEditorVision } from '../composables/useEditorVision'
 import { useEditorCitation } from '../composables/useEditorCitation'
 import { useEditorIO } from '../composables/useEditorIO'
-import { useMindMap, mindMapToMarkdown, markdownToMindMapNodes } from '../composables/useMindMap'
+import { useMindMap, markdownToMindMapNodes } from '../composables/useMindMap'
 import { useArgumentCompanion } from '../composables/useArgumentCompanion'
 
 const props = defineProps<{ isDark: boolean }>()

@@ -20,11 +20,38 @@
           @input="autosize"
         />
         <span v-else class="node-text nodrag" @dblclick="startEdit">{{ data.text }}</span>
+        <button
+          v-if="!editing"
+          class="body-toggle nodrag"
+          :class="{ 'has-body': bodyPreview }"
+          @click="toggleBody"
+          :title="bodyExpanded ? '收起正文' : '编辑正文'"
+        >{{ bodyExpanded ? '▾' : '▸' }}</button>
       </div>
       <span v-if="expanding" class="node-spinner" role="status" aria-label="AI 展开中">
         <UiSpinner size="sm" />
       </span>
       <span v-else-if="issueCount" class="node-badge">{{ issueCount }}</span>
+    </div>
+
+    <!-- Body text area -->
+    <Transition name="v-fade">
+      <div v-if="bodyExpanded" class="node-content-area nodrag nowheel" @mousedown.stop @wheel.stop>
+        <textarea
+          ref="bodyRef"
+          v-model="draftBody"
+          class="body-textarea nodrag nowheel"
+          placeholder="正文内容..."
+          rows="2"
+          @blur="commitBody"
+          @input="autosizeBody"
+        />
+      </div>
+    </Transition>
+
+    <!-- Body preview (collapsed) -->
+    <div v-if="!bodyExpanded && bodyPreview" class="node-body-preview nodrag" @dblclick="toggleBody">
+      {{ bodyPreview }}
     </div>
 
     <!-- AI 展开加载反馈：底部扫描条 + 微光文字 -->
@@ -51,12 +78,13 @@ import UiSpinner from '../ui/UiSpinner.vue'
 
 const props = defineProps<NodeProps<{
   text: string
+  body: string
   depth: number
   isRoot: boolean
   hasChildren: boolean
 }>>()
 
-const { commitNodeText, selectedNodeId, analysisIssuesByNode } = useMindMap()
+const { commitNodeText, updateNodeBody, selectedNodeId, analysisIssuesByNode } = useMindMap()
 
 const expandingNodeId = inject<Ref<string>>('expandingNodeId', ref(''))
 
@@ -64,9 +92,20 @@ const editing = ref(false)
 const draftText = ref('')
 const inputRef = ref<HTMLTextAreaElement>()
 
+const bodyExpanded = ref(false)
+const draftBody = ref('')
+const bodyRef = ref<HTMLTextAreaElement>()
+
 const selected = computed(() => selectedNodeId.value === props.id)
 const expanding = computed(() => !!expandingNodeId.value && expandingNodeId.value === props.id)
 const issueCount = computed(() => analysisIssuesByNode.value[props.id] ?? 0)
+
+const bodyPreview = computed(() => {
+  const b = props.data.body ?? ''
+  if (!b) return ''
+  const firstLine = b.split('\n')[0]
+  return firstLine.length > 40 ? firstLine.slice(0, 40) + '...' : firstLine
+})
 
 const DEPTH_COLORS = ['#6366f1', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444']
 const DEPTH_ICONS = ['●', '◆', '■', '●', '◆', '■']
@@ -90,8 +129,27 @@ function commit() {
 
 function cancel() { editing.value = false }
 
+function toggleBody() {
+  bodyExpanded.value = !bodyExpanded.value
+  if (bodyExpanded.value) {
+    draftBody.value = props.data.body ?? ''
+    nextTick(() => {
+      bodyRef.value?.focus()
+      autosizeEl(bodyRef.value!)
+    })
+  }
+}
+
+function commitBody() {
+  updateNodeBody(props.id, draftBody.value)
+}
+
 function autosize(e: Event) {
   autosizeEl(e.target as HTMLTextAreaElement)
+}
+
+function autosizeBody() {
+  autosizeEl(bodyRef.value!)
 }
 
 function autosizeEl(ta: HTMLTextAreaElement) {
@@ -106,6 +164,7 @@ defineExpose({ startEdit })
 <style scoped>
 .mind-node {
   display: flex;
+  flex-direction: column;
   min-width: 132px;
   max-width: 276px;
   background: var(--c-surface-1);
@@ -175,7 +234,10 @@ defineExpose({ startEdit })
 .color-bar {
   width: 4px;
   flex-shrink: 0;
-  position: relative;
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
   z-index: 1;
 }
 /* 光泽叠加 — 仿漆面高光 */
@@ -188,8 +250,7 @@ defineExpose({ startEdit })
 }
 
 .node-body {
-  flex: 1;
-  padding: 7px 10px;
+  padding: 7px 10px 7px 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -225,6 +286,63 @@ defineExpose({ startEdit })
   font-size: 14px;
   font-weight: 650;
   letter-spacing: var(--tracking-tight);
+}
+
+.body-toggle {
+  background: none;
+  border: none;
+  color: var(--c-text-2);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 3px;
+  border-radius: var(--radius-xs);
+  flex-shrink: 0;
+  line-height: 1;
+  opacity: 0.5;
+  transition: opacity 150ms var(--ease-out), color 150ms var(--ease-out);
+}
+.body-toggle:hover { opacity: 1; color: var(--c-accent); }
+.body-toggle.has-body { opacity: 0.8; color: var(--c-accent); }
+
+.node-content-area {
+  padding: 0 10px 6px 14px;
+  position: relative;
+  z-index: 1;
+}
+
+.body-textarea {
+  width: 100%;
+  min-height: 36px;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-surface-4);
+  border-radius: var(--radius-xs);
+  outline: none;
+  color: var(--c-text-0);
+  font: inherit;
+  font-size: 12px;
+  resize: none;
+  line-height: 1.4;
+  padding: 4px 6px;
+  transition: border-color 150ms var(--ease-out);
+}
+.body-textarea:focus {
+  border-color: var(--c-accent);
+}
+
+.node-body-preview {
+  padding: 0 10px 5px 14px;
+  font-size: 11px;
+  color: var(--c-text-2);
+  line-height: 1.35;
+  word-break: break-word;
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
+  max-height: 32px;
+  overflow: hidden;
+}
+.node-body-preview:hover {
+  color: var(--c-accent);
 }
 
 .node-input {
