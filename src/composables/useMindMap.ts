@@ -57,6 +57,7 @@ const createDefaultMap = (): MindMapData => {
 
 const draftMindMap = ref<MindMapData>(createDefaultMap())
 const savedMindMap = ref<MindMapData | null>(null)
+let _skipNextBackendLoad = false
 const selectedNodeId = ref(draftMindMap.value.rootId)
 const viewport = ref<MindMapViewport>({
   pan: { x: 80, y: 80 },
@@ -245,6 +246,10 @@ export function useMindMap() {
   }
 
   async function loadFromBackend(): Promise<boolean> {
+    if (_skipNextBackendLoad) {
+      _skipNextBackendLoad = false
+      return false
+    }
     try {
       const res = await fetch(`${API_BASE}/api/mindmap/load`)
       if (!res.ok) return false
@@ -467,6 +472,7 @@ export function useMindMap() {
     updateNodeText,
     updateNodeBody,
     commitNodeText,
+    skipNextBackendLoad: () => { _skipNextBackendLoad = true },
     setNodePosition,
     commitNodePosition,
     addChild,

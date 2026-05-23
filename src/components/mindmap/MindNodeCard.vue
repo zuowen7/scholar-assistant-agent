@@ -84,7 +84,7 @@ const props = defineProps<NodeProps<{
   hasChildren: boolean
 }>>()
 
-const { commitNodeText, updateNodeBody, selectedNodeId, analysisIssuesByNode } = useMindMap()
+const { commitNodeText, updateNodeBody, selectedNodeId, analysisIssuesByNode, draftMindMap } = useMindMap()
 
 const expandingNodeId = inject<Ref<string>>('expandingNodeId', ref(''))
 
@@ -100,8 +100,10 @@ const selected = computed(() => selectedNodeId.value === props.id)
 const expanding = computed(() => !!expandingNodeId.value && expandingNodeId.value === props.id)
 const issueCount = computed(() => analysisIssuesByNode.value[props.id] ?? 0)
 
+const nodeBody = computed(() => draftMindMap.value.nodes[props.id]?.body ?? '')
+
 const bodyPreview = computed(() => {
-  const b = props.data.body ?? ''
+  const b = nodeBody.value
   if (!b) return ''
   const firstLine = b.split('\n')[0]
   return firstLine.length > 40 ? firstLine.slice(0, 40) + '...' : firstLine
@@ -132,7 +134,7 @@ function cancel() { editing.value = false }
 function toggleBody() {
   bodyExpanded.value = !bodyExpanded.value
   if (bodyExpanded.value) {
-    draftBody.value = props.data.body ?? ''
+    draftBody.value = nodeBody.value
     nextTick(() => {
       bodyRef.value?.focus()
       autosizeEl(bodyRef.value!)

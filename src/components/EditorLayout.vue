@@ -174,7 +174,7 @@ const { aiEdit, applyAiResult, undoEdit } = useEditor()
 const { analyzeVision, uploadImage, insertImageFile } = useEditorVision()
 const { processCitations, previewCitations, getZoteroStatus, searchZotero } = useEditorCitation()
 const { exportToWord, exportLatex, exportPdf, loadExportTemplates } = useEditorIO()
-const { resetMindMap, loadSavedMindMap, saveMindMap, addChild, updateNodeText, updateNodeBody } = useMindMap()
+const { resetMindMap, loadSavedMindMap, saveMindMap, addChild, updateNodeText, updateNodeBody, skipNextBackendLoad } = useMindMap()
 
 // 鈹€鈹€ Workspace mode 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 const workspaceMode = ref<'editor' | 'mindmap'>('editor')
@@ -280,6 +280,7 @@ function buildTreeNode(parentId: string, node: import('../composables/useMindMap
 
 function openMindMapFromEditor() {
   sidebarCollapsed.value = true
+  skipNextBackendLoad()
   _contentBeforeMindMap = content.value
   const md = content.value
   if (md.trim()) {
