@@ -390,17 +390,27 @@ async function doSend(text: string) {
     if (!reader) throw new Error('响应内容为空')
 
     let hasToolActivity = false
+    let _inThink = false
     let tokenBuffer = ''
     await readSseStream(reader, (evtType, d) => {
       const meta = d.metadata as Record<string, unknown> | undefined
       if (evtType === 'token' && d.content) {
-        if (!hasToolActivity) {
-          tokenBuffer += d.content as string
-          streamContent.value = tokenBuffer
-          scrollBottom()
+        const c = d.content as string
+        if (c.includes('</think')) _inThink = false
+        if (!_inThink && !hasToolActivity) {
+          const clean = c.replace(/<\/?think[^>]*>/g, '')
+          if (clean) {
+            tokenBuffer += clean
+            streamContent.value = tokenBuffer
+            scrollBottom()
+          }
         }
+        if (c.includes('<think') && !c.includes('</think')) _inThink = true
       }
-      else if (evtType === 'response' && d.content) { streamContent.value = d.content as string; tokenBuffer = '' }
+      else if (evtType === 'response' && d.content) {
+        streamContent.value = (d.content as string).replace(/<think\b[^>]*>[\s\S]*?<\/think\s*>/g, '').trim()
+        tokenBuffer = ''
+      }
       else if (evtType === 'error') { streamContent.value = (d.content as string) || '错误' }
       else if ((evtType === 'thought' || evtType === 'thinking') && d.content) { thinkingText.value = d.content as string }
       else if (evtType === 'tool_call') {
