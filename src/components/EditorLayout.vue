@@ -88,6 +88,7 @@
         <AiPanel
           v-if="rightPanelTab === 'ai'"
           :editor-context="selection.text || content"
+          :active-file="activeFile"
           :can-undo="!!previousContent"
           :workspace-files="workspaceFiles"
           class="rp-content"
@@ -157,7 +158,7 @@ import { useArgumentCompanion } from '../composables/useArgumentCompanion'
 const props = defineProps<{ isDark: boolean }>()
 
 // 鈹€鈹€ Shared singleton state (single source of truth) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
-const { activeTab, content, contentVersion, selection, previousContent, tabs, aiResult, insertTextAtCursor } = useEditorState()
+const { activeTab, content, contentVersion, selection, previousContent, tabs, aiResult, insertTextAtCursor, activeFile } = useEditorState()
 
 // 鈹€鈹€ Tab / file operations 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 const {
