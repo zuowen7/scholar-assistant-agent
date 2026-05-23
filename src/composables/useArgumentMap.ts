@@ -5,6 +5,7 @@ import type { BlockData } from '../types/index'
 import { useTranslate } from './useTranslate'
 import { useEditor } from './useEditor'
 import { useToast } from './useToast'
+import { useArgumentLayout } from './useArgumentLayout'
 
 const { pushError } = useToast()
 
@@ -498,6 +499,16 @@ async function extractArgument(
 
     // Reload from server to confirm persisted state
     await loadGraph(gid)
+
+    // Auto-layout after extraction
+    if (_state.graph && _state.graph.nodes.length) {
+      const { autoLayout } = useArgumentLayout()
+      const pos = autoLayout(_state.graph.nodes as any[], _state.graph.edges as any[])
+      for (const p of pos) {
+        const node = _state.graph.nodes.find(n => n.id === p.id)
+        if (node) node.position = p.position
+      }
+    }
   } catch (err: unknown) {
     if (err instanceof DOMException && err.name === 'AbortError') return
     pushError(`提取论证失败：${err instanceof Error ? err.message : String(err)}`)
