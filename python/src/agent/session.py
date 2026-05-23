@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid
 from datetime import datetime
 from dataclasses import dataclass, field
@@ -59,14 +60,18 @@ _TRIVIAL_CHAT_PATTERNS = (
 
 
 def _is_trivial_chat(text: str) -> bool:
-    """问候/感谢/闲聊 → 不应触发工具调用的短消息。"""
+    """问候/感谢/闲聊 → 不应触发工具调用的短消息。
+
+    归一化策略：去掉首尾空白后，剥离尾部标点/语气词/emoji，
+    再与预设词精确匹配。这样 "你好啊"、"你好~"、"hello!!" 等变体
+    也能命中短路，而 "你好，帮我润色" 这类含实际指令的不会误判。
+    """
     s = text.strip().lower()
     if not s or len(s) > 30:
         return False
-    for p in _TRIVIAL_CHAT_PATTERNS:
-        if s == p or s == p + "！" or s == p + "!" or s == p + "。" or s == p + ".":
-            return True
-    return False
+    # 剥离尾部非核心字符（标点 / 语气词 / 空白 / emoji）
+    s = re.sub(r"[\s！!。.,，~～、…啊呀哦呢吗嘛喔噢呀啦了的呗哈呵\U0001F300-\U0001FAFF☀-➿]+$", "", s)
+    return s in _TRIVIAL_CHAT_PATTERNS
 
 
 class SessionAborted(Exception):

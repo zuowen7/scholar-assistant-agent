@@ -10,10 +10,10 @@
       @mousedown="_headerMouseDown"
     >
       <div class="agent-tabs">
-        <button class="agent-tab" :class="{ active: tab === 'chat' }" @click="tab = 'chat'">对话</button>
-        <button class="agent-tab" :class="{ active: tab === 'docs' }" @click="tab = 'docs'">文献库</button>
-        <button class="agent-tab" :class="{ active: tab === 'templates' }" @click="tab = 'templates'">模板</button>
-        <button class="agent-tab" :class="{ active: tab === 'sessions' }" @click="tab = 'sessions'; refreshSessions()">会话</button>
+        <button class="agent-tab u-interactive" :class="{ active: tab === 'chat' }" @click="tab = 'chat'">对话</button>
+        <button class="agent-tab u-interactive" :class="{ active: tab === 'docs' }" @click="tab = 'docs'">文献库</button>
+        <button class="agent-tab u-interactive" :class="{ active: tab === 'templates' }" @click="tab = 'templates'">模板</button>
+        <button class="agent-tab u-interactive" :class="{ active: tab === 'sessions' }" @click="tab = 'sessions'; refreshSessions()">会话</button>
       </div>
       <div class="agent-header-actions">
         <!-- Standalone window: dock back to main -->
@@ -161,61 +161,79 @@
         <span class="docs-title">文献库</span>
         <span class="docs-subtitle">历史翻译自动收录，供 Agent 跨文献检索</span>
         <div class="docs-toolbar-actions">
-          <button class="btn primary" :disabled="ragUploading" @click="ragFileInput?.click()">
-            {{ ragUploading ? '上传中...' : '上传文件' }}
+          <button class="btn primary u-interactive" :disabled="ragUploading" @click="ragFileInput?.click()">
+            <UiSpinner v-if="ragUploading" size="sm" />
+            <span>{{ ragUploading ? '上传中' : '上传文件' }}</span>
           </button>
-          <button class="btn ghost" @click="fetchDocs" :disabled="ragLoading">刷新</button>
+          <button class="btn ghost u-interactive" :class="{ refreshing: ragLoading }" @click="fetchDocs" :disabled="ragLoading">刷新</button>
         </div>
         <input ref="ragFileInput" type="file" style="display:none"
           accept=".pdf,.docx,.doc,.txt,.md,.log,.html,.htm,.epub,.rtf,.tex,.csv,.pptx,.xlsx,.srt,.json,.xml"
           @change="handleRagUpload" />
       </div>
-      <div v-if="ragUploadError" class="docs-error">{{ ragUploadError }}</div>
-      <div v-if="ragLoading" class="docs-loading">加载中...</div>
-      <div v-else-if="ragDocuments.length === 0" class="docs-empty">暂无文档</div>
-      <div v-else class="docs-list">
-        <div v-for="doc in ragDocuments" :key="doc.id" class="doc-card">
+      <Transition name="v-slide-up">
+        <div v-if="ragUploadError" class="docs-error">{{ ragUploadError }}</div>
+      </Transition>
+      <div v-if="ragLoading && ragDocuments.length === 0" class="docs-list">
+        <div v-for="i in 4" :key="i" class="doc-card skel" :style="{ '--stagger-i': i - 1 }">
+          <div class="doc-info" style="flex:1">
+            <UiSkeleton shape="line" height="13" width="70%" />
+            <UiSkeleton shape="line" height="10" width="30%" />
+          </div>
+        </div>
+      </div>
+      <div v-else-if="ragDocuments.length === 0" class="docs-empty anim-fade-in-up">
+        <span class="empty-glyph">▤</span>
+        <p>暂无文档</p>
+      </div>
+      <TransitionGroup v-else name="v-list-stagger" tag="div" class="docs-list">
+        <div v-for="(doc, idx) in ragDocuments" :key="doc.id" class="doc-card u-interactive" :style="{ '--stagger-i': idx }">
           <div class="doc-info">
             <span class="doc-title">{{ doc.title || doc.id }}</span>
             <span class="doc-meta">{{ doc.chunk_count }} 块</span>
           </div>
-          <button class="doc-del-btn" @click="deleteDoc(doc.id)" title="删除">
+          <button class="doc-del-btn u-interactive" @click="deleteDoc(doc.id)" title="删除">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
             </svg>
           </button>
         </div>
-      </div>
+      </TransitionGroup>
     </div>
 
     <!-- Templates Tab -->
     <div v-show="tab === 'templates'" class="agent-templates">
       <div class="docs-toolbar">
         <span class="docs-title">论文模板库</span>
-        <button class="btn ghost" @click="loadPaperTemplates" :disabled="templatesLoading">刷新</button>
+        <button class="btn ghost u-interactive" :class="{ refreshing: templatesLoading }" @click="loadPaperTemplates" :disabled="templatesLoading">刷新</button>
       </div>
-      <div v-if="templatesLoading" class="docs-loading">加载中...</div>
-      <div v-else-if="templates.length === 0" class="docs-empty">
-        暂无模板数据
-        <button class="btn ghost" style="margin-top:8px" @click="ingestPaperAssets">索引模板素材</button>
+      <div v-if="templatesLoading && templates.length === 0" class="template-grid">
+        <UiSkeleton v-for="i in 4" :key="i" shape="card" height="58" :style="{ '--stagger-i': i - 1 }" class="tpl-skel" />
       </div>
-      <div v-else class="template-grid">
-        <div v-for="t in templates" :key="t.id" class="template-card" @click="previewingTemplate = t">
+      <div v-else-if="templates.length === 0" class="docs-empty anim-fade-in-up">
+        <span class="empty-glyph">◳</span>
+        <p>暂无模板数据</p>
+        <button class="btn ghost u-interactive" style="margin-top:8px" @click="ingestPaperAssets">索引模板素材</button>
+      </div>
+      <TransitionGroup v-else name="v-list-stagger" tag="div" class="template-grid">
+        <div v-for="(t, idx) in templates" :key="t.id" class="template-card u-interactive" :style="{ '--stagger-i': idx }" @click="previewingTemplate = t">
           <span class="template-icon">{{ t.icon }}</span>
           <div class="template-info">
             <span class="template-name">{{ t.name }}</span>
             <span class="template-venue">{{ t.venue }}</span>
           </div>
         </div>
-      </div>
-      <div v-if="previewingTemplate" class="template-preview">
-        <div class="template-preview-header">
-          <span>{{ previewingTemplate.icon }} {{ previewingTemplate.name }}</span>
-          <button class="btn ghost" @click="previewingTemplate = null">&times;</button>
+      </TransitionGroup>
+      <Transition name="v-scale-in">
+        <div v-if="previewingTemplate" class="template-preview">
+          <div class="template-preview-header">
+            <span>{{ previewingTemplate.icon }} {{ previewingTemplate.name }}</span>
+            <button class="btn ghost u-interactive" @click="previewingTemplate = null">&times;</button>
+          </div>
+          <div class="template-preview-desc">{{ previewingTemplate.description }}</div>
+          <button class="btn primary u-interactive" style="margin-top:8px;width:100%" @click="createFromTemplate(previewingTemplate)">以此为模板新建</button>
         </div>
-        <div class="template-preview-desc">{{ previewingTemplate.description }}</div>
-        <button class="btn primary" style="margin-top:8px;width:100%" @click="createFromTemplate(previewingTemplate)">以此为模板新建</button>
-      </div>
+      </Transition>
     </div>
   </div>
 </template>

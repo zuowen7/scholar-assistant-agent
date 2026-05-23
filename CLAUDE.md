@@ -261,3 +261,10 @@ agency-agents-zh SDLC 改造 (2026-05-18–19，分支 `feature/sdlc-borrow-agen
 - `reviewer.py` — ledger_cross_check / coherence_check 标题和 prompt 中文化；discharge prompt 从严判断标准 + 首/中/尾采样替代截断
 - `argument.py` — rebuttal 下载用 `tempfile.gettempdir()` 替代硬编码 `/tmp`
 - 验证：1582 pytest passed / 8 skipped；326 vitest passed
+
+死循环 + 论证账本可用性修复 (2026-05-23 Round 2)：
+- `AiPanel.vue` — **润色/扩写/审阅/中英互译预设按钮改走 `/api/edit`**（一次性、无工具流式）而非 Agent ReAct 循环；根因：预设走 `/api/agent/v2/chat` 后 LLM 把"润色"当任务去 `write_file` 创建文档 → 卡死/循环。新增 `doEdit()` 消费 `delta` SSE 事件 + "未打开文本"守卫
+- `session.py` — `_is_trivial_chat` 归一化加固：先用正则剥离尾部标点/语气词/emoji 再匹配预设词，"你好啊""你好~""hello!!" 等变体也命中短路；"你好，帮我润色"这类含指令的仍走完整流程（补 `import re`）
+- `ledger.py` — **实际补上 anchor SSE 事件**（此前 CLAUDE.md 声称已做但代码并未实现）：`build_ledger` 在 src_anchor + 每个 discharge anchor 处 yield `anchor` 事件；`rebuild_ledger` 透传 `anchor`。修复前端 `ledger.anchors` 恒空导致"跳转原文/兑付处"按钮全失效
+- `LedgerList.vue` / `CompanionPanel.vue` — 通篇未定义的旧 CSS 变量（`--border`/`--bg-2`/`--text-dim`/`--text`/`--accent`）全部映射到规范 `--c-*` token（修复浅色主题不可读）；账本列表加入场动效（`promise-in`）、hover 过渡、sticky 工具栏
+- 验证：1582 pytest passed / 8 skipped；326 vitest passed

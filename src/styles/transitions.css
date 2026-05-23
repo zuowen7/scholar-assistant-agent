@@ -70,3 +70,86 @@
   transform-origin: top;
 }
 .v-unfurl-leave-to { opacity: 0; }
+
+/* ══════════════════════════════════════════════════════════════
+   通用动效工具类（"明显活泼"基调）
+   直接在元素上套 class，无需 <Transition> 包裹。
+   ══════════════════════════════════════════════════════════════ */
+
+/* 入场：自下淡入上浮 */
+.anim-fade-in-up { animation: anim-fade-in-up var(--motion-slow) var(--ease-out) both; }
+@keyframes anim-fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* 入场：弹性弹入（卡片/徽章/印章） */
+.anim-pop-in { animation: anim-pop-in 360ms var(--ease-spring) both; }
+@keyframes anim-pop-in {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* 入场：墨韵笔触自左揭示 */
+.anim-brush-in { animation: anim-brush-in 480ms var(--ease-brush) both; }
+@keyframes anim-brush-in {
+  from { opacity: 0; clip-path: inset(0 100% 0 0); }
+  to   { opacity: 1; clip-path: inset(0 0 0 0); }
+}
+
+/* 列表错峰：父元素给子项设 --stagger-i（0,1,2…），自动延迟 */
+.anim-stagger { animation-delay: calc(var(--stagger-i, 0) * var(--motion-stagger)); }
+
+/* hover 抬升 + 按压回弹（交互反馈） */
+.u-interactive {
+  transition: transform var(--motion-fast) var(--ease-brush),
+              box-shadow var(--motion-base) var(--ease-out),
+              background var(--motion-fast) var(--ease-out),
+              border-color var(--motion-fast) var(--ease-out);
+}
+.u-interactive:not(:disabled):hover { transform: translateY(-1px); }
+.u-interactive:not(:disabled):active { transform: scale(0.97); }
+
+/* 加载文字微光扫过 */
+.anim-shimmer-text {
+  background: linear-gradient(90deg, var(--c-text-2) 30%, var(--c-text-0) 50%, var(--c-text-2) 70%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  animation: anim-shimmer-text 1.6s linear infinite;
+}
+@keyframes anim-shimmer-text {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+/* 进度扫描条（不确定进度的等待） */
+.anim-scan-bar {
+  position: relative; height: 2px; overflow: hidden;
+  background: var(--c-surface-3);
+}
+.anim-scan-bar::after {
+  content: ''; position: absolute; inset: 0;
+  width: 38%;
+  background: linear-gradient(90deg, transparent, var(--c-accent), transparent);
+  animation: anim-scan 1.1s var(--ease-smooth, ease-in-out) infinite;
+}
+@keyframes anim-scan {
+  from { transform: translateX(-120%); }
+  to   { transform: translateX(360%); }
+}
+
+/* 锚点定位高亮闪烁（编辑器跳转反馈） */
+.anim-flash {
+  animation: anim-flash 1.1s var(--ease-out) 1;
+}
+@keyframes anim-flash {
+  0%   { background: var(--c-accent-soft); box-shadow: 0 0 0 6px var(--c-accent-soft); }
+  100% { background: transparent; box-shadow: 0 0 0 0 transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-fade-in-up, .anim-pop-in, .anim-brush-in,
+  .anim-shimmer-text, .anim-scan-bar::after, .anim-flash { animation: none; }
+  .anim-fade-in-up, .anim-pop-in, .anim-brush-in { opacity: 1; transform: none; clip-path: none; }
+}

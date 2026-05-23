@@ -87,6 +87,16 @@ function doDelete() {
 </script>
 
 <style>
+/* 连线落笔：首次渲染时如笔锋自源头划向目标 */
+.mind-edge .vue-flow__edge-path {
+  stroke-dasharray: 600;
+  stroke-dashoffset: 600;
+  animation: edge-draw 620ms var(--ease-brush) forwards;
+  transition: stroke 180ms var(--ease-out), stroke-width 180ms var(--ease-out), opacity 180ms var(--ease-out);
+}
+@keyframes edge-draw {
+  to { stroke-dashoffset: 0; }
+}
 .edge-hit-area {
   cursor: pointer;
 }
@@ -115,5 +125,17 @@ function doDelete() {
 }
 .edge-context-menu button:hover {
   background: var(--c-danger-bg);
+}
+.edge-context-menu {
+  animation: anim-pop-in 200ms var(--ease-spring) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mind-edge .vue-flow__edge-path {
+    animation: none;
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+  }
+  .edge-context-menu { animation: none; }
 }
 </style>

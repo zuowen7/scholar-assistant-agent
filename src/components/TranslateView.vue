@@ -95,7 +95,12 @@
 
       <!-- Format chips -->
       <div class="format-row">
-        <span v-for="fmt in formatList" :key="fmt" class="fmt-chip">{{ fmt }}</span>
+        <span
+          v-for="(fmt, fi) in formatList"
+          :key="fmt"
+          class="fmt-chip u-interactive anim-fade-in-up anim-stagger"
+          :style="{ '--stagger-i': fi }"
+        >{{ fmt }}</span>
       </div>
 
       <!-- Error banner -->
@@ -111,7 +116,7 @@
       <div class="work-card">
 
         <!-- Step strip -->
-        <div class="stepper">
+        <div class="stepper anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 0 }">
           <div
             v-for="(label, idx) in stepLabels"
             :key="idx"
@@ -133,7 +138,7 @@
         </div>
 
         <!-- Progress -->
-        <div class="progress-area">
+        <div class="progress-area anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 1 }">
           <div class="progress-meta">
             <span class="progress-msg">{{ state.stepMessage || '准备中…' }}</span>
             <span class="progress-pct">{{ progress }}%</span>
@@ -144,7 +149,7 @@
         </div>
 
         <!-- Chunk sub-progress -->
-        <div v-if="state.currentStep === 4 && state.totalChunks > 0" class="chunk-bar">
+        <div v-if="state.currentStep === 4 && state.totalChunks > 0" class="chunk-bar anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 2 }">
           <div class="chunk-track">
             <div class="chunk-fill" :style="{ width: `${(state.completedChunks / state.totalChunks) * 100}%` }" />
           </div>
@@ -153,9 +158,9 @@
 
         <!-- Parsed info tags -->
         <div v-if="state.parsedInfo" class="info-chips">
-          <span class="info-chip">{{ state.parsedInfo.pages }} 页</span>
-          <span class="info-chip">{{ state.parsedInfo.chars.toLocaleString() }} 字符</span>
-          <span v-if="state.parsedInfo.dual_column_pages" class="info-chip accent">{{ state.parsedInfo.dual_column_pages }} 页双栏</span>
+          <span class="info-chip u-interactive anim-pop-in anim-stagger" :style="{ '--stagger-i': 0 }">{{ state.parsedInfo.pages }} 页</span>
+          <span class="info-chip u-interactive anim-pop-in anim-stagger" :style="{ '--stagger-i': 1 }">{{ state.parsedInfo.chars.toLocaleString() }} 字符</span>
+          <span v-if="state.parsedInfo.dual_column_pages" class="info-chip accent u-interactive anim-pop-in anim-stagger" :style="{ '--stagger-i': 2 }">{{ state.parsedInfo.dual_column_pages }} 页双栏</span>
         </div>
       </div>
 
@@ -210,7 +215,7 @@
 
       <!-- Result action bar -->
       <div class="result-bar">
-        <div class="result-bar-left">
+        <div class="result-bar-left anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 0 }">
           <div class="done-title-group">
             <span class="done-label">翻译完成</span>
             <span v-if="state.blocks.length" class="done-meta">
@@ -218,7 +223,14 @@
             </span>
           </div>
           <span v-if="state.misalignedChunks > 0" class="warn-tag">{{ state.misalignedChunks }} 块对齐回退</span>
-          <span v-if="state.ragIngested" class="done-rag-hint" @click="$emit('open-agent-docs')">已加入知识库</span>
+          <span
+            v-if="state.ragIngested"
+            class="done-rag-hint"
+            role="button"
+            tabindex="0"
+            @click="$emit('open-agent-docs')"
+            @keydown.enter="$emit('open-agent-docs')"
+          >已加入文献库</span>
         </div>
         <div class="result-bar-right">
           <UiSegmented
@@ -289,8 +301,9 @@
           <div
             v-for="(b, i) in renderableBlocks"
             :key="b.id"
-            class="dual-row"
+            class="dual-row anim-fade-in-up anim-stagger"
             :class="['type-' + b.type]"
+            :style="{ '--stagger-i': Math.min(i, 8) }"
           >
             <!-- 标题：跨栏 -->
             <template v-if="b.type === 'heading'">
@@ -313,7 +326,7 @@
                 >
                   重试
                 </UiButton>
-                <span v-else class="retrying">重试中…</span>
+                <span v-else class="retrying"><UiSpinner size="sm" label="重试中" /></span>
                 <div v-if="retryErrors.get(b.id)" class="retry-error-msg">
                   {{ retryErrors.get(b.id) }}
                 </div>
@@ -333,7 +346,9 @@
                 @mouseover="handleSentenceMouseEnter"
                 @mouseleave="clearSentHover()"
               />
-              <div v-else class="dual-pending">翻译中…</div>
+              <div v-else class="dual-pending">
+                <UiSpinner size="sm" label="翻译中" />
+              </div>
             </template>
           </div>
         </div>
@@ -361,6 +376,7 @@ import { UploadCloud, AlertCircle, Check, Download, FileText, ChevronDown, Prese
 import UiButton from './ui/UiButton.vue'
 import UiSegmented from './ui/UiSegmented.vue'
 import UiDropdown from './ui/UiDropdown.vue'
+import UiSpinner from './ui/UiSpinner.vue'
 import { API_BASE } from '../utils/api'
 import { useTranslate } from '../composables/useTranslate'
 import { renderMarkdown, renderBlock } from '../utils/markdown'
@@ -892,7 +908,7 @@ function openFilePicker() {
   align-items: center;
   gap: var(--space-2);
   background: var(--c-glass);
-  border: 1.5px dashed color-mix(in srgb, var(--accent-0) 40%, transparent);
+  border: 1.5px dashed color-mix(in srgb, var(--c-accent) 40%, transparent);
   border-radius: var(--radius-card);
   cursor: pointer;
   outline: none;
@@ -907,13 +923,18 @@ function openFilePicker() {
 }
 .drop-zone:hover,
 .drop-zone.hover {
-  border-color: var(--accent-0);
+  border-color: var(--c-accent);
   background: var(--c-accent-soft);
-  box-shadow: 0 24px 48px var(--accent-glow), 0 1px 0 var(--accent-1) inset;
+  box-shadow: 0 24px 48px var(--accent-glow), 0 1px 0 var(--c-accent-hover) inset;
   transform: translateY(-2px);
 }
+.drop-zone:active { transform: translateY(0) scale(0.99); }
+.drop-zone:focus-visible {
+  border-color: var(--c-accent);
+  box-shadow: var(--ring-focus);
+}
 .drop-zone:hover .dz-icon,
-.drop-zone.hover .dz-icon { color: var(--accent-1); }
+.drop-zone.hover .dz-icon { color: var(--c-accent-hover); }
 
 /* Ink bloom SVG */
 .dz-bloom {
@@ -948,8 +969,8 @@ function openFilePicker() {
   background: conic-gradient(from var(--orbit-angle, 0deg),
     transparent 0%,
     transparent 85%,
-    var(--accent-1) 94%,
-    var(--accent-0) 98%,
+    var(--c-accent-hover) 94%,
+    var(--c-accent) 98%,
     transparent 100%
   );
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
@@ -1047,12 +1068,14 @@ function openFilePicker() {
   align-items: center;
   justify-content: center;
   transition: border-color var(--motion-base) var(--ease-out),
-              background var(--motion-base) var(--ease-out);
+              background var(--motion-base) var(--ease-out),
+              transform var(--motion-base) var(--ease-spring);
 }
 .drop-zone:hover .dz-icon-wrap,
 .drop-zone.hover .dz-icon-wrap {
-  border-color: var(--accent-0);
+  border-color: var(--c-accent);
   background: var(--c-accent-soft);
+  transform: scale(1.06);
 }
 .dz-icon {
   color: var(--c-text-3);
@@ -1090,6 +1113,17 @@ function openFilePicker() {
   border: 1px solid var(--c-surface-3);
   font-size: var(--text-xs);
   color: var(--c-text-3);
+  cursor: default;
+  transition: color var(--motion-fast) var(--ease-out),
+              border-color var(--motion-fast) var(--ease-out),
+              background var(--motion-fast) var(--ease-out),
+              transform var(--motion-fast) var(--ease-brush);
+}
+.fmt-chip:hover {
+  color: var(--c-accent-hover);
+  border-color: var(--c-accent);
+  background: var(--c-accent-soft);
+  transform: translateY(-1px);
 }
 
 /* Error banner */
@@ -1105,6 +1139,7 @@ function openFilePicker() {
   border: 1px solid var(--c-danger-border);
   border-radius: var(--radius-lg);
   color: var(--c-danger);
+  animation: anim-fade-in-up var(--motion-base) var(--ease-out) both;
 }
 .error-text { flex: 1; font-size: var(--text-sm); min-width: 0; }
 .export-error-banner {
@@ -1123,9 +1158,9 @@ function openFilePicker() {
 /* ── QA Warnings Panel (P0) ── */
 .qa-panel {
   margin: var(--space-3) 0;
-  border: 1px solid var(--c-amber-border, #e6c850);
+  border: 1px solid var(--c-warn-border);
   border-radius: var(--radius-md);
-  background: var(--c-amber-bg, #fffdf0);
+  background: var(--c-warn-bg);
   overflow: hidden;
 }
 .qa-summary {
@@ -1136,17 +1171,21 @@ function openFilePicker() {
   cursor: pointer;
   user-select: none;
   font-size: var(--text-sm);
-  color: var(--c-amber, #b08800);
+  color: var(--c-warn);
   list-style: none;
+  border-radius: var(--radius-md);
+  transition: background var(--motion-fast) var(--ease-out);
 }
+.qa-summary:hover { background: var(--c-warn-bg); }
+.qa-summary:focus-visible { outline: none; box-shadow: var(--ring-focus); }
 .qa-summary::-webkit-details-marker { display: none; }
 .qa-title { font-weight: 600; }
 .qa-badge {
-  background: var(--c-amber, #b08800);
-  color: #fff;
-  border-radius: 99px;
+  background: var(--c-warn);
+  color: var(--c-surface-0);
+  border-radius: var(--radius-pill);
   padding: 1px 7px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
 }
 .qa-score { margin-left: auto; opacity: 0.7; }
@@ -1187,8 +1226,8 @@ function openFilePicker() {
   color: var(--c-text-2);
 }
 .qa-warning .qa-flag-type {
-  background: var(--c-amber-bg, #fff3cd);
-  color: var(--c-amber, #b08800);
+  background: var(--c-warn-bg);
+  color: var(--c-warn);
 }
 .qa-flag-msg { color: var(--c-text-1); }
 .qa-flag-suggestion { color: var(--c-text-3); font-style: italic; }
@@ -1217,6 +1256,7 @@ function openFilePicker() {
   border-radius: var(--radius-card);
   padding: var(--space-5);
   box-shadow: var(--elevation-2);
+  animation: anim-fade-in-up var(--motion-slow) var(--ease-out) both;
 }
 
 /* Stepper */
@@ -1402,12 +1442,24 @@ function openFilePicker() {
   background: var(--c-surface-2);
   border-radius: var(--radius-pill);
   overflow: hidden;
+  position: relative;
 }
 .chunk-fill {
   height: 100%;
   background: var(--c-success);
   border-radius: var(--radius-pill);
   transition: width 0.3s var(--ease-out);
+  position: relative;
+  overflow: hidden;
+}
+/* 已完成块上的流光，提示翻译仍在推进 */
+.chunk-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  background-size: 200% 100%;
+  animation: ink-seep 1.6s ease-in-out infinite;
 }
 .chunk-label { font-size: var(--text-xs); color: var(--c-text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
@@ -1688,10 +1740,14 @@ function openFilePicker() {
 }
 .done-rag-hint {
   font-size: var(--text-xs); color: var(--c-accent); cursor: pointer;
-  padding: 2px 8px; border-radius: 4px; border: 1px solid var(--c-accent);
-  transition: background 0.15s;
+  padding: 2px 8px; border-radius: var(--radius-xs); border: 1px solid var(--c-accent);
+  transition: background var(--motion-fast) var(--ease-out),
+              transform var(--motion-fast) var(--ease-brush),
+              box-shadow var(--motion-fast) var(--ease-out);
 }
-.done-rag-hint:hover { background: var(--c-accent-bg); }
+.done-rag-hint:hover { background: var(--c-accent-bg); transform: translateY(-1px); }
+.done-rag-hint:active { transform: scale(0.96); }
+.done-rag-hint:focus-visible { outline: none; box-shadow: var(--ring-focus); }
 
 .result-bar-right {
   display: flex;
@@ -1723,6 +1779,8 @@ function openFilePicker() {
 .dual-row:nth-child(even) { background: var(--c-surface-2); }
 .dual-row + .dual-row { border-top: 1px solid var(--c-sent-border); }
 .dual-row:first-child { border-top: none; }
+/* 悬停整段微提亮，引导阅读焦点 */
+.dual-row:hover { background: var(--c-accent-bg2); }
 
 .dual-orig {
   font-size: 14px;
@@ -1769,9 +1827,10 @@ function openFilePicker() {
 }
 
 .dual-pending {
+  display: flex;
+  align-items: center;
   font-size: var(--text-xs);
   color: var(--c-text-3);
-  font-style: italic;
 }
 
 /* Headings — 跨栏，加淡色底横线贯穿 */
@@ -1873,9 +1932,11 @@ function openFilePicker() {
 }
 
 .retrying {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
   font-size: var(--text-xs);
   color: var(--c-text-3);
-  font-style: italic;
 }
 
 /* Narrow screens */
