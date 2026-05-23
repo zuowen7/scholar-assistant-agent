@@ -335,7 +335,11 @@ async function handleExportLatex() {
 async function handleExportPdf() {
   if (!selectedTemplate.value || exportLoading.value) return
   if (!content.value.trim()) { showExportToast('请先输入内容'); return }
-  if (!tectonicAvailable.value) { showExportToast('请先安装 Tectonic'); return }
+  if (!tectonicAvailable.value) {
+    const { tectonic_available } = await loadExportTemplates()
+    tectonicAvailable.value = tectonic_available
+    if (!tectonic_available) { showExportToast('请先安装 Tectonic'); return }
+  }
   exportLoading.value = true
   try {
     const title = (activeTab.value?.name || 'paper').replace(/\.md$/i, '')
