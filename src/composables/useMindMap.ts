@@ -4,6 +4,7 @@ import { API_BASE } from '../utils/api'
 export interface MindMapNode {
   id: string
   text: string
+  body?: string
   parentId: string | null
   children: string[]
 }
@@ -74,7 +75,7 @@ function cloneMap(map: MindMapData): MindMapData {
     rootId: map.rootId,
     updatedAt: map.updatedAt,
     nodes: Object.fromEntries(
-      Object.entries(map.nodes).map(([id, node]) => [id, { ...node, children: [...node.children] }]),
+      Object.entries(map.nodes).map(([id, node]) => [id, { ...node, body: node.body ?? '', children: [...node.children] }]),
     ),
     positions: Object.fromEntries(
       Object.entries(map.positions ?? {}).map(([id, position]) => [id, { ...position }]),
@@ -119,6 +120,11 @@ export function mindMapToMarkdown(map: MindMapData): string {
     const level = Math.min(depth + 1, 6)
     const prefix = '#'.repeat(level)
     lines.push(`${prefix} ${node.text}`)
+    const body = (node.body ?? '').trim()
+    if (body) {
+      lines.push('')
+      lines.push(body)
+    }
     lines.push('')
     for (const childId of node.children) {
       visit(childId, depth + 1)
@@ -128,36 +134,65 @@ export function mindMapToMarkdown(map: MindMapData): string {
   return lines.join('\n').trim() + '\n'
 }
 
-export function markdownToMindMapNodes(md: string): { text: string; children: { text: string; children: { text: string }[] }[] } | null {
+export type MindMapTreeNode = {
+  text: string
+  body: string
+  children: MindMapTreeNode[]
+}
+
+export function markdownToMindMapNodes(md: string): MindMapTreeNode | null {
   const headingPattern = /^(#{1,6})\s+(.+)$/
   const lines = md.split('\n')
-  const stack: Array<{ level: number; text: string; children: any[] }> = []
+  const stack: Array<MindMapTreeNode & { level: number }> = []
 
-  let root: { text: string; children: any[] } | null = null
+  let root: (MindMapTreeNode & { level: number }) | null = null
+
+  // Collect body lines between headings for each node
+  const bodyLines: string[] = []
 
   for (const line of lines) {
-    const match = headingPattern.exec(line.trim())
-    if (!match) continue
-    const level = match[1].length
-    const text = match[2].trim()
-    if (!text) continue
-
-    const node = { level, text, children: [] as any[] }
-
-    while (stack.length > 0 && stack[stack.length - 1].level >= level) {
-      stack.pop()
-    }
-
-    if (stack.length === 0) {
-      if (!root) {
-        root = node
-      } else {
-        root.children.push(node)
+    const trimmed = line.trim()
+    const match = headingPattern.exec(trimmed)
+    if (match) {
+      // Flush accumulated body lines to the current top-of-stack node
+      if (stack.length > 0 && bodyLines.length > 0) {
+        const body = bodyLines.join('\n').trim()
+        if (body) stack[stack.length - 1].body = body
+        bodyLines.length = 0
       }
+
+      const level = match[1].length
+      const text = match[2].trim()
+      if (!text) continue
+
+      const node: MindMapTreeNode & { level: number } = { level, text, body: '', children: [] }
+
+      while (stack.length > 0 && stack[stack.length - 1].level >= level) {
+        stack.pop()
+      }
+
+      if (stack.length === 0) {
+        if (!root) {
+          root = node
+        } else {
+          root.children.push(node)
+        }
+      } else {
+        stack[stack.length - 1].children.push(node)
+      }
+      stack.push(node)
     } else {
-      stack[stack.length - 1].children.push(node)
+      // Non-heading line: accumulate as potential body for current stack top
+      if (stack.length > 0 && trimmed !== '') {
+        bodyLines.push(trimmed)
+      }
     }
-    stack.push(node)
+  }
+
+  // Flush remaining body lines
+  if (stack.length > 0 && bodyLines.length > 0) {
+    const body = bodyLines.join('\n').trim()
+    if (body) stack[stack.length - 1].body = body
   }
 
   return root
@@ -233,6 +268,13 @@ export function useMindMap() {
     const node = draftMindMap.value.nodes[id]
     if (!node) return
     node.text = text.trim() || '未命名节点'
+    draftMindMap.value.updatedAt = Date.now()
+  }
+
+  function updateNodeBody(id: string, body: string) {
+    const node = draftMindMap.value.nodes[id]
+    if (!node) return
+    node.body = body
     draftMindMap.value.updatedAt = Date.now()
   }
 
@@ -423,6 +465,7 @@ export function useMindMap() {
     saveMindMap,
     selectNode,
     updateNodeText,
+    updateNodeBody,
     commitNodeText,
     setNodePosition,
     commitNodePosition,
@@ -447,6 +490,7 @@ export function toFlowNodes(map: MindMapData): any[] {
     position: map.positions[node.id] ?? { x: 0, y: 0 },
     data: {
       text: node.text,
+      body: node.body ?? '',
       depth: getDepth(map, node.id),
       isRoot: node.id === map.rootId,
       hasChildren: node.children.length > 0,
