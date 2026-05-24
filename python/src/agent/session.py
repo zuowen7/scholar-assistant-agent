@@ -289,6 +289,9 @@ class AgentSession:
         self.consecutive_errors = 0
         _recent_fingerprints: list[str] = []  # (tool_name, args_hash) 用于精确循环检测
         _loop_hint = ""
+        _loop_warnings = 0  # 已发出的循环警告次数，≥2 次时强制停止
+        _tool_call_counts: dict[str, int] = {}  # 单任务内各工具累计调用次数
+        _force_stop = False  # 循环检测触发强制退出
 
         while (
             task_step < self.config.max_task_steps
@@ -368,16 +371,24 @@ class AgentSession:
                         _json.dumps(tc.arguments, sort_keys=True, ensure_ascii=False).encode()
                     ).hexdigest()[:8]
                     _recent_fingerprints.append(f"{tc.name}:{_args_hash}")
+                    # 单任务内某个工具累计调用超过 3 次 → 强提示
+                    _tool_call_counts[tc.name] = _tool_call_counts.get(tc.name, 0) + 1
+                    if _tool_call_counts[tc.name] > 3 and not _loop_hint:
+                        _loop_hint = (
+                            f"[系统提示] 你已在本任务中调用 {tc.name} 共 {_tool_call_counts[tc.name]} 次，"
+                            "继续调用无法获得新信息。请立即停止工具调用，基于已有信息直接给出最终回答。"
+                        )
+                        _loop_warnings += 1
                 # 精确循环：连续 2 次完全相同的 (工具名+参数)
-                if len(_recent_fingerprints) >= 2 and _recent_fingerprints[-1] == _recent_fingerprints[-2]:
+                if not _loop_hint and len(_recent_fingerprints) >= 2 and _recent_fingerprints[-1] == _recent_fingerprints[-2]:
                     _loop_hint = (
                         f"[系统提示] 你已连续 2 次以完全相同的参数调用 {step_result.tool_calls[0].name}，"
                         "结果不会改变。请基于已有信息直接给出最终回答，不要再重复调用。"
                     )
+                    _loop_warnings += 1
                     _recent_fingerprints.clear()
-                # 退化循环：连续 3 次相同工具名（参数不同）—— 用 elif 仍可达，因为上一分支
-                # 要求"最近两次完全相同"，此处覆盖"同名不同参"的情况。
-                elif (
+                # 退化循环：连续 3 次相同工具名（参数不同）
+                elif not _loop_hint and (
                     len(_recent_fingerprints) >= 3
                     and len({fp.split(":")[0] for fp in _recent_fingerprints[-3:]}) == 1
                 ):
@@ -385,6 +396,7 @@ class AgentSession:
                         f"[系统提示] 你已连续 3 次调用 {_recent_fingerprints[-1].split(':')[0]}，"
                         "请考虑换一种方式或直接给出最终回答。"
                     )
+                    _loop_warnings += 1
                     _recent_fingerprints.clear()
 
             # 无工具调用 → 最终回答
@@ -545,13 +557,21 @@ class AgentSession:
             if _loop_hint:
                 self.messages.append(Message(role="user", content=_loop_hint))
                 _loop_hint = ""
+                # 第 2 次及以上警告：LLM 已忽视提示，强制退出并走总结流程
+                if _loop_warnings >= 2:
+                    _force_stop = True
+                    break
 
-        # 步数耗尽 — 强制生成最终总结
-        if task_step >= self.config.max_task_steps:
+        # 步数耗尽或循环检测强制停止 — 生成最终总结
+        if task_step >= self.config.max_task_steps or _force_stop:
             yield AgentEvent(
                 type=EVT_WARNING,
-                content=f"任务步数达到上限 ({self.config.max_task_steps})，正在生成总结...",
-                metadata={"code": "TASK_STEP_LIMIT"},
+                content=(
+                    "Agent 检测到工具调用循环，已强制停止，正在生成总结..."
+                    if _force_stop else
+                    f"任务步数达到上限 ({self.config.max_task_steps})，正在生成总结..."
+                ),
+                metadata={"code": "LOOP_FORCE_STOP" if _force_stop else "TASK_STEP_LIMIT"},
             )
             try:
                 # 追加一条提示消息，引导 LLM 生成总结
