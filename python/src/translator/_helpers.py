@@ -212,10 +212,12 @@ def _sanitize_llm_output(raw: str, source_lang: str = "en") -> str:
         return ""
     if source_lang == "en":
         paras = raw.split('\n\n')
-        # Replace fully-untranslated paragraphs with empty string to preserve paragraph
-        # count — dropping them entirely shifts indices and breaks block alignment.
-        cleaned = ["" if _is_mostly_english(p) else p for p in paras]
-        # Trim trailing empties, keep internal ones (they hold alignment positions)
+        # 注意：不要把未翻译段落替换成 ""。
+        # _split_paragraphs 会过滤空字符串，导致 n_paras < n_blocks，
+        # 触发不必要的 alignment fallback。保留原段落（仍为英文），
+        # 由 translate_block_chunk 的 block status 检查标记为 failed。
+        cleaned = paras
+        # 只裁剪尾部空段
         while cleaned and not cleaned[-1].strip():
             cleaned.pop()
         raw = '\n\n'.join(cleaned)

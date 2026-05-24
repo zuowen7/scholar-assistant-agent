@@ -1,5 +1,5 @@
 chunker:
-  max_tokens: 2048
+  max_tokens: 800
   overlap_tokens: 0
   strategy: sentence
 features:
