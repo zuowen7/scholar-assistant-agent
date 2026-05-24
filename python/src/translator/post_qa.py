@@ -103,7 +103,7 @@ def check_overclaim(text: str, source_lang: str = "en") -> list[QAFlag]:
     return flags
 
 
-def check_sentence_length(text: str, max_words: int = 30) -> list[QAFlag]:
+def check_sentence_length(text: str, max_words: int = 45) -> list[QAFlag]:
     """检查句子长度（英语以空格分词，中文以标点分句后按字符估算）"""
     flags: list[QAFlag] = []
 
