@@ -389,7 +389,7 @@ async def translate_block_chunk(
     if not aligned and translatable_blocks:
         paras = _split_paragraphs(sanitized)
         ratio = abs(len(paras) - len(translatable_blocks)) / max(len(translatable_blocks), 1)
-        if ratio > 0.5:
+        if ratio > 0.3:
             logger.warning("Chunk %d severely misaligned (%d paras vs %d blocks), retrying per-block",
                            chunk.index, len(paras), len(translatable_blocks))
 

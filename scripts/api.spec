@@ -68,7 +68,9 @@ a = Analysis(
     pathex=[str(python_dir)],
     binaries=_conda_dlls + _extra_binaries,
     datas=_extra_datas + [
-        (str(python_dir / "config" / "default.yaml"), "config"),
+        # 用根目录 config/default.yaml（源头）而非 python/config/（运行时副本），
+        # 防止两者漂移导致打包版和开发版行为不一致。
+        (str(python_dir.parent / "config" / "default.yaml"), "config"),
         (str(python_dir / "config" / "docker.yaml"), "config"),
         # 云端供应商预设（providers.yaml 位于仓库根 config/，运行时由 cloud_client 读取）
         (str(python_dir.parent / "config" / "providers.yaml"), "config"),
