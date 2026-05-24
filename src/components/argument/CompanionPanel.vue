@@ -42,6 +42,7 @@
       <LedgerList
         :ledger="companion.state.ledger"
         :building="companion.state.building"
+        :suggesting-id="suggestingId"
         @analyze="handleAnalyze"
         @focus-anchor="companion.focusAnchor"
         @suggest-experiment="handleSuggestExperiment"
@@ -183,6 +184,7 @@ const persona = ref<string>('reviewer2')
 const reviewMode = ref<'serial' | 'parallel'>('serial')
 const importText = ref<string>('')
 const experimentSuggestion = ref<string>('')
+const suggestingId = ref<string>('')
 
 const props = defineProps<{
   content: string
@@ -213,6 +215,7 @@ async function handleSuggestExperiment(promiseId: string) {
   if (!ledger) return
   const promise = ledger.promises.find(p => p.id === promiseId)
   if (!promise) return
+  suggestingId.value = promiseId
   try {
     const { API_BASE } = await import('../../utils/api')
     const resp = await fetch(
@@ -222,7 +225,9 @@ async function handleSuggestExperiment(promiseId: string) {
     if (!resp.ok) return
     const data = await resp.json()
     experimentSuggestion.value = data.suggestion ?? ''
-  } catch { /* ignore */ }
+  } catch { /* ignore */ } finally {
+    suggestingId.value = ''
+  }
 }
 
 async function handleDownload() {

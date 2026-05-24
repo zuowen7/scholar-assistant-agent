@@ -434,7 +434,10 @@ function focusAnchor(anchorId: string): void {
     ...(state.review?.anchors ?? []),
   ]
   const anchor = findAnchor(allAnchors, anchorId)
-  if (!anchor || anchor.char_start === null || anchor.char_end === null) return
+  if (!anchor || anchor.char_start === null || anchor.char_end === null) {
+    if (anchor) pushWarning('未在原文中定位到该位置（LLM 引用可能是意译）')
+    return
+  }
   state.flashAnchor = { start: anchor.char_start, end: anchor.char_end }
 }
 

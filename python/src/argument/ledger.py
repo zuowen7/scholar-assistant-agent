@@ -10,7 +10,7 @@ import re
 import time
 from typing import Any, AsyncIterator
 
-from .anchor import make_anchor_from_quote, relocate_all
+from .anchor import make_anchor_from_quote, relocate, relocate_all
 from .companion_models import Ledger, Promise
 from .companion_store import CompanionStore
 from .llm_client import call_llm_chat
@@ -264,6 +264,8 @@ async def build_ledger(
         dis_ids: list[str] = []
         for dq in dis_info.get("discharge_quotes", []):
             da = make_anchor_from_quote(doc_id, text, str(dq))
+            if da.status == "lost" and dq:  # LLM quote is paraphrase, try fuzzy
+                da = relocate(da, text)
             new_anchors.append(da)
             dis_ids.append(da.id)
             yield {"event": "anchor", "data": da.model_dump_json()}

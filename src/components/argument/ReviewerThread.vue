@@ -61,7 +61,10 @@
         :class="`turn-${turn.role}`"
       >
         <span class="turn-role">{{ turn.role === 'author' ? '作者' : 'Reviewer' }}</span>
-        <span class="turn-text">{{ turn.text }}</span>
+        <span class="turn-text">{{ isExpanded(turn.id) || turn.text.length <= 280 ? turn.text : turn.text.slice(0, 280) + '…' }}</span>
+        <button v-if="turn.text.length > 280" class="turn-expand-btn" @click="toggleTurn(turn.id)">
+          {{ isExpanded(turn.id) ? '收起' : '展开全文' }}
+        </button>
       </div>
     </div>
 
@@ -118,6 +121,14 @@ const rebuttalText = ref('')
 const detailExpanded = ref(false)
 const showMenu = ref(false)
 const statusWrapRef = ref<HTMLElement>()
+const expandedTurnIds = ref<Set<string>>(new Set())
+
+function isExpanded(id: string) { return expandedTurnIds.value.has(id) }
+function toggleTurn(id: string) {
+  const s = new Set(expandedTurnIds.value)
+  s.has(id) ? s.delete(id) : s.add(id)
+  expandedTurnIds.value = s
+}
 
 const isSending = computed(() => props.rebuttalSending === props.point.id)
 
@@ -388,6 +399,17 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   color: var(--c-text-2, #ccc);
   line-height: 1.5;
   flex: 1;
+}
+
+.turn-expand-btn {
+  font-size: 10px;
+  color: var(--c-accent, #6366f1);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  margin-top: 2px;
+  display: block;
 }
 
 /* ── Rebuttal area ── */

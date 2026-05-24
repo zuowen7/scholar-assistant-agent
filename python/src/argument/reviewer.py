@@ -426,7 +426,7 @@ async def continue_rebuttal(
     )
 
     try:
-        reply = await call_llm_chat(prompt, cloud_client, ollama_client, max_tokens=512, temperature=0.5)
+        reply = await call_llm_chat(prompt, cloud_client, ollama_client, max_tokens=2048, temperature=0.5)
     except Exception as exc:
         reply = f"（LLM 不可用：{exc}）"
 
