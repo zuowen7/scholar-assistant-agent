@@ -5,7 +5,7 @@ chunker:
 features:
   argument_companion: true
   argument_map_v2: true
-  parallel_review: false
+  parallel_review: true
 translator:
   cloud:
     api_key: ''

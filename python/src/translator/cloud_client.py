@@ -177,8 +177,14 @@ class CloudClient:
                 time.sleep(_RATE_LIMIT_INTERVAL - elapsed)
             limiter.last_time = time.monotonic()
 
-    def translate(self, text: str, prev_translation: str = "") -> TranslationResult:
-        """翻译单段文本，失败自动重试（指数退避）+ 速率限制"""
+    def translate(self, text: str, prev_translation: str = "", section_prompt: str = "") -> TranslationResult:
+        """翻译单段文本，失败自动重试（指数退避）+ 速率限制
+
+        Args:
+            text: 待翻译文本
+            prev_translation: 前一段译文（用于上下文衔接）
+            section_prompt: 章节感知/逻辑感知指令，注入 system prompt（不混入用户消息）
+        """
         last_error: Exception | None = None
         ctx = prev_translation or self._prev_translation
 
@@ -187,9 +193,9 @@ class CloudClient:
                 self._rate_limit_wait()
                 effective_ctx = "" if attempt == MAX_RETRIES else ctx
                 if self.api_format == "anthropic":
-                    result = self._call_anthropic(text, effective_ctx)
+                    result = self._call_anthropic(text, effective_ctx, section_prompt)
                 else:
-                    result = self._call_openai_compatible(text, effective_ctx)
+                    result = self._call_openai_compatible(text, effective_ctx, section_prompt)
 
                 if not _validate_translation(result):
                     logger.warning(
@@ -252,7 +258,7 @@ class CloudClient:
 
         return prompt
 
-    def _build_system_prompt(self) -> str:
+    def _build_system_prompt(self, section_prompt: str = "") -> str:
         """构建系统提示词，包含术语表和块索引（与 OllamaClient 对齐）"""
         parts = []
 
@@ -273,6 +279,10 @@ CRITICAL: Preserve paragraph structure exactly.
 - Output ONLY the translation.
 
 严格保持段落结构：输入有 N 段（用空行分隔），输出必须也是 N 段。不要合并、不要拆分、不要加序号、不要返回原文。""")
+
+        # 章节感知 / 逻辑感知指令（来自 block_translator，注入 system prompt 而非用户消息）
+        if section_prompt:
+            parts.append("\n" + section_prompt.strip())
 
         glossary_text = self._glossary.to_prompt_text()
         if glossary_text:
@@ -305,10 +315,10 @@ CRITICAL: Preserve paragraph structure exactly.
 
     # ── OpenAI 兼容 API ──
 
-    def _call_openai_compatible(self, text: str, prev_translation: str = "") -> TranslationResult:
+    def _call_openai_compatible(self, text: str, prev_translation: str = "", section_prompt: str = "") -> TranslationResult:
         """调用 OpenAI 兼容的 chat completions API"""
         prompt = self._build_prompt(text, prev_translation)
-        system = self._build_system_prompt()
+        system = self._build_system_prompt(section_prompt)
 
         messages = []
         if system:
@@ -365,10 +375,10 @@ CRITICAL: Preserve paragraph structure exactly.
 
     # ── Anthropic API ──
 
-    def _call_anthropic(self, text: str, prev_translation: str = "") -> TranslationResult:
+    def _call_anthropic(self, text: str, prev_translation: str = "", section_prompt: str = "") -> TranslationResult:
         """调用 Anthropic Messages API"""
         prompt = self._build_prompt(text, prev_translation)
-        system = self._build_system_prompt()
+        system = self._build_system_prompt(section_prompt)
 
         payload: dict = {
             "model": self.model,
