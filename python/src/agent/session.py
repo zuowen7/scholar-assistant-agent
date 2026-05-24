@@ -332,20 +332,30 @@ class AgentSession:
                 yield ev
 
             if step_result.error:
-                # 区分错误类型：API 限流/超时不计入 consecutive_errors，工具/格式错误才计
                 _err_type = classify_error(Exception(step_result.error))
-                _is_transient = _err_type in (
-                    ErrorType.RATE_LIMIT, ErrorType.OVERLOADED,
-                    ErrorType.SERVER_ERROR, ErrorType.TIMEOUT,
+                # 这些错误重试同样的请求只会得到相同结果（格式错误/鉴权/欠费/模型不存在/
+                # 请求体过大），立即终止，避免疯狂循环刷 API。
+                _fatal = _err_type in (
+                    ErrorType.FORMAT_ERROR, ErrorType.AUTH, ErrorType.AUTH_PERMANENT,
+                    ErrorType.BILLING, ErrorType.MODEL_NOT_FOUND, ErrorType.PAYLOAD_TOO_LARGE,
                 )
-                if not _is_transient:
-                    self.consecutive_errors += 1
-                if self.consecutive_errors >= 5:
-                    continue
+                # 计入熔断计数（含瞬时错误——step() 内部已做指数退避重试，到这里说明已耗尽）。
+                self.consecutive_errors += 1
                 yield AgentEvent(
-                    type=EVT_ERROR if self.consecutive_errors >= 3 else EVT_WARNING,
+                    type=EVT_ERROR if (_fatal or self.consecutive_errors >= 3) else EVT_WARNING,
                     content=step_result.error,
                 )
+                if _fatal or self.consecutive_errors >= 5:
+                    yield AgentEvent(
+                        type=EVT_ERROR,
+                        content=(
+                            f"请求被云端 API 拒绝（{_err_type.value}），已停止重试。"
+                            "请检查 API Key、模型名称和参数后重新提问。"
+                            if _fatal else "连续多次出错，已停止本轮推理。"
+                        ),
+                        metadata={"code": "AGENT_ABORTED"},
+                    )
+                    break
                 continue
 
             self.consecutive_errors = 0
@@ -358,23 +368,24 @@ class AgentSession:
                         _json.dumps(tc.arguments, sort_keys=True, ensure_ascii=False).encode()
                     ).hexdigest()[:8]
                     _recent_fingerprints.append(f"{tc.name}:{_args_hash}")
-                if len(_recent_fingerprints) >= 2:
-                    last2 = _recent_fingerprints[-2:]
-                    if last2[0] == last2[1]:
-                        _loop_hint = (
-                            f"[系统提示] 你已连续 2 次以完全相同的参数调用 {step_result.tool_calls[0].name}，"
-                            "结果不会改变。请基于已有信息直接给出最终回答，不要再重复调用。"
-                        )
-                        _recent_fingerprints.clear()
-                elif len(_recent_fingerprints) >= 3:
-                    # 退化检测：仅工具名相同（参数不同）连续 3 次也提示
-                    last3_names = [fp.split(":")[0] for fp in _recent_fingerprints[-3:]]
-                    if len(set(last3_names)) == 1:
-                        _loop_hint = (
-                            f"[系统提示] 你已连续 3 次调用 {last3_names[0]}，"
-                            "请考虑换一种方式或直接给出最终回答。"
-                        )
-                        _recent_fingerprints.clear()
+                # 精确循环：连续 2 次完全相同的 (工具名+参数)
+                if len(_recent_fingerprints) >= 2 and _recent_fingerprints[-1] == _recent_fingerprints[-2]:
+                    _loop_hint = (
+                        f"[系统提示] 你已连续 2 次以完全相同的参数调用 {step_result.tool_calls[0].name}，"
+                        "结果不会改变。请基于已有信息直接给出最终回答，不要再重复调用。"
+                    )
+                    _recent_fingerprints.clear()
+                # 退化循环：连续 3 次相同工具名（参数不同）—— 用 elif 仍可达，因为上一分支
+                # 要求"最近两次完全相同"，此处覆盖"同名不同参"的情况。
+                elif (
+                    len(_recent_fingerprints) >= 3
+                    and len({fp.split(":")[0] for fp in _recent_fingerprints[-3:]}) == 1
+                ):
+                    _loop_hint = (
+                        f"[系统提示] 你已连续 3 次调用 {_recent_fingerprints[-1].split(':')[0]}，"
+                        "请考虑换一种方式或直接给出最终回答。"
+                    )
+                    _recent_fingerprints.clear()
 
             # 无工具调用 → 最终回答
             if not step_result.tool_calls:
@@ -672,8 +683,10 @@ class AgentSession:
             if len(parts) >= 2:
                 return parts
 
-        # Pattern 3: explicit connector words indicating sequential tasks
-        connectors = ["然后", "接着", "之后", "再", "最后"]
+        # Pattern 3: explicit connector words indicating sequential tasks.
+        # 注意：不含「再」——它在中文里常作副词嵌在词中（"再次/请再…"），
+        # 会把单一请求误拆成多个子任务。
+        connectors = ["然后", "接着", "之后", "最后"]
         parts = [query]
         for conn in connectors:
             new_parts: list[str] = []
