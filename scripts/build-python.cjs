@@ -341,8 +341,9 @@ if (fs.existsSync(tempDist)) {
 }
 
 try {
+  const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
   execSync(
-    `pyinstaller --clean --noconfirm --distpath "${tempDist}" --workpath "${workPath}" "${specFile}"`,
+    `${pythonCmd} -m PyInstaller --clean --noconfirm --distpath "${tempDist}" --workpath "${workPath}" "${specFile}"`,
     {
       cwd: rootDir,
       stdio: 'inherit',
