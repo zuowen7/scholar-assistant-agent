@@ -74,6 +74,16 @@ def _is_trivial_chat(text: str) -> bool:
     return s in _TRIVIAL_CHAT_PATTERNS
 
 
+def _json_compact(obj, limit: int = 120) -> str:
+    """把工具参数压成一行短字符串，用于诊断日志。"""
+    import json as _json
+    try:
+        s = _json.dumps(obj, ensure_ascii=False, sort_keys=True)
+    except Exception:
+        s = str(obj)
+    return s if len(s) <= limit else s[:limit] + "…"
+
+
 class SessionAborted(Exception):
     """用户主动中止会话。"""
 
@@ -319,6 +329,22 @@ class AgentSession:
 
             if self.state == SessionState.ABORTED:
                 raise SessionAborted()
+
+            # 诊断日志：打印模型本步实际调用的工具，便于定位空转来源
+            if step_result.tool_calls:
+                _tc_desc = ", ".join(
+                    f"{tc.name}({_json_compact(tc.arguments)})"
+                    for tc in step_result.tool_calls
+                )
+                logger.info(
+                    "[loop-guard v2] step=%d total_tool_calls=%d 本步工具: %s",
+                    task_step, _total_tool_calls + len(step_result.tool_calls), _tc_desc,
+                )
+            else:
+                logger.info(
+                    "[loop-guard v2] step=%d 无工具调用，is_final=%s，本步将收尾",
+                    task_step, step_result.is_final,
+                )
 
             # 转发推理事件（response → thought 避免前端提前终止）
             for ev in step_result.events:

@@ -79,6 +79,50 @@ class TestSessionState:
         assert SessionState.INITIALIZING.name == "INITIALIZING"
 
 
+class TestLoopForceStop:
+    """跨工具空转的硬上限：模型每步都返回工具调用且永不收口时，
+    会话必须在累计 ~8 次工具调用处强制停止，而不是跑满 max_task_steps。"""
+
+    @pytest.mark.asyncio
+    async def test_cross_tool_flailing_force_stops(self, agent):
+        from src.agent.agent import StepResult
+        from src.agent.models import ToolCall
+
+        # 模拟模型每一步都换一个不同工具名（绕过"连续同名"检测）
+        tool_names = ["read_file", "list_directory", "read_argument_graph",
+                      "read_argument_ledger", "search_documents", "grep_files",
+                      "parse_document", "git_op", "read_file", "list_directory"]
+        call_counter = {"n": 0}
+
+        async def fake_step(messages, *, step_num=1, max_steps=20, execute_tools=True):
+            i = call_counter["n"]
+            call_counter["n"] += 1
+            name = tool_names[i % len(tool_names)]
+            tc = ToolCall(id=f"tc_{i}", name=name, arguments={"x": i})
+            messages.append(Message(role="assistant", content="", tool_calls=[tc]))
+            return StepResult(
+                events=[AgentEvent(type="tool_call", content="",
+                                   metadata={"tool_name": name, "args": {"x": i}})],
+                tool_calls=[tc],
+                tool_results=[],
+            )
+
+        async def fake_exec(tc, query):
+            return "未找到/暂无数据"
+
+        agent.step = fake_step
+        agent._execute_single_tool = fake_exec
+
+        s = AgentSession(agent=agent, config=SessionConfig(auto_approve=True))
+        events = [ev async for ev in s.drive("这篇文章写得怎么样")]
+
+        codes = [ev.metadata.get("code") for ev in events
+                 if ev.type == EVT_WARNING and ev.metadata]
+        assert "LOOP_FORCE_STOP" in codes, f"未触发强制停止，codes={codes}"
+        # 8 次工具上限 → global_step 不应接近 max_task_steps(20)
+        assert s.global_step <= 9, f"强停太晚，global_step={s.global_step}"
+
+
 # ---------------------------------------------------------------------------
 # AgentEvent v2
 # ---------------------------------------------------------------------------
