@@ -1,8 +1,16 @@
 # Scholar Assistant
 
-隐私优先的学术 AI 写作辅助平台。从翻译切入，覆盖阅读、写作、排版全流程。拖入 PDF，自动完成解析、清洗、翻译；切换到 Editor 模式，用 AI 润色、扩写、生成大纲；导出 LaTeX 模板直接投稿。
+把学术论文的「读 · 想 · 写 · 审 · 排」全流程收进一个 AI 工作台，每个环节都有趁手的工具：
 
-- **版本**：v0.3.2（Agent 工作区文件工具链接通 — "写论文版 Claude Code" 范式落地；越界审批、Monaco 实时刷新、RAG 降级为按需文献库；论证陪练 v3 + agency-agents-zh SDLC 改造全部完成；账本锚点 SSE 修复 + doc_id 路由 query param 修复 + Agent 问候循环修复）
+- **读** — DeepL 级的 PDF 论文翻译与精读，译文自动收录进本地文献库，随时检索回顾
+- **想** — 思维导图 + 论证地图，理清思路与论证结构
+- **写** — 编辑器内 AI 伴写 / 润色 / 扩写，Agent 还能直接读写项目文件
+- **审** — 对抗式审稿（Reviewer-2）+ 论证账本，投稿前逐句逼问逻辑漏洞
+- **排** — 一键导出 IEEE / ACM / NeurIPS 等 LaTeX 模板与 Word
+
+本地可离线运行，也可接入 21 家云端大模型。
+
+- **版本**：v0.3.2（Agent 工作区文件工具链接通 — "写论文版 Claude Code" 范式落地；越界审批、Monaco 实时刷新、RAG 降级为按需文献库；论证陪练 v3 + agency-agents-zh SDLC 改造全部完成。最新一轮（2026-05-24）：文档问答一次性短路根除 Agent 死循环、翻译排版对齐根治、DeepSeek 400 熔断、发行版安装包补齐 Pandoc/Tectonic/嵌入模型离线可用、LaTeX 模板内置文字清理）
 - **许可**：不开源，私有项目
 
 ## 核心功能
@@ -27,7 +35,8 @@
 
 > **定位：写论文版的 Claude Code。** 把科研项目当 workspace，Agent 像 Claude Code 修代码一样直接读/写 PDF、草稿、bib、数据文件，替你读文献、改稿、管引用。
 
-- **Agent 工作区文件操作** — 打开项目文件夹后，Agent 可直接调用 `read_file / grep_files / str_replace / write_file / git_op` 等工具读写项目内文件，Agent 完成后编辑器实时刷新（Monaco mid-stream reload）
+- **Agent 工作区文件操作** — 打开项目文件夹后，Agent 可直接调用 `read_file / grep_files / str_replace / write_file / git_op` 等工具读写项目内文件，Agent 完成后编辑器实时刷新（Monaco mid-stream reload）；`read_file` 对 PDF/Word/EPUB 自动走解析器提取纯文本
+- **文档问答一次性短路** — 打开文档问"写得怎么样/总结/有什么问题"时，内容已在手，直接单次 LLM 流式回答，不进多步工具循环；仅当明确要改文件/跑命令才走完整 ReAct Agent
 - **workspace 边界 & 越界审批** — 所有文件操作严格锁定在项目根目录内；访问项目外路径触发审批弹窗（Allow once / Allow session / Deny），行为与 Claude Code 一致
 - **ReAct 智能推理** — 多步工具调用循环，支持任务拆解、断点续跑、Skill 三层注入（SOUL/AGENTS/IDENTITY）、上下文压缩
 - **文献库（RAG）** — 翻译完成后自动将双语全文收录进本地向量库；Agent 按需调用 `search_documents` 跨文献检索，不自动注入每轮上下文；支持手动上传/删除文件
@@ -79,6 +88,7 @@
 
 ### 部署
 - **桌面端** — Tauri 2 打包，自动管理 Python 后端和 Ollama 进程
+- **离线开箱即用** — 发行版安装包内置 Pandoc / Tectonic（含预热 LaTeX 缓存）/ all-MiniLM-L6-v2 嵌入模型，首启播种到用户缓存，PDF 导出与文献库无需联网；翻译默认引擎为云端（用户自填 API Key）
 - **Docker** — 多阶段构建，一键容器化运行
 - **Python CLI** — `python main.py paper.pdf -o paper.md`
 

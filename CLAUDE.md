@@ -72,7 +72,7 @@ SSE event types (defined in `agent/models.py`): `session_started` (metadata.sess
 
 `api_factory.py` — `create_app()` factory: app setup, config loading, shared helpers, router registration. Routes are split into five modules under `routers/`, each exporting a `register_*` function receiving shared state (config getters, runtime dirs, RAG store):
 - `routers/translate.py` — translation pipeline, config CRUD, health, Ollama/cloud status, export endpoints (bilingual/translation-only Word), retry failed blocks
-- `routers/agent.py` — Agent chat, RAG document management
+- `routers/agent.py` — Agent chat, RAG document management. **三态路由**：trivial 问候直接回复 / 打开文档的纯问答（`_has_mutation_intent`=false）走 `_oneshot_doc_qa_stream` 一次性 LLM 流式（不进 ReAct）/ 明确改文件·跑命令才走完整 Agent 循环
 - `routers/editor.py` — AI edit, complete, export (LaTeX/PDF/Word), vision, citation, Zotero, paper scaffolding
 - `routers/argument.py` — Argument Map v2 graph CRUD (node/edge/span) + Toulmin extraction SSE + critique + suggest + flatten/export + Companion v3 (ledger SSE, reviewer, rebuttal, import reviews). **Ledger routes use `?doc_id=` query param** (not path param).
 - `routers/mindmap.py` — Mind map CRUD, AI expand, layout
@@ -276,3 +276,20 @@ agency-agents-zh SDLC 改造 (2026-05-18–19，分支 `feature/sdlc-borrow-agen
 - `EditorLayout.vue` — `openMindMapFromEditor` 递归 `buildTreeNode` 构建带 body 节点树；`enterEditorFromMindMap` 恢复使用 outline（现在含完整正文）；调用 `skipNextBackendLoad()` 防覆盖；`handleExportPdf` 增加 tectonic 状态重检
 - `pandoc_templates/__init__.py` — PDF 导出预处理：去掉 markdown 水平分隔线（`---` → 避免 `Misplaced \noalign`）；转义裸 `&`（论文引用 `Author & Coauthor, Year` → 避免 `Misplaced alignment tab`）
 - 验证：1582 pytest passed / 8 skipped；345 vitest passed
+
+翻译对齐 + Agent 死循环 + 发行版打包根治 (2026-05-24 Round 3，main 分支)：
+- **文档问答一次性短路（Path A）** — `routers/agent.py` 新增 `_MUTATION_KEYWORDS` / `_has_mutation_intent()` / `_oneshot_doc_qa_stream()`：用户打开文档问"写得怎么样/总结/有什么问题"时，文档内容已在手，**不走 ReAct 工具循环**，直接单次 LLM 流式回答；仅当 `_has_mutation_intent`（明确要改文件/跑命令）时才进完整 Agent。根除文档问答触发的死循环。`session.py` 加 `[loop-guard v2]` 诊断日志
+- **Agent read_file 增强** — PDF/Word/EPUB 走解析器提取纯文本，消除 Agent 读论文时的 ReAct 死胡同（`block_translator.py` 同源）
+- **翻译 prompt 泄漏修复** — `block_translator.py` 章节感知指令（`[SECTION: ...]` / `[LOGIC: ...]`）改为透传 `section_prompt` 参数注入 **system prompt** 而非 prepend 到用户消息，避免 Qwen3:8b 把指令当正文翻译出来；`_sanitize_llm_output` 的 `_CTX_MARKER_RE` 补 `[SECTION:]`/`[LOGIC:]` 兜底清理
+- **翻译对齐根治** — `_merge_excess_paras()`（LLM 多输出段落时合并最短/靠末尾相邻对，再 1:1 精确对齐）；`_distribute_by_char_ratio` 搜索窗口扩至 ±60 字符、优先 `\n\n` 段落边界；`_is_mostly_english` 阈值收紧为 `zh_chars==0 且英文>85%`（保留含术语的有效译文）；删段改替换空串保留位置；`block_translator.py` 严重对齐重试阈值 `ratio>0.5` → `>0.3`
+- **QA 误报修复** — `post_qa.py` 句子长度阈值 `max_words` 30 → 45（学术英文复杂句普遍 35-45 词）
+- **Agent 死循环根治** — `agent.py` `TASK_MAX_STEPS` 50→20、`GLOBAL_MAX_STEPS` 200→60；`session.py` 加 `_tool_call_counts`（单工具累计 >3 次强提示）+ `_loop_warnings`（第 2 次强制 `break` 走总结）+ `_force_stop` 复用步数耗尽总结路径；移除永不可达的 elif 死代码；任务分解连接词移除「再」
+- **DeepSeek 400 熔断** — `_llm_helpers.py` assistant 工具调用消息 content 始终发字符串（DeepSeek 拒绝 null）+ `_sanitize_tool_pairs` 丢弃孤立 tool_call/tool_result；`session.py` 熔断器对 400/鉴权/欠费/模型不存在/超大请求体立即终止，其余累计 5 次终止；`agent.py` 每步重置重试预算防跨步泄漏
+- **config max_tokens 修正** — `chunker.max_tokens` 2048 → 800（2048 约含 15+ 段落导致对齐回退）；`api.spec` 打包从**根目录** `config/default.yaml` 读取防漂移；`api_factory.py` 启动检测 `max_tokens==2048` 自动写 800 兼容老用户升级
+- **发行版打包补齐** — `api.spec` 打包 Pandoc / Tectonic（预热 LaTeX 缓存）/ all-MiniLM-L6-v2 嵌入模型，首启播种到用户缓存，PDF 导出与文献库离线可用；`collect_submodules('src')` + `collect_all` 自动收隐藏依赖 + VC++ 运行库 + providers.yaml；`build-python.cjs` 加 `scripts/.tools-cache` 绕开 GitHub 超时；**翻译默认引擎改为 cloud**；`de6679b` 用 `python -m PyInstaller` 防 PATH 误选其他 Python 版本
+- **导出模板文字清理** — `ieee.tex`/`ieee_conference.tex` 改用 IEEEtran 类（去掉 ieeeaccess 的 Logo/Received 行）；`neurips.tex` 从误用的 icml2026 包改为纯 article（去掉 "Under review at ICML 2026"）；`acm.tex`/`acm_sig.tex` 关闭 acmart 的版权/地址/Permission 模板文字
+- **companion 可用性** — `ledger.py` discharge anchor 精确匹配失败时 fallback `relocate()` 模糊匹配（修复 LLM 意译引用导致兑付处恒 lost）；`reviewer.py` `continue_rebuttal` max_tokens 512 → 2048（修复中文长回复截断）；`useArgumentCompanion.ts` anchor lost 弹 toast；`CompanionPanel`/`LedgerList` "怎么补满"加 `suggestingId` 加载动画；`ReviewerThread.vue` 超 280 字回复默认折叠
+- **argument 导出修复** — 导出草稿 SSE complete 事件携带 `task_id`，前端调 `/flatten_v2/{task_id}/download` + `saveBlob` 弹原生保存框（此前文件只写服务端从未下载）；导出 rebuttal 改 `saveBlob` 走 Tauri 原生另存为 + 错误 toast；`extractArgument` 完成后自动 dagre `autoLayout`
+- **杂项** — `ccca9ce` 思维导图 AI 检查完成后自动打开右侧分析面板；`a0e6205` 合规检查在 Tauri 包内用 `API_BASE` 绝对路径（相对路径 `/api/compliance` 在 WebView 解析失败返回 HTML）；`0cf9674` 消除关闭时 taskkill 无窗口子进程的误导性错误日志
+- 新增测试：`tests/unit/test_doc_qa_oneshot.py`（Path A 意图分类 + 事件序列）、`tests/unit/test_session.py` 跨工具空转强制停止
+- 验证：1587 unit passed / 8 skipped（较上轮 1582 增 5）
