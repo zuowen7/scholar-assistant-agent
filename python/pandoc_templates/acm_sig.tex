@@ -7,6 +7,12 @@ $endif$
 \usepackage{booktabs}
 \usepackage{balance}
 
+% suppress ACM boilerplate: copyright notice, permission statement, authors' addresses
+\setcopyright{none}
+\renewcommand\footnotetextcopyrightpermission[1]{}
+\settopmatter{printacmref=false, printccs=false}
+\authorsaddresses{}
+
 $if(title)$
 \title{$title$}
 $endif$
