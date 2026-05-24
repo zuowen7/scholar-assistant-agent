@@ -77,9 +77,14 @@
               v-if="promise.status === 'unpaid' || promise.status === 'partial'"
               class="suggest-btn"
               data-suggest-btn
+              :disabled="suggestingId === promise.id"
               @click="$emit('suggestExperiment', promise.id)"
             >
-              怎么补满
+              <span v-if="suggestingId === promise.id" class="sg-loading">
+                <span class="sg-dots"><i /><i /><i /></span>
+                生成中…
+              </span>
+              <span v-else>怎么补满</span>
             </button>
             <span
               v-if="isLost(promise)"
@@ -102,6 +107,7 @@ import UiSpinner from '../ui/UiSpinner.vue'
 const props = defineProps<{
   ledger: Ledger | null
   building: boolean
+  suggestingId?: string
 }>()
 
 defineEmits<{
@@ -371,4 +377,19 @@ function isLost(promise: ArgPromise): boolean {
   font-size: var(--text-sm);
   cursor: help;
 }
+
+/* suggest 按钮加载态 */
+.suggest-btn:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+.sg-loading { display: inline-flex; align-items: center; gap: 4px; }
+.sg-dots { display: inline-flex; gap: 2px; }
+.sg-dots i {
+  width: 3px; height: 3px; border-radius: 50%;
+  background: currentColor; opacity: 0.4;
+  animation: al-breathe 1.2s ease-in-out infinite;
+}
+.sg-dots i:nth-child(2) { animation-delay: 0.15s; }
+.sg-dots i:nth-child(3) { animation-delay: 0.3s; }
 </style>
