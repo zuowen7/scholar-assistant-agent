@@ -64,11 +64,27 @@ DOCKER_MODE = os.environ.get("DOCKER_MODE", "").lower() in ("1", "true", "yes")
 CONFIG_PATH = (RUNTIME_DIR / "config" / "docker.yaml") if DOCKER_MODE else (RUNTIME_DIR / "config" / "default.yaml")
 
 if _is_frozen() and not DOCKER_MODE:
+    bundled_default = BUNDLED_DIR / "config" / "default.yaml"
     if not CONFIG_PATH.exists():
-        bundled_default = BUNDLED_DIR / "config" / "default.yaml"
         if bundled_default.exists():
             CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(bundled_default, CONFIG_PATH)
+    else:
+        # 升级兼容：修正已知的旧版错误默认值，不覆盖用户自定义设置
+        try:
+            import yaml as _yaml
+            with open(CONFIG_PATH, encoding="utf-8") as _f:
+                _rt_cfg = _yaml.safe_load(_f) or {}
+            _dirty = False
+            # v0.3.2 旧包错误地将 max_tokens 设为 2048，正确值为 800
+            if _rt_cfg.get("chunker", {}).get("max_tokens") == 2048:
+                _rt_cfg.setdefault("chunker", {})["max_tokens"] = 800
+                _dirty = True
+            if _dirty:
+                with open(CONFIG_PATH, "w", encoding="utf-8") as _f:
+                    _yaml.dump(_rt_cfg, _f, allow_unicode=True, default_flow_style=False)
+        except Exception:
+            pass  # 修正失败不阻塞启动
     bundled_glossary = BUNDLED_DIR / "data" / "translator" / "glossaries"
     runtime_glossary = RUNTIME_DIR / "data" / "translator" / "glossaries"
     if bundled_glossary.is_dir() and not runtime_glossary.is_dir():
