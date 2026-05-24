@@ -1,4 +1,4 @@
-\documentclass[$if(fontsize)$$fontsize$,$endif$]{article}
+\documentclass[$if(fontsize)$$fontsize$$else$11pt$endif$]{article}
 $if(lang)$
 \usepackage[$lang$]{babel}
 $endif$
@@ -7,9 +7,8 @@ $endif$
 \usepackage{booktabs}
 \usepackage{amsmath,amssymb}
 \usepackage{hyperref}
-\usepackage[margin=1in]{geometry}
-\usepackage{natbib}
-\usepackage{icml2026}
+% NeurIPS-compatible layout: single column, narrow margins
+\usepackage[top=1in,bottom=1in,left=1.5in,right=1.5in]{geometry}
 
 $if(title)$
 \title{$title$}
