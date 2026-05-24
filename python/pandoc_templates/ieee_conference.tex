@@ -1,21 +1,16 @@
-\documentclass[$if(fontsize)$$fontsize$,$endif$]{article}
+\documentclass[$if(fontsize)$$fontsize$,$endif$]{IEEEtran}
 $if(lang)$
 \usepackage[$lang$]{babel}
 $endif$
-\usepackage[utf8]{inputenc}
-\usepackage{ieeeaccess}
 \usepackage{cite}
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{algorithmic}
 \usepackage{graphicx}
 \usepackage{textcomp}
 \usepackage{xcolor}
-\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\usepackage{hyperref}
 
-$if(marginponsor)$
-$else$
-\usepackage[margin=0.75in]{geometry}
-$endif$
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 
 $if(title)$
 \title{$title$}
@@ -47,7 +42,7 @@ $endif$
 $body$
 
 $if(bibliography)$
-\bibliographystyle{plain}
+\bibliographystyle{IEEEtran}
 \bibliography{$bibliography$}
 $endif$
 
