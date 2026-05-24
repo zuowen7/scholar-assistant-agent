@@ -184,6 +184,9 @@ async function doExport() {
   exportMsg.value = '生成中…'
   exportOk.value = false
 
+  let capturedTaskId = ''
+  let capturedWordCount = 0
+
   try {
     const res = await fetch(`${API_BASE}/api/argument/graph/${state.graph.id}/flatten`, {
       method: 'POST',
@@ -194,13 +197,28 @@ async function doExport() {
 
     await readSseStream(res.body.getReader(), (eventType, data) => {
       if (eventType === 'complete') {
-        const d = data as { output_path?: string; word_count?: number }
+        const d = data as { output_path?: string; word_count?: number; task_id?: string }
         exportOk.value = true
-        exportMsg.value = `草稿已生成（${d.word_count ?? 0} 字）`
+        capturedTaskId = d.task_id ?? ''
+        capturedWordCount = d.word_count ?? 0
+        exportMsg.value = `草稿已生成（${capturedWordCount} 字），下载中…`
       } else if (eventType === 'error') {
         exportMsg.value = '导出失败：' + String((data as { message?: string }).message ?? '')
       }
     })
+
+    if (capturedTaskId) {
+      const dlResp = await fetch(`${API_BASE}/api/argument/flatten_v2/${capturedTaskId}/download`)
+      if (dlResp.ok) {
+        const blob = await dlResp.blob()
+        const ext = exportTemplate.value === 'latex' ? 'tex' : 'md'
+        const { saveBlob } = await import('../../composables/useEditorIO')
+        await saveBlob(blob, `argument_draft.${ext}`)
+        exportMsg.value = `草稿已导出（${capturedWordCount} 字）`
+      } else {
+        exportMsg.value = '文件下载失败，请重试'
+      }
+    }
   } catch (e) {
     exportMsg.value = '导出失败'
   } finally {

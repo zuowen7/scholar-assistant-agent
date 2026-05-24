@@ -301,7 +301,10 @@ def register_argument_v2(
                         data = json.loads(ev.get("data", "{}"))
                         _flatten_tasks_v2[task_id]["output_path"] = data.get("output_path", "")
                         _flatten_tasks_v2[task_id]["status"] = "done"
-                    yield {"event": ev["event"], "data": ev["data"]}
+                        data["task_id"] = task_id
+                        yield {"event": ev["event"], "data": json.dumps(data)}
+                    else:
+                        yield {"event": ev["event"], "data": ev["data"]}
             except Exception as exc:
                 _flatten_tasks_v2[task_id]["status"] = "error"
                 yield {"event": "error", "data": json.dumps({"message": str(exc)})}

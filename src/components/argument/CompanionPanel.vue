@@ -232,17 +232,19 @@ async function handleDownload() {
     const { API_BASE } = await import('../../utils/api')
     const url = `${API_BASE}/api/companion/download/review/${sid}`
     const resp = await fetch(url)
-    if (!resp.ok) return
+    if (!resp.ok) {
+      const { useToast } = await import('../../composables/useToast')
+      useToast().pushError(`导出 rebuttal 失败（${resp.status}）`)
+      return
+    }
     const blob = await resp.blob()
-    const blobUrl = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = blobUrl
-    a.download = 'rebuttal.md'
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(blobUrl)
-  } catch { /* ignore */ }
+    const { saveBlob } = await import('../../composables/useEditorIO')
+    await saveBlob(blob, `rebuttal_${sid.slice(0, 8)}.md`)
+  } catch (e) {
+    console.error('[companion] download failed:', e)
+    const { useToast } = await import('../../composables/useToast')
+    useToast().pushError('导出 rebuttal 失败，请重试')
+  }
 }
 
 async function updatePointStatus(pointId: string, status: string) {
