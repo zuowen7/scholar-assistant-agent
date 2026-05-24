@@ -154,6 +154,7 @@ import { useEditorCitation } from '../composables/useEditorCitation'
 import { useEditorIO } from '../composables/useEditorIO'
 import { useMindMap, markdownToMindMapNodes } from '../composables/useMindMap'
 import { useArgumentCompanion } from '../composables/useArgumentCompanion'
+import { API_BASE } from '../utils/api'
 
 const props = defineProps<{ isDark: boolean }>()
 
@@ -404,7 +405,7 @@ async function runComplianceCheck() {
   complianceReport.value = null
   showCompliance.value = true
   try {
-    const resp = await fetch(`/api/compliance`, {
+    const resp = await fetch(`${API_BASE}/api/compliance`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
