@@ -27,6 +27,17 @@ chunker:
 
 # 翻译引擎
 translator:
+  # 翻译后端: cloud | ollama
+  # 默认 cloud：发行版无需本地 Ollama，用户在「设置」中填入自己的云端 API Key 即可使用。
+  # 如已安装 Ollama 并 pull qwen3:8b，可改为 ollama 进行本地离线翻译。
+  engine: cloud
+  # 云端配置（api_key 留空，由用户在设置面板填写）
+  cloud:
+    provider: openai
+    base_url: "https://api.openai.com/v1"
+    model: "gpt-4o"
+    api_key: ""
+    max_tokens: 16384
   # Ollama 配置
   ollama_base_url: "http://localhost:11434"
   model: "qwen3:8b"

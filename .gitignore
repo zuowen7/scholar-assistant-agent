@@ -91,6 +91,9 @@ src-tauri/target/
 src-tauri/python-dist/
 dist/
 
+# Cached build tools (pandoc.exe / tectonic.exe) — large binaries, machine-local
+scripts/.tools-cache/
+
 # Local test scratch
 pytest-cache-files-*/
 tmp_pytest/

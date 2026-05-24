@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -73,7 +74,16 @@ def _get_limiter(key: str) -> _ProviderRateLimiter:
 
 # ── 供应商预设（从 YAML 懒加载） ──
 
-_PROVIDERS_YAML = Path(__file__).resolve().parents[3] / "config" / "providers.yaml"
+def _resolve_providers_yaml() -> Path:
+    """定位 providers.yaml：打包后在 _MEIPASS/config/，开发态在仓库根 config/。"""
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        bundled = Path(sys._MEIPASS) / "config" / "providers.yaml"
+        if bundled.exists():
+            return bundled
+    return Path(__file__).resolve().parents[3] / "config" / "providers.yaml"
+
+
+_PROVIDERS_YAML = _resolve_providers_yaml()
 
 
 def _load_provider_presets() -> dict[str, dict]:
