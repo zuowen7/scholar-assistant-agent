@@ -218,6 +218,9 @@ class AgentLoop:
             logger.warning("上下文压缩失败，跳过: %s", _ce)
 
         # LLM 调用（含错误分类 + 指数退避重试）
+        # 每步重置重试预算：否则上一步耗尽某错误类型的配额后，本步同类错误会
+        # 直接不重试（跨步预算泄漏）。
+        self.retry_manager.reset()
         tools = self.tool_registry.to_ollama_tools() or None
         response = None
         _llm_call_done = False

@@ -33,11 +33,55 @@ async def _safe_response_text(response: httpx.Response) -> str:
 # Message conversion
 # ---------------------------------------------------------------------------
 
+def _sanitize_tool_pairs(messages: list[Message]) -> list[Message]:
+    """Drop orphaned tool-call / tool-result messages.
+
+    OpenAI/DeepSeek reject a request where an assistant message declares a
+    ``tool_call`` with no matching ``tool`` response, or a ``tool`` message with
+    no preceding assistant ``tool_call``. Such orphans can appear after a
+    mid-step client disconnect (checkpointed history), aggressive context
+    compression, or a tool that never ran. Repairing here makes every cloud
+    request well-formed regardless of how the history got into that state.
+    """
+    responded_ids = {
+        m.tool_call_id for m in messages
+        if m.role == "tool" and m.tool_call_id is not None
+    }
+    kept_ids: set[str] = set()
+    out: list[Message] = []
+    for m in messages:
+        if m.role == "assistant" and m.tool_calls:
+            kept = [tc for tc in m.tool_calls if tc.id in responded_ids]
+            kept_ids.update(tc.id for tc in kept)
+            if len(kept) == len(m.tool_calls):
+                out.append(m)
+            else:
+                # Strip unanswered tool_calls; keep the assistant's text (if any).
+                out.append(Message(
+                    role=m.role,
+                    content=m.content,
+                    tool_calls=kept or None,
+                    reasoning_content=m.reasoning_content,
+                ))
+        elif m.role == "tool":
+            if m.tool_call_id in kept_ids:
+                out.append(m)
+            # else: orphaned tool result → drop
+        else:
+            out.append(m)
+    return out
+
+
 def messages_to_openai(messages: list[Message]) -> list[dict]:
     """Convert Message list to OpenAI-compatible dict list."""
+    messages = _sanitize_tool_pairs(messages)
     out: list[dict] = []
     for m in messages:
-        content_val: str | None = m.content if m.content else (None if m.tool_calls else m.content)
+        # Always send content as a string. DeepSeek (and some other
+        # OpenAI-compatible providers) reject `content: null` on assistant
+        # messages that carry tool_calls with HTTP 400; an empty string is
+        # accepted everywhere including OpenAI.
+        content_val: str = m.content or ""
         d: dict = {"role": m.role, "content": content_val}
         if m.tool_calls:
             d["tool_calls"] = [
