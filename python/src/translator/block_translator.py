@@ -135,11 +135,11 @@ def _distribute_by_char_ratio(originals: list[str], translation: str) -> list[st
             window_end = min(tlen, target + 60)
             best_target = -1
 
-            # 1) 优先：\n\n 段落边界
-            for pb in sorted(para_breaks):
-                if window_start <= pb <= window_end:
-                    best_target = pb + 2  # skip the \n\n itself
-                    break
+            # 1) 优先：\n\n 段落边界（取窗口内最接近 target 的边界，而非第一个）
+            candidates = [pb for pb in para_breaks if window_start <= pb <= window_end]
+            if candidates:
+                best_pb = min(candidates, key=lambda pb: abs(pb - target))
+                best_target = best_pb + 2  # skip the \n\n itself
 
             # 2) 其次：句级标点边界（中文句号/英文句号）
             if best_target < 0:
@@ -167,12 +167,13 @@ def _merge_excess_paras(paras: list[str], target_count: int) -> list[str]:
     """
     result = list(paras)
     while len(result) > target_count:
-        # 找到最短的相邻对合并（优先合并短段，保留长段的完整性）
+        # 找最短相邻对合并；用 <= 使同长时优先合并靠近末尾的对，
+        # 对应 LLM 在末尾多生成总结句的最常见情况
         min_len = float('inf')
-        merge_idx = len(result) - 2  # 默认从末尾合并
+        merge_idx = len(result) - 2
         for i in range(len(result) - 1):
             pair_len = len(result[i]) + len(result[i + 1])
-            if pair_len < min_len:
+            if pair_len <= min_len:
                 min_len = pair_len
                 merge_idx = i
         result[merge_idx] = result[merge_idx] + "\n\n" + result[merge_idx + 1]
@@ -210,7 +211,7 @@ def _align_translation_to_blocks(
         out: list[BlockTranslation] = []
         for b in blocks:
             if b.translatable:
-                out.append(BlockTranslation(b.id, b.type, b.text, next(para_iter), True))
+                out.append(BlockTranslation(b.id, b.type, b.text, next(para_iter, ""), True))
             else:
                 out.append(BlockTranslation(b.id, b.type, b.text, b.text, False))
         return out, True
@@ -223,7 +224,7 @@ def _align_translation_to_blocks(
         out = []
         for b in blocks:
             if b.translatable:
-                out.append(BlockTranslation(b.id, b.type, b.text, next(para_iter), True))
+                out.append(BlockTranslation(b.id, b.type, b.text, next(para_iter, ""), True))
             else:
                 out.append(BlockTranslation(b.id, b.type, b.text, b.text, False))
         logger.debug("对齐：合并多余段落 %d→%d（块数=%d）", n_paras, n_blocks, n_blocks)
@@ -239,7 +240,7 @@ def _align_translation_to_blocks(
     dist_iter = iter(distributed)
     for b in blocks:
         if b.translatable:
-            out.append(BlockTranslation(b.id, b.type, b.text, next(dist_iter), True))
+            out.append(BlockTranslation(b.id, b.type, b.text, next(dist_iter, ""), True))
         else:
             out.append(BlockTranslation(b.id, b.type, b.text, b.text, False))
     return out, False

@@ -64,8 +64,8 @@ class TestCheckOverclaim:
 class TestCheckSentenceLength:
     """check_sentence_length() — 句子长度检查"""
 
-    def test_flags_sentence_over_30_words(self) -> None:
-        long_sentence = " ".join([f"word{i}" for i in range(35)])
+    def test_flags_sentence_over_45_words(self) -> None:
+        long_sentence = " ".join([f"word{i}" for i in range(50)])
         flags = check_sentence_length(long_sentence)
         assert len(flags) >= 1
         assert flags[0].type == "sentence_length"
@@ -74,13 +74,13 @@ class TestCheckSentenceLength:
         flags = check_sentence_length("Short sentence.")
         assert len(flags) == 0
 
-    def test_allows_30_word_sentence(self) -> None:
-        sentence = " ".join([f"word{i}" for i in range(30)])
+    def test_allows_44_word_sentence(self) -> None:
+        sentence = " ".join([f"word{i}" for i in range(44)])
         flags = check_sentence_length(sentence)
         assert len(flags) == 0
 
     def test_flags_long_sentence_in_paragraph(self) -> None:
-        long = " ".join([f"word{i}" for i in range(40)])
+        long = " ".join([f"word{i}" for i in range(50)])
         text = f"Short intro. {long}"
         flags = check_sentence_length(text)
         assert len(flags) >= 1

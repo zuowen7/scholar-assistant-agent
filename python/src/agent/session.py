@@ -291,6 +291,7 @@ class AgentSession:
         _loop_hint = ""
         _loop_warnings = 0  # 已发出的循环警告次数，≥2 次时强制停止
         _tool_call_counts: dict[str, int] = {}  # 单任务内各工具累计调用次数
+        _total_tool_calls = 0  # 单任务内工具调用总数（跨工具空转的硬上限信号）
         _force_stop = False  # 循环检测触发强制退出
 
         while (
@@ -366,6 +367,7 @@ class AgentSession:
             # 工具循环检测：基于 (tool_name, args_hash) 精确匹配，连续 ≥2 次完全相同则提示
             if step_result.tool_calls:
                 import json as _json
+                _total_tool_calls += len(step_result.tool_calls)
                 for tc in step_result.tool_calls:
                     _args_hash = hashlib.md5(
                         _json.dumps(tc.arguments, sort_keys=True, ensure_ascii=False).encode()
@@ -379,6 +381,15 @@ class AgentSession:
                             "继续调用无法获得新信息。请立即停止工具调用，基于已有信息直接给出最终回答。"
                         )
                         _loop_warnings += 1
+                # 硬上限：跨工具空转（每步换不同工具/参数，绕过上述同名检测）。
+                # 累计工具调用达到 8 次仍未给出回答 → 直接强制停止并走总结，
+                # 避免一路转到 max_task_steps（十几步、几分钟）。
+                if _total_tool_calls >= 8:
+                    _loop_hint = (
+                        f"[系统提示] 你已累计调用工具 {_total_tool_calls} 次仍未给出最终回答。"
+                        "立即停止一切工具调用，基于已经收集到的信息直接回答用户。"
+                    )
+                    _loop_warnings = 2  # 触发本轮 tool result 后的强制退出
                 # 精确循环：连续 2 次完全相同的 (工具名+参数)
                 if not _loop_hint and len(_recent_fingerprints) >= 2 and _recent_fingerprints[-1] == _recent_fingerprints[-2]:
                     _loop_hint = (

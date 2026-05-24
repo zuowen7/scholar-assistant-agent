@@ -599,7 +599,13 @@ async function sendMessage() {
     files.value = []
   }
 
-  await agentSendMessage(fullMsg, contextText.value, '', rootDir.value || undefined)
+  await agentSendMessage(
+    fullMsg,
+    contextText.value,
+    '',
+    rootDir.value || undefined,
+    editorActiveTab.value?.path || undefined,
+  )
   refreshFileTree()
   reloadOpenTabs()
   await nextTick()

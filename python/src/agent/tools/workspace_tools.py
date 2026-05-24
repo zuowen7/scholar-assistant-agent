@@ -55,12 +55,44 @@ def _read_file_v2(
     if not resolved.is_file():
         return json.dumps({"error": f"file not found: {file_path}"})
 
-    # 二进制检测：前 4096 字节含 NUL → 拒绝
+    # 文档格式（PDF / Word / PPT / EPUB 等二进制文档）→ 走文档解析器提取纯文本。
+    # 否则 Agent 读论文永远得到 "binary file, refusing to read" 死胡同，
+    # 只能在各工具间反复试探，导致 ReAct 死循环。
+    _DOC_EXTS = {".pdf", ".docx", ".doc", ".epub", ".rtf", ".pptx", ".xlsx"}
+    ext = resolved.suffix.lower()
+    if ext in _DOC_EXTS:
+        try:
+            from src.parser import extract_document as _extract_doc
+            doc = _extract_doc(str(resolved))
+            full = doc.full_text or ""
+        except Exception as e:
+            return json.dumps(
+                {"error": f"document parse failed: {e}", "file_path": file_path},
+                ensure_ascii=False,
+            )
+        all_lines = full.splitlines()
+        total_lines = len(all_lines)
+        end = min(offset + (limit or _LINE_NUMBER_LIMIT), total_lines)
+        body = "\n".join(all_lines[offset:end])
+        return json.dumps({
+            "file_path": file_path,
+            "format": ext.lstrip("."),
+            "total_lines": total_lines,
+            "returned_lines": [offset + 1, end],
+            "content": body,
+            "truncated": end < total_lines,
+            "note": "已由文档解析器提取为纯文本（保留段落顺序，丢弃排版/图片/公式渲染）。这是该文件的真实正文，可直接据此回答，无需再次读取。",
+        }, ensure_ascii=False)
+
+    # 二进制检测：前 4096 字节含 NUL → 拒绝（非文档类二进制文件）
     try:
         with open(resolved, "rb") as f:
             head = f.read(4096)
         if b"\x00" in head:
-            return json.dumps({"error": f"binary file, refusing to read: {file_path}"})
+            return json.dumps({
+                "error": f"binary file, cannot read as text: {file_path}",
+                "hint": "这是二进制文件，不是文本/文档，无需重试读取。请基于已有信息回答或换用其他工具。",
+            }, ensure_ascii=False)
     except OSError as e:
         return json.dumps({"error": str(e)})
 

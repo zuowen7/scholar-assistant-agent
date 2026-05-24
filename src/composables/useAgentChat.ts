@@ -147,6 +147,7 @@ export function useAgentChat() {
     contextText?: string,
     constraints?: string,
     workspaceRoot?: string,
+    contextFile?: string,
   ): Promise<void> {
     if (!text.trim() || sending.value) return
 
@@ -201,6 +202,7 @@ export function useAgentChat() {
           message: text.trim(),
           history,
           context_text: contextText?.trim() || undefined,
+          context_file: contextFile?.trim() || undefined,
           constraints: constraints?.trim() || undefined,
           workspace_root: workspaceRoot?.trim() || undefined,
         }),

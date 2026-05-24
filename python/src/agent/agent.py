@@ -393,10 +393,13 @@ class AgentLoop:
             if self.workspace_root:
                 doc_ctx = (
                     f"当前工作区根目录: {self.workspace_root}\n"
-                    "可用工具提示: 用 read_file/list_directory 读取工作区文件；"
-                    "用 read_argument_graph(file_path=<论文路径>) 读取论证图；"
-                    "用 read_argument_ledger(file_path=<论文路径>) 读取论证账本。"
-                    "路径均为绝对路径。"
+                    "读取工作区文件用 read_file（支持 PDF/Word/Markdown 等，会自动提取正文），"
+                    "列目录用 list_directory，路径均为绝对路径。\n"
+                    "重要：若用户消息中已带 [参考文本] 或 [当前编辑文件] 的内容，那就是当前文档本身，"
+                    "直接据此回答，不要再 read_file 重复读取同一文件。\n"
+                    "read_argument_graph / read_argument_ledger 仅在用户明确询问"
+                    "“论证结构/逻辑漏洞/摘要承诺是否兑付”时才用；它们需要用户先在论证面板里构建，"
+                    "若返回“暂无/未找到”，不要反复重试，改用 read_file 读原文后直接回答。"
                 )
 
             config = PromptConfig(
