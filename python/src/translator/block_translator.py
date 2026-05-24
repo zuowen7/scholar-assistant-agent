@@ -85,18 +85,24 @@ def _split_paragraphs(text: str) -> list[str]:
 
 
 def _distribute_by_char_ratio(originals: list[str], translation: str) -> list[str]:
-    """把整段译文按原文字符比例切成 N 段，N = len(originals)
+    """把整段译文按原文字符比例切成 N 段，N = len(originals)。
 
-    比 _restore_paragraphs 健壮：即使译文无 \\n\\n 也能产出 N 段。
+    优先利用 LLM 已有的段落边界（\\n\\n），仅在段落数不足时才做字符比例切割。
     """
     n = len(originals)
     if n <= 1 or not translation:
         return [translation] + [""] * (n - 1) if n >= 1 else []
 
+    # 优先使用 LLM 输出中已有的 \n\n 边界作为天然切割点
+    existing_paras = _split_paragraphs(translation)
+    if len(existing_paras) >= n:
+        # 已有足够多的段落，不应走到这里（_align_translation_to_blocks 会先处理）
+        return existing_paras[:n - 1] + ["\n\n".join(existing_paras[n - 1:])]
+
     total_orig = sum(len(o) for o in originals)
     if total_orig == 0:
         # 平均分
-        size = len(translation) // n
+        size = max(len(translation) // n, 1)
         out: list[str] = []
         for i in range(n):
             start = i * size
@@ -104,28 +110,74 @@ def _distribute_by_char_ratio(originals: list[str], translation: str) -> list[st
             out.append(translation[start:end].strip())
         return out
 
-    out = []
+    out: list[str] = []
     cursor = 0
     cum = 0
     tlen = len(translation)
+    # 预构建 \n\n 位置集合，切割时优先在此处断开
+    para_breaks = set()
+    pos = 0
+    while True:
+        idx = translation.find('\n\n', pos)
+        if idx < 0:
+            break
+        para_breaks.add(idx)
+        pos = idx + 2
+
     for i, orig in enumerate(originals):
         cum += len(orig)
         if i == n - 1:
             out.append(translation[cursor:].strip())
         else:
             target = int(cum / total_orig * tlen)
-            # 尽量切在标点边界（中文句号/英文句号/逗号）
-            window = translation[max(cursor, target - 30):min(tlen, target + 30)]
-            best_offset = -1
-            for sep in ("。", "！", "？", "；", ". ", "! ", "? "):
-                p = window.rfind(sep)
-                if p > best_offset:
-                    best_offset = p + len(sep)
-            if best_offset > 0:
-                target = max(cursor, target - 30) + best_offset
+            # 在 ±60 字符窗口内优先找 \n\n 边界，其次找句号边界
+            window_start = max(cursor + 1, target - 60)
+            window_end = min(tlen, target + 60)
+            best_target = -1
+
+            # 1) 优先：\n\n 段落边界
+            for pb in sorted(para_breaks):
+                if window_start <= pb <= window_end:
+                    best_target = pb + 2  # skip the \n\n itself
+                    break
+
+            # 2) 其次：句级标点边界（中文句号/英文句号）
+            if best_target < 0:
+                window = translation[window_start:window_end]
+                best_off = -1
+                for sep in ("。", "！", "？", "；", ". ", "! ", "? "):
+                    p = window.rfind(sep)
+                    if p > best_off:
+                        best_off = p + len(sep)
+                if best_off > 0:
+                    best_target = window_start + best_off
+
+            if best_target > cursor:
+                target = best_target
             out.append(translation[cursor:target].strip())
             cursor = target
     return out
+
+
+def _merge_excess_paras(paras: list[str], target_count: int) -> list[str]:
+    """将多余的段落通过合并相邻段落来缩减到 target_count。
+
+    策略：从末尾开始合并最短的两个相邻段落，直到数量匹配。
+    这能处理 LLM 在末尾多输出摘要句/过渡句的常见情况。
+    """
+    result = list(paras)
+    while len(result) > target_count:
+        # 找到最短的相邻对合并（优先合并短段，保留长段的完整性）
+        min_len = float('inf')
+        merge_idx = len(result) - 2  # 默认从末尾合并
+        for i in range(len(result) - 1):
+            pair_len = len(result[i]) + len(result[i + 1])
+            if pair_len < min_len:
+                min_len = pair_len
+                merge_idx = i
+        result[merge_idx] = result[merge_idx] + "\n\n" + result[merge_idx + 1]
+        result.pop(merge_idx + 1)
+    return result
 
 
 def _align_translation_to_blocks(
@@ -134,8 +186,10 @@ def _align_translation_to_blocks(
 ) -> tuple[list[BlockTranslation], bool]:
     """把整段译文按块对齐回原结构
 
-    返回 (block_translations, aligned)。aligned=True 表示 LLM 输出段落数与
-    可翻译块数完全一致，可以直接 1:1 映射；False 表示用兜底分配策略。
+    返回 (block_translations, aligned)。
+    - aligned=True: LLM 输出段落数与可翻译块数完全一致，直接 1:1 映射
+    - aligned=True (merged): LLM 多输出了段落，合并后 1:1 映射
+    - aligned=False: 段落数不足，用字符比例兜底切分（最差情况）
     """
     translatable_blocks = [b for b in blocks if b.translatable]
 
@@ -147,9 +201,10 @@ def _align_translation_to_blocks(
         )
 
     paras = _split_paragraphs(full_translation)
-    aligned = len(paras) == len(translatable_blocks)
+    n_blocks = len(translatable_blocks)
+    n_paras = len(paras)
 
-    if aligned:
+    if n_paras == n_blocks:
         # 完美 1:1 映射
         para_iter = iter(paras)
         out: list[BlockTranslation] = []
@@ -160,13 +215,27 @@ def _align_translation_to_blocks(
                 out.append(BlockTranslation(b.id, b.type, b.text, b.text, False))
         return out, True
 
-    # 兜底：按原文字符比例切分整段译文
+    if n_paras > n_blocks:
+        # LLM 多输出了段落（常见：在开头/结尾加了序言或摘要句）
+        # 合并相邻段落直到数量匹配，保持 1:1 对齐精度
+        merged = _merge_excess_paras(paras, n_blocks)
+        para_iter = iter(merged)
+        out = []
+        for b in blocks:
+            if b.translatable:
+                out.append(BlockTranslation(b.id, b.type, b.text, next(para_iter), True))
+            else:
+                out.append(BlockTranslation(b.id, b.type, b.text, b.text, False))
+        logger.debug("对齐：合并多余段落 %d→%d（块数=%d）", n_paras, n_blocks, n_blocks)
+        return out, True  # 标记 aligned=True，合并后精度高于字符比例
+
+    # 段落数不足：按原文字符比例切分整段译文（兜底）
     distributed = _distribute_by_char_ratio(
         [b.text for b in translatable_blocks],
         full_translation,
     )
 
-    out: list[BlockTranslation] = []
+    out = []
     dist_iter = iter(distributed)
     for b in blocks:
         if b.translatable:
@@ -203,17 +272,6 @@ def _detect_chunk_section(blocks: list[Block]) -> SectionContext:
 
     return SectionContext()
 
-
-def _inject_section_prompt(chunk_input: str, section_ctx: SectionContext) -> str:
-    """将章节感知翻译指令注入到 chunk 输入文本前面"""
-    if section_ctx.section_type == SectionType.UNKNOWN:
-        return chunk_input
-
-    section_prompt = get_section_prompt(section_ctx.section_type)
-    if not section_prompt:
-        return chunk_input
-
-    return section_prompt.strip() + "\n\n" + chunk_input
 
 
 def _build_logic_instruction(extracted: ExtractedLogic) -> str:
@@ -268,22 +326,21 @@ async def translate_block_chunk(
     blocks = [blocks_by_id[bid] for bid in chunk.block_ids]
     chunk_input = _build_chunk_input_text(blocks)
 
-    # 命题提取：CN→EN 时分析原文逻辑结构（在注入前分析原始文本）
+    # 章节感知：检测当前 chunk 所属章节类型
+    section_ctx = _detect_chunk_section(blocks)
+    if section_ctx.section_type == SectionType.UNKNOWN and prev_section != SectionType.UNKNOWN:
+        section_ctx.section_type = prev_section
+        section_ctx.confidence = 0.4  # 继承前文章节类型，置信度较低
+
+    # 命题提取：CN→EN 时分析原文逻辑结构
     logic_instruction = ""
     if source_lang == "zh" and chunk_input.strip():
         extracted = extract_propositions(chunk_input)
         logic_instruction = _build_logic_instruction(extracted)
 
-    # 章节感知：检测当前 chunk 所属章节并注入翻译策略
-    section_ctx = _detect_chunk_section(blocks)
-    if section_ctx.section_type == SectionType.UNKNOWN and prev_section != SectionType.UNKNOWN:
-        section_ctx.section_type = prev_section
-        section_ctx.confidence = 0.4  # 继承前文章节类型，置信度较低
-    chunk_input = _inject_section_prompt(chunk_input, section_ctx)
-
-    # 注入逻辑感知指令（在章节指令之后）
-    if logic_instruction:
-        chunk_input = logic_instruction + "\n\n" + chunk_input
+    # 章节感知 + 逻辑感知指令注入到 system prompt（不混入用户消息，避免被模型当作翻译内容输出）
+    section_prompt_text = get_section_prompt(section_ctx.section_type)
+    extra_system_prompt = "\n\n".join(filter(None, [logic_instruction, section_prompt_text]))
 
     # Protect inline citations from LLM rewrites
     chunk_input, citation_placeholders = protect_citations(chunk_input)
@@ -302,7 +359,7 @@ async def translate_block_chunk(
 
     try:
         result: TranslationResult = await asyncio.to_thread(
-            client.translate, chunk_input, prev_trans
+            client.translate, chunk_input, prev_trans, extra_system_prompt
         )
     except Exception as e:
         logger.error("Block chunk %d 翻译失败: %s", chunk.index, e)
@@ -342,7 +399,7 @@ async def translate_block_chunk(
             async def _retry_one(b: Block) -> str:
                 async with sem:
                     try:
-                        single = await asyncio.to_thread(client.translate, b.text, "")
+                        single = await asyncio.to_thread(client.translate, b.text, "", extra_system_prompt)
                         return _sanitize_llm_output(single.translated, source_lang=source_lang)
                     except Exception as e:
                         logger.warning("Per-block retry failed for %s: %s", b.id, e)

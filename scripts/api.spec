@@ -36,7 +36,7 @@ _src_hidden += ["prompts", "prompts.loader", "paper_assets", "pandoc_templates"]
 # Guarded so a clean env without an optional package doesn't fail the build.
 _extra_datas = []
 _extra_binaries = []
-for _pkg in ("chromadb", "onnxruntime", "tokenizers"):
+for _pkg in ("chromadb", "onnxruntime", "tokenizers", "zstandard"):
     try:
         _d, _b, _h = collect_all(_pkg)
         _extra_datas += _d

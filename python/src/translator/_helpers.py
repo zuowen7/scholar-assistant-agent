@@ -172,8 +172,12 @@ def _strip_context_leak(text: str) -> str:
 # 系统提示上下文标记正则——LLM 有时会原样"回声"这些标记
 _CTX_MARKER_RE = re.compile(
     r"\[前文翻译参考[^\]]*\]"
-    r"|\[请翻译以下内容\]"
-    r"|\[文档背景[^\]]*\]",
+    r"|\[请翻译以下内容[^\]]*\]"
+    r"|\[文档背景[^\]]*\]"
+    r"|\[SECTION:\s*\w+\]"      # section-aware 指令头
+    r"|\[LOGIC:\s*\w+\][^\n]*"  # logic-aware 指令行
+    r"|\[DOMINANT\s+LOGIC\][^\n]*"
+    r"|\[PROPOSITIONS\][^\n]*",
     re.DOTALL,
 )
 
@@ -185,11 +189,15 @@ _REFUSAL_RE = re.compile(
 
 
 def _is_mostly_english(text: str) -> bool:
+    """Return True only for paragraphs that are entirely untranslated (no CJK at all,
+    and > 85% ASCII alpha). Raises bar vs. the old 60% threshold to avoid false-positives
+    on academic text with dense English technical terms."""
     if len(text) < 30:
         return False
     en_chars = sum(1 for c in text if c.isascii() and c.isalpha())
     zh_chars = sum(1 for c in text if '一' <= c <= '鿿')
-    return en_chars / max(len(text), 1) > 0.6 and zh_chars / max(len(text), 1) < 0.1
+    # Must have zero CJK characters AND be overwhelmingly English
+    return zh_chars == 0 and en_chars / max(len(text), 1) > 0.85
 
 
 def _sanitize_llm_output(raw: str, source_lang: str = "en") -> str:
@@ -204,8 +212,13 @@ def _sanitize_llm_output(raw: str, source_lang: str = "en") -> str:
         return ""
     if source_lang == "en":
         paras = raw.split('\n\n')
-        paras = [p for p in paras if not _is_mostly_english(p)]
-        raw = '\n\n'.join(paras)
+        # Replace fully-untranslated paragraphs with empty string to preserve paragraph
+        # count — dropping them entirely shifts indices and breaks block alignment.
+        cleaned = ["" if _is_mostly_english(p) else p for p in paras]
+        # Trim trailing empties, keep internal ones (they hold alignment positions)
+        while cleaned and not cleaned[-1].strip():
+            cleaned.pop()
+        raw = '\n\n'.join(cleaned)
     return raw.strip()
 
 

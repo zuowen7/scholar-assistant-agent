@@ -151,12 +151,13 @@ class OllamaClient:
             self._http_client.close()
             self._http_client = None
 
-    def translate(self, text: str, prev_translation: str = "") -> TranslationResult:
+    def translate(self, text: str, prev_translation: str = "", section_prompt: str = "") -> TranslationResult:
         """翻译单段文本，失败自动重试（指数退避）
 
         Args:
             text: 待翻译文本
             prev_translation: 前一段译文（用于上下文衔接）
+            section_prompt: 章节感知/逻辑感知指令，注入 system prompt（不混入用户消息）
 
         Returns:
             TranslationResult 含原文、译文、模型信息、token 统计
@@ -172,7 +173,7 @@ class OllamaClient:
             try:
                 # 最后一次尝试：丢掉 prev_translation 上下文，缩小 prompt 体积
                 effective_ctx = "" if attempt == MAX_RETRIES else ctx
-                result = self._call_api(text, effective_ctx)
+                result = self._call_api(text, effective_ctx, section_prompt)
                 if not _validate_translation(result):
                     logger.warning(
                         "翻译结果过短 (attempt %d): original=%d chars, translated=%d chars",
@@ -201,11 +202,11 @@ class OllamaClient:
 
         raise last_error if last_error else ValueError("翻译失败")
 
-    def _build_system_prompt(self) -> str:
+    def _build_system_prompt(self, section_prompt: str = "") -> str:
         """构建系统提示词，整合术语表和块索引
 
         三级上下文组装策略:
-        - Level 1 (system prompt): 基础翻译指令 + 术语表
+        - Level 1 (system prompt): 基础翻译指令 + 章节感知指令 + 术语表
         - Level 2 (user prompt): 文档背景（标题+摘要）
         - Level 3 (user prompt): 前文翻译滑动窗口
         """
@@ -228,6 +229,10 @@ CRITICAL: Preserve paragraph structure exactly.
 - Output ONLY the translation.
 
 严格保持段落结构：输入有 N 段（用空行分隔），输出必须也是 N 段。不要合并、不要拆分、不要加序号、不要返回原文。""")
+
+        # 章节感知 / 逻辑感知指令（来自 block_translator，注入 system prompt 而非用户消息）
+        if section_prompt:
+            parts.append("\n" + section_prompt.strip())
 
         glossary_text = self._glossary.to_prompt_text()
         if glossary_text:
@@ -280,8 +285,8 @@ CRITICAL: Preserve paragraph structure exactly.
 
         return prompt
 
-    def _build_api_payloads(self, prompt: str) -> tuple[dict, dict]:
-        system = self._build_system_prompt()
+    def _build_api_payloads(self, prompt: str, section_prompt: str = "") -> tuple[dict, dict]:
+        system = self._build_system_prompt(section_prompt)
         options = {
             "temperature": self.temperature,
             "num_predict": self.num_predict,
@@ -320,9 +325,9 @@ CRITICAL: Preserve paragraph structure exactly.
             completion_tokens=int(data.get("eval_count", 0) or 0),
         )
 
-    def _call_api(self, text: str, prev_translation: str = "") -> TranslationResult:
+    def _call_api(self, text: str, prev_translation: str = "", section_prompt: str = "") -> TranslationResult:
         prompt = self._build_prompt(text, prev_translation)
-        chat_payload, generate_payload = self._build_api_payloads(prompt)
+        chat_payload, generate_payload = self._build_api_payloads(prompt, section_prompt)
 
         try:
             client = self._get_http_client()
