@@ -10,9 +10,40 @@ Produces an --onedir bundle at src-tauri/python-dist/api/ containing:
 import sys
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_submodules, collect_all
+
 block_cipher = None
 
 python_dir = Path(SPECPATH).parent / "python"
+
+# Make first-party packages importable during spec evaluation so the
+# collect_* helpers below can introspect them.
+sys.path.insert(0, str(python_dir))
+
+# ── Auto-collect first-party modules ───────────────────────────────────
+# Many src.* subsystems are imported dynamically (delayed imports in api.py,
+# features.py __import__ gates, plugin discovery), so PyInstaller's static
+# analysis misses them. Enumerate the whole package automatically instead of
+# maintaining a hand-written list that silently rots when modules are renamed.
+_src_hidden = collect_submodules("src")
+# Top-level helper packages bundled as data but imported by name at runtime.
+_src_hidden += ["prompts", "prompts.loader", "paper_assets", "pandoc_templates"]
+
+# ── Auto-collect heavy third-party packages ────────────────────────────
+# chromadb / onnxruntime / tokenizers ship dynamic submodules + data files
+# (migrations, ONNX runtime libs, embedding model assets) that static analysis
+# under-collects. collect_all grabs submodules + datas + binaries together.
+# Guarded so a clean env without an optional package doesn't fail the build.
+_extra_datas = []
+_extra_binaries = []
+for _pkg in ("chromadb", "onnxruntime", "tokenizers"):
+    try:
+        _d, _b, _h = collect_all(_pkg)
+        _extra_datas += _d
+        _extra_binaries += _b
+        _src_hidden += _h
+    except Exception as _e:  # pragma: no cover - build-time only
+        print(f"[api.spec] optional package '{_pkg}' not collected: {_e}")
 
 # Anaconda stores DLLs in Library/bin/ — PyInstaller doesn't find them automatically
 conda_bin = Path(sys.executable).parent / "Library" / "bin"
@@ -22,6 +53,9 @@ _conda_dlls = []
 _dll_names = [
     "libexpat.dll", "liblzma.dll", "LIBBZ2.dll", "ffi.dll",
     "libssl-3-x64.dll", "libcrypto-3-x64.dll",
+    # MSVC runtime — bundle explicitly so api.exe + onnxruntime/pydantic-core/
+    # tokenizers start on machines without the VC++ 2015-2022 redistributable.
+    "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll",
 ]
 if conda_bin.exists():
     for dll in _dll_names:
@@ -32,10 +66,12 @@ if conda_bin.exists():
 a = Analysis(
     [str(python_dir / "api.py")],
     pathex=[str(python_dir)],
-    binaries=_conda_dlls,
-    datas=[
+    binaries=_conda_dlls + _extra_binaries,
+    datas=_extra_datas + [
         (str(python_dir / "config" / "default.yaml"), "config"),
         (str(python_dir / "config" / "docker.yaml"), "config"),
+        # 云端供应商预设（providers.yaml 位于仓库根 config/，运行时由 cloud_client 读取）
+        (str(python_dir.parent / "config" / "providers.yaml"), "config"),
         # Pandoc 模板目录（包含 generic.tex 等期刊模板）
         (str(python_dir / "pandoc_templates"), "pandoc_templates"),
         # 论文模板素材库（模板源码 + Markdown/LaTeX/Text 范例）
@@ -72,102 +108,15 @@ a = Analysis(
         "openpyxl",
         "pptx",
         "docx",
-        # ChromaDB (Agent/RAG memory)
-        "chromadb",
-        "chromadb.api",
-        "chromadb.api.types",
-        "chromadb.api.client",
-        "chromadb.config",
-        "chromadb.utils",
-        "chromadb.utils.batch_utils",
-        "chromadb.utils.messageid_router",
-        "chromadb.utils.ranking_utils",
-        "chromadb.api.rust",
-        "chromadb.telemetry.product.posthog",
-        "hnswlib",
-        # Agent core
-        "src.agent.agent",
-        "src.agent.models",
-        "src.agent.memory",
-        "src.agent.rag",
-        "src.agent.tools",
-        "src.agent.tools.core",
-        "src.agent.tools.atomic_tools",
-        "src.agent.tools.builtin_tools",
-        "src.agent.tools.workspace_tools",
-        # Agent subsystems
-        "src.agent.auto_processor",
-        "src.agent.prompt_builder",
-        "src.agent.session",
-        "src.agent.session_store",
-        "src.agent.skill_system",
-        "src.agent.trajectory",
-        "src.agent.workspace",
-        "src.agent.change_journal",
-        "src.agent.error_classifier",
-        "src.agent.hooks",
-        "src.agent.security_gate",
-        "src.agent.task_queue",
-        "src.agent.special_elements",
-        "src.agent.review_agent",
-        # Agent internal submodules
-        "src.agent._elements_parser",
-        "src.agent._elements_tools",
-        "src.agent._elements_types",
-        "src.agent._elements_vision",
-        "src.agent._llm_anthropic",
-        "src.agent._llm_helpers",
-        "src.agent._llm_ollama",
-        "src.agent._llm_openai",
-        # Translator pipeline
-        "src.translator.parallel_runner",
-        "src.translator.block_translator",
-        "src.translator.memory_store",
-        "src.translator.glossary_store",
-        "src.translator._helpers",
-        "src.translator.context",
-        # Parser / cleaner / chunker / formatter
-        "src.parser.extractor",
-        "src.parser.dispatcher",
-        "src.cleaner",
-        "src.cleaner.pipeline",
-        "src.chunker",
-        "src.chunker.splitter",
-        "src.chunker.syntax_splitter",
-        "src.formatter.renderer",
-        "src.formatter.word_exporter",
-        # Citation / Zotero / MCP
-        "src.citation",
-        "src.citation.indexer",
-        "src.zotero",
-        "src.zotero.client",
-        "src.mcp",
-        "src.mcp.vision_client",
-        # Argument system
-        "src.argument.models",
-        "src.argument.store",
-        "src.argument.logic_checker",
-        "src.argument.expander",
-        "src.argument.observer",
-        "src.argument.feedback_generator",
-        "src.argument.flatten",
-        # Plugin system
-        "src.plugin",
-        "src.plugin.loader",
-        "src.plugin.registry",
-        "src.plugin.builtin",
         # Optional OCR (inside try/except, invisible to static analysis)
         "pytesseract",
         "pdf2image",
         "paddleocr",
         # Optional async HTTP
         "aiohttp",
-        # Runtime endpoint helpers imported by api_factory routes
-        "paper_assets",
-        "pandoc_templates",
-        # Prompts
-        "prompts.loader",
-    ],
+        # First-party src.* + helpers + chromadb/onnxruntime/tokenizers are
+        # appended below via collect_submodules / collect_all (see top of spec).
+    ] + _src_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

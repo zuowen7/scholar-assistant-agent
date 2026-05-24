@@ -34,3 +34,9 @@ mcp==1.27.0
 
 # Agent workspace tools: diff preview generation
 unidiff==0.7.5
+
+# Vector DB for RAG / 文献库 (Agent memory + 翻译自动入库).
+# Pulls onnxruntime + tokenizers + numpy transitively; the default embedding
+# function uses all-MiniLM-L6-v2 (CPU). Required for the RAG feature to ship in
+# PyInstaller builds — without it, the packaged app silently loses 文献库.
+chromadb==1.5.5

@@ -73,6 +73,29 @@ if _is_frozen() and not DOCKER_MODE:
     runtime_glossary = RUNTIME_DIR / "data" / "translator" / "glossaries"
     if bundled_glossary.is_dir() and not runtime_glossary.is_dir():
         shutil.copytree(bundled_glossary, runtime_glossary)
+    # Seed chromadb's embedding-model cache from the bundled copy (downloaded at
+    # build time, lives beside api.exe — NOT in _MEIPASS) so 文献库/RAG works
+    # offline. chromadb skips its S3 download when the onnx files already exist.
+    try:
+        import sys as _sys2
+        _bundled_model = Path(_sys2.executable).parent / "models" / "chroma-onnx" / "all-MiniLM-L6-v2"
+        _cache_model = Path.home() / ".cache" / "chroma" / "onnx_models" / "all-MiniLM-L6-v2"
+        if (_bundled_model / "onnx" / "model.onnx").exists() and not (_cache_model / "onnx" / "model.onnx").exists():
+            _cache_model.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(_bundled_model, _cache_model, dirs_exist_ok=True)
+    except Exception:
+        pass  # model seeding is best-effort; chromadb falls back to S3 download
+    # Seed Tectonic's LaTeX support-file cache from the bundled pre-warmed copy
+    # (beside api.exe) so PDF export works offline. Mirrors TECTONIC_CACHE_DIR
+    # used by pandoc_templates.compile (LOCALAPPDATA/YanMo/tectonic-cache).
+    try:
+        import sys as _sys3
+        _bundled_tex_cache = Path(_sys3.executable).parent / "tectonic-cache"
+        _run_tex_cache = RUNTIME_DIR / "tectonic-cache"
+        if _bundled_tex_cache.is_dir() and not _run_tex_cache.exists():
+            shutil.copytree(_bundled_tex_cache, _run_tex_cache, dirs_exist_ok=True)
+    except Exception:
+        pass  # cache seeding is best-effort; Tectonic falls back to network fetch
 else:
     # Dev / Docker mode: ensure glossary dir exists so load_yaml_dir doesn't silently no-op
     glossary_dir = RUNTIME_DIR / "data" / "translator" / "glossaries"

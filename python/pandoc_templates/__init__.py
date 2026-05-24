@@ -44,6 +44,14 @@ def _find_pandoc() -> str | None:
         PANDOC_CMD = "pandoc"
         return PANDOC_CMD
 
+    # 打包目录中的 Pandoc（与 api.exe 同目录的 tools/ 子目录，构建时下载注入）
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        exe_dir = Path(sys.executable).parent
+        bundled_pandoc = exe_dir / "tools" / "pandoc.exe"
+        if bundled_pandoc.exists():
+            PANDOC_CMD = str(bundled_pandoc)
+            return PANDOC_CMD
+
     # Windows 常见安装位置
     program_files = os.environ.get("ProgramFiles", "C:\\Program Files")
     pf86 = os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")
@@ -232,6 +240,12 @@ def compile_pdf(tex_source: str, output_dir: str | None = None) -> dict:
 
     # Fix Fontconfig on Windows: provide a fonts.conf pointing to system fonts
     env = os.environ.copy()
+    # Frozen build: point Tectonic at the per-user cache we seed from the bundled
+    # pre-warmed cache (see api_factory), so PDF export works offline.
+    if getattr(sys, "frozen", False) and not env.get("TECTONIC_CACHE_DIR"):
+        _local_app = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+        if _local_app:
+            env["TECTONIC_CACHE_DIR"] = str(Path(_local_app) / "YanMo" / "tectonic-cache")
     if sys.platform == "win32":
         windir = os.environ.get("WINDIR", "C:\\Windows")
         fonts_dir = os.path.join(windir, "Fonts")
