@@ -38,8 +38,16 @@ fn wait_or_kill(child: &mut std::process::Child, timeout: std::time::Duration) {
     }
     #[cfg(windows)]
     {
+        // Graceful close request (no /F). Console / no-window children like the
+        // Python backend can't accept this and taskkill prints "only be
+        // terminated forcefully" — that's expected; we force-kill below after
+        // the grace period. Suppress its output so it doesn't surface as an
+        // error in the logs, and hide the transient console window.
         let _ = std::process::Command::new("taskkill")
             .args(["/PID", &child.id().to_string()])
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
             .status();
     }
 
