@@ -64,6 +64,67 @@ class ApproveRequest(BaseModel):
 
 _AGENT_LOCALHOST_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "::ffff:127.0.0.1"})
 
+# 文件改动 / 执行类意图 —— 命中则走完整 Agent（需要工具）；否则文档问答一次性回答。
+_MUTATION_KEYWORDS = (
+    "写入", "写到", "写回", "保存到", "保存为", "存成", "导出到",
+    "创建文件", "新建文件", "新建一个文件", "生成文件", "写一个文件", "写个文件",
+    "修改文件", "改写文件", "替换文件", "编辑文件", "更新文件",
+    "删除", "移除文件", "重命名", "移动到", "运行", "执行", "跑一下", "跑通",
+    "git", "commit", "提交代码", "安装依赖", "新建项目", "创建项目", "搭建",
+    "write file", "create file", "edit file", "delete", "run ", "execute", "commit",
+)
+
+
+def _has_mutation_intent(msg: str) -> bool:
+    ml = msg.lower()
+    return any(k in ml for k in _MUTATION_KEYWORDS)
+
+
+async def _oneshot_doc_qa_stream(agent, question: str, doc_content: str, session_id: str = ""):
+    """文档问答一次性流式回答 —— 单次 LLM 调用，不进 ReAct、不调工具。
+
+    复用 trivial-chat 同款 `agent.llm.stream(msgs, tools=None)`。发出与 Agent 会话
+    一致的 SSE 事件（session_started → token… → response → done），前端零改动。
+    调用方负责在外层 finally 中 close agent；这里只产出事件。
+    """
+    import json as _json
+    sid = session_id or f"sess_{int(time.time() * 1000) % 10_000_000:07d}"
+    yield {"event": "session_started",
+           "data": _json.dumps({"type": "session_started",
+                                "metadata": {"session_id": sid}}, ensure_ascii=False)}
+    _MAX = 60_000
+    _doc = doc_content[:_MAX]
+    _note = "\n\n[注：文档较长，仅截取前部分用于回答]" if len(doc_content) > _MAX else ""
+    system = (
+        "你是研墨，一个专业的学术写作助手。下面三引号内是用户当前打开的文档内容。"
+        "请直接基于该文档回答用户的问题（如评价写作质量、总结要点、指出问题、给改进建议）。"
+        "要求：用中文、分点、具体、可落地。文档已在下方，不要说“需要先读取文件”，"
+        "也不要调用任何工具，直接给出回答。"
+    )
+    user = f'文档内容：\n"""\n{_doc}{_note}\n"""\n\n用户的问题：{question}'
+    msgs = [Message(role="system", content=system), Message(role="user", content=user)]
+    buf = ""
+    try:
+        async for tok, full in agent.llm.stream(msgs, tools=None):
+            if tok:
+                c = tok.get("content", "")
+                if c:
+                    buf += c
+                    yield {"event": "token",
+                           "data": _json.dumps({"type": "token", "content": c}, ensure_ascii=False)}
+            if full:
+                buf = (full.get("message") or {}).get("content", buf) or buf
+        if not buf.strip():
+            buf = "（模型未返回内容，请重试或检查 API 配置）"
+        yield {"event": "response",
+               "data": _json.dumps({"type": "response", "content": buf}, ensure_ascii=False)}
+        yield {"event": "done",
+               "data": _json.dumps({"type": "done", "metadata": {"session_id": sid}}, ensure_ascii=False)}
+    except Exception as e:
+        logger.exception("doc-QA stream error")
+        yield {"event": "error",
+               "data": _json.dumps({"type": "error", "content": f"回答失败: {e}"}, ensure_ascii=False)}
+
 # 可选 Bearer token 鉴权：如果启动时设置了 SCHOLAR_AGENT_TOKEN 环境变量，
 # 所有 /api/agent/* 端点额外要求 Authorization: Bearer <token>。
 import os as _os
@@ -377,6 +438,33 @@ def register_agent(
             if req.constraints:
                 enhancements.append(f"[约束要求]\n{req.constraints}")
             message = "\n\n".join(enhancements) + f"\n\n[用户问题]\n{req.message}"
+
+        # ── Path A：文档问答一次性短路（绕开 ReAct，从根上杜绝死循环）──
+        # 用户打开一篇文档问"写得怎么样/总结/有什么问题"这类问题时，文档内容已经在
+        # 手上，根本不需要工具循环：直接喂给 LLM 一次，流式吐答案。只有当用户明确要
+        # 改文件/跑命令（_has_mutation_intent）时才走完整 Agent。
+        if not _is_trivial and not _has_mutation_intent(req.message):
+            doc_content = (req.context_text or "").strip()
+            if not doc_content and (req.context_file or "").strip():
+                try:
+                    from src.parser import extract_document as _extract_doc
+                    _p = req.context_file.strip()
+                    if Path(_p).is_file():
+                        doc_content = (_extract_doc(_p).full_text or "").strip()
+                except Exception as _e:
+                    logger.warning("doc-QA 读取 context_file 失败: %s", _e)
+
+            if doc_content:
+                logger.info("[doc-QA] 文档问答一次性短路（不进 ReAct）: %.50s", req.message)
+
+                async def _oneshot_doc_qa() -> AsyncGenerator[dict, None]:
+                    try:
+                        async for ev in _oneshot_doc_qa_stream(agent, req.message, doc_content):
+                            yield ev
+                    finally:
+                        await agent.close()
+
+                return EventSourceResponse(_oneshot_doc_qa(), media_type="text/event-stream")
 
         # Auto-detect and process special elements (images, tables, citations)
         # before passing to AgentLoop, so their analysis results are in context.
