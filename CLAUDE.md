@@ -150,7 +150,7 @@ Three config files serve distinct roles — do not confuse them:
 | `python/config/default.local.yaml` | User overrides merged on top of `default.yaml`. Created by the UI's Settings panel or manually. | No (gitignored) |
 ### Subsystem Maturity Matrix
 
-Use this as the canonical "what works / what's polished / what's a stub" map. Updated 2026-05-23.
+Use this as the canonical "what works / what's polished / what's a stub" map. Updated 2026-05-30.
 
 | # | Subsystem | Grade | Key evidence |
 |---|-----------|-------|--------------|
@@ -159,12 +159,12 @@ Use this as the canonical "what works / what's polished / what's a stub" map. Up
 | 3 | Mind Map (Vue Flow + AI expand + dagre layout + node body + editor sync) | A | `MindMapNode.body` field; `mindMapToMarkdown`/`markdownToMindMapNodes` round-trip with body; `MindNodeCard` collapsible body textarea; `skipNextBackendLoad` prevents `loadFromBackend` overwriting editor→mindmap data |
 | 4 | LaTeX/Word export (IEEE Conf/Journal, ACM, NeurIPS, LNCS, Generic + Tectonic) | A | `word_exporter.py`, `pandoc_templates`, `pptx_exporter` |
 | 5 | AI editor (Monaco + Ghost Text + AI Panel + mid-stream reload) | B+ | `useEditorTabs.reloadOpenTabs()` refreshes open tabs after each Agent write; completion quality average |
-| 6 | Agent ReAct engine (ContextCompressor + SessionStore tool_calls + Skill 三层分解 + review + Memory dedup + greeting guard) | A- | `agent.py:149,176,214` ContextCompressor wired into `step()`; `session_store.py:199-225` tool_calls round-trip; `review_agent.py` skill quality gate; `agent/_skill_model.py` SOUL/AGENTS/IDENTITY 三层; `prompt_builder.py` skill injection + 原则 #0 问候不调工具 |
+| 6 | Agent ReAct engine (ContextCompressor + SessionStore tool_calls + Skill 三层分解 + review + Memory dedup + greeting guard + _DEFAULT_TOOL_GUIDE fallback) | A- | `agent.py:149,176,214` ContextCompressor wired into `step()`; `session_store.py:199-225` tool_calls round-trip; `review_agent.py` skill quality gate; `agent/_skill_model.py` SOUL/AGENTS/IDENTITY 三层; `prompt_builder.py` skill injection + 原则 #0 问候不调工具 + `_DEFAULT_TOOL_GUIDE` 自动覆盖所有未匹配 provider（moonshot/llama/grok/mistral 等不再返回空指导） |
 | 7 | 21 cloud LLM providers | B | Only OpenAI-compatible path tested end-to-end |
 | 8 | RAG / 文献库 | B- | Demoted to on-demand `search_documents` tool (no longer auto-injected); translation auto-ingest intact; `tools/registry.py` full impl when `rag_store` injected |
 | 9 | Zotero integration | C | Requires user API key |
 | 10 | Vision / OCR | C | Depends on external MCP server |
-| 11 | Agent workspace file tools (read/write/grep/str_replace/git_op + boundary approval) | B | E2E verified: workspace_root wired from `useFileTree.rootDir`; `SecurityGate.force_approval` + `WorkspaceEnv` ContextVar; `await_approval` SSE → frontend `AgentApprovalInline` → `POST /approve` → ContextVar bypass; 1752 pytest passed |
+| 11 | Agent workspace file tools (read/write/grep/str_replace/git_op + boundary approval) | B | E2E verified: workspace_root wired from `useFileTree.rootDir`; `SecurityGate.force_approval` + `WorkspaceEnv` ContextVar; `await_approval` SSE → frontend `AgentApprovalInline` → `POST /approve` → ContextVar bypass; 1815 pytest passed |
 
 ### Known Defect Index
 
@@ -202,7 +202,7 @@ python -m venv /tmp/test && /tmp/test/Scripts/pip install -r requirements-lock.t
 
 ### 论证陪练 v3（已完成 — 见 docs/argument-map-v3-spec.md）
 
-5 个 Phase（Phase 0–5）全部完成。功能包括：论证账本（承诺 ↔ 兑付，三态锚定）、Reviewer‑2 对抗（会议校准评审 + rebuttal mini-chat，reviewer 会被说服）、质疑这句/一致性/gap/RW 检查、真实评审导入（import_real_reviews）、实验缺口建议（suggest_experiment）、rebuttal 包导出（/download）。Toulmin v2 图（ArgGraph/Vue Flow）保留并复用为"审稿模式"可视化（ArgSourcePane 已有"从编辑器载入"入口）。features.argument_companion=true（已发布）。E2E 集成测试：`python/tests/integration/test_companion_e2e.py` 27 个测试覆盖全部 `/api/companion/*` 端点（pytest 1582 passed / 8 skipped）。**注意**：所有 ledger 路由的 `doc_id` 使用 query param（`?doc_id=`），因为 doc_id 可能是包含 `/` 的完整文件路径。`build_ledger` SSE 流在每个 promise 事件前先 yield anchor 事件，前端 `ledger.anchors` 才能正确填充。
+5 个 Phase（Phase 0–5）全部完成。功能包括：论证账本（承诺 ↔ 兑付，三态锚定）、Reviewer‑2 对抗（会议校准评审 + rebuttal mini-chat，reviewer 会被说服）、质疑这句/一致性/gap/RW 检查、真实评审导入（import_real_reviews）、实验缺口建议（suggest_experiment）、rebuttal 包导出（/download）。Toulmin v2 图（ArgGraph/Vue Flow）保留并复用为"审稿模式"可视化（ArgSourcePane 已有"从编辑器载入"入口）。features.argument_companion=true（已发布）。E2E 集成测试：`python/tests/integration/test_companion_e2e.py` 27 个测试覆盖全部 `/api/companion/*` 端点（pytest 1815 passed / 11 skipped）。**注意**：所有 ledger 路由的 `doc_id` 使用 query param（`?doc_id=`），因为 doc_id 可能是包含 `/` 的完整文件路径。`build_ledger` SSE 流在每个 promise 事件前先 yield anchor 事件，前端 `ledger.anchors` 才能正确填充。
 
 论证地图 v2（见 docs/argument-map-v2-spec.md）：5 个 Phase 已全部完成，旧树实现已删除。当前 Toulmin 图 = v2 唯一版本，在论证陪练 v3 "审稿模式"中继续使用。
 
@@ -249,7 +249,7 @@ agency-agents-zh SDLC 改造 (2026-05-18–19，分支 `feature/sdlc-borrow-agen
 - **里程碑3 第4刀** — `useEditorTabs.reloadOpenTabs()`：Agent 每次 write_file/str_replace 完成立即刷新文件树 + Monaco（mid-stream watcher），有未保存修改的 tab 跳过；Tauri-only 动态 import 含 web 模式兜底
 - **里程碑3 第5刀** — 删除 polish_text / summarize_text / expand_section / generate_outline（93行），同步清理 TOOL_DESCRIPTIONS + 集成测试 safe_args + mcp_server.py 注释；format_bibliography 保留
 - **UI 适配** — "知识库" tab 改名"文献库"；workspace 状态栏（绿点 + 项目名 / "未打开项目"）；空状态 workspace 感知文案；TOOL_DESCRIPTIONS 覆盖所有19个工具
-- 验证：1752 pytest passed / 11 skipped；326 vitest passed；E2E SSE 测试：越界路径 → await_approval → approve → ContextVar bypass → tool_result 全链路通过；计划详情见 `docs/claude-code-pivot-todo.md`
+- 验证：1815 pytest passed / 11 skipped；347 vitest passed；E2E SSE 测试：越界路径 → await_approval → approve → ContextVar bypass → tool_result 全链路通过；计划详情见 `docs/claude-code-pivot-todo.md`
 
 论证陪练 + Agent 修复 (2026-05-23)：
 - `prompt_builder.py` — Agent 身份原则 #0：问候/闲聊直接回复，不调工具；DeepSeek/Qwen 模型指导同步补齐，修复"你好"触发无限工具调用循环
@@ -293,3 +293,8 @@ agency-agents-zh SDLC 改造 (2026-05-18–19，分支 `feature/sdlc-borrow-agen
 - **杂项** — `ccca9ce` 思维导图 AI 检查完成后自动打开右侧分析面板；`a0e6205` 合规检查在 Tauri 包内用 `API_BASE` 绝对路径（相对路径 `/api/compliance` 在 WebView 解析失败返回 HTML）；`0cf9674` 消除关闭时 taskkill 无窗口子进程的误导性错误日志
 - 新增测试：`tests/unit/test_doc_qa_oneshot.py`（Path A 意图分类 + 事件序列）、`tests/unit/test_session.py` 跨工具空转强制停止
 - 验证：1587 unit passed / 8 skipped（较上轮 1582 增 5）
+
+Agent 工具指导全 provider 覆盖 (2026-05-30)：
+- `prompt_builder.py` — `_get_model_guide` 对未匹配 `_MODEL_TOOL_GUIDES` 的模型不再返回空字符串，改为返回 `_DEFAULT_TOOL_GUIDE`（6 条通用指导：拒绝推脱、必须真调工具、不要编造路径、信息够就停）。此前仅 qwen/gpt/deepseek/gemini 四族模型有专属指导，其余 17 个 provider 的所有模型（moonshot、glm、llama、grok、mistral、sonar、doubao、ernie 等）拿到空指导，导致 Agent 拒绝执行工具调用
+- 新增测试：`test_prompt_builder.py` 新增 17 个参数化测试覆盖全部未匹配模型 + 验证已知模型仍返回特定指导
+- 验证：1815 pytest passed / 11 skipped；347 vitest passed

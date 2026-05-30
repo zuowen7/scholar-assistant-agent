@@ -10,7 +10,7 @@
 
 本地可离线运行，也可接入 21 家云端大模型。
 
-- **版本**：v0.3.2（Agent 工作区文件工具链接通 — "写论文版 Claude Code" 范式落地；越界审批、Monaco 实时刷新、RAG 降级为按需文献库；论证陪练 v3 + agency-agents-zh SDLC 改造全部完成。最新一轮（2026-05-24）：文档问答一次性短路根除 Agent 死循环、翻译排版对齐根治、DeepSeek 400 熔断、发行版安装包补齐 Pandoc/Tectonic/嵌入模型离线可用、LaTeX 模板内置文字清理）
+- **版本**：v0.3.2（Agent 工作区文件工具链接通 — "写论文版 Claude Code" 范式落地；越界审批、Monaco 实时刷新、RAG 降级为按需文献库；论证陪练 v3 + agency-agents-zh SDLC 改造全部完成。最新一轮（2026-05-30）：Agent 工具指导自动覆盖全部 21 个 provider 的所有模型（未知模型返回 `_DEFAULT_TOOL_GUIDE` 而非空字符串，修复非 qwen/gpt/deepseek/gemini 模型拒绝执行工具的问题））
 - **许可**：不开源，私有项目
 
 ## 核心功能
@@ -68,7 +68,7 @@
 - **Rebuttal 包导出** — 一键下载含所有批评点 + rebuttal 草稿的 Markdown 文件
 - **全栈端对端验证** — `test_companion_e2e.py`：27 个集成测试覆盖全部 `/api/companion/*` 端点，真实 Store 写入 + SSE 序列化全程跑通，仅 mock LLM 调用
 
-**状态**：Phase 0–5 全部完成，`features.argument_companion=true` 已发布，pytest 1582 unit passed + 326 vitest passed。
+**状态**：Phase 0–5 全部完成，`features.argument_companion=true` 已发布，pytest 1815 passed / 11 skipped + vitest 347 passed。
 
 ### 思维导图
 - **Vue Flow 画布** — 自定义节点卡片 + 连线（树边/关联线），支持拖拽、缩放、小地图
@@ -162,7 +162,7 @@
 │   │   └── mcp/                  #   Vision 客户端 (多模态图像理解)
 │   ├── prompts/                  #   学术写作 Prompt 体系 (6层骨架 + YAML frontmatter + eval runner)
 │   ├── data/paper_assets/        #   论文模板 (IEEE/ACM/NeurIPS/LNCS/通用)
-│   └── tests/                    #   单元测试 + 集成测试（含 E2E companion + adversarial），pytest 1582 passed / 8 skipped
+│   └── tests/                    #   单元测试 + 集成测试（含 E2E companion + adversarial），pytest 1815 passed / 11 skipped
 ├── Dockerfile
 ├── docker-compose.yml
 └── package.json
@@ -406,7 +406,7 @@ MSYS_NO_PATHCONV=1 docker run --rm \
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
 | `parser.engine` | pdfplumber | PDF 解析引擎 |
-| `chunker.max_tokens` | 2048 | 每块最大 token 数 |
+| `chunker.max_tokens` | 800 | 每块最大 token 数（曾为 2048，过大导致对齐回退） |
 | `chunker.strategy` | sentence | 切块策略 |
 | `translator.engine` | cloud | 翻译引擎: ollama / cloud |
 | `translator.model` | qwen3:8b | Ollama 模型 |
