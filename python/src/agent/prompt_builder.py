@@ -103,6 +103,14 @@ _MODEL_TOOL_GUIDES: dict[str, str] = {
 - 多个独立操作可以并行调用工具""",
 }
 
+_DEFAULT_TOOL_GUIDE = """工具使用注意事项：
+- 问候语（你好、hi、hello）、感谢、闲聊等纯对话消息，直接用自然语言回复，绝对不要调用任何工具
+- 你必须使用工具来真正执行操作，不要仅描述你"会怎么做"或只输出代码
+- 被要求画图/计算/跑代码时，直接调用 python_exec 或 generate_figure 执行并产出文件，再向用户报告文件路径
+- 不要以"无法运行代码""无法生成图片"为由推脱——你确实具备这些能力
+- 不要编造文件路径或 API 地址，执行后验证结果是否正确
+- 每次工具调用后必须判断：信息是否已足够回答用户？如果足够，立即给出最终回答，不要继续调用工具"""
+
 # ReAct 行为指导
 _REACT_INSTRUCTION = """推理模式：使用 ReAct（推理 + 行动）模式工作。
 每一步：
@@ -428,7 +436,7 @@ class PromptBuilder:
         for key, guide in _MODEL_TOOL_GUIDES.items():
             if key in model_lower:
                 return guide
-        return ""
+        return _DEFAULT_TOOL_GUIDE
 
     def _load_memory_file(self) -> str:
         """从 MEMORY.md 文件加载长期记忆。
