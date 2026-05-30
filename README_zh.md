@@ -15,6 +15,26 @@
 - **版本**：v0.3.2（Agent 工作区文件工具链接通 — "写论文版 Claude Code" 范式落地；越界审批、Monaco 实时刷新、RAG 降级为按需文献库；论证陪练 v3 + agency-agents-zh SDLC 改造全部完成。最新一轮（2026-05-30）：Agent 工具指导自动覆盖全部 21 个 provider 的所有模型（未知模型返回 `_DEFAULT_TOOL_GUIDE` 而非空字符串，修复非 qwen/gpt/deepseek/gemini 模型拒绝执行工具的问题））
 - **许可**：MIT
 
+## 功能演示
+
+| 读 — PDF 翻译 | 审 — 对抗式审稿 |
+|--------------|---------------|
+| ![翻译演示](docs/demo/precheck.gif) | ![Reviewer-2 演示](docs/demo/review.gif) |
+
+| 想 — 思维导图 | 想 — 论证地图 |
+|--------------|-------------|
+| ![思维导图演示](docs/demo/mindmap.gif) | ![论证地图演示](docs/demo/argument.gif) |
+
+| 写 — AI 编辑器 + Agent |
+|----------------------|
+| ![Agent 演示](docs/demo/demo1.gif) |
+
+| 更多功能 |
+|---------|
+| ![更多](docs/demo/demo2.gif) |
+
+> 以上均为 v0.3.2 版本实机录屏。
+
 ## 下载安装
 
 安装包在 [Releases](https://github.com/zuowen7/scholar-cursor/releases) 页面。

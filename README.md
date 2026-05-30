@@ -8,10 +8,25 @@
 
 > Open-source **Claude Code for academic papers** — a privacy-first AI workstation that handles the full lifecycle of scholarly writing.
 
-<!-- TODO: Add demo GIF here -->
-<!--
-![Scholar Assistant Demo](docs/demo.gif)
--->
+## Demo
+
+| Read — PDF Translation | Review — Adversarial Peer Review |
+|------------------------|----------------------------------|
+| ![Translation Demo](docs/demo/precheck.gif) | ![Reviewer-2 Demo](docs/demo/review.gif) |
+
+| Think — Mind Map | Think — Argument Map |
+|-------------------|----------------------|
+| ![Mind Map Demo](docs/demo/mindmap.gif) | ![Argument Map Demo](docs/demo/argument.gif) |
+
+| Write — AI Editor + Agent |
+|---------------------------|
+| ![Agent Demo](docs/demo/demo1.gif) |
+
+| More Features |
+|---------------|
+| ![More](docs/demo/demo2.gif) |
+
+> All GIFs are real screen recordings from the v0.3.2 release.
 
 ## What It Does
 
