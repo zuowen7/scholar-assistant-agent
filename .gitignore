@@ -52,6 +52,9 @@ data/agent/
 python/data/argument_tree.json
 python/argument_graphs/
 
+# Companion 运行时数据（ledger/review，含用户本地路径）
+python/companion/
+
 # Code review dumps (临时产物)
 docs/code-review-*.md
 

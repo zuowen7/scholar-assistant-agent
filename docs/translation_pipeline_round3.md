@@ -1,6 +1,6 @@
 # 翻译管道第三轮诊断报告（2026-05-05）
 
-> **测试样本**：`C:\Users\zuowen\Desktop\science.adn8744.pdf`
+> **测试样本**：`~\Desktop\science.adn8744.pdf`
 > **第二轮修复后状态**：多文章拆分 ✅、截断开头 ✅、噪声字符 ✅
 > **剩余问题**：1 个 P0 问题
 
@@ -164,7 +164,7 @@ from src.parser.article_detector import extract_articles
 from src.cleaner.pipeline import clean_text_full
 from src.chunker.splitter import parse_blocks
 
-pdf = r'C:\\Users\\zuowen\\Desktop\\science.adn8744.pdf'
+pdf = r'~\\Desktop\\science.adn8744.pdf'
 doc = extract_pages(pdf)
 raw_articles = extract_articles(doc.full_text)
 
@@ -222,7 +222,7 @@ from src.parser.article_detector import extract_articles
 from src.cleaner.pipeline import clean_text_full
 from src.chunker.splitter import parse_blocks
 
-pdf = r'C:\\Users\\zuowen\\Desktop\\science.adn8744.pdf'
+pdf = r'~\\Desktop\\science.adn8744.pdf'
 doc = extract_pages(pdf)
 
 # 1. 文章拆分
