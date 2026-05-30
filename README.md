@@ -10,9 +10,9 @@
 
 ## Demo
 
-| Read — PDF Translation | Review — Adversarial Peer Review |
+| Review — Claim Ledger | Review — Adversarial Peer Review |
 |------------------------|----------------------------------|
-| ![Translation Demo](docs/demo/precheck.gif) | ![Reviewer-2 Demo](docs/demo/review.gif) |
+| ![Ledger Demo](docs/demo/precheck.gif) | ![Reviewer-2 Demo](docs/demo/review.gif) |
 
 | Think — Mind Map | Think — Argument Map |
 |-------------------|----------------------|
