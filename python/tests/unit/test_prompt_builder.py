@@ -119,14 +119,46 @@ class TestGetModelGuide:
         guide = builder._get_model_guide("gemini-2.0-flash")
         assert "绝对路径" in guide
 
-    def test_unknown_model(self):
+    def test_unknown_model_gets_default_guide(self):
         builder = PromptBuilder()
         guide = builder._get_model_guide("unknown-model")
-        assert guide == ""
+        assert guide != ""
+        assert "工具使用注意事项" in guide
 
-    def test_empty_model(self):
+    def test_empty_model_returns_empty(self):
         builder = PromptBuilder()
         assert builder._get_model_guide("") == ""
+
+    @pytest.mark.parametrize("model_name", [
+        "moonshot-v1-8k",
+        "glm-4-plus",
+        "Qwen/Qwen3-235B-A22B",
+        "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        "llama-3.3-70b-versatile",
+        "mixtral-8x7b-32768",
+        "mistral-large-latest",
+        "grok-2-latest",
+        "accounts/fireworks/models/llama-v3p3-70b-instruct",
+        "meta-llama/Meta-Llama-3.1-70B-Instruct",
+        "sonar",
+        "sonar-pro",
+        "meta-llama/llama-3.1-70b-instruct",
+        "doubao-pro-32k",
+        "ernie-4.0-8k",
+        "grok-2-vision-latest",
+    ])
+    def test_uncovered_provider_models_get_default_guide(self, model_name):
+        builder = PromptBuilder()
+        guide = builder._get_model_guide(model_name)
+        assert guide != "", f"{model_name} should get a default guide, not empty"
+        assert "工具使用注意事项" in guide
+
+    def test_known_models_still_get_specific_guide(self):
+        builder = PromptBuilder()
+        assert "严禁在同一轮对话中多次调用同一个工具" in builder._get_model_guide("qwen3:8b")
+        assert "执行后验证结果是否正确" in builder._get_model_guide("gpt-4o")
+        assert "不要以" in builder._get_model_guide("deepseek-v4-pro")
+        assert "绝对路径" in builder._get_model_guide("gemini-2.0-flash")
 
 
 # ---------------------------------------------------------------------------
@@ -180,9 +212,14 @@ class TestBuild:
         assert "tool_a" in prompt
         assert "tool_b" in prompt
 
-    def test_with_model(self):
+    def test_with_known_model(self):
         builder = PromptBuilder()
         prompt = builder.build(PromptConfig(model_name="qwen3:8b"))
+        assert "严禁在同一轮对话中多次调用同一个工具" in prompt
+
+    def test_with_unknown_model_includes_default_guide(self):
+        builder = PromptBuilder()
+        prompt = builder.build(PromptConfig(model_name="moonshot-v1-8k"))
         assert "工具使用注意事项" in prompt
 
     def test_with_memory(self):
