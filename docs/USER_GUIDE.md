@@ -26,7 +26,7 @@ ollama pull qwen3:8b
 
 ### 方式一：桌面端（推荐）
 
-1. 从 [GitHub Releases](https://github.com/zuowen7/scholar-cursor/releases) 下载安装包
+1. 从 [GitHub Releases](https://github.com/zuowen7/scholar-assistant/releases) 下载安装包
 2. 安装后启动即可，应用自动管理后端服务
 
 **Windows 开发者**：使用 `start_dev.bat` 启动（自动清除代理环境变量，避免卡顿）

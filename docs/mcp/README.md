@@ -44,7 +44,7 @@ python -m src.agent.mcp_server
     "scholar-assistant": {
       "command": "python",
       "args": ["-m", "src.agent.mcp_server"],
-      "cwd": "/path/to/scholar-cursor/python",
+      "cwd": "/path/to/scholar-assistant/python",
       "env": {
         "PYTHONPATH": "python/src",
         "OLLAMA_BASE_URL": "http://localhost:11434",
@@ -90,7 +90,7 @@ python -m src.agent.mcp_server
     "scholar-assistant": {
       "command": "python",
       "args": ["-m", "src.agent.mcp_server"],
-      "cwd": "/path/to/scholar-cursor/python",
+      "cwd": "/path/to/scholar-assistant/python",
       "env": {
         "PYTHONPATH": "python/src",
         "OLLAMA_BASE_URL": "http://localhost:11434",
@@ -117,7 +117,7 @@ Windows 用户同样需要设置 `"HTTP_PROXY": ""` 和 `"HTTPS_PROXY": ""`。
           "type": "stdio",
           "command": "python",
           "args": ["-m", "src.agent.mcp_server"],
-          "cwd": "/path/to/scholar-cursor/python",
+          "cwd": "/path/to/scholar-assistant/python",
           "env": {
             "PYTHONPATH": "python/src",
             "OLLAMA_BASE_URL": "http://localhost:11434",
