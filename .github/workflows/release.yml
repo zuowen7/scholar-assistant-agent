@@ -65,7 +65,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install -r python/requirements-lock.txt
+          pip install -r python/requirements.txt
           pip install pyinstaller
 
       - name: Install frontend dependencies

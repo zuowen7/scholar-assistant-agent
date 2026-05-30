@@ -326,6 +326,7 @@ console.log('[INFO] Running PyInstaller...');
 const workPath = path.join(rootDir, 'build', 'pyi-work');
 const requiredDataDirs = [
   path.join(rootDir, 'python', 'data', 'paper_assets'),
+  path.join(rootDir, 'python', 'plugins'),
 ];
 
 for (const dir of requiredDataDirs) {
