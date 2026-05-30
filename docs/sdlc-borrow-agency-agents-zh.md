@@ -3,7 +3,7 @@
 > **状态文档**。每个 Phase 完成时把对应 checkbox 从 `[ ]` 改成 `[x]`，并在末尾追一行变更日志。
 > **来源**：`https://github.com/jnMetaCode/agency-agents-zh`
 > **分支**：`feature/sdlc-borrow-agency-agents-zh`
-> **计划 plan 文件副本**：`C:\Users\zuowen\.claude\plans\sdlc-async-hopcroft.md`
+> **计划 plan 文件副本**：`~\.claude\plans\sdlc-async-hopcroft.md`
 
 ## 进度索引
 

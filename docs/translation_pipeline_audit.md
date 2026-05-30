@@ -1,6 +1,6 @@
 # 翻译管道实测诊断报告（2026-05-05）
 
-> **测试样本**：`C:\Users\zuowen\Desktop\science.adn8744.pdf`
+> **测试样本**：`~\Desktop\science.adn8744.pdf`
 > 4 页 / 16944 字符 / 双栏 / **包含 3 篇独立 Science Perspectives 短文**
 >
 > **方法**：直接执行 `parser → cleaner → chunker` 各阶段，检查实际中间产物，未涉及 LLM 翻译阶段（光前 3 个阶段就有 8 个严重问题，必须先修才有翻译质量可言）。
@@ -14,7 +14,7 @@ from src.parser.extractor import extract_pages
 from src.cleaner import clean_text_full
 from src.chunker.splitter import chunk_text_with_blocks
 
-pdf = r'C:\Users\zuowen\Desktop\science.adn8744.pdf'
+pdf = r'~\Desktop\science.adn8744.pdf'
 doc = extract_pages(pdf)
 result = clean_text_full(doc.full_text)
 br = chunk_text_with_blocks(result.text, max_tokens=2048, overlap_tokens=128)
@@ -388,7 +388,7 @@ def detect_inline_refs(article_text: str) -> tuple[str, str]:
 ```
 任务：修复学术论文翻译管道，针对 Science Perspectives 多文章 PDF
 
-测试样本：C:\Users\zuowen\Desktop\science.adn8744.pdf
+测试样本：~\Desktop\science.adn8744.pdf
 本次诊断已确认问题：见上方 P0/P1/P2 列表
 
 要求：

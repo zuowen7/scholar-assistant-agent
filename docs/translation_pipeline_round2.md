@@ -1,6 +1,6 @@
 # 翻译管道第二轮诊断报告（2026-05-05）
 
-> **测试样本**：`C:\Users\zuowen\Desktop\science.adn8744.pdf`
+> **测试样本**：`~\Desktop\science.adn8744.pdf`
 > **第一轮修复后状态**：UTF-8 编码问题已修复，水印已移除，但仍有 5 个严重问题
 >
 > **方法**：执行 `parser → cleaner → chunker` 完整流程，检查中间产物
@@ -443,7 +443,7 @@ from src.parser.article_detector import extract_articles
 from src.cleaner.pipeline import clean_text_full
 from src.chunker.splitter import parse_blocks, pack_blocks_into_chunks
 
-pdf = r'C:\\Users\\zuowen\\Desktop\\science.adn8744.pdf'
+pdf = r'~\\Desktop\\science.adn8744.pdf'
 doc = extract_pages(pdf)
 
 # 验证文章拆分
