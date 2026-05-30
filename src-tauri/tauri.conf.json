@@ -41,7 +41,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi"],
+    "targets": ["nsis"],
     "resources": [
       "python-dist",
       "WebView2Loader.dll"
