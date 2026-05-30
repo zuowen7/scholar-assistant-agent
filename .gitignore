@@ -124,4 +124,5 @@ verify_tools.py
 
 python/nul_test/
 python/data/argument_output/
+outputs/
 *.docx

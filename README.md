@@ -1,5 +1,9 @@
 # Scholar Assistant
 
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![Version](https://img.shields.io/badge/version-0.3.2-brightgreen)](https://github.com/zuowen7/scholar-cursor/releases)
+[![Test](https://img.shields.io/badge/tests-1815%20passed-success)](https://github.com/zuowen7/scholar-cursor/actions)
+
 **English** | [中文](./README_zh.md)
 
 > Open-source **Claude Code for academic papers** — a privacy-first AI workstation that handles the full lifecycle of scholarly writing.
