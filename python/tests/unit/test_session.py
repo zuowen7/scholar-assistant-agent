@@ -183,6 +183,56 @@ class TestApproveAbort:
         await session.approve("evt_456", "allow_session")
         assert "*" in session.approved_categories
 
+    @pytest.mark.asyncio
+    async def test_force_approval_bypasses_auto_approve(self, agent):
+        from src.agent.agent import StepResult
+        from src.agent.models import EVT_AWAIT_APPROVAL, ToolCall
+
+        calls = {"step": 0, "executed": 0}
+
+        async def fake_step(messages, *, step_num=1, max_steps=20, execute_tools=True):
+            calls["step"] += 1
+            if calls["step"] == 1:
+                tc = ToolCall(
+                    id="tc_write",
+                    name="write_file",
+                    arguments={
+                        "file_path": "draft.md",
+                        "content": "replacement manuscript",
+                        "must_not_exist": False,
+                    },
+                )
+                messages.append(Message(role="assistant", content="", tool_calls=[tc]))
+                return StepResult(
+                    events=[AgentEvent(
+                        type=EVT_TOOL_CALL,
+                        content="",
+                        metadata={"tool_name": "write_file"},
+                    )],
+                    tool_calls=[tc],
+                    tool_results=[],
+                )
+            return StepResult(events=[], tool_calls=[], tool_results=[],
+                              is_final=True, final_answer="stopped after denial")
+
+        async def fake_exec(tc, query):
+            calls["executed"] += 1
+            return "executed"
+
+        agent.step = fake_step
+        agent._execute_single_tool = fake_exec
+
+        s = AgentSession(
+            agent=agent,
+            config=SessionConfig(auto_approve=True, approval_timeout=0.01),
+        )
+        events = [ev async for ev in s.drive("请覆盖 draft.md")]
+
+        approval = next(ev for ev in events if ev.type == EVT_AWAIT_APPROVAL)
+        assert approval.metadata
+        assert approval.metadata["force_approval"] is True
+        assert calls["executed"] == 0
+
 
 # ---------------------------------------------------------------------------
 # Concurrent Isolation

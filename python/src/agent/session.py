@@ -534,6 +534,7 @@ class AgentSession:
                         "args": tc.arguments,
                         "risk": gate.risk.name.lower(),
                         "reason": gate.reason,
+                        **({"force_approval": True} if gate.force_approval else {}),
                     },
                 )
                 self._dispatch_event(approval_evt)

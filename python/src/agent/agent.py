@@ -110,6 +110,7 @@ class AgentLoop:
         api_format: str = "openai",
         memory_dir: str = "",
         workspace_root: str = "",
+        lesson_store: Any | None = None,
     ) -> None:
         self.ollama_base_url = ollama_base_url.rstrip("/")
         self.model = model
@@ -145,6 +146,7 @@ class AgentLoop:
 
         self.retry_manager = RetryManager()
         self.hooks = HookManager()
+        self.lesson_store = lesson_store
 
         # 比例阈值上下文压缩器，替代旧的滑动窗口 _trim_messages
         _window = 32_000
@@ -388,6 +390,15 @@ class AgentLoop:
                         logger.info("注入 Skill: %s", matched_skill.name)
                 except Exception as _se:
                     logger.warning("Skill 匹配失败: %s", _se)
+
+            # Inject lesson overlay from prior sessions
+            if self.lesson_store:
+                try:
+                    overlay = self.lesson_store.build_overlay(query)
+                    if overlay:
+                        extra["过往经验教训"] = overlay
+                except Exception as _le:
+                    logger.warning("Lesson overlay 注入失败: %s", _le)
 
             doc_ctx = ""
             if self.workspace_root:

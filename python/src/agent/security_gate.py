@@ -273,8 +273,9 @@ class SecurityGate:
         if operation in _GIT_DESTRUCTIVE_OPS:
             return GateResult(
                 risk=ToolRiskLevel.DESTRUCTIVE,
-                reason=f"git '{operation}' is destructive",
+                reason=f"SmartPause: git '{operation}' changes repository state",
                 needs_approval=True,
+                force_approval=True,
             )
 
         return GateResult(
@@ -292,8 +293,9 @@ class SecurityGate:
         if old_lines - new_lines > 50:
             return GateResult(
                 risk=ToolRiskLevel.DESTRUCTIVE,
-                reason=f"str_replace deletes {old_lines - new_lines} lines (>50)",
+                reason=f"SmartPause: str_replace deletes {old_lines - new_lines} lines (>50)",
                 needs_approval=True,
+                force_approval=True,
             )
         return GateResult(
             risk=ToolRiskLevel.DESTRUCTIVE,
@@ -305,6 +307,15 @@ class SecurityGate:
         must_not_exist = args.get("must_not_exist", False)
         if must_not_exist:
             # 新建文件 — moderate（不覆盖现有文件）
+            content = str(args.get("content", ""))
+            content_lines = content.count("\n") + 1 if content else 0
+            if len(content) > 12000 or content_lines > 250:
+                return GateResult(
+                    risk=ToolRiskLevel.MODERATE,
+                    reason="SmartPause: write_file creates a large file",
+                    needs_approval=True,
+                    force_approval=True,
+                )
             return GateResult(
                 risk=ToolRiskLevel.MODERATE,
                 reason="write_file creating new file",
@@ -312,6 +323,7 @@ class SecurityGate:
             )
         return GateResult(
             risk=ToolRiskLevel.DESTRUCTIVE,
-            reason="write_file may overwrite existing file",
+            reason="SmartPause: write_file may overwrite existing file",
             needs_approval=True,
+            force_approval=True,
         )

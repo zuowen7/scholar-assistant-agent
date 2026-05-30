@@ -27,6 +27,7 @@ export interface PendingApproval {
   risk?: string
   reason?: string
   preview?: Record<string, unknown>
+  force_approval?: boolean
 }
 
 /** Reset all module-level singleton state — for use in tests only. */
@@ -126,6 +127,7 @@ export function useAgentChat() {
             risk: agentEvent.metadata?.risk as string | undefined,
             reason: agentEvent.metadata?.reason as string | undefined,
             preview: agentEvent.metadata?.preview as Record<string, unknown> | undefined,
+            force_approval: (agentEvent.metadata?.force_approval as boolean) || false,
           })
           msg.events = [...msg.events, agentEvent]
           break

@@ -72,6 +72,7 @@ def _make_agent_loop(memory_manager=None, skill_registry=None):
     loop.rag_store = None
     loop.rag_top_k = 3
     loop.workspace_root = ""
+    loop.lesson_store = None
     loop._scratchpad = {}
     loop._scratchpad_step = 0
     return loop
@@ -82,6 +83,30 @@ def _make_agent_loop(memory_manager=None, skill_registry=None):
 # ===========================================================================
 
 class TestMemoryInjection:
+    def test_default_project_memory_can_seed_memory_file(self, tmp_path):
+        from src.agent.memory import MemoryManager, SCHOLAR_ASSISTANT_DEFAULT_MEMORY
+        mm = MemoryManager(
+            data_dir=tmp_path,
+            default_memory=SCHOLAR_ASSISTANT_DEFAULT_MEMORY,
+        )
+
+        content = mm.load_memory_file()
+        assert "Codex for papers" in content
+        assert "tool_name" in content
+        assert (tmp_path / "MEMORY.md").exists()
+
+    def test_default_project_memory_does_not_overwrite_existing_file(self, tmp_path):
+        from src.agent.memory import MemoryManager, SCHOLAR_ASSISTANT_DEFAULT_MEMORY
+        existing = tmp_path / "MEMORY.md"
+        existing.write_text("用户自己的长期记忆", encoding="utf-8")
+
+        mm = MemoryManager(
+            data_dir=tmp_path,
+            default_memory=SCHOLAR_ASSISTANT_DEFAULT_MEMORY,
+        )
+
+        assert mm.load_memory_file() == "用户自己的长期记忆"
+
     def test_memory_injected_when_present(self):
         mm = _make_memory_manager("用户偏好中文回复，重视简洁")
         agent = _make_agent_loop(memory_manager=mm)

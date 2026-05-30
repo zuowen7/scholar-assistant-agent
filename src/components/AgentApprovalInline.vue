@@ -15,10 +15,11 @@
         <UiSpinner v-if="deciding && pendingDecision === 'allow_once'" size="sm" />
         <span v-else>仅此一次</span>
       </button>
-      <button class="approval-btn allow-session u-interactive" @click="decide('allow_session')" :disabled="deciding">
+      <button v-if="!pending.force_approval" class="approval-btn allow-session u-interactive" @click="decide('allow_session')" :disabled="deciding">
         <UiSpinner v-if="deciding && pendingDecision === 'allow_session'" size="sm" />
         <span v-else>本次会话</span>
       </button>
+      <span v-else class="approval-hint-force">每次都需确认</span>
       <button class="approval-btn deny u-interactive" @click="decide('deny')" :disabled="deciding">
         <UiSpinner v-if="deciding && pendingDecision === 'deny'" size="sm" />
         <span v-else>拒绝</span>
@@ -200,6 +201,15 @@ async function decide(decision: 'allow_once' | 'allow_session' | 'deny') {
   color: #fff;
 }
 .deny:hover:not(:disabled) { background: color-mix(in srgb, var(--c-danger) 85%, #000); }
+.approval-hint-force {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xs);
+  color: var(--c-warn);
+  font-weight: 500;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .approval-bar, .approval-bar::before, .approval-icon { animation: none; }
