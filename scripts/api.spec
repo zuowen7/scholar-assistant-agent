@@ -81,9 +81,10 @@ a = Analysis(
         # 翻译术语表
         (str(python_dir / "data" / "translator" / "glossaries"), "data/translator/glossaries"),
         (str(python_dir / "prompts"), "prompts"),
-        # 插件目录（打包为空目录，保证 discover_plugins 不报错）
+    ] + ([
+        # 插件目录（空目录不追踪到 git，CI 可能不存在）
         (str(python_dir / "plugins"), "plugins"),
-    ],
+    ] if (python_dir / "plugins").exists() else []),
     hiddenimports=[
         # FastAPI / uvicorn
         "pydantic",
