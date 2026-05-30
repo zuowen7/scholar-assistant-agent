@@ -15,20 +15,19 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
 
       - name: Install Python dependencies
-        run: pip install -r python/requirements.txt
+        run: pip install -r python/requirements.txt pytest pytest-asyncio
 
       - name: Run pytest
-        run: |
-          cd python
-          pip install pytest pytest-asyncio
-          pytest tests/unit/ -q --tb=short
+        run: cd python && pytest tests/unit/ -q --tb=short
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: 'npm'
 
       - name: Install frontend dependencies
         run: npm install
@@ -48,6 +47,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: 'npm'
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -61,10 +61,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
 
       - name: Install Python dependencies
         run: |
-          pip install -r python/requirements.txt
+          pip install -r python/requirements-lock.txt
           pip install pyinstaller
 
       - name: Install frontend dependencies
