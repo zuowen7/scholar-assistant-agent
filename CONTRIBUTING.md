@@ -6,8 +6,8 @@ Thanks for your interest in Scholar Assistant. Contributions are welcome.
 
 ```bash
 # Clone and install
-git clone https://github.com/zuowen7/scholar-cursor.git
-cd scholar-cursor
+git clone https://github.com/zuowen7/scholar-assistant.git
+cd scholar-assistant
 npm install
 
 # Backend

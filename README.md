@@ -1,8 +1,8 @@
 # Scholar Assistant
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-0.3.2-brightgreen)](https://github.com/zuowen7/scholar-cursor/releases)
-[![Test](https://img.shields.io/badge/tests-1815%20passed-success)](https://github.com/zuowen7/scholar-cursor/actions)
+[![Version](https://img.shields.io/badge/version-0.3.2-brightgreen)](https://github.com/zuowen7/scholar-assistant/releases)
+[![Test](https://img.shields.io/badge/tests-1815%20passed-success)](https://github.com/zuowen7/scholar-assistant/actions)
 
 **English** | [中文](./README_zh.md)
 
@@ -44,7 +44,7 @@ Scholar Assistant packs five capabilities into one desktop app:
 
 ## Download
 
-Pre-built installers are available on the [Releases](https://github.com/zuowen7/scholar-cursor/releases) page.
+Pre-built installers are available on the [Releases](https://github.com/zuowen7/scholar-assistant/releases) page.
 
 | Platform | File |
 |----------|------|

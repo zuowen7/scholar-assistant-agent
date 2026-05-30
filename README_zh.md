@@ -37,7 +37,7 @@
 
 ## 下载安装
 
-安装包在 [Releases](https://github.com/zuowen7/scholar-cursor/releases) 页面。
+安装包在 [Releases](https://github.com/zuowen7/scholar-assistant/releases) 页面。
 
 | 平台 | 文件 |
 |------|------|
@@ -205,7 +205,7 @@
 
 ### 桌面端安装包（Windows / macOS / Linux）
 
-GitHub Releases 页面：https://github.com/zuowen7/scholar-cursor/releases
+GitHub Releases 页面：https://github.com/zuowen7/scholar-assistant/releases
 
 | 平台 | 下载文件 |
 |------|---------|
@@ -223,7 +223,7 @@ GitHub Releases 页面：https://github.com/zuowen7/scholar-cursor/releases
 
 ```bash
 # 拉取最新镜像
-docker pull zuowen7/scholar-cursor:latest
+docker pull zuowen7/scholar-assistant:latest
 
 # 启动 Ollama + 应用服务
 docker compose up
