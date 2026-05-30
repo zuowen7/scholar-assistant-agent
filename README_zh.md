@@ -17,9 +17,9 @@
 
 ## 功能演示
 
-| 读 — PDF 翻译 | 审 — 对抗式审稿 |
+| 审 — 论证账本 | 审 — 对抗式审稿 |
 |--------------|---------------|
-| ![翻译演示](docs/demo/precheck.gif) | ![Reviewer-2 演示](docs/demo/review.gif) |
+| ![账本演示](docs/demo/precheck.gif) | ![Reviewer-2 演示](docs/demo/review.gif) |
 
 | 想 — 思维导图 | 想 — 论证地图 |
 |--------------|-------------|
