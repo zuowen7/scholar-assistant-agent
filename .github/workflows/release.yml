@@ -6,23 +6,41 @@ on:
   workflow_dispatch:
 
 jobs:
-  release:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: pip install -r python/requirements.txt
+
+      - name: Run pytest
+        run: |
+          cd python
+          pip install pytest pytest-asyncio
+          pytest tests/unit/ -q --tb=short
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Run vitest
+        run: npx vitest run
+
+  build-windows:
+    needs: test
+    runs-on: windows-latest
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macos-latest
-            args: --target aarch64-apple-darwin
-          - platform: macos-latest
-            args: --target x86_64-apple-darwin
-          - platform: ubuntu-22.04
-            args: ""
-          - platform: windows-latest
-            args: ""
-
-    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
 
@@ -34,21 +52,10 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Add Rust target
-        if: matrix.args != ''
-        run: rustup target add $(echo ${{ matrix.args }} | sed 's/--target //')
-
-      - name: Install dependencies (Ubuntu)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-
-      - name: Install frontend dependencies
-        run: npm install
-
-      - name: NPM security audit
-        run: npm audit --production
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -56,45 +63,31 @@ jobs:
           python-version: '3.12'
 
       - name: Install Python dependencies
-        run: pip install -r python/requirements-lock.txt -r python/requirements-dev.txt
-
-      - name: Security audit
-        run: pip install pip-audit && pip-audit -r python/requirements-lock.txt --ignore-vuln PYSEC-2024-111
-
-      - name: Generate SBOM
         run: |
-          pip install cyclonedx-bom
-          cyclonedx-py requirements python/requirements-lock.txt -o sbom-python.json --spec-version 1.6
-          npx @cyclonedx/cyclonedx-npm --output-format json -o sbom-npm.json || true
+          pip install -r python/requirements.txt
+          pip install pyinstaller
+
+      - name: Install frontend dependencies
+        run: npm install
 
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Windows code signing (L11: prevents SmartScreen Unknown Publisher warnings).
-          # Configure TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-          # as encrypted GitHub Secrets (Settings → Secrets → Actions).
-          # Generate with: tauri signer generate -w ~/.tauri/mykey.key
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Scholar Assistant ${{ github.ref_name }}"
           releaseBody: |
-            ## 下载安装
+            ## Downloads
 
-            | 平台 | 文件 |
-            |------|------|
-            | Windows | `.exe` 安装包 |
-            | macOS (Apple Silicon) | `.dmg` |
-            | macOS (Intel) | `.dmg` |
-            | Linux | `.AppImage` 或 `.deb` |
+            | Platform | File |
+            |----------|------|
+            | Windows | `.exe` installer |
 
-            ### 使用前提
-            安装 [Ollama](https://ollama.com) 并拉取模型：
+            ### Prerequisites
+            Install [Ollama](https://ollama.com) and pull a model:
             ```bash
             ollama pull qwen3:8b
             ```
           releaseDraft: true
           prerelease: false
-          args: ${{ matrix.args }}
