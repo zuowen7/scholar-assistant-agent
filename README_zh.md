@@ -15,6 +15,17 @@
 - **版本**：v0.3.2（Agent 工作区文件工具链接通 — "写论文版 Claude Code" 范式落地；越界审批、Monaco 实时刷新、RAG 降级为按需文献库；论证陪练 v3 + agency-agents-zh SDLC 改造全部完成。最新一轮（2026-05-30）：Agent 工具指导自动覆盖全部 21 个 provider 的所有模型（未知模型返回 `_DEFAULT_TOOL_GUIDE` 而非空字符串，修复非 qwen/gpt/deepseek/gemini 模型拒绝执行工具的问题））
 - **许可**：MIT
 
+## 下载安装
+
+安装包在 [Releases](https://github.com/zuowen7/scholar-cursor/releases) 页面。
+
+| 平台 | 文件 |
+|------|------|
+| Windows | `Scholar Assistant_x64-setup.exe` |
+| macOS / Linux | 暂未提供（见[从源码构建](#快速开始)） |
+
+> **前提条件**：安装 [Ollama](https://ollama.com) 并拉取模型：`ollama pull qwen3:8b`
+
 ## 核心功能
 
 ### 翻译管道

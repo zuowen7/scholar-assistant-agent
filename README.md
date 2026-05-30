@@ -23,6 +23,17 @@ Scholar Assistant packs five capabilities into one desktop app:
 
 **The Agent is the backbone** — it works like Claude Code in a code repo, but for your paper workspace. Open a project folder, and the Agent can `read_file`, `grep_files`, `str_replace`, `write_file`, `run_command`, and `git_op` directly on your PDFs, drafts, bib files, and data. Workspace boundaries are enforced; out-of-scope access requires your approval.
 
+## Download
+
+Pre-built installers are available on the [Releases](https://github.com/zuowen7/scholar-cursor/releases) page.
+
+| Platform | File |
+|----------|------|
+| Windows | `Scholar Assistant_x64-setup.exe` |
+| macOS / Linux | Not yet available (see [Building from Source](#quick-start)) |
+
+> **Prerequisites**: Install [Ollama](https://ollama.com) and pull a model: `ollama pull qwen3:8b`
+
 ## Quick Start
 
 ### Prerequisites
