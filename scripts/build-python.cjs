@@ -396,17 +396,19 @@ if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-const stats = fs.statSync(apiExePath);
-console.log(`[OK] Python backend built: ${apiExePath} (${(stats.size / 1024 / 1024).toFixed(1)} MB)`);
+(async function main() {
+  const stats = fs.statSync(apiExePath);
+  console.log(`[OK] Python backend built: ${apiExePath} (${(stats.size / 1024 / 1024).toFixed(1)} MB)`);
 
-// Bundle external export toolchain (Tectonic for PDF, Pandoc for Markdown->LaTeX/PDF).
-// Awaited so the binaries are present before Tauri packages python-dist as a resource.
-(async () => {
+  // Bundle external export toolchain (Tectonic for PDF, Pandoc for Markdown->LaTeX/PDF).
   const apiDir = path.dirname(apiExePath);
-  await downloadTectonic(apiDir);
-  await downloadPandoc(apiDir);
-  await downloadEmbeddingModel(apiDir);
-  await prewarmTectonic(apiDir);
-})().catch((e) => {
-  console.warn(`[WARN] Bundling extra assets incomplete: ${e.message}`);
-});
+  try {
+    await downloadTectonic(apiDir);
+    await downloadPandoc(apiDir);
+    await downloadEmbeddingModel(apiDir);
+    await prewarmTectonic(apiDir);
+    console.log('[OK] All external tools bundled.');
+  } catch (e) {
+    console.warn(`[WARN] Bundling extra assets incomplete: ${e.message}`);
+  }
+})();
