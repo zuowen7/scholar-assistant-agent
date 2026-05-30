@@ -125,6 +125,33 @@ class TestRegisterMindmap:
         assert "/api/mindmap/load" in routes
 
 
+# ── agent router ───────────────────────────────────────────────────────
+
+class TestRegisterAgent:
+    def test_agent_guide_route_registered_and_returns_contract(self, tmp_path: Path):
+        from fastapi.testclient import TestClient
+        from routers.agent import register_agent
+
+        app = FastAPI()
+        register_agent(
+            app,
+            cloud_only=False,
+            load_config=_stub_load_config,
+            runtime_dir=tmp_path,
+            data_root=tmp_path / "data",
+        )
+
+        routes = [r.path for r in app.routes]
+        assert "/api/agent/v2/guide" in routes
+
+        client = TestClient(app)
+        resp = client.get("/api/agent/v2/guide")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"] == "Scholar Assistant Agent Operating Guide"
+        assert any(gate["name"] == "SmartPause" for gate in data["gates"])
+
+
 # ── Error paths ───────────────────────────────────────────────────────
 
 class TestRouterHealthEndpoint:

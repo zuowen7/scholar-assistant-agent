@@ -218,6 +218,29 @@ class TestFileTools:
         assert r.risk == ToolRiskLevel.MODERATE
         assert r.needs_approval
 
+    def test_smart_pause_force_approval_for_overwrite(self, gate):
+        r = gate.classify("write_file", {
+            "file_path": "draft.md",
+            "content": "new manuscript text",
+            "must_not_exist": False,
+        })
+        assert r.risk == ToolRiskLevel.DESTRUCTIVE
+        assert r.needs_approval
+        assert r.force_approval
+        assert "SmartPause" in r.reason
+
+    def test_smart_pause_force_approval_for_large_delete(self, gate):
+        old = "\n".join(f"line {i}" for i in range(80))
+        r = gate.classify("str_replace", {
+            "file_path": "draft.md",
+            "old_string": old,
+            "new_string": "replacement",
+        })
+        assert r.risk == ToolRiskLevel.DESTRUCTIVE
+        assert r.needs_approval
+        assert r.force_approval
+        assert "SmartPause" in r.reason
+
     def test_undo_destructive(self, gate):
         r = gate.classify("undo_last_change", {})
         assert r.risk == ToolRiskLevel.DESTRUCTIVE
@@ -251,3 +274,12 @@ class TestUnknownTool:
         r = gate.classify("totally_unknown_tool", {})
         assert r.risk == ToolRiskLevel.MODERATE
         assert "unknown" in r.reason
+
+
+class TestSmartPauseGitGate:
+    def test_git_commit_forces_approval_even_in_auto_mode(self, gate):
+        r = gate.classify("git_op", {"operation": "commit", "message": "save work"})
+        assert r.risk == ToolRiskLevel.DESTRUCTIVE
+        assert r.needs_approval
+        assert r.force_approval
+        assert "SmartPause" in r.reason

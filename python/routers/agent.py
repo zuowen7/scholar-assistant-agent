@@ -22,8 +22,9 @@ from src.features import agent as _AGENT_AVAILABLE
 if _AGENT_AVAILABLE:
     from src.agent.agent import AgentLoop
     from src.agent.auto_processor import auto_process_message, enrich_system_prompt
-    from src.agent.memory import MemoryManager
+    from src.agent.memory import MemoryManager, SCHOLAR_ASSISTANT_DEFAULT_MEMORY
     from src.agent.models import Message, SessionState
+    from src.agent.operating_guide import build_agent_operating_guide
     from src.agent.prompt_builder import PromptBuilder
     from src.agent.rag import RAGStore
     from src.agent.review_agent import ReviewAgent
@@ -208,9 +209,16 @@ def register_agent(
 
             # Persistent memory, skills, trajectory
             agent_data_dir = str(data_root / "agent")
-            memory_manager = MemoryManager(data_dir=agent_data_dir)
+            memory_manager = MemoryManager(
+                data_dir=agent_data_dir,
+                default_memory=SCHOLAR_ASSISTANT_DEFAULT_MEMORY,
+            )
             skill_registry = SkillRegistry(skills_dir=agent_data_dir + "/skills")
             trajectory_recorder = TrajectoryRecorder(data_dir=agent_data_dir + "/trajectories")
+
+            # Lesson store (cross-session learning from tool failures)
+            from src.agent.lesson_store import LessonStore
+            lesson_store = LessonStore(data_dir=agent_data_dir + "/lessons")
 
             # Tool registry (stateless tool functions, safe to share)
             use_cloud = cloud_only or trans_cfg.get("engine", "ollama") == "cloud"
@@ -248,6 +256,7 @@ def register_agent(
                 "tool_registry": tool_registry,
                 "workspace_root": workspace_root,
                 "review_agent": review_agent,
+                "lesson_store": lesson_store,
             })
 
             # Session store (SQLite)
@@ -393,6 +402,7 @@ def register_agent(
             api_format=PROVIDER_PRESETS.get(cloud_cfg.get("provider", "openai"), {}).get("api_format", "openai") if use_cloud else "openai",
             memory_dir=str(data_root / "agent" / "memory"),
             workspace_root=effective_workspace,
+            lesson_store=shared.get("lesson_store"),
         )
 
     # ------------------------------------------------------------------
@@ -855,6 +865,15 @@ def register_agent(
             "model": agent_cfg.get("model", "qwen3:8b"),
             "max_steps": agent_cfg.get("max_steps", 6),
         }
+
+    @app.get("/api/agent/v2/guide")
+    async def v2_agent_guide():
+        """Return the compact Agent operating contract for UI/debug surfaces."""
+        if not _AGENT_AVAILABLE:
+            return {"available": False}
+        guide = build_agent_operating_guide()
+        guide["available"] = True
+        return guide
 
     # --- Direct tool invocation endpoint (for testing / validation) ---
 
