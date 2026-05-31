@@ -161,6 +161,9 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+
 import DOMPurify from 'dompurify'
 import { readSseStream } from '../utils/streamReader'
 import { aiMessages, aiStreaming, aiStreamContent, aiThinkingText, aiAbortCtrl } from '../composables/useAiPanelState'
