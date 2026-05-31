@@ -192,6 +192,8 @@ export interface AgentEvent {
     args?: Record<string, unknown>
     risk?: string
     // v2 await_approval
+    reason?: string
+    force_approval?: boolean
     preview?: Record<string, unknown>
     // v2 done
     tasks_done?: number

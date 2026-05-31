@@ -14,6 +14,7 @@ translator:
     model: deepseek-chat
     provider: deepseek
   engine: cloud
+  model: qwen3:8b
   parallel:
     max_concurrency: 1
     retry_delay: 2.0
