@@ -205,7 +205,9 @@
     "noWorkspaceLabel": "Open a project folder in the editor first",
     "refreshSessions": "Refresh",
     "noSessions": "No sessions yet",
-    "resume": "Resume →"
+    "resume": "Resume →",
+    "refreshTemplates": "Refresh",
+    "createFromThisTemplate": "Create from this template"
   },
   "aiPanel": {
     "title": "AI Chat",
@@ -790,7 +792,8 @@
     "collapseSidebar": "Collapse Sidebar",
     "searchPlaceholder": "Search files...",
     "noMatch": "No files matching \"{query}\"",
-    "noFolderOpen": "No folder open"
+    "noFolderOpen": "No folder open",
+    "copyPath": "Copy Path"
   },
   "commandPalette": {
     "aiCommand": "AI Edit Command",

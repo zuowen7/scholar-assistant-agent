@@ -202,7 +202,7 @@
                   </UiButton>
                 </div>
               </div>
-              <div v-if="ollamaModels.length" class="sp-status ok">{{ ollamaModels.length }} 个模型已就绪</div>
+              <div v-if="ollamaModels.length" class="sp-status ok">{{ t('settings.modelsAvailable', { count: ollamaModels.length }) }}</div>
             </template>
           </div>
 

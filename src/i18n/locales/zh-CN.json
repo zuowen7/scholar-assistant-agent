@@ -205,7 +205,9 @@
     "noWorkspaceLabel": "请先在编辑器中打开一个项目文件夹",
     "refreshSessions": "刷新",
     "noSessions": "暂无历史会话",
-    "resume": "恢复 →"
+    "resume": "恢复 →",
+    "refreshTemplates": "刷新",
+    "createFromThisTemplate": "以此为模板新建"
   },
   "aiPanel": {
     "title": "AI 对话",
@@ -790,7 +792,8 @@
     "collapseSidebar": "折叠侧栏",
     "searchPlaceholder": "搜索文件...",
     "noMatch": "没有匹配 \"{query}\" 的文件",
-    "noFolderOpen": "未打开文件夹"
+    "noFolderOpen": "未打开文件夹",
+    "copyPath": "复制路径"
   },
   "commandPalette": {
     "aiCommand": "AI 编辑命令",

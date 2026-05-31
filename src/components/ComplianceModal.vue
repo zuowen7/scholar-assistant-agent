@@ -39,7 +39,7 @@
               </div>
               <div class="summary-text">
                 <strong>{{ statusLabel }}</strong>
-                <p>{{ report.summary?.total_words || 0 }} 字 / {{ report.summary?.total_characters || 0 }} 字符</p>
+                <p>{{ report.summary?.total_words || 0 }} {{ t('editor.complianceWords') }} / {{ report.summary?.total_characters || 0 }} 字符</p>
               </div>
             </div>
 
@@ -50,7 +50,7 @@
                 <h4>📑 Structure</h4>
                 <div class="section-content">
                   <div class="section-item">
-                    <span class="label">必要章节:</span>
+                    <span class="label">{{ t('editor.complianceSectionRequired') }}</span>
                     <span>{{ formatSections(report.structure.required_sections) }}</span>
                   </div>
                   <div v-if="report.structure.issues?.length" class="issues">
@@ -64,11 +64,11 @@
                 <h4>🔤 Terminology</h4>
                 <div class="section-content">
                   <div class="section-item">
-                    <span class="label">一致术语:</span>
+                    <span class="label">{{ t('editor.complianceTermConsistent') }}</span>
                     <span class="ok">{{ Array.isArray(report.terminology.consistent_terms) ? report.terminology.consistent_terms.join(', ') : '无' }}</span>
                   </div>
                   <div v-if="report.terminology.inconsistent_terms?.length" class="section-item">
-                    <span class="label">不一致:</span>
+                    <span class="label">{{ t('editor.complianceTermInconsistent') }}</span>
                     <span class="warn">{{ formatTermList(report.terminology.inconsistent_terms) }}</span>
                   </div>
                   <div v-if="report.terminology.issues?.length" class="issues">
@@ -82,7 +82,7 @@
                 <h4>📚 Citations</h4>
                 <div class="section-content">
                   <div class="section-item">
-                    <span class="label">引用总数:</span>
+                    <span class="label">{{ t('editor.complianceCiteTotal') }}</span>
                     <span>{{ report.citation.total_citations || 0 }}</span>
                   </div>
                   <div v-if="report.citation.format_issues?.length" class="issues">
@@ -99,7 +99,7 @@
                 <h4>⚡ Hallucination Risk</h4>
                 <div class="section-content">
                   <div class="section-item">
-                    <span class="label">风险等级:</span>
+                    <span class="label">{{ t('editor.complianceRiskLevel') }}</span>
                     <span :class="'risk-' + (report.hallucination_risk.risk_level || 'unknown')">
                       {{ riskLevelLabel }}
                     </span>
@@ -118,8 +118,8 @@
                 <h4>📖 Readability</h4>
                 <div class="section-content">
                   <div class="section-item">
-                    <span class="label">平均句长:</span>
-                    <span>{{ report.readability.avg_sentence_length?.toFixed(1) || '?' }} 词</span>
+                    <span class="label">{{ t('editor.complianceAvgSentence') }}</span>
+                    <span>{{ report.readability.avg_sentence_length?.toFixed(1) || '?' }} {{ t('editor.complianceWords2') }}</span>
                   </div>
                   <div v-if="report.readability.long_sentences?.length" class="issues">
                     <span class="issue-tag info" v-for="(s, i) in report.readability.long_sentences.slice(0,3)" :key="i">

@@ -19,7 +19,7 @@
       </div>
 
       <div v-if="activeTask === 'coherence'" class="cmd-hint">
-        已自动带入前一段作为上下文
+        {{ t('commandPalette.contextNotice') }}
       </div>
 
       <div class="cmd-input-row">
