@@ -57,16 +57,16 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
           latestInterim = e.results[i][0].transcript
         }
       }
-      // Filter phantom interim: if interim is just a duplicate/refinement of
-      // accumulated final text, discard it (some browsers re-emit finalized audio)
       let text = finalText + latestInterim
+      console.log('[Speech] onresult: n=%d ri=%d lpf=%d final="%s" interim="%s" emit="%s"',
+        e.results.length, e.resultIndex, lastProcessedFinal,
+        finalText.slice(-20), latestInterim.slice(-20), text.slice(-40))
       if (latestInterim && finalText) {
         const ci = latestInterim.replace(/[^\w一-鿿]/g, '').toLowerCase()
         const cf = finalText.replace(/[^\w一-鿿]/g, '').toLowerCase()
-        console.log('[Speech] phantom check: final="%s" interim="%s" | ci="%s" cf="%s" end=%s inc=%s',
-          finalText.slice(-20), latestInterim.slice(-20), ci, cf, cf.endsWith(ci), cf.includes(ci))
         if (cf.endsWith(ci) || cf.includes(ci)) {
-          text = finalText  // interim is duplicate, use final only
+          text = finalText
+          console.log('[Speech] phantom filtered → "%s"', text.slice(-20))
         }
       }
       interimText.value = text

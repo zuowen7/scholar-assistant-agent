@@ -264,6 +264,8 @@ import { Pin, PinOff, Mic } from './ui/icons'
 import { API_BASE } from '../utils/api'
 import type { AgentSessionInfo } from '../types'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
+import UiSpinner from './ui/UiSpinner.vue'
+import UiSkeleton from './ui/UiSkeleton.vue'
 
 let voiceBaseInput = ''
 const agentSpeech = useSpeechRecognition({
