@@ -165,6 +165,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { useToast } from './composables/useToast'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useTranslate } from './composables/useTranslate'
+import { checkForUpdate } from './composables/useUpdateChecker'
 import { useEditor } from './composables/useEditor'
 import EditorLayout from './components/EditorLayout.vue'
 import AgentPanel from './components/AgentPanel.vue'
@@ -549,6 +550,9 @@ onMounted(async () => {
       }
     }
   }, 8000)
+
+  // Check for updates (5s delay, silent on failure)
+  setTimeout(() => checkForUpdate().catch(() => {}), 5000)
 
   // Tauri v2 native drag-drop events (WebView2 intercepts HTML5 drag)
   try {
