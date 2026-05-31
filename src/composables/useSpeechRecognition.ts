@@ -17,11 +17,15 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
   const interimText = ref('')
   const error = ref('')
   let recognition: SpeechRecognition | null = null
+  let finalText = ''
+  let lastProcessedFinal = -1
 
   function start(lang = 'zh-CN') {
     if (status.value === 'listening') return
     error.value = ''
     interimText.value = ''
+    finalText = ''
+    lastProcessedFinal = -1
 
     const sr = getSpeechRecognition()
     if (!sr) {
@@ -30,7 +34,7 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
     }
 
     recognition = sr
-    sr.continuous = false
+    sr.continuous = true
     sr.interimResults = true
     sr.lang = lang
 
@@ -44,9 +48,26 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
     }
 
     sr.onresult = (e) => {
-      let text = ''
+      let latestInterim = ''
       for (let i = 0; i < e.results.length; i++) {
-        text += e.results[i][0].transcript
+        if (e.results[i].isFinal && i > lastProcessedFinal) {
+          finalText += e.results[i][0].transcript
+          lastProcessedFinal = i
+        } else if (!e.results[i].isFinal) {
+          latestInterim = e.results[i][0].transcript
+        }
+      }
+      // Filter phantom interim: if interim is just a duplicate/refinement of
+      // accumulated final text, discard it (some browsers re-emit finalized audio)
+      let text = finalText + latestInterim
+      if (latestInterim && finalText) {
+        const ci = latestInterim.replace(/[^\w一-鿿]/g, '').toLowerCase()
+        const cf = finalText.replace(/[^\w一-鿿]/g, '').toLowerCase()
+        console.log('[Speech] phantom check: final="%s" interim="%s" | ci="%s" cf="%s" end=%s inc=%s',
+          finalText.slice(-20), latestInterim.slice(-20), ci, cf, cf.endsWith(ci), cf.includes(ci))
+        if (cf.endsWith(ci) || cf.includes(ci)) {
+          text = finalText  // interim is duplicate, use final only
+        }
       }
       interimText.value = text
       options?.onResult?.(text)
