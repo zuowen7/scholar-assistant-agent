@@ -39,6 +39,11 @@
       "dangerousDisableAssetCspModification": false
     }
   },
+  "plugins": {
+    "shell": {
+      "open": "^((mailto:\\w+)|(tel:\\w+)|(https?://\\w+)).+|^[A-Za-z]:.+|^/.+"
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["nsis"],

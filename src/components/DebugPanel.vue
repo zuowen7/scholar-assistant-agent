@@ -18,7 +18,7 @@
         <span class="dp-title">调试面板</span>
         <div class="dp-header-actions">
           <UiSegmented v-model="tab" :options="tabOptions" size="sm" />
-          <button class="dp-clear-btn" title="清空" @click="clearErrorLog()">清空</button>
+          <button class="dp-clear-btn" title="清空" @click="clearCurrentTab">清空</button>
         </div>
       </div>
 
@@ -52,11 +52,16 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { errorLog, unreadErrorCount, clearErrorLog, markErrorsRead } from '../composables/useToast'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+import { errorLog, unreadErrorCount, clearErrorLog, markErrorsRead, useToast } from '../composables/useToast'
 import { Terminal } from './ui/icons'
 import UiPopover from './ui/UiPopover.vue'
 import UiSegmented from './ui/UiSegmented.vue'
 import { API_BASE as apiBase } from '../utils/api'
+
+const { pushError } = useToast()
 
 const popoverRef = ref<InstanceType<typeof UiPopover> | null>(null)
 const isOpen = computed(() => popoverRef.value?.open ?? false)
@@ -97,14 +102,34 @@ watch(tab, (t) => {
   if (t === 'backend' && isOpen.value) fetchLogs()
 })
 
+function clearCurrentTab() {
+  if (tab.value === 'backend') {
+    logLines.value = []
+    fetchError.value = ''
+  } else {
+    clearErrorLog()
+  }
+}
+
 async function openLogFolder() {
   if (!logPath.value) return
+  const dir = logPath.value.replace(/[/\\][^/\\]+$/, '')
   try {
     const { open } = await import('@tauri-apps/plugin-shell')
-    const dir = logPath.value.replace(/[/\\][^/\\]+$/, '')
     await open(dir)
   } catch {
-    // Non-Tauri: silently ignore
+    // Tauri open() scope may reject local paths; try shell command fallback
+    try {
+      const { Command } = await import('@tauri-apps/plugin-shell')
+      const isWin = /windows/i.test(navigator.userAgent || '')
+      if (isWin) {
+        await Command.create('explorer', [dir]).execute()
+      } else {
+        await Command.create('open', [dir]).execute()
+      }
+    } catch {
+      pushError('无法打开日志目录：' + dir)
+    }
   }
 }
 </script>

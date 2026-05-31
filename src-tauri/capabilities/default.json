@@ -17,6 +17,14 @@
     "dialog:allow-save",
     "shell:allow-open",
     {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        { "name": "explorer", "args": true },
+        { "name": "open", "args": true },
+        { "name": "xdg-open", "args": true }
+      ]
+    },
+    {
       "identifier": "fs:allow-read-text-file",
       "allow": [
         { "path": "$HOME/**" },
