@@ -143,6 +143,16 @@
         </Transition>
       </div>
       <button
+        v-if="panelSpeech.isSupported"
+        class="ac-attach-btn u-interactive"
+        :class="{ 'voice-active': panelSpeech.status.value === 'listening' }"
+        :title="panelSpeech.status.value === 'listening' ? t('aiPanel.voiceStop') : t('aiPanel.voiceStart')"
+        :disabled="streaming"
+        @click="togglePanelSpeech"
+      >
+        <Mic :size="16" :stroke-width="2" />
+      </button>
+      <button
         class="ac-send-btn u-interactive"
         :class="{ stopping: streaming }"
         @click="streaming ? stopStream() : send()"
@@ -172,6 +182,19 @@ import { API_BASE } from '../utils/api'
 import AgentApprovalInline from './AgentApprovalInline.vue'
 import type { PendingApproval } from '../composables/useAgentChat'
 import { useFileTree } from '../composables/useFileTree'
+import { useSpeechRecognition } from '../composables/useSpeechRecognition'
+import { Mic } from './ui/icons'
+
+const panelSpeech = useSpeechRecognition()
+
+function togglePanelSpeech() {
+  if (panelSpeech.status.value === 'listening') {
+    const text = panelSpeech.stop()
+    if (text.trim()) input.value += (input.value ? ' ' : '') + text.trim()
+  } else {
+    panelSpeech.start()
+  }
+}
 
 const props = defineProps<{
   editorContext: string
@@ -667,6 +690,7 @@ watch(() => input.value, () => {
 .ac-attach-btn:not(:disabled):hover { background:var(--c-surface-3); color:var(--c-text-0); border-color:var(--c-accent); }
 .ac-attach-btn:focus-visible { outline:none; box-shadow:var(--ring-focus); border-color:var(--c-accent); }
 .ac-attach-btn:disabled { opacity:.4; cursor:not-allowed; }
+.ac-attach-btn.voice-active { background:var(--c-accent); color:#fff; border-color:var(--c-accent); animation:voice-pulse 1.5s ease-in-out infinite; }
 
 .ac-input-wrap { flex:1; position:relative; }
 .ac-input { width:100%; background:var(--c-surface-3); border:1px solid var(--c-surface-4); border-radius:var(--radius-sm); padding:var(--space-2) var(--space-3); color:var(--c-text-0); font-size:var(--text-md); font-family:inherit; line-height:var(--leading-snug); resize:none; outline:none; max-height:120px; box-sizing:border-box; transition:border-color var(--motion-base) var(--ease-out), box-shadow var(--motion-base) var(--ease-out); }
