@@ -1,4 +1,12 @@
 import { createApp } from 'vue'
+
+// Suppress Monaco Editor internal cancellation errors (async.js lifecycle race)
+window.addEventListener('unhandledrejection', (event) => {
+  if (event.reason?.name === 'Canceled' || event.reason?.message === 'Canceled') {
+    event.preventDefault()
+  }
+})
+
 import './styles/tokens.css'
 import './styles/transitions.css'
 import '@vue-flow/core/dist/style.css'
