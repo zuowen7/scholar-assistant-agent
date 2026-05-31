@@ -185,13 +185,17 @@ import { useFileTree } from '../composables/useFileTree'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
 import { Mic } from './ui/icons'
 
-const panelSpeech = useSpeechRecognition()
+let voiceBaseInput = ''
+const panelSpeech = useSpeechRecognition({
+  onResult: (text) => { input.value = voiceBaseInput + (voiceBaseInput ? ' ' : '') + text },
+})
 
 function togglePanelSpeech() {
   if (panelSpeech.status.value === 'listening') {
-    const text = panelSpeech.stop()
-    if (text.trim()) input.value += (input.value ? ' ' : '') + text.trim()
+    voiceBaseInput = ''
+    panelSpeech.stop()
   } else {
+    voiceBaseInput = input.value
     panelSpeech.start()
   }
 }

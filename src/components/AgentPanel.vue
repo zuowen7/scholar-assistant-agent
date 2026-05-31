@@ -264,13 +264,17 @@ import { API_BASE } from '../utils/api'
 import type { AgentSessionInfo } from '../types'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
 
-const agentSpeech = useSpeechRecognition()
+let voiceBaseInput = ''
+const agentSpeech = useSpeechRecognition({
+  onResult: (text) => { input.value = voiceBaseInput + (voiceBaseInput ? ' ' : '') + text },
+})
 
 function toggleAgentSpeech() {
   if (agentSpeech.status.value === 'listening') {
-    const text = agentSpeech.stop()
-    if (text.trim()) input.value += (input.value ? ' ' : '') + text.trim()
+    voiceBaseInput = ''
+    agentSpeech.stop()
   } else {
+    voiceBaseInput = input.value
     agentSpeech.start()
   }
 }
