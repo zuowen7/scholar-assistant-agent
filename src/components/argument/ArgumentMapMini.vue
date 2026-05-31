@@ -62,10 +62,10 @@ async function doExtract() {
   try {
     // Bind the graph to the active file path so the Agent can locate it by file
     // (read_argument_graph(file_path=...)). Untitled tabs have no path → undefined.
-    await createGraph('论证图', activeTab.value?.path ?? undefined)
+    await createGraph(t('argument.unnamedGraph'), activeTab.value?.path ?? undefined)
     await extractArgument(props.content)
   } catch (e) {
-    extractError.value = e instanceof Error ? e.message : '提取失败，请检查后端连接'
+    extractError.value = e instanceof Error ? e.message : t('argument.extractFailedGeneric')
   }
 }
 

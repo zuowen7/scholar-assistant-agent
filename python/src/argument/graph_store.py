@@ -60,7 +60,7 @@ class ArgGraphStore:
 
     # ── 图 CRUD ───────────────────────────────────────────────────────────────
 
-    def create(self, title: str = "未命名论证图", source_doc: str | None = None) -> ArgGraph:
+    def create(self, title: str = "Untitled Argument Map", source_doc: str | None = None) -> ArgGraph:
         with self._lock:
             g = ArgGraph(title=title, source_doc=source_doc)
             self._cache[g.id] = g

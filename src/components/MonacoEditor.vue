@@ -14,6 +14,9 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import * as monaco from 'monaco-editor'
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import CommandPalette from './CommandPalette.vue'
@@ -201,7 +204,7 @@ onMounted(() => {
   // ── 质疑这句 — scoped Reviewer-2 review ─────────────────────────────────
   editor.addAction({
     id: 'companion-scoped-review',
-    label: '质疑这句 (Reviewer-2)',
+    label: t('editor.scopedReview'),
     contextMenuGroupId: 'argument',
     contextMenuOrder: 1,
     precondition: 'editorHasSelection',
@@ -307,7 +310,7 @@ onMounted(() => {
       options: {
         after: { content: text, inlineClassName: 'ghost-text-suggestion' },
         className: 'ghost-text-line',
-        hoverMessage: { value: '**AI 补全** — 按 Tab 接受，Esc 清除' },
+        hoverMessage: { value: t('editor.ghostHelp') },
         stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
       },
     }])

@@ -7,7 +7,7 @@
         :class="{ active: activeSubTab === 'ledger' }"
         @click="activeSubTab = 'ledger'"
       >
-        论证账本
+        {{ t('argument.ledger') }}
       </button>
       <button
         class="sub-tab"
@@ -21,7 +21,7 @@
         :class="{ active: activeSubTab === 'graph' }"
         @click="activeSubTab = 'graph'"
       >
-        论证图
+        {{ t('argument.argumentMapShort') }}
       </button>
     </div>
 
@@ -33,7 +33,7 @@
 
     <!-- Staleness banner -->
     <div v-if="companion.state.ledgerStale" class="stale-banner">
-      草稿已改，可能过期
+      {{ t('argument.staleDraft') }}
       <button class="reanalyze-btn" @click="handleAnalyze">{{ t('argument.analyzeBtn') }}</button>
     </div>
 
@@ -50,7 +50,7 @@
       <!-- Experiment suggestion popup -->
       <div v-if="experimentSuggestion" class="suggestion-popup">
         <div class="suggestion-header">
-          实验设计建议
+          {{ t('argument.experimentDesign') }}
           <button class="suggestion-close" @click="experimentSuggestion = ''">✕</button>
         </div>
         <pre class="suggestion-body">{{ experimentSuggestion }}</pre>
@@ -93,9 +93,9 @@
         >
           <span v-if="companion.state.reviewing" class="rv-loading">
             <span class="rv-dots"><i /><i /><i /></span>
-            <span class="anim-shimmer-text">评审中</span>
+            <span class="anim-shimmer-text">{{ t('argument.reviewing') }}</span>
           </span>
-          <span v-else>红队这篇</span>
+          <span v-else>{{ t('argument.redTeam') }}</span>
         </button>
       </div>
 
@@ -108,7 +108,7 @@
             class="download-btn"
             @click="handleDownload"
           >
-            ↓ 导出 rebuttal
+            ↓ {{ t('argument.exportRebuttal') }}
           </button>
         </div>
         <ReviewerThread
@@ -127,7 +127,7 @@
       <div v-else-if="companion.state.reviewing" class="reviewing-block">
         <div class="anim-scan-bar" />
         <div class="reviewing-status">
-          <UiSpinner size="sm" :label="reviewMode === 'parallel' ? '三位审稿人正在并行通读' : 'Reviewer 2 正在逐段审阅'" />
+          <UiSpinner size="sm" :label="reviewMode === 'parallel' ? t('argument.reviewParallelSpinner') : t('argument.reviewSerialSpinner')" />
         </div>
         <div v-for="i in 3" :key="i" class="rv-sk-card" :style="{ '--stagger-i': i }">
           <UiSkeleton shape="line" width="30%" height="11px" />
@@ -138,7 +138,7 @@
 
       <!-- Empty state -->
       <div v-else class="reviewer-empty">
-        <p class="empty-hint">点击「红队这篇」开始模拟同行评审。</p>
+        <p class="empty-hint">{{ t('argument.reviewEmpty') }}</p>
       </div>
 
       <!-- Import real reviews section -->

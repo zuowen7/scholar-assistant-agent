@@ -127,6 +127,7 @@
         <KeepAlive>
           <TranslateView
             v-if="appMode === 'translate'"
+            key="translate"
             :health-ok="healthOk"
             :read-settings="readSettings"
             @restart-backend="handleRestartBackend"
@@ -134,10 +135,11 @@
           />
           <EditorLayout
             v-else-if="appMode === 'editor'"
+            key="editor"
             :isDark="isDark"
             class="editor-mode"
           />
-          <ArgumentMapView v-else-if="appMode === 'argument'" class="arg-mode" />
+          <ArgumentMapView v-else-if="appMode === 'argument'" key="argument" class="arg-mode" />
         </KeepAlive>
       </div>
 

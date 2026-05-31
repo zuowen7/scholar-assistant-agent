@@ -74,7 +74,7 @@
     </div>
 
     <!-- 右侧统一 Tab 面板 -->
-    <template v-if="workspaceMode === 'editor' && activeTab && rightPanelTab">
+    <div v-if="workspaceMode === 'editor' && activeTab && rightPanelTab" class="layout-panel-wrapper">
       <div class="resize-handle panel-resize" @mousedown="startResize($event, 'panel')"></div>
       <div class="layout-panel" :style="{ width: panelWidth + 'px' }">
         <EditorRightTabBar v-model="rightPanelTab" />
@@ -98,7 +98,7 @@
         />
         <CompanionPanel v-if="rightPanelTab === 'argument'" :content="content" class="rp-content" />
       </div>
-    </template>
+    </div>
 
     <!-- Modals -->
     <EditorCompliance
@@ -316,7 +316,7 @@ async function handleExportWord() {
   if (exportLoading.value) return
   exportLoading.value = true
   try {
-    const title = (activeTab.value?.name || '研墨导出').replace(/\.md$/i, '')
+    const title = (activeTab.value?.name || t('editor.yamDraft')).replace(/\.md$/i, '')
     const err = await exportToWord(content.value, title)
     showExportToast(err || t('editor.wordExportStarted'))
   } catch (e) { showExportToast(t('editor.wordExportFailed', { msg: String(e) }))
@@ -355,7 +355,7 @@ async function handleExportPdf() {
 }
 
 async function handleProcessCitations() {
-  if (!content.value.trim()) { showExportToast('请先输入内容'); return }
+  if (!content.value.trim()) { showExportToast(t('editor.pleaseInputContent')); return }
   try {
     const preview = await previewCitations(content.value)
     const data = await processCitations(content.value, [], 'ieee')
@@ -391,8 +391,8 @@ async function handleVisionSelected(file: File) {
   try {
     const data = await analyzeVision(file, 'general')
     if (!data) { showExportToast(t('editor.visionFailed')); return }
-    const findings = data.key_findings?.length ? `\n发现：${data.key_findings.join('; ')}` : ''
-    const chart = data.chart_type ? `\n图表类型：${data.chart_type}` : ''
+    const findings = data.key_findings?.length ? `\n${t('editor.visionFindings', { findings: data.key_findings.join('; ') })}` : ''
+    const chart = data.chart_type ? `\n${t('editor.visionChartType', { type: data.chart_type })}` : ''
     const table = data.table_data?.length
       ? `\n\n${data.table_data.map((row: string[]) => `| ${row.join(' | ')} |`).join('\n')}`
       : ''
@@ -595,6 +595,10 @@ function handlePaperScaffold(e: Event) {
 }
 
 /* 鈹€鈹€ Right panel 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+.layout-panel-wrapper {
+  display: flex;
+  align-items: stretch;
+}
 .layout-panel {
   flex: 0 1 auto;
   min-width: 260px;
@@ -645,6 +649,6 @@ function handlePaperScaffold(e: Event) {
   .layout-panel { width: min(420px, 46vw) !important; min-width: 320px; }
 }
 @media (max-width: 820px) {
-  .layout-panel, .panel-resize { display: none; }
+  .layout-panel-wrapper { display: none; }
 }
 </style>

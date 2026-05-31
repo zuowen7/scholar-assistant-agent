@@ -111,7 +111,7 @@ const taskTypes: TaskType[] = [
     label: t('commandPalette.grammarLabel'),
     placeholder: t('commandPalette.grammarPlaceholder'),
     presets: [
-      { label: '修正语法', instruction: 'Fix grammar and spelling errors' },
+      { label: t('commandPalette.fixGrammar'), instruction: 'Fix grammar and spelling errors' },
       { label: t('commandPalette.improveClarity'), instruction: 'Improve sentence clarity and readability' },
     ],
   },

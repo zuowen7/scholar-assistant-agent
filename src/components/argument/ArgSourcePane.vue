@@ -30,7 +30,7 @@
         class="extract-btn"
         :class="{ 'is-extracting': state.extracting }"
         :disabled="!hasContent || !state.graph || state.extracting"
-        :title="!state.graph ? '请先创建或打开一张论证图' : !hasContent ? '请先点击上方按钮加载原文（从翻译结果/从编辑器/粘贴文本）' : '从当前原文提取 Toulmin 论证图'"
+        :title="!state.graph ? t('argument.extractHint') : !hasContent ? t('argument.extractHintNoContent') : t('argument.extractTooltipFull')"
         @click="doExtract"
       >
         <span v-if="state.extracting" class="extract-spinner"></span>
@@ -59,7 +59,7 @@
     <!-- Rendered sentence content -->
     <div ref="containerRef" class="source-content" :class="{ extracting: state.extracting }">
       <div v-if="!hasContent" class="source-empty">
-        选择原文来源后，点击句子可将其绑定到论证节点
+        {{ t('argument.sourceHint2') }}
       </div>
 
       <div
