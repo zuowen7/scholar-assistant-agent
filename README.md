@@ -16,7 +16,7 @@
 
 Runs offline locally, or connects to 21 cloud LLM providers. **Bilingual UI** (zh-CN / en-US) — switch language from the settings panel.
 
-- **Version**: v0.3.3 (2026-05-31: full bilingual UI coverage, vue-i18n @ parsing crash fix, UiDropdown race condition fix, release background image fix, build config sync)
+- **Version**: v0.3.3 (2026-06-01: voice input duplication fix — Monaco Range fallback with wrong property names caused text accumulation; speech composable echo dedup rewrite; Tab + voice cursor tracking; smart punctuation merging. 2026-05-31: full bilingual UI coverage, vue-i18n @ parsing crash fix, UiDropdown race condition fix, release background image fix, build config sync)
 - **License**: MIT
 
 ## Demo

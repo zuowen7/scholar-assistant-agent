@@ -29,9 +29,17 @@ export const previousContent = ref('')
 
 // ── Monaco Range helper ──────────────────────────────────────────────────
 
+// Monaco-compatible Range fallback — uses the correct IRange property names
+// so executeEdits works even when the editor instance lacks a .monaco reference.
+class _MonacoRange {
+  startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number
+  constructor(sl: number, sc: number, el: number, ec: number) {
+    this.startLineNumber = sl; this.startColumn = sc; this.endLineNumber = el; this.endColumn = ec
+  }
+}
+
 export function getRange(editor: any) {
-  return (editor as any).monaco?.Range ??
-    class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
+  return (editor as any).monaco?.Range ?? _MonacoRange
 }
 
 // ── Text insertion helpers (依赖 Monaco editor 实例) ──────────────────

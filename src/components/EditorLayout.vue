@@ -152,7 +152,7 @@ import TemplatePicker from './TemplatePicker.vue'
 import MindMapView from './MindMapView.vue'
 
 // -- State composables ---------------------------------------------------
-import { useEditorState } from '../composables/useEditorState'
+import { useEditorState, getRange } from '../composables/useEditorState'
 import { useEditor } from '../composables/useEditor'
 import { useEditorVision } from '../composables/useEditorVision'
 import { useEditorCitation } from '../composables/useEditorCitation'
@@ -466,6 +466,7 @@ function insertInlineFormula() { insertTextAtCursor('$ $') }
 function insertBlockFormula() { insertTextAtCursor('\n$$\n\n$$\n') }
 // -- Voice input: in-place replacement, deduplicated by composable --
 let voiceRange: { line: number; col: number; len: number } | null = null
+let lastVoiceText = ''
 
 function handleVoiceStart() {
   const ed = useEditor().monacoEditor.value
@@ -474,23 +475,52 @@ function handleVoiceStart() {
   const pos = ed.getPosition()
   if (!pos) return
   voiceRange = { line: pos.lineNumber, col: pos.column, len: 0 }
+  lastVoiceText = ''
 }
 
 function handleVoiceUpdate(text: string) {
   const ed = useEditor().monacoEditor.value
   if (!ed || !voiceRange) return
-  const Range = (ed as any).monaco?.Range ??
-    class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
+  const Range = getRange(ed)
+
+  // If the cursor has moved away from the voice insertion region (e.g. the user
+  // pressed Tab to accept a ghost-text completion), commit the previous voice
+  // text and start a fresh anchor. Only insert the NEW portion so the composable's
+  // accumulated text doesn't duplicate what's already in the editor.
+  const pos = ed.getPosition()
+  const cursorMoved = pos && (pos.lineNumber !== voiceRange.line ||
+    pos.column < voiceRange.col ||
+    pos.column > voiceRange.col + voiceRange.len + 1)
+
+  if (cursorMoved) {
+    const prefix = lastVoiceText.trimEnd()
+    let newText = text.trimStart()
+    if (prefix && newText.startsWith(prefix)) {
+      newText = newText.slice(prefix.length).trimStart()
+    }
+    voiceRange = { line: pos.lineNumber, col: pos.column, len: 0 }
+    lastVoiceText = text
+    if (newText) {
+      ed.executeEdits('voice', [{
+        range: new Range(voiceRange.line, voiceRange.col, voiceRange.line, voiceRange.col + voiceRange.len),
+        text: newText,
+      }])
+      voiceRange.len = newText.length
+    }
+    return
+  }
+
   ed.executeEdits('voice', [{
     range: new Range(voiceRange.line, voiceRange.col, voiceRange.line, voiceRange.col + voiceRange.len),
     text,
   }])
   voiceRange.len = text.length
+  lastVoiceText = text
 }
 
 function handleVoiceStop(text: string) {
-  // Already inserted via handleVoiceUpdate updates
   voiceRange = null
+  lastVoiceText = ''
 }
 
 function showExportToast(msg: string) {

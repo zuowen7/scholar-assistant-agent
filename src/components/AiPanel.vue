@@ -188,6 +188,7 @@ import { Mic } from './ui/icons'
 let voiceBaseInput = ''
 const panelSpeech = useSpeechRecognition({
   onResult: (text) => { input.value = voiceBaseInput + (voiceBaseInput ? ' ' : '') + text },
+  onEnd: () => { voiceBaseInput = '' },
 })
 
 function togglePanelSpeech() {

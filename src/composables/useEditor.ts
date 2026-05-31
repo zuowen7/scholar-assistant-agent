@@ -11,7 +11,7 @@ import { readSseStream } from '../utils/streamReader'
 import {
   tabs, activeTabId, monacoEditor, contentVersion, activeTab, content, activeFile, isModified,
   selection, showAiPanel, aiLoading, aiResult, previousContent,
-  insertTextAtCursor, insertImage,
+  insertTextAtCursor, insertImage, getRange,
 } from './useEditorState'
 import { i18n } from '../i18n'
 import {
@@ -85,8 +85,7 @@ function applyInlineDecoration(
 ) {
   const editor = monacoEditor.value
   if (!editor) return
-  const Range = (editor as any).monaco?.Range ??
-    class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
+  const Range = getRange(editor)
   inlineDecoration = editor.deltaDecorations([], [{
     range: new Range(startLine, startCol, endLine, endCol),
     options: { className: 'ai-inline-edit', inlineClassName: 'ai-inline-edit-char' },
@@ -118,8 +117,7 @@ export async function inlineEdit(instruction: string, taskType?: string): Promis
     })
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
     if (!resp.body) throw new Error('No response body')
-    const Range = (editor as any).monaco?.Range ??
-      class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
+    const Range = getRange(editor)
     const reader = resp.body.getReader()
     applyInlineDecoration(sel.startLine, sel.startCol, sel.endLine, sel.endCol)
     await readSseStream(reader, (_type, evt) => {
@@ -155,8 +153,7 @@ export function applyAiResult() {
   const editor = monacoEditor.value
   if (!editor || !aiResult.value) return
   const sel = selection.value
-  const Range = (editor as any).monaco?.Range ??
-    class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
+  const Range = getRange(editor)
   if (sel.text) {
     editor.executeEdits('ai-edit', [{
       range: new Range(sel.startLine, sel.startCol, sel.endLine, sel.endCol),
