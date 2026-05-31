@@ -120,7 +120,7 @@ def _parse_sse_events(body: bytes) -> list[dict]:
 # ── Tests ────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.ollama
+@needs_ollama
 class TestOllamaTranslationPipeline:
     """Real Ollama pipeline — no mock at translate layer."""
 
