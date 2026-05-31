@@ -18,10 +18,10 @@ jobs:
           cache: 'pip'
 
       - name: Install Python dependencies
-        run: pip install -r python/requirements.txt pytest pytest-asyncio
+        run: pip install -r python/requirements-lock.txt pytest pytest-asyncio
 
       - name: Run pytest
-        run: cd python && pytest tests/unit/ -q --tb=short
+        run: cd python && pytest tests/ -q --tb=short
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -65,7 +65,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install -r python/requirements.txt
+          pip install -r python/requirements-lock.txt
           pip install pyinstaller
 
       - name: Install frontend dependencies
@@ -79,7 +79,11 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "Scholar Assistant ${{ github.ref_name }}"
           releaseBody: |
-            ## Downloads
+            ## What's New
+
+            - **Bilingual UI (中/EN)**: 20+ components now support zh-CN / en-US switching
+            - **Bug fixes**: UiDropdown race condition, vue-i18n @ parsing crash
+            - **Backend defaults** switched to English for consistency
 
             | Platform | File |
             |----------|------|

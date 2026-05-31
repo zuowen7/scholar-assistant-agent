@@ -22,7 +22,7 @@ body:
     attributes:
       label: "Version"
       description: "Which version are you using? (check Settings → About)"
-      placeholder: "v0.3.2"
+      placeholder: "v0.3.3"
   - type: dropdown
     attributes:
       label: "Platform"
