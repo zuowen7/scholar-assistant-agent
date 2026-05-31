@@ -13,7 +13,7 @@
         >
           <option value="">{{ t('argument.selectGraph') }}</option>
           <option v-for="g in state.graphList" :key="g.id" :value="g.id">
-            {{ g.title }} ({{ g.node_count }} {{ t('argument.nodesCount', { count: g.node_count }) }})
+            {{ g.title }} ({{ t('argument.nodesCount', { count: g.node_count }) }})
           </option>
         </select>
       </div>

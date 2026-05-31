@@ -1,15 +1,15 @@
 <template>
   <div class="file-tree">
     <div class="tree-header">
-      <span class="tree-title" :title="rootDir || t('files.explorer')">{{ rootDir ? rootDir.split(/[\\/]/).pop() : '资源管理器' }}</span>
+      <span class="tree-title" :title="rootDir || t('files.explorer')">{{ rootDir ? rootDir.split(/[\\/]/).pop() : t('files.explorer') }}</span>
       <div class="tree-actions">
-        <button class="tree-btn" @click="handleNewFile" :title="t('files.newFile')" aria-label="新建文件">
+        <button class="tree-btn" @click="handleNewFile" :title="t('files.newFile')" :aria-label="t('files.newFile')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
         </button>
         <button class="tree-btn" @click="handleOpenFolder" :title="t('files.openFolder2')" :aria-label="t('files.openFolder2')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
         </button>
-        <button class="tree-btn" :class="{ spinning: refreshing }" @click="handleRefresh" :title="t('files.refresh')" aria-label="刷新" :disabled="refreshing">
+        <button class="tree-btn" :class="{ spinning: refreshing }" @click="handleRefresh" :title="t('files.refresh')" :aria-label="t('files.refresh')" :disabled="refreshing">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
         </button>
         <div class="tree-btn-sep" />
@@ -144,7 +144,7 @@ async function handleNewFile() {
     await handleOpenFolder()
     return
   }
-  const name = prompt('文件名：', 'untitled.md')
+  const name = prompt(t('files.newFilePrompt'), 'untitled.md')
   if (!name) return
   const path = await createFile(rootDir.value, name)
   openEditorFile(path, '')

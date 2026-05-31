@@ -14,7 +14,7 @@
             class="dd-item"
             :class="{ disabled: item.disabled, danger: item.danger }"
             :disabled="item.disabled"
-            @click="!item.disabled && (item.onClick?.(), close())"
+            @click="!item.disabled && (close(), nextTick(() => item.onClick?.()))"
             role="menuitem"
           >
             <component :is="item.icon" v-if="item.icon" :size="14" :stroke-width="1.6" class="dd-icon" />
@@ -29,6 +29,7 @@
 </template>
 
 <script setup lang="ts">
+import { nextTick } from 'vue'
 import UiPopover from './UiPopover.vue'
 import type { DropdownItem } from './UiDropdown.types'
 

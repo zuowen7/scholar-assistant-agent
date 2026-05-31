@@ -39,7 +39,7 @@
               </div>
               <div class="summary-text">
                 <strong>{{ statusLabel }}</strong>
-                <p>{{ report.summary?.total_words || 0 }} {{ t('editor.complianceWords') }} / {{ report.summary?.total_characters || 0 }} 字符</p>
+                <p>{{ report.summary?.total_words || 0 }} {{ t('editor.complianceWords') }} / {{ report.summary?.total_characters || 0 }} {{ t('editor.characters') }}</p>
               </div>
             </div>
 
@@ -65,7 +65,7 @@
                 <div class="section-content">
                   <div class="section-item">
                     <span class="label">{{ t('editor.complianceTermConsistent') }}</span>
-                    <span class="ok">{{ Array.isArray(report.terminology.consistent_terms) ? report.terminology.consistent_terms.join(', ') : '无' }}</span>
+                    <span class="ok">{{ Array.isArray(report.terminology.consistent_terms) ? report.terminology.consistent_terms.join(', ') : t('editor.complianceNone') }}</span>
                   </div>
                   <div v-if="report.terminology.inconsistent_terms?.length" class="section-item">
                     <span class="label">{{ t('editor.complianceTermInconsistent') }}</span>
@@ -177,7 +177,7 @@ const scoreClass = computed(() => {
 const statusLabel = computed(() => {
   const status = (props.report?.summary as any)?.overall_status || 'unknown'
   const labels: Record<string, string> = {
-    pass: '✅ 合格', warning: '⚠️ 需改进', fail: '❌ 不合格', unknown: '❓ 未知'
+    pass: t('editor.compliancePass'), warning: t('editor.complianceWarn'), fail: t('editor.complianceFail'), unknown: t('editor.complianceUnknown')
   }
   return labels[status] || status
 })
@@ -185,15 +185,15 @@ const statusLabel = computed(() => {
 const riskLevelLabel = computed(() => {
   const level = (props.report?.hallucination_risk as any)?.risk_level || 'unknown'
   const labels: Record<string, string> = {
-    low: '🟢 低风险', medium: '🟡 中风险', high: '🔴 高风险', unknown: '❓ 未知'
+    low: t('editor.complianceLowRisk'), medium: t('editor.complianceMediumRisk'), high: t('editor.complianceHighRisk'), unknown: t('editor.complianceUnknown')
   }
   return labels[level] || level
 })
 
 function formatSections(sections: Record<string, any> | null | undefined): string {
-  if (!sections) return '无'
+  if (!sections) return t('editor.complianceNone')
   const names = Object.keys(sections)
-  return names.length ? names.join(' · ') : '无'
+  return names.length ? names.join(' · ') : t('editor.complianceNone')
 }
 
 function formatTermList(items: any[] | null | undefined): string {

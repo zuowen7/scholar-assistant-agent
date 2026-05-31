@@ -36,7 +36,7 @@
             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
           </div>
           <p class="ac-empty-title anim-fade-in-up">{{ t('aiPanel.greeting') }}</p>
-          <p class="ac-empty-sub anim-fade-in-up">{{ t('aiPanel.greetingHint') }}</p>
+          <p class="ac-empty-sub anim-fade-in-up" v-html="t('aiPanel.greetingHint', { atChar: '@' })"></p>
         </div>
       </Transition>
 
@@ -115,7 +115,7 @@
           ref="inputRef"
           v-model="input"
           class="ac-input"
-          :placeholder="t('aiPanel.inputPlaceholder')"
+          :placeholder="t('aiPanel.inputPlaceholder', { atChar: '@' })"
           @keydown.enter.exact.prevent="send"
           @keydown.tab.exact.prevent="acceptSuggestion"
           @keydown.escape="dismissSuggestion"
@@ -214,13 +214,13 @@ const commands = [
   { cmd: '/explain', prompt: 'Please explain the following text in detail, breaking down the key concepts:', desc: t('aiPanel.cmd.explain') },
   { cmd: '/fix', prompt: 'Please identify and fix any issues in the following text:', desc: t('aiPanel.cmd.fix') },
   { cmd: '/translate', prompt: 'Please translate the following text:', desc: t('aiPanel.cmd.translate') },
-  { cmd: '/polish', prompt: 'Please polish the following academic text, improving grammar, vocabulary and style:', desc: '润色写作' },
+  { cmd: '/polish', prompt: 'Please polish the following academic text, improving grammar, vocabulary and style:', desc: t('aiPanel.cmd.polish') },
   { cmd: '/expand', prompt: 'Please expand the following text with more details and academic depth:', desc: t('aiPanel.cmd.expand') },
   { cmd: '/summarize', prompt: 'Please provide a concise summary of the following text:', desc: t('aiPanel.cmd.summarize') },
   { cmd: '/outline', prompt: 'Please generate a detailed outline for a paper on the following topic:', desc: t('aiPanel.cmd.outline') },
-  { cmd: '/review', prompt: 'Please review the following academic text, identify issues and suggest improvements:', desc: '审查文本' },
+  { cmd: '/review', prompt: 'Please review the following academic text, identify issues and suggest improvements:', desc: t('aiPanel.cmd.review') },
   { cmd: '/rewrite', prompt: 'Please rewrite the following text to improve clarity and flow:', desc: t('aiPanel.cmd.rewrite') },
-  { cmd: '/cite', prompt: 'Please generate proper academic citations (IEEE/APA/GB-T) for the following references:', desc: '格式化引用' },
+  { cmd: '/cite', prompt: 'Please generate proper academic citations (IEEE/APA/GB-T) for the following references:', desc: t('aiPanel.cmd.cite') },
 ]
 
 const filteredCommands = computed(() => {
@@ -298,7 +298,7 @@ function renderMd(text: string, msgId: string): string {
     const displayLang = lang || 'text'
     return `<div class="ac-code-block" data-id="${id}">`
       + `<div class="ac-code-bar"><span class="ac-code-lang">${displayLang}</span>`
-      + `<button class="ac-code-btn ac-code-copy">复制</button>`
+      + `<button class="ac-code-btn ac-code-copy">${t('aiPanel.copy')}</button>`
       + `<button class="ac-code-btn ac-code-insert">${t('aiPanel.insert')}</button>`
       + `</div>`
       + `<pre><code>${code}</code></pre></div>`
@@ -372,8 +372,8 @@ async function sendPreset(action: string) {
     zh: '将以下内容翻译成流畅、地道的学术中文。只返回译文。',
   }
   const labels: Record<string, string> = {
-    polish: '润色选中文本', expand: '扩写选中文本', review: '审阅选中文本',
-    en: '翻译为英文', zh: '翻译为中文',
+    polish: t('aiPanel.presetPolishLabel'), expand: t('aiPanel.presetExpandLabel'), review: t('aiPanel.presetReviewLabel'),
+    en: t('aiPanel.presetEnLabel'), zh: t('aiPanel.presetZhLabel'),
   }
   const instruction = instructions[action] || action
   if (!ctx) {
@@ -458,11 +458,11 @@ async function doSend(text: string) {
       signal: aiAbortCtrl.value.signal,
     })
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ detail: '请求失败' }))
+      const err = await resp.json().catch(() => ({ detail: t('aiPanel.requestFailed') }))
       throw new Error(err.detail || `HTTP ${resp.status}`)
     }
     const reader = resp.body?.getReader()
-    if (!reader) throw new Error('响应内容为空')
+    if (!reader) throw new Error(t('aiPanel.responseEmpty'))
 
     let hasToolActivity = false
     let _inThink = false
@@ -486,7 +486,7 @@ async function doSend(text: string) {
         streamContent.value = (d.content as string).replace(/<think\b[^>]*>[\s\S]*?<\/think\s*>/g, '').trim()
         tokenBuffer = ''
       }
-      else if (evtType === 'error') { streamContent.value = (d.content as string) || '错误' }
+      else if (evtType === 'error') { streamContent.value = (d.content as string) || t('aiPanel.error') }
       else if ((evtType === 'thought' || evtType === 'thinking') && d.content) { thinkingText.value = d.content as string }
       else if (evtType === 'tool_call') {
         hasToolActivity = true

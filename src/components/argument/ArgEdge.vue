@@ -48,12 +48,12 @@ const props = defineProps<EdgeProps<{
 const { deleteEdge } = useArgumentMap()
 
 const REL_LABELS: Record<RelationType, string> = {
-  supports: '支持',
-  warrants: '保证',
-  backs: '支撑',
-  qualifies: '限定',
-  rebuts: '反驳',
-  counters: '回应',
+  supports: t('argument.supports'),
+  warrants: t('argument.warrants'),
+  backs: t('argument.backs'),
+  qualifies: t('argument.qualifies'),
+  rebuts: t('argument.rebuts'),
+  counters: t('argument.counters'),
 }
 const relLabel = computed(() => REL_LABELS[props.data?.relation_type ?? 'supports'] ?? props.data?.relation_type)
 

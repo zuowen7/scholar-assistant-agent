@@ -79,7 +79,7 @@ class ArgEdge(BaseModel):
 
 class ArgGraph(BaseModel):
     id: str = Field(default_factory=lambda: f"g_{uuid.uuid4().hex[:10]}")
-    title: str = "未命名论证图"
+    title: str = "Untitled Argument Map"
     nodes: list[ArgNode] = Field(default_factory=list)
     edges: list[ArgEdge] = Field(default_factory=list)
     spans: list[SpanMapping] = Field(default_factory=list)

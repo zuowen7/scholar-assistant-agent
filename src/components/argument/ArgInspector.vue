@@ -102,7 +102,7 @@
           >
             <span class="span-quote">「{{ span.quote.slice(0, 36) }}{{ span.quote.length > 36 ? '…' : '' }}」</span>
             <div class="span-actions">
-              <button class="span-action-btn" :title="span.source_label || span.side" @click="jumpToSpan(span.id)">跳到原文</button>
+              <button class="span-action-btn" :title="span.source_label || span.side" @click="jumpToSpan(span.id)">{{ t('argument.jumpToSource') }}</button>
               <button class="span-action-btn span-action-btn--danger" @click="removeSpan(span.id)">{{ t('argument.unbind') }}</button>
             </div>
           </div>
@@ -120,7 +120,7 @@
             <div class="candidate-text">{{ c.text }}</div>
             <button class="candidate-adopt-btn" @click="adoptCandidate(c)">{{ t('argument.adopt') }}</button>
           </div>
-          <button class="inspector-btn" style="font-size:11px; margin-top: 4px" @click="suggestResult = null">收起</button>
+          <button class="inspector-btn" style="font-size:11px; margin-top: 4px" @click="suggestResult = null">{{ t('general.collapse') }}</button>
         </div>
       </div>
 
@@ -204,7 +204,7 @@ async function doExport() {
         exportOk.value = true
         capturedTaskId = d.task_id ?? ''
         capturedWordCount = d.word_count ?? 0
-        exportMsg.value = `草稿已生成（${capturedWordCount} 字），下载中…`
+        exportMsg.value = t('argument.draftGenerated', { count: capturedWordCount })
       } else if (eventType === 'error') {
         exportMsg.value = t('argument.exportError', { msg: String((data as { message?: string }).message ?? '') })
       }
@@ -217,7 +217,7 @@ async function doExport() {
         const ext = exportTemplate.value === 'latex' ? 'tex' : 'md'
         const { saveBlob } = await import('../../composables/useEditorIO')
         await saveBlob(blob, `argument_draft.${ext}`)
-        exportMsg.value = `草稿已导出（${capturedWordCount} 字）`
+        exportMsg.value = t('argument.draftExported', { count: capturedWordCount })
       } else {
         exportMsg.value = t('argument.downloadFailed')
       }

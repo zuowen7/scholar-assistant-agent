@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # ── v2 request body models (module-level so FastAPI can resolve annotations) ─
 
 class V2CreateGraphRequest(BaseModel):
-    title: str = "未命名论证图"
+    title: str = "Untitled Argument Map"
     source_doc: str | None = None
 
 

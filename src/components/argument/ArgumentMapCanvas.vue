@@ -80,7 +80,7 @@ async function onConnect(conn: Connection) {
 
   const relType = inferRelationType(srcNode.node_type, tgtNode.node_type)
   if (!relType) {
-    danger(`无效关系：${srcNode.node_type} → ${tgtNode.node_type}`)
+    danger(t('argument.invalidRelation', { src: srcNode.node_type, tgt: tgtNode.node_type }))
     return
   }
 
@@ -91,7 +91,7 @@ async function onConnect(conn: Connection) {
       relation_type: relType as RelationType,
     })
   } catch {
-    danger('创建关系失败')
+    danger(t('argument.deleteRelation'))
   }
 }
 

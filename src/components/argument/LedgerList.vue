@@ -9,7 +9,7 @@
       >
         <span v-if="building" class="analyze-loading">
           <span class="al-dots"><i /><i /><i /></span>
-          <span class="anim-shimmer-text">分析中</span>
+          <span class="anim-shimmer-text">{{ t('argument.analyzing') }}</span>
         </span>
         <span v-else>{{ ledger ? t('argument.reanalyze') : t('argument.analyzeLedger') }}</span>
       </button>
@@ -33,7 +33,7 @@
     </div>
 
     <div v-else-if="!ledger" class="ledger-empty">
-      还没分析。点上方「分析论证账本」让 AI 把你 abstract/intro 里立的承诺逐条对到正文。
+      {{ t('argument.ledgerEmpty') }}
     </div>
 
     <template v-else>
@@ -71,7 +71,7 @@
               class="jump-btn"
               @click="$emit('focusAnchor', promise.discharge_anchor_ids[0])"
             >
-              → 兑付处
+              {{ t('argument.dischargeLocation') }}
             </button>
             <button
               v-if="promise.status === 'unpaid' || promise.status === 'partial'"
@@ -82,9 +82,9 @@
             >
               <span v-if="suggestingId === promise.id" class="sg-loading">
                 <span class="sg-dots"><i /><i /><i /></span>
-                生成中…
+                {{ t('argument.suggesting') }}
               </span>
-              <span v-else>怎么补满</span>
+              <span v-else>{{ t('argument.howToFill') }}</span>
             </button>
             <span
               v-if="isLost(promise)"

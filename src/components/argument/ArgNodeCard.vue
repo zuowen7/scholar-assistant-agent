@@ -34,6 +34,8 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 import { Handle, Position } from '@vue-flow/core'
 import type { NodeProps } from '@vue-flow/core'
 import type { NodeType } from '../../composables/useArgumentMap'
@@ -51,12 +53,12 @@ const { state, upsertNode } = useArgumentMap()
 const selected = computed(() => state.selectedNodeId === props.id)
 
 const TYPE_LABELS: Record<NodeType, string> = {
-  claim: '主张',
-  grounds: '依据',
-  warrant: '论证保证',
-  backing: '支撑',
-  qualifier: '限定',
-  rebuttal: '反驳',
+  claim: t('argument.claim'),
+  grounds: t('argument.grounds'),
+  warrant: t('argument.warrant'),
+  backing: t('argument.backing'),
+  qualifier: t('argument.qualifier'),
+  rebuttal: t('argument.rebuttal'),
 }
 const typeLabel = computed(() => TYPE_LABELS[props.data.node_type])
 const displayText = computed(() => props.data.label || props.data.text)

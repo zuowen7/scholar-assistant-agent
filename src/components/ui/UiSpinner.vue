@@ -1,5 +1,5 @@
 <template>
-  <span class="ui-spinner" :class="size" role="status" :aria-label="label || '加载中'">
+  <span class="ui-spinner" :class="size" role="status" :aria-label="ariaLabel">
     <span class="sp-ring">
       <span class="sp-arc sp-arc-1" />
       <span class="sp-arc sp-arc-2" />
@@ -10,12 +10,19 @@
 </template>
 
 <script setup lang="ts">
-withDefaults(defineProps<{
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+
+const props = withDefaults(defineProps<{
   size?: 'sm' | 'md' | 'lg'
   label?: string
 }>(), {
   size: 'md',
 })
+
+const ariaLabel = computed(() => props.label || t('general.loading'))
 </script>
 
 <style scoped>

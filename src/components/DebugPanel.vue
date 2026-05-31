@@ -128,7 +128,7 @@ async function openLogFolder() {
         await Command.create('open', [dir]).execute()
       }
     } catch {
-      pushError('无法打开日志目录：' + dir)
+      pushError(t('editor.debugCannotOpenDir') + dir)
     }
   }
 }

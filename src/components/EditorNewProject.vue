@@ -27,7 +27,7 @@
                   :placeholder="t('editor.topicPlaceholder')"
                   @keydown.enter="$emit('enter-mindmap', topic)"
                 />
-                <button class="project-topic-go u-interactive" @click="$emit('enter-mindmap', topic)">创建</button>
+                <button class="project-topic-go u-interactive" @click="$emit('enter-mindmap', topic)">{{ t('general.create') }}</button>
               </div>
             </div>
           </div>

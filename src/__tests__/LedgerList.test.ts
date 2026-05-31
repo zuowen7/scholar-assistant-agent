@@ -113,7 +113,7 @@ describe('LedgerList', () => {
       props: { ledger: null, building: false },
     })
 
-    expect(wrapper.text()).toContain('还没分析')
+    expect(wrapper.text()).toContain('argument.ledgerEmpty')
   })
 
   it('renders promises grouped by status in correct order', async () => {
@@ -171,7 +171,7 @@ describe('LedgerList', () => {
     expect(wrapper.emitted('focusAnchor')![0]).toEqual(['a_p1'])
   })
 
-  it('emits analyze event when "分析论证账本" button is clicked', async () => {
+  it('emits analyze event when analyze button is clicked', async () => {
     // LedgerList imported statically above
 
     const wrapper = mount(LedgerList, {
