@@ -123,7 +123,7 @@
       </Transition>
 
       <!-- 主内容区：KeepAlive 保留各模式状态，Transition 提供切换动画 -->
-      <div class="mode-container">
+      <div class="mode-container" :class="{ 'mode-enter': modeTransition }">
         <KeepAlive>
           <TranslateView
             v-if="appMode === 'translate'"
@@ -189,6 +189,11 @@ const { pushError } = useToast()
 
 // ── 应用模式 ──────────────────────────────────────────────────
 const appMode = ref<AppMode>('editor')
+const modeTransition = ref(false)
+watch(appMode, () => {
+  modeTransition.value = true
+  setTimeout(() => { modeTransition.value = false }, 300)
+})
 
 // ── Agent 聊天 ──────────────────────────────────────────────
 const showAgentChat = ref(false)
@@ -1079,6 +1084,15 @@ body::after {
 .mode-container > * {
   flex: 1;
   min-height: 0;
+}
+
+/* Mode switch animation — replaces Transition mode="out-in" */
+.mode-enter {
+  animation: mode-cross 300ms var(--ease-out);
+}
+@keyframes mode-cross {
+  0%   { opacity: 0; transform: translateY(6px); }
+  100% { opacity: 1; transform: translateY(0); }
 }
 
 /* ── Scrollbar — 研墨定制 ── */
