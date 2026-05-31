@@ -65,7 +65,6 @@
 
           <MonacoEditor
             :theme="isDark ? 'vs-dark' : 'vs'"
-            :on-did-change-content="onDidChangeContent"
             @contentChange="onContentChange"
             @selectionChange="onSelectionChange"
           />
@@ -132,7 +131,7 @@ import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 
-// 鈹€鈹€ Layout sub-components 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// -- Layout sub-components ------------------------------------------------
 import EditorWelcome from './EditorWelcome.vue'
 import EditorToolbar from './EditorToolbar.vue'
 import EditorNewProject from './EditorNewProject.vue'
@@ -149,7 +148,7 @@ import ComplianceModal from './ComplianceModal.vue'
 import TemplatePicker from './TemplatePicker.vue'
 import MindMapView from './MindMapView.vue'
 
-// 鈹€鈹€ State composables 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// -- State composables ---------------------------------------------------
 import { useEditorState } from '../composables/useEditorState'
 import { useEditor } from '../composables/useEditor'
 import { useEditorVision } from '../composables/useEditorVision'
@@ -161,37 +160,36 @@ import { API_BASE } from '../utils/api'
 
 const props = defineProps<{ isDark: boolean }>()
 
-// 鈹€鈹€ Shared singleton state (single source of truth) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// -- Shared singleton state (single source of truth) ---------------------
 const { activeTab, content, contentVersion, selection, previousContent, tabs, aiResult, insertTextAtCursor, activeFile } = useEditorState()
 
-// 鈹€鈹€ Tab / file operations 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// -- Tab / file operations ------------------------------------------------
 const {
   openNewUntitled, setContent, markDirty,
   saveFile,
-  onDidChangeContent, acceptGhostText, clearGhostText,
 } = useEditor()
 
-// 鈹€鈹€ AI edit actions (from useEditor, called once) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// -- AI edit actions (from useEditor, called once) -----------------------
 const { aiEdit, applyAiResult, undoEdit } = useEditor()
 
-// 鈹€鈹€ Feature composables 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// -- Feature composables ---------------------------------------------------
 const { analyzeVision, uploadImage, insertImageFile } = useEditorVision()
 const { processCitations, previewCitations, getZoteroStatus, searchZotero } = useEditorCitation()
 const { exportToWord, exportLatex, exportPdf, loadExportTemplates } = useEditorIO()
 const { resetMindMap, loadSavedMindMap, saveMindMap, addChild, updateNodeText, updateNodeBody, skipNextBackendLoad } = useMindMap()
 
-// 鈹€鈹€ Workspace mode 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// -- Workspace mode -------------------------------------------------------
 const workspaceMode = ref<'editor' | 'mindmap'>('editor')
 let _contentBeforeMindMap = ''
 const sidebarCollapsed = ref(false)
 const collapsedSidebarWidth = 44
 
-// 鈹€鈹€ Right panel 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// -- Right panel ----------------------------------------------------------
 type RightTab = 'preview' | 'ai' | 'argument'
 const rightPanelTab = ref<RightTab | null>(null)
 const toggleRightPanel = (tab: RightTab) => { rightPanelTab.value = rightPanelTab.value === tab ? null : tab }
 
-// 鈹€鈹€ Export state 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// -- Export state ---------------------------------------------------------
 const exportTemplates = ref<{ id: string; name: string }[]>([])
 const selectedTemplate = ref('')
 const exportLoading = ref(false)
@@ -199,13 +197,13 @@ const exportMessage = ref('')
 let exportToastTimer: ReturnType<typeof setTimeout> | null = null
 const tectonicAvailable = ref(false)
 
-// 鈹€鈹€ Compliance 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// -- Compliance ------------------------------------------------------------
 const showCompliance = ref(false)
 const complianceLoading = ref(false)
 const complianceError = ref('')
 const complianceReport = ref<Record<string, unknown> | null>(null)
 
-// 鈹€鈹€ Template picker / project start 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// -- Template picker / project start -------------------------------------
 const showTemplatePicker = ref(false)
 const showProjectStart = ref(false)
 
@@ -228,7 +226,7 @@ const workspaceFiles = computed(() =>
   })
 )
 
-// 鈹€鈹€ Event handlers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// -- Event handlers ------------------------------------------------------
 
 async function openWorkspaceFolder() {
   try {
@@ -461,7 +459,7 @@ function showExportToast(msg: string) {
   exportToastTimer = setTimeout(() => { exportMessage.value = '' }, 3000)
 }
 
-// 鈹€鈹€ Resize 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// -- Resize ---------------------------------------------------------------
 const sidebarWidth = ref(296)
 const panelWidth = ref(300)
 
@@ -493,14 +491,12 @@ function startResize(e: MouseEvent, target: 'sidebar' | 'panel') {
   document.addEventListener('mouseup', onMouseUp, { signal })
 }
 
-// 鈹€鈹€ Keyboard 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// -- Keyboard -------------------------------------------------------------
 function onKeyDown(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSaveFile() }
-  if (e.key === 'Tab' && !e.ctrlKey && !e.shiftKey && acceptGhostText()) { e.preventDefault() }
-  if (e.key === 'Escape') clearGhostText()
 }
 
-// 鈹€鈹€ Lifecycle 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// -- Lifecycle -------------------------------------------------------------
 onMounted(() => {
   window.addEventListener('keydown', onKeyDown)
   loadExportTemplates().then(({ templates, tectonic_available }) => {
@@ -540,7 +536,7 @@ function handlePaperScaffold(e: Event) {
   color: var(--text-primary);
 }
 
-/* 鈹€鈹€ Sidebar 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* -- Sidebar ------------------------------------------------ */
 .layout-sidebar {
   position: relative;
   flex-shrink: 0;
@@ -585,7 +581,7 @@ function handlePaperScaffold(e: Event) {
   transform: translateX(-50%) rotate(-90deg) translateY(-2px);
 }
 
-/* 鈹€鈹€ Editor center 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* -- Editor center ------------------------------------------ */
 .layout-editor {
   flex: 1;
   display: flex;
@@ -594,7 +590,7 @@ function handlePaperScaffold(e: Event) {
   container-type: inline-size;
 }
 
-/* 鈹€鈹€ Right panel 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* -- Right panel -------------------------------------------- */
 .layout-panel-wrapper {
   display: flex;
   align-items: stretch;
@@ -609,7 +605,7 @@ function handlePaperScaffold(e: Event) {
 }
 .rp-content { flex: 1; min-height: 0; overflow: auto; }
 
-/* 鈹€鈹€ Resize handle 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* -- Resize handle ------------------------------------------ */
 .resize-handle {
   width: 8px;
   margin-left: -4px;
@@ -638,7 +634,7 @@ function handlePaperScaffold(e: Event) {
   box-shadow: 0 0 8px var(--c-accent);
 }
 
-/* 鈹€鈹€ Responsive 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* -- Responsive --------------------------------------------- */
 @media (max-width: 1180px) {
   .layout-sidebar { width: 220px !important; }
   .layout-sidebar.collapsed { width: 44px !important; }

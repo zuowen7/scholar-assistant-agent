@@ -186,95 +186,9 @@ export function undoEdit() {
   aiResult.value = ''
 }
 
-// ── Ghost text completion ────────────────────────────────────────────────
-let ghostDecoration: string[] = []
-let completionTimer: ReturnType<typeof setTimeout> | null = null
-let currentSuggestion = ''
-let _clearingGhost = false
-
-function clearGhostText() {
-  if (_clearingGhost) return
-  const editor = monacoEditor.value
-  if (!editor) return
-  if (ghostDecoration.length) {
-    try { _clearingGhost = true; editor.deltaDecorations(ghostDecoration, []) } finally {
-      ghostDecoration = []; _clearingGhost = false
-    }
-  }
-  currentSuggestion = ''
-}
-
-async function requestCompletion() {
-  const editor = monacoEditor.value
-  if (!editor) return
-  const model = editor.getModel()
-  if (!model) return
-  const pos = editor.getPosition()
-  if (!pos) return
-  const startLine = Math.max(1, pos.lineNumber - 15)
-  const textBefore = model.getValueInRange({
-    startLineNumber: startLine, startColumn: 1,
-    endLineNumber: pos.lineNumber, endColumn: pos.column,
-  })
-  if (textBefore.trim().length < 10) { clearGhostText(); return }
-  const signal = _signalFor('completion')
-  try {
-    const resp = await fetch(`${API_BASE}/api/complete`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ context: textBefore, max_tokens: 200 }),
-      signal,
-    })
-    if (!resp.ok) { clearGhostText(); return }
-    const data = await resp.json()
-    const suggestion = (data.completion || '').trim()
-    if (!suggestion || suggestion.length < 3) { clearGhostText(); return }
-    const currentContent = model.getValueInRange({
-      startLineNumber: startLine, startColumn: 1,
-      endLineNumber: pos.lineNumber, endColumn: pos.column,
-    })
-    if (currentContent !== textBefore) { clearGhostText(); return }
-    currentSuggestion = suggestion
-    const Range = (editor as any).monaco?.Range ??
-      class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
-    ghostDecoration = editor.deltaDecorations(ghostDecoration, [{
-      range: new Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
-      options: {
-        after: { content: suggestion, inlineClassName: 'ghost-text-suggestion' },
-        className: 'ghost-text-line',
-      },
-    }])
-  } catch { clearGhostText() } finally { _abortMap.delete('completion') }
-}
-
-/** Request inline ghost-text completion at the current cursor position. */
-export function triggerCompletion() {
-  if (completionTimer) clearTimeout(completionTimer)
-  completionTimer = setTimeout(requestCompletion, 1500)
-}
-
-export function acceptGhostText(): boolean {
-  const editor = monacoEditor.value
-  if (!editor || !currentSuggestion) return false
-  const pos = editor.getPosition()
-  if (!pos) return false
-  const Range = (editor as any).monaco?.Range ??
-    class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
-  editor.executeEdits('inline-completion', [{
-    range: new Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
-    text: currentSuggestion,
-  }])
-  clearGhostText()
-  return true
-}
-
-export function onDidChangeContent() { triggerCompletion() }
-
 export function cleanup() {
-  if (completionTimer) { clearTimeout(completionTimer); completionTimer = null }
   const editor = monacoEditor.value
   if (editor) {
-    if (ghostDecoration.length) { try { editor.deltaDecorations(ghostDecoration, []) } catch { /* disposed */ } ghostDecoration = [] }
     if (inlineDecoration.length) { try { editor.deltaDecorations(inlineDecoration, []) } catch { /* disposed */ } inlineDecoration = [] }
   }
   for (const ctrl of _abortMap.values()) ctrl.abort()
@@ -290,7 +204,6 @@ export function useEditor() {
     setEditorInstance, setContent, updateSelection, markClean, markDirty,
     openFile, openNewUntitled, closeTab, setActiveTab, renameTabPath, saveFile,
     aiEdit, inlineEdit, cancelAiEdit, applyAiResult, rejectAiResult, undoEdit,
-    triggerCompletion, acceptGhostText, onDidChangeContent, clearGhostText, cleanup,
-    reloadOpenTabs,
+    cleanup, reloadOpenTabs,
   }
 }
