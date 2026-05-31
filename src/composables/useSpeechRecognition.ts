@@ -19,6 +19,7 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
   let recognition: SpeechRecognition | null = null
   let finalText = ''
   let lastProcessedFinal = -1
+  let lastEmitted = ''
 
   function start(lang = 'zh-CN') {
     if (status.value === 'listening') return
@@ -26,6 +27,7 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
     interimText.value = ''
     finalText = ''
     lastProcessedFinal = -1
+    lastEmitted = ''
 
     const sr = getSpeechRecognition()
     if (!sr) {
@@ -58,19 +60,18 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
         }
       }
       let text = finalText + latestInterim
-      console.log('[Speech] onresult: n=%d ri=%d lpf=%d final="%s" interim="%s" emit="%s"',
-        e.results.length, e.resultIndex, lastProcessedFinal,
-        finalText.slice(-20), latestInterim.slice(-20), text.slice(-40))
       if (latestInterim && finalText) {
         const ci = latestInterim.replace(/[^\w一-鿿]/g, '').toLowerCase()
         const cf = finalText.replace(/[^\w一-鿿]/g, '').toLowerCase()
         if (cf.endsWith(ci) || cf.includes(ci)) {
           text = finalText
-          console.log('[Speech] phantom filtered → "%s"', text.slice(-20))
         }
       }
       interimText.value = text
-      options?.onResult?.(text)
+      if (text !== lastEmitted) {
+        lastEmitted = text
+        options?.onResult?.(text)
+      }
     }
 
     sr.start()
