@@ -161,6 +161,8 @@
     "inputPlaceholder": "Type a message...",
     "stopGenerate": "Stop Generating",
     "send": "Send",
+    "voiceStart": "Voice Input",
+    "voiceStop": "Stop Voice Input",
     "docsTitle": "Library",
     "docsSubtitle": "Past translations auto-archived for cross-reference by the Agent",
     "uploading": "Uploading",

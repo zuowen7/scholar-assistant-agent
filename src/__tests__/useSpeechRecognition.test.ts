@@ -112,7 +112,7 @@ describe('useSpeechRecognition', () => {
     expect(sr.status.value).toBe('idle')
     sr.start()
     expect(sr.status.value).toBe('listening')
-    expect(mockInstance.continuous).toBe(false)
+    expect(mockInstance.continuous).toBe(true)
     expect(mockInstance.interimResults).toBe(true)
     expect(mockInstance.lang).toBe('zh-CN')
   })
@@ -144,16 +144,15 @@ describe('useSpeechRecognition', () => {
     const sr = await getFresh()
     sr.start()
 
-    // Simulate interim results
+    // Interim result: browser sends partial transcript (same utterance, refined)
     mockInstance.simulateResult([
       { transcript: '你好', isFinal: false },
     ])
     expect(sr.interimText.value).toBe('你好')
 
-    // Simulate final result
+    // Final result: same utterance becomes final with full transcript
     mockInstance.simulateResult([
-      { transcript: '你好', isFinal: true },
-      { transcript: '世界', isFinal: false },
+      { transcript: '你好世界', isFinal: true },
     ])
     expect(sr.interimText.value).toBe('你好世界')
 
