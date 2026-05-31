@@ -12,7 +12,7 @@
 
 本地可离线运行，也可接入 21 家云端大模型。**支持中/英双语界面切换**，设置面板一键切换 UI 语言。
 
-- **版本**：v0.3.2（Agent 工作区文件工具链接通 — "写论文版 Claude Code" 范式落地；越界审批、Monaco 实时刷新、RAG 降级为按需文献库；论证陪练 v3 + agency-agents-zh SDLC 改造全部完成。最新一轮（2026-05-30）：Agent 工具指导自动覆盖全部 21 个 provider 的所有模型（未知模型返回 `_DEFAULT_TOOL_GUIDE` 而非空字符串，修复非 qwen/gpt/deepseek/gemini 模型拒绝执行工具的问题））
+- **版本**：v0.3.3（2026-05-31：中英双语 UI 全覆盖 — 20+ 组件硬编码中文全部替换为 i18n `t()` 调用，新增 ~20 个翻译键；修复 vue-i18n `@` 解析崩溃、UiDropdown 竞态条件（导出 PDF 时空组件引用）；release 构建自定义背景改用 data URL 绕过 asset protocol 限制；构建配置同步更新 + 版本号升级）
 - **许可**：MIT
 
 ## 功能演示
@@ -33,7 +33,7 @@
 |---------|
 | ![更多](docs/demo/demo2.gif) |
 
-> 以上均为 v0.3.2 版本实机录屏。
+> 以上均为 v0.3.3 版本实机录屏。
 
 ## 下载安装
 
@@ -101,7 +101,7 @@
 - **Rebuttal 包导出** — 一键下载含所有批评点 + rebuttal 草稿的 Markdown 文件
 - **全栈端对端验证** — `test_companion_e2e.py`：27 个集成测试覆盖全部 `/api/companion/*` 端点，真实 Store 写入 + SSE 序列化全程跑通，仅 mock LLM 调用
 
-**状态**：Phase 0–5 全部完成，`features.argument_companion=true` 已发布，pytest 1815 passed / 11 skipped + vitest 347 passed。
+**状态**：Phase 0–5 全部完成，`features.argument_companion=true` 已发布，pytest 2025 passed / 11 skipped + vitest 393 passed。
 
 ### 思维导图
 - **Vue Flow 画布** — 自定义节点卡片 + 连线（树边/关联线），支持拖拽、缩放、小地图
@@ -195,7 +195,7 @@
 │   │   └── mcp/                  #   Vision 客户端 (多模态图像理解)
 │   ├── prompts/                  #   学术写作 Prompt 体系 (6层骨架 + YAML frontmatter + eval runner)
 │   ├── data/paper_assets/        #   论文模板 (IEEE/ACM/NeurIPS/LNCS/通用)
-│   └── tests/                    #   单元测试 + 集成测试（含 E2E companion + adversarial），pytest 1815 passed / 11 skipped
+│   └── tests/                    #   单元测试 + 集成测试（含 E2E companion + adversarial），pytest 2025 passed / 11 skipped
 ├── Dockerfile
 ├── docker-compose.yml
 └── package.json

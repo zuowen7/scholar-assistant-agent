@@ -1,12 +1,23 @@
 # Scholar Assistant
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-0.3.2-brightgreen)](https://github.com/zuowen7/scholar-assistant/releases)
-[![Test](https://img.shields.io/badge/tests-1815%20passed-success)](https://github.com/zuowen7/scholar-assistant/actions)
+[![Version](https://img.shields.io/badge/version-0.3.3-brightgreen)](https://github.com/zuowen7/scholar-assistant/releases)
+[![Test](https://img.shields.io/badge/tests-2025%20passed-success)](https://github.com/zuowen7/scholar-assistant/actions)
 
 **English** | [中文](./README_zh.md)
 
-> Open-source **Claude Code for academic papers** — a privacy-first AI workstation that handles the full lifecycle of scholarly writing.
+> Open-source **Claude Code for academic papers** — a privacy-first AI workstation covering the full lifecycle of scholarly writing: Read · Think · Write · Review · Publish.
+
+- **Read** — DeepL-quality PDF translation and close reading; translations auto-archived into a searchable local library
+- **Think** — Mind map + Argument map to structure ideas and reasoning
+- **Write** — AI companion editor with polish / expand / rewrite; Agent reads and writes project files directly
+- **Review** — Adversarial peer review (Reviewer-2) + Claim Ledger to pressure-test logic before submission
+- **Publish** — One-click export to IEEE / ACM / NeurIPS LaTeX templates and Word
+
+Runs offline locally, or connects to 21 cloud LLM providers. **Bilingual UI** (zh-CN / en-US) — switch language from the settings panel.
+
+- **Version**: v0.3.3 (2026-05-31: full bilingual UI coverage, vue-i18n @ parsing crash fix, UiDropdown race condition fix, release background image fix, build config sync)
+- **License**: MIT
 
 ## Demo
 
@@ -26,23 +37,145 @@
 |---------------|
 | ![More](docs/demo/demo2.gif) |
 
-> All GIFs are real screen recordings from the v0.3.2 release.
+> All GIFs are real screen recordings from the v0.3.3 release.
 
-## What It Does
+## Core Features
 
-Scholar Assistant packs five capabilities into one desktop app:
+### Translation Pipeline
+- **Smart PDF Parsing** — 16 format parsers, auto-detect single/dual-column layout
+- **Text Cleaning** — 17-stage pipeline: fix line breaks, remove watermarks/headers/footers, handle hyphenation
+- **Reference Skip** — Auto-detect REFERENCES/BIBLIOGRAPHY sections, preserve as-is
+- **DeepL-like Experience** — Side-by-side bilingual view + sentence-level hover highlighting with precise alignment
+- **Real-time Progress** — SSE streaming 5-step pipeline progress, live paragraph preview
+- **Failed Block Retry** — Retry individual failed blocks without re-translating the entire document
+- **Multi-format Export** — Bilingual/translation-only × Markdown/Word (4 formats) + PPTX
 
-| | Capability | Highlights |
-|---|---|---|
-| **Read** | DeepL-quality PDF translation | 5-step SSE pipeline, sentence-level hover alignment, auto-glossary extraction |
-| **Think** | Mind map + Argument map | Vue Flow canvas, AI-powered expansion, dagre auto-layout |
-| **Write** | AI-powered editor | Monaco + Ghost Text, Agent directly reads/writes your project files |
-| **Review** | Adversarial peer review | Reviewer-2 simulation, claim ledger (promises vs. deliveries), rebuttal chat |
-| **Publish** | One-click export | IEEE / ACM / NeurIPS / LNCS LaTeX templates + Word, via Pandoc + Tectonic |
+### Translation Engines
+- **Local** — Ollama + Qwen3, fully offline, no API key needed
+- **Cloud** — OpenAI / Anthropic / DeepSeek / Moonshot / Zhipu / Qwen / Gemini / SiliconFlow / OpenRouter / Groq / Together / Mistral / xAI / Fireworks / DeepInfra / Perplexity / Novita / Volcengine / Baidu Qianfan / Azure / Custom (21 providers)
+- **Enhanced Prompts** — Strict paragraph structure preservation, reduced alignment failures
+- **Glossary Auto-extraction** — Extract `Chinese(English)` term pairs from translated text, inject into subsequent chunks
+- **Sliding Context Window** — Each chunk carries summaries and terminology from preceding chunks
 
-**The Agent is the backbone** — it works like Claude Code in a code repo, but for your paper workspace. Open a project folder, and the Agent can `read_file`, `grep_files`, `str_replace`, `write_file`, `run_command`, and `git_op` directly on your PDFs, drafts, bib files, and data. Workspace boundaries are enforced; out-of-scope access requires your approval.
+### AI Editor (Agent as Backbone)
 
-**Bilingual UI** (zh-CN / en-US) — switch language from the settings panel. All menus, labels, error messages, and tooltips are translated.
+> **Positioning: Claude Code for Papers.** Treat your research project as a workspace; the Agent reads/writes PDFs, drafts, bib files, and data directly — just like Claude Code edits source code.
+
+- **Agent Workspace File Tools** — Open a project folder; the Agent calls `read_file / grep_files / str_replace / write_file / git_op` directly on project files; editor tabs reload mid-stream after each Agent write; `read_file` auto-parses PDF/Word/EPUB
+- **Document QA Short-circuit** — When a document is open and you ask "how is it / summarize / any issues", the content is already at hand — single-shot LLM streaming answer, no ReAct tool loop; only explicit "modify/save/run" intent triggers full Agent
+- **Workspace Boundary & Approval** — All file operations locked to project root; out-of-scope access triggers an approval popup (Allow once / Allow session / Deny), matching Claude Code behavior
+- **ReAct Reasoning** — Multi-step tool-call loop with task decomposition, checkpoint resume, three-layer Skill injection (SOUL/AGENTS/IDENTITY), and context compression
+- **Library (RAG)** — Post-translation auto-ingest bilingual full text into local vector DB; Agent calls `search_documents` on demand (not auto-injected per turn); manual upload/delete supported
+- **AI Polish / Expand / Coherence / Compliance** — Operate on selected text via the AI Panel
+- **Inline Ghost Text** — Monaco Editor auto-requests completions 1.5s after typing; Tab to accept
+
+### Argument Mapping (v2)
+- **Toulmin Argument Map** — Nodes (Claim / Grounds / Warrant / Backing / Qualifier / Rebuttal) + Relations (Supports / Warrants / Backs / Qualifies / Rebuts / Counters), visualized on a Vue Flow canvas
+- **AI Auto-extraction** — SSE stream extraction of Toulmin structure from source text
+- **Critique** — AI detects structural issues and logical fallacies in the argument graph
+- **AI Suggestions** — Suggest next Toulmin element for the selected node (e.g. suggest Grounds for a Claim)
+- **Manual Editing** — Create/edit nodes and edges, drag to rearrange, bind sentences from source pane
+- **Export Draft** — Flatten Toulmin graph into structured Markdown/LaTeX paper draft (SSE streaming)
+
+### Editor
+- **Monaco Editor** — Full-featured code editor with Markdown syntax highlighting
+- **AI Panel** — Chat-style UI with message history; polish/expand results shown as diff view, one-click apply/undo
+- **File Tree** — Multi-file management with left sidebar navigation
+- **Template Export** — Pandoc compilation with IEEE / ACM / NeurIPS / LNCS / Elsevier / Generic LaTeX templates
+
+### Argument Companion (v3 — Complete)
+
+> Shifts the argument mapping focus from a free-form canvas to **an in-editor training partner**: AI proactively finds problems; you just respond.
+
+- **Claim Ledger** — Auto-extract every promise from abstract/intro; track whether the body delivers (paid / partial / unpaid / mismatch), each anchored to exact character offsets; fuzzy relocation on edits (anchored → drifted → lost 3-state), like `git blame` for arguments
+- **Reviewer‑2 Adversary** — 7 conference-calibrated simulated reviews (NeurIPS / ICML / ICLR / ACL / CVPR / KDD / CHI); each critique anchored to a specific sentence; author drafts rebuttal point-by-point; reviewer can be persuaded; includes coherence / gap-matching / related-work checks; 3-angle parallel review (method/experiment/writing) with auto dedup
+- **Real Review Import** — Paste actual reviewer comments; AI structures them into rebuttal-ready items (persona=real)
+- **Experiment Gap Suggestions** — For each unpaid/partial promise, AI proposes a concrete experiment design ("How to fill?")
+- **Rebuttal Package Export** — One-click download of all critique points + rebuttal drafts as Markdown
+- **Full-stack E2E Verified** — `test_companion_e2e.py`: 27 integration tests covering all `/api/companion/*` endpoints with real Store writes + SSE serialization (only LLM calls mocked)
+
+**Status**: Phase 0–5 complete, `features.argument_companion=true` shipped, 2025 pytest passed / 11 skipped + 393 vitest passed.
+
+### Mind Map
+- **Vue Flow Canvas** — Custom node cards + edges (tree/association), drag, zoom, minimap
+- **Node Body Editing** — Each node has an expandable body textarea (▸ button); collapsed view shows first-line preview; heading = node title, paragraph = body
+- **Editor Bidirectional Sync** — Editor → mind map auto-parses heading + body; mind map → editor preserves all content (no data loss)
+- **AI Smart Expand** — Generate subtopics based on selected node content
+- **AI Logic Check** — Detect logic chain issues
+- **Undo/Redo** — 100-step history stack, Ctrl+Z / Ctrl+Shift+Z
+- **Auto Layout** — dagre algorithm, one-click organize
+- **Keyboard Shortcuts** — Tab add child, Enter add sibling, F2 edit, Delete remove hovered edge, arrows navigate
+- **Markdown Bridge** — Bidirectional sync between Mind Map and Argument Map
+
+### Debugging & Observability
+- **File Logging** — Backend logs written to `RUNTIME_DIR/logs/app.log` (10 MB × 5 rotating backups, each line carries trace_id)
+- **Access Logging** — Every HTTP request logged with method / path / status / duration
+- **Debug Panel** — Top-bar Terminal icon button; shows frontend error history (timestamp + level) and backend logs; red badge when unread errors exist
+
+### Deployment
+- **Desktop** — Tauri 2 packaged; auto-manages Python backend and Ollama processes
+- **Offline Ready** — Release installer bundles Pandoc / Tectonic (with pre-warmed LaTeX cache) / all-MiniLM-L6-v2 embedding model; first-launch seeds to user cache; PDF export and library work offline; default translation engine is cloud (user provides API key)
+- **Docker** — Multi-stage build, one-command containerized deployment
+- **Python CLI** — `python main.py paper.pdf -o paper.md`
+
+## Project Structure
+
+```
+├── src-tauri/                    # Rust + Tauri desktop
+│   ├── src/main.rs               #   Process management (Python API + Ollama, auto-clear proxy env vars)
+│   └── capabilities/             #   Tauri v2 permission configuration
+├── src/                          # Vue 3 frontend
+│   ├── App.vue                   #   Main shell (~684 lines, global state management)
+│   ├── styles/tokens.css         #   Design Tokens (dark/light themes)
+│   ├── composables/
+│   │   ├── useTranslate.ts       #   SSE translation pipeline state (singleton)
+│   │   ├── useAgentChat.ts       #   Agent SSE chat state (singleton)
+│   │   ├── useEditor.ts          #   Monaco Editor + AI Panel (singleton)
+│   │   ├── useFileTree.ts        #   File tree navigation (singleton)
+│   │   ├── useMindMap.ts         #   Mind map data + undo/redo (singleton)
+│   │   ├── useArgumentMap.ts     #   Toulmin v2 graph state (singleton)
+│   │   └── useArgumentCompanion.ts # Argument Companion ledger state (singleton)
+│   ├── components/
+│   │   ├── AppTopBar.vue         #   Top bar (brand / mode switch / settings / window controls)
+│   │   ├── TranslateView.vue     #   Translation mode (upload / progress / result views)
+│   │   ├── AgentPanel.vue        #   Agent side panel (chat / library / templates / sessions)
+│   │   ├── EditorLayout.vue      #   Editor layout (~657 lines, Monaco + AiPanel + FileTree)
+│   │   ├── mindmap/              #   Mind map (Vue Flow canvas + custom nodes/edges)
+│   │   ├── ui/                   #   UI primitives (Button/Input/Panel/Tooltip…)
+│   │   └── …                     #   MonacoEditor, AiPanel, ArgumentMap, etc.
+│   ├── i18n/                     #   Internationalization (vue-i18n v11, zh-CN + en-US ~790 keys each)
+│   ├── utils/
+│   │   ├── api.ts                #   API base URL (auto-detect Tauri vs web)
+│   │   └── streamReader.ts       #   Unified SSE stream parser (6 call sites)
+│   └── types/index.ts            #   Shared TypeScript types
+├── python/                       # Python backend
+│   ├── api_factory.py            #   FastAPI app factory (core logic only)
+│   ├── routers/                  #   Route modules (split by function)
+│   │   ├── translate.py          #   Translation / config / health check routes
+│   │   ├── agent.py              #   Agent chat / RAG / tool routes
+│   │   ├── editor.py             #   Edit / export / Vision / Citation routes
+│   │   ├── argument.py           #   Argument map + Companion v3 routes
+│   │   └── mindmap.py            #   Mind map persistence + AI analysis/expand
+│   ├── src/
+│   │   ├── parser/               #   16 format parsers
+│   │   ├── cleaner/              #   17-stage cleaning pipeline
+│   │   ├── chunker/              #   3 chunking strategies (sentence/paragraph/fixed)
+│   │   ├── translator/           #   Ollama + Cloud dual-client (21 providers)
+│   │   ├── formatter/            #   3 output modes + Pandoc export
+│   │   ├── agent/                #   ReAct Agent + RAG + Tools + Skills + Memory
+│   │   ├── argument/             #   Argument Map v2 + Companion v3
+│   │   ├── plugin/               #   MCP-style plugin registry
+│   │   ├── citation/             #   Citation indexer
+│   │   ├── zotero/               #   Zotero API integration
+│   │   └── mcp/                  #   Vision client (multi-modal image analysis)
+│   ├── prompts/                  #   Academic writing prompt system (6-layer skeleton + YAML frontmatter)
+│   ├── data/paper_assets/        #   Paper templates (IEEE/ACM/NeurIPS/LNCS/Generic)
+│   └── tests/                    #   Unit + integration tests (incl. E2E companion + adversarial), pytest 2025 passed / 11 skipped
+├── config/default.yaml           #   Source-of-truth default configuration
+├── Dockerfile
+├── docker-compose.yml
+└── package.json
+```
 
 ## Download
 
@@ -55,34 +188,233 @@ Pre-built installers are available on the [Releases](https://github.com/zuowen7/
 
 > **Prerequisites**: Install [Ollama](https://ollama.com) and pull a model: `ollama pull qwen3:8b`
 
+### Docker Image
+
+```bash
+# Pull latest image
+docker pull zuowen7/scholar-assistant:latest
+
+# Start Ollama + application services
+docker compose up
+
+# Translate a document
+docker compose run app /data/input/paper.pdf -o /data/output/paper.md
+```
+
 ## Quick Start
 
 ### Prerequisites
 
-- [Ollama](https://ollama.com) + `ollama pull qwen3:8b` (local LLM)
-- Python 3.12+, Node.js 18+
-- Rust 1.80+ (for desktop builds)
+- Python 3.12+
+- [Ollama](https://ollama.ai) + Qwen3 model (`ollama pull qwen3:8b`)
+- Node.js 18+, Rust 1.80+ (for desktop development)
 
-### Run as Desktop App (Tauri)
+### Desktop App (Tauri)
 
 ```bash
 npm install
-npx tauri dev          # Starts Python API + Ollama automatically
+
+# Dev mode (auto-clears proxy env vars to prevent httpx import hang)
+start_dev.bat
+# Or manually clear proxy and run
+npx tauri dev
+
+# Production build
+npx tauri build
 ```
 
-### Run Python Backend Only
+The app auto-starts the Python API service and cleans up all subprocesses on window close.
+
+### Python Backend Only
 
 ```bash
 cd python
 pip install -r requirements.txt
-python api.py --port 18088
+ollama serve                                    # Start Ollama
+python api.py --port 18088                      # Start API server
+# Or use CLI
+python main.py paper.pdf -o paper.md
 ```
 
 ### Docker
 
 ```bash
-docker compose up
+docker compose --project-name scholar-assistant build
+
+OLLAMA_HOST=0.0.0.0:11434 ollama serve
+
+# Windows (Git Bash)
+MSYS_NO_PATHCONV=1 docker run --rm \
+  -v "$(pwd)/python/data/input:/data/input:ro" \
+  -v "$(pwd)/python/data/output:/data/output" \
+  --add-host=host.docker.internal:host-gateway \
+  scholar-assistant-app:latest \
+  /data/input/paper.pdf -o /data/output/paper.md
 ```
+
+## API Reference
+
+Translation SSE event order: `progress` → `parsed` → `cleaned` → `chunked` → `chunk_done`(×N) → `complete`
+
+### Translation
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/translate` | Upload document, returns task_id |
+| `POST` | `/api/translate/path` | Translate from file path |
+| `GET` | `/api/translate/{id}/stream` | SSE translation progress stream |
+| `GET` | `/api/download/{id}` | Download translation result |
+
+### Engine Status
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/health` | Health check |
+| `GET` | `/api/ollama/status` | Ollama status |
+| `GET` | `/api/cloud/status` | Cloud API status |
+| `GET` | `/api/cloud/providers` | List available providers |
+
+### Configuration
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/config` | Read config |
+| `PUT` | `/api/config` | Write config |
+
+### Agent & Editor
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/chat` | Agent SSE chat (ReAct loop) |
+| `POST` | `/api/agent/v2/chat` | Agent V2 SSE chat (session management) |
+| `GET` | `/api/agent/v2/sessions` | List session history |
+| `POST` | `/api/agent/v2/resume/{session_id}` | Resume session |
+| `POST` | `/api/agent/v2/approve/{session_id}/{event_id}` | Approve tool call |
+| `POST` | `/api/agent/v2/abort/{session_id}` | Abort session |
+| `POST` | `/api/agent/v2/undo/{session_id}` | Undo last step |
+| `POST` | `/api/agent/v2/tool` | Direct tool call |
+| `POST` | `/api/edit` | AI-powered SSE streaming edit |
+| `POST` | `/api/complete` | Non-streaming inline completion |
+| `GET` | `/api/agent/stats` | Agent statistics |
+
+### RAG Library
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/rag/documents` | List RAG documents |
+| `POST` | `/api/rag/upload` | Upload file to RAG |
+| `POST` | `/api/rag/ingest` | Ingest text into RAG |
+| `DELETE` | `/api/rag/documents/{doc_id}` | Delete RAG document |
+
+### Argument Map (v2)
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/argument/graph` | Create argument graph |
+| `GET` | `/api/argument/graph/{gid}` | Get argument graph |
+| `GET` | `/api/argument/graphs` | List all argument graphs |
+| `DELETE` | `/api/argument/graph/{gid}` | Delete argument graph |
+| `PUT` | `/api/argument/graph/{gid}/node` | Create/update node |
+| `DELETE` | `/api/argument/graph/{gid}/node/{nid}` | Delete node |
+| `PUT` | `/api/argument/graph/{gid}/edge` | Create/update edge |
+| `DELETE` | `/api/argument/graph/{gid}/edge/{eid}` | Delete edge |
+| `PUT` | `/api/argument/graph/{gid}/span` | Create source text binding |
+| `DELETE` | `/api/argument/graph/{gid}/span/{sid}` | Delete source text binding |
+| `POST` | `/api/argument/graph/{gid}/extract` | SSE extract Toulmin argument graph |
+| `POST` | `/api/argument/graph/{gid}/critique` | AI critique |
+| `POST` | `/api/argument/graph/{gid}/suggest` | AI suggest next element |
+| `POST` | `/api/argument/graph/{gid}/flatten` | SSE flatten to paper draft |
+
+### Writing
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/paper-assets/templates` | List paper templates |
+| `POST` | `/api/paper-assets/ingest` | Index template assets |
+| `POST` | `/api/paper-scaffold` | Generate paper outline |
+| `POST` | `/api/paper-style-transfer` | Style transfer |
+| `POST` | `/api/compliance` | Compliance check |
+
+### Export
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/export/templates` | List export templates |
+| `POST` | `/api/export` | Export document (LaTeX/PDF) |
+| `POST` | `/api/export/pdf` | Export as PDF |
+| `POST` | `/api/export/word` | Export as Word (.docx) |
+| `GET` | `/api/export/word/{filename}` | Download Word export |
+
+### Vision
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/vision/analyze` | General image analysis |
+| `POST` | `/api/vision/ocr` | OCR text extraction |
+| `POST` | `/api/vision/chart` | Chart analysis |
+| `POST` | `/api/vision/table` | Table structure extraction |
+
+### Argument Companion (v3)
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/companion/ledger/build` | SSE build claim ledger (anchor* → promise* → complete) |
+| `GET` | `/api/companion/ledger?doc_id=` | Get ledger |
+| `PUT` | `/api/companion/ledger/promise?doc_id=` | Add/update promise |
+| `DELETE` | `/api/companion/ledger/promise/{pid}?doc_id=` | Delete promise |
+| `POST` | `/api/companion/ledger/relocate?doc_id=` | Relocate all anchors after edits |
+| `POST` | `/api/companion/ledger/promise/{pid}/suggest-experiment?doc_id=` | Experiment gap suggestion |
+| `POST` | `/api/companion/review` | SSE simulated review (review_point* → complete); `mode: "parallel"` for 3-angle |
+| `GET` | `/api/companion/review/{session_id}` | Get review session |
+| `GET` | `/api/companion/reviews` | List document review history |
+| `PUT` | `/api/companion/review/{sid}/point/{pid}` | Update critique point status |
+| `POST` | `/api/companion/review/{sid}/point/{pid}/rebut` | SSE rebuttal (reviewer can be persuaded) |
+| `POST` | `/api/companion/review/import` | SSE import real review comments |
+| `GET` | `/api/companion/download/review/{session_id}` | Download rebuttal Markdown package |
+| `DELETE` | `/api/companion/review/{session_id}` | Delete review session |
+
+### Mind Map
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/mindmap/save` | Save mind map |
+| `GET` | `/api/mindmap/load` | Load mind map |
+| `DELETE` | `/api/mindmap` | Delete mind map |
+| `POST` | `/api/mindmap/analyze` | AI analyze mind map |
+| `POST` | `/api/mindmap/expand` | AI expand node |
+
+### Zotero
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/zotero/status` | Connection status |
+| `POST` | `/api/zotero/search` | Search Zotero library |
+| `GET` | `/api/zotero/item/{key}` | Get item metadata |
+| `GET` | `/api/zotero/item/{key}/bibtex` | Get BibTeX |
+| `POST` | `/api/zotero/export` | Export items to file |
+| `POST` | `/api/zotero/citations` | Extract citations |
+
+### Debugging
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/logs` | Return last N lines of backend log + log file path |
+
+### Other
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/plugins` | List registered plugin tools |
+| `GET` | `/api/tectonic/status` | LaTeX engine status |
+| `POST` | `/api/tectonic/install` | Install Tectonic |
+| `PUT` | `/api/citation/index` | Index citations |
+| `GET` | `/api/citation/extract` | Extract citations |
+| `POST` | `/api/upload/image` | Upload image |
+| `GET` | `/api/assets/{filename}` | Get asset file |
+
+## Configuration
+
+Edit `config/default.yaml`:
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `parser.engine` | pdfplumber | PDF parsing engine |
+| `chunker.max_tokens` | 800 | Max tokens per chunk (was 2048, too large caused alignment fallback) |
+| `chunker.strategy` | sentence | Chunking strategy |
+| `translator.engine` | cloud | Translation engine: ollama / cloud |
+| `translator.model` | qwen3:8b | Ollama model |
+| `translator.temperature` | 0.3 | Generation temperature |
+| `translator.timeout` | 300 | Translation timeout (seconds) |
+| `formatter.output_format` | bilingual | Output format |
+| `agent.enabled` | true | Whether Agent is enabled |
+| `rag.enabled` | true | Whether RAG is enabled (local only) |
+| `features.parallel_review` | false | 3-angle parallel review (enable in `default.local.yaml`) |
 
 ## Architecture
 
@@ -130,8 +462,8 @@ A unique feature not found in any other academic tool:
 ## Testing
 
 ```
-Python:  1815 tests passed / 11 skipped  (pytest)
-Frontend: 347 tests passed / 27 files    (vitest)
+Python:  2025 tests passed / 11 skipped  (pytest)
+Frontend: 393 tests passed / 32 files    (vitest)
 ```
 
 ```bash

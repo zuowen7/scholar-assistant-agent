@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Scholar Assistant — privacy-first academic AI writing assistant (v0.3.2, single source `python/src/_version.py`). Core paradigm: **"Claude Code for papers"** — Agent directly reads/writes workspace files (PDF/drafts/bib/data) like Claude Code edits source code. Translates PDFs with DeepL-like experience (parse -> clean -> chunk -> translate -> format via SSE), provides an AI editor (Monaco + Agent chat with workspace file tools), and exports to LaTeX/Word. Runs as desktop app (Tauri manages Python + Ollama subprocesses) or standalone Python API.
+Scholar Assistant — privacy-first academic AI writing assistant (v0.3.3, single source `python/src/_version.py`). Core paradigm: **"Claude Code for papers"** — Agent directly reads/writes workspace files (PDF/drafts/bib/data) like Claude Code edits source code. Translates PDFs with DeepL-like experience (parse -> clean -> chunk -> translate -> format via SSE), provides an AI editor (Monaco + Agent chat with workspace file tools), and exports to LaTeX/Word. Runs as desktop app (Tauri manages Python + Ollama subprocesses) or standalone Python API.
 
 ## Build Commands
 
@@ -326,3 +326,15 @@ Agent 工具指导全 provider 覆盖 (2026-05-30)：
 - `prompt_builder.py` — `_get_model_guide` 对未匹配 `_MODEL_TOOL_GUIDES` 的模型不再返回空字符串，改为返回 `_DEFAULT_TOOL_GUIDE`（6 条通用指导：拒绝推脱、必须真调工具、不要编造路径、信息够就停）。此前仅 qwen/gpt/deepseek/gemini 四族模型有专属指导，其余 17 个 provider 的所有模型（moonshot、glm、llama、grok、mistral、sonar、doubao、ernie 等）拿到空指导，导致 Agent 拒绝执行工具调用
 - 新增测试：`test_prompt_builder.py` 新增 17 个参数化测试覆盖全部未匹配模型 + 验证已知模型仍返回特定指导
 - 验证：1815 pytest passed / 11 skipped；347 vitest passed
+
+中英双语 UI 全覆盖 (2026-05-31)：
+- **问题**：20+ 组件有硬编码中文字符串，切换到英文后显示不一致或 block UI（如 vue-i18n `@` 解析崩溃导致 AiPanel 完全打不开）
+- **修复**：
+  - 两个 locale 文件各新增 ~20 个 i18n key（editor/argument/aiPanel/files 分段）
+  - 替换 20+ 组件中的硬编码中文为 `t()` 调用：EditorToolbar（12处）、CompanionPanel（10处）、ComplianceModal（12处）、AiPanel（8处）、ArgEdge/ArgNodeCard（各6处）、LedgerList（5处）、MonacoEditor（3处，含新增 `useI18n` 导入）及其他 14 个文件
+  - **vue-i18n `@` 崩溃**：locale 文件中 `@` 被 vue-i18n 解析为 linked message 修饰符 → `Invalid linked format` → AiPanel 整个组件崩溃。修复方案：locale 用 `{atChar}` 占位 + 组件传参 `{ atChar: '@' }`，配合 `v-html` 渲染 `<code>` 标签
+  - **UiDropdown 竞态条件**：导出 PDF 时 `onClick` 先触发 `exportLoading = true`（Vue 重渲染）→ `close()` 再卸载 popover → `Cannot read properties of null (reading 'emitsOptions')`。修复方案：调换顺序 `close(), nextTick(() => onClick?.())`
+- **后端**：argument/mindmap Python 默认值中译英（`"未命名论证图"` → `"Untitled Argument Map"`）
+- **构建**：release.yml 改用 `requirements-lock.txt` 可复现构建；版本号 0.3.2 → 0.3.3（7 个文件同步）
+- **自定义背景修复**：release 构建中 `convertFileSrc`（asset protocol）失效 → 改用 `readFile` + base64 data URL，绕过 CSP/asset protocol 限制；`fs:allow-read-file` 权限补 `$PICTURE/**` / `$VIDEO/**`
+- 验证：2025 pytest passed / 11 skipped；393 vitest passed / 32 files
