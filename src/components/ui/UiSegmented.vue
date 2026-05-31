@@ -74,6 +74,10 @@ function recalc() {
 
 onMounted(recalc)
 watch(() => props.modelValue, recalc)
+watch(() => props.options, () => {
+  indicatorReady.value = false
+  nextTick(recalc)
+}, { deep: true })
 </script>
 
 <style scoped>
