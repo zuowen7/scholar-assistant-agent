@@ -599,7 +599,7 @@ async function sendMessage() {
   let fullMsg = text
   if (files.value.length) {
     const pathList = files.value.map(f => `- ${f.path}`).join('\n')
-    fullMsg = `${text}\n\n[附件文件，请用 read_file 工具读取：\n${pathList}]`
+    fullMsg = `${text}\n\n[${t('agent.attachedFilesHint')}\n${pathList}]`
     files.value = []
   }
 

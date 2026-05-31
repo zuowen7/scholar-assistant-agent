@@ -207,7 +207,8 @@
     "noSessions": "No sessions yet",
     "resume": "Resume →",
     "refreshTemplates": "Refresh",
-    "createFromThisTemplate": "Create from this template"
+    "createFromThisTemplate": "Create from this template",
+    "attachedFilesHint": "Attached files — please use read_file tool to read:"
   },
   "aiPanel": {
     "title": "AI Chat",
