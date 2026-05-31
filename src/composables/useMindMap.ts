@@ -151,6 +151,8 @@ export function markdownToMindMapNodes(md: string): MindMapTreeNode | null {
 
   // Collect body lines between headings for each node
   const bodyLines: string[] = []
+  // Collect lines before the first heading
+  const preHeadingLines: string[] = []
 
   for (const line of lines) {
     const trimmed = line.trim()
@@ -175,6 +177,11 @@ export function markdownToMindMapNodes(md: string): MindMapTreeNode | null {
 
       if (stack.length === 0) {
         if (!root) {
+          // First heading: use any preceding text as the root body
+          if (preHeadingLines.length > 0) {
+            node.body = preHeadingLines.join('\n').trim()
+            preHeadingLines.length = 0
+          }
           root = node
         } else {
           root.children.push(node)
@@ -184,11 +191,26 @@ export function markdownToMindMapNodes(md: string): MindMapTreeNode | null {
       }
       stack.push(node)
     } else {
-      // Non-heading line: accumulate as potential body for current stack top
       if (stack.length > 0 && trimmed !== '') {
         bodyLines.push(trimmed)
+      } else if (!root && trimmed !== '') {
+        // Text before any heading — save for root body
+        preHeadingLines.push(trimmed)
       }
     }
+  }
+
+  // If we have pre-heading text but never found a heading, return null
+  // (caller handles this by creating a root with full text as body)
+  if (!root && preHeadingLines.length > 0) return null
+
+  // If we have pre-heading text with a root, append to root body
+  if (root && preHeadingLines.length > 0) {
+    const extra = preHeadingLines.join('\n').trim()
+    if (extra) {
+      root.body = root.body ? root.body + '\n' + extra : extra
+    }
+    preHeadingLines.length = 0
   }
 
   // Flush remaining body lines
