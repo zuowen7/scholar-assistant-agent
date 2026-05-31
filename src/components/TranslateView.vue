@@ -843,8 +843,9 @@ function openFilePicker() {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  flex-shrink: 0;
+  flex-shrink: 1;
   padding-left: var(--space-5);
+  max-width: 55%;
 }
 
 /* Ink brush stroke decoration above title */
@@ -885,6 +886,8 @@ function openFilePicker() {
   letter-spacing: var(--tracking-display);
   line-height: var(--leading-display);
   margin: 0;
+  white-space: normal;
+  word-break: break-word;
   text-shadow:
     0 0 40px rgba(91, 108, 255, 0.18),
     0 2px 4px rgba(0, 0, 0, 0.4);
