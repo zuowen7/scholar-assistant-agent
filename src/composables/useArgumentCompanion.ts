@@ -141,6 +141,8 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
 
 async function getLedger(): Promise<void> {
   if (!state.docId) return
+  // Skip untitled docs — no file path yet, ledger always 404s
+  if (state.docId.startsWith('untitled-')) return
   try {
     const resp = await fetch(`${API_BASE}/api/companion/ledger?doc_id=${encodeURIComponent(state.docId)}`)
     if (!resp.ok) {
@@ -202,6 +204,7 @@ async function relocate(text: string): Promise<void> {
 
 async function listReviews(): Promise<void> {
   if (!state.docId) return
+  if (state.docId.startsWith('untitled-')) return
   try {
     const resp = await fetch(`${API_BASE}/api/companion/reviews?doc_id=${encodeURIComponent(state.docId)}`)
     if (!resp.ok) return
