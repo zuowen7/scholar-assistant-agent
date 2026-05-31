@@ -170,6 +170,9 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { useToast } from './composables/useToast'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+
 import { useTranslate } from './composables/useTranslate'
 import { checkForUpdate } from './composables/useUpdateChecker'
 import { useEditor } from './composables/useEditor'
