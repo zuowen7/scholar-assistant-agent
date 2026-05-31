@@ -1,0 +1,92 @@
+# Changelog
+
+## [0.3.5] — 2026-05-31
+
+### Fixed
+- CI: Ollama tests skip gracefully when service unavailable; RAG tests accept 503 when ChromaDB missing
+- CI: Regenerate `requirements-lock.txt` with ChromaDB + NumPy + transitive deps
+- CI: Add NumPy to requirements for test job
+- CI: Opt into Node.js 24 for GitHub Actions runtime
+
+## [0.3.3] — 2026-05-31
+
+### Added
+- **Bilingual UI** (zh-CN / en-US) via vue-i18n — full coverage across 20+ components, switchable from settings panel
+- **Update notifications** — checks GitHub Releases on startup, shows toast when new version available
+- 149 new integration tests covering 60+ previously untested routes
+
+### Fixed
+- vue-i18n `@` linked message parsing crash (AiPanel completely broken in English mode)
+- UiDropdown race condition: `close()` + `onClick()` ordering caused Vue null reference on export PDF
+- Background image not working in release builds (switched from `convertFileSrc` to `readFile` + base64 data URL)
+- Multiple i18n import and `t()` call omissions across components
+
+## [0.3.2] — 2026-05-30
+
+### Fixed
+- Agent: unknown models now return default tool guidance — covers all 21 providers (previously only Qwen/GPT/DeepSeek/Gemini had guides; others returned empty string, causing Agent to refuse tool execution)
+- 17 new parametrized tests for prompt builder model coverage
+
+## [0.3.1] — 2026-05-24
+
+### Added
+- **Mind map node body** — each node has expandable body text (▸ toggle); heading = title, paragraph = body
+- **Editor ↔ mind map bidirectional sync** — editor parses heading + body into nodes; mind map preserves full content on export back
+- PDF export: strip `---` horizontal rules and escape bare `&` to prevent LaTeX errors
+
+## [0.3.0] — 2026-05-23
+
+This is a major release — the "Claude Code for Papers" pivot.
+
+### Added
+- **Agent workspace file tools** — open a project folder; Agent calls `read_file / grep_files / str_replace / write_file / git_op` directly; editor tabs reload mid-stream after each write; PDF/Word/EPUB auto-parsed
+- **Document QA short-circuit** — open a document, ask questions → single-shot LLM streaming (no ReAct loop); only explicit file-modification intent triggers full Agent
+- **Workspace boundary & approval** — file ops locked to project root; out-of-scope triggers approval popup (Allow once / Allow session / Deny)
+- **Claim Ledger** — auto-extract promises from abstract/intro, track paid/partial/unpaid/mismatch per promise, 3-state fuzzy anchor relocation
+- **Reviewer-2 adversary** — 7 conference-calibrated reviews + rebuttal mini-chat (reviewer can be persuaded) + real review import + experiment gap suggestions
+- **3-angle parallel review** — method/experiment/writing perspectives reviewed concurrently with auto dedup (feature flag `parallel_review`)
+- **Mind map** — Vue Flow canvas, AI expand, AI analysis, dagre auto-layout, keyboard shortcuts, undo/redo
+- **Argument Map v2** — Toulmin nodes/edges on Vue Flow, AI extraction SSE, critique, suggest, flatten to draft
+- **Debug panel** — frontend error history ring buffer + backend log viewer in top bar
+- **File logging** — rotating 10 MB × 5 backups, trace_id per request, access logging
+
+### Changed
+- Default translation engine changed from Ollama to cloud
+- Agent greeting/闲聊 no longer triggers tool loop — direct LLM response
+- AI Panel polish/expand/review preset buttons now use `/api/edit` (one-shot streaming) instead of Agent ReAct loop
+- RAG demoted to on-demand `search_documents` tool (no longer auto-injected per turn)
+
+### Fixed
+- Translation: block alignment failures, QA false positives (max_words 30→45), prompt leaking into output, `max_tokens` 2048→800
+- Agent: infinite loops eliminated (step limits, per-tool counters, force-stop mechanism, DeepSeek 400 circuit breaker)
+- Companion: ledger anchor events actually emitted (was missing), discharge fuzzy relocation, rebuttal truncation (512→2048), export download
+- Argument: ledger routes use `?doc_id=` query param (was 404 on paths containing `/`)
+- CSS: undefined variables in LedgerList/CompanionPanel fixed for light theme readability
+- Build: PyInstaller uses `python -m PyInstaller`, packages Pandoc/Tectonic/embedding model, `start_dev.bat` clears proxy env vars
+
+### Removed
+- Deprecated tools: `polish_text`, `summarize_text`, `expand_section`, `generate_outline` (93 lines)
+- Old tree-based argument map (replaced by v2 Toulmin graph)
+
+## [0.2.x] — 2026-05
+
+- Agent ReAct engine (Phase 0–3): streaming tool calls, context compression, Skill three-layer decomposition, Memory dedup
+- SmartPause, memory time decay, session lesson learning
+- Translation prompt externalization: 7 section partials + `_prompt_loader.py`
+- 6-layer Prompt skeleton + eval framework (`PromptSpec`)
+- Multi-provider cloud translation (21 providers)
+- Zotero integration, MCP Vision, citation indexer
+- Word export, PPTX export
+- Docker deployment
+- Dark/light theme with design token system
+
+## [0.1.x] — 2026-04
+
+- PDF translation pipeline (parse → clean → chunk → translate → format)
+- Ollama local translation
+- Bilingual side-by-side view with sentence-level hover highlighting
+- Basic Monaco editor with ghost text completion
+- Tauri 2 desktop shell with process management
+- PyInstaller packaging for Windows installer
+- NSIS installer with WebView2 bootstrapper
+- GitHub Actions CI/CD

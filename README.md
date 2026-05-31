@@ -1,8 +1,8 @@
 # Scholar Assistant
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-0.3.3-brightgreen)](https://github.com/zuowen7/scholar-assistant/releases)
-[![Test](https://img.shields.io/badge/tests-2025%20passed-success)](https://github.com/zuowen7/scholar-assistant/actions)
+[![CI](https://github.com/zuowen7/scholar-assistant/actions/workflows/release.yml/badge.svg)](https://github.com/zuowen7/scholar-assistant/actions)
+[![Version](https://img.shields.io/badge/version-0.3.5-brightgreen)](https://github.com/zuowen7/scholar-assistant/releases)
 
 **English** | [中文](./README_zh.md)
 
