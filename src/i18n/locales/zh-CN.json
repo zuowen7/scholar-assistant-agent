@@ -207,7 +207,8 @@
     "noSessions": "暂无历史会话",
     "resume": "恢复 →",
     "refreshTemplates": "刷新",
-    "createFromThisTemplate": "以此为模板新建"
+    "createFromThisTemplate": "以此为模板新建",
+    "attachedFilesHint": "附件文件，请用 read_file 工具读取："
   },
   "aiPanel": {
     "title": "AI 对话",
