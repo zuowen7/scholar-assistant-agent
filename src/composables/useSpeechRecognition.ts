@@ -9,7 +9,6 @@ function getSpeechRecognition(): SpeechRecognition | null {
 }
 
 export interface SpeechRecognitionOptions {
-  /** Fires on every result update (interim + final accumulated text) */
   onResult?: (text: string) => void
 }
 
@@ -18,11 +17,13 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
   const interimText = ref('')
   const error = ref('')
   let recognition: SpeechRecognition | null = null
+  let accumulatedFinal = ''
 
   function start(lang = 'zh-CN') {
     if (status.value === 'listening') return
     error.value = ''
     interimText.value = ''
+    accumulatedFinal = ''
 
     const sr = getSpeechRecognition()
     if (!sr) {
@@ -45,17 +46,18 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
     }
 
     sr.onresult = (e) => {
-      let final = ''
+      let newFinal = ''
       let interim = ''
-      for (let i = 0; i < e.results.length; i++) {
+      for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i]
         if (r.isFinal) {
-          final += r[0].transcript
+          newFinal += r[0].transcript
         } else {
           interim += r[0].transcript
         }
       }
-      const text = final + interim
+      if (newFinal) accumulatedFinal += newFinal
+      const text = accumulatedFinal + interim
       interimText.value = text
       options?.onResult?.(text)
     }
