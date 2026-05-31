@@ -67,6 +67,7 @@
 
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { API_BASE } from '../utils/api'
 
 const props = defineProps<{ visible: boolean; isDark?: boolean }>()
