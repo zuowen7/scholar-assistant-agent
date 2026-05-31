@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import logging
-import re
 from typing import Any
 
 from .models_v2 import ArgGraph, ArgIssue
+from src.utils.json_extract import extract_json_array
 
 logger = logging.getLogger(__name__)
 
@@ -149,10 +148,9 @@ async def llm_critique(
         )
         if not raw.strip():
             return []
-        m = re.search(r"\[.*\]", raw, re.DOTALL)
-        if not m:
+        items = extract_json_array(raw)
+        if items is None:
             return []
-        items = json.loads(m.group())
         node_ids = {n.id for n in graph.nodes}
         result: list[ArgIssue] = []
         for item in items:

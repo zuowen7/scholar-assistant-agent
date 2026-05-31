@@ -14,6 +14,7 @@ from src.agent._llm_helpers import (
     _safe_response_text,
     messages_to_anthropic,
 )
+from src.constants import ANTHROPIC_API_VERSION
 
 
 class AnthropicMixin:
@@ -29,6 +30,7 @@ class AnthropicMixin:
         payload: dict = {
             "model": self.effective_model,  # type: ignore[attr-defined]
             "max_tokens": self.num_predict,  # type: ignore[attr-defined]
+            "temperature": self.temperature,  # type: ignore[attr-defined]
             "messages": anthropic_msgs,
         }
         if system_text:
@@ -39,7 +41,7 @@ class AnthropicMixin:
         headers = {
             "Content-Type": "application/json",
             "x-api-key": self.cloud_api_key,  # type: ignore[attr-defined]
-            "anthropic-version": "2023-06-01",
+            "anthropic-version": ANTHROPIC_API_VERSION,
         }
 
         try:
@@ -72,6 +74,7 @@ class AnthropicMixin:
         payload: dict = {
             "model": self.effective_model,  # type: ignore[attr-defined]
             "max_tokens": self.num_predict,  # type: ignore[attr-defined]
+            "temperature": self.temperature,  # type: ignore[attr-defined]
             "messages": anthropic_msgs,
             "stream": True,
         }
@@ -83,7 +86,7 @@ class AnthropicMixin:
         headers = {
             "Content-Type": "application/json",
             "x-api-key": self.cloud_api_key,  # type: ignore[attr-defined]
-            "anthropic-version": "2023-06-01",
+            "anthropic-version": ANTHROPIC_API_VERSION,
         }
 
         full_content = ""

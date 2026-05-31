@@ -55,8 +55,8 @@
                 <path d="M12 16V8m0 0l-3 3m3-3l3 3"/>
               </svg>
             </div>
-            <p class="drag-label">松开以开始翻译</p>
-            <p class="drag-hint">支持 PDF、Word、TXT、Markdown 等格式</p>
+            <p class="drag-label">{{ t('app.dragToTranslate') }}</p>
+            <p class="drag-hint">{{ t('app.dragFormats') }}</p>
           </div>
         </div>
       </Transition>
@@ -76,6 +76,9 @@
         :ollama-ok="ollamaOk"
         :ollama-loading="ollamaLoading"
         :ollama-error="ollamaError"
+        :ollama-model="ollamaModel"
+        :ollama-models="ollamaModels"
+        :ollama-models-loading="ollamaModelsLoading"
         :tectonic-ok="tectonicOk"
         :tectonic-checking="tectonicChecking"
         :bg-settings="bgSettings"
@@ -88,6 +91,8 @@
         @update:proxy-url="proxyUrl = $event"
         @toggle-theme="toggleTheme($event)"
         @toggle-ollama="toggleOllama"
+        @refresh-ollama-models="refreshOllamaModels"
+        @update:ollama-model="ollamaModel = $event"
         @handle-tectonic="handleTectonic"
         @save-engine-settings="saveEngineSettings"
         @test-cloud="testCloudConnection"
@@ -109,10 +114,10 @@
       <!-- Translation recovery banner -->
       <Transition name="v-slide-up">
         <div v-if="showRecoveryBanner" class="recovery-banner">
-          <span class="recovery-text">检测到上次未关闭的翻译结果</span>
+          <span class="recovery-text">{{ t('app.recoveryBanner') }}</span>
           <div class="recovery-actions">
-            <UiButton variant="primary" size="sm" @click="showRecoveryBanner = false; appMode = 'translate'">恢复查看</UiButton>
-            <UiButton variant="ghost" size="sm" @click="showRecoveryBanner = false; discardPersisted()">丢弃</UiButton>
+            <UiButton variant="primary" size="sm" @click="showRecoveryBanner = false; appMode = 'translate'">{{ t('app.recoveryView') }}</UiButton>
+            <UiButton variant="ghost" size="sm" @click="showRecoveryBanner = false; discardPersisted()">{{ t('app.recoveryDiscard') }}</UiButton>
           </div>
         </div>
       </Transition>
@@ -150,7 +155,7 @@
         v-if="appBootLoading"
         overlay
         size="large"
-        text="正在整理思路..."
+        :text="t('app.thinking')"
       />
     </Transition>
   </div>
@@ -164,6 +169,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useToast } from './composables/useToast'
 import { convertFileSrc } from '@tauri-apps/api/core'
+import { useI18n } from 'vue-i18n'
 import { useTranslate } from './composables/useTranslate'
 import { checkForUpdate } from './composables/useUpdateChecker'
 import { useEditor } from './composables/useEditor'
@@ -177,7 +183,7 @@ import UiToast from './components/ui/UiToast.vue'
 import type { AppMode } from './types'
 import { API_BASE } from './utils/api'
 
-const { state, translate, translateFromPath, cleanup, checkHealth, checkOllama, startOllama, checkCloudApi, getConfig, updateConfig, getProviderPresets, restartBackend, listenBackendCrash, setStatus, setError, setStepMessage, recoverTranslation, discardPersisted } = useTranslate()
+const { state, translate, translateFromPath, cleanup, checkHealth, checkOllama, startOllama, checkCloudApi, getConfig, updateConfig, getProviderPresets, fetchOllamaModels, restartBackend, listenBackendCrash, setStatus, setError, setStepMessage, recoverTranslation, discardPersisted } = useTranslate()
 const { pushError } = useToast()
 
 // ── 应用模式 ──────────────────────────────────────────────────
@@ -259,6 +265,11 @@ const cloudConfig = ref({
   max_tokens: 16384,
 })
 const providerPresets = ref<Record<string, { name: string; base_url: string; models: string[] }>>({})
+
+const ollamaModel = ref('qwen3:8b')
+const ollamaModels = ref<string[]>([])
+const ollamaModelsLoading = ref(false)
+
 const proxyUrl = ref('')
 
 // --- 窗口控制 ---
@@ -419,15 +430,15 @@ async function pickBackground() {
       multiple: false,
       filters: [
         {
-          name: '图片与视频',
+          name: t('app.imageAndVideo'),
           extensions: [
             'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg',
             'mp4', 'webm', 'mkv', 'avi', 'mov',
           ],
         },
-        { name: '图片', extensions: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'] },
-        { name: '视频', extensions: ['mp4', 'webm', 'mkv', 'avi', 'mov'] },
-        { name: '所有文件', extensions: ['*'] },
+        { name: t('app.image'), extensions: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'] },
+        { name: t('app.video'), extensions: ['mp4', 'webm', 'mkv', 'avi', 'mov'] },
+        { name: t('app.allFiles'), extensions: ['*'] },
       ],
     })
     if (!selected) return
@@ -447,7 +458,7 @@ async function pickBackground() {
     saveBgSettings()
   } catch (err) {
     // Show error to user - might be browser mode or permission issue
-    pushError('背景选择失败，请确保在 Tauri 桌面版中使用')
+    pushError(t('app.bgPickFailed'))
   }
 }
 
@@ -539,7 +550,7 @@ onMounted(async () => {
       healthOk.value = await checkHealth()
       // 后端从在线变为离线且非用户主动关闭 → 提示重启
       if (prev && !healthOk.value) {
-        setError('Python 后端已离线，请点击「重启后端」')
+        setError(t('app.backendOffline'))
       }
       if (engineType.value === 'ollama') {
         ollamaOk.value = await checkOllama()
@@ -628,6 +639,17 @@ async function toggleOllama() {
   }
 }
 
+async function refreshOllamaModels() {
+  ollamaModelsLoading.value = true
+  try {
+    ollamaModels.value = await fetchOllamaModels()
+  } catch {
+    ollamaModels.value = []
+  } finally {
+    ollamaModelsLoading.value = false
+  }
+}
+
 // --- Tectonic (LaTeX) ---
 
 async function checkTectonic() {
@@ -646,7 +668,7 @@ function handleTectonic() {
   if (tectonicOk.value) return
   tectonicChecking.value = true
   fetch(`${API_BASE}/api/tectonic/install`, { method: 'POST' })
-    .then(r => r.ok ? r.json() : r.json().then(d => Promise.reject(d.detail || '安装失败')))
+    .then(r => r.ok ? r.json() : r.json().then(d => Promise.reject(d.detail || t('app.installFailed'))))
     .then(data => {
       tectonicOk.value = data.success !== false
       if (data.version) {
@@ -671,6 +693,7 @@ async function loadEngineSettings() {
   if (config?.translator) {
     const t = config.translator
     engineType.value = (t.engine as 'ollama' | 'cloud') || 'ollama'
+    if (t.model) ollamaModel.value = t.model
     if (t.cloud) {
       const provider = t.cloud.provider || 'openai'
       const preset = providerPresets.value[provider]
@@ -691,7 +714,7 @@ async function loadEngineSettings() {
 
 async function saveEngineSettings() {
   await updateConfig({
-    translator: { engine: engineType.value },
+    translator: { engine: engineType.value, model: ollamaModel.value },
     cloud: { ...cloudConfig.value },
   })
   // If switched to cloud, check connectivity
@@ -736,14 +759,14 @@ async function testCloudConnection() {
 }
 
 async function handleRestartBackend() {
-  setStepMessage('正在重启后端...')
+  setStepMessage(t('app.restartingBackend'))
   setStatus('uploading')
   const ok = await restartBackend()
   if (ok) {
     healthOk.value = true
     setStatus('idle')
   } else {
-    setError('后端重启失败，请手动检查 Python 环境')
+    setError(t('app.restartFailed'))
   }
 }
 </script>

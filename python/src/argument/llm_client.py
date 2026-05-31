@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from src.constants import ANTHROPIC_API_VERSION
+
 logger = logging.getLogger(__name__)
 
 
@@ -63,10 +65,10 @@ async def _direct_cloud_chat(
     if api_format == "anthropic":
         headers = {
             "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
+            "anthropic-version": ANTHROPIC_API_VERSION,
             "content-type": "application/json",
         }
-        payload = {"model": model, "max_tokens": max_tokens, "messages": messages}
+        payload = {"model": model, "max_tokens": max_tokens, "temperature": temperature, "messages": messages}
         url = f"{base_url}/v1/messages"
     else:
         headers = {
@@ -83,7 +85,11 @@ async def _direct_cloud_chat(
             resp.raise_for_status()
             data = resp.json()
         if api_format == "anthropic":
-            return data.get("content", [{}])[0].get("text", ""), "", ""
+            text = "".join(
+                b.get("text", "") for b in data.get("content", [])
+                if b.get("type") == "text"
+            )
+            return text, "", ""
         msg = data.get("choices", [{}])[0].get("message", {})
         finish = data.get("choices", [{}])[0].get("finish_reason", "")
         return msg.get("content", ""), msg.get("reasoning_content", ""), finish

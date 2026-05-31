@@ -16,6 +16,8 @@ import logging
 from pathlib import Path
 from typing import Literal
 
+from src.constants import ANTHROPIC_API_VERSION
+
 logger = logging.getLogger(__name__)
 
 # 支持的图片格式
@@ -274,7 +276,7 @@ class VisionClient:
         analysis_type: str,
     ) -> VisionResult:
         """使用 Claude Vision API 分析"""
-        base_url, api_key, _ = self._get_credentials()
+        base_url, api_key, model = self._get_credentials()
         image_b64 = self._encode_image(image_path)
 
         prompts = {
@@ -295,11 +297,11 @@ class VisionClient:
                     f"{base_url}/messages",
                     headers={
                         "x-api-key": api_key,
-                        "anthropic-version": "2023-06-01",
+                        "anthropic-version": ANTHROPIC_API_VERSION,
                         "Content-Type": "application/json",
                     },
                     json={
-                        "model": "claude-3-opus-20240229",
+                        "model": model,
                         "max_tokens": 2048,
                         "messages": [
                             {
@@ -332,11 +334,11 @@ class VisionClient:
                     f"{base_url}/messages",
                     headers={
                         "x-api-key": api_key,
-                        "anthropic-version": "2023-06-01",
+                        "anthropic-version": ANTHROPIC_API_VERSION,
                         "Content-Type": "application/json",
                     },
                     json={
-                        "model": "claude-3-opus-20240229",
+                        "model": model,
                         "max_tokens": 2048,
                         "messages": [
                             {

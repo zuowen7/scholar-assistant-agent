@@ -4,6 +4,8 @@ import difflib
 import json
 import logging
 import re
+
+from src.utils.json_extract import extract_json_object
 from typing import Any, AsyncIterator
 
 from .graph_store import ArgGraphStore
@@ -90,23 +92,20 @@ async def extract_argument(
     # Parse — retry once with a stricter prompt on failure
     parsed: dict | None = None
     for attempt in range(2):
-        try:
-            m = re.search(r"\{[\s\S]*\}", raw)
-            if m:
-                parsed = json.loads(m.group())
+        parsed = extract_json_object(raw)
+        if parsed is not None:
             break
-        except (json.JSONDecodeError, ValueError):
-            if attempt == 0:
-                try:
-                    raw = await call_llm_chat(
-                        f"请只输出有效的 JSON 对象，不要任何解释文字：\n{raw[:500]}",
-                        cloud_client,
-                        ollama_client,
-                        max_tokens=16384,
-                        temperature=0.1,
-                    )
-                except Exception:
-                    break
+        if attempt == 0:
+            try:
+                raw = await call_llm_chat(
+                    f"请只输出有效的 JSON 对象，不要任何解释文字：\n{raw[:500]}",
+                    cloud_client,
+                    ollama_client,
+                    max_tokens=16384,
+                    temperature=0.1,
+                )
+            except Exception:
+                break
 
     if not parsed:
         yield {"event": "error", "data": json.dumps({"message": "LLM 未返回有效 JSON，请重试"})}
@@ -239,11 +238,9 @@ async def suggest_element(
         raw = await call_llm_chat(
             prompt, cloud_client, ollama_client, max_tokens=512, temperature=0.7
         )
-        m = re.search(r"\{[\s\S]*\}", raw)
-        if not m:
+        data = extract_json_object(raw)
+        if not data:
             return {"candidates": [], "suggested_edges": []}
-
-        data = json.loads(m.group())
         candidates = [
             {
                 "local_id": c.get("local_id", ""),

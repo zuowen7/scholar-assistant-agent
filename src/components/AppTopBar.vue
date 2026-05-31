@@ -25,52 +25,52 @@
       <!-- Status dot + engine chip -->
       <UiPopover ref="statusPopoverRef" :width="300" align="end" :offset="8">
         <template #trigger>
-          <button class="status-trigger" :class="overallStatus" title="服务状态" aria-label="服务状态">
+          <button class="status-trigger" :class="overallStatus" :title="t('topbar.serviceStatus')" :aria-label="t('topbar.serviceStatus')">
             <span class="status-dot" />
-            <span class="status-label">{{ engineType === 'ollama' ? 'Ollama' : '云端' }}</span>
+            <span class="status-label">{{ engineType === 'ollama' ? 'Ollama' : t('topbar.cloud') }}</span>
           </button>
         </template>
         <div class="status-popover">
           <div class="sp-header">
-            <span class="sp-title">服务状态</span>
+            <span class="sp-title">{{ t('topbar.serviceStatus') }}</span>
           </div>
 
           <div class="status-rows">
             <div class="status-row">
               <span class="sr-dot" :class="healthOk ? 'ok' : 'off'" />
-              <span class="sr-label">后端</span>
-              <span class="sr-state">{{ healthOk ? '在线' : '离线' }}</span>
+              <span class="sr-label">{{ t('topbar.backend') }}</span>
+              <span class="sr-state">{{ healthOk ? t('status.online') : t('status.offline') }}</span>
             </div>
             <template v-if="engineType === 'ollama'">
               <div class="status-row">
                 <span class="sr-dot" :class="ollamaOk ? 'ok' : 'off'" />
                 <span class="sr-label">Ollama</span>
                 <span class="sr-state">
-                  <template v-if="ollamaLoading">启动中…</template>
-                  <template v-else>{{ ollamaOk ? '在线' : '离线' }}</template>
+                  <template v-if="ollamaLoading">{{ t('status.starting') }}</template>
+                  <template v-else>{{ ollamaOk ? t('status.online') : t('status.offline') }}</template>
                 </span>
-                <UiButton v-if="!ollamaOk && !ollamaLoading" variant="ghost" size="sm" @click="$emit('toggle-ollama')">启动</UiButton>
+                <UiButton v-if="!ollamaOk && !ollamaLoading" variant="ghost" size="sm" @click="$emit('toggle-ollama')">{{ t('topbar.start') }}</UiButton>
               </div>
             </template>
             <template v-else>
               <div class="status-row">
                 <span class="sr-dot" :class="cloudOk ? 'ok' : 'off'" />
-                <span class="sr-label">云端 API</span>
-                <span class="sr-state">{{ cloudOk ? '已连接' : '未连接' }}</span>
+                <span class="sr-label">{{ t('settings.cloudApi') }}</span>
+                <span class="sr-state">{{ cloudOk ? t('status.connected') : t('status.disconnected') }}</span>
               </div>
             </template>
             <div class="status-row">
               <span class="sr-dot" :class="tectonicOk ? 'ok' : 'off'" />
               <span class="sr-label">LaTeX</span>
-              <span class="sr-state">{{ tectonicChecking ? '检测…' : tectonicOk ? '就绪' : '未安装' }}</span>
-              <UiButton v-if="!tectonicOk && !tectonicChecking" variant="ghost" size="sm" @click="$emit('handle-tectonic')">安装</UiButton>
+              <span class="sr-state">{{ tectonicChecking ? t('status.detecting') : tectonicOk ? t('status.ready') : t('status.notInstalled') }}</span>
+              <UiButton v-if="!tectonicOk && !tectonicChecking" variant="ghost" size="sm" @click="$emit('handle-tectonic')">{{ t('topbar.install') }}</UiButton>
             </div>
           </div>
 
           <div class="sp-divider" />
 
           <!-- Engine switch inside popover -->
-          <div class="sp-section-label">翻译引擎</div>
+          <div class="sp-section-label">{{ t('settings.engineLabel') }}</div>
           <UiSegmented
             :model-value="engineType"
             :options="engineOptions"
@@ -89,7 +89,7 @@
           <button
             class="topbar-icon-btn"
             :class="{ active: settingsPopoverOpen }"
-            title="设置"
+            :title="t('topbar.settings')"
           >
             <Settings :size="15" :stroke-width="1.6" />
           </button>
@@ -97,7 +97,7 @@
 
         <div class="settings-popover">
           <div class="sp-header">
-            <span class="sp-title">设置</span>
+            <span class="sp-title">{{ t('topbar.settings') }}</span>
           </div>
           <UiSegmented
             v-model="settingsTab"
@@ -107,9 +107,20 @@
             class="sp-tabs"
           />
 
+          <div class="sp-lang-row">
+            <label class="sp-label">{{ t('settings.language') }}</label>
+            <UiSelect
+              :model-value="currentLocale"
+              @update:model-value="setLocale($event as any)"
+            >
+              <option value="zh-CN">简体中文</option>
+              <option value="en-US">English</option>
+            </UiSelect>
+          </div>
+
           <!-- Engine tab -->
           <div v-show="settingsTab === 'engine'" class="sp-body">
-            <div class="sp-section-label">翻译引擎</div>
+            <div class="sp-section-label">{{ t('settings.engineLabel') }}</div>
             <UiSegmented
               :model-value="engineType"
               :options="engineOptions"
@@ -119,9 +130,9 @@
             />
             <template v-if="engineType === 'cloud'">
               <div class="sp-gap" />
-              <div class="sp-section-label">云端配置</div>
+              <div class="sp-section-label">{{ t('settings.cloudConfig') }}</div>
               <div class="sp-field">
-                <label class="sp-label">供应商</label>
+                <label class="sp-label">{{ t('settings.provider') }}</label>
                 <UiSelect
                   :model-value="cloudConfig.provider"
                   @update:model-value="$emit('update:cloudConfig', { ...cloudConfig, provider: $event }); $emit('provider-change', $event)"
@@ -134,7 +145,7 @@
                 <UiInput
                   type="password"
                   :model-value="cloudConfig.api_key"
-                  placeholder="输入 API Key"
+                  :placeholder="t('settings.apiKeyPlaceholder')"
                   @update:model-value="$emit('update:cloudConfig', { ...cloudConfig, api_key: $event })"
                 />
               </div>
@@ -147,7 +158,7 @@
                 />
               </div>
               <div class="sp-field">
-                <label class="sp-label">模型</label>
+                <label class="sp-label">{{ t('settings.model') }}</label>
                 <div class="sp-row">
                   <UiInput
                     :model-value="cloudConfig.model"
@@ -159,27 +170,47 @@
                     class="sp-select-narrow"
                     @update:model-value="$emit('update:cloudConfig', { ...cloudConfig, model: $event })"
                   >
-                    <option value="" disabled selected>预设</option>
+                    <option value="" disabled selected>{{ t('settings.preset') }}</option>
                     <option v-for="m in providerPresets[cloudConfig.provider]?.models" :key="m" :value="m">{{ m }}</option>
                   </UiSelect>
                 </div>
               </div>
               <div class="sp-actions">
-                <UiButton variant="secondary" size="sm" :loading="cloudChecking" :disabled="!cloudConfig.api_key" @click="$emit('test-cloud')">测试连接</UiButton>
-                <UiButton variant="primary" size="sm" @click="$emit('save-engine-settings')">保存</UiButton>
+                <UiButton variant="secondary" size="sm" :loading="cloudChecking" :disabled="!cloudConfig.api_key" @click="$emit('test-cloud')">{{ t('settings.testConnection') }}</UiButton>
+                <UiButton variant="primary" size="sm" @click="$emit('save-engine-settings')">{{ t('settings.save') }}</UiButton>
               </div>
               <div v-if="cloudConfig.api_key" class="sp-status" :class="cloudOk ? 'ok' : 'off'">
-                {{ cloudOk ? '已连接' : '未连接' }}
+                {{ cloudOk ? t('status.connected') : t('status.disconnected') }}
               </div>
               <div v-if="cloudError" class="sp-error">{{ cloudError }}</div>
+            </template>
+            <template v-if="engineType === 'ollama'">
+              <div class="sp-gap" />
+              <div class="sp-section-label">Ollama 设置</div>
+              <div class="sp-field">
+                <label class="sp-label">本地模型</label>
+                <div class="sp-row">
+                  <UiSelect
+                    :model-value="ollamaModel"
+                    @update:model-value="$emit('update:ollamaModel', $event as string); $emit('save-engine-settings')"
+                  >
+                    <option v-if="ollamaModels.length === 0" :value="ollamaModel">{{ ollamaModel }}</option>
+                    <option v-for="m in ollamaModels" :key="m" :value="m">{{ m }}</option>
+                  </UiSelect>
+                  <UiButton variant="ghost" size="sm" :disabled="ollamaModelsLoading" @click="$emit('refreshOllamaModels')">
+                    {{ ollamaModelsLoading ? '...' : '刷新' }}
+                  </UiButton>
+                </div>
+              </div>
+              <div v-if="ollamaModels.length" class="sp-status ok">{{ ollamaModels.length }} 个模型已就绪</div>
             </template>
           </div>
 
           <!-- Display tab -->
           <div v-show="settingsTab === 'display'" class="sp-body">
-            <div class="sp-section-label">文字排版</div>
+            <div class="sp-section-label">{{ t('settings.typography') }}</div>
             <UiSlider
-              label="字号"
+              :label="t('settings.fontSize')"
               :model-value="readSettings.fontSize"
               :min="12"
               :max="28"
@@ -187,19 +218,19 @@
               @update:model-value="$emit('font-size-change', $event)"
             />
             <UiSlider
-              label="行高"
+              :label="t('settings.lineHeight')"
               :model-value="Math.round(readSettings.lineHeight * 10)"
               :min="14"
               :max="32"
               @update:model-value="$emit('line-height-change', $event)"
             />
             <div class="sp-field">
-              <label class="sp-label">字体</label>
+              <label class="sp-label">{{ t('settings.fontFamily') }}</label>
               <UiSelect
                 :model-value="readSettings.fontFamily"
                 @update:model-value="$emit('font-family-change', $event)"
               >
-                <option value="system-ui">系统默认</option>
+                <option value="system-ui">{{ t('settings.systemDefault') }}</option>
                 <option value="'Noto Sans SC', sans-serif">思源黑体</option>
                 <option value="'Noto Serif SC', serif">思源宋体</option>
                 <option value="'LXGW WenKai', serif">霞鹜文楷</option>
@@ -208,7 +239,7 @@
               </UiSelect>
             </div>
             <div class="sp-field">
-              <label class="sp-label">译文颜色</label>
+              <label class="sp-label">{{ t('settings.transColor') }}</label>
               <div class="sp-color-row">
                 <input type="color" :value="readSettings.transColor" class="sp-color" @input="$emit('color-change', ($event.target as HTMLInputElement).value)" />
                 <span class="sp-color-hex">{{ readSettings.transColor }}</span>
@@ -218,37 +249,37 @@
 
           <!-- Network tab -->
           <div v-show="settingsTab === 'network'" class="sp-body">
-            <div class="sp-section-label">HTTP 代理</div>
+            <div class="sp-section-label">{{ t('settings.httpProxy') }}</div>
             <div class="sp-field">
-              <label class="sp-label">代理地址</label>
+              <label class="sp-label">{{ t('settings.proxyAddress') }}</label>
               <UiInput
                 :model-value="proxyUrl"
-                placeholder="http://127.0.0.1:7897 或留空"
+                :placeholder="t('settings.proxyPlaceholder')"
                 @update:model-value="$emit('update:proxyUrl', $event)"
               />
             </div>
             <div class="sp-actions">
-              <UiButton variant="primary" size="sm" @click="$emit('save-proxy')">保存代理</UiButton>
+              <UiButton variant="primary" size="sm" @click="$emit('save-proxy')">{{ t('settings.saveProxy') }}</UiButton>
             </div>
-            <p class="sp-hint">留空则不使用代理。重启后端后生效。</p>
+            <p class="sp-hint">{{ t('settings.proxyHint') }}</p>
           </div>
 
           <!-- Background tab -->
           <div v-show="settingsTab === 'background'" class="sp-body">
-            <div class="sp-section-label">自定义背景</div>
+            <div class="sp-section-label">{{ t('settings.customBackground') }}</div>
             <div class="sp-actions">
               <UiButton variant="secondary" size="sm" @click="$emit('pick-background')">
                 <template #icon-left><Upload :size="13" :stroke-width="1.8" /></template>
-                选择文件
+                {{ t('settings.chooseFile') }}
               </UiButton>
               <UiButton variant="danger" size="sm" :disabled="!bgSettings.path" @click="$emit('clear-background')">
                 <template #icon-left><Trash2 :size="13" :stroke-width="1.8" /></template>
-                清除
+                {{ t('settings.clear') }}
               </UiButton>
             </div>
             <div v-if="bgSettings.path" class="sp-bg-path">{{ bgSettings.path.split(/[\\/]/).pop() }}</div>
             <UiSlider
-              label="不透明度"
+              :label="t('settings.opacity')"
               :model-value="bgSettings.opacity"
               :min="5"
               :max="100"
@@ -263,7 +294,7 @@
       <button
         class="topbar-icon-btn"
         :class="{ active: showAgentChat }"
-        title="Agent 助手"
+        :title="t('topbar.agentAssistant')"
         @click="$emit('update:showAgentChat', !showAgentChat)"
       >
         <MessageSquare :size="15" :stroke-width="1.6" />
@@ -275,7 +306,7 @@
       <!-- Theme toggle -->
       <button
         class="topbar-icon-btn"
-        :title="isDark ? '切换日间模式' : '切换夜间模式'"
+        :title="isDark ? t('topbar.switchLight') : t('topbar.switchDark')"
         @click="$emit('toggle-theme', $event)"
       >
         <Sun v-if="isDark" :size="15" :stroke-width="1.6" />
@@ -284,13 +315,13 @@
 
       <!-- Window controls -->
       <div class="window-controls">
-        <button class="win-btn minimize" title="最小化" aria-label="最小化窗口" @click="$emit('window-minimize')">
+        <button class="win-btn minimize" :title="t('topbar.minimize')" :aria-label="t('topbar.minimize')" @click="$emit('window-minimize')">
           <svg width="10" height="10" viewBox="0 0 10 10"><line x1="2" y1="5" x2="8" y2="5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
         </button>
-        <button class="win-btn maximize" title="最大化" aria-label="最大化窗口" @click="$emit('window-maximize')">
+        <button class="win-btn maximize" :title="t('topbar.maximize')" :aria-label="t('topbar.maximize')" @click="$emit('window-maximize')">
           <svg width="10" height="10" viewBox="0 0 10 10"><rect x="2" y="2" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1.2" rx="1"/></svg>
         </button>
-        <button class="win-btn close" title="关闭" aria-label="关闭窗口" @click="$emit('window-close')">
+        <button class="win-btn close" :title="t('topbar.close')" :aria-label="t('topbar.close')" @click="$emit('window-close')">
           <svg width="10" height="10" viewBox="0 0 10 10"><line x1="2.5" y1="2.5" x2="7.5" y2="7.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><line x1="7.5" y1="2.5" x2="2.5" y2="7.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
         </button>
       </div>
@@ -303,7 +334,9 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { argMapV2Enabled } from '../composables/useArgumentMap'
+import { useLocale } from '../composables/useLocale'
 import { Settings, Sun, Moon, Upload, Trash2, MessageSquare } from './ui/icons'
 import UiSegmented from './ui/UiSegmented.vue'
 import UiButton from './ui/UiButton.vue'
@@ -314,12 +347,18 @@ import UiSlider from './ui/UiSlider.vue'
 import DebugPanel from './DebugPanel.vue'
 import type { AppMode } from '../types'
 
+const { t } = useI18n()
+const { currentLocale, setLocale } = useLocale()
+
 const props = defineProps<{
   appMode: AppMode
   isDark: boolean
   showAgentChat: boolean
   engineType: 'ollama' | 'cloud'
   cloudConfig: { provider: string; api_key: string; base_url: string; model: string; max_tokens: number }
+  ollamaModel: string
+  ollamaModels: string[]
+  ollamaModelsLoading: boolean
   providerPresets: Record<string, { name: string; base_url: string; models: string[] }>
   cloudChecking: boolean
   cloudOk: boolean
@@ -340,9 +379,11 @@ defineEmits<{
   (e: 'update:showAgentChat', value: boolean): void
   (e: 'update:engineType', value: 'ollama' | 'cloud'): void
   (e: 'update:cloudConfig', value: any): void
+  (e: 'update:ollamaModel', value: string): void
   (e: 'update:proxyUrl', value: string): void
   (e: 'toggle-theme', event?: MouseEvent): void
   (e: 'toggle-ollama'): void
+  (e: 'refreshOllamaModels'): void
   (e: 'handle-tectonic'): void
   (e: 'save-engine-settings'): void
   (e: 'test-cloud'): void
@@ -367,22 +408,22 @@ const settingsPopoverOpen = computed(() => settingsPopoverRef.value?.open ?? fal
 const settingsTab = ref<'engine' | 'display' | 'network' | 'background'>('engine')
 
 const modeOptions = computed(() => [
-  { value: 'translate' as AppMode, label: '翻译' },
-  { value: 'editor' as AppMode, label: '编辑' },
-  ...(argMapV2Enabled.value ? [{ value: 'argument' as AppMode, label: '论证' }] : []),
+  { value: 'translate' as AppMode, label: t('mode.translate') },
+  { value: 'editor' as AppMode, label: t('mode.edit') },
+  ...(argMapV2Enabled.value ? [{ value: 'argument' as AppMode, label: t('mode.argument') }] : []),
 ])
 
-const settingsTabOptions = [
-  { value: 'engine', label: '引擎' },
-  { value: 'display', label: '显示' },
-  { value: 'network', label: '网络' },
-  { value: 'background', label: '背景' },
-]
+const settingsTabOptions = computed(() => [
+  { value: 'engine', label: t('settings.engine') },
+  { value: 'display', label: t('settings.display') },
+  { value: 'network', label: t('settings.network') },
+  { value: 'background', label: t('settings.background') },
+])
 
-const engineOptions = [
-  { value: 'ollama' as const, label: '本地 Ollama' },
-  { value: 'cloud' as const, label: '云端 API' },
-]
+const engineOptions = computed(() => [
+  { value: 'ollama' as const, label: t('settings.localOllama') },
+  { value: 'cloud' as const, label: t('settings.cloudApi') },
+])
 
 const overallStatus = computed(() => {
   if (!props.healthOk) return 'danger'
@@ -561,7 +602,6 @@ const overallStatus = computed(() => {
               color var(--motion-fast) var(--ease-brush);
   flex-shrink: 0;
 }
-/* Ink bleed hover — 墨韵涟漪 */
 .topbar-icon-btn::after {
   content: '';
   position: absolute;

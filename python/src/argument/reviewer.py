@@ -15,6 +15,7 @@ from .companion_models import Ledger, ReviewPoint, ReviewSession
 from .companion_store import CompanionStore
 from .llm_client import call_llm_chat
 from .section_utils import find_section, has_contrast_marker, split_paragraphs
+from src.utils.json_extract import extract_json_array
 
 logger = logging.getLogger(__name__)
 
@@ -192,17 +193,9 @@ def _parse_llm_points(raw: str, *, source: str) -> list[ReviewPoint]:
     """Parse a JSON array of point dicts returned by the LLM."""
     if not raw or not raw.strip():
         return []
-    try:
-        # Strip markdown code fences if present
-        cleaned = raw.strip()
-        if cleaned.startswith("```"):
-            cleaned = "\n".join(cleaned.splitlines()[1:])
-            cleaned = cleaned.rstrip("`").strip()
-        items = json.loads(cleaned)
-        if not isinstance(items, list):
-            return []
-    except (json.JSONDecodeError, ValueError):
-        logger.debug("LLM returned non-JSON: %s…", raw[:120])
+    items = extract_json_array(raw)
+    if not items:
+        logger.debug("LLM returned non-JSON array: %s…", raw[:120])
         return []
 
     points = []
@@ -431,7 +424,12 @@ async def continue_rebuttal(
         reply = f"（LLM 不可用：{exc}）"
 
     new_status = point.status
-    surrender_signals = ["已 rebutted", "撤回这条", "可以认为已 rebutted", "被说服", "认可"]
+    surrender_signals = [
+        "已 rebutted", "撤回这条", "可以认为已 rebutted", "被说服", "认可",
+        "conceded", "rebutted", "i am convinced", "point well taken",
+        "you've addressed this", "this point is resolved",
+        "this can be considered rebutted", "i accept this",
+    ]
     if any(sig in reply for sig in surrender_signals):
         new_status = "rebutted"
 
@@ -483,8 +481,8 @@ async def import_real_reviews(
         return
 
     try:
-        items = json.loads(raw)
-        if not isinstance(items, list):
+        items = extract_json_array(raw)
+        if items is None:
             raise ValueError("expected list")
     except Exception as exc:
         yield {"event": "error", "data": json.dumps({"message": f"JSON parse failed: {exc}"})}

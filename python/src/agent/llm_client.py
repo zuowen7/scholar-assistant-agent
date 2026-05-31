@@ -31,7 +31,8 @@ from src.agent._llm_helpers import (
 )
 from src.agent._llm_ollama import OllamaMixin
 from src.agent._llm_openai import OpenAIMixin
-from src.agent.models import Message, message_to_ollama_dict
+from src.agent.models import Message
+from src.constants import ANTHROPIC_API_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -142,21 +143,17 @@ class LLMClient(OllamaMixin, OpenAIMixin, AnthropicMixin):
     async def call_simple(self, messages: list[Message]) -> str | None:
         """Lightweight non-streaming call (no tools). Used for planning etc."""
         client = await self._get_http_client()
-        ollama_dicts = [message_to_ollama_dict(m) for m in messages]
 
         try:
             if self.use_cloud:
                 if self.api_format == "anthropic":
-                    system_text = ""
-                    anthropic_msgs = []
-                    for d in ollama_dicts:
-                        if d["role"] == "system":
-                            system_text += d.get("content", "")
-                            continue
-                        anthropic_msgs.append({"role": d["role"], "content": d.get("content", "")})
+                    system_text, anthropic_msgs = messages_to_anthropic(
+                        messages, self.system_prompt,
+                    )
                     payload: dict = {
                         "model": self.effective_model,
                         "max_tokens": 1024,
+                        "temperature": self.temperature,
                         "messages": anthropic_msgs,
                     }
                     if system_text:
@@ -164,7 +161,7 @@ class LLMClient(OllamaMixin, OpenAIMixin, AnthropicMixin):
                     headers = {
                         "Content-Type": "application/json",
                         "x-api-key": self.cloud_api_key,
-                        "anthropic-version": "2023-06-01",
+                        "anthropic-version": ANTHROPIC_API_VERSION,
                     }
                     resp = await client.post(
                         f"{self.cloud_base_url}/v1/messages",
@@ -177,6 +174,7 @@ class LLMClient(OllamaMixin, OpenAIMixin, AnthropicMixin):
                         if b.get("type") == "text"
                     ).strip() or None
                 else:
+                    openai_msgs = messages_to_openai(messages)
                     headers = {
                         "Content-Type": "application/json",
                         "Authorization": f"Bearer {self.cloud_api_key}",
@@ -185,7 +183,7 @@ class LLMClient(OllamaMixin, OpenAIMixin, AnthropicMixin):
                         f"{self.cloud_base_url}/chat/completions",
                         json={
                             "model": self.effective_model,
-                            "messages": ollama_dicts,
+                            "messages": openai_msgs,
                             "temperature": 0.1,
                             "max_tokens": 1024,
                             "stream": False,
@@ -222,27 +220,49 @@ class LLMClient(OllamaMixin, OpenAIMixin, AnthropicMixin):
         try:
             with httpx.Client(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
                 if use_cloud:
-                    headers = {
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {self.cloud_api_key}",
-                    }
-                    resp = client.post(
-                        f"{self.cloud_base_url}/chat/completions",
-                        json={
-                            "model": self.effective_model,
-                            "messages": [{"role": "user", "content": prompt}],
-                            "temperature": 0.3,
-                            "max_tokens": self.num_predict,
-                            "stream": False,
-                        },
-                        headers=headers,
-                    )
-                    resp.raise_for_status()
-                    data = resp.json()
-                    msg = data.get("choices", [{}])[0].get("message", {})
-                    content = msg.get("content", "").strip()
-                    if not content:
-                        content = msg.get("reasoning_content", "").strip()
+                    if self.api_format == "anthropic":
+                        headers = {
+                            "Content-Type": "application/json",
+                            "x-api-key": self.cloud_api_key,
+                            "anthropic-version": ANTHROPIC_API_VERSION,
+                        }
+                        resp = client.post(
+                            f"{self.cloud_base_url}/v1/messages",
+                            json={
+                                "model": self.effective_model,
+                                "max_tokens": self.num_predict,
+                                "messages": [{"role": "user", "content": prompt}],
+                            },
+                            headers=headers,
+                        )
+                        resp.raise_for_status()
+                        data = resp.json()
+                        content = "".join(
+                            b.get("text", "") for b in data.get("content", [])
+                            if b.get("type") == "text"
+                        ).strip()
+                    else:
+                        headers = {
+                            "Content-Type": "application/json",
+                            "Authorization": f"Bearer {self.cloud_api_key}",
+                        }
+                        resp = client.post(
+                            f"{self.cloud_base_url}/chat/completions",
+                            json={
+                                "model": self.effective_model,
+                                "messages": [{"role": "user", "content": prompt}],
+                                "temperature": 0.3,
+                                "max_tokens": self.num_predict,
+                                "stream": False,
+                            },
+                            headers=headers,
+                        )
+                        resp.raise_for_status()
+                        data = resp.json()
+                        msg = data.get("choices", [{}])[0].get("message", {})
+                        content = msg.get("content", "").strip()
+                        if not content:
+                            content = msg.get("reasoning_content", "").strip()
                 else:
                     resp = client.post(
                         f"{self.ollama_base_url}/api/chat",
