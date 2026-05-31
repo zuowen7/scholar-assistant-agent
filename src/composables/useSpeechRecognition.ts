@@ -48,7 +48,8 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
     sr.onresult = (e) => {
       let newFinal = ''
       let interim = ''
-      for (let i = e.resultIndex; i < e.results.length; i++) {
+      const start = typeof e.resultIndex === 'number' ? e.resultIndex : 0
+      for (let i = start; i < e.results.length; i++) {
         const r = e.results[i]
         if (r.isFinal) {
           newFinal += r[0].transcript

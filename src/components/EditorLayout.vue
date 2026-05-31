@@ -454,7 +454,7 @@ function insertTable() {
 }
 function insertInlineFormula() { insertTextAtCursor('$ $') }
 function insertBlockFormula() { insertTextAtCursor('\n$$\n\n$$\n') }
-// -- Voice input real-time insertion --
+// -- Voice input: track insertion range for in-place replacement --
 let voiceRange: { line: number; col: number; len: number } | null = null
 
 function handleVoiceStart() {
@@ -470,6 +470,8 @@ function handleVoiceUpdate(text: string) {
   if (!ed || !voiceRange) return
   const Range = (ed as any).monaco?.Range ??
     class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
+  // Replace previous voice text with new version — triggers onDidChangeModelContent
+  // which clears ghost cache and sets 1.5s debounce → same path as typing
   ed.executeEdits('voice', [{
     range: new Range(voiceRange.line, voiceRange.col, voiceRange.line, voiceRange.col + voiceRange.len),
     text,
