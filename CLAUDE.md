@@ -196,7 +196,8 @@ Use this as the canonical "what works / what's polished / what's a stub" map. Up
 
 ### Known Defect Index
 
-Single-pointer index — do not duplicate the long lists.
+- `src/composables/useEditorState.ts` — `getRange()` 及所有调用方必须使用 `_MonacoRange` 类（属性名 `startLineNumber/startColumn/endLineNumber/endColumn`），禁止回退到只有 `{a,b,c,d}` 属性的类，否则 Monaco `executeEdits` 无法正确 REPLACE 文本。
+- `src/composables/useSpeechRecognition.ts` — `onresult` 处理器中的 `finalText` 拼接必须经过 `normalize()` 双向子串检查，禁止无条件 `+=`；interim 永远不应替换已存在的 final。
 
 ## Dependency Management
 
@@ -338,3 +339,11 @@ Agent 工具指导全 provider 覆盖 (2026-05-30)：
 - **构建**：release.yml 改用 `requirements-lock.txt` 可复现构建；版本号 0.3.2 → 0.3.3（7 个文件同步）
 - **自定义背景修复**：release 构建中 `convertFileSrc`（asset protocol）失效 → 改用 `readFile` + base64 data URL，绕过 CSP/asset protocol 限制；`fs:allow-read-file` 权限补 `$PICTURE/**` / `$VIDEO/**`
 - 验证：2025 pytest passed / 11 skipped；393 vitest passed / 32 files
+
+语音输入三重修复 (2026-06-01)：
+- **Monaco Range 假类 bug（根因）**：`useEditorState.ts`、`useEditor.ts`、`EditorLayout.vue` 共 6 处使用回退 Range 类 `class R { a, b, c, d }`，属性名与 Monaco 期望的 `startLineNumber/startColumn/endLineNumber/endColumn` 完全不匹配 → `executeEdits` 每次变成 INSERT 而非 REPLACE → 语音 interim 文本逐条累积重复。修复：`useEditorState.ts` 新增 `_MonacoRange` 类（正确属性名），`getRange()` 统一使用；`useEditor.ts` 4 处 + `EditorLayout.vue` 1 处全部替换。
+- **语音回声去重**：`useSpeechRecognition.ts` 完全重写 `onresult` 处理器 — final 拼接前做双向标准化子串检查（新⊆旧→跳过；旧⊂新→仅当新增部分是真正新词才替换）；interim 与 final 重叠时保留 final、丢弃 interim（不再用 interim 替换 final）；`stop()` 先置空 `onresult` 再停止；新增 `deduplicateWithin()` 检测单条 transcript 内部重复（WebView bug 兜底）；`AgentPanel`/`AiPanel` 接入 `onEnd` 回调清除 `voiceBaseInput`。
+- **Tab 补全后语音位置修复**：`handleVoiceUpdate` 检测光标是否移出语音插入区域（如按 Tab 接受 ghost text），若移出则仅取 composable 输出中的新增部分插入到当前光标，旧语音文本不受影响。
+- **智能标点合并**：新增 `joinUtterances()` — 当 Chrome 在每次停顿时自动加句号，而下一句明显是续说（非以"但是/然而/所以/因此"等新句开头词起始），自动把前一句末尾句号改为逗号再拼接。中文用逗号，英文用空格。
+- 文件：`useSpeechRecognition.ts`、`useEditorState.ts`、`useEditor.ts`、`EditorLayout.vue`、`AgentPanel.vue`、`AiPanel.vue`
+- 验证：421 vitest passed

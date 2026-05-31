@@ -270,6 +270,7 @@ import UiSkeleton from './ui/UiSkeleton.vue'
 let voiceBaseInput = ''
 const agentSpeech = useSpeechRecognition({
   onResult: (text) => { input.value = voiceBaseInput + (voiceBaseInput ? ' ' : '') + text },
+  onEnd: () => { voiceBaseInput = '' },
 })
 
 function toggleAgentSpeech() {
