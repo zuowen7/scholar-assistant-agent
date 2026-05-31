@@ -51,7 +51,7 @@
             <div v-if="!msg.isStreaming && msg.content" class="ac-actions">
               <button class="ac-action-btn u-interactive" @click="$emit('insert', msg.content)">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-                插入
+                {{ t('aiPanel.insert') }}
               </button>
               <button class="ac-action-btn u-interactive" :class="{ copied: copiedId === msg.id }" @click="copyText(msg.content, msg.id)">
                 <svg v-if="copiedId === msg.id" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>

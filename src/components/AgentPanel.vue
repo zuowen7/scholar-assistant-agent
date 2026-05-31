@@ -205,7 +205,7 @@
     <div v-show="tab === 'templates'" class="agent-templates">
       <div class="docs-toolbar">
         <span class="docs-title">{{ t('agent.templatesTitle') }}</span>
-        <button class="btn ghost u-interactive" :class="{ refreshing: templatesLoading }" @click="loadPaperTemplates" :disabled="templatesLoading">刷新</button>
+        <button class="btn ghost u-interactive" :class="{ refreshing: templatesLoading }" @click="loadPaperTemplates" :disabled="templatesLoading">{{ t('agent.refreshTemplates') }}</button>
       </div>
       <div v-if="templatesLoading && templates.length === 0" class="template-grid">
         <UiSkeleton v-for="i in 4" :key="i" shape="card" height="58" :style="{ '--stagger-i': i - 1 }" class="tpl-skel" />
@@ -231,7 +231,7 @@
             <button class="btn ghost u-interactive" @click="previewingTemplate = null">&times;</button>
           </div>
           <div class="template-preview-desc">{{ previewingTemplate.description }}</div>
-          <button class="btn primary u-interactive" style="margin-top:8px;width:100%" @click="createFromTemplate(previewingTemplate)">以此为模板新建</button>
+          <button class="btn primary u-interactive" style="margin-top:8px;width:100%" @click="createFromTemplate(previewingTemplate)">{{ t('agent.createFromThisTemplate') }}</button>
         </div>
       </Transition>
     </div>

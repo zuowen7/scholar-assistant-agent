@@ -79,7 +79,7 @@
         <button class="ctx-item" @click="action('rename')">{{ t('files.rename') }}</button>
         <button class="ctx-item ctx-danger" @click="action('delete')">{{ t('files.delete') }}</button>
         <div class="ctx-sep" />
-        <button class="ctx-item" @click="action('copy-path')">复制路径</button>
+        <button class="ctx-item" @click="action('copy-path')">{{ t('files.copyPath') }}</button>
       </div>
     </Transition>
   </Teleport>

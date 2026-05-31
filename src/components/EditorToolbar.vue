@@ -29,7 +29,7 @@
     <div class="tb-right">
       <Transition name="v-slide-up">
         <div v-if="exportLoading" class="export-status">
-          <UiSpinner size="sm" label="导出中" />
+          <UiSpinner size="sm" :label="t('editor.exporting')" />
         </div>
         <div v-else-if="message" class="export-toast">{{ message }}</div>
       </Transition>
