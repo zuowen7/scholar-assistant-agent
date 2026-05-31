@@ -39,9 +39,11 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { FileText, X, Plus } from './ui/icons'
 import { useEditor } from '../composables/useEditor'
 
+const { t } = useI18n()
 const { tabs, activeTabId, setActiveTab, closeTab, openNewUntitled } = useEditor()
 </script>
 

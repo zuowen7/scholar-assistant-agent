@@ -92,6 +92,8 @@ renderer.code = ({ text, lang }: { text: string; lang?: string }) => {
 
 marked.use({ renderer })
 
+const renderKey = computed(() => props.version ?? 0)
+
 const renderedHtml = computed(() => {
   const src = debouncedContent.value
   if (!src) return '<p class="empty-hint">开始写作...</p>'
