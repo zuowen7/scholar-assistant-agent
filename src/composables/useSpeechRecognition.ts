@@ -1,12 +1,6 @@
-import { ref, shallowRef } from 'vue'
+import { ref } from 'vue'
 
-type SpeechStatus = 'idle' | 'listening' | 'processing'
-
-const status = ref<SpeechStatus>('idle')
-const interimText = ref('')
-const error = ref('')
-
-let recognition: SpeechRecognition | null = null
+type SpeechStatus = 'idle' | 'listening'
 
 function getSpeechRecognition(): SpeechRecognition | null {
   const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
@@ -15,6 +9,11 @@ function getSpeechRecognition(): SpeechRecognition | null {
 }
 
 export function useSpeechRecognition() {
+  const status = ref<SpeechStatus>('idle')
+  const interimText = ref('')
+  const error = ref('')
+  let recognition: SpeechRecognition | null = null
+
   function start(lang = 'zh-CN') {
     if (status.value === 'listening') return
     error.value = ''
