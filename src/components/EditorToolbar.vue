@@ -24,6 +24,16 @@
       </button>
       <div class="tb-divider" />
       <kbd class="tb-kbd">Ctrl+K · AI</kbd>
+      <button
+        v-if="speech.isSupported"
+        class="tb-btn u-interactive"
+        :class="{ active: speech.status.value === 'listening' }"
+        :title="speech.status.value === 'listening' ? t('editor.voiceStop') : t('editor.voiceStart')"
+        :aria-label="t('editor.voiceStart')"
+        @click="toggleSpeech"
+      >
+        <Mic :size="15" :stroke-width="1.7" />
+      </button>
     </div>
 
     <div class="tb-right">
@@ -102,9 +112,22 @@ import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 import { FilePlus, Save, Eye, Bot, GitBranch, Workflow, MoreHorizontal } from './ui/icons'
 import { Image, Table, Sigma, Quote, Library, Code2, CheckCircle, Download } from './ui/icons'
+import { Mic } from './ui/icons'
 import UiDropdown from './ui/UiDropdown.vue'
 import UiSpinner from './ui/UiSpinner.vue'
 import type { DropdownItem } from './ui/UiDropdown.vue'
+import { useSpeechRecognition } from '../composables/useSpeechRecognition'
+
+const speech = useSpeechRecognition()
+
+function toggleSpeech() {
+  if (speech.status.value === 'listening') {
+    const text = speech.stop()
+    if (text.trim()) emit('voice-text', text.trim())
+  } else {
+    speech.start()
+  }
+}
 
 defineProps<{
   activeRightTab: string | null
@@ -133,6 +156,7 @@ const emit = defineEmits<{
   'export-pdf': []
   'vision-selected': [file: File]
   'image-selected': [file: File]
+  'voice-text': [text: string]
 }>()
 
 const imageInputRef = ref<HTMLInputElement | null>(null)

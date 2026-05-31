@@ -61,6 +61,7 @@
             @export-word="handleExportWord"
             @export-latex="handleExportLatex"
             @export-pdf="handleExportPdf"
+            @voice-text="handleVoiceText"
           />
 
           <MonacoEditor
@@ -452,6 +453,7 @@ function insertTable() {
 }
 function insertInlineFormula() { insertTextAtCursor('$ $') }
 function insertBlockFormula() { insertTextAtCursor('\n$$\n\n$$\n') }
+function handleVoiceText(text: string) { insertTextAtCursor(text) }
 
 function showExportToast(msg: string) {
   if (exportToastTimer) clearTimeout(exportToastTimer)
