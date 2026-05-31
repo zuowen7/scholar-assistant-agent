@@ -138,6 +138,16 @@
             class="agent-input"
           />
           <button
+            v-if="agentSpeech.isSupported"
+            class="agent-attach-btn"
+            :class="{ 'voice-active': agentSpeech.status.value === 'listening' }"
+            :title="agentSpeech.status.value === 'listening' ? t('agent.voiceStop') : t('agent.voiceStart')"
+            :disabled="sending"
+            @click="toggleAgentSpeech"
+          >
+            <Mic :size="14" :stroke-width="2" />
+          </button>
+          <button
             class="agent-send-btn"
             :class="{ stopping: sending }"
             @click="sending ? abortSession() : sendMessage()"
@@ -249,9 +259,21 @@ import { useEditor } from '../composables/useEditor'
 import { useFileTree } from '../composables/useFileTree'
 import AgentApprovalInline from './AgentApprovalInline.vue'
 import AgentSessionList from './AgentSessionList.vue'
-import { Pin, PinOff } from './ui/icons'
+import { Pin, PinOff, Mic } from './ui/icons'
 import { API_BASE } from '../utils/api'
 import type { AgentSessionInfo } from '../types'
+import { useSpeechRecognition } from '../composables/useSpeechRecognition'
+
+const agentSpeech = useSpeechRecognition()
+
+function toggleAgentSpeech() {
+  if (agentSpeech.status.value === 'listening') {
+    const text = agentSpeech.stop()
+    if (text.trim()) input.value += (input.value ? ' ' : '') + text.trim()
+  } else {
+    agentSpeech.start()
+  }
+}
 
 // Tauri is available when window.__TAURI_INTERNALS__ exists
 const _isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
@@ -1130,6 +1152,14 @@ onUnmounted(() => {
   background: var(--c-surface-2); color: var(--c-text-0);
 }
 .agent-attach-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.agent-attach-btn.voice-active {
+  background: var(--c-accent); color: #fff;
+  animation: voice-pulse 1.5s ease-in-out infinite;
+}
+@keyframes voice-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--c-accent-rgb, 99,102,241), 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(var(--c-accent-rgb, 99,102,241), 0); }
+}
 .agent-send-btn {
   width: 36px; height: 36px;
   border-radius: 50%;
