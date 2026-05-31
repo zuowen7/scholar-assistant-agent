@@ -1,7 +1,7 @@
 <template>
   <div class="preview-container">
     <div class="preview-header">
-      <span class="preview-title">预览</span>
+      <span class="preview-title">{{ t('editor.preview') }}</span>
     </div>
     <div class="preview-body" :key="renderKey" v-html="renderedHtml"></div>
   </div>
@@ -9,6 +9,9 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import katex from 'katex'

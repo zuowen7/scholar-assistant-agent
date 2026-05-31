@@ -4,16 +4,16 @@
     <div class="ac-header">
       <div class="ac-title-row">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-        <span class="ac-title">AI 对话</span>
+        <span class="ac-title">{{ t('aiPanel.title') }}</span>
       </div>
       <div class="ac-header-actions">
-        <button class="ac-icon-btn u-interactive" @click="clearHistory" title="清空" :disabled="messages.length===0||streaming">
+        <button class="ac-icon-btn u-interactive" @click="clearHistory" :title="t('aiPanel.clear')" :disabled="messages.length===0||streaming">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
         </button>
-        <button class="ac-icon-btn u-interactive" @click="$emit('undo')" title="撤销插入" :disabled="!canUndo">
+        <button class="ac-icon-btn u-interactive" @click="$emit('undo')" :title="t('aiPanel.undo')" :disabled="!canUndo">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 00-15-6.7L3 13"/></svg>
         </button>
-        <button class="ac-icon-btn u-interactive" @click="$emit('close')" title="关闭">
+        <button class="ac-icon-btn u-interactive" @click="$emit('close')" :title="t('aiPanel.close')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
       </div>
@@ -22,7 +22,7 @@
     <!-- Context bar -->
     <div class="ac-context" v-if="editorContext">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      <span>已带入编辑器上下文：{{ editorContext.length }} 字符</span>
+      <span>{{ t('aiPanel.contextChars', { count: editorContext.length }) }}</span>
     </div>
 
     <!-- Thinking scan bar -->
@@ -35,8 +35,8 @@
           <div class="ac-empty-icon anim-pop-in">
             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
           </div>
-          <p class="ac-empty-title anim-fade-in-up">你好，我是你的学术写作助手。</p>
-          <p class="ac-empty-sub anim-fade-in-up">输入 <code>/</code> 使用命令，输入 <code>@</code> 引用文件。</p>
+          <p class="ac-empty-title anim-fade-in-up">{{ t('aiPanel.greeting') }}</p>
+          <p class="ac-empty-sub anim-fade-in-up">{{ t('aiPanel.greetingHint') }}</p>
         </div>
       </Transition>
 
@@ -56,7 +56,7 @@
               <button class="ac-action-btn u-interactive" :class="{ copied: copiedId === msg.id }" @click="copyText(msg.content, msg.id)">
                 <svg v-if="copiedId === msg.id" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
                 <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-                {{ copiedId === msg.id ? '已复制' : '复制' }}
+                {{ copiedId === msg.id ? t('aiPanel.copied') : t('aiPanel.copy') }}
               </button>
             </div>
           </template>
@@ -89,7 +89,7 @@
         <div class="ac-file u-interactive" v-for="f in files" :key="f.name">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
           <span>{{ f.name }}</span>
-          <button class="ac-file-x" title="移除附件" @click="removeFile(f.name)">×</button>
+          <button class="ac-file-x" :title="t('aiPanel.removeAttachment')" @click="removeFile(f.name)">×</button>
         </div>
       </TransitionGroup>
     </div>
@@ -97,17 +97,17 @@
     <!-- Presets -->
     <Transition name="v-slide-up">
       <div class="ac-presets anim-stagger" v-if="!streaming">
-        <button class="ac-preset u-interactive" style="--stagger-i:0" @click="sendPreset('polish')">润色</button>
-        <button class="ac-preset u-interactive" style="--stagger-i:1" @click="sendPreset('expand')">扩写</button>
-        <button class="ac-preset u-interactive" style="--stagger-i:2" @click="sendPreset('review')">审查</button>
-        <button class="ac-preset u-interactive" style="--stagger-i:3" @click="sendPreset('en')">英译</button>
-        <button class="ac-preset u-interactive" style="--stagger-i:4" @click="sendPreset('zh')">中译</button>
+        <button class="ac-preset u-interactive" style="--stagger-i:0" @click="sendPreset('polish')">{{ t('aiPanel.presetPolish') }}</button>
+        <button class="ac-preset u-interactive" style="--stagger-i:1" @click="sendPreset('expand')">{{ t('aiPanel.presetExpand') }}</button>
+        <button class="ac-preset u-interactive" style="--stagger-i:2" @click="sendPreset('review')">{{ t('aiPanel.presetReview') }}</button>
+        <button class="ac-preset u-interactive" style="--stagger-i:3" @click="sendPreset('en')">{{ t('aiPanel.presetEn') }}</button>
+        <button class="ac-preset u-interactive" style="--stagger-i:4" @click="sendPreset('zh')">{{ t('aiPanel.presetZh') }}</button>
       </div>
     </Transition>
 
     <!-- Input area -->
     <div class="ac-input-area">
-      <button class="ac-attach-btn u-interactive" @click="attachFile" title="添加附件" :disabled="streaming">
+      <button class="ac-attach-btn u-interactive" @click="attachFile" :title="t('aiPanel.addAttachment')" :disabled="streaming">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
       </button>
       <div class="ac-input-wrap">
@@ -115,7 +115,7 @@
           ref="inputRef"
           v-model="input"
           class="ac-input"
-          placeholder="输入问题...（/ 命令，@ 引用文件）"
+          :placeholder="t('aiPanel.inputPlaceholder')"
           @keydown.enter.exact.prevent="send"
           @keydown.tab.exact.prevent="acceptSuggestion"
           @keydown.escape="dismissSuggestion"
@@ -147,7 +147,7 @@
         :class="{ stopping: streaming }"
         @click="streaming ? stopStream() : send()"
         :disabled="!streaming && !input.trim()"
-        :title="streaming ? '停止生成' : '发送'"
+        :title="streaming ? t('aiPanel.stopGenerate') : t('aiPanel.send')"
       >
         <svg v-if="streaming" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
           <rect x="3" y="3" width="18" height="18" rx="3"/>
@@ -160,6 +160,7 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import DOMPurify from 'dompurify'
 import { readSseStream } from '../utils/streamReader'
 import { aiMessages, aiStreaming, aiStreamContent, aiThinkingText, aiAbortCtrl } from '../composables/useAiPanelState'
@@ -207,15 +208,15 @@ const { rootDir } = useFileTree()
 
 // ── Slash commands ──────────────────────────────────────────
 const commands = [
-  { cmd: '/explain', prompt: 'Please explain the following text in detail, breaking down the key concepts:', desc: '解释文本' },
-  { cmd: '/fix', prompt: 'Please identify and fix any issues in the following text:', desc: '修复问题' },
-  { cmd: '/translate', prompt: 'Please translate the following text:', desc: '翻译文本' },
+  { cmd: '/explain', prompt: 'Please explain the following text in detail, breaking down the key concepts:', desc: t('aiPanel.cmd.explain') },
+  { cmd: '/fix', prompt: 'Please identify and fix any issues in the following text:', desc: t('aiPanel.cmd.fix') },
+  { cmd: '/translate', prompt: 'Please translate the following text:', desc: t('aiPanel.cmd.translate') },
   { cmd: '/polish', prompt: 'Please polish the following academic text, improving grammar, vocabulary and style:', desc: '润色写作' },
-  { cmd: '/expand', prompt: 'Please expand the following text with more details and academic depth:', desc: '扩写内容' },
-  { cmd: '/summarize', prompt: 'Please provide a concise summary of the following text:', desc: '总结内容' },
-  { cmd: '/outline', prompt: 'Please generate a detailed outline for a paper on the following topic:', desc: '生成提纲' },
+  { cmd: '/expand', prompt: 'Please expand the following text with more details and academic depth:', desc: t('aiPanel.cmd.expand') },
+  { cmd: '/summarize', prompt: 'Please provide a concise summary of the following text:', desc: t('aiPanel.cmd.summarize') },
+  { cmd: '/outline', prompt: 'Please generate a detailed outline for a paper on the following topic:', desc: t('aiPanel.cmd.outline') },
   { cmd: '/review', prompt: 'Please review the following academic text, identify issues and suggest improvements:', desc: '审查文本' },
-  { cmd: '/rewrite', prompt: 'Please rewrite the following text to improve clarity and flow:', desc: '改写文本' },
+  { cmd: '/rewrite', prompt: 'Please rewrite the following text to improve clarity and flow:', desc: t('aiPanel.cmd.rewrite') },
   { cmd: '/cite', prompt: 'Please generate proper academic citations (IEEE/APA/GB-T) for the following references:', desc: '格式化引用' },
 ]
 
@@ -295,7 +296,7 @@ function renderMd(text: string, msgId: string): string {
     return `<div class="ac-code-block" data-id="${id}">`
       + `<div class="ac-code-bar"><span class="ac-code-lang">${displayLang}</span>`
       + `<button class="ac-code-btn ac-code-copy">复制</button>`
-      + `<button class="ac-code-btn ac-code-insert">插入</button>`
+      + `<button class="ac-code-btn ac-code-insert">${t('aiPanel.insert')}</button>`
       + `</div>`
       + `<pre><code>${code}</code></pre></div>`
   })
@@ -373,7 +374,7 @@ async function sendPreset(action: string) {
   }
   const instruction = instructions[action] || action
   if (!ctx) {
-    messages.value.push({ id: crypto.randomUUID(), role: 'assistant', content: '请先在编辑器中打开或选中要处理的文本。' })
+    messages.value.push({ id: crypto.randomUUID(), role: 'assistant', content: t('aiPanel.noText') })
     scrollBottom()
     return
   }
@@ -399,23 +400,23 @@ async function doEdit(instruction: string, text: string, label: string) {
       signal: aiAbortCtrl.value.signal,
     })
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ detail: '请求失败' }))
+      const err = await resp.json().catch(() => ({ detail: t('aiPanel.requestFailed') }))
       throw new Error(err.detail || `HTTP ${resp.status}`)
     }
     const reader = resp.body?.getReader()
-    if (!reader) throw new Error('响应内容为空')
+    if (!reader) throw new Error(t('aiPanel.responseEmpty'))
     await readSseStream(reader, (evtType, d) => {
       if (evtType === 'delta' && d.content !== undefined) {
         // /api/edit 的 delta 携带累计全文
         streamContent.value = (d.content as string).replace(/<think\b[^>]*>[\s\S]*?<\/think\s*>/g, '').trim()
         scrollBottom()
       } else if (evtType === 'error') {
-        streamContent.value = (d.message as string) || (d.content as string) || '错误'
+        streamContent.value = (d.message as string) || (d.content as string) || t('aiPanel.error')
       }
     })
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') return
-    streamContent.value = `错误：${e instanceof Error ? e.message : String(e)}`
+    streamContent.value = t('aiPanel.errorPrefix', { msg: e instanceof Error ? e.message : String(e) })
   } finally {
     streaming.value = false; thinkingText.value = ''
     if (streamContent.value) {
@@ -487,7 +488,7 @@ async function doSend(text: string) {
       else if (evtType === 'tool_call') {
         hasToolActivity = true
         tokenBuffer = ''
-        thinkingText.value = '正在调用：' + ((meta?.tool_name as string) || (meta?.tool as string) || '...')
+        thinkingText.value = t('aiPanel.calling', { tool: ((meta?.tool_name as string) || (meta?.tool as string) || '...') })
       }
       else if (evtType === 'tool_result') { thinkingText.value = '' }
       else if (evtType === 'session_started') {
@@ -507,7 +508,7 @@ async function doSend(text: string) {
     })
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') return
-    streamContent.value = `错误：${e instanceof Error ? e.message : String(e)}`
+    streamContent.value = t('aiPanel.errorPrefix', { msg: e instanceof Error ? e.message : String(e) })
   } finally {
     streaming.value = false; thinkingText.value = ''
     if (streamContent.value) {
@@ -526,8 +527,8 @@ function handleCodeBlockClick(e: MouseEvent) {
   const code = block.querySelector('code')?.textContent ?? ''
   if (btn.classList.contains('ac-code-copy')) {
     navigator.clipboard.writeText(code).catch(() => {})
-    btn.textContent = '已复制'
-    setTimeout(() => { btn.textContent = '复制' }, 1500)
+    btn.textContent = t('aiPanel.copied')
+    setTimeout(() => { btn.textContent = t('aiPanel.copy') }, 1500)
   } else if (btn.classList.contains('ac-code-insert')) {
     emit('insert', code)
   }

@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import { API_BASE } from '../utils/api'
+import { i18n } from '../i18n'
 
 export interface MindMapNode {
   id: string
@@ -42,7 +43,7 @@ const createDefaultMap = (): MindMapData => {
     nodes: {
       [rootId]: {
         id: rootId,
-        text: '中心主题',
+        text: i18n.global.t('mindmap.centralTopic'),
         parentId: null,
         children: [],
       },
@@ -214,7 +215,7 @@ export function useMindMap() {
   const selectedNode = computed(() => draftMindMap.value.nodes[selectedNodeId.value] ?? null)
   const hasSavedMindMap = computed(() => savedMindMap.value !== null)
 
-  function resetMindMap(text = '中心主题') {
+  function resetMindMap(text = i18n.global.t('mindmap.centralTopic')) {
     const currentToolbar = viewport.value.toolbar
     draftMindMap.value = createDefaultMap()
     draftMindMap.value.nodes[draftMindMap.value.rootId].text = text
@@ -272,7 +273,7 @@ export function useMindMap() {
   function updateNodeText(id: string, text: string) {
     const node = draftMindMap.value.nodes[id]
     if (!node) return
-    node.text = text.trim() || '未命名节点'
+    node.text = text.trim() || i18n.global.t('mindmap.unnamedNode')
     draftMindMap.value.updatedAt = Date.now()
   }
 
@@ -307,7 +308,7 @@ export function useMindMap() {
     const id = `mind-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`
     map.nodes[id] = {
       id,
-      text: '新节点',
+      text: i18n.global.t('mindmap.newNode'),
       parentId,
       children: [],
     }

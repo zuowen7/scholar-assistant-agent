@@ -37,7 +37,7 @@
       v-if="point.detail.length > 200"
       class="expand-btn"
       @click="detailExpanded = !detailExpanded"
-    >{{ detailExpanded ? '收起' : '展开全文' }}</button>
+    >{{ detailExpanded ? t('reviewerThread.collapse') : t('reviewerThread.expandFull') }}</button>
 
     <!-- Anchor -->
     <button
@@ -60,10 +60,10 @@
         class="thread-turn"
         :class="`turn-${turn.role}`"
       >
-        <span class="turn-role">{{ turn.role === 'author' ? '作者' : 'Reviewer' }}</span>
+        <span class="turn-role">{{ turn.role === 'author' ? t('reviewerThread.author') : t('reviewerThread.reviewer') }}</span>
         <span class="turn-text">{{ isExpanded(turn.id) || turn.text.length <= 280 ? turn.text : turn.text.slice(0, 280) + '…' }}</span>
         <button v-if="turn.text.length > 280" class="turn-expand-btn" @click="toggleTurn(turn.id)">
-          {{ isExpanded(turn.id) ? '收起' : '展开全文' }}
+          {{ isExpanded(turn.id) ? t('reviewerThread.collapse') : t('reviewerThread.expandFull') }}
         </button>
       </div>
     </div>
@@ -72,28 +72,28 @@
     <div class="rebuttal-area">
       <div v-if="isSending" class="rebut-sending">
         <span class="dot-wave"><i></i><i></i><i></i></span>
-        <span class="sending-text">Reviewer 思考中…</span>
+        <span class="sending-text">{{ t('reviewerThread.thinking') }}</span>
       </div>
       <template v-else-if="canRebut">
         <button
           v-if="!chatExpanded"
           class="rebut-toggle"
           @click="chatExpanded = true"
-        >+ 反驳</button>
+        >{{ t('reviewerThread.rebut') }}</button>
         <div v-else class="rebut-input-wrap">
           <textarea
             v-model="rebuttalText"
             class="rebut-input"
-            placeholder="写下你的反驳理由…"
+            :placeholder="t('reviewerThread.rebutPlaceholder')"
             rows="3"
           />
           <div class="rebut-actions">
-            <button class="rebut-cancel" @click="chatExpanded = false">取消</button>
+            <button class="rebut-cancel" @click="chatExpanded = false">{{ t('reviewerThread.rebuteCancel') }}</button>
             <button
               class="rebut-send"
               :disabled="!rebuttalText.trim()"
               @click="sendRebuttal"
-            >发送</button>
+            >{{ t('reviewerThread.rebutSend') }}</button>
           </div>
         </div>
       </template>
@@ -103,6 +103,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import type { ReviewPoint } from '../../types'
 
 const props = defineProps<{
@@ -138,37 +141,37 @@ const canRebut = computed(() =>
 )
 
 const CATEGORY_LABEL: Record<string, string> = {
-  motivation: '动机',
-  novelty: '创新性',
-  baseline: '基线',
-  ablation: '消融实验',
-  soundness: '可靠性',
-  claim_overreach: '声称过度',
-  missing_related_work: '相关工作',
-  reproducibility: '可复现',
-  experiment_design: '实验设计',
-  writing_clarity: '写作清晰度',
-  inconsistency: '内部矛盾',
-  gap_mismatch: '差距不符',
-  weak_positioning: '定位偏弱',
-  term_drift: '术语漂移',
-  other: '其他',
+  motivation: t('argument.reviewCategory.motivation'),
+  novelty: t('argument.reviewCategory.novelty'),
+  baseline: t('argument.reviewCategory.baseline'),
+  ablation: t('argument.reviewCategory.ablation'),
+  soundness: t('argument.reviewCategory.soundness'),
+  claim_overreach: t('argument.reviewCategory.claim_overreach'),
+  missing_related_work: t('argument.reviewCategory.missing_related_work'),
+  reproducibility: t('argument.reviewCategory.reproducibility'),
+  experiment_design: t('argument.reviewCategory.experiment_design'),
+  writing_clarity: t('argument.reviewCategory.writing_clarity'),
+  inconsistency: t('argument.reviewCategory.inconsistency'),
+  gap_mismatch: t('argument.reviewCategory.gap_mismatch'),
+  weak_positioning: t('argument.reviewCategory.weak_positioning'),
+  term_drift: t('argument.reviewCategory.term_drift'),
+  other: t('argument.reviewCategory.other'),
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  open: '待处理',
-  rebutted: '已反驳',
-  accepted: '已认可',
-  dismissed: '已忽略',
+  open: t('argument.status.open'),
+  rebutted: t('argument.status.rebutted'),
+  accepted: t('argument.status.accepted'),
+  dismissed: t('argument.status.dismissed'),
 }
 
 const SOURCE_LABEL: Record<string, string> = {
   llm: 'AI',
-  ledger_check: '账本核查',
-  coherence_check: '一致性',
-  rw_check: '相关工作',
-  scoped: '局部质疑',
-  imported: '导入',
+  ledger_check: t('argument.checkType.ledger_check'),
+  coherence_check: t('argument.checkType.coherence_check'),
+  rw_check: t('argument.checkType.rw_check'),
+  scoped: t('argument.checkType.scoped'),
+  imported: t('argument.checkType.imported'),
 }
 
 const categoryLabel = computed(() => CATEGORY_LABEL[props.point.category] ?? props.point.category)
@@ -176,10 +179,10 @@ const sourceLabel = computed(() => SOURCE_LABEL[props.point.source] ?? props.poi
 
 const statusOptions = computed(() => {
   const all = [
-    { value: 'open', label: '待处理' },
-    { value: 'rebutted', label: '已反驳' },
-    { value: 'accepted', label: '已认可' },
-    { value: 'dismissed', label: '已忽略' },
+    { value: 'open', label: t('argument.status.open') },
+    { value: 'rebutted', label: t('argument.status.rebutted') },
+    { value: 'accepted', label: t('argument.status.accepted') },
+    { value: 'dismissed', label: t('argument.status.dismissed') },
   ]
   return all.filter(o => o.value !== props.point.status)
 })

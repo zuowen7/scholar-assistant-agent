@@ -3,7 +3,7 @@
     <!-- No selection: graph stats + actions -->
     <template v-if="!selectedNode && !selectedEdge">
       <div class="inspector-section">
-        <p class="inspector-title">论证图</p>
+        <p class="inspector-title">{{ t('argument.argumentMapShort') }}</p>
         <p v-if="state.graph" class="inspector-graph-title">{{ state.graph.title }}</p>
         <div v-if="state.graph" class="inspector-stats">
           <span class="stat-item" v-for="(count, type) in nodeTypeCounts" :key="type">
@@ -12,13 +12,13 @@
           </span>
         </div>
         <div v-if="state.graph?.issues?.length" class="inspector-issues-count">
-          ⚠ {{ state.graph.issues.length }} 个问题
+          ⚠ {{ state.graph.issues.length }} {{ t('argument.issues') }}
         </div>
       </div>
 
       <!-- All graph issues -->
       <div v-if="state.graph?.issues?.length" class="inspector-field">
-        <label class="inspector-label">问题清单 ({{ state.graph.issues.length }})</label>
+        <label class="inspector-label">{{ t('argument.issuesLabel', { count: state.graph.issues.length }) }}</label>
         <div
           v-for="issue in state.graph.issues"
           :key="issue.id"
@@ -33,7 +33,7 @@
 
       <!-- Export template selector -->
       <div v-if="state.graph" class="inspector-field">
-        <label class="inspector-label">导出格式</label>
+        <label class="inspector-label">{{ t('argument.exportFormat') }}</label>
         <select v-model="exportTemplate" class="inspector-select">
           <option value="markdown">Markdown (.md)</option>
           <option value="latex">LaTeX (.tex)</option>
@@ -45,13 +45,13 @@
           class="inspector-btn inspector-btn--primary"
           :disabled="!state.graph || state.critiquing"
           @click="doCritique"
-        >{{ state.critiquing ? '审查中…' : '批判审查' }}</button>
+        >{{ state.critiquing ? t('argument.critiquing') : t('argument.critique') }}</button>
         <button
           class="inspector-btn"
           :disabled="!state.graph || exporting"
           @click="doExport"
-        >{{ exporting ? '生成中…' : '导出草稿' }}</button>
-        <button class="inspector-btn" @click="$emit('auto-layout')">自动布局</button>
+        >{{ exporting ? t('argument.exporting') : t('argument.exportDraft') }}</button>
+        <button class="inspector-btn" @click="$emit('auto-layout')">{{ t('argument.autoLayout') }}</button>
       </div>
 
       <!-- Export status -->
@@ -68,7 +68,7 @@
         </div>
 
         <div class="inspector-field">
-          <label class="inspector-label">内容</label>
+          <label class="inspector-label">{{ t('argument.contentLabel') }}</label>
           <textarea
             v-model="editText"
             class="inspector-textarea"
@@ -78,7 +78,7 @@
         </div>
 
         <div v-if="selectedNode.issue_ids?.length" class="inspector-field">
-          <label class="inspector-label">问题 ({{ selectedNode.issue_ids.length }})</label>
+          <label class="inspector-label">{{ t('argument.issuesLabel', { count: selectedNode.issue_ids.length }) }}</label>
           <div
             v-for="issue in nodeIssues"
             :key="issue.id"
@@ -93,8 +93,8 @@
 
         <!-- Span list -->
         <div v-if="selectedNode" class="inspector-field">
-          <label class="inspector-label">原文引用 ({{ nodeSpans.length }})</label>
-          <div v-if="!nodeSpans.length" class="placeholder-text">从原文面板选句绑定</div>
+          <label class="inspector-label">{{ t('argument.sourceQuote', { count: nodeSpans.length }) }}</label>
+          <div v-if="!nodeSpans.length" class="placeholder-text">{{ t('argument.selectSentence') }}</div>
           <div
             v-for="span in nodeSpans"
             :key="span.id"
@@ -103,14 +103,14 @@
             <span class="span-quote">「{{ span.quote.slice(0, 36) }}{{ span.quote.length > 36 ? '…' : '' }}」</span>
             <div class="span-actions">
               <button class="span-action-btn" :title="span.source_label || span.side" @click="jumpToSpan(span.id)">跳到原文</button>
-              <button class="span-action-btn span-action-btn--danger" @click="removeSpan(span.id)">解绑</button>
+              <button class="span-action-btn span-action-btn--danger" @click="removeSpan(span.id)">{{ t('argument.unbind') }}</button>
             </div>
           </div>
         </div>
 
         <!-- Suggest candidates -->
         <div v-if="suggestResult" class="inspector-field">
-          <label class="inspector-label">AI 建议 ({{ suggestResult.candidates.length }})</label>
+          <label class="inspector-label">{{ t('argument.aiSuggestions', { count: suggestResult.candidates.length }) }}</label>
           <div
             v-for="c in suggestResult.candidates"
             :key="c.local_id"
@@ -118,7 +118,7 @@
           >
             <div class="candidate-type" :class="`type-${c.node_type}`">{{ typeLabel(c.node_type) }}</div>
             <div class="candidate-text">{{ c.text }}</div>
-            <button class="candidate-adopt-btn" @click="adoptCandidate(c)">采纳</button>
+            <button class="candidate-adopt-btn" @click="adoptCandidate(c)">{{ t('argument.adopt') }}</button>
           </div>
           <button class="inspector-btn" style="font-size:11px; margin-top: 4px" @click="suggestResult = null">收起</button>
         </div>
@@ -129,15 +129,15 @@
           class="inspector-btn"
           :disabled="!selectedNode || suggesting"
           @click="doSuggest"
-        >{{ suggesting ? '建议中…' : '建议下一个元素' }}</button>
-        <button class="inspector-btn inspector-btn--danger" @click="deleteSelectedNode">删除节点</button>
+        >{{ suggesting ? t('argument.suggestingNext') : t('argument.suggestNext') }}</button>
+        <button class="inspector-btn inspector-btn--danger" @click="deleteSelectedNode">{{ t('argument.deleteNode') }}</button>
       </div>
     </template>
 
     <!-- Edge selected -->
     <template v-else-if="selectedEdge">
       <div class="inspector-section">
-        <p class="inspector-title">关系</p>
+        <p class="inspector-title">{{ t('argument.relation') }}</p>
         <div class="inspector-edge-rel" :class="`rel-${selectedEdge.relation_type}`">
           {{ relLabel(selectedEdge.relation_type) }}
         </div>
@@ -148,7 +148,7 @@
       </div>
 
       <div class="inspector-actions">
-        <button class="inspector-btn inspector-btn--danger" @click="deleteSelectedEdge">删除关系</button>
+        <button class="inspector-btn inspector-btn--danger" @click="deleteSelectedEdge">{{ t('argument.deleteEdge') }}</button>
       </div>
     </template>
   </div>
@@ -156,6 +156,9 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import type { NodeType, RelationType, SuggestCandidate, SuggestResult } from '../../composables/useArgumentMap'
 import { useArgumentMap, focusSpan, inferRelationType } from '../../composables/useArgumentMap'
 import { API_BASE } from '../../utils/api'
@@ -181,7 +184,7 @@ const exportOk = ref(false)
 async function doExport() {
   if (!state.graph) return
   exporting.value = true
-  exportMsg.value = '生成中…'
+  exportMsg.value = t('argument.exporting')
   exportOk.value = false
 
   let capturedTaskId = ''
@@ -193,7 +196,7 @@ async function doExport() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ template: exportTemplate.value, title: state.graph.title }),
     })
-    if (!res.body) { exportMsg.value = '请求失败'; return }
+    if (!res.body) { exportMsg.value = t('argument.requestFailed'); return }
 
     await readSseStream(res.body.getReader(), (eventType, data) => {
       if (eventType === 'complete') {
@@ -203,7 +206,7 @@ async function doExport() {
         capturedWordCount = d.word_count ?? 0
         exportMsg.value = `草稿已生成（${capturedWordCount} 字），下载中…`
       } else if (eventType === 'error') {
-        exportMsg.value = '导出失败：' + String((data as { message?: string }).message ?? '')
+        exportMsg.value = t('argument.exportError', { msg: String((data as { message?: string }).message ?? '') })
       }
     })
 
@@ -216,11 +219,11 @@ async function doExport() {
         await saveBlob(blob, `argument_draft.${ext}`)
         exportMsg.value = `草稿已导出（${capturedWordCount} 字）`
       } else {
-        exportMsg.value = '文件下载失败，请重试'
+        exportMsg.value = t('argument.downloadFailed')
       }
     }
   } catch (e) {
-    exportMsg.value = '导出失败'
+    exportMsg.value = t('argument.exportDefaultFailed')
   } finally {
     exporting.value = false
   }
@@ -284,18 +287,18 @@ const nodeTypeCounts = computed(() => {
 })
 
 const TYPE_LABELS: Record<NodeType, string> = {
-  claim: '主张', grounds: '依据', warrant: '论证保证',
-  backing: '支撑', qualifier: '限定', rebuttal: '反驳',
+  claim: t('argument.claim'), grounds: t('argument.grounds'), warrant: t('argument.warrant'),
+  backing: t('argument.backing'), qualifier: t('argument.qualifier'), rebuttal: t('argument.rebuttal'),
 }
 function typeLabel(t: NodeType) { return TYPE_LABELS[t] ?? t }
 
 const REL_LABELS: Record<RelationType, string> = {
-  supports: '支持', warrants: '保证', backs: '支撑',
-  qualifies: '限定', rebuts: '反驳', counters: '回应',
+  supports: t('argument.supports'), warrants: t('argument.warrants'), backs: t('argument.backs'),
+  qualifies: t('argument.qualifies'), rebuts: t('argument.rebuts'), counters: t('argument.counters'),
 }
 function relLabel(r: RelationType) { return REL_LABELS[r] ?? r }
 
-function sevLabel(s: string) { return s === 'error' ? '错误' : s === 'warning' ? '警告' : '提示' }
+function sevLabel(s: string) { return s === 'error' ? t('general.error') : s === 'warning' ? t('general.warning') : t('general.info') }
 
 function nodeText(nid: string) {
   const n = state.graph?.nodes.find(x => x.id === nid)

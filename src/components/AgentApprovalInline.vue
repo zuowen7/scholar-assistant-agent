@@ -13,16 +13,16 @@
     <div class="approval-actions">
       <button class="approval-btn allow-once u-interactive" @click="decide('allow_once')" :disabled="deciding">
         <UiSpinner v-if="deciding && pendingDecision === 'allow_once'" size="sm" />
-        <span v-else>仅此一次</span>
+        <span v-else>{{ t('agent.allowOnce') }}</span>
       </button>
       <button v-if="!pending.force_approval" class="approval-btn allow-session u-interactive" @click="decide('allow_session')" :disabled="deciding">
         <UiSpinner v-if="deciding && pendingDecision === 'allow_session'" size="sm" />
-        <span v-else>本次会话</span>
+        <span v-else>{{ t('agent.allowSession') }}</span>
       </button>
-      <span v-else class="approval-hint-force">每次都需确认</span>
+      <span v-else class="approval-hint-force">{{ t('agent.confirmEach') }}</span>
       <button class="approval-btn deny u-interactive" @click="decide('deny')" :disabled="deciding">
         <UiSpinner v-if="deciding && pendingDecision === 'deny'" size="sm" />
-        <span v-else>拒绝</span>
+        <span v-else>{{ t('general.no') }}</span>
       </button>
     </div>
   </div>
@@ -30,6 +30,9 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import type { PendingApproval } from '../composables/useAgentChat'
 import UiSpinner from './ui/UiSpinner.vue'
 

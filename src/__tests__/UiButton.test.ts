@@ -1,4 +1,23 @@
 import { describe, it, expect } from 'vitest'
+
+vi.mock('vue-i18n', () => ({
+  useI18n: () => ({
+    t: (key: string, params?: any) => {
+      if (typeof params === 'object' && params !== null) {
+        let result = key
+        for (const [k, v] of Object.entries(params)) {
+          result = result.replace(`{${k}}`, String(v))
+        }
+        return result
+      }
+      return key
+    },
+    locale: { value: 'zh-CN' },
+  }),
+  createI18n: () => ({
+    global: { locale: { value: 'zh-CN' }, t: (k: string) => k },
+  }),
+}))
 import { mount } from '@vue/test-utils'
 import UiButton from '../components/ui/UiButton.vue'
 

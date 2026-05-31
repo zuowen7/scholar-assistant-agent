@@ -1,19 +1,19 @@
 <template>
   <div class="file-tree">
     <div class="tree-header">
-      <span class="tree-title" :title="rootDir || '资源管理器'">{{ rootDir ? rootDir.split(/[\\/]/).pop() : '资源管理器' }}</span>
+      <span class="tree-title" :title="rootDir || t('files.explorer')">{{ rootDir ? rootDir.split(/[\\/]/).pop() : '资源管理器' }}</span>
       <div class="tree-actions">
-        <button class="tree-btn" @click="handleNewFile" title="新建文件" aria-label="新建文件">
+        <button class="tree-btn" @click="handleNewFile" :title="t('files.newFile')" aria-label="新建文件">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
         </button>
-        <button class="tree-btn" @click="handleOpenFolder" title="打开文件夹" aria-label="打开文件夹">
+        <button class="tree-btn" @click="handleOpenFolder" :title="t('files.openFolder2')" :aria-label="t('files.openFolder2')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
         </button>
-        <button class="tree-btn" :class="{ spinning: refreshing }" @click="handleRefresh" title="刷新" aria-label="刷新" :disabled="refreshing">
+        <button class="tree-btn" :class="{ spinning: refreshing }" @click="handleRefresh" :title="t('files.refresh')" aria-label="刷新" :disabled="refreshing">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
         </button>
         <div class="tree-btn-sep" />
-        <button class="tree-btn" @click="$emit('collapse')" title="折叠侧栏" aria-label="折叠侧栏">
+        <button class="tree-btn" @click="$emit('collapse')" :title="t('files.collapseSidebar')" :aria-label="t('files.collapseSidebar')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
       </div>
@@ -25,7 +25,7 @@
       <input
         v-model="searchQuery"
         class="search-input"
-        placeholder="搜索文件..."
+        :placeholder="t('files.searchPlaceholder')"
         @keydown.escape="searchQuery = ''"
       />
       <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''">
@@ -59,7 +59,7 @@
           @action="handleAction"
         />
         <div v-if="searchQuery && filteredFiles.length === 0" class="tree-no-match anim-fade-in-up">
-          没有匹配 "{{ searchQuery }}" 的文件
+          {{ t('files.noMatch', { query: searchQuery }) }}
         </div>
       </template>
     </div>
@@ -67,9 +67,9 @@
       v-else
       :icon="FolderOpen"
       :icon-size="28"
-      title="未打开文件夹"
+      :title="t('files.noFolderOpen')"
       subtitle="Open a folder to browse your files."
-      action-label="打开文件夹"
+      :action-label="t('files.openFolder2')"
       @action="handleOpenFolder"
     />
   </div>
@@ -77,6 +77,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import FileTreeNode from './FileTreeNode.vue'
 import UiEmpty from './ui/UiEmpty.vue'
 import UiSkeleton from './ui/UiSkeleton.vue'

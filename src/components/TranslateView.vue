@@ -24,7 +24,7 @@
               fill="none" stroke="var(--c-accent)" stroke-width="2.5" stroke-linecap="round" opacity="0.35" />
           </svg>
           <div class="hero-fishtail" aria-hidden="true" />
-          <h2 class="hero-title">学术文献翻译</h2>
+          <h2 class="hero-title">{{ t('translate.heroTitle') }}</h2>
           <p class="hero-sub">Scholar Translator</p>
         </div>
 
@@ -34,7 +34,7 @@
           :class="{ hover: zoneHover }"
           role="button"
           tabindex="0"
-          aria-label="选择文件"
+          :aria-label="t('translate.selectFile')"
           @click="openFilePicker"
           @keydown.enter="openFilePicker"
           @dragenter.prevent="zoneHover = true"
@@ -88,8 +88,8 @@
           <div class="dz-icon-wrap">
             <UploadCloud :size="28" :stroke-width="1.4" class="dz-icon" />
           </div>
-          <span class="dz-label">点击选择文件</span>
-          <span class="dz-hint">或将文件拖入窗口任意位置</span>
+          <span class="dz-label">{{ t('translate.clickToSelect') }}</span>
+          <span class="dz-hint">{{ t('translate.dragHint') }}</span>
         </div>
       </div>
 
@@ -107,7 +107,7 @@
       <div v-if="state.status === 'error' && state.errorMessage" class="error-banner">
         <AlertCircle :size="14" :stroke-width="2" />
         <span class="error-text">{{ state.errorMessage }}</span>
-        <UiButton v-if="!healthOk" variant="danger" size="sm" @click="$emit('restart-backend')">重启后端</UiButton>
+        <UiButton v-if="!healthOk" variant="danger" size="sm" @click="$emit('restart-backend')">{{ t('translate.restartBackend') }}</UiButton>
       </div>
     </div>
 
@@ -140,7 +140,7 @@
         <!-- Progress -->
         <div class="progress-area anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 1 }">
           <div class="progress-meta">
-            <span class="progress-msg">{{ state.stepMessage || '准备中…' }}</span>
+            <span class="progress-msg">{{ state.stepMessage || t('translate.preparing') }}</span>
             <span class="progress-pct">{{ progress }}%</span>
           </div>
           <div class="progress-track">
@@ -153,14 +153,14 @@
           <div class="chunk-track">
             <div class="chunk-fill" :style="{ width: `${(state.completedChunks / state.totalChunks) * 100}%` }" />
           </div>
-          <span class="chunk-label">{{ state.completedChunks }} / {{ state.totalChunks }} 块</span>
+          <span class="chunk-label">{{ state.completedChunks }} / {{ state.totalChunks }} {{ t('translate.blocks') }}</span>
         </div>
 
         <!-- Parsed info tags -->
         <div v-if="state.parsedInfo" class="info-chips">
-          <span class="info-chip u-interactive anim-pop-in anim-stagger" :style="{ '--stagger-i': 0 }">{{ state.parsedInfo.pages }} 页</span>
-          <span class="info-chip u-interactive anim-pop-in anim-stagger" :style="{ '--stagger-i': 1 }">{{ state.parsedInfo.chars.toLocaleString() }} 字符</span>
-          <span v-if="state.parsedInfo.dual_column_pages" class="info-chip accent u-interactive anim-pop-in anim-stagger" :style="{ '--stagger-i': 2 }">{{ state.parsedInfo.dual_column_pages }} 页双栏</span>
+          <span class="info-chip u-interactive anim-pop-in anim-stagger" :style="{ '--stagger-i': 0 }">{{ state.parsedInfo.pages }} {{ t('translate.pages') }}</span>
+          <span class="info-chip u-interactive anim-pop-in anim-stagger" :style="{ '--stagger-i': 1 }">{{ state.parsedInfo.chars.toLocaleString() }} {{ t('translate.chars') }}</span>
+          <span v-if="state.parsedInfo.dual_column_pages" class="info-chip accent u-interactive anim-pop-in anim-stagger" :style="{ '--stagger-i': 2 }">{{ state.parsedInfo.dual_column_pages }} {{ t('translate.dualColumnPages') }}</span>
         </div>
       </div>
 
@@ -217,12 +217,12 @@
       <div class="result-bar">
         <div class="result-bar-left anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 0 }">
           <div class="done-title-group">
-            <span class="done-label">翻译完成</span>
+            <span class="done-label">{{ t('translate.translationComplete') }}</span>
             <span v-if="state.blocks.length" class="done-meta">
-              {{ state.blocks.length }} 块 · {{ paragraphCount }} 段
+              {{ t('translate.blocksAndParagraphs', { blocks: state.blocks.length, paragraphs: paragraphCount }) }}
             </span>
           </div>
-          <span v-if="state.misalignedChunks > 0" class="warn-tag">{{ state.misalignedChunks }} 块对齐回退</span>
+          <span v-if="state.misalignedChunks > 0" class="warn-tag">{{ t('translate.misalignedChunks', { count: state.misalignedChunks }) }}</span>
           <span
             v-if="state.ragIngested"
             class="done-rag-hint"
@@ -230,7 +230,7 @@
             tabindex="0"
             @click="$emit('open-agent-docs')"
             @keydown.enter="$emit('open-agent-docs')"
-          >已加入文献库</span>
+          >{{ t('translate.addedToLibrary') }}</span>
         </div>
         <div class="result-bar-right">
           <UiSegmented
@@ -243,12 +243,12 @@
             <template #trigger>
               <UiButton variant="primary" size="sm">
                 <template #icon-left><Download :size="13" :stroke-width="2" /></template>
-                导出
+                {{ t('translate.export') }}
                 <template #icon-right><ChevronDown :size="13" :stroke-width="2" /></template>
               </UiButton>
             </template>
           </UiDropdown>
-          <UiButton variant="ghost" size="sm" @click="reset">新翻译</UiButton>
+          <UiButton variant="ghost" size="sm" @click="reset">{{ t('translate.newTranslate') }}</UiButton>
         </div>
       </div>
 
@@ -264,9 +264,9 @@
           <details>
             <summary class="qa-summary">
               <AlertTriangle :size="14" :stroke-width="2" />
-              <span class="qa-title">翻译质量提醒</span>
+              <span class="qa-title">{{ t('translate.qa.title') }}</span>
               <span class="qa-badge">{{ qaSummary.totalFlags }}</span>
-              <span class="qa-score">得分: {{ qaSummary.avgScore }}</span>
+              <span class="qa-score">{{ t('translate.qa.score') }}: {{ qaSummary.avgScore }}</span>
             </summary>
             <div class="qa-flags">
               <div
@@ -275,9 +275,9 @@
                 class="qa-chunk"
               >
                 <div class="qa-chunk-header">
-                  段落 {{ w.chunkIndex + 1 }}
+                  {{ t('translate.qa.paragraph') }} {{ w.chunkIndex + 1 }}
                   <span v-if="w.sectionType !== 'unknown'" class="qa-section-tag">{{ sectionLabel(w.sectionType) }}</span>
-                  <span class="qa-chunk-score">{{ w.score }} 分</span>
+                  <span class="qa-chunk-score">{{ w.score }} {{ t('translate.qa.score') }}</span>
                 </div>
                 <div
                   v-for="(f, fi) in w.flags"
@@ -317,16 +317,16 @@
               <div class="dual-orig" v-html="renderBlock(b.original, b.type)" />
               <div class="failed-card">
                 <AlertCircle :size="14" :stroke-width="2" />
-                <span>翻译失败</span>
+                <span>{{ t('translate.translationFailed') }}</span>
                 <UiButton
                   v-if="!retryingBlockIds.has(b.id)"
                   variant="secondary"
                   size="sm"
                   @click="retryFailedBlock(b.id)"
                 >
-                  重试
+                  {{ t('translate.retry') }}
                 </UiButton>
-                <span v-else class="retrying"><UiSpinner size="sm" label="重试中" /></span>
+                <span v-else class="retrying"><UiSpinner size="sm" :label="t('translate.retrying')" /></span>
                 <div v-if="retryErrors.get(b.id)" class="retry-error-msg">
                   {{ retryErrors.get(b.id) }}
                 </div>
@@ -347,7 +347,7 @@
                 @mouseleave="clearSentHover()"
               />
               <div v-else class="dual-pending">
-                <UiSpinner size="sm" label="翻译中" />
+                <UiSpinner size="sm" :label="t('translate.translating')" />
               </div>
             </template>
           </div>
@@ -372,6 +372,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, toRaw } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { UploadCloud, AlertCircle, Check, Download, FileText, ChevronDown, PresentationScreen, Database, AlertTriangle } from './ui/icons'
 import UiButton from './ui/UiButton.vue'
 import UiSegmented from './ui/UiSegmented.vue'
@@ -382,6 +383,8 @@ import { useTranslate } from '../composables/useTranslate'
 import { renderMarkdown, renderBlock } from '../utils/markdown'
 import { findCorrespondingSentenceIdx, splitSentences, type Sentence } from '../utils/sentenceAlign'
 import type { DropdownItem } from './ui/UiDropdown.vue'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   healthOk: boolean
@@ -449,7 +452,7 @@ async function retryFailedBlock(blockId: string) {
 
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({ detail: `HTTP ${resp.status}` }))
-      throw new Error(err.detail || `重试失败 (HTTP ${resp.status})`)
+      throw new Error(err.detail || t('translate.retryFailed', { status: resp.status }))
     }
 
     const result = await resp.json()
@@ -462,7 +465,7 @@ async function retryFailedBlock(blockId: string) {
       s.blocks[idx].status = result.status
     }
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : '未知错误'
+    const msg = err instanceof Error ? err.message : t('translate.unknownError')
     console.error('重试块翻译失败:', msg)
     // Keep status='failed' so the retry button stays visible; surface the reason inline
     retryErrors.value.set(blockId, msg)
@@ -478,28 +481,28 @@ async function retryFailedBlock(blockId: string) {
 
 const exportMenuItems = computed<DropdownItem[]>(() => [
   {
-    text: '双语 Markdown',
+    text: t('translate.exportMenu.bilingualMd'),
     icon: FileText,
     onClick: () => downloadResult(),
   },
   {
-    text: '双语 Word',
+    text: t('translate.exportMenu.bilingualWord'),
     icon: FileText,
     onClick: () => doExportBilingualDocx(),
   },
   {
-    text: '仅译文 Markdown',
+    text: t('translate.exportMenu.translationOnlyMd'),
     icon: FileText,
     onClick: () => exportTranslationOnlyMarkdown(),
   },
   {
-    text: '仅译文 Word',
+    text: t('translate.exportMenu.translationOnlyWord'),
     icon: FileText,
     onClick: () => exportTranslationOnlyDocx(),
   },
   { divider: true },
   {
-    text: 'PPTX 演示文稿',
+    text: t('translate.exportMenu.pptx'),
     icon: PresentationScreen,
     onClick: () => exportPPTX(),
   },
@@ -525,7 +528,7 @@ async function doExportBilingualDocx() {
   }
 }
 
-const stepLabels = ['解析文档', '清洗文本', '智能分块', '翻译', '格式化']
+const stepLabels = computed(() => [t('translate.steps.parse'), t('translate.steps.clean'), t('translate.steps.chunk'), t('translate.steps.translate'), t('translate.steps.format')])
 const formatList = ['PDF', 'Word', 'PPT', 'Excel', 'TXT', 'Markdown', 'HTML', 'EPUB', 'LaTeX', 'JSON', '…']
 
 // ── QA Helpers (P0) ──
@@ -546,31 +549,31 @@ const qaSummary = computed(() => {
 
 function sectionLabel(sectionType: string): string {
   const labels: Record<string, string> = {
-    introduction: '引言',
-    results: '结果',
-    discussion: '讨论',
-    methods: '方法',
-    conclusion: '结论',
-    abstract: '摘要',
-    references: '参考文献',
+    introduction: t('translate.section.introduction'),
+    results: t('translate.section.results'),
+    discussion: t('translate.section.discussion'),
+    methods: t('translate.section.methods'),
+    conclusion: t('translate.section.conclusion'),
+    abstract: t('translate.section.abstract'),
+    references: t('translate.section.references'),
   }
   return labels[sectionType] || sectionType
 }
 
 function flagTypeLabel(type: string): string {
   const labels: Record<string, string> = {
-    overclaim: '过度宣称',
-    sentence_length: '句长',
-    mixed_tense: '语法混用',
-    hedging: '动词语气',
+    overclaim: t('translate.flag.overclaim'),
+    sentence_length: t('translate.flag.sentence_length'),
+    mixed_tense: t('translate.flag.mixed_tense'),
+    hedging: t('translate.flag.hedging'),
   }
   return labels[type] || type
 }
 
-const viewOptions = [
-  { value: 'bilingual' as const, label: '对照' },
-  { value: 'translation' as const, label: '译文' },
-]
+const viewOptions = computed(() => [
+  { value: 'bilingual' as const, label: t('translate.view.bilingual') },
+  { value: 'translation' as const, label: t('translate.view.translation') },
+])
 
 const progress = computed(() => overallProgress())
 

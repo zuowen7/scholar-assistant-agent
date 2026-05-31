@@ -808,7 +808,7 @@ def register_agent(
         rag_store.ingest_document(
             doc_id=req.doc_id,
             text=req.text,
-            title=req.title,
+            metadata={"title": req.title} if req.title else None,
         )
         return {"status": "ok", "doc_id": req.doc_id}
 

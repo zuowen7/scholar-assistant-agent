@@ -24,13 +24,16 @@
       class="arg-edge-menu"
       :style="{ left: `${menuPos.x}px`, top: `${menuPos.y}px` }"
     >
-      <button @click="doDelete">删除关系</button>
+      <button @click="doDelete">{{ t('argument.deleteRelation') }}</button>
     </div>
   </Teleport>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import { BaseEdge, EdgeLabelRenderer, getBezierPath } from '@vue-flow/core'
 import type { EdgeProps } from '@vue-flow/core'
 import type { RelationType } from '../../composables/useArgumentMap'

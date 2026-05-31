@@ -21,6 +21,20 @@ vi.mock('monaco-editor', () => ({
   editor: {},
 }))
 
+vi.mock('../i18n', () => ({
+  i18n: {
+    global: {
+      t: (key: string, params?: any) => {
+        if (typeof params === 'object' && params !== null) {
+          const parts = Object.entries(params).map(([k, v]) => `${k}=${v}`).join(', ')
+          return `[${key}](${parts})`
+        }
+        return `[${key}]`
+      },
+    },
+  },
+}))
+
 vi.mock('../utils/api', () => ({ API_BASE: 'http://127.0.0.1:18088' }))
 vi.mock('../composables/useEditorState', () => ({
   tabs: { value: [] },
@@ -578,7 +592,7 @@ describe('Error toast notifications', () => {
 
     const errorToast = toasts.value.find(t => t.level === 'danger')
     expect(errorToast).toBeDefined()
-    expect(errorToast?.message).toContain('503')
+    expect(errorToast?.message).toContain('[argument.buildLedgerFailed]')
   })
 
   // ── buildOrRebuildLedger: SSE error 事件 ────────────────────────────────
@@ -602,7 +616,7 @@ describe('Error toast notifications', () => {
 
     const errorToast = toasts.value.find(t => t.level === 'danger')
     expect(errorToast).toBeDefined()
-    expect(errorToast?.message).toContain('LLM unavailable')
+    expect(errorToast?.message).toContain('[argument.buildLedgerFailedMsg]')
   })
 
   // ── buildOrRebuildLedger: 0 promises (LLM 无输出) ───────────────────────
@@ -627,7 +641,7 @@ describe('Error toast notifications', () => {
 
     const warnToast = toasts.value.find(t => t.level === 'warn')
     expect(warnToast).toBeDefined()
-    expect(warnToast?.message).toContain('AI')
+    expect(warnToast?.message).toContain('[argument.noPromises]')
   })
 
   // ── upsertPromise: catch 块推送 pushError ───────────────────────────────
@@ -644,7 +658,7 @@ describe('Error toast notifications', () => {
 
     const errorToast = toasts.value.find(t => t.level === 'danger')
     expect(errorToast).toBeDefined()
-    expect(errorToast?.message).toContain('承诺')
+    expect(errorToast?.message).toContain('[argument.savePromiseRetry]')
   })
 
   // ── deletePromise: catch 块推送 pushError ───────────────────────────────
@@ -661,7 +675,7 @@ describe('Error toast notifications', () => {
 
     const errorToast = toasts.value.find(t => t.level === 'danger')
     expect(errorToast).toBeDefined()
-    expect(errorToast?.message).toContain('承诺')
+    expect(errorToast?.message).toContain('[argument.deletePromiseRetry]')
   })
 
   // ── relocate: catch 块推送 pushError ────────────────────────────────────
@@ -678,7 +692,7 @@ describe('Error toast notifications', () => {
 
     const errorToast = toasts.value.find(t => t.level === 'danger')
     expect(errorToast).toBeDefined()
-    expect(errorToast?.message).toContain('锚点')
+    expect(errorToast?.message).toContain('[argument.anchorRelocateFailed]')
   })
 
   // ── updatePointStatus: catch 块推送 pushError ───────────────────────────
@@ -709,6 +723,6 @@ describe('Error toast notifications', () => {
 
     const errorToast = toasts.value.find(t => t.level === 'danger')
     expect(errorToast).toBeDefined()
-    expect(errorToast?.message).toContain('状态')
+    expect(errorToast?.message).toContain('[argument.updatePointFailed]')
   })
 })

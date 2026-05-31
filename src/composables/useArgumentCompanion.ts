@@ -9,6 +9,7 @@ import { API_BASE } from '../utils/api'
 import { readSseStream } from '../utils/streamReader'
 import type { Ledger, ReviewSession, ReviewSummary, Anchor, Promise as ArgPromise } from '../types'
 import { useToast } from './useToast'
+import { i18n } from '../i18n'
 
 // ── SHA-1-lite hash (16 hex chars) for doc staleness detection ────────────
 
@@ -71,7 +72,7 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
     return
   }
   if (text.length > 5_000_000) {
-    pushError('文本过长（超过 5 MB），请缩短后重试。')
+    pushError(i18n.global.t('argument.textTooLong'))
     return
   }
   state.building = true
@@ -85,7 +86,7 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
     console.log('[companion] fetch returned:', resp.status, 'hasBody:', !!resp.body)
     if (!resp.ok || !resp.body) {
       console.warn('[companion] build ledger failed:', resp.status)
-      pushError(`构建论证账本失败（${resp.status}）`)
+      pushError(i18n.global.t('argument.buildLedgerFailed', { status: resp.status }))
       state.building = false
       return
     }
@@ -106,9 +107,9 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
     await readSseStream(resp.body.getReader(), (eventType, data) => {
       eventCount++
       if (eventType === 'error') {
-        const msg = (data as Record<string, unknown>)['message'] as string || '未知错误'
+        const msg = (data as Record<string, unknown>)['message'] as string || i18n.global.t('errors.unknownError')
         console.warn('[companion] build ledger error:', msg)
-        pushError(`构建论证账本失败：${msg}`)
+        pushError(i18n.global.t('argument.buildLedgerFailedMsg', { msg }))
         state.building = false
         return
       }
@@ -129,7 +130,7 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
 
     if (ledger.promises.length === 0 && eventCount > 0) {
       console.warn('[companion] LLM returned 0 promises — LLM may be unavailable or text too short')
-      pushWarning('AI 未提取到任何承诺，请确认 LLM 配置正确或文本内容足够。')
+      pushWarning(i18n.global.t('argument.noPromises'))
     }
     state.ledger = ledger
     state.ledgerStale = false
@@ -163,12 +164,12 @@ async function upsertPromise(promise: Partial<ArgPromise>): Promise<void> {
         body: JSON.stringify(promise),
       },
     )
-    if (!resp.ok) { pushError(`保存承诺失败（${resp.status}）`); return }
+    if (!resp.ok) { pushError(i18n.global.t('argument.savePromiseFailed', { status: resp.status })); return }
     const updated = await resp.json() as ArgPromise
     const idx = state.ledger.promises.findIndex(p => p.id === updated.id)
     if (idx >= 0) state.ledger.promises[idx] = updated
     else state.ledger.promises.push(updated)
-  } catch (e) { pushError('保存承诺失败，请重试。'); console.warn('[companion] upsertPromise error:', e) }
+  } catch (e) { pushError(i18n.global.t('argument.savePromiseRetry')); console.warn('[companion] upsertPromise error:', e) }
 }
 
 async function deletePromise(pid: string): Promise<void> {
@@ -179,7 +180,7 @@ async function deletePromise(pid: string): Promise<void> {
       { method: 'DELETE' },
     )
     state.ledger.promises = state.ledger.promises.filter(p => p.id !== pid)
-  } catch (e) { pushError('删除承诺失败，请重试。'); console.warn('[companion] deletePromise error:', e) }
+  } catch (e) { pushError(i18n.global.t('argument.deletePromiseRetry')); console.warn('[companion] deletePromise error:', e) }
 }
 
 async function relocate(text: string): Promise<void> {
@@ -196,7 +197,7 @@ async function relocate(text: string): Promise<void> {
     if (!resp.ok) return
     const updated = await resp.json() as Ledger
     state.ledger = updated
-  } catch (e) { pushError('锚点重定位失败，请重试。'); console.warn('[companion] relocate error:', e) }
+  } catch (e) { pushError(i18n.global.t('argument.anchorRelocateFailed')); console.warn('[companion] relocate error:', e) }
 }
 
 async function listReviews(): Promise<void> {
@@ -205,7 +206,7 @@ async function listReviews(): Promise<void> {
     const resp = await fetch(`${API_BASE}/api/companion/reviews?doc_id=${encodeURIComponent(state.docId)}`)
     if (!resp.ok) return
     state.reviewList = await resp.json() as ReviewSummary[]
-  } catch (e) { pushError('加载评审列表失败。'); console.warn('[companion] listReviews error:', e) }
+  } catch (e) { pushError(i18n.global.t('argument.loadReviewsFailed')); console.warn('[companion] listReviews error:', e) }
 }
 
 async function runReview(
@@ -259,7 +260,7 @@ async function runReview(
     })
 
     if (!state.review.id) {
-      pushError('评审会话未初始化（未收到 complete 事件），请重试。')
+      pushError(i18n.global.t('argument.reviewNotInit'))
       state.review = null
       return
     }
@@ -332,7 +333,7 @@ async function updatePointStatus(pointId: string, status: import('../types').Poi
     )
     const point = state.review.points.find(p => p.id === pointId)
     if (point) point.status = status
-  } catch (e) { pushError('更新评审意见状态失败。'); console.warn('[companion] updatePointStatus error:', e) }
+  } catch (e) { pushError(i18n.global.t('argument.updatePointFailed')); console.warn('[companion] updatePointStatus error:', e) }
 }
 
 async function rebut(pointId: string, message: string, text: string): Promise<void> {
@@ -435,7 +436,7 @@ function focusAnchor(anchorId: string): void {
   ]
   const anchor = findAnchor(allAnchors, anchorId)
   if (!anchor || anchor.char_start === null || anchor.char_end === null) {
-    if (anchor) pushWarning('未在原文中定位到该位置（LLM 引用可能是意译）')
+    if (anchor) pushWarning(i18n.global.t('argument.anchorLost'))
     return
   }
   state.flashAnchor = { start: anchor.char_start, end: anchor.char_end }

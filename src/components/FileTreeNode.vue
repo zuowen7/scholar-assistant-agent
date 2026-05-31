@@ -72,12 +72,12 @@
         class="ctx-menu"
         :style="{ left: ctx.x + 'px', top: ctx.y + 'px', transformOrigin: ctx.origin }"
       >
-        <button class="ctx-item" @click="action('cut')">剪切</button>
-        <button class="ctx-item" @click="action('copy')">复制</button>
-        <button v-if="canPaste" class="ctx-item" @click="action('paste')">粘贴</button>
+        <button class="ctx-item" @click="action('cut')">{{ t('files.cut') }}</button>
+        <button class="ctx-item" @click="action('copy')">{{ t('files.copy') }}</button>
+        <button v-if="canPaste" class="ctx-item" @click="action('paste')">{{ t('files.paste') }}</button>
         <div v-if="canPaste" class="ctx-sep" />
-        <button class="ctx-item" @click="action('rename')">重命名</button>
-        <button class="ctx-item ctx-danger" @click="action('delete')">删除</button>
+        <button class="ctx-item" @click="action('rename')">{{ t('files.rename') }}</button>
+        <button class="ctx-item ctx-danger" @click="action('delete')">{{ t('files.delete') }}</button>
         <div class="ctx-sep" />
         <button class="ctx-item" @click="action('copy-path')">复制路径</button>
       </div>
@@ -87,6 +87,9 @@
 
 <script setup lang="ts">
 import { ref, nextTick, reactive, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import type { FileEntry } from '../types'
 import { useFileTree } from '../composables/useFileTree'
 import UiSkeleton from './ui/UiSkeleton.vue'

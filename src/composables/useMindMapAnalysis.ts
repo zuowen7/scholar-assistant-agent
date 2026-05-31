@@ -1,5 +1,6 @@
 import { API_BASE } from '../utils/api'
 import type { MindMapData } from './useMindMap'
+import { i18n } from '../i18n'
 
 export type MindMapIssueType =
   | 'isolated'
@@ -73,7 +74,9 @@ function resolveNodeIds(texts: string[], map: MindMapData): string[] {
   return ids
 }
 
-const GENERIC = new Set(['中心主题', '新节点', '未命名节点'])
+function getGenericNames(): Set<string> {
+  return new Set([i18n.global.t('mindmap.centralTopic'), i18n.global.t('mindmap.newNode'), i18n.global.t('mindmap.unnamedNode')])
+}
 
 function runStructuralFallback(map: MindMapData): Array<Record<string, any>> {
   const issues: Array<Record<string, any>> = []
@@ -84,8 +87,8 @@ function runStructuralFallback(map: MindMapData): Array<Record<string, any>> {
       id: `issue-${issues.length + 1}`,
       type: 'shallow_branch',
       severity: 'warning',
-      title: '主链还没有展开',
-      message: '中心主题下面还没有分支，建议先拆出研究问题、方法、论据或结论。',
+      title: i18n.global.t('mindmap.analysis.mainChainNotExpanded'),
+      message: i18n.global.t('mindmap.analysis.mainChainHint'),
       node_texts: [root.text],
     })
   }
@@ -93,7 +96,7 @@ function runStructuralFallback(map: MindMapData): Array<Record<string, any>> {
   const normalized = new Map<string, string[]>()
   for (const [id, node] of Object.entries(map.nodes)) {
     const key = node.text.trim().toLowerCase().replace(/\s+/g, '')
-    if (!key || GENERIC.has(key)) continue
+    if (!key || getGenericNames().has(key)) continue
     normalized.set(key, [...(normalized.get(key) ?? []), id])
   }
   for (const [text, ids] of normalized) {
@@ -102,8 +105,8 @@ function runStructuralFallback(map: MindMapData): Array<Record<string, any>> {
         id: `issue-${issues.length + 1}`,
         type: 'duplicate',
         severity: 'warning',
-        title: '存在相似表达',
-        message: `有 ${ids.length} 个节点使用了相近表述，建议合并或区分论点侧重点。`,
+        title: i18n.global.t('mindmap.analysis.similarExpression'),
+        message: i18n.global.t('mindmap.analysis.similarHint', { count: ids.length }),
         node_texts: ids.map(id => map.nodes[id]?.text ?? text),
       })
     }
@@ -116,18 +119,18 @@ function runStructuralFallback(map: MindMapData): Array<Record<string, any>> {
         id: `issue-${issues.length + 1}`,
         type: 'isolated',
         severity: 'critical',
-        title: '发现孤立节点',
-        message: '这个节点没有有效父节点，建议把它接回主链或删除。',
+        title: i18n.global.t('mindmap.analysis.orphanNode'),
+        message: i18n.global.t('mindmap.analysis.orphanHint'),
         node_texts: [node.text],
       })
     }
-    if (!node.children.length && (node.text.trim().length < 6 || GENERIC.has(node.text.trim()))) {
+    if (!node.children.length && (node.text.trim().length < 6 || getGenericNames().has(node.text.trim()))) {
       issues.push({
         id: `issue-${issues.length + 1}`,
         type: 'missing_support',
         severity: 'info',
-        title: '建议补充支撑信息',
-        message: '节点内容较短，建议补充前置条件、证据来源或预期结论。',
+        title: i18n.global.t('mindmap.analysis.suggestSupport'),
+        message: i18n.global.t('mindmap.analysis.suggestSupportHint'),
         node_texts: [node.text],
       })
     }

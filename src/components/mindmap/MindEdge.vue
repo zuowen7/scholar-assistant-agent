@@ -19,13 +19,15 @@
       class="edge-context-menu"
       :style="{ left: `${menuPos.x}px`, top: `${menuPos.y}px` }"
     >
-      <button @click="doDelete">删除连线</button>
+      <button @click="doDelete">{{ t('mindmap.deleteEdge') }}</button>
     </div>
   </Teleport>
 </template>
 
 <script setup lang="ts">
 import { computed, inject, ref, type Ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 import { BaseEdge, getBezierPath } from '@vue-flow/core'
 import type { EdgeProps } from '@vue-flow/core'
 import { useMindMap } from '../../composables/useMindMap'

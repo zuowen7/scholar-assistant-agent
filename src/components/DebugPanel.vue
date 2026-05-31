@@ -4,7 +4,7 @@
       <button
         class="dp-trigger"
         :class="{ active: isOpen, 'has-errors': unreadErrorCount > 0 }"
-        title="调试面板"
+        :title="t('editor.debugTitle')"
       >
         <Terminal :size="15" :stroke-width="1.6" />
         <span v-if="unreadErrorCount > 0" class="dp-badge-count">
@@ -15,16 +15,16 @@
 
     <div class="dp-panel">
       <div class="dp-header">
-        <span class="dp-title">调试面板</span>
+        <span class="dp-title">{{ t('editor.debugTitle') }}</span>
         <div class="dp-header-actions">
           <UiSegmented v-model="tab" :options="tabOptions" size="sm" />
-          <button class="dp-clear-btn" title="清空" @click="clearCurrentTab">清空</button>
+          <button class="dp-clear-btn" :title="t('settings.clear')" @click="clearCurrentTab">{{ t('settings.clear') }}</button>
         </div>
       </div>
 
       <!-- 前端错误 -->
       <div v-show="tab === 'frontend'" class="dp-list">
-        <div v-if="errorLog.length === 0" class="dp-empty">暂无错误记录</div>
+        <div v-if="errorLog.length === 0" class="dp-empty">{{ t('editor.debugNoErrors') }}</div>
         <div v-for="entry in errorLog" :key="entry.id" class="dp-entry" :class="entry.level">
           <span class="dp-ts">{{ entry.ts }}</span>
           <span class="dp-level" :class="entry.level">{{ entry.level === 'danger' ? 'ERR' : 'WARN' }}</span>
@@ -34,15 +34,15 @@
 
       <!-- 后端日志 -->
       <div v-show="tab === 'backend'" class="dp-list">
-        <div v-if="loading" class="dp-empty">加载中…</div>
+        <div v-if="loading" class="dp-empty">{{ t('general.loading') }}</div>
         <div v-else-if="fetchError" class="dp-empty dp-fetch-error">{{ fetchError }}</div>
         <template v-else>
           <div class="dp-path-row" :title="logPath">
-            <span class="dp-path-label">日志文件：</span>
+            <span class="dp-path-label">{{ t('editor.debugLogFile') }}</span>
             <span class="dp-path-value">{{ logPath }}</span>
-            <button class="dp-open-btn" @click="openLogFolder">打开目录</button>
+            <button class="dp-open-btn" @click="openLogFolder">{{ t('editor.debugOpenDir') }}</button>
           </div>
-          <div v-if="logLines.length === 0" class="dp-empty">暂无日志</div>
+          <div v-if="logLines.length === 0" class="dp-empty">{{ t('editor.debugNoLogs') }}</div>
           <div v-for="(line, i) in logLines" :key="i" class="dp-line">{{ line }}</div>
         </template>
       </div>
@@ -68,8 +68,8 @@ const isOpen = computed(() => popoverRef.value?.open ?? false)
 
 const tab = ref<'frontend' | 'backend'>('frontend')
 const tabOptions = [
-  { value: 'frontend', label: '前端错误' },
-  { value: 'backend', label: '后端日志' },
+  { value: 'frontend', label: t('general.error') },
+  { value: 'backend', label: t('topbar.backend') },
 ]
 
 const logLines = ref<string[]>([])
@@ -87,7 +87,7 @@ async function fetchLogs() {
     logLines.value = data.lines ?? []
     logPath.value = data.path ?? ''
   } catch (e) {
-    fetchError.value = e instanceof Error ? e.message : '获取日志失败'
+    fetchError.value = e instanceof Error ? e.message : t('editor.debugFetchFailed')
   } finally {
     loading.value = false
   }

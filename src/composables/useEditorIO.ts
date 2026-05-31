@@ -1,4 +1,5 @@
 import { API_BASE } from '../utils/api'
+import { i18n } from '../i18n'
 
 export interface WordExportResponse {
   filename?: string
@@ -61,8 +62,8 @@ export function useEditorIO() {
       body: JSON.stringify({ markdown, template_id: templateId }),
     })
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ error: '导出失败' }))
-      return { tex: '', error: err.error || '导出失败' }
+      const err = await resp.json().catch(() => ({ error: i18n.global.t('errors.exportFailed') }))
+      return { tex: '', error: err.error || i18n.global.t('errors.exportFailed') }
     }
     const data = await resp.json()
     return { tex: data.tex || '' }
@@ -79,8 +80,8 @@ export function useEditorIO() {
       body: JSON.stringify({ markdown, template_id: templateId, title }),
     })
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ detail: 'PDF 导出失败' }))
-      return err.detail || err.error || 'PDF 导出失败'
+      const err = await resp.json().catch(() => ({ detail: i18n.global.t('errors.exportFailed') }))
+      return err.detail || err.error || i18n.global.t('errors.exportFailed')
     }
     const blob = await resp.blob()
     return await saveBlob(blob, 'paper.pdf')

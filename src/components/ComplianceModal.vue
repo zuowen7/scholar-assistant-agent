@@ -3,7 +3,7 @@
     <div v-if="visible" class="modal-overlay" @click.self="$emit('close')">
       <div class="modal-panel">
         <div class="modal-header">
-          <h3>📋 论文合规检查报告</h3>
+          <h3>📋 Compliance Check Report</h3>
           <button class="close-btn" @click="$emit('close')">✕</button>
         </div>
 
@@ -11,14 +11,14 @@
           <!-- Loading -->
           <div v-if="loading" class="compliance-loading">
             <div class="spinner"></div>
-            <p>正在分析论文合规性...</p>
+            <p>Analyzing paper compliance...</p>
           </div>
 
           <!-- Error -->
           <div v-else-if="error" class="compliance-error">
             <p class="error-icon">⚠️</p>
             <p>{{ error }}</p>
-            <button class="btn retry-btn" @click="$emit('retry')">重新检查</button>
+            <button class="btn retry-btn" @click="$emit('retry')">Re-check</button>
           </div>
 
           <!-- Report -->
@@ -47,7 +47,7 @@
             <div class="report-sections">
               <!-- Structure -->
               <div class="report-section" v-if="report.structure">
-                <h4>📑 论文结构</h4>
+                <h4>📑 Structure</h4>
                 <div class="section-content">
                   <div class="section-item">
                     <span class="label">必要章节:</span>
@@ -61,7 +61,7 @@
 
               <!-- Terminology -->
               <div class="report-section" v-if="report.terminology">
-                <h4>🔤 术语一致性</h4>
+                <h4>🔤 Terminology</h4>
                 <div class="section-content">
                   <div class="section-item">
                     <span class="label">一致术语:</span>
@@ -79,7 +79,7 @@
 
               <!-- Citation -->
               <div class="report-section" v-if="report.citation">
-                <h4>📚 引用格式</h4>
+                <h4>📚 Citations</h4>
                 <div class="section-content">
                   <div class="section-item">
                     <span class="label">引用总数:</span>
@@ -96,7 +96,7 @@
 
               <!-- Hallucination Risk -->
               <div class="report-section" v-if="report.hallucination_risk">
-                <h4>⚡ 幻觉风险</h4>
+                <h4>⚡ Hallucination Risk</h4>
                 <div class="section-content">
                   <div class="section-item">
                     <span class="label">风险等级:</span>
@@ -115,7 +115,7 @@
 
               <!-- Readability -->
               <div class="report-section" v-if="report.readability">
-                <h4>📖 可读性</h4>
+                <h4>📖 Readability</h4>
                 <div class="section-content">
                   <div class="section-item">
                     <span class="label">平均句长:</span>
@@ -136,13 +136,13 @@
 
           <!-- Empty -->
           <div v-else class="compliance-empty">
-            <p>点击"重新检查"开始分析</p>
+            <p>Click 'Re-check' to start analysis</p>
           </div>
         </div>
 
         <div class="modal-footer">
-          <button class="btn secondary-btn" @click="$emit('close')">关闭</button>
-          <button class="btn primary-btn" @click="$emit('retry')" :disabled="loading">重新检查</button>
+          <button class="btn secondary-btn" @click="$emit('close')">{{ t('general.close') }}</button>
+          <button class="btn primary-btn" @click="$emit('retry')" :disabled="loading">{{ t('general.refresh') }}</button>
         </div>
       </div>
     </div>
@@ -151,6 +151,9 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   visible: boolean

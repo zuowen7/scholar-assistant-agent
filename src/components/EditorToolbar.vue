@@ -16,10 +16,10 @@
     />
 
     <div class="tb-left">
-      <button class="tb-btn u-interactive" title="新建论文" aria-label="新建论文" @click="$emit('new-paper')">
+      <button class="tb-btn u-interactive" :title="t('editor.newPaper')" :aria-label="t('editor.newPaper')" @click="$emit('new-paper')">
         <FilePlus :size="15" :stroke-width="1.7" />
       </button>
-      <button class="tb-btn u-interactive" title="保存 (Ctrl+S)" aria-label="保存" @click="$emit('save')">
+      <button class="tb-btn u-interactive" :title="t('editor.save')" :aria-label="t('editor.save')" @click="$emit('save')">
         <Save :size="15" :stroke-width="1.7" />
       </button>
       <div class="tb-divider" />
@@ -36,8 +36,8 @@
 
       <button
         class="tb-btn u-interactive"
-        title="思维导图"
-        aria-label="思维导图"
+        :title="t('editor.mindMap')"
+        :aria-label="t('editor.mindMap')"
         @click="$emit('open-mindmap')"
       >
         <Workflow :size="15" :stroke-width="1.7" />
@@ -45,8 +45,8 @@
       <button
         class="tb-btn u-interactive"
         :class="{ active: activeRightTab === 'preview' }"
-        title="预览"
-        aria-label="预览"
+        :title="t('editor.preview')"
+        :aria-label="t('editor.preview')"
         @click="$emit('toggle-right', 'preview')"
       >
         <Eye :size="15" :stroke-width="1.7" />
@@ -54,8 +54,8 @@
       <button
         class="tb-btn u-interactive"
         :class="{ active: activeRightTab === 'ai' }"
-        title="AI 编辑"
-        aria-label="AI 编辑面板"
+        :title="t('editor.aiEdit')"
+        :aria-label="t('editor.aiEditPanel')"
         @click="$emit('toggle-right', 'ai')"
       >
         <Bot :size="15" :stroke-width="1.7" />
@@ -63,8 +63,8 @@
       <button
         class="tb-btn u-interactive"
         :class="{ active: activeRightTab === 'argument' }"
-        title="论证导图"
-        aria-label="论证导图"
+        :title="t('editor.argumentMap')"
+        :aria-label="t('editor.argumentMap')"
         @click="$emit('toggle-right', 'argument')"
       >
         <GitBranch :size="15" :stroke-width="1.7" />
@@ -73,13 +73,13 @@
 
       <UiDropdown :items="moreItems" :width="230" align="end">
         <template #trigger>
-          <button class="tb-btn u-interactive" title="更多工具" aria-label="更多工具">
+          <button class="tb-btn u-interactive" :title="t('editor.moreTools')" :aria-label="t('editor.moreTools')">
             <MoreHorizontal :size="15" :stroke-width="1.7" />
           </button>
         </template>
         <template v-if="templates.length" #default>
           <div class="dd-template-row">
-            <span class="dd-template-label">LaTeX 模板</span>
+            <span class="dd-template-label">{{ t('editor.latexTemplate') }}</span>
             <select
               class="dd-template-select"
               :value="selectedTemplate"
@@ -97,6 +97,9 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import { FilePlus, Save, Eye, Bot, GitBranch, Workflow, MoreHorizontal } from './ui/icons'
 import { Image, Table, Sigma, Quote, Library, Code2, CheckCircle, Download } from './ui/icons'
 import UiDropdown from './ui/UiDropdown.vue'
