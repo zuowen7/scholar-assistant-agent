@@ -17,13 +17,11 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
   const interimText = ref('')
   const error = ref('')
   let recognition: SpeechRecognition | null = null
-  let accumulatedFinal = ''
 
   function start(lang = 'zh-CN') {
     if (status.value === 'listening') return
     error.value = ''
     interimText.value = ''
-    accumulatedFinal = ''
 
     const sr = getSpeechRecognition()
     if (!sr) {
@@ -32,7 +30,7 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
     }
 
     recognition = sr
-    sr.continuous = true
+    sr.continuous = false
     sr.interimResults = true
     sr.lang = lang
 
@@ -46,19 +44,10 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
     }
 
     sr.onresult = (e) => {
-      let newFinal = ''
-      let interim = ''
-      const start = typeof e.resultIndex === 'number' ? e.resultIndex : 0
-      for (let i = start; i < e.results.length; i++) {
-        const r = e.results[i]
-        if (r.isFinal) {
-          newFinal += r[0].transcript
-        } else {
-          interim += r[0].transcript
-        }
+      let text = ''
+      for (let i = 0; i < e.results.length; i++) {
+        text += e.results[i][0].transcript
       }
-      if (newFinal) accumulatedFinal += newFinal
-      const text = accumulatedFinal + interim
       interimText.value = text
       options?.onResult?.(text)
     }

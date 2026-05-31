@@ -112,7 +112,7 @@ describe('useSpeechRecognition', () => {
     expect(sr.status.value).toBe('idle')
     sr.start()
     expect(sr.status.value).toBe('listening')
-    expect(mockInstance.continuous).toBe(true)
+    expect(mockInstance.continuous).toBe(false)
     expect(mockInstance.interimResults).toBe(true)
     expect(mockInstance.lang).toBe('zh-CN')
   })

@@ -194,6 +194,7 @@ function togglePanelSpeech() {
   if (panelSpeech.status.value === 'listening') {
     voiceBaseInput = ''
     panelSpeech.stop()
+    inputRef.value?.focus()
   } else {
     voiceBaseInput = input.value
     panelSpeech.start()
