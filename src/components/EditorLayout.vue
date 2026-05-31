@@ -460,6 +460,8 @@ let voiceRange: { line: number; col: number; len: number } | null = null
 function handleVoiceStart() {
   const ed = useEditor().monacoEditor.value
   if (!ed) return
+  // Re-focus editor (button click stole focus)
+  ed.focus()
   const pos = ed.getPosition()
   if (!pos) return
   voiceRange = { line: pos.lineNumber, col: pos.column, len: 0 }
@@ -468,6 +470,7 @@ function handleVoiceStart() {
 function handleVoiceUpdate(text: string) {
   const ed = useEditor().monacoEditor.value
   if (!ed || !voiceRange) return
+  ed.focus()
   const Range = (ed as any).monaco?.Range ??
     class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
   // Replace previous voice text with new version — triggers onDidChangeModelContent
