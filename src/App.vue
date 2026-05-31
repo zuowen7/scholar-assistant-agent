@@ -124,23 +124,21 @@
 
       <!-- 主内容区：KeepAlive 保留各模式状态，Transition 提供切换动画 -->
       <div class="mode-container">
-        <Transition name="v-page-cross" mode="out-in">
-          <KeepAlive>
-            <TranslateView
-              v-if="appMode === 'translate'"
-              :health-ok="healthOk"
-              :read-settings="readSettings"
-              @restart-backend="handleRestartBackend"
-              @open-agent-docs="openAgentDocs"
-            />
-            <EditorLayout
-              v-else-if="appMode === 'editor'"
-              :isDark="isDark"
-              class="editor-mode"
-            />
-            <ArgumentMapView v-else-if="appMode === 'argument'" class="arg-mode" />
-          </KeepAlive>
-        </Transition>
+        <KeepAlive>
+          <TranslateView
+            v-if="appMode === 'translate'"
+            :health-ok="healthOk"
+            :read-settings="readSettings"
+            @restart-backend="handleRestartBackend"
+            @open-agent-docs="openAgentDocs"
+          />
+          <EditorLayout
+            v-else-if="appMode === 'editor'"
+            :isDark="isDark"
+            class="editor-mode"
+          />
+          <ArgumentMapView v-else-if="appMode === 'argument'" class="arg-mode" />
+        </KeepAlive>
       </div>
 
       <!-- Agent 聊天面板 -->
