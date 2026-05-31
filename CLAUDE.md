@@ -129,6 +129,34 @@ Key backend modules under `src/`:
 
 `src/main.rs` spawns Python API (port 18088) and optionally Ollama (port 11434) as child processes. On window close, kills the process tree via `ManagedProcesses` state with `Mutex<Option<Child>>`. Health-checks Python API by polling port before signaling ready.
 
+### i18n / Internationalization (`src/i18n/`)
+
+**Bilingual UI**: zh-CN / en-US, powered by vue-i18n v11 (Composition API, `legacy: false`).
+
+| File | Role |
+|------|------|
+| `src/i18n/index.ts` | `createAppI18n()` factory + singleton `i18n` instance (registered in `main.ts` via `app.use(i18n)`) |
+| `src/i18n/locales/zh-CN.json` | Chinese locale (~770 keys, nested by feature: mode/settings/translate/editor/agent/argument/mindmap/errors) |
+| `src/i18n/locales/en-US.json` | English locale — symmetric with zh-CN (same keys, English values) |
+| `src/composables/useLocale.ts` | Language preference singleton: detects `navigator.language`, persists to `localStorage`, syncs `document.documentElement.lang` + `i18n.global.locale.value` |
+| `src/__tests__/helpers/i18n.ts` | `createTestI18n()` — shared test helper providing full locale messages for component tests |
+
+**Key patterns**:
+- **Components** use `useI18n()` → `const { t } = useI18n()` → `{{ t('key') }}` in templates
+- **Composables** use `import { i18n } from '../i18n'` → `i18n.global.t('key')` (no reactive context needed)
+- **Language switcher** in `AppTopBar.vue` settings popover (below tabs, uses `UiSelect` with `currentLocale`/`setLocale`)
+- **Locale key symmetry** is enforced: every key in zh-CN must have a counterpart in en-US; `i18n.test.ts` verifies this
+- **Brand strings** (研墨/研/墨) are hardcoded in components — never in locale files
+- **LLM prompts** (in AiPanel.vue, agent prompts) are intentionally NOT i18n'd — they are sent to models, not displayed to users
+
+**Testing**: Components that use `t()` must mock `vue-i18n` via `vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: fn }) }))`. See `AgentApprovalInline.test.ts` for the canonical pattern. 8 test files have this mock.
+
+**Adding a new locale**:
+1. Create `src/i18n/locales/{locale}.json` with all keys
+2. Add the locale to `SUPPORTED_LOCALES` in `src/i18n/index.ts`
+3. Add an `<option>` in `AppTopBar.vue` language selector
+4. Run `npx vitest` to verify key symmetry
+
 ### Cross-Cutting Patterns
 
 - **Router registration**: `api_factory.py` calls `register_translate`, `register_agent`, `register_editor`, `register_argument`, `register_mindmap` — each receives shared closures and returns state dicts for cross-module wiring.

@@ -10,7 +10,7 @@
 - **审** — 对抗式审稿（Reviewer-2）+ 论证账本，投稿前逐句逼问逻辑漏洞
 - **排** — 一键导出 IEEE / ACM / NeurIPS 等 LaTeX 模板与 Word
 
-本地可离线运行，也可接入 21 家云端大模型。
+本地可离线运行，也可接入 21 家云端大模型。**支持中/英双语界面切换**，设置面板一键切换 UI 语言。
 
 - **版本**：v0.3.2（Agent 工作区文件工具链接通 — "写论文版 Claude Code" 范式落地；越界审批、Monaco 实时刷新、RAG 降级为按需文献库；论证陪练 v3 + agency-agents-zh SDLC 改造全部完成。最新一轮（2026-05-30）：Agent 工具指导自动覆盖全部 21 个 provider 的所有模型（未知模型返回 `_DEFAULT_TOOL_GUIDE` 而非空字符串，修复非 qwen/gpt/deepseek/gemini 模型拒绝执行工具的问题））
 - **许可**：MIT

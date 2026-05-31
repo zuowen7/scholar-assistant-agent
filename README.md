@@ -42,6 +42,8 @@ Scholar Assistant packs five capabilities into one desktop app:
 
 **The Agent is the backbone** — it works like Claude Code in a code repo, but for your paper workspace. Open a project folder, and the Agent can `read_file`, `grep_files`, `str_replace`, `write_file`, `run_command`, and `git_op` directly on your PDFs, drafts, bib files, and data. Workspace boundaries are enforced; out-of-scope access requires your approval.
 
+**Bilingual UI** (zh-CN / en-US) — switch language from the settings panel. All menus, labels, error messages, and tooltips are translated.
+
 ## Download
 
 Pre-built installers are available on the [Releases](https://github.com/zuowen7/scholar-assistant/releases) page.
