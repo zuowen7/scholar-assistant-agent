@@ -2,30 +2,30 @@
   <div class="arg-source-pane">
     <!-- Header -->
     <div class="source-header">
-      <span class="source-title">原文</span>
+      <span class="source-title">{{ t('argument.sourceText') }}</span>
       <div class="source-load-btns">
         <button
           class="source-btn"
           :class="{ active: state.source.mode === 'translation' }"
           @click="doLoadTranslation"
-        >从翻译结果</button>
+        >{{ t('argument.fromTranslation') }}</button>
         <button
           class="source-btn"
           :class="{ active: state.source.mode === 'editor' }"
           @click="doLoadEditor"
-        >从编辑器</button>
+        >{{ t('argument.fromEditor') }}</button>
         <button
           class="source-btn"
           :class="{ active: state.source.mode === 'paste' && state.source.text }"
           @click="showPaste = !showPaste"
-        >粘贴文本</button>
+        >{{ t('argument.pasteText') }}</button>
       </div>
       <button
         v-if="state.source.mode === 'translation'"
         class="source-side-toggle"
-        :title="state.source.side === 'trans' ? '切换显示原文' : '切换显示译文'"
+        :title="state.source.side === 'trans' ? t('argument.switchDisplay') : t('argument.switchDisplayTrans')"
         @click="toggleSide"
-      >{{ state.source.side === 'trans' ? '译 ⇄' : '原 ⇄' }}</button>
+      >{{ state.source.side === 'trans' ? t('argument.translation') + ' ⇄' : t('argument.original') + ' ⇄' }}</button>
       <button
         class="extract-btn"
         :class="{ 'is-extracting': state.extracting }"
@@ -34,7 +34,7 @@
         @click="doExtract"
       >
         <span v-if="state.extracting" class="extract-spinner"></span>
-        {{ state.extracting ? '提取中' : '提取论证' }}
+        {{ state.extracting ? t('argument.extracting') : t('argument.extractArgument') }}
       </button>
     </div>
 
@@ -44,12 +44,12 @@
         v-model="pasteText"
         class="source-paste-input"
         rows="4"
-        placeholder="粘贴原文或译文…"
+        :placeholder="t('argument.pastePlaceholder')"
         @keydown.enter.ctrl.prevent="confirmPaste"
       />
       <div class="paste-actions">
-        <button class="paste-btn paste-btn--primary" @click="confirmPaste">确定</button>
-        <button class="paste-btn" @click="showPaste = false">取消</button>
+        <button class="paste-btn paste-btn--primary" @click="confirmPaste">{{ t('argument.confirm') }}</button>
+        <button class="paste-btn" @click="showPaste = false">{{ t('argument.cancelPaste') }}</button>
       </div>
     </div>
 
@@ -97,8 +97,8 @@
             v-if="state.selectedNodeId"
             class="bind-btn bind-btn--primary"
             @click="bindToCurrentNode"
-          >绑定到当前节点</button>
-          <div class="bind-sep">或新建节点：</div>
+          >{{ t('argument.bindToCurrent') }}</button>
+          <div class="bind-sep">{{ t('argument.orCreateNew') }}</div>
           <div class="bind-new-btns">
             <button
               v-for="nt in NODE_TYPE_OPTIONS"
@@ -108,7 +108,7 @@
               @click="bindAndCreate(nt.value)"
             >{{ nt.label }}</button>
           </div>
-          <button class="bind-btn bind-btn--cancel" @click="bindPopup.visible = false">取消</button>
+          <button class="bind-btn bind-btn--cancel" @click="bindPopup.visible = false">{{ t('argument.cancelPaste') }}</button>
         </div>
       </div>
     </Teleport>
@@ -117,6 +117,9 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import type { NodeType } from '../../composables/useArgumentMap'
 import {
   useArgumentMap,
@@ -281,12 +284,12 @@ watch(
 // ── Bind popup ─────────────────────────────────────────────────────────────────
 
 const NODE_TYPE_OPTIONS: { value: NodeType; label: string }[] = [
-  { value: 'claim', label: '主张' },
-  { value: 'grounds', label: '依据' },
-  { value: 'warrant', label: '论证保证' },
-  { value: 'backing', label: '支撑' },
-  { value: 'qualifier', label: '限定' },
-  { value: 'rebuttal', label: '反驳' },
+  { value: 'claim', label: t('argument.claim') },
+  { value: 'grounds', label: t('argument.grounds') },
+  { value: 'warrant', label: t('argument.warrant') },
+  { value: 'backing', label: t('argument.backing') },
+  { value: 'qualifier', label: t('argument.qualifier') },
+  { value: 'rebuttal', label: t('argument.rebuttal') },
 ]
 
 const bindPopup = reactive<{

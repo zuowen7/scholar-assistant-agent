@@ -11,7 +11,7 @@
           <span class="al-dots"><i /><i /><i /></span>
           <span class="anim-shimmer-text">分析中</span>
         </span>
-        <span v-else>{{ ledger ? '重新分析' : '分析论证账本' }}</span>
+        <span v-else>{{ ledger ? t('argument.reanalyze') : t('argument.analyzeLedger') }}</span>
       </button>
     </div>
 
@@ -21,7 +21,7 @@
     <!-- 首次构建中：骨架屏，避免"以为没反应" -->
     <div v-if="building && !ledger" class="ledger-skeleton">
       <div class="sk-status">
-        <UiSpinner size="sm" label="AI 正在通读全文，逐条提取承诺" />
+        <UiSpinner size="sm" :label="t('argument.ledgerSpinner')" />
       </div>
       <div v-for="i in 4" :key="i" class="sk-row" :style="{ '--stagger-i': i }">
         <UiSkeleton shape="line" width="46px" height="14px" />
@@ -89,7 +89,7 @@
             <span
               v-if="isLost(promise)"
               class="lost-badge"
-              title="未在正文中定位"
+              :title="t('argument.anchorLost')"
             >⚠</span>
           </div>
         </div>
@@ -100,6 +100,9 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import type { Ledger, Promise as ArgPromise, PromiseStatus, Anchor } from '../../types'
 import UiSkeleton from '../ui/UiSkeleton.vue'
 import UiSpinner from '../ui/UiSpinner.vue'
@@ -135,11 +138,11 @@ const groups = computed<Group[]>(() => {
 
 function statusLabel(s: PromiseStatus): string {
   const labels: Record<PromiseStatus, string> = {
-    unpaid: '未兑付',
-    mismatch: '不一致',
-    partial: '部分兑付',
-    paid: '已兑付',
-    unknown: '未知',
+    unpaid: t('argument.unpaid'),
+    mismatch: t('argument.mismatch'),
+    partial: t('argument.partial'),
+    paid: t('argument.paid'),
+    unknown: t('argument.unknown'),
   }
   return labels[s] ?? s
 }

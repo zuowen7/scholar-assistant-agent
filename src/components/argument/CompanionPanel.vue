@@ -28,13 +28,13 @@
     <!-- Agent link status -->
     <div v-if="agentLinked" class="agent-link-bar">
       <span class="agent-link-dot"></span>
-      <span>论证图已关联文档，Agent 可读取</span>
+      <span>{{ t('argument.graphLinked') }}</span>
     </div>
 
     <!-- Staleness banner -->
     <div v-if="companion.state.ledgerStale" class="stale-banner">
       草稿已改，可能过期
-      <button class="reanalyze-btn" @click="handleAnalyze">重新分析</button>
+      <button class="reanalyze-btn" @click="handleAnalyze">{{ t('argument.analyzeBtn') }}</button>
     </div>
 
     <!-- Ledger sub-page -->
@@ -67,7 +67,7 @@
       <!-- Venue + persona controls -->
       <div class="reviewer-controls">
         <select v-model="venue" class="ctrl-select">
-          <option value="">通用 (Generic)</option>
+          <option value="">{{ t('argument.reviewModeGeneric') }}</option>
           <option value="NeurIPS">NeurIPS</option>
           <option value="ICML">ICML</option>
           <option value="ICLR">ICLR</option>
@@ -77,14 +77,14 @@
           <option value="CHI">CHI</option>
         </select>
         <select v-model="persona" class="ctrl-select">
-          <option value="reviewer2">Reviewer 2 (苛刻)</option>
-          <option value="ac">AC (均衡)</option>
-          <option value="domain_expert">领域专家</option>
-          <option value="friendly">友好评审</option>
+          <option value="reviewer2">{{ t('argument.reviewModeReviewer2') }}</option>
+          <option value="ac">{{ t('argument.reviewModeAC') }}</option>
+          <option value="domain_expert">{{ t('argument.reviewModeDomainExpert') }}</option>
+          <option value="friendly">{{ t('argument.reviewModeFriendly') }}</option>
         </select>
         <select v-model="reviewMode" class="ctrl-select">
-          <option value="serial">单角度</option>
-          <option value="parallel">三角度并行</option>
+          <option value="serial">{{ t('argument.reviewSerial') }}</option>
+          <option value="parallel">{{ t('argument.reviewParallel') }}</option>
         </select>
         <button
           class="run-review-btn u-interactive"
@@ -143,12 +143,12 @@
 
       <!-- Import real reviews section -->
       <div class="import-section">
-        <div class="import-label">导入真实审稿意见</div>
+        <div class="import-label">{{ t('argument.importReviews') }}</div>
         <textarea
           v-model="importText"
           class="import-textarea"
           data-import-textarea
-          placeholder="粘贴真实审稿意见…"
+          :placeholder="t('argument.importPlaceholder')"
           rows="4"
         />
         <button
@@ -157,7 +157,7 @@
           :disabled="!importText.trim() || companion.state.reviewing"
           @click="handleImportReviews"
         >
-          {{ companion.state.reviewing ? '导入中…' : '导入审稿意见' }}
+          {{ companion.state.reviewing ? t('argument.importingReviews') : t('argument.importReviewsBtn') }}
         </button>
       </div>
     </div>
@@ -166,6 +166,9 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import { useArgumentCompanion } from '../../composables/useArgumentCompanion'
 import { useArgumentMap } from '../../composables/useArgumentMap'
 import LedgerList from './LedgerList.vue'
@@ -239,7 +242,7 @@ async function handleDownload() {
     const resp = await fetch(url)
     if (!resp.ok) {
       const { useToast } = await import('../../composables/useToast')
-      useToast().pushError(`导出 rebuttal 失败（${resp.status}）`)
+      useToast().pushError(t('argument.exportRebuttalFailed', { status: resp.status }))
       return
     }
     const blob = await resp.blob()
@@ -248,7 +251,7 @@ async function handleDownload() {
   } catch (e) {
     console.error('[companion] download failed:', e)
     const { useToast } = await import('../../composables/useToast')
-    useToast().pushError('导出 rebuttal 失败，请重试')
+    useToast().pushError(t('argument.exportRebuttalRetry'))
   }
 }
 

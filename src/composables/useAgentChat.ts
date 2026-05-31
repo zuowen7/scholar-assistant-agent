@@ -1,6 +1,7 @@
 import { ref, watch } from 'vue'
 import type { AgentChatMessage, AgentEvent, AgentSessionInfo, RAGDocument } from '../types'
 import { API_BASE } from '../utils/api'
+import { i18n } from '../i18n'
 import { logger } from '../utils/logger'
 import { readSseStream } from '../utils/streamReader'
 
@@ -94,19 +95,19 @@ export function useAgentChat() {
             if (total) parts.push(`${total} tokens`)
           }
           if (!msg.content) {
-            msg.content = agentEvent.content || (parts.length ? parts.join(' · ') : '完成')
+            msg.content = agentEvent.content || (parts.length ? parts.join(' · ') : i18n.global.t('errors.translateComplete'))
           }
           msg.isStreaming = false
           msg.events = [...msg.events, agentEvent]
           break
         }
         case 'error':
-          if (!msg.content) msg.content = agentEvent.content || '发生错误'
+          if (!msg.content) msg.content = agentEvent.content || i18n.global.t('errors.unknownError')
           msg.isStreaming = false
           msg.events = [...msg.events, agentEvent]
           break
         case 'aborted':
-          msg.content = agentEvent.content || '会话已中止'
+          msg.content = agentEvent.content || i18n.global.t('agent.sessionAborted', 'Session aborted')
           msg.isStreaming = false
           _clearApproval()
           msg.events = [...msg.events, agentEvent]
@@ -211,11 +212,11 @@ export function useAgentChat() {
         signal: abortController!.signal,
       })
       if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ detail: '请求失败' }))
-        throw new Error(err.detail || `请求失败 (${resp.status})`)
+        const err = await resp.json().catch(() => ({ detail: i18n.global.t('errors.requestFailed') }))
+        throw new Error(err.detail || i18n.global.t('errors.requestFailedHttp', { status: resp.status }))
       }
       const reader = resp.body?.getReader()
-      if (!reader) throw new Error('无法读取响应流')
+      if (!reader) throw new Error(i18n.global.t('errors.streamFailed'))
       await readSseStream(reader, trackingHandler, undefined, () => streamDone)
     }
 
@@ -227,7 +228,7 @@ export function useAgentChat() {
           const sid = sessionId.value
           if (sessionStarted && sid) {
             const msg = messages.value.find(m => m.id === assistantMsg.id)
-            if (msg) msg.events.push({ type: 'warning', content: `网络中断，正在恢复会话... (${attempt}/${MAX_RETRIES})` } as AgentEvent)
+            if (msg) msg.events.push({ type: 'warning', content: i18n.global.t('errors.recoveringSession', { attempt, max: MAX_RETRIES }) } as AgentEvent)
             try {
               const resumeResp = await fetch(`${API_URL}/api/agent/v2/resume/${sid}`, {
                 method: 'POST',
@@ -254,7 +255,7 @@ export function useAgentChat() {
           }
           // Session not yet started: retry original request after delay
           const msg = messages.value.find(m => m.id === assistantMsg.id)
-          if (msg) msg.events.push({ type: 'warning', content: `网络错误，正在重试... (${attempt}/${MAX_RETRIES})` } as AgentEvent)
+          if (msg) msg.events.push({ type: 'warning', content: i18n.global.t('errors.retryingNetwork', { attempt, max: MAX_RETRIES }) } as AgentEvent)
           await new Promise(r => setTimeout(r, attempt * 2000))
         }
         try {
@@ -278,14 +279,14 @@ export function useAgentChat() {
         msg.isStreaming = false
         if (!msg.content) {
           const last = msg.events[msg.events.length - 1]
-          msg.content = (last as AgentEvent | undefined)?.content || '完成'
+          msg.content = (last as AgentEvent | undefined)?.content || i18n.global.t('errors.translateComplete')
         }
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
       const msg = messages.value.find(m => m.id === assistantMsg.id)
       if (msg) {
-        msg.content = `请求失败: ${err instanceof Error ? err.message : String(err)}`
+        msg.content = `${i18n.global.t('errors.requestFailed')}: ${err instanceof Error ? err.message : String(err)}`
         msg.isStreaming = false
       }
     } finally {
@@ -399,12 +400,12 @@ export function useAgentChat() {
       })
 
       if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ detail: '恢复失败' }))
-        throw new Error(err.detail || `恢复失败 (${resp.status})`)
+        const err = await resp.json().catch(() => ({ detail: i18n.global.t('errors.resumeFailed') }))
+        throw new Error(err.detail || i18n.global.t('errors.requestFailedHttp', { status: resp.status }))
       }
 
       const reader = resp.body?.getReader()
-      if (!reader) throw new Error('无法读取响应流')
+      if (!reader) throw new Error(i18n.global.t('errors.streamFailed'))
 
       await readSseStream(reader, handleEvent)
 
@@ -413,14 +414,14 @@ export function useAgentChat() {
         msg.isStreaming = false
         if (!msg.content) {
           const last = msg.events[msg.events.length - 1]
-          msg.content = last?.content || '完成'
+          msg.content = last?.content || i18n.global.t('errors.translateComplete')
         }
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
       const msg = messages.value.find(m => m.id === assistantMsg.id)
       if (msg) {
-        msg.content = `恢复失败: ${err instanceof Error ? err.message : String(err)}`
+        msg.content = `${i18n.global.t('errors.requestFailed')}: ${err instanceof Error ? err.message : String(err)}`
         msg.isStreaming = false
       }
     } finally {
@@ -469,13 +470,13 @@ export function useAgentChat() {
     try {
       const resp = await fetch(`${API_URL}/api/rag/upload`, { method: 'POST', body: form })
       if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ detail: '上传失败' }))
-        return { ok: false, error: err.detail || `上传失败 (${resp.status})` }
+        const err = await resp.json().catch(() => ({ detail: i18n.global.t('errors.uploadFailed') }))
+        return { ok: false, error: err.detail || i18n.global.t('errors.uploadFailedHttp', { status: resp.status }) }
       }
       await fetchRAGDocuments()
       return { ok: true }
     } catch (e: unknown) {
-      return { ok: false, error: e instanceof Error ? e.message : '网络错误' }
+      return { ok: false, error: e instanceof Error ? e.message : i18n.global.t('errors.networkError') }
     }
   }
 

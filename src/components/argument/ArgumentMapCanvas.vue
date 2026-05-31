@@ -22,7 +22,7 @@
     <div v-if="state.extracting" class="canvas-extracting-overlay">
       <div class="canvas-extracting-pill">
         <span class="dot-wave"><i></i><i></i><i></i></span>
-        <span class="canvas-extracting-label">正在构建论证图</span>
+        <span class="canvas-extracting-label">{{ t('argument.buildingMap') }}</span>
       </div>
     </div>
   </div>
@@ -30,6 +30,8 @@
 
 <script setup lang="ts">
 import { computed, markRaw } from 'vue'
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 import { VueFlow } from '@vue-flow/core'
 import type { Connection, NodeChange, NodeMouseEvent, EdgeMouseEvent } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'

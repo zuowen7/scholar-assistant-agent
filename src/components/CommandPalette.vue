@@ -4,7 +4,7 @@
       class="cmd-palette"
       :style="{ top: position.y + 'px', left: position.x + 'px' }"
       role="dialog"
-      aria-label="AI 编辑命令"
+      :aria-label="t('commandPalette.aiCommand')"
     >
       <div class="cmd-task-tabs" role="tablist">
         <button
@@ -32,8 +32,8 @@
           @keydown.escape="$emit('cancel')"
           @keydown.stop
         />
-        <button class="cmd-submit" @click="handleSubmit" :disabled="loading" aria-label="执行">
-          <span v-if="!loading">应用</span>
+        <button class="cmd-submit" @click="handleSubmit" :disabled="loading" :aria-label="t('commandPalette.execute')">
+          <span v-if="!loading">{{ t('commandPalette.apply') }}</span>
           <span v-else class="cmd-spinner"></span>
         </button>
       </div>
@@ -50,6 +50,9 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   visible?: boolean
@@ -77,39 +80,39 @@ interface TaskType {
 const taskTypes: TaskType[] = [
   {
     id: 'polish',
-    label: '润色',
-    placeholder: '输入 AI 指令，按 Enter 应用，Esc 取消...',
+    label: t('commandPalette.polishLabel'),
+    placeholder: t('commandPalette.polishPlaceholder'),
     presets: [
-      { label: '学术润色', instruction: 'Polish for formal academic English' },
-      { label: '更简洁', instruction: 'Make more concise without losing meaning' },
-      { label: '修正语法', instruction: 'Fix grammar and improve clarity' },
+      { label: t('commandPalette.academicPolish'), instruction: 'Polish for formal academic English' },
+      { label: t('commandPalette.moreConcise'), instruction: 'Make more concise without losing meaning' },
+      { label: t('commandPalette.fixGrammar'), instruction: 'Fix grammar and improve clarity' },
     ],
   },
   {
     id: 'expand',
-    label: '扩写',
-    placeholder: '描述希望如何扩写...',
+    label: t('commandPalette.expandLabel'),
+    placeholder: t('commandPalette.expandPlaceholder'),
     presets: [
-      { label: '扩成段落', instruction: 'Expand into a complete academic paragraph' },
-      { label: '压缩表达', instruction: 'Condense into fewer sentences' },
+      { label: t('commandPalette.expandToParagraph'), instruction: 'Expand into a complete academic paragraph' },
+      { label: t('commandPalette.condenseExpression'), instruction: 'Condense into fewer sentences' },
     ],
   },
   {
     id: 'coherence',
-    label: '连贯性',
-    placeholder: '描述本节目标或衔接要求...',
+    label: t('commandPalette.coherenceLabel'),
+    placeholder: t('commandPalette.coherencePlaceholder'),
     presets: [
-      { label: '衔接前文', instruction: 'Improve transition from previous paragraph' },
-      { label: '优化段落流', instruction: 'Better serve the section goal' },
+      { label: t('commandPalette.transitionPrev'), instruction: 'Improve transition from previous paragraph' },
+      { label: t('commandPalette.improveFlow'), instruction: 'Better serve the section goal' },
     ],
   },
   {
     id: 'grammar',
-    label: '语法',
-    placeholder: '描述需要修正的问题...',
+    label: t('commandPalette.grammarLabel'),
+    placeholder: t('commandPalette.grammarPlaceholder'),
     presets: [
       { label: '修正语法', instruction: 'Fix grammar and spelling errors' },
-      { label: '提升清晰度', instruction: 'Improve sentence clarity and readability' },
+      { label: t('commandPalette.improveClarity'), instruction: 'Improve sentence clarity and readability' },
     ],
   },
 ]

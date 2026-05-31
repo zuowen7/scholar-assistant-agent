@@ -23,7 +23,7 @@
         <button
           v-if="outlineMode !== 'expanded'"
           class="outline-rail-button"
-          title="展开大纲"
+          :title="t('mindmap.expandOutline')"
           @click="outlineMode = 'expanded'"
         >
           &#22823;&#32434;
@@ -32,7 +32,7 @@
           <span>&#22823;&#32434;</span>
           <button
             class="outline-collapse-button"
-            title="收起大纲"
+            :title="t('mindmap.collapseOutline')"
             @click="outlineMode = 'hidden'"
           >
             &lt;
@@ -61,7 +61,7 @@
       <div
         v-if="outlineMode === 'expanded'"
         class="pane-splitter vertical"
-        title="拖动调整大纲宽度"
+        :title="t('mindmap.dragOutlineWidth')"
         @pointerdown="startPaneResize($event, 'outline')"
       />
 
@@ -173,14 +173,14 @@
       <div
         v-if="aiPanelOpen"
         class="pane-splitter vertical"
-        title="拖动调整 AI 面板宽度"
+        :title="t('mindmap.dragAiPanelWidth')"
         @pointerdown="startPaneResize($event, 'ai')"
       />
       <aside class="mindmap-ai-panel" :class="{ open: aiPanelOpen }">
         <button
           v-if="!aiPanelOpen"
           class="ai-rail-button"
-          title="展开 AI 提醒"
+          :title="t('mindmap.expandAiHints')"
           @click="aiPanelOpen = true"
         >
           AI
@@ -188,7 +188,7 @@
         <button
           v-else
           class="ai-collapse-button"
-          title="收起 AI 提醒"
+          :title="t('mindmap.collapseAiHints')"
           @click="aiPanelOpen = false"
         >
           ×
@@ -207,6 +207,9 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import MindMapFloatingToolbar from './MindMapFloatingToolbar.vue'
 import MindMapAiHints from './MindMapAiHints.vue'
 import MindMapCanvas from './mindmap/MindMapCanvas.vue'

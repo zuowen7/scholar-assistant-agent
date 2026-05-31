@@ -1,5 +1,6 @@
 import { reactive, ref } from 'vue'
 import { API_BASE } from '../utils/api'
+import { i18n } from '../i18n'
 import { readSseStream } from '../utils/streamReader'
 import type { BlockData } from '../types/index'
 import { useTranslate } from './useTranslate'
@@ -277,7 +278,7 @@ function redo() {
 
 // ── Graph CRUD ────────────────────────────────────────────────────────────────
 
-async function createGraph(title = '未命名论证图', source_doc?: string): Promise<ArgGraph> {
+async function createGraph(title = i18n.global.t('argument.unnamedGraph'), source_doc?: string): Promise<ArgGraph> {
   const res = await fetch(`${API_BASE}/api/argument/graph`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -425,7 +426,7 @@ export function focusSpan(spanId: string): void {
 }
 
 /** Set source to pasted text. */
-export function setPastedSource(text: string, label = '粘贴文本'): void {
+export function setPastedSource(text: string, label = i18n.global.t('argument.pastedText')): void {
   _state.source.mode = 'paste'
   _state.source.text = text
   _state.source.label = label
@@ -439,7 +440,7 @@ export function loadSourceFromTranslation(): void {
   _state.source.mode = 'translation'
   _state.source.blocks = blocks
   _state.source.side = 'trans'
-  _state.source.label = '上次翻译结果'
+  _state.source.label = i18n.global.t('argument.lastTranslation')
   _state.source.text = blocks.map(b => b.translated || b.original).filter(Boolean).join('\n\n')
 }
 
@@ -449,7 +450,7 @@ export function loadSourceFromEditor(): void {
   const tab = activeTab.value as { content?: string; name?: string } | null
   _state.source.mode = 'editor'
   _state.source.text = tab?.content ?? ''
-  _state.source.label = tab?.name ?? '编辑器文件'
+  _state.source.label = tab?.name ?? i18n.global.t('argument.editorFile')
   _state.source.blocks = []
 }
 
@@ -511,7 +512,7 @@ async function extractArgument(
     }
   } catch (err: unknown) {
     if (err instanceof DOMException && err.name === 'AbortError') return
-    pushError(`提取论证失败：${err instanceof Error ? err.message : String(err)}`)
+    pushError(i18n.global.t('argument.extractFailed', { msg: err instanceof Error ? err.message : String(err) }))
   } finally {
     abort.abort()
     _state.extracting = false

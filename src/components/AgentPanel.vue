@@ -10,22 +10,22 @@
       @mousedown="_headerMouseDown"
     >
       <div class="agent-tabs">
-        <button class="agent-tab u-interactive" :class="{ active: tab === 'chat' }" @click="tab = 'chat'">对话</button>
-        <button class="agent-tab u-interactive" :class="{ active: tab === 'docs' }" @click="tab = 'docs'">文献库</button>
-        <button class="agent-tab u-interactive" :class="{ active: tab === 'templates' }" @click="tab = 'templates'">模板</button>
-        <button class="agent-tab u-interactive" :class="{ active: tab === 'sessions' }" @click="tab = 'sessions'; refreshSessions()">会话</button>
+        <button class="agent-tab u-interactive" :class="{ active: tab === 'chat' }" @click="tab = 'chat'">{{ t('agent.tabChat') }}</button>
+        <button class="agent-tab u-interactive" :class="{ active: tab === 'docs' }" @click="tab = 'docs'">{{ t('agent.tabDocs') }}</button>
+        <button class="agent-tab u-interactive" :class="{ active: tab === 'templates' }" @click="tab = 'templates'">{{ t('agent.tabTemplates') }}</button>
+        <button class="agent-tab u-interactive" :class="{ active: tab === 'sessions' }" @click="tab = 'sessions'; refreshSessions()">{{ t('agent.tabSessions') }}</button>
       </div>
       <div class="agent-header-actions">
         <!-- Standalone window: dock back to main -->
-        <button v-if="isStandalone" class="agent-hdr-btn" title="停靠回主窗口" @click="onDockBack">
+        <button v-if="isStandalone" class="agent-hdr-btn" :title="t('agent.dockBack')" @click="onDockBack">
           <PinOff :size="13" :stroke-width="1.8" />
         </button>
         <!-- Main window: float / dock toggle -->
-        <button v-if="!isStandalone" class="agent-hdr-btn" :title="isFloating ? '停靠回侧边' : '弹出浮动窗口'" @click="toggleFloat">
+        <button v-if="!isStandalone" class="agent-hdr-btn" :title="isFloating ? t('agent.dockSide') : t('agent.popFloat')" @click="toggleFloat">
           <PinOff v-if="isFloating" :size="13" :stroke-width="1.8" />
           <Pin v-else :size="13" :stroke-width="1.8" />
         </button>
-        <button v-if="!isStandalone && !isFloating" class="agent-close-btn" @click="$emit('update:open', false)" aria-label="关闭">
+        <button v-if="!isStandalone && !isFloating" class="agent-close-btn" @click="$emit('update:open', false)" :aria-label="t('agent.close')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -47,38 +47,38 @@
           <span class="agent-status-text">{{ currentStatus }}</span>
         </div>
         <div v-if="messages.length === 0 && !sending" class="agent-empty">
-          <p>向 Agent 提问，它会直接在项目里读写文件</p>
-          <p class="hint" v-if="workspaceName">工作区：{{ workspaceName }}</p>
-          <p class="hint warn" v-else>请先在编辑器中打开一个项目文件夹</p>
+          <p>{{ t('agent.placeholder') }}</p>
+          <p class="hint" v-if="workspaceName">{{ t('agent.workspaceLabel') }}{{ workspaceName }}</p>
+          <p class="hint warn" v-else>{{ t('agent.noWorkspaceLabel') }}</p>
         </div>
         <div v-for="msg in messages" :key="msg.id" class="agent-msg" :class="msg.role">
           <template v-for="(evt, i) in msg.events" :key="i">
             <div v-if="evt.type === 'task_started'" class="agent-event task-lifecycle">
               <span class="evt-lifecycle-icon">&#x25B6;</span>
-              <span class="evt-label">任务</span>
+              <span class="evt-label">{{ t('agent.labelTask') }}</span>
               <span class="evt-task-title">{{ evt.metadata?.title || evt.content }}</span>
               <span v-if="evt.metadata?.index != null" class="evt-task-progress">{{ evt.metadata.index }}/{{ evt.metadata.total }}</span>
             </div>
             <div v-else-if="evt.type === 'task_done'" class="agent-event task-lifecycle done">
               <span class="evt-lifecycle-icon">&#x2714;</span>
-              <span class="evt-label">任务完成</span>
+              <span class="evt-label">{{ t('agent.labelTaskDone') }}</span>
               <span class="evt-task-id">{{ evt.metadata?.task_id }}</span>
             </div>
             <div v-else-if="evt.type === 'thought' || evt.type === 'thinking'" class="agent-event thinking">
               <span class="evt-thinking-dot"></span>
-              <span class="evt-label">{{ evt.type === 'thought' ? '思考' : '推理' }}</span>
+              <span class="evt-label">{{ evt.type === 'thought' ? t('agent.labelThought') : t('agent.labelReasoning') }}</span>
               <span class="evt-content-text">{{ evt.content }}</span>
             </div>
             <div v-else-if="evt.type === 'tool_call'" class="agent-event tool-call">
               <div class="evt-tool-header">
                 <span class="evt-tool-icon">&#x26A1;</span>
-                <span class="evt-label">调用工具</span>
+                <span class="evt-label">{{ t('agent.labelToolCall') }}</span>
                 <span class="evt-tool-name">{{ evt.metadata?.tool_name || evt.metadata?.tool || evt.content }}</span>
                 <span v-if="evt.metadata?.risk" class="evt-risk-badge" :class="'risk-' + evt.metadata.risk">{{ evt.metadata.risk }}</span>
               </div>
               <div class="evt-tool-desc">{{ getToolDescription(evt.metadata?.tool_name || evt.metadata?.tool) }}</div>
               <div v-if="(evt.metadata?.arguments || evt.metadata?.args) && Object.keys((evt.metadata?.arguments || evt.metadata?.args) as any).length" class="evt-tool-args">
-                <span class="evt-args-label">参数</span>
+                <span class="evt-args-label">{{ t('agent.labelParams') }}</span>
                 <code class="evt-args-code">{{ formatToolArgs((evt.metadata?.arguments || evt.metadata?.args) as any) }}</code>
               </div>
             </div>
@@ -86,7 +86,7 @@
               <div class="evt-result-header">
                 <span v-if="evt.metadata?.error" class="evt-tool-icon error">&#x2717;</span>
                 <span v-else class="evt-tool-icon success">&#x2713;</span>
-                <span class="evt-label">{{ evt.metadata?.error ? '执行失败' : '执行完成' }}</span>
+                <span class="evt-label">{{ evt.metadata?.error ? t('agent.labelExecFailed') : t('agent.labelExecDone') }}</span>
                 <span class="evt-result-tool">{{ evt.metadata?.tool_name || evt.metadata?.tool }}</span>
                 <span v-if="evt.metadata?.duration_ms" class="evt-duration">{{ evt.metadata.duration_ms }}ms</span>
               </div>
@@ -113,28 +113,28 @@
         <div class="agent-workspace-bar" :class="{ active: !!workspaceName, inactive: !workspaceName }">
           <span class="ws-dot"></span>
           <span class="ws-name" v-if="workspaceName">{{ workspaceName }}</span>
-          <span class="ws-name muted" v-else>未打开项目</span>
+          <span class="ws-name muted" v-else>{{ t('agent.noProject') }}</span>
         </div>
         <div v-if="contextText" class="agent-context-note">
-          已使用编辑器{{ editorSelection.text ? '选区' : '文档' }}作为上下文（{{ contextText.length }} 字符）
+          {{ t('agent.contextEditor', { type: editorSelection.text ? t('agent.contextSelection') : t('agent.contextDocument'), count: contextText.length }) }}
         </div>
         <!-- File attachments -->
         <div class="agent-attachments" v-if="files.length">
           <div class="agent-file" v-for="f in files" :key="f.name">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
             <span>{{ f.name }}</span>
-            <button class="agent-file-remove" title="移除附件" @click="removeFile(f.name)">×</button>
+            <button class="agent-file-remove" :title="t('agent.removeAttachment')" @click="removeFile(f.name)">×</button>
           </div>
         </div>
         <div class="agent-input-row">
-          <button class="agent-attach-btn" @click="attachFile" title="添加附件" :disabled="sending">
+          <button class="agent-attach-btn" @click="attachFile" :title="t('agent.addAttachment')" :disabled="sending">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
           </button>
           <input
             v-model="input"
             @keydown.enter="sendMessage"
             :disabled="sending"
-            placeholder="输入消息..."
+            :placeholder="t('agent.inputPlaceholder')"
             class="agent-input"
           />
           <button
@@ -142,7 +142,7 @@
             :class="{ stopping: sending }"
             @click="sending ? abortSession() : sendMessage()"
             :disabled="!sending && !input.trim()"
-            :title="sending ? '停止生成' : '发送'"
+            :title="sending ? t('agent.stopGenerate') : t('agent.send')"
           >
             <svg v-if="sending" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
               <rect x="3" y="3" width="18" height="18" rx="3"/>
@@ -158,14 +158,14 @@
     <!-- Docs Tab -->
     <div v-show="tab === 'docs'" class="agent-docs">
       <div class="docs-toolbar">
-        <span class="docs-title">文献库</span>
-        <span class="docs-subtitle">历史翻译自动收录，供 Agent 跨文献检索</span>
+        <span class="docs-title">{{ t('agent.docsTitle') }}</span>
+        <span class="docs-subtitle">{{ t('agent.docsSubtitle') }}</span>
         <div class="docs-toolbar-actions">
           <button class="btn primary u-interactive" :disabled="ragUploading" @click="ragFileInput?.click()">
             <UiSpinner v-if="ragUploading" size="sm" />
-            <span>{{ ragUploading ? '上传中' : '上传文件' }}</span>
+            <span>{{ ragUploading ? t('agent.uploading') : t('agent.uploadFile') }}</span>
           </button>
-          <button class="btn ghost u-interactive" :class="{ refreshing: ragLoading }" @click="fetchDocs" :disabled="ragLoading">刷新</button>
+          <button class="btn ghost u-interactive" :class="{ refreshing: ragLoading }" @click="fetchDocs" :disabled="ragLoading">{{ t('agent.refresh') }}</button>
         </div>
         <input ref="ragFileInput" type="file" style="display:none"
           accept=".pdf,.docx,.doc,.txt,.md,.log,.html,.htm,.epub,.rtf,.tex,.csv,.pptx,.xlsx,.srt,.json,.xml"
@@ -184,15 +184,15 @@
       </div>
       <div v-else-if="ragDocuments.length === 0" class="docs-empty anim-fade-in-up">
         <span class="empty-glyph">▤</span>
-        <p>暂无文档</p>
+        <p>{{ t('agent.noDocs') }}</p>
       </div>
       <TransitionGroup v-else name="v-list-stagger" tag="div" class="docs-list">
         <div v-for="(doc, idx) in ragDocuments" :key="doc.id" class="doc-card u-interactive" :style="{ '--stagger-i': idx }">
           <div class="doc-info">
             <span class="doc-title">{{ doc.title || doc.id }}</span>
-            <span class="doc-meta">{{ doc.chunk_count }} 块</span>
+            <span class="doc-meta">{{ doc.chunk_count }} {{ t('agent.chunks') }}</span>
           </div>
-          <button class="doc-del-btn u-interactive" @click="deleteDoc(doc.id)" title="删除">
+          <button class="doc-del-btn u-interactive" @click="deleteDoc(doc.id)" :title="t('agent.delete')">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
             </svg>
@@ -204,7 +204,7 @@
     <!-- Templates Tab -->
     <div v-show="tab === 'templates'" class="agent-templates">
       <div class="docs-toolbar">
-        <span class="docs-title">论文模板库</span>
+        <span class="docs-title">{{ t('agent.templatesTitle') }}</span>
         <button class="btn ghost u-interactive" :class="{ refreshing: templatesLoading }" @click="loadPaperTemplates" :disabled="templatesLoading">刷新</button>
       </div>
       <div v-if="templatesLoading && templates.length === 0" class="template-grid">
@@ -212,8 +212,8 @@
       </div>
       <div v-else-if="templates.length === 0" class="docs-empty anim-fade-in-up">
         <span class="empty-glyph">◳</span>
-        <p>暂无模板数据</p>
-        <button class="btn ghost u-interactive" style="margin-top:8px" @click="ingestPaperAssets">索引模板素材</button>
+        <p>{{ t('agent.noTemplates') }}</p>
+        <button class="btn ghost u-interactive" style="margin-top:8px" @click="ingestPaperAssets">{{ t('agent.indexTemplates') }}</button>
       </div>
       <TransitionGroup v-else name="v-list-stagger" tag="div" class="template-grid">
         <div v-for="(t, idx) in templates" :key="t.id" class="template-card u-interactive" :style="{ '--stagger-i': idx }" @click="previewingTemplate = t">
@@ -240,6 +240,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAgentChat } from '../composables/useAgentChat'
 import { useEditor } from '../composables/useEditor'
 import { useFileTree } from '../composables/useFileTree'
@@ -292,7 +293,7 @@ async function openAgentWindow() {
 
   _agentWindow = new WebviewWindow('agent', {
     url,
-    title: 'Agent 助手',
+    title: t('agent.title'),
     width: 400,
     height: 560,
     minWidth: 320,
@@ -494,7 +495,7 @@ async function handleRagUpload() {
   const result = await uploadRAGFile(file)
   ragUploading.value = false
   if (!result.ok) {
-    ragUploadError.value = result.error || '上传失败'
+    ragUploadError.value = result.error || t('agent.uploadFailed')
     setTimeout(() => { ragUploadError.value = '' }, 4000)
   }
   fileInput.value = ''
@@ -502,24 +503,24 @@ async function handleRagUpload() {
 
 // ── Tool descriptions ──
 const TOOL_DESCRIPTIONS: Record<string, string> = {
-  translate_text: '翻译文本为指定语言',
-  parse_document: '解析文档文件，提取纯文本内容',
-  search_documents: '检索文献库（历史翻译收录的论文）',
-  read_argument_graph: '读取论文论证图（Toulmin 结构 + 逻辑漏洞分析）',
-  read_argument_ledger: '读取论证账本（承诺 ↔ 兑付状态）',
-  crawl_arxiv: '搜索 arXiv 学术论文',
-  read_file: '读取项目文件内容',
-  write_file: '写入文件到项目',
-  str_replace: '精确修改文件内容',
-  grep_files: '在项目文件中搜索内容',
-  glob_files: '列出匹配的项目文件',
-  list_directory: '列出目录结构',
-  run_command: '执行 shell 命令',
-  git_op: 'Git 操作',
-  undo_last_change: '撤销最近的文件修改',
-  export_pdf: '导出为 PDF',
-  web_fetch: '获取网页内容',
-  web_search: '搜索引擎检索',
+  translate_text: t('agent.tool.translate_text'),
+  parse_document: t('agent.tool.parse_document'),
+  search_documents: t('agent.tool.search_documents'),
+  read_argument_graph: t('agent.tool.read_argument_graph'),
+  read_argument_ledger: t('agent.tool.read_argument_ledger'),
+  crawl_arxiv: t('agent.tool.crawl_arxiv'),
+  read_file: t('agent.tool.read_file'),
+  write_file: t('agent.tool.write_file'),
+  str_replace: t('agent.tool.str_replace'),
+  grep_files: t('agent.tool.grep_files'),
+  glob_files: t('agent.tool.glob_files'),
+  list_directory: t('agent.tool.list_directory'),
+  run_command: t('agent.tool.run_command'),
+  git_op: t('agent.tool.git_op'),
+  undo_last_change: t('agent.tool.undo_last_change'),
+  export_pdf: t('agent.tool.export_pdf'),
+  web_fetch: t('agent.tool.web_fetch'),
+  web_search: t('agent.tool.web_search'),
 }
 
 function getToolDescription(toolName?: string): string {
@@ -548,7 +549,7 @@ function truncateResult(content: string): string {
 const currentStatus = computed(() => {
   const streaming = messages.value.find(m => m.isStreaming)
   if (!streaming) return ''
-  if (pendingApproval.value) return '等待审批: ' + pendingApproval.value.tool_name
+  if (pendingApproval.value) return t('agent.awaitingApproval', { tool: pendingApproval.value.tool_name })
   for (let i = streaming.events.length - 1; i >= 0; i--) {
     const evt = streaming.events[i]
     if (evt.type === 'thinking' || evt.type === 'thought') return 'Thinking... ' + (evt.content.length > 100 ? evt.content.slice(0, 100) + '...' : evt.content)

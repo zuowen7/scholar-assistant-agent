@@ -128,6 +128,9 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 // 鈹€鈹€ Layout sub-components 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 import EditorWelcome from './EditorWelcome.vue'
@@ -306,7 +309,7 @@ function openMindMapFromEditor() {
 
 async function handleSaveFile() {
   const err = await saveFile()
-  showExportToast(err || '已保存')
+  showExportToast(err || t('editor.saved'))
 }
 
 async function handleExportWord() {
@@ -315,39 +318,39 @@ async function handleExportWord() {
   try {
     const title = (activeTab.value?.name || '研墨导出').replace(/\.md$/i, '')
     const err = await exportToWord(content.value, title)
-    showExportToast(err || 'Word 导出已开始')
-  } catch (e) { showExportToast(`Word 导出失败：${e}`)
+    showExportToast(err || t('editor.wordExportStarted'))
+  } catch (e) { showExportToast(t('editor.wordExportFailed', { msg: String(e) }))
   } finally { exportLoading.value = false }
 }
 
 async function handleExportLatex() {
   if (!selectedTemplate.value || exportLoading.value) return
-  if (!content.value.trim()) { showExportToast('请先输入内容'); return }
+  if (!content.value.trim()) { showExportToast(t('editor.pleaseInputContent')); return }
   exportLoading.value = true
   try {
     const { tex, error } = await exportLatex(content.value, selectedTemplate.value)
     if (error) { showExportToast(error); return }
-    if (tex) { await navigator.clipboard.writeText(tex); showExportToast('LaTeX 已复制到剪贴板') }
-    else showExportToast('转换结果为空')
-  } catch (e) { showExportToast(`导出失败：${e}`)
+    if (tex) { await navigator.clipboard.writeText(tex); showExportToast(t('editor.latexCopied')) }
+    else showExportToast(t('editor.conversionEmpty'))
+  } catch (e) { showExportToast(t('editor.exportFailed', { msg: String(e) }))
   } finally { exportLoading.value = false }
 }
 
 async function handleExportPdf() {
   if (!selectedTemplate.value || exportLoading.value) return
-  if (!content.value.trim()) { showExportToast('请先输入内容'); return }
+  if (!content.value.trim()) { showExportToast(t('editor.pleaseInputContent')); return }
   if (!tectonicAvailable.value) {
     const { tectonic_available } = await loadExportTemplates()
     tectonicAvailable.value = tectonic_available
-    if (!tectonic_available) { showExportToast('请先安装 Tectonic'); return }
+    if (!tectonic_available) { showExportToast(t('editor.installTectonic')); return }
   }
   exportLoading.value = true
   try {
     const title = (activeTab.value?.name || 'paper').replace(/\.md$/i, '')
     const err = await exportPdf(content.value, selectedTemplate.value, title)
-    if (err === 'Cancelled') { showExportToast('已取消'); return }
-    showExportToast(err || 'PDF 已保存')
-  } catch (e) { showExportToast(`PDF 导出失败：${e}`)
+    if (err === 'Cancelled') { showExportToast(t('editor.cancelled')); return }
+    showExportToast(err || t('editor.pdfSaved'))
+  } catch (e) { showExportToast(t('editor.pdfExportFailed', { msg: String(e) }))
   } finally { exportLoading.value = false }
 }
 
@@ -356,50 +359,50 @@ async function handleProcessCitations() {
   try {
     const preview = await previewCitations(content.value)
     const data = await processCitations(content.value, [], 'ieee')
-    if (!data?.text) { showExportToast('引用编号失败'); return }
+    if (!data?.text) { showExportToast(t('editor.citationFailed')); return }
     if (activeTab.value) { setContent(`${data.text}${data.bibliography || ''}`); markDirty() }
-    showExportToast(`已编号 ${preview?.unique_count ?? data.citations?.length ?? 0} 条引用`)
-  } catch (e) { showExportToast(`引用编号失败：${e}`) }
+    showExportToast(t('editor.citationCount', { count: preview?.unique_count ?? data.citations?.length ?? 0 }))
+  } catch (e) { showExportToast(t('editor.citationFailedMsg', { msg: String(e) })) }
 }
 
 async function handleZoteroInsert() {
-  const query = window.prompt('搜索 Zotero')
+  const query = window.prompt(t('editor.searchZotero'))
   if (!query?.trim()) return
   try {
     const status = await getZoteroStatus()
-    if (status && status.connected === false) { showExportToast('请先配置 Zotero API'); return }
+    if (status && status.connected === false) { showExportToast(t('editor.zoteroConfig')); return }
     const items = await searchZotero(query.trim(), 5)
     const item = items[0]
-    if (!item?.key) { showExportToast('未找到 Zotero 结果'); return }
+    if (!item?.key) { showExportToast(t('editor.zoteroNotFound')); return }
     const citation = item.markdown_citation || (item.citation_key ? `[@${item.citation_key}]` : '')
     if (citation) insertTextAtCursor(citation)
-    showExportToast(`已插入 ${item.citation_key || item.key}`)
-  } catch (e) { showExportToast(`Zotero 搜索失败：${e}`) }
+    showExportToast(t('editor.zoteroInserted', { key: item.citation_key || item.key }))
+  } catch (e) { showExportToast(t('editor.zoteroFailed', { msg: String(e) })) }
 }
 
 async function handleImageSelected(file: File) {
   try {
     const data = await insertImageFile(file)
-    showExportToast(data ? '图片已插入' : '图片上传失败')
-  } catch { showExportToast('图片上传失败') }
+    showExportToast(data ? t('editor.imageInserted') : t('editor.imageUploadFailed'))
+  } catch { showExportToast(t('editor.imageUploadFailed')) }
 }
 
 async function handleVisionSelected(file: File) {
   try {
     const data = await analyzeVision(file, 'general')
-    if (!data) { showExportToast('Vision 分析失败'); return }
+    if (!data) { showExportToast(t('editor.visionFailed')); return }
     const findings = data.key_findings?.length ? `\n发现：${data.key_findings.join('; ')}` : ''
     const chart = data.chart_type ? `\n图表类型：${data.chart_type}` : ''
     const table = data.table_data?.length
       ? `\n\n${data.table_data.map((row: string[]) => `| ${row.join(' | ')} |`).join('\n')}`
       : ''
-    insertTextAtCursor(`\n\n> Vision：${data.text || data.raw_description || '未返回文本'}${chart}${findings}${table}\n`)
-    showExportToast('Vision 结果已插入')
-  } catch (e) { showExportToast(`Vision 分析失败：${e}`) }
+    insertTextAtCursor(`\n\n> Vision：${data.text || data.raw_description || t('editor.visionNoText')}${chart}${findings}${table}\n`)
+    showExportToast(t('editor.visionInserted'))
+  } catch (e) { showExportToast(t('editor.visionFailedMsg', { msg: String(e) })) }
 }
 
 async function runComplianceCheck() {
-  if (!content.value.trim()) { complianceError.value = '编辑器内容为空'; showCompliance.value = true; return }
+  if (!content.value.trim()) { complianceError.value = t('editor.editorEmpty'); showCompliance.value = true; return }
   complianceLoading.value = true
   complianceError.value = ''
   complianceReport.value = null
@@ -417,13 +420,13 @@ async function runComplianceCheck() {
     })
     const data = await resp.json()
     if (data.error && (!data.report || !data.report.summary)) {
-      complianceError.value = data.error || '合规检查失败'
+      complianceError.value = data.error || t('editor.complianceFailed')
     } else if (data.report?.summary) {
       complianceReport.value = data.report
     } else {
-      complianceError.value = 'LLM 返回格式异常'
+      complianceError.value = t('editor.llmFormatError')
     }
-  } catch (e) { complianceError.value = `请求失败：${e}`
+  } catch (e) { complianceError.value = t('editor.requestFailed', { msg: String(e) })
   } finally { complianceLoading.value = false }
 }
 

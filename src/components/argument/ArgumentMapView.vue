@@ -3,7 +3,7 @@
     <!-- Toolbar -->
     <div class="arg-view-toolbar">
       <div class="arg-view-left">
-        <span class="arg-view-brand">论证地图</span>
+        <span class="arg-view-brand">{{ t('argument.argumentMap') }}</span>
         <!-- Graph selector -->
         <select
           v-if="state.graphList.length"
@@ -11,16 +11,16 @@
           :value="state.graph?.id ?? ''"
           @change="onSelectGraph"
         >
-          <option value="">— 选择论证图 —</option>
+          <option value="">{{ t('argument.selectGraph') }}</option>
           <option v-for="g in state.graphList" :key="g.id" :value="g.id">
-            {{ g.title }}（{{ g.node_count }} 节点）
+            {{ g.title }} ({{ g.node_count }} {{ t('argument.nodesCount', { count: g.node_count }) }})
           </option>
         </select>
       </div>
 
       <div class="arg-view-right">
-        <button class="arg-toolbar-btn" @click="runAutoLayout">自动布局</button>
-        <button class="arg-toolbar-btn" @click="showNewGraph = true">+ 新建论证图</button>
+        <button class="arg-toolbar-btn" @click="runAutoLayout">{{ t('argument.autoLayout') }}</button>
+        <button class="arg-toolbar-btn" @click="showNewGraph = true">{{ t('argument.newGraph') }}</button>
         <!-- Add node buttons -->
         <template v-if="state.graph">
           <button
@@ -40,12 +40,12 @@
     <div class="arg-view-body">
       <!-- Graph list (when no graph selected) -->
       <div v-if="!state.graph && !state.graphList.length" class="arg-view-empty">
-        <p>新建第一张论证图，将文章论证结构可视化。</p>
-        <button class="arg-primary-btn" @click="showNewGraph = true">新建论证图</button>
+        <p>{{ t('argument.noGraph') }}</p>
+        <button class="arg-primary-btn" @click="showNewGraph = true">{{ t('argument.newGraph') }}</button>
       </div>
 
       <div v-else-if="!state.graph" class="arg-view-empty">
-        <p>选择一张论证图开始编辑。</p>
+        <p>{{ t('argument.graphPlaceholder') }}</p>
       </div>
 
       <template v-else>
@@ -68,17 +68,17 @@
     <Teleport to="body">
       <div v-if="showNewGraph" class="arg-dialog-overlay" @click.self="showNewGraph = false">
         <div class="arg-dialog">
-          <p class="arg-dialog-title">新建论证图</p>
+          <p class="arg-dialog-title">{{ t('argument.newGraph') }}</p>
           <input
             v-model="newGraphTitle"
             class="arg-dialog-input"
-            placeholder="论证图标题"
+            :placeholder="t('argument.graphTitle')"
             @keydown.enter="createNewGraph"
             @keydown.escape="showNewGraph = false"
           />
           <div class="arg-dialog-actions">
-            <button class="arg-primary-btn" :disabled="!newGraphTitle.trim()" @click="createNewGraph">创建</button>
-            <button class="arg-ghost-btn" @click="showNewGraph = false">取消</button>
+            <button class="arg-primary-btn" :disabled="!newGraphTitle.trim()" @click="createNewGraph">{{ t('argument.create2') }}</button>
+            <button class="arg-ghost-btn" @click="showNewGraph = false">{{ t('argument.cancel') }}</button>
           </div>
         </div>
       </div>
@@ -88,6 +88,9 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import type { NodeType } from '../../composables/useArgumentMap'
 import { useArgumentMap } from '../../composables/useArgumentMap'
 import { useArgumentLayout } from '../../composables/useArgumentLayout'
@@ -102,12 +105,12 @@ const showNewGraph = ref(false)
 const newGraphTitle = ref('')
 
 const nodeTypes = [
-  { value: 'claim' as NodeType, label: '主张' },
-  { value: 'grounds' as NodeType, label: '依据' },
-  { value: 'warrant' as NodeType, label: '论证保证' },
-  { value: 'backing' as NodeType, label: '支撑' },
-  { value: 'qualifier' as NodeType, label: '限定' },
-  { value: 'rebuttal' as NodeType, label: '反驳' },
+  { value: 'claim' as NodeType, label: t('argument.claim') },
+  { value: 'grounds' as NodeType, label: t('argument.grounds') },
+  { value: 'warrant' as NodeType, label: t('argument.warrant') },
+  { value: 'backing' as NodeType, label: t('argument.backing') },
+  { value: 'qualifier' as NodeType, label: t('argument.qualifier') },
+  { value: 'rebuttal' as NodeType, label: t('argument.rebuttal') },
 ]
 
 onMounted(async () => {
@@ -132,8 +135,8 @@ async function createNewGraph() {
 
 async function addNode(node_type: NodeType) {
   const label = {
-    claim: '新主张', grounds: '新依据', warrant: '新论证保证',
-    backing: '新支撑', qualifier: '新限定', rebuttal: '新反驳',
+    claim: t('argument.newClaim'), grounds: t('argument.newGrounds'), warrant: t('argument.newWarrant'),
+    backing: t('argument.newBacking'), qualifier: t('argument.newQualifier'), rebuttal: t('argument.newRebuttal'),
   }[node_type]
   await upsertNode({ node_type, text: label } as any)
 }

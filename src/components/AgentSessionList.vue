@@ -1,13 +1,13 @@
 <template>
   <div class="session-list">
     <div class="session-list-header">
-      <span class="header-title">会话</span>
+      <span class="header-title">{{ t('agent.tabSessions') }}</span>
       <button
         class="refresh-btn u-interactive"
         :class="{ spinning: loading }"
         @click="fetchSessions"
         :disabled="loading"
-        title="刷新"
+        :title="t('agent.refreshSessions')"
       >↻</button>
     </div>
 
@@ -25,7 +25,7 @@
     <!-- Empty -->
     <div v-else-if="sessions.length === 0" class="session-empty anim-fade-in-up">
       <span class="empty-glyph">◷</span>
-      <p>暂无历史会话</p>
+      <p>{{ t('agent.noSessions') }}</p>
     </div>
 
     <!-- List -->
@@ -48,7 +48,7 @@
           <span>{{ s.tasks_done }}/{{ s.tasks_total }} tasks</span>
           <span v-if="s.updated_at" class="session-time">{{ formatTime(s.updated_at) }}</span>
         </div>
-        <span v-if="isResumable(s)" class="session-resume-hint">恢复 →</span>
+        <span v-if="isResumable(s)" class="session-resume-hint">{{ t('agent.resume') }}</span>
       </div>
     </TransitionGroup>
   </div>
@@ -56,6 +56,9 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import type { AgentSessionInfo } from '../types'
 import { API_BASE } from '../utils/api'
 import UiSkeleton from './ui/UiSkeleton.vue'

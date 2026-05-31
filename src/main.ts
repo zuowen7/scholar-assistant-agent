@@ -6,5 +6,11 @@ import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'
 import '@vue-flow/minimap/dist/style.css'
 import App from './App.vue'
+import { i18n } from './i18n'
+import { useLocale } from './composables/useLocale'
 
-createApp(App).mount('#app')
+const app = createApp(App)
+app.use(i18n)
+// useLocale() triggers module-level init before mount — sets i18n.locale from stored preference
+useLocale()
+app.mount('#app')

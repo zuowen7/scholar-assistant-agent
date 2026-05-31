@@ -5,87 +5,90 @@
     :style="{ left: `${position.x}px`, top: `${position.y}px` }"
     @pointerdown.stop="startDrag"
   >
-    <div class="toolbar-grip" title="拖动工具栏" />
+    <div class="toolbar-grip" :title="t('mindmap.dragToolbar')" />
 
     <template v-if="collapsed">
-      <button class="primary" @click.stop="$emit('add-child')" :disabled="!canAdd">子节点</button>
-      <button class="workflow-primary" @click.stop="$emit('save')">保存</button>
-      <button class="icon-btn" title="展开工具栏" @click.stop="$emit('update:collapsed', false)">▣</button>
+      <button class="primary" @click.stop="$emit('add-child')" :disabled="!canAdd">{{ t('mindmap.childNode') }}</button>
+      <button class="workflow-primary" @click.stop="$emit('save')">{{ t('mindmap.save') }}</button>
+      <button class="icon-btn" :title="t('mindmap.expandToolbar')" @click.stop="$emit('update:collapsed', false)">▣</button>
     </template>
 
     <template v-else>
-      <div class="toolbar-group structure-group" aria-label="结构操作">
-        <span class="group-label">结构</span>
-        <button @click.stop="$emit('reset-map')" title="新建导图">新建</button>
-        <button @click.stop="$emit('add-child')" :disabled="!canAdd" title="新增子节点">子节点</button>
+      <div class="toolbar-group structure-group" :aria-label="t('mindmap.structure')">
+        <span class="group-label">{{ t('mindmap.structure') }}</span>
+        <button @click.stop="$emit('reset-map')" :title="t('mindmap.newMap')">{{ t('mindmap.newMap') }}</button>
+        <button @click.stop="$emit('add-child')" :disabled="!canAdd" :title="t('mindmap.childNode')">{{ t('mindmap.childNode') }}</button>
         <button
           :class="{ active: connecting }"
           @click.stop="$emit('start-connect')"
           :disabled="!canAdd"
-          title="连接节点"
+          :title="t('mindmap.connectNode')"
         >
-          连接
+          {{ t("mindmap.connect2") }}
         </button>
-        <button @click.stop="$emit('delete-node')" :disabled="!canDelete" title="删除节点">删除</button>
+        <button @click.stop="$emit('delete-node')" :disabled="!canDelete" :title="t('mindmap.deleteNode')">{{ t('mindmap.delete') }}</button>
       </div>
 
-      <div class="toolbar-group view-group" aria-label="视图操作">
-        <span class="group-label">视图</span>
-        <button class="icon-btn" @click.stop="$emit('zoom-in')" title="放大">+</button>
-        <button class="icon-btn" @click.stop="$emit('zoom-out')" title="缩小">-</button>
-        <button @click.stop="$emit('reset-view')" title="重置视图">重置</button>
-        <button @click.stop="$emit('fit-view')" title="适应视图">适应</button>
+      <div class="toolbar-group view-group" :aria-label="t('mindmap.view')">
+        <span class="group-label">{{ t('mindmap.view') }}</span>
+        <button class="icon-btn" @click.stop="$emit('zoom-in')" :title="t('mindmap.zoomIn')">+</button>
+        <button class="icon-btn" @click.stop="$emit('zoom-out')" :title="t('mindmap.zoomOut')">-</button>
+        <button @click.stop="$emit('reset-view')" :title="t('mindmap.resetView')">{{ t('mindmap.reset') }}</button>
+        <button @click.stop="$emit('fit-view')" :title="t('mindmap.fitView')">{{ t('mindmap.fit') }}</button>
       </div>
 
-      <div class="toolbar-group ai-group optional-on-small" aria-label="AI 辅助">
+      <div class="toolbar-group ai-group optional-on-small" :aria-label="t('mindmap.aiAssist')">
         <span class="group-label">AI</span>
-        <button @click.stop="$emit('ai-expand')" :disabled="!canAdd || expanding" title="AI 展开子主题">
-          {{ expanding ? '展开中' : 'AI 展开' }}
+        <button @click.stop="$emit('ai-expand')" :disabled="!canAdd || expanding" :title="t('mindmap.aiExpand')">
+          {{ expanding ? t('mindmap.expanding') : t('mindmap.aiExpandBtn') }}
         </button>
-        <button @click.stop="$emit('analyze')" :disabled="analyzing" title="AI 检查思维链">
-          {{ analyzing ? '检查中' : 'AI 检查' }}
+        <button @click.stop="$emit('analyze')" :disabled="analyzing" :title="t('mindmap.aiCheck')">
+          {{ analyzing ? t('mindmap.checking') : t('mindmap.aiCheckBtn') }}
         </button>
       </div>
 
-      <div class="toolbar-group workflow-group" aria-label="工作流">
-        <span class="group-label">工作流</span>
-        <button class="subtle-on-small" @click.stop="$emit('auto-layout')" title="自动整理布局">整理</button>
-        <button class="workflow-primary" @click.stop="$emit('save')" title="保存到当前工程">保存</button>
-        <button class="workflow-primary" @click.stop="$emit('enter-editor')" title="进入编辑器">编辑器</button>
+      <div class="toolbar-group workflow-group" :aria-label="t('mindmap.workflow')">
+        <span class="group-label">{{ t('mindmap.workflow') }}</span>
+        <button class="subtle-on-small" @click.stop="$emit('auto-layout')" :title="t('mindmap.autoLayout')">{{ t('mindmap.autoLayoutBtn') }}</button>
+        <button class="workflow-primary" @click.stop="$emit('save')" :title="t('mindmap.saveToProject')">{{ t('mindmap.save') }}</button>
+        <button class="workflow-primary" @click.stop="$emit('enter-editor')" :title="t('mindmap.enterEditor')">{{ t('mindmap.editor') }}</button>
       </div>
 
       <div class="toolbar-group utility-group">
-        <button class="icon-btn help-btn" :class="{ active: showHelp }" @click.stop="toggleHelp" title="快捷键">?</button>
-        <button class="icon-btn" title="收起工具栏" @click.stop="$emit('update:collapsed', true)">▥</button>
-        <button class="icon-btn more-btn" :class="{ active: showMore }" title="更多" @click.stop="toggleMore">⋯</button>
+        <button class="icon-btn help-btn" :class="{ active: showHelp }" @click.stop="toggleHelp" :title="t('mindmap.shortcuts')">?</button>
+        <button class="icon-btn" :title="t('mindmap.collapseToolbar')" @click.stop="$emit('update:collapsed', true)">▥</button>
+        <button class="icon-btn more-btn" :class="{ active: showMore }" :title="t('mindmap.more')" @click.stop="toggleMore">⋯</button>
       </div>
     </template>
 
     <div v-if="showMore && !collapsed" class="more-panel" @click.stop @pointerdown.stop>
-      <button @click="$emit('ai-expand')" :disabled="!canAdd || expanding">{{ expanding ? '展开中' : 'AI 展开' }}</button>
-      <button @click="$emit('analyze')" :disabled="analyzing">{{ analyzing ? '检查中' : 'AI 检查' }}</button>
-      <button @click="$emit('auto-layout')">整理布局</button>
-      <button @click="$emit('reset-layout')">恢复默认布局</button>
-      <button @click="$emit('save')">保存到当前工程</button>
-      <button @click="$emit('enter-editor')">进入编辑器</button>
-      <button @click="toggleHelp">快捷键</button>
+      <button @click="$emit('ai-expand')" :disabled="!canAdd || expanding">{{ expanding ? t('mindmap.expanding2') : t('mindmap.aiExpand2') }}</button>
+      <button @click="$emit('analyze')" :disabled="analyzing">{{ analyzing ? t('mindmap.checking2') : t('mindmap.aiCheck2') }}</button>
+      <button @click="$emit('auto-layout')">{{ t('mindmap.autoLayout') }}</button>
+      <button @click="$emit('reset-layout')">{{ t('mindmap.resetLayout') }}</button>
+      <button @click="$emit('save')">{{ t('mindmap.saveToProject') }}</button>
+      <button @click="$emit('enter-editor')">{{ t('mindmap.enterEditor') }}</button>
+      <button @click="toggleHelp">{{ t('mindmap.shortcuts') }}</button>
     </div>
 
     <div v-if="showHelp" class="shortcut-panel" @click.stop @pointerdown.stop>
-      <div class="shortcut-title">快捷键</div>
-      <div class="shortcut-row"><kbd>Tab</kbd> 添加子节点</div>
-      <div class="shortcut-row"><kbd>Enter</kbd> 添加同级节点</div>
-      <div class="shortcut-row"><kbd>F2</kbd> / 双击 编辑节点</div>
-      <div class="shortcut-row"><kbd>Del</kbd> 删除悬停的连线</div>
-      <div class="shortcut-row"><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> 导航节点</div>
-      <div class="shortcut-row"><kbd>Ctrl+Z</kbd> 撤销</div>
-      <div class="shortcut-row"><kbd>Ctrl+Shift+Z</kbd> 重做</div>
+      <div class="shortcut-title">{{ t('mindmap.shortcuts') }}</div>
+      <div class="shortcut-row"><kbd>Tab</kbd> {{ t('mindmap.shortcutAddChild') }}</div>
+      <div class="shortcut-row"><kbd>Enter</kbd> {{ t('mindmap.shortcutAddSibling') }}</div>
+      <div class="shortcut-row"><kbd>F2</kbd> / Double-click {{ t('mindmap.shortcutEditNode') }}</div>
+      <div class="shortcut-row"><kbd>Del</kbd> {{ t('mindmap.shortcutDeleteEdge') }}</div>
+      <div class="shortcut-row"><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> {{ t('mindmap.shortcutNavigate') }}</div>
+      <div class="shortcut-row"><kbd>Ctrl+Z</kbd> {{ t('mindmap.shortcutUndo') }}</div>
+      <div class="shortcut-row"><kbd>Ctrl+Shift+Z</kbd> {{ t('mindmap.shortcutRedo') }}</div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   position: { x: number; y: number }

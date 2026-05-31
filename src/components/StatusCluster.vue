@@ -1,7 +1,7 @@
 <template>
   <div class="status-cluster">
     <!-- Backend -->
-    <UiPill :tone="healthOk ? 'ok' : 'off'">后端</UiPill>
+    <UiPill :tone="healthOk ? 'ok' : 'off'">{{ t('status.backend') }}</UiPill>
 
     <!-- Ollama or Cloud (based on engine type) -->
     <template v-if="engineType === 'ollama'">
@@ -11,12 +11,12 @@
         :disabled="ollamaLoading"
         @click="!ollamaOk && $emit('toggle-ollama')"
       >
-        <template v-if="ollamaLoading">启动中…</template>
+        <template v-if="ollamaLoading">{{ t('status.starting') }}</template>
         <template v-else>Ollama</template>
       </UiPill>
     </template>
     <template v-else>
-      <UiPill :tone="cloudOk ? 'ok' : 'off'">云端</UiPill>
+      <UiPill :tone="cloudOk ? 'ok' : 'off'">{{ t('status.cloud') }}</UiPill>
     </template>
 
     <!-- LaTeX -->
@@ -26,13 +26,15 @@
       :disabled="tectonicChecking"
       @click="!tectonicOk && $emit('handle-tectonic')"
     >
-      <template v-if="tectonicChecking">检测…</template>
+      <template v-if="tectonicChecking">{{ t('status.detecting') }}</template>
       <template v-else>LaTeX</template>
     </UiPill>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 import UiPill from './ui/UiPill.vue'
 
 defineProps<{

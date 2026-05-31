@@ -8,7 +8,7 @@
       <div class="welcome-hero">
         <div class="hero-pillar" />
         <div class="hero-text">
-          <h1 class="hero-title">开始一篇论文</h1>
+          <h1 class="hero-title">{{ t('editor.welcomeTitle') }}</h1>
           <p class="hero-subtitle">Where research takes form.</p>
         </div>
       </div>
@@ -35,8 +35,8 @@
               <line x1="86" y1="47" x2="91" y2="47" stroke="var(--c-text-3)" stroke-width="0.8" opacity="0.3" />
             </svg>
             <div class="wc-text">
-              <strong>新建工程</strong>
-              <span>思维导图 → 论文草稿 → 全流程写作</span>
+              <strong>{{ t("editor.newProjectStrong") }}</strong>
+              <span>{{ t("editor.newProjectSubStrong") }}</span>
             </div>
           </div>
         </button>
@@ -46,8 +46,8 @@
           <div class="wc-card-inner">
             <span class="wc-icon accent"><FileText :size="18" /></span>
             <div class="wc-text">
-              <strong>从模板新建</strong>
-              <span>IEEE / ACM / 自定义</span>
+              <strong>{{ t("editor.fromTemplateStrong") }}</strong>
+              <span>{{ t("editor.fromTemplateSubStrong") }}</span>
             </div>
           </div>
         </button>
@@ -57,8 +57,8 @@
           <div class="wc-card-inner">
             <span class="wc-icon"><FolderOpen :size="18" /></span>
             <div class="wc-text">
-              <strong>打开文件夹</strong>
-              <span>继续现有工程</span>
+              <strong>{{ t("editor.openFolderStrong") }}</strong>
+              <span>{{ t("editor.openFolderSubStrong") }}</span>
             </div>
           </div>
         </button>
@@ -68,8 +68,8 @@
           <div class="wc-card-inner">
             <span class="wc-icon"><FilePlus :size="18" /></span>
             <div class="wc-text">
-              <strong>空白文档</strong>
-              <span>直接进入编辑器</span>
+              <strong>{{ t("editor.blankDocStrong") }}</strong>
+              <span>{{ t("editor.blankDocSubStrong") }}</span>
             </div>
           </div>
         </button>
@@ -79,19 +79,19 @@
       <div class="welcome-shortcuts">
         <span class="shortcut-chip">
           <kbd class="kbd">Ctrl+K</kbd>
-          <span>AI 编辑</span>
+          <span>{{ t("editor.aiEditShortcut") }}</span>
         </span>
         <span class="shortcut-chip">
           <kbd class="kbd">Ctrl+S</kbd>
-          <span>保存</span>
+          <span>{{ t("editor.saveShortcut") }}</span>
         </span>
         <span class="shortcut-chip">
           <kbd class="kbd">Tab</kbd>
-          <span>接受补全</span>
+          <span>{{ t("editor.acceptCompletion") }}</span>
         </span>
         <span class="shortcut-chip">
           <kbd class="kbd">Ctrl+B</kbd>
-          <span>文件树</span>
+          <span>{{ t("editor.fileTree") }}</span>
         </span>
       </div>
     </div>
@@ -100,6 +100,9 @@
 
 <script setup lang="ts">
 import { FileText, FolderOpen, FilePlus } from './ui/icons'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 defineEmits<{
   'new-project': []

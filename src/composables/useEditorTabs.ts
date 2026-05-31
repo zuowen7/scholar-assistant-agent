@@ -9,6 +9,7 @@ import {
   tabs, activeTabId, selection, monacoEditor, contentVersion,
   activeTab, content, activeFile, isModified,
 } from './useEditorState'
+import { i18n } from '../i18n'
 
 function setContent(text: string) {
   const tab = activeTab.value
@@ -141,7 +142,7 @@ async function saveFile(): Promise<string | null> {
       activeTabId.value = chosen
       return null
     } catch {
-      return '无法保存：请先导出到文件'
+      return i18n.global.t('editor.cannotSave')
     }
   }
 
@@ -152,7 +153,7 @@ async function saveFile(): Promise<string | null> {
     tab.isModified = false
     return null
   } catch {
-    return '保存失败：文件可能被其他程序占用或路径无权限'
+    return i18n.global.t('editor.saveFailed')
   }
 }
 

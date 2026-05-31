@@ -3,14 +3,14 @@
     <section class="template-picker" role="dialog" aria-modal="true" aria-labelledby="template-title">
       <header class="tp-header">
         <div>
-          <h3 id="template-title">新建论文</h3>
-          <p>选择一个论文结构模板，生成可继续编辑的 Markdown 草稿。</p>
+          <h3 id="template-title">{{ t('editor.newProject') }}</h3>
+          <p>{{ t('editor.chooseTemplate') }}</p>
         </div>
-        <button class="tp-close" @click="close" title="关闭">×</button>
+        <button class="tp-close" @click="close" :title="t('general.close')">×</button>
       </header>
 
       <div class="tp-body">
-        <div v-if="loadingTemplates" class="tp-state">正在加载模板...</div>
+        <div v-if="loadingTemplates" class="tp-state">{{ t('general.loading') }}</div>
         <div v-else-if="templates.length" class="tp-grid">
           <button
             v-for="t in templates"
@@ -28,21 +28,21 @@
             </span>
           </button>
         </div>
-        <div v-else class="tp-state">还没有可用模板</div>
+        <div v-else class="tp-state">{{ t('editor.noTemplates') }}</div>
 
         <div class="tp-options">
           <label class="tp-label">
-            论文标题
+            {{ t('general.title') }}
             <input
               v-model="title"
               class="tp-input"
-              placeholder="可选，输入论文标题"
+              :placeholder="t('general.optional') + ' ' + t('general.title')"
               @keydown.enter="create"
             />
           </label>
 
           <div class="tp-sections">
-            <span class="tp-label">包含章节</span>
+            <span class="tp-label">{{ t('editor.includedSections') }}</span>
             <div class="tp-checks">
               <label v-for="sec in sectionOptions" :key="sec.id" class="tp-check">
                 <input type="checkbox" v-model="sec.checked" />
@@ -55,10 +55,10 @@
 
       <footer class="tp-footer">
         <span v-if="error" class="tp-error">{{ error }}</span>
-        <button v-if="error" class="tp-btn tp-btn-ghost" @click="loadTemplates">重试</button>
-        <button class="tp-btn tp-btn-cancel" @click="close">取消</button>
+        <button v-if="error" class="tp-btn tp-btn-ghost" @click="loadTemplates">{{ t('translate.retry') }}</button>
+        <button class="tp-btn tp-btn-cancel" @click="close">{{ t('general.cancel') }}</button>
         <button class="tp-btn tp-btn-create" :disabled="!selected || loading" @click="create">
-          {{ loading ? '生成中...' : '创建' }}
+          {{ loading ? t('general.saving') : t('general.create') }}
         </button>
       </footer>
     </section>
@@ -71,6 +71,8 @@ import { API_BASE } from '../utils/api'
 
 const props = defineProps<{ visible: boolean; isDark?: boolean }>()
 const isDark = props.isDark !== undefined ? props.isDark : true
+const { t } = useI18n()
+
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'create', markdown: string, templateId: string): void
@@ -84,12 +86,12 @@ const loadingTemplates = ref(false)
 const error = ref('')
 
 const sectionOptions = reactive([
-  { id: 'title', label: '标题', checked: true },
-  { id: 'abstract', label: '摘要', checked: true },
-  { id: 'introduction', label: '引言', checked: true },
-  { id: 'method', label: '方法', checked: true },
-  { id: 'experiment', label: '实验', checked: true },
-  { id: 'conclusion', label: '结论', checked: true },
+  { id: 'title', label: t('general.title'), checked: true },
+  { id: 'abstract', label: t('translate.section.abstract'), checked: true },
+  { id: 'introduction', label: t('translate.section.introduction'), checked: true },
+  { id: 'method', label: t('translate.section.methods'), checked: true },
+  { id: 'experiment', label: t('editor.experiment'), checked: true },
+  { id: 'conclusion', label: t('translate.section.conclusion'), checked: true },
 ])
 
 async function loadTemplates() {
@@ -100,7 +102,7 @@ async function loadTemplates() {
       signal: AbortSignal.timeout(8000),
     })
     if (!resp.ok) {
-      error.value = `模板接口异常 (${resp.status})`
+      error.value = t('editor.requestFailed', { msg: resp.status })
       return
     }
     const data = await resp.json()
@@ -109,7 +111,7 @@ async function loadTemplates() {
       selected.value = templates.value[0].id
     }
   } catch (e) {
-    error.value = `加载模板失败: ${e instanceof Error ? e.message : String(e)}`
+    error.value = t('editor.requestFailed', { msg: e instanceof Error ? e.message : String(e) })
   } finally {
     loadingTemplates.value = false
   }
@@ -136,14 +138,14 @@ async function create() {
     })
     if (!resp.ok) {
       const errData = await resp.json().catch(() => ({}))
-      error.value = errData.detail || `创建失败 (${resp.status})`
+      error.value = errData.detail || t('editor.requestFailed', { msg: resp.status })
       return
     }
     const data = await resp.json()
     emit('create', data.markdown, data.template_id)
     close()
   } catch (e) {
-    error.value = `创建失败: ${e instanceof Error ? e.message : String(e)}`
+    error.value = t('editor.requestFailed', { msg: e instanceof Error ? e.message : String(e) })
   } finally {
     loading.value = false
   }

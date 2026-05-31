@@ -2,8 +2,8 @@
   <section class="ai-hints">
     <div class="ai-hints-header">
       <div>
-        <div class="ai-hints-kicker">AI 提醒</div>
-        <strong>思维链检查</strong>
+        <div class="ai-hints-kicker">{{ t('mindmap.aiReminder') }}</div>
+        <strong>{{ t('mindmap.chainCheck') }}</strong>
       </div>
       <span class="issue-count">{{ issues.length }}</span>
     </div>
@@ -11,7 +11,7 @@
     <div v-if="loading" class="hints-loading">
       <div class="hints-loading-head">
         <UiSpinner size="sm" />
-        <span class="anim-shimmer-text">正在检查思维链</span>
+        <span class="anim-shimmer-text">{{ t('mindmap.checkingChain') }}</span>
       </div>
       <div class="hints-skeletons">
         <div v-for="n in 3" :key="n" class="skeleton-card" :style="{ '--stagger-i': n - 1 }">
@@ -25,7 +25,7 @@
     </div>
     <div v-else-if="!issues.length" class="empty-state compact anim-fade-in-up">
       <span class="empty-badge">OK</span>
-      <span>暂无提醒，当前结构看起来比较清晰。</span>
+      <span>{{ t('mindmap.noReminders') }}</span>
     </div>
     <TransitionGroup v-else name="v-list-stagger" tag="div" class="issue-list" appear>
       <button
@@ -47,6 +47,8 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
 import type { MindMapAnalysisIssue } from '../composables/useMindMapAnalysis'
 import UiSpinner from './ui/UiSpinner.vue'
 import UiSkeleton from './ui/UiSkeleton.vue'

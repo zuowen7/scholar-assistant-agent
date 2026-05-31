@@ -25,10 +25,10 @@
           class="body-toggle nodrag"
           :class="{ 'has-body': bodyPreview }"
           @click="toggleBody"
-          :title="bodyExpanded ? '收起正文' : '编辑正文'"
+          :title="bodyExpanded ? t('mindmap.collapseBody') : t('mindmap.editBody')"
         >{{ bodyExpanded ? '▾' : '▸' }}</button>
       </div>
-      <span v-if="expanding" class="node-spinner" role="status" aria-label="AI 展开中">
+      <span v-if="expanding" class="node-spinner" role="status" :aria-label="t('mindmap.aiExpanding')">
         <UiSpinner size="sm" />
       </span>
       <span v-else-if="issueCount" class="node-badge">{{ issueCount }}</span>
@@ -41,7 +41,7 @@
           ref="bodyRef"
           v-model="draftBody"
           class="body-textarea nodrag nowheel"
-          placeholder="正文内容..."
+          :placeholder="t('mindmap.bodyPlaceholder')"
           rows="2"
           @blur="commitBody"
           @input="autosizeBody"
@@ -57,7 +57,7 @@
     <!-- AI 展开加载反馈：底部扫描条 + 微光文字 -->
     <Transition name="v-fade">
       <div v-if="expanding" class="node-expanding-overlay">
-        <span class="node-expanding-label anim-shimmer-text">AI 生成子主题</span>
+        <span class="node-expanding-label anim-shimmer-text">{{ t('mindmap.aiGenerating') }}</span>
         <span class="anim-scan-bar node-expanding-scan" />
       </div>
     </Transition>
@@ -71,6 +71,9 @@
 
 <script setup lang="ts">
 import { computed, inject, nextTick, ref, type Ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import { Handle, Position } from '@vue-flow/core'
 import type { NodeProps } from '@vue-flow/core'
 import { useMindMap } from '../../composables/useMindMap'

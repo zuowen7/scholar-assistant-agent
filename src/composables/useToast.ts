@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { i18n } from '../i18n'
 
 export interface ToastItem {
   id: number
@@ -81,5 +82,5 @@ export function toastFromError(err: unknown): void {
       : inner)
     if (msg) { pushError(String(msg)); return }
   }
-  pushError('未知错误，请检查网络或后端状态')
+  pushError(i18n.global.t('toast.unknownError'))
 }

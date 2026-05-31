@@ -6,9 +6,9 @@
         <span
           v-if="state.graph.source_doc"
           class="arg-mini-linked"
-          title="论证图已关联文档，Agent 可直接读取"
+          :title="t('argument.graphLinkedTooltip')"
         ></span>
-        <button class="arg-mini-open" @click="openFull">全屏打开</button>
+        <button class="arg-mini-open" @click="openFull">{{ t('argument.openFull') }}</button>
       </div>
       <div class="arg-mini-canvas">
         <ArgumentMapCanvas :readonly="true" />
@@ -17,29 +17,32 @@
     <div v-else-if="state.extracting" class="arg-mini-extracting">
       <div class="arg-mini-extract-pill">
         <span class="dot-wave"><i></i><i></i><i></i></span>
-        <span class="arg-mini-extract-text">正在提取论证结构</span>
+        <span class="arg-mini-extract-text">{{ t('argument.extractingStructure') }}</span>
       </div>
       <div class="arg-mini-extract-track"></div>
     </div>
     <div v-else class="arg-mini-empty">
-      <p>尚无论证图</p>
+      <p>{{ t('argument.noArgMap') }}</p>
       <button
         class="arg-mini-extract-btn"
         :disabled="!hasContent || state.extracting"
-        :title="hasContent ? '从当前编辑器内容提取 Toulmin 论证结构' : '请先在编辑器中打开文档'"
+        :title="hasContent ? t('argument.extractTooltip') : t('argument.openDocFirst')"
         @click="doExtract"
       >
-        {{ state.extracting ? '提取中…' : '从论文提取论证图' }}
+        {{ state.extracting ? t('argument.extracting2') : t('argument.extractFromPaper') }}
       </button>
-      <p v-if="!hasContent" class="arg-mini-hint">请先在编辑器中打开文档</p>
+      <p v-if="!hasContent" class="arg-mini-hint">{{ t('argument.openDocFirst') }}</p>
       <p v-if="extractError" class="arg-mini-error">{{ extractError }}</p>
-      <button class="arg-mini-open" @click="openFull">前往论证地图</button>
+      <button class="arg-mini-open" @click="openFull">{{ t('argument.goToArgMap') }}</button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import { useArgumentMap, requestOpenFullArgMap, loadSourceFromEditor } from '../../composables/useArgumentMap'
 import { useEditor } from '../../composables/useEditor'
 import ArgumentMapCanvas from './ArgumentMapCanvas.vue'

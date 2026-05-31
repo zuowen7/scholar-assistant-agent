@@ -13,6 +13,7 @@ import {
   selection, showAiPanel, aiLoading, aiResult, previousContent,
   insertTextAtCursor, insertImage,
 } from './useEditorState'
+import { i18n } from '../i18n'
 import {
   setEditorInstance, setContent, updateSelection, markClean, markDirty,
   openFile, openNewUntitled, closeTab, setActiveTab, renameTabPath, saveFile,
@@ -64,10 +65,10 @@ export async function aiEdit(
     await readSseStream(reader, (_type, evt) => {
       if (evt.content) aiResult.value = evt.content as string
     }, signal)
-    if (!aiResult.value) aiResult.value = 'AI 未返回结果，请重试。'
+    if (!aiResult.value) aiResult.value = i18n.global.t('editor.aiNoResult')
   } catch (e: unknown) {
     if ((e as Error).name === 'AbortError') return
-    aiResult.value = `请求失败: ${e}`
+    aiResult.value = i18n.global.t('editor.requestFailed', { msg: String(e) })
   } finally {
     aiLoading.value = false
     _abortMap.delete('aiEdit')

@@ -186,9 +186,9 @@
             </template>
             <template v-if="engineType === 'ollama'">
               <div class="sp-gap" />
-              <div class="sp-section-label">Ollama 设置</div>
+              <div class="sp-section-label">{{ t('settings.ollamaSettings') }}</div>
               <div class="sp-field">
-                <label class="sp-label">本地模型</label>
+                <label class="sp-label">{{ t('settings.localModel') }}</label>
                 <div class="sp-row">
                   <UiSelect
                     :model-value="ollamaModel"
@@ -198,7 +198,7 @@
                     <option v-for="m in ollamaModels" :key="m" :value="m">{{ m }}</option>
                   </UiSelect>
                   <UiButton variant="ghost" size="sm" :disabled="ollamaModelsLoading" @click="$emit('refreshOllamaModels')">
-                    {{ ollamaModelsLoading ? '...' : '刷新' }}
+                    {{ ollamaModelsLoading ? '...' : t('settings.refreshModels') }}
                   </UiButton>
                 </div>
               </div>

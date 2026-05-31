@@ -17,14 +17,14 @@
           <FileText :size="12" :stroke-width="1.6" class="tab-icon" />
           <span class="tab-name">{{ tab.name || 'Untitled' }}</span>
           <Transition name="v-spring">
-            <span v-if="tab.isModified" class="modified-dot" title="未保存" />
+            <span v-if="tab.isModified" class="modified-dot" :title="t('editor.tabModified')" />
           </Transition>
           <span
             class="tab-close"
             role="button"
             tabindex="-1"
-            title="关闭"
-            aria-label="关闭标签"
+            :title="t('editor.tabClose')"
+            :aria-label="t('editor.tabCloseLabel')"
             @click.stop="closeTab(tab.id)"
           >
             <X :size="11" :stroke-width="2.2" />
@@ -32,7 +32,7 @@
         </button>
       </TransitionGroup>
     </div>
-    <button class="new-tab-btn" title="新建文件" aria-label="新建文件" @click="openNewUntitled">
+    <button class="new-tab-btn" :title="t('editor.tabNewFile')" :aria-label="t('editor.tabNewFile')" @click="openNewUntitled">
       <Plus :size="14" :stroke-width="2" />
     </button>
   </div>

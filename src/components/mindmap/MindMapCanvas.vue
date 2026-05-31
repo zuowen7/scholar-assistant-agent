@@ -35,9 +35,9 @@
         @pointerdown.stop="startMinimapDrag"
       >
         <div class="minimap-bar">
-          <span class="minimap-title">{{ minimap.collapsed ? '小地图' : '地图' }}</span>
+          <span class="minimap-title">{{ minimap.collapsed ? t('mindmap.minimap') : t('mindmap.map') }}</span>
           <button type="button" @click.stop="$emit('toggle-minimap')">
-            {{ minimap.collapsed ? '展开' : '收起' }}
+            {{ minimap.collapsed ? t('mindmap.expand') : t('mindmap.collapse') }}
           </button>
           <template v-if="!minimap.collapsed">
             <button type="button" :class="{ active: minimap.size === 'small' }" @click.stop="$emit('set-minimap-size', 'small')">S</button>
@@ -66,6 +66,9 @@
 
 <script setup lang="ts">
 import { computed, markRaw, provide, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import type { Connection, NodeChange, GraphEdge } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'

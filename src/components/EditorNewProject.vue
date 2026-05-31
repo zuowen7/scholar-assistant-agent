@@ -5,26 +5,26 @@
         <div v-if="visible" class="project-start-dialog">
           <div class="project-start-header">
             <div>
-              <div class="welcome-kicker">新建工程</div>
-              <h3>新建工程</h3>
+              <div class="welcome-kicker">{{ t('editor.newProject') }}</div>
+              <h3>{{ t('editor.newProject') }}</h3>
             </div>
-            <button class="project-start-close" aria-label="关闭" @click="$emit('close')">
+            <button class="project-start-close" :aria-label="t('general.close')" @click="$emit('close')">
               <X :size="18" :stroke-width="2" />
             </button>
           </div>
           <div class="project-start-options">
             <button class="project-start-option primary u-interactive anim-fade-in-up anim-stagger" style="--stagger-i: 0" @click="$emit('enter-editor')">
-              <strong>直接进入编辑器</strong>
-              <span>创建空白文档，保持现有写作流程。</span>
+              <strong>{{ t('editor.directToEditor') }}</strong>
+              <span>{{ t('editor.directToEditorSub') }}</span>
             </button>
             <div class="project-start-option anim-fade-in-up anim-stagger" style="--stagger-i: 1">
-              <strong>先创建思维导图</strong>
-              <span>先梳理论文结构，再保存并进入编辑器。</span>
+              <strong>{{ t('editor.startMindMap') }}</strong>
+              <span>{{ t('editor.startMindMapSub') }}</span>
               <div class="project-topic-row">
                 <input
                   v-model="topic"
                   class="project-topic-input"
-                  placeholder="输入研究主题（可选）"
+                  :placeholder="t('editor.topicPlaceholder')"
                   @keydown.enter="$emit('enter-mindmap', topic)"
                 />
                 <button class="project-topic-go u-interactive" @click="$emit('enter-mindmap', topic)">创建</button>
@@ -39,6 +39,9 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 import { X } from './ui/icons'
 
 defineProps<{ visible: boolean }>()
