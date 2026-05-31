@@ -40,3 +40,4 @@ unidiff==0.7.5
 # function uses all-MiniLM-L6-v2 (CPU). Required for the RAG feature to ship in
 # PyInstaller builds — without it, the packaged app silently loses 文献库.
 chromadb==1.5.5
+numpy>=1.26   # chromadb transitive dep + tests/unit/test_translation_memory.py
