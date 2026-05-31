@@ -8,7 +8,12 @@ function getSpeechRecognition(): SpeechRecognition | null {
   return new SR()
 }
 
-export function useSpeechRecognition() {
+export interface SpeechRecognitionOptions {
+  /** Fires on every result update (interim + final accumulated text) */
+  onResult?: (text: string) => void
+}
+
+export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
   const status = ref<SpeechStatus>('idle')
   const interimText = ref('')
   const error = ref('')
@@ -50,7 +55,9 @@ export function useSpeechRecognition() {
           interim += r[0].transcript
         }
       }
-      interimText.value = final + interim
+      const text = final + interim
+      interimText.value = text
+      options?.onResult?.(text)
     }
 
     sr.start()

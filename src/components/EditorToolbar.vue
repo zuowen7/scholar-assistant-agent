@@ -118,13 +118,15 @@ import UiSpinner from './ui/UiSpinner.vue'
 import type { DropdownItem } from './ui/UiDropdown.vue'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
 
-const speech = useSpeechRecognition()
+const speech = useSpeechRecognition({
+  onResult: (text) => { if (text.trim()) emit('voice-update', text.trim()) },
+})
 
 function toggleSpeech() {
   if (speech.status.value === 'listening') {
-    const text = speech.stop()
-    if (text.trim()) emit('voice-text', text.trim())
+    speech.stop()
   } else {
+    emit('voice-start')
     speech.start()
   }
 }
@@ -157,6 +159,8 @@ const emit = defineEmits<{
   'vision-selected': [file: File]
   'image-selected': [file: File]
   'voice-text': [text: string]
+  'voice-start': []
+  'voice-update': [text: string]
 }>()
 
 const imageInputRef = ref<HTMLInputElement | null>(null)

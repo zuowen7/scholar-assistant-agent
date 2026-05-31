@@ -61,7 +61,8 @@
             @export-word="handleExportWord"
             @export-latex="handleExportLatex"
             @export-pdf="handleExportPdf"
-            @voice-text="handleVoiceText"
+            @voice-start="handleVoiceStart"
+            @voice-update="handleVoiceUpdate"
           />
 
           <MonacoEditor
@@ -453,7 +454,28 @@ function insertTable() {
 }
 function insertInlineFormula() { insertTextAtCursor('$ $') }
 function insertBlockFormula() { insertTextAtCursor('\n$$\n\n$$\n') }
-function handleVoiceText(text: string) { insertTextAtCursor(text) }
+// -- Voice input real-time insertion --
+let voiceRange: { line: number; col: number; len: number } | null = null
+
+function handleVoiceStart() {
+  const ed = useEditor().monacoEditor.value
+  if (!ed) return
+  const pos = ed.getPosition()
+  if (!pos) return
+  voiceRange = { line: pos.lineNumber, col: pos.column, len: 0 }
+}
+
+function handleVoiceUpdate(text: string) {
+  const ed = useEditor().monacoEditor.value
+  if (!ed || !voiceRange) return
+  const Range = (ed as any).monaco?.Range ??
+    class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
+  ed.executeEdits('voice', [{
+    range: new Range(voiceRange.line, voiceRange.col, voiceRange.line, voiceRange.col + voiceRange.len),
+    text,
+  }])
+  voiceRange.len = text.length
+}
 
 function showExportToast(msg: string) {
   if (exportToastTimer) clearTimeout(exportToastTimer)
