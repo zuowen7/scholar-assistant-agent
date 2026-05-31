@@ -162,6 +162,8 @@ def classify_error(exception: Exception) -> ErrorType:
         return ErrorType.MODEL_NOT_FOUND
     if status_code == 400:
         return ErrorType.FORMAT_ERROR
+    if status_code == 529:
+        return ErrorType.OVERLOADED
     if status_code and status_code >= 500:
         return ErrorType.SERVER_ERROR if status_code < 503 else ErrorType.OVERLOADED
 
@@ -174,9 +176,13 @@ def classify_error(exception: Exception) -> ErrorType:
         return ErrorType.CONTEXT_OVERFLOW
     if "input too long" in msg or "input is too long" in msg:
         return ErrorType.CONTEXT_OVERFLOW
+    if "context_length_exceeded" in msg:
+        return ErrorType.CONTEXT_OVERFLOW
     if "maximum context length" in msg or "max_tokens_exceed" in msg or "tokens exceed" in msg:
         return ErrorType.CONTEXT_OVERFLOW
     if "rate" in msg and ("limit" in msg or "exceeded" in msg):
+        return ErrorType.RATE_LIMIT
+    if "resource exhausted" in msg or "resource has been exhausted" in msg:
         return ErrorType.RATE_LIMIT
     if "too many requests" in msg or "请求过多" in msg:
         return ErrorType.RATE_LIMIT

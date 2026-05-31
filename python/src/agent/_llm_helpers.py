@@ -140,6 +140,22 @@ def messages_to_anthropic(
             continue
         if msg.content:
             anthropic_msgs.append({"role": msg.role, "content": msg.content})
+
+    # Merge consecutive user messages (Anthropic API requirement).
+    # Tool results become individual user messages above; Anthropic
+    # rejects consecutive user-role messages, so we merge them here.
+    merged: list[dict] = []
+    for msg in anthropic_msgs:
+        if msg["role"] == "user" and merged and merged[-1]["role"] == "user":
+            prev = merged[-1]["content"]
+            curr = msg["content"]
+            prev_blocks = prev if isinstance(prev, list) else [{"type": "text", "text": prev}]
+            curr_blocks = curr if isinstance(curr, list) else [{"type": "text", "text": curr}]
+            merged[-1]["content"] = prev_blocks + curr_blocks
+        else:
+            merged.append(msg)
+    anthropic_msgs = merged
+
     return system_text, anthropic_msgs
 
 

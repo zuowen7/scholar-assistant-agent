@@ -185,6 +185,20 @@ def register_translate(
         finally:
             client.close()
 
+    @app.get("/api/ollama/models")
+    def list_ollama_models():
+        if cloud_only:
+            return {"models": []}
+        config = load_config()
+        trans_cfg = config.get("translator", {})
+        client = OllamaClient(
+            base_url=trans_cfg.get("ollama_base_url", "http://localhost:11434"),
+        )
+        try:
+            return {"models": client.list_models()}
+        finally:
+            client.close()
+
     @app.get("/api/cloud/status")
     def cloud_status():
         config = load_config()

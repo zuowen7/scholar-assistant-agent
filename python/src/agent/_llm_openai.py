@@ -111,6 +111,11 @@ class OpenAIMixin:
                     if rc:
                         reasoning_content += rc
                     token = delta.get("content", "")
+                    if isinstance(token, list):
+                        token = "".join(
+                            p.get("text", "") if isinstance(p, dict) else str(p)
+                            for p in token
+                        )
                     if token:
                         full_content += token
                         yield {"type": "token", "content": token}, None

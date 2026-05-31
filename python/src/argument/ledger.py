@@ -8,6 +8,8 @@ import json
 import logging
 import re
 import time
+
+from src.utils.json_extract import extract_json_array, extract_json_object
 from typing import Any, AsyncIterator
 
 from .anchor import make_anchor_from_quote, relocate, relocate_all
@@ -120,9 +122,8 @@ async def build_ledger(
                 max_tokens=4096, temperature=0.3,
             )
             if raw1.strip():
-                m = re.search(r"\{[\s\S]*\}", raw1)
-                if m:
-                    json.loads(m.group())  # validate
+                parsed1_attempt = extract_json_object(raw1)
+                if parsed1_attempt is not None:
                     break
         except (json.JSONDecodeError, ValueError):
             if attempt == 1:
@@ -137,10 +138,9 @@ async def build_ledger(
         return
 
     try:
-        m1 = re.search(r"\{[\s\S]*\}", raw1)
-        if not m1:
+        parsed1 = extract_json_object(raw1)
+        if not parsed1:
             raise ValueError("no JSON object found")
-        parsed1 = json.loads(m1.group())
     except (json.JSONDecodeError, ValueError):
         yield {"event": "error", "data": json.dumps({"message": "LLM 未返回有效 JSON，请重试"})}
         return
@@ -213,9 +213,8 @@ async def build_ledger(
                 max_tokens=4096, temperature=0.3,
             )
             if raw2.strip():
-                m2 = re.search(r"\[[\s\S]*\]", raw2)
-                if m2:
-                    json.loads(m2.group())
+                arr = extract_json_array(raw2)
+                if arr is not None:
                     break
         except (json.JSONDecodeError, ValueError):
             if attempt == 1:
@@ -225,9 +224,9 @@ async def build_ledger(
 
     discharge_map: dict[str, dict] = {}
     try:
-        m2 = re.search(r"\[[\s\S]*\]", raw2)
-        if m2:
-            for item in json.loads(m2.group()):
+        arr2 = extract_json_array(raw2)
+        if arr2:
+            for item in arr2:
                 lid = str(item.get("promise_local_id", ""))
                 discharge_map[lid] = item
     except Exception:

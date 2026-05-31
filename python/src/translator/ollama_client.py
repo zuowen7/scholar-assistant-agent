@@ -363,6 +363,17 @@ CRITICAL: Preserve paragraph structure exactly.
         except httpx.HTTPError:
             return False
 
+    def list_models(self) -> list[str]:
+        """获取本地已部署的 Ollama 模型列表。"""
+        try:
+            client = self._get_http_client()
+            resp = client.get(f"{self.base_url}/api/tags", timeout=5.0)
+            resp.raise_for_status()
+            data = resp.json()
+            return [m["name"] for m in data.get("models", [])]
+        except (httpx.HTTPError, Exception):
+            return []
+
 
     # ── 异步并行翻译 ─────────────────────────────────────────────────────────
 

@@ -8,6 +8,7 @@ import { readSseStream } from '../utils/streamReader'
 import { persistTranslation, loadLastTranslation, clearPersistedTranslation } from './useTranslatePersist'
 import { toastFromError } from './useToast'
 import { validateTranslateUpload, extractApiErrorMessage } from '../utils/validation'
+import { i18n } from '../i18n'
 import type {
   TranslateState,
   TranslateStatus,
@@ -154,9 +155,20 @@ async function startOllama(): Promise<string | null> {
       await new Promise(r => setTimeout(r, 1000))
       if (await checkOllama()) return null
     }
-    return 'Ollama 启动超时，请手动运行 ollama serve'
+    return i18n.global.t('errors.ollamaTimeout')
   } catch (err) {
     return err instanceof Error ? err.message : String(err)
+  }
+}
+
+async function fetchOllamaModels(): Promise<string[]> {
+  try {
+    const resp = await fetch(`${API_URL}/api/ollama/models`, { signal: AbortSignal.timeout(5000) })
+    if (!resp.ok) return []
+    const data = await resp.json()
+    return data.models || []
+  } catch {
+    return []
   }
 }
 
@@ -170,8 +182,8 @@ async function uploadPdf(file: File): Promise<string> {
   })
 
   if (!resp.ok) {
-    const body = await resp.json().catch(() => ({ detail: '上传失败' }))
-    throw new Error(extractApiErrorMessage(body) || `上传失败 (${resp.status})`)
+    const body = await resp.json().catch(() => ({ detail: i18n.global.t('errors.uploadFailed') }))
+    throw new Error(extractApiErrorMessage(body) || i18n.global.t('errors.uploadFailedHttp', { status: resp.status }))
   }
 
   const data = validateTranslateUpload(await resp.json())
@@ -189,8 +201,8 @@ async function startStream(taskId: string, attempt: number = 0): Promise<void> {
   })
 
   if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ detail: '流式连接失败' }))
-    throw new Error(err.detail || `连接失败 (${resp.status})`)
+    const err = await resp.json().catch(() => ({ detail: i18n.global.t('errors.streamFailed') }))
+    throw new Error(err.detail || i18n.global.t('errors.connectFailed', { status: resp.status }))
   }
 
   const reader = resp.body?.getReader()
@@ -214,7 +226,7 @@ async function startStream(taskId: string, attempt: number = 0): Promise<void> {
       _isReconnecting = true
       try {
         const delay = Math.min(SSE_RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt), SSE_RECONNECT_TOTAL_TIMEOUT_MS)
-        state.stepMessage = `连接中断，正在重试 (${attempt + 1}/${SSE_RECONNECT_MAX_ATTEMPTS})… ${Math.round(delay / 1000)}s 后重连`
+        state.stepMessage = i18n.global.t('errors.reconnecting', { attempt: attempt + 1, max: SSE_RECONNECT_MAX_ATTEMPTS, delay: Math.round(delay / 1000) })
         await new Promise(r => setTimeout(r, delay))
         if (abortController === null || myStreamId !== _currentStreamId) return
 
@@ -264,7 +276,7 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
         original: b.original,
         translated: '',
       }))
-      state.stepMessage = `共 ${state.totalChunks} 块、${state.totalBlocks} 段`
+      state.stepMessage = i18n.global.t('errors.chunksAndBlocks', { chunks: state.totalChunks, blocks: state.totalBlocks })
       break
     }
     case 'translate.block_translated': {
@@ -332,11 +344,11 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       setStatus('done')
       if (state.fallbackChunks > 0 || state.misalignedChunks > 0) {
         const parts: string[] = []
-        if (state.fallbackChunks > 0) parts.push(`${state.fallbackChunks} 块失败`)
-        if (state.misalignedChunks > 0) parts.push(`${state.misalignedChunks} 块对齐失败`)
-        state.stepMessage = `翻译完成（警告：${parts.join('、')}）`
+        if (state.fallbackChunks > 0) parts.push(i18n.global.t('errors.failedChunks', { count: state.fallbackChunks }))
+        if (state.misalignedChunks > 0) parts.push(i18n.global.t('errors.misalignedChunks', { count: state.misalignedChunks }))
+        state.stepMessage = i18n.global.t('errors.translateCompleteWithWarn', { parts: parts.join(', ') })
       } else {
-        state.stepMessage = '翻译完成'
+        state.stepMessage = i18n.global.t('errors.translateComplete')
       }
       persistTranslation({
         id: state.taskId || `result-${Date.now()}`,
@@ -351,7 +363,7 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       break
     case 'translate.error':
       if (state.status !== 'done') {
-        state.errorMessage = (data.message as string) ?? '未知错误'
+        state.errorMessage = (data.message as string) ?? i18n.global.t('errors.unknownError')
         setStatus('error')
       }
       break
@@ -373,11 +385,11 @@ const MAX_UPLOAD_SIZE = 200 * 1024 * 1024 // 200 MB, 与后端保持一致
 async function translate(file: File): Promise<void> {
   reset()
   setStatus('uploading')
-  state.stepMessage = '上传文件...'
+  state.stepMessage = i18n.global.t('errors.uploading')
 
   try {
     if (file.size > MAX_UPLOAD_SIZE) {
-      throw new Error('文件过大，最大支持 200 MB')
+      throw new Error(i18n.global.t('errors.fileTooLarge'))
     }
 
     const healthOk = await checkHealth()
@@ -389,7 +401,7 @@ async function translate(file: File): Promise<void> {
     await startStream(taskId)
   } catch (err: unknown) {
     if (state.status !== 'done') {
-      const msg = err instanceof Error ? err.message : '未知错误'
+      const msg = err instanceof Error ? err.message : i18n.global.t('errors.unknownError')
       state.errorMessage = msg
       setStatus('error')
       toastFromError(err)
@@ -405,8 +417,8 @@ async function uploadPdfByPath(filePath: string): Promise<string> {
   })
 
   if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ detail: '上传失败' }))
-    throw new Error(err.detail || `上传失败 (${resp.status})`)
+    const err = await resp.json().catch(() => ({ detail: i18n.global.t('errors.uploadFailed') }))
+    throw new Error(err.detail || i18n.global.t('errors.uploadFailedHttp', { status: resp.status }))
   }
 
   const data = await resp.json()
@@ -417,7 +429,7 @@ async function uploadPdfByPath(filePath: string): Promise<string> {
 async function translateFromPath(filePath: string): Promise<void> {
   reset()
   setStatus('uploading')
-  state.stepMessage = '上传文件...'
+  state.stepMessage = i18n.global.t('errors.uploading')
 
   try {
     const healthOk = await checkHealth()
@@ -428,14 +440,14 @@ async function translateFromPath(filePath: string): Promise<void> {
     const supportedExts = ['.pdf','.docx','.doc','.txt','.md','.log','.html','.htm','.epub','.rtf','.tex','.csv','.pptx','.xlsx','.srt','.json','.xml']
     const ext = '.' + filePath.split('.').pop()?.toLowerCase()
     if (!supportedExts.includes(ext)) {
-      throw new Error(`不支持的文件格式: ${ext}`)
+      throw new Error(i18n.global.t('errors.unsupportedFormat', { ext }))
     }
 
     const taskId = await uploadPdfByPath(filePath)
     await startStream(taskId)
   } catch (err: unknown) {
     if (state.status !== 'done') {
-      const msg = err instanceof Error ? err.message : '未知错误'
+      const msg = err instanceof Error ? err.message : i18n.global.t('errors.unknownError')
       state.errorMessage = msg
       setStatus('error')
       toastFromError(err)
@@ -480,9 +492,9 @@ async function exportBilingualDocx(): Promise<void> {
     })
 
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ detail: '导出失败' }))
+      const err = await resp.json().catch(() => ({ detail: i18n.global.t('errors.exportFailed') }))
       const detail = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail)
-      throw new Error(detail || `导出失败 (${resp.status})`)
+      throw new Error(detail || i18n.global.t('errors.exportFailedHttp', { status: resp.status }))
     }
 
     const blob = await resp.blob()
@@ -491,7 +503,7 @@ async function exportBilingualDocx(): Promise<void> {
     const result = await saveBlob(blob, defaultName)
     if (result === 'Cancelled') return
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : '未知错误'
+    const msg = err instanceof Error ? err.message : i18n.global.t('errors.unknownError')
     state.errorMessage = msg
   }
 }
@@ -508,9 +520,9 @@ async function exportTranslationOnlyDocx(): Promise<void> {
     })
 
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ detail: '导出失败' }))
+      const err = await resp.json().catch(() => ({ detail: i18n.global.t('errors.exportFailed') }))
       const detail = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail)
-      throw new Error(detail || `导出失败 (${resp.status})`)
+      throw new Error(detail || i18n.global.t('errors.exportFailedHttp', { status: resp.status }))
     }
 
     const blob = await resp.blob()
@@ -519,7 +531,7 @@ async function exportTranslationOnlyDocx(): Promise<void> {
     const result = await saveBlob(blob, defaultName)
     if (result === 'Cancelled') return
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : '未知错误'
+    const msg = err instanceof Error ? err.message : i18n.global.t('errors.unknownError')
     state.errorMessage = msg
   }
 }
@@ -573,9 +585,9 @@ async function exportPPTX(): Promise<void> {
     })
 
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ detail: 'PPTX 导出失败' }))
+      const err = await resp.json().catch(() => ({ detail: i18n.global.t('errors.pptxExportFailed') }))
       const detail = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail)
-      throw new Error(detail || `PPTX 导出失败 (${resp.status})`)
+      throw new Error(detail || i18n.global.t('errors.pptxExportFailedHttp', { status: resp.status }))
     }
 
     const blob = await resp.blob()
@@ -583,7 +595,7 @@ async function exportPPTX(): Promise<void> {
     const { saveBlob } = await import('./useEditorIO')
     await saveBlob(blob, defaultName)
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : '未知错误'
+    const msg = err instanceof Error ? err.message : i18n.global.t('errors.unknownError')
     state.errorMessage = msg
   }
 }
@@ -602,9 +614,9 @@ async function exportDataAvailability(): Promise<void> {
     })
 
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ detail: 'Data Availability 生成失败' }))
+      const err = await resp.json().catch(() => ({ detail: i18n.global.t('errors.dataAvailFailed') }))
       const detail = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail)
-      throw new Error(detail || `生成失败 (${resp.status})`)
+      throw new Error(detail || i18n.global.t('errors.dataAvailFailedHttp', { status: resp.status }))
     }
 
     const data = await resp.json()
@@ -614,7 +626,7 @@ async function exportDataAvailability(): Promise<void> {
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
     await saveBlob(blob, `${state.taskId}_data_availability.md`)
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : '未知错误'
+    const msg = err instanceof Error ? err.message : i18n.global.t('errors.unknownError')
     state.errorMessage = msg
   }
 }
@@ -668,6 +680,7 @@ export function useTranslate() {
     getConfig,
     updateConfig,
     getProviderPresets,
+    fetchOllamaModels,
     exportBilingualDocx,
     exportTranslationOnlyDocx,
     exportTranslationOnlyMarkdown,
@@ -697,7 +710,7 @@ async function recoverTranslation(): Promise<boolean> {
     status: 'done',
     currentStep: 5,
     totalSteps: 5,
-    stepMessage: saved.stepMessage || '翻译完成（已恢复）',
+    stepMessage: saved.stepMessage || i18n.global.t('errors.translateCompleteRecovered'),
     finalContent: saved.finalContent,
     blocks: saved.blocks,
     chunks: saved.chunks,
@@ -724,7 +737,7 @@ async function checkCloudApi(): Promise<{ ok: boolean; error?: string }> {
     const data = await resp.json()
     return { ok: data.reachable === true, error: data.error }
   } catch {
-    return { ok: false, error: '无法连接到后端' }
+    return { ok: false, error: i18n.global.t('errors.backendUnreachable') }
   }
 }
 

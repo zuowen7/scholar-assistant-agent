@@ -14,6 +14,7 @@ from pathlib import Path
 import httpx
 import yaml
 
+from src.constants import ANTHROPIC_API_VERSION
 from src.translator.ollama_client import (
     Glossary,
 )
@@ -383,6 +384,7 @@ CRITICAL: Preserve paragraph structure exactly.
         payload: dict = {
             "model": self.model,
             "max_tokens": self.max_tokens,
+            "temperature": self.temperature,
             "messages": [{"role": "user", "content": prompt}],
         }
         if system:
@@ -392,7 +394,7 @@ CRITICAL: Preserve paragraph structure exactly.
         headers = {
             "Content-Type": "application/json",
             "x-api-key": self.api_key,
-            "anthropic-version": "2023-06-01",
+            "anthropic-version": ANTHROPIC_API_VERSION,
         }
 
         try:
@@ -502,7 +504,7 @@ CRITICAL: Preserve paragraph structure exactly.
         headers = {
             "Content-Type": "application/json",
             "x-api-key": self.api_key,
-            "anthropic-version": "2023-06-01",
+            "anthropic-version": ANTHROPIC_API_VERSION,
         }
         payload = {"model": self.model, "max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]}
         try:
