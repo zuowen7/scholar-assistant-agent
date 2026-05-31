@@ -124,7 +124,8 @@ const speech = useSpeechRecognition({
 
 function toggleSpeech() {
   if (speech.status.value === 'listening') {
-    speech.stop()
+    const text = speech.stop()
+    if (text.trim()) emit('voice-stop', text.trim())
   } else {
     emit('voice-start')
     speech.start()
@@ -161,6 +162,7 @@ const emit = defineEmits<{
   'voice-text': [text: string]
   'voice-start': []
   'voice-update': [text: string]
+  'voice-stop': [text: string]
 }>()
 
 const imageInputRef = ref<HTMLInputElement | null>(null)

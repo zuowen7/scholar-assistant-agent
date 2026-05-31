@@ -63,6 +63,7 @@
             @export-pdf="handleExportPdf"
             @voice-start="handleVoiceStart"
             @voice-update="handleVoiceUpdate"
+            @voice-stop="handleVoiceStop"
           />
 
           <MonacoEditor
@@ -266,7 +267,12 @@ function enterEditorFromMindMap(outline: string) {
   workspaceMode.value = 'editor'
   if (!activeTab.value) openNewUntitled()
   nextTick(() => {
-    if (activeTab.value && outline.trim()) setContent(outline)
+    if (!activeTab.value) return
+    if (outline.trim()) {
+      setContent(outline)
+    } else if (_contentBeforeMindMap) {
+      setContent(_contentBeforeMindMap)
+    }
   })
   _contentBeforeMindMap = ''
 }
@@ -289,9 +295,9 @@ function openMindMapFromEditor() {
   const md = content.value
   if (md.trim()) {
     const tree = markdownToMindMapNodes(md)
+    const mm = useMindMap()
     if (tree) {
       resetMindMap(tree.text)
-      const mm = useMindMap()
       const rootId = mm.draftMindMap.value.rootId
       if (tree.body) updateNodeBody(rootId, tree.body)
       for (const child of tree.children) {
@@ -299,7 +305,11 @@ function openMindMapFromEditor() {
       }
       mm.selectNode(rootId)
     } else {
-      loadSavedMindMap()
+      // No headings found — create root node with full text as body
+      resetMindMap('')
+      const rootId = mm.draftMindMap.value.rootId
+      updateNodeBody(rootId, md.trim())
+      mm.selectNode(rootId)
     }
   } else {
     loadSavedMindMap()
@@ -454,13 +464,12 @@ function insertTable() {
 }
 function insertInlineFormula() { insertTextAtCursor('$ $') }
 function insertBlockFormula() { insertTextAtCursor('\n$$\n\n$$\n') }
-// -- Voice input: track insertion range for in-place replacement --
+// -- Voice input: in-place replacement, deduplicated by composable --
 let voiceRange: { line: number; col: number; len: number } | null = null
 
 function handleVoiceStart() {
   const ed = useEditor().monacoEditor.value
   if (!ed) return
-  // Re-focus editor (button click stole focus)
   ed.focus()
   const pos = ed.getPosition()
   if (!pos) return
@@ -470,16 +479,18 @@ function handleVoiceStart() {
 function handleVoiceUpdate(text: string) {
   const ed = useEditor().monacoEditor.value
   if (!ed || !voiceRange) return
-  ed.focus()
   const Range = (ed as any).monaco?.Range ??
     class R { constructor(public a: number, public b: number, public c: number, public d: number) {} }
-  // Replace previous voice text with new version — triggers onDidChangeModelContent
-  // which clears ghost cache and sets 1.5s debounce → same path as typing
   ed.executeEdits('voice', [{
     range: new Range(voiceRange.line, voiceRange.col, voiceRange.line, voiceRange.col + voiceRange.len),
     text,
   }])
   voiceRange.len = text.length
+}
+
+function handleVoiceStop(text: string) {
+  // Already inserted via handleVoiceUpdate updates
+  voiceRange = null
 }
 
 function showExportToast(msg: string) {
