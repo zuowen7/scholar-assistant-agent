@@ -2,33 +2,30 @@
 
 [English](./README.md) | **中文**
 
-把学术论文的「读 · 想 · 写 · 审 · 排」全流程收进一个 AI 工作台，每个环节都有趁手的工具：
+面向论文写作与投稿的开源 AI 工作台。写、审、想、排，一站完成。
 
-- **读** — DeepL 级的 PDF 论文翻译与精读，译文自动收录进本地文献库，随时检索回顾
-- **想** — 思维导图 + 论证地图，理清思路与论证结构
-- **写** — 编辑器内 AI 伴写 / 润色 / 扩写，Agent 还能直接读写项目文件
-- **审** — 对抗式审稿（Reviewer-2）+ 论证账本，投稿前逐句逼问逻辑漏洞
-- **说** — Siri 风格语音助手（唤醒词"小研"、热键 Alt+Shift+V），编辑器/Agent/AI 面板支持语音打字
+- **写** — 编辑器内 AI 伴写 / 润色 / 扩写，Agent 直接读写项目文件（论文版 Claude Code）
+- **审** — Reviewer-2 对抗式审稿 + 论证账本，投稿前逼问逻辑漏洞
+- **想** — 思维导图 + Toulmin 论证图，理清思路与论证结构
 - **排** — 一键导出 IEEE / ACM / NeurIPS 等 LaTeX 模板与 Word
 
-本地可离线运行，也可接入 21 家云端大模型。**支持中/英双语界面切换**，设置面板一键切换 UI 语言。
+PDF 翻译与精读作为辅助入口，帮你快速把论文沉淀进工作流。语音助手支持唤醒词和全局热键。本地可离线运行，也可接入 21 家云端大模型。支持中/英双语界面切换。
 
-- **版本**：v0.3.5（2026-06-01：语音助手 — Siri 风格唤醒词 + 全局热键 + 语音打字；Chrome 重新识别去重 —— 前缀重叠检测 + utterances 追踪 + 内部重复清洗；同步暂停/恢复唤醒词 SR 避免与语音打字抢麦克风。2026-06-01：语音输入回声去重 + Monaco Range 修复 + Tab 光标追踪 + 智能标点合并。2026-05-31：中英双语 UI 全覆盖）
-- **许可**：MIT
+v0.3.5 · 最新：Copilot 风格 inline diff、语音助手、中英双语 UI 全覆盖。MIT 协议。
 
 ## 功能演示
 
-| 审 — 论证账本 | 审 — 对抗式审稿 |
-|--------------|---------------|
-| ![账本演示](docs/demo/precheck.gif) | ![Reviewer-2 演示](docs/demo/review.gif) |
-
-| 想 — 思维导图 | 想 — 论证地图 |
+| 审 — 对抗式审稿 | 审 — 论证账本 |
 |--------------|-------------|
-| ![思维导图演示](docs/demo/mindmap.gif) | ![论证地图演示](docs/demo/argument.gif) |
+| ![Reviewer-2 演示](docs/demo/review.gif) | ![账本演示](docs/demo/precheck.gif) |
 
 | 写 — AI 编辑器 + Agent |
 |----------------------|
 | ![Agent 演示](docs/demo/demo1.gif) |
+
+| 想 — 思维导图 | 想 — 论证地图 |
+|--------------|-------------|
+| ![思维导图演示](docs/demo/mindmap.gif) | ![论证地图演示](docs/demo/argument.gif) |
 
 | 更多功能 |
 |---------|
@@ -45,11 +42,50 @@
 | Windows | `Scholar Assistant_x64-setup.exe` |
 | macOS / Linux | 暂未提供（见[从源码构建](#快速开始)） |
 
-> **前提条件**：安装 [Ollama](https://ollama.com) 并拉取模型：`ollama pull qwen3:8b`
+> **注意**：[Ollama](https://ollama.com) 为可选项——仅本地离线翻译需要。云端翻译填 API Key 即可直接使用。
 
 ## 核心功能
 
+### 学术写作 AI（Agent 为核心）
+
+> **定位：论文版 Claude Code。** 把科研项目当 workspace，Agent 像 Claude Code 修代码一样直接读/写 PDF、草稿、bib、数据文件。
+
+- **Agent 工作区文件操作** — 打开项目文件夹后，Agent 可直接调用 `read_file / grep_files / str_replace / write_file / git_op` 等工具读写项目内文件，Agent 完成后编辑器实时刷新；`read_file` 对 PDF/Word/EPUB 自动走解析器提取纯文本
+- **文档问答一次性短路** — 打开文档问"写得怎么样/总结/有什么问题"时，内容已在手，直接单次 LLM 流式回答，不进多步工具循环；仅当明确要改文件/跑命令才走完整 ReAct Agent
+- **workspace 边界 & 越界审批** — 所有文件操作严格锁定在项目根目录内；访问项目外路径触发审批弹窗（Allow once / Allow session / Deny），行为与 Claude Code 一致
+- **Copilot 风格 inline diff** — Agent 修改文件后，编辑器内以红色波浪线标记删除、绿色预览部件 + [Accept][Reject] 按钮审阅改动
+- **ReAct 智能推理** — 多步工具调用循环，支持任务拆解、断点续跑、Skill 三层注入（SOUL/AGENTS/IDENTITY）、上下文压缩
+- **文献库（RAG）** — 翻译完成后自动将双语全文收录进本地向量库；Agent 按需调用 `search_documents` 跨文献检索，不自动注入每轮上下文；支持手动上传/删除文件
+- **AI 润色 / 扩写 / 连贯性改写 / 合规检查** — 通过 AI Panel 对选中文本操作
+- **Inline Ghost Text** — Monaco Editor 打字后 1.5s 自动请求补全建议，Tab 接受 ghost 文本
+
+### 论证陪练（Argument Companion v3）+ 论证地图（v2）
+
+> **投稿前的压力测试。** AI 主动发现逻辑问题，你只需回应。
+
+- **论证账本（Claim Ledger）** — 自动提取 abstract/intro 中每条承诺，追踪正文是否兑付（paid / partial / unpaid / mismatch），每条锚定到精确字符偏移；改稿后用模糊重定位（anchored → drifted → lost 三态）保持锚点存活，类似 `git blame` 之于论证
+- **Reviewer‑2 对抗** — 7 种会议校准的模拟评审（NeurIPS / ICML / ICLR / ACL / CVPR / KDD / CHI），每条批评锚到具体句子；作者逐条起草 rebuttal，reviewer 会被说服；三角度并行评审（方法/实验/写作）自动去重聚合
+- **真实评审导入** — 粘贴真实 reviewer 意见，AI 结构化拆解为可逐条 rebuttal 的条目
+- **实验缺口建议** — 对每条 unpaid / partial 承诺，AI 给出具体实验设计方案
+- **Rebuttal 包导出** — 一键下载含所有批评点 + rebuttal 草稿的 Markdown 文件
+- **Toulmin 论证图** — 节点（主张/依据/保证/支撑/限定/反驳）+ 关系，Vue Flow 画布可视化；AI 自动提取、批判审查、建议下一个元素；降维展开为结构化 Markdown/LaTeX 论文草稿
+
+**状态**：Phase 0–5 全部完成，`features.argument_companion=true` 已发布，pytest 2025 passed / 11 skipped + vitest 482 passed。
+
+### 思维导图
+- **Vue Flow 画布** — 自定义节点卡片 + 连线（树边/关联线），支持拖拽、缩放、小地图
+- **节点正文编辑** — 每个节点可展开正文编辑区（▸ 按钮），收起时显示首行预览
+- **编辑器双向同步** — 编辑器 → 导图自动解析 heading + body，导图 → 编辑器完整保留内容
+- **AI 智能展开** — 基于选中节点内容自动生成子主题
+- **AI 逻辑检查** — 检测思维链中的逻辑问题
+- **撤销/重做** — 100 步历史栈，支持 Ctrl+Z / Ctrl+Shift+Z
+- **自动布局** — dagre 算法一键整理
+- **快捷键** — Tab 添加子节点、Enter 添加兄弟、F2 编辑、Delete 删除悬停连线、方向键导航
+
 ### 翻译管道
+
+> DeepL 级 PDF 翻译作为辅助入口，帮你快速把论文沉淀进工作流。
+
 - **PDF 智能解析** — 16 种格式支持，自动检测单栏/双栏布局
 - **文本清洗** — 17 阶段管线，修复断行、移除水印/页眉页脚、处理连字符断词
 - **引用区跳过** — 自动识别 REFERENCES/BIBLIOGRAPHY 区域，原样保留不翻译
@@ -69,62 +105,17 @@
 
 > **语音免提操控** — 论文写作版的 Siri。喊"小研"或按 Alt+Shift+V 激活，说指令，Agent 自动执行。
 
-- **唤醒词** — Web Speech API 连续模式，同音字变体匹配（小研/小严/小言/小岩 等均能识别）；5 秒冷却防误触发；设置中可自定义唤醒词
-- **全局热键** — `Alt+Shift+V` 系统级生效（Tauri 插件），窗口最小化也能唤醒；设置中可自定义
-- **Siri 风格语音界面** — 全屏毛玻璃遮罩 + 脉冲球体 + 波纹扩散动画 + 实时转写；2 秒静默自动提交；Escape 或点击遮罩取消
+- **唤醒词** — Web Speech API 连续模式，同音字变体匹配（小研/小严/小言/小岩 等均能识别）；5 秒冷却防误触发；设置中可自定义
+- **全局热键** — `Alt+Shift+V` 系统级生效（Tauri 插件），窗口最小化也能唤醒
+- **Siri 风格语音界面** — 全屏毛玻璃遮罩 + 脉冲球体 + 波纹扩散动画 + 实时转写；2 秒静默自动提交
 - **语音打字** — 编辑器工具栏、Agent 面板、AI 编辑面板均有麦克风；说话即转录；按 Tab 接受 Ghost Text 后语音自动续接
-- **免冲突设计** — 语音打字时唤醒词自动暂停（`flush:sync` 同步停止），无麦克风争抢
-- **Chrome 重新识别去重** — 三层去重：前缀重叠检测（>50% 匹配旧 utterance 自动截断）+ `processedUpTo` 索引追踪避免重复处理 Chrome results + 单条内部重复清洗
-
-### 学术写作 AI（Agent 为核心）
-
-> **定位：写论文版的 Claude Code。** 把科研项目当 workspace，Agent 像 Claude Code 修代码一样直接读/写 PDF、草稿、bib、数据文件，替你读文献、改稿、管引用。
-
-- **Agent 工作区文件操作** — 打开项目文件夹后，Agent 可直接调用 `read_file / grep_files / str_replace / write_file / git_op` 等工具读写项目内文件，Agent 完成后编辑器实时刷新（Monaco mid-stream reload）；`read_file` 对 PDF/Word/EPUB 自动走解析器提取纯文本
-- **文档问答一次性短路** — 打开文档问"写得怎么样/总结/有什么问题"时，内容已在手，直接单次 LLM 流式回答，不进多步工具循环；仅当明确要改文件/跑命令才走完整 ReAct Agent
-- **workspace 边界 & 越界审批** — 所有文件操作严格锁定在项目根目录内；访问项目外路径触发审批弹窗（Allow once / Allow session / Deny），行为与 Claude Code 一致
-- **ReAct 智能推理** — 多步工具调用循环，支持任务拆解、断点续跑、Skill 三层注入（SOUL/AGENTS/IDENTITY）、上下文压缩
-- **文献库（RAG）** — 翻译完成后自动将双语全文收录进本地向量库；Agent 按需调用 `search_documents` 跨文献检索，不自动注入每轮上下文；支持手动上传/删除文件
-- **AI 润色 / 扩写 / 连贯性改写 / 合规检查** — 通过 AI Panel 对选中文本操作
-- **Inline Ghost Text** — Monaco Editor 打字后 1.5s 自动请求补全建议，Tab 接受 ghost 文本
-
-### 动态逻辑引擎 (Dynamic Argument Mapping v2)
-- **Toulmin 论证图** — 节点（主张/依据/论证保证/支撑/限定/反驳）+ 关系（支持/保证/支撑/限定/反驳/回应），Vue Flow 画布可视化
-- **AI 自动提取** — 从原文 SSE 流式提取 Toulmin 结构，claim/grounds/warrant/backing/rebuttal 自动识别
-- **批判审查** — AI 检测论证图中的结构问题和逻辑漏洞
-- **AI 建议** — 对选中节点建议下一个 Toulmin 元素（如为 claim 建议 grounds）
-- **手动编辑** — 创建/编辑节点和关系，拖拽调整布局，原文面板逐句绑定
-- **导出草稿** — Toulmin 图降维展开为结构化 Markdown/LaTeX 论文初稿（SSE 流式）
+- **免冲突设计** — 语音打字时唤醒词自动暂停，无麦克风争抢
 
 ### 编辑器
 - **Monaco Editor** — 全功能代码编辑器，支持 Markdown 语法高亮
 - **AI Panel** — 聊天风格 UI，支持消息历史；润色/扩写结果用 diff 视图对比原文，一键应用/撤销
 - **文件树** — 多文件管理，左侧导航
 - **模板导出** — Pandoc 编译，支持 IEEE/ACM/NeurIPS/LNCS/Elsevier/通用 LaTeX 模板
-
-### 论证陪练（Argument Companion v3，已完成）
-
-> 把"论证地图"的重心从自由画布转向**编辑器里的全程陪练**：AI 主动发现问题，用户只需回应。
-
-- **论证账本（Claim Ledger）** — 自动提取 abstract/intro 中每条承诺，追踪正文是否兑付（paid / partial / unpaid / mismatch），每条锚定到精确字符偏移；改稿后用模糊重定位（anchored → drifted → lost 三态）保持锚点存活，行为类似 `git blame` 之于论证
-- **Reviewer‑2 对抗** — 7 种会议校准的模拟评审（NeurIPS / ICML / ICLR / ACL / CVPR / KDD / CHI），每条批评锚到具体句子；作者逐条起草 rebuttal，reviewer 会推回或被说服；含首尾一致性 / gap 匹配 / related work 定位检查；支持三角度并行评审（method/experiment/writing）并自动去重聚合
-- **真实评审导入** — 粘贴真实 reviewer 意见，AI 结构化拆解为可逐条 rebuttal 的条目，persona=real
-- **实验缺口建议** — 对每条 unpaid / partial 承诺，AI 给出具体实验设计方案（"怎么补满"）
-- **Rebuttal 包导出** — 一键下载含所有批评点 + rebuttal 草稿的 Markdown 文件
-- **全栈端对端验证** — `test_companion_e2e.py`：27 个集成测试覆盖全部 `/api/companion/*` 端点，真实 Store 写入 + SSE 序列化全程跑通，仅 mock LLM 调用
-
-**状态**：Phase 0–5 全部完成，`features.argument_companion=true` 已发布，pytest 2025 passed / 11 skipped + vitest 482 passed。
-
-### 思维导图
-- **Vue Flow 画布** — 自定义节点卡片 + 连线（树边/关联线），支持拖拽、缩放、小地图
-- **节点正文编辑** — 每个节点可展开正文编辑区（▸ 按钮），收起时显示首行预览；heading 对应节点标题，段落文本对应节点正文
-- **编辑器双向同步** — 从编辑器切到思维导图自动解析 heading + body，切回编辑器完整保留内容（不丢失正文）
-- **AI 智能展开** — 基于选中节点内容自动生成子主题
-- **AI 逻辑检查** — 检测思维链中的逻辑问题
-- **撤销/重做** — 100 步历史栈，支持 Ctrl+Z / Ctrl+Shift+Z
-- **自动布局** — dagre 算法一键整理
-- **快捷键** — Tab 添加子节点、Enter 添加兄弟、F2 编辑、Delete 删除悬停连线、方向键导航
-- **Markdown 桥接** — 思维导图 ↔ Argument Map 双向同步
 
 ### 调试 & 可观测性
 - **日志落文件** — 后端日志写入 `RUNTIME_DIR/logs/app.log`（10 MB × 5 备份轮转，每行携带 trace_id）
@@ -492,3 +483,7 @@ npx vitest
 | LaTeX 导出 | Pandoc + 6 套模板 (IEEE Conf/Journal, ACM, NeurIPS, LNCS, 通用) |
 | 思维导图 | Vue Flow + dagre 自动布局 |
 | 容器化 | Docker 多阶段构建 |
+
+---
+
+如果这个项目能帮到你的论文工作流，欢迎点个 star。PR 和 Issue 都欢迎。

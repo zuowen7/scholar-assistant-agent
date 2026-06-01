@@ -6,33 +6,30 @@
 
 **English** | [中文](./README_zh.md)
 
-> Open-source **Claude Code for academic papers** — a privacy-first AI workstation covering the full lifecycle of scholarly writing: Read · Think · Write · Review · Publish.
+> An open-source AI workstation for academic writing and submission. Write, review, think, and publish — all in one place.
 
-- **Read** — DeepL-quality PDF translation and close reading; translations auto-archived into a searchable local library
-- **Think** — Mind map + Argument map to structure ideas and reasoning
-- **Write** — AI companion editor with polish / expand / rewrite; Agent reads and writes project files directly
-- **Review** — Adversarial peer review (Reviewer-2) + Claim Ledger to pressure-test logic before submission
-- **Voice** — Siri-style voice assistant ("小研" wake word, Alt+Shift+V hotkey), voice dictation for editor/Agent/AI panel
+- **Write** — AI companion editor with polish / expand / rewrite; Agent reads and writes project files directly (Claude Code for papers)
+- **Review** — Reviewer-2 adversarial peer review + Claim Ledger to pressure-test logic before you submit
+- **Think** — Mind map + Toulmin argument map to structure ideas and reasoning
 - **Publish** — One-click export to IEEE / ACM / NeurIPS LaTeX templates and Word
 
-Runs offline locally, or connects to 21 cloud LLM providers. **Bilingual UI** (zh-CN / en-US) — switch language from the settings panel.
+PDF translation & close reading included as an on-ramp — translate a paper in minutes, then work on it. Voice assistant with Siri-style wake word and dictation. Runs locally offline or connects to 21 cloud LLM providers. **Bilingual UI** (zh-CN / en-US).
 
-- **Version**: v0.3.5 (2026-06-01: Copilot-style inline diff — Agent file edits rendered as red/green decorations in Monaco with Accept/Reject; voice assistant — Siri-style wake word + global hotkey + voice dictation; Chrome re-recognition dedup. 2026-05-31: full bilingual UI coverage)
-- **License**: MIT
+v0.3.5 — Latest: Copilot-style inline diff, voice assistant, full bilingual UI coverage. MIT license.
 
 ## Demo
 
-| Review — Claim Ledger | Review — Adversarial Peer Review |
-|------------------------|----------------------------------|
-| ![Ledger Demo](docs/demo/precheck.gif) | ![Reviewer-2 Demo](docs/demo/review.gif) |
-
-| Think — Mind Map | Think — Argument Map |
-|-------------------|----------------------|
-| ![Mind Map Demo](docs/demo/mindmap.gif) | ![Argument Map Demo](docs/demo/argument.gif) |
+| Review — Adversarial Peer Review | Review — Claim Ledger |
+|----------------------------------|------------------------|
+| ![Reviewer-2 Demo](docs/demo/review.gif) | ![Ledger Demo](docs/demo/precheck.gif) |
 
 | Write — AI Editor + Agent |
 |---------------------------|
 | ![Agent Demo](docs/demo/demo1.gif) |
+
+| Think — Mind Map | Think — Argument Map |
+|-------------------|----------------------|
+| ![Mind Map Demo](docs/demo/mindmap.gif) | ![Argument Map Demo](docs/demo/argument.gif) |
 
 | More Features |
 |---------------|
@@ -42,7 +39,46 @@ Runs offline locally, or connects to 21 cloud LLM providers. **Bilingual UI** (z
 
 ## Core Features
 
+### AI Editor (Agent as Backbone)
+
+> **Positioning: Claude Code for Papers.** Treat your research project as a workspace; the Agent reads/writes PDFs, drafts, bib files, and data directly — just like Claude Code edits source code.
+
+- **Agent Workspace File Tools** — Open a project folder; the Agent calls `read_file / grep_files / str_replace / write_file / git_op` directly on project files; editor tabs reload mid-stream after each Agent write; `read_file` auto-parses PDF/Word/EPUB
+- **Document QA Short-circuit** — When a document is open and you ask "how is it / summarize / any issues", the content is already at hand — single-shot LLM streaming answer, no ReAct tool loop; only explicit "modify/save/run" intent triggers full Agent
+- **Workspace Boundary & Approval** — All file operations locked to project root; out-of-scope access triggers an approval popup (Allow once / Allow session / Deny), matching Claude Code behavior
+- **Copilot-style Inline Diff** — Agent file edits (`str_replace`/`write_file`) appear as inline decorations in the editor: red wavy underline on deleted text, green preview widget with [Accept][Reject] buttons below
+- **ReAct Reasoning** — Multi-step tool-call loop with task decomposition, checkpoint resume, three-layer Skill injection (SOUL/AGENTS/IDENTITY), and context compression
+- **Library (RAG)** — Post-translation auto-ingest bilingual full text into local vector DB; Agent calls `search_documents` on demand (not auto-injected per turn); manual upload/delete supported
+- **AI Polish / Expand / Coherence / Compliance** — Operate on selected text via the AI Panel
+- **Inline Ghost Text** — Monaco Editor auto-requests completions 1.5s after typing; Tab to accept
+
+### Argument Companion (v3) & Argument Mapping (v2)
+
+> **Your pre-submission pressure test.** AI proactively finds problems in your logic; you just respond.
+
+- **Claim Ledger** — Auto-extract every promise from abstract/intro; track whether the body delivers (paid / partial / unpaid / mismatch), each anchored to exact character offsets; fuzzy relocation on edits (anchored → drifted → lost 3-state), like `git blame` for arguments
+- **Reviewer‑2 Adversary** — 7 conference-calibrated simulated reviews (NeurIPS / ICML / ICLR / ACL / CVPR / KDD / CHI); each critique anchored to a specific sentence; author drafts rebuttal point-by-point; reviewer can be persuaded; 3-angle parallel review (method/experiment/writing) with auto dedup
+- **Real Review Import** — Paste actual reviewer comments; AI structures them into rebuttal-ready items
+- **Experiment Gap Suggestions** — For each unpaid/partial promise, AI proposes a concrete experiment design
+- **Rebuttal Package Export** — One-click download of all critique points + rebuttal drafts as Markdown
+- **Toulmin Argument Map** — Nodes (Claim / Grounds / Warrant / Backing / Qualifier / Rebuttal) + Relations on a Vue Flow canvas; AI auto-extraction, critique, and suggestions; flatten to structured Markdown/LaTeX paper draft (SSE streaming)
+
+**Status**: Phase 0–5 complete, `features.argument_companion=true` shipped, 2048 pytest passed / 11 skipped + 482 vitest passed.
+
+### Mind Map
+- **Vue Flow Canvas** — Custom node cards + edges (tree/association), drag, zoom, minimap
+- **Node Body Editing** — Each node has an expandable body textarea (▸ button); collapsed view shows first-line preview
+- **Editor Bidirectional Sync** — Editor → mind map auto-parses heading + body; mind map → editor preserves all content (no data loss)
+- **AI Smart Expand** — Generate subtopics based on selected node content
+- **AI Logic Check** — Detect logic chain issues
+- **Undo/Redo** — 100-step history stack, Ctrl+Z / Ctrl+Shift+Z
+- **Auto Layout** — dagre algorithm, one-click organize
+- **Keyboard Shortcuts** — Tab add child, Enter add sibling, F2 edit, Delete remove hovered edge, arrows navigate
+
 ### Translation Pipeline
+
+> DeepL-quality PDF translation as an on-ramp — get papers into your workflow in minutes.
+
 - **Smart PDF Parsing** — 16 format parsers, auto-detect single/dual-column layout
 - **Text Cleaning** — 17-stage pipeline: fix line breaks, remove watermarks/headers/footers, handle hyphenation
 - **Reference Skip** — Auto-detect REFERENCES/BIBLIOGRAPHY sections, preserve as-is
@@ -60,65 +96,19 @@ Runs offline locally, or connects to 21 cloud LLM providers. **Bilingual UI** (z
 
 ### Voice Assistant
 
-> **Hands-free control** — like Siri for your academic writing tool. Wake word "小研" or Alt+Shift+V to activate, speak your command, Agent executes.
+> **Hands-free control** — Siri-style wake word "小研" or Alt+Shift+V to activate, speak your command, Agent executes.
 
-- **Wake Word** — Web Speech API continuous recognition with homophone variant matching (小研/小严/小言/小岩 all work); 5-second cooldown prevents accidental re-trigger; custom wake word in settings
-- **Global Hotkey** — `Alt+Shift+V` system-wide (Tauri plugin); works even when window is minimized; customizable in settings
-- **Siri-style Voice UI** — fullscreen glass-morphism overlay with pulsing orb + ripple rings + live transcript; 2-second silence auto-submit; Escape or backdrop click to cancel
-- **Voice Dictation** — mic buttons in editor toolbar, Agent panel, and AI panel; speech transcribed in real time; accepts Ghost Text (Tab) mid-speech without losing context
-- **Conflict-free Design** — wake word detection auto-pauses during dictation via shared busy flag with `flush:sync`; no microphone contention
-- **Chrome Re-recognition Dedup** — three layers of deduplication: prefix overlap detection against individual utterances (>50% match), `processedUpTo` index tracking to avoid re-processing Chrome results, and internal duplication cleaning
-
-### AI Editor (Agent as Backbone)
-
-> **Positioning: Claude Code for Papers.** Treat your research project as a workspace; the Agent reads/writes PDFs, drafts, bib files, and data directly — just like Claude Code edits source code.
-
-- **Agent Workspace File Tools** — Open a project folder; the Agent calls `read_file / grep_files / str_replace / write_file / git_op` directly on project files; editor tabs reload mid-stream after each Agent write; `read_file` auto-parses PDF/Word/EPUB
-- **Document QA Short-circuit** — When a document is open and you ask "how is it / summarize / any issues", the content is already at hand — single-shot LLM streaming answer, no ReAct tool loop; only explicit "modify/save/run" intent triggers full Agent
-- **Workspace Boundary & Approval** — All file operations locked to project root; out-of-scope access triggers an approval popup (Allow once / Allow session / Deny), matching Claude Code behavior
-- **Copilot-style Inline Diff** — Agent file edits (`str_replace`/`write_file`) appear as inline decorations in the editor: red wavy underline on deleted text, green preview widget with [Accept][Reject] buttons below; edits are routed from AgentPanel to editor via `showInlineDiff` routing, keeping the approval chain intact
-- **ReAct Reasoning** — Multi-step tool-call loop with task decomposition, checkpoint resume, three-layer Skill injection (SOUL/AGENTS/IDENTITY), and context compression
-- **Library (RAG)** — Post-translation auto-ingest bilingual full text into local vector DB; Agent calls `search_documents` on demand (not auto-injected per turn); manual upload/delete supported
-- **AI Polish / Expand / Coherence / Compliance** — Operate on selected text via the AI Panel
-- **Inline Ghost Text** — Monaco Editor auto-requests completions 1.5s after typing; Tab to accept
-
-### Argument Mapping (v2)
-- **Toulmin Argument Map** — Nodes (Claim / Grounds / Warrant / Backing / Qualifier / Rebuttal) + Relations (Supports / Warrants / Backs / Qualifies / Rebuts / Counters), visualized on a Vue Flow canvas
-- **AI Auto-extraction** — SSE stream extraction of Toulmin structure from source text
-- **Critique** — AI detects structural issues and logical fallacies in the argument graph
-- **AI Suggestions** — Suggest next Toulmin element for the selected node (e.g. suggest Grounds for a Claim)
-- **Manual Editing** — Create/edit nodes and edges, drag to rearrange, bind sentences from source pane
-- **Export Draft** — Flatten Toulmin graph into structured Markdown/LaTeX paper draft (SSE streaming)
+- **Wake Word** — Web Speech API continuous recognition with homophone variant matching; 5-second cooldown; customizable in settings
+- **Global Hotkey** — `Alt+Shift+V` system-wide (Tauri plugin); works even when window is minimized
+- **Siri-style Voice UI** — fullscreen glass-morphism overlay with pulsing orb + ripple rings + live transcript; 2-second silence auto-submit
+- **Voice Dictation** — mic buttons in editor toolbar, Agent panel, and AI panel; accepts Ghost Text (Tab) mid-speech without losing context
+- **Conflict-free Design** — wake word detection auto-pauses during dictation; no microphone contention
 
 ### Editor
 - **Monaco Editor** — Full-featured code editor with Markdown syntax highlighting
 - **AI Panel** — Chat-style UI with message history; polish/expand results shown as diff view, one-click apply/undo
 - **File Tree** — Multi-file management with left sidebar navigation
 - **Template Export** — Pandoc compilation with IEEE / ACM / NeurIPS / LNCS / Elsevier / Generic LaTeX templates
-
-### Argument Companion (v3 — Complete)
-
-> Shifts the argument mapping focus from a free-form canvas to **an in-editor training partner**: AI proactively finds problems; you just respond.
-
-- **Claim Ledger** — Auto-extract every promise from abstract/intro; track whether the body delivers (paid / partial / unpaid / mismatch), each anchored to exact character offsets; fuzzy relocation on edits (anchored → drifted → lost 3-state), like `git blame` for arguments
-- **Reviewer‑2 Adversary** — 7 conference-calibrated simulated reviews (NeurIPS / ICML / ICLR / ACL / CVPR / KDD / CHI); each critique anchored to a specific sentence; author drafts rebuttal point-by-point; reviewer can be persuaded; includes coherence / gap-matching / related-work checks; 3-angle parallel review (method/experiment/writing) with auto dedup
-- **Real Review Import** — Paste actual reviewer comments; AI structures them into rebuttal-ready items (persona=real)
-- **Experiment Gap Suggestions** — For each unpaid/partial promise, AI proposes a concrete experiment design ("How to fill?")
-- **Rebuttal Package Export** — One-click download of all critique points + rebuttal drafts as Markdown
-- **Full-stack E2E Verified** — `test_companion_e2e.py`: 27 integration tests covering all `/api/companion/*` endpoints with real Store writes + SSE serialization (only LLM calls mocked)
-
-**Status**: Phase 0–5 complete, `features.argument_companion=true` shipped, 2048 pytest passed / 11 skipped + 482 vitest passed.
-
-### Mind Map
-- **Vue Flow Canvas** — Custom node cards + edges (tree/association), drag, zoom, minimap
-- **Node Body Editing** — Each node has an expandable body textarea (▸ button); collapsed view shows first-line preview; heading = node title, paragraph = body
-- **Editor Bidirectional Sync** — Editor → mind map auto-parses heading + body; mind map → editor preserves all content (no data loss)
-- **AI Smart Expand** — Generate subtopics based on selected node content
-- **AI Logic Check** — Detect logic chain issues
-- **Undo/Redo** — 100-step history stack, Ctrl+Z / Ctrl+Shift+Z
-- **Auto Layout** — dagre algorithm, one-click organize
-- **Keyboard Shortcuts** — Tab add child, Enter add sibling, F2 edit, Delete remove hovered edge, arrows navigate
-- **Markdown Bridge** — Bidirectional sync between Mind Map and Argument Map
 
 ### Debugging & Observability
 - **File Logging** — Backend logs written to `RUNTIME_DIR/logs/app.log` (10 MB × 5 rotating backups, each line carries trace_id)
@@ -205,7 +195,7 @@ Pre-built installers are available on the [Releases](https://github.com/zuowen7/
 | Windows | `Scholar Assistant_x64-setup.exe` |
 | macOS / Linux | Not yet available (see [Building from Source](#quick-start)) |
 
-> **Prerequisites**: Install [Ollama](https://ollama.com) and pull a model: `ollama pull qwen3:8b`
+> **Note**: [Ollama](https://ollama.com) is optional — only needed for local/offline translation. Cloud translation works out of the box with an API key.
 
 ### Docker Image
 
@@ -521,3 +511,7 @@ Good first issues are tagged `good-first-issue`. The project structure is docume
 ---
 
 Built with Tauri, FastAPI, and too many late nights.
+
+---
+
+If this helps your research workflow, please star the repo. PRs and issues welcome.
