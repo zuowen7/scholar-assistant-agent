@@ -12,11 +12,12 @@
 - **Think** — Mind map + Argument map to structure ideas and reasoning
 - **Write** — AI companion editor with polish / expand / rewrite; Agent reads and writes project files directly
 - **Review** — Adversarial peer review (Reviewer-2) + Claim Ledger to pressure-test logic before submission
+- **Voice** — Siri-style voice assistant ("小研" wake word, Alt+Shift+V hotkey), voice dictation for editor/Agent/AI panel
 - **Publish** — One-click export to IEEE / ACM / NeurIPS LaTeX templates and Word
 
 Runs offline locally, or connects to 21 cloud LLM providers. **Bilingual UI** (zh-CN / en-US) — switch language from the settings panel.
 
-- **Version**: v0.3.3 (2026-06-01: voice input duplication fix — Monaco Range fallback with wrong property names caused text accumulation; speech composable echo dedup rewrite; Tab + voice cursor tracking; smart punctuation merging. 2026-05-31: full bilingual UI coverage, vue-i18n @ parsing crash fix, UiDropdown race condition fix, release background image fix, build config sync)
+- **Version**: v0.3.5 (2026-06-01: voice assistant — Siri-style wake word + global hotkey + voice dictation; Chrome re-recognition dedup with prefix overlap detection + utterance tracking; sync SR pause/resume to prevent wake word/dictation conflict. 2026-06-01: voice input echo dedup + Monaco Range fix + Tab cursor tracking + smart punctuation merging. 2026-05-31: full bilingual UI coverage)
 - **License**: MIT
 
 ## Demo
@@ -37,7 +38,7 @@ Runs offline locally, or connects to 21 cloud LLM providers. **Bilingual UI** (z
 |---------------|
 | ![More](docs/demo/demo2.gif) |
 
-> All GIFs are real screen recordings from the v0.3.3 release.
+> All GIFs are real screen recordings from the v0.3.5 release.
 
 ## Core Features
 
@@ -56,6 +57,17 @@ Runs offline locally, or connects to 21 cloud LLM providers. **Bilingual UI** (z
 - **Enhanced Prompts** — Strict paragraph structure preservation, reduced alignment failures
 - **Glossary Auto-extraction** — Extract `Chinese(English)` term pairs from translated text, inject into subsequent chunks
 - **Sliding Context Window** — Each chunk carries summaries and terminology from preceding chunks
+
+### Voice Assistant
+
+> **Hands-free control** — like Siri for your academic writing tool. Wake word "小研" or Alt+Shift+V to activate, speak your command, Agent executes.
+
+- **Wake Word** — Web Speech API continuous recognition with homophone variant matching (小研/小严/小言/小岩 all work); 5-second cooldown prevents accidental re-trigger; custom wake word in settings
+- **Global Hotkey** — `Alt+Shift+V` system-wide (Tauri plugin); works even when window is minimized; customizable in settings
+- **Siri-style Voice UI** — fullscreen glass-morphism overlay with pulsing orb + ripple rings + live transcript; 2-second silence auto-submit; Escape or backdrop click to cancel
+- **Voice Dictation** — mic buttons in editor toolbar, Agent panel, and AI panel; speech transcribed in real time; accepts Ghost Text (Tab) mid-speech without losing context
+- **Conflict-free Design** — wake word detection auto-pauses during dictation via shared busy flag with `flush:sync`; no microphone contention
+- **Chrome Re-recognition Dedup** — three layers of deduplication: prefix overlap detection against individual utterances (>50% match), `processedUpTo` index tracking to avoid re-processing Chrome results, and internal duplication cleaning
 
 ### AI Editor (Agent as Backbone)
 
@@ -94,7 +106,7 @@ Runs offline locally, or connects to 21 cloud LLM providers. **Bilingual UI** (z
 - **Rebuttal Package Export** — One-click download of all critique points + rebuttal drafts as Markdown
 - **Full-stack E2E Verified** — `test_companion_e2e.py`: 27 integration tests covering all `/api/companion/*` endpoints with real Store writes + SSE serialization (only LLM calls mocked)
 
-**Status**: Phase 0–5 complete, `features.argument_companion=true` shipped, 2025 pytest passed / 11 skipped + 393 vitest passed.
+**Status**: Phase 0–5 complete, `features.argument_companion=true` shipped, 2025 pytest passed / 11 skipped + 482 vitest passed.
 
 ### Mind Map
 - **Vue Flow Canvas** — Custom node cards + edges (tree/association), drag, zoom, minimap
@@ -134,12 +146,18 @@ Runs offline locally, or connects to 21 cloud LLM providers. **Bilingual UI** (z
 │   │   ├── useFileTree.ts        #   File tree navigation (singleton)
 │   │   ├── useMindMap.ts         #   Mind map data + undo/redo (singleton)
 │   │   ├── useArgumentMap.ts     #   Toulmin v2 graph state (singleton)
-│   │   └── useArgumentCompanion.ts # Argument Companion ledger state (singleton)
+│   │   ├── useArgumentCompanion.ts # Argument Companion ledger state (singleton)
+│   │   ├── useSpeechRecognition.ts # Web Speech API (accumulation, dedup, punctuation merge)
+│   │   ├── useSpeechBusy.ts      #   Shared busy flag (wake word ↔ dictation conflict prevention)
+│   │   ├── useWakeWord.ts        #   Wake word detection (continuous SR, homophone matching, cooldown)
+│   │   ├── useGlobalHotkey.ts    #   System hotkey registration (Tauri plugin, Alt+Shift+V)
+│   │   └── useVoiceCommand.ts    #   Voice command state machine + auto-submit
 │   ├── components/
-│   │   ├── AppTopBar.vue         #   Top bar (brand / mode switch / settings / window controls)
+│   │   ├── AppTopBar.vue         #   Top bar (brand / mode switch / settings / voice settings / window controls)
 │   │   ├── TranslateView.vue     #   Translation mode (upload / progress / result views)
 │   │   ├── AgentPanel.vue        #   Agent side panel (chat / library / templates / sessions)
 │   │   ├── EditorLayout.vue      #   Editor layout (~657 lines, Monaco + AiPanel + FileTree)
+│   │   ├── VoiceAssistantView.vue #   Siri-style fullscreen voice UI (glass morphism, pulse/ripple animation)
 │   │   ├── mindmap/              #   Mind map (Vue Flow canvas + custom nodes/edges)
 │   │   ├── ui/                   #   UI primitives (Button/Input/Panel/Tooltip…)
 │   │   └── …                     #   MonacoEditor, AiPanel, ArgumentMap, etc.
@@ -463,7 +481,7 @@ A unique feature not found in any other academic tool:
 
 ```
 Python:  2025 tests passed / 11 skipped  (pytest)
-Frontend: 393 tests passed / 32 files    (vitest)
+Frontend: 482 tests passed / 40 files    (vitest)
 ```
 
 ```bash
