@@ -101,6 +101,9 @@ scripts/.tools-cache/
 pytest-cache-files-*/
 tmp_pytest/
 
+# project docs is the canonical project doc; project docs is intentionally not committed
+project docs
+
 # Claude
 .claude/
 
