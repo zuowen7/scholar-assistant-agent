@@ -470,7 +470,7 @@ defineEmits<{
 const settingsPopoverRef = ref<InstanceType<typeof UiPopover> | null>(null)
 const statusPopoverRef = ref<InstanceType<typeof UiPopover> | null>(null)
 const settingsPopoverOpen = computed(() => settingsPopoverRef.value?.open ?? false)
-const speechSupported = !!window.SpeechRecognition || !!(window as any).webkitSpeechRecognition
+const speechSupported = !!(window as any).SpeechRecognition || !!(window as any).webkitSpeechRecognition
 const settingsTab = ref<'engine' | 'display' | 'network' | 'background' | 'voice'>('engine')
 
 const modeOptions = computed(() => [
