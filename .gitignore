@@ -101,6 +101,9 @@ scripts/.tools-cache/
 pytest-cache-files-*/
 tmp_pytest/
 
+# CLAUDE.md is the canonical project doc; AGENTS.md is intentionally not committed
+AGENTS.md
+
 # Claude
 .claude/
 
