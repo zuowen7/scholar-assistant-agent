@@ -1,12 +1,25 @@
 # Changelog
 
-## [0.3.5] — 2026-05-31
+## [0.3.5] — 2026-06-01
+
+### Added
+- **Voice Assistant** — Siri-style hands-free control: wake word "小研" (homophone variant matching), global hotkey `Alt+Shift+V` (Tauri plugin, system-wide), voice dictation in editor/Agent/AI panel, customizable via settings
+- **VoiceAssistantView** — fullscreen glass-morphism overlay with pulsing orb, ripple rings, and live transcript; 2-second silence auto-submit
+- **Voice settings panel** — wake word phrase, hotkey recording, sensitivity, language toggle
+- **Shared speech busy flag** — prevents wake word detection from conflicting with voice dictation (`useSpeechBusy.ts`, sync pause/resume via `flush:'sync'`)
+- 115 new vitest voice-related tests (10 useWakeWord + 13 useVoiceCommand + 9 VoiceAssistantView + 7 useGlobalHotkey + 8 integration + 3 useSpeechRecognition dedup)
 
 ### Fixed
+- **Voice input echo dedup** — Monaco Range fallback class with wrong property names (`{a,b,c,d}` → `{startLineNumber,...}`) caused `executeEdits` INSERT instead of REPLACE, accumulating duplicated voice text
+- **Chrome re-recognition dedup** — three layers: prefix overlap detection against individual utterances (>50% match), `processedUpTo` index tracking, and internal duplication cleaning
+- **Speaker punctuation auto-merge** — `joinUtterances()` converts premature Chrome-added periods to commas when the next utterance is clearly a continuation
+- **Tab + voice cursor tracking** — `handleVoiceUpdate` detects cursor drift after accepting Ghost Text, resets voice insertion anchor
+- **Wake word/dictation SR conflict** — wake word `onend`/`onerror` handlers now check `pausedByDictation` guard to prevent 300ms auto-restart from stealing the microphone
 - CI: Ollama tests skip gracefully when service unavailable; RAG tests accept 503 when ChromaDB missing
 - CI: Regenerate `requirements-lock.txt` with ChromaDB + NumPy + transitive deps
 - CI: Add NumPy to requirements for test job
 - CI: Opt into Node.js 24 for GitHub Actions runtime
+- Build: version 0.3.3 → 0.3.5 synced across 4 files (Cargo.toml, tauri.conf.json, tauri.dev.conf.json, _version.py)
 
 ## [0.3.3] — 2026-05-31
 

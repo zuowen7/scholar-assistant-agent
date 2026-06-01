@@ -39,7 +39,7 @@ pytest tests/ -v
 
 ## Project Overview
 
-Scholar Assistant — privacy-first academic AI writing assistant (v0.3.2, single source `python/src/_version.py`). Core paradigm: **"Codex for papers"** — Agent directly reads/writes workspace files (PDF/drafts/bib/data) like Codex edits source code. Translates PDFs with DeepL-like experience (parse -> clean -> chunk -> translate -> format via SSE), provides an AI editor (Monaco + Agent chat with workspace file tools), and exports to LaTeX/Word. Runs as desktop app (Tauri manages Python + Ollama subprocesses) or standalone Python API.
+Scholar Assistant — privacy-first academic AI writing assistant (v0.3.5, single source `python/src/_version.py`). Core paradigm: **"Claude Code for papers"** — Agent directly reads/writes workspace files (PDF/drafts/bib/data) like Codex edits source code. Translates PDFs with DeepL-like experience (parse -> clean -> chunk -> translate -> format via SSE), provides an AI editor (Monaco + Agent chat with workspace file tools), and exports to LaTeX/Word. Runs as desktop app (Tauri manages Python + Ollama subprocesses) or standalone Python API.
 
 ## Build Commands
 
