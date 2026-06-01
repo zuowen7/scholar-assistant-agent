@@ -37,6 +37,12 @@ v0.3.5 — Latest: Copilot-style inline diff, voice assistant, full bilingual UI
 
 > All GIFs are real screen recordings from the v0.3.5 release.
 
+## Download
+
+Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant/releases) — Windows installer, macOS DMG, Linux AppImage/DEB.
+
+> **Note**: [Ollama](https://ollama.com) is optional — only needed for local/offline translation. Cloud translation works out of the box with an API key.
+
 ## Core Features
 
 ### AI Editor (Agent as Backbone)
@@ -184,30 +190,6 @@ v0.3.5 — Latest: Copilot-style inline diff, voice assistant, full bilingual UI
 ├── Dockerfile
 ├── docker-compose.yml
 └── package.json
-```
-
-## Download
-
-Pre-built installers are available on the [Releases](https://github.com/zuowen7/scholar-assistant/releases) page.
-
-| Platform | File |
-|----------|------|
-| Windows | `Scholar Assistant_x64-setup.exe` |
-| macOS / Linux | Not yet available (see [Building from Source](#quick-start)) |
-
-> **Note**: [Ollama](https://ollama.com) is optional — only needed for local/offline translation. Cloud translation works out of the box with an API key.
-
-### Docker Image
-
-```bash
-# Pull latest image
-docker pull zuowen7/scholar-assistant:latest
-
-# Start Ollama + application services
-docker compose up
-
-# Translate a document
-docker compose run app /data/input/paper.pdf -o /data/output/paper.md
 ```
 
 ## Quick Start
