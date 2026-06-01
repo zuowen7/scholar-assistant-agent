@@ -17,7 +17,7 @@
 
 Runs offline locally, or connects to 21 cloud LLM providers. **Bilingual UI** (zh-CN / en-US) — switch language from the settings panel.
 
-- **Version**: v0.3.5 (2026-06-01: voice assistant — Siri-style wake word + global hotkey + voice dictation; Chrome re-recognition dedup with prefix overlap detection + utterance tracking; sync SR pause/resume to prevent wake word/dictation conflict. 2026-06-01: voice input echo dedup + Monaco Range fix + Tab cursor tracking + smart punctuation merging. 2026-05-31: full bilingual UI coverage)
+- **Version**: v0.3.5 (2026-06-01: Copilot-style inline diff — Agent file edits rendered as red/green decorations in Monaco with Accept/Reject; voice assistant — Siri-style wake word + global hotkey + voice dictation; Chrome re-recognition dedup. 2026-05-31: full bilingual UI coverage)
 - **License**: MIT
 
 ## Demo
@@ -76,6 +76,7 @@ Runs offline locally, or connects to 21 cloud LLM providers. **Bilingual UI** (z
 - **Agent Workspace File Tools** — Open a project folder; the Agent calls `read_file / grep_files / str_replace / write_file / git_op` directly on project files; editor tabs reload mid-stream after each Agent write; `read_file` auto-parses PDF/Word/EPUB
 - **Document QA Short-circuit** — When a document is open and you ask "how is it / summarize / any issues", the content is already at hand — single-shot LLM streaming answer, no ReAct tool loop; only explicit "modify/save/run" intent triggers full Agent
 - **Workspace Boundary & Approval** — All file operations locked to project root; out-of-scope access triggers an approval popup (Allow once / Allow session / Deny), matching Claude Code behavior
+- **Copilot-style Inline Diff** — Agent file edits (`str_replace`/`write_file`) appear as inline decorations in the editor: red wavy underline on deleted text, green preview widget with [Accept][Reject] buttons below; edits are routed from AgentPanel to editor via `showInlineDiff` routing, keeping the approval chain intact
 - **ReAct Reasoning** — Multi-step tool-call loop with task decomposition, checkpoint resume, three-layer Skill injection (SOUL/AGENTS/IDENTITY), and context compression
 - **Library (RAG)** — Post-translation auto-ingest bilingual full text into local vector DB; Agent calls `search_documents` on demand (not auto-injected per turn); manual upload/delete supported
 - **AI Polish / Expand / Coherence / Compliance** — Operate on selected text via the AI Panel
@@ -106,7 +107,7 @@ Runs offline locally, or connects to 21 cloud LLM providers. **Bilingual UI** (z
 - **Rebuttal Package Export** — One-click download of all critique points + rebuttal drafts as Markdown
 - **Full-stack E2E Verified** — `test_companion_e2e.py`: 27 integration tests covering all `/api/companion/*` endpoints with real Store writes + SSE serialization (only LLM calls mocked)
 
-**Status**: Phase 0–5 complete, `features.argument_companion=true` shipped, 2025 pytest passed / 11 skipped + 482 vitest passed.
+**Status**: Phase 0–5 complete, `features.argument_companion=true` shipped, 2048 pytest passed / 11 skipped + 482 vitest passed.
 
 ### Mind Map
 - **Vue Flow Canvas** — Custom node cards + edges (tree/association), drag, zoom, minimap
@@ -188,7 +189,7 @@ Runs offline locally, or connects to 21 cloud LLM providers. **Bilingual UI** (z
 │   │   └── mcp/                  #   Vision client (multi-modal image analysis)
 │   ├── prompts/                  #   Academic writing prompt system (6-layer skeleton + YAML frontmatter)
 │   ├── data/paper_assets/        #   Paper templates (IEEE/ACM/NeurIPS/LNCS/Generic)
-│   └── tests/                    #   Unit + integration tests (incl. E2E companion + adversarial), pytest 2025 passed / 11 skipped
+│   └── tests/                    #   Unit + integration tests (incl. E2E companion + adversarial), pytest 2048 passed / 11 skipped
 ├── config/default.yaml           #   Source-of-truth default configuration
 ├── Dockerfile
 ├── docker-compose.yml
@@ -480,7 +481,7 @@ A unique feature not found in any other academic tool:
 ## Testing
 
 ```
-Python:  2025 tests passed / 11 skipped  (pytest)
+Python:  2048 tests passed / 11 skipped  (pytest)
 Frontend: 482 tests passed / 40 files    (vitest)
 ```
 
