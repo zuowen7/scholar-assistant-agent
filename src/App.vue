@@ -146,6 +146,9 @@
       <!-- Agent 聊天面板 -->
       <AgentPanel :open="showAgentChat" @update:open="showAgentChat = $event" @switch-to-editor="appMode = 'editor'" />
 
+      <!-- 语音助手 Siri 风格浮层 -->
+      <VoiceAssistantView />
+
       <!-- Global toast notifications -->
       <UiToast />
     </div>
@@ -186,6 +189,12 @@ import UiButton from './components/ui/UiButton.vue'
 import UiToast from './components/ui/UiToast.vue'
 import type { AppMode } from './types'
 import { API_BASE } from './utils/api'
+import { useVoiceCommand } from './composables/useVoiceCommand'
+import { useGlobalHotkey } from './composables/useGlobalHotkey'
+import { useWakeWord } from './composables/useWakeWord'
+import { useAgentChat } from './composables/useAgentChat'
+import { useFileTree } from './composables/useFileTree'
+import VoiceAssistantView from './components/VoiceAssistantView.vue'
 
 const { state, translate, translateFromPath, cleanup, checkHealth, checkOllama, startOllama, checkCloudApi, getConfig, updateConfig, getProviderPresets, fetchOllamaModels, restartBackend, listenBackendCrash, setStatus, setError, setStepMessage, recoverTranslation, discardPersisted } = useTranslate()
 const { pushError } = useToast()
@@ -225,6 +234,84 @@ function openAgentDocs() {
   showAgentChat.value = true
 }
 const { cleanup: editorCleanup } = useEditor()
+
+// ── 语音助手 ──────────────────────────────────────────────────
+const voiceCmd = useVoiceCommand()
+
+function handleVoiceCommandTrigger() {
+  if (appMode.value !== 'editor') appMode.value = 'editor'
+  showAgentChat.value = true
+}
+
+function handleVoiceCommandSubmit(e: Event) {
+  const { text } = (e as CustomEvent).detail
+  if (!text?.trim()) return
+  console.log('[voice] submitting to agent:', text.trim())
+
+  const { sendMessage, sending } = useAgentChat()
+  const { rootDir } = useFileTree()
+  const { activeTab } = useEditor()
+
+  if (sending.value) {
+    console.warn('[voice] Agent is busy (sending=true), queueing...')
+  }
+
+  // Close voice view immediately — user sees results in AgentPanel
+  voiceCmd.done()
+
+  sendMessage(
+    text.trim(),
+    '',
+    '',
+    rootDir.value || undefined,
+    activeTab.value?.path || undefined,
+  ).then(() => {
+    console.log('[voice] sendMessage resolved')
+  }).catch((err) => {
+    console.warn('[voice] sendMessage failed:', err)
+  })
+}
+
+// Read voice settings from localStorage
+interface VoiceSettings {
+  enabled?: boolean
+  hotkey?: string
+  wakeWordEnabled?: boolean
+}
+function loadVoiceSettings(): VoiceSettings {
+  try {
+    const raw = localStorage.getItem('voice-settings')
+    return raw ? JSON.parse(raw) : {}
+  } catch { return {} }
+}
+
+const voiceSettings = loadVoiceSettings()
+// Alt+Space is a Windows system shortcut (window menu) — auto-migrate
+if (voiceSettings.hotkey === 'Alt+Space') {
+  voiceSettings.hotkey = 'Alt+Shift+V'
+  try { localStorage.setItem('voice-settings', JSON.stringify({ ...voiceSettings, hotkey: 'Alt+Shift+V' })) } catch { /* ignore */ }
+}
+const hotkey = useGlobalHotkey(
+  voiceSettings.hotkey || 'Alt+Shift+V',
+  () => { if (voiceSettings.enabled !== false) voiceCmd.triggerVoiceCommand() },
+)
+const wakeWord = voiceSettings.wakeWordEnabled !== false
+  ? useWakeWord(() => { if (voiceSettings.enabled !== false) voiceCmd.triggerVoiceCommand() })
+  : null
+
+// Start wake word detection on initial mount
+if (wakeWord) {
+  wakeWord.startWakeWord().catch(() => {})
+}
+
+window.addEventListener('voice-command-trigger', handleVoiceCommandTrigger)
+window.addEventListener('voice-command-submit', handleVoiceCommandSubmit)
+
+// Pause wake word during active voice command, resume when idle
+watch(() => voiceCmd.state.value, (s) => {
+  if (s !== 'idle') wakeWord?.stopWakeWord()
+  else if (voiceSettings.wakeWordEnabled !== false) wakeWord?.startWakeWord().catch(() => {})
+})
 
 const healthOk = ref(false)
 const ollamaOk = ref(false)
@@ -636,6 +723,10 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('mousemove', onMouseMove)
+  window.removeEventListener('voice-command-trigger', handleVoiceCommandTrigger)
+  window.removeEventListener('voice-command-submit', handleVoiceCommandSubmit)
+  hotkey.cleanup()
+  wakeWord?.stopWakeWord()
   if (timer) clearInterval(timer)
   if (unlistenDragDrop) unlistenDragDrop()
   if (bootSafetyTimer) { clearTimeout(bootSafetyTimer); bootSafetyTimer = null }

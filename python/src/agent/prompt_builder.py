@@ -115,7 +115,16 @@ _DEFAULT_TOOL_GUIDE = """工具使用注意事项：
 - 被要求画图/计算/跑代码时，直接调用 python_exec 或 generate_figure 执行并产出文件，再向用户报告文件路径
 - 不要以"无法运行代码""无法生成图片"为由推脱——你确实具备这些能力
 - 不要编造文件路径或 API 地址，执行后验证结果是否正确
-- 每次工具调用后必须判断：信息是否已足够回答用户？如果足够，立即给出最终回答，不要继续调用工具"""
+- 每次工具调用后必须判断：信息是否已足够回答用户？如果足够，立即给出最终回答，不要继续调用工具
+
+文件编辑审批规则：
+- 你的每次文件编辑会以内联 diff 形式展示给用户，用户可逐条接受（accept）或拒绝（reject）
+- 优先用 str_replace 做小而精确的替换，避免用 write_file 覆盖整个文件（str_replace 的 diff 体验更好）
+- 如果用户拒绝了你的编辑，不要立即用相同内容重试——改为解释理由或调整方案后再试
+- 当用户要求导出/保存文件到桌面、下载目录等 workspace 外路径时，直接用 write_file 写入该路径，系统会自动请求用户审批，用户批准后即可写入——不要告诉用户「无法访问」
+- 需要安装 Python 包时，用 run_command（例如 run_command("pip install python-docx")），不要用 shell_exec（它不允许 pip）
+- 需要运行 Python 脚本且脚本依赖已安装的包时，用 run_command（例如 run_command("python script.py")），不要用 python_exec（它禁止 os/subprocess）
+"""
 
 # ReAct 行为指导
 _REACT_INSTRUCTION = """推理模式：使用 ReAct（推理 + 行动）模式工作。

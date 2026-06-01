@@ -183,6 +183,7 @@ import AgentApprovalInline from './AgentApprovalInline.vue'
 import type { PendingApproval } from '../composables/useAgentChat'
 import { useFileTree } from '../composables/useFileTree'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
+import { setSpeechBusy } from '../composables/useSpeechBusy'
 import { Mic } from './ui/icons'
 
 let voiceBaseInput = ''
@@ -195,9 +196,11 @@ function togglePanelSpeech() {
   if (panelSpeech.status.value === 'listening') {
     voiceBaseInput = ''
     panelSpeech.stop()
+    setSpeechBusy(false)
     inputRef.value?.focus()
   } else {
     voiceBaseInput = input.value
+    setSpeechBusy(true)
     panelSpeech.start()
   }
 }

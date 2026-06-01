@@ -12,6 +12,13 @@ def gate():
     return SecurityGate()
 
 
+@pytest.fixture
+def gate_with_workspace(tmp_path):
+    """SecurityGate with a temp workspace containing draft.md."""
+    (tmp_path / "draft.md").write_text("existing content")
+    return SecurityGate(workspace_root=str(tmp_path))
+
+
 # ---------------------------------------------------------------------------
 # ToolRiskLevel enum
 # ---------------------------------------------------------------------------
@@ -209,17 +216,32 @@ class TestFileTools:
         assert r.risk == ToolRiskLevel.DESTRUCTIVE
         assert "100 lines" in r.reason or "deletes" in r.reason
 
-    def test_write_file_overwrite_destructive(self, gate):
-        r = gate.classify("write_file", {"must_not_exist": False})
+    def test_write_file_overwrite_existing(self, gate_with_workspace):
+        """must_not_exist=False on an existing file = DESTRUCTIVE overwrite."""
+        r = gate_with_workspace.classify("write_file", {
+            "file_path": "draft.md",
+            "content": "new content",
+            "must_not_exist": False,
+        })
         assert r.risk == ToolRiskLevel.DESTRUCTIVE
+
+    def test_write_file_new_no_flag(self, gate_with_workspace):
+        """must_not_exist=False on a NON-existing file = MODERATE (new file), force_approval for inline diff."""
+        r = gate_with_workspace.classify("write_file", {
+            "file_path": "new_file.md",
+            "content": "fresh content",
+            "must_not_exist": False,
+        })
+        assert r.risk == ToolRiskLevel.MODERATE
+        assert r.force_approval  # inline diff requires approval for all file edits
 
     def test_write_file_new_moderate(self, gate):
         r = gate.classify("write_file", {"must_not_exist": True})
         assert r.risk == ToolRiskLevel.MODERATE
         assert r.needs_approval
 
-    def test_smart_pause_force_approval_for_overwrite(self, gate):
-        r = gate.classify("write_file", {
+    def test_smart_pause_force_approval_for_overwrite(self, gate_with_workspace):
+        r = gate_with_workspace.classify("write_file", {
             "file_path": "draft.md",
             "content": "new manuscript text",
             "must_not_exist": False,

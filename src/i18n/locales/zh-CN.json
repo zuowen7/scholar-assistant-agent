@@ -210,7 +210,14 @@
     "resume": "恢复 →",
     "refreshTemplates": "刷新",
     "createFromThisTemplate": "以此为模板新建",
-    "attachedFilesHint": "附件文件，请用 read_file 工具读取："
+    "attachedFilesHint": "附件文件，请用 read_file 工具读取：",
+    "inlineDiff": {
+      "old": "原文",
+      "new": "建议",
+      "accept": "接受",
+      "reject": "拒绝",
+      "moreLines": "更多行"
+    }
   },
   "aiPanel": {
     "title": "AI 对话",
@@ -851,5 +858,23 @@
     "rebutPlaceholder": "写下你的反驳理由…",
     "rebuteCancel": "取消",
     "rebutSend": "发送"
+  },
+  "voice": {
+    "title": "语音助手",
+    "listening": "在听…",
+    "processing": "正在处理…",
+    "done": "完成了",
+    "noSpeech": "没有检测到语音",
+    "hotkey": "全局热键",
+    "wakeWord": "唤醒词",
+    "wakeWordEnabled": "唤醒词检测",
+    "sensitivity": "灵敏度",
+    "autoSubmit": "自动提交",
+    "language": "语音语言",
+    "notSupported": "当前浏览器不支持语音识别",
+    "enabled": "启用语音指令",
+    "low": "低",
+    "medium": "中",
+    "high": "高"
   }
 }

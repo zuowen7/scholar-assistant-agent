@@ -27,6 +27,39 @@ export const aiLoading = ref(false)
 export const aiResult = ref('')
 export const previousContent = ref('')
 
+// ── Inline Diff Approval 状态 ──────────────────────────────────────────────
+
+export interface PendingEdit {
+  editId: string
+  eventId: string
+  sessionId: string
+  operation: 'str_replace' | 'write_file'
+  filePath: string
+  oldText: string
+  newText: string
+}
+
+export const activeEdit = ref<PendingEdit | null>(null)
+
+export function setActiveEdit(edit: PendingEdit): void {
+  activeEdit.value = edit
+}
+
+export function clearActiveEdit(): void {
+  activeEdit.value = null
+}
+
+export function shouldShowInlineDiff(
+  toolName: string,
+  args: Record<string, unknown>,
+  openTabPaths: string[],
+): boolean {
+  if (toolName !== 'str_replace' && toolName !== 'write_file') return false
+  const filePath = args.file_path as string
+  if (!filePath) return false
+  return openTabPaths.some(p => p === filePath)
+}
+
 // ── Monaco Range helper ──────────────────────────────────────────────────
 
 // Monaco-compatible Range fallback — uses the correct IRange property names
@@ -76,6 +109,10 @@ export function useEditorState() {
     aiLoading,
     aiResult,
     previousContent,
+    activeEdit,
+    setActiveEdit,
+    clearActiveEdit,
+    shouldShowInlineDiff,
     insertTextAtCursor,
     insertImage,
   }

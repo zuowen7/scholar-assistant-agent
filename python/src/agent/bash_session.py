@@ -43,6 +43,7 @@ _CMD_SPLIT_RE = re.compile(r'\s*(?:&&|;|\|)\s*')
 
 # Shell 注入检测：禁止命令替换、换行符注入等危险模式
 # bash/POSIX 模式（Linux/macOS）和 cmd.exe 模式（Windows）都覆盖
+# 注意：%VAR% 是 Windows cmd.exe 标准环境变量语法，安全，不拦截
 _INJECTION_RE = re.compile(
     r'\$\('           # bash command substitution $(...)
     r'|`'             # bash backtick command substitution
@@ -53,7 +54,6 @@ _INJECTION_RE = re.compile(
     r'|(?<!\w)eval\s' # bash eval builtin
     r'|[\n\r\x00]'   # newline/null injection (both platforms)
     r'|>\(|<\('       # bash process substitution
-    r'|%[^%\s]{1,32}%'  # cmd.exe %VAR% environment variable expansion
     ,
     re.IGNORECASE,
 )
@@ -254,6 +254,9 @@ class BashSession:
         # 清空代理变量（Windows httpx 兼容）
         for var in _PROXY_ENV_VARS:
             env.pop(var, None)
+        # Windows: 设置 HOME 让 $HOME 跨平台可用
+        if _IS_WINDOWS and 'HOME' not in env:
+            env['HOME'] = env.get('USERPROFILE', '')
         # 应用覆盖
         env.update(self._env_overrides)
         return env

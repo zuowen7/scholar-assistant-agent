@@ -287,6 +287,71 @@
               @update:model-value="$emit('opacity-change', $event)"
             />
           </div>
+
+          <!-- Voice tab -->
+          <div v-show="settingsTab === 'voice'" class="sp-body">
+            <div class="sp-section-label">{{ t('voice.title') }}</div>
+
+            <div class="sp-field">
+              <label class="sp-label">{{ t('voice.enabled') }}</label>
+              <label class="sp-toggle">
+                <input type="checkbox" :checked="voiceSettings.enabled" @change="onVoiceSettingChange('enabled', ($event.target as HTMLInputElement).checked)" />
+                <span class="sp-toggle-slider" />
+              </label>
+            </div>
+
+            <div class="sp-field">
+              <label class="sp-label">{{ t('voice.hotkey') }}</label>
+              <UiInput
+                :model-value="voiceSettings.hotkey"
+                placeholder="Alt+Space"
+                @update:model-value="onVoiceSettingChange('hotkey', $event)"
+              />
+            </div>
+
+            <div class="sp-section-label" style="margin-top: 8px;">{{ t('voice.wakeWord') }}</div>
+
+            <div class="sp-field">
+              <label class="sp-label">{{ t('voice.wakeWordEnabled') }}</label>
+              <label class="sp-toggle">
+                <input type="checkbox" :checked="voiceSettings.wakeWordEnabled" @change="onVoiceSettingChange('wakeWordEnabled', ($event.target as HTMLInputElement).checked)" />
+              </label>
+            </div>
+
+            <div v-if="voiceSettings.wakeWordEnabled" class="sp-field">
+              <label class="sp-label">{{ t('voice.wakeWord') }}</label>
+              <UiInput
+                :model-value="voiceSettings.wakeWordPhrase"
+                placeholder="小研"
+                @update:model-value="onVoiceSettingChange('wakeWordPhrase', $event)"
+              />
+            </div>
+
+            <div class="sp-field">
+              <label class="sp-label">{{ t('voice.sensitivity') }}</label>
+              <UiSelect
+                :model-value="voiceSettings.sensitivity"
+                @update:model-value="onVoiceSettingChange('sensitivity', $event as any)"
+              >
+                <option value="low">{{ t('voice.low') }}</option>
+                <option value="medium">{{ t('voice.medium') }}</option>
+                <option value="high">{{ t('voice.high') }}</option>
+              </UiSelect>
+            </div>
+
+            <div class="sp-field">
+              <label class="sp-label">{{ t('voice.language') }}</label>
+              <UiSelect
+                :model-value="voiceSettings.language"
+                @update:model-value="onVoiceSettingChange('language', $event)"
+              >
+                <option value="zh-CN">中文</option>
+                <option value="en-US">English</option>
+              </UiSelect>
+            </div>
+
+            <p v-if="!speechSupported" class="sp-hint">{{ t('voice.notSupported') }}</p>
+          </div>
         </div>
       </UiPopover>
 
@@ -405,7 +470,8 @@ defineEmits<{
 const settingsPopoverRef = ref<InstanceType<typeof UiPopover> | null>(null)
 const statusPopoverRef = ref<InstanceType<typeof UiPopover> | null>(null)
 const settingsPopoverOpen = computed(() => settingsPopoverRef.value?.open ?? false)
-const settingsTab = ref<'engine' | 'display' | 'network' | 'background'>('engine')
+const speechSupported = !!window.SpeechRecognition || !!(window as any).webkitSpeechRecognition
+const settingsTab = ref<'engine' | 'display' | 'network' | 'background' | 'voice'>('engine')
 
 const modeOptions = computed(() => [
   { value: 'translate' as AppMode, label: t('mode.translate') },
@@ -418,6 +484,7 @@ const settingsTabOptions = computed(() => [
   { value: 'display', label: t('settings.display') },
   { value: 'network', label: t('settings.network') },
   { value: 'background', label: t('settings.background') },
+  { value: 'voice', label: t('voice.title') },
 ])
 
 const engineOptions = computed(() => [
@@ -431,6 +498,46 @@ const overallStatus = computed(() => {
   if (props.engineType === 'cloud' && !props.cloudOk) return 'warn'
   return 'ok'
 })
+
+// ── Voice settings (self-contained, persisted to localStorage) ─────
+interface VoiceSettings {
+  enabled: boolean
+  hotkey: string
+  wakeWordEnabled: boolean
+  wakeWordPhrase: string
+  sensitivity: 'low' | 'medium' | 'high'
+  language: string
+}
+
+const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
+  enabled: true,
+  hotkey: 'Alt+Shift+V',
+  wakeWordEnabled: true,
+  wakeWordPhrase: '小研',
+  sensitivity: 'medium',
+  language: 'zh-CN',
+}
+
+function loadVoiceSettings(): VoiceSettings {
+  try {
+    const raw = localStorage.getItem('voice-settings')
+    if (raw) return { ...DEFAULT_VOICE_SETTINGS, ...JSON.parse(raw) }
+  } catch { /* ignore */ }
+  return { ...DEFAULT_VOICE_SETTINGS }
+}
+
+function saveVoiceSettings(s: VoiceSettings) {
+  try { localStorage.setItem('voice-settings', JSON.stringify(s)) } catch { /* ignore */ }
+}
+
+const voiceSettings = ref<VoiceSettings>(loadVoiceSettings())
+
+function onVoiceSettingChange<K extends keyof VoiceSettings>(key: K, value: VoiceSettings[K]) {
+  voiceSettings.value[key] = value
+  saveVoiceSettings(voiceSettings.value)
+  // Re-initialize hotkey/wake word on next app restart (settings are read at mount time)
+}
+
 </script>
 
 <style scoped>
@@ -694,6 +801,22 @@ const overallStatus = computed(() => {
 .sp-status.off { color: var(--c-danger); background: var(--c-danger-bg); }
 .sp-error { font-size: var(--text-xs); color: var(--c-text-2); text-align: center; }
 .sp-hint { font-size: var(--text-xs); color: var(--c-text-3); line-height: var(--leading-normal); }
+
+/* Toggle switch */
+.sp-toggle { position: relative; display: inline-block; width: 36px; height: 20px; }
+.sp-toggle input { opacity: 0; width: 0; height: 0; }
+.sp-toggle-slider {
+  position: absolute; inset: 0; cursor: pointer;
+  background: var(--c-surface-3); border-radius: 10px;
+  transition: background 0.2s;
+}
+.sp-toggle-slider::before {
+  content: ''; position: absolute; width: 14px; height: 14px;
+  left: 3px; bottom: 3px; background: #fff; border-radius: 50%;
+  transition: transform 0.2s;
+}
+.sp-toggle input:checked + .sp-toggle-slider { background: var(--c-accent); }
+.sp-toggle input:checked + .sp-toggle-slider::before { transform: translateX(16px); }
 
 .sp-color-row { display: flex; align-items: center; gap: 8px; }
 .sp-color {

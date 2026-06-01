@@ -19,23 +19,24 @@ class MockSpeechRecognition {
   onend: (() => void) | null = null
   onerror: ((e: { error: string }) => void) | null = null
   onresult: ((e: SpeechRecognitionEvent) => void) | null = null
+  private _accumulated: any[] = []
 
-  start = vi.fn(() => { this.onstart?.() })
+  start = vi.fn(() => { this._accumulated = []; this.onstart?.() })
   stop = vi.fn(() => { this.onend?.() })
   abort = vi.fn()
 
-  /** Simulate a speech result event */
+  /** Simulate a speech result event (accumulates like real Chrome) */
   simulateResult(results: Array<{ transcript: string; isFinal: boolean }>) {
+    const newEntries = results.map(r => ({
+      0: { transcript: r.transcript },
+      isFinal: r.isFinal,
+      length: 1,
+    }))
+    const prevLen = this._accumulated.length
+    this._accumulated.push(...newEntries)
     const event = {
-      results: results.map(r => [
-        { transcript: r.transcript },
-        // Stub SpeechRecognitionAlternative
-      ]).map((alternatives, i) => ({
-        0: alternatives[0],
-        isFinal: results[i].isFinal,
-        length: 1,
-      })),
-      resultIndex: 0,
+      results: this._accumulated,
+      resultIndex: prevLen,
     } as unknown as SpeechRecognitionEvent
     this.onresult?.(event)
   }
@@ -210,5 +211,102 @@ describe('useSpeechRecognition', () => {
     sr.start()
     mockInstance.simulateEnd()
     expect(sr.status.value).toBe('idle')
+  })
+
+  // ── Chrome re-inclusion dedup ────────────────────────────────────────────
+
+  it('strips prefix re-inclusion when Chrome re-recognizes earlier audio', async () => {
+    // This simulates the exact bug pattern:
+    // 1. User says "太阳系一共有八大行星，他们分别是"
+    // 2. User continues: "水星、金星、..."
+    // 3. Chrome produces a THIRD result that re-includes the first utterance
+    const sr = await getFresh()
+    sr.start()
+
+    // First utterance
+    mockInstance.simulateResult([
+      { transcript: '太阳系一共有八大行星，他们分别是', isFinal: true },
+    ])
+    expect(sr.interimText.value).toContain('太阳系')
+
+    // Second utterance (distinct)
+    mockInstance.simulateResult([
+      { transcript: '水星、金星、地球', isFinal: true },
+    ])
+    expect(sr.interimText.value).toContain('水星')
+
+    // Third utterance: Chrome re-includes the first + adds new content
+    mockInstance.simulateResult([
+      { transcript: '太阳系一共有八大行星，他们分别是，所带的是地球', isFinal: true },
+    ])
+
+    const text = sr.interimText.value
+    // "太阳系一共有八大行星" should appear at most twice
+    // (once from first utterance, NOT again from the third)
+    const matches = text.match(/太阳系/g) || []
+    expect(matches.length).toBeLessThanOrEqual(2)
+    // The new content from the third utterance should be preserved
+    expect(text).toContain('地球')
+  })
+
+  it('handles homophone difference in re-included content', async () => {
+    // First utterance uses "它们", re-inclusion uses "他们"
+    const sr = await getFresh()
+    sr.start()
+
+    mockInstance.simulateResult([
+      { transcript: '太阳系一共有八大行星，它们分别是', isFinal: true },
+    ])
+
+    mockInstance.simulateResult([
+      { transcript: '水星金星地球', isFinal: true },
+    ])
+
+    // Re-inclusion with different homophone (他们 vs 它们)
+    mockInstance.simulateResult([
+      { transcript: '太阳系一共有八大行星，他们分别是，我们所在的是地球', isFinal: true },
+    ])
+
+    const text = sr.interimText.value
+    const matches = text.match(/太阳系/g) || []
+    expect(matches.length).toBeLessThanOrEqual(2)
+    expect(text).toContain('地球')
+  })
+
+  it('superset replaces accumulated text', async () => {
+    const sr = await getFresh()
+    sr.start()
+
+    mockInstance.simulateResult([
+      { transcript: '你好', isFinal: true },
+    ])
+    expect(sr.interimText.value).toBe('你好')
+
+    // Chrome re-recognizes as a superset (same content + more)
+    mockInstance.simulateResult([
+      { transcript: '你好世界', isFinal: true },
+    ])
+    expect(sr.interimText.value).toBe('你好世界')
+  })
+
+  it('resetAccumulated clears text without stopping recognition', async () => {
+    const sr = await getFresh()
+    sr.start()
+
+    mockInstance.simulateResult([
+      { transcript: '你好世界', isFinal: true },
+    ])
+    expect(sr.interimText.value).toBe('你好世界')
+
+    sr.resetAccumulated()
+    expect(sr.interimText.value).toBe('')
+    // Still listening — not stopped
+    expect(sr.status.value).toBe('listening')
+
+    // New result after reset starts fresh
+    mockInstance.simulateResult([
+      { transcript: '新的内容', isFinal: true },
+    ])
+    expect(sr.interimText.value).toBe('新的内容')
   })
 })

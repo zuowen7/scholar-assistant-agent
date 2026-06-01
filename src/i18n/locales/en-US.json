@@ -210,7 +210,14 @@
     "resume": "Resume →",
     "refreshTemplates": "Refresh",
     "createFromThisTemplate": "Create from this template",
-    "attachedFilesHint": "Attached files — please use read_file tool to read:"
+    "attachedFilesHint": "Attached files — please use read_file tool to read:",
+    "inlineDiff": {
+      "old": "Original",
+      "new": "Suggested",
+      "accept": "Accept",
+      "reject": "Reject",
+      "moreLines": "more lines"
+    }
   },
   "aiPanel": {
     "title": "AI Chat",
@@ -851,5 +858,23 @@
     "rebutPlaceholder": "Write your rebuttal…",
     "rebuteCancel": "Cancel",
     "rebutSend": "Send"
+  },
+  "voice": {
+    "title": "Voice Assistant",
+    "listening": " is listening…",
+    "processing": "Processing…",
+    "done": "Done",
+    "noSpeech": "No speech detected",
+    "hotkey": "Global Hotkey",
+    "wakeWord": "Wake Word",
+    "wakeWordEnabled": "Wake Word Detection",
+    "sensitivity": "Sensitivity",
+    "autoSubmit": "Auto Submit",
+    "language": "Speech Language",
+    "notSupported": "Speech recognition not supported",
+    "enabled": "Enable Voice Commands",
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High"
   }
 }

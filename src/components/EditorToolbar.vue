@@ -117,17 +117,24 @@ import UiDropdown from './ui/UiDropdown.vue'
 import UiSpinner from './ui/UiSpinner.vue'
 import type { DropdownItem } from './ui/UiDropdown.vue'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
+import { setSpeechBusy } from '../composables/useSpeechBusy'
 
 const speech = useSpeechRecognition({
   onResult: (text) => { if (text.trim()) emit('voice-update', text.trim()) },
 })
 
+function resetVoiceAccumulated() {
+  speech.resetAccumulated()
+}
+
 function toggleSpeech() {
   if (speech.status.value === 'listening') {
     const text = speech.stop()
+    setSpeechBusy(false)
     if (text.trim()) emit('voice-stop', text.trim())
   } else {
     emit('voice-start')
+    setSpeechBusy(true)  // sync watch stops wake word SR immediately
     speech.start()
   }
 }
@@ -182,6 +189,8 @@ function handleVisionSelected(event: Event) {
   ;(event.target as HTMLInputElement).value = ''
   if (file) emit('vision-selected', file)
 }
+
+defineExpose({ resetVoiceAccumulated })
 
 const moreItems = computed<DropdownItem[]>(() => [
   { label: t('editor.insert') },
