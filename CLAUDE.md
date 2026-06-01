@@ -109,8 +109,13 @@ Key backend modules under `src/`:
   - `useArgumentCompanion.ts` — singleton; companion state (docId auto-assign, ledger build/rebuild SSE)
   - `useArgumentLayout.ts` — dagre auto-layout with dynamic node sizing and relation-aware edge minlen (Toulmin hierarchy)
   - `useToast.ts` — singleton; toast 通知 + `errorLog` ring buffer (最近 50 条 warn/danger，带时间戳，供 DebugPanel 消费)
+  - `useSpeechRecognition.ts` — Web Speech API 单例；`onresult` 累积去重（前缀重叠检测 + superset 截断 + 内部重复清洗）；`joinUtterances` 智能标点合并；`resetAccumulated()` 在 Tab 后清空累积但不停止识别
+  - `useSpeechBusy.ts` — 全局语音忙标志（计数式），防止唤醒词检测与语音打字冲突
+  - `useWakeWord.ts` — 唤醒词检测（Web Speech API 连续模式），同音字变体匹配，5s 冷却，同步暂停/恢复
+  - `useGlobalHotkey.ts` — Tauri 系统全局热键注册（`Alt+Shift+V`），非 Tauri 环境下优雅降级
+  - `useVoiceCommand.ts` — 语音指令状态机 (idle→activating→listening→submitting→processing)，2s 静默自动提交，10s 超时
 - `components/` — extracted from the former monolithic App.vue:
-  - `AppTopBar.vue` — brand, mode switch, engine/display settings panels, health pills, window controls
+  - `AppTopBar.vue` — brand, mode switch, engine/display settings panels, health pills, window controls, 语音设置 tab（唤醒词/热键/灵敏度/语言）
   - `TranslateView.vue` — upload drop card, progress/step indicators, result views (sentence/parallel/markdown), sentence splitting, markdown rendering
   - `AgentPanel.vue` — agent chat/docs/templates/sessions side panel (self-contained via `useAgentChat()`)
   - `EditorLayout.vue` — editor mode layout (~657 lines): FileTree sidebar + MonacoEditor + AiPanel right panel + ArgumentMap, with tab management and keyboard shortcuts
@@ -118,6 +123,7 @@ Key backend modules under `src/`:
   - `MindMapView.vue`, `MindMapFloatingToolbar.vue`, `MindMapAiHints.vue`
   - `ui/` — design-system primitives: UiButton, UiCard, UiDropdown, UiIconButton, UiInput, UiPanel, UiPill, UiPopover, UiSegmented, UiSelect, UiTextarea, UiTooltip
   - `DebugPanel.vue` — 独立调试面板组件（前端错误历史 + 后端日志，在 AppTopBar 中以 `<DebugPanel />` 引入）
+  - `VoiceAssistantView.vue` — Siri 风格全屏语音界面（毛玻璃 + 脉冲球体 + 波纹扩散动画 + 实时转写 + 暗/亮主题）
   - Other: MonacoEditor, AiPanel, FileTree, FileTreeNode, MarkdownPreview, ArgumentMap, EditorTabs, EditorToolbar, EditorWelcome, EditorNewProject, EditorCompliance, CommandPalette, TemplatePicker, ComplianceModal, AgentSessionList, AgentApprovalInline, StatusCluster
 - `styles/tokens.css` — Design token system (`--c-*` colors, `--space-*`, `--radius-*`, `--text-*`, `--shadow-*`, `--ease-*`) with dark/light themes. Legacy aliases (`--bg`, `--text`, `--accent`, etc.) maintained for backward compat.
 - `utils/api.ts` — API base URL (auto-detects Tauri vs web)
@@ -193,11 +199,13 @@ Use this as the canonical "what works / what's polished / what's a stub" map. Up
 | 9 | Zotero integration | C | Requires user API key |
 | 10 | Vision / OCR | C | Depends on external MCP server |
 | 11 | Agent workspace file tools (read/write/grep/str_replace/git_op + boundary approval) | B | E2E verified: workspace_root wired from `useFileTree.rootDir`; `SecurityGate.force_approval` + `WorkspaceEnv` ContextVar; `await_approval` SSE → frontend `AgentApprovalInline` → `POST /approve` → ContextVar bypass; 1815 pytest passed |
+| 12 | 语音助手（唤醒词 + 全局热键 + Siri 风格界面 + Chrome 重新识别去重）| B+ | `useWakeWord.ts` Web Speech API 连续模式同音字唤醒（默认"小研"），5s 冷却防误触发；`useGlobalHotkey.ts` Tauri 系统热键 `Alt+Shift+V`；`useVoiceCommand.ts` 状态机 + 2s 静默自动提交；`VoiceAssistantView.vue` 全屏毛玻璃 UI pulse/ripple 动画；`useSpeechBusy.ts` 全局忙标志 + `flush:sync` 同步暂停唤醒词 SR；`useSpeechRecognition.ts` `utterances[]` + `commonPrefixLen()` 前缀重叠检测 (>50%) + `processedUpTo` 去重；482 vitest passed |
 
 ### Known Defect Index
 
 - `src/composables/useEditorState.ts` — `getRange()` 及所有调用方必须使用 `_MonacoRange` 类（属性名 `startLineNumber/startColumn/endLineNumber/endColumn`），禁止回退到只有 `{a,b,c,d}` 属性的类，否则 Monaco `executeEdits` 无法正确 REPLACE 文本。
-- `src/composables/useSpeechRecognition.ts` — `onresult` 处理器中的 `finalText` 拼接必须经过 `normalize()` 双向子串检查，禁止无条件 `+=`；interim 永远不应替换已存在的 final。
+- `src/composables/useSpeechRecognition.ts` — `onresult` 处理器中的 `finalText` 拼接必须经过 `normalize()` 双向子串检查，禁止无条件 `+=`；interim 永远不应替换已存在的 final。Chrome 连续模式下新 result 可能与旧 utterance 前缀重叠（重新识别所致），必须以 `utterances[]` 记录各条识别结果、`commonPrefixLen()` 检测前缀重叠（>50%）、仅提取重叠后的真正新内容追加。
+- `src/composables/useWakeWord.ts` — 唤醒词 SR 暂停期间（`pausedByDictation=true`），`onend`/`onerror` 回调**必须**跳过 `scheduleRestart()`，否则 300ms 后自动重启唤醒词 SR 与语音打字 SR 抢麦克风。`speechBusyCount` watch 必须用 `flush:'sync'` 确保唤醒词 SR 在 dictation 启动前同步停止。
 
 ## Dependency Management
 
@@ -347,3 +355,13 @@ Agent 工具指导全 provider 覆盖 (2026-05-30)：
 - **智能标点合并**：新增 `joinUtterances()` — 当 Chrome 在每次停顿时自动加句号，而下一句明显是续说（非以"但是/然而/所以/因此"等新句开头词起始），自动把前一句末尾句号改为逗号再拼接。中文用逗号，英文用空格。
 - 文件：`useSpeechRecognition.ts`、`useEditorState.ts`、`useEditor.ts`、`EditorLayout.vue`、`AgentPanel.vue`、`AiPanel.vue`
 - 验证：421 vitest passed
+
+语音助手 (2026-06-01)：
+- **Phase A** — 全局热键：`useGlobalHotkey.ts` + `tauri-plugin-global-shortcut` v2.3.2（默认 `Alt+Shift+V`，自动从 `Alt+Space` 迁移）；非 Tauri 环境优雅降级；7 tests
+- **Phase B** — 语音指令编排 + Siri 界面：`useVoiceCommand.ts` 状态机（idle→activating→listening→submitting→processing），2s 静默自动提交，10s 超时；`VoiceAssistantView.vue` 全屏毛玻璃 + 脉冲球体 + 波纹扩散动画 + 实时转写 + 暗/亮主题；13 + 9 tests
+- **Phase C** — 唤醒词：`useWakeWord.ts` Web Speech API 连续模式，同音字变体匹配（研→严/言/岩/颜 等，`buildVariants()`），匹配后立即 `sr.stop()` + 5s 冷却；10 tests
+- **Phase D** — 集成：`App.vue` 挂载 VoiceAssistantView + 热键/唤醒词初始化 + 事件桥接；`AppTopBar.vue` 语音设置 tab（唤醒词/热键/灵敏度/语言 + toggle 开关）；i18n voice.* keys；AgentPanel/AiPanel/EditorToolbar 接入 `setSpeechBusy`；8 integration tests
+- **唤醒词/语音打字冲突修复**：`useSpeechBusy.ts` 全局忙标志（计数式）；`useWakeWord.ts` `pausedByDictation` 守卫在 `onend`/`onerror` 中跳过 `scheduleRestart()`（否则 300ms 后自动重启抢麦克风）；`speechBusyCount` watch 使用 `flush:'sync'` 确保唤醒词 SR 同步停止
+- **Chrome 连续模式重新识别去重**：`useSpeechRecognition.ts` 新增 `utterances[]` 记录各条识别结果 + `commonPrefixLen()` 前缀重叠检测（>50% 则判定为重新识别，仅提取重叠后的真正新内容）+ `processedUpTo` 避免重复处理 Chrome results 数组 + `resetAccumulated()` 在 Tab 后清空累积但不停止识别
+- 文件：`useVoiceCommand.ts`、`useGlobalHotkey.ts`、`useWakeWord.ts`、`useSpeechBusy.ts`、`useSpeechRecognition.ts`、`VoiceAssistantView.vue`、`App.vue`、`AppTopBar.vue`、`AgentPanel.vue`、`AiPanel.vue`、`EditorToolbar.vue`、`EditorLayout.vue`、`main.rs`、`Cargo.toml`、`default.json`、i18n
+- 验证：482 vitest passed / 40 files（+115 voice-related tests）

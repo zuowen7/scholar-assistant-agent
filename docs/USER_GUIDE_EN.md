@@ -7,6 +7,7 @@
 - [Installation & Startup](#installation--startup)
 - [Translation Mode](#translation-mode)
 - [Editor Mode](#editor-mode)
+- [Voice Assistant](#voice-assistant)
 - [AI Agent Chat](#ai-agent-chat)
 - [Argument Companion](#argument-companion)
 - [Mind Map](#mind-map)
@@ -131,8 +132,80 @@ After typing, **pause for 1.5 seconds** — AI generates a grayed-out continuati
 
 Switch the right panel to "Preview" for a live rendered view of your Markdown.
 
+### Voice Input
+
+The editor toolbar has a microphone button for voice dictation:
+
+- Click 🎤 → start speaking; your speech is transcribed in real time at the cursor
+- Click again → stop recording
+- While speaking, press `Tab` to accept Ghost Text; subsequent voice input continues seamlessly
+
 ---
 
+## Voice Assistant
+
+The voice assistant lets you control Scholar Assistant hands-free — say the wake word or press a hotkey, speak a command, and the Agent executes it.
+
+### Activation
+
+| Method | How |
+|--------|-----|
+| **Wake Word** | Say "**小研**" (default), the voice UI appears |
+| **Global Hotkey** | Press `Alt+Shift+V`, works even when the window is minimized |
+
+> Wake word only works when the app window is in the foreground. Global hotkey works system-wide (desktop app only).
+
+### Voice UI
+
+Activation opens a Siri-style fullscreen overlay:
+
+- **Pulsing orb** — breathing animation to indicate listening
+- **Ripple rings** — 3 concentric expanding rings when the mic is active
+- **Live transcript** — your speech appears word-by-word in the center
+- **Silence auto-submit** — after a 2-second pause, the command is sent to the Agent
+- **10-second timeout** — auto-cancels if no speech is detected
+
+> Press `Escape` or click the backdrop to cancel.
+
+### Usage Flow
+
+1. Say "**小研**" or press `Alt+Shift+V` → voice UI opens
+2. Speak your command, for example:
+   - "Translate the current paragraph"
+   - "Make the experiment section more detailed"
+   - "Search the library for papers about transformers"
+3. Pause for 2 seconds → auto-submits to the Agent
+4. The Agent executes in the side panel; voice UI closes automatically
+
+### Wake Word Support
+
+Default wake word is "**小研**". Speech recognition supports homophone variants:
+
+- 小研 / 小严 / 小言 / 小岩 / 小颜 and similar-sounding characters all work
+- 5-second cooldown: after activation, the wake word is ignored for 5 seconds to prevent accidental re-triggering
+
+### Voice Dictation
+
+Mic buttons are available in the editor toolbar, Agent panel, and AI edit panel:
+
+- Click → start voice input; speech is transcribed to text in real time
+- Click again → stop recording
+- No conflict with wake word: wake word detection auto-pauses during dictation
+- Chrome's automatic re-recognition is handled by three layers of deduplication
+
+### Voice Settings
+
+Settings panel → "Voice" tab:
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| Enable Voice Assistant | Turn wake word + hotkey on/off | On |
+| Wake Word | Custom wake word (2–4 characters) | 小研 |
+| Global Hotkey | Press a key combination to reassign | Alt+Shift+V |
+| Language | Recognition language | zh-CN |
+| Sensitivity | Wake word detection sensitivity | Medium |
+
+---
 ## AI Agent Chat
 
 Switch the right panel to "Agent" — this is the core of the app. It operates on your workspace files directly, like Claude Code.
@@ -384,6 +457,13 @@ Mind maps can be converted to paper outlines with one click, then opened in the 
 | `Enter` | Send message |
 | `Tab` | Accept input suggestion |
 
+### Voice Assistant
+
+| Shortcut | Function |
+|----------|----------|
+| `Alt+Shift+V` | Activate voice assistant (default, customizable) |
+| `Escape` | Cancel voice input |
+
 ---
 
 ## FAQ
@@ -448,3 +528,23 @@ Mind maps can be converted to paper outlines with one click, then opened in the 
 ### Q: Some text didn't change after switching language
 
 **A**: Language switching takes effect immediately, but content in open dialogues won't be translated. Refresh the page to fully switch.
+
+### Q: Voice assistant won't activate
+
+**A**:
+1. Make sure the voice assistant is enabled in Settings → Voice
+2. Wake word only works when the app is in the foreground — bring Scholar Assistant to focus
+3. Global hotkey (`Alt+Shift+V`) not working? Confirm you're using the desktop app (hotkey requires Tauri, not available in browser)
+4. Re-record the hotkey in settings: click the hotkey input box, then press a new key combination
+
+### Q: Voice dictation doesn't work / no response
+
+**A**:
+1. Confirm microphone permission is granted in your browser/WebView
+2. Make sure the voice assistant is not currently active (dictation auto-pauses wake word)
+3. Check if another app is using the microphone
+4. Restart the app and try again
+
+### Q: Voice recognition produces duplicate text
+
+**A**: Chrome's continuous speech recognition occasionally re-recognizes earlier audio. Scholar Assistant has three layers of deduplication (prefix overlap detection + utterance tracking + internal duplication cleaning) that handle most cases automatically. If duplication still occurs, stop the mic and restart recording.
