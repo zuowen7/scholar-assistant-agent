@@ -84,13 +84,22 @@ jobs:
           releaseBody: |
             ## What's New
 
-            - **Bilingual UI (中/EN)**: 20+ components now support zh-CN / en-US switching
-            - **Bug fixes**: UiDropdown race condition, vue-i18n @ parsing crash
-            - **Backend defaults** switched to English for consistency
+            ### Voice Assistant
+            - **Wake word** "小研" — say it to activate, with homophone variant matching (小研/小严/小言 all work)
+            - **Global hotkey** `Alt+Shift+V` — system-wide, works even when minimized (desktop app only)
+            - **Siri-style voice UI** — fullscreen glass-morphism with pulsing orb, ripple rings, live transcript
+            - **Voice dictation** — mic buttons in editor toolbar, Agent panel, and AI panel
+            - **Voice settings panel** — custom wake word, hotkey, sensitivity, language (Settings → Voice)
+            - **Three-layer dedup** — eliminates Chrome re-recognition duplication automatically
+
+            ### Fixed
+            - Voice input duplication (Monaco Range fallback, speech echo dedup, smart punctuation merge)
+            - Wake word / dictation conflict prevention (sync SR pause/resume)
+            - Bilingual UI: UiDropdown race condition, vue-i18n @ parsing crash
 
             | Platform | File |
             |----------|------|
-            | Windows | `.exe` installer |
+            | Windows | `Scholar Assistant_x64-setup.exe` |
 
             ### Prerequisites
             Install [Ollama](https://ollama.com) and pull a model:
