@@ -17,6 +17,14 @@ function normalize(s: string) {
   return s.replace(/[^\w一-鿿]/g, '').toLowerCase()
 }
 
+function commonPrefixLen(a: string, b: string): number {
+  const len = Math.min(a.length, b.length)
+  for (let i = 0; i < len; i++) {
+    if (a[i] !== b[i]) return i
+  }
+  return len
+}
+
 // Words that unambiguously start a NEW sentence after a pause.
 // Pronouns (我/你/他/它/这/那) are NOT included — they often continue the same sentence.
 const SENTENCE_STARTERS_RE = /^(但是|然而|所以|因此|另外|首先|其次|最后|总之|不过|而且|此外|可是|然后|接着|当然|确实|其实|显然|终于|突然|忽然|偶尔|经常|一直|如果|虽然|因为|由于|为了|关于|根据|按照|通过|经过|比如|例如|除了|包括|尤其|特别|最|更|比|越|[A-Z])/
@@ -88,6 +96,8 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
   let recognition: SpeechRecognition | null = null
   let finalText = ''
   let lastEmitted = ''
+  let processedUpTo = -1
+  let utterances: string[] = []
 
   function start(lang = 'zh-CN') {
     if (status.value === 'listening') return
@@ -95,6 +105,8 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
     interimText.value = ''
     finalText = ''
     lastEmitted = ''
+    processedUpTo = -1
+    utterances = []
 
     const sr = getSpeechRecognition()
     if (!sr) {
@@ -121,6 +133,8 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
 
       for (let i = 0; i < e.results.length; i++) {
         if (e.results[i].isFinal) {
+          if (i <= processedUpTo) continue
+          processedUpTo = i
           const transcript = e.results[i][0].transcript
           const norm = normalize(transcript)
           if (!norm) continue
@@ -129,19 +143,44 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
 
           // Already contained in accumulated finals → echo, skip
           if (normFinal.includes(norm)) continue
-          // New transcript is a superset — only replace if the NEW part is
-          // genuinely different (not a repetition of what's already in finalText)
-          if (norm.includes(normFinal)) {
-            const newPart = norm.slice(normFinal.length)
-            if (newPart.length < 2 || normFinal.includes(newPart)) {
-              // New part is empty or a repetition of existing content → echo, skip
-              continue
-            }
+
+          // Superset: new result contains all accumulated text
+          if (norm.includes(normFinal) && normFinal.length > 0) {
             finalText = transcript
+            utterances = [transcript]
             continue
           }
+
+          // Chrome continuous mode sometimes re-recognizes earlier audio and
+          // produces a new result whose beginning overlaps with a previous
+          // utterance. Detect this by checking the prefix of the new result
+          // against each previous individual utterance.
+          let reincluded = false
+          for (const prev of utterances) {
+            const prevNorm = normalize(prev)
+            if (prevNorm.length < 4) continue
+            const overlap = commonPrefixLen(norm, prevNorm)
+            if (overlap > prevNorm.length * 0.5) {
+              // Re-inclusion detected — extract only the genuinely new suffix
+              let counted = 0
+              let splitAt = transcript.length
+              for (let ci = 0; ci < transcript.length; ci++) {
+                if (/[\w一-鿿]/.test(transcript[ci])) counted++
+                if (counted >= prevNorm.length) { splitAt = ci + 1; break }
+              }
+              const newOnly = transcript.slice(splitAt).trim()
+              if (newOnly) {
+                finalText = joinUtterances(finalText, newOnly)
+              }
+              reincluded = true
+              break
+            }
+          }
+          if (reincluded) continue
+
           // Distinct utterance — merge with smart punctuation handling
           finalText = joinUtterances(finalText, transcript)
+          utterances.push(transcript)
         } else {
           latestInterim = e.results[i][0].transcript
         }
@@ -183,7 +222,20 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
     recognition = null
     status.value = 'idle'
     interimText.value = ''
+    finalText = ''
+    lastEmitted = ''
+    processedUpTo = -1
+    utterances = []
     return text
+  }
+
+  /** Reset accumulated text without stopping recognition. */
+  function resetAccumulated() {
+    finalText = ''
+    lastEmitted = ''
+    interimText.value = ''
+    utterances = []
+    // Keep processedUpTo — Chrome's results array is unchanged
   }
 
   function toggle(lang = 'zh-CN') {
@@ -196,5 +248,5 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
 
   const isSupported = !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
 
-  return { status, interimText, error, isSupported, start, stop, toggle }
+  return { status, interimText, error, isSupported, start, stop, toggle, resetAccumulated }
 }

@@ -21,6 +21,8 @@ import * as monaco from 'monaco-editor'
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import CommandPalette from './CommandPalette.vue'
 import { useEditor } from '../composables/useEditor'
+import { useEditorState } from '../composables/useEditorState'
+import { useAgentChat } from '../composables/useAgentChat'
 import { API_BASE } from '../utils/api'
 import { useArgumentCompanion } from '../composables/useArgumentCompanion'
 import { computeCompanionDecorations } from '../composables/companionGutter'
@@ -42,6 +44,8 @@ const {
   setEditorInstance, setContent, content, updateSelection,
   activeTabId, markDirty, aiEdit, openNewUntitled,
 } = useEditor()
+const { activeEdit, clearActiveEdit } = useEditorState()
+const { sendApproval } = useAgentChat()
 
 let editor: monaco.editor.IStandaloneCodeEditor | null = null
 const companion = useArgumentCompanion()
@@ -378,7 +382,142 @@ watch(content, (v) => {
   }
 })
 
+// ── Inline Diff Approval ────────────────────────────────────────────────
+let _diffDecorations: string[] = []
+let _diffWidget: monaco.editor.IContentWidget | null = null
+
+function _clearDiffDecorations() {
+  if (editor && _diffDecorations.length) {
+    editor.deltaDecorations(_diffDecorations, [])
+    _diffDecorations = []
+  }
+  if (_diffWidget && editor) {
+    try { editor.removeContentWidget(_diffWidget) } catch { /* already disposed */ }
+    _diffWidget = null
+  }
+}
+
+watch(activeEdit, (edit) => {
+  _clearDiffDecorations()
+  if (!edit || !editor) return
+
+  const model = editor.getModel()
+  if (!model) return
+
+  // For str_replace: search oldText in model to find range
+  if (edit.operation === 'str_replace' && edit.oldText) {
+    const matches = model.findMatches(
+      edit.oldText,
+      false,
+      false,
+      true,  // exactMatch
+      null,
+      true,
+    )
+    if (matches.length !== 1) {
+      // Not found or ambiguous — skip inline diff (AgentPanel text approval will show)
+      clearActiveEdit()
+      return
+    }
+    const matchRange = matches[0].range
+
+    // Red decoration over old text
+    _diffDecorations = editor.deltaDecorations([], [{
+      range: matchRange,
+      options: {
+        className: 'ai-diff-deleted',
+        isWholeLine: false,
+        hoverMessage: { value: `**${t('agent.inlineDiff.old', 'Original')}**` },
+      },
+    }])
+
+    // Content widget below deletion showing new text + Accept/Reject
+    const widgetId = `inline-diff-${edit.editId}`
+    const widgetEl = document.createElement('div')
+    widgetEl.className = 'ai-diff-widget'
+    const newLines = edit.newText.split('\n')
+    const previewLines = newLines.slice(0, 15)
+    const truncated = newLines.length > 15
+    widgetEl.innerHTML = `
+      <div class="ai-diff-new">
+        ${previewLines.map((l: string) => `<div class="ai-diff-new-line">${_escapeHtml(l)}</div>`).join('')}
+        ${truncated ? `<div class="ai-diff-truncated">... ${newLines.length - 15} ${t('agent.inlineDiff.moreLines', 'more lines')}</div>` : ''}
+      </div>
+      <div class="ai-diff-actions">
+        <button class="ai-diff-accept" data-action="accept">${t('agent.inlineDiff.accept', 'Accept')}</button>
+        <button class="ai-diff-reject" data-action="reject">${t('agent.inlineDiff.reject', 'Reject')}</button>
+      </div>
+    `
+    widgetEl.querySelector('.ai-diff-accept')!.addEventListener('click', () => {
+      _dispatchInlineDecision('allow_once')
+    })
+    widgetEl.querySelector('.ai-diff-reject')!.addEventListener('click', () => {
+      _dispatchInlineDecision('deny')
+    })
+
+    _diffWidget = {
+      getId: () => widgetId,
+      getDomNode: () => widgetEl,
+      getPosition: () => ({
+        position: { lineNumber: matchRange.endLineNumber, column: matchRange.endColumn },
+        preference: [monaco.editor.ContentWidgetPositionPreference.BELOW],
+      }),
+    }
+    editor.addContentWidget(_diffWidget)
+    editor.revealRangeInCenter(matchRange)
+  } else if (edit.operation === 'write_file' && edit.newText) {
+    // write_file: show new content preview at top of file
+    const widgetId = `inline-diff-${edit.editId}`
+    const widgetEl = document.createElement('div')
+    widgetEl.className = 'ai-diff-widget'
+    const newLines = edit.newText.split('\n')
+    const previewLines = newLines.slice(0, 15)
+    const truncated = newLines.length > 15
+    widgetEl.innerHTML = `
+      <div class="ai-diff-new">
+        ${previewLines.map((l: string) => `<div class="ai-diff-new-line">${_escapeHtml(l)}</div>`).join('')}
+        ${truncated ? `<div class="ai-diff-truncated">... ${newLines.length - 15} ${t('agent.inlineDiff.moreLines', 'more lines')}</div>` : ''}
+      </div>
+      <div class="ai-diff-actions">
+        <button class="ai-diff-accept" data-action="accept">${t('agent.inlineDiff.accept', 'Accept')}</button>
+        <button class="ai-diff-reject" data-action="reject">${t('agent.inlineDiff.reject', 'Reject')}</button>
+      </div>
+    `
+    widgetEl.querySelector('.ai-diff-accept')!.addEventListener('click', () => {
+      _dispatchInlineDecision('allow_once')
+    })
+    widgetEl.querySelector('.ai-diff-reject')!.addEventListener('click', () => {
+      _dispatchInlineDecision('deny')
+    })
+
+    _diffWidget = {
+      getId: () => widgetId,
+      getDomNode: () => widgetEl,
+      getPosition: () => ({
+        position: { lineNumber: 1, column: 1 },
+        preference: [monaco.editor.ContentWidgetPositionPreference.BELOW],
+      }),
+    }
+    editor.addContentWidget(_diffWidget)
+    editor.revealLineInCenter(1)
+  }
+})
+
+function _dispatchInlineDecision(decision: 'allow_once' | 'deny') {
+  const edit = activeEdit.value
+  if (!edit) return
+  sendApproval(edit.eventId, decision).then(ok => {
+    if (ok) clearActiveEdit()
+    // On failure, widget stays visible for retry
+  })
+}
+
+function _escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
 onBeforeUnmount(() => {
+  _clearDiffDecorations()
   if (ghostTimer) { clearTimeout(ghostTimer); ghostTimer = null }
   ghostAbort?.abort()
   _inlineCompletionsDisposable?.dispose()
@@ -416,4 +555,65 @@ onBeforeUnmount(() => {
 @media (prefers-reduced-motion: reduce) {
   .monaco-editor .arg-flash { animation: none; }
 }
+
+/* Inline diff approval */
+.monaco-editor .ai-diff-deleted {
+  background: color-mix(in srgb, var(--c-danger) 25%, transparent) !important;
+  border-bottom: 2px wavy var(--c-danger) !important;
+}
+.ai-diff-widget {
+  background: var(--c-surface-1);
+  border: 1px solid var(--c-surface-3);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: var(--elevation-3, 0 8px 24px rgba(0,0,0,.18));
+  padding: 12px 16px;
+  margin-top: 4px;
+  max-width: 600px;
+  max-height: 320px;
+  overflow-y: auto;
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  z-index: 100;
+}
+.ai-diff-new {
+  background: color-mix(in srgb, var(--c-success) 12%, transparent);
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+.ai-diff-new-line {
+  color: var(--c-text-0);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+.ai-diff-truncated {
+  color: var(--c-text-2);
+  font-style: italic;
+  font-size: 12px;
+  margin-top: 4px;
+}
+.ai-diff-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.ai-diff-accept, .ai-diff-reject {
+  padding: 5px 14px;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.ai-diff-accept {
+  background: var(--c-success);
+  color: #fff;
+}
+.ai-diff-accept:hover { background: color-mix(in srgb, var(--c-success) 85%, #000); }
+.ai-diff-reject {
+  background: var(--c-danger);
+  color: #fff;
+}
+.ai-diff-reject:hover { background: color-mix(in srgb, var(--c-danger) 85%, #000); }
 </style>

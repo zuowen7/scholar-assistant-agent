@@ -103,9 +103,9 @@
           </div>
         </div>
       </div>
-      <!-- Approval bar: anchored between messages and input, always visible -->
+      <!-- Approval bar: hidden when file-edit approval is routed to inline diff in editor -->
       <AgentApprovalInline
-        v-if="pendingApproval"
+        v-if="pendingApproval && !showInlineDiff"
         :pending="pendingApproval"
         @decide="handleApprovalDecision"
       />
@@ -257,6 +257,7 @@ const { t } = useI18n()
 
 import { useAgentChat } from '../composables/useAgentChat'
 import { useEditor } from '../composables/useEditor'
+import { useEditorState } from '../composables/useEditorState'
 import { useFileTree } from '../composables/useFileTree'
 import AgentApprovalInline from './AgentApprovalInline.vue'
 import AgentSessionList from './AgentSessionList.vue'
@@ -264,6 +265,7 @@ import { Pin, PinOff, Mic } from './ui/icons'
 import { API_BASE } from '../utils/api'
 import type { AgentSessionInfo } from '../types'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
+import { setSpeechBusy } from '../composables/useSpeechBusy'
 import UiSpinner from './ui/UiSpinner.vue'
 import UiSkeleton from './ui/UiSkeleton.vue'
 
@@ -277,9 +279,11 @@ function toggleAgentSpeech() {
   if (agentSpeech.status.value === 'listening') {
     voiceBaseInput = ''
     agentSpeech.stop()
+    setSpeechBusy(false)
     agentInputEl.value?.focus()
   } else {
     voiceBaseInput = input.value
+    setSpeechBusy(true)
     agentSpeech.start()
   }
 }
@@ -482,6 +486,8 @@ const {
 
 const { selection: editorSelection, content: editorContent, activeTab: editorActiveTab, reloadOpenTabs } = useEditor()
 
+const { tabs: editorTabs, activeEdit, setActiveEdit, clearActiveEdit, shouldShowInlineDiff } = useEditorState()
+
 const { rootDir, refresh: refreshFileTree } = useFileTree()
 
 const workspaceName = computed(() => {
@@ -598,10 +604,47 @@ const currentStatus = computed(() => {
 })
 
 // ── Approval ──
+const showInlineDiff = computed(() => {
+  const p = pendingApproval.value
+  if (!p) return false
+  const tool = p.tool_name
+  if (tool !== 'str_replace' && tool !== 'write_file') return false
+  const filePath = (p.args?.file_path as string) || ''
+  if (!filePath) return false
+  return editorTabs.value.some(t => t.path === filePath)
+})
+
 async function handleApprovalDecision(decision: 'allow_once' | 'allow_session' | 'deny') {
   const pending = pendingApproval.value
   if (!pending) return
   await sendApproval(pending.event_id, decision)
+}
+
+// Route file-edit approvals to inline diff editor overlay
+watch(pendingApproval, (p) => {
+  if (p && showInlineDiff.value) {
+    const preview = p.preview as Record<string, unknown> | undefined
+    const args = p.args as Record<string, unknown> | undefined
+    setActiveEdit({
+      editId: p.event_id,
+      eventId: p.event_id,
+      sessionId: sessionId.value || '',
+      operation: (p.tool_name === 'write_file' ? 'write_file' : 'str_replace') as 'str_replace' | 'write_file',
+      filePath: (args?.file_path as string) || '',
+      oldText: (preview?.old_text as string) ?? (args?.old_string as string) ?? '',
+      newText: (preview?.new_text as string) ?? (args?.new_string as string) ?? (args?.content as string) ?? '',
+    })
+  } else {
+    clearActiveEdit()
+  }
+})
+
+// When inline diff is resolved (accept/reject), forward to sendApproval
+async function handleInlineDiffDecision(decision: 'allow_once' | 'deny') {
+  const edit = activeEdit.value
+  if (!edit) return
+  await sendApproval(edit.eventId, decision)
+  clearActiveEdit()
 }
 
 // ── Sessions ──

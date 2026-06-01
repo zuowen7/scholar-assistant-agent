@@ -480,7 +480,7 @@ BibTeX 条目：
     # --- shell_exec ---
     shell_exec_def = ToolDefinition(
         name="shell_exec",
-        description="执行白名单内的 shell 命令并返回输出。仅允许只读和低风险命令（ls/cat/grep/find/git 等）。",
+        description="执行白名单内的只读 shell 命令（ls/cat/grep/find/git status 等）。不支持 pip/python/npm 等开发命令——需要安装包或运行脚本请用 run_command。",
         parameters=_extract_schema_from_function(_shell_exec),
         fn=_shell_exec,
     )
@@ -489,7 +489,7 @@ BibTeX 条目：
     # --- python_exec ---
     python_exec_def = ToolDefinition(
         name="python_exec",
-        description="执行 Python 代码片段并返回输出。在受限环境中运行（禁止 os/subprocess 等），有超时保护。",
+        description="执行 Python 代码片段并返回输出。受限环境（禁止 os/subprocess 等）。需要安装包或调用系统命令请用 run_command。",
         parameters=_extract_schema_from_function(_python_exec),
         fn=_python_exec,
     )
@@ -718,7 +718,7 @@ BibTeX 条目：
         (str_replace, "str_replace", "精确字符串替换。在文件中找到唯一匹配的旧字符串并替换。"),
         (write_file, "write_file", "整文件写入。用于新建文件或全量重写。会自动备份被覆盖的文件。"),
         (undo_last_change, "undo_last_change", "回退最近 N 次破坏性操作。从 .agent_backup 中恢复文件。"),
-        (run_command, "run_command", "在持久 Shell 会话中执行命令。cwd 跨命令保持。支持黑/白名单安全检查。"),
+        (run_command, "run_command", "在持久 Shell 会话中执行命令。支持 pip install / python / npm 等开发命令（自动安全审查）。cwd 和 env 跨命令保持。安装 Python 包、运行脚本、导出文件请优先用此工具。"),
         (git_op, "git_op", "受控 git 操作。比直接 shell 更安全，支持 status/diff/log/show/branch/commit 等。"),
     ]:
         registry.register(ToolDefinition(

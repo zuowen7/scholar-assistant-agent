@@ -40,6 +40,7 @@
         <template v-else>
           <!-- Slim toolbar (extracted to EditorToolbar.vue) -->
           <EditorToolbar
+            ref="toolbarRef"
             :active-right-tab="rightPanelTab"
             :templates="exportTemplates"
             :selected-template="selectedTemplate"
@@ -197,6 +198,7 @@ const exportTemplates = ref<{ id: string; name: string }[]>([])
 const selectedTemplate = ref('')
 const exportLoading = ref(false)
 const exportMessage = ref('')
+const toolbarRef = ref<InstanceType<typeof EditorToolbar> | null>(null)
 let exportToastTimer: ReturnType<typeof setTimeout> | null = null
 const tectonicAvailable = ref(false)
 
@@ -498,8 +500,12 @@ function handleVoiceUpdate(text: string) {
     if (prefix && newText.startsWith(prefix)) {
       newText = newText.slice(prefix.length).trimStart()
     }
+    // Reset speech recognition's accumulated text so subsequent
+    // onResult callbacks start fresh — prevents Chrome's continuous
+    // mode from re-including old content in new results.
+    toolbarRef.value?.resetVoiceAccumulated()
     voiceRange = { line: pos.lineNumber, col: pos.column, len: 0 }
-    lastVoiceText = text
+    lastVoiceText = ''
     if (newText) {
       ed.executeEdits('voice', [{
         range: new Range(voiceRange.line, voiceRange.col, voiceRange.line, voiceRange.col + voiceRange.len),

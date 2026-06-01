@@ -62,21 +62,31 @@ _WEB_SEARCH_MAX_RESULTS = 8
 # shell_exec 工具
 # ---------------------------------------------------------------------------
 
+_READ_ONLY_CMDS = frozenset({
+    "ls", "dir", "cat", "head", "tail", "wc", "pwd",
+    "find", "grep", "sort", "uniq", "cut", "tr", "whoami", "date", "uname",
+})
+
+
 def _validate_sandbox_command(command: str) -> str | None:
-    """检查 shell 命令是否包含沙箱逃逸路径。返回错误信息或 None（通过）。"""
-    # 路径遍历
+    """检查 shell 命令是否包含沙箱逃逸路径。返回错误信息或 None（通过）。
+
+    只读命令（ls/cat/grep 等）允许绝对路径，因为不会修改文件系统。
+    写入命令（touch/mkdir/cp/mv）仍然限制在沙箱内。
+    """
+    base_cmd = command.strip().split()[0] if command.strip() else ""
+    is_readonly = base_cmd in _READ_ONLY_CMDS
+
+    if is_readonly:
+        return None
+
     if ".." in command:
         return "不允许使用 '..' 路径遍历"
-    # Windows 盘符绝对路径 (C:\, D:/ 等)
     if re.search(r"[A-Za-z]:[\\\/]", command):
         return "不允许使用绝对路径"
-    # Unix 绝对路径 (排除选项参数如 -R/recursive)
-    # 匹配独立的 /path（前面是空格或行首，后面跟路径字符）
     if re.search(r"(?:^|\s)(\/[^\s]*)", command):
-        # 排除命令选项中出现的 /（如 grep -P/(?=...) ）
         for match in re.finditer(r"(?:^|\s)(\/[^\s]*)", command):
             path = match.group(1)
-            # 允许 / 在正则或选项中（如 grep -E, sed 等）
             if not path.startswith("//") and len(path) > 1:
                 return "不允许使用绝对路径"
     return None
@@ -298,18 +308,66 @@ def _web_fetch(url: str, extract_text: bool = True) -> str:
 # ---------------------------------------------------------------------------
 
 def _web_search(query: str, max_results: int = _WEB_SEARCH_MAX_RESULTS) -> str:
-    """使用搜索引擎搜索信息。通过 Bing 返回搜索结果摘要。
+    """使用搜索引擎搜索信息。通过 Sogou 和 Bing 返回搜索结果摘要。
 
     Args:
         query: 搜索关键词（中英文均可）。
         max_results: 返回的最大结果数，默认 8。
     """
+    _SEARCH_HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+    }
+
+    # --- Sogou (primary: better Chinese results, reliable in China) ---
     try:
         with httpx.Client(
-            timeout=15.0,
-            follow_redirects=True,
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
-            trust_env=False,
+            timeout=12.0, follow_redirects=True, headers=_SEARCH_HEADERS, trust_env=False,
+        ) as client:
+            resp = client.get(
+                "https://www.sogou.com/web",
+                params={"query": query, "num": max_results},
+            )
+            resp.raise_for_status()
+            html = resp.text
+
+        # h3 > a gives title + url (allow whitespace/comments between h3 and a)
+        titles = re.findall(
+            r'<h3[^>]*>.*?<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>', html, re.DOTALL,
+        )
+        results: list[str] = []
+        for raw_url, raw_title in titles[:max_results]:
+            title = re.sub(r"<[^>]+>", "", raw_title).strip()
+            url = raw_url if raw_url.startswith("http") else f"https://www.sogou.com{raw_url}"
+            if not title or len(title) < 3:
+                continue
+            # Find snippet: look for <p> tags after this h3 in the HTML
+            pos = html.find(raw_title)
+            snippet = ""
+            if pos > 0:
+                after = html[pos:pos + 2000]
+                # Try known snippet containers, then fall back to any <p>
+                for pat in [
+                    r'str-text-info[^"]*"[^>]*>(.*?)</p>',
+                    r'str_time[^"]*"[^>]*>(.*?)</p>',
+                    r'<p[^>]*>(.*?)</p>',
+                ]:
+                    sm = re.search(pat, after, re.DOTALL)
+                    if sm:
+                        snippet = re.sub(r"<[^>]+>", "", sm.group(1)).strip()
+                        if len(snippet) > 15:
+                            break
+            results.append(f"标题: {title}\n链接: {url}\n摘要: {snippet}")
+
+        if results:
+            return "\n\n---\n\n".join(results)
+    except Exception:
+        pass  # Fall through to Bing
+
+    # --- Bing (fallback) ---
+    try:
+        with httpx.Client(
+            timeout=12.0, follow_redirects=True, headers=_SEARCH_HEADERS, trust_env=False,
         ) as client:
             resp = client.get(
                 "https://cn.bing.com/search",
@@ -318,7 +376,7 @@ def _web_search(query: str, max_results: int = _WEB_SEARCH_MAX_RESULTS) -> str:
             resp.raise_for_status()
             html = resp.text
 
-        results: list[str] = []
+        results = []
         titles = re.findall(
             r'<h2[^>]*>\s*<a[^>]*href="(https?://[^"]+)"[^>]*h="ID=SERP[^"]*"[^>]*>(.*?)</a>\s*</h2>',
             html, re.DOTALL,
@@ -334,10 +392,9 @@ def _web_search(query: str, max_results: int = _WEB_SEARCH_MAX_RESULTS) -> str:
             if title:
                 results.append(f"标题: {title}\n链接: {url}\n摘要: {snippet}")
 
-        if not results:
-            return "未找到相关结果。"
-
-        return "\n\n---\n\n".join(results)
+        if results:
+            return "\n\n---\n\n".join(results)
+        return "未找到相关结果。"
     except Exception as e:
         return f"搜索失败: {e}"
 

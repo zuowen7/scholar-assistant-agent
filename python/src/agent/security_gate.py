@@ -301,29 +301,47 @@ class SecurityGate:
             risk=ToolRiskLevel.DESTRUCTIVE,
             reason="str_replace modifies file content",
             needs_approval=True,
+            force_approval=True,
         )
 
     def _classify_write_file(self, args: dict) -> GateResult:
         must_not_exist = args.get("must_not_exist", False)
-        if must_not_exist:
-            # 新建文件 — moderate（不覆盖现有文件）
-            content = str(args.get("content", ""))
-            content_lines = content.count("\n") + 1 if content else 0
-            if len(content) > 12000 or content_lines > 250:
-                return GateResult(
-                    risk=ToolRiskLevel.MODERATE,
-                    reason="SmartPause: write_file creates a large file",
-                    needs_approval=True,
-                    force_approval=True,
-                )
+        file_path = str(args.get("file_path", "")).strip()
+        exists = self._file_exists(file_path)
+        content = str(args.get("content", ""))
+        content_lines = content.count("\n") + 1 if content else 0
+
+        # 文件已存在 → 覆盖操作 → 需要审批
+        if exists and not must_not_exist:
+            return GateResult(
+                risk=ToolRiskLevel.DESTRUCTIVE,
+                reason="SmartPause: write_file overwrites existing file",
+                needs_approval=True,
+                force_approval=True,
+            )
+
+        # 新建文件
+        if len(content) > 12000 or content_lines > 250:
             return GateResult(
                 risk=ToolRiskLevel.MODERATE,
-                reason="write_file creating new file",
+                reason="SmartPause: write_file creates a large file",
                 needs_approval=True,
+                force_approval=True,
             )
         return GateResult(
-            risk=ToolRiskLevel.DESTRUCTIVE,
-            reason="SmartPause: write_file may overwrite existing file",
+            risk=ToolRiskLevel.MODERATE,
+            reason="write_file creating new file",
             needs_approval=True,
             force_approval=True,
         )
+
+    def _file_exists(self, file_path: str) -> bool:
+        """Check if a file exists at the given workspace-relative or absolute path."""
+        if not file_path or not self._workspace_root:
+            return False
+        raw = Path(file_path)
+        candidate = raw if raw.is_absolute() else (self._workspace_root / raw)
+        try:
+            return candidate.resolve(strict=False).is_file()
+        except (OSError, ValueError):
+            return False

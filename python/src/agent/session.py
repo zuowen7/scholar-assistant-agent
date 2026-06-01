@@ -74,6 +74,38 @@ def _is_trivial_chat(text: str) -> bool:
     return s in _TRIVIAL_CHAT_PATTERNS
 
 
+_PREVIEW_MAX_CHARS = 800
+
+
+def _build_approval_preview(tool_name: str, args: dict) -> dict | None:
+    """为文件编辑工具构造 await_approval 的 preview 数据。
+
+    str_replace → {type, file_path, old_text, new_text, old_line_count, new_line_count}
+    write_file  → {type, file_path, new_text, new_line_count}
+    其他工具    → None
+    """
+    if tool_name == "str_replace":
+        old = str(args.get("old_string", ""))
+        new = str(args.get("new_string", ""))
+        return {
+            "type": "str_replace",
+            "file_path": str(args.get("file_path", "")),
+            "old_text": old[:_PREVIEW_MAX_CHARS],
+            "new_text": new[:_PREVIEW_MAX_CHARS],
+            "old_line_count": old.count("\n") + 1 if old else 0,
+            "new_line_count": new.count("\n") + 1 if new else 0,
+        }
+    if tool_name == "write_file":
+        content = str(args.get("content", ""))
+        return {
+            "type": "write_file",
+            "file_path": str(args.get("file_path", "")),
+            "new_text": content[:_PREVIEW_MAX_CHARS],
+            "new_line_count": content.count("\n") + 1 if content else 0,
+        }
+    return None
+
+
 def _json_compact(obj, limit: int = 120) -> str:
     """把工具参数压成一行短字符串，用于诊断日志。"""
     import json as _json
@@ -525,6 +557,7 @@ class AgentSession:
             # 需要审批的工具 → 串行（避免审批顺序错乱）
             for tc, gate in needs_approval_list:
                 evt_id = f"evt_{uuid.uuid4().hex[:8]}"
+                preview = _build_approval_preview(tc.name, tc.arguments)
                 approval_evt = AgentEvent(
                     type=EVT_AWAIT_APPROVAL,
                     content=f"Agent 想要执行 '{tc.name}'",
@@ -535,6 +568,7 @@ class AgentSession:
                         "risk": gate.risk.name.lower(),
                         "reason": gate.reason,
                         **({"force_approval": True} if gate.force_approval else {}),
+                        **({"preview": preview} if preview else {}),
                     },
                 )
                 self._dispatch_event(approval_evt)
