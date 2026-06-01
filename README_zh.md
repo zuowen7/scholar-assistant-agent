@@ -8,11 +8,12 @@
 - **想** — 思维导图 + 论证地图，理清思路与论证结构
 - **写** — 编辑器内 AI 伴写 / 润色 / 扩写，Agent 还能直接读写项目文件
 - **审** — 对抗式审稿（Reviewer-2）+ 论证账本，投稿前逐句逼问逻辑漏洞
+- **说** — Siri 风格语音助手（唤醒词"小研"、热键 Alt+Shift+V），编辑器/Agent/AI 面板支持语音打字
 - **排** — 一键导出 IEEE / ACM / NeurIPS 等 LaTeX 模板与 Word
 
 本地可离线运行，也可接入 21 家云端大模型。**支持中/英双语界面切换**，设置面板一键切换 UI 语言。
 
-- **版本**：v0.3.3（2026-06-01：语音输入重复修复 — Monaco Range 回退类属性名错误导致文本累积、语音识别回声去重重写、Tab 补全后语音光标追踪、智能标点合并。2026-05-31：中英双语 UI 全覆盖 — 20+ 组件硬编码中文全部替换为 i18n `t()` 调用，新增 ~20 个翻译键；修复 vue-i18n `@` 解析崩溃、UiDropdown 竞态条件；release 构建自定义背景改用 data URL 绕过 asset protocol 限制；构建配置同步更新 + 版本号升级）
+- **版本**：v0.3.5（2026-06-01：语音助手 — Siri 风格唤醒词 + 全局热键 + 语音打字；Chrome 重新识别去重 —— 前缀重叠检测 + utterances 追踪 + 内部重复清洗；同步暂停/恢复唤醒词 SR 避免与语音打字抢麦克风。2026-06-01：语音输入回声去重 + Monaco Range 修复 + Tab 光标追踪 + 智能标点合并。2026-05-31：中英双语 UI 全覆盖）
 - **许可**：MIT
 
 ## 功能演示
@@ -33,7 +34,7 @@
 |---------|
 | ![更多](docs/demo/demo2.gif) |
 
-> 以上均为 v0.3.3 版本实机录屏。
+> 以上均为 v0.3.5 版本实机录屏。
 
 ## 下载安装
 
@@ -63,6 +64,17 @@
 - **增强 Prompt** — 严格段落结构保持指令，显著降低对齐失败率
 - **Glossary 自动提取** — 翻译结果中提取 `中文(English)` 术语对，注入后续块翻译
 - **滑动上下文窗口** — 每块翻译携带前 N 块的摘要和术语表
+
+### 语音助手
+
+> **语音免提操控** — 论文写作版的 Siri。喊"小研"或按 Alt+Shift+V 激活，说指令，Agent 自动执行。
+
+- **唤醒词** — Web Speech API 连续模式，同音字变体匹配（小研/小严/小言/小岩 等均能识别）；5 秒冷却防误触发；设置中可自定义唤醒词
+- **全局热键** — `Alt+Shift+V` 系统级生效（Tauri 插件），窗口最小化也能唤醒；设置中可自定义
+- **Siri 风格语音界面** — 全屏毛玻璃遮罩 + 脉冲球体 + 波纹扩散动画 + 实时转写；2 秒静默自动提交；Escape 或点击遮罩取消
+- **语音打字** — 编辑器工具栏、Agent 面板、AI 编辑面板均有麦克风；说话即转录；按 Tab 接受 Ghost Text 后语音自动续接
+- **免冲突设计** — 语音打字时唤醒词自动暂停（`flush:sync` 同步停止），无麦克风争抢
+- **Chrome 重新识别去重** — 三层去重：前缀重叠检测（>50% 匹配旧 utterance 自动截断）+ `processedUpTo` 索引追踪避免重复处理 Chrome results + 单条内部重复清洗
 
 ### 学术写作 AI（Agent 为核心）
 
@@ -101,7 +113,7 @@
 - **Rebuttal 包导出** — 一键下载含所有批评点 + rebuttal 草稿的 Markdown 文件
 - **全栈端对端验证** — `test_companion_e2e.py`：27 个集成测试覆盖全部 `/api/companion/*` 端点，真实 Store 写入 + SSE 序列化全程跑通，仅 mock LLM 调用
 
-**状态**：Phase 0–5 全部完成，`features.argument_companion=true` 已发布，pytest 2025 passed / 11 skipped + vitest 393 passed。
+**状态**：Phase 0–5 全部完成，`features.argument_companion=true` 已发布，pytest 2025 passed / 11 skipped + vitest 482 passed。
 
 ### 思维导图
 - **Vue Flow 画布** — 自定义节点卡片 + 连线（树边/关联线），支持拖拽、缩放、小地图
@@ -146,12 +158,18 @@
 │   │   ├── useMindMapAnalysis.ts #   AI 分析集成
 │   │   ├── useArgumentMap.ts     #   Toulmin v2 论证图状态（单例，SSE 提取/审查/建议）
 │   │   ├── useArgumentCompanion.ts # 论证陪练账本状态（单例，SSE 构建/重建）
-│   │   └── useArgumentLayout.ts  #   Toulmin dagre 布局（动态节点+关系分层）
+│   │   ├── useArgumentLayout.ts  #   Toulmin dagre 布局（动态节点+关系分层）
+│   │   ├── useSpeechRecognition.ts # Web Speech API（累积/去重/标点合并）
+│   │   ├── useSpeechBusy.ts      #   全局忙标志（唤醒词 ↔ 语音打字冲突预防）
+│   │   ├── useWakeWord.ts        #   唤醒词检测（连续 SR，同音字匹配，冷却）
+│   │   ├── useGlobalHotkey.ts    #   系统热键注册（Tauri 插件，Alt+Shift+V）
+│   │   └── useVoiceCommand.ts    #   语音指令状态机 + 自动提交
 │   ├── components/
-│   │   ├── AppTopBar.vue         #   顶栏（品牌/模式切换/引擎设置/窗口控制）
+│   │   ├── AppTopBar.vue         #   顶栏（品牌/模式切换/引擎设置/语音设置/窗口控制）
 │   │   ├── TranslateView.vue     #   翻译模式（上传/进度/结果三视图）
 │   │   ├── AgentPanel.vue        #   Agent 侧面板（对话/知识库/模板/会话）
 │   │   ├── EditorLayout.vue      #   编辑器布局（~657 行，Monaco + AiPanel + FileTree）
+│   │   ├── VoiceAssistantView.vue #   Siri 风格全屏语音界面（毛玻璃 + 脉冲/波纹动画）
 │   │   ├── mindmap/              #   思维导图（Vue Flow 画布 + 自定义节点/边）
 │   │   ├── ui/                   #   UI 原语（Button/Input/Panel/Tooltip…）
 │   │   └── …                     #   MonacoEditor, AiPanel, ArgumentMap 等
