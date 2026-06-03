@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { API_BASE } from '../utils/api'
 import { i18n } from '../i18n'
+import { logger } from '../utils/logger'
 
 export interface MindMapNode {
   id: string
@@ -265,7 +266,7 @@ export function useMindMap() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(savedMindMap.value),
-    }).catch(err => console.warn('[mindmap] 保存失败:', err))
+    }).catch(err => logger.warn('[mindmap] save failed:', err))
   }
 
   async function loadFromBackend(): Promise<boolean> {
@@ -283,7 +284,7 @@ export function useMindMap() {
       return true
     }
     catch (err) {
-      console.warn('[mindmap] 加载失败:', err)
+      logger.warn('[mindmap] load failed:', err)
       return false
     }
   }

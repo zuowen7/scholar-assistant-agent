@@ -1,4 +1,5 @@
 import { ref, onUnmounted } from 'vue'
+import { logger } from '../utils/logger'
 
 const isTauri = '__TAURI_INTERNALS__' in window
 
@@ -23,9 +24,9 @@ export function useGlobalHotkey(
       })
       isRegistered.value = true
       ready.value = true
-      console.log('[voice] Global hotkey registered:', key)
+      logger.debug('[voice] Global hotkey registered:', key)
     } catch (e) {
-      console.warn('[voice] Hotkey register failed:', e)
+      logger.warn('[voice] Hotkey register failed:', e)
       isRegistered.value = false
     }
   }

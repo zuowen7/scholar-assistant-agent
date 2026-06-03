@@ -336,7 +336,8 @@ CRITICAL: Preserve paragraph structure exactly.
                 chat_error = f"Chat API HTTP {resp.status_code}"
                 try:
                     resp = client.post(f"{self.base_url}/api/generate", json=generate_payload)
-                except Exception:
+                except Exception as e:
+                    logger.warning("Generate API fallback also failed: %s", e)
                     raise ValueError(f"Chat API 和 Generate API 均失败（{chat_error}）")
             resp.raise_for_status()
         except httpx.ConnectError as e:
@@ -401,7 +402,8 @@ CRITICAL: Preserve paragraph structure exactly.
                 chat_error = f"Chat API HTTP {resp.status_code}"
                 try:
                     resp = await client.post(f"{self.base_url}/api/generate", json=generate_payload)
-                except Exception:
+                except Exception as e:
+                    logger.warning("Async generate API fallback also failed: %s", e)
                     raise ValueError(f"Chat API 和 Generate API 均失败（{chat_error}）")
             resp.raise_for_status()
         except httpx.ConnectError as e:

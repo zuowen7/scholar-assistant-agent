@@ -261,7 +261,8 @@ def register_translate(
             }
             _mark_task_created(task_id)
             return {"task_id": task_id}
-        except Exception:
+        except Exception as e:
+            logger.warning("file upload failed: %s", e)
             if task_id in tasks:
                 tasks[task_id]["status"] = "error"
             raise
@@ -298,7 +299,8 @@ def register_translate(
             }
             _mark_task_created(task_id)
             return {"task_id": task_id}
-        except Exception:
+        except Exception as e:
+            logger.warning("file path upload failed: %s", e)
             if task_id in tasks:
                 tasks[task_id]["status"] = "error"
             raise
@@ -706,7 +708,7 @@ def register_translate(
                             tm_store.store, chunk_orig, chunk_trans,
                             source_lang=src_lang, target_lang=tgt_lang,
                         )
-                    except Exception:
+                    except Exception as e:
                         logger.debug("TM store failed for chunk %d (non-fatal)", chunk.index)
 
             yield {
@@ -839,7 +841,8 @@ def register_translate(
             try:
                 async for event in pipeline:
                     yield event
-            except Exception:
+            except Exception as e:
+                logger.warning("retry pipeline stream error: %s", e)
                 tasks[task_id]["status"] = "error"
                 raise
 
@@ -1280,7 +1283,7 @@ def register_translate(
             }
         except HTTPException:
             raise
-        except Exception:
+        except Exception as e:
             logger.exception("重试块翻译异常 block_id=%s", block_id)
             block_translations[target_index]["status"] = "failed"
             raise HTTPException(500, "块重试失败，请稍后重试")

@@ -19,7 +19,8 @@ def _load_prompt(name: str) -> str:
     p = _PROMPTS_DIR / name
     try:
         return p.read_text(encoding="utf-8") if p.exists() else ""
-    except Exception:
+    except Exception as e:
+        logger.warning("failed to load review prompt template %s: %s", name, e)
         return ""
 
 

@@ -38,6 +38,9 @@ jobs:
       - name: Run vitest
         run: npx vitest run
 
+      - name: TypeScript type check
+        run: npx vue-tsc --noEmit
+
   build-windows:
     needs: test
     runs-on: windows-latest
@@ -75,7 +78,7 @@ jobs:
         run: npm install
 
       - name: Build and release
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v0.5.11
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

@@ -350,8 +350,8 @@ CRITICAL: Preserve paragraph structure exactly.
             try:
                 body = e.response.json()
                 detail = body.get("error", {}).get("message", "") or str(body)
-            except Exception:
-                logger.debug("Failed to parse API error response body", exc_info=True)
+            except Exception as e:
+                logger.debug("Failed to parse API error response body: %s", e)
                 detail = e.response.text[:200]
             raise ValueError(f"API 请求失败 (HTTP {e.response.status_code}): {detail}") from e
         except httpx.TimeoutException as e:
@@ -408,8 +408,8 @@ CRITICAL: Preserve paragraph structure exactly.
             try:
                 body = e.response.json()
                 detail = body.get("error", {}).get("message", "") or str(body)
-            except Exception:
-                logger.debug("Failed to parse Anthropic error response body", exc_info=True)
+            except Exception as e:
+                logger.debug("Failed to parse Anthropic error response body: %s", e)
                 detail = e.response.text[:200]
             raise ValueError(f"Anthropic API 请求失败 (HTTP {e.response.status_code}): {detail}") from e
         except httpx.TimeoutException as e:

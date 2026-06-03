@@ -51,8 +51,8 @@ if _is_frozen():
         if _legacy_cfg_dir.is_dir() and not _new_cfg_dir.exists():
             try:
                 shutil.copytree(_legacy_cfg_dir, _new_cfg_dir)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("legacy config migration failed: %s", e)
     else:
         RUNTIME_DIR = _exe_dir
 else:
@@ -83,8 +83,8 @@ if _is_frozen() and not DOCKER_MODE:
             if _dirty:
                 with open(CONFIG_PATH, "w", encoding="utf-8") as _f:
                     _yaml.dump(_rt_cfg, _f, allow_unicode=True, default_flow_style=False)
-        except Exception:
-            pass  # 修正失败不阻塞启动
+        except Exception as e:
+            logger.debug("config fixup failed: %s", e)
     bundled_glossary = BUNDLED_DIR / "data" / "translator" / "glossaries"
     runtime_glossary = RUNTIME_DIR / "data" / "translator" / "glossaries"
     if bundled_glossary.is_dir() and not runtime_glossary.is_dir():
@@ -99,8 +99,8 @@ if _is_frozen() and not DOCKER_MODE:
         if (_bundled_model / "onnx" / "model.onnx").exists() and not (_cache_model / "onnx" / "model.onnx").exists():
             _cache_model.parent.mkdir(parents=True, exist_ok=True)
             shutil.copytree(_bundled_model, _cache_model, dirs_exist_ok=True)
-    except Exception:
-        pass  # model seeding is best-effort; chromadb falls back to S3 download
+    except Exception as e:
+        logger.debug("embedding model seeding failed: %s", e)
     # Seed Tectonic's LaTeX support-file cache from the bundled pre-warmed copy
     # (beside api.exe) so PDF export works offline. Mirrors TECTONIC_CACHE_DIR
     # used by pandoc_templates.compile (LOCALAPPDATA/YanMo/tectonic-cache).
@@ -110,8 +110,8 @@ if _is_frozen() and not DOCKER_MODE:
         _run_tex_cache = RUNTIME_DIR / "tectonic-cache"
         if _bundled_tex_cache.is_dir() and not _run_tex_cache.exists():
             shutil.copytree(_bundled_tex_cache, _run_tex_cache, dirs_exist_ok=True)
-    except Exception:
-        pass  # cache seeding is best-effort; Tectonic falls back to network fetch
+    except Exception as e:
+        logger.debug("tectonic cache seeding failed: %s", e)
 else:
     # Dev / Docker mode: ensure glossary dir exists so load_yaml_dir doesn't silently no-op
     glossary_dir = RUNTIME_DIR / "data" / "translator" / "glossaries"
@@ -148,8 +148,8 @@ class _TraceIdFilter(logging.Filter):
                         k: (self._BEARER_RE.sub("Bearer ***", v) if isinstance(v, str) else v)
                         for k, v in args.items()
                     }
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("trace ID masking failed: %s", e)
         # Mask secrets that might appear in tracebacks / exc_info
         if record.exc_info:
             import traceback as _tb
@@ -158,8 +158,8 @@ class _TraceIdFilter(logging.Filter):
                 if self._BEARER_RE.search(formatted):
                     record.exc_text = self._BEARER_RE.sub("Bearer ***", formatted)
                     record.exc_info = None
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("bearer masking in traceback failed: %s", e)
         return True
 
 
@@ -335,7 +335,8 @@ def _save_config(config: dict) -> None:
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(tmp_name, CONFIG_PATH)
-        except Exception:
+        except Exception as e:
+            logger.warning("failed to save config: %s", e)
             try:
                 os.unlink(tmp_name)
             except OSError:
@@ -358,8 +359,8 @@ def _save_config(config: dict) -> None:
                         yaml.dump(local_data, f, allow_unicode=True, default_flow_style=False)
                 else:
                     local_path.unlink()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("failed to write local config override: %s", e)
         with _config_read_lock:
             _config_cache = copy.deepcopy(config)
             _config_cache_mtime = CONFIG_PATH.stat().st_mtime
@@ -499,8 +500,8 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
                         "⚠️  翻译引擎设置为 cloud 但未配置 API key。"
                         "请在设置面板填入 API key，否则翻译请求将失败。"
                     )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("config validation failed: %s", e)
         yield
         # shutdown
         state_agent = getattr(app.state, "_state_agent", {})
@@ -509,13 +510,13 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         if shutdown_fn:
             try:
                 await shutdown_fn()
-            except Exception:
+            except Exception as e:
                 logger.exception("Agent shutdown failed")
         shutdown_editor = state_editor2.get("shutdown")
         if shutdown_editor:
             try:
                 shutdown_editor()
-            except Exception:
+            except Exception as e:
                 logger.exception("Editor shutdown failed")
 
     app = FastAPI(title=_app_title, version=__version__, lifespan=_lifespan)

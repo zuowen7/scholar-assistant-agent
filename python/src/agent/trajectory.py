@@ -225,7 +225,8 @@ class TrajectoryRecorder:
                                 records.append(json.loads(line))
                             except json.JSONDecodeError:
                                 continue
-            except Exception:
+            except Exception as e:
+                logger.warning("failed to read trajectory file: %s", e)
                 continue
 
         # 按 created_at 降序
@@ -335,6 +336,6 @@ class TrajectoryRecorder:
                             records.append(json.loads(line))
                         except json.JSONDecodeError:
                             continue
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("failed to load trajectory records: %s", e)
         return records

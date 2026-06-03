@@ -32,7 +32,8 @@ def _load_venue_profile(venue: str | None) -> str:
         try:
             with open(_VENUE_PROFILES_PATH, encoding="utf-8") as f:
                 _venue_profiles_cache = yaml.safe_load(f)
-        except Exception:
+        except Exception as e:
+            logger.warning("failed to load venue profiles: %s", e)
             _venue_profiles_cache = {}
 
     profiles = _venue_profiles_cache or {}
@@ -218,8 +219,9 @@ def _parse_llm_points(raw: str, *, source: str) -> list[ReviewPoint]:
                 title=title,
                 detail=detail,
             ))
-        except Exception:
-            continue  # discard bad items silently
+        except Exception as e:
+            logger.debug("discarding malformed review point: %s", e)
+            continue
     return points
 
 
@@ -525,7 +527,8 @@ async def import_real_reviews(
             )
             session.points.append(point)
             yield {"event": "review_point", "data": point.model_dump_json()}
-        except Exception:
+        except Exception as e:
+            logger.debug("skipping malformed imported review point: %s", e)
             continue
 
     store.save_review(session)

@@ -12,7 +12,7 @@ npm install
 
 # Backend
 cd python
-pip install -r requirements.txt
+pip install -r requirements-lock.txt
 pytest tests/unit/ -v
 ```
 

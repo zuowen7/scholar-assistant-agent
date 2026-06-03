@@ -31,7 +31,8 @@ def _make_route_handler(tool_handler: Callable) -> Callable:
     async def route_fn(request: Request) -> Any:
         try:
             body = await request.json()
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to parse request body as JSON, using empty dict: %s", e)
             body = {}
         return await tool_handler(body)
     return route_fn

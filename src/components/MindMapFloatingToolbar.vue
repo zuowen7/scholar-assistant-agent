@@ -179,7 +179,7 @@ function startDrag(event: PointerEvent) {
   border: 1px solid color-mix(in srgb, var(--border-color) 52%, transparent);
   border-radius: 10px;
   background: color-mix(in srgb, var(--panel-bg) 82%, transparent);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--elevation-2);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   cursor: grab;

@@ -470,7 +470,8 @@ class ArgumentFlattener:
 
         try:
             doc_infos = {d.id: d for d in rag_store.list_documents()}
-        except Exception:
+        except Exception as e:
+            logger.warning("failed to list RAG documents for reference enrichment: %s", e)
             doc_infos = {}
 
         enriched = []
@@ -609,7 +610,8 @@ class ArgumentFlattener:
             from pandoc_templates import markdown_to_latex
             result = markdown_to_latex(md_body, {"title": title, "abstract": abstract, "author": ""})
             tex = result.get("tex", "")
-        except Exception:
+        except Exception as e:
+            logger.warning("pandoc LaTeX conversion failed, using minimal fallback: %s", e)
             tex = self._minimal_latex(title, abstract, sections)
 
         if include_references and references:

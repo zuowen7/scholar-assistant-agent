@@ -8,9 +8,12 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 from typing import Literal
+
+logger = logging.getLogger(__name__)
 
 # prompts/ 目录根路径
 _PROMPTS_DIR = Path(__file__).parent
@@ -280,8 +283,8 @@ def parse_compliance_json(raw: str) -> dict:
     # 尝试直接解析
     try:
         return _json.loads(raw.strip())
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Direct JSON parse failed, trying extraction: %s", e)
 
     # 尝试从 markdown 代码块中提取
     import re as _re
@@ -289,16 +292,16 @@ def parse_compliance_json(raw: str) -> dict:
     if m:
         try:
             return _json.loads(m.group(1).strip())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("JSON extraction from markdown code block failed: %s", e)
 
     # 尝试找第一个 { 到最后一个 } 之间所有内容
     m = _re.search(r"(\{.*\})", raw, _re.DOTALL)
     if m:
         try:
             return _json.loads(m.group(1).strip())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("JSON extraction from braces failed: %s", e)
 
     # 全解析失败，返回错误结构
     return {

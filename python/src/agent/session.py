@@ -111,7 +111,8 @@ def _json_compact(obj, limit: int = 120) -> str:
     import json as _json
     try:
         s = _json.dumps(obj, ensure_ascii=False, sort_keys=True)
-    except Exception:
+    except Exception as e:
+        logger.debug("json serialization fallback to str: %s", e)
         s = str(obj)
     return s if len(s) <= limit else s[:limit] + "…"
 
@@ -125,7 +126,7 @@ class SessionConfig:
     """会话配置。"""
     max_task_steps: int = TASK_MAX_STEPS
     max_global_steps: int = GLOBAL_MAX_STEPS
-    auto_approve: bool = True  # dev mode: auto-approve all tool calls
+    auto_approve: bool = False  # require explicit approval; set True only for trusted dev environments
     approval_timeout: int = _APPROVAL_TIMEOUT
 
 
@@ -671,8 +672,8 @@ class AgentSession:
                                 source="session",
                                 importance=0.5,
                             )
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("failed to record trajectory entry: %s", e)
                     yield AgentEvent(
                         type=EVT_RESPONSE,
                         content=final_answer,
@@ -749,7 +750,8 @@ class AgentSession:
                     error_type=error_type,
                 )
             return skills.nudge_check()
-        except Exception:
+        except Exception as e:
+            logger.warning("skill nudge check failed: %s", e)
             return None
 
     @staticmethod

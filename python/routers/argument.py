@@ -222,7 +222,7 @@ def register_argument_v2(
                     cloud_client=cloud_client,
                 ):
                     yield {"event": ev["event"], "data": ev["data"]}
-            except Exception:
+            except Exception as e:
                 logger.exception("v2_extract AI 调用失败 gid=%s", gid)
                 yield {"event": "error", "data": json.dumps({"message": "服务内部错误，请重试"})}
 
@@ -242,7 +242,7 @@ def register_argument_v2(
             return {"issues": [i.model_dump() for i in issues]}
         except HTTPException:
             raise
-        except Exception:
+        except Exception as e:
             logger.exception("v2_critique AI 调用失败 gid=%s", gid)
             raise HTTPException(500, "服务内部错误，请重试")
 
@@ -263,7 +263,7 @@ def register_argument_v2(
             return result
         except HTTPException:
             raise
-        except Exception:
+        except Exception as e:
             logger.exception("v2_suggest AI 调用失败 gid=%s node=%s", gid, req.node_id)
             raise HTTPException(500, "服务内部错误，请重试")
 
@@ -400,7 +400,7 @@ def register_companion(
                     ollama_client=ollama_client,
                 ):
                     yield {"event": ev["event"], "data": ev["data"]}
-            except Exception:
+            except Exception as e:
                 logger.exception("companion_build_ledger AI 调用失败 doc_id=%s", req.doc_id)
                 yield {"event": "error", "data": json.dumps({"message": "服务内部错误，请重试"})}
 
@@ -514,7 +514,7 @@ def register_companion(
                         ollama_client=ollama_client,
                     ):
                         yield {"event": ev["event"], "data": ev["data"]}
-            except Exception:
+            except Exception as e:
                 logger.exception("companion_review AI 调用失败 doc_id=%s", req.doc_id)
                 yield {"event": "error", "data": json.dumps({"message": "服务内部错误，请重试"})}
 
@@ -566,7 +566,7 @@ def register_companion(
                     cloud_client=cloud_client,
                 ):
                     yield {"event": ev["event"], "data": ev["data"]}
-            except Exception:
+            except Exception as e:
                 logger.exception("companion_rebut AI 调用失败 session=%s pid=%s", session_id, pid)
                 yield {"event": "error", "data": json.dumps({"message": "服务内部错误，请重试"})}
 
@@ -598,7 +598,7 @@ def register_companion(
                     cloud_client=cloud_client,
                 ):
                     yield {"event": ev["event"], "data": ev["data"]}
-            except Exception:
+            except Exception as e:
                 logger.exception("companion_import_reviews AI 调用失败 doc_id=%s", req.doc_id)
                 yield {"event": "error", "data": json.dumps({"message": "服务内部错误，请重试"})}
 
@@ -661,6 +661,6 @@ def register_companion(
             return {"suggestion": suggestion}
         except HTTPException:
             raise
-        except Exception:
+        except Exception as e:
             logger.exception("companion_suggest_experiment AI 调用失败 doc_id=%s pid=%s", doc_id, pid)
             raise HTTPException(500, "服务内部错误，请重试")

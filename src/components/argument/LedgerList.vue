@@ -277,10 +277,10 @@ function isLost(promise: ArgPromise): boolean {
   letter-spacing: .02em;
 }
 
-.badge-unpaid { background: rgba(248,113,113,.16); color: #f87171; }
-.badge-mismatch { background: rgba(251,146,60,.16); color: #fb923c; }
-.badge-partial { background: rgba(251,191,36,.16); color: #fbbf24; }
-.badge-paid { background: rgba(74,222,128,.16); color: #4ade80; }
+.badge-unpaid { background: var(--c-danger-bg); color: var(--c-danger); }
+.badge-mismatch { background: var(--c-warn-bg); color: var(--c-warn); /* TODO: add token — orange #fb923c differs from --c-warn #f59e0b */ }
+.badge-partial { background: var(--c-warn-bg); color: var(--c-warn); }
+.badge-paid { background: var(--c-success-bg); color: var(--c-success); }
 .badge-unknown { background: var(--c-surface-3); color: var(--c-text-2); }
 
 .group-count {
@@ -376,7 +376,7 @@ function isLost(promise: ArgPromise): boolean {
 }
 
 .lost-badge {
-  color: #fbbf24;
+  color: var(--c-warn);
   font-size: var(--text-sm);
   cursor: help;
 }

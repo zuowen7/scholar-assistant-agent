@@ -1,5 +1,6 @@
 import { API_BASE } from '../utils/api'
 import { i18n } from '../i18n'
+import { logger } from '../utils/logger'
 
 export interface WordExportResponse {
   filename?: string
@@ -21,7 +22,7 @@ export async function saveBlob(blob: Blob, defaultName: string): Promise<string 
     open(path)
     return null
   } catch (e) {
-    console.warn('Tauri save failed:', e)
+    logger.warn('Tauri save failed:', e)
   }
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

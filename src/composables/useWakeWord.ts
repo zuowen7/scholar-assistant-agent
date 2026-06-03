@@ -1,5 +1,6 @@
 import { ref, watch } from 'vue'
 import { isSpeechBusy, speechBusyCount } from './useSpeechBusy'
+import { logger } from '../utils/logger'
 
 function getWakeWordPhrase(): string {
   try {
@@ -89,9 +90,9 @@ export function useWakeWord(onWakeWord: () => void) {
         for (let i = event.resultIndex; i < event.results.length; i++) {
           for (let j = 0; j < event.results[i].length; j++) {
             const text = event.results[i][j].transcript.toLowerCase()
-            console.log('[wake-word] heard:', text)
+            logger.debug('[wake-word] heard:', text)
             if (matchWakeWord(text)) {
-              console.log('[wake-word] MATCH:', text)
+              logger.debug('[wake-word] MATCH:', text)
               // Stop listening immediately to prevent re-triggering
               try { sr?.stop() } catch { /* ignore */ }
               cooldown = true
@@ -112,7 +113,7 @@ export function useWakeWord(onWakeWord: () => void) {
           scheduleRestart()
           return
         }
-        console.warn('[wake-word] error:', e.error)
+        logger.warn('[wake-word] error:', e.error)
         // For network/aborted errors, try restarting
         if (!restarting) scheduleRestart()
       }
@@ -126,10 +127,10 @@ export function useWakeWord(onWakeWord: () => void) {
 
       sr.start()
       active.value = true
-      console.log('[wake-word] started, listening for:', getWakeWordPhrase())
+      logger.debug('[wake-word] started, listening for:', getWakeWordPhrase())
     } catch (e: any) {
       error.value = e.message || '无法启动语音识别'
-      console.warn('[wake-word] start failed:', e)
+      logger.warn('[wake-word] start failed:', e)
     }
   }
 

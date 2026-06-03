@@ -50,7 +50,8 @@ def _tool_translate_text(text: str, source_lang: str = "en", target_lang: str = 
                 system_prompt=trans_cfg.get("system_prompt", ""),
                 timeout=trans_cfg.get("timeout", 300.0),
             )
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to load translator config, using defaults: %s", e)
         # Fallback: 使用默认配置
         client = OllamaClient()
 
@@ -253,7 +254,8 @@ def _call_llm_simple(prompt: str) -> str:
         trans_cfg = config.get("translator", {})
         cloud_cfg = trans_cfg.get("cloud", {})
         use_cloud = trans_cfg.get("engine", "ollama") == "cloud"
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to load config for LLM call, falling back to Ollama: %s", e)
         use_cloud = False
         cloud_cfg = {}
 
@@ -304,7 +306,7 @@ def create_builtin_server() -> PluginServer:
     """
     server = PluginServer(
         name="yanmo",
-        version="0.3.1",
+        version="0.3.5",
         description="研墨 学术翻译与研究辅助工具集",
         instructions="提供翻译、文档解析、文献检索、论文润色等功能。使用时需提供文件路径（绝对路径）。",
         tools=[

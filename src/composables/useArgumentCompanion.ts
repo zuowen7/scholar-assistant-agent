@@ -10,6 +10,7 @@ import { readSseStream } from '../utils/streamReader'
 import type { Ledger, ReviewSession, ReviewSummary, Anchor, Promise as ArgPromise } from '../types'
 import { useToast } from './useToast'
 import { i18n } from '../i18n'
+import { logger } from '../utils/logger'
 
 // ── SHA-1-lite hash (16 hex chars) for doc staleness detection ────────────
 
@@ -62,13 +63,13 @@ function findAnchor(anchors: Anchor[], id: string): Anchor | undefined {
 // ── API calls ─────────────────────────────────────────────────────────────
 
 async function buildOrRebuildLedger(text: string): Promise<void> {
-  console.log('[companion] buildOrRebuildLedger called, docId:', state.docId, 'textLen:', text?.length ?? 0)
+  logger.debug('[companion] buildOrRebuildLedger called, docId:', state.docId, 'textLen:', text?.length ?? 0)
   if (!state.docId) {
     state.docId = `untitled-${crypto.randomUUID()}`
     state.docTitle = 'Untitled'
   }
   if (!text.trim()) {
-    console.warn('[companion] buildOrRebuildLedger skipped: empty text')
+    logger.warn('[companion] buildOrRebuildLedger skipped: empty text')
     return
   }
   if (text.length > 5_000_000) {
@@ -76,16 +77,16 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
     return
   }
   state.building = true
-  console.log('[companion] setting building=true, about to fetch...')
+  logger.debug('[companion] setting building=true, about to fetch...')
   try {
     const resp = await fetch(`${API_BASE}/api/companion/ledger/build`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ doc_id: state.docId, doc_title: state.docTitle, text }),
     })
-    console.log('[companion] fetch returned:', resp.status, 'hasBody:', !!resp.body)
+    logger.debug('[companion] fetch returned:', resp.status, 'hasBody:', !!resp.body)
     if (!resp.ok || !resp.body) {
-      console.warn('[companion] build ledger failed:', resp.status)
+      logger.warn('[companion] build ledger failed:', resp.status)
       pushError(i18n.global.t('argument.buildLedgerFailed', { status: resp.status }))
       state.building = false
       return
@@ -108,7 +109,7 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
       eventCount++
       if (eventType === 'error') {
         const msg = (data as Record<string, unknown>)['message'] as string || i18n.global.t('errors.unknownError')
-        console.warn('[companion] build ledger error:', msg)
+        logger.warn('[companion] build ledger error:', msg)
         pushError(i18n.global.t('argument.buildLedgerFailedMsg', { msg }))
         state.building = false
         return
@@ -126,10 +127,10 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
         if (d['ledger_id']) ledger.id = d['ledger_id'] as string
       }
     })
-    console.log('[companion] readSseStream done, events received:', eventCount, 'promises:', ledger.promises.length)
+    logger.debug('[companion] readSseStream done, events received:', eventCount, 'promises:', ledger.promises.length)
 
     if (ledger.promises.length === 0 && eventCount > 0) {
-      console.warn('[companion] LLM returned 0 promises — LLM may be unavailable or text too short')
+      logger.warn('[companion] LLM returned 0 promises — LLM may be unavailable or text too short')
       pushWarning(i18n.global.t('argument.noPromises'))
     }
     state.ledger = ledger
@@ -171,7 +172,7 @@ async function upsertPromise(promise: Partial<ArgPromise>): Promise<void> {
     const idx = state.ledger.promises.findIndex(p => p.id === updated.id)
     if (idx >= 0) state.ledger.promises[idx] = updated
     else state.ledger.promises.push(updated)
-  } catch (e) { pushError(i18n.global.t('argument.savePromiseRetry')); console.warn('[companion] upsertPromise error:', e) }
+  } catch (e) { pushError(i18n.global.t('argument.savePromiseRetry')); logger.warn('[companion] upsertPromise error:', e) }
 }
 
 async function deletePromise(pid: string): Promise<void> {
@@ -182,7 +183,7 @@ async function deletePromise(pid: string): Promise<void> {
       { method: 'DELETE' },
     )
     state.ledger.promises = state.ledger.promises.filter(p => p.id !== pid)
-  } catch (e) { pushError(i18n.global.t('argument.deletePromiseRetry')); console.warn('[companion] deletePromise error:', e) }
+  } catch (e) { pushError(i18n.global.t('argument.deletePromiseRetry')); logger.warn('[companion] deletePromise error:', e) }
 }
 
 async function relocate(text: string): Promise<void> {
@@ -199,7 +200,7 @@ async function relocate(text: string): Promise<void> {
     if (!resp.ok) return
     const updated = await resp.json() as Ledger
     state.ledger = updated
-  } catch (e) { pushError(i18n.global.t('argument.anchorRelocateFailed')); console.warn('[companion] relocate error:', e) }
+  } catch (e) { pushError(i18n.global.t('argument.anchorRelocateFailed')); logger.warn('[companion] relocate error:', e) }
 }
 
 async function listReviews(): Promise<void> {
@@ -209,7 +210,7 @@ async function listReviews(): Promise<void> {
     const resp = await fetch(`${API_BASE}/api/companion/reviews?doc_id=${encodeURIComponent(state.docId)}`)
     if (!resp.ok) return
     state.reviewList = await resp.json() as ReviewSummary[]
-  } catch (e) { pushError(i18n.global.t('argument.loadReviewsFailed')); console.warn('[companion] listReviews error:', e) }
+  } catch (e) { pushError(i18n.global.t('argument.loadReviewsFailed')); logger.warn('[companion] listReviews error:', e) }
 }
 
 async function runReview(
@@ -336,7 +337,7 @@ async function updatePointStatus(pointId: string, status: import('../types').Poi
     )
     const point = state.review.points.find(p => p.id === pointId)
     if (point) point.status = status
-  } catch (e) { pushError(i18n.global.t('argument.updatePointFailed')); console.warn('[companion] updatePointStatus error:', e) }
+  } catch (e) { pushError(i18n.global.t('argument.updatePointFailed')); logger.warn('[companion] updatePointStatus error:', e) }
 }
 
 async function rebut(pointId: string, message: string, text: string): Promise<void> {

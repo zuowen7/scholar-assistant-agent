@@ -314,8 +314,8 @@ class PromptBuilder:
                     if chars_used + len(soul_content) <= budget:
                         parts.append(soul_content)
                         chars_used += len(soul_content)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("failed to read skill SOUL file: %s", e)
 
         for skill in active_skills:
             skill_name = getattr(skill, "name", "")
@@ -328,8 +328,8 @@ class PromptBuilder:
                     if chars_used + len(agents_content) <= budget:
                         parts.append(agents_content)
                         chars_used += len(agents_content)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("failed to read skill AGENTS file: %s", e)
 
         if not parts:
             return ""

@@ -81,7 +81,8 @@ class ArgGraphStore:
         target = None
         try:
             target = Path(source_doc).resolve()
-        except Exception:
+        except Exception as e:
+            logger.debug("path resolve failed for graph lookup: %s", e)
             target = None
         matches: list[ArgGraph] = []
         for g in self._cache.values():
@@ -94,8 +95,8 @@ class ArgGraphStore:
                 try:
                     if Path(g.source_doc).resolve() == target:
                         matches.append(g)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("graph source_doc path comparison failed: %s", e)
         if not matches:
             return None
         return max(matches, key=lambda g: g.updated_at)

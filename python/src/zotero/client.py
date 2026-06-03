@@ -285,7 +285,8 @@ class ZoteroClient:
                 try:
                     item = self._parse_item(raw_item)
                     items.append(item)
-                except Exception:
+                except Exception as e:
+                    logger.debug("Skipping malformed Zotero item: %s", e)
                     continue
 
             return items

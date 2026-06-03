@@ -179,6 +179,7 @@ def _python_exec(code: str, timeout: int = _PYTHON_EXEC_TIMEOUT) -> str:
         "__code__", "__class__", "__base__", "__bases__", "__subclasses__",
         "__mro__", "__dict__", "__reduce__", "__reduce_ex__",
         "__init_subclass__", "__module__",
+        "setattr", "delattr", "exec", "eval", "compile", "breakpoint",
     })
     for node in _ast.walk(tree):
         if isinstance(node, _ast.Import):
@@ -214,7 +215,7 @@ def _python_exec(code: str, timeout: int = _PYTHON_EXEC_TIMEOUT) -> str:
         "    'str': str, 'list': list, 'dict': dict, 'set': set, 'tuple': tuple,\n"
         "    'bool': bool, 'type': type, 'isinstance': isinstance,\n"
         "    'True': True, 'False': False, 'None': None,\n"
-        "    'repr': repr, 'hasattr': hasattr, 'getattr': getattr,\n"
+        "    'repr': repr,\n"
         "    'abs': abs, 'round': round, 'pow': pow, 'divmod': divmod,\n"
         "    'hex': hex, 'oct': oct, 'bin': bin, 'chr': chr, 'ord': ord,\n"
         "    'input': lambda *a: '',\n"
@@ -271,6 +272,21 @@ def _web_fetch(url: str, extract_text: bool = True) -> str:
     """
     if not url.startswith(("http://", "https://")):
         return "URL 必须以 http:// 或 https:// 开头"
+
+    import ipaddress
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    hostname = parsed.hostname
+    if hostname:
+        try:
+            ip = ipaddress.ip_address(hostname)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                return f"禁止访问内网地址: {hostname}"
+        except ValueError:
+            if hostname in ("localhost", "metadata.google.internal", "metadata.internal"):
+                return f"禁止访问内网地址: {hostname}"
+
     try:
         with httpx.Client(
             timeout=_WEB_FETCH_TIMEOUT,
@@ -361,8 +377,9 @@ def _web_search(query: str, max_results: int = _WEB_SEARCH_MAX_RESULTS) -> str:
 
         if results:
             return "\n\n---\n\n".join(results)
-    except Exception:
-        pass  # Fall through to Bing
+    except Exception as e:
+        logger.debug("Google search failed, falling through to Bing: %s", e)
+        # Fall through to Bing
 
     # --- Bing (fallback) ---
     try:

@@ -219,7 +219,8 @@ async def build_ledger(
         except (json.JSONDecodeError, ValueError):
             if attempt == 1:
                 raw2 = "[]"
-        except Exception:
+        except Exception as e:
+            logger.warning("discharge extraction unexpected error: %s", e)
             raw2 = "[]"
 
     discharge_map: dict[str, dict] = {}
@@ -229,8 +230,8 @@ async def build_ledger(
             for item in arr2:
                 lid = str(item.get("promise_local_id", ""))
                 discharge_map[lid] = item
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("discharge map parsing failed: %s", e)
 
     # ── Assemble promises + anchors ───────────────────────────────────────────
     new_promises: list[Promise] = []

@@ -203,8 +203,8 @@ class SessionStore:
     def __del__(self) -> None:
         try:
             self.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("session store __del__ cleanup: %s", e)
 
     @staticmethod
     def _serialize_message(m) -> dict:
