@@ -1,6 +1,6 @@
 # Scholar Assistant — User Guide
 
-> For version v0.3.5+ | [中文指南](./USER_GUIDE.md)
+> For version v0.3.6+ | [中文指南](./USER_GUIDE.md)
 
 ## Table of Contents
 

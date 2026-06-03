@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![CI](https://github.com/zuowen7/scholar-assistant/actions/workflows/release.yml/badge.svg)](https://github.com/zuowen7/scholar-assistant/actions)
-[![Version](https://img.shields.io/badge/version-0.3.5-brightgreen)](https://github.com/zuowen7/scholar-assistant/releases)
+[![Version](https://img.shields.io/badge/version-0.3.6-brightgreen)](https://github.com/zuowen7/scholar-assistant/releases)
 
 **English** | [中文](./README_zh.md)
 
@@ -15,7 +15,7 @@
 
 PDF translation & close reading included as an on-ramp — translate a paper in minutes, then work on it. Voice assistant with Siri-style wake word and dictation. Runs locally offline or connects to 21 cloud LLM providers. **Bilingual UI** (zh-CN / en-US).
 
-v0.3.5 — Latest: Copilot-style inline diff, voice assistant, full bilingual UI coverage. MIT license.
+v0.3.6 — Latest: Copilot-style inline diff, voice assistant, full bilingual UI coverage. MIT license.
 
 ## Demo
 
@@ -35,7 +35,7 @@ v0.3.5 — Latest: Copilot-style inline diff, voice assistant, full bilingual UI
 |---------------|
 | ![More](docs/demo/demo2.gif) |
 
-> All GIFs are real screen recordings from the v0.3.5 release.
+> All GIFs are real screen recordings from the v0.3.6 release.
 
 ## Download
 

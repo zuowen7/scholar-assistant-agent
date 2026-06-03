@@ -1,6 +1,6 @@
 # 研墨 Scholar Assistant — 使用指南
 
-> 适用版本：v0.3.5+ | [English Guide](./USER_GUIDE_EN.md)
+> 适用版本：v0.3.6+ | [English Guide](./USER_GUIDE_EN.md)
 
 ## 目录
 

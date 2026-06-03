@@ -306,7 +306,7 @@ def create_builtin_server() -> PluginServer:
     """
     server = PluginServer(
         name="yanmo",
-        version="0.3.5",
+        version="0.3.6",
         description="研墨 学术翻译与研究辅助工具集",
         instructions="提供翻译、文档解析、文献检索、论文润色等功能。使用时需提供文件路径（绝对路径）。",
         tools=[
