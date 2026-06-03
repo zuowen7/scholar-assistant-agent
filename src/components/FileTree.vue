@@ -88,7 +88,7 @@ import { useFileTree } from '../composables/useFileTree'
 import { useEditor } from '../composables/useEditor'
 import type { FileEntry } from '../types'
 
-const { files, rootDir, openFolder, readFileContent, createFile, renameFile, deleteFile, copyFileTo, setClipboard, getClipboard, clearClipboard, refresh } = useFileTree()
+const { files, rootDir, openFolder, readFileContent, createFile, renameFile, deleteFile, copyFileTo, setClipboard, getClipboard, clearClipboard } = useFileTree()
 const { openFile: openEditorFile, activeFile, renameTabPath, closeTab } = useEditor()
 
 defineEmits<{ (e: 'collapse'): void }>()
@@ -170,7 +170,7 @@ async function handleAction(action: string, path: string, extra: string) {
       const cb = getClipboard()
       if (!cb) return
       try {
-        const newPath = await copyFileTo(cb.path, path)
+        await copyFileTo(cb.path, path)
         // If it was a cut, delete source and clear clipboard
         if (cb.action === 'cut') {
           await deleteFile(cb.path)

@@ -42,7 +42,7 @@ const props = defineProps<{
 const editorContainer = ref<HTMLElement>()
 const {
   setEditorInstance, setContent, content, updateSelection,
-  activeTabId, markDirty, aiEdit, openNewUntitled,
+  activeTabId, markDirty, aiEdit,
 } = useEditor()
 const { activeEdit, clearActiveEdit } = useEditorState()
 const { sendApproval } = useAgentChat()
@@ -126,7 +126,7 @@ onMounted(() => {
   // Returns cached completion when Monaco requests it.
   // The actual fetch is debounced in onDidChangeModelContent.
   _inlineCompletionsDisposable = monaco.languages.registerInlineCompletionsProvider('markdown', {
-    provideInlineCompletions: async (model, position, _context) => {
+    provideInlineCompletions: async (_model, position, _context) => {
       if (showPalette.value) return { items: [] }
       if (!cachedCompletion || !cachedPosition) return { items: [] }
       if (position.lineNumber !== cachedPosition.lineNumber || position.column !== cachedPosition.column) {
@@ -234,7 +234,7 @@ onMounted(() => {
     if (!pos) return
     if (pos.lineNumber !== cachedPosition.lineNumber || pos.column !== cachedPosition.column) return
     try {
-      editor.trigger('ghost', 'editor.action.inlineSuggest.trigger')
+      editor.trigger('ghost', 'editor.action.inlineSuggest.trigger', undefined)
     } catch { /* ignore */ }
   })
 
@@ -312,7 +312,7 @@ async function triggerGhostCompletion() {
   cachedCompletion = result.completion
   cachedPosition = { lineNumber: pos.lineNumber, column: pos.column }
   try {
-    editor.trigger('ghost', 'editor.action.inlineSuggest.trigger')
+    editor.trigger('ghost', 'editor.action.inlineSuggest.trigger', undefined)
   } catch { /* Monaco may cancel if content changed */ }
 }
 

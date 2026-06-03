@@ -177,7 +177,6 @@ const { t } = useI18n()
 import DOMPurify from 'dompurify'
 import { readSseStream } from '../utils/streamReader'
 import { aiMessages, aiStreaming, aiStreamContent, aiThinkingText, aiAbortCtrl } from '../composables/useAiPanelState'
-import type { AiPanelMsg } from '../composables/useAiPanelState'
 import { API_BASE } from '../utils/api'
 import AgentApprovalInline from './AgentApprovalInline.vue'
 import type { PendingApproval } from '../composables/useAgentChat'
@@ -217,8 +216,6 @@ const emit = defineEmits<{
   (e: 'undo'): void
   (e: 'close'): void
 }>()
-
-type Msg = AiPanelMsg
 
 interface FileRef { name: string; content: string }
 

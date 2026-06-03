@@ -42,7 +42,7 @@ import { useToast } from '../../composables/useToast'
 import ArgNodeCard from './ArgNodeCard.vue'
 import ArgEdge from './ArgEdge.vue'
 
-const props = withDefaults(defineProps<{ readonly?: boolean }>(), { readonly: false })
+withDefaults(defineProps<{ readonly?: boolean }>(), { readonly: false })
 
 const { state, upsertEdge } = useArgumentMap()
 const { danger } = useToast()
