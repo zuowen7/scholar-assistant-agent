@@ -15,7 +15,7 @@
 
 PDF translation & close reading included as an on-ramp — translate a paper in minutes, then work on it. Voice assistant with Siri-style wake word and dictation. Runs locally offline or connects to 21 cloud LLM providers. **Bilingual UI** (zh-CN / en-US).
 
-v0.3.6 — Latest: Copilot-style inline diff, voice assistant, full bilingual UI coverage. MIT license.
+v0.3.6 — Latest: Siri-like voice command routing (20+ commands), bilingual UI. MIT license.
 
 ## Demo
 
@@ -102,11 +102,12 @@ Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant/re
 
 ### Voice Assistant
 
-> **Hands-free control** — Siri-style wake word "小研" or Alt+Shift+V to activate, speak your command, Agent executes.
+> **Siri for academic writing** — Say the wake word or press Alt+Shift+V, the Siri overlay appears, speak a command to jump directly to features.
 
+- **Voice Command Router** — Keyword-classified 20+ commands across 5 tiers: navigation (translate/editor/argument/mindmap/theme), file ops (save/new/open), editor (export/polish/expand/review/translate/compliance/citations), translation pipeline (new/retry/export Word/PPTX), mind map (add/delete node/AI expand/layout/zoom); unmatched text falls back to Agent chat
 - **Wake Word** — Web Speech API continuous recognition with homophone variant matching; 5-second cooldown; customizable in settings
 - **Global Hotkey** — `Alt+Shift+V` system-wide (Tauri plugin); works even when window is minimized
-- **Siri-style Voice UI** — fullscreen glass-morphism overlay with pulsing orb + ripple rings + live transcript; 2-second silence auto-submit
+- **Siri-style Voice UI** — fullscreen glass-morphism overlay with pulsing orb + ripple rings + live transcript; 2-second silence auto-submit; shows matched command feedback
 - **Voice Dictation** — mic buttons in editor toolbar, Agent panel, and AI panel; accepts Ghost Text (Tab) mid-speech without losing context
 - **Conflict-free Design** — wake word detection auto-pauses during dictation; no microphone contention
 
@@ -148,7 +149,10 @@ Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant/re
 │   │   ├── useSpeechBusy.ts      #   Shared busy flag (wake word ↔ dictation conflict prevention)
 │   │   ├── useWakeWord.ts        #   Wake word detection (continuous SR, homophone matching, cooldown)
 │   │   ├── useGlobalHotkey.ts    #   System hotkey registration (Tauri plugin, Alt+Shift+V)
-│   │   └── useVoiceCommand.ts    #   Voice command state machine + auto-submit
+│   │   ├── useVoiceCommand.ts    #   Voice command state machine + auto-submit
+│   │   ├── useVoiceRouter.ts     #   Siri-like intent router (keyword classification + command dispatch)
+│   │   ├── useAppMode.ts         #   Global mode/panel state (singleton)
+│   │   └── voiceCommands/        #   Declarative command registry (5 tiers, 20+ commands)
 │   ├── components/
 │   │   ├── AppTopBar.vue         #   Top bar (brand / mode switch / settings / voice settings / window controls)
 │   │   ├── TranslateView.vue     #   Translation mode (upload / progress / result views)

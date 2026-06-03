@@ -199,7 +199,7 @@ Use this as the canonical "what works / what's polished / what's a stub" map. Up
 | 9 | Zotero integration | C | Requires user API key |
 | 10 | Vision / OCR | C | Depends on external MCP server |
 | 11 | Agent workspace file tools (read/write/grep/str_replace/git_op + boundary approval) | B | E2E verified: workspace_root wired from `useFileTree.rootDir`; `SecurityGate.force_approval` + `WorkspaceEnv` ContextVar; `await_approval` SSE → frontend `AgentApprovalInline` → `POST /approve` → ContextVar bypass; 1815 pytest passed |
-| 12 | 语音助手（唤醒词 + 全局热键 + Siri 风格界面 + Chrome 重新识别去重）| B+ | `useWakeWord.ts` Web Speech API 连续模式同音字唤醒（默认"小研"），5s 冷却防误触发；`useGlobalHotkey.ts` Tauri 系统热键 `Alt+Shift+V`；`useVoiceCommand.ts` 状态机 + 2s 静默自动提交；`VoiceAssistantView.vue` 全屏毛玻璃 UI pulse/ripple 动画；`useSpeechBusy.ts` 全局忙标志 + `flush:sync` 同步暂停唤醒词 SR；`useSpeechRecognition.ts` `utterances[]` + `commonPrefixLen()` 前缀重叠检测 (>50%) + `processedUpTo` 去重；482 vitest passed |
+| 12 | 语音助手（唤醒词 + 全局热键 + Siri 风格界面 + Chrome 重新识别去重 + Siri 式语音指令路由）| A | `useWakeWord.ts` Web Speech API 连续模式同音字唤醒（默认"小研"），5s 冷却防误触发；`useGlobalHotkey.ts` Tauri 系统热键 `Alt+Shift+V`；`useVoiceCommand.ts` 状态机 + 2s 静默自动提交；`VoiceAssistantView.vue` 全屏毛玻璃 UI pulse/ripple 动画 + 命令反馈；`useVoiceRouter.ts` 关键词意图分类器 + 20+ 条命令 5 层级直达功能；`useSpeechBusy.ts` 全局忙标志 + `flush:sync` 同步暂停唤醒词 SR；`useSpeechRecognition.ts` `utterances[]` + `commonPrefixLen()` 前缀重叠检测 (>50%) + `processedUpTo` 去重；650 vitest passed |
 
 ### Known Defect Index
 
@@ -365,3 +365,21 @@ Agent 工具指导全 provider 覆盖 (2026-05-30)：
 - **Chrome 连续模式重新识别去重**：`useSpeechRecognition.ts` 新增 `utterances[]` 记录各条识别结果 + `commonPrefixLen()` 前缀重叠检测（>50% 则判定为重新识别，仅提取重叠后的真正新内容）+ `processedUpTo` 避免重复处理 Chrome results 数组 + `resetAccumulated()` 在 Tab 后清空累积但不停止识别
 - 文件：`useVoiceCommand.ts`、`useGlobalHotkey.ts`、`useWakeWord.ts`、`useSpeechBusy.ts`、`useSpeechRecognition.ts`、`VoiceAssistantView.vue`、`App.vue`、`AppTopBar.vue`、`AgentPanel.vue`、`AiPanel.vue`、`EditorToolbar.vue`、`EditorLayout.vue`、`main.rs`、`Cargo.toml`、`default.json`、i18n
 - 验证：482 vitest passed / 40 files（+115 voice-related tests）
+
+语音指令路由器 (2026-06-03)：
+- **问题**：语音助手只能把识别文字发到 Agent 聊天，不能像 Siri 一样直接调用具体功能（切换模式、导出 PDF、润色文本等）；无法说"打开翻译"就跳转翻译页面
+- **解决**：新增前端意图路由器（`useVoiceRouter.ts`），关键词评分匹配 20+ 条语音命令，5 个 tier 直达功能；未命中命令走 Agent 聊天兜底
+- **`useVoiceRouter.ts`** — 模块级单例意图分类器 + 命令分发器；`classifyIntent(text)` 对命令注册表做关键词匹配 + 置信度评分（`pattern.length / text.length + 0.3`），最高分命中对应 handler；`routeCommand(text)` 分类后分发或走 chat fallback
+- **`useAppMode.ts`** — 从 `App.vue` 提取 `appMode`/`showAgentChat` 为模块级单例（同 `useEditorState.ts` 模式），供路由器直接控制模式切换/面板开关
+- **`voiceCommands/`** — 声明式命令注册表，5 个 tier 文件，每个命令声明 `{id, label, patterns[], handler}`：
+  - Tier 1 导航（7）：翻译/编辑/论证模式切换，Agent 面板开/关，思维导图，主题切换 → 针对 `使用声音打开翻译模式` 等
+  - Tier 2 文件（3）：保存、新建、打开文件夹
+  - Tier 3 编辑器（10）：导出 Word/PDF/LaTeX，润色/扩写/审阅，中英互译，合规检查，处理引用
+  - Tier 4 翻译（7）：新建翻译、重试失败块、导出双语/译文 Word/Markdown/PPTX
+  - Tier 5 导图（10）：增删节点、AI 扩展、自动布局、保存、分析、缩放/适应视图
+- **类型**：`src/types/voice.ts` — `VoiceCommandDef`、`VoiceCommandMatch`、`VoiceCommandResult`
+- **集成点**：`App.vue` 的 `handleVoiceCommandSubmit` 改为 `routeCommand(text)` → chat fallback 时自动切 editor + 打开 Agent 面板；`VoiceAssistantView.vue` 显示命令反馈（✓/✗ + 标签）；`EditorLayout.vue`/`TranslateView.vue`/`MindMapView.vue`/`AiPanel.vue` 接受 voice CustomEvents
+- **Bugfix**：`voiceCmd.done()` 在 fallback 前调用（避免 Siri 浮层卡在"正在处理"等 Agent 流式回复）；`handleVoiceCommandTrigger` 不再强切模式（由路由器决定）
+- **文件**：`src/types/voice.ts`、`useVoiceRouter.ts`、`useAppMode.ts`、`voiceCommands/*`（5 tier）、`App.vue`、`VoiceAssistantView.vue`、`EditorLayout.vue`、`TranslateView.vue`、`MindMapView.vue`、`AiPanel.vue`
+- **测试**：`useAppMode.test.ts`（6）、`useVoiceRouter.test.ts`（18）、`voiceCommands/tier1.test.ts`（31）、`tier2-file.test.ts`（18）、`tier3-editor.test.ts`（24）、`tier4-translation.test.ts`（22）、`tier5-mindmap.test.ts`（29）— 共计 148 个新增 vitest 测试
+- 验证：650 vitest passed / 47 files
