@@ -3,9 +3,11 @@ import { computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Mic } from 'lucide-vue-next'
 import { useVoiceCommand } from '../composables/useVoiceCommand'
+import { useVoiceRouter } from '../composables/useVoiceRouter'
 
 const { t } = useI18n()
 const { state, transcript, response, error, cancel } = useVoiceCommand()
+const router = useVoiceRouter()
 
 const statusText = computed(() => {
   if (error.value) return ''
@@ -30,6 +32,14 @@ const wakeWordName = computed(() => {
 })
 
 const showRipples = computed(() => state.value === 'listening')
+
+const commandFeedback = computed(() => {
+  const result = router.lastCommandResult.value
+  if (!result || result.type === 'chat') return null
+  const locale = localStorage.getItem('locale') || 'zh-CN'
+  const label = locale === 'zh-CN' ? result.label?.zh : result.label?.en
+  return { text: label || result.commandId || '', success: result.success, error: result.error }
+})
 
 function onBackdropClick() { cancel() }
 function onKeydown(e: KeyboardEvent) { if (e.key === 'Escape') cancel() }
@@ -68,6 +78,15 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
           <!-- Agent response -->
           <Transition name="va-text">
             <div v-if="response" class="va-response">{{ response }}</div>
+          </Transition>
+
+          <!-- Command feedback -->
+          <Transition name="va-text">
+            <div v-if="commandFeedback" class="va-cmd-feedback" :class="commandFeedback.success ? 'va-cmd-ok' : 'va-cmd-err'">
+              <span class="va-cmd-icon">{{ commandFeedback.success ? '✓' : '✗' }}</span>
+              <span>{{ commandFeedback.text }}</span>
+              <span v-if="commandFeedback.error" class="va-cmd-error-detail">{{ commandFeedback.error }}</span>
+            </div>
           </Transition>
 
           <!-- Error -->
@@ -195,6 +214,29 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   font-size: 14px;
   color: var(--c-warn);
   text-align: center;
+}
+
+.va-cmd-feedback {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.va-cmd-ok { color: var(--c-accent); }
+.va-cmd-err { color: var(--c-warn); }
+
+.va-cmd-icon {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.va-cmd-error-detail {
+  font-size: 13px;
+  opacity: 0.7;
+  margin-left: 4px;
 }
 
 /* ── Animations ──────────────────────────────────────────────────────── */

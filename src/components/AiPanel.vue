@@ -606,6 +606,8 @@ watch(() => input.value, () => {
     }
   })
 })
+
+defineExpose({ sendPreset })
 </script>
 
 <style scoped>
