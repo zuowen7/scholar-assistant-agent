@@ -89,6 +89,7 @@
           class="rp-content"
         />
         <AiPanel
+          ref="aiPanelRef"
           v-if="rightPanelTab === 'ai'"
           :editor-context="selection.text || content"
           :active-file="activeFile"
@@ -191,6 +192,7 @@ const collapsedSidebarWidth = 44
 // -- Right panel ----------------------------------------------------------
 type RightTab = 'preview' | 'ai' | 'argument'
 const rightPanelTab = ref<RightTab | null>(null)
+const aiPanelRef = ref<InstanceType<typeof AiPanel> | null>(null)
 const toggleRightPanel = (tab: RightTab) => { rightPanelTab.value = rightPanelTab.value === tab ? null : tab }
 
 // -- Export state ---------------------------------------------------------
@@ -581,11 +583,29 @@ onMounted(() => {
     if (templates.length && !selectedTemplate.value) selectedTemplate.value = templates[0].id
   })
   window.addEventListener('paper-scaffold', handlePaperScaffold as EventListener)
+
+  // Voice command event listeners
+  window.addEventListener('voice-set-mindmap', handleVoiceSetMindmap)
+  window.addEventListener('voice-export', handleVoiceExport as EventListener)
+  window.addEventListener('voice-ai-preset', handleVoiceAiPreset as EventListener)
+  window.addEventListener('voice-compliance', handleVoiceCompliance)
+  window.addEventListener('voice-citations', handleVoiceCitations)
+  window.addEventListener('voice-open-folder', handleVoiceOpenFolder)
+  window.addEventListener('voice-new-file', handleVoiceNewFile)
+  window.addEventListener('voice-save', handleVoiceSave)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('paper-scaffold', handlePaperScaffold as EventListener)
+  window.removeEventListener('voice-set-mindmap', handleVoiceSetMindmap)
+  window.removeEventListener('voice-export', handleVoiceExport as EventListener)
+  window.removeEventListener('voice-ai-preset', handleVoiceAiPreset as EventListener)
+  window.removeEventListener('voice-compliance', handleVoiceCompliance)
+  window.removeEventListener('voice-citations', handleVoiceCitations)
+  window.removeEventListener('voice-open-folder', handleVoiceOpenFolder)
+  window.removeEventListener('voice-new-file', handleVoiceNewFile)
+  window.removeEventListener('voice-save', handleVoiceSave)
   if (_resizeAbortController) { _resizeAbortController.abort(); _resizeAbortController = null }
 })
 
@@ -598,6 +618,46 @@ function handlePaperScaffold(e: Event) {
       activeTab.value.name = `${templateId}-paper.md`
     }
   })
+}
+
+// ── Voice command handlers ─────────────────────────────────────────────
+function handleVoiceSetMindmap() {
+  workspaceMode.value = 'mindmap'
+}
+
+function handleVoiceExport(e: Event) {
+  const { format } = (e as CustomEvent).detail
+  if (format === 'word') handleExportWord()
+  else if (format === 'pdf') handleExportPdf()
+  else if (format === 'latex') handleExportLatex()
+}
+
+function handleVoiceAiPreset(e: Event) {
+  const { action } = (e as CustomEvent).detail
+  rightPanelTab.value = 'ai'
+  nextTick(() => {
+    aiPanelRef.value?.sendPreset(action)
+  })
+}
+
+function handleVoiceCompliance() {
+  runComplianceCheck()
+}
+
+function handleVoiceCitations() {
+  handleProcessCitations()
+}
+
+function handleVoiceOpenFolder() {
+  openWorkspaceFolder()
+}
+
+function handleVoiceNewFile() {
+  openNewUntitled()
+}
+
+function handleVoiceSave() {
+  saveFile()
 }
 </script>
 

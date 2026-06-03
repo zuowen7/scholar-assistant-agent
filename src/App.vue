@@ -84,8 +84,8 @@
         :bg-settings="bgSettings"
         :read-settings="readSettings"
         :proxy-url="proxyUrl"
-        @update:app-mode="appMode = $event"
-        @update:show-agent-chat="showAgentChat = $event"
+        @update:app-mode="setMode($event)"
+        @update:show-agent-chat="toggleAgentChat($event)"
         @update:engine-type="engineType = $event"
         @update:cloud-config="cloudConfig = $event"
         @update:proxy-url="proxyUrl = $event"
@@ -116,7 +116,7 @@
         <div v-if="showRecoveryBanner" class="recovery-banner">
           <span class="recovery-text">{{ t('app.recoveryBanner') }}</span>
           <div class="recovery-actions">
-            <UiButton variant="primary" size="sm" @click="showRecoveryBanner = false; appMode = 'translate'">{{ t('app.recoveryView') }}</UiButton>
+            <UiButton variant="primary" size="sm" @click="showRecoveryBanner = false; setMode('translate')">{{ t('app.recoveryView') }}</UiButton>
             <UiButton variant="ghost" size="sm" @click="showRecoveryBanner = false; discardPersisted()">{{ t('app.recoveryDiscard') }}</UiButton>
           </div>
         </div>
@@ -144,7 +144,7 @@
       </div>
 
       <!-- Agent 聊天面板 -->
-      <AgentPanel :open="showAgentChat" @update:open="showAgentChat = $event" @switch-to-editor="appMode = 'editor'" />
+      <AgentPanel :open="showAgentChat" @update:open="toggleAgentChat($event)" @switch-to-editor="setMode('editor')" />
 
       <!-- 语音助手 Siri 风格浮层 -->
       <VoiceAssistantView />
@@ -166,6 +166,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useAppMode } from './composables/useAppMode'
+import { useVoiceRouter } from './composables/useVoiceRouter'
+import { registerAllVoiceCommands } from './composables/voiceCommands'
 import { checkArgumentMapV2Flag, _openFullArgMapTick } from './composables/useArgumentMap'
 import ArgumentMapView from './components/argument/ArgumentMapView.vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -195,20 +198,16 @@ import { useWakeWord } from './composables/useWakeWord'
 import { useAgentChat } from './composables/useAgentChat'
 import { useFileTree } from './composables/useFileTree'
 import VoiceAssistantView from './components/VoiceAssistantView.vue'
+import { logger } from './utils/logger'
 
 const { state, translate, translateFromPath, cleanup, checkHealth, checkOllama, startOllama, checkCloudApi, getConfig, updateConfig, getProviderPresets, fetchOllamaModels, restartBackend, listenBackendCrash, setStatus, setError, setStepMessage, recoverTranslation, discardPersisted } = useTranslate()
 const { pushError } = useToast()
 
 // ── 应用模式 ──────────────────────────────────────────────────
-const appMode = ref<AppMode>('editor')
-const modeTransition = ref(false)
-watch(appMode, () => {
-  modeTransition.value = true
-  setTimeout(() => { modeTransition.value = false }, 300)
-})
+const { appMode, showAgentChat, modeTransition, setMode, toggleAgentChat } = useAppMode()
 
-// ── Agent 聊天 ──────────────────────────────────────────────
-const showAgentChat = ref(false)
+// Register voice commands
+registerAllVoiceCommands()
 
 // ── Agent 独立窗口模式 ──────────────────────────────────────
 const isAgentOnly = ref(false)
@@ -231,7 +230,7 @@ async function onAgentWindowClose() {
 }
 
 function openAgentDocs() {
-  showAgentChat.value = true
+  toggleAgentChat(true)
 }
 const { cleanup: editorCleanup } = useEditor()
 
@@ -239,36 +238,48 @@ const { cleanup: editorCleanup } = useEditor()
 const voiceCmd = useVoiceCommand()
 
 function handleVoiceCommandTrigger() {
-  if (appMode.value !== 'editor') appMode.value = 'editor'
-  showAgentChat.value = true
+  // Don't force-switch mode or open agent — let the router decide
 }
 
 function handleVoiceCommandSubmit(e: Event) {
   const { text } = (e as CustomEvent).detail
   if (!text?.trim()) return
-  console.log('[voice] submitting to agent:', text.trim())
+  logger.debug('[voice] submitting:', text.trim())
 
-  const { sendMessage, sending } = useAgentChat()
-  const { rootDir } = useFileTree()
-  const { activeTab } = useEditor()
+  voiceCmd.setProcessing()
 
-  if (sending.value) {
-    console.warn('[voice] Agent is busy (sending=true), queueing...')
-  }
+  useVoiceRouter().routeCommand(text.trim()).then((result) => {
+    if (result.type === 'chat') {
+      // Fallback: send to agent chat (existing behavior)
+      const { sendMessage, sending } = useAgentChat()
+      const { rootDir } = useFileTree()
+      const { activeTab } = useEditor()
 
-  // Close voice view immediately — user sees results in AgentPanel
-  voiceCmd.done()
+      if (sending.value) {
+        logger.warn('[voice] Agent is busy (sending=true), queueing...')
+      }
 
-  sendMessage(
-    text.trim(),
-    '',
-    '',
-    rootDir.value || undefined,
-    activeTab.value?.path || undefined,
-  ).then(() => {
-    console.log('[voice] sendMessage resolved')
+      voiceCmd.done()
+
+      sendMessage(
+        text.trim(),
+        '',
+        '',
+        rootDir.value || undefined,
+        activeTab.value?.path || undefined,
+      ).then(() => {
+        logger.debug('[voice] sendMessage resolved')
+      }).catch((err) => {
+        logger.warn('[voice] sendMessage failed:', err)
+      })
+    } else {
+      // Command dispatched
+      logger.debug('[voice] command executed:', result.commandId, result.success ? 'ok' : result.error)
+      voiceCmd.done()
+    }
   }).catch((err) => {
-    console.warn('[voice] sendMessage failed:', err)
+    logger.warn('[voice] routeCommand failed:', err)
+    voiceCmd.done()
   })
 }
 
@@ -306,6 +317,7 @@ if (wakeWord) {
 
 window.addEventListener('voice-command-trigger', handleVoiceCommandTrigger)
 window.addEventListener('voice-command-submit', handleVoiceCommandSubmit)
+window.addEventListener('voice-toggle-theme', () => toggleTheme())
 
 // Pause wake word during active voice command, resume when idle
 watch(() => voiceCmd.state.value, (s) => {
@@ -330,7 +342,7 @@ function applyTheme(dark: boolean) {
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
 }
 watch(() => isDark.value, applyTheme, { immediate: true })
-watch(_openFullArgMapTick, () => { appMode.value = 'argument' })
+watch(_openFullArgMapTick, () => { setMode('argument') })
 const appBootLoading = ref(true)
 const bootLoadingStartedAt = Date.now()
 const minBootLoadingMs = 1400
@@ -426,13 +438,13 @@ function loadReadSettings() {
         readSettings.value = { ...readSettings.value, ...parsed }
       }
     }
-  } catch (e) { console.warn('loadReadSettings failed:', e) }
+  } catch (e) { logger.warn('loadReadSettings failed:', e) }
 }
 
 function saveReadSettings() {
   try {
     localStorage.setItem('read-settings', JSON.stringify(readSettings.value))
-  } catch (e) { console.warn('saveReadSettings failed:', e) }
+  } catch (e) { logger.warn('saveReadSettings failed:', e) }
 }
 
 function onFontSizeChange(value: number) {
@@ -617,13 +629,13 @@ function toggleTheme(e?: MouseEvent) {
       isDark.value = !isDark.value
       try {
         localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
-      } catch (err) { console.warn('saveTheme failed:', err) }
+      } catch (err) { logger.warn('saveTheme failed:', err) }
     })
   } else {
     isDark.value = !isDark.value
     try {
       localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
-    } catch (err) { console.warn('saveTheme failed:', err) }
+    } catch (err) { logger.warn('saveTheme failed:', err) }
   }
 }
 
@@ -646,7 +658,7 @@ onMounted(async () => {
   try {
     const saved = localStorage.getItem('theme')
     if (saved === 'light') isDark.value = false
-  } catch (e) { console.warn('loadTheme failed:', e) }
+  } catch (e) { logger.warn('loadTheme failed:', e) }
 
   // Load background settings
   loadBgSettings()
@@ -796,7 +808,7 @@ async function checkTectonic() {
       const data = await resp.json()
       tectonicOk.value = data.available === true
     }
-  } catch (e) { console.warn('tectonic check failed:', e) }
+  } catch (e) { logger.warn('tectonic check failed:', e) }
   finally { tectonicChecking.value = false }
 }
 
