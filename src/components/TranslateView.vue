@@ -371,7 +371,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, toRaw } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, toRaw } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { UploadCloud, AlertCircle, Check, Download, FileText, ChevronDown, PresentationScreen, Database, AlertTriangle } from './ui/icons'
 import UiButton from './ui/UiButton.vue'
@@ -435,6 +435,36 @@ onMounted(() => {
   if (state.status === 'done') {
     sealVisible.value = true
   }
+  window.addEventListener('voice-translate-new', handleVoiceTranslateNew)
+  window.addEventListener('voice-translate-retry', handleVoiceTranslateRetry)
+  window.addEventListener('voice-translate-export', handleVoiceTranslateExport as EventListener)
+})
+
+function handleVoiceTranslateNew() {
+  reset()
+  openFilePicker()
+}
+
+function handleVoiceTranslateRetry() {
+  state.blocks.filter(b => b.status === 'failed').forEach(b => retryFailedBlock(b.id))
+}
+
+function handleVoiceTranslateExport(e: Event) {
+  const { format } = (e as CustomEvent).detail
+  if (state.status !== 'done') return
+  switch (format) {
+    case 'bilingual-docx': exportBilingualDocx(); break
+    case 'translation-docx': exportTranslationOnlyDocx(); break
+    case 'bilingual-md': downloadResult(); break
+    case 'translation-md': exportTranslationOnlyMarkdown(); break
+    case 'pptx': exportPPTX(); break
+  }
+}
+
+onBeforeUnmount(() => {
+  window.removeEventListener('voice-translate-new', handleVoiceTranslateNew)
+  window.removeEventListener('voice-translate-retry', handleVoiceTranslateRetry)
+  window.removeEventListener('voice-translate-export', handleVoiceTranslateExport as EventListener)
 })
 
 async function retryFailedBlock(blockId: string) {
