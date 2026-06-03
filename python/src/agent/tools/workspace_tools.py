@@ -422,11 +422,13 @@ def _git_op(
 
     # 构建 git 命令
     git_cmd = _build_git_command(operation, args)
+    if isinstance(git_cmd, str) and git_cmd.startswith('{"error"'):
+        return git_cmd  # validation error from _build_git_command
 
     try:
         result = subprocess.run(
             git_cmd,
-            shell=True,
+            shell=False,
             capture_output=True,
             text=True,
             timeout=60,
@@ -446,55 +448,72 @@ def _git_op(
         return json.dumps({"operation": operation, "exit_code": -1, "error": str(e)})
 
 
-def _build_git_command(operation: str, args: dict) -> str:
-    """构建安全的 git 命令字符串。"""
+import shlex
+import re as _re
+
+_REF_PATTERN = _re.compile(r'^[a-zA-Z0-9._/@-]+$')
+
+
+def _build_git_command(operation: str, args: dict) -> list[str]:
+    """构建安全的 git 命令（argument list，不用 shell=True）。"""
     if operation == "status":
-        return "git status --short"
+        return ["git", "status", "--short"]
     elif operation == "diff":
+        cmd = ["git", "diff"]
+        if args.get("staged"):
+            cmd.append("--staged")
         path = args.get("path", "")
-        staged = "--staged" if args.get("staged") else ""
-        return f"git diff {staged} -- {path}".strip()
+        cmd.extend(["--", path])
+        return cmd
     elif operation == "log":
-        n = args.get("count", 10)
-        return f"git log --oneline -{n}"
+        n = str(args.get("count", 10))
+        return ["git", "log", "--oneline", f"-{n}"]
     elif operation == "show":
         ref = args.get("ref", "HEAD")
-        return f"git show --stat {ref}"
+        if not _REF_PATTERN.match(ref):
+            return json.dumps({"error": f"invalid git ref: {ref}"})
+        return ["git", "show", "--stat", ref]
     elif operation == "branch":
-        return "git branch -a"
+        return ["git", "branch", "-a"]
     elif operation == "tag":
-        return "git tag -l"
+        return ["git", "tag", "-l"]
     elif operation == "remote":
-        return "git remote -v"
+        return ["git", "remote", "-v"]
     elif operation == "commit":
-        msg = args.get("message", "agent commit").replace('"', '\\"')
+        msg = args.get("message", "agent commit")
         files = args.get("files", [])
-        files_str = " ".join(f'"{f}"' for f in files) if files else "-a"
-        return f'git commit {files_str} -m "{msg}"'
+        cmd = ["git", "commit"]
+        if files:
+            cmd.extend(files)
+        else:
+            cmd.append("-a")
+        cmd.extend(["-m", msg])
+        return cmd
     elif operation == "add":
         files = args.get("files", [])
         if files:
-            files_str = " ".join(f'"{f}"' for f in files)
-            return f"git add {files_str}"
-        return "git add -A"
+            return ["git", "add"] + list(files)
+        return ["git", "add", "-A"]
     elif operation == "restore":
         path = args.get("path", "")
         source = args.get("source", "HEAD")
-        return f'git restore --source={source} -- "{path}"'
+        if not _REF_PATTERN.match(source):
+            return json.dumps({"error": f"invalid git source ref: {source}"})
+        return ["git", "restore", f"--source={source}", "--", path]
     elif operation == "checkout":
         target = args.get("branch", "")
         if target:
-            return f'git checkout "{target}"'
+            return ["git", "checkout", target]
         path = args.get("path", "")
-        return f'git checkout -- "{path}"'
+        return ["git", "checkout", "--", path]
     elif operation == "stash":
         action = args.get("action", "push")
         if action == "pop":
-            return "git stash pop"
+            return ["git", "stash", "pop"]
         elif action == "list":
-            return "git stash list"
-        return "git stash push -u"
-    return "git status"
+            return ["git", "stash", "list"]
+        return ["git", "stash", "push", "-u"]
+    return ["git", "status"]
 
 
 # ---------------------------------------------------------------------------

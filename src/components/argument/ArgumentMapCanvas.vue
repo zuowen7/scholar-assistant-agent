@@ -135,7 +135,7 @@ function onNodesChange(changes: NodeChange[]) {
   border-radius: 20px;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--elevation-3);
   animation: pill-appear 0.25s var(--ease-out, cubic-bezier(0.4, 0, 0.2, 1));
 }
 @keyframes pill-appear {

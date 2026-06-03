@@ -35,30 +35,30 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 
 // ---------------------------------------------------------------------------
 // A. useEditor.ts should NOT export ghost text functions
+// Static import: vi.mock('monaco-editor') above is hoisted by vitest, so the
+// module will receive the mocked monaco-editor regardless of import order.
 // ---------------------------------------------------------------------------
 
+import { useEditor } from '../composables/useEditor'
+
 describe('useEditor.ts ghost text removal', () => {
-  it('does not export triggerCompletion', async () => {
-    const mod = await import('../composables/useEditor')
-    const editor = mod.useEditor()
+  it('does not export triggerCompletion', () => {
+    const editor = useEditor()
     expect((editor as Record<string, unknown>)['triggerCompletion']).toBeUndefined()
   })
 
-  it('does not export acceptGhostText', async () => {
-    const mod = await import('../composables/useEditor')
-    const editor = mod.useEditor()
+  it('does not export acceptGhostText', () => {
+    const editor = useEditor()
     expect((editor as Record<string, unknown>)['acceptGhostText']).toBeUndefined()
   })
 
-  it('does not export onDidChangeContent', async () => {
-    const mod = await import('../composables/useEditor')
-    const editor = mod.useEditor()
+  it('does not export onDidChangeContent', () => {
+    const editor = useEditor()
     expect((editor as Record<string, unknown>)['onDidChangeContent']).toBeUndefined()
   })
 
-  it('does not export clearGhostText', async () => {
-    const mod = await import('../composables/useEditor')
-    const editor = mod.useEditor()
+  it('does not export clearGhostText', () => {
+    const editor = useEditor()
     expect((editor as Record<string, unknown>)['clearGhostText']).toBeUndefined()
   })
 })

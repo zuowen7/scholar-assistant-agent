@@ -65,7 +65,7 @@ python -m src.agent.mcp_server
     "scholar-assistant": {
       "command": "python",
       "args": ["-m", "src.agent.mcp_server"],
-      "cwd": "D:\\pycharm_study\\translator\\python",
+      "cwd": "C:\\path\\to\\scholar-assistant\\python",
       "env": {
         "PYTHONPATH": "python/src",
         "HTTP_PROXY": "",
@@ -130,7 +130,7 @@ Windows 用户同样需要设置 `"HTTP_PROXY": ""` 和 `"HTTPS_PROXY": ""`。
 }
 ```
 
-## 可用工具 / Available Tools (16)
+## 可用工具 / Available Tools (12)
 
 | 工具 | 说明 |
 |------|------|
@@ -138,10 +138,6 @@ Windows 用户同样需要设置 `"HTTP_PROXY": ""` 和 `"HTTPS_PROXY": ""`。
 | `parse_document` | 解析 PDF/Word/PPT 等 16 种格式 |
 | `search_documents` | RAG 语义检索已入库文档 |
 | `crawl_arxiv` | 搜索 arXiv 学术论文 |
-| `polish_text` | 润色学术文本 |
-| `summarize_text` | 生成文本摘要 |
-| `generate_outline` | 生成论文大纲 |
-| `expand_section` | 扩写论文段落 |
 | `format_bibliography` | BibTeX → IEEE/APA/GB/T 7714/MLA |
 | `analyze_markdown_elements` | 分析 Markdown 特殊元素 |
 | `parse_table_structure` | 解析 Markdown 表格 |

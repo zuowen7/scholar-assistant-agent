@@ -104,7 +104,8 @@ async def extract_argument(
                     max_tokens=16384,
                     temperature=0.1,
                 )
-            except Exception:
+            except Exception as e:
+                logger.warning("LLM retry for Toulmin extraction failed: %s", e)
                 break
 
     if not parsed:

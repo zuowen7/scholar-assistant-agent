@@ -14,7 +14,7 @@ cleaner:
 
 # 文本切块
 chunker:
-  max_tokens: 2048
+  max_tokens: 800
   overlap_tokens: 128
   strategy: sentence
 

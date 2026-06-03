@@ -204,7 +204,7 @@ def register_agent(
                 if not e.name.startswith("chromadb"):
                     raise
                 logger.warning("chromadb module missing (%s); Agent chat will run without RAG memory", e.name)
-            except Exception:
+            except Exception as e:
                 logger.exception("RAG store init failed (non-fatal)")
 
             # Persistent memory, skills, trajectory
@@ -283,8 +283,8 @@ def register_agent(
             if session is not None:
                 try:
                     session.state = SessionState.ABORTED
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("session state cleanup failed: %s", e)
         if stale_ids:
             logger.info("Session pool cleanup: removed %d stale sessions", len(stale_ids))
         return len(stale_ids)
@@ -308,8 +308,8 @@ def register_agent(
                         if s is not None:
                             try:
                                 s.state = SessionState.ABORTED
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.debug("session LRU eviction state cleanup failed: %s", e)
                     if evict:
                         logger.info("Session pool LRU eviction: removed %d sessions", len(evict))
             except Exception as exc:
@@ -532,8 +532,8 @@ def register_agent(
             try:
                 trajectory._event_stream_path.rename(new_path)
                 trajectory._event_stream_path = new_path
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("event stream file rename failed: %s", e)
 
         async def _v2_stream() -> AsyncGenerator[dict, None]:
             try:
@@ -614,8 +614,8 @@ def register_agent(
         if not _shared:
             try:
                 await _ensure_shared()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("ensure shared state failed: %s", e)
 
         # In-memory sessions take priority
         result = {

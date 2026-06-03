@@ -44,7 +44,8 @@ def atomic_write_json(path: Path, data: Any) -> None:
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(tmp_name, path)
-        except Exception:
+        except Exception as e:
+            logger.debug("atomic_write_json failed, cleaning up temp file: %s", e)
             try:
                 os.unlink(tmp_name)
             except OSError:

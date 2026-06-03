@@ -275,8 +275,8 @@ def _extract_epub(path: Path) -> DocumentContent:
         # 显式释放 EPUB 资源
         try:
             book.book.close()
-        except Exception:
-            logger.debug("EPUB close error (ignored)", exc_info=True)
+        except Exception as e:
+            logger.debug("EPUB close error (ignored): %s", e)
 
 
 # ---------------------------------------------------------------------------

@@ -246,8 +246,6 @@
     "inputPlaceholder": "输入问题...（/ 命令，{atChar} 引用文件）",
     "stopGenerate": "停止生成",
     "send": "发送",
-    "voiceStart": "语音输入",
-    "voiceStop": "停止语音输入",
     "requestFailed": "请求失败",
     "responseEmpty": "响应内容为空",
     "error": "错误",

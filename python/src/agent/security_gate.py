@@ -14,11 +14,14 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class ToolRiskLevel(Enum):
@@ -151,7 +154,8 @@ class SecurityGate:
         candidate = raw if raw.is_absolute() else (self._workspace_root / raw)
         try:
             resolved = candidate.resolve(strict=False)
-        except Exception:
+        except Exception as e:
+            logger.warning("path resolution failed for security check: %s", e)
             return False
         try:
             resolved.relative_to(self._workspace_root)

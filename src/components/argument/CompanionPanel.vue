@@ -294,9 +294,9 @@ async function updatePointStatus(pointId: string, status: string) {
   gap: 6px;
   padding: 4px 10px;
   font-size: 10px;
-  color: #4ade80;
-  background: rgba(74, 222, 128, 0.07);
-  border-bottom: 1px solid rgba(74, 222, 128, 0.14);
+  color: var(--c-success);
+  background: var(--c-success-bg);
+  border-bottom: 1px solid var(--c-success-border);
   flex-shrink: 0;
 }
 
@@ -305,7 +305,7 @@ async function updatePointStatus(pointId: string, status: string) {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #4ade80;
+  background: var(--c-success);
   flex-shrink: 0;
 }
 .agent-link-dot::after {
@@ -313,7 +313,7 @@ async function updatePointStatus(pointId: string, status: string) {
   position: absolute;
   inset: -3px;
   border-radius: 50%;
-  border: 1.5px solid #4ade80;
+  border: 1.5px solid var(--c-success);
   animation: sonar-ring 1.8s ease-out infinite;
 }
 @keyframes sonar-ring {
@@ -358,9 +358,9 @@ async function updatePointStatus(pointId: string, status: string) {
   font-size: 10px;
   padding: 2px 6px;
   border-radius: 3px;
-  border: 1px solid #fbbf24;
+  border: 1px solid var(--c-warn);
   background: none;
-  color: #fbbf24;
+  color: var(--c-warn);
   cursor: pointer;
 }
 

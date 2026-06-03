@@ -144,8 +144,8 @@ onMounted(() => {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse at 50% 45%, transparent 20%, rgba(12, 13, 16, 0.6) 70%),
-    linear-gradient(to bottom, rgba(12, 13, 16, 0.3) 0%, transparent 40%, transparent 60%, rgba(12, 13, 16, 0.7) 100%);
+    radial-gradient(ellipse at 50% 45%, transparent 20%, color-mix(in srgb, var(--ink-0) 60%, transparent) 70%),
+    linear-gradient(to bottom, color-mix(in srgb, var(--ink-0) 30%, transparent) 0%, transparent 40%, transparent 60%, color-mix(in srgb, var(--ink-0) 70%, transparent) 100%);
   pointer-events: none;
 }
 
@@ -160,8 +160,8 @@ onMounted(() => {
   position: absolute;
   border-radius: 50%;
   background: radial-gradient(circle at 40% 40%,
-    rgba(91, 108, 255, 0.14) 0%,
-    rgba(91, 108, 255, 0.04) 40%,
+    color-mix(in srgb, var(--c-accent) 14%, transparent) 0%,
+    color-mix(in srgb, var(--c-accent) 4%, transparent) 40%,
     transparent 70%
   );
   filter: blur(2px);
@@ -190,7 +190,7 @@ onMounted(() => {
   width: 0;
   height: 0;
   border-radius: 50%;
-  border: 1.5px solid rgba(91, 108, 255, 0.2);
+  border: 1.5px solid color-mix(in srgb, var(--c-accent) 20%, transparent);
   opacity: 0;
   animation: splash-bloom-expand 4s var(--ease-brush) infinite;
   pointer-events: none;
@@ -256,7 +256,7 @@ onMounted(() => {
   color: var(--c-text-0);
   letter-spacing: var(--tracking-display);
   line-height: 1;
-  text-shadow: 0 2px 20px rgba(0, 0, 0, 0.4);
+  text-shadow: 0 2px 20px var(--c-shadow);
 }
 
 .splash-subtitle {
@@ -313,7 +313,7 @@ onMounted(() => {
   inset: 0;
   width: 100%;
   height: 100%;
-  color: rgba(232, 233, 240, 0.88);
+  color: var(--c-text-0);
   overflow: visible;
 }
 
@@ -355,7 +355,7 @@ onMounted(() => {
 .ink-brush-loader__grain--c { animation-delay: 0.78s; stroke-width: 2.8; }
 
 .ink-brush-loader__text {
-  color: rgba(202, 205, 222, 0.72);
+  color: var(--c-text-2);
   font-size: 13px;
   letter-spacing: 0;
   line-height: 1.5;
@@ -396,12 +396,12 @@ onMounted(() => {
 :global([data-theme="light"]) .ink-brush-loader--overlay { background: var(--paper-0); }
 :global([data-theme="light"]) .splash-overlay {
   background:
-    radial-gradient(ellipse at 50% 45%, transparent 20%, rgba(240, 235, 224, 0.5) 70%),
-    linear-gradient(to bottom, rgba(240, 235, 224, 0.3) 0%, transparent 40%, transparent 60%, rgba(240, 235, 224, 0.6) 100%);
+    radial-gradient(ellipse at 50% 45%, transparent 20%, color-mix(in srgb, var(--paper-0) 50%, transparent) 70%),
+    linear-gradient(to bottom, color-mix(in srgb, var(--paper-0) 30%, transparent) 0%, transparent 40%, transparent 60%, color-mix(in srgb, var(--paper-0) 60%, transparent) 100%);
 }
-:global([data-theme="light"]) .splash-title { color: var(--c-text-0); text-shadow: 0 2px 20px rgba(255, 255, 255, 0.4); }
+:global([data-theme="light"]) .splash-title { color: var(--c-text-0); text-shadow: 0 2px 20px var(--c-overlay); }
 :global([data-theme="light"]) .ink-brush-loader__panel {
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--c-glass);
   border-color: var(--c-surface-3);
   color: var(--c-text-0);
   box-shadow: var(--elevation-3);

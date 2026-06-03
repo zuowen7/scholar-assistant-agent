@@ -127,8 +127,8 @@ def register_editor(
                         age_minutes = (now - path.stat().st_mtime) / 60
                         if age_minutes > 30:
                             path.unlink(missing_ok=True)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("output file reaper unlink failed: %s", e)
             except asyncio.CancelledError:
                 return
             except Exception as exc:
@@ -254,13 +254,15 @@ def register_editor(
                             try:
                                 parsed = _CloudResponse.model_validate(json.loads(data_str))
                                 token = parsed.choices[0].delta.content if parsed.choices else ""
-                            except Exception:
+                            except Exception as e:
+                                logger.debug("cloud SSE chunk parse failed: %s", e)
                                 continue
                         else:
                             try:
                                 parsed = _OllamaChunk.model_validate(json.loads(line))
                                 token = parsed.message.content
-                            except Exception:
+                            except Exception as e:
+                                logger.debug("ollama SSE chunk parse failed: %s", e)
                                 continue
                         if token:
                             full_content += token

@@ -68,7 +68,7 @@ class TestResumeFromCheckpoint:
             agent=agent,
             session_id="sess_meta",
             session_store=store,
-            config=SessionConfig(),
+            config=SessionConfig(auto_approve=True),
         )
         session.task_queue._tasks = []  # No tasks — immediate done
 

@@ -585,7 +585,7 @@ class MemoryManager:
         if conn is not None:
             try:
                 conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("wal checkpoint failed: %s", e)
             conn.close()
             self._local.conn = None

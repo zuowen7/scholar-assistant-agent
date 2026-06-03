@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { useSpeechRecognition } from './useSpeechRecognition'
+import { logger } from '../utils/logger'
 
 const isTauri = '__TAURI_INTERNALS__' in window
 
@@ -37,7 +38,7 @@ function submit() {
   const text = transcript.value.trim()
   if (!text) { cancel(); return }
   state.value = 'submitting'
-  console.log('[voice] submitting:', text)
+  logger.debug('[voice] submitting:', text)
   window.dispatchEvent(new CustomEvent('voice-command-submit', {
     detail: { text },
   }))
@@ -78,7 +79,7 @@ const speech = useSpeechRecognition({
 
 export function useVoiceCommand() {
   function triggerVoiceCommand() {
-    console.log('[voice] triggerVoiceCommand, state=', state.value)
+    logger.debug('[voice] triggerVoiceCommand, state=', state.value)
     if (state.value !== 'idle') {
       cancel()
       return

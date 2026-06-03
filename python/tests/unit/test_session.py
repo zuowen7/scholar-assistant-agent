@@ -57,7 +57,7 @@ class TestSessionInit:
 
     def test_default_config(self, agent):
         s = AgentSession(agent=agent)
-        assert s.config.auto_approve is True
+        assert s.config.auto_approve is False
         assert s.global_step == 0
         assert len(s.pending_approvals) == 0
         assert len(s.approved_categories) == 0

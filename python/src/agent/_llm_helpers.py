@@ -25,7 +25,8 @@ async def _safe_response_text(response: httpx.Response) -> str:
     try:
         await response.aread()
         return response.text[:500]
-    except Exception:
+    except Exception as e:
+        logger.debug("failed to read response body: %s", e)
         return "<response body not available>"
 
 

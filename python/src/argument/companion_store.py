@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import threading
@@ -13,6 +14,8 @@ from pathlib import Path
 from typing import Optional
 
 from .companion_models import Ledger, Promise, RebuttalTurn, ReviewPoint, ReviewSession
+
+logger = logging.getLogger(__name__)
 
 
 def _safe(doc_id: str) -> str:
@@ -40,15 +43,15 @@ class CompanionStore:
                 data = json.loads(fp.read_text(encoding="utf-8"))
                 ledger = Ledger.model_validate(data)
                 self._ledgers[ledger.doc_id] = ledger
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("failed to load ledger from %s: %s", fp.name, e)
         for fp in self._review_dir.glob("*.json"):
             try:
                 data = json.loads(fp.read_text(encoding="utf-8"))
                 session = ReviewSession.model_validate(data)
                 self._reviews[session.id] = session
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("failed to load review session from %s: %s", fp.name, e)
 
     def _flush_ledger(self, ledger: Ledger) -> None:
         path = self._ledger_dir / f"{_safe(ledger.doc_id)}.json"
@@ -86,13 +89,15 @@ class CompanionStore:
         from pathlib import Path
         try:
             target = Path(file_path).resolve()
-        except Exception:
+        except Exception as e:
+            logger.warning("path resolve failed for ledger lookup: %s", e)
             return None
         for doc_id, ledger in self._ledgers.items():
             try:
                 if Path(doc_id).resolve() == target:
                     return ledger
-            except Exception:
+            except Exception as e:
+                logger.debug("ledger path comparison failed: %s", e)
                 continue
         return None
 

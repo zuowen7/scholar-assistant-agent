@@ -77,8 +77,8 @@ class VisionClient:
             if config_path.exists():
                 with open(config_path, encoding="utf-8") as f:
                     return yaml.safe_load(f) or {}
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to load config file: %s", e)
         return {}
 
     def _get_credentials(self) -> tuple[str, str, str]:
