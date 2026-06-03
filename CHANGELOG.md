@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.3.5] — 2026-06-01
+## [0.3.6] — 2026-06-01
 
 ### Added
 - **Voice Assistant** — Siri-style hands-free control: wake word "小研" (homophone variant matching), global hotkey `Alt+Shift+V` (Tauri plugin, system-wide), voice dictation in editor/Agent/AI panel, customizable via settings
@@ -19,7 +19,7 @@
 - CI: Regenerate `requirements-lock.txt` with ChromaDB + NumPy + transitive deps
 - CI: Add NumPy to requirements for test job
 - CI: Opt into Node.js 24 for GitHub Actions runtime
-- Build: version 0.3.3 → 0.3.5 synced across 4 files (Cargo.toml, tauri.conf.json, tauri.dev.conf.json, _version.py)
+- Build: version 0.3.3 → 0.3.6 synced across 4 files (Cargo.toml, tauri.conf.json, tauri.dev.conf.json, _version.py)
 
 ## [0.3.3] — 2026-05-31
 
