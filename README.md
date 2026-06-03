@@ -31,6 +31,10 @@ v0.3.6 — Latest: Siri-like voice command routing (20+ commands), bilingual UI.
 |-------------------|----------------------|
 | ![Mind Map Demo](docs/demo/mindmap.gif) | ![Argument Map Demo](docs/demo/argument.gif) |
 
+| Voice — Wake Word + Dictation |
+|------------------------------|
+| ![Voice Assistant Demo](docs/demo/voice.gif) |
+
 | More Features |
 |---------------|
 | ![More](docs/demo/demo2.gif) |
