@@ -366,6 +366,7 @@ onMounted(async () => {
   canvasResizeObserver.observe(document.documentElement)
   window.addEventListener('resize', handleWindowResize)
   window.addEventListener('keydown', onKeydown)
+  window.addEventListener('voice-mindmap-command', handleVoiceMindmapCommand as EventListener)
   clampPaneSizes()
   await nextTick()
   placeMiniMapIfNeeded()
@@ -378,6 +379,7 @@ onBeforeUnmount(() => {
   canvasResizeObserver?.disconnect()
   window.removeEventListener('resize', handleWindowResize)
   window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('voice-mindmap-command', handleVoiceMindmapCommand as EventListener)
   _paneResizeCleanup?.()
   _paneResizeCleanup = null
 })
@@ -603,6 +605,20 @@ function addChildWithPosition() {
   const parent = selectedNode.value
   if (!parent) return
   addChild(parent.id)
+}
+
+function handleVoiceMindmapCommand(e: Event) {
+  const { action } = (e as CustomEvent).detail
+  switch (action) {
+    case 'add-child': addChildWithPosition(); break
+    case 'delete-node': deleteSelectedNode(); break
+    case 'ai-expand': aiExpandSelectedNode(); break
+    case 'layout': autoLayout(); break
+    case 'save': saveMindMap(); break
+    case 'analyze': runMindMapAnalysis(); break
+    case 'zoom-in': case 'zoom-out': case 'fit-view': case 'reset-view':
+      sendViewCommand(action); break
+  }
 }
 
 function resetMap() {

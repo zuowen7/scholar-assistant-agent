@@ -251,6 +251,9 @@ function handleVoiceCommandSubmit(e: Event) {
   useVoiceRouter().routeCommand(text.trim()).then((result) => {
     if (result.type === 'chat') {
       // Fallback: send to agent chat (existing behavior)
+      // Ensure editor mode + agent panel open so user sees the response
+      setMode('editor')
+      toggleAgentChat(true)
       const { sendMessage, sending } = useAgentChat()
       const { rootDir } = useFileTree()
       const { activeTab } = useEditor()
@@ -259,6 +262,7 @@ function handleVoiceCommandSubmit(e: Event) {
         logger.warn('[voice] Agent is busy (sending=true), queueing...')
       }
 
+      // Close voice overlay immediately — user sees response in AgentPanel
       voiceCmd.done()
 
       sendMessage(
