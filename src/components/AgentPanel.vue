@@ -475,9 +475,9 @@ const {
   messages, sending, pendingApproval,
   ragDocuments, ragLoading,
   sendMessage: agentSendMessage,
-  stopGenerating, clearHistory,
   sendApproval, abortSession,
   resumeSession,
+  sessionId,
   fetchSessions: _fetchSessions,
   fetchRAGDocuments: _fetchRAGDocs,
   deleteRAGDocument,
@@ -486,7 +486,7 @@ const {
 
 const { selection: editorSelection, content: editorContent, activeTab: editorActiveTab, reloadOpenTabs } = useEditor()
 
-const { tabs: editorTabs, activeEdit, setActiveEdit, clearActiveEdit, shouldShowInlineDiff } = useEditorState()
+const { tabs: editorTabs, setActiveEdit, clearActiveEdit } = useEditorState()
 
 const { rootDir, refresh: refreshFileTree } = useFileTree()
 
@@ -638,14 +638,6 @@ watch(pendingApproval, (p) => {
     clearActiveEdit()
   }
 })
-
-// When inline diff is resolved (accept/reject), forward to sendApproval
-async function handleInlineDiffDecision(decision: 'allow_once' | 'deny') {
-  const edit = activeEdit.value
-  if (!edit) return
-  await sendApproval(edit.eventId, decision)
-  clearActiveEdit()
-}
 
 // ── Sessions ──
 async function refreshSessions() {

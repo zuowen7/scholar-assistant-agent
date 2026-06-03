@@ -72,11 +72,6 @@ function escapeHtmlText(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-// Restore math blocks after Markdown rendering
-function restoreMath(html: string, blocks: string[]): string {
-  return html.replace(/\x00MATH(\d+)\x00/g, (_, idx) => blocks[parseInt(idx)])
-}
-
 // Configure marked
 marked.setOptions({
   gfm: true,

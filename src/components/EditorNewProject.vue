@@ -46,7 +46,7 @@ import { X } from './ui/icons'
 
 defineProps<{ visible: boolean }>()
 
-const emit = defineEmits<{
+defineEmits<{
   close: []
   'enter-editor': []
   'enter-mindmap': [topic: string]

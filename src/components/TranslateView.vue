@@ -381,7 +381,7 @@ import UiSpinner from './ui/UiSpinner.vue'
 import { API_BASE } from '../utils/api'
 import { useTranslate } from '../composables/useTranslate'
 import { renderMarkdown, renderBlock } from '../utils/markdown'
-import { findCorrespondingSentenceIdx, splitSentences, type Sentence } from '../utils/sentenceAlign'
+import { findCorrespondingSentenceIdx, splitSentences } from '../utils/sentenceAlign'
 import type { DropdownItem } from './ui/UiDropdown.vue'
 
 const { t } = useI18n()
@@ -711,7 +711,6 @@ function updateSentenceHighlight(blockId: string, side: 'orig' | 'trans', sentId
   const block = state.blocks.find(b => b.id === blockId)
   if (!block || !block.translated) return
 
-  const otherSide = side === 'orig' ? 'trans' : 'orig'
   const lang = side === 'orig' ? 'en' : 'zh'
   const otherLang = side === 'orig' ? 'zh' : 'en'
 
@@ -738,9 +737,7 @@ function updateSentenceHighlight(blockId: string, side: 'orig' | 'trans', sentId
   if (transSentEl) transSentEl.classList.add('sent-active')
 }
 
-function handleSentenceClick(e: MouseEvent) {
-  // reserved
-}
+// Sentence highlight utilities
 
 const paragraphCount = computed(() =>
   state.blocks.filter(b => b.type === 'paragraph').length

@@ -2,6 +2,22 @@ import { ref } from 'vue'
 
 type SpeechStatus = 'idle' | 'listening'
 
+declare class SpeechRecognition extends EventTarget {
+  continuous: boolean; interimResults: boolean; lang: string
+  start(): void; stop(): void; abort(): void
+  onstart: ((ev: Event) => void) | null
+  onend: ((ev: Event) => void) | null
+  onerror: ((ev: SpeechRecognitionErrorEvent) => void) | null
+  onresult: ((ev: SpeechRecognitionEvent) => void) | null
+}
+declare class SpeechRecognitionErrorEvent extends Event { error: string; message: string }
+declare class SpeechRecognitionEvent extends Event {
+  resultIndex: number; results: SpeechRecognitionResultList
+}
+declare class SpeechRecognitionResultList { readonly length: number; [index: number]: SpeechRecognitionResult }
+declare class SpeechRecognitionResult { readonly isFinal: boolean; readonly length: number; [index: number]: SpeechRecognitionAlternative }
+declare class SpeechRecognitionAlternative { transcript: string; confidence: number }
+
 function getSpeechRecognition(): SpeechRecognition | null {
   const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
   if (!SR) return null
@@ -42,7 +58,6 @@ function joinUtterances(prev: string, next: string): string {
     // No trailing punctuation to worry about — just append
     return prev + ' ' + next
   }
-  const trailing = prev.slice(stripped.length)
   // Detect if `next` starts a new sentence:
   // - English capital letter or Chinese sentence-starter → keep the punctuation
   // - Otherwise → continuation, replace punctuation with a comma (Chinese) or nothing (English)
@@ -121,14 +136,14 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
 
     sr.onstart = () => { status.value = 'listening' }
     sr.onend = () => { status.value = 'idle'; options?.onEnd?.() }
-    sr.onerror = (e) => {
+    sr.onerror = (e: SpeechRecognitionErrorEvent) => {
       if (e.error !== 'no-speech' && e.error !== 'aborted') {
         error.value = e.error
       }
       status.value = 'idle'
     }
 
-    sr.onresult = (e) => {
+    sr.onresult = (e: SpeechRecognitionEvent) => {
       let latestInterim = ''
 
       for (let i = 0; i < e.results.length; i++) {

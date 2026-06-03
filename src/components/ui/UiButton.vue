@@ -18,9 +18,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-
-const props = defineProps<{
+defineProps<{
   variant?: 'primary' | 'secondary' | 'ghost' | 'soft' | 'subtle' | 'danger' | 'bezel'
   size?: 'sm' | 'md' | 'lg'
   disabled?: boolean
@@ -32,8 +30,6 @@ const props = defineProps<{
 defineEmits<{
   (e: 'click', event: MouseEvent): void
 }>()
-
-const iconSize = computed(() => (props.size === 'sm' ? 12 : props.size === 'lg' ? 16 : 14))
 </script>
 
 <style scoped>

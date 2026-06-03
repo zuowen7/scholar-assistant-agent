@@ -263,7 +263,6 @@ const {
   selectNode,
   updateNodeText,
   addChild,
-  addAssociationLink,
   expandNode,
   deleteNode,
 } = useMindMap()

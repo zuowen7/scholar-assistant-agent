@@ -147,9 +147,7 @@ import MonacoEditor from './MonacoEditor.vue'
 import MarkdownPreview from './MarkdownPreview.vue'
 import FileTree from './FileTree.vue'
 import AiPanel from './AiPanel.vue'
-import ArgumentMapMini from './argument/ArgumentMapMini.vue'
 import CompanionPanel from './argument/CompanionPanel.vue'
-import ComplianceModal from './ComplianceModal.vue'
 import TemplatePicker from './TemplatePicker.vue'
 import MindMapView from './MindMapView.vue'
 
@@ -163,7 +161,7 @@ import { useMindMap, markdownToMindMapNodes } from '../composables/useMindMap'
 import { useArgumentCompanion } from '../composables/useArgumentCompanion'
 import { API_BASE } from '../utils/api'
 
-const props = defineProps<{ isDark: boolean }>()
+defineProps<{ isDark: boolean }>()
 
 // -- Shared singleton state (single source of truth) ---------------------
 const { activeTab, content, contentVersion, selection, previousContent, tabs, aiResult, insertTextAtCursor, activeFile } = useEditorState()
@@ -175,10 +173,10 @@ const {
 } = useEditor()
 
 // -- AI edit actions (from useEditor, called once) -----------------------
-const { aiEdit, applyAiResult, undoEdit } = useEditor()
+const { applyAiResult, undoEdit } = useEditor()
 
 // -- Feature composables ---------------------------------------------------
-const { analyzeVision, uploadImage, insertImageFile } = useEditorVision()
+const { analyzeVision, insertImageFile } = useEditorVision()
 const { processCitations, previewCitations, getZoteroStatus, searchZotero } = useEditorCitation()
 const { exportToWord, exportLatex, exportPdf, loadExportTemplates } = useEditorIO()
 const { resetMindMap, loadSavedMindMap, saveMindMap, addChild, updateNodeText, updateNodeBody, skipNextBackendLoad } = useMindMap()
@@ -526,7 +524,7 @@ function handleVoiceUpdate(text: string) {
   lastVoiceText = text
 }
 
-function handleVoiceStop(text: string) {
+function handleVoiceStop(_text: string) {
   voiceRange = null
   lastVoiceText = ''
 }
