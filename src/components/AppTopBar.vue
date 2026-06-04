@@ -8,6 +8,14 @@
       <span class="brand-name">研墨</span>
     </div>
 
+    <!-- ── Project indicator ────────────────────────────────── -->
+    <div v-if="currentProject" class="project-chip" :title="currentProject.name">
+      <span class="project-chip-name">{{ currentProject.name }}</span>
+      <button class="project-chip-close" :aria-label="t('project.closeProject')" @click="handleCloseProject">
+        <X :size="12" />
+      </button>
+    </div>
+
     <!-- ── Center: Mode switch ─────────────────────────────── -->
     <div class="topbar-center" data-tauri-drag-region>
       <UiSegmented
@@ -403,6 +411,8 @@ import { useI18n } from 'vue-i18n'
 import { argMapV2Enabled } from '../composables/useArgumentMap'
 import { useLocale } from '../composables/useLocale'
 import { Settings, Sun, Moon, Upload, Trash2, MessageSquare } from './ui/icons'
+import { X } from './ui/icons'
+import { useProject } from '../composables/useProject'
 import UiSegmented from './ui/UiSegmented.vue'
 import UiButton from './ui/UiButton.vue'
 import UiPopover from './ui/UiPopover.vue'
@@ -414,6 +424,11 @@ import type { AppMode } from '../types'
 
 const { t } = useI18n()
 const { currentLocale, setLocale } = useLocale()
+const { currentProject, closeProject } = useProject()
+
+function handleCloseProject() {
+  closeProject()
+}
 
 const props = defineProps<{
   appMode: AppMode
@@ -581,6 +596,44 @@ function onVoiceSettingChange<K extends keyof VoiceSettings>(key: K, value: Voic
   flex-shrink: 0;
   border-right: 1px solid var(--ink-4);
 }
+
+/* ── Project chip ────────────────────────────────────────── */
+.project-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-surface-4);
+  font-size: 12px;
+  color: var(--c-text-1);
+  max-width: 200px;
+  flex-shrink: 0;
+}
+.project-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.project-chip-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--c-text-3);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.project-chip-close:hover {
+  color: var(--c-text-0);
+  background: var(--c-surface-4);
+}
+
 .logo {
   width: 28px;
   height: 28px;
