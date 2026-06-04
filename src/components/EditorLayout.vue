@@ -270,11 +270,14 @@ async function handleProjectCreated(path: string) {
   showProjectStart.value = false
   const { openProject } = await import('../composables/useProject').then(m => m.useProject())
   await openProject(path)
+  // Open an untitled tab so the welcome screen disappears
+  openNewUntitled()
 }
 
 async function handleOpenRecentProject(path: string) {
   const { openProject } = await import('../composables/useProject').then(m => m.useProject())
   await openProject(path)
+  openNewUntitled()
 }
 
 function enterEditorFromMindMap(outline: string) {

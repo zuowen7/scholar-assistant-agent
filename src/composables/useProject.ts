@@ -60,6 +60,9 @@ export async function openProject(path: string): Promise<void> {
     }
     const meta: ProjectMetadata = await resp.json()
     currentProject.value = meta
+    // Open the file tree to the project root
+    const { useFileTree } = await import('./useFileTree')
+    await useFileTree().openFolder(path)
   } finally {
     projectLoading.value = false
   }
