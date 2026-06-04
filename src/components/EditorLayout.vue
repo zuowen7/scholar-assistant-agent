@@ -125,8 +125,6 @@
     <EditorNewProject
       :visible="showProjectStart"
       @close="showProjectStart = false"
-      @enter-editor="startProjectInEditor"
-      @enter-mindmap="startProjectWithMindMap"
       @project-created="handleProjectCreated"
     />
   </div>
@@ -268,16 +266,23 @@ function startProjectWithMindMap(topic: string) {
 
 async function handleProjectCreated(path: string) {
   showProjectStart.value = false
-  const { openProject } = await import('../composables/useProject').then(m => m.useProject())
-  await openProject(path)
-  // Open an untitled tab so the welcome screen disappears
-  openNewUntitled()
+  try {
+    const { useProject } = await import('../composables/useProject')
+    await useProject().openProject(path)
+    openNewUntitled()
+  } catch (e: any) {
+    console.error('Failed to open project:', e)
+  }
 }
 
 async function handleOpenRecentProject(path: string) {
-  const { openProject } = await import('../composables/useProject').then(m => m.useProject())
-  await openProject(path)
-  openNewUntitled()
+  try {
+    const { useProject } = await import('../composables/useProject')
+    await useProject().openProject(path)
+    openNewUntitled()
+  } catch (e: any) {
+    console.error('Failed to open recent project:', e)
+  }
 }
 
 function enterEditorFromMindMap(outline: string) {

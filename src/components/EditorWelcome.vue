@@ -117,10 +117,13 @@
 <script setup lang="ts">
 import { FileText, FolderOpen, FilePlus } from './ui/icons'
 import { useI18n } from 'vue-i18n'
+import { onMounted } from 'vue'
 import { useProject } from '../composables/useProject'
 
 const { t } = useI18n()
-const { recentProjects } = useProject()
+const { recentProjects, loadRecentProjects } = useProject()
+
+onMounted(() => { loadRecentProjects() })
 
 defineEmits<{
   'new-project': []

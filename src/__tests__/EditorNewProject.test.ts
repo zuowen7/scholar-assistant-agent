@@ -7,6 +7,10 @@ vi.mock('vue-i18n', () => ({
   }),
 }))
 
+vi.mock('../utils/api', () => ({
+  API_BASE: '',
+}))
+
 vi.mock('@tauri-apps/plugin-dialog', () => ({
   open: vi.fn().mockResolvedValue('/tmp/selected-dir'),
 }))

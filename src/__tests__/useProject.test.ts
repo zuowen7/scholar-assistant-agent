@@ -4,10 +4,16 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 const mockFetch = vi.fn()
 globalThis.fetch = mockFetch
 
-// Mock useFileTree (openProject imports it dynamically)
+vi.mock('../utils/api', () => ({
+  API_BASE: '',
+}))
+
+// Mock useFileTree (openProject/closeProject import it dynamically)
 vi.mock('../composables/useFileTree', () => ({
   useFileTree: () => ({
     openFolder: vi.fn().mockResolvedValue(undefined),
+    rootDir: { value: null },
+    files: { value: [] },
   }),
 }))
 
