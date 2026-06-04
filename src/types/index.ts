@@ -365,3 +365,31 @@ export interface EditStreamEvent {
 }
 
 export type AppMode = 'translate' | 'editor' | 'argument'
+
+// ── Project Management ──────────────────────────────────────────────
+
+export interface ProjectMetadata {
+  version: number
+  name: string
+  author: string
+  created_at: string
+  updated_at: string
+  template_id: string
+  status: 'creating' | 'ready'
+  tags: string[]
+  vcs: { initialized: boolean }
+  env: { type: string | null; path: string | null }
+}
+
+export interface RecentProject {
+  path: string
+  name: string
+  template_id: string
+  opened_at: string
+}
+
+export interface ProjectTemplate {
+  id: string
+  name: string
+  folders: string[]
+}
