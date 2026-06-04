@@ -16,10 +16,9 @@
       <!-- Magazine asymmetric grid -->
       <div class="magazine-grid">
         <!-- Main card: spans 2 cols, taller -->
-        <button class="wc-card wc-card--hero" @click="$emit('new-project')">
+        <button class="wc-card wc-card--hero" data-test="card-new-project" @click="$emit('new-project')">
           <div class="wc-card-line" />
           <div class="wc-card-inner">
-            <!-- Brush + nodes SVG illustration -->
             <svg class="wc-illustration" viewBox="0 0 120 80" fill="none" aria-hidden="true">
               <path d="M18 62 C22 50 28 38 35 28" stroke="var(--c-accent)" stroke-width="2" stroke-linecap="round" opacity="0.7" />
               <path d="M35 28 C38 22 42 18 48 16" stroke="var(--c-accent)" stroke-width="1.5" stroke-linecap="round" opacity="0.5" />
@@ -52,7 +51,7 @@
           </div>
         </button>
 
-        <button class="wc-card" @click="$emit('open-folder')">
+        <button class="wc-card" data-test="card-open-folder" @click="$emit('open-folder')">
           <div class="wc-card-line" />
           <div class="wc-card-inner">
             <span class="wc-icon"><FolderOpen :size="18" /></span>
@@ -73,6 +72,23 @@
             </div>
           </div>
         </button>
+      </div>
+
+      <!-- Recent projects -->
+      <div v-if="recentProjects.length" data-test="recent-projects" class="recent-section">
+        <div class="recent-header">{{ t('project.recentProjects') }}</div>
+        <div class="recent-list">
+          <button
+            v-for="proj in recentProjects.slice(0, 5)"
+            :key="proj.path"
+            data-test="recent-item"
+            class="recent-item"
+            @click="$emit('open-recent', proj.path)"
+          >
+            <span class="recent-name">{{ proj.name }}</span>
+            <span class="recent-path">{{ formatPath(proj.path) }}</span>
+          </button>
+        </div>
       </div>
 
       <!-- Shortcuts as chips -->
@@ -101,15 +117,23 @@
 <script setup lang="ts">
 import { FileText, FolderOpen, FilePlus } from './ui/icons'
 import { useI18n } from 'vue-i18n'
+import { useProject } from '../composables/useProject'
 
 const { t } = useI18n()
+const { recentProjects } = useProject()
 
 defineEmits<{
   'new-project': []
   'open-template': []
   'open-folder': []
   'new-document': []
+  'open-recent': [path: string]
 }>()
+
+function formatPath(p: string): string {
+  const parts = p.split(/[/\\]/)
+  return parts.slice(-2).join('/')
+}
 </script>
 
 <style scoped>
@@ -263,6 +287,57 @@ defineEmits<{
 .wc-text { display: flex; flex-direction: column; gap: 3px; }
 .wc-text strong { font-size: var(--text-md); font-weight: 600; }
 .wc-text span { font-size: var(--text-sm); color: var(--c-text-3); }
+
+/* Recent projects */
+.recent-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recent-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recent-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--c-surface-3);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface-1);
+  color: var(--c-text-1);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color var(--motion-fast), background var(--motion-fast);
+}
+.recent-item:hover {
+  border-color: var(--c-accent);
+  background: var(--c-surface-2);
+}
+
+.recent-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.recent-path {
+  font-size: 11px;
+  color: var(--c-text-3);
+  margin-left: auto;
+}
 
 /* Shortcut chips */
 .welcome-shortcuts {
