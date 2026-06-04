@@ -76,7 +76,7 @@
             <button
               data-test="create-btn"
               class="create-btn u-interactive"
-              :disabled="!form.name.trim() || creating"
+              :disabled="!form.name.trim() || !form.location || creating"
               @click="handleCreate"
             >
               {{ creating ? t('project.creating') : t('project.create') }}
@@ -93,6 +93,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { X } from './ui/icons'
 import { useProject } from '../composables/useProject'
+import { API_BASE } from '../utils/api'
 import type { ProjectTemplate } from '../types'
 
 const { t } = useI18n()
@@ -101,8 +102,6 @@ defineProps<{ visible: boolean }>()
 
 const emit = defineEmits<{
   close: []
-  'enter-editor': []
-  'enter-mindmap': [topic: string]
   'project-created': [path: string]
 }>()
 
@@ -122,7 +121,6 @@ const error = ref('')
 
 onMounted(async () => {
   try {
-    const { API_BASE } = await import('../utils/api')
     const resp = await fetch(`${API_BASE}/api/project/templates`)
     if (resp.ok) templates.value = await resp.json()
   } catch { /* use empty list */ }
@@ -148,6 +146,12 @@ async function handleCreate() {
       template_id: form.templateId,
       init_git: form.initGit,
     })
+    // Reset form after success
+    form.name = ''
+    form.author = ''
+    form.templateId = 'research_paper'
+    form.location = ''
+    form.initGit = true
     emit('project-created', result.project_path)
   } catch (e: any) {
     error.value = e.message || t('project.createFailed')

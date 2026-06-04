@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { API_BASE } from '../utils/api'
-import type { ProjectMetadata, RecentProject, ProjectTemplate } from '../types'
+import type { ProjectMetadata, RecentProject } from '../types'
 
 export const currentProject = ref<ProjectMetadata | null>(null)
 export const recentProjects = ref<RecentProject[]>([])
@@ -52,6 +52,7 @@ export async function createProject(req: CreateProjectRequest): Promise<CreatePr
 
 export async function openProject(path: string): Promise<void> {
   projectLoading.value = true
+  const prevProject = currentProject.value
   try {
     const resp = await fetch(apiUrl(`/api/project/load?path=${encodeURIComponent(path)}`))
     if (!resp.ok) {
@@ -60,32 +61,52 @@ export async function openProject(path: string): Promise<void> {
     }
     const meta: ProjectMetadata = await resp.json()
     currentProject.value = meta
-    // Open the file tree to the project root
-    const { useFileTree } = await import('./useFileTree')
-    await useFileTree().openFolder(path)
+    try {
+      const { useFileTree } = await import('./useFileTree')
+      await useFileTree().openFolder(path)
+    } catch {
+      // Non-Tauri environment or directory gone — keep currentProject set
+    }
+  } catch (err) {
+    currentProject.value = prevProject
+    throw err
   } finally {
     projectLoading.value = false
   }
 }
 
 export async function loadRecentProjects(): Promise<void> {
-  const resp = await fetch(apiUrl('/api/project/recent'))
-  if (resp.ok) {
-    recentProjects.value = await resp.json()
+  try {
+    const resp = await fetch(apiUrl('/api/project/recent'))
+    if (resp.ok) {
+      recentProjects.value = await resp.json()
+    }
+  } catch {
+    // Silently fail — recent projects is not critical
   }
 }
 
 export function closeProject(): void {
   currentProject.value = null
+  // Clear file tree asynchronously (dynamic import for ESM compat)
+  import('./useFileTree').then(({ useFileTree }) => {
+    const { rootDir, files } = useFileTree()
+    rootDir.value = null
+    files.value = []
+  }).catch(() => {})
 }
 
 export async function detectProject(path: string): Promise<boolean> {
-  const resp = await fetch(apiUrl(`/api/project/detect?path=${encodeURIComponent(path)}`), {
-    method: 'POST',
-  })
-  if (!resp.ok) return false
-  const data = await resp.json()
-  return data.is_project === true
+  try {
+    const resp = await fetch(apiUrl(`/api/project/detect?path=${encodeURIComponent(path)}`), {
+      method: 'POST',
+    })
+    if (!resp.ok) return false
+    const data = await resp.json()
+    return data.is_project === true
+  } catch {
+    return false
+  }
 }
 
 export function useProject() {

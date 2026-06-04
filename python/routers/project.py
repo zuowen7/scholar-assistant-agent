@@ -8,6 +8,8 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -24,6 +26,7 @@ logger = logging.getLogger(__name__)
 _MAX_RECENT = 20
 _NAME_RE = re.compile(r"^[\w\-. ]+$")
 _ILLEGAL_CHARS_RE = re.compile(r'[<>\:"/\\|?*\x00]')
+_FOLDER_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
 
 # ── Models ────────────────────────────────────────────────────────────────
 
@@ -63,10 +66,18 @@ def _load_templates() -> list[dict[str, Any]]:
     global _templates_cache
     if _templates_cache is not None:
         return _templates_cache
-    # Look in python/templates/ (project root), not routers/templates/
     tpl_path = Path(__file__).resolve().parent.parent / "templates" / "project_templates.json"
     if tpl_path.exists():
-        _templates_cache = json.loads(tpl_path.read_text(encoding="utf-8"))
+        try:
+            data = json.loads(tpl_path.read_text(encoding="utf-8"))
+            if not isinstance(data, list):
+                logger.warning("project_templates.json is not a list, ignoring")
+                _templates_cache = []
+            else:
+                _templates_cache = data
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning("Failed to load project templates: %s", e)
+            _templates_cache = []
     else:
         _templates_cache = []
     return _templates_cache
@@ -74,7 +85,7 @@ def _load_templates() -> list[dict[str, Any]]:
 
 def _get_template(template_id: str) -> dict[str, Any] | None:
     for tpl in _load_templates():
-        if tpl["id"] == template_id:
+        if isinstance(tpl, dict) and tpl.get("id") == template_id:
             return tpl
     return None
 
@@ -91,14 +102,11 @@ def _get_allowed_prefixes() -> list[str]:
         if val:
             prefixes.append(os.path.normcase(str(Path(val).resolve())))
 
-    # Common user folders
     for folder_name in ["Documents", "Desktop", "Downloads", "projects", "Papers"]:
         candidate = Path.home() / folder_name
         if candidate.exists():
             prefixes.append(os.path.normcase(str(candidate.resolve())))
 
-    # System temp dir (for tests and CI)
-    import tempfile
     tmp_prefix = os.path.normcase(str(Path(tempfile.gettempdir()).resolve()))
     prefixes.append(tmp_prefix)
 
@@ -107,18 +115,25 @@ def _get_allowed_prefixes() -> list[str]:
 
 def _validate_project_path(p: str) -> Path:
     """Validate and resolve a project-related path. Returns resolved Path."""
-    # Reject any raw string containing .. (before normalizing resolves them away)
+    # Reject null bytes
+    if "\x00" in p:
+        raise HTTPException(422, "路径包含非法字符 (null byte)")
+
+    # Reject any raw string containing ..
     if ".." in p:
         raise HTTPException(422, "路径不得包含上级引用 (..)")
 
-    path = Path(p)
+    try:
+        path = Path(p)
+    except Exception:
+        raise HTTPException(422, f"路径格式无效: {p}")
+
     if not path.is_absolute():
         raise HTTPException(422, f"路径必须是绝对路径: {p}")
 
     resolved = path.resolve()
     resolved_str = os.path.normcase(str(resolved))
 
-    # Must be under an allowed prefix
     allowed = _get_allowed_prefixes()
     if not any(resolved_str.startswith(prefix) for prefix in allowed):
         raise HTTPException(422, f"路径不在允许的工作目录内: {p}")
@@ -131,6 +146,10 @@ def _validate_project_name(name: str) -> str:
     if not name or len(name) > 200:
         raise HTTPException(422, "项目名称长度必须在 1-200 之间")
 
+    stripped = name.strip()
+    if not stripped:
+        raise HTTPException(422, "项目名称不得为纯空白字符")
+
     if name.startswith("."):
         raise HTTPException(422, "项目名称不得以 . 开头")
 
@@ -140,7 +159,6 @@ def _validate_project_name(name: str) -> str:
     if not _NAME_RE.match(name):
         raise HTTPException(422, f"项目名称格式不合法: {name}")
 
-    # Reject names that look like path traversal
     if ".." in name:
         raise HTTPException(422, "项目名称不得包含 ..")
 
@@ -166,7 +184,6 @@ def _read_recent(data_root: Path) -> list[dict[str, Any]]:
 
 
 def _write_recent(data_root: Path, entries: list[dict[str, Any]]) -> None:
-    # Filter out deleted paths
     valid = []
     for e in entries[:_MAX_RECENT]:
         try:
@@ -181,7 +198,6 @@ def _add_recent(data_root: Path, project_path: str, name: str, template_id: str)
     entries = _read_recent(data_root)
     now = datetime.now(timezone.utc).isoformat()
 
-    # Remove existing entry for same path (normcase)
     nc_path = os.path.normcase(project_path)
     entries = [e for e in entries if os.path.normcase(e.get("path", "")) != nc_path]
 
@@ -268,13 +284,25 @@ def _generate_readme(name: str, author: str, template_id: str) -> str:
     ])
     tpl = _get_template(template_id)
     if tpl:
-        for folder in tpl["folders"]:
+        for folder in tpl.get("folders", []):
             lines.append(f"- `{folder}/`")
     lines.append("")
     return "\n".join(lines)
 
 
 # ── Atomic creation ──────────────────────────────────────────────────────
+
+
+def _validate_template_folders(tpl: dict[str, Any]) -> None:
+    """Validate template folder names don't escape the project root."""
+    folders = tpl.get("folders", [])
+    for f in folders:
+        if not isinstance(f, str) or not f:
+            raise HTTPException(422, f"模板文件夹名无效: {f!r}")
+        if not _FOLDER_RE.match(f):
+            raise HTTPException(422, f"模板文件夹名包含非法字符: {f!r}")
+        if f.startswith(".") or ".." in f:
+            raise HTTPException(422, f"模板文件夹名不合法: {f!r}")
 
 
 def _create_project_metadata(
@@ -307,14 +335,11 @@ def _atomic_create_project(
     name = _validate_project_name(name)
     location = _validate_project_path(str(location))
 
-    # Resolve final path
     final_path = (location / name).resolve()
     nc_final = os.path.normcase(str(final_path))
 
-    # Check duplicate
     if final_path.exists():
         raise HTTPException(409, f"项目路径已存在: {final_path}")
-    # Case-insensitive check for existing siblings
     try:
         for sibling in location.iterdir():
             if os.path.normcase(str(sibling)) == nc_final:
@@ -324,13 +349,11 @@ def _atomic_create_project(
     except OSError:
         pass
 
-    # Get template
     tpl = _get_template(template_id)
     if tpl is None:
         raise HTTPException(422, f"未知模板: {template_id}")
+    _validate_template_folders(tpl)
 
-    # Create in temp dir
-    import uuid
     tmp_name = f".tmp-{uuid.uuid4().hex[:8]}"
     tmp_dir = location / tmp_name
     warnings: list[str] = []
@@ -343,49 +366,47 @@ def _atomic_create_project(
         raise HTTPException(500, "临时目录已存在，请重试")
 
     try:
-        # Create folder structure
         for folder in tpl["folders"]:
             (tmp_dir / folder).mkdir(parents=True, exist_ok=True)
 
-        # .yanmo directory
         yanmo_dir = tmp_dir / ".yanmo"
         yanmo_dir.mkdir(parents=True, exist_ok=True)
 
-        # Write metadata (status=creating)
         metadata = _create_project_metadata(name, author, template_id, init_git)
         meta_path = yanmo_dir / "project.json"
         meta_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
 
-        # Write README
         readme = tmp_dir / "README.md"
         readme.write_text(_generate_readme(name, author, template_id), encoding="utf-8")
 
-        # Git init (before atomic rename)
         if init_git:
             git_warnings = _git_init(tmp_dir, name)
             warnings.extend(git_warnings)
             metadata["vcs"]["initialized"] = len(git_warnings) == 0
 
-        # Atomic rename
+        # Atomic move (shutil.move handles cross-drive on Windows)
         try:
-            os.rename(str(tmp_dir), str(final_path))
+            shutil.move(str(tmp_dir), str(final_path))
         except OSError as e:
-            # On Windows, rename may fail if target exists
             try:
                 shutil.rmtree(tmp_dir, ignore_errors=True)
             except Exception:
                 pass
+            # Check if target already exists (race condition)
+            if final_path.exists():
+                raise HTTPException(409, f"项目路径已存在: {final_path}")
             raise HTTPException(500, f"创建项目失败: {e}")
 
-        # Update status to "ready"
+        # Update status to "ready" atomically
         metadata["status"] = "ready"
         metadata["updated_at"] = datetime.now(timezone.utc).isoformat()
-        ready_meta_path = final_path / ".yanmo" / "project.json"
-        ready_meta_path.write_text(
-            json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8",
-        )
+        try:
+            ready_meta_path = final_path / ".yanmo" / "project.json"
+            atomic_write_json(ready_meta_path, metadata)
+        except OSError as e:
+            # Project was created but metadata update failed — log but don't fail
+            logger.warning("Failed to update project.json status to ready: %s", e)
 
-        # Add to recent
         _add_recent(data_root, str(final_path), name, template_id)
 
         return {
@@ -457,7 +478,6 @@ def register_project(
     @app.get("/api/project/recent")
     def list_recent_projects():
         entries = _read_recent(data_root)
-        # Filter deleted at read time
         valid = []
         changed = False
         for e in entries:

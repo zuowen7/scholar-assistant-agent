@@ -281,8 +281,8 @@ class TestCreateProject:
         assert len(data["warnings"]) > 0
 
     def test_partial_failure_rollback(self, client, location: Path):
-        """如果 rename 失败，临时目录应被清理。"""
-        with patch("os.rename", side_effect=OSError("mock rename failure")):
+        """如果 move 失败，临时目录应被清理。"""
+        with patch("shutil.move", side_effect=OSError("mock move failure")):
             r = client.post("/api/project/create", json={
                 "name": "RollbackTest",
                 "location": str(location),
@@ -332,6 +332,34 @@ class TestCreateProject:
             "template_id": "nonexistent",
             "init_git": False,
         })
+        assert r.status_code == 422
+
+    def test_rejects_whitespace_only_name(self, client, location: Path):
+        r = client.post("/api/project/create", json={
+            "name": "   ",
+            "location": str(location),
+            "init_git": False,
+        })
+        assert r.status_code == 422
+
+    def test_rejects_null_byte_in_location(self, client):
+        r = client.post("/api/project/create", json={
+            "name": "NullTest",
+            "location": "/tmp/\x00evil",
+        })
+        assert r.status_code == 422
+
+    def test_template_folder_traversal_rejected(self, client, location: Path):
+        """Template with folder containing .. should be rejected."""
+        with patch("routers.project._get_template", return_value={
+            "id": "evil", "name": "Evil", "folders": ["ok", "../../etc"]
+        }):
+            r = client.post("/api/project/create", json={
+                "name": "TplTraversal",
+                "location": str(location),
+                "template_id": "evil",
+                "init_git": False,
+            })
         assert r.status_code == 422
 
 
