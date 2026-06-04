@@ -494,14 +494,18 @@ Contributions are welcome! Here's how to get started:
 
 Good first issues are tagged `good-first-issue`. The project structure is documented in [CLAUDE.md](./CLAUDE.md).
 
+## A Note on Maturity
+
+Scholar Assistant is an active personal project under continuous improvement. While the core pipelines (translation, Agent, argument companion, mind map) are battle-tested with 2500+ tests, some features are still maturing — and that's reflected in the [subsystem grades](#subsystem-maturity) above.
+
+If something breaks or behaves unexpectedly, please [open an issue](../../issues). Bug reports with reproduction steps are incredibly helpful. PRs are welcome too.
+
+The best is yet to come.
+
 ## License
 
 [MIT](./LICENSE)
 
 ---
 
-Built with Tauri, FastAPI, and too many late nights.
-
----
-
-If this helps your research workflow, please star the repo. PRs and issues welcome.
+Built with Tauri, FastAPI, and too many late nights. If this helps your research workflow, please star the repo.
