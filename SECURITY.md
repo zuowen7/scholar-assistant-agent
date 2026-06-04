@@ -5,7 +5,7 @@
 If you discover a security vulnerability in Scholar Assistant, please report it responsibly:
 
 - **Email**: [zuowen7](https://github.com/zuowen7) via GitHub's private vulnerability reporting
-- **GitHub**: Use [Security Advisories](https://github.com/zuowen7/scholar-assistant/security/advisories/new)
+- **GitHub**: Use [Security Advisories](https://github.com/zuowen7/scholar-assistant-agent/security/advisories/new)
 
 **Please do not** open a public GitHub issue for security vulnerabilities.
 

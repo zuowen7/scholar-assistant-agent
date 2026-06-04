@@ -32,7 +32,7 @@ ollama pull qwen3:8b
 
 ### 方式一：桌面端（推荐）
 
-1. 从 [GitHub Releases](https://github.com/zuowen7/scholar-assistant/releases) 下载安装包
+1. 从 [GitHub Releases](https://github.com/zuowen7/scholar-assistant-agent/releases) 下载安装包
 2. 安装后启动即可，应用自动管理后端服务
 3. 应用启动时会自动检查新版本，有更新会弹 Toast 提示
 
