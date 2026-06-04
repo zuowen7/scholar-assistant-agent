@@ -133,7 +133,8 @@ defineEmits<{
   'open-recent': [path: string]
 }>()
 
-function formatPath(p: string): string {
+function formatPath(p: string | undefined | null): string {
+  if (!p || typeof p !== 'string') return ''
   const parts = p.split(/[/\\]/)
   return parts.slice(-2).join('/')
 }

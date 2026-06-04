@@ -356,6 +356,65 @@ class TestCreateProject:
         })
         assert r.status_code == 422
 
+    def test_rejects_trailing_dot_name(self, client, location: Path):
+        r = client.post("/api/project/create", json={
+            "name": "MyProject.",
+            "location": str(location),
+            "init_git": False,
+        })
+        assert r.status_code == 422
+
+    def test_rejects_windows_reserved_con(self, client, location: Path):
+        r = client.post("/api/project/create", json={
+            "name": "CON",
+            "location": str(location),
+            "init_git": False,
+        })
+        assert r.status_code == 422
+
+    def test_rejects_windows_reserved_nul(self, client, location: Path):
+        r = client.post("/api/project/create", json={
+            "name": "NUL",
+            "location": str(location),
+            "init_git": False,
+        })
+        assert r.status_code == 422
+
+    def test_rejects_windows_reserved_com1_lpt1(self, client, location: Path):
+        for name in ["COM1", "COM9", "LPT1", "LPT9", "AUX", "PRN"]:
+            r = client.post("/api/project/create", json={
+                "name": name,
+                "location": str(location),
+                "init_git": False,
+            })
+            assert r.status_code == 422, f"Expected 422 for reserved name {name!r}"
+
+    def test_rejects_windows_reserved_case_insensitive(self, client, location: Path):
+        for name in ["con", "nul", "com3", "lpt2", "aux"]:
+            r = client.post("/api/project/create", json={
+                "name": name,
+                "location": str(location),
+                "init_git": False,
+            })
+            assert r.status_code == 422, f"Expected 422 for {name!r}"
+
+    def test_rejects_unicode_zero_width_chars(self, client, location: Path):
+        for name in ["test​project", "‌‍", "a​"]:
+            r = client.post("/api/project/create", json={
+                "name": name,
+                "location": str(location),
+                "init_git": False,
+            })
+            assert r.status_code == 422, f"Expected 422 for zero-width name {name!r}"
+
+    def test_rejects_unicode_rtl_override(self, client, location: Path):
+        r = client.post("/api/project/create", json={
+            "name": "paper‮res.pptx",
+            "location": str(location),
+            "init_git": False,
+        })
+        assert r.status_code == 422
+
     def test_rejects_null_byte_in_location(self, client):
         r = client.post("/api/project/create", json={
             "name": "NullTest",
@@ -375,6 +434,125 @@ class TestCreateProject:
                 "init_git": False,
             })
         assert r.status_code == 422
+
+    def test_template_empty_folders_list(self, client, location: Path):
+        """Template with no folders should succeed (creates .yanmo and README only)."""
+        with patch("routers.project._get_template", return_value={
+            "id": "empty", "name": "EmptyTpl", "folders": []
+        }):
+            r = client.post("/api/project/create", json={
+                "name": "EmptyTpl",
+                "location": str(location),
+                "template_id": "empty",
+                "init_git": False,
+            })
+        assert r.status_code == 200
+
+    def test_template_missing_folders_key(self, client, location: Path):
+        """Template without folders key should use empty list."""
+        with patch("routers.project._get_template", return_value={
+            "id": "nofolders", "name": "NoFolders"
+        }):
+            r = client.post("/api/project/create", json={
+                "name": "NoFolders",
+                "location": str(location),
+                "template_id": "nofolders",
+                "init_git": False,
+            })
+        assert r.status_code == 200
+
+    def test_template_folders_as_string(self, client, location: Path):
+        """Template with folders as string instead of array should be rejected."""
+        with patch("routers.project._get_template", return_value={
+            "id": "strfolders", "name": "StrFolders", "folders": "draft"
+        }):
+            r = client.post("/api/project/create", json={
+                "name": "StrF",
+                "location": str(location),
+                "template_id": "strfolders",
+                "init_git": False,
+            })
+        assert r.status_code == 422
+
+    def test_template_folders_with_null(self, client, location: Path):
+        """Template with null in folders array should be rejected."""
+        with patch("routers.project._get_template", return_value={
+            "id": "nullfolder", "name": "NullFolder", "folders": ["ok", None]
+        }):
+            r = client.post("/api/project/create", json={
+                "name": "NullF",
+                "location": str(location),
+                "template_id": "nullfolder",
+                "init_git": False,
+            })
+        assert r.status_code == 422
+
+    def test_template_folders_with_empty_string(self, client, location: Path):
+        """Template with empty string in folders array should be rejected."""
+        with patch("routers.project._get_template", return_value={
+            "id": "emptyfolder", "name": "EmptyFolder", "folders": [""]
+        }):
+            r = client.post("/api/project/create", json={
+                "name": "EmptyF",
+                "location": str(location),
+                "template_id": "emptyfolder",
+                "init_git": False,
+            })
+        assert r.status_code == 422
+
+    def test_template_massive_folder_count(self, client, location: Path):
+        """Template with too many folders should be rejected."""
+        with patch("routers.project._get_template", return_value={
+            "id": "massive", "name": "Massive", "folders": ["f" + str(i) for i in range(100)]
+        }):
+            r = client.post("/api/project/create", json={
+                "name": "Massive",
+                "location": str(location),
+                "template_id": "massive",
+                "init_git": False,
+            })
+        assert r.status_code == 422
+
+    def test_create_with_invalid_pydantic_types(self, client, location: Path):
+        """Pydantic should reject wrong types for request fields."""
+        # name as number
+        r = client.post("/api/project/create", json={"name": 12345, "location": str(location)})
+        assert r.status_code == 422
+        # location as array
+        r = client.post("/api/project/create", json={"name": "OK", "location": ["C:", "temp"]})
+        assert r.status_code == 422
+        # init_git as array (Pydantic can't coerce)
+        r = client.post("/api/project/create", json={"name": "OK", "location": str(location), "init_git": ["nope"]})
+        assert r.status_code == 422
+
+    def test_create_with_author_too_long(self, client, location: Path):
+        r = client.post("/api/project/create", json={
+            "name": "OK", "location": str(location), "author": "x" * 201,
+        })
+        assert r.status_code == 422
+
+    def test_create_with_emu_name(self, client, location: Path):
+        r"""Name containing emoji should be rejected (not in \w character class)."""
+        r = client.post("/api/project/create", json={
+            "name": "paper💩", "location": str(location), "init_git": False,
+        })
+        assert r.status_code == 422
+
+    def test_create_name_with_tabs_newlines(self, client, location: Path):
+        """Tabs and newlines should make name invalid."""
+        for bad in ["a\tb", "a\nb", "a\rb"]:
+            r = client.post("/api/project/create", json={
+                "name": bad, "location": str(location), "init_git": False,
+            })
+            assert r.status_code == 422, f"Expected 422 for {bad!r}"
+
+    def test_create_location_with_trailing_separator(self, client, location: Path):
+        """Trailing separator in location should be normalized."""
+        loc_str = str(location) + ("/" if os.sep == "/" else "\\")
+        r = client.post("/api/project/create", json={
+            "name": "TrailSep", "location": loc_str, "init_git": False,
+        })
+        assert r.status_code == 200, f"Expected 200 but got {r.status_code}: {r.text}"
 
 
 # ── TestDetectProject ────────────────────────────────────────────────────
@@ -409,6 +587,29 @@ class TestDetectProject:
         assert r.status_code == 200
         assert r.json()["is_project"] is False
         assert r.json()["metadata"] is None
+
+    def test_detect_truncated_json(self, client, location: Path):
+        """Detect with truncated project.json should return is_project=False."""
+        proj_dir = location / "BrokenDetect"
+        proj_dir.mkdir()
+        yanmo = proj_dir / ".yanmo"
+        yanmo.mkdir()
+        (yanmo / "project.json").write_text('{"version": 1, "name": "T', encoding="utf-8")
+        r = client.post("/api/project/detect", params={"path": str(proj_dir)})
+        assert r.status_code == 200
+        assert r.json()["is_project"] is False
+
+    def test_detect_null_project_json(self, client, location: Path):
+        """project.json containing only null — valid JSON but invalid metadata."""
+        proj_dir = location / "NullMeta"
+        proj_dir.mkdir()
+        yanmo = proj_dir / ".yanmo"
+        yanmo.mkdir()
+        (yanmo / "project.json").write_text("null", encoding="utf-8")
+        r = client.post("/api/project/detect", params={"path": str(proj_dir)})
+        assert r.status_code == 200
+        # JSON null is valid but not a dict — should return is_project=False
+        assert r.json()["is_project"] is False
         assert r.json()["metadata"] is None
 
     def test_detect_rejects_path_traversal(self, client):
@@ -465,8 +666,32 @@ class TestRecentProjects:
         r = client.get("/api/project/recent")
         recent = r.json()
         paths = [p["path"] for p in recent]
-        # Deleted path should be filtered out
         assert str(project_path) not in [os.path.normcase(p) for p in paths]
+
+    def test_recent_handles_corrupted_file(self, client, tmp_path: Path):
+        """Corrupted projects.json should return empty list gracefully."""
+        # Provide data_root directly as a tmp_path with corrupted projects.json
+        from routers.project import _read_recent, _recent_file
+        f = _recent_file(tmp_path)
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("{not json at all", encoding="utf-8")
+        result = _read_recent(tmp_path)
+        assert result == []
+
+    def test_recent_handles_malformed_entries(self, client, tmp_path: Path):
+        """Non-dict entries in recent list should be silently dropped."""
+        from routers.project import _write_recent, _read_recent
+        _write_recent(tmp_path, [
+            {"path": "/tmp/ok", "name": "OK", "template_id": "b", "opened_at": ""},
+            "string_entry",  # non-dict
+            None,  # null
+            123,  # number
+            {"name": "missing_path"},  # missing path key
+        ])
+        result = _read_recent(tmp_path)
+        # Only entries with valid path that exists should remain (first one has /tmp/ok which doesn't exist, so empty)
+        # Actually the filter drops non-existent paths too, so result is clean
+        assert all(isinstance(e, dict) for e in result)
 
 
 # ── TestLoadProject ──────────────────────────────────────────────────────

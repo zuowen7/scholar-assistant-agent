@@ -10,11 +10,12 @@ export const projectLoading = ref(false)
 let _fileTreeModule: typeof import('./useFileTree') | null = null
 
 async function getFileTreeModule() {
-  if (!_fileTreeModule) {
-    _fileTreeModule = await import('./useFileTree')
-  }
+  if (!_fileTreeModule) { _fileTreeModule = await import('./useFileTree') }
   return _fileTreeModule
 }
+
+// Concurrency guard tokens
+let _operationId = 0
 
 export interface CreateProjectRequest {
   name: string
@@ -34,6 +35,15 @@ function apiUrl(path: string): string {
   return `${API_BASE}${path}`
 }
 
+async function parseResponse(resp: Response): Promise<any> {
+  const contentType = resp.headers.get('content-type') || ''
+  if (!contentType.includes('application/json')) {
+    const text = await resp.text().catch(() => '')
+    throw new Error(text.slice(0, 200) || `服务器返回非 JSON 响应 (${resp.status})`)
+  }
+  return resp.json()
+}
+
 export async function createProject(req: CreateProjectRequest): Promise<CreateProjectResponse> {
   projectLoading.value = true
   try {
@@ -49,10 +59,10 @@ export async function createProject(req: CreateProjectRequest): Promise<CreatePr
       }),
     })
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ detail: resp.statusText }))
+      const err = await parseResponse(resp).catch(() => ({ detail: resp.statusText }))
       throw new Error(err.detail || `创建项目失败 (${resp.status})`)
     }
-    const data: CreateProjectResponse = await resp.json()
+    const data: CreateProjectResponse = await parseResponse(resp)
     currentProject.value = data.metadata
     return data
   } finally {
@@ -61,30 +71,32 @@ export async function createProject(req: CreateProjectRequest): Promise<CreatePr
 }
 
 export async function openProject(path: string): Promise<void> {
+  const thisOp = ++_operationId
   projectLoading.value = true
   const prevProject = currentProject.value
   let prevRootDir: string | null = null
   try {
-    // Save current file tree state for rollback
     const ftm = await getFileTreeModule().catch(() => null)
     if (ftm) prevRootDir = ftm.useFileTree().rootDir.value
 
     const resp = await fetch(apiUrl(`/api/project/load?path=${encodeURIComponent(path)}`))
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ detail: resp.statusText }))
+      const err = await parseResponse(resp).catch(() => ({ detail: resp.statusText }))
       throw new Error(err.detail || `打开项目失败 (${resp.status})`)
     }
-    const meta: ProjectMetadata = await resp.json()
+    const meta = await parseResponse(resp) as ProjectMetadata
     currentProject.value = meta
     if (ftm) {
       try { await ftm.useFileTree().openFolder(path) } catch { /* Non-Tauri */ }
     }
   } catch (err) {
-    // Roll back both project and file tree
-    currentProject.value = prevProject
-    const ftm = await getFileTreeModule().catch(() => null)
-    if (ftm && prevRootDir) {
-      try { await ftm.useFileTree().openFolder(prevRootDir) } catch { /* */ }
+    // Only roll back if no newer operation has started
+    if (thisOp === _operationId) {
+      currentProject.value = prevProject
+      const ftm = await getFileTreeModule().catch(() => null)
+      if (ftm && prevRootDir) {
+        try { await ftm.useFileTree().openFolder(prevRootDir) } catch { /* */ }
+      }
     }
     throw err
   } finally {
@@ -96,7 +108,8 @@ export async function loadRecentProjects(): Promise<void> {
   try {
     const resp = await fetch(apiUrl('/api/project/recent'))
     if (resp.ok) {
-      recentProjects.value = await resp.json()
+      const data = await parseResponse(resp).catch(() => null)
+      if (Array.isArray(data)) recentProjects.value = data
     }
   } catch { /* */ }
 }
@@ -117,7 +130,7 @@ export async function detectProject(path: string): Promise<boolean> {
       method: 'POST',
     })
     if (!resp.ok) return false
-    const data = await resp.json()
+    const data = await parseResponse(resp).catch(() => ({ is_project: false }))
     return data.is_project === true
   } catch {
     return false
