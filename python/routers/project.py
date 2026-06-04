@@ -24,9 +24,19 @@ logger = logging.getLogger(__name__)
 # ── Constants ─────────────────────────────────────────────────────────────
 
 _MAX_RECENT = 20
+_MAX_FOLDERS = 50
 _NAME_RE = re.compile(r"^[\w\-. ]+$")
 _ILLEGAL_CHARS_RE = re.compile(r'[<>\:"/\\|?*\x00]')
 _FOLDER_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
+
+# Windows reserved names (case-insensitive, with or without dot suffix)
+_WINDOWS_RESERVED = frozenset(
+    x.lower() for x in [
+        "CON", "PRN", "AUX", "NUL",
+        *[f"COM{i}" for i in range(1, 10)],
+        *[f"LPT{i}" for i in range(1, 10)],
+    ]
+)
 
 # ── Models ────────────────────────────────────────────────────────────────
 
@@ -153,6 +163,9 @@ def _validate_project_name(name: str) -> str:
     if stripped.startswith("."):
         raise HTTPException(422, "项目名称不得以 . 开头")
 
+    if stripped.endswith("."):
+        raise HTTPException(422, "项目名称不得以 . 结尾（Windows 文件系统限制）")
+
     if _ILLEGAL_CHARS_RE.search(stripped):
         raise HTTPException(422, f"项目名称包含非法字符: {stripped}")
 
@@ -161,6 +174,11 @@ def _validate_project_name(name: str) -> str:
 
     if ".." in stripped:
         raise HTTPException(422, "项目名称不得包含 ..")
+
+    # Windows reserved names
+    base = stripped.split(".")[0].lower()
+    if base in _WINDOWS_RESERVED:
+        raise HTTPException(422, f"项目名称 '{stripped}' 是 Windows 系统保留名")
 
     return stripped
 
@@ -186,10 +204,12 @@ def _read_recent(data_root: Path) -> list[dict[str, Any]]:
 def _write_recent(data_root: Path, entries: list[dict[str, Any]]) -> None:
     valid = []
     for e in entries[:_MAX_RECENT]:
+        if not isinstance(e, dict):
+            continue
         try:
-            if Path(e["path"]).exists():
+            if Path(str(e.get("path", ""))).exists():
                 valid.append(e)
-        except (OSError, KeyError):
+        except (OSError, Exception):
             pass
     atomic_write_json(_recent_file(data_root), {"recent": valid})
 
@@ -295,7 +315,13 @@ def _generate_readme(name: str, author: str, template_id: str) -> str:
 
 def _validate_template_folders(tpl: dict[str, Any]) -> None:
     """Validate template folder names don't escape the project root."""
-    folders = tpl.get("folders", [])
+    folders = tpl.get("folders")
+    if folders is None:
+        return  # Missing folders key is OK, defaults to no folders
+    if not isinstance(folders, list):
+        raise HTTPException(422, f"模板 folders 必须是数组，实际类型: {type(folders)}")
+    if len(folders) > _MAX_FOLDERS:
+        raise HTTPException(422, f"模板文件夹数量超过上限: {len(folders)} > {_MAX_FOLDERS}")
     for f in folders:
         if not isinstance(f, str) or not f:
             raise HTTPException(422, f"模板文件夹名无效: {f!r}")
@@ -366,7 +392,7 @@ def _atomic_create_project(
         raise HTTPException(500, "临时目录已存在，请重试")
 
     try:
-        for folder in tpl["folders"]:
+        for folder in tpl.get("folders", []):
             (tmp_dir / folder).mkdir(parents=True, exist_ok=True)
 
         yanmo_dir = tmp_dir / ".yanmo"
@@ -475,7 +501,8 @@ def register_project(
         if meta_path.exists():
             try:
                 metadata = json.loads(meta_path.read_text(encoding="utf-8"))
-                return DetectResponse(is_project=True, metadata=metadata)
+                if isinstance(metadata, dict):
+                    return DetectResponse(is_project=True, metadata=metadata)
             except (json.JSONDecodeError, OSError):
                 pass
         return DetectResponse(is_project=False, metadata=None)
