@@ -61,12 +61,13 @@ SSE events (defined in `agent/models.py`): `session_started` / `task_started` / 
 
 ### Backend Structure (`python/`)
 
-`api_factory.py` — `create_app()` factory registers five router modules, each receiving shared state (config, runtime dirs, RAG store):
+`api_factory.py` — `create_app()` factory registers six router modules, each receiving shared state (config, runtime dirs, RAG store):
 - `routers/translate.py` — translation pipeline, config CRUD, health, export, retry
 - `routers/agent.py` — Agent chat, RAG, three-route dispatch. `ChatRequest.message` requires `min_length=1`.
 - `routers/editor.py` — AI edit/complete/export/vision/citation/Zotero
 - `routers/argument.py` — Argument Map v2 + Companion v3 (ledger, reviewer, rebuttal, import reviews). **All ledger routes use `?doc_id=` query param**.
 - `routers/mindmap.py` — Mind map CRUD, AI expand, layout
+- `routers/project.py` — Project management: atomic create (template scaffolding + Git init), recent (LRU 20), load, detect, templates. Windows reserved names blocked, template validation, corrupt data graceful fallback. Defined in `python/templates/project_templates.json`.
 
 `api.py` — entry point. Delayed imports for optional subsystems (Agent, Plugin).
 
@@ -85,6 +86,7 @@ Key `src/` modules:
   - `useEditor.ts` — Monaco instance, tabs, ghost text; delegates to `useEditorIO/Vision/Citation/State/Tabs`
   - `useAgentChat.ts` — Agent SSE chat + session/approval state (module-level refs)
   - `useFileTree.ts` — File system navigation
+  - `useProject.ts` — Project management singleton (create/open/close/detect/recent, auto-sync file tree, concurrency guards)
   - `useMindMap.ts` — Mind map CRUD, undo/redo, `mindMapToMarkdown`/`markdownToMindMapNodes` bidirectional (node `body` field), `skipNextBackendLoad()`
   - `useArgumentMap.ts` — Toulmin v2 graph CRUD, SSE extraction/critique/suggest, `focusNode`/`focusSpan`
   - `useArgumentCompanion.ts` — Companion v3 state (ledger build/rebuild SSE, review objects, anchor tracking)
@@ -114,7 +116,7 @@ Key `src/` modules:
 
 ### i18n
 
-vue-i18n v11 (Composition API). Locales in `src/i18n/locales/{zh-CN,en-US}.json` (~770 keys each, key-symmetric). Components use `useI18n()` -> `t()`; composables use `import { i18n } from '../i18n'` -> `i18n.global.t()`. Key symmetry enforced by `i18n.test.ts`. Test mock pattern: `vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: fn }) }))`.
+vue-i18n v11 (Composition API). Locales in `src/i18n/locales/{zh-CN,en-US}.json` (~800 keys each, key-symmetric). Components use `useI18n()` -> `t()`; composables use `import { i18n } from '../i18n'` -> `i18n.global.t()`. Key symmetry enforced by `i18n.test.ts`. Test mock pattern: `vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: fn }) }))`.
 
 ### Tauri Layer
 
@@ -146,6 +148,7 @@ vue-i18n v11 (Composition API). Locales in `src/i18n/locales/{zh-CN,en-US}.json`
 | LaTeX/Word export (IEEE/ACM/NeurIPS/LNCS/Generic + Tectonic) | A |
 | Voice Assistant (wake word + global hotkey + Siri UI + dedup + 20+ voice commands in 5 tiers) | A |
 | Agent ReAct engine (ContextCompressor + Skill SOUL/AGENTS/IDENTITY + greeting guard + tool guide fallback) | A- |
+| Project management (atomic create + Git init + templates + recent + detect + auto-load on open-folder) | B+ |
 | AI Editor (Monaco + Ghost Text + AI Panel + mid-stream reload) | B+ |
 | Agent workspace file tools (read/write/grep/str_replace/git_op + boundary approval) | B |
 | Cloud LLM providers (21 providers, only OpenAI-compatible path tested E2E) | B |
