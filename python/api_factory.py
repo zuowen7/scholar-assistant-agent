@@ -723,6 +723,15 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         build_cloud_client=_build_cloud_client,
     )
 
+    from routers.project import register_project
+    register_project(
+        app,
+        cloud_only=cloud_only,
+        load_config=_load_config,
+        runtime_dir=RUNTIME_DIR,
+        data_root=data_root,
+    )
+
     # ── Debug / observability endpoints ─────────────────────────────────────
 
     @app.get("/api/logs")

@@ -1,0 +1,22 @@
+[
+  {
+    "id": "research_paper",
+    "name": "Research Paper",
+    "folders": ["draft", "revised", "final", "references", "data", "notes", "scripts", "ai"]
+  },
+  {
+    "id": "review_paper",
+    "name": "Literature Review",
+    "folders": ["draft", "revised", "final", "references", "notes", "ai"]
+  },
+  {
+    "id": "thesis",
+    "name": "Thesis / Dissertation",
+    "folders": ["chapters", "draft", "revised", "final", "references", "data", "notes", "scripts", "ai", "figures"]
+  },
+  {
+    "id": "blank",
+    "name": "Blank Project",
+    "folders": ["draft", "references", "notes"]
+  }
+]
