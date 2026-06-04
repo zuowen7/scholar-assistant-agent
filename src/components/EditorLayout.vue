@@ -34,6 +34,7 @@
           @open-template="showTemplatePicker = true"
           @open-folder="openWorkspaceFolder"
           @new-document="openNewUntitled"
+          @open-recent="handleOpenRecentProject"
         />
 
         <!-- Active editor -->
@@ -126,6 +127,7 @@
       @close="showProjectStart = false"
       @enter-editor="startProjectInEditor"
       @enter-mindmap="startProjectWithMindMap"
+      @project-created="handleProjectCreated"
     />
   </div>
 </template>
@@ -262,6 +264,17 @@ function startProjectWithMindMap(topic: string) {
   sidebarCollapsed.value = true
   resetMindMap(topic.trim() || undefined)
   workspaceMode.value = 'mindmap'
+}
+
+async function handleProjectCreated(path: string) {
+  showProjectStart.value = false
+  const { openProject } = await import('../composables/useProject').then(m => m.useProject())
+  await openProject(path)
+}
+
+async function handleOpenRecentProject(path: string) {
+  const { openProject } = await import('../composables/useProject').then(m => m.useProject())
+  await openProject(path)
 }
 
 function enterEditorFromMindMap(outline: string) {
