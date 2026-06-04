@@ -6,6 +6,16 @@ export const currentProject = ref<ProjectMetadata | null>(null)
 export const recentProjects = ref<RecentProject[]>([])
 export const projectLoading = ref(false)
 
+// Lazy-loaded file tree ref holders to avoid import cycles
+let _fileTreeModule: typeof import('./useFileTree') | null = null
+
+async function getFileTreeModule() {
+  if (!_fileTreeModule) {
+    _fileTreeModule = await import('./useFileTree')
+  }
+  return _fileTreeModule
+}
+
 export interface CreateProjectRequest {
   name: string
   location: string
@@ -53,7 +63,12 @@ export async function createProject(req: CreateProjectRequest): Promise<CreatePr
 export async function openProject(path: string): Promise<void> {
   projectLoading.value = true
   const prevProject = currentProject.value
+  let prevRootDir: string | null = null
   try {
+    // Save current file tree state for rollback
+    const ftm = await getFileTreeModule().catch(() => null)
+    if (ftm) prevRootDir = ftm.useFileTree().rootDir.value
+
     const resp = await fetch(apiUrl(`/api/project/load?path=${encodeURIComponent(path)}`))
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({ detail: resp.statusText }))
@@ -61,14 +76,16 @@ export async function openProject(path: string): Promise<void> {
     }
     const meta: ProjectMetadata = await resp.json()
     currentProject.value = meta
-    try {
-      const { useFileTree } = await import('./useFileTree')
-      await useFileTree().openFolder(path)
-    } catch {
-      // Non-Tauri environment or directory gone — keep currentProject set
+    if (ftm) {
+      try { await ftm.useFileTree().openFolder(path) } catch { /* Non-Tauri */ }
     }
   } catch (err) {
+    // Roll back both project and file tree
     currentProject.value = prevProject
+    const ftm = await getFileTreeModule().catch(() => null)
+    if (ftm && prevRootDir) {
+      try { await ftm.useFileTree().openFolder(prevRootDir) } catch { /* */ }
+    }
     throw err
   } finally {
     projectLoading.value = false
@@ -81,19 +98,17 @@ export async function loadRecentProjects(): Promise<void> {
     if (resp.ok) {
       recentProjects.value = await resp.json()
     }
-  } catch {
-    // Silently fail — recent projects is not critical
-  }
+  } catch { /* */ }
 }
 
-export function closeProject(): void {
+export async function closeProject(): Promise<void> {
   currentProject.value = null
-  // Clear file tree asynchronously (dynamic import for ESM compat)
-  import('./useFileTree').then(({ useFileTree }) => {
-    const { rootDir, files } = useFileTree()
+  const ftm = await getFileTreeModule().catch(() => null)
+  if (ftm) {
+    const { rootDir, files } = ftm.useFileTree()
     rootDir.value = null
     files.value = []
-  }).catch(() => {})
+  }
 }
 
 export async function detectProject(path: string): Promise<boolean> {

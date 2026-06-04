@@ -142,7 +142,7 @@ def _validate_project_path(p: str) -> Path:
 
 
 def _validate_project_name(name: str) -> str:
-    """Validate project name. Returns name if valid."""
+    """Validate project name. Returns stripped name if valid."""
     if not name or len(name) > 200:
         raise HTTPException(422, "项目名称长度必须在 1-200 之间")
 
@@ -150,19 +150,19 @@ def _validate_project_name(name: str) -> str:
     if not stripped:
         raise HTTPException(422, "项目名称不得为纯空白字符")
 
-    if name.startswith("."):
+    if stripped.startswith("."):
         raise HTTPException(422, "项目名称不得以 . 开头")
 
-    if _ILLEGAL_CHARS_RE.search(name):
-        raise HTTPException(422, f"项目名称包含非法字符: {name}")
+    if _ILLEGAL_CHARS_RE.search(stripped):
+        raise HTTPException(422, f"项目名称包含非法字符: {stripped}")
 
-    if not _NAME_RE.match(name):
-        raise HTTPException(422, f"项目名称格式不合法: {name}")
+    if not _NAME_RE.match(stripped):
+        raise HTTPException(422, f"项目名称格式不合法: {stripped}")
 
-    if ".." in name:
+    if ".." in stripped:
         raise HTTPException(422, "项目名称不得包含 ..")
 
-    return name
+    return stripped
 
 
 # ── Recent projects ──────────────────────────────────────────────────────
@@ -404,10 +404,13 @@ def _atomic_create_project(
             ready_meta_path = final_path / ".yanmo" / "project.json"
             atomic_write_json(ready_meta_path, metadata)
         except OSError as e:
-            # Project was created but metadata update failed — log but don't fail
             logger.warning("Failed to update project.json status to ready: %s", e)
 
-        _add_recent(data_root, str(final_path), name, template_id)
+        # Best-effort: recent list failure must not fail the whole request
+        try:
+            _add_recent(data_root, str(final_path), name, template_id)
+        except Exception as e:
+            logger.warning("Failed to update recent projects: %s", e)
 
         return {
             "project_path": str(final_path),
@@ -466,6 +469,8 @@ def register_project(
     @app.post("/api/project/detect")
     def detect_project(path: str):
         resolved = _validate_project_path(path)
+        if not resolved.is_dir():
+            return DetectResponse(is_project=False, metadata=None)
         meta_path = resolved / ".yanmo" / "project.json"
         if meta_path.exists():
             try:
@@ -499,8 +504,14 @@ def register_project(
         if not meta_path.exists():
             raise HTTPException(404, f"项目元数据不存在: {path}")
         try:
-            return json.loads(meta_path.read_text(encoding="utf-8"))
+            metadata = json.loads(meta_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError) as e:
             raise HTTPException(500, f"读取项目元数据失败: {e}")
+        # Best-effort: update recent list
+        try:
+            _add_recent(data_root, str(resolved), metadata.get("name", ""), metadata.get("template_id", ""))
+        except Exception:
+            pass
+        return metadata
 
     return {}
