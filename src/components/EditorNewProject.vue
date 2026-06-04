@@ -45,7 +45,7 @@
                 @click="form.templateId = tpl.id"
               >
                 <span class="template-name">{{ tpl.name }}</span>
-                <span class="template-folders">{{ tpl.folders.length }} folders</span>
+                <span class="template-folders">{{ tpl.folders?.length ?? 0 }} folders</span>
               </button>
             </div>
 

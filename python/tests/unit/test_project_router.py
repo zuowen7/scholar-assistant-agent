@@ -317,6 +317,20 @@ class TestCreateProject:
         })
         assert r.status_code == 200
 
+    def test_name_leading_trailing_spaces_stripped(self, client, location: Path):
+        """Name with leading/trailing spaces should be stripped."""
+        r = client.post("/api/project/create", json={
+            "name": "  MyPaper  ",
+            "location": str(location),
+            "init_git": False,
+        })
+        assert r.status_code == 200
+        data = r.json()
+        assert data["metadata"]["name"] == "MyPaper"
+        # Verify folder is created with stripped name
+        project_path = Path(data["project_path"])
+        assert project_path.name == "MyPaper"
+
     def test_name_with_unicode_allowed(self, client, location: Path):
         r = client.post("/api/project/create", json={
             "name": "中文论文",
@@ -387,6 +401,14 @@ class TestDetectProject:
         r = client.post("/api/project/detect", params={"path": str(non_project)})
         assert r.status_code == 200
         assert r.json()["is_project"] is False
+
+    def test_detect_on_file_not_directory(self, client, tmp_path: Path):
+        f = tmp_path / "some_file.txt"
+        f.write_text("hello")
+        r = client.post("/api/project/detect", params={"path": str(f)})
+        assert r.status_code == 200
+        assert r.json()["is_project"] is False
+        assert r.json()["metadata"] is None
         assert r.json()["metadata"] is None
 
     def test_detect_rejects_path_traversal(self, client):
@@ -475,6 +497,22 @@ class TestLoadProject:
     def test_load_rejects_path_traversal(self, client):
         r = client.get("/api/project/load", params={"path": "/etc/passwd"})
         assert r.status_code == 422
+
+    def test_load_adds_to_recent(self, client, location: Path):
+        """Loading a project should add/update it in the recent list."""
+        cr = client.post("/api/project/create", json={
+            "name": "LoadRecent",
+            "location": str(location),
+            "init_git": False,
+        })
+        project_path = cr.json()["project_path"]
+        # Clear recent, then load — should reappear
+        # Load again — should update opened_at
+        r = client.get("/api/project/load", params={"path": project_path})
+        assert r.status_code == 200
+        recent = client.get("/api/project/recent").json()
+        paths = [os.path.normcase(p["path"]) for p in recent]
+        assert os.path.normcase(project_path) in paths
 
     def test_load_version_migration_placeholder(self, client, location: Path):
         """version!=1 应正常加载（未来迁移占位）。"""

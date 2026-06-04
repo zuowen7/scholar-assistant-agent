@@ -155,6 +155,7 @@ import MindMapView from './MindMapView.vue'
 import { useEditorState, getRange } from '../composables/useEditorState'
 import { useEditor } from '../composables/useEditor'
 import { useEditorVision } from '../composables/useEditorVision'
+import { useToast } from '../composables/useToast'
 import { useEditorCitation } from '../composables/useEditorCitation'
 import { useEditorIO } from '../composables/useEditorIO'
 import { useMindMap, markdownToMindMapNodes } from '../composables/useMindMap'
@@ -237,7 +238,15 @@ async function openWorkspaceFolder() {
   try {
     const { open } = await import('@tauri-apps/plugin-dialog')
     const selected = await open({ directory: true, multiple: false })
-    if (selected) window.dispatchEvent(new CustomEvent('open-workspace-folder', { detail: { path: selected } }))
+    if (selected) {
+      window.dispatchEvent(new CustomEvent('open-workspace-folder', { detail: { path: selected } }))
+      // Auto-detect and load project metadata if available
+      const { useProject } = await import('../composables/useProject')
+      const isProject = await useProject().detectProject(selected as string)
+      if (isProject) {
+        try { await useProject().openProject(selected as string) } catch { /* */ }
+      }
+    }
   } catch { /* cancelled */ }
 }
 
@@ -264,6 +273,8 @@ function startProjectWithMindMap(topic: string) {
   workspaceMode.value = 'mindmap'
 }
 
+const { danger } = useToast()
+
 async function handleProjectCreated(path: string) {
   showProjectStart.value = false
   try {
@@ -271,7 +282,7 @@ async function handleProjectCreated(path: string) {
     await useProject().openProject(path)
     openNewUntitled()
   } catch (e: any) {
-    console.error('Failed to open project:', e)
+    danger(e.message || '打开项目失败')
   }
 }
 
@@ -281,7 +292,7 @@ async function handleOpenRecentProject(path: string) {
     await useProject().openProject(path)
     openNewUntitled()
   } catch (e: any) {
-    console.error('Failed to open recent project:', e)
+    danger(e.message || '打开最近项目失败')
   }
 }
 

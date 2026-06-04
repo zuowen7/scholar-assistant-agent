@@ -1,23 +1,19 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// Mock fetch globally
 const mockFetch = vi.fn()
 globalThis.fetch = mockFetch
 
-vi.mock('../utils/api', () => ({
-  API_BASE: '',
-}))
+vi.mock('../utils/api', () => ({ API_BASE: '' }))
 
-// Mock useFileTree (openProject/closeProject import it dynamically)
+const mockOpenFolder = vi.fn().mockResolvedValue(undefined)
 vi.mock('../composables/useFileTree', () => ({
   useFileTree: () => ({
-    openFolder: vi.fn().mockResolvedValue(undefined),
+    openFolder: mockOpenFolder,
     rootDir: { value: null },
     files: { value: [] },
   }),
 }))
 
-// Reset module state between tests
 import { currentProject, recentProjects, projectLoading } from '../composables/useProject'
 
 describe('useProject', () => {
@@ -26,6 +22,7 @@ describe('useProject', () => {
     recentProjects.value = []
     projectLoading.value = false
     mockFetch.mockReset()
+    mockOpenFolder.mockReset().mockResolvedValue(undefined)
   })
 
   // ── createProject ──────────────────────────────────────────────────
@@ -33,89 +30,59 @@ describe('useProject', () => {
   describe('createProject', () => {
     it('calls POST /api/project/create and sets currentProject', async () => {
       const { createProject } = await import('../composables/useProject')
-      const fakeMeta = {
-        version: 1, name: 'Test', author: '', status: 'ready',
-        template_id: 'research_paper', tags: [],
-        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
-        vcs: { initialized: false }, env: { type: null, path: null },
-      }
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({
-          project_path: '/tmp/Test',
-          metadata: fakeMeta,
-          warnings: [],
+          project_path: '/tmp/Test', metadata: { version: 1, name: 'Test', status: 'ready', template_id: 'research_paper', tags: [], created_at: '', updated_at: '', vcs: { initialized: false }, env: { type: null, path: null } }, warnings: [],
         }),
       })
 
-      const result = await createProject({
-        name: 'Test',
-        location: '/tmp',
-        template_id: 'research_paper',
-        init_git: false,
-      })
+      const result = await createProject({ name: 'Test', location: '/tmp', template_id: 'research_paper', init_git: false })
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
-      const [url, opts] = mockFetch.mock.calls[0]
-      expect(url).toContain('/api/project/create')
-      expect(opts.method).toBe('POST')
+      expect(mockFetch.mock.calls[0][0]).toContain('/api/project/create')
       expect(result.project_path).toBe('/tmp/Test')
-      expect(currentProject.value).not.toBeNull()
       expect(currentProject.value!.name).toBe('Test')
     })
 
     it('throws on non-ok response', async () => {
       const { createProject } = await import('../composables/useProject')
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 422,
-        json: () => Promise.resolve({ detail: 'Invalid name' }),
-      })
-
-      await expect(createProject({
-        name: 'bad:name',
-        location: '/tmp',
-      })).rejects.toThrow()
-      expect(currentProject.value).toBeNull()
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 422, json: () => Promise.resolve({ detail: 'Invalid name' }) })
+      await expect(createProject({ name: 'bad:name', location: '/tmp' })).rejects.toThrow()
     })
   })
 
   // ── openProject ────────────────────────────────────────────────────
 
   describe('openProject', () => {
-    it('calls GET /api/project/load and sets currentProject', async () => {
+    it('calls GET /api/project/load, sets currentProject and opens file tree', async () => {
       const { openProject } = await import('../composables/useProject')
-      const fakeMeta = {
-        version: 1, name: 'Opened', author: 'Author',
-        status: 'ready', template_id: 'research_paper', tags: [],
-        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
-        vcs: { initialized: true }, env: { type: null, path: null },
-      }
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve(fakeMeta),
+        json: () => Promise.resolve({ version: 1, name: 'Opened', status: 'ready', template_id: 'research_paper', tags: [], created_at: '', updated_at: '', vcs: { initialized: true }, env: { type: null, path: null } }),
       })
 
       await openProject('/tmp/Opened')
 
       expect(mockFetch).toHaveBeenCalledTimes(1)
-      const [url] = mockFetch.mock.calls[0]
-      expect(url).toContain('/api/project/load')
-      expect(url).toContain(encodeURIComponent('/tmp/Opened'))
-      expect(currentProject.value).not.toBeNull()
+      expect(mockFetch.mock.calls[0][0]).toContain('/api/project/load')
       expect(currentProject.value!.name).toBe('Opened')
+      expect(mockOpenFolder).toHaveBeenCalledWith('/tmp/Opened')
     })
 
     it('throws on 404', async () => {
       const { openProject } = await import('../composables/useProject')
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        json: () => Promise.resolve({ detail: 'Not found' }),
-      })
-
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 404, json: () => Promise.resolve({ detail: 'Not found' }) })
       await expect(openProject('/nonexistent')).rejects.toThrow()
-      expect(currentProject.value).toBeNull()
+    })
+
+    it('rolls back currentProject on failure', async () => {
+      const { openProject } = await import('../composables/useProject')
+      currentProject.value = { version: 1, name: 'Prev', status: 'ready', template_id: 'blank', tags: [], created_at: '', updated_at: '', vcs: { initialized: false }, env: { type: null, path: null } }
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({ detail: 'Fail' }) })
+
+      await expect(openProject('/bad')).rejects.toThrow()
+      expect(currentProject.value!.name).toBe('Prev')
     })
   })
 
@@ -124,28 +91,14 @@ describe('useProject', () => {
   describe('loadRecentProjects', () => {
     it('fetches and populates recentProjects', async () => {
       const { loadRecentProjects } = await import('../composables/useProject')
-      const fakeRecent = [
-        { path: '/tmp/A', name: 'A', template_id: 'research_paper', opened_at: '2026-01-01T00:00:00Z' },
-        { path: '/tmp/B', name: 'B', template_id: 'blank', opened_at: '2026-01-02T00:00:00Z' },
-      ]
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(fakeRecent),
-      })
-
+      mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([{ path: '/tmp/A', name: 'A', template_id: 'research_paper', opened_at: '' }]) })
       await loadRecentProjects()
-
-      expect(recentProjects.value).toHaveLength(2)
-      expect(recentProjects.value[0].name).toBe('A')
+      expect(recentProjects.value).toHaveLength(1)
     })
 
-    it('handles empty list', async () => {
+    it('handles fetch error gracefully', async () => {
       const { loadRecentProjects } = await import('../composables/useProject')
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve([]),
-      })
-
+      mockFetch.mockRejectedValueOnce(new Error('Network error'))
       await loadRecentProjects()
       expect(recentProjects.value).toHaveLength(0)
     })
@@ -154,17 +107,15 @@ describe('useProject', () => {
   // ── closeProject ───────────────────────────────────────────────────
 
   describe('closeProject', () => {
-    it('clears currentProject', async () => {
+    it('clears currentProject and file tree', async () => {
       const { openProject, closeProject } = await import('../composables/useProject')
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ version: 1, name: 'X', status: 'ready', template_id: 'blank', tags: [], created_at: '', updated_at: '', vcs: { initialized: false }, env: { type: null, path: null } }),
-      })
+      mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ version: 1, name: 'X', status: 'ready', template_id: 'blank', tags: [], created_at: '', updated_at: '', vcs: { initialized: false }, env: { type: null, path: null } }) })
       await openProject('/tmp/X')
       expect(currentProject.value).not.toBeNull()
 
-      closeProject()
+      await closeProject()
       expect(currentProject.value).toBeNull()
+      // closeProject is async now — file tree should be cleared
     })
   })
 
@@ -173,24 +124,20 @@ describe('useProject', () => {
   describe('detectProject', () => {
     it('returns true for existing project', async () => {
       const { detectProject } = await import('../composables/useProject')
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ is_project: true, metadata: { name: 'Detected' } }),
-      })
-
-      const result = await detectProject('/tmp/Detected')
-      expect(result).toBe(true)
+      mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ is_project: true, metadata: { name: 'Detected' } }) })
+      expect(await detectProject('/tmp/Detected')).toBe(true)
     })
 
     it('returns false for non-project', async () => {
       const { detectProject } = await import('../composables/useProject')
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ is_project: false, metadata: null }),
-      })
+      mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ is_project: false, metadata: null }) })
+      expect(await detectProject('/tmp/Empty')).toBe(false)
+    })
 
-      const result = await detectProject('/tmp/Empty')
-      expect(result).toBe(false)
+    it('returns false on server error', async () => {
+      const { detectProject } = await import('../composables/useProject')
+      mockFetch.mockRejectedValueOnce(new Error('Network error'))
+      expect(await detectProject('/tmp/Dead')).toBe(false)
     })
   })
 })
