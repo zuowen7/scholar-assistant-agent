@@ -1,8 +1,8 @@
 # Scholar Assistant
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
-[![CI](https://github.com/zuowen7/scholar-assistant/actions/workflows/release.yml/badge.svg)](https://github.com/zuowen7/scholar-assistant/actions)
-[![Version](https://img.shields.io/badge/version-0.3.6-brightgreen)](https://github.com/zuowen7/scholar-assistant/releases)
+[![CI](https://github.com/zuowen7/scholar-assistant-agent/actions/workflows/release.yml/badge.svg)](https://github.com/zuowen7/scholar-assistant-agent/actions)
+[![Version](https://img.shields.io/badge/version-0.3.6-brightgreen)](https://github.com/zuowen7/scholar-assistant-agent/releases)
 
 **English** | [中文](./README_zh.md)
 
@@ -43,7 +43,7 @@ v0.3.6 — Latest: Siri-like voice command routing (20+ commands), bilingual UI.
 
 ## Download
 
-Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant/releases) — Windows installer, macOS DMG, Linux AppImage/DEB.
+Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant-agent/releases) — Windows installer, macOS DMG, Linux AppImage/DEB.
 
 > **Note**: [Ollama](https://ollama.com) is optional — only needed for local/offline translation. Cloud translation works out of the box with an API key.
 

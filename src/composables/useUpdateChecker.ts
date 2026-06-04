@@ -1,7 +1,7 @@
 import { API_BASE } from '../utils/api'
 import { useToast } from './useToast'
 
-const GITHUB_REPO = 'zuowen7/scholar-assistant'
+const GITHUB_REPO = 'zuowen7/scholar-assistant-agent'
 const NOTIFIED_KEY = 'lastNotifiedVersion'
 
 export function compareVersions(local: string, remote: string): number {

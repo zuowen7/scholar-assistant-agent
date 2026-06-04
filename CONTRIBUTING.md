@@ -6,7 +6,7 @@ Thanks for your interest in Scholar Assistant. Contributions are welcome.
 
 ```bash
 # Clone and install
-git clone https://github.com/zuowen7/scholar-assistant.git
+git clone https://github.com/zuowen7/scholar-assistant-agent.git
 cd scholar-assistant
 npm install
 

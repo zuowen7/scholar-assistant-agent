@@ -15,7 +15,7 @@ FROM python:3.12.10-slim
 
 LABEL maintainer="zuowen"
 LABEL description="Scholar Assistant - 学术文献智能翻译工具"
-LABEL org.opencontainers.image.source="https://github.com/zuowen7/scholar-assistant"
+LABEL org.opencontainers.image.source="https://github.com/zuowen7/scholar-assistant-agent"
 LABEL org.opencontainers.image.version="0.3.6"
 LABEL org.opencontainers.image.revision=""
 

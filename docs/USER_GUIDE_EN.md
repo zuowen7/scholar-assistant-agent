@@ -32,7 +32,7 @@ ollama pull qwen3:8b
 
 ### Option 1: Desktop App (Recommended)
 
-1. Download the installer from [GitHub Releases](https://github.com/zuowen7/scholar-assistant/releases)
+1. Download the installer from [GitHub Releases](https://github.com/zuowen7/scholar-assistant-agent/releases)
 2. Install and launch — the app manages all backend services automatically
 3. On startup, the app checks for new versions and shows a toast notification if an update is available
 
