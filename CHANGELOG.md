@@ -3,6 +3,31 @@
 ## [Unreleased]
 
 ### Added
+- **Project management** — PyCharm-style project system: `POST /api/project/create` (atomic creation, validated templates, Git init), `GET /api/project/recent` (LRU 20, auto-filter deleted), `GET /api/project/load` + `POST /api/project/detect` + `GET /api/project/templates`
+- **`useProject.ts` composable** — singleton state (`currentProject`, `recentProjects`), `createProject`/`openProject`/`closeProject`/`detectProject`, concurrency guards (operation ID), file tree sync, robust rollback
+- **`EditorNewProject.vue`** — complete project creation form: name/author/template/location picker/Git toggle, `parseResponse` content-type validation
+- **`EditorWelcome.vue`** — recent projects list (max 5, click to open), `loadRecentProjects` on mount
+- **`AppTopBar.vue`** — project name chip between brand and mode switcher
+- **`openWorkspaceFolder` auto-detection** — opening a folder with `.yanmo/project.json` automatically loads project metadata
+
+### Security
+- Windows reserved names (CON/NUL/COM1-9/LPT1-9/AUX/PRN) rejected (422)
+- Template folder traversal defense (`_FOLDER_RE` + `_validate_template_folders`)
+- Trailing dots, null bytes, path traversal, emoji/zero-width chars all rejected
+- `parseResponse()` validates Content-Type before `.json()` to prevent HTML injection crashes
+- `_add_recent` wrapped in try/except to prevent false 500 after successful create
+- Corrupted `project.json` / `projects.json` gracefully degraded (empty lists, proper fallbacks)
+- `_write_recent` handles non-dict/corrupt entries without crashing
+
+### Project templates
+- `python/templates/project_templates.json` — 4 templates (research_paper/review_paper/thesis/blank)
+- Template validation: 50 folder max, ASCII-only names, no null/empty/string-type folders
+- Template loading: validates JSON structure, rejects non-array, catches `json.JSONDecodeError`
+
+### Backend
+- New router `python/routers/project.py` registered in `api_factory.py`
+- 64 adversarial edge case tests covering: Unicode attacks, Windows reserved names, template attacks, corrupt state, race conditions, Pydantic type validation
+
 - **Voice command router** (`useVoiceRouter.ts`) — Siri-like intent classifier: keyword scoring matches 20+ voice commands in 5 tiers (navigation / files / editor / translation / mind map), routes to concrete actions; unmatched commands fall back to Agent chat
 - **Voice command registry** (`src/voiceCommands/`) — 5 declarative tier files, each command declaring `{id, label, patterns[], handler}`; 148 new vitest tests
 - **App mode singleton** (`useAppMode.ts`) — extracted from `App.vue` so router can switch modes/panels without prop drilling
