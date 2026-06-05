@@ -66,6 +66,7 @@ class ConversationRuntime:
         self._approval_events: dict[str, asyncio.Event] = {}
         self._approval_decisions: dict[str, str] = {}
         self._aborted = False
+        self._planning_retried = False
 
     # ---- Public API ----
 
@@ -213,16 +214,14 @@ class ConversationRuntime:
                         wants_action = any(k in last_user for k in action_keywords)
                         has_tools = bool(self.tool_registry.definitions())
 
-                        if is_planning and wants_action and has_tools:
-                            # Show the text but don't end the turn — inject a retry
+                        if is_planning and wants_action and has_tools and not self._planning_retried:
+                            # Show the text but don't end the turn — inject a retry (only once)
+                            self._planning_retried = True
                             yield AgentEvent.token(full_text)
-                            yield AgentEvent.token("\n⚙ Auto-retry: forcing tool use...\n")
                             self.session.append(Message(role=MessageRole.USER, blocks=[
-                                TextBlock(text="⚠ CRITICAL: You MUST use tools NOW. "
-                                          "Call read_file or write_file immediately. "
-                                          "Do NOT describe — EXECUTE. ")
+                                TextBlock(text="⚠ Use a tool NOW (read_file, write_file, str_replace, or grep_files). "
+                                          "Do NOT describe — EXECUTE immediately. ")
                             ]))
-                            # Don't yield RESPONSE/DONE — outer loop will call _llm_turn again
                             return
                         yield AgentEvent.response(full_text)
                     else:
