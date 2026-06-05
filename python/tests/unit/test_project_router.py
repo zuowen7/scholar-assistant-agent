@@ -74,19 +74,13 @@ class TestProjectTemplates:
         for t in r.json():
             assert "id" in t
             assert "name" in t
-            assert "folders" in t
-            assert isinstance(t["folders"], list)
-            assert len(t["folders"]) > 0
 
     def test_template_folders_all_created(self, client, location: Path):
         r = client.get("/api/project/templates")
         templates = r.json()
         for tpl in templates:
-            for folder in tpl["folders"]:
-                assert isinstance(folder, str)
-                assert folder == folder.strip()
-                assert "/" not in folder
-                assert "\\" not in folder
+            assert "id" in tpl
+            assert "name" in tpl
 
 
 # ── TestCreateProject ────────────────────────────────────────────────────
@@ -111,17 +105,19 @@ class TestCreateProject:
         assert data["metadata"]["template_id"] == "research_paper"
         assert data["metadata"]["status"] == "ready"
 
-    def test_creates_standard_folders(self, client, location: Path):
+    def test_creates_draft_main_md(self, client, location: Path):
         r = client.post("/api/project/create", json={
-            "name": "FoldersTest",
+            "name": "DraftTest",
             "location": str(location),
             "template_id": "research_paper",
             "init_git": False,
         })
         assert r.status_code == 200
         project_path = Path(r.json()["project_path"])
-        for folder in ["draft", "revised", "final", "references", "data", "notes", "scripts", "ai"]:
-            assert (project_path / folder).is_dir(), f"Missing folder: {folder}"
+        main_md = project_path / "draft" / "main.md"
+        assert main_md.exists(), "draft/main.md should exist"
+        content = main_md.read_text(encoding="utf-8")
+        assert "# DraftTest" in content
 
     def test_creates_yanmo_metadata(self, client, location: Path):
         r = client.post("/api/project/create", json={
