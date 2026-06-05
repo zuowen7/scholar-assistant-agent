@@ -141,11 +141,13 @@ class ConversationRuntime:
     # ---- Internal ----
 
     async def _llm_turn(self) -> AsyncGenerator[AgentEvent, None]:
-        import os
+        import os, asyncio, time as _time
         messages = self.session.messages
 
         use_stream = os.environ.get("SCHOLAR_AGENT_STREAM", "1").strip() == "1"
         provider_stream = None
+        _start = _time.monotonic()
+        _last_progress = _start
 
         if use_stream and hasattr(self.provider, "chat_stream"):
             provider_stream = self.provider.chat_stream(
@@ -162,10 +164,25 @@ class ConversationRuntime:
         tool_blocks = []
         text_blocks = []
 
+        _got_output = False
         async for chunk in provider_stream:
+            if not _got_output:
+                _got_output = True
+                _elapsed = _time.monotonic() - _start
+                if _elapsed > 8.0:
+                    yield AgentEvent.token(f"\n(LLM generating, waited {_elapsed:.0f}s...)\n")
+            # Progress: if no output in last 10 seconds, show indicator
+            _now = _time.monotonic()
+            if _now - _last_progress > 10.0:
+                _msg = f"DeepSeek is generating a long response ({len(text_blocks)} tokens so far, {_now - _start:.0f}s elapsed)..."
+                if tool_blocks:
+                    _msg += f" {len(tool_blocks)} tool calls pending"
+                yield AgentEvent.token(f"\n{_msg}\n")
+                _last_progress = _now
             if isinstance(chunk, TextBlock):
                 text_blocks.append(chunk)
                 yield AgentEvent.token(chunk.text)
+                _last_progress = _time.monotonic()
             elif isinstance(chunk, ThinkingBlock):
                 yield AgentEvent.thought(chunk.thinking)
             elif isinstance(chunk, ToolUseBlock):
