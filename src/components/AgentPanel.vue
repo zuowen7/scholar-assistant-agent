@@ -478,6 +478,7 @@ const {
   sendApproval, abortSession,
   resumeSession,
   sessionId,
+  pendingCheckpoint,
   fetchSessions: _fetchSessions,
   fetchRAGDocuments: _fetchRAGDocs,
   deleteRAGDocument,
@@ -636,6 +637,14 @@ watch(pendingApproval, (p) => {
     })
   } else {
     clearActiveEdit()
+  }
+})
+
+// Agent 写入文件后实时刷新文件树和编辑器
+watch(pendingCheckpoint, () => {
+  if (pendingCheckpoint.value) {
+    refreshFileTree()
+    reloadOpenTabs()
   }
 })
 

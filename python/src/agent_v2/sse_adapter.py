@@ -52,10 +52,27 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
         content = f"\n❌ {data.get('tool_name', '')} 出错: {data.get('output', '')[:200]}\n"
         evt_type = "response"
     elif t == AgentEventType.AWAIT_APPROVAL:
-        content = f"\n⏳ 等待审批: {data.get('tool_name', '')}\n"
-        evt_type = "response"
+        tool_name = data.get("tool_name", "")
+        content = f"Agent wants to modify {tool_name}"
+        evt_type = "await_approval"
+        preview = data.get("preview") or {}
+        metadata = {
+            "tool_name": tool_name,
+            "reason": data.get("reason", ""),
+            "risk": "MODERATE",
+            "file_path": preview.get("file_path", ""),
+            "old_text": preview.get("old_text", ""),
+            "new_text": preview.get("new_text", ""),
+            "force_approval": True,
+        }
+        return {"type": evt_type, "content": content, "event_id": _event_id(), "metadata": metadata}
 
     # ---- 以下保留原始类型 ----
+    elif t == AgentEventType.CHECKPOINT:
+        content = f"文件 {data.get('file', '')} 已更新"
+        evt_type = "checkpoint"
+        metadata = {"stage": "editing", "checkpoint_type": "SLIM", "action": data.get("action", ""), "file": data.get("file", "")}
+        return {"type": evt_type, "content": content, "event_id": _event_id(), "metadata": metadata}
     elif t == AgentEventType.SESSION_STARTED:
         content = data.get("session_id", "")
         evt_type = t.value
