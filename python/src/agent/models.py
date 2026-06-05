@@ -59,6 +59,42 @@ EVT_WARNING = "warning"
 EVT_DONE = "done"
 EVT_ABORTED = "aborted"
 
+# Pipeline / Workflow events (Phase 1+)
+EVT_PIPELINE_STAGE = "pipeline_stage"
+EVT_CHECKPOINT = "checkpoint"
+
+
+# ---------------------------------------------------------------------------
+# Planning & Verification result types (Phase 0)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class PlanResult:
+    """AgentLoop.plan() result — pre-execution reasoning without tools.
+
+    Attributes:
+        needs_tools: Whether the query requires tool calls.
+        plan_text: The agent's reasoning about approach.
+        estimated_tools: Tool names the agent expects to call.
+    """
+    needs_tools: bool = True
+    plan_text: str = ""
+    estimated_tools: list[str] = field(default_factory=list)
+
+
+@dataclass
+class VerificationResult:
+    """Post-execution answer quality check result.
+
+    Attributes:
+        confidence: 0.0 ~ 1.0 score for answer quality.
+        should_retry: Whether to let the agent try again.
+        reason: Human-readable explanation.
+    """
+    confidence: float = 1.0
+    should_retry: bool = False
+    reason: str = ""
+
 
 @dataclass
 class ToolCall:

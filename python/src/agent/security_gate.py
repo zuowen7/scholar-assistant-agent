@@ -77,6 +77,8 @@ _TOOL_DEFAULT_RISK: dict[str, ToolRiskLevel] = {
     "rag_retrieve": ToolRiskLevel.SAFE,
     "web_search": ToolRiskLevel.SAFE,
     "arxiv_search": ToolRiskLevel.SAFE,
+    "check_integrity": ToolRiskLevel.SAFE,
+    "check_citations": ToolRiskLevel.SAFE,
     "str_replace": ToolRiskLevel.DESTRUCTIVE,
     "write_file": ToolRiskLevel.DESTRUCTIVE,
     "undo_last_change": ToolRiskLevel.DESTRUCTIVE,

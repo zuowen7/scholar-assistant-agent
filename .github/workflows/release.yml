@@ -21,10 +21,15 @@ jobs:
           cache: 'pip'
 
       - name: Install Python dependencies
-        run: pip install -r python/requirements-lock.txt pytest pytest-asyncio
+        run: |
+          pip install -r python/requirements-lock.txt
+          pip install pytest pytest-asyncio hypothesis
 
-      - name: Run pytest
+      - name: Run pytest (full suite)
         run: cd python && pytest tests/ -q --tb=short
+
+      - name: Run test quality gate (edge/fault/property/stress)
+        run: cd python && python scripts/ci_test_quality.py
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

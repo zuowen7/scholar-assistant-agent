@@ -561,9 +561,11 @@ async def run_review_parallel(
 
     from ._reviewer_perspectives import (
         aggregate_perspectives,
+        run_devils_advocate_perspective,
         run_experiment_perspective,
         run_method_perspective,
         run_writing_perspective,
+        synthesize_review,
     )
 
     venue_profile = _load_venue_profile(venue)
@@ -590,19 +592,40 @@ async def run_review_parallel(
         run_method_perspective(text, venue_profile, cloud_client, ollama_client),
         run_experiment_perspective(text, venue_profile, cloud_client, ollama_client),
         run_writing_perspective(text, venue_profile, cloud_client, ollama_client),
+        run_devils_advocate_perspective(text, venue_profile, cloud_client, ollama_client),
         return_exceptions=True,
     )
 
     method_pts = results[0] if not isinstance(results[0], Exception) else []
     experiment_pts = results[1] if not isinstance(results[1], Exception) else []
     writing_pts = results[2] if not isinstance(results[2], Exception) else []
+    da_pts = results[3] if len(results) > 3 and not isinstance(results[3], Exception) else []
+
+    # Tag each point with its perspective
+    for pt in method_pts:
+        pt.perspective = "method"
+    for pt in experiment_pts:
+        pt.perspective = "experiment"
+    for pt in writing_pts:
+        pt.perspective = "writing"
+    for pt in da_pts:
+        pt.perspective = "devils_advocate"
 
     logger.info(
-        "parallel review: method=%d experiment=%d writing=%d",
-        len(method_pts), len(experiment_pts), len(writing_pts),
+        "parallel review: method=%d experiment=%d writing=%d da=%d",
+        len(method_pts), len(experiment_pts), len(writing_pts), len(da_pts),
     )
 
-    aggregated = aggregate_perspectives(method_pts, experiment_pts, writing_pts)
+    aggregated = aggregate_perspectives(method_pts, experiment_pts, writing_pts, da_pts)
+
+    # Run editorial synthesis across all 4 perspectives
+    synthesis = await synthesize_review(
+        method_pts, experiment_pts, writing_pts, da_pts,
+        venue_profile, cloud_client, ollama_client,
+    )
+    if synthesis:
+        logger.info("review synthesis: %s", synthesis.get("overall_assessment", "?"))
+        yield {"event": "synthesis", "data": json.dumps(synthesis, ensure_ascii=False)}
 
     for rp in aggregated:
         new_points.append(rp)

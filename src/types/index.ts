@@ -310,7 +310,7 @@ export interface ReviewPoint {
   status: PointStatus
   source: PointSource
   reviewer_label: string | null
-  perspective: 'method' | 'experiment' | 'writing' | 'aggregated' | null
+  perspective: 'method' | 'experiment' | 'writing' | 'devils_advocate' | 'aggregated' | null
   thread: RebuttalTurn[]
 }
 
@@ -325,6 +325,7 @@ export interface ReviewSession {
   anchors: Anchor[]
   doc_hash: string | null
   created_at: number
+  synthesis?: Record<string, unknown>
 }
 
 export interface ReviewSummary {

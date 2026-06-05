@@ -180,6 +180,123 @@ class AgentLoop:
         await self.compressor.close()
 
     # ------------------------------------------------------------------
+    # Planning step: pre-execution reasoning without tools
+    # ------------------------------------------------------------------
+
+    _PLAN_PROMPT = (
+        "你是一个任务分析器。分析用户的请求，判断是否需要调用工具来完成。\n"
+        "只需要回答一个 JSON 对象，不要有其他文字：\n"
+        '{"needs_tools": true/false, "plan": "简短规划", "tools": ["tool_name1", ...]}\n\n'
+        "规则：\n"
+        '- 如果用户要求读写文件、执行代码、搜索文献、翻译长文本 → needs_tools=true\n'
+        "- 如果用户只是闲聊、问概念性问题、打招呼 → needs_tools=false\n"
+        "- 拿不准时，宁可 needs_tools=true"
+    )
+
+    _SCRATCHPAD_MAX_ENTRIES = 32
+
+    async def plan(self, messages: list[Message]) -> "PlanResult":
+        """规划步骤：LLM 不调工具，仅判断是否需要工具。
+
+        Returns:
+            PlanResult with needs_tools, plan_text, estimated_tools.
+        """
+        from src.agent.models import PlanResult
+
+        if not messages:
+            return PlanResult(needs_tools=False, plan_text="empty input")
+
+        last_user = ""
+        for m in reversed(messages):
+            if m.role == "user" and m.content:
+                last_user = m.content
+                break
+
+        if not last_user:
+            return PlanResult(needs_tools=False, plan_text="no user input")
+
+        plan_msgs = [
+            Message(role="system", content=self._PLAN_PROMPT),
+            Message(role="user", content=last_user[:2000]),
+        ]
+
+        try:
+            raw = await asyncio.to_thread(
+                self.llm.call_simple_sync,
+                "\n".join(f"{m.role}: {m.content}" for m in plan_msgs),
+            )
+        except Exception as exc:
+            logger.warning("plan() LLM call failed: %s", exc)
+            return PlanResult(needs_tools=True, plan_text="plan failed, defaulting to tools")
+
+        return self._parse_plan_result(raw)
+
+    def _parse_plan_result(self, raw: str) -> "PlanResult":
+        """Parse LLM plan response into PlanResult."""
+        from src.agent.models import PlanResult
+
+        # Strip <think/> tags
+        cleaned = re.sub(r"<think[^>]*>.*?</think\s*>", "", raw, flags=re.DOTALL).strip()
+
+        # Try to extract JSON
+        json_match = re.search(r"\{[^}]+\}", cleaned, re.DOTALL)
+        if json_match:
+            try:
+                data = json.loads(json_match.group())
+                return PlanResult(
+                    needs_tools=bool(data.get("needs_tools", True)),
+                    plan_text=str(data.get("plan", "")),
+                    estimated_tools=list(data.get("tools", [])),
+                )
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # Fallback: check for true/false keywords
+        lower = cleaned.lower()
+        if "false" in lower or "不需要" in lower or "no tool" in lower:
+            return PlanResult(needs_tools=False, plan_text=cleaned[:200])
+
+        return PlanResult(needs_tools=True, plan_text=cleaned[:200])
+
+    def scratchpad_read(self, key: str) -> str | None:
+        """Read a stored scratchpad entry. Returns None if key not found."""
+        return self._scratchpad.get(key)
+
+    def _scratchpad_store(self, key: str, value: str) -> None:
+        """Store value in scratchpad with LRU eviction."""
+        if len(self._scratchpad) >= self._SCRATCHPAD_MAX_ENTRIES:
+            oldest_key = next(iter(self._scratchpad))
+            del self._scratchpad[oldest_key]
+        self._scratchpad[key] = value
+
+    async def _verify_answer(self, query: str, answer: str) -> "VerificationResult":
+        """Post-execution answer quality check."""
+        from src.agent.models import VerificationResult
+
+        if not answer or not answer.strip():
+            return VerificationResult(
+                confidence=0.0, should_retry=True, reason="empty answer"
+            )
+
+        query_len = len(query)
+        answer_len = len(answer)
+        ratio = answer_len / max(query_len, 1)
+
+        if ratio < 0.1 and query_len > 20:
+            return VerificationResult(
+                confidence=0.2,
+                should_retry=True,
+                reason=f"answer too short ({answer_len} chars for {query_len} char query)",
+            )
+
+        confidence = min(1.0, ratio / 0.5)
+        return VerificationResult(
+            confidence=confidence,
+            should_retry=confidence < 0.3,
+            reason="ok" if confidence >= 0.3 else "low confidence",
+        )
+
+    # ------------------------------------------------------------------
     # v2: Stateless single-step executor
     # ------------------------------------------------------------------
 
@@ -325,7 +442,7 @@ class AgentLoop:
             self._scratchpad_step += 1
             if len(tc_result) > _SCRATCHPAD_THRESHOLD:
                 sp_key = f"{tc_name}_{self._scratchpad_step}"
-                self._scratchpad[sp_key] = tc_result
+                self._scratchpad_store(sp_key, tc_result)
                 truncated = (
                     tc_result[:_SCRATCHPAD_THRESHOLD]
                     + f"\n...[输出过长已截断。完整结果已存入临时缓存 scratchpad[{sp_key}]，"

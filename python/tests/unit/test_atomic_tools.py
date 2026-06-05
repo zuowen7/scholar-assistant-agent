@@ -37,7 +37,7 @@ class TestPythonExecDangerousImports:
     """验证危险模块导入全部被拦截。"""
 
     @pytest.mark.parametrize("module", [
-        "os", "sys", "subprocess", "shutil", "pathlib",
+        "sys", "subprocess", "shutil",
         "socket", "http", "urllib", "ctypes", "multiprocessing",
     ])
     def test_blocked_import(self, module):
@@ -46,7 +46,7 @@ class TestPythonExecDangerousImports:
         assert module in result
 
     @pytest.mark.parametrize("module", [
-        "os", "sys", "subprocess", "shutil", "pathlib",
+        "sys", "subprocess", "shutil",
         "socket", "http", "urllib", "ctypes", "multiprocessing",
     ])
     def test_blocked_from_import(self, module):
@@ -54,10 +54,10 @@ class TestPythonExecDangerousImports:
         assert "禁止" in result
         assert module in result
 
-    def test_blocked_from_os_path(self):
+    def test_os_path_now_allowed(self):
+        """os and pathlib are now permitted (needed for file I/O in plots)."""
         result = _python_exec("from os.path import join")
-        assert "禁止" in result
-        assert "os" in result
+        assert "禁止" not in result
 
     def test_blocked_from_subprocess_run(self):
         result = _python_exec("from subprocess import run")
@@ -586,10 +586,9 @@ class TestPythonExecEdgeCases:
         assert "禁止" in result
 
     def test_import_os_path_dotted(self):
-        """Dotted imports like os.path should be blocked by the root module 'os'."""
+        """Dotted imports like os.path are now allowed for file I/O."""
         result = _python_exec("import os.path")
-        assert "禁止" in result
-        assert "os" in result
+        assert "禁止" not in result
 
 
 class TestWebFetchEdgeCases:

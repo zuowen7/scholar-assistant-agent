@@ -391,73 +391,24 @@ async function send() {
 async function sendPreset(action: string) {
   if (streaming.value) return
   const ctx = props.editorContext?.trim()
-  // 预设按钮是纯文本改写 —— 走一次性无工具的 /api/edit，
-  // 绝不进 Agent ReAct 循环（否则 LLM 会尝试调 write_file 创建文档→死循环）。
   const instructions: Record<string, string> = {
-    polish: '润色这段学术文本，改进语法、用词和流畅度，保持原意不变。只返回润色后的文本。',
-    expand: '扩展这段学术文本，补充更多细节、论证和支撑。只返回扩展后的文本。',
-    review: '审阅这段学术文本，逐条指出存在的问题并给出具体的改进建议。',
-    en: '将以下内容翻译成流畅、地道的学术英文。只返回译文。',
-    zh: '将以下内容翻译成流畅、地道的学术中文。只返回译文。',
-  }
-  const labels: Record<string, string> = {
-    polish: t('aiPanel.presetPolishLabel'), expand: t('aiPanel.presetExpandLabel'), review: t('aiPanel.presetReviewLabel'),
-    en: t('aiPanel.presetEnLabel'), zh: t('aiPanel.presetZhLabel'),
+    polish: '润色当前打开的文件：改进语法、用词和流畅度，保持原意，直接编辑文件。',
+    expand: '扩写当前打开的文件：补充细节、论证和支撑内容，直接编辑文件。',
+    review: '审阅当前打开的文件：指出问题并给出改进建议，把意见写在文件末尾。',
+    en: '把当前打开的文件翻译成学术英文，保存为新文件。',
+    zh: '把当前打开的文件翻译成学术中文，保存为新文件。',
   }
   const instruction = instructions[action] || action
-  if (!ctx) {
+  if (!ctx && !props.activeFile) {
     messages.value.push({ id: crypto.randomUUID(), role: 'assistant', content: t('aiPanel.noText') })
     scrollBottom()
     return
   }
-  await doEdit(instruction, ctx, labels[action] || action)
+  const fileHint = props.activeFile ? `\n当前文件: ${props.activeFile}` : ''
+  await doSend(`${instruction}${fileHint}`)
 }
 
 // 一次性文本改写：调用 /api/edit（无工具、不可能循环），流式写入聊天面板。
-async function doEdit(instruction: string, text: string, label: string) {
-  pendingApproval.value = null
-  messages.value.push({ id: crypto.randomUUID(), role: 'user', content: label })
-  scrollBottom()
-
-  streaming.value = true
-  streamContent.value = ''
-  thinkingText.value = ''
-  aiAbortCtrl.value = new AbortController()
-
-  try {
-    const resp = await fetch(`${API}/api/edit`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, instruction }),
-      signal: aiAbortCtrl.value.signal,
-    })
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ detail: t('aiPanel.requestFailed') }))
-      throw new Error(err.detail || `HTTP ${resp.status}`)
-    }
-    const reader = resp.body?.getReader()
-    if (!reader) throw new Error(t('aiPanel.responseEmpty'))
-    await readSseStream(reader, (evtType, d) => {
-      if (evtType === 'delta' && d.content !== undefined) {
-        // /api/edit 的 delta 携带累计全文
-        streamContent.value = (d.content as string).replace(/<think\b[^>]*>[\s\S]*?<\/think\s*>/g, '').trim()
-        scrollBottom()
-      } else if (evtType === 'error') {
-        streamContent.value = (d.message as string) || (d.content as string) || t('aiPanel.error')
-      }
-    })
-  } catch (e) {
-    if (e instanceof DOMException && e.name === 'AbortError') return
-    streamContent.value = t('aiPanel.errorPrefix', { msg: e instanceof Error ? e.message : String(e) })
-  } finally {
-    streaming.value = false; thinkingText.value = ''
-    if (streamContent.value) {
-      messages.value.push({ id: crypto.randomUUID(), role: 'assistant', content: streamContent.value })
-    }
-    streamContent.value = ''; aiAbortCtrl.value = null; scrollBottom()
-  }
-}
-
 async function doSend(text: string) {
   pendingApproval.value = null
   acSessionId.value = null

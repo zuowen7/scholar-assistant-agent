@@ -730,6 +730,26 @@ BibTeX 条目：
 
     logger.info("AWA v2 工作区工具注册完成 (root=%s)", effective_ws)
 
+    # ── Integrity check tools (Phase 5) ──
+    try:
+        from src.agent.tools.integrity_tools import check_integrity, check_citations
+
+        registry.register(ToolDefinition(
+            name="check_integrity",
+            description="对文档进行完整性检查：检测虚构引用、异常统计声明（p值越界、百分比异常）、参考文献一致性",
+            parameters=_extract_schema_from_function(check_integrity),
+            fn=check_integrity,
+        ))
+        registry.register(ToolDefinition(
+            name="check_citations",
+            description="检查文档中引用与声明的对齐情况，分析每个引用的上下文",
+            parameters=_extract_schema_from_function(check_citations),
+            fn=check_citations,
+        ))
+        logger.info("完整性检查工具注册完成")
+    except ImportError:
+        logger.warning("Integrity tools not available")
+
     logger.info("默认工具注册完成: %s", [t.name for t in registry.list_tools()])
     return registry
 

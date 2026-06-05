@@ -255,6 +255,8 @@ async function runReview(
     await readSseStream(resp.body.getReader(), (eventType, data) => {
       if (eventType === 'review_point') {
         state.review!.points.push(data as unknown as import('../types').ReviewPoint)
+      } else if (eventType === 'synthesis') {
+        state.review!.synthesis = data as Record<string, unknown>
       } else if (eventType === 'anchor') {
         state.review!.anchors.push(data as unknown as Anchor)
       } else if (eventType === 'complete') {
@@ -310,6 +312,8 @@ async function scopedReview(focus: string | { quote: string; char_start: number;
     await readSseStream(resp.body.getReader(), (eventType, data) => {
       if (eventType === 'review_point') {
         state.review!.points.push(data as unknown as import('../types').ReviewPoint)
+      } else if (eventType === 'synthesis') {
+        state.review!.synthesis = data as Record<string, unknown>
       } else if (eventType === 'anchor') {
         state.review!.anchors.push(data as unknown as Anchor)
       } else if (eventType === 'complete') {

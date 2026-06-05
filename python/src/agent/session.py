@@ -328,6 +328,17 @@ class AgentSession:
                 yield AgentEvent(type=EVT_ERROR, content=str(e))
             return
 
+        # ── Advisory planning step (Phase 0) ──
+        # Runs plan() for observability but NEVER blocks tool access.
+        # Local models can't reliably decide "needs_tools" — the ReAct loop
+        # handles tool decisions via LLM native function calling.
+        try:
+            plan_result = await self.agent.plan(self.messages)
+            logger.info("Plan advisory: needs_tools=%s tools=%s",
+                          plan_result.needs_tools, plan_result.estimated_tools)
+        except Exception as e:
+            logger.debug("plan() advisory failed (non-blocking): %s", e)
+
         task_step = 0
         self.consecutive_errors = 0
         _recent_fingerprints: list[str] = []  # (tool_name, args_hash) 用于精确循环检测
@@ -434,7 +445,7 @@ class AgentSession:
                     _recent_fingerprints.append(f"{tc.name}:{_args_hash}")
                     # 单任务内某个工具累计调用超过 3 次 → 强提示
                     _tool_call_counts[tc.name] = _tool_call_counts.get(tc.name, 0) + 1
-                    if _tool_call_counts[tc.name] > 3 and not _loop_hint:
+                    if _tool_call_counts[tc.name] > 2 and not _loop_hint:
                         _loop_hint = (
                             f"[系统提示] 你已在本任务中调用 {tc.name} 共 {_tool_call_counts[tc.name]} 次，"
                             "继续调用无法获得新信息。请立即停止工具调用，基于已有信息直接给出最终回答。"
@@ -443,7 +454,7 @@ class AgentSession:
                 # 硬上限：跨工具空转（每步换不同工具/参数，绕过上述同名检测）。
                 # 累计工具调用达到 8 次仍未给出回答 → 直接强制停止并走总结，
                 # 避免一路转到 max_task_steps（十几步、几分钟）。
-                if _total_tool_calls >= 8:
+                if _total_tool_calls >= 5:
                     _loop_hint = (
                         f"[系统提示] 你已累计调用工具 {_total_tool_calls} 次仍未给出最终回答。"
                         "立即停止一切工具调用，基于已经收集到的信息直接回答用户。"
@@ -512,9 +523,9 @@ class AgentSession:
                     )
                     logger.warning("SecurityGate banned: %s %s → %s", tc.name, tc.arguments, gate.reason)
                     continue
-                if gate.force_approval or (
+                if (
                     not self.config.auto_approve
-                    and gate.needs_approval
+                    and (gate.force_approval or gate.needs_approval)
                     and "*" not in self.approved_categories
                 ):
                     needs_approval_list.append((tc, gate))
@@ -628,7 +639,7 @@ class AgentSession:
 
             # 循环检测提示：在所有 tool result 之后注入，不破坏消息序列
             if _loop_hint:
-                self.messages.append(Message(role="user", content=_loop_hint))
+                self.messages.append(Message(role="system", content=_loop_hint))
                 _loop_hint = ""
                 # 第 2 次及以上警告：LLM 已忽视提示，强制退出并走总结流程
                 if _loop_warnings >= 2:

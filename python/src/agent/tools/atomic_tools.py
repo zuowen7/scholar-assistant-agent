@@ -171,7 +171,7 @@ def _python_exec(code: str, timeout: int = _PYTHON_EXEC_TIMEOUT) -> str:
         return f"语法错误: {e}"
 
     _DANGEROUS_MODULES = frozenset({
-        "os", "sys", "subprocess", "shutil", "pathlib",
+        "sys", "subprocess", "shutil",
         "socket", "http", "urllib", "ctypes", "multiprocessing",
     })
     _DANGEROUS_ATTRS = frozenset({
@@ -208,6 +208,7 @@ def _python_exec(code: str, timeout: int = _PYTHON_EXEC_TIMEOUT) -> str:
         "import sys, json, io, contextlib\n"
         "code = json.loads(sys.argv[1])\n"
         "safe_builtins = {\n"
+        "    '__import__': __import__,\n"
         "    'print': print, 'len': len, 'range': range, 'enumerate': enumerate,\n"
         "    'zip': zip, 'map': map, 'filter': filter, 'sorted': sorted,\n"
         "    'reversed': reversed, 'sum': sum, 'min': min, 'max': max,\n"

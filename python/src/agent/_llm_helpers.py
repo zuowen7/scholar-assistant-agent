@@ -237,6 +237,8 @@ def _normalize_anthropic_response(data: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 def extract_text_content(response: dict) -> str:
+    if not response or not isinstance(response, dict):
+        return ""
     return (response.get("message") or {}).get("content", "").strip()
 
 
