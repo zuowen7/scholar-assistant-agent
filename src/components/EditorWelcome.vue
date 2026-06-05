@@ -5,7 +5,7 @@
 
     <div class="welcome-content">
       <!-- Hero: serif title -->
-      <div class="welcome-hero">
+      <div class="welcome-hero anim-fade-in-up">
         <div class="hero-pillar" />
         <div class="hero-text">
           <h1 class="hero-title">{{ t('editor.welcomeTitle') }}</h1>
@@ -15,24 +15,10 @@
 
       <!-- Magazine asymmetric grid -->
       <div class="magazine-grid">
-        <!-- Main card: spans 2 cols, taller -->
-        <button class="wc-card wc-card--hero" data-test="card-new-project" @click="$emit('new-project')">
+        <button class="wc-card wc-card--hero anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 0 }" data-test="card-new-project" @click="$emit('new-project')">
           <div class="wc-card-line" />
           <div class="wc-card-inner">
-            <svg class="wc-illustration" viewBox="0 0 120 80" fill="none" aria-hidden="true">
-              <path d="M18 62 C22 50 28 38 35 28" stroke="var(--c-accent)" stroke-width="2" stroke-linecap="round" opacity="0.7" />
-              <path d="M35 28 C38 22 42 18 48 16" stroke="var(--c-accent)" stroke-width="1.5" stroke-linecap="round" opacity="0.5" />
-              <circle cx="35" cy="28" r="4" fill="var(--c-accent)" opacity="0.6" />
-              <circle cx="48" cy="16" r="3" fill="var(--c-accent)" opacity="0.4" />
-              <circle cx="58" cy="30" r="3.5" fill="var(--c-accent)" opacity="0.45" />
-              <line x1="48" y1="16" x2="58" y2="30" stroke="var(--c-accent)" stroke-width="1" opacity="0.3" />
-              <line x1="35" y1="28" x2="58" y2="30" stroke="var(--c-accent)" stroke-width="1" opacity="0.3" />
-              <circle cx="72" cy="22" r="2.5" fill="var(--c-accent)" opacity="0.35" />
-              <line x1="58" y1="30" x2="72" y2="22" stroke="var(--c-accent)" stroke-width="0.8" opacity="0.25" />
-              <path d="M82 38 L95 38 L95 52 L82 52 Z" stroke="var(--c-text-3)" stroke-width="1" rx="2" opacity="0.4" />
-              <line x1="86" y1="43" x2="91" y2="43" stroke="var(--c-text-3)" stroke-width="0.8" opacity="0.3" />
-              <line x1="86" y1="47" x2="91" y2="47" stroke="var(--c-text-3)" stroke-width="0.8" opacity="0.3" />
-            </svg>
+            <span class="wc-icon accent"><FolderPlus :size="18" /></span>
             <div class="wc-text">
               <strong>{{ t("editor.newProjectStrong") }}</strong>
               <span>{{ t("editor.newProjectSubStrong") }}</span>
@@ -40,7 +26,7 @@
           </div>
         </button>
 
-        <button class="wc-card" @click="$emit('open-template')">
+        <button class="wc-card anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 1 }" @click="$emit('open-template')">
           <div class="wc-card-line" />
           <div class="wc-card-inner">
             <span class="wc-icon accent"><FileText :size="18" /></span>
@@ -51,7 +37,7 @@
           </div>
         </button>
 
-        <button class="wc-card" data-test="card-open-folder" @click="$emit('open-folder')">
+        <button class="wc-card anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 2 }" data-test="card-open-folder" @click="$emit('open-folder')">
           <div class="wc-card-line" />
           <div class="wc-card-inner">
             <span class="wc-icon"><FolderOpen :size="18" /></span>
@@ -62,7 +48,7 @@
           </div>
         </button>
 
-        <button class="wc-card" @click="$emit('new-document')">
+        <button class="wc-card anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 3 }" @click="$emit('new-document')">
           <div class="wc-card-line" />
           <div class="wc-card-inner">
             <span class="wc-icon"><FilePlus :size="18" /></span>
@@ -76,13 +62,14 @@
 
       <!-- Recent projects -->
       <div v-if="recentProjects.length" data-test="recent-projects" class="recent-section">
-        <div class="recent-header">{{ t('project.recentProjects') }}</div>
+        <div class="recent-header anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 4 }">{{ t('project.recentProjects') }}</div>
         <div class="recent-list">
           <button
-            v-for="proj in recentProjects.slice(0, 5)"
+            v-for="(proj, ri) in recentProjects.slice(0, 5)"
             :key="proj.path"
             data-test="recent-item"
-            class="recent-item"
+            class="recent-item anim-fade-in-up anim-stagger"
+            :style="{ '--stagger-i': 5 + ri }"
             @click="$emit('open-recent', proj.path)"
           >
             <span class="recent-name">{{ proj.name }}</span>
@@ -93,19 +80,19 @@
 
       <!-- Shortcuts as chips -->
       <div class="welcome-shortcuts">
-        <span class="shortcut-chip">
+        <span class="shortcut-chip anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 10 }">
           <kbd class="kbd">Ctrl+K</kbd>
           <span>{{ t("editor.aiEditShortcut") }}</span>
         </span>
-        <span class="shortcut-chip">
+        <span class="shortcut-chip anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 11 }">
           <kbd class="kbd">Ctrl+S</kbd>
           <span>{{ t("editor.saveShortcut") }}</span>
         </span>
-        <span class="shortcut-chip">
+        <span class="shortcut-chip anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 12 }">
           <kbd class="kbd">Tab</kbd>
           <span>{{ t("editor.acceptCompletion") }}</span>
         </span>
-        <span class="shortcut-chip">
+        <span class="shortcut-chip anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 13 }">
           <kbd class="kbd">Ctrl+B</kbd>
           <span>{{ t("editor.fileTree") }}</span>
         </span>
@@ -115,7 +102,7 @@
 </template>
 
 <script setup lang="ts">
-import { FileText, FolderOpen, FilePlus } from './ui/icons'
+import { FileText, FolderOpen, FilePlus, FolderPlus } from './ui/icons'
 import { useI18n } from 'vue-i18n'
 import { onMounted } from 'vue'
 import { useProject } from '../composables/useProject'
@@ -190,6 +177,13 @@ function formatPath(p: string | undefined | null): string {
   border-radius: 2px;
   flex-shrink: 0;
   margin-top: 8px;
+  transform: scaleY(0);
+  transform-origin: top;
+  animation: pillar-grow 500ms var(--ease-spring) forwards;
+  animation-delay: 120ms;
+}
+@keyframes pillar-grow {
+  to { transform: scaleY(1); }
 }
 
 .hero-title {
@@ -251,16 +245,8 @@ function formatPath(p: string | undefined | null): string {
   background: linear-gradient(90deg, var(--accent-0), transparent 60%);
 }
 
-/* Hero card: spans 2 cols */
 .wc-card--hero {
   grid-column: 1 / -1;
-}
-
-.wc-card-inner {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4);
 }
 
 .wc-card--hero .wc-card-inner {
@@ -268,10 +254,11 @@ function formatPath(p: string | undefined | null): string {
   padding: var(--space-5);
 }
 
-.wc-illustration {
-  width: 120px;
-  height: 80px;
-  flex-shrink: 0;
+.wc-card-inner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
 }
 
 .wc-icon {
@@ -387,4 +374,8 @@ function formatPath(p: string | undefined | null): string {
 :global([data-theme="light"]) .welcome-watermark { color: var(--c-text-0); opacity: 0.04; }
 :global([data-theme="light"]) .wc-card { background: var(--c-surface-1); border-color: var(--c-surface-3); }
 :global([data-theme="light"]) .shortcut-chip { background: var(--c-surface-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-pillar { animation: none; transform: none; }
+}
 </style>
