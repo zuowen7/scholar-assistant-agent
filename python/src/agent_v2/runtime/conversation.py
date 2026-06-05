@@ -36,7 +36,7 @@ from src.agent_v2.types import (
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MAX_STEPS = 20
+_DEFAULT_MAX_STEPS = 8  # enough for read→edit→verify, not for infinite loops
 _APPROVAL_TIMEOUT = 120.0  # 2 分钟等用户审批
 _TOOL_RESULT_MAX_CHARS = 4000
 
@@ -67,6 +67,7 @@ class ConversationRuntime:
         self._approval_decisions: dict[str, str] = {}
         self._aborted = False
         self._planning_retried = False
+        self._same_file_edits = 0  # guard against infinite edit loops
 
     # ---- Public API ----
 
@@ -81,6 +82,11 @@ class ConversationRuntime:
         self._auto_save()
 
         for step in range(self.max_steps):
+            if self._same_file_edits >= 3 and step > 0:
+                yield AgentEvent.token("\n[Auto-stop: 3+ edits on same file. Task complete.]\n")
+                yield AgentEvent.response("Task completed after multiple edits.")
+                yield AgentEvent.done()
+                return
             if self._aborted:
                 yield AgentEvent.aborted("Session aborted by user")
                 yield AgentEvent.done()
@@ -218,34 +224,6 @@ class ConversationRuntime:
 
                 if not tool_blocks:
                     if full_text.strip():
-                        # Detect "planning-only" responses
-                        planning_keywords = ("let me", "i will", "i'll", "first", "接下来", "让我", "我先",
-                                            "首先", "我需要", "i need to", "here's what", "我会",
-                                            "第一步", "step 1", "plan:", "计划")
-                        last_user = ""
-                        for m in reversed(self.session.messages):
-                            if m.role == MessageRole.USER:
-                                last_user = m.text_content().lower()
-                                break
-                        action_keywords = ("write", "edit", "modify", "save", "create", "translate",
-                                          "写", "改", "编辑", "修改", "保存", "创建", "翻译", "扩写",
-                                          "run", "运行", "执行", "replace", "替换", "update", "更新")
-                        text_lower = full_text.lower()
-                        is_planning = any(k in text_lower for k in planning_keywords)
-                        wants_action = any(k in last_user for k in action_keywords)
-                        has_tools = bool(self.tool_registry.definitions())
-
-                        if is_planning and wants_action and has_tools and not self._planning_retried:
-                            self._planning_retried = True
-                            yield AgentEvent.token(full_text)
-                            # Retry once with a clear demand — but don't use tool_choice=required
-                            # as some providers (DeepSeek) don't support it reliably
-                            self.session.append(Message(role=MessageRole.USER, blocks=[
-                                TextBlock(text="STOP describing. Call a tool NOW: read_file, write_file, str_replace, or grep_files. No more text — EXECUTE.")
-                            ]))
-                            # Yield the text so user sees what happened, but DON'T end the turn
-                            # The outer loop will call _llm_turn again with the retry message
-                            return
                         yield AgentEvent.response(full_text)
                     else:
                         yield AgentEvent.error("empty response from LLM")
@@ -326,6 +304,14 @@ class ConversationRuntime:
         self.session.append(Message(role=MessageRole.TOOL, blocks=[
             ToolResultBlock(tool_use_id=tb.id, tool_name=tb.name, output=tool_output[:_TOOL_RESULT_MAX_CHARS], is_error=is_error),
         ]))
+
+        # Guard: prevent infinite edit loops on the same file
+        if tb.name in ("write_file", "str_replace") and file_path and not is_error:
+            if getattr(self, '_last_edited_file', '') == file_path:
+                self._same_file_edits += 1
+            else:
+                self._same_file_edits = 1
+            self._last_edited_file = file_path
 
         # Checkpoint after file modifications
         if tb.name in ("write_file", "str_replace") and not is_error:
