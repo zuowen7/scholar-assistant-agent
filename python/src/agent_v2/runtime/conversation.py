@@ -143,13 +143,15 @@ class ConversationRuntime:
         import os
         messages = self.session.messages
 
-        use_stream = os.environ.get("SCHOLAR_AGENT_STREAM", "").strip() == "1"
+        use_stream = os.environ.get("SCHOLAR_AGENT_STREAM", "1").strip() == "1"
+        provider_stream = None
+
         if use_stream and hasattr(self.provider, "chat_stream"):
             provider_stream = self.provider.chat_stream(
                 messages=messages, tools=self.tool_registry.definitions(),
                 system_prompt=self.system_prompt,
             )
-        else:
+        if provider_stream is None:
             resp = await self.provider.chat(
                 messages=messages, tools=self.tool_registry.definitions(),
                 system_prompt=self.system_prompt,
@@ -194,6 +196,34 @@ class ConversationRuntime:
 
                 if not tool_blocks:
                     if full_text.strip():
+                        # Detect "planning-only" responses
+                        planning_keywords = ("let me", "i will", "i'll", "first", "接下来", "让我", "我先",
+                                            "首先", "我需要", "i need to", "here's what", "我会",
+                                            "第一步", "step 1", "plan:", "计划")
+                        last_user = ""
+                        for m in reversed(self.session.messages):
+                            if m.role == MessageRole.USER:
+                                last_user = m.text_content().lower()
+                                break
+                        action_keywords = ("write", "edit", "modify", "save", "create", "translate",
+                                          "写", "改", "编辑", "修改", "保存", "创建", "翻译", "扩写",
+                                          "run", "运行", "执行", "replace", "替换", "update", "更新")
+                        text_lower = full_text.lower()
+                        is_planning = any(k in text_lower for k in planning_keywords)
+                        wants_action = any(k in last_user for k in action_keywords)
+                        has_tools = bool(self.tool_registry.definitions())
+
+                        if is_planning and wants_action and has_tools:
+                            # Show the text but don't end the turn — inject a retry
+                            yield AgentEvent.token(full_text)
+                            yield AgentEvent.token("\n⚙ Auto-retry: forcing tool use...\n")
+                            self.session.append(Message(role=MessageRole.USER, blocks=[
+                                TextBlock(text="⚠ CRITICAL: You MUST use tools NOW. "
+                                          "Call read_file or write_file immediately. "
+                                          "Do NOT describe — EXECUTE. ")
+                            ]))
+                            # Don't yield RESPONSE/DONE — outer loop will call _llm_turn again
+                            return
                         yield AgentEvent.response(full_text)
                     else:
                         yield AgentEvent.error("empty response from LLM")
