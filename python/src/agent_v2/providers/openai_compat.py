@@ -59,10 +59,9 @@ class OpenAiCompatProvider(BaseProvider):
             if msg.role == MessageRole.USER:
                 result.append({"role": "user", "content": msg.text_content()})
             elif msg.role == MessageRole.ASSISTANT:
-                content: Any = msg.text_content() or None
+                text = msg.text_content()
                 tool_calls = msg.tool_calls()
                 if tool_calls:
-                    content = None
                     tc_list = []
                     for tc in tool_calls:
                         args = tc.input
@@ -74,9 +73,13 @@ class OpenAiCompatProvider(BaseProvider):
                             "id": tc.id, "type": "function",
                             "function": {"name": tc.name, "arguments": args},
                         })
-                    result.append({"role": "assistant", "content": content, "tool_calls": tc_list})
-                elif content:
-                    result.append({"role": "assistant", "content": content})
+                    entry: dict[str, Any] = {"role": "assistant", "tool_calls": tc_list}
+                    # DeepSeek requires content field but rejects null — use empty string
+                    if text:
+                        entry["content"] = text
+                    result.append(entry)
+                elif text:
+                    result.append({"role": "assistant", "content": text})
             elif msg.role == MessageRole.TOOL:
                 from src.agent_v2.types import ToolResultBlock
                 for b in msg.blocks:
