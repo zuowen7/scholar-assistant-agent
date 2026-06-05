@@ -469,3 +469,58 @@ def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> Non
         async with _SESSION_LOCK:
             active = len(_SESSION_POOL)
         return {"status": "ok", "version": "0.4.0", "runtime": "ConversationRuntime", "active_sessions": active}
+
+    @app.get("/api/agent/stats")
+    async def agent_stats():
+        cfg = _load_agent_config()
+        return {
+            "available": True,
+            "model": cfg.get("model", ""),
+            "provider": cfg.get("provider", "auto"),
+            "max_steps": cfg.get("max_steps", 30),
+        }
+
+    @app.get(f"{prefix}/guide")
+    async def v2_guide():
+        return {
+            "name": "Scholar Assistant Agent",
+            "available": True,
+            "decision_guide": (
+                "The agent can read, write, and modify files in your workspace. "
+                "Approve file modifications unless they seem unexpected."
+            ),
+        }
+
+    @app.post(f"{prefix}/tool")
+    async def v2_tool(request: Request):
+        body = await request.json()
+        tool_name = body.get("tool_name", "")
+        if not tool_name:
+            raise HTTPException(400, "tool_name is required")
+        ws = body.get("workspace_root", "")
+        registry = create_default_registry(workspace_root=ws)
+        tool_def = registry.get(tool_name)
+        if not tool_def:
+            raise HTTPException(400, f"Unknown tool: {tool_name}")
+        return {"status": "ok", "tool": tool_name, "description": tool_def.description}
+
+    @app.post(f"{prefix}/undo/{{session_id}}")
+    async def v2_undo(session_id: str, request: Request):
+        async with _SESSION_LOCK:
+            rt = _SESSION_POOL.get(session_id)
+        if rt is None:
+            raise HTTPException(404, f"Session {session_id} not found")
+        rt.undo_last()
+        return {"status": "ok", "session_id": session_id}
+
+    @app.get("/api/debug/state")
+    async def debug_state(request: Request):
+        return {
+            "sessions": {
+                "active": len(_SESSION_POOL),
+                "persisted": len(list(_SESSION_DIR.glob("*.jsonl"))) if _SESSION_DIR.exists() else 0,
+            },
+            "config": {
+                "model": _load_agent_config().get("model", ""),
+            },
+        }

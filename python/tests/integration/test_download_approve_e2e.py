@@ -249,18 +249,13 @@ def agent_app_with_session():
         patch("api_factory.CONFIG_PATH", config_dir / "default.yaml"),
         patch("api_factory.RUNTIME_DIR", Path(test_dir)),
         patch("api_factory.BASE_DIR", Path(test_dir)),
-        patch("routers.agent._check_agent_auth", lambda _request: None),
     ):
         app = create_app()
         tc = TestClient(app, raise_server_exceptions=False)
 
-        # Inject mock session into _session_pool via approve handler's closure
-        ep = _find_route_endpoint(app, "/api/agent/v2/approve/{session_id}/{event_id}", "POST")
-        session_pool = _get_closure_var_by_name(ep, "_session_pool")
-        assert session_pool is not None, (
-            "Could not find _session_pool in approve handler closure. "
-            f"Free vars: {ep.__code__.co_freevars if hasattr(ep, '__code__') else 'N/A'}"
-        )
+        # Inject mock session into _SESSION_POOL via module-level import
+        import src.agent_v2.router as agent_router
+        session_pool = agent_router._SESSION_POOL
 
         session_id = "test_session_approve_001"
         event_id = "evt_workspace_escape_001"

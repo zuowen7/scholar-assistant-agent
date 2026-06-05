@@ -271,6 +271,14 @@ def _git_init(project_dir: Path, project_name: str) -> list[str]:
             cwd=str(project_dir), capture_output=True, timeout=10,
         )
         subprocess.run(
+            ["git", "config", "user.email", "yanmo@local"],
+            cwd=str(project_dir), capture_output=True, timeout=5,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "研墨"],
+            cwd=str(project_dir), capture_output=True, timeout=5,
+        )
+        subprocess.run(
             ["git", "add", "."],
             cwd=str(project_dir), capture_output=True, timeout=10,
         )
