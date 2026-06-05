@@ -2,17 +2,26 @@
   {
     "id": "research_paper",
     "name": "Research Paper",
-    "folders": ["draft", "revised", "final", "references", "data", "notes", "scripts", "ai"]
+    "latex_template": "ieee_conference",
+    "folders": ["draft", "revised", "final", "references", "data", "notes", "scripts", "ai", "figures"]
   },
   {
     "id": "review_paper",
     "name": "Literature Review",
+    "latex_template": "generic_article",
     "folders": ["draft", "revised", "final", "references", "notes", "ai"]
   },
   {
     "id": "thesis",
     "name": "Thesis / Dissertation",
+    "latex_template": "lncs",
     "folders": ["chapters", "draft", "revised", "final", "references", "data", "notes", "scripts", "ai", "figures"]
+  },
+  {
+    "id": "neurips",
+    "name": "NeurIPS Paper",
+    "latex_template": "neurips",
+    "folders": ["draft", "revised", "final", "references", "data", "notes", "ai", "figures"]
   },
   {
     "id": "blank",

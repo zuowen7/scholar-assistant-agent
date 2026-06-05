@@ -349,6 +349,24 @@ def _create_project_metadata(
     }
 
 
+def _copy_latex_scaffold(template_id: str, dest: Path) -> None:
+    """Copy LaTeX template source files into the project directory."""
+    tpl = _get_template(template_id)
+    if tpl is None:
+        return
+    latex_id = tpl.get("latex_template")
+    if not latex_id:
+        return
+    tpl_dir = Path(__file__).parent.parent / "data" / "paper_assets" / "templates" / latex_id / "source"
+    if not tpl_dir.is_dir():
+        return
+    for item in tpl_dir.iterdir():
+        if item.is_file():
+            shutil.copy2(str(item), dest / item.name)
+        elif item.is_dir():
+            shutil.copytree(str(item), dest / item.name, dirs_exist_ok=True)
+
+
 def _atomic_create_project(
     name: str,
     location: Path,
@@ -394,6 +412,8 @@ def _atomic_create_project(
     try:
         for folder in tpl.get("folders", []):
             (tmp_dir / folder).mkdir(parents=True, exist_ok=True)
+
+        _copy_latex_scaffold(template_id, tmp_dir)
 
         yanmo_dir = tmp_dir / ".yanmo"
         yanmo_dir.mkdir(parents=True, exist_ok=True)

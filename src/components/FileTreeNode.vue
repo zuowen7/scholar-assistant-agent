@@ -72,6 +72,11 @@
         class="ctx-menu"
         :style="{ left: ctx.x + 'px', top: ctx.y + 'px', transformOrigin: ctx.origin }"
       >
+        <template v-if="entry.isDir">
+          <button class="ctx-item" @click="action('new-file')">{{ t('files.newFile') }}</button>
+          <button class="ctx-item" @click="action('new-folder')">{{ t('files.newFolder') }}</button>
+          <div class="ctx-sep" />
+        </template>
         <button class="ctx-item" @click="action('cut')">{{ t('files.cut') }}</button>
         <button class="ctx-item" @click="action('copy')">{{ t('files.copy') }}</button>
         <button v-if="canPaste" class="ctx-item" @click="action('paste')">{{ t('files.paste') }}</button>
@@ -168,6 +173,16 @@ function showContextMenu(e: MouseEvent) {
 
 function action(a: string) {
   ctx.visible = false
+  if (a === 'new-file') {
+    const name = prompt(t('files.newFilePrompt'), 'untitled.md')
+    if (name) emit('action', 'new-file', props.entry.path, name)
+    return
+  }
+  if (a === 'new-folder') {
+    const name = prompt(t('files.newFolder'), 'new_folder')
+    if (name) emit('action', 'new-folder', props.entry.path, name)
+    return
+  }
   if (a === 'rename') {
     newName.value = props.entry.name
     isRenaming.value = true
