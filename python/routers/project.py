@@ -349,22 +349,179 @@ def _create_project_metadata(
     }
 
 
-def _copy_latex_scaffold(template_id: str, dest: Path) -> None:
-    """Copy LaTeX template source files into the project directory."""
-    tpl = _get_template(template_id)
-    if tpl is None:
+_MARKDOWN_TEMPLATES: dict[str, str] = {
+    "research_paper": """\
+# {title}
+
+## Abstract
+
+> Brief summary of the research question, methodology, and key findings.
+
+## 1. Introduction
+
+### 1.1 Background
+
+### 1.2 Research Question
+
+### 1.3 Contributions
+
+## 2. Related Work
+
+## 3. Methodology
+
+### 3.1 Problem Formulation
+
+### 3.2 Proposed Approach
+
+### 3.3 Implementation Details
+
+## 4. Experiments
+
+### 4.1 Experimental Setup
+
+### 4.2 Datasets
+
+### 4.3 Results
+
+### 4.4 Ablation Study
+
+## 5. Discussion
+
+## 6. Conclusion
+
+## References
+""",
+    "review_paper": """\
+# {title}
+
+## Introduction
+
+### Scope of Review
+
+### Search Strategy
+
+## Background
+
+## Thematic Analysis
+
+### Theme 1
+
+### Theme 2
+
+### Theme 3
+
+## Comparative Analysis
+
+## Research Gaps
+
+## Conclusions and Future Directions
+
+## References
+""",
+    "thesis": """\
+# {title}
+
+## Abstract
+
+## Chapter 1: Introduction
+
+### 1.1 Background
+
+### 1.2 Motivation
+
+### 1.3 Research Questions
+
+### 1.4 Thesis Structure
+
+## Chapter 2: Literature Review
+
+### 2.1 Foundation
+
+### 2.2 State of the Art
+
+### 2.3 Research Gaps
+
+## Chapter 3: Methodology
+
+### 3.1 Research Design
+
+### 3.2 Data Collection
+
+### 3.3 Analytical Framework
+
+## Chapter 4: Results and Analysis
+
+### 4.1 Main Findings
+
+### 4.2 Discussion
+
+## Chapter 5: Conclusion
+
+### 5.1 Summary of Contributions
+
+### 5.2 Limitations
+
+### 5.3 Future Work
+
+## References
+
+## Appendix
+""",
+    "neurips": """\
+# {title}
+
+## Abstract
+
+> Summarize the contribution, method, and results in one paragraph.
+
+## 1. Introduction
+
+## 2. Preliminaries
+
+### 2.1 Notation
+
+### 2.2 Problem Setting
+
+## 3. Method
+
+### 3.1 Overview
+
+### 3.2 Key Insight
+
+### 3.3 Algorithm
+
+## 4. Experiments
+
+### 4.1 Setup
+
+### 4.2 Main Results
+
+### 4.3 Analysis
+
+## 5. Conclusion
+
+## Broader Impact
+
+## References
+
+## Appendix
+
+### A. Proofs
+
+### B. Additional Experiments
+""",
+}
+
+
+def _generate_markdown_scaffold(template_id: str, dest: Path, title: str) -> None:
+    """Generate a Markdown outline file based on the project template."""
+    md = _MARKDOWN_TEMPLATES.get(template_id)
+    if not md:
         return
-    latex_id = tpl.get("latex_template")
-    if not latex_id:
-        return
-    tpl_dir = Path(__file__).parent.parent / "data" / "paper_assets" / "templates" / latex_id / "source"
-    if not tpl_dir.is_dir():
-        return
-    for item in tpl_dir.iterdir():
-        if item.is_file():
-            shutil.copy2(str(item), dest / item.name)
-        elif item.is_dir():
-            shutil.copytree(str(item), dest / item.name, dirs_exist_ok=True)
+    content = md.replace("{title}", title)
+    draft_dir = dest / "draft"
+    draft_dir.mkdir(parents=True, exist_ok=True)
+    (draft_dir / "main.md").write_text(content, encoding="utf-8")
 
 
 def _atomic_create_project(
@@ -413,7 +570,7 @@ def _atomic_create_project(
         for folder in tpl.get("folders", []):
             (tmp_dir / folder).mkdir(parents=True, exist_ok=True)
 
-        _copy_latex_scaffold(template_id, tmp_dir)
+        _generate_markdown_scaffold(template_id, tmp_dir, name)
 
         yanmo_dir = tmp_dir / ".yanmo"
         yanmo_dir.mkdir(parents=True, exist_ok=True)
@@ -526,6 +683,14 @@ def register_project(
             except (json.JSONDecodeError, OSError):
                 pass
         return DetectResponse(is_project=False, metadata=None)
+
+    @app.delete("/api/project/recent")
+    def remove_recent_project(path: str):
+        entries = _read_recent(data_root)
+        nc_path = os.path.normcase(path)
+        filtered = [e for e in entries if os.path.normcase(e.get("path", "")) != nc_path]
+        _write_recent(data_root, filtered)
+        return {"removed": len(entries) - len(filtered)}
 
     @app.get("/api/project/recent")
     def list_recent_projects():

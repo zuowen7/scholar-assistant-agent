@@ -159,6 +159,7 @@ import { useToast } from '../composables/useToast'
 import { useEditorCitation } from '../composables/useEditorCitation'
 import { useEditorIO } from '../composables/useEditorIO'
 import { useMindMap, markdownToMindMapNodes } from '../composables/useMindMap'
+import { useFileTree } from '../composables/useFileTree'
 import { useArgumentCompanion } from '../composables/useArgumentCompanion'
 import { API_BASE } from '../utils/api'
 
@@ -169,7 +170,7 @@ const { activeTab, content, contentVersion, selection, previousContent, tabs, ai
 
 // -- Tab / file operations ------------------------------------------------
 const {
-  openNewUntitled, setContent, markDirty,
+  openNewUntitled, openFile, setContent, markDirty,
   saveFile,
 } = useEditor()
 
@@ -181,6 +182,7 @@ const { analyzeVision, insertImageFile } = useEditorVision()
 const { processCitations, previewCitations, getZoteroStatus, searchZotero } = useEditorCitation()
 const { exportToWord, exportLatex, exportPdf, loadExportTemplates } = useEditorIO()
 const { resetMindMap, loadSavedMindMap, saveMindMap, addChild, updateNodeText, updateNodeBody, skipNextBackendLoad } = useMindMap()
+const { readFileContent } = useFileTree()
 
 // -- Workspace mode -------------------------------------------------------
 const workspaceMode = ref<'editor' | 'mindmap'>('editor')
@@ -267,7 +269,15 @@ async function handleProjectCreated(path: string) {
   try {
     const { useProject } = await import('../composables/useProject')
     await useProject().openProject(path)
-    openNewUntitled()
+    // Open draft/main.md if it exists, then switch to mindmap
+    const mainMd = `${path}/draft/main.md`
+    try {
+      const text = await readFileContent(mainMd)
+      openFile(mainMd, text)
+      nextTick(() => openMindMapFromEditor())
+    } catch {
+      openNewUntitled()
+    }
   } catch (e: any) {
     danger(e.message || '打开项目失败')
   }
