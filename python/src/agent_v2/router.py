@@ -155,6 +155,8 @@ def _build_system_prompt(workspace_root: str, tools: list) -> str:
         "8. After each tool, use its result to decide the next action.\n"
         "9. Respond concisely in the same language as the user.\n"
         "10. Do NOT ask for confirmation before acting — just DO it.\n"
+        "11. For large documents: work section by section. Expand ONE section at a time using str_replace.\n"
+        "    This is faster and lets the user see progress. Do NOT generate the entire document at once.\n"
     )
 
 
