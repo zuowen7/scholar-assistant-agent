@@ -1,6 +1,6 @@
-"""学术工具 — 翻译、导出、arXiv 搜索。
+"""学术工具 — 翻译、导出、arXiv、RAG 检索。
 
-直接注册到 ToolRegistry，不需单独启动 MCP 进程。
+参考 claw-code: retrieve_context_tool (RAG), dispatch_tool (file ops).
 """
 from __future__ import annotations
 
@@ -134,3 +134,127 @@ def register_academic_tools(registry: ToolRegistry) -> None:
         },
         "required": ["query"],
     }, arxiv_search, permission="read-only")
+
+    # ---- rag_search — 参考 claw-code retrieve_context_tool ----
+    async def rag_search(args: dict) -> ToolResult:
+        """检索文档库，返回相关文档片段。参考 claw-code retrieve_context。"""
+        query = str(args.get("query", ""))
+        top_k = int(args.get("top_k", 5))
+
+        if not query:
+            return ToolResult("error: query is required", is_error=True)
+
+        try:
+            import httpx
+            api_base = os.environ.get("SCHOLAR_API_BASE", "http://localhost:18088")
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(f"{api_base}/api/rag/query", json={
+                    "query": query,
+                    "top_k": min(top_k, 10),
+                })
+                if resp.status_code == 404:
+                    return ToolResult("RAG not configured. Ingest documents first via the Docs panel.")
+                if resp.status_code != 200:
+                    return ToolResult(f"RAG query returned {resp.status_code}", is_error=True)
+                data = resp.json()
+                hits = data.get("hits", data.get("results", []))
+                if not hits:
+                    return ToolResult("No relevant documents found.")
+                lines = []
+                for i, hit in enumerate(hits[:top_k]):
+                    src = hit.get("source", hit.get("path", hit.get("doc_id", f"doc_{i}")))
+                    snippet = hit.get("snippet", hit.get("text", hit.get("content", "")))
+                    lines.append(f"[{i+1}] {src}\n{snippet[:300]}")
+                return ToolResult("\n\n".join(lines))
+        except Exception as e:
+            return ToolResult(f"RAG query failed: {e}", is_error=True)
+
+    registry.register("rag_search", (
+        "Search the document library (RAG) for relevant papers, notes, and references. "
+        "Use this when the user asks about topics that may be in their document collection."
+    ), {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Search query"},
+            "top_k": {"type": "integer", "default": 5, "description": "Number of results"},
+        },
+        "required": ["query"],
+    }, rag_search, permission="read-only")
+
+    # ---- web_search (参考 claw-code WebSearch) ----
+    async def web_search(args: dict) -> ToolResult:
+        """搜索网页。使用 DuckDuckGo HTML 搜索。"""
+        query = str(args.get("query", ""))
+        max_results = int(args.get("max_results", 5))
+
+        if not query:
+            return ToolResult("error: query is required", is_error=True)
+
+        try:
+            import httpx
+            from urllib.parse import quote
+            url = f"https://html.duckduckgo.com/html/?q={quote(query)}"
+            headers = {"User-Agent": "ScholarAssistant/0.4"}
+            async with httpx.AsyncClient(timeout=15.0, headers=headers) as client:
+                resp = await client.get(url)
+                if resp.status_code != 200:
+                    return ToolResult(f"Search returned {resp.status_code}", is_error=True)
+                text = resp.text
+                # Simple extraction of result snippets
+                import re
+                snippets = re.findall(r'class="result__snippet"[^>]*>(.*?)</a>', text, re.DOTALL)
+                results = []
+                for s in snippets[:max_results]:
+                    cleaned = re.sub(r'<[^>]+>', '', s).strip()
+                    if cleaned and len(cleaned) > 10:
+                        results.append(cleaned[:300])
+                if not results:
+                    return ToolResult("No results found.")
+                return ToolResult("\n\n".join(f"[{i+1}] {r}" for i, r in enumerate(results)))
+        except Exception as e:
+            return ToolResult(f"Search failed: {e}", is_error=True)
+
+    registry.register("web_search", "Search the web for information", {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Search query"},
+            "max_results": {"type": "integer", "default": 5},
+        },
+        "required": ["query"],
+    }, web_search, permission="read-only")
+
+    # ---- web_fetch (参考 claw-code WebFetch) ----
+    async def web_fetch(args: dict) -> ToolResult:
+        """抓取网页内容。"""
+        url = str(args.get("url", ""))
+        if not url:
+            return ToolResult("error: url is required", is_error=True)
+        if not url.startswith(("http://", "https://")):
+            return ToolResult("error: url must start with http:// or https://", is_error=True)
+        try:
+            import httpx
+            headers = {"User-Agent": "ScholarAssistant/0.4"}
+            async with httpx.AsyncClient(timeout=15.0, headers=headers, follow_redirects=True) as client:
+                resp = await client.get(url)
+                if resp.status_code != 200:
+                    return ToolResult(f"Fetch returned {resp.status_code}", is_error=True)
+                text = resp.text
+                import re
+                # Strip HTML tags for plain text
+                cleaned = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.DOTALL | re.IGNORECASE)
+                cleaned = re.sub(r'<style[^>]*>.*?</style>', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
+                cleaned = re.sub(r'<[^>]+>', ' ', cleaned)
+                cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+                if len(cleaned) > 5000:
+                    cleaned = cleaned[:5000] + "... [truncated]"
+                return ToolResult(cleaned or "(empty page)")
+        except Exception as e:
+            return ToolResult(f"Fetch failed: {e}", is_error=True)
+
+    registry.register("web_fetch", "Fetch and read the content of a web page", {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string", "description": "URL to fetch (must start with http:// or https://)"},
+        },
+        "required": ["url"],
+    }, web_fetch, permission="read-only")

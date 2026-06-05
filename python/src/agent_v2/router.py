@@ -104,38 +104,60 @@ def _deep_merge(base: dict, override: dict) -> None:
             base[k] = v
 
 
+# 模型别名，参考 claw-code resolve_model_alias
+_MODEL_ALIASES = {
+    "opus": "claude-opus-4-6",
+    "sonnet": "claude-sonnet-4-6",
+    "haiku": "claude-haiku-4-5",
+    "4o": "gpt-4o",
+    "4o-mini": "gpt-4o-mini",
+    "deepseek": "deepseek-chat",
+    "ds": "deepseek-chat",
+    "ds-r1": "deepseek-reasoner",
+}
+
+
+def _resolve_model_alias(model: str) -> str:
+    """解析模型别名。参考 claw-code resolve_model_alias。"""
+    return _MODEL_ALIASES.get(model.lower(), model)
+
+
 def _create_provider():
     from src.agent_v2.providers.openai_compat import OpenAiCompatProvider
-    model = os.environ.get("AGENT_MODEL", "").strip()
+    model = _resolve_model_alias(os.environ.get("AGENT_MODEL", "").strip())
 
-    # 1. 环境变量优先：ANTHROPIC_API_KEY
+    # 1. ANTHROPIC_API_KEY
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if anthropic_key:
         base = os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com").strip()
-        logger.info("Agent V2: using Anthropic — %s", model or "claude-sonnet-4-6")
-        return OpenAiCompatProvider(base_url=base, api_key=anthropic_key, model=model or "claude-sonnet-4-6")
+        m = model or "claude-sonnet-4-6"
+        logger.info("Agent V2: Anthropic — %s", m)
+        return OpenAiCompatProvider(base_url=base, api_key=anthropic_key, model=m)
 
-    # 2. 环境变量：OPENAI_API_KEY 或自定义 OPENAI_BASE_URL
+    # 2. OPENAI_API_KEY
     openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
     openai_base = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").strip()
     if openai_key or openai_base != "https://api.openai.com/v1":
-        logger.info("Agent V2: using OpenAI-compatible — %s @ %s", model or "gpt-4o", openai_base)
-        return OpenAiCompatProvider(base_url=openai_base, api_key=openai_key, model=model or "gpt-4o")
+        m = model or "gpt-4o"
+        logger.info("Agent V2: OpenAI — %s @ %s", m, openai_base)
+        return OpenAiCompatProvider(base_url=openai_base, api_key=openai_key, model=m)
 
-    # 3. 读取 config/default.local.yaml 中的翻译器云配置（DeepSeek 等）
+    # 3. Cloud config (DeepSeek etc.)
     cloud = _load_cloud_config()
     if cloud:
         api_key = cloud.get("api_key", "").strip()
         base_url = cloud.get("base_url", "https://api.deepseek.com/v1").strip()
         cloud_model = cloud.get("model", "deepseek-chat").strip()
         if api_key or "deepseek" in base_url.lower() or base_url != "https://api.openai.com/v1":
-            logger.info("Agent V2: using cloud config — %s @ %s", cloud_model, base_url)
-            return OpenAiCompatProvider(base_url=base_url, api_key=api_key, model=model or cloud_model)
+            m = model or cloud_model
+            logger.info("Agent V2: cloud config — %s @ %s", m, base_url)
+            return OpenAiCompatProvider(base_url=base_url, api_key=api_key, model=m)
 
-    # 4. 兜底：本地 Ollama
+    # 4. Local Ollama
     ollama_base = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1").strip()
-    logger.info("Agent V2: falling back to Ollama — %s", model or "qwen3:8b")
-    return OpenAiCompatProvider(base_url=ollama_base, api_key="", model=model or "qwen3:8b")
+    m = model or "qwen3:8b"
+    logger.info("Agent V2: Ollama — %s", m)
+    return OpenAiCompatProvider(base_url=ollama_base, api_key="", model=m)
 
 
 def _build_system_prompt(workspace_root: str, tools: list) -> str:
