@@ -30,13 +30,66 @@ The old ReAct agent (50+ files, PPT-demo quality) has been replaced with a clean
 - Provider quirks: per-model behavioral flags auto-detected from model name and base URL
 - Real streaming (SSE token-by-token) default ON, non-streaming fallback
 
-**Testing:** 263 agent tests (MockProvider deterministic, 100ms full suite) + 1144 non-agent = 1407 total
+**Testing:** 700+ agent tests (MockProvider deterministic) + 1000+ non-agent = 1700+ total; 105 edge/stress tests in 0.97s
 
 **Frontend integration:**
 - File tree auto-refresh on agent file writes (checkpoint SSE events)
 - Editor tab reload with content change detection
 - Approval flow: SSE stream pause → user decision → resume
 - Real-time progress display (tool calls and tokens mapped to `response` SSE type)
+
+### 9 Claw-Code Runtime Modules (2026-06-06)
+
+Ported from [ultraworkers/claw-code](https://github.com/ultraworkers/claw-code) `rust/crates/runtime/src/`:
+
+- **`bash_validation.py`** — 6-submodule bash command validation pipeline: readOnlyValidation, destructiveCommandWarning, modeValidation, sedValidation, pathValidation, commandSemantics. Exposed via `validate_command()` and `is_read_only_command()`. Supports sudo wrapping detection (`extract_sudo_inner`), git subcommand classification, env var stripping (`extract_first_command`).
+- **`git_context.py`** — `GitContext.detect()` scans workspace git state (branch, recent 5 commits, staged files) for system prompt injection. Returns `None` gracefully for non-git directories.
+- **`lsp_client.py`** — `LspRegistry` with state machine (Disconnected→Connecting→Ready→Error). Supports 7 LSP actions with alias resolution (e.g. `goto_definition`→`DEFINITION`). Dispatch gated on READY state.
+- **`policy_engine.py`** — Declarative `PolicyCondition(key=value|threshold)` → `PolicyAction(RETRY|ESCALATE|LOG|ABORT)` rule engine. Priority-ordered evaluation against context dicts.
+- **`prompt_cache.py`** — `PromptCacheTracker` with hit/miss rates, token savings, cache writes, event log, and `summary()` method.
+- **`recovery.py`** — 7 `FailureScenario` enum values with `recipe_for()` lookup. `RecoveryContext` tracks attempt counts + ledger entries. `attempt_recovery()` enforces max attempts with escalation (one auto-attempt before alerting human).
+- **`sandbox.py`** — Windows-adapted `SandboxConfig` (CWD restriction, output truncation at UTF-8 safe boundaries, env var cleanup for proxy vars). `SandboxResult.allowed/blocked` convenience.
+- **`session_control.py`** — `SessionControl` (Active/Paused/Aborted state machine) + `SessionStore` (workspace-fingerprinted `sessions/<hash>/<id>.jsonl` persistence with list/latest/delete).
+- **`trident.py`** — 3-stage context compaction: Stage 1 supersede (remove obsolete file ops, keep only latest write per file), Stage 2 collapse (summarize chatty non-tool exchanges), Stage 3 cluster (Jaccard-similarity semantic grouping). `TridentConfig` + `TridentStats.format_report()`.
+
+### Enhanced Hooks
+
+- **HookAbortSignal** — thread-safe `threading.Event` for async hook cancellation
+- **HookRunResult** — enriched result with `updated_input` (hook can modify tool parameters), `permission_override` + `permission_reason` (hook provides permission context), `messages` accumulation, `cancelled` flag
+- **Shell hook JSON parsing** — exit code conventions (0=allow, 2=deny, 3=ask); JSON stdout fields: `decision`, `continue`, `reason`, `hookSpecificOutput.updatedInput`, `hookSpecificOutput.permissionDecision`
+- **Shell hook non-JSON stdout** — treated as plain message, appended to `HookRunResult.messages`
+
+### Session Fork
+
+- `Session.fork(branch_name)` creates independent copy with new `session_id`, preserving message history
+- `SessionFork` dataclass captures `parent_session_id` + `branch_name`
+- Fork metadata persisted in JSONL header (`"fork": {"parent_session_id": ..., "branch_name": ...}`)
+- `Session.load()` restores `fork_meta` from saved sessions
+
+### Bash Validation Pipeline Integration
+
+- `ToolRegistry._permission_policy_check()` derives effective `PermissionMode` for `run_command`
+- Replaced hardcoded dangerous-command blocking with `validate_command()` pipeline
+- `run_command` now outputs `[WARNING: ...]` prefix for destructive commands (instead of blocking)
+- `set_permission_mode()` for dynamic mode switching
+
+### Testing (2026-06-06)
+
+- **test_bash_validation.py** — 650+ lines, 6 submodule test classes (readOnlyValidation, destructiveCommandWarning, modeValidation, sedValidation, pathValidation, commandSemantics) + full pipeline + types
+- **test_edge_and_stress.py** — 920+ lines, 105 edge/stress tests across 15 test classes covering all 9 new modules + enhanced hooks + session fork + registry integration
+- **test_hooks_advanced.py** — 391 lines: HookAbortSignal, HookProgressReporter, HookRunResult (updated_input, permission_override), shell JSON parsing (exit codes 0/2/3, continue:false, permissionDecision), payload structure
+- **test_session_fork.py** — 246 lines: fork creation/copy/independence/parent tracking/double-fork chain, SessionFork dataclass, SessionControl state machine, SessionStore save/load/delete/list/latest
+- **test_recovery_recipes.py** — 274 lines: FailureScenario enum, recipe_for, RecoveryContext (attempt tracking, event log, ledger, status report), attempt_recovery outcomes (success/partial/escalation), RecoveryResult types
+- **test_trident_compact.py** — 362 lines: stage1 supersede (no-ops, single write, read→write supersede, edit supersede, mixed files, user message preservation), stage2 collapse (below threshold, chatty→collapse, tool passthrough), stage3 cluster (too few, identical, different), TridentConfig/TridentStats, full pipeline
+- **test_lsp_prompt_cache_sandbox_policy.py** — 260 lines: LspRegistry (register/list/state transitions/error/unregister/dispatch), PromptCacheTracker (hit/miss/rate/events/summary), SandboxConfig/Result (defaults/custom/truncate), PolicyEngine (empty/match/no-match/priority/threshold)
+- **test_git_context.py** — dedicated tests for GitContext.detect() and render()
+- **test_e2e_new_modules.py** — integration tests for end-to-end module interaction
+- Total: 105 edge/stress tests all passing in 0.97s
+
+### Bug Fixes
+
+- **`extract_sudo_inner`** — `-n`, `-i`, `-S` are sudo boolean flags (no argument), removed from `flags_with_arg`. Offset calculation replaced with `" ".join(parts[i:])` for correctness.
+- **TypeScript** — all TypeScript errors resolved (0 remaining)
 
 ### Removed
 - Old `src/agent/` (50+ files, 27K lines) — ReAct engine, WorkflowSession, SecurityGate, etc.
