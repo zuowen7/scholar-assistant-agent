@@ -77,17 +77,26 @@ Key `src/` modules:
   - `runtime/conversation.py` — `ConversationRuntime` (unified agent loop, streaming + non-streaming, 3-retry error recovery)
   - `runtime/permissions.py` — `PermissionPolicy` (5-tier: ReadOnly/WorkspaceWrite/DangerFullAccess/Prompt/Allow, allow/deny/ask rule engine)
   - `runtime/permission_enforcer.py` — `PermissionEnforcer` (check_file_write/check_bash/is_read_only_command)
-  - `runtime/session.py` — `Session` (JSONL persistence, 256KB rotate, auto-save)
+  - `runtime/bash_validation.py` — Bash command validation (read-only, destructive, mode, sed, path, semantics, full pipeline) — port of claw-code
+  - `runtime/git_context.py` — `GitContext` (branch, commits, staged files detection for system prompt injection)
+  - `runtime/lsp_client.py` — `LspRegistry` (state machine: Disconnected→Connecting→Ready→Error, 7 actions)
+  - `runtime/policy_engine.py` — `PolicyEngine` (condition-driven rule evaluation, priority-ordered actions)
+  - `runtime/prompt_cache.py` — `PromptCacheTracker` (hit/miss rates, token savings, summary)
+  - `runtime/recovery.py` — `RecoveryContext` + `attempt_recovery` (7 failure scenarios, 1 auto-attempt before escalation)
+  - `runtime/sandbox.py` — `SandboxConfig` + `SandboxResult` (Windows-adapted: CWD, output truncation, env cleanup)
+  - `runtime/session.py` — `Session` (JSONL persistence, 256KB rotate, auto-save, fork with `SessionFork` metadata)
+  - `runtime/session_control.py` — `SessionControl` (pause/resume/abort) + `SessionStore` (workspace-namespaced persistence)
+  - `runtime/trident.py` — 3-stage context compaction (supersede → collapse → cluster)
   - `runtime/compact.py` — Context compaction (950K threshold, summary generation)
   - `runtime/usage.py` — `UsageTracker` + `ModelPricing` (Claude/GPT/DeepSeek/Ollama per-1M-token pricing)
-  - `tools/registry.py` — `ToolRegistry` (read_file/write_file/str_replace/grep/glob/list_dir/run_command)
+  - `tools/registry.py` — `ToolRegistry` (read_file/write_file/str_replace/grep/glob/list_dir/run_command); run_command uses bash_validation pipeline
   - `tools/academic_tools.py` — translate_document/export_document/arxiv_search/rag_search/web_search/web_fetch
   - `tools/sub_agent.py` — `run_sub_agent` (audit/explain/implement/translate presets)
   - `providers/openai_compat.py` — `OpenAiCompatProvider` (streaming + non-streaming, 20+ providers)
   - `providers/quirks.py` — Per-provider behavioral flags (auto-detected from model/base_url)
   - `mcp/manager.py` — `McpManager` (MCP JSON-RPC stdio lifecycle)
   - `skills.py` — `SkillRegistry` (6 built-in skills, YAML frontmatter file loader)
-  - `hooks.py` — `HookRunner` (5 lifecycle hook points, callable + shell hooks)
+  - `hooks.py` — `HookRunner` (5 lifecycle hook points, callable + shell hooks; HookAbortSignal, HookRunResult with updated_input + permission_override, shell hook JSON parsing with exit code conventions)
   - `plugins.py` — `PluginManager` (YAML manifest, skills + hooks + tools)
   - `sse_adapter.py` — SSE event format adapter (frontend-compatible)
 - `argument/` — `ledger.py`, `reviewer.py`, `_reviewer_perspectives.py`, `anchor.py`, `graph_store.py`, `companion_store.py`
@@ -158,7 +167,7 @@ vue-i18n v11 (Composition API). Locales in `src/i18n/locales/{zh-CN,en-US}.json`
 
 | Subsystem | Grade |
 |-----------|-------|
-| Agent V2 (ConversationRuntime + PermissionPolicy + ToolRegistry + Skills/Hooks/Plugins + streaming + 263 tests) | A |
+| Agent V2 (ConversationRuntime + PermissionPolicy + ToolRegistry + Skills/Hooks/Plugins + 9 claw-code runtime modules + streaming + 700+ tests) | A+ |
 | Translation pipeline (5-step SSE + multi-article + citation protect/restore + 6 continuation rules) | A |
 | Argument Companion v3 (ledger + Reviewer-2 + 3-angle parallel review + rebuttal + real review import) | A |
 | Mind Map (Vue Flow + AI expand + dagre + node body + editor bidirectional sync) | A |
@@ -178,6 +187,7 @@ vue-i18n v11 (Composition API). Locales in `src/i18n/locales/{zh-CN,en-US}.json`
 - **Wake word SR conflict**: When `pausedByDictation=true`, `onend`/`onerror` callbacks must skip `scheduleRestart()`.
 - **Ledger routes use `?doc_id=` query param** (not path param) — doc_id is a full file path that may contain `/`.
 - **Agent V2 streaming**: ToolUseBlock not yielded individually in streaming — must extract from ProviderResponse.blocks.
+- **sudo -n/-i/-S flags**: `extract_sudo_inner()` in `bash_validation.py` — `-n`, `-i`, `-S` are sudo boolean flags (no argument). Do NOT add them to `flags_with_arg`. Adding them causes the parser to skip the actual command as if it were a flag argument.
 
 ## Dependency Management
 

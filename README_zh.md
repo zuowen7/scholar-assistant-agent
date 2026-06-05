@@ -11,7 +11,7 @@
 
 PDF 翻译与精读作为辅助入口，帮你快速把论文沉淀进工作流。语音助手支持唤醒词和全局热键。本地可离线运行，也可接入 21 家云端大模型。支持中/英双语界面切换。
 
-v0.4.0 · 最新：Agent V2 运行时（claw-code 架构）、实时流式、Skills/Hooks/Plugins 扩展系统、1407 项测试。MIT 协议。
+v0.4.0 · 最新：Agent V2 运行时（从 claw-code 移植 9 个运行时模块：bash 校验、git 上下文、LSP、策略引擎、prompt 缓存、故障恢复、沙箱、会话控制、Trident 压缩）、实时流式、Skills/Hooks/Plugins 扩展系统、会话 fork、1700+ 项测试。MIT 协议。
 
 ## 功能演示
 
@@ -54,15 +54,18 @@ v0.4.0 · 最新：Agent V2 运行时（claw-code 架构）、实时流式、Ski
 
 > **定位：论文版 Claude Code。** 把科研项目当 workspace，Agent 像 Claude Code 修代码一样直接读/写 PDF、草稿、bib、数据文件。Agent V2 架构参考 [ultraworkers/claw-code](https://github.com/ultraworkers/claw-code) 设计。
 
-- **Agent V2 运行时** — ConversationRuntime 统一对话循环，支持流式 SSE 逐 token 实时显示；3 次自动重试恢复；Planning 检测 + 自动重试
-- **17 个内置工具** — `read_file / write_file / str_replace / grep_files / glob_files / list_dir / run_command / rag_search / web_search / web_fetch / translate_document / export_document / arxiv_search / run_sub_agent`（audit/explain/implement/translate 四模式）
-- **5 级权限系统** — ReadOnly / WorkspaceWrite / DangerFullAccess / Prompt / Allow，支持 allow/deny/ask 规则引擎；文件操作严格锁定 workspace 边界
+- **Agent V2 运行时** — ConversationRuntime 统一对话循环，支持流式 SSE 逐 token 实时显示；3 次自动重试恢复；Planning 检测 + 自动重试；从 claw-code 移植 9 个运行时模块（bash 命令校验、git 上下文、LSP 客户端、策略引擎、prompt 缓存、故障恢复、沙箱、会话控制、Trident 压缩）
+- **17 个内置工具** — `read_file / write_file / str_replace / grep_files / glob_files / list_dir / run_command / rag_search / web_search / web_fetch / translate_document / export_document / arxiv_search / run_sub_agent`（audit/explain/implement/translate 四模式）；`run_command` 受 bash 校验管道保护（只读拦截、危险命令警告、路径验证、命令分类）
+- **5 级权限系统** — ReadOnly / WorkspaceWrite / DangerFullAccess / Prompt / Allow，支持 allow/deny/ask 规则引擎；文件操作严格锁定 workspace 边界；sudo 包装和 sed -i 在只读模式下被拦截
 - **实时文件刷新** — Agent 写入文件后自动发 checkpoint SSE 事件，文件树和编辑器即时更新
 - **审批流暂停** — write_file/str_replace 前 SSE 流暂停，编辑器显示 diff 预览（红/绿高亮），用户决定接受/拒绝
 - **Skills 系统** — 6 个内置学术 skill（学术写作/论文审稿/LaTeX/中文学术/方法论），支持从 `data/agent_v2/skills/` 加载自定义 skill
-- **Hooks 系统** — 5 个生命周期钩子（PreToolUse/PostToolUse/PostToolUseFailure/Init/Shutdown），支持 Python callable + Shell 命令
+- **Hooks 系统** — 5 个生命周期钩子（PreToolUse/PostToolUse/PostToolUseFailure/Init/Shutdown），支持 Python callable + Shell 命令；HookAbortSignal 异步取消；HookRunResult 支持 updated_input + permission_override；shell hook JSON 标准输出解析 + 退出码约定（0=allow, 2=deny, 3=ask）
 - **Plugin 系统** — YAML manifest 插件（skills + hooks + tools），一键注册
 - **Sub-agent 子代理** — 主 Agent 可委派子任务给专门子代理（审查/解释/实施/翻译），共享 Provider
+- **会话分支（Session Fork）** — 从任意检查点分叉新会话，保留消息历史和分叉元数据
+- **上下文压缩** — Trident 三阶段管道（淘汰过期文件操作 → 折叠闲聊 → 语义聚类），950K token 时自动触发
+- **自动故障恢复** — 7 种故障场景含已知恢复方案，自动尝试一次后升级
 - **Provider 自动检测** — Anthropic/OpenAI/DeepSeek/Ollama 自动识别，模型别名（haiku/sonnet/opus/ds/4o），provider quirks 自动适配
 - **成本追踪** — 按模型定价（Claude/GPT/DeepSeek/Ollama）实时统计 token 用量和费用
 - **文献库（RAG）** — `rag_search` 工具检索本地向量库中的论文全文，翻译完成后自动收录
@@ -80,7 +83,7 @@ v0.4.0 · 最新：Agent V2 运行时（claw-code 架构）、实时流式、Ski
 - **Rebuttal 包导出** — 一键下载含所有批评点 + rebuttal 草稿的 Markdown 文件
 - **Toulmin 论证图** — 节点（主张/依据/保证/支撑/限定/反驳）+ 关系，Vue Flow 画布可视化；AI 自动提取、批判审查、建议下一个元素；降维展开为结构化 Markdown/LaTeX 论文草稿
 
-**状态**：Phase 0–5 全部完成，已发布。1407 pytest passed（263 agent + 1144 非 agent）/ 5 skipped + 482 vitest passed。
+**状态**：Phase 0–5 全部完成，已发布。1700+ pytest passed（700+ agent + 1000+ 非 agent）+ 482 vitest passed。
 
 ### 思维导图
 - **Vue Flow 画布** — 自定义节点卡片 + 连线（树边/关联线），支持拖拽、缩放、小地图
@@ -202,8 +205,8 @@ v0.4.0 · 最新：Agent V2 运行时（claw-code 架构）、实时流式、Ski
 │   │   ├── translator/           #   Ollama + Cloud 双客户端 (21 家供应商)
 │   │   ├── formatter/            #   3 输出模式 + Pandoc 导出
 │   │   ├── agent_v2/             #   Agent V2 (claw-code 架构，替代旧 agent/)
-│   │   │   ├── runtime/          #     conversation, permissions, session, compact, usage
-│   │   │   ├── tools/            #     registry, academic_tools, sub_agent
+│   │   │   ├── runtime/          #     conversation, permissions, session, compact, usage, +9 claw-code 模块 (bash 校验/恢复/沙箱/trident 等)
+│   │   │   ├── tools/            #     registry（含 bash 校验管道集成）, academic_tools, sub_agent
 │   │   │   ├── providers/        #     openai_compat, anthropic, mock_provider, base, quirks
 │   │   │   ├── mcp/              #     MCP JSON-RPC stdio 生命周期管理
 │   │   │   ├── skills.py         #     Skill 注册表 (6 内置 + 文件加载)

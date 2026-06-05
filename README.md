@@ -15,7 +15,7 @@
 
 PDF translation & close reading included as an on-ramp — translate a paper in minutes, then work on it. Voice assistant with Siri-style wake word and dictation. Runs locally offline or connects to 21 cloud LLM providers. **Bilingual UI** (zh-CN / en-US).
 
-v0.4.0 — Latest: Agent V2 runtime (claw-code architecture), real streaming, skills/hooks/plugins, 1407 tests. MIT license.
+v0.4.0 — Latest: Agent V2 runtime (9 claw-code modules ported: bash validation, git context, LSP, policy engine, prompt cache, recovery, sandbox, session control, trident compaction), real streaming, skills/hooks/plugins, session fork, 1700+ tests. MIT license.
 
 ## Demo
 
@@ -53,15 +53,18 @@ Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant-ag
 
 > **Positioning: Claude Code for Papers.** Treat your research project as a workspace; the Agent reads/writes PDFs, drafts, bib files, and data directly — just like Claude Code edits source code. Agent V2 architecture inspired by [ultraworkers/claw-code](https://github.com/ultraworkers/claw-code).
 
-- **Agent V2 Runtime** — ConversationRuntime unified loop, real-time SSE streaming token-by-token; 3-retry error recovery; planning detection + auto-retry
-- **17 Built-in Tools** — `read_file / write_file / str_replace / grep_files / glob_files / list_dir / run_command / rag_search / web_search / web_fetch / translate_document / export_document / arxiv_search / run_sub_agent` (4 presets: audit/explain/implement/translate)
-- **5-Tier Permission System** — ReadOnly / WorkspaceWrite / DangerFullAccess / Prompt / Allow with allow/deny/ask rule engine; all file ops locked to workspace boundary
+- **Agent V2 Runtime** — ConversationRuntime unified loop, real-time SSE streaming token-by-token; 3-retry error recovery; planning detection + auto-retry; 9 claw-code runtime modules ported (bash_validation, git_context, lsp_client, policy_engine, prompt_cache, recovery, sandbox, session_control, trident)
+- **17 Built-in Tools** — `read_file / write_file / str_replace / grep_files / glob_files / list_dir / run_command / rag_search / web_search / web_fetch / translate_document / export_document / arxiv_search / run_sub_agent` (4 presets: audit/explain/implement/translate); `run_command` protected by bash validation pipeline (read-only mode, destructive command warnings, path validation, command classification)
+- **5-Tier Permission System** — ReadOnly / WorkspaceWrite / DangerFullAccess / Prompt / Allow with allow/deny/ask rule engine; all file ops locked to workspace boundary; sudo wrapping and sed -i blocked in read-only mode
 - **Real-time File Refresh** — Checkpoint SSE events after Agent writes; file tree and editor tabs update instantly
 - **Approval Flow with Pause** — SSE stream pauses on write_file/str_replace; editor shows diff preview (red/green highlights) with Accept/Reject
 - **Skills System** — 6 built-in academic skills + custom `.md` skills from `data/agent_v2/skills/` with YAML frontmatter
-- **Hooks System** — 5 lifecycle hook points (PreToolUse/PostToolUse/PostToolUseFailure/Init/Shutdown), Python callable + Shell command
+- **Hooks System** — 5 lifecycle hook points (PreToolUse/PostToolUse/PostToolUseFailure/Init/Shutdown), Python callable + Shell command; HookAbortSignal for async cancellation; HookRunResult with updated_input + permission_override support; shell hook JSON stdout parsing with exit code conventions (0=allow, 2=deny, 3=ask)
 - **Plugin System** — YAML manifest plugins bundling skills + hooks + tools, one-click registration
 - **Sub-agent System** — Delegation to specialized sub-agents (audit/explain/implement/translate) sharing the parent Provider
+- **Session Fork** — Branch sessions from any checkpoint, preserving message history and fork metadata
+- **Context Compaction** — Trident 3-stage pipeline (supersede obsolete file ops → collapse chatty exchanges → cluster similar messages), auto-triggered at 950K tokens
+- **Automatic Recovery** — 7 failure scenarios with known recovery recipes, one automatic attempt before escalation
 - **Provider Auto-detection** — Anthropic/OpenAI/DeepSeek/Ollama auto-detect; model aliases (haiku/sonnet/opus/ds/4o); provider quirks auto-adapt
 - **Cost Tracking** — Per-model pricing (Claude/GPT/DeepSeek/Ollama), real-time token and cost statistics
 - **Library (RAG)** — `rag_search` tool queries local vector DB; post-translation auto-ingest
@@ -79,7 +82,7 @@ Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant-ag
 - **Rebuttal Package Export** — One-click download of all critique points + rebuttal drafts as Markdown
 - **Toulmin Argument Map** — Nodes (Claim / Grounds / Warrant / Backing / Qualifier / Rebuttal) + Relations on a Vue Flow canvas; AI auto-extraction, critique, and suggestions; flatten to structured Markdown/LaTeX paper draft (SSE streaming)
 
-**Status**: Phase 0–5 complete, shipped. 1407 pytest passed (263 agent + 1144 non-agent) / 5 skipped + 482 vitest passed.
+**Status**: Phase 0–5 complete, shipped. 1700+ pytest passed (700+ agent + 1000+ non-agent) + 482 vitest passed.
 
 ### Mind Map
 - **Vue Flow Canvas** — Custom node cards + edges (tree/association), drag, zoom, minimap
@@ -195,7 +198,7 @@ Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant-ag
 │   │   ├── chunker/              #   3 chunking strategies (sentence/paragraph/fixed)
 │   │   ├── translator/           #   Ollama + Cloud dual-client (21 providers)
 │   │   ├── formatter/            #   3 output modes + Pandoc export
-│   │   ├── agent_v2/             #   Agent V2 runtime (ConversationRuntime, PermissionPolicy, Skills, Hooks, Plugins)
+│   │   ├── agent_v2/             #   Agent V2 runtime (ConversationRuntime, PermissionPolicy, Skills, Hooks, Plugins, 9 claw-code runtime modules)
 │   │   ├── argument/             #   Argument Map v2 + Companion v3
 │   │   ├── plugin/               #   MCP-style plugin registry
 │   │   ├── citation/             #   Citation indexer
@@ -203,7 +206,7 @@ Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant-ag
 │   │   └── mcp/                  #   Vision client (multi-modal image analysis)
 │   ├── prompts/                  #   Academic writing prompt system (6-layer skeleton + YAML frontmatter)
 │   ├── data/paper_assets/        #   Paper templates (IEEE/ACM/NeurIPS/LNCS/Generic)
-│   └── tests/                    #   Unit + integration tests (incl. E2E companion + adversarial), pytest 1407 passed (263 agent + 1144 other) / 5 skipped
+│   └── tests/                    #   Unit + integration tests (incl. E2E companion + adversarial), pytest 1700+ passed
 ├── config/default.yaml           #   Source-of-truth default configuration
 ├── Dockerfile
 ├── docker-compose.yml
@@ -465,7 +468,7 @@ Edit `config/default.yaml`:
 
 ### Key Design Decisions
 
-- **Agent V2 (claw-code inspired)** — ConversationRuntime, not LangChain; 263 tests, 100% deterministic mock coverage
+- **Agent V2 (claw-code inspired)** — ConversationRuntime, not LangChain; 9 claw-code runtime modules ported; 700+ tests, 100% deterministic mock coverage
 - **SSE everywhere** — streaming UX for translation, agent chat, argument extraction
 - **Local-first** — all data stays on your machine; cloud LLMs are optional
 - **Workspace-scoped Agent** — file operations locked to project root, 5-tier permission system
@@ -487,7 +490,7 @@ A unique feature not found in any other academic tool:
 ## Testing
 
 ```
-Python:  1407 tests passed / 5 skipped    (pytest — 263 agent + 1144 other)
+Python:  1700+ tests passed               (pytest — 700+ agent + 1000+ other)
 Frontend: 482 tests passed / 40 files     (vitest)
 ```
 
