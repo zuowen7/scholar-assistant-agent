@@ -217,34 +217,14 @@ class ConversationRuntime:
                         if is_planning and wants_action and has_tools and not self._planning_retried:
                             self._planning_retried = True
                             yield AgentEvent.token(full_text)
-                            # Immediate retry with tool_choice=required to force tool use
-                            yield AgentEvent.token("\n⚙ Forcing tool execution...\n")
-                            try:
-                                resp2 = await self.provider.chat(
-                                    messages=self.session.messages + [
-                                        Message(role=MessageRole.USER, blocks=[
-                                            TextBlock(text="⚠ Use a tool NOW. No more text — call read_file, write_file, str_replace, or grep_files immediately.")
-                                        ])
-                                    ],
-                                    tools=self.tool_registry.definitions(),
-                                    system_prompt=self.system_prompt,
-                                    tool_choice="required",
-                                )
-                            except Exception:
-                                yield AgentEvent.error("Retry with tool_choice=required failed")
-                                return
-                            # Process the forced response
-                            if resp2.has_tool_calls():
-                                for tb in resp2.tool_calls():
-                                    tool_blocks.append(tb)
-                                    yield AgentEvent.tool_call(tb.id, tb.name, tb.input)
-                                assistant_blocks2 = list(tool_blocks)
-                                if resp2.text_content():
-                                    assistant_blocks2.insert(0, TextBlock(text=resp2.text_content()))
-                                self.session.append(Message(role=MessageRole.ASSISTANT, blocks=assistant_blocks2, usage=resp2.usage))
-                            else:
-                                yield AgentEvent.response(full_text + "\n\n[Unable to execute tools automatically. Please try a more specific request.]")
-                                return
+                            # Retry once with a clear demand — but don't use tool_choice=required
+                            # as some providers (DeepSeek) don't support it reliably
+                            self.session.append(Message(role=MessageRole.USER, blocks=[
+                                TextBlock(text="STOP describing. Call a tool NOW: read_file, write_file, str_replace, or grep_files. No more text — EXECUTE.")
+                            ]))
+                            # Yield the text so user sees what happened, but DON'T end the turn
+                            # The outer loop will call _llm_turn again with the retry message
+                            return
                         yield AgentEvent.response(full_text)
                     else:
                         yield AgentEvent.error("empty response from LLM")
