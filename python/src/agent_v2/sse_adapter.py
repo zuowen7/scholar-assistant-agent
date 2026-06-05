@@ -73,9 +73,15 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
 
     # ---- 以下保留原始类型 ----
     elif t == AgentEventType.CHECKPOINT:
-        content = f"文件 {data.get('file', '')} 已更新"
+        content = data.get("content", f"文件 {data.get('file', '')} 已更新")
         evt_type = "checkpoint"
-        metadata = {"stage": "editing", "checkpoint_type": "SLIM", "action": data.get("action", ""), "file": data.get("file", "")}
+        metadata = {
+            "stage": "editing",
+            "checkpoint_type": "SLIM",
+            "action": data.get("action", ""),
+            "file": data.get("file", ""),
+            "content": data.get("content", ""),
+        }
         return {"type": evt_type, "content": content, "event_id": _event_id(), "metadata": metadata}
     elif t == AgentEventType.SESSION_STARTED:
         content = data.get("session_id", "")

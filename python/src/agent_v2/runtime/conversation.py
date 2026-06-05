@@ -281,11 +281,21 @@ class ConversationRuntime:
             ToolResultBlock(tool_use_id=tb.id, tool_name=tb.name, output=tool_output[:_TOOL_RESULT_MAX_CHARS], is_error=is_error),
         ]))
 
-        # Checkpoint after file modifications
+        # Checkpoint after file modifications: include new content for frontend
         if tb.name in ("write_file", "str_replace") and not is_error:
+            new_content = ""
+            if file_path:
+                try:
+                    fp = Path(file_path) if Path(file_path).is_absolute() else (self.tool_registry._workspace_root / file_path) if self.tool_registry._workspace_root else Path(file_path)
+                    if fp.is_file():
+                        new_content = fp.read_text(encoding="utf-8", errors="replace")
+                except Exception:
+                    pass
             yield AgentEvent.checkpoint({
-                "action": tb.name, "file": file_path,
+                "action": tb.name,
+                "file": file_path,
                 "workspace": self.session.meta.workspace,
+                "content": new_content[:10000] if new_content else tool_output,
             })
 
     def _auto_save(self) -> None:
