@@ -66,26 +66,24 @@ class OpenAiCompatProvider(BaseProvider):
             elif msg.role == MessageRole.ASSISTANT:
                 text = msg.text_content()
                 tool_calls = msg.tool_calls()
-                if tool_calls:
-                    tc_list = []
-                    for tc in tool_calls:
-                        args = tc.input
-                        try:
-                            json.loads(args)
-                        except (json.JSONDecodeError, TypeError):
-                            args = json.dumps({"input": args})
-                        tc_list.append({
-                            "id": tc.id, "type": "function",
-                            "function": {"name": tc.name, "arguments": args},
-                        })
-                    entry: dict[str, Any] = {"role": "assistant", "tool_calls": tc_list}
-                    if text:
-                        entry["content"] = text
-                    elif not self.quirks.omit_content_with_tool_calls:
-                        entry["content"] = None
+                if text or tool_calls:
+                    entry: dict[str, Any] = {"role": "assistant"}
+                    # Always include content key, even if null (matches claw-code)
+                    entry["content"] = text if text else None
+                    if tool_calls:
+                        tc_list = []
+                        for tc in tool_calls:
+                            args = tc.input
+                            try:
+                                json.loads(args)
+                            except (json.JSONDecodeError, TypeError):
+                                args = json.dumps({"input": args})
+                            tc_list.append({
+                                "id": tc.id, "type": "function",
+                                "function": {"name": tc.name, "arguments": args},
+                            })
+                        entry["tool_calls"] = tc_list
                     result.append(entry)
-                elif text:
-                    result.append({"role": "assistant", "content": text})
             elif msg.role == MessageRole.TOOL:
                 from src.agent_v2.types import ToolResultBlock
                 for b in msg.blocks:
