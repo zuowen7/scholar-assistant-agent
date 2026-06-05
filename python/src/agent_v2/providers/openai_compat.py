@@ -15,6 +15,20 @@ import httpx
 from src.agent_v2.providers.base import BaseProvider
 
 logger = logging.getLogger(__name__)
+
+
+def _max_tokens_for_model(model: str) -> int:
+    """参考 claw-code max_tokens_for_model: 每个模型不同上限。"""
+    m = model.lower()
+    if "claude" in m:
+        return 8192
+    if "gpt-4" in m or "gpt-4o" in m:
+        return 16384
+    if "deepseek" in m:
+        return 8192
+    if "qwen" in m or "llama" in m:
+        return 4096
+    return 4096
 from src.agent_v2.types import (
     Message,
     MessageRole,
@@ -47,6 +61,7 @@ class OpenAiCompatProvider(BaseProvider):
         self._client: httpx.AsyncClient | None = None
         from src.agent_v2.providers.quirks import detect_quirks
         self.quirks = detect_quirks(model, base_url)
+        self.model_max_tokens = _max_tokens_for_model(model)
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
@@ -121,7 +136,7 @@ class OpenAiCompatProvider(BaseProvider):
         body: dict[str, Any] = {
             "model": self.model,
             "messages": self._build_messages(messages, system_prompt),
-            "max_tokens": max_tokens,
+            "max_tokens": min(max_tokens, self.model_max_tokens),
             "temperature": temperature,
             "stream": False,
         }
@@ -160,7 +175,7 @@ class OpenAiCompatProvider(BaseProvider):
         body: dict[str, Any] = {
             "model": self.model,
             "messages": self._build_messages(messages, system_prompt),
-            "max_tokens": max_tokens,
+            "max_tokens": min(max_tokens, self.model_max_tokens),
             "temperature": temperature,
             "stream": True,
         }
