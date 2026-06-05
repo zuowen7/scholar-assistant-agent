@@ -35,7 +35,7 @@ v0.4.0 · 最新：Agent V2 运行时（claw-code 架构）、实时流式、Ski
 |---------|
 | ![更多](docs/demo/demo2.gif) |
 
-> 以上均为 v0.3.6 版本实机录屏。
+> 以上均为 v0.4.0 版本实机录屏。
 
 ## 下载安装
 
@@ -50,16 +50,22 @@ v0.4.0 · 最新：Agent V2 运行时（claw-code 架构）、实时流式、Ski
 
 ## 核心功能
 
-### 学术写作 AI（Agent 为核心）
+### 学术写作 AI（Agent V2 为核心）
 
-> **定位：论文版 Claude Code。** 把科研项目当 workspace，Agent 像 Claude Code 修代码一样直接读/写 PDF、草稿、bib、数据文件。
+> **定位：论文版 Claude Code。** 把科研项目当 workspace，Agent 像 Claude Code 修代码一样直接读/写 PDF、草稿、bib、数据文件。Agent V2 架构参考 [ultraworkers/claw-code](https://github.com/ultraworkers/claw-code) 设计。
 
-- **Agent 工作区文件操作** — 打开项目文件夹后，Agent 可直接调用 `read_file / grep_files / str_replace / write_file / git_op` 等工具读写项目内文件，Agent 完成后编辑器实时刷新；`read_file` 对 PDF/Word/EPUB 自动走解析器提取纯文本
-- **文档问答一次性短路** — 打开文档问"写得怎么样/总结/有什么问题"时，内容已在手，直接单次 LLM 流式回答，不进多步工具循环；仅当明确要改文件/跑命令才走完整 ReAct Agent
-- **workspace 边界 & 越界审批** — 所有文件操作严格锁定在项目根目录内；访问项目外路径触发审批弹窗（Allow once / Allow session / Deny），行为与 Claude Code 一致
-- **Copilot 风格 inline diff** — Agent 修改文件后，编辑器内以红色波浪线标记删除、绿色预览部件 + [Accept][Reject] 按钮审阅改动
-- **ReAct 智能推理** — 多步工具调用循环，支持任务拆解、断点续跑、Skill 三层注入（SOUL/AGENTS/IDENTITY）、上下文压缩
-- **文献库（RAG）** — 翻译完成后自动将双语全文收录进本地向量库；Agent 按需调用 `search_documents` 跨文献检索，不自动注入每轮上下文；支持手动上传/删除文件
+- **Agent V2 运行时** — ConversationRuntime 统一对话循环，支持流式 SSE 逐 token 实时显示；3 次自动重试恢复；Planning 检测 + 自动重试
+- **17 个内置工具** — `read_file / write_file / str_replace / grep_files / glob_files / list_dir / run_command / rag_search / web_search / web_fetch / translate_document / export_document / arxiv_search / run_sub_agent`（audit/explain/implement/translate 四模式）
+- **5 级权限系统** — ReadOnly / WorkspaceWrite / DangerFullAccess / Prompt / Allow，支持 allow/deny/ask 规则引擎；文件操作严格锁定 workspace 边界
+- **实时文件刷新** — Agent 写入文件后自动发 checkpoint SSE 事件，文件树和编辑器即时更新
+- **审批流暂停** — write_file/str_replace 前 SSE 流暂停，编辑器显示 diff 预览（红/绿高亮），用户决定接受/拒绝
+- **Skills 系统** — 6 个内置学术 skill（学术写作/论文审稿/LaTeX/中文学术/方法论），支持从 `data/agent_v2/skills/` 加载自定义 skill
+- **Hooks 系统** — 5 个生命周期钩子（PreToolUse/PostToolUse/PostToolUseFailure/Init/Shutdown），支持 Python callable + Shell 命令
+- **Plugin 系统** — YAML manifest 插件（skills + hooks + tools），一键注册
+- **Sub-agent 子代理** — 主 Agent 可委派子任务给专门子代理（审查/解释/实施/翻译），共享 Provider
+- **Provider 自动检测** — Anthropic/OpenAI/DeepSeek/Ollama 自动识别，模型别名（haiku/sonnet/opus/ds/4o），provider quirks 自动适配
+- **成本追踪** — 按模型定价（Claude/GPT/DeepSeek/Ollama）实时统计 token 用量和费用
+- **文献库（RAG）** — `rag_search` 工具检索本地向量库中的论文全文，翻译完成后自动收录
 - **AI 润色 / 扩写 / 连贯性改写 / 合规检查** — 通过 AI Panel 对选中文本操作
 - **Inline Ghost Text** — Monaco Editor 打字后 1.5s 自动请求补全建议，Tab 接受 ghost 文本
 
@@ -74,7 +80,7 @@ v0.4.0 · 最新：Agent V2 运行时（claw-code 架构）、实时流式、Ski
 - **Rebuttal 包导出** — 一键下载含所有批评点 + rebuttal 草稿的 Markdown 文件
 - **Toulmin 论证图** — 节点（主张/依据/保证/支撑/限定/反驳）+ 关系，Vue Flow 画布可视化；AI 自动提取、批判审查、建议下一个元素；降维展开为结构化 Markdown/LaTeX 论文草稿
 
-**状态**：Phase 0–5 全部完成，`features.argument_companion=true` 已发布，pytest 2025 passed / 11 skipped + vitest 482 passed。
+**状态**：Phase 0–5 全部完成，已发布。1407 pytest passed（263 agent + 1144 非 agent）/ 5 skipped + 482 vitest passed。
 
 ### 思维导图
 - **Vue Flow 画布** — 自定义节点卡片 + 连线（树边/关联线），支持拖拽、缩放、小地图
@@ -195,19 +201,17 @@ v0.4.0 · 最新：Agent V2 运行时（claw-code 架构）、实时流式、Ski
 │   │   ├── chunker/              #   3 策略切块 (sentence/paragraph/fixed)
 │   │   ├── translator/           #   Ollama + Cloud 双客户端 (21 家供应商)
 │   │   ├── formatter/            #   3 输出模式 + Pandoc 导出
-│   │   ├── agent/                #   ReAct Agent + RAG + Tools + Skills
-│   │   │   ├── agent.py          #     AgentLoop ReAct 引擎
-│   │   │   ├── session.py        #     会话管理 (断点续传/审批)
-│   │   │   ├── session_store.py  #     会话持久化 (JSON)
-│   │   │   ├── memory.py         #     短/长期记忆
-│   │   │   ├── skill_system.py   #     Skill 沉淀 (调度 → 匹配/持久化/自动提取子模块)
-│   │   │   ├── prompt_builder.py #     Prompt 组装 (Skill SOUL/AGENTS 注入)
-│   │   │   ├── context_compressor.py # 上下文压缩
-│   │   │   ├── llm_client.py     #     统一 LLM 客户端 (按后端拆分为 _llm_*.py)
-│   │   │   ├── security_gate.py  #     工具执行安全门控
-│   │   │   ├── hooks.py          #     错误/重试 Hook
-│   │   │   ├── tools/            #     工具集 (core/atomic/builtin/workspace/registry)
-│   │   │   └── ...               #     mcp_server, rag, review_agent, trajectory, etc.
+│   │   ├── agent_v2/             #   Agent V2 (claw-code 架构，替代旧 agent/)
+│   │   │   ├── runtime/          #     conversation, permissions, session, compact, usage
+│   │   │   ├── tools/            #     registry, academic_tools, sub_agent
+│   │   │   ├── providers/        #     openai_compat, anthropic, mock_provider, base, quirks
+│   │   │   ├── mcp/              #     MCP JSON-RPC stdio 生命周期管理
+│   │   │   ├── skills.py         #     Skill 注册表 (6 内置 + 文件加载)
+│   │   │   ├── hooks.py          #     5 生命周期 Hook + HookRunner
+│   │   │   ├── plugins.py        #     YAML manifest 插件系统
+│   │   │   ├── sse_adapter.py    #     SSE 事件格式适配
+│   │   │   ├── types.py          #     统一类型系统
+│   │   │   └── router.py         #     FastAPI 路由注册
 │   │   ├── argument/             #   论证地图 v2 + 论证陪练 v3 (llm_client, ai_ops, ledger, reviewer, _reviewer_perspectives, anchor, companion_store, graph_store)
 │   │   ├── plugin/               #   MCP 风格插件注册
 │   │   ├── citation/             #   引用索引器
@@ -215,7 +219,7 @@ v0.4.0 · 最新：Agent V2 运行时（claw-code 架构）、实时流式、Ski
 │   │   └── mcp/                  #   Vision 客户端 (多模态图像理解)
 │   ├── prompts/                  #   学术写作 Prompt 体系 (6层骨架 + YAML frontmatter + eval runner)
 │   ├── data/paper_assets/        #   论文模板 (IEEE/ACM/NeurIPS/LNCS/通用)
-│   └── tests/                    #   单元测试 + 集成测试（含 E2E companion + adversarial），pytest 2025 passed / 11 skipped
+│   └── tests/                    #   单元测试 + 集成测试（含 E2E companion + adversarial），pytest 1407 passed (263 agent + 1144 其他) / 5 skipped
 ├── Dockerfile
 ├── docker-compose.yml
 └── package.json
@@ -335,7 +339,7 @@ MSYS_NO_PATHCONV=1 docker run --rm \
 ### Agent & 编辑
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `POST` | `/api/chat` | Agent SSE 对话 (ReAct 循环) |
+| `POST` | `/api/agent/v2/chat` | Agent V2 SSE 对话 (ConversationRuntime) |
 | `POST` | `/api/agent/v2/chat` | Agent V2 SSE 对话 (会话管理) |
 | `GET` | `/api/agent/v2/sessions` | 列出会话历史 |
 | `POST` | `/api/agent/v2/resume/{session_id}` | 恢复会话 |
