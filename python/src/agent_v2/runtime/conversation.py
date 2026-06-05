@@ -36,7 +36,7 @@ from src.agent_v2.types import (
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MAX_STEPS = 8  # enough for read→edit→verify, not for infinite loops
+_DEFAULT_MAX_STEPS = 24
 _APPROVAL_TIMEOUT = 120.0  # 2 分钟等用户审批
 _TOOL_RESULT_MAX_CHARS = 4000
 
@@ -66,8 +66,6 @@ class ConversationRuntime:
         self._approval_events: dict[str, asyncio.Event] = {}
         self._approval_decisions: dict[str, str] = {}
         self._aborted = False
-        self._planning_retried = False
-        self._same_file_edits = 0  # guard against infinite edit loops
 
     # ---- Public API ----
 
@@ -82,11 +80,6 @@ class ConversationRuntime:
         self._auto_save()
 
         for step in range(self.max_steps):
-            if self._same_file_edits >= 3 and step > 0:
-                yield AgentEvent.token("\n[Auto-stop: 3+ edits on same file. Task complete.]\n")
-                yield AgentEvent.response("Task completed after multiple edits.")
-                yield AgentEvent.done()
-                return
             if self._aborted:
                 yield AgentEvent.aborted("Session aborted by user")
                 yield AgentEvent.done()
@@ -147,13 +140,11 @@ class ConversationRuntime:
     # ---- Internal ----
 
     async def _llm_turn(self) -> AsyncGenerator[AgentEvent, None]:
-        import os, asyncio, time as _time
+        import os
         messages = self.session.messages
 
         use_stream = os.environ.get("SCHOLAR_AGENT_STREAM", "1").strip() == "1"
         provider_stream = None
-        _start = _time.monotonic()
-        _last_progress = _start
 
         if use_stream and hasattr(self.provider, "chat_stream"):
             provider_stream = self.provider.chat_stream(
@@ -170,25 +161,10 @@ class ConversationRuntime:
         tool_blocks = []
         text_blocks = []
 
-        _got_output = False
         async for chunk in provider_stream:
-            if not _got_output:
-                _got_output = True
-                _elapsed = _time.monotonic() - _start
-                if _elapsed > 8.0:
-                    yield AgentEvent.token(f"\n(LLM generating, waited {_elapsed:.0f}s...)\n")
-            # Progress: if no output in last 10 seconds, show indicator
-            _now = _time.monotonic()
-            if _now - _last_progress > 10.0:
-                _msg = f"DeepSeek is generating a long response ({len(text_blocks)} tokens so far, {_now - _start:.0f}s elapsed)..."
-                if tool_blocks:
-                    _msg += f" {len(tool_blocks)} tool calls pending"
-                yield AgentEvent.token(f"\n{_msg}\n")
-                _last_progress = _now
             if isinstance(chunk, TextBlock):
                 text_blocks.append(chunk)
                 yield AgentEvent.token(chunk.text)
-                _last_progress = _time.monotonic()
             elif isinstance(chunk, ThinkingBlock):
                 yield AgentEvent.thought(chunk.thinking)
             elif isinstance(chunk, ToolUseBlock):
@@ -304,14 +280,6 @@ class ConversationRuntime:
         self.session.append(Message(role=MessageRole.TOOL, blocks=[
             ToolResultBlock(tool_use_id=tb.id, tool_name=tb.name, output=tool_output[:_TOOL_RESULT_MAX_CHARS], is_error=is_error),
         ]))
-
-        # Guard: prevent infinite edit loops on the same file
-        if tb.name in ("write_file", "str_replace") and file_path and not is_error:
-            if getattr(self, '_last_edited_file', '') == file_path:
-                self._same_file_edits += 1
-            else:
-                self._same_file_edits = 1
-            self._last_edited_file = file_path
 
         # Checkpoint after file modifications
         if tb.name in ("write_file", "str_replace") and not is_error:

@@ -53,6 +53,7 @@ class AnthropicProvider(BaseProvider):
         self.model = model
         self.timeout = timeout
         self._client: httpx.AsyncClient | None = None
+        self.model_max_tokens = 8192  # Anthropic models support 8K
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
@@ -126,7 +127,7 @@ class AnthropicProvider(BaseProvider):
         body: dict[str, Any] = {
             "model": self.model,
             "messages": self._build_messages(messages),
-            "max_tokens": max_tokens,
+            "max_tokens": min(max_tokens, self.model_max_tokens),
         }
         if system_prompt:
             body["system"] = system_prompt
