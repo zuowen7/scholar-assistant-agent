@@ -199,7 +199,7 @@ BibTeX 条目：{bibtex_entry}"""
 
 def _tool_analyze_markdown_elements(text: str) -> str:
     """分析 Markdown 文本中的特殊元素。"""
-    from src.agent.special_elements import analyze_markdown_elements
+    from src.agent_v2.special_elements import analyze_markdown_elements
     import json
     result = analyze_markdown_elements(text)
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -207,7 +207,7 @@ def _tool_analyze_markdown_elements(text: str) -> str:
 
 def _tool_parse_table_structure(table_markdown: str) -> str:
     """解析 Markdown 表格结构。"""
-    from src.agent.special_elements import parse_table_structure
+    from src.agent_v2.special_elements import parse_table_structure
     import json
     result = parse_table_structure(table_markdown)
     return json.dumps(result, ensure_ascii=False, indent=2)
@@ -215,31 +215,31 @@ def _tool_parse_table_structure(table_markdown: str) -> str:
 
 def _tool_generate_table_markdown(headers: list, rows: list) -> str:
     """从结构化数据生成 Markdown 表格。"""
-    from src.agent.special_elements import generate_table_markdown
+    from src.agent_v2.special_elements import generate_table_markdown
     return generate_table_markdown(headers, rows)
 
 
 def _tool_format_latex_formula(formula: str, display: bool = False) -> str:
     """格式化 LaTeX 公式。"""
-    from src.agent.special_elements import format_latex_formula
+    from src.agent_v2.special_elements import format_latex_formula
     return format_latex_formula(formula, display=display)
 
 
 def _tool_get_citation_context(text: str, citation_key: str) -> str:
     """获取文献引用的上下文。"""
-    from src.agent.special_elements import get_citation_context
+    from src.agent_v2.special_elements import get_citation_context
     return get_citation_context(text, citation_key)
 
 
 def _tool_analyze_image_with_vision(image_path: str) -> str:
     """使用 Vision API 分析图片内容。"""
-    from src.agent.special_elements import analyze_image_with_vision
+    from src.agent_v2.special_elements import analyze_image_with_vision
     return analyze_image_with_vision(image_path)
 
 
 def _tool_analyze_chart_image(image_path: str) -> str:
     """使用 Vision API 分析图表图片。"""
-    from src.agent.special_elements import analyze_chart_image
+    from src.agent_v2.special_elements import analyze_chart_image
     return analyze_chart_image(image_path)
 
 

@@ -29,7 +29,7 @@ def _probe(label: str, *modules: str) -> bool:
 
 # ── Subsystem gates ──────────────────────────────────────────────────
 
-agent: bool = _probe("agent", "src.agent")
+agent: bool = _probe("agent", "src.agent_v2")
 plugin: bool = _probe("plugin", "src.plugin")
 argument: bool = _probe("argument", "src.argument.models")
 mcp: bool = _probe("mcp", "mcp.server", "mcp.server.stdio")
