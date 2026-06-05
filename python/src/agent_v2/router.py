@@ -187,10 +187,15 @@ def _create_provider():
         tb = translator_cloud.get("base_url", "").strip()
         tm = translator_cloud.get("model", "").strip()
         if tk or tb:
-            logger.info("Agent V2: translator.cloud config — %s @ %s", tm or "deepseek-chat", tb or "https://api.deepseek.com/v1")
-            return OpenAiCompatProvider(
-                base_url=tb or "https://api.deepseek.com/v1",
-                api_key=tk, model=model or tm or "deepseek-chat")
+            tb = tb or "https://api.deepseek.com/v1"
+            m = model or tm or "deepseek-chat"
+            # DeepSeek works better with Anthropic Messages format
+            if "deepseek" in tb.lower():
+                logger.info("Agent V2: DeepSeek via Anthropic format — %s @ %s", m, tb)
+                from src.agent_v2.providers.anthropic import AnthropicProvider
+                return AnthropicProvider(base_url=tb, api_key=tk, model=m)
+            logger.info("Agent V2: cloud config — %s @ %s", m, tb)
+            return OpenAiCompatProvider(base_url=tb, api_key=tk, model=m)
 
     # 4. Local Ollama
     ollama_base = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1").strip()

@@ -165,9 +165,9 @@ class OpenAiCompatProvider(BaseProvider):
             "max_tokens": max_tokens,
             "temperature": temperature,
             "stream": True,
+        }
         if self.quirks.supports_stream_options:
             body["stream_options"] = {"include_usage": True}
-        }
         built_tools = self._build_tools(tools)
         if built_tools:
             body["tools"] = built_tools
