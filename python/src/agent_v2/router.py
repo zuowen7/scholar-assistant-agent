@@ -32,6 +32,9 @@ from src.agent_v2.sse_adapter import agent_event_to_sse_stream
 from src.agent_v2.tools.registry import create_default_registry
 from src.agent_v2.tools.academic_tools import register_academic_tools
 from src.agent_v2.tools.sub_agent import register_sub_agent
+from src.agent_v2.skills import SkillRegistry, _BUILTIN_SKILLS
+from src.agent_v2.hooks import HookRunner, HookEvent, HookPoint
+from src.agent_v2.plugins import PluginManager, create_default_plugin_manager
 from src.agent_v2.types import AgentEvent
 
 logger = logging.getLogger(__name__)
@@ -158,10 +161,30 @@ def _build_system_prompt(workspace_root: str, tools: list) -> str:
 def _create_runtime(workspace_root: str, session_id: str = "") -> ConversationRuntime:
     provider = _create_provider()
     ws = Path(workspace_root) if workspace_root else Path.cwd()
+
+    # Tool registry
     registry = create_default_registry(workspace_root=ws)
     register_academic_tools(registry)
     register_sub_agent(registry)
-    registry._provider = provider  # for sub-agent access
+    registry._provider = provider
+
+    # Skills
+    skill_registry = SkillRegistry()
+    for s in _BUILTIN_SKILLS:
+        skill_registry.register(s)
+    # Load user skills from data/agent_v2/skills/
+    _skills_dir = Path(__file__).resolve().parent.parent.parent / "data" / "agent_v2" / "skills"
+    skill_registry.load_dir(_skills_dir)
+
+    # Hooks
+    hook_runner = HookRunner()
+    hook_runner.add_builtin_hooks()
+
+    # Plugins
+    plugin_mgr = create_default_plugin_manager()
+    plugin_mgr.apply_all(skill_registry, hook_runner, registry)
+
+    # Policy
     policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
 
     sid = session_id or f"sess_{int(time.time() * 1000) % 10_000_000:07d}"
@@ -169,7 +192,11 @@ def _create_runtime(workspace_root: str, session_id: str = "") -> ConversationRu
     _SESSION_DIR.mkdir(parents=True, exist_ok=True)
     session._save_path = str(_SESSION_DIR / f"{session.session_id}.jsonl")
 
-    sp = _build_system_prompt(str(ws), registry.definitions())
+    # System prompt with skill injection
+    base_prompt = _build_system_prompt(str(ws), registry.definitions())
+    skill_prompt = skill_registry.build_prompt_injection(layer="agents")
+    sp = base_prompt + "\n" + skill_prompt if skill_prompt else base_prompt
+
     return ConversationRuntime(provider=provider, tool_registry=registry,
                                 permission_policy=policy, session=session,
                                 system_prompt=sp, auto_approve=False)
@@ -334,6 +361,24 @@ def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> Non
                     usage.record(msg.usage)
             return usage.to_dict()
         raise HTTPException(404, f"Session {session_id} not found")
+
+    @app.get(f"{prefix}/skills")
+    async def v2_skills(request: Request):
+        """列出所有 skills + 激活状态。"""
+        skill_registry = SkillRegistry()
+        for s in _BUILTIN_SKILLS:
+            skill_registry.register(s)
+        _sdir = Path(__file__).resolve().parent.parent.parent / "data" / "agent_v2" / "skills"
+        skill_registry.load_dir(_sdir)
+        plugin_mgr = create_default_plugin_manager()
+        plugin_mgr.register_skills(skill_registry)
+        return skill_registry.list_all()
+
+    @app.get(f"{prefix}/plugins")
+    async def v2_plugins(request: Request):
+        """列出所有插件 + 启用状态。"""
+        plugin_mgr = create_default_plugin_manager()
+        return plugin_mgr.list_all()
 
     @app.get(f"{prefix}/health")
     async def v2_health():
