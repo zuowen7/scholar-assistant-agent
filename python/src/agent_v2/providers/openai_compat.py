@@ -121,7 +121,9 @@ class OpenAiCompatProvider(BaseProvider):
         built_tools = self._build_tools(tools)
         if built_tools:
             body["tools"] = built_tools
-            body["tool_choice"] = tool_choice
+            # Only set tool_choice if explicitly requested (not "auto" default)
+            if tool_choice != "auto":
+                body["tool_choice"] = tool_choice
 
         resp = await client.post(f"{self.base_url}/chat/completions", json=body)
         resp.raise_for_status()
