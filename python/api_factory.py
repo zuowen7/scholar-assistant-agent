@@ -247,10 +247,10 @@ def _validate_config(cfg: dict) -> None:
         if not isinstance(timeout, (int, float)) or timeout <= 0:
             raise ValueError(f"translator.timeout must be a positive number, got {timeout!r}")
 
-    # agent.model: if present, must be a non-empty string
+    # agent.model: if present, must be a string (empty = auto-detect)
     a_model = agent.get("model")
-    if a_model is not None and (not isinstance(a_model, str) or not a_model.strip()):
-        raise ValueError(f"agent.model must be a non-empty string, got {a_model!r}")
+    if a_model is not None and not isinstance(a_model, str):
+        raise ValueError(f"agent.model must be a string, got {type(a_model).__name__}")
 
     # chunker.max_tokens: if present, must be positive int
     chunker = cfg.get("chunker", {})
