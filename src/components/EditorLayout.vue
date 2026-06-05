@@ -260,19 +260,6 @@ function handleScaffoldCreate(markdown: string, templateId: string) {
   })
 }
 
-function startProjectInEditor() {
-  showProjectStart.value = false
-  workspaceMode.value = 'editor'
-  openNewUntitled()
-}
-
-function startProjectWithMindMap(topic: string) {
-  showProjectStart.value = false
-  sidebarCollapsed.value = true
-  resetMindMap(topic.trim() || undefined)
-  workspaceMode.value = 'mindmap'
-}
-
 const { danger } = useToast()
 
 async function handleProjectCreated(path: string) {
