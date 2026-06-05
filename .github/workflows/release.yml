@@ -53,6 +53,24 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        shell: bash
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            LOG=$(git log "$PREV_TAG"..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          else
+            LOG=$(git log -20 --pretty=format:"- %s (%h)" --no-merges)
+          fi
+          # Multiline to GITHUB_OUTPUT
+          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          echo "body<<$EOF" >> "$GITHUB_OUTPUT"
+          echo "$LOG" >> "$GITHUB_OUTPUT"
+          echo "$EOF" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -82,37 +100,35 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
+      - name: Ensure build directories exist
+        shell: bash
+        run: |
+          mkdir -p python/data/paper_assets
+          mkdir -p python/plugins
+          mkdir -p scripts/.tools-cache
+
       - name: Build and release
-        uses: tauri-apps/tauri-action@v0.5.20
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "Scholar Assistant ${{ github.ref_name }}"
+          releaseName: "研墨 ${{ github.ref_name }}"
           releaseBody: |
-            ## What's New
+            ## Changes
 
-            ### Voice Assistant
-            - **Wake word** "小研" — say it to activate, with homophone variant matching (小研/小严/小言 all work)
-            - **Global hotkey** `Alt+Shift+V` — system-wide, works even when minimized (desktop app only)
-            - **Siri-style voice UI** — fullscreen glass-morphism with pulsing orb, ripple rings, live transcript
-            - **Voice dictation** — mic buttons in editor toolbar, Agent panel, and AI panel
-            - **Voice settings panel** — custom wake word, hotkey, sensitivity, language (Settings → Voice)
-            - **Three-layer dedup** — eliminates Chrome re-recognition duplication automatically
+            ${{ steps.changelog.outputs.body }}
 
-            ### Fixed
-            - Voice input duplication (Monaco Range fallback, speech echo dedup, smart punctuation merge)
-            - Wake word / dictation conflict prevention (sync SR pause/resume)
-            - Bilingual UI: UiDropdown race condition, vue-i18n @ parsing crash
+            ## Installation
 
             | Platform | File |
             |----------|------|
-            | Windows | `Scholar Assistant_x64-setup.exe` |
+            | Windows  | `研墨_x64-setup.exe` |
 
-            ### Prerequisites
-            Install [Ollama](https://ollama.com) and pull a model:
-            ```bash
-            ollama pull qwen3:8b
-            ```
+            > [!NOTE]
+            > For local AI features, install [Ollama](https://ollama.com) and pull a model:
+            > ```
+            > ollama pull qwen3:8b
+            > ```
           releaseDraft: true
           prerelease: false

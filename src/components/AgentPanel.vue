@@ -648,7 +648,8 @@ watch(pendingCheckpoint, () => {
     const content = cp.content as string | undefined
     if (filePath && content) {
       // 找到对应标签并直接更新内容，避免 reloadOpenTabs 需要 Tauri fs
-      const tab = editorTabs.value.find((t: any) => t.path === filePath || t.path?.replace(/\\/g, '/') === filePath?.replace(/\\/g, '\\'))
+      const normPath = (p: string) => p.replace(/\\/g, '/').toLowerCase()
+      const tab = editorTabs.value.find((t: any) => t.path && normPath(t.path) === normPath(filePath))
       if (tab) {
         const changed = tab.content !== content
         tab.content = content
