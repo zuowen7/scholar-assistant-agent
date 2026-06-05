@@ -49,16 +49,22 @@ Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant-ag
 
 ## Core Features
 
-### AI Editor (Agent as Backbone)
+### AI Editor (Agent V2 as Backbone)
 
-> **Positioning: AI Agent for Papers.** Treat your research project as a workspace; the Agent reads/writes PDFs, drafts, bib files, and data directly — just like AI Agent edits source code.
+> **Positioning: AI Agent for Papers.** Treat your research project as a workspace; the Agent reads/writes PDFs, drafts, bib files, and data directly — just like AI Agent edits source code. Agent V2 architecture inspired by [ultraworkers/agent runtime](https://github.com/ultraworkers/agent runtime).
 
-- **Agent Workspace File Tools** — Open a project folder; the Agent calls `read_file / grep_files / str_replace / write_file / git_op` directly on project files; editor tabs reload mid-stream after each Agent write; `read_file` auto-parses PDF/Word/EPUB
-- **Document QA Short-circuit** — When a document is open and you ask "how is it / summarize / any issues", the content is already at hand — single-shot LLM streaming answer, no ReAct tool loop; only explicit "modify/save/run" intent triggers full Agent
-- **Workspace Boundary & Approval** — All file operations locked to project root; out-of-scope access triggers an approval popup (Allow once / Allow session / Deny), matching AI Agent behavior
-- **inline Inline Diff** — Agent file edits (`str_replace`/`write_file`) appear as inline decorations in the editor: red wavy underline on deleted text, green preview widget with [Accept][Reject] buttons below
-- **ReAct Reasoning** — Multi-step tool-call loop with task decomposition, checkpoint resume, three-layer Skill injection (SOUL/AGENTS/IDENTITY), and context compression
-- **Library (RAG)** — Post-translation auto-ingest bilingual full text into local vector DB; Agent calls `search_documents` on demand (not auto-injected per turn); manual upload/delete supported
+- **Agent V2 Runtime** — ConversationRuntime unified loop, real-time SSE streaming token-by-token; 3-retry error recovery; planning detection + auto-retry
+- **17 Built-in Tools** — `read_file / write_file / str_replace / grep_files / glob_files / list_dir / run_command / rag_search / web_search / web_fetch / translate_document / export_document / arxiv_search / run_sub_agent` (4 presets: audit/explain/implement/translate)
+- **5-Tier Permission System** — ReadOnly / WorkspaceWrite / DangerFullAccess / Prompt / Allow with allow/deny/ask rule engine; all file ops locked to workspace boundary
+- **Real-time File Refresh** — Checkpoint SSE events after Agent writes; file tree and editor tabs update instantly
+- **Approval Flow with Pause** — SSE stream pauses on write_file/str_replace; editor shows diff preview (red/green highlights) with Accept/Reject
+- **Skills System** — 6 built-in academic skills + custom `.md` skills from `data/agent_v2/skills/` with YAML frontmatter
+- **Hooks System** — 5 lifecycle hook points (PreToolUse/PostToolUse/PostToolUseFailure/Init/Shutdown), Python callable + Shell command
+- **Plugin System** — YAML manifest plugins bundling skills + hooks + tools, one-click registration
+- **Sub-agent System** — Delegation to specialized sub-agents (audit/explain/implement/translate) sharing the parent Provider
+- **Provider Auto-detection** — Anthropic/OpenAI/DeepSeek/Ollama auto-detect; model aliases (haiku/sonnet/opus/ds/4o); provider quirks auto-adapt
+- **Cost Tracking** — Per-model pricing (Claude/GPT/DeepSeek/Ollama), real-time token and cost statistics
+- **Library (RAG)** — `rag_search` tool queries local vector DB; post-translation auto-ingest
 - **AI Polish / Expand / Coherence / Compliance** — Operate on selected text via the AI Panel
 - **Inline Ghost Text** — Monaco Editor auto-requests completions 1.5s after typing; Tab to accept
 
@@ -73,7 +79,7 @@ Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant-ag
 - **Rebuttal Package Export** — One-click download of all critique points + rebuttal drafts as Markdown
 - **Toulmin Argument Map** — Nodes (Claim / Grounds / Warrant / Backing / Qualifier / Rebuttal) + Relations on a Vue Flow canvas; AI auto-extraction, critique, and suggestions; flatten to structured Markdown/LaTeX paper draft (SSE streaming)
 
-**Status**: Phase 0–5 complete, `features.argument_companion=true` shipped, 2048 pytest passed / 11 skipped + 482 vitest passed.
+**Status**: Phase 0–5 complete, shipped. 1407 pytest passed (263 agent + 1144 non-agent) / 5 skipped + 482 vitest passed.
 
 ### Mind Map
 - **Vue Flow Canvas** — Custom node cards + edges (tree/association), drag, zoom, minimap
@@ -178,7 +184,7 @@ Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant-ag
 │   ├── api_factory.py            #   FastAPI app factory (core logic only)
 │   ├── routers/                  #   Route modules (split by function)
 │   │   ├── translate.py          #   Translation / config / health check routes
-│   │   ├── agent.py              #   Agent chat / RAG / tool routes
+│   │   ├── agent_v2/             #   Agent V2 (ConversationRuntime, agent runtime inspired)
 │   │   ├── editor.py             #   Edit / export / Vision / Citation routes
 │   │   ├── argument.py           #   Argument map + Companion v3 routes
 │   │   ├── mindmap.py            #   Mind map persistence + AI analysis/expand
@@ -189,7 +195,7 @@ Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant-ag
 │   │   ├── chunker/              #   3 chunking strategies (sentence/paragraph/fixed)
 │   │   ├── translator/           #   Ollama + Cloud dual-client (21 providers)
 │   │   ├── formatter/            #   3 output modes + Pandoc export
-│   │   ├── agent/                #   ReAct Agent + RAG + Tools + Skills + Memory
+│   │   ├── agent_v2/             #   Agent V2 runtime (ConversationRuntime, PermissionPolicy, Skills, Hooks, Plugins)
 │   │   ├── argument/             #   Argument Map v2 + Companion v3
 │   │   ├── plugin/               #   MCP-style plugin registry
 │   │   ├── citation/             #   Citation indexer
@@ -197,7 +203,7 @@ Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant-ag
 │   │   └── mcp/                  #   Vision client (multi-modal image analysis)
 │   ├── prompts/                  #   Academic writing prompt system (6-layer skeleton + YAML frontmatter)
 │   ├── data/paper_assets/        #   Paper templates (IEEE/ACM/NeurIPS/LNCS/Generic)
-│   └── tests/                    #   Unit + integration tests (incl. E2E companion + adversarial), pytest 2048 passed / 11 skipped
+│   └── tests/                    #   Unit + integration tests (incl. E2E companion + adversarial), pytest 1407 passed (263 agent + 1144 other) / 5 skipped
 ├── config/default.yaml           #   Source-of-truth default configuration
 ├── Dockerfile
 ├── docker-compose.yml
@@ -284,7 +290,7 @@ Translation SSE event order: `progress` → `parsed` → `cleaned` → `chunked`
 ### Agent & Editor
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/chat` | Agent SSE chat (ReAct loop) |
+| `POST` | `/api/agent/v2/chat` | Agent V2 SSE chat (ConversationRuntime) |
 | `POST` | `/api/agent/v2/chat` | Agent V2 SSE chat (session management) |
 | `GET` | `/api/agent/v2/sessions` | List session history |
 | `POST` | `/api/agent/v2/resume/{session_id}` | Resume session |
@@ -431,32 +437,39 @@ Edit `config/default.yaml`:
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────┐
-│  Vue 3 + TypeScript + Monaco Editor + Vue Flow  │
-│              (Vite dev server)                   │
-├─────────────────────────────────────────────────┤
-│  Tauri 2 (Rust) — desktop shell, process mgmt   │
-├─────────────────────────────────────────────────┤
-│  Python FastAPI + SSE                            │
-│  ┌──────────┬──────────┬──────────┬───────────┐ │
-│  │ Translate │  Agent   │ Argument │ Mind Map  │ │
-│  │ Pipeline  │  ReAct   │ Companion│  CRUD+AI  │ │
-│  └──────────┴──────────┴──────────┴───────────┘ │
-│  ┌──────────┬──────────┬───────────────────────┐ │
-│  │  Parser   │ Cleaner  │ Chunker │ Formatter  │ │
-│  │ (16 fmts) │(17 stages)│(3 strats)│(Pandoc)  │ │
-│  └──────────┴──────────┴───────────────────────┘ │
-├─────────────────────────────────────────────────┤
-│  LLM Backends: Ollama (local) | 21 cloud APIs   │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  Vue 3 + TypeScript + Monaco Editor + Vue Flow           │
+│                   (Vite dev server)                       │
+├──────────────────────────────────────────────────────────┤
+│  Tauri 2 (Rust) — desktop shell, process mgmt            │
+├──────────────────────────────────────────────────────────┤
+│  Python FastAPI + SSE                                     │
+│  ┌──────────┬────────────────┬──────────┬─────────────┐  │
+│  │ Translate│   Agent V2     │ Argument │  Mind Map   │  │
+│  │ Pipeline │ConversationRt  │ Companion│  CRUD+AI    │  │
+│  └──────────┴────────────────┴──────────┴─────────────┘  │
+│  ┌──────────┬──────────┬──────────────────────────────┐  │
+│  │  Parser  │ Cleaner  │ Chunker │ Formatter (Pandoc) │  │
+│  │ (16 fmts)│(17 st.)  │(3 str.) │ LaTeX/Word Export  │  │
+│  └──────────┴──────────┴──────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────┐ │
+│  │  Agent V2 Subsystems:                                │ │
+│  │  PermissionPolicy │ ToolRegistry │ Session │ McpMgr  │ │
+│  │  Skills │ Hooks │ Plugins │ UsageTracker │ SubAgent │ │
+│  └──────────────────────────────────────────────────────┘ │
+├──────────────────────────────────────────────────────────┤
+│  LLM Backends: Ollama (local) | Anthropic | OpenAI |     │
+│  DeepSeek | 21 cloud providers (auto-detect)             │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ### Key Design Decisions
 
-- **No LangChain / LlamaIndex** — hand-written ReAct engine for full control
+- **Agent V2 (agent runtime inspired)** — ConversationRuntime, not LangChain; 263 tests, 100% deterministic mock coverage
 - **SSE everywhere** — streaming UX for translation, agent chat, argument extraction
 - **Local-first** — all data stays on your machine; cloud LLMs are optional
-- **Workspace-scoped Agent** — file operations locked to project root, with approval for escapes
+- **Workspace-scoped Agent** — file operations locked to project root, 5-tier permission system
+- **MCP + Plugin architecture** — extensible via MCP servers, YAML plugins, Skills, and Hooks
 
 ## 21 Cloud LLM Providers
 
@@ -474,8 +487,8 @@ A unique feature not found in any other academic tool:
 ## Testing
 
 ```
-Python:  2048 tests passed / 11 skipped  (pytest)
-Frontend: 482 tests passed / 40 files    (vitest)
+Python:  1407 tests passed / 5 skipped    (pytest — 263 agent + 1144 other)
+Frontend: 482 tests passed / 40 files     (vitest)
 ```
 
 ```bash
