@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Scholar Assistant — privacy-first academic AI writing assistant (v0.3.6). Core paradigm: **"Claude Code for papers"** — Agent directly reads/writes workspace files (PDF/drafts/bib/data). Translates PDFs (parse -> clean -> chunk -> translate -> format via SSE), AI editor (Monaco + Agent chat with workspace file tools), exports to LaTeX/Word. Runs as Tauri desktop app or standalone Python API. Bilingual UI (zh-CN / en-US).
+Scholar Assistant — privacy-first academic AI writing assistant (v0.4.0). Core paradigm: **"Claude Code for papers"** — Agent directly reads/writes workspace files (PDF/drafts/bib/data). Translates PDFs (parse -> clean -> chunk -> translate -> format via SSE), AI editor (Monaco + Agent chat with workspace file tools), exports to LaTeX/Word. Runs as Tauri desktop app or standalone Python API. Bilingual UI (zh-CN / en-US).
 
 ## Build Commands
 
@@ -54,27 +54,43 @@ cd python && python api.py            # Start API server on :18088
 **Translation** (5-step SSE, `useTranslate.ts` -> `routers/translate.py`):
 SSE events (all prefixed `translate.`): `progress` -> `parsed` -> `cleaned` -> `chunked` -> `block_translated`(xN) -> `complete`. Side events: `chunk_done` / `chunk_error` / `qa_warnings`; fatal: `error`. **Keep backend and frontend event names in sync.**
 
-**Agent** (ReAct loop, `useAgentChat.ts` -> `routers/agent.py` -> `agent/agent.py`):
-SSE events (defined in `agent/models.py`): `session_started` / `task_started` / `token` / `thought` / `tool_call` / `tool_result` / `await_approval` / `approval_received` / `task_done` / `response` / `warning` / `error` / `done` / `aborted`. **Metadata key is `tool_name`** (not bare `tool`). Agent operates on workspace folder (`useFileTree.rootDir`), calling `read_file / grep_files / str_replace / write_file / git_op`. Out-of-workspace paths trigger `force_approval` -> `await_approval` SSE -> user approves via `AgentApprovalInline`. RAG (`search_documents`) is on-demand, not auto-injected. Editor tabs reload mid-stream on each `write_file`/`str_replace`.
+**Agent V2** (ConversationRuntime, `useAgentChat.ts` -> `src/agent_v2/router.py` -> `src/agent_v2/runtime/conversation.py`):
+Architecture inspired by [ultraworkers/claw-code](https://github.com/ultraworkers/claw-code). SSE events: `session_started` / `token` / `thought` / `tool_call` / `tool_result` / `await_approval` / `approval_received` / `response` / `error` / `done` / `aborted` / `checkpoint`. Agent operates on workspace folder, calling `read_file / write_file / str_replace / grep_files / glob_files / list_dir / run_command / rag_search / web_search / web_fetch / translate_document / export_document / arxiv_search / run_sub_agent`. File modifications trigger `checkpoint` SSE → frontend refreshes file tree + editor. Approval flow pauses SSE stream for user decision (accept/reject).
 
-**Three-route agent dispatch** (`routers/agent.py`): trivial greeting -> direct reply / doc QA without mutation intent -> `_oneshot_doc_qa_stream` (single-shot LLM, no ReAct) / explicit file modification -> full Agent loop.
+**Provider auto-detection**: `ANTHROPIC_API_KEY` → Anthropic, `OPENAI_API_KEY` → OpenAI-compat, config `agent.*` → any provider, `translator.cloud.*` → DeepSeek, fallback to local Ollama. Model aliases from config (`haiku`, `sonnet`, `opus`, `ds`, `4o`).
 
 ### Backend Structure (`python/`)
 
 `api_factory.py` — `create_app()` factory registers six router modules, each receiving shared state (config, runtime dirs, RAG store):
 - `routers/translate.py` — translation pipeline, config CRUD, health, export, retry
-- `routers/agent.py` — Agent chat, RAG, three-route dispatch. `ChatRequest.message` requires `min_length=1`.
+- `src/agent_v2/router.py` — Agent V2 chat (ConversationRuntime, claw-code inspired). Registered directly via `api_factory.py` at `/api/agent/v2/*`
 - `routers/editor.py` — AI edit/complete/export/vision/citation/Zotero
 - `routers/argument.py` — Argument Map v2 + Companion v3 (ledger, reviewer, rebuttal, import reviews). **All ledger routes use `?doc_id=` query param**.
 - `routers/mindmap.py` — Mind map CRUD, AI expand, layout
-- `routers/project.py` — Project management: atomic create (Markdown scaffold in `draft/main.md` + Git init), recent (LRU 20), load, detect, templates. Windows reserved names blocked, corrupt data graceful fallback. Templates defined in `python/templates/project_templates.json`; Markdown outlines in `_MARKDOWN_TEMPLATES` dict. Creation auto-generates `draft/main.md` with paper-structure outline; frontend auto-opens file then switches to mindmap view.
+- `routers/project.py` — Project management: atomic create (Markdown scaffold in `draft/main.md` + Git init), recent (LRU 20), load, detect, templates. Windows reserved names blocked, corrupt data graceful fallback.
 
-`api.py` — entry point. Delayed imports for optional subsystems (Agent, Plugin).
+`api.py` — entry point. Delayed imports for optional subsystems (Plugin).
 
 Key `src/` modules:
 - `parser/` (16 format parsers), `cleaner/` (17-stage pipeline), `chunker/` (3 strategies), `translator/` (ollama_client + cloud_client + block_translator), `formatter/` (PDF/LaTeX/Word)
-- `agent/` — `agent.py` (ReAct engine, `TASK_MAX_STEPS=20`, `GLOBAL_MAX_STEPS=60`), `session.py` (checkpoint/resume/approval/circuit-breaker), `prompt_builder.py` (Skill SOUL/AGENTS injection + `_DEFAULT_TOOL_GUIDE` fallback), `llm_client.py` + per-backend mixins (`_llm_anthropic.py`, `_llm_ollama.py`, `_llm_openai.py`, `_llm_helpers.py`), `tools/` (workspace_tools, atomic_tools, builtin_tools, registry), `security_gate.py`, `workspace.py`
-- `argument/` — `ledger.py` (promise ledger SSE, yields anchor events before each promise), `reviewer.py` (Reviewer-2 serial/parallel), `_reviewer_perspectives.py` (method/experiment/writing 3-angle parallel with asyncio.gather), `anchor.py` (3-state fuzzy relocation), `graph_store.py`, `companion_store.py` (all writes use `threading.RLock`)
+- `agent_v2/` — Agent V2 runtime (replaces old `agent/`):
+  - `runtime/conversation.py` — `ConversationRuntime` (unified agent loop, streaming + non-streaming, 3-retry error recovery)
+  - `runtime/permissions.py` — `PermissionPolicy` (5-tier: ReadOnly/WorkspaceWrite/DangerFullAccess/Prompt/Allow, allow/deny/ask rule engine)
+  - `runtime/permission_enforcer.py` — `PermissionEnforcer` (check_file_write/check_bash/is_read_only_command)
+  - `runtime/session.py` — `Session` (JSONL persistence, 256KB rotate, auto-save)
+  - `runtime/compact.py` — Context compaction (950K threshold, summary generation)
+  - `runtime/usage.py` — `UsageTracker` + `ModelPricing` (Claude/GPT/DeepSeek/Ollama per-1M-token pricing)
+  - `tools/registry.py` — `ToolRegistry` (read_file/write_file/str_replace/grep/glob/list_dir/run_command)
+  - `tools/academic_tools.py` — translate_document/export_document/arxiv_search/rag_search/web_search/web_fetch
+  - `tools/sub_agent.py` — `run_sub_agent` (audit/explain/implement/translate presets)
+  - `providers/openai_compat.py` — `OpenAiCompatProvider` (streaming + non-streaming, 20+ providers)
+  - `providers/quirks.py` — Per-provider behavioral flags (auto-detected from model/base_url)
+  - `mcp/manager.py` — `McpManager` (MCP JSON-RPC stdio lifecycle)
+  - `skills.py` — `SkillRegistry` (6 built-in skills, YAML frontmatter file loader)
+  - `hooks.py` — `HookRunner` (5 lifecycle hook points, callable + shell hooks)
+  - `plugins.py` — `PluginManager` (YAML manifest, skills + hooks + tools)
+  - `sse_adapter.py` — SSE event format adapter (frontend-compatible)
+- `argument/` — `ledger.py`, `reviewer.py`, `_reviewer_perspectives.py`, `anchor.py`, `graph_store.py`, `companion_store.py`
 - `plugin/` — MCP-style plugin registry
 - `prompts/` — 6-layer YAML frontmatter prompt templates; `src/prompts/schema.py` enforces PromptSpec
 
@@ -142,27 +158,26 @@ vue-i18n v11 (Composition API). Locales in `src/i18n/locales/{zh-CN,en-US}.json`
 
 | Subsystem | Grade |
 |-----------|-------|
+| Agent V2 (ConversationRuntime + PermissionPolicy + ToolRegistry + Skills/Hooks/Plugins + streaming + 263 tests) | A |
 | Translation pipeline (5-step SSE + multi-article + citation protect/restore + 6 continuation rules) | A |
 | Argument Companion v3 (ledger + Reviewer-2 + 3-angle parallel review + rebuttal + real review import) | A |
 | Mind Map (Vue Flow + AI expand + dagre + node body + editor bidirectional sync) | A |
 | LaTeX/Word export (IEEE/ACM/NeurIPS/LNCS/Generic + Tectonic) | A |
 | Voice Assistant (wake word + global hotkey + Siri UI + dedup + 20+ voice commands in 5 tiers) | A |
-| Agent ReAct engine (ContextCompressor + Skill SOUL/AGENTS/IDENTITY + greeting guard + tool guide fallback) | A- |
 | Project management (atomic create + Markdown scaffold + Git init + recent + detect + auto-mindmap) | A- |
 | AI Editor (Monaco + Ghost Text + AI Panel + mid-stream reload) | B+ |
-| Agent workspace file tools (read/write/grep/str_replace/git_op + boundary approval) | B |
-| Cloud LLM providers (21 providers, only OpenAI-compatible path tested E2E) | B |
-| RAG / Library (on-demand `search_documents`, translation auto-ingest) | B- |
+| Cloud LLM providers (Claude/GPT/DeepSeek/Ollama, auto-detect, model aliases, provider quirks) | B+ |
+| RAG / Library (on-demand `rag_search`, translation auto-ingest) | B- |
 | Zotero integration | C |
 | Vision / OCR | C |
 
 ## Known Defect Index
 
 - **Monaco Range**: `useEditorState.ts` `getRange()` must use `_MonacoRange` class (properties `startLineNumber/startColumn/endLineNumber/endColumn`). Never use `{a,b,c,d}` fallback — `executeEdits` will INSERT instead of REPLACE.
-- **Speech dedup**: `useSpeechRecognition.ts` `onresult` handler must do bidirectional normalized substring check before appending `finalText`. Never unconditional `+=`. Chrome re-recognizes and sends prefix-overlapping results — use `utterances[]` + `commonPrefixLen()` (>50% overlap = re-recognition, extract only new content after overlap). Interim must never replace existing final.
-- **Wake word SR conflict**: When `pausedByDictation=true`, `onend`/`onerror` callbacks must skip `scheduleRestart()` (otherwise 300ms auto-restart grabs mic from dictation SR). `speechBusyCount` watcher must use `flush:'sync'` to stop wake-word SR before dictation starts.
+- **Speech dedup**: `useSpeechRecognition.ts` `onresult` handler must do bidirectional normalized substring check before appending `finalText`. Never unconditional `+=`.
+- **Wake word SR conflict**: When `pausedByDictation=true`, `onend`/`onerror` callbacks must skip `scheduleRestart()`.
 - **Ledger routes use `?doc_id=` query param** (not path param) — doc_id is a full file path that may contain `/`.
-- **Agent tool metadata key is `tool_name`** — do not reintroduce bare `tool` key in SSE events.
+- **Agent V2 streaming**: ToolUseBlock not yielded individually in streaming — must extract from ProviderResponse.blocks.
 
 ## Dependency Management
 
