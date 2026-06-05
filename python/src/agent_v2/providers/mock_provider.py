@@ -210,6 +210,7 @@ class MockProvider:
         system_prompt: str | None = None,
         max_tokens: int = 4096,
         temperature: float = 0.3,
+        tool_choice: str = "auto",
     ) -> ProviderResponse:
         """模拟 LLM 调用，返回预设响应。"""
         import asyncio

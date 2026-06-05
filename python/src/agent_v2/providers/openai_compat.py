@@ -107,8 +107,9 @@ class OpenAiCompatProvider(BaseProvider):
         system_prompt: str | None = None,
         max_tokens: int = 4096,
         temperature: float = 0.3,
+        tool_choice: str = "auto",
     ) -> ProviderResponse:
-        """非流式调用（兼容旧接口）。"""
+        """非流式调用。tool_choice: 'auto' | 'required' | 'none'"""
         client = await self._get_client()
         body: dict[str, Any] = {
             "model": self.model,
@@ -120,7 +121,7 @@ class OpenAiCompatProvider(BaseProvider):
         built_tools = self._build_tools(tools)
         if built_tools:
             body["tools"] = built_tools
-            body["tool_choice"] = "auto"
+            body["tool_choice"] = tool_choice
 
         resp = await client.post(f"{self.base_url}/chat/completions", json=body)
         resp.raise_for_status()
