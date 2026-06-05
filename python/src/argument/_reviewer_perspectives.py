@@ -106,15 +106,102 @@ def aggregate_perspectives(
     method_pts: list[ReviewPoint],
     experiment_pts: list[ReviewPoint],
     writing_pts: list[ReviewPoint],
+    devils_advocate_pts: list[ReviewPoint] | None = None,
 ) -> list[ReviewPoint]:
-    """Merge three perspective lists. Deduplicate by (title.lower(), category).
-    Preserve stable order: method -> experiment -> writing.
+    """Merge perspective lists. Deduplicate by (title.lower(), category).
+    Preserve stable order: method -> experiment -> writing -> DA.
     """
     result: list[ReviewPoint] = []
     seen: set[tuple[str, str]] = set()
-    for pt in method_pts + experiment_pts + writing_pts:
+    all_pts = method_pts + experiment_pts + writing_pts
+    if devils_advocate_pts:
+        all_pts += devils_advocate_pts
+    for pt in all_pts:
         key = (pt.title.strip().lower(), pt.category)
         if key not in seen:
             seen.add(key)
             result.append(pt)
     return result
+
+
+async def run_devils_advocate_perspective(
+    text: str,
+    venue_profile: str,
+    cloud_client: Any = None,
+    ollama_client: Any = None,
+) -> list[ReviewPoint]:
+    """LLM review from a deliberately contrarian stance."""
+    template = _load_prompt("perspective_devils_advocate.md")
+    if template:
+        prompt = template.replace("{venue}", venue_profile[:400]).replace("{text}", text[:3000])
+    else:
+        prompt = (
+            "You are Devil's Advocate — find the strongest counter-arguments.\n"
+            f"Venue: {venue_profile[:400]}\n\nPaper:\n{text[:3000]}\n\n"
+            "Focus: weakest links, alternative explanations, edge cases, failing assumptions.\n"
+            "Return ONLY a JSON array (possibly []): "
+            '[{"category":...,"severity":"minor|major|fatal","title":...,"detail":...}]'
+        )
+    try:
+        raw = await call_llm_chat(prompt, cloud_client, ollama_client, max_tokens=1024, temperature=0.5)
+    except Exception as exc:
+        logger.warning("devils_advocate perspective failed: %s", exc)
+        return []
+    return _parse_llm_points(raw, source="llm")
+
+
+async def synthesize_review(
+    method_pts: list[ReviewPoint],
+    experiment_pts: list[ReviewPoint],
+    writing_pts: list[ReviewPoint],
+    devils_advocate_pts: list[ReviewPoint],
+    venue_profile: str = "",
+    cloud_client: Any = None,
+    ollama_client: Any = None,
+) -> dict | None:
+    """Run editorial synthesis across all 4 perspectives. Returns dict or None."""
+    template = _load_prompt("synthesizer.md")
+
+    def _format_pts(pts: list[ReviewPoint]) -> str:
+        if not pts:
+            return "No issues found."
+        return "; ".join(f"[{pt.severity or '?'}] {pt.title}: {pt.detail or ''}" for pt in pts)
+
+    method_str = _format_pts(method_pts)
+    experiment_str = _format_pts(experiment_pts)
+    writing_str = _format_pts(writing_pts)
+    da_str = _format_pts(devils_advocate_pts)
+
+    if template:
+        prompt = (template
+                  .replace("{method_points}", method_str[:2000])
+                  .replace("{experiment_points}", experiment_str[:2000])
+                  .replace("{writing_points}", writing_str[:2000])
+                  .replace("{devils_advocate_points}", da_str[:2000]))
+    else:
+        prompt = (
+            "You are an editorial synthesizer. Summarize these 4 reviews:\n"
+            f"Methodology: {method_str[:1000]}\n"
+            f"Experiment: {experiment_str[:1000]}\n"
+            f"Writing: {writing_str[:1000]}\n"
+            f"Devil's Advocate: {da_str[:1000]}\n\n"
+            'Return ONLY a JSON object: '
+            '{"overall_assessment":"accept|minor|major|reject",'
+            '"top_issues":["..."],"actions":["..."],"consensus_strengths":["..."]}'
+        )
+    try:
+        raw = await call_llm_chat(prompt, cloud_client, ollama_client, max_tokens=1024, temperature=0.4)
+    except Exception as exc:
+        logger.warning("synthesize_review failed: %s", exc)
+        return None
+
+    import json as _json
+    import re as _re
+    cleaned = _re.sub(r"<think[^>]*>.*?</think\s*>", "", raw, flags=_re.DOTALL).strip()
+    try:
+        match = _re.search(r"\{[^}]+\}", cleaned)
+        if match:
+            return _json.loads(match.group())
+    except (_json.JSONDecodeError, TypeError):
+        pass
+    return {"overall_assessment": "minor", "top_issues": [], "actions": [], "consensus_strengths": []}

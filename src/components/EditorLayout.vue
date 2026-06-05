@@ -264,20 +264,30 @@ function handleScaffoldCreate(markdown: string, templateId: string) {
 
 const { danger } = useToast()
 
+function _mainMdPath(projectPath: string): string {
+  // Normalize backslashes from Python backend (Windows) to forward slashes,
+  // matching Tauri plugin-fs output format, so readFileContent resolves correctly.
+  return projectPath.replace(/\\/g, '/') + '/draft/main.md'
+}
+
+async function _openProjectAndMainMd(path: string) {
+  const { useProject } = await import('../composables/useProject')
+  await useProject().openProject(path)
+  const mainMd = _mainMdPath(path)
+  try {
+    const text = await readFileContent(mainMd)
+    openFile(mainMd, text)
+    nextTick(() => openMindMapFromEditor())
+  } catch (e) {
+    console.error('[EditorLayout] Failed to open main.md:', e)
+    openNewUntitled()
+  }
+}
+
 async function handleProjectCreated(path: string) {
   showProjectStart.value = false
   try {
-    const { useProject } = await import('../composables/useProject')
-    await useProject().openProject(path)
-    // Open draft/main.md if it exists, then switch to mindmap
-    const mainMd = `${path}/draft/main.md`
-    try {
-      const text = await readFileContent(mainMd)
-      openFile(mainMd, text)
-      nextTick(() => openMindMapFromEditor())
-    } catch {
-      openNewUntitled()
-    }
+    await _openProjectAndMainMd(path)
   } catch (e: any) {
     danger(e.message || '打开项目失败')
   }
@@ -285,9 +295,7 @@ async function handleProjectCreated(path: string) {
 
 async function handleOpenRecentProject(path: string) {
   try {
-    const { useProject } = await import('../composables/useProject')
-    await useProject().openProject(path)
-    openNewUntitled()
+    await _openProjectAndMainMd(path)
   } catch (e: any) {
     danger(e.message || '打开最近项目失败')
   }

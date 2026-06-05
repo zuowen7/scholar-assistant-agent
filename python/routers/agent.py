@@ -25,7 +25,7 @@ if _AGENT_AVAILABLE:
     from src.agent.memory import MemoryManager, SCHOLAR_ASSISTANT_DEFAULT_MEMORY
     from src.agent.models import Message, SessionState
     from src.agent.operating_guide import build_agent_operating_guide
-    from src.agent.prompt_builder import PromptBuilder
+    from src.agent.prompt_builder import PromptBuilder, PromptConfig
     from src.agent.rag import RAGStore
     from src.agent.review_agent import ReviewAgent
     from src.agent.session import AgentSession, SessionConfig
@@ -35,6 +35,9 @@ if _AGENT_AVAILABLE:
     from src.agent.trajectory import TrajectoryRecorder
     from src.agent.workspace import WorkspaceEnv
     from src.agent.change_journal import ChangeJournal
+    from src.agent.workflow_session import WorkflowSession
+    from src.agent.workflow_store import WorkflowStore
+    from src.agent.socratic_prompt import _has_socratic_intent, _detect_pipeline_stage
     from src.translator.cloud_client import PROVIDER_PRESETS
 
 
@@ -45,6 +48,7 @@ class ChatRequest(BaseModel):
     context_file: str | None = Field(default=None, max_length=4_000)
     constraints: str | None = Field(default=None, max_length=10_000)
     workspace_root: str | None = None
+    workflow_id: str | None = None
 
 
 class RAGIngestRequest(BaseModel):
@@ -69,10 +73,11 @@ _AGENT_LOCALHOST_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "::ffff:127
 _MUTATION_KEYWORDS = (
     "写入", "写到", "写回", "保存到", "保存为", "存成", "导出到",
     "创建文件", "新建文件", "新建一个文件", "生成文件", "写一个文件", "写个文件",
-    "修改文件", "改写文件", "替换文件", "编辑文件", "更新文件",
+    "修改文件", "改写文件", "替换文件", "编辑文件", "编辑", "更新文件",
     "删除", "移除文件", "重命名", "移动到", "运行", "执行", "跑一下", "跑通",
     "git", "commit", "提交代码", "安装依赖", "新建项目", "创建项目", "搭建",
-    "write file", "create file", "edit file", "delete", "run ", "execute", "commit",
+    "write file", "create file", "edit", "edit file", "delete", "run ", "execute", "commit",
+    "改文件", "改这个", "改一下", "改一改", "修改", "帮我改", "直接改",
 )
 
 
@@ -165,6 +170,7 @@ def register_agent(
     _session_pool: dict[str, AgentSession] = {}
     _session_pool_timestamps: dict[str, float] = {}
     _session_store: SessionStore | None = None
+    _workflow_store: WorkflowStore | None = None
     _SESSION_POOL_TTL = 3600  # 1 hour
 
     def get_rag_store():
@@ -262,6 +268,10 @@ def register_agent(
             # Session store (SQLite)
             nonlocal _session_store
             _session_store = SessionStore(db_path=str(data_root / "agent" / "sessions.db"))
+
+            # Workflow store (SQLite)
+            nonlocal _workflow_store
+            _workflow_store = WorkflowStore(db_path=str(data_root / "agent" / "workflows.db"))
 
             logger.info("Agent shared resources initialized (rag=%s)", rag_dir)
             return _shared
@@ -431,6 +441,9 @@ def register_agent(
             ]
 
         message = req.message
+        # ── Socratic mode detection ──
+        _is_socratic = _has_socratic_intent(req.message)
+
         _is_trivial = len(req.message.strip()) <= 30 and any(
             req.message.strip().lower() == p or
             req.message.strip().lower() in (p + s for s in ("", "！", "!", "。", "."))
@@ -536,6 +549,7 @@ def register_agent(
                 logger.debug("event stream file rename failed: %s", e)
 
         async def _v2_stream() -> AsyncGenerator[dict, None]:
+            _stage_emitted = False
             try:
                 async for event in session.drive(message, history):
                     payload: dict = {
@@ -549,7 +563,35 @@ def register_agent(
                         "event": event.type,
                         "data": json.dumps(payload, ensure_ascii=False),
                     }
+
+                    # Pipeline stage detection — emit on first task_done
+                    if event.type == "task_done" and not _stage_emitted:
+                        _stage_emitted = True
+                        stage = _detect_pipeline_stage(req.message)
+                        if stage:
+                            yield {
+                                "event": "pipeline_stage",
+                                "data": json.dumps({
+                                    "type": "pipeline_stage",
+                                    "content": f"阶段: {stage}",
+                                    "metadata": {"to": stage, "completed": []},
+                                }, ensure_ascii=False),
+                            }
+
             finally:
+                # Save workflow if store is available
+                if _workflow_store:
+                    try:
+                        if _workflow is None:
+                            _workflow_obj = WorkflowSession(workspace_root=req.workspace_root)
+                            from src.agent.models import Message as _M
+                            _workflow_obj.add_message(_M(role="user", content=req.message))
+                            _workflow_store.save(_workflow_obj)
+                        else:
+                            _workflow_store.save(_workflow)
+                    except Exception as _we:
+                        logger.debug("Workflow save failed: %s", _we)
+
                 _session_pool.pop(session.id, None)
                 _session_pool_timestamps.pop(session.id, None)
                 success = session.state == SessionState.DONE
@@ -652,6 +694,72 @@ def register_agent(
                 logger.warning("Failed to list stored sessions: %s", e)
 
         return list(result.values())
+
+    # ------------------------------------------------------------------
+    # Workflow endpoints
+    # ------------------------------------------------------------------
+
+    @app.get("/api/agent/v2/workflows")
+    async def v2_list_workflows(request: Request):
+        """List recent workflow sessions."""
+        _check_agent_auth(request)
+        if not _workflow_store:
+            return []
+        try:
+            return _workflow_store.list_recent(limit=20)
+        except Exception as e:
+            logger.warning("Failed to list workflows: %s", e)
+            return []
+
+    @app.get("/api/agent/v2/workflows/{workflow_id}/messages")
+    async def v2_workflow_messages(workflow_id: str, request: Request):
+        """Load messages for a workflow."""
+        _check_agent_auth(request)
+        if not _workflow_store:
+            raise HTTPException(503, "Workflow store not available")
+        messages = _workflow_store.load_messages(workflow_id)
+        if messages is None:
+            raise HTTPException(404, f"Workflow {workflow_id} 不存在")
+        return {"messages": [{"role": m.role, "content": m.content} for m in messages]}
+
+    @app.delete("/api/agent/v2/workflows/{workflow_id}")
+    async def v2_delete_workflow(workflow_id: str, request: Request):
+        """Delete a workflow."""
+        _check_agent_auth(request)
+        if not _workflow_store:
+            raise HTTPException(503, "Workflow store not available")
+        ok = _workflow_store.delete(workflow_id)
+        if not ok:
+            raise HTTPException(404, f"Workflow {workflow_id} 不存在")
+        return {"status": "ok"}
+
+    @app.post("/api/agent/v2/workflows/cleanup")
+    async def v2_cleanup_workflows(request: Request):
+        """Trigger automatic cleanup of old workflows."""
+        _check_agent_auth(request)
+        if not _workflow_store:
+            raise HTTPException(503, "Workflow store not available")
+        stats = _workflow_store.cleanup()
+        return stats
+
+    @app.get("/api/agent/v2/tools")
+    async def v2_list_tools(request: Request):
+        """List available agent tools with descriptions."""
+        _check_agent_auth(request)
+        if not _AGENT_AVAILABLE:
+            return {"tools": []}
+        try:
+            shared = await _ensure_shared()
+            registry = shared.get("tool_registry")
+            if registry:
+                tools = [
+                    {"name": t.name, "description": t.description}
+                    for t in registry.list_tools()
+                ]
+                return {"tools": tools}
+        except Exception as e:
+            logger.warning("Failed to list tools: %s", e)
+        return {"tools": []}
 
     @app.post("/api/agent/v2/resume/{session_id}")
     async def v2_resume(session_id: str, request: Request):
@@ -948,6 +1056,8 @@ def register_agent(
             mm.close()
         if _session_store:
             _session_store.close()
+        if _workflow_store:
+            _workflow_store.close()
         _shared.clear()
 
     async def ensure_rag_store():
