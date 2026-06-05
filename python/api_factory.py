@@ -249,8 +249,11 @@ def _validate_config(cfg: dict) -> None:
 
     # agent.model: if present, must be a string (empty = auto-detect)
     a_model = agent.get("model")
-    if a_model is not None and not isinstance(a_model, str):
-        raise ValueError(f"agent.model must be a string, got {type(a_model).__name__}")
+    if a_model is not None:
+        if not isinstance(a_model, str):
+            raise ValueError(f"agent.model must be a string, got {type(a_model).__name__}")
+        if a_model != a_model.strip():
+            raise ValueError(f"agent.model must not have leading/trailing whitespace")
 
     # chunker.max_tokens: if present, must be positive int
     chunker = cfg.get("chunker", {})
