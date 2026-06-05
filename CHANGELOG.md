@@ -1,6 +1,55 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.0] — Agent V2: Agent Runtime Architecture
+
+### Agent V2 — Complete Rewrite
+
+The old ReAct agent (50+ files, PPT-demo quality) has been replaced with a clean 16-file runtime inspired by [ultraworkers/agent runtime](https://github.com/ultraworkers/agent runtime).
+
+**Core components:**
+- `ConversationRuntime` — unified agent loop (streaming + non-streaming, 3-retry error recovery)
+- `PermissionPolicy` — 5-tier permission modes (ReadOnly/WorkspaceWrite/DangerFullAccess/Prompt/Allow) with allow/deny/ask rule engine
+- `PermissionEnforcer` — check_file_write + check_bash + is_read_only_command heuristic
+- `ToolRegistry` — 7 built-in tools (read/write/str_replace/grep/glob/list_dir/run_command) with ignore-aware listing
+- `Session` — JSONL persistence with 256KB auto-rotate, 950K compaction threshold
+- `UsageTracker` — per-session token/cost tracking with model pricing (Claude, GPT, DeepSeek, Ollama)
+- `McpManager` — MCP JSON-RPC stdio lifecycle (spawn → init → call → shutdown)
+
+**Academic tools:** translate_document, export_document, arxiv_search, rag_search, web_search, web_fetch
+
+**Sub-agent system:** run_sub_agent with 4 presets (audit/explain/implement/translate)
+
+**Extensibility:**
+- **Skills** — YAML frontmatter prompt templates (6 built-in + file loader from `data/agent_v2/skills/`)
+- **Hooks** — 5 lifecycle hook points (PreToolUse/PostToolUse/PostToolUseFailure/Init/Shutdown), callable + shell
+- **Plugins** — YAML manifest system (skills + hooks + tools per plugin)
+
+**Provider support:**
+- Auto-detection: ANTHROPIC_API_KEY → Anthropic, OPENAI_API_KEY → OpenAI, config → any provider, fallback → Ollama
+- Model aliases: `haiku`/`sonnet`/`opus`/`ds`/`4o` (from config `agent.model_aliases`)
+- Provider quirks: per-model behavioral flags auto-detected from model name and base URL
+- Real streaming (SSE token-by-token) default ON, non-streaming fallback
+
+**Testing:** 263 agent tests (MockProvider deterministic, 100ms full suite) + 1144 non-agent = 1407 total
+
+**Frontend integration:**
+- File tree auto-refresh on agent file writes (checkpoint SSE events)
+- Editor tab reload with content change detection
+- Approval flow: SSE stream pause → user decision → resume
+- Real-time progress display (tool calls and tokens mapped to `response` SSE type)
+
+### Removed
+- Old `src/agent/` (50+ files, 27K lines) — ReAct engine, WorkflowSession, SecurityGate, etc.
+- Old agent tests (40+ files, 4K+ tests)
+- `routers/agent.py` — replaced by `src/agent_v2/router.py`
+
+### Changed
+- `api_factory.py` — Agent V2 routes registered directly, `agent` config section added
+- `config/default.yaml` — `agent` section with model/aliases/provider configuration
+- `FileTreeNode.vue` — single-root wrapper to fix Vue fragment attrs warning
+- `AgentPanel.vue` — checkpoint watcher for real-time file tree refresh
+
+### Previous (pre-0.4.0)
 
 ### Added
 - **Project management** — PyCharm-style project system: `POST /api/project/create` (atomic creation, validated templates, Git init), `GET /api/project/recent` (LRU 20, auto-filter deleted), `GET /api/project/load` + `POST /api/project/detect` + `GET /api/project/templates`
