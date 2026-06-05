@@ -194,6 +194,10 @@ class AgentEvent:
         return AgentEvent(type=AgentEventType.ERROR, data={"message": message})
 
     @staticmethod
+    def approval_received(id: str, decision: str) -> AgentEvent:
+        return AgentEvent(type=AgentEventType.APPROVAL_RECEIVED, data={"id": id, "decision": decision})
+
+    @staticmethod
     def done() -> AgentEvent:
         return AgentEvent(type=AgentEventType.DONE)
 

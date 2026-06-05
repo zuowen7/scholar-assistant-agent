@@ -51,6 +51,9 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
     elif t == AgentEventType.TOOL_ERROR:
         content = f"\n❌ {data.get('tool_name', '')} 出错: {data.get('output', '')[:200]}\n"
         evt_type = "response"
+    elif t == AgentEventType.APPROVAL_RECEIVED:
+        content = data.get("decision", "")
+        evt_type = "approval_received"
     elif t == AgentEventType.AWAIT_APPROVAL:
         tool_name = data.get("tool_name", "")
         content = f"Agent wants to modify {tool_name}"

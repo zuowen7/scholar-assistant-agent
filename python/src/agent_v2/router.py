@@ -29,6 +29,7 @@ from src.agent_v2.runtime.permissions import PermissionMode, policy_from_registr
 from src.agent_v2.runtime.session import Session
 from src.agent_v2.sse_adapter import agent_event_to_sse_stream
 from src.agent_v2.tools.registry import create_default_registry
+from src.agent_v2.tools.academic_tools import register_academic_tools
 from src.agent_v2.types import AgentEvent
 
 logger = logging.getLogger(__name__)
@@ -155,6 +156,7 @@ def _create_runtime(workspace_root: str, session_id: str = "") -> ConversationRu
     provider = _create_provider()
     ws = Path(workspace_root) if workspace_root else Path.cwd()
     registry = create_default_registry(workspace_root=ws)
+    register_academic_tools(registry)
     policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
 
     sid = session_id or f"sess_{int(time.time() * 1000) % 10_000_000:07d}"
@@ -163,7 +165,9 @@ def _create_runtime(workspace_root: str, session_id: str = "") -> ConversationRu
     session._save_path = str(_SESSION_DIR / f"{session.session_id}.jsonl")
 
     sp = _build_system_prompt(str(ws), registry.definitions())
-    return ConversationRuntime(provider=provider, tool_registry=registry, permission_policy=policy, session=session, system_prompt=sp)
+    return ConversationRuntime(provider=provider, tool_registry=registry,
+                                permission_policy=policy, session=session,
+                                system_prompt=sp, auto_approve=False)
 
 
 async def _cleanup_pool():
@@ -211,22 +215,26 @@ def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> Non
 
     @app.post(f"{prefix}/approve/{{session_id}}/{{event_id}}")
     async def v2_approve(session_id: str, event_id: str, req: ApproveRequest, request: Request):
-        """审批工具调用。"""
+        """审批工具调用 — 决定后 SSE 流恢复执行。"""
         async with _SESSION_LOCK:
             rt = _SESSION_POOL.get(session_id)
         if rt is None:
             raise HTTPException(404, f"Session {session_id} not found or expired")
-        # V2 当前使用 auto-deny，审批通过后转 allow
-        # TODO: 集成到 ConversationRuntime 的 await_approval 流程
-        return {"status": "ok", "session_id": session_id, "decision": req.decision}
+        decision = req.decision if isinstance(req.decision, str) else getattr(req.decision, 'value', 'deny')
+        ok = rt.approve(event_id, decision)
+        if not ok:
+            raise HTTPException(400, f"Approval event {event_id} not found (already processed or timed out)")
+        logger.info("approve: session=%s event=%s decision=%s", session_id, event_id, decision)
+        return {"status": "ok", "session_id": session_id, "decision": decision}
 
     @app.post(f"{prefix}/abort/{{session_id}}")
     async def v2_abort(session_id: str, request: Request):
-        """中止会话。"""
+        """中止会话 — 释放所有等待中的审批。"""
         async with _SESSION_LOCK:
             rt = _SESSION_POOL.pop(session_id, None)
         if rt is None:
             raise HTTPException(404, f"Session {session_id} not found")
+        rt.abort()
         return {"status": "ok", "aborted": session_id}
 
     @app.get(f"{prefix}/sessions")
