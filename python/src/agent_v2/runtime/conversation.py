@@ -180,13 +180,17 @@ class ConversationRuntime:
                     self.usage.record(chunk.usage)
                     yield AgentEvent.usage(chunk.usage)
 
-                # Fallback: use ProviderResponse blocks if stream produced nothing
-                if not tool_blocks and not text_blocks:
+                # Merge ProviderResponse blocks: streaming doesn't yield ToolUseBlock
+                # individually, so we must extract them from the final response
+                if not tool_blocks:
+                    for b in chunk.blocks:
+                        if isinstance(b, ToolUseBlock):
+                            tool_blocks.append(b)
+                            yield AgentEvent.tool_call(b.id, b.name, b.input)
+                if not text_blocks:
                     for b in chunk.blocks:
                         if isinstance(b, TextBlock):
                             text_blocks.append(b)
-                        elif isinstance(b, ToolUseBlock):
-                            tool_blocks.append(b)
 
                 full_text = "".join(b.text for b in text_blocks)
                 assistant_blocks = list(tool_blocks)
