@@ -1,21 +1,21 @@
-"""Hooks 系统 — 生命周期拦截器。
+"""Hooks system — lifecycle interceptors with abort signal, progress, JSON parsing.
 
-参考 claw-code:
-  - runtime/hooks.rs: HookRunner + HookEvent + HookAbortSignal
-  - plugins/src/hooks.rs: plugin hook definitions
+Port of claw-code rust/crates/runtime/src/hooks.rs.
 
-Hook 类型:
-  - PreToolUse: 工具调用前拦截（可 Allow/Deny/Ask）
-  - PostToolUse: 工具调用后回调（日志、通知）
-  - PostToolUseFailure: 工具失败回调（重试、降级）
-  - Init: Agent 初始化
-  - Shutdown: Agent 关闭
+Advanced features over original:
+  - HookAbortSignal: async cancellation of running hooks
+  - HookProgressReporter: progress events during hook execution
+  - HookRunResult.updated_input: hook can modify tool parameters
+  - HookRunResult.permission_override/reason: hook provides permission context
+  - Shell hook JSON stdout parsing (decision, reason, updatedInput, permissionDecision)
+  - Shell hook exit code conventions: 0=allow, 2=deny, 3=ask
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-import subprocess
+import threading
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Protocol
@@ -61,11 +61,68 @@ class HookEvent:
 class HookResult:
     decision: HookDecision = HookDecision.ALLOW
     reason: str = ""
+    updated_input: str | None = None
+    permission_override: str | None = None
+    permission_reason: str | None = None
+    messages: list[str] = field(default_factory=list)
 
+    @property
+    def is_allowed(self) -> bool:
+        return self.decision == HookDecision.ALLOW
+
+    @property
+    def is_denied(self) -> bool:
+        return self.decision == HookDecision.DENY
+
+
+# ---------------------------------------------------------------------------
+# HookAbortSignal
+# ---------------------------------------------------------------------------
+
+class HookAbortSignal:
+    """Thread-safe abort signal for cancelling hook execution.
+
+    Reference: claw-code HookAbortSignal (Arc<AtomicBool>).
+    """
+
+    def __init__(self) -> None:
+        self._aborted = threading.Event()
+
+    def abort(self) -> None:
+        self._aborted.set()
+
+    def is_aborted(self) -> bool:
+        return self._aborted.is_set()
+
+
+# ---------------------------------------------------------------------------
+# HookRunResult — enriched result with updated_input + permission_override
+# ---------------------------------------------------------------------------
+
+@dataclass
+class HookRunResult:
+    decision: HookDecision = HookDecision.ALLOW
+    reason: str = ""
+    updated_input: str | None = None
+    permission_override: str | None = None
+    permission_reason: str | None = None
+    cancelled: bool = False
+    messages: list[str] = field(default_factory=list)
+
+    @property
+    def is_allowed(self) -> bool:
+        return self.decision == HookDecision.ALLOW
+
+    @property
+    def is_denied(self) -> bool:
+        return self.decision == HookDecision.DENY
+
+
+# ---------------------------------------------------------------------------
+# HookDefinition
+# ---------------------------------------------------------------------------
 
 class HookDefinition:
-    """单个 hook 定义。"""
-
     def __init__(self, name: str, hook_point: HookPoint, command: str, priority: int = 50):
         self.name = name
         self.hook_point = hook_point
@@ -81,12 +138,22 @@ class HookDefinition:
         }
 
 
-class HookRunner:
-    """Hook 执行器。参考 claw-code HookRunner。
+# ---------------------------------------------------------------------------
+# Progress reporter protocol
+# ---------------------------------------------------------------------------
 
-    支持两种 hook：
-    1. Python callable（进程内，快速）
-    2. Shell command（进程外 stdin → stdout，灵活）
+class HookProgressReporter(Protocol):
+    def on_event(self, event: dict[str, Any]) -> None: ...
+
+
+# ---------------------------------------------------------------------------
+# HookRunner
+# ---------------------------------------------------------------------------
+
+class HookRunner:
+    """Hook executor with abort signal, progress reporting, and JSON parsing.
+
+    Reference: claw-code HookRunner.
     """
 
     def __init__(self):
@@ -104,13 +171,10 @@ class HookRunner:
                                       command=f"callable:{name}", priority=priority))
 
     def add_builtin_hooks(self) -> None:
-        """注册内置 hooks。"""
-        # Log all tool calls
         def _log_tool_call(event: HookEvent) -> HookResult:
             logger.info("tool_call: %s input_len=%d", event.tool_name, len(event.tool_input))
             return HookResult(decision=HookDecision.ALLOW)
 
-        # Log all tool failures
         def _log_tool_failure(event: HookEvent) -> HookResult:
             logger.warning("tool_failure: %s error=%s", event.tool_name, event.tool_result[:200])
             return HookResult(decision=HookDecision.ALLOW)
@@ -120,27 +184,75 @@ class HookRunner:
         self.register_callable("builtin:log_failure", HookPoint.POST_TOOL_USE_FAILURE,
                                _log_tool_failure, priority=100)
 
-    async def run(self, hook_point: HookPoint, event: HookEvent) -> HookResult:
-        """执行匹配 hook_point 的所有 hooks。参考 claw-code HookRunner.run()。
+    def create_abort_signal(self) -> HookAbortSignal:
+        return HookAbortSignal()
 
-        短路逻辑：
-        - PreToolUse: 第一个 DENY 或 ASK 决定立即返回
-        - 其他 hook 类型: 所有 hooks 都执行，返回 ALLOW
+    async def run(
+        self,
+        hook_point: HookPoint,
+        event: HookEvent,
+        *,
+        abort_signal: HookAbortSignal | None = None,
+        reporter: HookProgressReporter | None = None,
+    ) -> HookRunResult:
+        """Execute all hooks matching hook_point.
+
+        Short-circuit logic:
+        - PreToolUse: first DENY or ASK returns immediately
+        - Other hook types: all hooks execute, return ALLOW
         """
+        # Check abort before starting
+        if abort_signal and abort_signal.is_aborted():
+            if reporter:
+                reporter.on_event({"type": "cancelled", "hook": hook_point.value,
+                                    "tool_name": event.tool_name})
+            return HookRunResult(cancelled=True, messages=["hook cancelled before execution"])
+
         event.hook = hook_point
-        final = HookResult(decision=HookDecision.ALLOW)
+        final = HookRunResult(decision=HookDecision.ALLOW)
 
         for hook in self._hooks:
             if hook.hook_point != hook_point:
                 continue
 
+            # Check abort between hooks
+            if abort_signal and abort_signal.is_aborted():
+                if reporter:
+                    reporter.on_event({"type": "cancelled", "hook": hook_point.value,
+                                        "tool_name": event.tool_name, "command": hook.command})
+                final.cancelled = True
+                final.messages.append(f"{hook_point.value} hook cancelled")
+                return final
+
+            if reporter:
+                reporter.on_event({"type": "started", "hook": hook_point.value,
+                                    "tool_name": event.tool_name, "command": hook.command})
+
             result = await self._execute_hook(hook, event)
+
+            if reporter:
+                evt_type = "completed" if not (abort_signal and abort_signal.is_aborted()) else "cancelled"
+                reporter.on_event({"type": evt_type, "hook": hook_point.value,
+                                    "tool_name": event.tool_name, "command": hook.command})
+
+            # Merge result fields
+            final.messages.extend(result.messages)
+            if result.updated_input is not None:
+                final.updated_input = result.updated_input
+            if result.permission_override is not None:
+                final.permission_override = result.permission_override
+            if result.permission_reason is not None:
+                final.permission_reason = result.permission_reason
 
             if hook_point == HookPoint.PRE_TOOL_USE:
                 if result.decision == HookDecision.DENY:
-                    return result
+                    final.decision = HookDecision.DENY
+                    final.reason = result.reason
+                    return final
                 if result.decision == HookDecision.ASK:
-                    return result
+                    final.decision = HookDecision.ASK
+                    final.reason = result.reason
+                    return final
 
         return final
 
@@ -150,7 +262,6 @@ class HookRunner:
         func = self._callables.get(key)
         if func is not None:
             try:
-                import asyncio
                 if asyncio.iscoroutinefunction(func):
                     result = await func(event)
                 else:
@@ -168,17 +279,83 @@ class HookRunner:
                 proc = await _create_subprocess(hook.command)
                 input_json = json.dumps(event.to_dict(), ensure_ascii=False)
                 stdout, _ = await asyncio.wait_for(proc.communicate(input_json.encode()), timeout=10.0)
-                if proc.returncode == 0:
-                    return HookResult(decision=HookDecision.ALLOW)
-                elif proc.returncode == 2:
-                    return HookResult(decision=HookDecision.DENY, reason=stdout.decode()[:200])
-                elif proc.returncode == 3:
-                    return HookResult(decision=HookDecision.ASK, reason=stdout.decode()[:200])
-                return HookResult(decision=HookDecision.ALLOW)
+                stdout_text = stdout.decode("utf-8", errors="replace").strip()
+
+                return _parse_shell_hook_output(proc.returncode, stdout_text)
             except Exception as e:
                 logger.warning("shell hook '%s' failed: %s", hook.name, e)
 
         return HookResult(decision=HookDecision.ALLOW)
+
+
+# ---------------------------------------------------------------------------
+# Shell hook JSON output parsing (claw-code convention)
+# ---------------------------------------------------------------------------
+
+def _parse_shell_hook_output(return_code: int | None, stdout: str) -> HookResult:
+    """Parse shell hook stdout following claw-code conventions.
+
+    Exit codes: 0=allow (check JSON), 2=deny, 3=ask, other=fail.
+    JSON fields: decision, reason, systemMessage, continue,
+                 hookSpecificOutput.{updatedInput, permissionDecision, permissionDecisionReason}
+    """
+    messages: list[str] = []
+    updated_input: str | None = None
+    permission_override: str | None = None
+    permission_reason: str | None = None
+    deny = False
+
+    # Try JSON parsing
+    if stdout:
+        try:
+            root = json.loads(stdout)
+            if isinstance(root, dict):
+                # Extract messages
+                for key in ("systemMessage", "reason"):
+                    if key in root and isinstance(root[key], str):
+                        messages.append(root[key])
+
+                # Decision
+                if root.get("continue") is False or root.get("decision") == "block":
+                    deny = True
+
+                # Hook-specific output
+                specific = root.get("hookSpecificOutput")
+                if isinstance(specific, dict):
+                    if "additionalContext" in specific:
+                        messages.append(str(specific["additionalContext"]))
+                    pd = specific.get("permissionDecision")
+                    if isinstance(pd, str) and pd in ("allow", "deny", "ask"):
+                        permission_override = pd
+                    pr = specific.get("permissionDecisionReason")
+                    if isinstance(pr, str):
+                        permission_reason = pr
+                    ui = specific.get("updatedInput")
+                    if ui is not None:
+                        updated_input = json.dumps(ui) if not isinstance(ui, str) else ui
+
+                if not messages:
+                    messages.append(stdout)
+        except (json.JSONDecodeError, TypeError):
+            # Non-JSON stdout → plain message
+            if stdout:
+                messages.append(stdout)
+
+    # Exit code takes precedence for deny/ask
+    if return_code == 2:
+        return HookResult(decision=HookDecision.DENY, reason=messages[0] if messages else "hook denied",
+                          messages=messages)
+    if return_code == 3:
+        return HookResult(decision=HookDecision.ASK, reason=messages[0] if messages else "hook asks for approval",
+                          messages=messages)
+    if deny:
+        return HookResult(decision=HookDecision.DENY, reason=messages[0] if messages else "hook denied",
+                          updated_input=updated_input, permission_override=permission_override,
+                          permission_reason=permission_reason, messages=messages)
+
+    return HookResult(decision=HookDecision.ALLOW, updated_input=updated_input,
+                      permission_override=permission_override, permission_reason=permission_reason,
+                      messages=messages)
 
 
 async def _create_subprocess(command: str):
@@ -189,7 +366,3 @@ async def _create_subprocess(command: str):
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-
-
-# Import needed for async subprocess
-import asyncio

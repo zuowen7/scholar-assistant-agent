@@ -44,6 +44,12 @@ class SessionMeta:
     total_usage: TokenUsage = field(default_factory=TokenUsage)
 
 
+@dataclass
+class SessionFork:
+    parent_session_id: str
+    branch_name: str | None = None
+
+
 def _now_ms() -> int:
     return int(time.time() * 1000)
 
@@ -122,6 +128,7 @@ class Session:
         )
         self._messages: list[Message] = []
         self._save_path: str = ""  # set by router for auto-save
+        self.fork_meta: SessionFork | None = None
 
     @property
     def session_id(self) -> str:
@@ -137,19 +144,42 @@ class Session:
         if msg.usage:
             self.meta.total_usage = self.meta.total_usage + msg.usage
 
+    def fork(self, branch_name: str | None = None) -> Session:
+        """Create a new session forked from the current state."""
+        now = _now_ms()
+        forked = Session.__new__(Session)
+        forked.meta = SessionMeta(
+            session_id=uuid.uuid4().hex[:12],
+            version=self.meta.version,
+            workspace=self.meta.workspace,
+            model=self.meta.model,
+            created_ms=now,
+            updated_ms=now,
+        )
+        forked._messages = list(self._messages)
+        forked._save_path = ""
+        forked.fork_meta = SessionFork(
+            parent_session_id=self.session_id,
+            branch_name=branch_name,
+        )
+        return forked
+
     def total_tokens(self) -> int:
         return self.meta.total_usage.total()
 
     def save(self, path: str | Path) -> None:
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
+        meta_dict = {"version": self.meta.version, "session_id": self.meta.session_id,
+                     "workspace": self.meta.workspace, "model": self.meta.model,
+                     "created_ms": self.meta.created_ms, "updated_ms": self.meta.updated_ms,
+                     "total_usage": {"input_tokens": self.meta.total_usage.input_tokens,
+                                     "output_tokens": self.meta.total_usage.output_tokens}}
+        if self.fork_meta:
+            meta_dict["fork"] = {"parent_session_id": self.fork_meta.parent_session_id,
+                                 "branch_name": self.fork_meta.branch_name}
         with open(p, "w", encoding="utf-8") as f:
-            f.write(json.dumps({"version": self.meta.version, "session_id": self.meta.session_id,
-                                "workspace": self.meta.workspace, "model": self.meta.model,
-                                "created_ms": self.meta.created_ms, "updated_ms": self.meta.updated_ms,
-                                "total_usage": {"input_tokens": self.meta.total_usage.input_tokens,
-                                                "output_tokens": self.meta.total_usage.output_tokens}},
-                               ensure_ascii=False) + "\n")
+            f.write(json.dumps(meta_dict, ensure_ascii=False) + "\n")
             for msg in self._messages:
                 f.write(json.dumps(_message_to_dict(msg), ensure_ascii=False) + "\n")
 
@@ -182,6 +212,12 @@ class Session:
             tu = meta_data.get("total_usage", {})
             session.meta.total_usage = TokenUsage(input_tokens=tu.get("input_tokens", 0),
                                                    output_tokens=tu.get("output_tokens", 0))
+            fork_data = meta_data.get("fork")
+            if fork_data and isinstance(fork_data, dict):
+                session.fork_meta = SessionFork(
+                    parent_session_id=fork_data.get("parent_session_id", ""),
+                    branch_name=fork_data.get("branch_name"),
+                )
         session._messages = messages
         return session
 

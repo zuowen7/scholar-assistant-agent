@@ -130,6 +130,18 @@ class ToolRegistry:
         except Exception as e:
             return ToolResult(output=f"tool '{name}' error: {e}", is_error=True)
 
+    def _permission_policy_check(self, command: str) -> tuple[PermissionMode,]:
+        """Derive the current effective PermissionMode for bash validation.
+
+        Returns a 1-tuple for destructuring convenience.
+        Defaults to WORKSPACE_WRITE if no policy is configured.
+        """
+        from src.agent_v2.runtime.permissions import PermissionMode
+        return (getattr(self, '_active_permission_mode', None) or PermissionMode.WORKSPACE_WRITE,)
+
+    def set_permission_mode(self, mode: 'PermissionMode') -> None:
+        self._active_permission_mode = mode
+
     def check_workspace_escape(self, path_str: str) -> bool:
         if self._workspace_root is None:
             return False
@@ -411,14 +423,19 @@ def _create_file_ops(registry: ToolRegistry) -> None:
             root = registry._resolve_path(cwd) if cwd != "." else (registry._workspace_root or Path.cwd())
         except ValueError:
             root = Path(cwd)
-        # Security: block destructive patterns
-        dangerous = ("rm ", "rmdir", "sudo", "dd ", "mkfs", "format", "shutdown", "reboot",
-                     "chmod", "chown", "> /dev", "curl ", "wget ", "nc ", "ssh ")
-        for d in dangerous:
-            if d in command:
-                return ToolResult(f"error: blocked dangerous command pattern: '{d}'", is_error=True)
+
+        from src.agent_v2.runtime.bash_validation import validate_command
+        from src.agent_v2.runtime.permissions import PermissionMode
+
+        perm_result = registry._permission_policy_check(command)
+        validation = validate_command(command, perm_result[0], root)
+        if validation.is_blocked:
+            return ToolResult(f"error: {validation.reason}", is_error=True)
+        if validation.is_warn:
+            pass  # warnings are informational; execution proceeds
+
         try:
-            import subprocess, asyncio as _aio
+            import asyncio as _aio
             proc = await _aio.create_subprocess_shell(
                 command, cwd=str(root), stdout=_aio.subprocess.PIPE,
                 stderr=_aio.subprocess.STDOUT,
@@ -429,7 +446,10 @@ def _create_file_ops(registry: ToolRegistry) -> None:
                 output = output[:_TOOL_RESULT_MAX] + "\n... [truncated]"
             if proc.returncode != 0:
                 return ToolResult(f"{output}\nexit code: {proc.returncode}", is_error=False)
-            return ToolResult(output or "(no output)")
+            result = ToolResult(output or "(no output)")
+            if validation.is_warn:
+                result = ToolResult(f"[WARNING: {validation.message}]\n{output or '(no output)'}")
+            return result
         except _aio.TimeoutError:
             return ToolResult("error: command timed out (30s)", is_error=True)
         except Exception as e:
