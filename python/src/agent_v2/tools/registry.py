@@ -46,6 +46,26 @@ class ToolResult:
         return ToolResult(output=self.output[:max_chars] + "\n... [truncated]", is_error=self.is_error)
 
 
+def _normalize_schema(schema: dict) -> None:
+    """规范化 JSON Schema。参考 claw-code normalize_object_schema。
+
+    给所有 object 类型添加 additionalProperties: false 和 properties: {}。
+    部分 provider（DeepSeek 等）对 schema 格式校验严格，缺少这些字段会拒绝工具定义。
+    """
+    if schema.get("type") == "object":
+        schema.setdefault("properties", {})
+        if "additionalProperties" not in schema:
+            schema["additionalProperties"] = False
+    # Recurse into nested properties
+    for v in schema.get("properties", {}).values():
+        if isinstance(v, dict):
+            _normalize_schema(v)
+    # Handle array items
+    items = schema.get("items")
+    if isinstance(items, dict):
+        _normalize_schema(items)
+
+
 # Tool function signature: async (args: dict) -> ToolResult
 ToolFunc = Callable[[dict[str, Any]], Awaitable[ToolResult]]
 
@@ -83,6 +103,7 @@ class ToolRegistry:
         key = name.lower()
         if key in self._tools:
             raise ToolError(f"tool '{name}' is already registered")
+        _normalize_schema(input_schema)
         self._tools[key] = ToolSpec(
             definition=ToolDefinition(name=name, description=description, input_schema=input_schema),
             func=func,
