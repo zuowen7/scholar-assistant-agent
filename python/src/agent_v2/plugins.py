@@ -223,28 +223,28 @@ def create_default_plugin_manager() -> PluginManager:
         example.mkdir(parents=True, exist_ok=True)
         (example / "plugin.yaml").write_text("""\
 name: example_academic
-version: 1.0.0
-description: Example academic plugin with cite-check and format-check hooks
+version: "1.0.0"
+description: "Example academic plugin with cite-check and format-check hooks"
 
 skills:
   - name: citation_guide
     layer: agents
-    description: Citation formatting guide
+    description: "Citation formatting guide"
     content: |
-      ## Citation Formatting
-      - Use \\cite{{key}} for inline citations
+      Citation Formatting:
+      - Use \\cite{key} for inline citations
       - All citations must have corresponding entries in References
       - Prefer recent papers (last 5 years) where possible
 
 hooks:
   - name: check_file_write
     point: PreToolUse
-    command: echo '{{"decision": "allow"}}'
+    command: "echo allow"
     priority: 30
 
   - name: notify_file_change
     point: PostToolUse
-    command: echo '{{"decision": "allow"}}'
+    command: "echo ok"
     priority: 90
 """, encoding="utf-8")
 
