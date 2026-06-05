@@ -664,13 +664,17 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         "ensure_rag_store": lambda: None,
     }
 
-    # Wire rag_store from agent into translate for auto-RAG ingest.
-    # Must happen after both registers complete so both state dicts exist.
-    # translate_state and state_agent are independent dicts; we inject agent's
-    # getter into translate's _state so translate pipeline can use RAG.
+    # RAG store (ChromaDB-backed)
+    logger.info("Registering RAG routes")
+    from routers.rag import register_rag_routes
+    state_rag = register_rag_routes(app, runtime_dir=RUNTIME_DIR)
+
+    # Wire rag_store from RAG module into agent and translate.
     translate_state = state_translate
-    translate_state["rag_store_getter"] = state_agent["get_rag_store"]
-    translate_state["ensure_rag_store"] = state_agent["ensure_rag_store"]
+    translate_state["rag_store_getter"] = state_rag["get_rag_store"]
+    translate_state["ensure_rag_store"] = state_rag["ensure_rag_store"]
+    state_agent["get_rag_store"] = state_rag["get_rag_store"]
+    state_agent["ensure_rag_store"] = state_rag["ensure_rag_store"]
 
     from routers.editor import register_editor
     state_editor = register_editor(

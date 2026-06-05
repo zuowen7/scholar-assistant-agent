@@ -768,12 +768,12 @@ def register_translate(
                     async def _bg_ingest():
                         async with _RAG_INGEST_SEMAPHORE:
                             try:
-                                await asyncio.to_thread(
-                                    rs.ingest_document,
-                                    f"trans_{_task_id_str}",
-                                    dual_text,
-                                    {"title": f"[翻译] {_filename}", "source": "translation", "source_lang": src_label},
-                                )
+                                _doc_id = f"trans_{_task_id_str}"
+                                _metadata = {"title": f"[翻译] {_filename}", "source": "translation", "source_lang": src_label}
+                                if hasattr(rs, "ingest_document"):
+                                    await asyncio.to_thread(rs.ingest_document, _doc_id, dual_text, _metadata)
+                                elif hasattr(rs, "add"):
+                                    await asyncio.to_thread(rs.add, ids=[_doc_id], documents=[dual_text], metadatas=[_metadata])
                                 logger.info("翻译结果已自动入库 RAG: trans_%s", _task_id_str)
                             except Exception as exc:
                                 logger.warning("翻译结果入库 RAG 失败: %s", exc)
