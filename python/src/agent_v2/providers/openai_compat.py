@@ -28,7 +28,10 @@ from src.agent_v2.types import (
 
 
 class OpenAiCompatProvider(BaseProvider):
-    """OpenAI-compatible Chat Completions provider with real streaming."""
+    """OpenAI-compatible Chat Completions provider with real streaming.
+
+    Per-provider quirks auto-detected from model name / base URL.
+    """
 
     def __init__(
         self,
@@ -42,6 +45,8 @@ class OpenAiCompatProvider(BaseProvider):
         self.model = model
         self.timeout = timeout
         self._client: httpx.AsyncClient | None = None
+        from src.agent_v2.providers.quirks import detect_quirks
+        self.quirks = detect_quirks(model, base_url)
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
@@ -74,9 +79,10 @@ class OpenAiCompatProvider(BaseProvider):
                             "function": {"name": tc.name, "arguments": args},
                         })
                     entry: dict[str, Any] = {"role": "assistant", "tool_calls": tc_list}
-                    # DeepSeek requires content field but rejects null — use empty string
                     if text:
                         entry["content"] = text
+                    elif not self.quirks.omit_content_with_tool_calls:
+                        entry["content"] = None
                     result.append(entry)
                 elif text:
                     result.append({"role": "assistant", "content": text})
@@ -159,8 +165,8 @@ class OpenAiCompatProvider(BaseProvider):
             "max_tokens": max_tokens,
             "temperature": temperature,
             "stream": True,
-            # stream_options 是 OpenAI 扩展，部分 provider（DeepSeek 等）不支持
-            # "stream_options": {"include_usage": True},
+        if self.quirks.supports_stream_options:
+            body["stream_options"] = {"include_usage": True}
         }
         built_tools = self._build_tools(tools)
         if built_tools:
