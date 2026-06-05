@@ -17,9 +17,29 @@ let abortController: AbortController | null = null
 
 // v2 state
 const sessionId = ref<string | null>(null)
+// workflowId is the persistent cross-message identity (Phase 2+).
+// It aliases sessionId for backward compatibility.
+const workflowId = sessionId
 // Per-session approval state: keyed by sessionId so concurrent/switching sessions
 // cannot pollute each other's approval status (M11 fix).
 const _approvalBySession = new Map<string, PendingApproval | null>()
+
+// Per-workflow message isolation: messages are keyed by workflow/session ID.
+const _messagesByWorkflow = new Map<string, AgentChatMessage[]>()
+
+// Pipeline state (Phase 4)
+export interface PendingCheckpoint {
+  stage: string
+  checkpoint_type: 'MANDATORY' | 'SLIM'
+  title: string
+  deliverables: string[]
+  metrics: Record<string, number>
+  options: string[]
+}
+
+const pipelineStage = ref('')
+const pipelineCompleted = ref<string[]>([])
+const pendingCheckpoint = ref<PendingCheckpoint | null>(null)
 
 export interface PendingApproval {
   event_id: string
@@ -136,6 +156,22 @@ export function useAgentChat() {
           _clearApproval()
           msg.events = [...msg.events, agentEvent]
           break
+        case 'pipeline_stage':
+          pipelineStage.value = (agentEvent.metadata?.to as string) || ''
+          pipelineCompleted.value = (agentEvent.metadata?.completed as string[]) || []
+          msg.events = [...msg.events, agentEvent]
+          break
+        case 'checkpoint':
+          pendingCheckpoint.value = {
+            stage: (agentEvent.metadata?.stage as string) || '',
+            checkpoint_type: (agentEvent.metadata?.checkpoint_type as 'MANDATORY' | 'SLIM') || 'SLIM',
+            title: agentEvent.content || '',
+            deliverables: (agentEvent.metadata?.deliverables as string[]) || [],
+            metrics: (agentEvent.metadata?.metrics as Record<string, number>) || {},
+            options: (agentEvent.metadata?.options as string[]) || ['continue'],
+          }
+          msg.events = [...msg.events, agentEvent]
+          break
         default:
           msg.events = [...msg.events, agentEvent]
           break
@@ -208,6 +244,7 @@ export function useAgentChat() {
           context_file: contextFile?.trim() || undefined,
           constraints: constraints?.trim() || undefined,
           workspace_root: workspaceRoot?.trim() || undefined,
+          workflow_id: workflowId.value || undefined,
         }),
         signal: abortController!.signal,
       })
@@ -217,7 +254,7 @@ export function useAgentChat() {
       }
       const reader = resp.body?.getReader()
       if (!reader) throw new Error(i18n.global.t('errors.streamFailed'))
-      await readSseStream(reader, trackingHandler, undefined, () => streamDone)
+      await readSseStream(reader, trackingHandler, abortController?.signal, () => streamDone)
     }
 
     try {
@@ -407,7 +444,7 @@ export function useAgentChat() {
       const reader = resp.body?.getReader()
       if (!reader) throw new Error(i18n.global.t('errors.streamFailed'))
 
-      await readSseStream(reader, handleEvent)
+      await readSseStream(reader, handleEvent, abortController?.signal)
 
       const msg = messages.value.find(m => m.id === assistantMsg.id)
       if (msg?.isStreaming) {
@@ -480,11 +517,82 @@ export function useAgentChat() {
     }
   }
 
+  // Per-workflow message loading (Phase 3)
+  async function loadWorkflowMessages(wfId: string) {
+    try {
+      const resp = await fetch(`${API_URL}/api/agent/v2/workflows/${wfId}/messages`)
+      if (!resp.ok) return
+      const data = await resp.json()
+      const loaded: AgentChatMessage[] = (data.messages || []).map((m: any, i: number) => ({
+        id: `hist_${i}`,
+        role: m.role as 'user' | 'assistant',
+        content: m.content || '',
+        events: [],
+        isStreaming: false,
+        timestamp: Date.now(),
+      }))
+      _messagesByWorkflow.set(wfId, loaded)
+      workflowId.value = wfId
+      messages.value = loaded
+    } catch (e) {
+      logger.error('loadWorkflowMessages failed:', e)
+    }
+  }
+
+  function startNewWorkflow() {
+    workflowId.value = null
+    messages.value = []
+    pipelineStage.value = ''
+    pipelineCompleted.value = []
+    pendingCheckpoint.value = null
+  }
+
+  async function respondCheckpoint(_decision: string) {
+    // Handled via SSE checkpoint event — decision flows through agent stream
+    pendingCheckpoint.value = null
+  }
+
+  async function fetchTools() {
+    try {
+      const resp = await fetch(`${API_URL}/api/agent/v2/tools`)
+      if (!resp.ok) return {}
+      const data = await resp.json()
+      return data.tools || []
+    } catch {
+      return {}
+    }
+  }
+
+  async function cleanupWorkflows() {
+    try {
+      const resp = await fetch(`${API_URL}/api/agent/v2/workflows/cleanup`, { method: 'POST' })
+      if (!resp.ok) throw new Error('cleanup failed')
+      return await resp.json()
+    } catch {
+      return null
+    }
+  }
+
+  async function deleteWorkflow(wfId: string) {
+    try {
+      const resp = await fetch(`${API_URL}/api/agent/v2/workflows/${wfId}`, { method: 'DELETE' })
+      if (!resp.ok) return false
+      _messagesByWorkflow.delete(wfId)
+      return true
+    } catch {
+      return false
+    }
+  }
+
   return {
     messages,
     sending,
     sessionId,
+    workflowId,
     pendingApproval,
+    pipelineStage,
+    pipelineCompleted,
+    pendingCheckpoint,
     sendMessage,
     stopGenerating,
     clearHistory,
@@ -492,6 +600,12 @@ export function useAgentChat() {
     abortSession,
     resumeSession,
     fetchSessions,
+    startNewWorkflow,
+    loadWorkflowMessages,
+    respondCheckpoint,
+    fetchTools,
+    cleanupWorkflows,
+    deleteWorkflow,
     ragDocuments,
     ragLoading,
     fetchRAGDocuments,

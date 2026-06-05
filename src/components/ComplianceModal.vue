@@ -1,7 +1,9 @@
 <template>
   <Teleport to="body">
-    <div v-if="visible" class="modal-overlay" @click.self="$emit('close')">
-      <div class="modal-panel">
+    <Transition name="v-fade">
+      <div v-if="visible" class="modal-overlay" @click.self="$emit('close')">
+        <Transition name="v-scale-in" appear>
+          <div class="modal-panel">
         <div class="modal-header">
           <h3>📋 Compliance Check Report</h3>
           <button class="close-btn" @click="$emit('close')">✕</button>
@@ -144,8 +146,10 @@
           <button class="btn secondary-btn" @click="$emit('close')">{{ t('general.close') }}</button>
           <button class="btn primary-btn" @click="$emit('retry')" :disabled="loading">{{ t('general.refresh') }}</button>
         </div>
+        </div>
+      </Transition>
       </div>
-    </div>
+    </Transition>
   </Teleport>
 </template>
 
