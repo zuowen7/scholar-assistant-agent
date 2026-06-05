@@ -67,7 +67,7 @@ SSE events (defined in `agent/models.py`): `session_started` / `task_started` / 
 - `routers/editor.py` — AI edit/complete/export/vision/citation/Zotero
 - `routers/argument.py` — Argument Map v2 + Companion v3 (ledger, reviewer, rebuttal, import reviews). **All ledger routes use `?doc_id=` query param**.
 - `routers/mindmap.py` — Mind map CRUD, AI expand, layout
-- `routers/project.py` — Project management: atomic create (template scaffolding + Git init), recent (LRU 20), load, detect, templates. Windows reserved names blocked, template validation, corrupt data graceful fallback. Defined in `python/templates/project_templates.json`.
+- `routers/project.py` — Project management: atomic create (Markdown scaffold in `draft/main.md` + Git init), recent (LRU 20), load, detect, templates. Windows reserved names blocked, corrupt data graceful fallback. Templates defined in `python/templates/project_templates.json`; Markdown outlines in `_MARKDOWN_TEMPLATES` dict. Creation auto-generates `draft/main.md` with paper-structure outline; frontend auto-opens file then switches to mindmap view.
 
 `api.py` — entry point. Delayed imports for optional subsystems (Agent, Plugin).
 
@@ -148,7 +148,7 @@ vue-i18n v11 (Composition API). Locales in `src/i18n/locales/{zh-CN,en-US}.json`
 | LaTeX/Word export (IEEE/ACM/NeurIPS/LNCS/Generic + Tectonic) | A |
 | Voice Assistant (wake word + global hotkey + Siri UI + dedup + 20+ voice commands in 5 tiers) | A |
 | Agent ReAct engine (ContextCompressor + Skill SOUL/AGENTS/IDENTITY + greeting guard + tool guide fallback) | A- |
-| Project management (atomic create + Git init + templates + recent + detect + auto-load on open-folder) | B+ |
+| Project management (atomic create + Markdown scaffold + Git init + recent + detect + auto-mindmap) | A- |
 | AI Editor (Monaco + Ghost Text + AI Panel + mid-stream reload) | B+ |
 | Agent workspace file tools (read/write/grep/str_replace/git_op + boundary approval) | B |
 | Cloud LLM providers (21 providers, only OpenAI-compatible path tested E2E) | B |

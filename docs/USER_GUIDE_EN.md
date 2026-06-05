@@ -112,14 +112,17 @@ The welcome page offers 4 entry points:
 
 | Entry | Purpose |
 |-------|---------|
-| **New Project** | Start from a mind map, generate a paper draft step by step |
+| **New Project** | Choose a template (Research Paper / Literature Review / Thesis / NeurIPS), auto-generates Markdown outline and opens mind map view |
 | **New from Template** | Choose IEEE / ACM / NeurIPS template, AI generates outline |
 | **Open Folder** | Open an existing paper project (Agent workspace) |
 | **New Document** | Create a blank Markdown file |
 
 ### File Management
 
-- **File Tree** (left sidebar): Browse, create, and delete files and folders
+- **File Tree** (left sidebar): Browse files and folders
+  - **Toolbar**: `+` button creates a new file, folder button creates a new folder
+  - **Context menu** (on folders): New File, New Folder, Cut, Copy, Paste, Rename, Delete
+  - **Context menu** (on files): Cut, Copy, Rename, Delete, Copy Path
 - **Tab Bar** (top): Switch between files, drag to reorder, `Ctrl+W` to close
 
 ### Ghost Text (Auto-Completion)

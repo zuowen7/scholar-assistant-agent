@@ -120,6 +120,8 @@ Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant-ag
 - **AI Panel** — Chat-style UI with message history; polish/expand results shown as diff view, one-click apply/undo
 - **File Tree** — Multi-file management with left sidebar navigation
 - **Template Export** — Pandoc compilation with IEEE / ACM / NeurIPS / LNCS / Elsevier / Generic LaTeX templates
+- **Project Management** — Create projects from templates (Research Paper / Literature Review / Thesis / NeurIPS); auto-generates Markdown outline in `draft/main.md` and switches to mindmap view; recent projects with LRU cache; Git init support
+- **File Tree Actions** — Create files and folders from toolbar or right-click context menu; cut/copy/paste/rename/delete
 
 ### Debugging & Observability
 - **File Logging** — Backend logs written to `RUNTIME_DIR/logs/app.log` (10 MB × 5 rotating backups, each line carries trace_id)
@@ -145,7 +147,8 @@ Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant-ag
 │   │   ├── useTranslate.ts       #   SSE translation pipeline state (singleton)
 │   │   ├── useAgentChat.ts       #   Agent SSE chat state (singleton)
 │   │   ├── useEditor.ts          #   Monaco Editor + AI Panel (singleton)
-│   │   ├── useFileTree.ts        #   File tree navigation (singleton)
+│   │   ├── useFileTree.ts        #   File tree navigation (singleton, create file/folder)
+│   │   ├── useProject.ts         #   Project management (singleton, create/open/close/recent)
 │   │   ├── useMindMap.ts         #   Mind map data + undo/redo (singleton)
 │   │   ├── useArgumentMap.ts     #   Toulmin v2 graph state (singleton)
 │   │   ├── useArgumentCompanion.ts # Argument Companion ledger state (singleton)
@@ -178,7 +181,8 @@ Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant-ag
 │   │   ├── agent.py              #   Agent chat / RAG / tool routes
 │   │   ├── editor.py             #   Edit / export / Vision / Citation routes
 │   │   ├── argument.py           #   Argument map + Companion v3 routes
-│   │   └── mindmap.py            #   Mind map persistence + AI analysis/expand
+│   │   ├── mindmap.py            #   Mind map persistence + AI analysis/expand
+│   │   └── project.py            #   Project management (create/detect/load/recent/templates)
 │   ├── src/
 │   │   ├── parser/               #   16 format parsers
 │   │   ├── cleaner/              #   17-stage cleaning pipeline
@@ -380,6 +384,15 @@ Translation SSE event order: `progress` → `parsed` → `cleaned` → `chunked`
 | `GET` | `/api/zotero/item/{key}/bibtex` | Get BibTeX |
 | `POST` | `/api/zotero/export` | Export items to file |
 | `POST` | `/api/zotero/citations` | Extract citations |
+
+### Project Management
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/project/templates` | List project templates |
+| `POST` | `/api/project/create` | Create project (Markdown scaffold + Git init) |
+| `POST` | `/api/project/detect` | Detect if path is a project |
+| `GET` | `/api/project/recent` | List recent projects (LRU 20) |
+| `POST` | `/api/project/load` | Load project metadata |
 
 ### Debugging
 | Method | Path | Description |
