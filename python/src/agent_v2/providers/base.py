@@ -15,5 +15,6 @@ class BaseProvider(ABC):
         system_prompt: str | None = None,
         max_tokens: int = 4096,
         temperature: float = 0.3,
+        tool_choice: str = "auto",
     ) -> ProviderResponse:
         ...
