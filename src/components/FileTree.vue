@@ -6,6 +6,9 @@
         <button class="tree-btn" @click="handleNewFile" :title="t('files.newFile')" :aria-label="t('files.newFile')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
         </button>
+        <button class="tree-btn" @click="handleNewFolder" :title="t('files.newFolder')" :aria-label="t('files.newFolder')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 10v6M9 13h6"/><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+        </button>
         <button class="tree-btn" @click="handleOpenFolder" :title="t('files.openFolder2')" :aria-label="t('files.openFolder2')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
         </button>
@@ -88,7 +91,7 @@ import { useFileTree } from '../composables/useFileTree'
 import { useEditor } from '../composables/useEditor'
 import type { FileEntry } from '../types'
 
-const { files, rootDir, openFolder, readFileContent, createFile, renameFile, deleteFile, copyFileTo, setClipboard, getClipboard, clearClipboard } = useFileTree()
+const { files, rootDir, openFolder, readFileContent, createFile, createFolder, renameFile, deleteFile, copyFileTo, setClipboard, getClipboard, clearClipboard } = useFileTree()
 const { openFile: openEditorFile, activeFile, renameTabPath, closeTab } = useEditor()
 
 defineEmits<{ (e: 'collapse'): void }>()
@@ -150,6 +153,16 @@ async function handleNewFile() {
   openEditorFile(path, '')
 }
 
+async function handleNewFolder() {
+  if (!rootDir.value) {
+    await handleOpenFolder()
+    return
+  }
+  const name = prompt(t('files.newFolder'), 'new_folder')
+  if (!name) return
+  await createFolder(rootDir.value, name)
+}
+
 async function handleRefresh() {
   if (rootDir.value) {
     await openFolder(rootDir.value)
@@ -158,6 +171,16 @@ async function handleRefresh() {
 
 async function handleAction(action: string, path: string, extra: string) {
   switch (action) {
+    case 'new-file': {
+      const newFile = await createFile(path, extra)
+      openEditorFile(newFile, '')
+      break
+    }
+
+    case 'new-folder':
+      await createFolder(path, extra)
+      break
+
     case 'cut':
       setClipboard('cut', path, extra, false)
       break

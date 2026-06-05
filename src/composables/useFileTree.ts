@@ -59,6 +59,14 @@ export function useFileTree() {
     return path
   }
 
+  async function createFolder(dirPath: string, name: string): Promise<string> {
+    const { mkdir } = await import('@tauri-apps/plugin-fs')
+    const path = `${dirPath}/${name}`
+    await mkdir(path)
+    await refresh()
+    return path
+  }
+
   async function renameFile(oldPath: string, newName: string): Promise<string> {
     const { rename } = await import('@tauri-apps/plugin-fs')
     const lastSep = Math.max(oldPath.lastIndexOf('/'), oldPath.lastIndexOf('\\'))
@@ -113,6 +121,7 @@ export function useFileTree() {
     readFileContent,
     writeFile,
     createFile,
+    createFolder,
     renameFile,
     deleteFile,
     copyFileTo,

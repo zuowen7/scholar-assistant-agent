@@ -64,6 +64,7 @@ export {
   FilePlus,
   Folder,
   FolderOpen,
+  FolderPlus,
   FolderTree,
   PenLine,
   Eye,
