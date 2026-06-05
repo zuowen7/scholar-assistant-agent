@@ -200,27 +200,55 @@ class ConversationRuntime:
                 return
 
     async def _execute_tool(self, tb: ToolUseBlock) -> AsyncGenerator[AgentEvent, None]:
-        """执行单个 tool_call，含权限检查。"""
+        """执行单个 tool_call，含权限检查 + diff 预览。"""
+        # Parse args
+        args = {}
+        try:
+            if tb.input:
+                args = json.loads(tb.input)
+        except json.JSONDecodeError:
+            args = {}
+
         # Permission check
         perm_result = self.permission_policy.authorize(tb.name, tb.input)
+
+        # Capture old content for diff preview
+        old_text = ""
+        new_text = ""
+        file_path = args.get("file_path", "") or args.get("path", "")
+        if tb.name == "str_replace":
+            old_text = args.get("old_string", "")
+            new_text = args.get("new_string", "")
+        elif tb.name == "write_file":
+            new_text = args.get("content", "")
+            if file_path:
+                try:
+                    ws = self.tool_registry._resolve_path(file_path) if hasattr(self.tool_registry, '_resolve_path') else None
+                    if ws is None and hasattr(self.tool_registry, '_workspace_root') and self.tool_registry._workspace_root:
+                        from pathlib import Path
+                        ws = Path(file_path) if Path(file_path).is_absolute() else (self.tool_registry._workspace_root / file_path)
+                    if ws and ws.is_file():
+                        old_text = ws.read_text(encoding="utf-8", errors="replace")[:4000]
+                except Exception:
+                    pass
+
+        # For file-modifying tools, always emit approval event for frontend diff UI
+        if tb.name in ("write_file", "str_replace"):
+            yield AgentEvent.await_approval(
+                tb.id, tb.name, f"Editing {file_path}",
+                preview={"old_text": old_text, "new_text": new_text, "file_path": file_path},
+            )
 
         if perm_result.is_denied:
             yield AgentEvent.tool_denied(tb.id, tb.name, perm_result.reason)
             tool_output = f"Permission denied: {perm_result.reason}"
             is_error = True
         elif perm_result.needs_approval:
-            yield AgentEvent.await_approval(tb.id, tb.name, perm_result.reason)
             # Non-interactive: auto-deny
             tool_output = f"Requires approval: {perm_result.reason}"
             is_error = True
         else:
             # Execute
-            args = {}
-            try:
-                if tb.input:
-                    args = json.loads(tb.input)
-            except json.JSONDecodeError:
-                args = {}
             result = await self.tool_registry.execute(tb.name, args)
             tool_output = result.output
             is_error = result.is_error
