@@ -651,16 +651,15 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
     _graph_store = None
     _companion_store = None
 
-    from routers.agent import register_agent
-    state_agent = register_agent(
-        app,
-        cloud_only=cloud_only,
-        load_config=_load_config,
-        runtime_dir=RUNTIME_DIR,
-        data_root=data_root,
-        graph_store_getter=lambda: _graph_store,
-        companion_store_getter=lambda: _companion_store,
-    )
+    # Agent V2 — claw-code-inspired ConversationRuntime (replaces old ReAct agent)
+    logger.info("Registering Agent V2 routes")
+    from src.agent_v2.router import register_agent_v2_routes
+    register_agent_v2_routes(app)
+    state_agent = {
+        "rag_store": None,
+        "get_rag_store": lambda: None,
+        "ensure_rag_store": lambda: None,
+    }
 
     # Wire rag_store from agent into translate for auto-RAG ingest.
     # Must happen after both registers complete so both state dicts exist.

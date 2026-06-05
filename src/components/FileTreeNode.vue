@@ -1,93 +1,94 @@
 <template>
-  <div class="tree-node" @contextmenu.prevent="showContextMenu">
-    <div
-      class="tree-item u-interactive"
-      :class="{ active: activeFile === entry.path, dir: entry.isDir }"
-      :style="{ paddingLeft: depth * 16 + 8 + 'px' }"
-      tabindex="0"
-      role="treeitem"
-      :aria-expanded="entry.isDir ? expanded : undefined"
-      @click="handleClick"
-      @keydown.enter.prevent="handleClick"
-      @keydown.space.prevent="handleClick"
-      @pointermove="onPointerMove"
-    >
-      <span
-        v-if="entry.isDir"
-        class="tree-chevron"
-        :class="{ open: expanded }"
-        aria-hidden="true"
+  <div class="file-tree-node-root">
+    <div class="tree-node" @contextmenu.prevent="showContextMenu">
+      <div
+        class="tree-item u-interactive"
+        :class="{ active: activeFile === entry.path, dir: entry.isDir }"
+        :style="{ paddingLeft: depth * 16 + 8 + 'px' }"
+        tabindex="0"
+        role="treeitem"
+        :aria-expanded="entry.isDir ? expanded : undefined"
+        @click="handleClick"
+        @keydown.enter.prevent="handleClick"
+        @keydown.space.prevent="handleClick"
+        @pointermove="onPointerMove"
       >
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
-      </span>
-      <span v-else class="tree-chevron-spacer" aria-hidden="true" />
-      <span class="tree-icon" :data-expanded="expanded || undefined">{{ entry.isDir ? (expanded ? '📂' : '📁') : '📄' }}</span>
-      <template v-if="isRenaming">
-        <input
-          ref="renameInput"
-          class="rename-input"
-          :value="newName"
-          @input="newName = ($event.target as HTMLInputElement).value"
-          @keydown.enter="confirmRename"
-          @keydown.escape="cancelRename"
-          @blur="confirmRename"
-          @click.stop
-        />
-      </template>
-      <template v-else>
-        <span class="tree-name">{{ entry.name }}</span>
-      </template>
-    </div>
-    <Transition name="v-unfurl">
-      <div v-if="entry.isDir && expanded" class="tree-children">
-        <!-- 目录加载骨架 -->
-        <div v-if="loadingChildren" class="tree-skeleton" :style="{ paddingLeft: (depth + 1) * 16 + 8 + 'px' }">
-          <div v-for="i in skeletonCount" :key="i" class="tree-skeleton-row" :style="{ '--stagger-i': i - 1 } as any">
-            <UiSkeleton shape="circle" :width="12" :height="12" />
-            <UiSkeleton shape="line" :width="`${44 + (i * 13) % 40}%`" :height="9" />
-          </div>
-        </div>
-        <template v-else-if="entry.children">
-          <FileTreeNode
-            v-for="(child, ci) in entry.children"
-            :key="child.path"
-            :entry="child"
-            :depth="depth + 1"
-            :active-file="activeFile"
-            :style="{ '--stagger-i': Math.min(ci, 12) } as any"
-            class="anim-fade-in-up anim-stagger"
-            @select="(e: FileEntry) => $emit('select', e)"
-            @action="(a: string, p: string, n: string) => $emit('action', a, p, n)"
+        <span
+          v-if="entry.isDir"
+          class="tree-chevron"
+          :class="{ open: expanded }"
+          aria-hidden="true"
+        >
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+        </span>
+        <span v-else class="tree-chevron-spacer" aria-hidden="true" />
+        <span class="tree-icon" :data-expanded="expanded || undefined">{{ entry.isDir ? (expanded ? '📂' : '📁') : '📄' }}</span>
+        <template v-if="isRenaming">
+          <input
+            ref="renameInput"
+            class="rename-input"
+            :value="newName"
+            @input="newName = ($event.target as HTMLInputElement).value"
+            @keydown.enter="confirmRename"
+            @keydown.escape="cancelRename"
+            @blur="confirmRename"
+            @click.stop
           />
         </template>
-      </div>
-    </Transition>
-  </div>
-
-  <!-- Context menu -->
-  <Teleport to="body">
-    <Transition name="v-scale-in">
-      <div
-        v-if="ctx.visible"
-        class="ctx-menu"
-        :style="{ left: ctx.x + 'px', top: ctx.y + 'px', transformOrigin: ctx.origin }"
-      >
-        <template v-if="entry.isDir">
-          <button class="ctx-item" @click="action('new-file')">{{ t('files.newFile') }}</button>
-          <button class="ctx-item" @click="action('new-folder')">{{ t('files.newFolder') }}</button>
-          <div class="ctx-sep" />
+        <template v-else>
+          <span class="tree-name">{{ entry.name }}</span>
         </template>
-        <button class="ctx-item" @click="action('cut')">{{ t('files.cut') }}</button>
-        <button class="ctx-item" @click="action('copy')">{{ t('files.copy') }}</button>
-        <button v-if="canPaste" class="ctx-item" @click="action('paste')">{{ t('files.paste') }}</button>
-        <div v-if="canPaste" class="ctx-sep" />
-        <button class="ctx-item" @click="action('rename')">{{ t('files.rename') }}</button>
-        <button class="ctx-item ctx-danger" @click="action('delete')">{{ t('files.delete') }}</button>
-        <div class="ctx-sep" />
-        <button class="ctx-item" @click="action('copy-path')">{{ t('files.copyPath') }}</button>
       </div>
-    </Transition>
-  </Teleport>
+      <Transition name="v-unfurl">
+        <div v-if="entry.isDir && expanded" class="tree-children">
+          <div v-if="loadingChildren" class="tree-skeleton" :style="{ paddingLeft: (depth + 1) * 16 + 8 + 'px' }">
+            <div v-for="i in skeletonCount" :key="i" class="tree-skeleton-row" :style="{ '--stagger-i': i - 1 } as any">
+              <UiSkeleton shape="circle" :width="12" :height="12" />
+              <UiSkeleton shape="line" :width="`${44 + (i * 13) % 40}%`" :height="9" />
+            </div>
+          </div>
+          <template v-else-if="entry.children">
+            <FileTreeNode
+              v-for="(child, ci) in entry.children"
+              :key="child.path"
+              :entry="child"
+              :depth="depth + 1"
+              :active-file="activeFile"
+              :style="{ '--stagger-i': Math.min(ci, 12) } as any"
+              class="anim-fade-in-up anim-stagger"
+              @select="(e: FileEntry) => $emit('select', e)"
+              @action="(a: string, p: string, n: string) => $emit('action', a, p, n)"
+            />
+          </template>
+        </div>
+      </Transition>
+    </div>
+
+    <!-- Context menu — teleported to body but wrapped for single-root -->
+    <Teleport to="body">
+      <Transition name="v-scale-in">
+        <div
+          v-if="ctx.visible"
+          class="ctx-menu"
+          :style="{ left: ctx.x + 'px', top: ctx.y + 'px', transformOrigin: ctx.origin }"
+        >
+          <template v-if="entry.isDir">
+            <button class="ctx-item" @click="action('new-file')">{{ t('files.newFile') }}</button>
+            <button class="ctx-item" @click="action('new-folder')">{{ t('files.newFolder') }}</button>
+            <div class="ctx-sep" />
+          </template>
+          <button class="ctx-item" @click="action('cut')">{{ t('files.cut') }}</button>
+          <button class="ctx-item" @click="action('copy')">{{ t('files.copy') }}</button>
+          <button v-if="canPaste" class="ctx-item" @click="action('paste')">{{ t('files.paste') }}</button>
+          <div v-if="canPaste" class="ctx-sep" />
+          <button class="ctx-item" @click="action('rename')">{{ t('files.rename') }}</button>
+          <button class="ctx-item ctx-danger" @click="action('delete')">{{ t('files.delete') }}</button>
+          <div class="ctx-sep" />
+          <button class="ctx-item" @click="action('copy-path')">{{ t('files.copyPath') }}</button>
+        </div>
+      </Transition>
+    </Teleport>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -211,6 +212,8 @@ function cancelRename() {
 </script>
 
 <style scoped>
+/* Single root wrapper to fix Vue fragment attrs warning */
+.file-tree-node-root { display: contents; }
 .tree-item {
   display: flex;
   align-items: center;
