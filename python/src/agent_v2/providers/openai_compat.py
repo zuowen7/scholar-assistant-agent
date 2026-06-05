@@ -128,10 +128,16 @@ class OpenAiCompatProvider(BaseProvider):
         resp = await client.post(f"{self.base_url}/chat/completions", json=body)
         resp.raise_for_status()
         data = resp.json()
-        logger.info("chat response: finish=%s, tool_calls=%d, text_len=%d",
-                     data.get("choices", [{}])[0].get("finish_reason", "?"),
-                     len(data.get("choices", [{}])[0].get("message", {}).get("tool_calls") or []),
-                     len(data.get("choices", [{}])[0].get("message", {}).get("content") or ""))
+        finish = data.get("choices", [{}])[0].get("finish_reason", "?")
+        tc_count = len(data.get("choices", [{}])[0].get("message", {}).get("tool_calls") or [])
+        text_len = len(data.get("choices", [{}])[0].get("message", {}).get("content") or "")
+        logger.info("chat response: finish=%s, tool_calls=%d, text_len=%d, model=%s, msgs=%d, tools=%d",
+                     finish, tc_count, text_len, data.get("model", "?"), len(messages), len(tools or []))
+        if tc_count == 0 and finish == "stop" and tools:
+            logger.warning("DeepSeek text-only response with %d tools available. "
+                           "Last user msg: %s...",
+                           len(tools),
+                           (messages[-1].text_content() if messages else "")[:200])
         return self._parse_response(data)
 
     async def chat_stream(
