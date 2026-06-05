@@ -68,7 +68,8 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
             "new_text": preview.get("new_text", ""),
             "force_approval": True,
         }
-        return {"type": evt_type, "content": content, "event_id": _event_id(), "metadata": metadata}
+        # Use tool_use ID as event_id so frontend can match approval back
+        return {"type": evt_type, "content": content, "event_id": data.get("id", _event_id()), "metadata": metadata}
 
     # ---- 以下保留原始类型 ----
     elif t == AgentEventType.CHECKPOINT:

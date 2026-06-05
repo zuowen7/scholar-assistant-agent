@@ -265,7 +265,7 @@ def _create_runtime(workspace_root: str, session_id: str = "") -> ConversationRu
 
     return ConversationRuntime(provider=provider, tool_registry=registry,
                                 permission_policy=policy, session=session,
-                                system_prompt=sp, auto_approve=False)
+                                system_prompt=sp, auto_approve=True)
 
 
 async def _cleanup_pool():
