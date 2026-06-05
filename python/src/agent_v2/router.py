@@ -189,11 +189,6 @@ def _create_provider():
         if tk or tb:
             tb = tb or "https://api.deepseek.com/v1"
             m = model or tm or "deepseek-chat"
-            # DeepSeek works better with Anthropic Messages format
-            if "deepseek" in tb.lower():
-                logger.info("Agent V2: DeepSeek via Anthropic format — %s @ %s", m, tb)
-                from src.agent_v2.providers.anthropic import AnthropicProvider
-                return AnthropicProvider(base_url=tb, api_key=tk, model=m)
             logger.info("Agent V2: cloud config — %s @ %s", m, tb)
             return OpenAiCompatProvider(base_url=tb, api_key=tk, model=m)
 
