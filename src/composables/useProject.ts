@@ -104,6 +104,13 @@ export async function openProject(path: string): Promise<void> {
   }
 }
 
+export async function removeRecentProject(path: string): Promise<void> {
+  try {
+    await fetch(apiUrl(`/api/project/recent?path=${encodeURIComponent(path)}`), { method: 'DELETE' })
+    recentProjects.value = recentProjects.value.filter(p => p.path !== path)
+  } catch { /* */ }
+}
+
 export async function loadRecentProjects(): Promise<void> {
   try {
     const resp = await fetch(apiUrl('/api/project/recent'))
@@ -145,6 +152,7 @@ export function useProject() {
     createProject,
     openProject,
     loadRecentProjects,
+    removeRecentProject,
     closeProject,
     detectProject,
   }

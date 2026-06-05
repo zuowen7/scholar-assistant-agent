@@ -74,6 +74,9 @@
           >
             <span class="recent-name">{{ proj.name }}</span>
             <span class="recent-path">{{ formatPath(proj.path) }}</span>
+            <span class="recent-remove" @click.stop="removeRecent(proj.path)" :title="t('project.removeRecent')">
+              <X :size="12" :stroke-width="2" />
+            </span>
           </button>
         </div>
       </div>
@@ -102,15 +105,19 @@
 </template>
 
 <script setup lang="ts">
-import { FileText, FolderOpen, FilePlus, FolderPlus } from './ui/icons'
+import { FileText, FolderOpen, FilePlus, FolderPlus, X } from './ui/icons'
 import { useI18n } from 'vue-i18n'
 import { onMounted } from 'vue'
 import { useProject } from '../composables/useProject'
 
 const { t } = useI18n()
-const { recentProjects, loadRecentProjects } = useProject()
+const { recentProjects, loadRecentProjects, removeRecentProject } = useProject()
 
 onMounted(() => { loadRecentProjects() })
+
+async function removeRecent(path: string) {
+  await removeRecentProject(path)
+}
 
 defineEmits<{
   'new-project': []
@@ -329,6 +336,27 @@ function formatPath(p: string | undefined | null): string {
   color: var(--c-text-3);
   margin-left: auto;
 }
+
+.recent-remove {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--c-text-3);
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity var(--motion-fast) var(--ease-out),
+              transform var(--motion-fast) var(--ease-spring),
+              background var(--motion-fast),
+              color var(--motion-fast);
+  cursor: pointer;
+}
+.recent-item:hover .recent-remove { opacity: 1; transform: scale(1); }
+.recent-remove:hover { background: var(--c-danger-bg); color: var(--c-danger); transform: scale(1.12); }
+.recent-remove:active { transform: scale(0.9); }
 
 /* Shortcut chips */
 .welcome-shortcuts {
