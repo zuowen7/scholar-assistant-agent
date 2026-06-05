@@ -53,6 +53,8 @@ class SkillRegistry:
             return 0
         count = 0
         for f in sorted(directory.glob("*.md")):
+            if f.name.startswith("_") or f.name.startswith("."):
+                continue  # skip helper/docs files
             try:
                 skill = self._parse_skill_file(f)
                 self._skills[skill.name] = skill
