@@ -104,54 +104,93 @@ def _deep_merge(base: dict, override: dict) -> None:
             base[k] = v
 
 
-# 模型别名，参考 claw-code resolve_model_alias
-_MODEL_ALIASES = {
-    "opus": "claude-opus-4-6",
-    "sonnet": "claude-sonnet-4-6",
-    "haiku": "claude-haiku-4-5",
-    "4o": "gpt-4o",
-    "4o-mini": "gpt-4o-mini",
-    "deepseek": "deepseek-chat",
-    "ds": "deepseek-chat",
-    "ds-r1": "deepseek-reasoner",
-}
+def _load_agent_config() -> dict:
+    """读取 agent 配置段（合并 default.yaml + local.yaml + env override）。
+
+    优先级: env var > config/local.yaml > config/default.yaml
+    """
+    import yaml
+    _python_root = Path(__file__).resolve().parent.parent.parent
+    merged = {}
+
+    for cfg_name in ("config/default.yaml", "config/default.local.yaml"):
+        cfg_path = _python_root / cfg_name
+        if cfg_path.is_file():
+            try:
+                with open(cfg_path, encoding="utf-8") as f:
+                    _deep_merge(merged, yaml.safe_load(f) or {})
+            except Exception:
+                pass
+
+    agent_cfg = merged.get("agent", {})
+
+    # Env var overrides
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        agent_cfg["provider"] = "anthropic"
+        agent_cfg["api_key"] = os.environ["ANTHROPIC_API_KEY"]
+        agent_cfg["base_url"] = os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
+    if os.environ.get("OPENAI_API_KEY"):
+        agent_cfg["provider"] = "openai"
+        agent_cfg["api_key"] = os.environ["OPENAI_API_KEY"]
+        agent_cfg["base_url"] = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    if os.environ.get("AGENT_MODEL"):
+        agent_cfg["model"] = os.environ["AGENT_MODEL"]
+
+    return agent_cfg
 
 
-def _resolve_model_alias(model: str) -> str:
-    """解析模型别名。参考 claw-code resolve_model_alias。"""
-    return _MODEL_ALIASES.get(model.lower(), model)
+def _resolve_model_alias(model: str, aliases: dict) -> str:
+    """解析模型别名。参考 claw-code resolve_model_alias。别名从 config 读取。"""
+    return aliases.get(model.lower(), model)
 
 
 def _create_provider():
     from src.agent_v2.providers.openai_compat import OpenAiCompatProvider
-    model = _resolve_model_alias(os.environ.get("AGENT_MODEL", "").strip())
 
-    # 1. ANTHROPIC_API_KEY
-    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    if anthropic_key:
-        base = os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com").strip()
-        m = model or "claude-sonnet-4-6"
-        logger.info("Agent V2: Anthropic — %s", m)
-        return OpenAiCompatProvider(base_url=base, api_key=anthropic_key, model=m)
+    cfg = _load_agent_config()
+    aliases = cfg.get("model_aliases", {})
+    model = _resolve_model_alias(cfg.get("model", "").strip(), aliases)
+    provider = cfg.get("provider", "auto").strip().lower()
+    api_key = cfg.get("api_key", "").strip()
+    base_url = cfg.get("base_url", "").strip()
+    translator_cloud = _load_cloud_config()
 
-    # 2. OPENAI_API_KEY
-    openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
-    openai_base = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").strip()
-    if openai_key or openai_base != "https://api.openai.com/v1":
-        m = model or "gpt-4o"
-        logger.info("Agent V2: OpenAI — %s @ %s", m, openai_base)
-        return OpenAiCompatProvider(base_url=openai_base, api_key=openai_key, model=m)
+    # 1. Explicit provider from config
+    if provider == "anthropic" and api_key:
+        logger.info("Agent V2: config[agent].provider=anthropic — %s", model or "claude-sonnet-4-6")
+        return OpenAiCompatProvider(
+            base_url=base_url or "https://api.anthropic.com",
+            api_key=api_key, model=model or "claude-sonnet-4-6")
 
-    # 3. Cloud config (DeepSeek etc.)
-    cloud = _load_cloud_config()
-    if cloud:
-        api_key = cloud.get("api_key", "").strip()
-        base_url = cloud.get("base_url", "https://api.deepseek.com/v1").strip()
-        cloud_model = cloud.get("model", "deepseek-chat").strip()
-        if api_key or "deepseek" in base_url.lower() or base_url != "https://api.openai.com/v1":
-            m = model or cloud_model
-            logger.info("Agent V2: cloud config — %s @ %s", m, base_url)
-            return OpenAiCompatProvider(base_url=base_url, api_key=api_key, model=m)
+    if provider == "openai" and (api_key or base_url):
+        logger.info("Agent V2: config[agent].provider=openai — %s @ %s",
+                     model or "gpt-4o", base_url or "https://api.openai.com/v1")
+        return OpenAiCompatProvider(
+            base_url=base_url or "https://api.openai.com/v1",
+            api_key=api_key, model=model or "gpt-4o")
+
+    # 2. API key without explicit provider — detect from key prefix
+    if api_key:
+        if api_key.startswith("sk-ant-"):
+            logger.info("Agent V2: Anthropic key detected — %s", model or "claude-sonnet-4-6")
+            return OpenAiCompatProvider(
+                base_url=base_url or "https://api.anthropic.com",
+                api_key=api_key, model=model or "claude-sonnet-4-6")
+        logger.info("Agent V2: OpenAI-compatible key — %s", model or "gpt-4o")
+        return OpenAiCompatProvider(
+            base_url=base_url or "https://api.openai.com/v1",
+            api_key=api_key, model=model or "gpt-4o")
+
+    # 3. Fallback: translator cloud config (DeepSeek etc.)
+    if translator_cloud:
+        tk = translator_cloud.get("api_key", "").strip()
+        tb = translator_cloud.get("base_url", "").strip()
+        tm = translator_cloud.get("model", "").strip()
+        if tk or tb:
+            logger.info("Agent V2: translator.cloud config — %s @ %s", tm or "deepseek-chat", tb or "https://api.deepseek.com/v1")
+            return OpenAiCompatProvider(
+                base_url=tb or "https://api.deepseek.com/v1",
+                api_key=tk, model=model or tm or "deepseek-chat")
 
     # 4. Local Ollama
     ollama_base = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1").strip()
@@ -406,6 +445,20 @@ def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> Non
         """列出所有插件 + 启用状态。"""
         plugin_mgr = create_default_plugin_manager()
         return plugin_mgr.list_all()
+
+    @app.get(f"{prefix}/config")
+    async def v2_config(request: Request):
+        """返回当前 agent 配置（脱敏）。"""
+        cfg = _load_agent_config()
+        aliases = cfg.get("model_aliases", {})
+        return {
+            "model": cfg.get("model", ""),
+            "provider": cfg.get("provider", "auto"),
+            "base_url": cfg.get("base_url", ""),
+            "has_api_key": bool(cfg.get("api_key", "").strip()),
+            "model_aliases": aliases,
+            "available_aliases": list(aliases.keys()),
+        }
 
     @app.get(f"{prefix}/health")
     async def v2_health():

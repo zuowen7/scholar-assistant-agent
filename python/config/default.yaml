@@ -1,3 +1,17 @@
+agent:
+  model: ''
+  provider: auto
+  base_url: ''
+  api_key: ''
+  model_aliases:
+    opus: claude-opus-4-6
+    sonnet: claude-sonnet-4-6
+    haiku: claude-haiku-4-5
+    4o: gpt-4o
+    4o-mini: gpt-4o-mini
+    deepseek: deepseek-chat
+    ds: deepseek-chat
+    ds-r1: deepseek-reasoner
 chunker:
   max_tokens: 800
   overlap_tokens: 0
@@ -11,7 +25,7 @@ translator:
     api_key: ''
     base_url: https://api.deepseek.com/v1
     max_tokens: 16384
-    model: deepseek-chat
+    model: deepseek-v4-pro
     provider: deepseek
   engine: cloud
   model: qwen3:8b
