@@ -379,6 +379,49 @@ def _create_file_ops(registry: ToolRegistry) -> None:
         "properties": {"path": {"type": "string", "default": "."}},
     }, list_dir, permission="read-only")
 
+    # ---- run_command — 执行 shell 命令 ----
+    async def run_command(args: dict) -> ToolResult:
+        command = str(args.get("command", ""))
+        if not command:
+            return ToolResult("error: command is required", is_error=True)
+        cwd = str(args.get("cwd", "."))
+        try:
+            root = registry._resolve_path(cwd) if cwd != "." else (registry._workspace_root or Path.cwd())
+        except ValueError:
+            root = Path(cwd)
+        # Security: block destructive patterns
+        dangerous = ("rm ", "rmdir", "sudo", "dd ", "mkfs", "format", "shutdown", "reboot",
+                     "chmod", "chown", "> /dev", "curl ", "wget ", "nc ", "ssh ")
+        for d in dangerous:
+            if d in command:
+                return ToolResult(f"error: blocked dangerous command pattern: '{d}'", is_error=True)
+        try:
+            import subprocess, asyncio as _aio
+            proc = await _aio.create_subprocess_shell(
+                command, cwd=str(root), stdout=_aio.subprocess.PIPE,
+                stderr=_aio.subprocess.STDOUT,
+            )
+            stdout, _ = await _aio.wait_for(proc.communicate(), timeout=30.0)
+            output = stdout.decode("utf-8", errors="replace")
+            if len(output) > _TOOL_RESULT_MAX:
+                output = output[:_TOOL_RESULT_MAX] + "\n... [truncated]"
+            if proc.returncode != 0:
+                return ToolResult(f"{output}\nexit code: {proc.returncode}", is_error=False)
+            return ToolResult(output or "(no output)")
+        except _aio.TimeoutError:
+            return ToolResult("error: command timed out (30s)", is_error=True)
+        except Exception as e:
+            return ToolResult(f"error running command: {e}", is_error=True)
+
+    registry.register("run_command", "Execute a shell command in the workspace", {
+        "type": "object",
+        "properties": {
+            "command": {"type": "string", "description": "Shell command to run"},
+            "cwd": {"type": "string", "default": ".", "description": "Working directory"},
+        },
+        "required": ["command"],
+    }, run_command, permission="workspace-write")
+
     registry.register("grep_files", "Search for pattern in files", {
         "type": "object",
         "properties": {

@@ -138,13 +138,16 @@ def _build_system_prompt(workspace_root: str, tools: list) -> str:
         f"You are Scholar Assistant, an academic AI writing assistant.\n"
         f"Workspace: {workspace_root}\n"
         f"Available tools: {tool_list}\n\n"
-        "CRITICAL RULES:\n"
-        "1. You MUST use tools to interact with files. NEVER just describe what you would do — actually DO it.\n"
-        "2. When you need file content: immediately call read_file. Do NOT say 'let me read' and wait.\n"
-        "3. When asked to modify/write/translate: call write_file or str_replace to make the change.\n"
-        "4. After each tool call, the result will be given to you. Use it to decide the next action.\n"
-        "5. Respond in the same language as the user's request.\n"
-        "6. Be concise. For simple operations, one tool call + short confirmation is enough.\n"
+        "CRITICAL RULES — you MUST follow these:\n"
+        "1. NEVER just describe what you would do — actually DO it with tools.\n"
+        "2. 'Read/查看/读' → immediately call read_file. Do NOT ask 'should I read?'\n"
+        "3. 'Write/保存/创建/写' → call write_file with the content.\n"
+        "4. 'Modify/改/替换' → call str_replace.\n"
+        "5. 'Run/运行/执行' → call run_command with the command.\n"
+        "6. 'Search/找' → call grep_files or glob_files.\n"
+        "7. After each tool, use its result to decide the next action.\n"
+        "8. Respond concisely in the same language as the user.\n"
+        "9. Do NOT ask for confirmation before acting — just DO it.\n"
     )
 
 
