@@ -130,12 +130,12 @@ class TestAgentModelValidation:
     def test_valid_model_string_accepted(self):
         self._call({"agent": {"model": "qwen3:8b"}})
 
-    def test_empty_model_string_rejected(self):
-        with pytest.raises(ValueError, match="agent.model"):
-            self._call({"agent": {"model": ""}})
+    def test_empty_model_string_allowed(self):
+        """Empty model string is valid — means auto-detect."""
+        self._call({"agent": {"model": ""}})  # should not raise
 
     def test_whitespace_model_rejected(self):
-        with pytest.raises(ValueError, match="agent.model"):
+        with pytest.raises(ValueError, match="whitespace"):
             self._call({"agent": {"model": "   "}})
 
     def test_missing_model_passes(self):
