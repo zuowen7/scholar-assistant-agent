@@ -232,13 +232,6 @@ class ConversationRuntime:
                 except Exception:
                     pass
 
-        # For file-modifying tools, always emit approval event for frontend diff UI
-        if tb.name in ("write_file", "str_replace"):
-            yield AgentEvent.await_approval(
-                tb.id, tb.name, f"Editing {file_path}",
-                preview={"old_text": old_text, "new_text": new_text, "file_path": file_path},
-            )
-
         if perm_result.is_denied:
             yield AgentEvent.tool_denied(tb.id, tb.name, perm_result.reason)
             tool_output = f"Permission denied: {perm_result.reason}"

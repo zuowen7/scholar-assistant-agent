@@ -38,7 +38,7 @@ class TestRegistrationAndDiscovery:
         """TR-002: definitions() 返回完整列表"""
         defs = registry.definitions()
         names = {d.name for d in defs}
-        assert {"read_file", "write_file", "str_replace", "grep_files", "glob_files", "list_dir"} == names
+        assert {"read_file", "write_file", "str_replace", "grep_files", "glob_files", "list_dir", "run_command"} == names
 
     def test_tr003_find_by_name(self, registry: ToolRegistry):
         """TR-003: get("read_file") 返回正确 ToolDefinition"""
