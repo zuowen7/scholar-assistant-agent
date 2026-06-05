@@ -18,6 +18,7 @@ from src.agent_v2.runtime.permissions import (
     policy_from_registry,
 )
 from src.agent_v2.runtime.session import Session
+from src.agent_v2.runtime.usage import UsageTracker, pricing_for_model
 from src.agent_v2.tools.registry import ToolRegistry, ToolResult
 from src.agent_v2.types import (
     AgentEvent,
@@ -60,6 +61,7 @@ class ConversationRuntime:
         self.max_steps = max_steps
         self.system_prompt = system_prompt
         self.auto_approve = auto_approve
+        self.usage = UsageTracker(model=session.meta.model)
         # Approval state
         self._approval_events: dict[str, asyncio.Event] = {}
         self._approval_decisions: dict[str, str] = {}
@@ -89,6 +91,10 @@ class ConversationRuntime:
                         yield event
                         if event.type in (AgentEventType.RESPONSE, AgentEventType.ERROR):
                             self._auto_save()
+                            yield AgentEvent.usage(TokenUsage(
+                                input_tokens=self.usage.total_input,
+                                output_tokens=self.usage.total_output,
+                            ))
                             yield AgentEvent.done()
                             return
                         if event.type == AgentEventType.DONE:
@@ -164,9 +170,11 @@ class ConversationRuntime:
                 yield AgentEvent.tool_call(chunk.id, chunk.name, chunk.input)
             elif isinstance(chunk, TokenUsage):
                 if chunk.total() > 0:
+                    self.usage.record(chunk)
                     yield AgentEvent.usage(chunk)
             elif isinstance(chunk, ProviderResponse):
                 if chunk.usage.total() > 0:
+                    self.usage.record(chunk.usage)
                     yield AgentEvent.usage(chunk.usage)
 
                 # Fallback: use ProviderResponse blocks if stream produced nothing

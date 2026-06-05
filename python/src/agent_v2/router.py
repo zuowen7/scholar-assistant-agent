@@ -27,9 +27,11 @@ from pydantic import BaseModel, Field
 from src.agent_v2.runtime.conversation import ConversationRuntime
 from src.agent_v2.runtime.permissions import PermissionMode, policy_from_registry
 from src.agent_v2.runtime.session import Session
+from src.agent_v2.runtime.usage import UsageTracker
 from src.agent_v2.sse_adapter import agent_event_to_sse_stream
 from src.agent_v2.tools.registry import create_default_registry
 from src.agent_v2.tools.academic_tools import register_academic_tools
+from src.agent_v2.tools.sub_agent import register_sub_agent
 from src.agent_v2.types import AgentEvent
 
 logger = logging.getLogger(__name__)
@@ -146,9 +148,10 @@ def _build_system_prompt(workspace_root: str, tools: list) -> str:
         "4. 'Modify/改/替换' → call str_replace.\n"
         "5. 'Run/运行/执行' → call run_command with the command.\n"
         "6. 'Search/找' → call grep_files or glob_files.\n"
-        "7. After each tool, use its result to decide the next action.\n"
-        "8. Respond concisely in the same language as the user.\n"
-        "9. Do NOT ask for confirmation before acting — just DO it.\n"
+        "7. Complex tasks: use run_sub_agent (preset: audit/explain/implement/translate).\n"
+        "8. After each tool, use its result to decide the next action.\n"
+        "9. Respond concisely in the same language as the user.\n"
+        "10. Do NOT ask for confirmation before acting — just DO it.\n"
     )
 
 
@@ -157,6 +160,8 @@ def _create_runtime(workspace_root: str, session_id: str = "") -> ConversationRu
     ws = Path(workspace_root) if workspace_root else Path.cwd()
     registry = create_default_registry(workspace_root=ws)
     register_academic_tools(registry)
+    register_sub_agent(registry)
+    registry._provider = provider  # for sub-agent access
     policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
 
     sid = session_id or f"sess_{int(time.time() * 1000) % 10_000_000:07d}"
@@ -311,6 +316,24 @@ def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> Non
     @app.delete(f"{prefix}/workflows/{{workflow_id}}")
     async def v2_workflow_delete(workflow_id: str):
         return {"status": "ok", "deleted": workflow_id}
+
+    @app.get(f"{prefix}/cost/{{session_id}}")
+    async def v2_cost(session_id: str, request: Request):
+        """会话成本统计。"""
+        async with _SESSION_LOCK:
+            rt = _SESSION_POOL.get(session_id)
+        if rt is not None:
+            return rt.usage.to_dict()
+        # Try persisted session
+        session_path = _SESSION_DIR / f"{session_id}.jsonl"
+        if session_path.is_file():
+            loaded = Session.load(session_path)
+            usage = UsageTracker(model=loaded.meta.model)
+            for msg in loaded.messages:
+                if msg.usage:
+                    usage.record(msg.usage)
+            return usage.to_dict()
+        raise HTTPException(404, f"Session {session_id} not found")
 
     @app.get(f"{prefix}/health")
     async def v2_health():
