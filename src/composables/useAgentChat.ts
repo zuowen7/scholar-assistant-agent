@@ -93,7 +93,7 @@ export function useAgentChat() {
   function createEventHandler(assistantMsgId: string) {
     return function handleEvent(eventType: string, data: Record<string, unknown>): void {
       const agentEvent: AgentEvent = {
-        type: (data.type as AgentEvent['type']) || eventType,
+        type: (data.type as AgentEvent['type']) ?? (eventType as AgentEvent['type']),
         content: (data.content as string) || '',
         event_id: data.event_id as string | undefined,
         metadata: data.metadata as AgentEvent['metadata'] | undefined,
