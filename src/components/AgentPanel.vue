@@ -485,7 +485,7 @@ const {
   uploadRAGFile,
 } = useAgentChat()
 
-const { selection: editorSelection, content: editorContent, activeTab: editorActiveTab, reloadOpenTabs } = useEditor()
+const { selection: editorSelection, content: editorContent, activeTab: editorActiveTab, reloadOpenTabs, setContent, contentVersion } = useEditor()
 
 const { tabs: editorTabs, setActiveEdit, clearActiveEdit } = useEditorState()
 
@@ -642,7 +642,24 @@ watch(pendingApproval, (p) => {
 
 // Agent 写入文件后实时刷新文件树和编辑器
 watch(pendingCheckpoint, () => {
-  if (pendingCheckpoint.value) {
+  const cp = pendingCheckpoint.value as any
+  if (cp) {
+    const filePath = cp.file as string | undefined
+    const content = cp.content as string | undefined
+    if (filePath && content) {
+      // 找到对应标签并直接更新内容，避免 reloadOpenTabs 需要 Tauri fs
+      const tab = editorTabs.value.find((t: any) => t.path === filePath || t.path?.replace(/\\/g, '/') === filePath?.replace(/\\/g, '\\'))
+      if (tab) {
+        const changed = tab.content !== content
+        tab.content = content
+        tab.isModified = false
+        contentVersion.value++
+        // 更新 Monaco 编辑器（如果是当前激活标签）
+        if (changed && tab.id === editorActiveTab.value?.id) {
+          setContent(content)
+        }
+      }
+    }
     refreshFileTree()
     reloadOpenTabs()
   }
