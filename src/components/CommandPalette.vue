@@ -1,11 +1,12 @@
 <template>
-    <div
-      v-if="visible"
-      class="cmd-palette"
-      :style="{ top: position.y + 'px', left: position.x + 'px' }"
-      role="dialog"
-      :aria-label="t('commandPalette.aiCommand')"
-    >
+    <Transition name="v-scale-in">
+      <div
+        v-if="visible"
+        class="cmd-palette"
+        :style="{ top: position.y + 'px', left: position.x + 'px', transformOrigin: 'top center' }"
+        role="dialog"
+        :aria-label="t('commandPalette.aiCommand')"
+      >
       <div class="cmd-task-tabs" role="tablist">
         <button
           v-for="t in taskTypes"
@@ -45,7 +46,8 @@
           @click="setAndSubmit(p.instruction)"
         >{{ p.label }}</button>
       </div>
-    </div>
+      </div>
+    </Transition>
 </template>
 
 <script setup lang="ts">

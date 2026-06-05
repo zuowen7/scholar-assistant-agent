@@ -4,16 +4,18 @@
       <slot name="trigger" :open="open" />
     </span>
     <Teleport to="body">
-      <div
-        v-if="open"
-        ref="panelRef"
-        class="ui-popover-panel"
-        :class="[align, { glass }]"
-        :style="panelStyle"
-        @click.stop
-      >
-        <slot :close="close" />
-      </div>
+      <Transition name="v-scale-in">
+        <div
+          v-if="open"
+          ref="panelRef"
+          class="ui-popover-panel"
+          :class="[align, { glass }]"
+          :style="{ ...panelStyle, transformOrigin }"
+          @click.stop
+        >
+          <slot :close="close" />
+        </div>
+      </Transition>
     </Teleport>
   </div>
 </template>
@@ -90,6 +92,14 @@ const panelStyle = computed(() => ({
   width: props.width + 'px',
 }))
 
+const transformOrigin = computed(() => {
+  switch (props.align) {
+    case 'start': return 'top left'
+    case 'end': return 'top right'
+    default: return 'top center'
+  }
+})
+
 function onDocClick(e: MouseEvent) {
   if (!open.value) return
   const t = e.target as Node
@@ -138,8 +148,6 @@ defineExpose({ open, show, close, toggle })
   -webkit-app-region: no-drag;
   backdrop-filter: blur(24px) saturate(1.5);
   -webkit-backdrop-filter: blur(24px) saturate(1.5);
-  animation: ui-popover-in var(--motion-base) var(--ease-spring);
-  transform-origin: top right;
   max-height: calc(100vh - 24px);
   overflow-y: auto;
   overflow-x: hidden;
@@ -149,9 +157,5 @@ defineExpose({ open, show, close, toggle })
   border-color: var(--c-glass-border);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
-}
-@keyframes ui-popover-in {
-  from { opacity: 0; transform: scale(0.97); }
-  to { opacity: 1; transform: scale(1); }
 }
 </style>

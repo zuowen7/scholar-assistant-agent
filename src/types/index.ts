@@ -171,6 +171,7 @@ export interface AgentEvent {
   type: 'thinking' | 'tool_call' | 'tool_result' | 'response' | 'error'
     | 'session_started' | 'task_started' | 'thought' | 'await_approval'
     | 'approval_received' | 'task_done' | 'warning' | 'done' | 'aborted'
+    | 'pipeline_stage' | 'checkpoint'
   content: string
   event_id?: string
   metadata?: {
@@ -202,6 +203,15 @@ export interface AgentEvent {
     code?: string
     // v2 task_done
     status?: string
+    // pipeline_stage
+    to?: string
+    completed?: string[]
+    // checkpoint
+    stage?: string
+    checkpoint_type?: string
+    deliverables?: string[]
+    metrics?: Record<string, number>
+    options?: string[]
   }
 }
 
