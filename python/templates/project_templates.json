@@ -1,31 +1,22 @@
 [
   {
     "id": "research_paper",
-    "name": "Research Paper",
-    "latex_template": "ieee_conference",
-    "folders": ["draft", "revised", "final", "references", "data", "notes", "scripts", "ai", "figures"]
+    "name": "Research Paper"
   },
   {
     "id": "review_paper",
-    "name": "Literature Review",
-    "latex_template": "generic_article",
-    "folders": ["draft", "revised", "final", "references", "notes", "ai"]
+    "name": "Literature Review"
   },
   {
     "id": "thesis",
-    "name": "Thesis / Dissertation",
-    "latex_template": "lncs",
-    "folders": ["chapters", "draft", "revised", "final", "references", "data", "notes", "scripts", "ai", "figures"]
+    "name": "Thesis / Dissertation"
   },
   {
     "id": "neurips",
-    "name": "NeurIPS Paper",
-    "latex_template": "neurips",
-    "folders": ["draft", "revised", "final", "references", "data", "notes", "ai", "figures"]
+    "name": "NeurIPS Paper"
   },
   {
     "id": "blank",
-    "name": "Blank Project",
-    "folders": ["draft", "references", "notes"]
+    "name": "Blank Project"
   }
 ]
