@@ -46,7 +46,9 @@ python/data/output/*
 
 # Agent 运行时数据（SQLite 数据库、日志等）
 python/data/agent/
+python/data/agent_v2/sessions/
 data/agent/
+data/agent_v2/
 
 # Argument map 运行时数据
 python/data/argument_tree.json
@@ -81,6 +83,15 @@ python/runtime/
 
 # 环境变量
 .env
+
+# Agent 备份日志
+.agent_backup/
+
+# Tauri 自动生成
+src-tauri/gen/
+
+# 字体占位文件（非真正的 OTF）
+python/assets/fonts/NotoSansCJK-Regular.otf
 
 # 运行时配置：default.yaml 是运行时副本（从 repo 根 config/default.yaml 生成），
 # local.yaml 含 API Key，两者均不入库
