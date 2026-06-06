@@ -116,10 +116,12 @@ a = Analysis(
         "openpyxl",
         "pptx",
         "docx",
-        # Optional OCR (inside try/except, invisible to static analysis)
+        # Optional OCR (inside try/except in ocr.py, needs explicit listing)
         "pytesseract",
         "pdf2image",
         "paddleocr",
+        "paddle",
+        "cv2",
         # Optional async HTTP
         "aiohttp",
         # First-party src.* + helpers + chromadb/onnxruntime/tokenizers are
@@ -173,14 +175,9 @@ a = Analysis(
         "accelerate",
         "safetensors",
         "huggingface_hub",
-        # PaddlePaddle (OCR optional dep, not needed in bundle)
-        "paddle",
-        "paddleocr",
+        # PaddlePaddle extras (paddle/paddleocr/cv2 kept for OCR)
         "paddleclas",
         "paddlenlp",
-        # OpenCV (pulled by paddleocr but not used directly)
-        "cv2",
-        "opencv_python",
         # Polars / Arrow (not used)
         "polars",
         "_polars_runtime_32",
@@ -189,9 +186,6 @@ a = Analysis(
         "panel",
         "holoviews",
         "datashader",
-        # GRPC (pulled by some deps but not needed directly)
-        "grpc",
-        "grpcio",
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
