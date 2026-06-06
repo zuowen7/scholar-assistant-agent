@@ -26,31 +26,41 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
     data = event.data
     content = ""
 
-    # ---- 以下事件映射为 `response` 类型，前端会实时更新 msg.content ----
+    # ---- 流式事件：保持各自类型，前端各自处理 ----
     if t == AgentEventType.TOKEN:
         content = data.get("text", "")
-        evt_type = "response"
+        evt_type = "token"
     elif t == AgentEventType.THOUGHT:
-        content = f"\n> {data.get('text', '')}\n"
-        evt_type = "response"
+        content = data.get("text", "")
+        evt_type = "thought"
     elif t == AgentEventType.TOOL_CALL:
         tool_name = data.get("tool_name", "unknown")
         inp = data.get("input", "")
-        # 截断长 input 防止刷屏
         inp_short = inp[:120] + "..." if len(inp) > 120 else inp
-        content = f"\n🔧 调用 {tool_name}: {inp_short}\n"
-        evt_type = "response"
+        content = f"{tool_name}: {inp_short}"
+        evt_type = "tool_call"
+        metadata = {
+            "tool_name": tool_name,
+            "input": inp,
+            "input_short": inp_short,
+        }
+        return {"type": evt_type, "content": content, "event_id": _event_id(), "metadata": metadata}
     elif t == AgentEventType.TOOL_RESULT:
         out = data.get("output", "")
         out_short = out[:200] + "..." if len(out) > 200 else out
-        content = f"\n✅ {data.get('tool_name', '')} 完成\n"
-        evt_type = "response"
+        content = out_short
+        evt_type = "tool_result"
+        metadata = {
+            "tool_name": data.get("tool_name", ""),
+            "is_error": data.get("is_error", False),
+        }
+        return {"type": evt_type, "content": content, "event_id": _event_id(), "metadata": metadata}
     elif t == AgentEventType.TOOL_DENIED:
-        content = f"\n⛔ {data.get('tool_name', '')} 被拒绝: {data.get('reason', '')}\n"
-        evt_type = "response"
+        content = data.get("reason", "")
+        evt_type = "tool_denied"
     elif t == AgentEventType.TOOL_ERROR:
-        content = f"\n❌ {data.get('tool_name', '')} 出错: {data.get('output', '')[:200]}\n"
-        evt_type = "response"
+        content = data.get("output", "")[:200]
+        evt_type = "tool_error"
     elif t == AgentEventType.APPROVAL_RECEIVED:
         content = data.get("decision", "")
         evt_type = "approval_received"

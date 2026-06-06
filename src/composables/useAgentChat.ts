@@ -132,7 +132,12 @@ export function useAgentChat() {
           _clearApproval()
           msg.events = [...msg.events, agentEvent]
           break
+        case 'token':
+          // Accumulate streaming tokens into msg.content for real-time display
+          msg.content = (msg.content || '') + agentEvent.content
+          break
         case 'response':
+          // Final response text replaces accumulated tokens (handles non-streaming too)
           msg.content = agentEvent.content
           msg.isStreaming = false
           break
@@ -171,6 +176,12 @@ export function useAgentChat() {
             options: (agentEvent.metadata?.options as string[]) || ['continue'],
           }
           msg.events = [...msg.events, agentEvent]
+          // Notify editor to reload modified files from disk
+          if ((agentEvent.metadata?.deliverables as string[])?.length) {
+            window.dispatchEvent(new CustomEvent('agent-files-changed', {
+              detail: { files: agentEvent.metadata?.deliverables },
+            }))
+          }
           break
         default:
           msg.events = [...msg.events, agentEvent]
