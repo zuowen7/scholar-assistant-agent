@@ -89,7 +89,14 @@ class TestAdapter:
         result = agent_event_to_sse(event)
         assert result["type"] == "await_approval"
         assert result["metadata"]["tool_name"] == "write_file"
-        assert result["metadata"]["file_path"] == "test.md"
+        # args for showInlineDiff
+        assert result["metadata"]["args"]["file_path"] == "test.md"
+        assert result["metadata"]["args"]["old_string"] == "a"
+        assert result["metadata"]["args"]["new_string"] == "b"
+        # preview for setActiveEdit
+        assert result["metadata"]["preview"]["old_text"] == "a"
+        assert result["metadata"]["preview"]["new_text"] == "b"
+        assert result["metadata"]["preview"]["file_path"] == "test.md"
 
     def test_checkpoint_preserves_metadata(self):
         event = AgentEvent(type=AgentEventType.CHECKPOINT, data={
@@ -98,3 +105,4 @@ class TestAdapter:
         result = agent_event_to_sse(event)
         assert result["type"] == "checkpoint"
         assert result["metadata"]["file"] == "test.md"
+        assert result["metadata"]["content"] == "updated"

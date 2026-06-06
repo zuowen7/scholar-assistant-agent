@@ -35,6 +35,10 @@ export interface PendingCheckpoint {
   deliverables: string[]
   metrics: Record<string, number>
   options: string[]
+  /** File path that was modified (for editor refresh) */
+  file?: string
+  /** New file content after modification (for Monaco inline update) */
+  content?: string
 }
 
 const pipelineStage = ref('')
@@ -174,6 +178,8 @@ export function useAgentChat() {
             deliverables: (agentEvent.metadata?.deliverables as string[]) || [],
             metrics: (agentEvent.metadata?.metrics as Record<string, number>) || {},
             options: (agentEvent.metadata?.options as string[]) || ['continue'],
+            file: agentEvent.metadata?.file as string | undefined,
+            content: agentEvent.metadata?.content as string | undefined,
           }
           msg.events = [...msg.events, agentEvent]
           // Notify editor to reload modified files from disk
