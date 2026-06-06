@@ -38,19 +38,17 @@ def _find_pandoc() -> str | None:
     import sys
     import os
 
-    # 常见路径（Windows）
-    candidates = ["pandoc"]
+    # 1. 系统 PATH
     if shutil.which("pandoc"):
         PANDOC_CMD = "pandoc"
         return PANDOC_CMD
 
-    # 打包目录中的 Pandoc（与 api.exe 同目录的 tools/ 子目录，构建时下载注入）
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        exe_dir = Path(sys.executable).parent
-        bundled_pandoc = exe_dir / "tools" / "pandoc.exe"
-        if bundled_pandoc.exists():
-            PANDOC_CMD = str(bundled_pandoc)
-            return PANDOC_CMD
+    # 2. api.exe 旁边的 tools/ 目录（开发/打包通用，PyInstaller --onedir 不设 sys.frozen）
+    exe_dir = Path(sys.executable).parent
+    bundled_pandoc = exe_dir / "tools" / "pandoc.exe"
+    if bundled_pandoc.exists():
+        PANDOC_CMD = str(bundled_pandoc)
+        return PANDOC_CMD
 
     # Windows 常见安装位置
     program_files = os.environ.get("ProgramFiles", "C:\\Program Files")
@@ -152,13 +150,12 @@ def _find_tectonic() -> str | None:
             TECTONIC_CMD = str(app_tectonic)
             return TECTONIC_CMD
 
-    # 2b. 打包目录中的 Tectonic（与 api.exe 同目录的 tools/ 子目录）
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        exe_dir = Path(sys.executable).parent
-        bundled_tectonic = exe_dir / "tools" / "tectonic.exe"
-        if bundled_tectonic.exists():
-            TECTONIC_CMD = str(bundled_tectonic)
-            return TECTONIC_CMD
+    # 2b. api.exe 旁边的 tools/ 目录（开发/打包通用，PyInstaller --onedir 不设 sys.frozen）
+    exe_dir = Path(sys.executable).parent
+    bundled_tectonic = exe_dir / "tools" / "tectonic.exe"
+    if bundled_tectonic.exists():
+        TECTONIC_CMD = str(bundled_tectonic)
+        return TECTONIC_CMD
 
     # 3. Program Files
     program_files = os.environ.get("ProgramFiles", "C:\\Program Files")
@@ -275,10 +272,39 @@ def compile_pdf(tex_source: str, output_dir: str | None = None) -> dict:
         return {"success": False, "pdf_path": "", "error": f"编译异常: {e}"}
 
     if result.returncode != 0:
+        # Tectonic may produce warnings (font size requests etc.) but still generate the PDF.
+        # Check if the PDF exists before reporting an error.
+        if pdf_path.exists():
+            logger.warning(
+                "Tectonic exited with warnings (return code %d) but PDF was generated:\n%s",
+                result.returncode,
+                (result.stderr or result.stdout or "")[:2000],
+            )
+            return {"success": True, "pdf_path": str(pdf_path), "error": ""}
+
         error_msg = (result.stderr or "").strip() or (result.stdout or "").strip() or "编译失败"
         # 保留完整错误信息方便排查，截断到 2000 字符
         logger.error("Tectonic compile failed:\n%s", error_msg[:2000])
-        return {"success": False, "pdf_path": "", "error": f"Tectonic: {error_msg[:1500]}"}
+        # Save the tex source to a persistent location for debugging
+        import sys as _sys2
+        debug_dir = os.path.join(
+            os.environ.get("LOCALAPPDATA", os.environ.get("APPDATA", os.path.expanduser("~"))),
+            "YanMo", "debug",
+        )
+        os.makedirs(debug_dir, exist_ok=True)
+        debug_tex = os.path.join(debug_dir, "last_error.tex")
+        try:
+            with open(debug_tex, "w", encoding="utf-8") as f:
+                f.write(tex_source)
+            logger.error("TeX source saved to: %s", debug_tex)
+        except Exception:
+            pass
+        simple_error = error_msg[:1500]
+        return {
+            "success": False,
+            "pdf_path": "",
+            "error": f"Tectonic: {simple_error}\n\nTeX saved to: {debug_tex}",
+        }
 
     if not pdf_path.exists():
         return {"success": False, "pdf_path": "", "error": "编译成功但未生成 PDF 文件"}
@@ -329,6 +355,114 @@ def _unescape_latex(text: str) -> str:
     return text
 
 
+def _shrink_wide_tables(tex: str) -> str:
+    """Wrap Pandoc longtables with >=5 columns in \\small to fit page width."""
+    def _maybe_shrink(m):
+        block = m.group(0)
+        # Count the p{}-columns Pandoc uses: >{\\raggedright\\arraybackslash}p{...}
+        p_cols = len(re.findall(r"p\{\(?\\columnwidth", block))
+        if p_cols >= 5:
+            return r"{\small" + block + r"}"
+        return block
+    return re.sub(
+        r"\\begin\{longtable\}.*?\\end\{longtable\}",
+        _maybe_shrink,
+        tex,
+        flags=re.DOTALL,
+    )
+
+
+def _convert_md_tables(text: str) -> str:
+    """Convert markdown pipe tables to LaTeX tabular environments.
+
+    Handles standard GFM pipe tables::
+
+        | A | B | C |
+        |---|---:|---|
+        | 1 | 2 | 3 |
+    """
+    lines = text.split("\n")
+    result: list[str] = []
+    i = 0
+    _table_row_re = re.compile(r"^\s*\|.+\|\s*$")
+
+    while i < len(lines):
+        line = lines[i]
+        # A table row must start and end with | and not be a code block artifact
+        if _table_row_re.match(line) and line.strip().count("|") >= 2:
+            table_rows: list[str] = [line.strip()]
+            j = i + 1
+            while j < len(lines):
+                if _table_row_re.match(lines[j]) and lines[j].strip().count("|") >= 2:
+                    table_rows.append(lines[j].strip())
+                    j += 1
+                else:
+                    break
+
+            if len(table_rows) >= 2:
+                result.append(_md_table_to_latex(table_rows))
+            else:
+                result.extend(table_rows)
+            i = j
+        else:
+            result.append(line)
+            i += 1
+
+    return "\n".join(result)
+
+
+def _md_table_to_latex(rows: list[str]) -> str:
+    """Convert a list of markdown table row strings to a LaTeX tabular block."""
+    def _split_cells(row: str) -> list[str]:
+        stripped = row.strip()
+        if stripped.startswith("|"):
+            stripped = stripped[1:]
+        if stripped.endswith("|"):
+            stripped = stripped[:-1]
+        return [c.strip() for c in stripped.split("|")]
+
+    header_cells = _split_cells(rows[0])
+    align_cells: list[str] = []
+    data_start = 1
+
+    # Detect separator row (|---|:---|---:|)
+    if len(rows) >= 2 and all(
+        re.match(r"^[\s\-:]+$", c) for c in _split_cells(rows[1])
+    ):
+        sep_raw = _split_cells(rows[1])
+        for c in sep_raw:
+            left = c.startswith(":")
+            right = c.endswith(":")
+            if left and right:
+                align_cells.append("c")
+            elif right:
+                align_cells.append("r")
+            else:
+                align_cells.append("l")
+        data_start = 2
+    else:
+        align_cells = ["l"] * len(header_cells)
+
+    col_spec = " ".join(align_cells)
+
+    out: list[str] = [r"\begin{tabular}{" + col_spec + r"}"]
+    out.append(r"\hline")
+    out.append(" & ".join(header_cells) + r" \\")
+    out.append(r"\hline")
+
+    for row in rows[data_start:]:
+        cells = _split_cells(row)
+        # Pad or trim to match header column count
+        while len(cells) < len(header_cells):
+            cells.append("")
+        cells = cells[:len(header_cells)]
+        out.append(" & ".join(cells) + r" \\")
+
+    out.append(r"\hline")
+    out.append(r"\end{tabular}")
+    return "\n".join(out)
+
+
 def markdown_to_latex(markdown_text: str, metadata: dict | None = None) -> dict:
     """纯 Python Markdown → LaTeX 转换器，不依赖 Pandoc。
 
@@ -340,6 +474,23 @@ def markdown_to_latex(markdown_text: str, metadata: dict | None = None) -> dict:
 
     meta = metadata or {}
     tex = markdown_text
+
+    # ── 保护：表格（|...|...|）— 原样提取，段落合并后还原 ──────────
+    # Use @@-delimited placeholders to avoid conflicts with markdown **/__ syntax
+    table_blocks: list[str] = []
+
+    def _protect_table(m):
+        idx = len(table_blocks)
+        converted = _md_table_to_latex(m.group(0).strip().split("\n"))
+        table_blocks.append(converted)
+        return f"@@TABLE_{idx}@@"
+
+    tex = re.sub(
+        r"(?:^\s*\|.+\|\s*$\n?)+",
+        _protect_table,
+        tex,
+        flags=re.MULTILINE,
+    )
 
     # ── 保护：代码块（```...``` 或 ~~~...~~~）─────────────────────
     code_blocks: list[str] = []
@@ -544,6 +695,10 @@ def markdown_to_latex(markdown_text: str, metadata: dict | None = None) -> dict:
     _flush_paragraph()
     tex_body = "\n".join(result_lines)
 
+    # Restore table placeholders
+    for i, tbl in enumerate(table_blocks):
+        tex_body = tex_body.replace(f"@@TABLE_{i}@@", tbl)
+
     # Build LaTeX doc using raw strings to avoid escape issues
     title_tex = _escape_latex(meta.get("title", ""))
     author_tex = _escape_latex(meta.get("author", ""))
@@ -642,7 +797,7 @@ def convert_markdown(
         tex = re.sub(r"\\usepackage(\[.*?\])?\{libertine\}\n?", "", tex)
         tex = re.sub(r"\\usepackage(\[.*?\])?\{libertinus\}\n?", "", tex)
 
-        # 注入 CJK 字体 + Pandoc 常用表格/排版包
+        # 注入 CJK 字体 + Pandoc 常用表格/排版包 + 兜底命令定义
         inject_preamble = (
             r"\usepackage{fontspec}" + "\n" +
             r"\setmainfont{SimSun}" + "\n" +
@@ -651,7 +806,9 @@ def convert_markdown(
             r"\usepackage{longtable}" + "\n" +
             r"\usepackage{booktabs}" + "\n" +
             r"\usepackage{array}" + "\n" +
-            r"\usepackage{calc}" + "\n"
+            r"\usepackage{calc}" + "\n" +
+            r"\usepackage{xcolor}" + "\n" +
+            r"\providecommand{\tightlist}{\setlength{\itemsep}{2pt}\setlength{\parskip}{0pt}}" + "\n"
         )
         if r"\usepackage{fontspec}" not in tex:
             def _inject_cjk(m):
@@ -662,6 +819,25 @@ def convert_markdown(
                 tex,
                 count=1,
             )
+
+        # Sanitize: strip Pandoc syntax highlighting tokens and
+        # undefined commands that XeTeX can't handle.
+        # Highlighting env may have optional style arg: [], [style=pygments], or nothing
+        tex = re.sub(r"\\begin\{Highlighting\}(\[[^\]]*\])?\n?", "", tex)
+        tex = re.sub(r"\\end\{Highlighting\}\n?", "", tex)
+        tex = re.sub(r"\\begin\{Shaded\}", r"\\begin{verbatim}", tex)
+        tex = re.sub(r"\\end\{Shaded\}", r"\\end{verbatim}", tex)
+        tex = re.sub(r"\\[A-Z][a-zA-Z]*Tok(\[[^\]]*\])?\{([^}]*)\}", r"\2", tex)
+        tex = re.sub(r"\\[A-Z][a-zA-Z]*Tok\{([^}]*)\}\{([^}]*)\}", r"\1\2", tex)
+        # Strip \passthrough (Pandoc 3.x raw inline)
+        tex = re.sub(r"\\passthrough\{([^}]*)\}", r"\1", tex)
+        # Strip empty \textcolor{} (Pandoc generates \textcolor{}{text} for bare links)
+        tex = re.sub(r"\\textcolor\{\}\{([^}]*)\}", r"\1", tex)
+        # Strip \def{\inputGnumericTable} (Pandoc Gnumeric table export artifact)
+        tex = re.sub(r"\\def\{\\inputGnumericTable\}\n?", "", tex)
+
+        # Shrink wide longtables (>=5 p-columns) to fit page width
+        tex = _shrink_wide_tables(tex)
 
         pdf_result = compile_pdf(tex)
         return {
@@ -770,7 +946,7 @@ def convert_markdown(
                     tex_fb = result2.stdout or ""
                     if tex_fb:
                         tex_fb = re.sub(r"\\tightlist\b(?!\{)", "", tex_fb)
-                        tex_fb = re.sub(r"\\begin\{Highlighting\}", "", tex_fb)
+                        tex_fb = re.sub(r"\\begin\{Highlighting\}(\[[^\]]*\])?", "", tex_fb)
                         tex_fb = re.sub(r"\\end\{Highlighting\}", "", tex_fb)
                         tex_fb = re.sub(r"\\begin\{Shaded\}", r"\\begin{verbatim}", tex_fb)
                         tex_fb = re.sub(r"\\end\{Shaded\}", r"\\end{verbatim}", tex_fb)
@@ -800,7 +976,7 @@ def convert_markdown(
 
             # Pandoc 用 Shaded + Highlighting 环境高亮代码块，转换为 verbatim
             if tex_output:
-                tex_output = re.sub(r"\\begin\{Highlighting\}", "", tex_output)
+                tex_output = re.sub(r"\\begin\{Highlighting\}(\[[^\]]*\])?", "", tex_output)
                 tex_output = re.sub(r"\\end\{Highlighting\}", "", tex_output)
                 tex_output = re.sub(r"\\begin\{Shaded\}", r"\\begin{verbatim}", tex_output)
                 tex_output = re.sub(r"\\end\{Shaded\}", r"\\end{verbatim}", tex_output)

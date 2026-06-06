@@ -115,8 +115,10 @@ function openFull() {
   border-radius: var(--radius-xs);
   white-space: nowrap;
   flex-shrink: 0;
+  transition: background var(--motion-fast) var(--ease-out), transform 0.06s ease;
 }
 .arg-mini-open:hover { background: var(--c-accent-bg2); }
+.arg-mini-open:active { transform: scale(0.94); }
 
 .arg-mini-linked {
   position: relative;
@@ -153,6 +155,11 @@ function openFull() {
 .arg-mini-extract-btn:hover:not(:disabled) {
   background: var(--c-accent);
   color: #000;
+}
+.arg-mini-extract-btn:active:not(:disabled) {
+  transform: scale(0.94);
+  filter: brightness(0.92);
+  transition-duration: 0.04s;
 }
 .arg-mini-extract-btn:disabled {
   opacity: 0.4;

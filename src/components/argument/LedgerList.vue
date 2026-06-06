@@ -204,7 +204,11 @@ function isLost(promise: ArgPromise): boolean {
 .analyze-btn:not(:disabled):hover {
   background: var(--c-accent-hover);
 }
-.analyze-btn:not(:disabled):active { transform: scale(0.97); }
+.analyze-btn:not(:disabled):active {
+  transform: scale(0.94);
+  filter: brightness(0.92);
+  transition-duration: 0.04s;
+}
 
 .ledger-empty {
   padding: var(--space-5) var(--space-4);
@@ -373,6 +377,12 @@ function isLost(promise: ArgPromise): boolean {
   color: var(--c-accent);
   border-color: var(--c-accent);
   background: var(--c-accent-soft);
+}
+
+.jump-btn:active, .suggest-btn:active:not(:disabled) {
+  transform: scale(0.94);
+  background: color-mix(in srgb, var(--c-accent) 20%, var(--c-surface-1));
+  transition-duration: 0.04s;
 }
 
 .lost-badge {
