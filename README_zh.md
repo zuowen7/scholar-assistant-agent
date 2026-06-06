@@ -11,7 +11,7 @@
 
 PDF 翻译与精读作为辅助入口，帮你快速把论文沉淀进工作流。语音助手支持唤醒词和全局热键。本地可离线运行，也可接入 21 家云端大模型。支持中/英双语界面切换。
 
-v0.4.0 · 最新：Agent V2 运行时（从 agent runtime 移植 9 个运行时模块：bash 校验、git 上下文、LSP、策略引擎、prompt 缓存、故障恢复、沙箱、会话控制、Trident 压缩）、实时流式、Skills/Hooks/Plugins 扩展系统、会话 fork、1700+ 项测试。MIT 协议。
+v0.4.1 · 最新：Agent V2 运行时（从 agent runtime 移植 9 个运行时模块：bash 校验、git 上下文、LSP、策略引擎、prompt 缓存、故障恢复、沙箱、会话控制、Trident 压缩）、实时流式、Skills/Hooks/Plugins 扩展系统、会话 fork、1700+ 项测试。MIT 协议。
 
 ## 功能演示
 
@@ -35,7 +35,7 @@ v0.4.0 · 最新：Agent V2 运行时（从 agent runtime 移植 9 个运行时�
 |---------|
 | ![更多](docs/demo/demo2.gif) |
 
-> 以上均为 v0.4.0 版本实机录屏。
+> 以上均为 v0.4.1 版本实机录屏。
 
 ## 下载安装
 

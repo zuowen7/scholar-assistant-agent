@@ -484,7 +484,7 @@ def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> Non
     async def v2_health():
         async with _SESSION_LOCK:
             active = len(_SESSION_POOL)
-        return {"status": "ok", "version": "0.4.0", "runtime": "ConversationRuntime", "active_sessions": active}
+        return {"status": "ok", "version": "0.4.1", "runtime": "ConversationRuntime", "active_sessions": active}
 
     @app.get("/api/agent/stats")
     async def agent_stats():

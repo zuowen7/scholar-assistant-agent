@@ -47,7 +47,7 @@ def handle_request(msg: dict) -> dict | None:
             "result": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "scholar-translate", "version": "0.4.0"},
+                "serverInfo": {"name": "scholar-translate", "version": "0.4.1"},
             },
         }
     if method == "notifications/initialized":
