@@ -144,6 +144,23 @@ jobs:
           mkdir -p python/plugins
           mkdir -p scripts/.tools-cache
 
+      - name: Scrub runtime data before build
+        shell: bash
+        run: |
+          # Remove any user/runtime data that may have been committed accidentally
+          # or left over from test runs. Only asset/template dirs should remain.
+          rm -rf python/data/argument_graphs
+          rm -rf python/data/argument_output
+          rm -rf python/data/companion
+          rm -rf python/data/assets
+          rm -rf python/data/chromadb
+          rm -rf python/data/input
+          rm -rf python/data/output
+          rm -rf python/data/agent
+          rm -f python/data/projects.json
+          rm -rf python/data/generated_tools
+          rm -rf src-tauri/data
+
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
         env:
