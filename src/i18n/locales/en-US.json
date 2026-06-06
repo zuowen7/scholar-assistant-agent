@@ -576,6 +576,7 @@
     "wordExportFailed": "Word export failed: {msg}",
     "pleaseInputContent": "Please enter content first",
     "latexCopied": "LaTeX copied to clipboard",
+    "latexSaved": "LaTeX file saved",
     "conversionEmpty": "Conversion result is empty",
     "exportFailed": "Export failed: {msg}",
     "installTectonic": "Please install Tectonic first",

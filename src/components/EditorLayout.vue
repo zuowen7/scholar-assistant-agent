@@ -171,7 +171,7 @@ const { activeTab, content, contentVersion, selection, previousContent, tabs, ai
 // -- Tab / file operations ------------------------------------------------
 const {
   openNewUntitled, openFile, setContent, markDirty,
-  saveFile,
+  saveFile, reloadOpenTabs,
 } = useEditor()
 
 // -- AI edit actions (from useEditor, called once) -----------------------
@@ -180,9 +180,9 @@ const { applyAiResult, undoEdit } = useEditor()
 // -- Feature composables ---------------------------------------------------
 const { analyzeVision, insertImageFile } = useEditorVision()
 const { processCitations, previewCitations, getZoteroStatus, searchZotero } = useEditorCitation()
-const { exportToWord, exportLatex, exportPdf, loadExportTemplates } = useEditorIO()
+const { exportToWord, exportLatex, exportPdf, loadExportTemplates, saveBlob } = useEditorIO()
 const { resetMindMap, loadSavedMindMap, saveMindMap, addChild, updateNodeText, updateNodeBody, skipNextBackendLoad } = useMindMap()
-const { readFileContent } = useFileTree()
+const { readFileContent, refresh: refreshFileTree } = useFileTree()
 
 // -- Workspace mode -------------------------------------------------------
 const workspaceMode = ref<'editor' | 'mindmap'>('editor')
@@ -361,11 +361,17 @@ async function handleSaveFile() {
   showExportToast(err || t('editor.saved'))
 }
 
+function _extractTitle(): string {
+  const m = content.value.match(/^#\s+(.+)$/m)
+  if (m) return m[1].trim()
+  return (activeTab.value?.name || 'paper').replace(/\.md$/i, '')
+}
+
 async function handleExportWord() {
   if (exportLoading.value) return
   exportLoading.value = true
   try {
-    const title = (activeTab.value?.name || t('editor.yamDraft')).replace(/\.md$/i, '')
+    const title = _extractTitle()
     const err = await exportToWord(content.value, title)
     showExportToast(err || t('editor.wordExportStarted'))
   } catch (e) { showExportToast(t('editor.wordExportFailed', { msg: String(e) }))
@@ -379,7 +385,13 @@ async function handleExportLatex() {
   try {
     const { tex, error } = await exportLatex(content.value, selectedTemplate.value)
     if (error) { showExportToast(error); return }
-    if (tex) { await navigator.clipboard.writeText(tex); showExportToast(t('editor.latexCopied')) }
+    if (tex) {
+      const title = _extractTitle()
+      const blob = new Blob([tex], { type: 'text/x-tex;charset=utf-8' })
+      const saveErr = await saveBlob(blob, `${title}.tex`)
+      if (saveErr === 'Cancelled') { showExportToast(t('editor.cancelled')); return }
+      showExportToast(saveErr || t('editor.latexSaved', 'LaTeX saved'))
+    }
     else showExportToast(t('editor.conversionEmpty'))
   } catch (e) { showExportToast(t('editor.exportFailed', { msg: String(e) }))
   } finally { exportLoading.value = false }
@@ -395,7 +407,7 @@ async function handleExportPdf() {
   }
   exportLoading.value = true
   try {
-    const title = (activeTab.value?.name || 'paper').replace(/\.md$/i, '')
+    const title = _extractTitle()
     const err = await exportPdf(content.value, selectedTemplate.value, title)
     if (err === 'Cancelled') { showExportToast(t('editor.cancelled')); return }
     showExportToast(err || t('editor.pdfSaved'))
@@ -618,6 +630,7 @@ onMounted(() => {
     if (templates.length && !selectedTemplate.value) selectedTemplate.value = templates[0].id
   })
   window.addEventListener('paper-scaffold', handlePaperScaffold as EventListener)
+  window.addEventListener('agent-files-changed', handleAgentFileChange as EventListener)
 
   // Voice command event listeners
   window.addEventListener('voice-set-mindmap', handleVoiceSetMindmap)
@@ -633,6 +646,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('paper-scaffold', handlePaperScaffold as EventListener)
+  window.removeEventListener('agent-files-changed', handleAgentFileChange as EventListener)
   window.removeEventListener('voice-set-mindmap', handleVoiceSetMindmap)
   window.removeEventListener('voice-export', handleVoiceExport as EventListener)
   window.removeEventListener('voice-ai-preset', handleVoiceAiPreset as EventListener)
@@ -693,6 +707,11 @@ function handleVoiceNewFile() {
 
 function handleVoiceSave() {
   saveFile()
+}
+
+async function handleAgentFileChange() {
+  await reloadOpenTabs()
+  await refreshFileTree()
 }
 </script>
 

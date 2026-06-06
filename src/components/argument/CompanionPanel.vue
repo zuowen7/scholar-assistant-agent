@@ -343,6 +343,11 @@ async function updatePointStatus(pointId: string, status: string) {
   background: var(--c-surface-2);
 }
 
+.sub-tab:active {
+  background: var(--c-surface-3);
+  transition-duration: 0.04s;
+}
+
 .stale-banner {
   display: flex;
   align-items: center;
@@ -411,7 +416,11 @@ async function updatePointStatus(pointId: string, status: string) {
   background: var(--c-accent);
   color: #fff;
 }
-.run-review-btn:active:not(:disabled) { transform: scale(0.96); }
+.run-review-btn:active:not(:disabled) {
+  transform: scale(0.94);
+  filter: brightness(0.92);
+  transition-duration: 0.04s;
+}
 
 .run-review-btn:disabled {
   opacity: 0.5;
@@ -511,7 +520,11 @@ async function updatePointStatus(pointId: string, status: string) {
   cursor: pointer;
   transition: color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-brush);
 }
-.import-btn:active:not(:disabled) { transform: scale(0.96); }
+.import-btn:active:not(:disabled) {
+  transform: scale(0.94);
+  background: var(--c-accent-soft);
+  transition-duration: 0.04s;
+}
 
 .import-btn:hover:not(:disabled) {
   color: var(--c-accent);
@@ -547,7 +560,11 @@ async function updatePointStatus(pointId: string, status: string) {
   border-color: var(--c-accent);
   background: var(--c-accent-soft);
 }
-.download-btn:active { transform: scale(0.95); }
+.download-btn:active {
+  transform: scale(0.94);
+  background: color-mix(in srgb, var(--c-accent) 20%, var(--c-surface-1));
+  transition-duration: 0.04s;
+}
 
 .suggestion-popup {
   position: absolute;

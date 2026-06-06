@@ -576,6 +576,7 @@
     "wordExportFailed": "Word 导出失败：{msg}",
     "pleaseInputContent": "请先输入内容",
     "latexCopied": "LaTeX 已复制到剪贴板",
+    "latexSaved": "LaTeX 文件已保存",
     "conversionEmpty": "转换结果为空",
     "exportFailed": "导出失败：{msg}",
     "installTectonic": "请先安装 Tectonic",
