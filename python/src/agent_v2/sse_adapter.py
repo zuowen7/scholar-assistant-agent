@@ -69,16 +69,27 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
         content = f"Agent wants to modify {tool_name}"
         evt_type = "await_approval"
         preview = data.get("preview") or {}
+        file_path = preview.get("file_path", "")
+        old_text = preview.get("old_text", "")
+        new_text = preview.get("new_text", "")
         metadata = {
             "tool_name": tool_name,
             "reason": data.get("reason", ""),
             "risk": "MODERATE",
-            "file_path": preview.get("file_path", ""),
-            "old_text": preview.get("old_text", ""),
-            "new_text": preview.get("new_text", ""),
             "force_approval": True,
+            # args: used by showInlineDiff to check file_path and as fallback for old/new text
+            "args": {
+                "file_path": file_path,
+                "old_string": old_text,
+                "new_string": new_text,
+            },
+            # preview: used by setActiveEdit for Monaco inline diff widget
+            "preview": {
+                "old_text": old_text,
+                "new_text": new_text,
+                "file_path": file_path,
+            },
         }
-        # Use tool_use ID as event_id so frontend can match approval back
         return {"type": evt_type, "content": content, "event_id": data.get("id", _event_id()), "metadata": metadata}
 
     # ---- 以下保留原始类型 ----

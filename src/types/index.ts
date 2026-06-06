@@ -212,6 +212,8 @@ export interface AgentEvent {
     deliverables?: string[]
     metrics?: Record<string, number>
     options?: string[]
+    file?: string
+    content?: string
   }
 }
 
