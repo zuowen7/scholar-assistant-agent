@@ -164,6 +164,34 @@ a = Analysis(
         "win32profile",
         "win32security",
         "win32service",
+        # PyTorch / DeepLearning (not used by this app)
+        "torch",
+        "torchvision",
+        "torchaudio",
+        "transformers",
+        "diffusers",
+        "accelerate",
+        "safetensors",
+        "huggingface_hub",
+        # PaddlePaddle (OCR optional dep, not needed in bundle)
+        "paddle",
+        "paddleocr",
+        "paddleclas",
+        "paddlenlp",
+        # OpenCV (pulled by paddleocr but not used directly)
+        "cv2",
+        "opencv_python",
+        # Polars / Arrow (not used)
+        "polars",
+        "_polars_runtime_32",
+        "pyarrow",
+        # Panel / HoloViews (plotting, not used)
+        "panel",
+        "holoviews",
+        "datashader",
+        # GRPC (pulled by some deps but not needed directly)
+        "grpc",
+        "grpcio",
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
