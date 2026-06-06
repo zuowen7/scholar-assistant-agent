@@ -52,6 +52,8 @@ class ConfigUpdate(BaseModel):
     translator: dict | None = None
     formatter: dict | None = None
     cloud: dict | None = None
+    network: dict | None = None
+    agent: dict | None = None
 
 
 class FilePathPayload(BaseModel):
@@ -862,7 +864,7 @@ def register_translate(
     @app.put("/api/config")
     def update_config(cfg: ConfigUpdate):
         current = load_config()
-        for section in ["chunker", "translator", "formatter"]:
+        for section in ["chunker", "translator", "formatter", "network"]:
             val = getattr(cfg, section)
             if val:
                 current[section] = {**current.get(section, {}), **val}
@@ -875,6 +877,14 @@ def register_translate(
             elif new_api_key and new_api_key != existing_cloud.get("api_key", ""):
                 logger.info("[AUDIT] API key updated for provider=%s", cfg.cloud.get("provider", "unknown"))
             trans["cloud"] = {**existing_cloud, **cfg.cloud}
+        if cfg.agent:
+            existing_agent = current.get("agent", {})
+            new_agent_key = cfg.agent.get("api_key", "")
+            if new_agent_key and is_masked(new_agent_key):
+                cfg.agent["api_key"] = existing_agent.get("api_key", "")
+            elif new_agent_key and new_agent_key != existing_agent.get("api_key", ""):
+                logger.info("[AUDIT] Agent API key updated for provider=%s", cfg.agent.get("provider", "unknown"))
+            current["agent"] = {**existing_agent, **cfg.agent}
         if cloud_only:
             current.setdefault("translator", {})["engine"] = "cloud"
         save_config(current)

@@ -106,6 +106,10 @@ class ConversationRuntime:
                         yield AgentEvent.token(f"\n[Rate limited, retrying in {wait:.0f}s...]\n")
                         await asyncio.sleep(wait)
                         continue
+                    if e.status_code == 0 and retry < 2:
+                        yield AgentEvent.token(f"\n[Connection failed, retrying ({retry+1}/3)...]\n")
+                        await asyncio.sleep(2.0)
+                        continue
                     yield AgentEvent.error(f"API error: {e}")
                     yield AgentEvent.done()
                     return
