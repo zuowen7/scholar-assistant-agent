@@ -181,6 +181,7 @@ import { API_BASE } from '../utils/api'
 import AgentApprovalInline from './AgentApprovalInline.vue'
 import type { PendingApproval } from '../composables/useAgentChat'
 import { useFileTree } from '../composables/useFileTree'
+import { useEditorState } from '../composables/useEditorState'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
 import { setSpeechBusy } from '../composables/useSpeechBusy'
 import { Mic } from './ui/icons'
@@ -236,7 +237,10 @@ const copiedId = ref<string | null>(null)
 let copiedTimer: ReturnType<typeof setTimeout> | null = null
 const acSessionId = ref<string | null>(null)
 const pendingApproval = ref<PendingApproval | null>(null)
-const { rootDir } = useFileTree()
+const { rootDir, refresh: refreshFileTree } = useFileTree()
+const { tabs: editorTabs, setActiveEdit, clearActiveEdit, setContent, contentVersion, activeTab } = useEditorState()
+
+const normPath = (p: string) => p.replace(/\\/g, '/').toLowerCase()
 
 // ── Slash commands ──────────────────────────────────────────
 const commands = [
@@ -486,8 +490,47 @@ async function doSend(text: string) {
           reason: meta?.reason as string | undefined,
           preview: meta?.preview as Record<string, unknown> | undefined,
         }
+        // Route file-edit approvals to Monaco inline diff widget
+        const filePath = ((meta?.args as Record<string, unknown>)?.file_path as string) || ''
+        const tool = ((meta?.tool_name as string) || (meta?.tool as string) || '')
+        if ((tool === 'str_replace' || tool === 'write_file') && filePath) {
+          const open = editorTabs.value.some(t => t.path && normPath(t.path) === normPath(filePath))
+          if (open) {
+            const args = (meta?.args ?? meta?.arguments) as Record<string, unknown> | undefined
+            const preview = meta?.preview as Record<string, unknown> | undefined
+            setActiveEdit({
+              editId: d.event_id as string || '',
+              eventId: d.event_id as string || '',
+              sessionId: acSessionId.value || '',
+              operation: (tool === 'write_file' ? 'write_file' : 'str_replace') as 'str_replace' | 'write_file',
+              filePath: filePath,
+              oldText: (preview?.old_text as string) ?? (args?.old_string as string) ?? '',
+              newText: (preview?.new_text as string) ?? (args?.new_string as string) ?? (args?.content as string) ?? '',
+            })
+          }
+        }
       }
-      else if (evtType === 'approval_received') { pendingApproval.value = null }
+      else if (evtType === 'approval_received') {
+        pendingApproval.value = null
+        clearActiveEdit()
+      }
+      else if (evtType === 'checkpoint') {
+        const cpFile = meta?.file as string | undefined
+        const cpContent = meta?.content as string | undefined
+        if (cpFile && cpContent) {
+          const tab = editorTabs.value.find((t: any) => t.path && normPath(t.path) === normPath(cpFile))
+          if (tab) {
+            const changed = tab.content !== cpContent
+            tab.content = cpContent
+            tab.isModified = false
+            contentVersion.value++
+            if (changed && tab.id === activeTab.value?.id) {
+              setContent(cpContent)
+            }
+          }
+        }
+        refreshFileTree()
+      }
     })
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') return
@@ -526,6 +569,7 @@ async function handleApprovalDecision(decision: 'allow_once' | 'allow_session' |
   const eventId = pendingApproval.value?.event_id
   if (!sid || !eventId) return
   pendingApproval.value = null
+  clearActiveEdit()
   try {
     await fetch(`${API}/api/agent/v2/approve/${sid}/${eventId}`, {
       method: 'POST',

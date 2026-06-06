@@ -229,14 +229,23 @@ class ConversationRuntime:
         old_text = ""
         new_text = ""
         file_path = args.get("file_path", "") or args.get("path", "")
+        # Resolve to absolute path so frontend can match against editor tabs
+        resolved_path = file_path
+        if file_path and self.tool_registry._workspace_root:
+            try:
+                p = Path(file_path)
+                candidate = self.tool_registry._workspace_root / p if not p.is_absolute() else p
+                resolved_path = str(candidate.resolve())
+            except Exception:
+                pass
         if tb.name == "str_replace":
             old_text = args.get("old_string", "")
             new_text = args.get("new_string", "")
         elif tb.name == "write_file":
             new_text = args.get("content", "")
-            if file_path and self.tool_registry._workspace_root:
+            if resolved_path:
                 try:
-                    full = file_path if Path(file_path).is_absolute() else (self.tool_registry._workspace_root / file_path)
+                    full = Path(resolved_path)
                     if full.is_file():
                         old_text = full.read_text(encoding="utf-8", errors="replace")[:4000]
                 except Exception:
@@ -251,7 +260,7 @@ class ConversationRuntime:
             if tb.name in ("write_file", "str_replace") and not self.auto_approve:
                 yield AgentEvent.await_approval(
                     tb.id, tb.name, f"Agent wants to edit {file_path}",
-                    preview={"old_text": old_text, "new_text": new_text, "file_path": file_path},
+                    preview={"old_text": old_text, "new_text": new_text, "file_path": resolved_path},
                 )
                 # Wait for approval
                 evt = asyncio.Event()
