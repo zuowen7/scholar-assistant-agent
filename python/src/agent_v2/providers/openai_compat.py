@@ -13,6 +13,7 @@ import logging
 import httpx
 
 from src.agent_v2.providers.base import BaseProvider
+from src.agent_v2.types import ApiError
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ class OpenAiCompatProvider(BaseProvider):
     """OpenAI-compatible Chat Completions provider with real streaming.
 
     Per-provider quirks auto-detected from model name / base URL.
+    Connection strategy: system-proxy-aware → direct fallback.
     """
 
     def __init__(
@@ -53,23 +55,41 @@ class OpenAiCompatProvider(BaseProvider):
         api_key: str = "",
         model: str = "gpt-4o",
         timeout: float = 300.0,
+        proxy: str | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
         self.timeout = timeout
+        self.proxy = proxy
         self._client: httpx.AsyncClient | None = None
+        self._direct_client: httpx.AsyncClient | None = None
         from src.agent_v2.providers.quirks import detect_quirks
         self.quirks = detect_quirks(model, base_url)
         self.model_max_tokens = _max_tokens_for_model(model)
 
+    def _make_kwargs(self, trust_env: bool) -> dict[str, Any]:
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        kwargs: dict[str, Any] = {"timeout": self.timeout, "headers": headers}
+        if self.proxy:
+            kwargs["proxy"] = self.proxy
+        elif not trust_env:
+            kwargs["trust_env"] = False
+        return kwargs
+
     async def _get_client(self) -> httpx.AsyncClient:
+        """Primary client: uses explicit proxy or system proxy settings."""
         if self._client is None:
-            headers = {"Content-Type": "application/json"}
-            if self.api_key:
-                headers["Authorization"] = f"Bearer {self.api_key}"
-            self._client = httpx.AsyncClient(timeout=self.timeout, headers=headers)
+            self._client = httpx.AsyncClient(**self._make_kwargs(trust_env=True))
         return self._client
+
+    async def _get_direct_client(self) -> httpx.AsyncClient:
+        """Fallback client: direct connection, bypasses all proxy settings."""
+        if self._direct_client is None:
+            self._direct_client = httpx.AsyncClient(**self._make_kwargs(trust_env=False))
+        return self._direct_client
 
     def _build_messages(self, messages: list[Message], system_prompt: str | None) -> list[dict]:
         result = []
@@ -132,7 +152,6 @@ class OpenAiCompatProvider(BaseProvider):
         tool_choice: str = "auto",
     ) -> ProviderResponse:
         """非流式调用。tool_choice: 'auto' | 'required' | 'none'"""
-        client = await self._get_client()
         body: dict[str, Any] = {
             "model": self.model,
             "messages": self._build_messages(messages, system_prompt),
@@ -143,24 +162,44 @@ class OpenAiCompatProvider(BaseProvider):
         built_tools = self._build_tools(tools)
         if built_tools:
             body["tools"] = built_tools
-            # Only set tool_choice if explicitly requested (not "auto" default)
             if tool_choice != "auto":
                 body["tool_choice"] = tool_choice
 
-        resp = await client.post(f"{self.base_url}/chat/completions", json=body)
-        resp.raise_for_status()
-        data = resp.json()
-        finish = data.get("choices", [{}])[0].get("finish_reason", "?")
-        tc_count = len(data.get("choices", [{}])[0].get("message", {}).get("tool_calls") or [])
-        text_len = len(data.get("choices", [{}])[0].get("message", {}).get("content") or "")
-        logger.info("chat response: finish=%s, tool_calls=%d, text_len=%d, model=%s, msgs=%d, tools=%d",
-                     finish, tc_count, text_len, data.get("model", "?"), len(messages), len(tools or []))
-        if tc_count == 0 and finish == "stop" and tools:
-            logger.warning("DeepSeek text-only response with %d tools available. "
-                           "Last user msg: %s...",
-                           len(tools),
-                           (messages[-1].text_content() if messages else "")[:200])
-        return self._parse_response(data)
+        url = f"{self.base_url}/chat/completions"
+        last_err: Exception | None = None
+
+        for client_fn in (self._get_client, self._get_direct_client):
+            client = await client_fn()
+            try:
+                resp = await client.post(url, json=body)
+                resp.raise_for_status()
+            except httpx.ConnectError as e:
+                last_err = e
+                logger.debug("connect failed with %s, trying next client", client_fn.__name__)
+                continue
+            except httpx.HTTPStatusError as e:
+                body_text = e.response.text[:500] if e.response else ""
+                raise ApiError(
+                    f"API error {e.response.status_code} from {url}: {body_text}",
+                    status_code=e.response.status_code,
+                ) from e
+            data = resp.json()
+            finish = data.get("choices", [{}])[0].get("finish_reason", "?")
+            tc_count = len(data.get("choices", [{}])[0].get("message", {}).get("tool_calls") or [])
+            text_len = len(data.get("choices", [{}])[0].get("message", {}).get("content") or "")
+            logger.info("chat response: finish=%s, tool_calls=%d, text_len=%d, model=%s, msgs=%d, tools=%d",
+                         finish, tc_count, text_len, data.get("model", "?"), len(messages), len(tools or []))
+            if tc_count == 0 and finish == "stop" and tools:
+                logger.warning("DeepSeek text-only response with %d tools available. "
+                               "Last user msg: %s...",
+                               len(tools),
+                               (messages[-1].text_content() if messages else "")[:200])
+            return self._parse_response(data)
+
+        raise ApiError(
+            f"Cannot connect to {url}: {last_err}. Check network or firewall.",
+            status_code=0,
+        ) from last_err
 
     async def chat_stream(
         self,
@@ -170,8 +209,7 @@ class OpenAiCompatProvider(BaseProvider):
         max_tokens: int = 4096,
         temperature: float = 0.3,
     ) -> AsyncGenerator[ProviderResponse | TokenUsage, None]:
-        """真流式 — 每个 token 立即产出，参考 claw-code stream_message。"""
-        client = await self._get_client()
+        """真流式 — 每个 token 立即产出。先走系统代理，连不上直连回退。"""
         body: dict[str, Any] = {
             "model": self.model,
             "messages": self._build_messages(messages, system_prompt),
@@ -185,13 +223,40 @@ class OpenAiCompatProvider(BaseProvider):
         if built_tools:
             body["tools"] = built_tools
 
-        # --- Streaming state machine ---
-        blocks: list = []  # accumulated blocks
-        tc_map: dict[int, dict] = {}  # index → {id, name, args}
-        finish_reason = "stop"
+        url = f"{self.base_url}/chat/completions"
+        last_err: Exception | None = None
+
+        for client_fn in (self._get_client, self._get_direct_client):
+            client = await client_fn()
+            try:
+                async for chunk in self._stream_body(client, url, body):
+                    yield chunk
+                return
+            except httpx.ConnectError as e:
+                last_err = e
+                logger.debug("stream connect failed with %s, trying next client", client_fn.__name__)
+                continue
+            except httpx.HTTPStatusError as e:
+                body_text = e.response.text[:500] if e.response else ""
+                raise ApiError(
+                    f"API error {e.response.status_code} from {url}: {body_text}",
+                    status_code=e.response.status_code,
+                ) from e
+
+        raise ApiError(
+            f"Cannot connect to {url}: {last_err}. Check network or firewall.",
+            status_code=0,
+        ) from last_err
+
+    async def _stream_body(
+        self, client: httpx.AsyncClient, url: str, body: dict,
+    ) -> AsyncGenerator[ProviderResponse | TokenUsage, None]:
+        """Streaming SSE parser — single client, no retry logic."""
+        blocks: list = []
+        tc_map: dict[int, dict] = {}
         text_buf = ""
 
-        async with client.stream("POST", f"{self.base_url}/chat/completions", json=body) as resp:
+        async with client.stream("POST", url, json=body) as resp:
             resp.raise_for_status()
             async for line in resp.aiter_lines():
                 if not line.startswith("data: "):
@@ -206,7 +271,6 @@ class OpenAiCompatProvider(BaseProvider):
 
                 choices = chunk.get("choices") or []
                 if not choices:
-                    # Some providers send usage-only chunks with empty choices
                     usage_data = chunk.get("usage")
                     if usage_data:
                         yield TokenUsage(
@@ -216,25 +280,18 @@ class OpenAiCompatProvider(BaseProvider):
                     continue
                 choice = choices[0]
                 delta = choice.get("delta", {})
-                finish = choice.get("finish_reason")
-                if finish:
-                    finish_reason = finish
 
-                # Text delta → yield immediately
                 content = delta.get("content")
                 if isinstance(content, str) and content:
                     text_buf += content
                     blocks.append(TextBlock(text=content))
                     yield TextBlock(text=content)
 
-                # Reasoning delta
                 reasoning = delta.get("reasoning_content")
                 if isinstance(reasoning, str) and reasoning:
                     yield ThinkingBlock(thinking=reasoning)
 
-                # Tool call accumulation (streamed incrementally)
-                tc_deltas = delta.get("tool_calls") or []
-                for tc in tc_deltas:
+                for tc in delta.get("tool_calls") or []:
                     idx = tc.get("index", 0)
                     if idx not in tc_map:
                         tc_map[idx] = {"id": "", "name": "", "args": ""}
@@ -246,7 +303,6 @@ class OpenAiCompatProvider(BaseProvider):
                     if "arguments" in func:
                         tc_map[idx]["args"] += func["arguments"]
 
-                # Final usage
                 usage_data = chunk.get("usage")
                 if usage_data:
                     yield TokenUsage(
@@ -254,17 +310,15 @@ class OpenAiCompatProvider(BaseProvider):
                         output_tokens=usage_data.get("completion_tokens", 0),
                     )
 
-        # Build tool call blocks
         for idx in sorted(tc_map.keys()):
             tc = tc_map[idx]
             if tc["name"]:
                 blocks.append(ToolUseBlock(id=tc["id"] or f"tc_{uuid.uuid4().hex[:8]}",
                                             name=tc["name"], input=tc["args"] or "{}"))
 
-        # Yield final assembled response
         yield ProviderResponse(
             blocks=blocks,
-            usage=TokenUsage(),  # usage already yielded separately
+            usage=TokenUsage(),
             stop_reason="tool_use" if tc_map else "end_turn",
         )
 
@@ -300,6 +354,8 @@ class OpenAiCompatProvider(BaseProvider):
         )
 
     async def close(self) -> None:
-        if self._client:
-            await self._client.aclose()
-            self._client = None
+        for c in (self._client, self._direct_client):
+            if c:
+                await c.aclose()
+        self._client = None
+        self._direct_client = None

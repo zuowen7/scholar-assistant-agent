@@ -39,8 +39,18 @@ from src.agent_v2.types import AgentEvent
 
 logger = logging.getLogger(__name__)
 
-# Session 保存在 python/ 目录下，避开 Tauri src-tauri/ 文件监视器
-_DEFAULT_SESSION_DIR = Path(__file__).resolve().parent.parent.parent.parent / "data" / "agent_v2" / "sessions"
+# 使用 api_factory.RUNTIME_DIR 以兼容 PyInstaller 打包路径（_MEIPASS vs 安装目录）
+def _get_runtime_dir() -> Path:
+    try:
+        from api_factory import RUNTIME_DIR
+        return RUNTIME_DIR
+    except ImportError:
+        return Path(__file__).resolve().parent.parent.parent
+
+_RUNTIME_DIR = _get_runtime_dir()
+
+# Session 保存在 data/ 目录下，避开 Tauri src-tauri/ 文件监视器
+_DEFAULT_SESSION_DIR = _RUNTIME_DIR / "data" / "agent_v2" / "sessions"
 _SESSION_DIR = Path(os.environ.get("AGENT_SESSION_DIR", str(_DEFAULT_SESSION_DIR)))
 _SESSION_POOL: dict[str, ConversationRuntime] = {}
 _SESSION_LOCK = asyncio.Lock()
@@ -69,12 +79,10 @@ class ApproveRequest(BaseModel):
 def _load_cloud_config() -> dict:
     """从 config 文件读取翻译器云配置（合并 default.yaml + local.yaml）。"""
     import yaml
-    # __file__ = .../python/src/agent_v2/router.py → 3x parent = python/
-    _python_root = Path(__file__).resolve().parent.parent.parent
     merged = {}
 
     # 1. 先读 default.yaml
-    default_path = _python_root / "config" / "default.yaml"
+    default_path = _RUNTIME_DIR / "config" / "default.yaml"
     if default_path.is_file():
         try:
             with open(default_path, encoding="utf-8") as f:
@@ -83,7 +91,7 @@ def _load_cloud_config() -> dict:
             pass
 
     # 2. 用 local.yaml 覆盖
-    local_path = _python_root / "config" / "default.local.yaml"
+    local_path = _RUNTIME_DIR / "config" / "default.local.yaml"
     if local_path.is_file():
         try:
             with open(local_path, encoding="utf-8") as f:
@@ -110,11 +118,10 @@ def _load_agent_config() -> dict:
     优先级: env var > config/local.yaml > config/default.yaml
     """
     import yaml
-    _python_root = Path(__file__).resolve().parent.parent.parent
     merged = {}
 
     for cfg_name in ("config/default.yaml", "config/default.local.yaml"):
-        cfg_path = _python_root / cfg_name
+        cfg_path = _RUNTIME_DIR / cfg_name
         if cfg_path.is_file():
             try:
                 with open(cfg_path, encoding="utf-8") as f:
@@ -123,6 +130,12 @@ def _load_agent_config() -> dict:
                 pass
 
     agent_cfg = merged.get("agent", {})
+
+    # Fallback: network.proxy → agent.proxy if not explicitly set
+    if not agent_cfg.get("proxy"):
+        network_proxy = merged.get("network", {}).get("proxy", "").strip()
+        if network_proxy:
+            agent_cfg["proxy"] = network_proxy
 
     # Env var overrides
     if os.environ.get("ANTHROPIC_API_KEY"):
@@ -153,6 +166,7 @@ def _create_provider():
     provider = cfg.get("provider", "auto").strip().lower()
     api_key = cfg.get("api_key", "").strip()
     base_url = cfg.get("base_url", "").strip()
+    proxy = cfg.get("proxy", "").strip() or None
     translator_cloud = _load_cloud_config()
 
     # 1. Explicit provider from config
@@ -160,14 +174,14 @@ def _create_provider():
         logger.info("Agent V2: config[agent].provider=anthropic — %s", model or "claude-sonnet-4-6")
         return OpenAiCompatProvider(
             base_url=base_url or "https://api.anthropic.com",
-            api_key=api_key, model=model or "claude-sonnet-4-6")
+            api_key=api_key, model=model or "claude-sonnet-4-6", proxy=proxy)
 
     if provider == "openai" and (api_key or base_url):
         logger.info("Agent V2: config[agent].provider=openai — %s @ %s",
                      model or "gpt-4o", base_url or "https://api.openai.com/v1")
         return OpenAiCompatProvider(
             base_url=base_url or "https://api.openai.com/v1",
-            api_key=api_key, model=model or "gpt-4o")
+            api_key=api_key, model=model or "gpt-4o", proxy=proxy)
 
     # 2. API key without explicit provider — detect from key prefix
     if api_key:
@@ -175,22 +189,23 @@ def _create_provider():
             logger.info("Agent V2: Anthropic key detected — %s", model or "claude-sonnet-4-6")
             return OpenAiCompatProvider(
                 base_url=base_url or "https://api.anthropic.com",
-                api_key=api_key, model=model or "claude-sonnet-4-6")
+                api_key=api_key, model=model or "claude-sonnet-4-6", proxy=proxy)
         logger.info("Agent V2: OpenAI-compatible key — %s", model or "gpt-4o")
         return OpenAiCompatProvider(
             base_url=base_url or "https://api.openai.com/v1",
-            api_key=api_key, model=model or "gpt-4o")
+            api_key=api_key, model=model or "gpt-4o", proxy=proxy)
 
     # 3. Fallback: translator cloud config (DeepSeek etc.)
     if translator_cloud:
         tk = translator_cloud.get("api_key", "").strip()
         tb = translator_cloud.get("base_url", "").strip()
         tm = translator_cloud.get("model", "").strip()
+        tp = translator_cloud.get("proxy", "").strip() or None
         if tk or tb:
             tb = tb or "https://api.deepseek.com/v1"
             m = model or tm or "deepseek-chat"
             logger.info("Agent V2: cloud config — %s @ %s", m, tb)
-            return OpenAiCompatProvider(base_url=tb, api_key=tk, model=m)
+            return OpenAiCompatProvider(base_url=tb, api_key=tk, model=m, proxy=proxy or tp)
 
     # 4. Local Ollama
     ollama_base = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1").strip()
@@ -243,7 +258,7 @@ def _create_runtime(workspace_root: str, session_id: str = "") -> ConversationRu
     for s in _BUILTIN_SKILLS:
         skill_registry.register(s)
     # Load user skills from data/agent_v2/skills/
-    _skills_dir = Path(__file__).resolve().parent.parent.parent / "data" / "agent_v2" / "skills"
+    _skills_dir = _RUNTIME_DIR / "data" / "agent_v2" / "skills"
     skill_registry.load_dir(_skills_dir)
 
     # Hooks
@@ -459,6 +474,7 @@ def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> Non
             "model": cfg.get("model", ""),
             "provider": cfg.get("provider", "auto"),
             "base_url": cfg.get("base_url", ""),
+            "proxy": cfg.get("proxy", ""),
             "has_api_key": bool(cfg.get("api_key", "").strip()),
             "model_aliases": aliases,
             "available_aliases": list(aliases.keys()),
