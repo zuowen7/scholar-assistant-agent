@@ -36,7 +36,7 @@ from src.agent_v2.types import (
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MAX_STEPS = 24
+_DEFAULT_MAX_STEPS = 48
 _APPROVAL_TIMEOUT = 120.0  # 2 分钟等用户审批
 _TOOL_RESULT_MAX_CHARS = 4000
 
