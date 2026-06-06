@@ -9,7 +9,44 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan for hardcoded API keys / secrets
+        shell: bash
+        run: |
+          # Block releases that accidentally contain real secrets in config/data files.
+          # Only scans YAML/JSON/TOML (not .py/.ts where 'token' is a common variable).
+          FAIL=0
+          # 1) api_key / secret with non-empty value in YAML/TOML
+          if git grep -nE '(api_key|secret_key|private_key)\s*:\s*["\x27]?[A-Za-z0-9+/=_.-]{12,}' \
+              -- '*.yaml' '*.yml' '*.toml' \
+              ':!*.local.yaml' ':!*.local.yml' ':!config/providers.yaml' \
+              2>/dev/null | grep -viE '(example|placeholder|dummy|your[_-]?key|<your|xxx|"")' \
+              | grep -q .; then
+              echo "::error::Hardcoded API key detected in config files"
+              git grep -nE '(api_key|secret_key|private_key)\s*:\s*["\x27]?[A-Za-z0-9+/=_.-]{12,}' \
+                  -- '*.yaml' '*.yml' '*.toml' ':!*.local.yaml' ':!*.local.yml' ':!config/providers.yaml' \
+                  | grep -viE '(example|placeholder|dummy|your[_-]?key|<your|xxx|"")'
+              FAIL=1
+          fi
+          # 2) sk-* patterns (OpenAI/Anthropic keys) in all text files
+          if git grep -nE '\bsk-[a-zA-Z0-9]{20,}\b' \
+              -- '*.yaml' '*.yml' '*.py' '*.ts' '*.vue' '*.json' '*.toml' '*.env' \
+              ':!*.local.yaml' ':!*.local.yml' ':!config/providers.yaml' \
+              2>/dev/null | grep -viE '(sk-test|sk-mock|sk-placeholder|sk-example|sk-your)' \
+              | grep -q .; then
+              echo "::error::sk-* API key pattern detected"
+              git grep -nE '\bsk-[a-zA-Z0-9]{20,}\b' \
+                  -- '*.yaml' '*.yml' '*.py' '*.ts' '*.vue' '*.json' '*.toml' '*.env' ':!*.local.yaml' \
+                  | grep -viE '(sk-test|sk-mock|sk-placeholder|sk-example|sk-your)'
+              FAIL=1
+          fi
+          exit $FAIL
+
   test:
+    needs: secret-scan
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4

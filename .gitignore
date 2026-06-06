@@ -50,10 +50,18 @@ data/agent/
 
 # Argument map 运行时数据
 python/data/argument_tree.json
+python/data/argument_graphs/
 python/argument_graphs/
 
 # Companion 运行时数据（ledger/review，含用户本地路径）
 python/companion/
+python/data/companion/
+
+# Project 列表（含用户本地路径）
+python/data/projects.json
+
+# Agent 运行时数据
+src-tauri/data/
 
 # Code review dumps (临时产物)
 docs/code-review-*.md
@@ -92,10 +100,13 @@ Thumbs.db
 node_modules/
 src-tauri/target/
 src-tauri/python-dist/
+src-tauri/python/
+src-tauri/plot_sinx.py
 dist/
 
 # Cached build tools (pandoc.exe / tectonic.exe) — large binaries, machine-local
 scripts/.tools-cache/
+src-tauri/resources/pandoc/
 
 # Local test scratch
 pytest-cache-files-*/
