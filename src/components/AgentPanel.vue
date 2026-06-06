@@ -605,6 +605,8 @@ const currentStatus = computed(() => {
 })
 
 // ── Approval ──
+const normPath = (p: string) => p.replace(/\\/g, '/').toLowerCase()
+
 const showInlineDiff = computed(() => {
   const p = pendingApproval.value
   if (!p) return false
@@ -612,7 +614,7 @@ const showInlineDiff = computed(() => {
   if (tool !== 'str_replace' && tool !== 'write_file') return false
   const filePath = (p.args?.file_path as string) || ''
   if (!filePath) return false
-  return editorTabs.value.some(t => t.path === filePath)
+  return editorTabs.value.some(t => t.path && normPath(t.path) === normPath(filePath))
 })
 
 async function handleApprovalDecision(decision: 'allow_once' | 'allow_session' | 'deny') {
