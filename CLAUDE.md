@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Scholar Assistant — privacy-first academic AI writing assistant (v0.4.0). Core paradigm: **"Claude Code for papers"** — Agent directly reads/writes workspace files (PDF/drafts/bib/data). Translates PDFs (parse -> clean -> chunk -> translate -> format via SSE), AI editor (Monaco + Agent chat with workspace file tools), exports to LaTeX/Word. Runs as Tauri desktop app or standalone Python API. Bilingual UI (zh-CN / en-US).
+Scholar Assistant — privacy-first academic AI writing assistant (v0.4.1). Core paradigm: **"Claude Code for papers"** — Agent directly reads/writes workspace files (PDF/drafts/bib/data). Translates PDFs (parse -> clean -> chunk -> translate -> format via SSE), AI editor (Monaco + Agent chat with workspace file tools), exports to LaTeX/Word. Runs as Tauri desktop app or standalone Python API. Bilingual UI (zh-CN / en-US).
 
 ## Build Commands
 

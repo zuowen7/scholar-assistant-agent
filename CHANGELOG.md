@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.1] — Agent connection fix
+
+### Bug Fixes
+
+- **Agent: PyInstaller config path** — agent router used `Path(__file__)` to locate config files, which resolves to `_MEIPASS` in packaged builds. User settings (API keys, proxy) in `default.local.yaml` are stored in `RUNTIME_DIR`, so agent couldn't find them and fell back to Ollama → "All connection attempts failed". Fixed by using `api_factory.RUNTIME_DIR`.
+- **Agent: proxy-aware connection fallback** — connection strategy now tries system proxy settings first (`trust_env=True`), then falls back to direct connection (`trust_env=False`). Works whether VPN/proxy is on, off, or misconfigured.
+- **Config: proxy settings not saved** — `ConfigUpdate` model was missing `network` and `agent` fields, so proxy settings from the UI were silently discarded. Fixed.
+- **Agent: ConnectError error messages** — `httpx.ConnectError` and `HTTPStatusError` are now wrapped in `ApiError` with the endpoint URL, instead of showing raw "unexpected error: All connection attempts failed".
+
 ## [0.4.0] — Agent V2: Claw-Code Architecture
 
 ### Agent V2 — Complete Rewrite
@@ -102,7 +111,7 @@ Ported from [ultraworkers/claw-code](https://github.com/ultraworkers/claw-code) 
 - `FileTreeNode.vue` — single-root wrapper to fix Vue fragment attrs warning
 - `AgentPanel.vue` — checkpoint watcher for real-time file tree refresh
 
-### Previous (pre-0.4.0)
+### Previous (pre-0.4.1)
 
 ### Added
 - **Project management** — PyCharm-style project system: `POST /api/project/create` (atomic creation, validated templates, Git init), `GET /api/project/recent` (LRU 20, auto-filter deleted), `GET /api/project/load` + `POST /api/project/detect` + `GET /api/project/templates`
