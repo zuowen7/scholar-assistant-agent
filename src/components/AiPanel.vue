@@ -182,6 +182,7 @@ import AgentApprovalInline from './AgentApprovalInline.vue'
 import type { PendingApproval } from '../composables/useAgentChat'
 import { useFileTree } from '../composables/useFileTree'
 import { useEditorState } from '../composables/useEditorState'
+import { useEditor } from '../composables/useEditor'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
 import { setSpeechBusy } from '../composables/useSpeechBusy'
 import { Mic } from './ui/icons'
@@ -239,6 +240,7 @@ const acSessionId = ref<string | null>(null)
 const pendingApproval = ref<PendingApproval | null>(null)
 const { rootDir, refresh: refreshFileTree } = useFileTree()
 const { tabs: editorTabs, setActiveEdit, clearActiveEdit, setContent, contentVersion, activeTab } = useEditorState()
+const { reloadOpenTabs } = useEditor()
 
 const normPath = (p: string) => p.replace(/\\/g, '/').toLowerCase()
 
@@ -530,6 +532,7 @@ async function doSend(text: string) {
           }
         }
         refreshFileTree()
+        reloadOpenTabs()
       }
     })
   } catch (e) {
