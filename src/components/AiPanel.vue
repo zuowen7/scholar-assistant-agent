@@ -182,6 +182,7 @@ import AgentApprovalInline from './AgentApprovalInline.vue'
 import type { PendingApproval } from '../composables/useAgentChat'
 import { useFileTree } from '../composables/useFileTree'
 import { useEditorState } from '../composables/useEditorState'
+import { setContent } from '../composables/useEditorTabs'
 import { useEditor } from '../composables/useEditor'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
 import { setSpeechBusy } from '../composables/useSpeechBusy'
@@ -239,7 +240,7 @@ let copiedTimer: ReturnType<typeof setTimeout> | null = null
 const acSessionId = ref<string | null>(null)
 const pendingApproval = ref<PendingApproval | null>(null)
 const { rootDir, refresh: refreshFileTree } = useFileTree()
-const { tabs: editorTabs, setActiveEdit, clearActiveEdit, setContent, contentVersion, activeTab } = useEditorState()
+const { tabs: editorTabs, setActiveEdit, clearActiveEdit, contentVersion, activeTab } = useEditorState()
 const { reloadOpenTabs } = useEditor()
 
 const normPath = (p: string) => p.replace(/\\/g, '/').toLowerCase()
