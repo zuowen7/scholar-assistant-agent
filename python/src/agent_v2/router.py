@@ -282,9 +282,14 @@ def _create_runtime(workspace_root: str, session_id: str = "") -> ConversationRu
     skill_prompt = skill_registry.build_prompt_injection(layer="agents")
     sp = base_prompt + "\n" + skill_prompt if skill_prompt else base_prompt
 
+    # Read max_steps from config
+    agent_cfg = _load_agent_config()
+    max_steps = int(agent_cfg.get("max_steps", 48) or 48)
+
     return ConversationRuntime(provider=provider, tool_registry=registry,
                                 permission_policy=policy, session=session,
-                                system_prompt=sp, auto_approve=False)
+                                system_prompt=sp, auto_approve=False,
+                                max_steps=max_steps)
 
 
 async def _cleanup_pool():
@@ -388,7 +393,9 @@ def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> Non
                 policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
                 loaded._save_path = str(session_path)
                 sp = _build_system_prompt(str(ws), registry.definitions())
-                rt = ConversationRuntime(provider=provider, tool_registry=registry, permission_policy=policy, session=loaded, system_prompt=sp, auto_approve=False)
+                agent_cfg = _load_agent_config()
+                max_steps = int(agent_cfg.get("max_steps", 48) or 48)
+                rt = ConversationRuntime(provider=provider, tool_registry=registry, permission_policy=policy, session=loaded, system_prompt=sp, auto_approve=False, max_steps=max_steps)
                 async with _SESSION_LOCK:
                     _SESSION_POOL[session_id] = rt
                 # Emit session start + restore info for the frontend
