@@ -80,7 +80,12 @@ a = Analysis(
         (str(python_dir / "data" / "paper_assets"), "data/paper_assets"),
         # 翻译术语表
         (str(python_dir / "data" / "translator" / "glossaries"), "data/translator/glossaries"),
+        # Agent V2 内置 skills + plugins
+        (str(python_dir / "data" / "agent_v2" / "skills"), "data/agent_v2/skills"),
+        (str(python_dir / "data" / "agent_v2" / "plugins"), "data/agent_v2/plugins"),
         (str(python_dir / "prompts"), "prompts"),
+        # 项目模板定义（project_templates.json）
+        (str(python_dir / "templates"), "templates"),
     ] + ([
         # 插件目录（空目录不追踪到 git，CI 可能不存在）
         (str(python_dir / "plugins"), "plugins"),
