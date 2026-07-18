@@ -1,5 +1,5 @@
 import { ref, watch } from 'vue'
-import type { AgentChatMessage, AgentEvent, AgentSessionInfo, RAGDocument } from '../types'
+import type { AgentChatMessage, AgentEvent, AgentSessionInfo, AgentSkill, RAGDocument } from '../types'
 import { API_BASE } from '../utils/api'
 import { i18n } from '../i18n'
 import { logger } from '../utils/logger'
@@ -13,6 +13,8 @@ const messages = ref<AgentChatMessage[]>([])
 const sending = ref(false)
 const ragDocuments = ref<RAGDocument[]>([])
 const ragLoading = ref(false)
+const agentSkills = ref<AgentSkill[]>([])
+const skillsLoading = ref(false)
 let abortController: AbortController | null = null
 
 // v2 state
@@ -63,6 +65,8 @@ export function _resetForTesting(): void {
   sending.value = false
   ragDocuments.value = []
   ragLoading.value = false
+  agentSkills.value = []
+  skillsLoading.value = false
   sessionId.value = null
   _approvalBySession.clear()
 }
@@ -204,19 +208,21 @@ export function useAgentChat() {
     constraints?: string,
     workspaceRoot?: string,
     contextFile?: string,
+    skills: string[] = [],
   ): Promise<void> {
     if (!text.trim() || sending.value) return
 
     _clearApproval()
 
-    messages.value.push({
+    const userMessage: AgentChatMessage = {
       id: crypto.randomUUID(),
       role: 'user',
       content: text.trim(),
       events: [],
       isStreaming: false,
       timestamp: Date.now(),
-    })
+    }
+    messages.value.push(userMessage)
 
     const assistantMsg: AgentChatMessage = {
       id: crypto.randomUUID(),
@@ -233,7 +239,7 @@ export function useAgentChat() {
     abortController = new AbortController()
 
     const history = messages.value
-      .filter(m => m.id !== assistantMsg.id && !m.isStreaming)
+      .filter(m => m.id !== assistantMsg.id && m.id !== userMessage.id && !m.isStreaming)
       .slice(-20)
       .map(m => ({ role: m.role, content: m.content }))
 
@@ -262,6 +268,7 @@ export function useAgentChat() {
           constraints: constraints?.trim() || undefined,
           workspace_root: workspaceRoot?.trim() || undefined,
           workflow_id: workflowId.value || undefined,
+          skills: skills.slice(0, 8),
         }),
         signal: abortController!.signal,
       })
@@ -580,6 +587,22 @@ export function useAgentChat() {
     }
   }
 
+  async function fetchAgentSkills(): Promise<AgentSkill[]> {
+    skillsLoading.value = true
+    try {
+      const resp = await fetch(`${API_URL}/api/agent/v2/skills`)
+      if (!resp.ok) return agentSkills.value
+      const data = await resp.json()
+      agentSkills.value = Array.isArray(data) ? data : []
+      return agentSkills.value
+    } catch (e) {
+      logger.warn('fetchAgentSkills failed', { error: e })
+      return agentSkills.value
+    } finally {
+      skillsLoading.value = false
+    }
+  }
+
   async function cleanupWorkflows() {
     try {
       const resp = await fetch(`${API_URL}/api/agent/v2/workflows/cleanup`, { method: 'POST' })
@@ -621,6 +644,9 @@ export function useAgentChat() {
     loadWorkflowMessages,
     respondCheckpoint,
     fetchTools,
+    agentSkills,
+    skillsLoading,
+    fetchAgentSkills,
     cleanupWorkflows,
     deleteWorkflow,
     ragDocuments,

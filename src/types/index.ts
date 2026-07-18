@@ -230,6 +230,16 @@ export interface AgentSessionInfo {
   source?: 'memory' | 'store'
 }
 
+export interface AgentSkill {
+  name: string
+  description: string
+  layer: string
+  category: string
+  active: boolean
+  default_active: boolean
+  source?: string
+}
+
 export interface AgentChatMessage {
   id: string
   role: 'user' | 'assistant'

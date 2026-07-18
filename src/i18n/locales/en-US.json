@@ -241,6 +241,7 @@
     "tabChat": "Tasks",
     "tabDocs": "Library",
     "tabTemplates": "Templates",
+    "tabSkills": "Skills",
     "tabSessions": "Sessions",
     "dockBack": "Dock Back to Main Window",
     "dockSide": "Dock Back to Sidebar",
@@ -277,10 +278,61 @@
     "chunks": "chunks",
     "delete": "Delete",
     "templatesTitle": "Paper Templates",
+    "templatesSubtitle": "Create real project files from venue formats",
+    "skillsTitle": "Agent Skills",
+    "skillsSubtitle": "The selected workflow is sent to Agent V2 with the task",
+    "selectedSkills": "Active skill",
+    "removeSkill": "Remove this skill",
+    "useSkill": "Use for task",
+    "skillSelected": "Selected",
+    "noSkills": "No Agent skills were discovered",
+    "skillPromptFallback": "Use the {skill} workflow on the current document:",
     "loadTemplates": "Load Templates",
     "noTemplates": "No templates available",
     "indexTemplates": "Index Template Assets",
     "createFromTemplate": "Create from Template",
+    "skills": {
+      "nature_writing": {
+        "name": "Nature Manuscript Writing",
+        "description": "Draft or restructure sections from real claims and evidence",
+        "prompt": "Restructure the current manuscript's argument and draft the requested section in a Nature-leaning style. Identify evidence gaps first; do not invent results or citations."
+      },
+      "nature_polishing": {
+        "name": "Nature Academic Polishing",
+        "description": "Polish academic English without changing facts or overstating conclusions",
+        "prompt": "Polish the current selection or document in a Nature-leaning style while preserving data, citations, terminology, and uncertainty. Summarize the material changes."
+      },
+      "nature_reviewer": {
+        "name": "Nature Mock Review",
+        "description": "Assess significance, rigor, and claim fulfillment as a referee",
+        "prompt": "Run a Nature-style pre-submission review of the current manuscript. Use the real Argument Map, Claim Ledger, and Reviewer data and anchor concerns to the source text."
+      },
+      "nature_response": {
+        "name": "Nature Reviewer Response",
+        "description": "Draft or audit point-by-point responses and verified revisions",
+        "prompt": "Draft a point-by-point response using the current reviews and manuscript. Separate completed changes, missing evidence, and justified disagreement, with verifiable manuscript anchors."
+      },
+      "nature_citation": {
+        "name": "Nature Citation Support",
+        "description": "Map manuscript claims to verifiable literature without fabricating citations",
+        "prompt": "Split the current text into citable claims, find and verify supporting literature, and return a claim-to-source map. Clearly label candidates that remain unverified."
+      },
+      "nature_data": {
+        "name": "Nature Data Availability",
+        "description": "Draft or audit data, code, and reproducibility disclosures",
+        "prompt": "Using only real project information, draft or audit the data and code availability statements and list repository, version, and access details that still need author confirmation."
+      },
+      "nature_reader": {
+        "name": "Nature Paper Reader",
+        "description": "Create a source-anchored bilingual close reading and terminology ledger",
+        "prompt": "Build a source-traceable bilingual close reading of the current paper, preserving sections, figures, equations, citations, and terminology rather than reducing it to a summary."
+      },
+      "nature_figure": {
+        "name": "Nature Scientific Figures",
+        "description": "Plan, generate, and inspect publication figures from real project data",
+        "prompt": "Confirm the scientific conclusion, real data source, panel plan, and export requirements, then use my chosen Python or R workflow to create and inspect a publication-grade figure."
+      }
+    },
     "title": "Agent Assistant",
     "uploadFailed": "Upload failed",
     "awaitingApproval": "Awaiting approval: {tool}",
@@ -290,6 +342,7 @@
       "search_documents": "Search document library (archived past translations)",
       "read_argument_graph": "Read paper argument map (Toulmin structure + logical gaps)",
       "read_argument_ledger": "Read argument ledger (promises ↔ discharge status)",
+      "read_reviewer_state": "Read Reviewer-2 concerns, response status, and rebuttal data",
       "crawl_arxiv": "Search arXiv academic papers",
       "read_file": "Read project file contents",
       "write_file": "Write file to project",

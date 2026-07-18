@@ -241,6 +241,7 @@
     "tabChat": "任务",
     "tabDocs": "文献库",
     "tabTemplates": "模板",
+    "tabSkills": "能力",
     "tabSessions": "会话",
     "dockBack": "停靠回主窗口",
     "dockSide": "停靠回侧边",
@@ -277,10 +278,61 @@
     "chunks": "块",
     "delete": "删除",
     "templatesTitle": "论文模板库",
+    "templatesSubtitle": "按期刊格式创建真实项目文件",
+    "skillsTitle": "Agent 能力",
+    "skillsSubtitle": "选择后会随本次任务发送给 Agent V2",
+    "selectedSkills": "当前能力",
+    "removeSkill": "移除此能力",
+    "useSkill": "用于任务",
+    "skillSelected": "已选择",
+    "noSkills": "暂未发现可用能力",
+    "skillPromptFallback": "请使用“{skill}”能力处理当前文档：",
     "loadTemplates": "加载模板",
     "noTemplates": "暂无模板数据",
     "indexTemplates": "索引模板素材",
     "createFromTemplate": "从模板创建",
+    "skills": {
+      "nature_writing": {
+        "name": "Nature 论文写作",
+        "description": "依据真实论点和证据起草或重构论文段落",
+        "prompt": "请按 Nature 风格梳理当前文档的论证结构，并起草或重构我指定的章节。先指出证据缺口，不要虚构结果或引用。"
+      },
+      "nature_polishing": {
+        "name": "Nature 学术润色",
+        "description": "在不改变事实和不夸大结论的前提下润色学术英文",
+        "prompt": "请按 Nature 风格润色当前选区或文档，保持数据、引用、术语和不确定性不变，并列出关键修改。"
+      },
+      "nature_reviewer": {
+        "name": "Nature 模拟审稿",
+        "description": "从审稿人视角检查重要性、严谨性和论证兑付",
+        "prompt": "请对当前论文进行 Nature 风格投稿前审查。结合真实论证图、Claim Ledger 和 Reviewer 数据，按严重程度给出带原文锚点的问题。"
+      },
+      "nature_response": {
+        "name": "Nature 审稿回复",
+        "description": "逐点起草或核查审稿回复和真实修改位置",
+        "prompt": "请根据当前审稿意见和稿件逐点起草回复，区分已修改、需补证据和合理不同意，并给出可核对的稿件位置。"
+      },
+      "nature_citation": {
+        "name": "Nature 引用支持",
+        "description": "把稿件主张映射到可核验文献，不编造引用",
+        "prompt": "请拆分当前文本中的可引用主张，检索并核验支持文献，输出主张到来源的映射；无法核验的候选项请明确标记。"
+      },
+      "nature_data": {
+        "name": "Nature 数据声明",
+        "description": "起草或审计数据、代码可用性与可复现性说明",
+        "prompt": "请基于项目中的真实数据与代码信息，起草或审计数据和代码可用性声明，并列出仍需作者确认的仓库、版本和访问条件。"
+      },
+      "nature_reader": {
+        "name": "Nature 论文精读",
+        "description": "构建带来源锚点的中英对照精读和术语表",
+        "prompt": "请对当前论文进行来源可追溯的中英对照精读，保留章节、图表、公式、引用和术语对应，不要只做摘要。"
+      },
+      "nature_figure": {
+        "name": "Nature 科研配图",
+        "description": "使用真实项目数据规划、生成和核查投稿级图表",
+        "prompt": "请先确认图的科学结论、真实数据源、面板结构和导出要求，再使用我选择的 Python 或 R 制作并检查投稿级图表。"
+      }
+    },
     "title": "Agent 助手",
     "uploadFailed": "上传失败",
     "awaitingApproval": "等待审批: {tool}",
@@ -290,6 +342,7 @@
       "search_documents": "检索文献库（历史翻译收录的论文）",
       "read_argument_graph": "读取论文论证图（Toulmin 结构 + 逻辑漏洞分析）",
       "read_argument_ledger": "读取论证账本（承诺 ↔ 兑付状态）",
+      "read_reviewer_state": "读取 Reviewer-2 批评、回应状态与 rebuttal 数据",
       "crawl_arxiv": "搜索 arXiv 学术论文",
       "read_file": "读取项目文件内容",
       "write_file": "写入文件到项目",
