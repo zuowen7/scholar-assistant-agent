@@ -16,6 +16,16 @@
         <button class="agent-tab u-interactive" :class="{ active: tab === 'sessions' }" @click="tab = 'sessions'; refreshSessions()">{{ t('agent.tabSessions') }}</button>
       </div>
       <div class="agent-header-actions">
+        <button
+          v-if="tab === 'chat'"
+          class="agent-hdr-btn"
+          :title="t('agent.newSession')"
+          :aria-label="t('agent.newSession')"
+          :disabled="sending || !!pendingApproval"
+          @click="handleNewSession"
+        >
+          <Plus :size="14" :stroke-width="1.8" />
+        </button>
         <!-- Standalone window: dock back to main -->
         <button v-if="isStandalone" class="agent-hdr-btn" :title="t('agent.dockBack')" @click="onDockBack">
           <PinOff :size="13" :stroke-width="1.8" />
@@ -35,7 +45,7 @@
 
     <!-- Sessions Tab -->
     <div v-show="tab === 'sessions'" class="agent-sessions">
-      <AgentSessionList ref="sessionListRef" @resume="handleSessionResume" />
+      <AgentSessionList ref="sessionListRef" @open="handleSessionOpen" />
     </div>
 
     <!-- Chat Tab -->
@@ -90,7 +100,7 @@
                 <span class="evt-result-tool">{{ evt.metadata?.tool_name || evt.metadata?.tool }}</span>
                 <span v-if="evt.metadata?.duration_ms" class="evt-duration">{{ evt.metadata.duration_ms }}ms</span>
               </div>
-              <div class="evt-result-preview">{{ truncateResult(evt.content) }}</div>
+              <div class="evt-result-preview">{{ formatToolResult(evt.content) }}</div>
             </div>
             <div v-else-if="evt.type === 'warning'" class="agent-event warning">
               <span class="evt-warning-icon">&#x26A0;</span>
@@ -308,7 +318,7 @@ import { useEditorState } from '../composables/useEditorState'
 import { useFileTree } from '../composables/useFileTree'
 import AgentApprovalInline from './AgentApprovalInline.vue'
 import AgentSessionList from './AgentSessionList.vue'
-import { Pin, PinOff, Mic } from './ui/icons'
+import { Pin, PinOff, Mic, Plus } from './ui/icons'
 import { API_BASE } from '../utils/api'
 import type { AgentSessionInfo, AgentSkill } from '../types'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
@@ -316,6 +326,7 @@ import { setSpeechBusy } from '../composables/useSpeechBusy'
 import UiSpinner from './ui/UiSpinner.vue'
 import UiSkeleton from './ui/UiSkeleton.vue'
 import { renderMarkdown } from '../utils/markdown'
+import { useToast } from '../composables/useToast'
 
 let voiceBaseInput = ''
 const agentSpeech = useSpeechRecognition({
@@ -504,7 +515,7 @@ onMounted(async () => {
     // Read session from URL params (passed by openAgentWindow)
     const params = new URLSearchParams(window.location.search)
     const sid = params.get('session')
-    if (sid) await resumeSession(sid)
+    if (sid) await loadWorkflowMessages(sid)
   } else {
     // Listen for dock-back signal from standalone window
     const handler = (e: StorageEvent) => {
@@ -525,7 +536,8 @@ const {
   agentSkills, skillsLoading,
   sendMessage: agentSendMessage,
   sendApproval, abortSession,
-  resumeSession,
+  startNewWorkflow,
+  loadWorkflowMessages,
   sessionId,
   pendingCheckpoint,
   fetchSessions: _fetchSessions,
@@ -535,9 +547,9 @@ const {
   fetchAgentSkills,
 } = useAgentChat()
 
-const { selection: editorSelection, content: editorContent, activeTab: editorActiveTab, reloadOpenTabs, setContent, contentVersion } = useEditor()
+const { selection: editorSelection, content: editorContent, activeTab: editorActiveTab, reloadOpenTabs, applyExternalFileUpdate } = useEditor()
 
-const { tabs: editorTabs, setActiveEdit, clearActiveEdit } = useEditorState()
+const { tabs: editorTabs, setActiveEdit, clearActiveEdit, shouldShowInlineDiff } = useEditorState()
 
 const { rootDir, refresh: refreshFileTree } = useFileTree()
 
@@ -573,6 +585,7 @@ const ragFileInput = ref<HTMLInputElement | null>(null)
 const ragUploading = ref(false)
 const ragUploadError = ref('')
 const selectedSkillNames = ref<string[]>([])
+const { warn: showWarning } = useToast()
 
 const visibleAgentSkills = computed(() => [...agentSkills.value].sort((a, b) => {
   if (a.category === b.category) return skillDisplayName(a).localeCompare(skillDisplayName(b))
@@ -693,16 +706,15 @@ const currentStatus = computed(() => {
 })
 
 // ── Approval ──
-const normPath = (p: string) => p.replace(/\\/g, '/').toLowerCase()
-
 const showInlineDiff = computed(() => {
   const p = pendingApproval.value
   if (!p) return false
-  const tool = p.tool_name
-  if (tool !== 'str_replace' && tool !== 'write_file') return false
-  const filePath = (p.args?.file_path as string) || ''
-  if (!filePath) return false
-  return editorTabs.value.some(t => t.path && normPath(t.path) === normPath(filePath))
+  return shouldShowInlineDiff(
+    p.tool_name,
+    p.args || {},
+    editorTabs.value,
+    p.preview,
+  )
 })
 
 async function handleApprovalDecision(decision: 'allow_once' | 'allow_session' | 'deny') {
@@ -737,18 +749,10 @@ watch(pendingCheckpoint, () => {
     const filePath = cp.file as string | undefined
     const content = cp.content as string | undefined
     if (filePath && content) {
-      // 找到对应标签并直接更新内容，避免 reloadOpenTabs 需要 Tauri fs
-      const normPath = (p: string) => p.replace(/\\/g, '/').toLowerCase()
-      const tab = editorTabs.value.find((t: any) => t.path && normPath(t.path) === normPath(filePath))
-      if (tab) {
-        const changed = tab.content !== content
-        tab.content = content
-        tab.isModified = false
-        contentVersion.value++
-        // 更新 Monaco 编辑器（如果是当前激活标签）
-        if (changed && tab.id === editorActiveTab.value?.id) {
-          setContent(content)
-        }
+      const result = applyExternalFileUpdate(filePath, content)
+      if (result === 'conflict') {
+        const name = filePath.split(/[\\/]/).pop() || filePath
+        showWarning(t('agent.unsavedFileConflict', { name }), 8000)
       }
     }
     refreshFileTree()
@@ -762,12 +766,32 @@ async function refreshSessions() {
   sessionListRef.value?.fetchSessions()
 }
 
-async function handleSessionResume(sessionId: string) {
-  await resumeSession(sessionId)
+async function handleSessionOpen(session: AgentSessionInfo) {
+  const loaded = await loadWorkflowMessages(session.id)
+  if (!loaded) {
+    showWarning(t('agent.sessionLoadFailed'), 6000)
+    return
+  }
   tab.value = 'chat'
   _userScrolledUp.value = false
   await nextTick()
   _scrollToBottom()
+}
+
+function formatToolResult(content: string): string {
+  const denied = content.match(/^User denied the change to (.+)$/)
+  if (denied) return t('agent.userDeniedChange', { path: denied[1] })
+  return truncateResult(content)
+}
+
+function handleNewSession() {
+  if (sending.value || pendingApproval.value) return
+  startNewWorkflow()
+  input.value = ''
+  files.value = []
+  selectedSkillNames.value = []
+  _userScrolledUp.value = false
+  nextTick(() => agentInputEl.value?.focus())
 }
 
 // ── Send message ──
@@ -1033,6 +1057,8 @@ onUnmounted(() => {
   transition: all var(--motion-fast);
 }
 .agent-hdr-btn:hover { color: var(--c-text-0); background: var(--c-surface-2); }
+.agent-hdr-btn:disabled,
+.agent-hdr-btn:disabled:hover { color: var(--c-text-3); opacity: 0.45; cursor: not-allowed; background: transparent; }
 
 .agent-close-btn {
   background: none; border: none; color: var(--c-text-3);

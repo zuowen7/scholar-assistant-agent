@@ -17,7 +17,7 @@ import { i18n } from '../i18n'
 import {
   setEditorInstance, setContent, updateSelection, markClean, markDirty,
   openFile, openNewUntitled, closeTab, setActiveTab, renameTabPath, saveFile,
-  reloadOpenTabs,
+  reloadOpenTabs, applyExternalFileUpdate,
 } from './useEditorTabs'
 
 // ── AI Edit ──────────────────────────────────────────────────────────────
@@ -203,6 +203,6 @@ export function useEditor() {
     setEditorInstance, setContent, updateSelection, markClean, markDirty,
     openFile, openNewUntitled, closeTab, setActiveTab, renameTabPath, saveFile,
     aiEdit, inlineEdit, cancelAiEdit, applyAiResult, rejectAiResult, undoEdit,
-    cleanup, reloadOpenTabs,
+    cleanup, reloadOpenTabs, applyExternalFileUpdate,
   }
 }

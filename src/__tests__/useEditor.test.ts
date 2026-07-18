@@ -52,6 +52,7 @@ import {
 import {
   openFile, openNewUntitled, closeTab, setActiveTab,
   setContent, updateSelection, markClean, markDirty, saveFile,
+  applyExternalFileUpdate,
 } from '../composables/useEditorTabs'
 import { inlineEdit } from '../composables/useEditor'
 
@@ -96,6 +97,38 @@ describe('editor state composables (split)', () => {
     it('has activeFile as null', () => { expect(activeFile.value).toBeNull() })
     it('has contentVersion at 0', () => { expect(contentVersion.value).toBe(0) })
     it('has empty selection text', () => { expect(selection.value.text).toBe('') })
+  })
+
+  describe('external file updates', () => {
+    it('preserves a dirty tab when Agent writes the same file', () => {
+      openFile('C:\\paper\\draft.md', 'user draft')
+      markDirty()
+
+      const result = applyExternalFileUpdate('c:/paper/draft.md', 'agent draft')
+
+      expect(result).toBe('conflict')
+      expect(activeTab.value?.content).toBe('user draft')
+      expect(activeTab.value?.isModified).toBe(true)
+    })
+
+    it('updates a clean tab and its Monaco model without moving the cursor', () => {
+      openFile('C:\\paper\\draft.md', 'old')
+      const model = { setValue: vi.fn() }
+      const position = { lineNumber: 1, column: 2 }
+      monacoEditor.value = {
+        getModel: vi.fn(() => model),
+        getPosition: vi.fn(() => position),
+        setPosition: vi.fn(),
+      } as any
+
+      const result = applyExternalFileUpdate('c:/paper/draft.md', 'new')
+
+      expect(result).toBe('applied')
+      expect(activeTab.value?.content).toBe('new')
+      expect(activeTab.value?.isModified).toBe(false)
+      expect(model.setValue).toHaveBeenCalledWith('new')
+      expect(monacoEditor.value?.setPosition).toHaveBeenCalledWith(position)
+    })
   })
 
   // ── openFile ───────────────────────────────────────────────────────────

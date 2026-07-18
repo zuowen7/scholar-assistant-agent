@@ -15,7 +15,8 @@ describe('shouldShowInlineDiff', () => {
   let shouldShowInlineDiff: (
     toolName: string,
     args: Record<string, unknown>,
-    openTabPaths: string[],
+    openTabs: Array<string | { path: string | null; content?: string }>,
+    preview?: Record<string, unknown>,
   ) => boolean
 
   beforeEach(async () => {
@@ -35,6 +36,30 @@ describe('shouldShowInlineDiff', () => {
       old_string: 'hello',
       new_string: 'world',
     }, ['/project/paper.md'])).toBe(true)
+  })
+
+  it('falls back to text approval when dirty content no longer contains the replacement anchor', () => {
+    expect(shouldShowInlineDiff('str_replace', {
+      file_path: 'C:\\project\\paper.md',
+      old_string: 'disk version',
+      new_string: 'agent version',
+    }, [{ path: 'c:/project/paper.md', content: 'unsaved user version' }])).toBe(false)
+  })
+
+  it('falls back to text approval when the replacement anchor is ambiguous', () => {
+    expect(shouldShowInlineDiff('str_replace', {
+      file_path: '/project/paper.md',
+      old_string: 'repeat',
+      new_string: 'replacement',
+    }, [{ path: '/project/paper.md', content: 'repeat and repeat' }])).toBe(false)
+  })
+
+  it('shows inline diff when dirty content still has one exact replacement anchor', () => {
+    expect(shouldShowInlineDiff('str_replace', {
+      file_path: '/project/paper.md',
+      old_string: 'old',
+      new_string: 'new',
+    }, [{ path: '/project/paper.md', content: 'unsaved prefix old suffix' }])).toBe(true)
   })
 
   it('returns false for str_replace on non-open file', () => {
