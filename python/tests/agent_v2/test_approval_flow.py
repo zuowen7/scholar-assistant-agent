@@ -156,6 +156,78 @@ class TestApprovalPause:
         assert AgentEventType.DONE in types
         assert not (workspace / "new.txt").exists()
 
+    @pytest.mark.asyncio
+    async def test_allow_session_skips_later_approval_for_same_tool(self, workspace: Path):
+        provider = MockProvider(scenarios=[
+            Scenario("first", trigger_patterns=["edit twice"], turn_index=0,
+                     response_factory=lambda m, t: _tool_response("str_replace", {
+                         "file_path": "test.md", "old_string": "original", "new_string": "first",
+                     })),
+            Scenario("second", trigger_patterns=["edit twice"], turn_index=1,
+                     response_factory=lambda m, t: _tool_response("str_replace", {
+                         "file_path": "test.md", "old_string": "first", "new_string": "second",
+                     })),
+            Scenario("done", trigger_patterns=["edit twice"], turn_index=2,
+                     response_factory=lambda m, t: _text_response("Both edits completed.")),
+        ])
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        session = Session(workspace=str(workspace))
+        rt = ConversationRuntime(provider=provider, tool_registry=registry,
+                                 permission_policy=policy, session=session, auto_approve=False)
+
+        events = []
+
+        async def _bg_collect():
+            async for event in rt.turn("edit twice"):
+                events.append(event)
+
+        task = asyncio.create_task(_bg_collect())
+        for _ in range(30):
+            approval = next((event for event in events if event.type == AgentEventType.AWAIT_APPROVAL), None)
+            if approval:
+                assert rt.approve(approval.data.get("id", ""), "allow_session")
+                break
+            await asyncio.sleep(0.05)
+        else:
+            pytest.fail("Expected first edit approval")
+
+        await asyncio.wait_for(task, timeout=5)
+        types = [event.type for event in events]
+        assert types.count(AgentEventType.AWAIT_APPROVAL) == 1
+        assert types.count(AgentEventType.CHECKPOINT) == 2
+        assert (workspace / "test.md").read_text(encoding="utf-8") == "second content\n"
+
+    @pytest.mark.asyncio
+    async def test_approval_timeout_denies_without_writing(
+        self, workspace: Path, monkeypatch: pytest.MonkeyPatch,
+    ):
+        monkeypatch.setattr("src.agent_v2.runtime.conversation._APPROVAL_TIMEOUT", 0.05)
+        provider = MockProvider(scenarios=[
+            Scenario("w", trigger_patterns=["write"],
+                     response_factory=lambda m, t: _tool_response("write_file", {
+                         "file_path": "timed-out.txt", "content": "must not be written",
+                     })),
+        ])
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        session = Session(workspace=str(workspace))
+        rt = ConversationRuntime(provider=provider, tool_registry=registry,
+                                 permission_policy=policy, session=session, auto_approve=False)
+
+        events = await _collect(rt, "write after approval", timeout=2)
+        types = [event.type for event in events]
+        decisions = [
+            event.data.get("decision")
+            for event in events
+            if event.type == AgentEventType.APPROVAL_RECEIVED
+        ]
+        assert types.count(AgentEventType.AWAIT_APPROVAL) == 1
+        assert decisions == ["deny"]
+        assert AgentEventType.ABORTED in types
+        assert AgentEventType.DONE in types
+        assert not (workspace / "timed-out.txt").exists()
+
 
 class TestApprovalRecovery:
     @pytest.mark.asyncio
