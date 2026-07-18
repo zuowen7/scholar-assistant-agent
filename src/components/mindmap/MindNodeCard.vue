@@ -173,9 +173,9 @@ defineExpose({ startEdit })
   min-width: 132px;
   max-width: 276px;
   background: var(--c-surface-1);
-  border: 1px solid var(--c-sent-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--elevation-1);
+  border: 1px solid var(--c-border);
+  border-radius: 11px;
+  box-shadow: 0 4px 14px rgba(45, 39, 29, .09);
   overflow: hidden;
   position: relative;
   transition: transform 200ms var(--ease-spring),
@@ -185,23 +185,10 @@ defineExpose({ startEdit })
   cursor: grab;
 }
 .mind-node:active { cursor: grabbing; }
-/* 墨韵涟漪 hover */
-.mind-node::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle at center, var(--c-accent) 0%, transparent 70%);
-  opacity: 0;
-  pointer-events: none;
-  z-index: 0;
-  transition: opacity 300ms var(--ease-brush);
-}
-.mind-node:hover::after { opacity: 0.05; }
-
 .mind-node:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--elevation-2);
-  border-color: var(--c-surface-4);
+  transform: translateY(-1px);
+  box-shadow: 0 7px 20px rgba(45, 39, 29, .12);
+  border-color: #D8D0C2;
 }
 .mind-node:active { transform: scale(0.985); }
 .mind-node:focus-visible {
@@ -211,7 +198,7 @@ defineExpose({ startEdit })
 }
 .mind-node.selected {
   border-color: var(--c-accent);
-  box-shadow: 0 0 0 2px var(--c-accent-ring), var(--elevation-2);
+  box-shadow: 0 0 0 2px var(--c-accent-ring), 0 7px 20px rgba(45, 39, 29, .11);
 }
 .mind-node.selected:hover {
   box-shadow: 0 0 0 2px var(--c-accent-ring), var(--elevation-3);
@@ -220,21 +207,23 @@ defineExpose({ startEdit })
   border-color: var(--c-accent);
   box-shadow: 0 0 0 3px var(--c-accent-ring), var(--elevation-2);
 }
-/* AI 展开中：脉动光环包裹整张卡片 */
 .mind-node.expanding {
   border-color: var(--c-accent);
   animation: node-busy-pulse 1.4s var(--ease-smooth) infinite;
 }
 @keyframes node-busy-pulse {
-  0%, 100% { box-shadow: 0 0 0 1px var(--c-accent-soft), var(--elevation-2); }
-  50%      { box-shadow: 0 0 0 4px var(--c-accent-soft), var(--elevation-3); }
+  0%, 100% { box-shadow: 0 0 0 1px var(--c-accent-soft), var(--elevation-1); }
+  50%      { box-shadow: 0 0 0 2px var(--c-accent-soft), var(--elevation-2); }
 }
 .mind-node.root {
-  min-width: 154px;
-  max-width: 300px;
-  background: linear-gradient(135deg, var(--c-surface-2) 0%, var(--c-accent-bg2) 100%);
-  border-color: var(--c-surface-3);
+  min-width: 260px;
+  max-width: 320px;
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+  box-shadow: 0 5px 14px rgba(45, 39, 29, .12);
 }
+.mind-node.root.selected { box-shadow: 0 0 0 2px var(--c-accent-ring), 0 5px 14px rgba(45, 39, 29, .12); }
+.mind-node.root .color-bar { display: none; }
 
 .color-bar {
   width: 4px;
@@ -245,15 +234,6 @@ defineExpose({ startEdit })
   bottom: 0;
   z-index: 1;
 }
-/* 光泽叠加 — 仿漆面高光 */
-.color-bar::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to bottom, rgba(255,255,255,0.3) 0%, transparent 40%, rgba(0,0,0,0.15) 100%);
-  opacity: 0.5;
-}
-
 .node-body {
   padding: 7px 10px 7px 14px;
   display: flex;
@@ -288,10 +268,13 @@ defineExpose({ startEdit })
   cursor: default;
 }
 .mind-node.root .node-text {
-  font-size: 14px;
-  font-weight: 650;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
   letter-spacing: var(--tracking-tight);
 }
+.mind-node.root .node-icon,
+.mind-node.root .body-toggle { color: rgba(255,255,255,.82); }
 
 .body-toggle {
   background: none;

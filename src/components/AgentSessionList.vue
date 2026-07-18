@@ -45,7 +45,7 @@
           <span class="session-badge" :class="stateClass(s.state)">{{ s.state }}</span>
         </div>
         <div class="session-meta">
-          <span>{{ s.tasks_done }}/{{ s.tasks_total }} tasks</span>
+          <span>{{ t('agent.taskCount', { done: s.tasks_done, total: s.tasks_total }) }}</span>
           <span v-if="s.updated_at" class="session-time">{{ formatTime(s.updated_at) }}</span>
         </div>
         <span v-if="isResumable(s)" class="session-resume-hint">{{ t('agent.resume') }}</span>
@@ -58,7 +58,7 @@
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 import type { AgentSessionInfo } from '../types'
 import { API_BASE } from '../utils/api'
 import UiSkeleton from './ui/UiSkeleton.vue'
@@ -105,11 +105,12 @@ function formatTime(iso: string): string {
     const now = new Date()
     const diffMs = now.getTime() - d.getTime()
     const diffMin = Math.floor(diffMs / 60000)
-    if (diffMin < 1) return 'just now'
-    if (diffMin < 60) return `${diffMin}m ago`
+    const relative = new Intl.RelativeTimeFormat(locale.value, { numeric: 'auto' })
+    if (diffMin < 1) return relative.format(0, 'minute')
+    if (diffMin < 60) return relative.format(-diffMin, 'minute')
     const diffHr = Math.floor(diffMin / 60)
-    if (diffHr < 24) return `${diffHr}h ago`
-    return d.toLocaleDateString()
+    if (diffHr < 24) return relative.format(-diffHr, 'hour')
+    return d.toLocaleDateString(locale.value)
   } catch {
     return ''
   }
@@ -143,9 +144,7 @@ defineExpose({ fetchSessions })
   border-bottom: 1px solid var(--c-glass-border);
   position: sticky;
   top: 0;
-  background: var(--c-glass);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: var(--c-panel);
   z-index: 2;
 }
 .header-title { font-size: var(--text-sm); letter-spacing: 0.02em; }

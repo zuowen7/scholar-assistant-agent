@@ -380,19 +380,13 @@ fn spawn_python_inner<R: tauri::Runtime, M: Manager<R>>(
         if api_str.contains('\0') {
             return Err("Python path contains NUL byte, cannot spawn process".to_string());
         }
-        let python_cmd = if cfg!(windows) { "python" } else { "python3" };
+        let python_cmd = resolve_dev_python_command()?;
         eprintln!("[INFO] Dev mode: {} {} --port 18088", python_cmd, api_str);
 
-        build_command(python_cmd, &[api_str.as_str(), "--port", "18088"])
+        build_command(&python_cmd, &[api_str.as_str(), "--port", "18088"])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
-            .or_else(|_| {
-                build_command("python", &[api_str.as_str(), "--port", "18088"])
-                    .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::piped())
-                    .spawn()
-            })
             .map_err(|e| format!("Failed to start Python: {}. Please make sure Python is installed.", e))?
     } else {
         let api_exe = python_dir.join(if cfg!(windows) { "api.exe" } else { "api" });
@@ -465,6 +459,55 @@ fn spawn_python_inner<R: tauri::Runtime, M: Manager<R>>(
         Check the backend logs or restart the application.",
         pid
     ))
+}
+
+/// Resolve a development interpreter that can actually import the backend's
+/// direct runtime dependencies.  A bare `python` may point at the Windows Store
+/// alias or at another installation without PyYAML/FastAPI, so executable
+/// presence alone is not sufficient.
+fn resolve_dev_python_command() -> Result<String, String> {
+    let mut candidates = Vec::<String>::new();
+
+    if let Ok(configured) = std::env::var("SCHOLAR_ASSISTANT_PYTHON") {
+        if !configured.trim().is_empty() {
+            candidates.push(configured);
+        }
+    }
+
+    let locator = if cfg!(windows) { "where.exe" } else { "which" };
+    let lookup_name = if cfg!(windows) { "python" } else { "python3" };
+    if let Ok(output) = std::process::Command::new(locator)
+        .arg(lookup_name)
+        .output()
+    {
+        if output.status.success() {
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                let candidate = line.trim();
+                if !candidate.is_empty() {
+                    candidates.push(candidate.to_string());
+                }
+            }
+        }
+    }
+
+    candidates.push(lookup_name.to_string());
+    candidates.push("python".to_string());
+    candidates.dedup();
+
+    for candidate in candidates {
+        let ready = build_command(&candidate, &["-c", "import yaml, fastapi, uvicorn"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false);
+
+        if ready {
+            return Ok(candidate);
+        }
+    }
+
+    Err("No Python interpreter with PyYAML, FastAPI, and Uvicorn was found. Set SCHOLAR_ASSISTANT_PYTHON to the project environment's python executable.".to_string())
 }
 
 fn resolve_python_dir() -> std::path::PathBuf {

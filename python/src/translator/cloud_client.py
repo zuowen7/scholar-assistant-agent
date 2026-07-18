@@ -274,6 +274,7 @@ class CloudClient:
 CRITICAL: Preserve paragraph structure exactly.
 - Input has N paragraphs separated by blank lines (\\n\\n).
 - Output MUST have exactly N paragraphs separated by blank lines.
+- Keep every paragraph in the same order as the input.
 - Do NOT merge paragraphs. Do NOT split paragraphs.
 - Do NOT add explanations, headers, or numbering.
 - Do NOT include the original text in your output.

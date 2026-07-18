@@ -102,31 +102,33 @@ function autosizeEl(ta: HTMLTextAreaElement) {
 <style scoped>
 /* Base node */
 .arg-node {
-  min-width: 140px;
-  max-width: 260px;
-  padding: 8px 10px;
-  background: var(--c-surface-1);
-  border: 1.5px solid var(--c-surface-3);
-  border-radius: var(--radius-md);
+  --arg-tone: var(--c-text-3);
+  min-width: 168px;
+  max-width: 280px;
+  padding: 10px 12px;
+  background: var(--c-panel);
+  border: 1px solid var(--c-border);
+  border-left: 3px solid var(--arg-tone);
+  border-radius: 10px;
   box-shadow: var(--elevation-1);
   position: relative;
   cursor: grab;
   transition: transform 200ms var(--ease-spring), box-shadow 200ms var(--ease-out), border-color 200ms var(--ease-out);
 }
-.arg-node:hover { transform: translateY(-2px); box-shadow: var(--elevation-2); }
+.arg-node:hover { transform: translateY(-1px); box-shadow: var(--elevation-2); }
 .arg-node.selected {
   border-color: var(--c-accent);
   box-shadow: 0 0 0 2px var(--c-accent-ring), var(--elevation-2);
 }
 .arg-node.editing { border-color: var(--c-accent); }
 
-/* Per-type colors */
-.arg-node.type-claim { border-color: var(--c-accent); border-width: 2.5px; background: linear-gradient(135deg, var(--c-surface-1) 0%, var(--c-accent-bg2) 100%); }
-.arg-node.type-grounds { border-color: #10b981; }
-.arg-node.type-warrant { border-color: #3b82f6; border-style: dashed; }
-.arg-node.type-backing { border-color: #93c5fd; }
-.arg-node.type-qualifier { border-color: #f59e0b; border-radius: 999px; }
-.arg-node.type-rebuttal { border-color: var(--c-danger); border-style: dashed; }
+/* Restrained semantic tones keep hierarchy without turning the canvas into badges. */
+.arg-node.type-claim { --arg-tone: var(--c-accent); background: color-mix(in srgb, var(--c-accent-soft) 42%, var(--c-panel)); }
+.arg-node.type-grounds { --arg-tone: #6f9276; }
+.arg-node.type-warrant { --arg-tone: #7182a6; }
+.arg-node.type-backing { --arg-tone: #94a3a5; }
+.arg-node.type-qualifier { --arg-tone: #aa8757; }
+.arg-node.type-rebuttal { --arg-tone: #a76f62; }
 
 /* Header */
 .arg-node-header {
@@ -144,12 +146,7 @@ function autosizeEl(ta: HTMLTextAreaElement) {
   color: var(--c-text-2);
   opacity: 0.8;
 }
-.type-claim .arg-node-type-tag { color: var(--c-accent); opacity: 1; }
-.type-grounds .arg-node-type-tag { color: #10b981; opacity: 1; }
-.type-warrant .arg-node-type-tag { color: #3b82f6; opacity: 1; }
-.type-backing .arg-node-type-tag { color: #93c5fd; opacity: 1; }
-.type-qualifier .arg-node-type-tag { color: #f59e0b; opacity: 1; }
-.type-rebuttal .arg-node-type-tag { color: var(--c-danger); opacity: 1; }
+.arg-node .arg-node-type-tag { color: var(--arg-tone); opacity: 1; }
 
 .arg-node-badges { display: flex; align-items: center; gap: 4px; }
 
@@ -167,10 +164,10 @@ function autosizeEl(ta: HTMLTextAreaElement) {
   font-size: 9px;
   font-weight: 700;
   padding: 1px 4px;
-  border-radius: 3px;
-  background: var(--c-accent-bg2);
-  color: var(--c-accent);
-  border: 1px solid var(--c-accent-ring);
+  border-radius: 4px;
+  background: var(--c-surface-2);
+  color: var(--c-text-2);
+  border: 1px solid var(--c-border);
 }
 
 /* Text */
@@ -201,7 +198,7 @@ function autosizeEl(ta: HTMLTextAreaElement) {
 .arg-handle {
   width: 9px;
   height: 9px;
-  background: var(--c-accent);
+  background: var(--arg-tone);
   border: 2px solid var(--c-surface-1);
   border-radius: 50%;
   opacity: 0;

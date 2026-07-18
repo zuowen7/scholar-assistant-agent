@@ -1,5 +1,5 @@
 <template>
-  <div class="monaco-wrapper">
+  <div class="monaco-wrapper" :class="`presentation-${presentation}`">
     <div ref="editorContainer" class="monaco-container"></div>
     <CommandPalette
       v-if="showPalette"
@@ -13,7 +13,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -37,14 +37,16 @@ self.MonacoEnvironment = {
 
 const props = defineProps<{
   theme?: 'vs-dark' | 'vs'
+  presentation?: 'code' | 'document'
 }>()
+const presentation = computed(() => props.presentation || 'code')
 
 const editorContainer = ref<HTMLElement>()
 const {
   setEditorInstance, setContent, content, updateSelection,
   activeTabId, markDirty, aiEdit,
 } = useEditor()
-const { activeEdit, clearActiveEdit } = useEditorState()
+const { activeEdit, clearActiveEdit, activeTab } = useEditorState()
 const { sendApproval } = useAgentChat()
 
 let editor: monaco.editor.IStandaloneCodeEditor | null = null
@@ -96,12 +98,37 @@ let cachedCompletion: string = ''
 let cachedPosition: { lineNumber: number; column: number } | null = null
 let _monacoUpdating = false
 
+function activeLanguage() {
+  return /\.tex$/i.test(activeTab.value?.name || activeTab.value?.path || '') ? 'latex' : 'markdown'
+}
+
+function applyPresentation() {
+  if (!editor) return
+  const documentMode = presentation.value === 'document'
+  editor.updateOptions({
+    lineNumbers: documentMode ? 'off' : 'on',
+    glyphMargin: !documentMode,
+    folding: !documentMode,
+    minimap: { enabled: !documentMode },
+    fontSize: documentMode ? 16 : 14,
+    lineHeight: documentMode ? 30 : 22,
+    fontFamily: documentMode
+      ? "'Noto Serif SC', 'Songti SC', 'SimSun', serif"
+      : "'JetBrains Mono', 'Consolas', 'Courier New', monospace",
+    padding: documentMode ? { top: 38, bottom: 56 } : { top: 16, bottom: 16 },
+    renderLineHighlight: documentMode ? 'none' : 'line',
+    overviewRulerLanes: documentMode ? 0 : 3,
+    hideCursorInOverviewRuler: documentMode,
+    scrollbar: { verticalScrollbarSize: 9, horizontalScrollbarSize: 9 },
+  })
+}
+
 onMounted(() => {
   if (!editorContainer.value) return
 
   editor = monaco.editor.create(editorContainer.value, {
     value: content.value,
-    language: 'markdown',
+    language: activeLanguage(),
     theme: props.theme || 'vs-dark',
     wordWrap: 'on',
     minimap: { enabled: true },
@@ -121,6 +148,7 @@ onMounted(() => {
     parameterHints: { enabled: true },
     acceptSuggestionOnEnter: 'on',
   })
+  applyPresentation()
 
   // ── AI Inline Completions Provider ──────────────────────
   // Returns cached completion when Monaco requests it.
@@ -199,9 +227,17 @@ onMounted(() => {
   })
 
   editor.onDidChangeModelContent(() => {
-    if (!editor) return
+    // Switching tabs and restoring a tab's model are programmatic updates.
+    // They must not make a clean file look modified or overwrite the tab's
+    // clean state before the user has actually edited anything.
+    if (!editor || _monacoUpdating) return
+    const nextValue = editor.getValue()
+    // Monaco can deliver setValue's content event after Vue's nextTick guard
+    // has cleared. Equality against the active tab is the second, durable
+    // boundary between model restoration and an actual user edit.
+    if (nextValue === activeTab.value?.content) return
     _monacoUpdating = true
-    setContent(editor.getValue())
+    setContent(nextValue)
     markDirty()
     // Clear stale cache and schedule new completion
     cachedCompletion = ''
@@ -351,6 +387,7 @@ async function handlePaletteSubmit(payload: { instruction: string; taskType: str
 }
 
 watch(() => props.theme, (t) => { if (t) monaco.editor.setTheme(t) })
+watch(() => props.presentation, () => applyPresentation())
 
 watch(
   [() => companion.state.ledger, () => companion.state.review],
@@ -369,6 +406,9 @@ watch(activeTabId, () => {
   if (tab && editor.getValue() !== tab.content) {
     editor.setValue(tab.content)
   }
+  const model = editor.getModel()
+  if (model) monaco.editor.setModelLanguage(model, activeLanguage())
+  applyPresentation()
   nextTick(() => { _monacoUpdating = false })
 })
 
@@ -530,6 +570,8 @@ onBeforeUnmount(() => {
 <style scoped>
 .monaco-wrapper { position: relative; width: 100%; height: 100%; min-height: 0; }
 .monaco-container { width: 100%; height: 100%; min-height: 0; }
+.presentation-document { background: #FBFAF7; }
+.presentation-document .monaco-container { max-width: 820px; margin: 0 auto; border-left: 1px solid var(--c-border); border-right: 1px solid var(--c-border); background: var(--c-panel); }
 </style>
 
 <style>

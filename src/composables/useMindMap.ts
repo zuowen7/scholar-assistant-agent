@@ -323,6 +323,16 @@ export function useMindMap() {
     setNodePosition(id, position)
   }
 
+  function commitNodePositions(positions: Record<string, MindMapPosition>) {
+    const entries = Object.entries(positions).filter(([id]) => Boolean(draftMindMap.value.nodes[id]))
+    if (!entries.length) return
+    pushHistory()
+    for (const [id, position] of entries) {
+      draftMindMap.value.positions[id] = { ...position }
+    }
+    draftMindMap.value.updatedAt = Date.now()
+  }
+
   function addChild(parentId = selectedNodeId.value, position?: MindMapPosition): string | undefined {
     const map = draftMindMap.value
     const parent = map.nodes[parentId]
@@ -499,6 +509,7 @@ export function useMindMap() {
     skipNextBackendLoad: () => { _skipNextBackendLoad = true },
     setNodePosition,
     commitNodePosition,
+    commitNodePositions,
     addChild,
     addSibling,
     addAssociationLink,

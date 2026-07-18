@@ -81,7 +81,13 @@ class TranslationMemory:
                 return self._encoder
             try:
                 from sentence_transformers import SentenceTransformer
-                self._encoder = SentenceTransformer("all-MiniLM-L6-v2")
+                # Translation must not pause indefinitely while Hugging Face tries to
+                # download an optional fuzzy-match model. Use an existing local cache;
+                # exact TM matches remain available when the model is absent.
+                self._encoder = SentenceTransformer(
+                    "all-MiniLM-L6-v2",
+                    local_files_only=True,
+                )
                 self._encoder_dim = self._encoder.get_sentence_embedding_dimension()
                 self._fuzzy_ok = True
             except ImportError:
@@ -197,8 +203,13 @@ class TranslationMemory:
         source_hash = hashlib.sha256(source_text.encode()).hexdigest()
         meta_str = json.dumps(metadata, ensure_ascii=False) if metadata else None
 
-        vec = self._embed(source_text)[0]
-        emb_blob = self._vec_to_blob(vec)
+        emb_blob = None
+        try:
+            vec = self._embed(source_text)[0]
+            emb_blob = self._vec_to_blob(vec)
+        except Exception as exc:
+            # An optional embedding failure must not prevent exact-match TM storage.
+            logger.debug("TM embedding unavailable; storing exact pair only: %s", exc)
 
         self._conn.execute(
             """INSERT OR REPLACE INTO tm_entries

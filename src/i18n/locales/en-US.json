@@ -41,6 +41,109 @@
     "modelsAvailable": "{count} models available",
     "installOllamaHint": "Install Ollama and run ollama pull <model>"
   },
+  "shell": {
+    "primaryNav": "Primary modules",
+    "translate": "Translate",
+    "write": "Write",
+    "think": "Think",
+    "review": "Review",
+    "localUser": "Local researcher",
+    "localWorkspace": "Local workspace",
+    "windowControls": "Window controls",
+    "recentFiles": "Recent files",
+    "recentEmpty": "Opened projects will appear here"
+  },
+  "outline": {
+    "title": "Document outline",
+    "add": "Add section",
+    "empty": "Markdown headings from the real document will form the outline here."
+  },
+  "taskAgent": {
+    "title": "AI Research Assistant",
+    "currentTask": "Current task",
+    "waiting": "Waiting for a research task",
+    "steps": "Steps",
+    "stepsEmpty": "Real tool steps and progress appear here after the Agent starts.",
+    "result": "Result",
+    "selectionPlaceholder": "Assign a task for the selection…",
+    "placeholder": "Enter a research question or task; press Enter to send",
+    "polishPrompt": "Polish the selected text while preserving its academic tone and meaning.",
+    "argumentPrompt": "Check the current section's argument and propose actionable edits.",
+    "selectionScope": "Scope: {count} selected characters",
+    "fileScope": "Scope: {file}",
+    "documentScope": "Scope: current document",
+    "analyzeTask": "Analyze task",
+    "executeTool": "Run tool",
+    "understandContext": "Understand the context and research goal",
+    "tools": { "readFile": "Read document context", "writeFile": "Write document changes", "replace": "Prepare a local edit", "grep": "Search project content", "glob": "Locate related files", "command": "Run a project command", "rag": "Search research library", "webSearch": "Search external sources", "webFetch": "Read a reference source" }
+  },
+  "reviewerWorkspace": {
+    "title": "Adversarial Review · Reviewer-2",
+    "workspaceNav": "Review workspace",
+    "reviewerTab": "Adversarial Review · Reviewer-2",
+    "ledgerTab": "Claim Fulfillment · Ledger",
+    "ledgerTitle": "Claim Fulfillment · Claim Ledger",
+    "ledgerSubtitle": "Verify that claims from the abstract and introduction are fulfilled by evidence, methods, or experiments",
+    "experimentSuggestion": "Suggested experiment",
+    "generalReview": "General review",
+    "importReview": "Import real review",
+    "argumentMap": "Argument Map",
+    "reviewing": "Reviewing…",
+    "startReview": "Start review",
+    "importPlaceholder": "Paste real reviewer comments to parse and anchor them to the current document",
+    "importAction": "Import and parse",
+    "filterLabel": "Review comment filter",
+    "targetVenue": "Target venue",
+    "persona": "Reviewer persona",
+    "reviewMode": "Review mode",
+    "parallel": "Parallel review",
+    "serial": "Serial review",
+    "emptyTitle": "No review comments yet",
+    "emptyDescription": "Open a real document and run Reviewer-2. Critiques, source anchors, and author responses remain in the existing review session.",
+    "reviewDocument": "Review current document",
+    "loading": "Reviewer-2 is reading the document and generating anchored critiques…",
+    "rebuildLedger": "Rebuild",
+    "buildLedger": "Build ledger",
+    "ledgerEmpty": "Build a Claim Ledger from the current document to see claim fulfillment here.",
+    "overview": "Review overview",
+    "total": "Critiques",
+    "responded": "Responded",
+    "pending": "Pending",
+    "responseRate": "Response completion {rate}%",
+    "tip": "Reading note",
+    "mapSubtitle": "Uses the existing Toulmin Argument Map and real node data",
+    "backReviewer": "Back to Reviewer-2",
+    "currentDocument": "Current document",
+    "noDocument": "No document selected",
+    "subtitle": "Review · {title} · {count} critiques",
+    "pendingTip": "Prioritize method and experiment critiques; they often have the greatest effect on acceptance.",
+    "doneTip": "No responses remain. Check the Claim Ledger for promises that are still unfulfilled.",
+    "promise": { "paid": "Fulfilled", "partial": "Partial", "unpaid": "Unfulfilled", "mismatch": "Mismatch", "unknown": "Review" }
+  },
+  "settingsCenter": {
+    "title": "Settings",
+    "subtitle": "Models, reading, network, and voice",
+    "sections": "Settings sections",
+    "engineDescription": "Choose the model service used by the existing translation and writing flows. Configuration is saved to the current backend; no duplicate Provider is created.",
+    "cloudDescription": "Use a configured cloud Provider and model.",
+    "localDescription": "Run models locally through Ollama so research files can stay on this device.",
+    "tectonicDescription": "Compiles LaTeX projects to PDF.",
+    "displayDescription": "Keep the interface theme, language, and translation reading typography consistent.",
+    "appearance": "Appearance",
+    "darkActive": "Dark paper-and-ink theme is active",
+    "lightActive": "Warm paper theme is active",
+    "light": "Light",
+    "dark": "Dark",
+    "typographyDescription": "These settings apply directly to the bilingual translation reader.",
+    "previewLabel": "Reading preview",
+    "previewText": "Clear typography keeps the source and translation calm and steady during long reading sessions.",
+    "networkDescription": "Configure an HTTP proxy for model and translation services. Restart the backend after saving.",
+    "backgroundDescription": "An optional local background only affects the product shell and is never uploaded.",
+    "noBackground": "Using the default warm paper background",
+    "voiceDescription": "Configure the global shortcut, speech language, and local wake word. Changes apply immediately.",
+    "voiceEnabledDescription": "Allow the shortcut or wake word to open voice commands.",
+    "wakeWordDescription": "Listen for the chosen wake word when speech recognition is supported."
+  },
   "status": {
     "online": "Online",
     "offline": "Offline",
@@ -133,7 +236,9 @@
     "analyzing2": "Analyzing"
   },
   "agent": {
-    "tabChat": "Chat",
+    "approvalRequest": "Agent requests permission to run",
+    "taskCount": "{done}/{total} tasks",
+    "tabChat": "Tasks",
     "tabDocs": "Library",
     "tabTemplates": "Templates",
     "tabSessions": "Sessions",
@@ -141,7 +246,7 @@
     "dockSide": "Dock Back to Sidebar",
     "popFloat": "Pop Out Floating Window",
     "close": "Close",
-    "placeholder": "Ask the Agent — it reads and writes files directly in your project",
+    "placeholder": "Give the Agent a concrete research or editing task",
     "workspace": "Workspace: {name}",
     "noWorkspace": "Open a project folder in the editor first",
     "labelTask": "Task",
@@ -158,7 +263,7 @@
     "contextDocument": "document",
     "removeAttachment": "Remove attachment",
     "addAttachment": "Add attachment",
-    "inputPlaceholder": "Type a message...",
+    "inputPlaceholder": "Describe the next task...",
     "stopGenerate": "Stop Generating",
     "send": "Send",
     "voiceStart": "Voice Input",
@@ -251,6 +356,20 @@
     "error": "Error",
     "errorPrefix": "Error: {msg}",
     "calling": "Calling: {tool}",
+    "writingTitle": "AI Writing Assistant",
+    "workspacePolish": "Polish selection",
+    "workspaceExpand": "Expand evidence",
+    "workspaceRewrite": "Rewrite expression",
+    "workspaceCompliance": "Compliance check",
+    "compliancePrompt": "Check academic conventions, citations, and LaTeX syntax in the current content",
+    "currentFile": "Current file: {file}",
+    "prompts": {
+      "polish": "Polish the current file for grammar, word choice, and flow while preserving meaning; edit the file directly.",
+      "expand": "Expand the current file with detail, reasoning, and supporting content; edit the file directly.",
+      "review": "Review the current file, identify issues, and append actionable suggestions.",
+      "en": "Translate the current file into academic English and save it as a new file.",
+      "zh": "Translate the current file into academic Chinese and save it as a new file."
+    },
     "cmd": {
       "explain": "Explain text",
       "fix": "Fix issues",
@@ -269,6 +388,7 @@
     "uploadFailed": "Upload failed",
     "uploadFailedHttp": "Upload failed ({status})",
     "streamFailed": "Streaming connection failed",
+    "streamEnded": "The translation connection ended unexpectedly. Please retry.",
     "connectFailed": "Connection failed ({status})",
     "reconnecting": "Connection interrupted, retrying ({attempt}/{max})… reconnecting in {delay}s",
     "chunksAndBlocks": "{chunks} chunks, {blocks} paragraphs",
@@ -379,7 +499,21 @@
     "dragOutlineWidth": "Drag to resize outline width",
     "dragAiPanelWidth": "Drag to resize AI panel width",
     "expandAiHints": "Expand AI hints",
-    "collapseAiHints": "Collapse AI hints"
+    "collapseAiHints": "Collapse AI hints",
+    "headerTitle": "Mind Map · {title}",
+    "headerSubtitle": "Thinking · {count} nodes · Live project data",
+    "returnToText": "Return to text",
+    "dragPropertiesHeight": "Drag to resize the properties panel",
+    "properties": "Properties",
+    "expandProperties": "Expand properties",
+    "collapseProperties": "Collapse properties",
+    "noSelection": "No node selected",
+    "nodeCount": "{count} nodes",
+    "linkCount": "{count} links",
+    "nodeText": "Node text",
+    "nodes": "Nodes",
+    "links": "Links",
+    "saveStatus": "Save status"
   },
   "argument": {
     "unnamedGraph": "Untitled Argument Map",
@@ -646,22 +780,23 @@
     "noTemplates": "No templates available yet",
     "includedSections": "Included Sections",
     "experiment": "Experiment",
-    "complianceTitle": "📋 Compliance Check Report",
+    "complianceTitle": "Compliance Check",
+    "complianceSubtitle": "Live checks for structure, terminology, citations, risk, and readability",
     "complianceAnalyzing": "Analyzing paper compliance...",
     "complianceRecheck": "Re-check",
     "complianceStart": "Click \"Re-check\" to start analysis",
-    "complianceStructure": "📑 Structure",
-    "complianceTerminology": "🔤 Terminology",
-    "complianceCitations": "📚 Citations",
-    "complianceHallucination": "⚡ Hallucination Risk",
-    "complianceReadability": "📖 Readability",
-    "compliancePass": "✅ Pass",
-    "complianceWarn": "⚠️ Needs Improvement",
-    "complianceFail": "❌ Fail",
-    "complianceUnknown": "❓ Unknown",
-    "complianceLowRisk": "🟢 Low Risk",
-    "complianceMediumRisk": "🟡 Medium Risk",
-    "complianceHighRisk": "🔴 High Risk",
+    "complianceStructure": "Structure",
+    "complianceTerminology": "Terminology",
+    "complianceCitations": "Citations",
+    "complianceHallucination": "Hallucination Risk",
+    "complianceReadability": "Readability",
+    "compliancePass": "Pass",
+    "complianceWarn": "Needs Improvement",
+    "complianceFail": "Fail",
+    "complianceUnknown": "Unknown",
+    "complianceLowRisk": "Low Risk",
+    "complianceMediumRisk": "Medium Risk",
+    "complianceHighRisk": "High Risk",
     "complianceNone": "None",
     "complianceWords": "chars",
     "characters": "characters",
@@ -702,6 +837,35 @@
     "rightAiEdit": "AI Edit",
     "rightArgument": "Argument",
     "rightClosePanel": "Close Panel"
+    ,"documentView": "Document view"
+    ,"lineWordCount": "{lines} lines · {words} words"
+    ,"unsavedChanges": "Unsaved changes"
+    ,"autoSaved": "Saved"
+    ,"writingView": "Writing"
+    ,"saveAction": "Save"
+    ,"polish": "Polish"
+    ,"aiPolish": "AI Polish"
+    ,"collapseRight": "Collapse assistant"
+    ,"expandRight": "Expand assistant"
+    ,"condense": "Condense"
+    ,"expand": "Expand"
+    ,"checkArgument": "Check argument"
+    ,"closeProjectDescription": "Return to the welcome page and close this workspace"
+    ,"closeProjectDirtyDetail": "Some tabs have unsaved changes. Continuing discards those in-memory edits but does not delete project files on disk."
+    ,"closeProjectDetail": "The project will close in this workspace and remain available under recent projects."
+    ,"notSaved": "Not saved"
+    ,"writingHeaderSubtitle": "Writing · Current section · {status}"
+    ,"latexHeaderSubtitle": "Writing · LaTeX editor · {status}"
+    ,"body": "Body"
+    ,"outline": "Outline"
+    ,"paperTitlePlaceholder": "Enter a paper title (optional)"
+    ,"newSection": "New section"
+    ,"selectedText": "selected text"
+    ,"documentTarget": "document"
+    ,"selectionTaskPrompt": "{action} the current {target}, preserve academic meaning and citations, and use the existing editing tools to propose a confirmable change."
+    ,"openRecentFailed": "Failed to open recent project"
+    ,"zoteroSearchDescription": "Search the connected Zotero library and insert the first matching citation at the cursor."
+    ,"zoteroSearchPlaceholder": "Title, author, DOI, or keyword"
   },
   "toast": {
     "unknownError": "Unknown error. Check your network or backend status."
@@ -822,7 +986,12 @@
     "searchPlaceholder": "Search files...",
     "noMatch": "No files matching \"{query}\"",
     "noFolderOpen": "No folder open",
-    "copyPath": "Copy Path"
+    "copyPath": "Copy Path",
+    "noFolderSubtitle": "Open a folder to browse and edit its files.",
+    "createDescription": "The new item will be created in the selected project folder.",
+    "deleteConfirmTitle": "Delete this item?",
+    "deleteConfirmDescription": "This action removes the item from disk.",
+    "deleteConfirmDetail": "\"{name}\" cannot be recovered from the application after deletion."
   },
   "commandPalette": {
     "aiCommand": "AI Edit Command",
@@ -847,6 +1016,8 @@
     "improveClarity": "Improve Clarity"
   },
   "reviewerThread": {
+    "anchorSource": "Anchored source",
+    "locate": "Locate",
     "collapse": "Collapse",
     "expandFull": "Expand Full Text",
     "locateText": "Locate in Source",
@@ -906,6 +1077,9 @@
     "templateResearchPaper": "Research Paper",
     "templateReviewPaper": "Literature Review",
     "templateThesis": "Thesis / Dissertation",
-    "templateBlank": "Blank Project"
+    "templateBlank": "Blank Project",
+    "createDescription": "Create the real project folder, writing files, and an optional Git baseline",
+    "initGitDescription": "Creates local version history inside the project folder and never pushes remotely.",
+    "templateReady": "The paper structure remains editable after creation"
   }
 }

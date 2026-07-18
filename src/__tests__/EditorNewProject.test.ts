@@ -44,8 +44,15 @@ globalThis.fetch = mockFetch
 import { mount } from '@vue/test-utils'
 import EditorNewProject from '../components/EditorNewProject.vue'
 
+function mountDialog(visible: boolean) {
+  return mount(EditorNewProject, {
+    props: { visible },
+    global: { stubs: { teleport: true } },
+  })
+}
+
 async function mountWithTemplates() {
-  const wrapper = mount(EditorNewProject, { props: { visible: true } })
+  const wrapper = mountDialog(true)
   await vi.dynamicImportSettled()
   await wrapper.vm.$nextTick()
   return wrapper
@@ -64,24 +71,24 @@ describe('EditorNewProject', () => {
   // ── Rendering ─────────────────────────────────────────────────────
 
   it('renders the dialog when visible', () => {
-    const wrapper = mount(EditorNewProject, { props: { visible: true } })
-    expect(wrapper.find('.project-start-dialog').exists()).toBe(true)
+    const wrapper = mountDialog(true)
+    expect(wrapper.find('.app-dialog').exists()).toBe(true)
   })
 
   it('hides the dialog when not visible', () => {
-    const wrapper = mount(EditorNewProject, { props: { visible: false } })
-    expect(wrapper.find('.project-start-dialog').exists()).toBe(false)
+    const wrapper = mountDialog(false)
+    expect(wrapper.find('.app-dialog').exists()).toBe(false)
   })
 
   it('emits close when backdrop is clicked', async () => {
     const wrapper = await mountWithTemplates()
-    await wrapper.find('.project-start-backdrop').trigger('click')
+    await wrapper.find('.app-dialog-layer').trigger('mousedown')
     expect(wrapper.emitted('close')).toHaveLength(1)
   })
 
   it('emits close when X button is clicked', async () => {
     const wrapper = await mountWithTemplates()
-    await wrapper.find('.project-start-close').trigger('click')
+    await wrapper.find('.app-dialog__close').trigger('click')
     expect(wrapper.emitted('close')).toHaveLength(1)
   })
 
@@ -183,8 +190,8 @@ describe('EditorNewProject', () => {
     await vi.dynamicImportSettled()
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.find('.error-msg').exists()).toBe(true)
-    expect(wrapper.find('.error-msg').text()).toContain('Server error')
+    expect(wrapper.find('.form-error').exists()).toBe(true)
+    expect(wrapper.find('.form-error').text()).toContain('Server error')
     // Should NOT emit project-created
     expect(wrapper.emitted('project-created')).toBeUndefined()
   })
