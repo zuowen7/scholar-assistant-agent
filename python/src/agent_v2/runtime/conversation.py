@@ -65,6 +65,7 @@ class ConversationRuntime:
         # Approval state
         self._approval_events: dict[str, asyncio.Event] = {}
         self._approval_decisions: dict[str, str] = {}
+        self._session_approved_tools: set[str] = set()
         self._approval_denied = False
         self._aborted = False
 
@@ -270,7 +271,11 @@ class ConversationRuntime:
             is_error = True
         else:
             # ── 文件修改工具：暂停等用户审批 ──
-            if tb.name in ("write_file", "str_replace") and not self.auto_approve:
+            if (
+                tb.name in ("write_file", "str_replace")
+                and not self.auto_approve
+                and tb.name not in self._session_approved_tools
+            ):
                 yield AgentEvent.await_approval(
                     tb.id, tb.name, f"Agent wants to edit {file_path}",
                     preview={"old_text": old_text, "new_text": new_text, "file_path": resolved_path},
@@ -298,6 +303,8 @@ class ConversationRuntime:
                     if not self._aborted:
                         self._approval_denied = True
                     return
+                if decision == "allow_session":
+                    self._session_approved_tools.add(tb.name)
 
             # Execute
             result = await self.tool_registry.execute(tb.name, args)
