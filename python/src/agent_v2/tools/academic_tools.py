@@ -181,6 +181,110 @@ def register_academic_tools(registry: ToolRegistry) -> None:
         "required": ["query"],
     }, rag_search, permission="read-only")
 
+    # ---- Argument Companion / Reviewer read tools -----------------------
+    # These tools expose the existing production stores through their public
+    # API. They do not duplicate Reviewer-2, Claim Ledger, or Argument Map
+    # logic; the Agent receives the same persisted data as the visible panels.
+
+    async def read_argument_graph(args: dict) -> ToolResult:
+        graph_id = str(args.get("graph_id", "")).strip()
+        source_doc = str(args.get("source_doc", "")).strip()
+        try:
+            import httpx
+            api_base = os.environ.get("SCHOLAR_API_BASE", "http://localhost:18088")
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                if graph_id:
+                    resp = await client.get(f"{api_base}/api/argument/graph/{graph_id}")
+                    if resp.status_code == 404:
+                        return ToolResult(f"Argument graph not found: {graph_id}", is_error=True)
+                    resp.raise_for_status()
+                    return ToolResult(json.dumps(resp.json(), ensure_ascii=False))
+
+                resp = await client.get(f"{api_base}/api/argument/graphs")
+                resp.raise_for_status()
+                graphs = resp.json()
+                if source_doc:
+                    normalized = source_doc.replace("\\", "/").lower()
+                    graphs = [
+                        graph for graph in graphs
+                        if str(graph.get("source_doc", "")).replace("\\", "/").lower() == normalized
+                    ]
+                if not graphs:
+                    return ToolResult("No argument graph found for the requested document.")
+                return ToolResult(json.dumps(graphs, ensure_ascii=False))
+        except Exception as e:
+            return ToolResult(f"Argument graph lookup failed: {e}", is_error=True)
+
+    registry.register("read_argument_graph", (
+        "Read the real Toulmin argument map. Provide graph_id for one full graph, "
+        "or source_doc to find graphs linked to a manuscript."
+    ), {
+        "type": "object",
+        "properties": {
+            "graph_id": {"type": "string", "description": "Argument graph ID"},
+            "source_doc": {"type": "string", "description": "Workspace document path"},
+        },
+    }, read_argument_graph, permission="read-only")
+
+    async def read_argument_ledger(args: dict) -> ToolResult:
+        doc_id = str(args.get("doc_id", "")).strip()
+        if not doc_id:
+            return ToolResult("error: doc_id is required", is_error=True)
+        try:
+            import httpx
+            api_base = os.environ.get("SCHOLAR_API_BASE", "http://localhost:18088")
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                # doc_id remains a query parameter because it may be a full path.
+                resp = await client.get(f"{api_base}/api/companion/ledger", params={"doc_id": doc_id})
+                if resp.status_code == 404:
+                    return ToolResult(f"Claim Ledger not found for: {doc_id}", is_error=True)
+                resp.raise_for_status()
+                return ToolResult(json.dumps(resp.json(), ensure_ascii=False))
+        except Exception as e:
+            return ToolResult(f"Claim Ledger lookup failed: {e}", is_error=True)
+
+    registry.register("read_argument_ledger", (
+        "Read the real Claim Ledger for a manuscript, including promises, "
+        "source anchors, discharge anchors, and fulfillment status."
+    ), {
+        "type": "object",
+        "properties": {
+            "doc_id": {"type": "string", "description": "Document ID or full workspace file path"},
+        },
+        "required": ["doc_id"],
+    }, read_argument_ledger, permission="read-only")
+
+    async def read_reviewer_state(args: dict) -> ToolResult:
+        session_id = str(args.get("session_id", "")).strip()
+        doc_id = str(args.get("doc_id", "")).strip()
+        if not session_id and not doc_id:
+            return ToolResult("error: session_id or doc_id is required", is_error=True)
+        try:
+            import httpx
+            api_base = os.environ.get("SCHOLAR_API_BASE", "http://localhost:18088")
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                if session_id:
+                    resp = await client.get(f"{api_base}/api/companion/review/{session_id}")
+                else:
+                    resp = await client.get(f"{api_base}/api/companion/reviews", params={"doc_id": doc_id})
+                if resp.status_code == 404:
+                    return ToolResult("Reviewer-2 state not found.", is_error=True)
+                resp.raise_for_status()
+                return ToolResult(json.dumps(resp.json(), ensure_ascii=False))
+        except Exception as e:
+            return ToolResult(f"Reviewer-2 lookup failed: {e}", is_error=True)
+
+    registry.register("read_reviewer_state", (
+        "Read persisted Reviewer-2 criticism, response status, rebuttal data, "
+        "and anchored manuscript evidence."
+    ), {
+        "type": "object",
+        "properties": {
+            "session_id": {"type": "string", "description": "Reviewer session ID"},
+            "doc_id": {"type": "string", "description": "Document ID or full workspace file path"},
+        },
+    }, read_reviewer_state, permission="read-only")
+
     # ---- web_search (参考 claw-code WebSearch) ----
     async def web_search(args: dict) -> ToolResult:
         """搜索网页。使用 DuckDuckGo HTML 搜索。"""

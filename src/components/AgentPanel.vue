@@ -12,7 +12,7 @@
       <div class="agent-tabs">
         <button class="agent-tab u-interactive" :class="{ active: tab === 'chat' }" @click="tab = 'chat'">{{ t('agent.tabChat') }}</button>
         <button class="agent-tab u-interactive" :class="{ active: tab === 'docs' }" @click="tab = 'docs'">{{ t('agent.tabDocs') }}</button>
-        <button class="agent-tab u-interactive" :class="{ active: tab === 'templates' }" @click="tab = 'templates'">{{ t('agent.tabTemplates') }}</button>
+        <button class="agent-tab u-interactive" :class="{ active: tab === 'templates' }" @click="tab = 'templates'">{{ t('agent.tabSkills') }}</button>
         <button class="agent-tab u-interactive" :class="{ active: tab === 'sessions' }" @click="tab = 'sessions'; refreshSessions()">{{ t('agent.tabSessions') }}</button>
       </div>
       <div class="agent-header-actions">
@@ -123,6 +123,18 @@
         <div v-if="contextText" class="agent-context-note">
           {{ t('agent.contextEditor', { type: editorSelection.text ? t('agent.contextSelection') : t('agent.contextDocument'), count: contextText.length }) }}
         </div>
+        <div v-if="selectedSkills.length" class="agent-selected-skills" :aria-label="t('agent.selectedSkills')">
+          <span class="selected-skills-label">{{ t('agent.selectedSkills') }}</span>
+          <button
+            v-for="skill in selectedSkills"
+            :key="skill.name"
+            class="selected-skill-chip"
+            :title="t('agent.removeSkill')"
+            @click="removeSkill(skill.name)"
+          >
+            <span>{{ skillDisplayName(skill) }}</span><span aria-hidden="true">×</span>
+          </button>
+        </div>
         <!-- File attachments -->
         <div class="agent-attachments" v-if="files.length">
           <div class="agent-file" v-for="f in files" :key="f.name">
@@ -135,14 +147,15 @@
           <button class="agent-attach-btn" @click="attachFile" :title="t('agent.addAttachment')" :disabled="sending">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
           </button>
-          <input
+          <textarea
             ref="agentInputEl"
             v-model="input"
-            @keydown.enter="sendMessage"
+            rows="2"
+            @keydown.enter.exact.prevent="sendMessage"
             :disabled="sending"
             :placeholder="t('agent.inputPlaceholder')"
             class="agent-input"
-          />
+          ></textarea>
           <button
             v-if="agentSpeech.isSupported"
             class="agent-attach-btn"
@@ -217,29 +230,58 @@
       </TransitionGroup>
     </div>
 
-    <!-- Templates Tab -->
+    <!-- Skills and paper templates -->
     <div v-show="tab === 'templates'" class="agent-templates">
       <div class="docs-toolbar">
-        <span class="docs-title">{{ t('agent.templatesTitle') }}</span>
-        <button class="btn ghost u-interactive" :class="{ refreshing: templatesLoading }" @click="loadPaperTemplates" :disabled="templatesLoading">{{ t('agent.refreshTemplates') }}</button>
+        <div class="skills-heading">
+          <span class="docs-title">{{ t('agent.skillsTitle') }}</span>
+          <span class="docs-subtitle">{{ t('agent.skillsSubtitle') }}</span>
+        </div>
+        <button class="btn ghost u-interactive" :class="{ refreshing: skillsLoading }" @click="fetchAgentSkills" :disabled="skillsLoading">{{ t('agent.refresh') }}</button>
       </div>
-      <div v-if="templatesLoading && templates.length === 0" class="template-grid">
-        <UiSkeleton v-for="i in 4" :key="i" shape="card" height="58" :style="{ '--stagger-i': i - 1 }" class="tpl-skel" />
+      <div v-if="skillsLoading && agentSkills.length === 0" class="skills-list">
+        <UiSkeleton v-for="i in 5" :key="i" shape="card" height="66" class="tpl-skel" />
       </div>
-      <div v-else-if="templates.length === 0" class="docs-empty anim-fade-in-up">
-        <span class="empty-glyph">◳</span>
-        <p>{{ t('agent.noTemplates') }}</p>
-        <button class="btn ghost u-interactive" style="margin-top:8px" @click="ingestPaperAssets">{{ t('agent.indexTemplates') }}</button>
+      <div v-else-if="agentSkills.length === 0" class="docs-empty anim-fade-in-up">
+        <span class="empty-glyph">◇</span>
+        <p>{{ t('agent.noSkills') }}</p>
       </div>
-      <TransitionGroup v-else name="v-list-stagger" tag="div" class="template-grid">
-        <div v-for="(t, idx) in templates" :key="t.id" class="template-card u-interactive" :style="{ '--stagger-i': idx }" @click="previewingTemplate = t">
-          <span class="template-icon">{{ t.icon }}</span>
-          <div class="template-info">
-            <span class="template-name">{{ t.name }}</span>
-            <span class="template-venue">{{ t.venue }}</span>
+      <TransitionGroup v-else name="v-list-stagger" tag="div" class="skills-list">
+        <div v-for="(skill, idx) in visibleAgentSkills" :key="skill.name" class="skill-row" :class="{ selected: isSkillSelected(skill.name) }" :style="{ '--stagger-i': idx }">
+          <div class="skill-copy">
+            <div class="skill-name-row">
+              <span class="skill-name">{{ skillDisplayName(skill) }}</span>
+              <span v-if="skill.category === 'nature'" class="skill-family">Nature</span>
+            </div>
+            <span class="skill-description">{{ skillDisplayDescription(skill) }}</span>
           </div>
+          <button class="skill-use-btn" @click="useSkill(skill)">{{ isSkillSelected(skill.name) ? t('agent.skillSelected') : t('agent.useSkill') }}</button>
         </div>
       </TransitionGroup>
+
+      <details class="paper-template-section">
+        <summary>{{ t('agent.templatesTitle') }}</summary>
+        <div class="template-section-toolbar">
+          <span>{{ t('agent.templatesSubtitle') }}</span>
+          <button class="btn ghost u-interactive" :class="{ refreshing: templatesLoading }" @click="loadPaperTemplates" :disabled="templatesLoading">{{ t('agent.refreshTemplates') }}</button>
+        </div>
+        <div v-if="templatesLoading && templates.length === 0" class="template-grid">
+          <UiSkeleton v-for="i in 4" :key="i" shape="card" height="58" class="tpl-skel" />
+        </div>
+        <div v-else-if="templates.length === 0" class="template-empty">
+          <span>{{ t('agent.noTemplates') }}</span>
+          <button class="btn ghost u-interactive" @click="ingestPaperAssets">{{ t('agent.indexTemplates') }}</button>
+        </div>
+        <TransitionGroup v-else name="v-list-stagger" tag="div" class="template-grid">
+          <button v-for="template in templates" :key="template.id" class="template-card u-interactive" @click="previewingTemplate = template">
+            <span class="template-icon">{{ template.icon }}</span>
+            <span class="template-info">
+              <span class="template-name">{{ template.name }}</span>
+              <span class="template-venue">{{ template.venue }}</span>
+            </span>
+          </button>
+        </TransitionGroup>
+      </details>
       <Transition name="v-scale-in">
         <div v-if="previewingTemplate" class="template-preview">
           <div class="template-preview-header">
@@ -258,7 +300,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 import { useAgentChat } from '../composables/useAgentChat'
 import { useEditor } from '../composables/useEditor'
@@ -268,7 +310,7 @@ import AgentApprovalInline from './AgentApprovalInline.vue'
 import AgentSessionList from './AgentSessionList.vue'
 import { Pin, PinOff, Mic } from './ui/icons'
 import { API_BASE } from '../utils/api'
-import type { AgentSessionInfo } from '../types'
+import type { AgentSessionInfo, AgentSkill } from '../types'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
 import { setSpeechBusy } from '../composables/useSpeechBusy'
 import UiSpinner from './ui/UiSpinner.vue'
@@ -480,6 +522,7 @@ onMounted(async () => {
 const {
   messages, sending, pendingApproval,
   ragDocuments, ragLoading,
+  agentSkills, skillsLoading,
   sendMessage: agentSendMessage,
   sendApproval, abortSession,
   resumeSession,
@@ -489,6 +532,7 @@ const {
   fetchRAGDocuments: _fetchRAGDocs,
   deleteRAGDocument,
   uploadRAGFile,
+  fetchAgentSkills,
 } = useAgentChat()
 
 const { selection: editorSelection, content: editorContent, activeTab: editorActiveTab, reloadOpenTabs, setContent, contentVersion } = useEditor()
@@ -504,7 +548,7 @@ const workspaceName = computed(() => {
 
 const tab = ref<'chat' | 'docs' | 'templates' | 'sessions'>('chat')
 const input = ref('')
-const agentInputEl = ref<HTMLInputElement | null>(null)
+const agentInputEl = ref<HTMLTextAreaElement | null>(null)
 const messagesRef = ref<HTMLElement | null>(null)
 const sessionListRef = ref<InstanceType<typeof AgentSessionList> | null>(null)
 // 自动滚动：用户未手动上滚时保持跟底
@@ -528,6 +572,43 @@ const files = ref<{ name: string; path: string }[]>([])
 const ragFileInput = ref<HTMLInputElement | null>(null)
 const ragUploading = ref(false)
 const ragUploadError = ref('')
+const selectedSkillNames = ref<string[]>([])
+
+const visibleAgentSkills = computed(() => [...agentSkills.value].sort((a, b) => {
+  if (a.category === b.category) return skillDisplayName(a).localeCompare(skillDisplayName(b))
+  return a.category === 'nature' ? -1 : 1
+}))
+
+const selectedSkills = computed(() => selectedSkillNames.value
+  .map(name => agentSkills.value.find(skill => skill.name === name))
+  .filter((skill): skill is AgentSkill => Boolean(skill)))
+
+function skillDisplayName(skill: AgentSkill): string {
+  const key = `agent.skills.${skill.name}.name`
+  return te(key) ? t(key) : skill.name.replaceAll('_', ' ')
+}
+
+function skillDisplayDescription(skill: AgentSkill): string {
+  const key = `agent.skills.${skill.name}.description`
+  return te(key) ? t(key) : skill.description
+}
+
+function isSkillSelected(name: string): boolean {
+  return selectedSkillNames.value.includes(name)
+}
+
+async function useSkill(skill: AgentSkill) {
+  selectedSkillNames.value = [skill.name]
+  const promptKey = `agent.skills.${skill.name}.prompt`
+  if (!input.value.trim()) input.value = te(promptKey) ? t(promptKey) : t('agent.skillPromptFallback', { skill: skillDisplayName(skill) })
+  tab.value = 'chat'
+  await nextTick()
+  agentInputEl.value?.focus()
+}
+
+function removeSkill(name: string) {
+  selectedSkillNames.value = selectedSkillNames.value.filter(skillName => skillName !== name)
+}
 
 const contextText = computed(() => {
   if (!editorActiveTab.value) return ''
@@ -556,7 +637,8 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   search_documents: t('agent.tool.search_documents'),
   read_argument_graph: t('agent.tool.read_argument_graph'),
   read_argument_ledger: t('agent.tool.read_argument_ledger'),
-  crawl_arxiv: t('agent.tool.crawl_arxiv'),
+  read_reviewer_state: t('agent.tool.read_reviewer_state'),
+  arxiv_search: t('agent.tool.crawl_arxiv'),
   read_file: t('agent.tool.read_file'),
   write_file: t('agent.tool.write_file'),
   str_replace: t('agent.tool.str_replace'),
@@ -711,6 +793,7 @@ async function sendMessage() {
     '',
     rootDir.value || undefined,
     editorActiveTab.value?.path || undefined,
+    selectedSkillNames.value,
   )
   refreshFileTree()
   reloadOpenTabs()
@@ -788,11 +871,14 @@ function createFromTemplate(t: any) {
 
 // ── Watchers ──
 watch(() => props.open, async (isOpen) => {
-  if (isOpen) await fetchDocs()
+  if (isOpen) await Promise.all([fetchDocs(), fetchAgentSkills()])
 })
 
 watch(tab, (t) => {
-  if (t === 'templates' && templates.value.length === 0) loadPaperTemplates()
+  if (t === 'templates') {
+    if (templates.value.length === 0) loadPaperTemplates()
+    if (agentSkills.value.length === 0) fetchAgentSkills()
+  }
 })
 
 // 流式输出自动跟底：监听 messages 深度变化，若用户没有手动上滚则自动滚底
@@ -1196,8 +1282,18 @@ onUnmounted(() => {
   position: relative;
 }
 .agent-context-note { width: 100%; color: var(--c-text-3); font-size: 11px; }
+.agent-selected-skills { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.selected-skills-label { flex-shrink: 0; color: var(--c-text-3); font-size: 11px; }
+.selected-skill-chip {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0;
+  padding: 4px 7px; border: 1px solid var(--c-accent); border-radius: 6px;
+  background: var(--c-accent-bg); color: var(--c-accent-hover); font: inherit; font-size: 11px;
+  cursor: pointer;
+}
+.selected-skill-chip span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.selected-skill-chip:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
 .agent-input-row {
-  width: 100%; display: flex; gap: 6px; align-items: center;
+  width: 100%; display: flex; gap: 6px; align-items: flex-end;
   background: var(--c-surface-2);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 24px;
@@ -1211,7 +1307,7 @@ onUnmounted(() => {
   background: var(--c-surface-3);
 }
 .agent-input {
-  flex: 1; padding: 8px 12px;
+  flex: 1; min-height: 42px; max-height: 116px; padding: 8px 12px; resize: vertical;
   border: none;
   background: transparent;
   color: var(--c-text-0); font-size: 14px; font-family: inherit;
@@ -1304,12 +1400,34 @@ onUnmounted(() => {
 
 /* Templates tab */
 .agent-templates { flex: 1; overflow-y: auto; padding: 16px; }
+.skills-heading { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.skills-list { display: flex; flex-direction: column; gap: 6px; }
+.skill-row {
+  display: flex; align-items: center; gap: 10px; padding: 10px 11px;
+  border-bottom: 1px solid var(--c-border); background: transparent;
+}
+.skill-row.selected { border-radius: 8px; border-bottom-color: transparent; background: var(--c-accent-bg); }
+.skill-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+.skill-name-row { display: flex; align-items: center; gap: 7px; }
+.skill-name { color: var(--c-text-0); font-size: 13px; font-weight: 650; }
+.skill-family { color: var(--c-brand-red, #c8503a); font-family: var(--font-serif); font-size: 10px; letter-spacing: .03em; }
+.skill-description { color: var(--c-text-3); font-size: 11px; line-height: 1.45; }
+.skill-use-btn {
+  flex-shrink: 0; padding: 5px 8px; border: 1px solid var(--c-border); border-radius: 6px;
+  background: var(--c-panel); color: var(--c-text-2); font: inherit; font-size: 11px; cursor: pointer;
+}
+.skill-use-btn:hover { border-color: var(--c-accent); color: var(--c-accent); }
+.skill-use-btn:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+.paper-template-section { margin-top: 18px; border-top: 1px solid var(--c-border); padding-top: 12px; }
+.paper-template-section > summary { color: var(--c-text-1); font-size: 12px; font-weight: 650; cursor: pointer; }
+.template-section-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; color: var(--c-text-3); font-size: 11px; }
+.template-empty { display: flex; align-items: center; justify-content: space-between; padding: 14px 4px; color: var(--c-text-3); font-size: 11px; }
 .template-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .template-card {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 12px; background: var(--c-surface-2);
   border: 1px solid var(--c-surface-3); border-radius: 8px;
-  cursor: pointer; transition: all 0.15s;
+  color: inherit; font: inherit; text-align: left; cursor: pointer; transition: all 0.15s;
 }
 .template-card:hover { border-color: var(--c-accent-hover); background: var(--c-accent-bg2); }
 .template-icon { font-size: 24px; }

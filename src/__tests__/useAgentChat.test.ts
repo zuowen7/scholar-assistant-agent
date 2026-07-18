@@ -191,6 +191,40 @@ describe('useAgentChat', () => {
       await sendMessage('   ')
       expect(fetchMock).not.toHaveBeenCalled()
     })
+
+    it('sends selected skills and excludes the current message from history', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        makeSseResponse([makeSessionStartedChunk('sess_skill'), makeDoneChunk()])
+      )
+      vi.stubGlobal('fetch', fetchMock)
+
+      const { sendMessage } = useAgentChat()
+      await sendMessage('Review this paper', 'source text', '', 'D:/paper', 'draft/main.md', ['nature_reviewer'])
+
+      const request = fetchMock.mock.calls[0][1] as RequestInit
+      const body = JSON.parse(String(request.body))
+      expect(body.skills).toEqual(['nature_reviewer'])
+      expect(body.context_text).toBe('source text')
+      expect(body.context_file).toBe('draft/main.md')
+      expect(body.history).toEqual([])
+    })
+  })
+
+  describe('skills', () => {
+    it('loads the real Agent V2 skill catalog', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify([
+        {
+          name: 'nature_reviewer', description: 'review', layer: 'agents',
+          category: 'nature', active: false, default_active: false,
+        },
+      ]), { status: 200 })))
+
+      const { fetchAgentSkills, agentSkills } = useAgentChat()
+      await fetchAgentSkills()
+
+      expect(agentSkills.value).toHaveLength(1)
+      expect(agentSkills.value[0].name).toBe('nature_reviewer')
+    })
   })
 
   // ── Approval state ──────────────────────────────────────────────────

@@ -74,7 +74,7 @@
 | 入口 / 状态 | 当前状态 | 当前证据 | 下一步 |
 | --- | --- | --- | --- |
 | 写作页任务式 Agent | PARTIALLY_ADAPTED | 接 Agent V2 真状态；未完整任务验收 | 真实任务、步骤、审批与结果 |
-| 全局 Agent 主面板 | UNTOUCHED | 仍为旧聊天式视觉 | 重构为任务流，保留会话能力 |
+| 全局 Agent 主面板 | PARTIALLY_ADAPTED | 已收敛为任务、步骤、工具、审批和结果层级；真实技能入口与多行任务输入已接入 | 实机长任务、深色、英文和多尺寸 |
 | Agent 独立窗口 | UNTOUCHED | 生产入口在，未适配 Shell/窗口 | 真实打开、关闭、恢复与多尺寸 |
 | 会话列表与恢复 | UNTOUCHED | API 与组件在 | 真实会话恢复、空/错状态 |
 | 工具调用过程 | UNTOUCHED | SSE 在 | 长参数、结果、错误与折叠 |
@@ -82,6 +82,7 @@
 | Inline Diff 接受 / 拒绝 | UNTOUCHED | Monaco 链路在 | 真实 `str_replace` / `write_file` |
 | checkpoint 与文件刷新 | UNTOUCHED | 链路在 | dirty tab 保护与刷新反馈 |
 | 附件、RAG 文档与 @ 引用 | UNTOUCHED | 功能在 | 真实上传、删除、引用和错误 |
+| Skills 发现、选择与调用 | PARTIALLY_ADAPTED | `/api/agent/v2/skills` 真实目录已接入；8 个 Nature 工作流按任务启用；实机选择 `nature_reviewer` 并完成真实 SSE 与 Claim Ledger 工具调用 | 检查失败、连续切换、深色与英文 |
 | 中止、恢复与结果 | UNTOUCHED | API 在 | 真实中止/恢复/超时 |
 
 ## 6. 思考、论证与审稿
@@ -156,6 +157,8 @@
 - 审稿工作区增加固定一级入口：对抗审查 Reviewer-2、承诺兑付 Claim Ledger、Argument Map；Reviewer-2 重新暴露评审角色与串并行模式。
 - Claim Ledger 使用现有真实 ledger 状态与 API，完整显示全部承诺分组，未兑现/部分兑现仍可请求现有补实验建议接口。
 - Agent 结果改用现有 `renderMarkdown` 安全渲染，表格、列表、代码和标题不再显示为原始 Markdown 符号。
+- Agent “能力”入口接入真实 Agent V2 Skills 目录；新增 Nature 写作、润色、审稿、审稿回复、引用、数据声明、精读和科研配图工作流，选择态随真实 `/api/agent/v2/chat` 请求发送。
+- Agent V2 现在实际接收编辑器上下文、约束和去重后的会话历史；论证图、Claim Ledger、Reviewer-2 状态作为只读工具接入现有生产 API，没有复制 Reviewer 或数据存储。
 - 修复 Tauri 开发启动器误选缺少 PyYAML 的 Python 解释器：启动前校验 PyYAML/FastAPI/Uvicorn，实机确认自动选择 `D:\env\anaconda\python.exe` 并在 1 秒内启动后端。
 
 代表性实机截图：
@@ -166,3 +169,5 @@
 - `review-entry-restored.png`
 - `claim-ledger-entry-restored.png`
 - `argument-map-entry-restored.png`
+- `agent-nature-skills-1440x900.png`
+- `agent-nature-reviewer-selected-1440x900.png`
