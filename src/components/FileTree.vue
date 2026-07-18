@@ -71,9 +71,34 @@
       :icon="FolderOpen"
       :icon-size="28"
       :title="t('files.noFolderOpen')"
-      subtitle="Open a folder to browse your files."
+      :subtitle="t('files.noFolderSubtitle')"
       :action-label="t('files.openFolder2')"
       @action="handleOpenFolder"
+    />
+
+    <AppPromptDialog
+      v-model="showCreatePrompt"
+      :title="createKind === 'file' ? t('files.newFile') : t('files.newFolder')"
+      :description="t('files.createDescription')"
+      :label="t('files.fileName')"
+      :initial-value="createKind === 'file' ? 'untitled.md' : 'new_folder'"
+      :confirm-label="t('general.create')"
+      :cancel-label="t('general.cancel')"
+      :error="createError"
+      :busy="createBusy"
+      @submit="confirmCreate"
+    />
+
+    <AppConfirmDialog
+      v-model="showDeleteConfirm"
+      :title="t('files.deleteConfirmTitle')"
+      :description="t('files.deleteConfirmDescription')"
+      :detail="t('files.deleteConfirmDetail', { name: pendingDelete?.name || '' })"
+      :confirm-label="t('files.delete')"
+      :cancel-label="t('general.cancel')"
+      tone="danger"
+      :busy="deleteBusy"
+      @confirm="confirmDelete"
     />
   </div>
 </template>
@@ -86,6 +111,8 @@ const { t } = useI18n()
 import FileTreeNode from './FileTreeNode.vue'
 import UiEmpty from './ui/UiEmpty.vue'
 import UiSkeleton from './ui/UiSkeleton.vue'
+import AppPromptDialog from './shell/AppPromptDialog.vue'
+import AppConfirmDialog from './shell/AppConfirmDialog.vue'
 import { FolderOpen } from './ui/icons'
 import { useFileTree } from '../composables/useFileTree'
 import { useEditor } from '../composables/useEditor'
@@ -99,6 +126,14 @@ defineEmits<{ (e: 'collapse'): void }>()
 const searchQuery = ref('')
 const loading = ref(false)
 const refreshing = ref(false)
+const showCreatePrompt = ref(false)
+const createKind = ref<'file' | 'folder'>('file')
+const createTarget = ref('')
+const createBusy = ref(false)
+const createError = ref('')
+const showDeleteConfirm = ref(false)
+const pendingDelete = ref<{ path: string; name: string } | null>(null)
+const deleteBusy = ref(false)
 
 function filterTree(entries: FileEntry[], query: string): FileEntry[] {
   if (!query) return entries
@@ -147,10 +182,7 @@ async function handleNewFile() {
     await handleOpenFolder()
     return
   }
-  const name = prompt(t('files.newFilePrompt'), 'untitled.md')
-  if (!name) return
-  const path = await createFile(rootDir.value, name)
-  openEditorFile(path, '')
+  openCreatePrompt('file', rootDir.value)
 }
 
 async function handleNewFolder() {
@@ -158,9 +190,47 @@ async function handleNewFolder() {
     await handleOpenFolder()
     return
   }
-  const name = prompt(t('files.newFolder'), 'new_folder')
-  if (!name) return
-  await createFolder(rootDir.value, name)
+  openCreatePrompt('folder', rootDir.value)
+}
+
+function openCreatePrompt(kind: 'file' | 'folder', target: string) {
+  createKind.value = kind
+  createTarget.value = target
+  createError.value = ''
+  showCreatePrompt.value = true
+}
+
+async function confirmCreate(name: string) {
+  createBusy.value = true
+  createError.value = ''
+  try {
+    if (createKind.value === 'file') {
+      const path = await createFile(createTarget.value, name)
+      openEditorFile(path, '')
+    } else {
+      await createFolder(createTarget.value, name)
+    }
+    showCreatePrompt.value = false
+  } catch (error) {
+    createError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    createBusy.value = false
+  }
+}
+
+async function confirmDelete() {
+  if (!pendingDelete.value) return
+  deleteBusy.value = true
+  try {
+    await deleteFile(pendingDelete.value.path)
+    closeTab(pendingDelete.value.path)
+    showDeleteConfirm.value = false
+    pendingDelete.value = null
+  } catch (error) {
+    console.error('Delete failed:', error)
+  } finally {
+    deleteBusy.value = false
+  }
 }
 
 async function handleRefresh() {
@@ -172,13 +242,18 @@ async function handleRefresh() {
 async function handleAction(action: string, path: string, extra: string) {
   switch (action) {
     case 'new-file': {
+      if (!extra) {
+        openCreatePrompt('file', path)
+        break
+      }
       const newFile = await createFile(path, extra)
       openEditorFile(newFile, '')
       break
     }
 
     case 'new-folder':
-      await createFolder(path, extra)
+      if (!extra) openCreatePrompt('folder', path)
+      else await createFolder(path, extra)
       break
 
     case 'cut':
@@ -216,13 +291,8 @@ async function handleAction(action: string, path: string, extra: string) {
       break
 
     case 'delete':
-      if (!confirm(`Delete "${extra}"?`)) return
-      try {
-        await deleteFile(path)
-        closeTab(path)
-      } catch (e) {
-        console.error('Delete failed:', e)
-      }
+      pendingDelete.value = { path, name: extra }
+      showDeleteConfirm.value = true
       break
 
     case 'copy-path':

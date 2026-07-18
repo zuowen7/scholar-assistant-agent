@@ -175,13 +175,11 @@ function showContextMenu(e: MouseEvent) {
 function action(a: string) {
   ctx.visible = false
   if (a === 'new-file') {
-    const name = prompt(t('files.newFilePrompt'), 'untitled.md')
-    if (name) emit('action', 'new-file', props.entry.path, name)
+    emit('action', 'new-file', props.entry.path, '')
     return
   }
   if (a === 'new-folder') {
-    const name = prompt(t('files.newFolder'), 'new_folder')
-    if (name) emit('action', 'new-folder', props.entry.path, name)
+    emit('action', 'new-folder', props.entry.path, '')
     return
   }
   if (a === 'rename') {

@@ -1,109 +1,88 @@
 ﻿<template>
   <div class="editor-layout">
-    <!-- 左侧文件树 -->
-    <div
-      class="layout-sidebar"
-      :class="{ collapsed: sidebarCollapsed }"
-      :style="{ width: (sidebarCollapsed ? collapsedSidebarWidth : sidebarWidth) + 'px' }"
-    >
-      <FileTree v-if="!sidebarCollapsed" @collapse="sidebarCollapsed = true" />
-      <button v-else class="sidebar-rail-button" @click="sidebarCollapsed = false">
-        Explorer
-      </button>
-    </div>
-    <div
-      v-if="!sidebarCollapsed"
-      class="resize-handle sidebar-resize"
-      @mousedown="startResize($event, 'sidebar')"
-    ></div>
+    <MindMapView v-if="workspaceMode === 'mindmap'" @enter-editor="enterEditorFromMindMap" />
 
-    <!-- 中间编辑器 -->
-    <div class="layout-editor">
-      <MindMapView
-        v-if="workspaceMode === 'mindmap'"
-        @enter-editor="enterEditorFromMindMap"
+    <template v-else>
+      <EditorWelcome
+        v-if="!activeTab"
+        @new-project="showProjectStart = true"
+        @open-template="showTemplatePicker = true"
+        @open-folder="openWorkspaceFolder"
+        @new-document="openNewUntitled"
+        @open-recent="handleOpenRecentProject"
       />
 
       <template v-else>
-        <EditorTabs v-if="activeTab" />
+        <AppHeader :title="activeTab.name" :subtitle="headerSubtitle" :icon="isLatexMode ? FileCode2 : FileText">
+          <template #center>
+            <SegmentedControl v-if="!isLatexMode" v-model="documentView" :options="documentViewOptions" :label="t('editor.documentView')" />
+            <span v-else class="header-chapter">{{ t('editor.lineWordCount', { lines: lineCount, words: wordCount.toLocaleString() }) }}</span>
+          </template>
+          <StatusBadge tone="success" dot>{{ activeTab.isModified ? t('editor.unsavedChanges') : t('editor.autoSaved') }}</StatusBadge>
+          <button type="button" class="header-action mode-toggle" @click="toggleEditorMode">{{ isLatexMode ? t('editor.writingView') : 'LaTeX' }}</button>
+          <button type="button" class="header-action" @click="handleSaveFile"><Save :size="16" /> {{ t('editor.saveAction') }}</button>
+          <button type="button" class="header-action primary" @click="isLatexMode ? aiPanelRef?.sendPreset('polish') : handleSelectionTask(t('editor.polish'))"><Sparkles :size="16" /> {{ t('editor.aiPolish') }}</button>
+          <button type="button" class="header-icon" :title="rightPanelVisible ? t('editor.collapseRight') : t('editor.expandRight')" @click="rightPanelVisible = !rightPanelVisible"><PanelRightClose :size="18" /></button>
+          <button v-if="currentProject" type="button" class="header-icon" :title="t('project.closeProject')" @click="requestCloseProject"><FolderX :size="17" /></button>
+        </AppHeader>
 
-        <!-- Welcome screen (extracted to EditorWelcome.vue) -->
-        <EditorWelcome
-          v-if="!activeTab"
-          @new-project="showProjectStart = true"
-          @open-template="showTemplatePicker = true"
-          @open-folder="openWorkspaceFolder"
-          @new-document="openNewUntitled"
-          @open-recent="handleOpenRecentProject"
-        />
+        <div class="editor-workbench" :class="{ 'latex-mode': isLatexMode, 'writing-mode': !isLatexMode, 'right-collapsed': !rightPanelVisible }">
+          <div class="workbench-left" :style="{ width: (isLatexMode ? 250 : 226) + 'px' }">
+            <FileTree v-if="isLatexMode" @collapse="sidebarCollapsed = true" />
+            <DocumentOutline v-else :content="content" :active-line="selection.startLine" @navigate="navigateToLine" @add="addSection" />
+          </div>
 
-        <!-- Active editor -->
-        <template v-else>
-          <!-- Slim toolbar (extracted to EditorToolbar.vue) -->
-          <EditorToolbar
-            ref="toolbarRef"
-            :active-right-tab="rightPanelTab"
-            :templates="exportTemplates"
-            :selected-template="selectedTemplate"
-            :export-loading="exportLoading"
-            :message="exportMessage"
-            @new-paper="showTemplatePicker = true"
-            @save="handleSaveFile"
-            @open-mindmap="openMindMapFromEditor"
-            @toggle-right="toggleRightPanel"
-            @select-template="selectedTemplate = $event"
-            @image-selected="handleImageSelected"
-            @vision-selected="handleVisionSelected"
-            @insert-table="insertTable"
-            @insert-inline-formula="insertInlineFormula"
-            @insert-block-formula="insertBlockFormula"
-            @run-compliance="runComplianceCheck"
-            @process-citations="handleProcessCitations"
-            @zotero-insert="handleZoteroInsert"
-            @export-word="handleExportWord"
-            @export-latex="handleExportLatex"
-            @export-pdf="handleExportPdf"
-            @voice-start="handleVoiceStart"
-            @voice-update="handleVoiceUpdate"
-            @voice-stop="handleVoiceStop"
-          />
+          <main class="workbench-center">
+            <EditorTabs v-if="isLatexMode" />
+            <EditorToolbar
+              ref="toolbarRef"
+              :active-right-tab="rightPanelTab"
+              :templates="exportTemplates"
+              :selected-template="selectedTemplate"
+              :export-loading="exportLoading"
+              :message="exportMessage"
+              @new-paper="showTemplatePicker = true"
+              @save="handleSaveFile"
+              @open-mindmap="openMindMapFromEditor"
+              @toggle-right="toggleRightPanel"
+              @select-template="selectedTemplate = $event"
+              @image-selected="handleImageSelected"
+              @vision-selected="handleVisionSelected"
+              @insert-table="insertTable"
+              @insert-inline-formula="insertInlineFormula"
+              @insert-block-formula="insertBlockFormula"
+              @run-compliance="runComplianceCheck"
+              @process-citations="handleProcessCitations"
+              @zotero-insert="handleZoteroInsert"
+              @export-word="handleExportWord"
+              @export-latex="handleExportLatex"
+              @export-pdf="handleExportPdf"
+              @voice-start="handleVoiceStart"
+              @voice-update="handleVoiceUpdate"
+              @voice-stop="handleVoiceStop"
+            />
 
-          <MonacoEditor
-            :theme="isDark ? 'vs-dark' : 'vs'"
-            @contentChange="onContentChange"
-            @selectionChange="onSelectionChange"
-          />
-        </template>
+            <div class="editor-surface">
+              <MonacoEditor v-if="documentView === 'body' || isLatexMode" :theme="isDark ? 'vs-dark' : 'vs'" :presentation="isLatexMode ? 'code' : 'document'" @contentChange="onContentChange" @selectionChange="onSelectionChange" />
+              <MarkdownPreview v-else-if="documentView === 'preview'" :content="content" :version="contentVersion" class="document-preview" />
+              <DocumentOutline v-else class="central-outline" :content="content" :active-line="selection.startLine" @navigate="navigateToLine" @add="addSection" />
+
+              <div v-if="selection.text && !isLatexMode" class="selection-toolbar">
+                <button type="button" @click="handleSelectionTask(t('editor.polish'))"><Sparkles :size="14" /> {{ t('editor.polish') }}</button>
+                <button type="button" @click="handleSelectionTask(t('editor.condense'))">{{ t('editor.condense') }}</button>
+                <button type="button" @click="handleSelectionTask(t('editor.expand'))">{{ t('editor.expand') }}</button>
+                <button type="button" @click="handleSelectionTask(t('editor.checkArgument'))">{{ t('editor.checkArgument') }}</button>
+              </div>
+            </div>
+          </main>
+
+          <aside v-if="rightPanelVisible" class="workbench-right" :style="{ width: (isLatexMode ? 340 : 356) + 'px' }">
+            <AiPanel v-if="isLatexMode" ref="aiPanelRef" workspace-variant :editor-context="selection.text || content" :active-file="activeFile" :can-undo="!!previousContent" :workspace-files="workspaceFiles" class="rp-content" @insert="handleInsert" @undo="handleUndo" @close="rightPanelVisible = false" />
+            <TaskAgentPanel v-else :context="content" :selection="selection.text" :active-file="activeFile" />
+          </aside>
+        </div>
       </template>
-    </div>
-
-    <!-- 右侧统一 Tab 面板 -->
-    <div v-if="workspaceMode === 'editor' && activeTab && rightPanelTab" class="layout-panel-wrapper">
-      <div class="resize-handle panel-resize" @mousedown="startResize($event, 'panel')"></div>
-      <div class="layout-panel" :style="{ width: panelWidth + 'px' }">
-        <EditorRightTabBar v-model="rightPanelTab" />
-        <!-- Tab content -->
-        <MarkdownPreview
-          v-if="rightPanelTab === 'preview'"
-          :content="content"
-          :version="contentVersion"
-          class="rp-content"
-        />
-        <AiPanel
-          ref="aiPanelRef"
-          v-if="rightPanelTab === 'ai'"
-          :editor-context="selection.text || content"
-          :active-file="activeFile"
-          :can-undo="!!previousContent"
-          :workspace-files="workspaceFiles"
-          class="rp-content"
-          @insert="handleInsert"
-          @undo="handleUndo"
-          @close="rightPanelTab = null"
-        />
-        <CompanionPanel v-if="rightPanelTab === 'argument'" :content="content" class="rp-content" />
-      </div>
-    </div>
+    </template>
 
     <!-- Modals -->
     <EditorCompliance
@@ -126,6 +105,30 @@
       :visible="showProjectStart"
       @close="showProjectStart = false"
       @project-created="handleProjectCreated"
+    />
+
+    <AppConfirmDialog
+      v-model="showCloseProjectConfirm"
+      :title="t('project.closeProject')"
+      :description="t('editor.closeProjectDescription')"
+      :detail="hasDirtyTabs ? t('editor.closeProjectDirtyDetail') : t('editor.closeProjectDetail')"
+      :confirm-label="t('project.closeProject')"
+      :cancel-label="t('general.cancel')"
+      :tone="hasDirtyTabs ? 'danger' : 'default'"
+      @confirm="performCloseProject"
+    />
+
+    <AppPromptDialog
+      v-model="showZoteroPrompt"
+      :title="t('editor.searchZotero')"
+      :description="t('editor.zoteroSearchDescription')"
+      :label="t('general.search')"
+      :placeholder="t('editor.zoteroSearchPlaceholder')"
+      :confirm-label="t('general.search')"
+      :cancel-label="t('general.cancel')"
+      :error="zoteroPromptError"
+      :busy="zoteroSearching"
+      @submit="submitZoteroSearch"
     />
   </div>
 </template>
@@ -150,6 +153,14 @@ import AiPanel from './AiPanel.vue'
 import CompanionPanel from './argument/CompanionPanel.vue'
 import TemplatePicker from './TemplatePicker.vue'
 import MindMapView from './MindMapView.vue'
+import DocumentOutline from './DocumentOutline.vue'
+import TaskAgentPanel from './TaskAgentPanel.vue'
+import AppHeader from './shell/AppHeader.vue'
+import AppConfirmDialog from './shell/AppConfirmDialog.vue'
+import AppPromptDialog from './shell/AppPromptDialog.vue'
+import SegmentedControl from './shell/SegmentedControl.vue'
+import StatusBadge from './shell/StatusBadge.vue'
+import { FileCode2, FileText, FolderX, PanelRightClose, Save, Sparkles } from 'lucide-vue-next'
 
 // -- State composables ---------------------------------------------------
 import { useEditorState, getRange } from '../composables/useEditorState'
@@ -159,14 +170,17 @@ import { useToast } from '../composables/useToast'
 import { useEditorCitation } from '../composables/useEditorCitation'
 import { useEditorIO } from '../composables/useEditorIO'
 import { useMindMap, markdownToMindMapNodes } from '../composables/useMindMap'
+import { useMindMapLayout } from '../composables/useMindMapLayout'
 import { useFileTree } from '../composables/useFileTree'
 import { useArgumentCompanion } from '../composables/useArgumentCompanion'
+import { useAgentChat } from '../composables/useAgentChat'
 import { API_BASE } from '../utils/api'
+import { closeProject, currentProject } from '../composables/useProject'
 
 defineProps<{ isDark: boolean }>()
 
 // -- Shared singleton state (single source of truth) ---------------------
-const { activeTab, content, contentVersion, selection, previousContent, tabs, aiResult, insertTextAtCursor, activeFile } = useEditorState()
+const { activeTab, activeTabId, content, contentVersion, selection, previousContent, tabs, aiResult, insertTextAtCursor, activeFile, monacoEditor } = useEditorState()
 
 // -- Tab / file operations ------------------------------------------------
 const {
@@ -182,19 +196,50 @@ const { analyzeVision, insertImageFile } = useEditorVision()
 const { processCitations, previewCitations, getZoteroStatus, searchZotero } = useEditorCitation()
 const { exportToWord, exportLatex, exportPdf, loadExportTemplates, saveBlob } = useEditorIO()
 const { resetMindMap, loadSavedMindMap, saveMindMap, addChild, updateNodeText, updateNodeBody, skipNextBackendLoad } = useMindMap()
-const { readFileContent, refresh: refreshFileTree } = useFileTree()
+const { autoLayout: layoutMindMap } = useMindMapLayout()
+const { readFileContent, refresh: refreshFileTree, rootDir } = useFileTree()
+const { sendMessage: sendAgentMessage } = useAgentChat()
 
 // -- Workspace mode -------------------------------------------------------
 const workspaceMode = ref<'editor' | 'mindmap'>('editor')
+const showZoteroPrompt = ref(false)
+const zoteroSearching = ref(false)
+const zoteroPromptError = ref('')
 let _contentBeforeMindMap = ''
 const sidebarCollapsed = ref(false)
 const collapsedSidebarWidth = 44
+const documentView = ref<'body' | 'outline' | 'preview'>('body')
+const rightPanelVisible = ref(true)
+const editorModeOverride = ref<'auto' | 'writing' | 'latex'>('auto')
+const isLatexMode = computed(() => editorModeOverride.value === 'latex'
+  || (editorModeOverride.value === 'auto' && /\.tex$/i.test(activeTab.value?.name || activeTab.value?.path || '')))
+const lineCount = computed(() => content.value ? content.value.split(/\r?\n/).length : 0)
+const wordCount = computed(() => {
+  const latin = content.value.match(/[A-Za-z0-9]+/g)?.length || 0
+  const chinese = content.value.match(/[\u3400-\u9fff]/g)?.length || 0
+  return latin + chinese
+})
+const headerSubtitle = computed(() => t(isLatexMode.value ? 'editor.latexHeaderSubtitle' : 'editor.writingHeaderSubtitle', {
+  status: activeTab.value?.isModified ? t('editor.notSaved') : t('editor.saved'),
+}))
+const documentViewOptions = computed(() => [
+  { value: 'body', label: t('editor.body') },
+  { value: 'outline', label: t('editor.outline') },
+  { value: 'preview', label: t('editor.preview') },
+])
+watch(workspaceMode, mode => {
+  window.dispatchEvent(new CustomEvent('shell-section-change', { detail: mode === 'mindmap' ? 'mindmap' : 'write' }))
+})
+watch(isLatexMode, () => { documentView.value = 'body' })
 
 // -- Right panel ----------------------------------------------------------
 type RightTab = 'preview' | 'ai' | 'argument'
-const rightPanelTab = ref<RightTab | null>(null)
+const rightPanelTab = ref<RightTab | null>('ai')
 const aiPanelRef = ref<InstanceType<typeof AiPanel> | null>(null)
-const toggleRightPanel = (tab: RightTab) => { rightPanelTab.value = rightPanelTab.value === tab ? null : tab }
+const toggleRightPanel = (tab: RightTab) => {
+  rightPanelTab.value = tab
+  rightPanelVisible.value = true
+}
 
 // -- Export state ---------------------------------------------------------
 const exportTemplates = ref<{ id: string; name: string }[]>([])
@@ -214,6 +259,20 @@ const complianceReport = ref<Record<string, unknown> | null>(null)
 // -- Template picker / project start -------------------------------------
 const showTemplatePicker = ref(false)
 const showProjectStart = ref(false)
+const showCloseProjectConfirm = ref(false)
+const hasDirtyTabs = computed(() => tabs.value.some(tab => tab.isModified))
+
+function requestCloseProject() {
+  showCloseProjectConfirm.value = true
+}
+
+async function performCloseProject() {
+  await closeProject()
+  tabs.value = []
+  activeTabId.value = null
+  workspaceMode.value = 'editor'
+  showCloseProjectConfirm.value = false
+}
 
 // M12 fix: only map stable identity fields (name/path) so this computed does NOT
 // invalidate on every keystroke when tab content changes.  AiPanel needs `content`
@@ -235,6 +294,42 @@ const workspaceFiles = computed(() =>
 )
 
 // -- Event handlers ------------------------------------------------------
+
+function navigateToLine(line: number) {
+  documentView.value = 'body'
+  nextTick(() => {
+    monacoEditor.value?.revealLineInCenter(line)
+    monacoEditor.value?.setPosition({ lineNumber: line, column: 1 })
+    monacoEditor.value?.focus()
+  })
+}
+
+function toggleEditorMode() {
+  editorModeOverride.value = isLatexMode.value ? 'writing' : 'latex'
+  documentView.value = 'body'
+}
+
+function addSection() {
+  insertTextAtCursor(`${content.value.endsWith('\n') ? '' : '\n'}\n## ${t('editor.newSection')}\n\n`)
+}
+
+async function handleSelectionTask(action: string) {
+  const target = selection.value.text || content.value
+  if (!target.trim()) return
+  await sendAgentMessage(
+    t('editor.selectionTaskPrompt', { action, target: selection.value.text ? t('editor.selectedText') : t('editor.documentTarget') }),
+    target,
+    '',
+    rootDir.value || undefined,
+    activeFile.value || undefined,
+  )
+}
+
+function handleShellWorkspaceMode(event: Event) {
+  const mode = (event as CustomEvent).detail
+  if (mode === 'mindmap') openMindMapFromEditor()
+  else if (mode === 'editor') workspaceMode.value = 'editor'
+}
 
 async function openWorkspaceFolder() {
   try {
@@ -289,7 +384,7 @@ async function handleProjectCreated(path: string) {
   try {
     await _openProjectAndMainMd(path)
   } catch (e: any) {
-    danger(e.message || '打开项目失败')
+    danger(e.message || t('project.openFailed'))
   }
 }
 
@@ -297,7 +392,7 @@ async function handleOpenRecentProject(path: string) {
   try {
     await _openProjectAndMainMd(path)
   } catch (e: any) {
-    danger(e.message || '打开最近项目失败')
+    danger(e.message || t('editor.openRecentFailed'))
   }
 }
 
@@ -353,6 +448,7 @@ function openMindMapFromEditor() {
   } else {
     loadSavedMindMap()
   }
+  if (md.trim()) layoutMindMap('radial')
   workspaceMode.value = 'mindmap'
 }
 
@@ -427,18 +523,34 @@ async function handleProcessCitations() {
 }
 
 async function handleZoteroInsert() {
-  const query = window.prompt(t('editor.searchZotero'))
-  if (!query?.trim()) return
+  zoteroPromptError.value = ''
+  showZoteroPrompt.value = true
+}
+
+async function submitZoteroSearch(query: string) {
+  zoteroSearching.value = true
+  zoteroPromptError.value = ''
   try {
     const status = await getZoteroStatus()
-    if (status && status.connected === false) { showExportToast(t('editor.zoteroConfig')); return }
-    const items = await searchZotero(query.trim(), 5)
+    if (status && status.connected === false) {
+      zoteroPromptError.value = t('editor.zoteroConfig')
+      return
+    }
+    const items = await searchZotero(query, 5)
     const item = items[0]
-    if (!item?.key) { showExportToast(t('editor.zoteroNotFound')); return }
+    if (!item?.key) {
+      zoteroPromptError.value = t('editor.zoteroNotFound')
+      return
+    }
     const citation = item.markdown_citation || (item.citation_key ? `[@${item.citation_key}]` : '')
     if (citation) insertTextAtCursor(citation)
     showExportToast(t('editor.zoteroInserted', { key: item.citation_key || item.key }))
-  } catch (e) { showExportToast(t('editor.zoteroFailed', { msg: String(e) })) }
+    showZoteroPrompt.value = false
+  } catch (e) {
+    zoteroPromptError.value = t('editor.zoteroFailed', { msg: String(e) })
+  } finally {
+    zoteroSearching.value = false
+  }
 }
 
 async function handleImageSelected(file: File) {
@@ -624,6 +736,7 @@ function onKeyDown(e: KeyboardEvent) {
 // -- Lifecycle -------------------------------------------------------------
 onMounted(() => {
   window.addEventListener('keydown', onKeyDown)
+  window.addEventListener('shell-workspace-mode', handleShellWorkspaceMode)
   loadExportTemplates().then(({ templates, tectonic_available }) => {
     exportTemplates.value = templates
     tectonicAvailable.value = tectonic_available
@@ -645,6 +758,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
+  window.removeEventListener('shell-workspace-mode', handleShellWorkspaceMode)
   window.removeEventListener('paper-scaffold', handlePaperScaffold as EventListener)
   window.removeEventListener('agent-files-changed', handleAgentFileChange as EventListener)
   window.removeEventListener('voice-set-mindmap', handleVoiceSetMindmap)
@@ -671,7 +785,7 @@ function handlePaperScaffold(e: Event) {
 
 // ── Voice command handlers ─────────────────────────────────────────────
 function handleVoiceSetMindmap() {
-  workspaceMode.value = 'mindmap'
+  openMindMapFromEditor()
 }
 
 function handleVoiceExport(e: Event) {
@@ -836,5 +950,110 @@ async function handleAgentFileChange() {
 }
 @media (max-width: 820px) {
   .layout-panel-wrapper { display: none; }
+}
+
+/* Reference-driven workbench overrides */
+.editor-layout {
+  flex-direction: column;
+  background: var(--c-app-bg);
+}
+.editor-layout > :deep(.mindmap-view),
+.editor-layout > :deep(.editor-welcome) { flex: 1; min-height: 0; }
+.editor-workbench {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  overflow: hidden;
+  background: var(--c-panel);
+}
+.workbench-left {
+  flex: 0 0 auto;
+  min-width: 176px;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--c-panel);
+}
+.workbench-center {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 0;
+  background: var(--c-panel);
+}
+.workbench-right {
+  flex: 0 0 auto;
+  min-width: 300px;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--c-panel);
+}
+.editor-surface {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--c-panel);
+}
+.editor-surface > :deep(.monaco-wrapper),
+.editor-surface > :deep(.document-preview),
+.editor-surface > :deep(.central-outline) { height: 100%; }
+.document-preview { max-width: none; padding: 42px clamp(28px, 5vw, 80px); overflow: auto; }
+.central-outline { max-width: 760px; margin: 24px auto; border: 1px solid var(--c-border); border-radius: 10px; overflow: hidden; }
+.header-chapter { color: var(--c-text-2); font-size: 12px; }
+.header-action, .header-icon {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  background: var(--c-panel);
+  color: var(--c-text-1);
+  font: 500 12px/1 var(--font-sans), var(--font-zh);
+  cursor: pointer;
+}
+.header-icon { width: 36px; padding: 0; }
+.header-action:hover, .header-icon:hover { background: var(--c-surface-2); color: var(--c-text-0); }
+.header-action.primary { border-color: var(--c-accent); background: var(--c-accent); color: #fff; }
+.selection-toolbar {
+  position: absolute;
+  z-index: 20;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid var(--c-border);
+  border-radius: 9px;
+  background: var(--c-panel);
+  box-shadow: 0 7px 22px rgba(50, 43, 31, .12);
+}
+.selection-toolbar button { height: 29px; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; border: 0; border-radius: 6px; background: transparent; color: var(--c-text-1); font-size: 11px; cursor: pointer; }
+.selection-toolbar button:hover { color: var(--c-accent); background: var(--c-accent-soft); }
+.writing-mode :deep(.editor-toolbar), .latex-mode :deep(.editor-toolbar) { flex: 0 0 auto; border-color: var(--c-border); background: var(--c-panel); box-shadow: none; }
+.writing-mode :deep(.editor-tabs) { display: none; }
+.latex-mode :deep(.editor-tabs) { border-color: var(--c-border); background: var(--c-panel); }
+
+@media (max-width: 1280px) {
+  .workbench-right { display: none; }
+}
+@media (max-width: 1180px) {
+  .workbench-left { width: 208px !important; }
+}
+@media (max-width: 980px) {
+  .workbench-left { width: 190px !important; }
+  .header-action:not(.primary) { display: none; }
+}
+@media (max-width: 760px) {
+  .workbench-left { display: none; }
+  .header-action.primary { display: none; }
+  .header-icon { display: none; }
 }
 </style>

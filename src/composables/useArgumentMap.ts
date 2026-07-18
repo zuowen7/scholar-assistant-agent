@@ -504,7 +504,7 @@ async function extractArgument(
     // Auto-layout after extraction
     if (_state.graph && _state.graph.nodes.length) {
       const { autoLayout } = useArgumentLayout()
-      const pos = autoLayout(_state.graph.nodes as any[], _state.graph.edges as any[])
+      const pos = autoLayout(_state.graph.nodes as any[], _state.graph.edges as any[], 'LR')
       for (const p of pos) {
         const node = _state.graph.nodes.find(n => n.id === p.id)
         if (node) node.position = p.position

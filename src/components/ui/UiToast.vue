@@ -42,11 +42,10 @@ const { toasts, dismiss } = useToast()
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  background: color-mix(in srgb, var(--c-surface-1) 92%, transparent);
-  backdrop-filter: blur(20px) saturate(1.4);
-  border: 1px solid var(--c-surface-3);
-  border-radius: var(--radius-md);
-  box-shadow: var(--elevation-3);
+  background: var(--c-panel-bg);
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  box-shadow: var(--elevation-2);
   pointer-events: auto;
   cursor: pointer;
   min-width: 200px;
@@ -58,10 +57,10 @@ const { toasts, dismiss } = useToast()
   border-radius: 50%;
   flex-shrink: 0;
 }
-.toast.success .toast-dot { background: var(--c-success); box-shadow: 0 0 6px var(--c-success); }
-.toast.warn    .toast-dot { background: var(--c-warn);    box-shadow: 0 0 6px var(--c-warn); }
-.toast.danger  .toast-dot { background: var(--c-danger);  box-shadow: 0 0 6px var(--c-danger); }
-.toast.info    .toast-dot { background: var(--c-info);    box-shadow: 0 0 6px var(--c-info); }
+.toast.success .toast-dot { background: var(--c-success); }
+.toast.warn    .toast-dot { background: var(--c-warn); }
+.toast.danger  .toast-dot { background: var(--c-danger); }
+.toast.info    .toast-dot { background: var(--c-info); }
 
 .toast.success { border-left: 3px solid var(--c-success); }
 .toast.warn    { border-left: 3px solid var(--c-warn); }

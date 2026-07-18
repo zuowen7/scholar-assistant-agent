@@ -21,17 +21,12 @@
       <div class="arg-view-right">
         <button class="arg-toolbar-btn" @click="runAutoLayout">{{ t('argument.autoLayout') }}</button>
         <button class="arg-toolbar-btn" @click="showNewGraph = true">{{ t('argument.newGraph') }}</button>
-        <!-- Add node buttons -->
         <template v-if="state.graph">
-          <button
-            v-for="t in nodeTypes"
-            :key="t.value"
-            class="arg-toolbar-btn arg-add-node"
-            :class="`type-${t.value}`"
-            @click="addNode(t.value)"
-          >
-            + {{ t.label }}
-          </button>
+          <span class="arg-toolbar-separator" />
+          <select v-model="newNodeType" class="arg-node-select" :aria-label="t('argument.contentLabel')">
+            <option v-for="option in nodeTypes" :key="option.value" :value="option.value">{{ option.label }}</option>
+          </select>
+          <button class="arg-toolbar-btn arg-toolbar-btn--primary" @click="addNode(newNodeType)">+ {{ t('general.add') }}</button>
         </template>
       </div>
     </div>
@@ -55,7 +50,7 @@
             <ArgSourcePane />
           </div>
           <div class="arg-canvas-area">
-            <ArgumentMapCanvas />
+            <ArgumentMapCanvas ref="canvasRef" />
           </div>
           <div class="arg-inspector-area">
             <ArgInspector @auto-layout="runAutoLayout" />
@@ -64,30 +59,21 @@
       </template>
     </div>
 
-    <!-- New graph dialog -->
-    <Teleport to="body">
-      <div v-if="showNewGraph" class="arg-dialog-overlay" @click.self="showNewGraph = false">
-        <div class="arg-dialog">
-          <p class="arg-dialog-title">{{ t('argument.newGraph') }}</p>
-          <input
-            v-model="newGraphTitle"
-            class="arg-dialog-input"
-            :placeholder="t('argument.graphTitle')"
-            @keydown.enter="createNewGraph"
-            @keydown.escape="showNewGraph = false"
-          />
-          <div class="arg-dialog-actions">
-            <button class="arg-primary-btn" :disabled="!newGraphTitle.trim()" @click="createNewGraph">{{ t('argument.create2') }}</button>
-            <button class="arg-ghost-btn" @click="showNewGraph = false">{{ t('argument.cancel') }}</button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
+    <AppPromptDialog
+      v-model="showNewGraph"
+      :title="t('argument.newGraph')"
+      :description="t('argument.graphPlaceholder')"
+      :label="t('argument.graphTitle')"
+      :placeholder="t('argument.graphTitle')"
+      :confirm-label="t('argument.create2')"
+      :cancel-label="t('general.cancel')"
+      @submit="createNewGraph"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { nextTick, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -97,12 +83,14 @@ import { useArgumentLayout } from '../../composables/useArgumentLayout'
 import ArgumentMapCanvas from './ArgumentMapCanvas.vue'
 import ArgInspector from './ArgInspector.vue'
 import ArgSourcePane from './ArgSourcePane.vue'
+import AppPromptDialog from '../shell/AppPromptDialog.vue'
 
 const { state, listGraphs, createGraph, loadGraph, upsertNode } = useArgumentMap()
 const { autoLayout } = useArgumentLayout()
 
 const showNewGraph = ref(false)
-const newGraphTitle = ref('')
+const newNodeType = ref<NodeType>('claim')
+const canvasRef = ref<{ fitCanvas: () => void } | null>(null)
 
 const nodeTypes = [
   { value: 'claim' as NodeType, label: t('argument.claim') },
@@ -118,18 +106,22 @@ onMounted(async () => {
   if (state.graphList.length && !state.graph) {
     await loadGraph(state.graphList[0].id)
   }
+  if (needsLayout()) await runAutoLayout()
+  else await fitCanvas()
 })
 
 async function onSelectGraph(e: Event) {
   const gid = (e.target as HTMLSelectElement).value
-  if (gid) await loadGraph(gid)
+  if (!gid) return
+  await loadGraph(gid)
+  if (needsLayout()) await runAutoLayout()
+  else await fitCanvas()
 }
 
-async function createNewGraph() {
-  if (!newGraphTitle.value.trim()) return
-  await createGraph(newGraphTitle.value.trim())
+async function createNewGraph(title: string) {
+  if (!title.trim()) return
+  await createGraph(title.trim())
   await listGraphs()
-  newGraphTitle.value = ''
   showNewGraph.value = false
 }
 
@@ -141,13 +133,28 @@ async function addNode(node_type: NodeType) {
   await upsertNode({ node_type, text: label } as any)
 }
 
-function runAutoLayout() {
+function needsLayout() {
+  const nodes = state.graph?.nodes ?? []
+  if (nodes.length < 2) return false
+  const positioned = nodes.filter(node => Number.isFinite(node.position?.x) && Number.isFinite(node.position?.y))
+  if (positioned.length < nodes.length) return true
+  const unique = new Set(positioned.map(node => `${Math.round(node.position!.x / 20)}:${Math.round(node.position!.y / 20)}`))
+  return unique.size < Math.ceil(nodes.length * .6)
+}
+
+async function fitCanvas() {
+  await nextTick()
+  requestAnimationFrame(() => canvasRef.value?.fitCanvas())
+}
+
+async function runAutoLayout() {
   if (!state.graph) return
-  const positioned = autoLayout(state.graph.nodes as any[], state.graph.edges as any[])
+  const positioned = autoLayout(state.graph.nodes as any[], state.graph.edges as any[], 'LR')
   for (const p of positioned) {
     const node = state.graph!.nodes.find(n => n.id === p.id)
     if (node) node.position = p.position
   }
+  await fitCanvas()
 }
 </script>
 
@@ -156,7 +163,7 @@ function runAutoLayout() {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--c-surface-0);
+  background: var(--c-app-bg);
   overflow: hidden;
 }
 
@@ -165,9 +172,10 @@ function runAutoLayout() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--c-surface-2);
-  background: var(--c-surface-1);
+  min-height: 50px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-panel);
   flex-shrink: 0;
   gap: 10px;
   flex-wrap: wrap;
@@ -184,7 +192,7 @@ function runAutoLayout() {
 .arg-view-brand {
   font-size: 13px;
   font-weight: 700;
-  color: var(--c-accent);
+  color: var(--c-text-0);
   white-space: nowrap;
   letter-spacing: var(--tracking-tight);
 }
@@ -193,9 +201,9 @@ function runAutoLayout() {
   flex: 1;
   min-width: 0;
   max-width: 240px;
-  background: var(--c-surface-2);
-  border: 1px solid var(--c-surface-3);
-  border-radius: var(--radius-sm);
+  background: var(--c-surface-1);
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
   color: var(--c-text-0);
   font: inherit;
   font-size: 12px;
@@ -210,11 +218,24 @@ function runAutoLayout() {
   flex-wrap: wrap;
 }
 
+.arg-toolbar-separator { width: 1px; height: 24px; margin: 0 3px; background: var(--c-border); }
+.arg-node-select {
+  height: 34px;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  background: var(--c-surface-1);
+  color: var(--c-text-1);
+  padding: 0 28px 0 9px;
+  font: inherit;
+  font-size: 12px;
+}
+
 .arg-toolbar-btn {
-  padding: 4px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--c-surface-3);
-  background: var(--c-surface-2);
+  height: 34px;
+  padding: 0 11px;
+  border-radius: 8px;
+  border: 1px solid var(--c-border);
+  background: var(--c-panel);
   color: var(--c-text-0);
   font: inherit;
   font-size: 12px;
@@ -222,14 +243,9 @@ function runAutoLayout() {
   transition: background 140ms, border-color 140ms;
   white-space: nowrap;
 }
-.arg-toolbar-btn:hover { background: var(--c-surface-3); }
-
-.arg-add-node.type-claim { border-color: var(--c-accent); color: var(--c-accent); }
-.arg-add-node.type-grounds { border-color: #10b981; color: #10b981; }
-.arg-add-node.type-warrant { border-color: #3b82f6; color: #3b82f6; }
-.arg-add-node.type-backing { border-color: #93c5fd; color: #93c5fd; }
-.arg-add-node.type-qualifier { border-color: #f59e0b; color: #f59e0b; }
-.arg-add-node.type-rebuttal { border-color: var(--c-danger); color: var(--c-danger); }
+.arg-toolbar-btn:hover { border-color: var(--c-border-strong); background: var(--c-surface-2); }
+.arg-toolbar-btn--primary { border-color: var(--c-accent); background: var(--c-accent); color: white; }
+.arg-toolbar-btn--primary:hover { border-color: var(--c-accent-hover); background: var(--c-accent-hover); }
 
 /* Body */
 .arg-view-body {
@@ -251,15 +267,15 @@ function runAutoLayout() {
 }
 
 .arg-view-split {
-  display: flex;
+  display: grid;
+  grid-template-columns: 220px minmax(360px, 1fr) 260px;
   width: 100%;
   height: 100%;
   overflow: hidden;
 }
 
 .arg-source-area {
-  width: 280px;
-  flex-shrink: 0;
+  min-width: 0;
   height: 100%;
   overflow: hidden;
 }
@@ -271,10 +287,9 @@ function runAutoLayout() {
 }
 
 .arg-inspector-area {
-  width: 240px;
-  flex-shrink: 0;
-  border-left: 1px solid var(--c-surface-2);
-  background: var(--c-surface-1);
+  min-width: 0;
+  border-left: 1px solid var(--c-border);
+  background: var(--c-panel);
   height: 100%;
   overflow-y: auto;
 }
@@ -306,43 +321,8 @@ function runAutoLayout() {
 }
 .arg-ghost-btn:hover { background: var(--c-surface-2); }
 
-/* Dialog */
-.arg-dialog-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--c-overlay);
-  z-index: 9999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+@media (max-width: 1100px) {
+  .arg-view-split { grid-template-columns: 190px minmax(300px, 1fr) 230px; }
+  .arg-view-toolbar { align-items: flex-start; }
 }
-
-.arg-dialog {
-  background: var(--c-surface-1);
-  border: 1px solid var(--c-surface-3);
-  border-radius: var(--radius-lg);
-  padding: 20px 24px;
-  width: 360px;
-  box-shadow: var(--shadow-lg);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.arg-dialog-title { font-size: 14px; font-weight: 600; color: var(--c-text-0); margin: 0; }
-
-.arg-dialog-input {
-  background: var(--c-surface-2);
-  border: 1px solid var(--c-surface-3);
-  border-radius: var(--radius-sm);
-  color: var(--c-text-0);
-  font: inherit;
-  font-size: 13px;
-  padding: 7px 10px;
-  outline: none;
-  transition: border-color 140ms;
-}
-.arg-dialog-input:focus { border-color: var(--c-accent); }
-
-.arg-dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
 </style>

@@ -79,7 +79,7 @@ interface TaskType {
   presets: { label: string; instruction: string }[]
 }
 
-const taskTypes: TaskType[] = [
+const taskTypes = computed<TaskType[]>(() => [
   {
     id: 'polish',
     label: t('commandPalette.polishLabel'),
@@ -117,10 +117,10 @@ const taskTypes: TaskType[] = [
       { label: t('commandPalette.improveClarity'), instruction: 'Improve sentence clarity and readability' },
     ],
   },
-]
+])
 
 const currentTask = computed(() =>
-  taskTypes.find(t => t.id === activeTask.value) || taskTypes[0]
+  taskTypes.value.find(task => task.id === activeTask.value) || taskTypes.value[0]
 )
 
 watch(() => props.visible, async (v) => {
@@ -155,11 +155,11 @@ function setAndSubmit(text: string) {
 .cmd-palette {
   position: fixed;
   z-index: 9999;
-  background: var(--c-surface-2);
-  border: 1px solid var(--c-accent);
-  border-radius: var(--radius-md);
-  padding: 8px;
-  box-shadow: var(--elevation-4);
+  background: var(--c-panel-bg);
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: var(--elevation-2);
   min-width: 380px;
   max-width: 500px;
 }
@@ -239,7 +239,7 @@ function setAndSubmit(text: string) {
 .cmd-presets button {
   background: var(--c-surface-3);
   border: 1px solid var(--c-surface-4);
-  border-radius: var(--radius-pill);
+  border-radius: 7px;
   padding: 2px 10px;
   color: var(--c-text-2);
   font-size: var(--text-xs);

@@ -1,5 +1,13 @@
 <template>
   <div class="mindmap-view">
+    <AppHeader :title="t('mindmap.headerTitle', { title: mapTitle })" :subtitle="t('mindmap.headerSubtitle', { count: nodeCount })" :icon="Network">
+      <button type="button" class="map-header-button" :title="t('mindmap.fitView')" @click="sendViewCommand('fit-view')"><RefreshCw :size="17" /></button>
+      <button type="button" class="map-header-button primary" :disabled="!selectedNode || expandingNode" @click="aiExpandSelectedNode"><Sparkles :size="16" /> {{ expandingNode ? t('mindmap.expanding') : t('mindmap.aiExpandBtn') }}</button>
+      <button type="button" class="map-header-button" :disabled="analysisLoading" @click="runMindMapAnalysis"><ShieldCheck :size="16" /> {{ analysisLoading ? t('mindmap.checking') : t('mindmap.aiCheckBtn') }}</button>
+      <button type="button" class="map-header-button" @click="autoLayout()"><LayoutGrid :size="16" /> {{ t('mindmap.autoLayout') }}</button>
+      <button type="button" class="map-header-button" @click="addChildWithPosition"><Plus :size="16" /> {{ t('mindmap.childNode') }}</button>
+      <button type="button" class="map-header-button" @click="saveAndEnterEditor">{{ t('mindmap.returnToText') }}</button>
+    </AppHeader>
     <div class="mindmap-header">
       <div class="mindmap-title-row">
         <span class="mindmap-badge">&#24605;&#32500;&#23548;&#22270;</span>
@@ -24,7 +32,7 @@
           v-if="outlineMode !== 'expanded'"
           class="outline-rail-button"
           :title="t('mindmap.expandOutline')"
-          @click="outlineMode = 'expanded'"
+          @click="openOutlinePanel"
         >
           &#22823;&#32434;
         </button>
@@ -108,24 +116,24 @@
       <div
         v-if="!propertiesCollapsed"
         class="pane-splitter horizontal"
-        title="Drag properties height"
+        :title="t('mindmap.dragPropertiesHeight')"
         @pointerdown="startPaneResize($event, 'properties')"
       />
 
       <section class="mindmap-properties" :class="{ collapsed: propertiesCollapsed, detailed: propertyDetailsVisible }">
         <div class="properties-header">
-          <div class="panel-title">&#23646;&#24615;</div>
+          <div class="panel-title">{{ t('mindmap.properties') }}</div>
           <div class="properties-actions">
             <button
               v-if="!propertiesCollapsed"
               class="properties-detail-button"
               @click="propertyDetailsOpen = !propertyDetailsOpen"
             >
-              {{ propertyDetailsOpen ? '\u6536\u8d77\u7f16\u8f91' : '\u7f16\u8f91\u8282\u70b9\u6587\u5b57' }}
+              {{ propertyDetailsOpen ? t('mindmap.collapseBody') : t('mindmap.editBody') }}
             </button>
             <button
               class="properties-collapse-button"
-              :title="propertiesCollapsed ? 'Expand properties' : 'Collapse properties'"
+              :title="propertiesCollapsed ? t('mindmap.expandProperties') : t('mindmap.collapseProperties')"
               @click="propertiesCollapsed = !propertiesCollapsed"
             >
               {{ propertiesCollapsed ? '^' : 'v' }}
@@ -134,16 +142,16 @@
         </div>
 
         <div v-if="!propertiesCollapsed" class="property-summary">
-          <span class="summary-main">{{ selectedNode?.text || '\u672a\u9009\u62e9\u8282\u70b9' }}</span>
-          <span>{{ nodeCount }} &#33410;&#28857;</span>
-          <span>{{ draftMindMap.links.length }} &#20851;&#32852;&#32447;</span>
+          <span class="summary-main">{{ selectedNode?.text || t('mindmap.noSelection') }}</span>
+          <span>{{ t('mindmap.nodeCount', { count: nodeCount }) }}</span>
+          <span>{{ t('mindmap.linkCount', { count: draftMindMap.links.length }) }}</span>
           <span>{{ Math.round(viewport.zoom * 100) }}%</span>
-          <span>{{ saveMessage || '\u672a\u4fdd\u5b58' }}</span>
+          <span>{{ saveMessage || t('editor.unSaved') }}</span>
         </div>
 
         <div v-if="propertyDetailsVisible" class="property-details">
           <label class="inspector-label">
-            &#33410;&#28857;&#25991;&#23383;
+            {{ t('mindmap.nodeText') }}
             <textarea
               v-model="selectedText"
               class="inspector-input"
@@ -154,16 +162,16 @@
           </label>
           <div class="inspector-meta-grid">
             <div class="inspector-meta">
-              <span>&#33410;&#28857;&#25968;</span>
+              <span>{{ t('mindmap.nodes') }}</span>
               <strong>{{ nodeCount }}</strong>
             </div>
             <div class="inspector-meta">
-              <span>&#20851;&#32852;&#32447;</span>
+              <span>{{ t('mindmap.links') }}</span>
               <strong>{{ draftMindMap.links.length }}</strong>
             </div>
             <div class="inspector-meta">
-              <span>&#20445;&#23384;&#29366;&#24577;</span>
-              <strong>{{ saveMessage || '\u672a\u4fdd\u5b58' }}</strong>
+              <span>{{ t('mindmap.saveStatus') }}</span>
+              <strong>{{ saveMessage || t('editor.unSaved') }}</strong>
             </div>
           </div>
         </div>
@@ -181,7 +189,7 @@
           v-if="!aiPanelOpen"
           class="ai-rail-button"
           :title="t('mindmap.expandAiHints')"
-          @click="aiPanelOpen = true"
+          @click="openAiPanel"
         >
           AI
         </button>
@@ -217,6 +225,8 @@ import { useMindMap, mindMapToMarkdown, setAnalysisIssues } from '../composables
 import { useMindMapAnalysis, type MindMapAnalysisIssue } from '../composables/useMindMapAnalysis'
 import { useMindMapLayout } from '../composables/useMindMapLayout'
 import { useMindMapKeyboard } from '../composables/useMindMapKeyboard'
+import AppHeader from './shell/AppHeader.vue'
+import { LayoutGrid, Network, Plus, RefreshCw, ShieldCheck, Sparkles } from 'lucide-vue-next'
 
 const emit = defineEmits<{
   (e: 'enter-editor', outline: string): void
@@ -238,10 +248,10 @@ interface MindMapLayoutState {
   miniMap: { collapsed: boolean; size: MiniMapSize; x: number; y: number; docked: boolean }
 }
 
-const LAYOUT_STORAGE_KEY = 'scholar.mindmap.layout.v2'
+const LAYOUT_STORAGE_KEY = 'scholar.mindmap.layout.v5'
 
 const defaultLayoutState = (): MindMapLayoutState => ({
-  outlineMode: 'collapsed',
+  outlineMode: 'hidden',
   outlineWidth: 178,
   aiPanelOpen: true,
   aiPanelWidth: 284,
@@ -267,7 +277,7 @@ const {
   deleteNode,
 } = useMindMap()
 const { analyzeMindMap } = useMindMapAnalysis()
-const { autoLayout } = useMindMapLayout()
+const { autoLayout: calculateAutoLayout } = useMindMapLayout()
 const { onKeydown } = useMindMapKeyboard()
 
 const selectedText = ref('')
@@ -293,6 +303,7 @@ let canvasResizeObserver: ResizeObserver | null = null
 
 const canDelete = computed(() => !!selectedNode.value && selectedNodeId.value !== draftMindMap.value.rootId)
 const nodeCount = computed(() => Object.keys(draftMindMap.value.nodes).length)
+const mapTitle = computed(() => draftMindMap.value.nodes[draftMindMap.value.rootId]?.text || t('reviewerWorkspace.currentDocument'))
 const propertyDetailsVisible = computed(() => !propertiesCollapsed.value && propertyDetailsOpen.value)
 
 watch([
@@ -318,7 +329,7 @@ watch([aiPanelOpen, aiPanelWidth, outlineMode, outlineWidth], () => {
   })
 })
 
-watch(aiPanelOpen, () => {
+watch([aiPanelOpen, outlineMode], () => {
   nextTick(() => recenterCanvasForSafeArea())
 })
 
@@ -393,6 +404,16 @@ function handleWindowResize() {
   clampMiniMapPosition()
 }
 
+function openOutlinePanel() {
+  if (window.innerWidth < 1500) aiPanelOpen.value = false
+  outlineMode.value = 'expanded'
+}
+
+function openAiPanel() {
+  if (window.innerWidth < 1500) outlineMode.value = 'hidden'
+  aiPanelOpen.value = true
+}
+
 function loadLayoutState(): MindMapLayoutState {
   if (typeof window === 'undefined') return defaultLayoutState()
   try {
@@ -464,6 +485,11 @@ function clampPaneSizes() {
   } else if (width < 1040 && outlineMode.value === 'expanded') {
     outlineMode.value = 'hidden'
   }
+
+  if (width < 1500 && aiPanelOpen.value && outlineMode.value === 'expanded') {
+    outlineMode.value = 'hidden'
+  }
+  if (width < 1040) toolbarCollapsed.value = true
 
   if (height < 640) propertiesCollapsed.value = true
   clampMiniMapPosition()
@@ -635,16 +661,22 @@ function toggleCollapse(id: string) {
 }
 
 function markSaved() {
-  saveMessage.value = '\u5df2\u4fdd\u5b58'
+  saveMessage.value = t('editor.saved')
+  const savedLabel = saveMessage.value
   window.setTimeout(() => {
-    if (saveMessage.value === '\u5df2\u4fdd\u5b58') saveMessage.value = ''
+    if (saveMessage.value === savedLabel) saveMessage.value = ''
   }, 1800)
+}
+
+function autoLayout(direction: 'LR' | 'TB' | 'radial' = 'radial') {
+  calculateAutoLayout(direction)
+  nextTick(() => recenterCanvasForSafeArea())
 }
 
 async function runMindMapAnalysis() {
   analysisLoading.value = true
   activeIssueId.value = ''
-  aiPanelOpen.value = true
+  openAiPanel()
   try {
     analysisIssues.value = await analyzeMindMap(draftMindMap.value)
     setAnalysisIssues(analysisIssues.value)
@@ -1161,5 +1193,50 @@ async function aiExpandSelectedNode() {
   .inspector-meta-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* Reference-driven canvas: one quiet, full-bleed thinking surface */
+.map-header-button {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  background: var(--c-panel);
+  color: var(--c-text-1);
+  font: 500 12px/1 var(--font-sans), var(--font-zh);
+  cursor: pointer;
+}
+.map-header-button:hover { background: var(--c-surface-2); color: var(--c-text-0); }
+.map-header-button.primary { border-color: var(--c-accent); background: var(--c-accent); color: #fff; }
+.map-header-button:disabled { opacity: .5; cursor: default; }
+.mindmap-header { display: none !important; }
+.mindmap-body {
+  display: grid;
+  background: var(--c-app-bg);
+}
+.mindmap-outline,
+.mindmap-ai-panel,
+.mindmap-properties { display: flex; }
+.mindmap-outline { display: block; background: var(--c-nav); }
+.mindmap-ai-panel { display: block; background: var(--c-panel); }
+.mindmap-properties { background: var(--c-panel); }
+.pane-splitter { display: block; }
+:deep(.floating-toolbar) { display: flex !important; }
+.mindmap-workspace { display: grid; width: 100%; height: 100%; }
+.mindmap-canvas-vf {
+  min-height: 0;
+  overflow: hidden;
+  background-color: var(--c-app-bg);
+  background-image: radial-gradient(circle, rgba(91, 108, 255, .11) .8px, transparent .8px);
+  background-size: 24px 24px;
+}
+@media (max-width: 980px) {
+  .map-header-button:not(.primary):not(:first-child) { display: none; }
+  .mindmap-outline { display: none; }
+  .mindmap-body { grid-template-columns: minmax(0, 1fr) 42px !important; }
 }
 </style>

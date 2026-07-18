@@ -1,6 +1,5 @@
 ﻿import { reactive, readonly, markRaw } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import { save } from '@tauri-apps/plugin-dialog'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { API_BASE } from '../utils/api'
 import { logger } from '../utils/logger'
@@ -214,6 +213,14 @@ async function startStream(taskId: string, attempt: number = 0): Promise<void> {
       if (myStreamId !== _currentStreamId) return
       handleSseEvent(event, data)
     })
+    if (
+      myStreamId === _currentStreamId
+      && state.status !== 'done'
+      && state.status !== 'error'
+      && state.status !== 'idle'
+    ) {
+      throw new Error(i18n.global.t('errors.streamEnded'))
+    }
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
       return
@@ -460,24 +467,11 @@ async function downloadResult(): Promise<void> {
   const content = state.finalContent
   if (!content) return
 
-  try {
-    const filePath = await save({
-      defaultPath: `translated_${state.taskId}.md`,
-      filters: [{ name: 'Markdown', extensions: ['md'] }, { name: 'All Files', extensions: ['*'] }],
-    })
-    if (!filePath) return
-
-    await invoke<string>('save_file', { path: filePath, content })
-  } catch {
-    // 非 Tauri 环境：浏览器下载
-    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
-    const blobUrl = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = blobUrl
-    a.download = `translated_${state.taskId}.md`
-    a.click()
-    URL.revokeObjectURL(blobUrl)
-  }
+  const { saveBlob } = await import('./useEditorIO')
+  await saveBlob(
+    new Blob([content], { type: 'text/markdown;charset=utf-8' }),
+    `${state.taskId}_bilingual.md`,
+  )
 }
 
 async function exportBilingualDocx(): Promise<void> {
@@ -551,24 +545,11 @@ async function exportTranslationOnlyMarkdown(): Promise<void> {
   }
   const content = parts.join('\n\n')
 
-  try {
-    const filePath = await save({
-      defaultPath: `translated_${state.taskId}.md`,
-      filters: [{ name: 'Markdown', extensions: ['md'] }, { name: 'All Files', extensions: ['*'] }],
-    })
-    if (!filePath) return
-
-    await invoke<string>('save_file', { path: filePath, content })
-  } catch {
-    // 非 Tauri 环境：浏览器下载
-    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
-    const blobUrl = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = blobUrl
-    a.download = `translated_${state.taskId}.md`
-    a.click()
-    URL.revokeObjectURL(blobUrl)
-  }
+  const { saveBlob } = await import('./useEditorIO')
+  await saveBlob(
+    new Blob([content], { type: 'text/markdown;charset=utf-8' }),
+    `${state.taskId}_translation_only.md`,
+  )
 }
 
 // ── P2: PPTX 导出 ──────────────────────────────────────────────────────

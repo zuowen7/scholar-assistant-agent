@@ -8,7 +8,6 @@
     <div class="toolbar-grip" :title="t('mindmap.dragToolbar')" />
 
     <template v-if="collapsed">
-      <button class="primary" @click.stop="$emit('add-child')" :disabled="!canAdd">{{ t('mindmap.childNode') }}</button>
       <button class="workflow-primary" @click.stop="$emit('save')">{{ t('mindmap.save') }}</button>
       <button class="icon-btn" :title="t('mindmap.expandToolbar')" @click.stop="$emit('update:collapsed', false)">▣</button>
     </template>
@@ -171,17 +170,16 @@ function startDrag(event: PointerEvent) {
   z-index: 10;
   display: flex;
   align-items: center;
-  flex-wrap: nowrap;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: max-content;
   max-width: calc(100% - 18px);
   min-height: 38px;
   padding: 5px;
   border: 1px solid color-mix(in srgb, var(--border-color) 52%, transparent);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--panel-bg) 82%, transparent);
-  box-shadow: var(--elevation-2);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: var(--c-panel-bg);
+  box-shadow: var(--elevation-1);
   cursor: grab;
   user-select: none;
 }
@@ -205,10 +203,11 @@ function startDrag(event: PointerEvent) {
   align-items: center;
   gap: 3px;
   min-height: 29px;
-  padding: 2px;
-  border: 1px solid color-mix(in srgb, var(--border-color) 42%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--toolbar-bg) 54%, transparent);
+  padding: 0 4px 0 0;
+  border: 0;
+  border-right: 1px solid var(--c-border);
+  border-radius: 0;
+  background: transparent;
   flex-shrink: 0;
 }
 .group-label {
@@ -218,16 +217,7 @@ function startDrag(event: PointerEvent) {
   font-weight: 700;
   line-height: 25px;
 }
-.ai-group {
-  border-color: color-mix(in srgb, var(--c-accent) 28%, var(--border-color));
-  background: color-mix(in srgb, var(--active-bg) 32%, transparent);
-}
-.workflow-group {
-  border-color: color-mix(in srgb, var(--c-accent) 38%, var(--border-color));
-}
-.utility-group {
-  background: color-mix(in srgb, var(--toolbar-bg) 38%, transparent);
-}
+.utility-group { padding-right: 0; border-right: 0; }
 button {
   height: 25px;
   border: 1px solid transparent;
@@ -263,7 +253,7 @@ button:disabled {
   font-weight: 650;
 }
 .workflow-primary {
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--c-accent) 18%, transparent);
+  box-shadow: none;
 }
 .more-panel,
 .shortcut-panel {
@@ -271,10 +261,10 @@ button:disabled {
   top: calc(100% + 6px);
   right: 0;
   max-width: min(300px, calc(100vw - 24px));
-  background: color-mix(in srgb, var(--c-surface-2) 96%, transparent);
-  border: 1px solid var(--c-surface-3);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  background: var(--c-panel-bg);
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  box-shadow: var(--elevation-2);
   padding: var(--space-3);
   z-index: 20;
 }
@@ -322,7 +312,6 @@ button:disabled {
 }
 @media (max-width: 1180px) {
   .floating-toolbar {
-    flex-wrap: wrap;
     max-height: min(94px, calc(100% - 16px));
   }
 

@@ -72,6 +72,22 @@ class TestExactMatch:
         assert hit.match_type == "exact"
         assert hit.target == "猫坐在垫子上。"
 
+    def test_store_exact_pair_when_fuzzy_encoder_unavailable(self, tmp_path, monkeypatch):
+        store = TranslationMemory(tmp_path / "exact-only.db")
+        monkeypatch.setattr(store, "_get_encoder", lambda: None)
+        try:
+            store.store("Evidence first", "证据优先")
+            hit = store.lookup("Evidence first")
+            assert hit.match_type == "exact"
+            assert hit.target == "证据优先"
+            embedding = store._conn.execute(
+                "SELECT embedding FROM tm_entries WHERE source_text = ?",
+                ("Evidence first",),
+            ).fetchone()[0]
+            assert embedding is None
+        finally:
+            store.close()
+
 
 # ---------------------------------------------------------------------------
 # Fuzzy match

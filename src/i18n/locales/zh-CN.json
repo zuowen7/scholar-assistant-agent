@@ -41,6 +41,109 @@
     "modelsAvailable": "{count} 个模型可用",
     "installOllamaHint": "请安装 Ollama 并运行 ollama pull <model>"
   },
+  "shell": {
+    "primaryNav": "主要模块",
+    "translate": "翻译",
+    "write": "写作",
+    "think": "思考",
+    "review": "审稿",
+    "localUser": "研墨用户",
+    "localWorkspace": "本地工作区",
+    "windowControls": "窗口控制",
+    "recentFiles": "最近文件",
+    "recentEmpty": "打开项目后会显示在这里"
+  },
+  "outline": {
+    "title": "章节大纲",
+    "add": "新建章节",
+    "empty": "使用 Markdown 标题建立章节后，会在这里形成真实大纲。"
+  },
+  "taskAgent": {
+    "title": "AI 研究助手",
+    "currentTask": "当前任务",
+    "waiting": "等待研究任务",
+    "steps": "步骤",
+    "stepsEmpty": "Agent 开始执行后，这里会显示真实工具步骤与进度。",
+    "result": "结果",
+    "selectionPlaceholder": "围绕选中文本安排任务…",
+    "placeholder": "输入研究问题或任务，Enter 发送",
+    "polishPrompt": "润色当前选中文本，保持学术语气和原意。",
+    "argumentPrompt": "检查当前章节的论证逻辑并给出可执行修改。",
+    "selectionScope": "范围：当前选中的 {count} 个字符",
+    "fileScope": "范围：{file}",
+    "documentScope": "范围：当前文稿",
+    "analyzeTask": "分析任务",
+    "executeTool": "执行工具",
+    "understandContext": "理解上下文与研究目标",
+    "tools": { "readFile": "读取文稿上下文", "writeFile": "写入文稿修改", "replace": "生成局部修改", "grep": "检索项目内容", "glob": "定位相关文件", "command": "运行项目命令", "rag": "检索研究资料", "webSearch": "搜索外部资料", "webFetch": "读取参考资料" }
+  },
+  "reviewerWorkspace": {
+    "title": "对抗式审稿 · Reviewer-2",
+    "workspaceNav": "审稿工作区",
+    "reviewerTab": "对抗审查 · Reviewer-2",
+    "ledgerTab": "承诺兑付 · Claim Ledger",
+    "ledgerTitle": "承诺兑付 · Claim Ledger",
+    "ledgerSubtitle": "核对摘要与引言中的主张是否在正文中得到证据、方法或实验兑现",
+    "experimentSuggestion": "补齐实验建议",
+    "generalReview": "通用审稿",
+    "importReview": "导入真实评审",
+    "argumentMap": "论证图谱",
+    "reviewing": "审稿中…",
+    "startReview": "开始审稿",
+    "importPlaceholder": "粘贴真实审稿意见，系统会解析并锚定到当前文稿",
+    "importAction": "导入并解析",
+    "filterLabel": "审稿意见筛选",
+    "targetVenue": "目标会议",
+    "persona": "评审角色",
+    "reviewMode": "审稿模式",
+    "parallel": "并行评审",
+    "serial": "串行评审",
+    "emptyTitle": "尚未生成审稿意见",
+    "emptyDescription": "打开一篇真实文稿后运行 Reviewer-2，批评、原文锚点和作者回应会保存在现有审稿会话中。",
+    "reviewDocument": "对当前文稿发起审稿",
+    "loading": "Reviewer-2 正在读取文稿并生成可锚定的批评…",
+    "rebuildLedger": "重新分析",
+    "buildLedger": "建立台账",
+    "ledgerEmpty": "从当前文稿建立 Claim Ledger 后，主张兑现状态会显示在这里。",
+    "overview": "审稿总体概览",
+    "total": "总批评",
+    "responded": "已回应",
+    "pending": "待回应",
+    "responseRate": "回应完成率 {rate}%",
+    "tip": "小贴士",
+    "mapSubtitle": "保留现有 Toulmin Argument Map 与真实节点数据",
+    "backReviewer": "返回 Reviewer-2",
+    "currentDocument": "当前文稿",
+    "noDocument": "未选择文稿",
+    "subtitle": "审稿 · {title} · {count} 条批评",
+    "pendingTip": "优先回应方法与实验类批评，这类问题通常对最终接收影响更大。",
+    "doneTip": "当前没有待回应意见。可以检查 Claim Ledger 中仍未兑现的主张。",
+    "promise": { "paid": "已兑现", "partial": "部分", "unpaid": "未兑现", "mismatch": "不匹配", "unknown": "待确认" }
+  },
+  "settingsCenter": {
+    "title": "设置",
+    "subtitle": "模型、阅读、网络与语音能力",
+    "sections": "设置分类",
+    "engineDescription": "选择现有翻译与写作链路使用的模型服务。配置会保存到当前后端，不会创建新的 Provider。",
+    "cloudDescription": "使用已配置的云端 Provider 和模型。",
+    "localDescription": "在本机通过 Ollama 运行模型，研究文件无需离开设备。",
+    "tectonicDescription": "用于把 LaTeX 项目编译为 PDF。",
+    "displayDescription": "统一界面主题、语言与翻译阅读排版。",
+    "appearance": "界面主题",
+    "darkActive": "当前使用深色纸墨主题",
+    "lightActive": "当前使用暖白纸张主题",
+    "light": "浅色",
+    "dark": "深色",
+    "typographyDescription": "这些设置会直接应用到翻译双栏阅读区。",
+    "previewLabel": "阅读预览",
+    "previewText": "清晰的排版让原文与译文在长时间阅读中保持安静、稳定的节奏。",
+    "networkDescription": "为模型和翻译服务配置 HTTP 代理。保存后需重启后端生效。",
+    "backgroundDescription": "可选的本地背景只用于产品外壳，不会上传到云端。",
+    "noBackground": "当前使用默认暖白背景",
+    "voiceDescription": "配置全局热键、语音语言和本地唤醒词。更改会立即应用。",
+    "voiceEnabledDescription": "允许通过热键或唤醒词打开语音指令。",
+    "wakeWordDescription": "在支持语音识别的环境中监听指定唤醒词。"
+  },
   "status": {
     "online": "在线",
     "offline": "离线",
@@ -133,7 +236,9 @@
     "analyzing2": "分析中"
   },
   "agent": {
-    "tabChat": "对话",
+    "approvalRequest": "Agent 请求执行",
+    "taskCount": "{done}/{total} 项任务",
+    "tabChat": "任务",
     "tabDocs": "文献库",
     "tabTemplates": "模板",
     "tabSessions": "会话",
@@ -141,7 +246,7 @@
     "dockSide": "停靠回侧边",
     "popFloat": "弹出浮动窗口",
     "close": "关闭",
-    "placeholder": "向 Agent 提问，它会直接在项目里读写文件",
+    "placeholder": "交给 Agent 一项明确的研究或编辑任务",
     "workspace": "工作区：{name}",
     "noWorkspace": "请先在编辑器中打开一个项目文件夹",
     "labelTask": "任务",
@@ -158,7 +263,7 @@
     "contextDocument": "文档",
     "removeAttachment": "移除附件",
     "addAttachment": "添加附件",
-    "inputPlaceholder": "输入消息...",
+    "inputPlaceholder": "描述下一项任务...",
     "stopGenerate": "停止生成",
     "send": "发送",
     "voiceStart": "语音输入",
@@ -251,6 +356,20 @@
     "error": "错误",
     "errorPrefix": "错误：{msg}",
     "calling": "正在调用：{tool}",
+    "writingTitle": "AI 写作助手",
+    "workspacePolish": "润色选中文本",
+    "workspaceExpand": "扩写论据",
+    "workspaceRewrite": "重写表达",
+    "workspaceCompliance": "合规检查",
+    "compliancePrompt": "检查当前内容的学术规范、引用与 LaTeX 语法问题",
+    "currentFile": "当前文件：{file}",
+    "prompts": {
+      "polish": "润色当前打开的文件：改进语法、用词和流畅度，保持原意，直接编辑文件。",
+      "expand": "扩写当前打开的文件：补充细节、论证和支撑内容，直接编辑文件。",
+      "review": "审阅当前打开的文件：指出问题并给出改进建议，把意见写在文件末尾。",
+      "en": "把当前打开的文件翻译成学术英文，保存为新文件。",
+      "zh": "把当前打开的文件翻译成学术中文，保存为新文件。"
+    },
     "cmd": {
       "explain": "解释文本",
       "fix": "修复问题",
@@ -269,6 +388,7 @@
     "uploadFailed": "上传失败",
     "uploadFailedHttp": "上传失败 ({status})",
     "streamFailed": "流式连接失败",
+    "streamEnded": "翻译连接意外中断，请重试",
     "connectFailed": "连接失败 ({status})",
     "reconnecting": "连接中断，正在重试 ({attempt}/{max})… {delay}s 后重连",
     "chunksAndBlocks": "共 {chunks} 块、{blocks} 段",
@@ -379,7 +499,21 @@
     "dragOutlineWidth": "拖动调整大纲宽度",
     "dragAiPanelWidth": "拖动调整 AI 面板宽度",
     "expandAiHints": "展开 AI 提醒",
-    "collapseAiHints": "收起 AI 提醒"
+    "collapseAiHints": "收起 AI 提醒",
+    "headerTitle": "思维导图 · {title}",
+    "headerSubtitle": "思考 · {count} 个节点 · 真实项目数据",
+    "returnToText": "返回正文",
+    "dragPropertiesHeight": "拖动调整属性面板高度",
+    "properties": "属性",
+    "expandProperties": "展开属性",
+    "collapseProperties": "收起属性",
+    "noSelection": "未选择节点",
+    "nodeCount": "{count} 节点",
+    "linkCount": "{count} 关联线",
+    "nodeText": "节点文字",
+    "nodes": "节点数",
+    "links": "关联线",
+    "saveStatus": "保存状态"
   },
   "argument": {
     "unnamedGraph": "未命名论证图",
@@ -646,22 +780,23 @@
     "noTemplates": "还没有可用模板",
     "includedSections": "包含章节",
     "experiment": "实验",
-    "complianceTitle": "📋 论文合规检查报告",
+    "complianceTitle": "论文合规检查",
+    "complianceSubtitle": "结构、术语、引用、风险与可读性的真实检查结果",
     "complianceAnalyzing": "正在分析论文合规性...",
     "complianceRecheck": "重新检查",
     "complianceStart": "点击\"重新检查\"开始分析",
-    "complianceStructure": "📑 论文结构",
-    "complianceTerminology": "🔤 术语一致性",
-    "complianceCitations": "📚 引用格式",
-    "complianceHallucination": "⚡ 幻觉风险",
-    "complianceReadability": "📖 可读性",
-    "compliancePass": "✅ 合格",
-    "complianceWarn": "⚠️ 需改进",
-    "complianceFail": "❌ 不合格",
-    "complianceUnknown": "❓ 未知",
-    "complianceLowRisk": "🟢 低风险",
-    "complianceMediumRisk": "🟡 中风险",
-    "complianceHighRisk": "🔴 高风险",
+    "complianceStructure": "论文结构",
+    "complianceTerminology": "术语一致性",
+    "complianceCitations": "引用格式",
+    "complianceHallucination": "幻觉风险",
+    "complianceReadability": "可读性",
+    "compliancePass": "合格",
+    "complianceWarn": "需改进",
+    "complianceFail": "不合格",
+    "complianceUnknown": "未知",
+    "complianceLowRisk": "低风险",
+    "complianceMediumRisk": "中风险",
+    "complianceHighRisk": "高风险",
     "complianceNone": "无",
     "complianceWords": "字",
     "characters": "字符",
@@ -702,6 +837,35 @@
     "rightAiEdit": "AI 编辑",
     "rightArgument": "论证陪练",
     "rightClosePanel": "关闭面板"
+    ,"documentView": "文稿视图"
+    ,"lineWordCount": "{lines} 行 · {words} 字"
+    ,"unsavedChanges": "有未保存修改"
+    ,"autoSaved": "已自动保存"
+    ,"writingView": "写作视图"
+    ,"saveAction": "保存"
+    ,"polish": "润色"
+    ,"aiPolish": "AI 润色"
+    ,"collapseRight": "收起右栏"
+    ,"expandRight": "展开右栏"
+    ,"condense": "精简"
+    ,"expand": "扩写"
+    ,"checkArgument": "检查论证"
+    ,"closeProjectDescription": "返回欢迎页并关闭当前工作区"
+    ,"closeProjectDirtyDetail": "当前仍有未保存的标签页。继续将丢弃这些内存中的修改，但不会删除磁盘上的项目文件。"
+    ,"closeProjectDetail": "当前项目会从工作区关闭，稍后仍可从最近项目重新打开。"
+    ,"notSaved": "尚未保存"
+    ,"writingHeaderSubtitle": "写作 · 当前章节 · {status}"
+    ,"latexHeaderSubtitle": "写作 · LaTeX 编辑器 · {status}"
+    ,"body": "正文"
+    ,"outline": "大纲"
+    ,"paperTitlePlaceholder": "输入论文标题（可选）"
+    ,"newSection": "新章节"
+    ,"selectedText": "选中文本"
+    ,"documentTarget": "文稿"
+    ,"selectionTaskPrompt": "{action}当前{target}，保持学术含义与引用不变，并通过现有编辑工具给出可确认修改。"
+    ,"openRecentFailed": "打开最近项目失败"
+    ,"zoteroSearchDescription": "在已连接的 Zotero 文献库中搜索，并将首个匹配引用插入光标位置。"
+    ,"zoteroSearchPlaceholder": "标题、作者、DOI 或关键词"
   },
   "toast": {
     "unknownError": "未知错误，请检查网络或后端状态"
@@ -822,7 +986,12 @@
     "searchPlaceholder": "搜索文件...",
     "noMatch": "没有匹配 \"{query}\" 的文件",
     "noFolderOpen": "未打开文件夹",
-    "copyPath": "复制路径"
+    "copyPath": "复制路径",
+    "noFolderSubtitle": "打开文件夹后即可浏览和编辑项目文件。",
+    "createDescription": "新项目将创建在当前选中的项目文件夹中。",
+    "deleteConfirmTitle": "删除此项？",
+    "deleteConfirmDescription": "此操作会从磁盘中删除选中项。",
+    "deleteConfirmDetail": "删除“{name}”后无法在应用内恢复。"
   },
   "commandPalette": {
     "aiCommand": "AI 编辑命令",
@@ -847,6 +1016,8 @@
     "improveClarity": "提升清晰度"
   },
   "reviewerThread": {
+    "anchorSource": "锚定原文",
+    "locate": "定位",
     "collapse": "收起",
     "expandFull": "展开全文",
     "locateText": "定位原文",
@@ -906,6 +1077,9 @@
     "templateResearchPaper": "研究论文",
     "templateReviewPaper": "文献综述",
     "templateThesis": "学位论文",
-    "templateBlank": "空白项目"
+    "templateBlank": "空白项目",
+    "createDescription": "建立真实项目目录、写作文件和可选的 Git 基线",
+    "initGitDescription": "在项目目录中创建本地版本历史，不会推送到远程。",
+    "templateReady": "创建后可继续调整论文结构"
   }
 }

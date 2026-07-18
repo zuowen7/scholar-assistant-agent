@@ -1,26 +1,23 @@
 <template>
-  <Teleport to="body">
-    <Transition name="v-fade">
-      <div v-if="visible" class="modal-overlay" @click.self="$emit('close')">
-        <Transition name="v-scale-in" appear>
-          <div class="modal-panel">
-        <div class="modal-header">
-          <h3>📋 Compliance Check Report</h3>
-          <button class="close-btn" @click="$emit('close')">✕</button>
-        </div>
-
-        <div class="modal-body">
+  <AppDialog
+    :model-value="visible"
+    :title="t('editor.complianceTitle')"
+    :subtitle="t('editor.complianceSubtitle')"
+    :close-label="t('general.close')"
+    @update:model-value="!$event && $emit('close')"
+  >
+    <div class="modal-body">
           <!-- Loading -->
           <div v-if="loading" class="compliance-loading">
-            <div class="spinner"></div>
-            <p>Analyzing paper compliance...</p>
+            <div class="spinner" />
+            <p>{{ t('editor.complianceAnalyzing') }}</p>
           </div>
 
           <!-- Error -->
           <div v-else-if="error" class="compliance-error">
-            <p class="error-icon">⚠️</p>
+            <p class="state-mark">!</p>
             <p>{{ error }}</p>
-            <button class="btn retry-btn" @click="$emit('retry')">Re-check</button>
+            <button class="btn primary-btn" @click="$emit('retry')">{{ t('editor.complianceRecheck') }}</button>
           </div>
 
           <!-- Report -->
@@ -49,7 +46,7 @@
             <div class="report-sections">
               <!-- Structure -->
               <div class="report-section" v-if="report.structure">
-                <h4>📑 Structure</h4>
+                <h4>{{ t('editor.complianceStructure') }}</h4>
                 <div class="section-content">
                   <div class="section-item">
                     <span class="label">{{ t('editor.complianceSectionRequired') }}</span>
@@ -63,7 +60,7 @@
 
               <!-- Terminology -->
               <div class="report-section" v-if="report.terminology">
-                <h4>🔤 Terminology</h4>
+                <h4>{{ t('editor.complianceTerminology') }}</h4>
                 <div class="section-content">
                   <div class="section-item">
                     <span class="label">{{ t('editor.complianceTermConsistent') }}</span>
@@ -81,7 +78,7 @@
 
               <!-- Citation -->
               <div class="report-section" v-if="report.citation">
-                <h4>📚 Citations</h4>
+                <h4>{{ t('editor.complianceCitations') }}</h4>
                 <div class="section-content">
                   <div class="section-item">
                     <span class="label">{{ t('editor.complianceCiteTotal') }}</span>
@@ -98,7 +95,7 @@
 
               <!-- Hallucination Risk -->
               <div class="report-section" v-if="report.hallucination_risk">
-                <h4>⚡ Hallucination Risk</h4>
+                <h4>{{ t('editor.complianceHallucination') }}</h4>
                 <div class="section-content">
                   <div class="section-item">
                     <span class="label">{{ t('editor.complianceRiskLevel') }}</span>
@@ -117,7 +114,7 @@
 
               <!-- Readability -->
               <div class="report-section" v-if="report.readability">
-                <h4>📖 Readability</h4>
+                <h4>{{ t('editor.complianceReadability') }}</h4>
                 <div class="section-content">
                   <div class="section-item">
                     <span class="label">{{ t('editor.complianceAvgSentence') }}</span>
@@ -138,24 +135,20 @@
 
           <!-- Empty -->
           <div v-else class="compliance-empty">
-            <p>Click 'Re-check' to start analysis</p>
+            <p>{{ t('editor.complianceStart') }}</p>
           </div>
-        </div>
-
-        <div class="modal-footer">
-          <button class="btn secondary-btn" @click="$emit('close')">{{ t('general.close') }}</button>
-          <button class="btn primary-btn" @click="$emit('retry')" :disabled="loading">{{ t('general.refresh') }}</button>
-        </div>
-        </div>
-      </Transition>
-      </div>
-    </Transition>
-  </Teleport>
+    </div>
+    <template #footer>
+      <button class="btn secondary-btn" @click="$emit('close')">{{ t('general.close') }}</button>
+      <button class="btn primary-btn" @click="$emit('retry')" :disabled="loading">{{ t('editor.complianceRecheck') }}</button>
+    </template>
+  </AppDialog>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import AppDialog from './shell/AppDialog.vue'
 
 const { t } = useI18n()
 
@@ -213,26 +206,6 @@ function fmt(v: unknown): string {
 </script>
 
 <style scoped>
-.modal-overlay {
-  position: fixed; inset: 0; z-index: 1000;
-  background: var(--c-overlay);
-  display: flex; align-items: center; justify-content: center;
-}
-.modal-panel {
-  background: var(--c-surface-1); color: var(--c-text-0); border-radius: 12px; width: 560px; max-width: 95vw;
-  max-height: 85vh; display: flex; flex-direction: column;
-  border: 1px solid var(--c-surface-3);
-  box-shadow: var(--elevation-4);
-  overflow: hidden;
-}
-.modal-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 20px; border-bottom: 1px solid var(--c-surface-3);
-  font-size: 15px; font-weight: 600;
-}
-.close-btn { background: none; border: none; font-size: 18px; cursor: pointer; color: var(--c-text-3); }
-.close-btn:hover { color: var(--c-text-0); }
-
 .modal-body { flex: 1; overflow-y: auto; padding: 20px; }
 
 .compliance-loading, .compliance-error, .compliance-empty {
@@ -245,15 +218,18 @@ function fmt(v: unknown): string {
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-.error-icon { font-size: 48px; }
+.state-mark {
+  display: grid; width: 34px; height: 34px; place-items: center;
+  margin: 0; border-radius: 9px; background: var(--c-danger-bg); color: var(--c-danger); font-weight: 700;
+}
 
 .report-summary {
   display: flex; align-items: center; gap: 20px;
-  padding: 16px; border-radius: 10px; margin-bottom: 20px;
+  padding: 16px; border: 1px solid var(--c-border); border-radius: 10px; margin-bottom: 20px;
 }
-.score-high { background: var(--c-success-bg); }
-.score-mid { background: var(--c-warn-bg); }
-.score-low { background: var(--c-danger-bg); }
+.score-high { border-left: 3px solid var(--c-success); }
+.score-mid { border-left: 3px solid var(--c-warn); }
+.score-low { border-left: 3px solid var(--c-danger); }
 
 .score-circle {
   position: relative; width: 80px; height: 80px;
@@ -272,10 +248,10 @@ function fmt(v: unknown): string {
 
 .report-sections { display: flex; flex-direction: column; gap: 16px; }
 .report-section {
-  border: 1px solid var(--c-surface-3); border-radius: 8px; overflow: hidden;
+  border-top: 1px solid var(--c-border); padding-top: 12px;
 }
 .report-section h4 {
-  margin: 0; padding: 10px 14px; background: var(--c-surface-2);
+  margin: 0; padding: 0 2px 8px;
   font-size: 13px; font-weight: 600; color: var(--c-text-1);
 }
 
@@ -287,7 +263,7 @@ function fmt(v: unknown): string {
 
 .issues { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .issue-tag {
-  padding: 3px 10px; border-radius: 20px; font-size: 12px;
+  padding: 4px 8px; border-radius: 6px; font-size: 12px; line-height: 1.45;
 }
 .issue-tag.warning { background: var(--c-warn-bg); color: var(--c-warn); }
 .issue-tag.error { background: var(--c-danger-bg); color: var(--c-danger); }
@@ -298,17 +274,12 @@ function fmt(v: unknown): string {
 .risk-high { color: var(--c-danger); }
 .risk-unknown { color: var(--c-text-3); }
 
-.modal-footer {
-  display: flex; justify-content: flex-end; gap: 10px;
-  padding: 14px 20px; border-top: 1px solid var(--c-surface-3);
-}
 .btn {
-  padding: 8px 20px; border-radius: 6px; border: none; cursor: pointer;
+  padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer;
   font-size: 14px; transition: all 0.2s;
 }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .primary-btn { background: var(--c-accent); color: #fff; }
 .primary-btn:hover:not(:disabled) { background: var(--c-accent-hover); }
 .secondary-btn { background: var(--c-surface-2); color: var(--c-text-1); border: 1px solid var(--c-surface-3); }
-.retry-btn { margin-top: 8px; background: var(--c-accent); color: #fff; padding: 8px 24px; border: none; border-radius: 6px; cursor: pointer; }
 </style>

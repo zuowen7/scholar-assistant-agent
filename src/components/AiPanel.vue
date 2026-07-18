@@ -1,10 +1,10 @@
 <template>
-  <div class="ai-chat-panel">
+  <div class="ai-chat-panel" :class="{ 'workspace-variant': workspaceVariant }">
     <!-- Header -->
     <div class="ac-header">
       <div class="ac-title-row">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-        <span class="ac-title">{{ t('aiPanel.title') }}</span>
+        <span class="ac-title">{{ workspaceVariant ? t('aiPanel.writingTitle') : t('aiPanel.title') }}</span>
       </div>
       <div class="ac-header-actions">
         <button class="ac-icon-btn u-interactive" @click="clearHistory" :title="t('aiPanel.clear')" :disabled="messages.length===0||streaming">
@@ -23,6 +23,13 @@
     <div class="ac-context" v-if="editorContext">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
       <span>{{ t('aiPanel.contextChars', { count: editorContext.length }) }}</span>
+    </div>
+
+    <div v-if="workspaceVariant && !streaming" class="workspace-actions">
+      <button type="button" class="primary" @click="sendPreset('polish')">✦ {{ t('aiPanel.workspacePolish') }}</button>
+      <button type="button" @click="sendPreset('expand')">↗ {{ t('aiPanel.workspaceExpand') }}</button>
+      <button type="button" @click="sendPreset('review')">↻ {{ t('aiPanel.workspaceRewrite') }}</button>
+      <button type="button" @click="input = t('aiPanel.compliancePrompt'); send()">✓ {{ t('aiPanel.workspaceCompliance') }}</button>
     </div>
 
     <!-- Thinking scan bar -->
@@ -212,6 +219,7 @@ const props = defineProps<{
   activeFile?: string | null
   canUndo?: boolean
   workspaceFiles?: { name: string; content?: string }[]
+  workspaceVariant?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -399,11 +407,8 @@ async function sendPreset(action: string) {
   if (streaming.value) return
   const ctx = props.editorContext?.trim()
   const instructions: Record<string, string> = {
-    polish: '润色当前打开的文件：改进语法、用词和流畅度，保持原意，直接编辑文件。',
-    expand: '扩写当前打开的文件：补充细节、论证和支撑内容，直接编辑文件。',
-    review: '审阅当前打开的文件：指出问题并给出改进建议，把意见写在文件末尾。',
-    en: '把当前打开的文件翻译成学术英文，保存为新文件。',
-    zh: '把当前打开的文件翻译成学术中文，保存为新文件。',
+    polish: t('aiPanel.prompts.polish'), expand: t('aiPanel.prompts.expand'), review: t('aiPanel.prompts.review'),
+    en: t('aiPanel.prompts.en'), zh: t('aiPanel.prompts.zh'),
   }
   const instruction = instructions[action] || action
   if (!ctx && !props.activeFile) {
@@ -411,7 +416,7 @@ async function sendPreset(action: string) {
     scrollBottom()
     return
   }
-  const fileHint = props.activeFile ? `\n当前文件: ${props.activeFile}` : ''
+  const fileHint = props.activeFile ? `\n${t('aiPanel.currentFile', { file: props.activeFile })}` : ''
   await doSend(`${instruction}${fileHint}`)
 }
 
@@ -753,4 +758,18 @@ defineExpose({ sendPreset })
   30%            { transform: translateY(-5px); opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) { .dot-wave i { animation: none; opacity: .7; } }
+
+/* Reference-driven editor variant */
+.workspace-variant { background: var(--c-panel); border: 0; }
+.workspace-variant .ac-header { height: 54px; padding: 0 15px; border-color: var(--c-border); background: var(--c-panel); }
+.workspace-variant .ac-title { color: var(--c-text-0); font-size: 14px; font-weight: 650; }
+.workspace-variant .ac-context { margin: 10px 12px 0; padding: 7px 9px; border: 1px solid #DDE0FF; border-radius: 7px; background: var(--c-accent-soft); color: var(--c-accent); }
+.workspace-actions { display: grid; gap: 8px; padding: 12px; }
+.workspace-actions button { min-height: 42px; padding: 0 13px; border: 1px solid var(--c-border); border-radius: 9px; background: var(--c-panel); color: var(--c-text-1); font: 500 12px/1.3 var(--font-sans), var(--font-zh); text-align: left; cursor: pointer; }
+.workspace-actions button:hover { border-color: #CDD2FF; background: var(--c-accent-soft); color: var(--c-accent); }
+.workspace-actions button.primary { border-color: transparent; background: var(--c-accent-soft); color: var(--c-accent); font-weight: 650; }
+.workspace-variant .ac-empty { display: none; }
+.workspace-variant .ac-messages { padding: 0 12px 12px; }
+.workspace-variant .ac-presets { display: none; }
+.workspace-variant .ac-input-area { margin: 0 10px 10px; border: 1px solid var(--c-border); border-radius: 9px; background: var(--c-panel); }
 </style>

@@ -32,7 +32,7 @@
 import { computed, markRaw } from 'vue'
 import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
-import { VueFlow } from '@vue-flow/core'
+import { VueFlow, useVueFlow } from '@vue-flow/core'
 import type { Connection, NodeChange, NodeMouseEvent, EdgeMouseEvent } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
@@ -46,12 +46,19 @@ withDefaults(defineProps<{ readonly?: boolean }>(), { readonly: false })
 
 const { state, upsertEdge } = useArgumentMap()
 const { danger } = useToast()
+const { fitView } = useVueFlow()
 
 const nodeTypes = { argNode: markRaw(ArgNodeCard) }
 const edgeTypes = { argEdge: markRaw(ArgEdge) }
 
 const flowNodes = computed(() => state.graph ? toFlowNodes(state.graph) : [])
 const flowEdges = computed(() => state.graph ? toFlowEdges(state.graph) : [])
+
+function fitCanvas() {
+  fitView({ padding: 0.12, minZoom: 0.68, maxZoom: 1, duration: 250 })
+}
+
+defineExpose({ fitCanvas })
 
 function onClickWrapper(e: MouseEvent) {
   if ((e.target as HTMLElement).classList.contains('arg-canvas-wrapper')) {
@@ -112,6 +119,7 @@ function onNodesChange(changes: NodeChange[]) {
   width: 100%;
   height: 100%;
   outline: none;
+  background: var(--c-app-bg);
 }
 
 .canvas-extracting-overlay {
@@ -132,10 +140,8 @@ function onNodesChange(changes: NodeChange[]) {
   padding: 7px 18px;
   background: color-mix(in srgb, var(--c-accent) 12%, var(--c-surface-1));
   border: 1px solid color-mix(in srgb, var(--c-accent) 35%, transparent);
-  border-radius: 20px;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  box-shadow: var(--elevation-3);
+  border-radius: 8px;
+  box-shadow: var(--elevation-2);
   animation: pill-appear 0.25s var(--ease-out, cubic-bezier(0.4, 0, 0.2, 1));
 }
 @keyframes pill-appear {

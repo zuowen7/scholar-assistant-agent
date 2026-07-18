@@ -9,42 +9,19 @@
     />
   </div>
 
-  <!-- 主窗口：完整布局 -->
+  <!-- 主窗口：共享产品外壳 -->
   <div
     v-else
-    class="app"
-    :class="{ 'has-wallpaper': bgSettings.path }"
+    class="app reference-ui"
+    :class="{ 'has-wallpaper': Boolean(bgAssetUrl) }"
     @dragenter.prevent="onDragEnter"
     @dragleave.prevent="onDragLeave"
     @dragover.prevent
     @drop.prevent="onDrop"
   >
-    <!-- 自定义背景层 -->
-    <div class="background-layer" :style="backgroundLayerStyle">
-      <video
-        v-if="bgSettings.type === 'video' && bgSettings.path"
-        ref="bgVideo"
-        class="bg-video"
-        :src="bgAssetUrl"
-        autoplay
-        loop
-        muted
-        playsinline
-      ></video>
+    <div class="background-layer" :style="backgroundLayerStyle" aria-hidden="true">
+      <video v-if="bgSettings.type === 'video' && bgAssetUrl" class="bg-video" :src="bgAssetUrl" autoplay loop muted playsinline />
     </div>
-
-    <!-- 自选背景时的宣纸纹理叠加层 — 统一质感 -->
-    <div v-if="bgSettings.path" class="bg-paper-overlay" aria-hidden="true" />
-
-    <!-- 环境光晕 — 缓慢漂移的墨色柔光，鼠标微视差 -->
-    <div class="ambient-orb" :style="orbParallaxStyle" aria-hidden="true" />
-
-    <!-- 墨粒子 — 漂浮的墨滴，如墨入水 -->
-    <div class="ink-particles" :style="particleParallaxStyle" aria-hidden="true">
-      <span class="ink-particle" v-for="i in 15" :key="i" :style="{ '--i': i }" />
-    </div>
-
-    <!-- 内容遮罩层（半透明，保证可读性） -->
     <div class="content-overlay">
       <!-- 全局拖拽遮罩 -->
       <Transition name="drag-fade">
@@ -61,56 +38,6 @@
         </div>
       </Transition>
 
-      <!-- 顶栏 -->
-      <AppTopBar
-        :app-mode="appMode"
-        :is-dark="isDark"
-        :show-agent-chat="showAgentChat"
-        :engine-type="engineType"
-        :cloud-config="cloudConfig"
-        :provider-presets="providerPresets"
-        :cloud-checking="cloudChecking"
-        :cloud-ok="cloudOk"
-        :cloud-error="cloudError"
-        :health-ok="healthOk"
-        :ollama-ok="ollamaOk"
-        :ollama-loading="ollamaLoading"
-        :ollama-error="ollamaError"
-        :ollama-model="ollamaModel"
-        :ollama-models="ollamaModels"
-        :ollama-models-loading="ollamaModelsLoading"
-        :tectonic-ok="tectonicOk"
-        :tectonic-checking="tectonicChecking"
-        :bg-settings="bgSettings"
-        :read-settings="readSettings"
-        :proxy-url="proxyUrl"
-        @update:app-mode="setMode($event)"
-        @update:show-agent-chat="toggleAgentChat($event)"
-        @update:engine-type="engineType = $event"
-        @update:cloud-config="cloudConfig = $event"
-        @update:proxy-url="proxyUrl = $event"
-        @toggle-theme="toggleTheme($event)"
-        @toggle-ollama="toggleOllama"
-        @refresh-ollama-models="refreshOllamaModels"
-        @update:ollama-model="ollamaModel = $event"
-        @handle-tectonic="handleTectonic"
-        @save-engine-settings="saveEngineSettings"
-        @test-cloud="testCloudConnection"
-        @provider-change="onProviderChange"
-        @save-proxy="saveProxy"
-        @pick-background="pickBackground"
-        @clear-background="clearBackground"
-        @opacity-change="onOpacityChange"
-        @font-size-change="onFontSizeChange"
-        @line-height-change="onLineHeightChange"
-        @save-read-settings="saveReadSettings"
-        @font-family-change="onFontFamilyChange"
-        @color-change="onColorChange"
-        @window-minimize="handleMinimize"
-        @window-maximize="handleToggleMaximize"
-        @window-close="handleClose"
-      />
-
       <!-- Translation recovery banner -->
       <Transition name="v-slide-up">
         <div v-if="showRecoveryBanner" class="recovery-banner">
@@ -122,26 +49,81 @@
         </div>
       </Transition>
 
-      <!-- 主内容区：KeepAlive 保留各模式状态，Transition 提供切换动画 -->
-      <div class="mode-container" :class="{ 'mode-enter': modeTransition }">
-        <KeepAlive>
-          <TranslateView
-            v-if="appMode === 'translate'"
-            key="translate"
-            :health-ok="healthOk"
-            :read-settings="readSettings"
-            @restart-backend="handleRestartBackend"
-            @open-agent-docs="openAgentDocs"
-          />
-          <EditorLayout
-            v-else-if="appMode === 'editor'"
-            key="editor"
-            :isDark="isDark"
-            class="editor-mode"
-          />
-          <ArgumentMapView v-else-if="appMode === 'argument'" key="argument" class="arg-mode" />
-        </KeepAlive>
-      </div>
+      <AppShell
+        :active-module="shellSection"
+        :recent-files="shellRecentFiles"
+        :provider="shellProvider"
+        :model="shellModel"
+        :model-online="shellModelOnline"
+        @navigate="handleShellNavigate"
+        @open-recent="handleShellRecent"
+        @settings="openLegacySettings"
+        @agent="toggleAgentChat(true)"
+      >
+        <!-- 主内容区：KeepAlive 保留各模式状态 -->
+        <div class="mode-container" :class="{ 'mode-enter': modeTransition }">
+          <KeepAlive>
+            <TranslateView
+              v-if="appMode === 'translate'"
+              key="translate"
+              :health-ok="healthOk"
+              :read-settings="readSettings"
+              @restart-backend="handleRestartBackend"
+              @open-agent-docs="openAgentDocs"
+            />
+            <EditorLayout
+              v-else-if="appMode === 'editor'"
+              key="editor"
+              :isDark="isDark"
+              class="editor-mode"
+            />
+            <ReviewerWorkspace v-else-if="appMode === 'argument'" key="argument" class="arg-mode" />
+          </KeepAlive>
+        </div>
+      </AppShell>
+
+      <SettingsCenter
+        v-model="showSettings"
+        :is-dark="isDark"
+        :engine-type="engineType"
+        :cloud-config="cloudConfig"
+        :ollama-model="ollamaModel"
+        :ollama-models="ollamaModels"
+        :ollama-models-loading="ollamaModelsLoading"
+        :provider-presets="providerPresets"
+        :cloud-checking="cloudChecking"
+        :cloud-ok="cloudOk"
+        :cloud-error="cloudError"
+        :health-ok="healthOk"
+        :ollama-ok="ollamaOk"
+        :ollama-loading="ollamaLoading"
+        :ollama-error="ollamaError"
+        :tectonic-ok="tectonicOk"
+        :tectonic-checking="tectonicChecking"
+        :bg-settings="bgSettings"
+        :read-settings="readSettings"
+        :proxy-url="proxyUrl"
+        @update:engine-type="engineType = $event"
+        @update:cloud-config="cloudConfig = $event"
+        @update:ollama-model="ollamaModel = $event"
+        @update:proxy-url="proxyUrl = $event"
+        @toggle-theme="toggleTheme"
+        @toggle-ollama="toggleOllama"
+        @refresh-ollama-models="refreshOllamaModels"
+        @handle-tectonic="handleTectonic"
+        @save-engine-settings="saveEngineSettings"
+        @test-cloud="testCloudConnection"
+        @provider-change="onProviderChange"
+        @save-proxy="saveProxy"
+        @pick-background="pickBackground"
+        @clear-background="clearBackground"
+        @opacity-change="onOpacityChange"
+        @font-size-change="onFontSizeChange"
+        @line-height-change="onLineHeightChange"
+        @font-family-change="onFontFamilyChange"
+        @color-change="onColorChange"
+        @voice-settings-change="applyVoiceSettings"
+      />
 
       <!-- Agent 聊天面板 -->
       <AgentPanel :open="showAgentChat" @update:open="toggleAgentChat($event)" @switch-to-editor="setMode('editor')" />
@@ -186,7 +168,9 @@ import { useEditor } from './composables/useEditor'
 import EditorLayout from './components/EditorLayout.vue'
 import AgentPanel from './components/AgentPanel.vue'
 import TranslateView from './components/TranslateView.vue'
-import AppTopBar from './components/AppTopBar.vue'
+import AppShell from './components/shell/AppShell.vue'
+import ReviewerWorkspace from './components/argument/ReviewerWorkspace.vue'
+import SettingsCenter from './components/settings/SettingsCenter.vue'
 import InkBrushLoader from './components/InkBrushLoader.vue'
 import UiButton from './components/ui/UiButton.vue'
 import UiToast from './components/ui/UiToast.vue'
@@ -198,12 +182,54 @@ import { useAgentChat } from './composables/useAgentChat'
 import { useFileTree } from './composables/useFileTree'
 import VoiceAssistantView from './components/VoiceAssistantView.vue'
 import { logger } from './utils/logger'
+import { useProject } from './composables/useProject'
 
 const { state, translate, translateFromPath, cleanup, checkHealth, checkOllama, startOllama, checkCloudApi, getConfig, updateConfig, getProviderPresets, fetchOllamaModels, restartBackend, listenBackendCrash, setStatus, setError, setStepMessage, recoverTranslation, discardPersisted } = useTranslate()
 const { pushError } = useToast()
 
 // ── 应用模式 ──────────────────────────────────────────────────
 const { appMode, showAgentChat, modeTransition, setMode, toggleAgentChat } = useAppMode()
+const shellSection = ref<'translate' | 'write' | 'mindmap' | 'review'>('write')
+const { recentProjects, loadRecentProjects, openProject } = useProject()
+const shellRecentFiles = computed(() => recentProjects.value.map(project => ({
+  name: project.name || project.path.split(/[\\/]/).filter(Boolean).pop() || project.path,
+  path: project.path,
+})))
+
+const shellProvider = computed(() => engineType.value === 'cloud'
+  ? (providerPresets.value[cloudConfig.value.provider]?.name || cloudConfig.value.provider)
+  : 'Ollama')
+const shellModel = computed(() => engineType.value === 'cloud' ? cloudConfig.value.model : ollamaModel.value)
+const shellModelOnline = computed(() => engineType.value === 'cloud' ? cloudOk.value : ollamaOk.value)
+
+function handleShellNavigate(section: 'translate' | 'write' | 'mindmap' | 'review') {
+  shellSection.value = section
+  if (section === 'translate') setMode('translate')
+  else if (section === 'review') setMode('argument')
+  else {
+    setMode('editor')
+    window.dispatchEvent(new CustomEvent('shell-workspace-mode', {
+      detail: section === 'mindmap' ? 'mindmap' : 'editor',
+    }))
+  }
+}
+
+async function handleShellRecent(path: string) {
+  shellSection.value = 'write'
+  setMode('editor')
+  await openProject(path).catch((error) => pushError(error instanceof Error ? error.message : '无法打开最近项目'))
+}
+
+const showSettings = ref(false)
+
+function openLegacySettings() {
+  showSettings.value = true
+}
+
+function handleShellSectionChange(event: Event) {
+  const section = (event as CustomEvent).detail
+  if (section === 'write' || section === 'mindmap') shellSection.value = section
+}
 
 // Register voice commands
 registerAllVoiceCommands()
@@ -291,6 +317,9 @@ interface VoiceSettings {
   enabled?: boolean
   hotkey?: string
   wakeWordEnabled?: boolean
+  wakeWordPhrase?: string
+  sensitivity?: 'low' | 'medium' | 'high'
+  language?: string
 }
 function loadVoiceSettings(): VoiceSettings {
   try {
@@ -309,13 +338,24 @@ const hotkey = useGlobalHotkey(
   voiceSettings.hotkey || 'Alt+Shift+V',
   () => { if (voiceSettings.enabled !== false) voiceCmd.triggerVoiceCommand() },
 )
-const wakeWord = voiceSettings.wakeWordEnabled !== false
-  ? useWakeWord(() => { if (voiceSettings.enabled !== false) voiceCmd.triggerVoiceCommand() })
-  : null
+const wakeWord = useWakeWord(() => { if (voiceSettings.enabled !== false) voiceCmd.triggerVoiceCommand() })
 
 // Start wake word detection on initial mount
-if (wakeWord) {
+if (voiceSettings.wakeWordEnabled !== false) {
   wakeWord.startWakeWord().catch(() => {})
+}
+
+async function applyVoiceSettings(settings: Required<VoiceSettings>) {
+  const previousHotkey = voiceSettings.hotkey || 'Alt+Shift+V'
+  Object.assign(voiceSettings, settings)
+  if (settings.hotkey && settings.hotkey !== previousHotkey) {
+    await hotkey.changeHotkey(settings.hotkey)
+  }
+  if (settings.enabled !== false && settings.wakeWordEnabled !== false && voiceCmd.state.value === 'idle') {
+    wakeWord.startWakeWord().catch(() => {})
+  } else {
+    wakeWord.stopWakeWord()
+  }
 }
 
 window.addEventListener('voice-command-trigger', handleVoiceCommandTrigger)
@@ -340,7 +380,7 @@ const tectonicChecking = ref(false)
 const globalDragging = ref(false)
 const mouseX = ref(0)
 const mouseY = ref(0)
-const isDark = ref(true)
+const isDark = ref(false)
 function applyTheme(dark: boolean) {
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
 }
@@ -650,6 +690,8 @@ let unlistenDragDrop: (() => void) | null = null
 
 onMounted(async () => {
   checkArgumentMapV2Flag().catch(() => {})
+  window.addEventListener('shell-section-change', handleShellSectionChange)
+  loadRecentProjects().catch(() => {})
   // 安全兜底：最多 5 秒后强制隐藏加载画面
   bootSafetyTimer = setTimeout(() => {
     if (appBootLoading.value) {
@@ -660,7 +702,7 @@ onMounted(async () => {
   // Load theme preference
   try {
     const saved = localStorage.getItem('theme')
-    if (saved === 'light') isDark.value = false
+    isDark.value = saved === 'dark'
   } catch (e) { logger.warn('loadTheme failed:', e) }
 
   // Load background settings
@@ -737,6 +779,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('shell-section-change', handleShellSectionChange)
   window.removeEventListener('mousemove', onMouseMove)
   window.removeEventListener('voice-command-trigger', handleVoiceCommandTrigger)
   window.removeEventListener('voice-command-submit', handleVoiceCommandSubmit)
@@ -926,13 +969,19 @@ async function handleRestartBackend() {
 /* Design tokens are in src/styles/tokens.css — imported by main.ts */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
-html, body { height: 100%; overflow: hidden; }
-html { background: var(--c-surface-0); opacity: 1 !important; }
+html, body, #app { width: 100%; height: 100%; overflow: hidden; }
+html { background: var(--c-app-bg); opacity: 1 !important; }
 
 body {
   font-family: var(--font-sans), var(--font-zh);
-  background: var(--c-surface-0); color: var(--c-text-0);
+  background: var(--c-app-bg); color: var(--c-text-0);
   -webkit-font-smoothing: antialiased;
+}
+
+[data-theme="light"],
+[data-theme="light"] body,
+[data-theme="light"] #app {
+  background: #FAF8F3;
 }
 
 /* ── Focus indicator — 键盘可访问 ── */
@@ -1003,7 +1052,7 @@ body::after {
   display: flex;
   flex-direction: column;
   position: relative;
-  background: var(--c-surface-0);
+  background: var(--c-app-bg);
   color: var(--c-text-0);
 }
 
@@ -1156,19 +1205,18 @@ body::after {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: var(--c-surface-0);
+  background: var(--c-app-bg);
 }
 
 /* ── Drag Overlay ── */
 .drag-overlay {
   position: fixed;
-  inset: 8px;
+  inset: 0;
   z-index: 999;
-  border-radius: var(--radius-xl);
-  border: 2px dashed var(--c-accent);
-  background: rgba(99, 102, 241, 0.06);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  border: 0;
+  background: color-mix(in srgb, var(--c-app-bg) 94%, transparent);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1179,31 +1227,32 @@ body::after {
   flex-direction: column;
   align-items: center;
   gap: var(--space-2);
+  min-width: 280px;
+  padding: 32px 36px;
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  background: var(--c-panel-bg);
+  box-shadow: var(--elevation-2);
 }
 .drag-ring {
   width: 56px;
   height: 56px;
-  border-radius: 50%;
-  border: 2px solid var(--c-accent);
+  border-radius: 10px;
+  border: 1px solid var(--c-border);
   background: var(--c-accent-soft);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--c-accent-hover);
-  animation: drag-pulse 1.4s ease-in-out infinite;
+  color: var(--c-accent);
 }
 .drag-label {
   font-size: var(--text-lg);
   font-weight: 600;
-  color: var(--c-accent-hover);
+  color: var(--c-text-0);
 }
 .drag-hint {
   font-size: var(--text-sm);
   color: var(--c-text-2);
-}
-@keyframes drag-pulse {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 var(--c-accent-soft); }
-  50% { transform: scale(1.06); box-shadow: 0 0 0 10px transparent; }
 }
 /* Drag overlay transition */
 .drag-fade-enter-active,
@@ -1222,6 +1271,7 @@ body::after {
 /* ── Mode container: KeepAlive + Transition ── */
 .mode-container {
   flex: 1;
+  height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -1259,67 +1309,49 @@ body::after {
 [data-theme="light"] ::-webkit-scrollbar-thumb { background: var(--c-surface-4); }
 [data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: var(--c-accent); }
 [data-theme="light"] body::after { opacity: 0.032; }
-/* ── View Transition (theme switch) — 影视级墨染过渡 ── */
+/* ── View Transition (theme switch) ── */
 ::view-transition-old(root) {
-  animation: vt-old-out 480ms var(--ease-emphasis, cubic-bezier(0.22, 0, 0, 1));
+  animation: vt-old-out 220ms var(--ease-out);
   mix-blend-mode: normal;
 }
 ::view-transition-new(root) {
-  animation: vt-new-in 480ms var(--ease-emphasis, cubic-bezier(0.22, 0, 0, 1));
+  animation: vt-new-in 220ms var(--ease-out);
   mix-blend-mode: normal;
 }
-/* Old theme: brief brightness surge then clip shrink */
 @keyframes vt-old-out {
-  0%   { filter: brightness(1); clip-path: circle(150vmax at var(--vt-x, 50%) var(--vt-y, 50%)); }
-  25%  { filter: brightness(1.35); }
-  60%  { filter: brightness(0.55); }
-  100% { filter: brightness(0); clip-path: circle(0 at var(--vt-x, 50%) var(--vt-y, 50%)); }
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
-/* New theme: clip expand with glow surge → settle */
 @keyframes vt-new-in {
-  0%   { clip-path: circle(0 at var(--vt-x, 50%) var(--vt-y, 50%)); filter: brightness(1.5) saturate(0.7); }
-  30%  { filter: brightness(1.15) saturate(0.85); }
-  70%  { filter: brightness(0.92) saturate(0.95); }
-  100% { clip-path: circle(150vmax at var(--vt-x, 50%) var(--vt-y, 50%)); filter: brightness(1) saturate(1); }
-}
-/* Ink-bloom pseudo-element: radial glow ring at transition center */
-::view-transition-new(root)::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background: radial-gradient(circle 120px at var(--vt-x, 50%) var(--vt-y, 50%),
-    rgba(91, 108, 255, 0.18) 0%,
-    rgba(91, 108, 255, 0.06) 40%,
-    transparent 70%
-  );
-  animation: vt-glow-pulse 480ms ease-out forwards;
-}
-@keyframes vt-glow-pulse {
-  0%   { opacity: 0; }
-  25%  { opacity: 1; }
-  100% { opacity: 0; }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* ── Recovery Banner ── */
 .recovery-banner {
   position: absolute;
-  top: 12px;
+  top: 16px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 300;
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: 8px 16px;
-  background: color-mix(in srgb, var(--c-surface-1) 92%, transparent);
-  backdrop-filter: blur(20px);
-  border: 1px solid var(--c-surface-3);
-  border-radius: var(--radius-pill);
+  max-width: min(620px, calc(100vw - 32px));
+  padding: 10px 12px 10px 16px;
+  background: var(--c-panel-bg);
+  border: 1px solid var(--c-border);
+  border-left: 3px solid var(--c-warning, #b8793d);
+  border-radius: 10px;
   box-shadow: var(--elevation-2);
 }
-.recovery-text { font-size: var(--text-sm); color: var(--c-text-1); }
+.recovery-text { flex: 1; min-width: 0; font-size: var(--text-sm); color: var(--c-text-1); line-height: 1.45; }
 .recovery-actions { display: flex; gap: 4px; }
+
+@media (max-width: 720px) {
+  .recovery-banner { align-items: flex-start; flex-direction: column; }
+  .recovery-actions { width: 100%; justify-content: flex-end; }
+}
 
 /* ── Wallpaper-aware semi-transparent backgrounds ── */
 .app.has-wallpaper .content-overlay {

@@ -2,7 +2,7 @@
   <div v-if="pending" class="approval-bar">
     <div class="approval-header">
       <span class="approval-icon">&#x26A0;</span>
-      <span class="approval-label">Agent wants to run</span>
+      <span class="approval-label">{{ t('agent.approvalRequest') }}</span>
       <code class="approval-tool">{{ pending.tool_name }}</code>
       <span v-if="pending.risk" class="approval-risk" :class="'risk-' + pending.risk">{{ pending.risk }}</span>
     </div>
@@ -72,27 +72,19 @@ async function decide(decision: 'allow_once' | 'allow_session' | 'deny') {
 
 <style scoped>
 .approval-bar {
-  background: color-mix(in srgb, var(--c-warn) 8%, var(--c-surface-1));
-  border: 1px solid var(--c-warn);
-  border-radius: var(--radius-md);
+  background: var(--c-warn-bg);
+  border: 1px solid var(--c-warn-border);
+  border-left: 3px solid var(--c-warn);
+  border-radius: 8px;
   padding: 14px 16px;
   margin: 0 16px 8px;
-  box-shadow: var(--elevation-3), 0 0 0 4px color-mix(in srgb, var(--c-warn) 12%, transparent);
-  animation: approval-pop-in 380ms var(--ease-spring) both;
+  box-shadow: none;
+  animation: approval-pop-in var(--motion-base) var(--ease-out) both;
   position: relative;
   overflow: hidden;
 }
 /* Attention sweep across the top edge */
-.approval-bar::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--c-warn), transparent);
-  background-size: 40% 100%;
-  background-repeat: no-repeat;
-  animation: approval-scan 1.6s ease-in-out infinite;
-}
+.approval-bar::before { display: none; }
 @keyframes approval-pop-in {
   from { opacity: 0; transform: scale(0.94) translateY(-6px); }
   to { opacity: 1; transform: scale(1) translateY(0); }
@@ -108,11 +100,7 @@ async function decide(decision: 'allow_once' | 'allow_session' | 'deny') {
   gap: 8px;
   flex-wrap: wrap;
 }
-.approval-icon {
-  font-size: 16px;
-  color: var(--c-warn);
-  animation: approval-warn-blink 1.4s ease-in-out infinite;
-}
+.approval-icon { font-size: 16px; color: var(--c-warn); }
 @keyframes approval-warn-blink {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.55; transform: scale(0.9); }
@@ -190,20 +178,22 @@ async function decide(decision: 'allow_once' | 'allow_session' | 'deny') {
 }
 .approval-btn:focus-visible { outline: none; box-shadow: var(--ring-focus); }
 .allow-once {
-  background: var(--c-success);
-  color: #fff;
-}
-.allow-once:hover:not(:disabled) { background: color-mix(in srgb, var(--c-success) 85%, #000); }
-.allow-session {
   background: var(--c-accent);
   color: #fff;
 }
-.allow-session:hover:not(:disabled) { background: var(--c-accent-hover); }
-.deny {
-  background: var(--c-danger);
-  color: #fff;
+.allow-once:hover:not(:disabled) { background: var(--c-accent-hover); }
+.allow-session {
+  border: 1px solid var(--c-border);
+  background: var(--c-panel);
+  color: var(--c-text-0);
 }
-.deny:hover:not(:disabled) { background: color-mix(in srgb, var(--c-danger) 85%, #000); }
+.allow-session:hover:not(:disabled) { background: var(--c-surface-2); }
+.deny {
+  border: 1px solid var(--c-danger-border);
+  background: var(--c-danger-bg);
+  color: var(--c-danger-fg);
+}
+.deny:hover:not(:disabled) { background: var(--c-danger); color: #fff; }
 .approval-hint-force {
   flex: 1;
   display: inline-flex;

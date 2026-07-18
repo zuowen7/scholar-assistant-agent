@@ -9,7 +9,7 @@
       <!-- Status selector -->
       <div class="status-wrap" ref="statusWrapRef">
         <button class="status-chip" data-status-btn :class="`chip-${point.status}`" @click="toggleStatusMenu">
-          {{ STATUS_LABEL[point.status] }}
+          {{ statusLabel }}
           <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor" class="chip-caret">
             <path d="M0 2.5 L4 6.5 L8 2.5Z"/>
           </svg>
@@ -46,10 +46,9 @@
       data-anchor-btn
       @click="$emit('focusAnchor', point.anchor_id!)"
     >
-      <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M4 8h8M10 5l3 3-3 3"/>
-      </svg>
-      {{ t('reviewerThread.locateText') }}
+      <span class="anchor-label">{{ t('reviewerThread.anchorSource') }}</span>
+      <span class="anchor-quote">“{{ anchorQuote || t('reviewerThread.locateText') }}”</span>
+      <span class="anchor-jump">{{ t('reviewerThread.locate') }}</span>
     </button>
 
     <!-- Thread -->
@@ -107,11 +106,18 @@ import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 import type { ReviewPoint } from '../../types'
+import { useArgumentCompanion } from '../../composables/useArgumentCompanion'
 
 const props = defineProps<{
   point: ReviewPoint
   rebuttalSending?: string
 }>()
+const companion = useArgumentCompanion()
+const anchorQuote = computed(() => {
+  if (!props.point.anchor_id) return ''
+  const anchors = [...(companion.state.review?.anchors ?? []), ...(companion.state.ledger?.anchors ?? [])]
+  return anchors.find(anchor => anchor.id === props.point.anchor_id)?.quote || ''
+})
 
 const emit = defineEmits<{
   focusAnchor: [anchorId: string]
@@ -140,42 +146,9 @@ const canRebut = computed(() =>
   props.point.status !== 'accepted' && props.point.status !== 'dismissed'
 )
 
-const CATEGORY_LABEL: Record<string, string> = {
-  motivation: t('argument.reviewCategory.motivation'),
-  novelty: t('argument.reviewCategory.novelty'),
-  baseline: t('argument.reviewCategory.baseline'),
-  ablation: t('argument.reviewCategory.ablation'),
-  soundness: t('argument.reviewCategory.soundness'),
-  claim_overreach: t('argument.reviewCategory.claim_overreach'),
-  missing_related_work: t('argument.reviewCategory.missing_related_work'),
-  reproducibility: t('argument.reviewCategory.reproducibility'),
-  experiment_design: t('argument.reviewCategory.experiment_design'),
-  writing_clarity: t('argument.reviewCategory.writing_clarity'),
-  inconsistency: t('argument.reviewCategory.inconsistency'),
-  gap_mismatch: t('argument.reviewCategory.gap_mismatch'),
-  weak_positioning: t('argument.reviewCategory.weak_positioning'),
-  term_drift: t('argument.reviewCategory.term_drift'),
-  other: t('argument.reviewCategory.other'),
-}
-
-const STATUS_LABEL: Record<string, string> = {
-  open: t('argument.status.open'),
-  rebutted: t('argument.status.rebutted'),
-  accepted: t('argument.status.accepted'),
-  dismissed: t('argument.status.dismissed'),
-}
-
-const SOURCE_LABEL: Record<string, string> = {
-  llm: 'AI',
-  ledger_check: t('argument.checkType.ledger_check'),
-  coherence_check: t('argument.checkType.coherence_check'),
-  rw_check: t('argument.checkType.rw_check'),
-  scoped: t('argument.checkType.scoped'),
-  imported: t('argument.checkType.imported'),
-}
-
-const categoryLabel = computed(() => CATEGORY_LABEL[props.point.category] ?? props.point.category)
-const sourceLabel = computed(() => SOURCE_LABEL[props.point.source] ?? props.point.source)
+const categoryLabel = computed(() => t(`argument.reviewCategory.${props.point.category}`, props.point.category))
+const statusLabel = computed(() => t(`argument.status.${props.point.status}`, props.point.status))
+const sourceLabel = computed(() => props.point.source === 'llm' ? 'AI' : t(`argument.checkType.${props.point.source}`, props.point.source))
 
 const statusOptions = computed(() => {
   const all = [
@@ -217,11 +190,12 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
 <style scoped>
 .review-card {
   position: relative;
-  border-left: 3px solid var(--c-border, #333);
-  border-radius: 0 8px 8px 0;
-  background: var(--c-surface-1, #181818);
-  margin-bottom: 8px;
-  padding: 10px 12px 8px;
+  border: 1px solid var(--c-border);
+  border-left: 4px solid var(--c-border);
+  border-radius: 10px;
+  background: var(--c-panel);
+  margin-bottom: 14px;
+  padding: 17px 18px 14px;
   animation: card-enter 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -230,8 +204,8 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   to   { opacity: 1; transform: translateY(0); }
 }
 
-.sev-fatal { border-left-color: var(--c-error, #ef4444); }
-.sev-major { border-left-color: var(--c-warning, #f59e0b); }
+.sev-fatal { border-left-color: var(--c-danger); }
+.sev-major { border-left-color: var(--c-warn); }
 .sev-minor { border-left-color: color-mix(in srgb, var(--c-accent) 70%, transparent); }
 .sev-info  { border-left-color: var(--c-border, #333); }
 
@@ -240,7 +214,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 6px;
+  margin-bottom: 10px;
   flex-wrap: wrap;
 }
 
@@ -256,14 +230,14 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
 .pip-info  { background: var(--c-text-3, #555); }
 
 .card-category {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--c-text-2, #888);
   padding: 1px 5px;
   border-radius: 3px;
-  background: var(--c-surface-2, #232323);
+  background: var(--c-surface-2);
 }
 
 .card-source {
@@ -285,9 +259,9 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   display: flex;
   align-items: center;
   gap: 3px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
-  padding: 2px 6px;
+  padding: 5px 9px;
   border-radius: 12px;
   border: 1px solid var(--c-border, #333);
   background: var(--c-surface-2, #232323);
@@ -332,18 +306,18 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
 
 /* ── Content ── */
 .card-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--c-text, #e5e7eb);
-  margin-bottom: 5px;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--c-text-0);
+  margin-bottom: 8px;
   line-height: 1.4;
 }
 
 .card-detail {
-  font-size: 12px;
-  color: var(--c-text-2, #9ca3af);
-  line-height: 1.6;
-  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--c-text-1);
+  line-height: 1.7;
+  margin-bottom: 12px;
 }
 
 .expand-btn {
@@ -357,25 +331,34 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
 }
 
 .anchor-btn {
-  display: inline-flex;
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0,1fr) auto;
   align-items: center;
-  gap: 4px;
+  gap: 10px;
   font-size: 11px;
-  color: var(--c-text-3, #666);
-  background: none;
-  border: none;
+  color: var(--c-text-2);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
   cursor: pointer;
-  padding: 0;
-  margin-bottom: 4px;
+  padding: 9px 11px;
+  margin-bottom: 8px;
+  text-align: left;
   transition: color 0.15s;
 }
 .anchor-btn:hover { color: var(--c-accent, #6366f1); }
+.anchor-label { color: var(--c-text-3); font-weight: 650; }
+.anchor-quote { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.anchor-jump { color: var(--c-accent); }
 
 /* ── Thread ── */
 .thread-list {
-  border-top: 1px solid var(--c-border, #2a2a2a);
-  margin-top: 8px;
-  padding-top: 6px;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--c-surface-2);
   display: flex;
   flex-direction: column;
   gap: 6px;

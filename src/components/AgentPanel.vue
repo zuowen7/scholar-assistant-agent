@@ -97,7 +97,12 @@
               <span class="evt-content-text">{{ evt.content }}</span>
             </div>
           </template>
-          <div v-if="msg.content" class="agent-bubble">{{ msg.content }}</div>
+          <div
+            v-if="msg.content && msg.role === 'assistant'"
+            class="agent-bubble agent-markdown"
+            v-html="renderMarkdown(msg.content)"
+          />
+          <div v-else-if="msg.content" class="agent-bubble">{{ msg.content }}</div>
           <div v-if="msg.isStreaming" class="agent-streaming">
             <span class="dot-wave"><i></i><i></i><i></i></span>
           </div>
@@ -268,6 +273,7 @@ import { useSpeechRecognition } from '../composables/useSpeechRecognition'
 import { setSpeechBusy } from '../composables/useSpeechBusy'
 import UiSpinner from './ui/UiSpinner.vue'
 import UiSkeleton from './ui/UiSkeleton.vue'
+import { renderMarkdown } from '../utils/markdown'
 
 let voiceBaseInput = ''
 const agentSpeech = useSpeechRecognition({
@@ -1360,4 +1366,78 @@ onUnmounted(() => {
   margin-top: 2px;
 }
 .hint.warn { color: var(--c-warn, #f59e0b); }
+
+/* Reference-driven task panel. The event stream remains real Agent V2 data. */
+.agent-panel {
+  top: 0;
+  width: min(460px, calc(100vw - 76px));
+  height: 100vh;
+  margin-top: 0;
+  border-left: 1px solid var(--c-border);
+  background: var(--c-panel);
+  box-shadow: var(--elevation-3);
+  backdrop-filter: none;
+  transition: transform var(--motion-page) var(--ease-out);
+}
+.agent-panel.standalone { border: 0; border-radius: 0; box-shadow: none; }
+.agent-panel.floating { border: 1px solid var(--c-border); border-radius: 11px; background: var(--c-panel); box-shadow: var(--elevation-4); }
+.agent-header { min-height: 70px; box-sizing: border-box; gap: 10px; padding: 27px 54px 12px 16px; border-bottom: 1px solid var(--c-border); background: var(--c-panel); }
+.agent-tabs { gap: 0; padding: 3px; border-radius: 8px; background: var(--c-surface-2); }
+.agent-tab { flex: 1; min-width: 0; padding: 6px 7px; border-radius: 6px; font-size: 11px; }
+.agent-tab.active { background: var(--c-panel); box-shadow: var(--elevation-1); }
+.agent-chat { background: var(--c-app-bg); }
+.agent-messages { gap: 14px; padding: 18px; }
+.agent-empty { padding: 52px 20px; }
+.agent-empty p:first-child { color: var(--c-text-1); font-family: var(--font-sans); font-size: 14px; font-style: normal; }
+.agent-msg { width: 100%; max-width: 100%; }
+.agent-msg.user { align-self: stretch; }
+.agent-bubble { border-radius: 8px; }
+.agent-msg.user .agent-bubble { padding: 11px 12px; border: 1px solid var(--c-border); border-left: 3px solid var(--c-accent); border-radius: 8px; background: var(--c-panel); color: var(--c-text-0); box-shadow: none; }
+.agent-msg.assistant .agent-bubble { padding: 12px 2px 4px; border-top: 1px solid var(--c-border); font-size: 13px; line-height: 1.65; }
+.agent-markdown { white-space: normal; }
+.agent-markdown :deep(p) { margin: 0 0 9px; }
+.agent-markdown :deep(p:last-child) { margin-bottom: 0; }
+.agent-markdown :deep(h1),
+.agent-markdown :deep(h2),
+.agent-markdown :deep(h3) { margin: 14px 0 7px; font-family: var(--font-sans), var(--font-zh); font-size: 14px; line-height: 1.4; }
+.agent-markdown :deep(ul),
+.agent-markdown :deep(ol) { margin: 6px 0 10px; padding-left: 20px; }
+.agent-markdown :deep(li) { margin: 3px 0; }
+.agent-markdown :deep(code) { padding: 1px 4px; border-radius: 4px; background: var(--c-surface-2); font-family: var(--font-mono); font-size: 12px; }
+.agent-markdown :deep(pre) { margin: 9px 0; padding: 10px; overflow: auto; border: 1px solid var(--c-border); border-radius: 7px; background: var(--c-surface-2); }
+.agent-markdown :deep(pre code) { padding: 0; background: transparent; }
+.agent-markdown :deep(table) { width: 100%; margin: 9px 0; border-collapse: collapse; font-size: 12px; }
+.agent-markdown :deep(th),
+.agent-markdown :deep(td) { padding: 6px 7px; border: 1px solid var(--c-border); text-align: left; vertical-align: top; }
+.agent-markdown :deep(th) { background: var(--c-surface-2); font-weight: 650; }
+.agent-event { margin-bottom: 6px; padding: 9px 10px; border-color: var(--c-border); border-radius: 7px; background: var(--c-panel); box-shadow: none; backdrop-filter: none; }
+.agent-event.thinking { border-left-color: var(--c-accent); mask-image: none; -webkit-mask-image: none; }
+.agent-event.tool-call,
+.agent-event.tool-result,
+.agent-event.tool-result.evt-error,
+.agent-event.task-lifecycle,
+.agent-event.task-lifecycle.done,
+.agent-event.warning { background: var(--c-panel); }
+.evt-risk-badge { border-radius: 4px; }
+.agent-thinking-bar { background: var(--c-accent); animation: none; opacity: .7; }
+.agent-status-bar { padding: 7px 10px; border: 1px solid var(--c-border); border-radius: 7px; background: var(--c-panel); }
+.agent-status-bar::after { display: none; }
+.agent-input-area { gap: 7px; padding: 12px 14px 16px; border-top: 1px solid var(--c-border); background: var(--c-panel); }
+.agent-input-row { padding: 4px; border-color: var(--c-border); border-radius: 9px; background: var(--input-bg); box-shadow: none; }
+.agent-input-row:focus-within { border-color: var(--c-accent); background: var(--input-bg); box-shadow: var(--ring-focus); }
+.agent-attach-btn,
+.agent-send-btn { width: 34px; height: 34px; border-radius: 7px; box-shadow: none; }
+.agent-workspace-bar { padding: 3px 0; border: 0; }
+.agent-docs,
+.agent-templates,
+.agent-sessions { background: var(--c-app-bg); }
+.doc-card,
+.template-card,
+.template-preview { border-color: var(--c-border); background: var(--c-panel); }
+
+@media (max-width: 640px) {
+  .agent-panel { width: calc(100vw - 76px); }
+  .agent-header { padding-right: 12px; }
+  .agent-tab { font-size: 10px; }
+}
 </style>

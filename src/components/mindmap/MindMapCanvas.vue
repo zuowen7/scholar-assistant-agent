@@ -19,7 +19,7 @@
       :elements-selectable="true"
       :select-nodes-on-drag="false"
       delete-key-code="''"
-      fit-view-on-init
+      @init="onFlowInit"
       @connect="onConnect"
       @nodes-change="onNodesChange"
       @node-click="onNodeClick"
@@ -65,7 +65,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, markRaw, provide, ref, watch } from 'vue'
+import { computed, markRaw, nextTick, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -124,10 +124,15 @@ provide('hoveredEdgeId', hoveredEdgeId)
 const expandingNodeId = computed(() => props.expandingNodeId)
 provide('expandingNodeId', expandingNodeId)
 
+async function onFlowInit() {
+  await nextTick()
+  await fitView({ padding: 0.2, maxZoom: 1 })
+}
+
 watch(() => props.viewCommand.seq, () => {
   if (props.viewCommand.type === 'zoom-in') zoomIn()
   else if (props.viewCommand.type === 'zoom-out') zoomOut()
-  else if (props.viewCommand.type === 'fit-view') fitView({ padding: 0.18 })
+  else if (props.viewCommand.type === 'fit-view') fitView({ padding: 0.18, maxZoom: 1 })
   else if (props.viewCommand.type === 'reset-view') setViewport({ x: 0, y: 0, zoom: 1 })
 })
 
@@ -257,7 +262,7 @@ function startMinimapDrag(event: PointerEvent) {
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--border-color) 42%, transparent);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--elevation-1);
 }
 .mindmap-canvas-wrapper.connecting {
   cursor: crosshair;
@@ -272,13 +277,11 @@ function startMinimapDrag(event: PointerEvent) {
   flex-direction: column;
   border-radius: 11px;
   border: 1px solid color-mix(in srgb, var(--border-color) 42%, transparent);
-  background: color-mix(in srgb, var(--panel-bg) 76%, transparent);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14);
+  background: var(--c-panel-bg);
+  box-shadow: var(--elevation-1);
   overflow: hidden;
   opacity: 0.54;
   cursor: grab;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   transition: opacity 0.16s, width 0.16s, height 0.16s, transform 0.16s;
 }
 .minimap-panel:hover {
