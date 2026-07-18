@@ -76,7 +76,10 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
             "tool_name": tool_name,
             "reason": data.get("reason", ""),
             "risk": "MODERATE",
-            "force_approval": True,
+            # Only hide session approval when the runtime explicitly marks this
+            # operation as requiring a fresh confirmation every time. Ordinary
+            # workspace edits can use the visible "allow this session" path.
+            "force_approval": bool(data.get("force_approval", False)),
             # args: used by showInlineDiff to check file_path and as fallback for old/new text
             "args": {
                 "file_path": file_path,
