@@ -65,6 +65,7 @@ class ConversationRuntime:
         # Approval state
         self._approval_events: dict[str, asyncio.Event] = {}
         self._approval_decisions: dict[str, str] = {}
+        self._approval_denied = False
         self._aborted = False
 
     # ---- Public API ----
@@ -75,6 +76,7 @@ class ConversationRuntime:
             yield AgentEvent.done()
             return
 
+        self._approval_denied = False
         yield AgentEvent.session_started(self.session.session_id)
         self.session.append(Message(role=MessageRole.USER, blocks=[TextBlock(text=user_message)]))
         self._auto_save()
@@ -99,6 +101,15 @@ class ConversationRuntime:
                             return
                         if event.type == AgentEventType.DONE:
                             return
+                    if self._aborted:
+                        yield AgentEvent.aborted("Session aborted by user")
+                        yield AgentEvent.done()
+                        return
+                    if self._approval_denied:
+                        self._auto_save()
+                        yield AgentEvent.aborted("File edit rejected; no changes were applied")
+                        yield AgentEvent.done()
+                        return
                     break
                 except ApiError as e:
                     if e.status_code == 429 and retry < 2:
@@ -213,6 +224,8 @@ class ConversationRuntime:
                 for tb in tool_blocks:
                     async for evt in self._execute_tool(tb):
                         yield evt
+                    if self._approval_denied or self._aborted:
+                        return
                 return
 
     async def _execute_tool(self, tb: ToolUseBlock) -> AsyncGenerator[AgentEvent, None]:
@@ -282,6 +295,8 @@ class ConversationRuntime:
                     self.session.append(Message(role=MessageRole.TOOL, blocks=[
                         ToolResultBlock(tool_use_id=tb.id, tool_name=tb.name, output=tool_output, is_error=True),
                     ]))
+                    if not self._aborted:
+                        self._approval_denied = True
                     return
 
             # Execute

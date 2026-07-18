@@ -397,6 +397,7 @@
     "allowSession": "本次会话",
     "confirmEach": "每次都需确认",
     "sessionAborted": "会话已中止",
+    "fileEditRejected": "已拒绝文件修改，未应用任何更改",
     "workspaceLabel": "工作区：",
     "noWorkspaceLabel": "请先在编辑器中打开一个项目文件夹",
     "refreshSessions": "刷新",

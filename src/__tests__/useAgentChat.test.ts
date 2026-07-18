@@ -183,6 +183,22 @@ describe('useAgentChat', () => {
       expect(messages.value[1].isStreaming).toBe(false)
     })
 
+    it('localizes the deterministic file-edit rejection state', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+        makeSseResponse([
+          makeSessionStartedChunk('sess_rejected'),
+          { event: 'aborted', data: { content: 'File edit rejected; no changes were applied' } },
+          makeDoneChunk(),
+        ])
+      ))
+
+      const { sendMessage, messages } = useAgentChat()
+      await sendMessage('Reject this edit')
+
+      expect(messages.value[1].content).toBe('agent.fileEditRejected')
+      expect(messages.value[1].isStreaming).toBe(false)
+    })
+
     it('does not send when already sending', async () => {
       // Simulate sending state
       const fetchMock = vi.fn().mockResolvedValue(
