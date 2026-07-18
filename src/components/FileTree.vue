@@ -116,10 +116,12 @@ import AppConfirmDialog from './shell/AppConfirmDialog.vue'
 import { FolderOpen } from './ui/icons'
 import { useFileTree } from '../composables/useFileTree'
 import { useEditor } from '../composables/useEditor'
+import { useToast } from '../composables/useToast'
 import type { FileEntry } from '../types'
 
 const { files, rootDir, openFolder, readFileContent, createFile, createFolder, renameFile, deleteFile, copyFileTo, setClipboard, getClipboard, clearClipboard } = useFileTree()
 const { openFile: openEditorFile, activeFile, renameTabPath, closeTab } = useEditor()
+const { success, pushError } = useToast()
 
 defineEmits<{ (e: 'collapse'): void }>()
 
@@ -227,7 +229,7 @@ async function confirmDelete() {
     showDeleteConfirm.value = false
     pendingDelete.value = null
   } catch (error) {
-    console.error('Delete failed:', error)
+    pushError(t('files.operationFailed', { message: error instanceof Error ? error.message : String(error) }))
   } finally {
     deleteBusy.value = false
   }
@@ -276,7 +278,7 @@ async function handleAction(action: string, path: string, extra: string) {
           clearClipboard()
         }
       } catch (e) {
-        console.error('Paste failed:', e)
+        pushError(t('files.operationFailed', { message: e instanceof Error ? e.message : String(e) }))
       }
       break
     }
@@ -286,7 +288,7 @@ async function handleAction(action: string, path: string, extra: string) {
         const newPath = await renameFile(path, extra)
         renameTabPath(path, newPath)
       } catch (e) {
-        console.error('Rename failed:', e)
+        pushError(t('files.operationFailed', { message: e instanceof Error ? e.message : String(e) }))
       }
       break
 
@@ -298,8 +300,9 @@ async function handleAction(action: string, path: string, extra: string) {
     case 'copy-path':
       try {
         await navigator.clipboard.writeText(path)
+        success(t('files.pathCopied'))
       } catch {
-        // Fallback: not available in some environments
+        pushError(t('files.operationFailed', { message: t('files.clipboardUnavailable') }))
       }
       break
   }
@@ -356,20 +359,6 @@ onBeforeUnmount(() => {
               color var(--motion-fast) var(--ease-out);
 }
 .tree-btn:hover { background: var(--c-surface-2); color: var(--c-text-0); }
-/* 墨韵涟漪 */
-.tree-btn::after {
-  content: '';
-  position: absolute;
-  inset: -2px;
-  border-radius: inherit;
-  background: radial-gradient(circle at center, var(--c-accent) 0%, transparent 70%);
-  opacity: 0;
-  transform: scale(0.7);
-  transition: opacity 300ms var(--ease-brush), transform 340ms var(--ease-brush);
-  pointer-events: none;
-  filter: blur(4px);
-}
-.tree-btn:hover::after { opacity: 0.1; transform: scale(1.15); }
 
 .tree-btn-sep {
   width: 1px;

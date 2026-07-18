@@ -62,6 +62,16 @@ describe('readSseStream – event parsing', () => {
     expect(events[1][0]).toBe('b')
   })
 
+  it('flushes a CRLF-delimited event immediately when the stream pauses', async () => {
+    const events: Array<[string, Record<string, unknown>]> = []
+    const reader = makeReader([
+      'event: await_approval\r\ndata: {"event_id":"tool_1"}\r\n\r\n',
+    ])
+    await readSseStream(reader, (type, data) => events.push([type, data]))
+
+    expect(events).toEqual([['await_approval', { event_id: 'tool_1' }]])
+  })
+
   it('handles events split across multiple chunks', async () => {
     const events: Array<[string, Record<string, unknown>]> = []
     const reader = makeReader([

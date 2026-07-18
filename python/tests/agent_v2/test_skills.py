@@ -110,11 +110,22 @@ class TestSkillRegistry:
 
 class TestBuiltinSkills:
     def test_all_builtins_present(self):
-        assert len(_BUILTIN_SKILLS) == 5
         names = {s.name for s in _BUILTIN_SKILLS}
-        assert "academic_writing" in names
-        assert "paper_review" in names
-        assert "chinese_academic" in names
+        assert names == {
+            "academic_writing",
+            "paper_review",
+            "latex_formatting",
+            "chinese_academic",
+            "methodology_critique",
+            "nature_writing",
+            "nature_polishing",
+            "nature_reviewer",
+            "nature_response",
+            "nature_citation",
+            "nature_data",
+            "nature_reader",
+            "nature_figure",
+        }
 
     def test_all_builtins_have_content(self):
         for s in _BUILTIN_SKILLS:
@@ -125,7 +136,7 @@ class TestBuiltinSkills:
         reg = SkillRegistry()
         for s in _BUILTIN_SKILLS:
             reg.register(s)
-        assert len(reg.list_all()) == 5
+        assert {item["name"] for item in reg.list_all()} == {s.name for s in _BUILTIN_SKILLS}
 
     def test_builtins_inject_into_prompt(self):
         reg = SkillRegistry()

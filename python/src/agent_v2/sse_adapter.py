@@ -107,6 +107,12 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
     elif t == AgentEventType.SESSION_STARTED:
         content = data.get("session_id", "")
         evt_type = t.value
+        return {
+            "type": evt_type,
+            "content": content,
+            "event_id": _event_id(),
+            "metadata": {"session_id": content},
+        }
     elif t == AgentEventType.RESPONSE:
         content = data.get("text", "")
         evt_type = "response"

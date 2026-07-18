@@ -102,7 +102,10 @@
         :tectonic-checking="tectonicChecking"
         :bg-settings="bgSettings"
         :read-settings="readSettings"
+        :ui-zoom="uiZoom"
         :proxy-url="proxyUrl"
+        :update-checking="updateChecking"
+        :update-result="updateResult"
         @update:engine-type="engineType = $event"
         @update:cloud-config="cloudConfig = $event"
         @update:ollama-model="ollamaModel = $event"
@@ -122,7 +125,11 @@
         @line-height-change="onLineHeightChange"
         @font-family-change="onFontFamilyChange"
         @color-change="onColorChange"
+        @ui-zoom-change="applyUiZoom"
         @voice-settings-change="applyVoiceSettings"
+        @restart-backend="handleRestartBackend"
+        @check-update="handleCheckUpdate"
+        @open-release="openReleasePage"
       />
 
       <!-- Agent 聊天面板 -->
@@ -154,6 +161,7 @@ import { registerAllVoiceCommands } from './composables/voiceCommands'
 import { checkArgumentMapV2Flag, _openFullArgMapTick } from './composables/useArgumentMap'
 import ArgumentMapView from './components/argument/ArgumentMapView.vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { open } from '@tauri-apps/plugin-dialog'
 import { readFile } from '@tauri-apps/plugin-fs'
 import { useToast } from './composables/useToast'
@@ -164,6 +172,7 @@ const { t } = useI18n()
 
 import { useTranslate } from './composables/useTranslate'
 import { checkForUpdate } from './composables/useUpdateChecker'
+import type { UpdateCheckResult } from './composables/useUpdateChecker'
 import { useEditor } from './composables/useEditor'
 import EditorLayout from './components/EditorLayout.vue'
 import AgentPanel from './components/AgentPanel.vue'
@@ -185,7 +194,7 @@ import { logger } from './utils/logger'
 import { useProject } from './composables/useProject'
 
 const { state, translate, translateFromPath, cleanup, checkHealth, checkOllama, startOllama, checkCloudApi, getConfig, updateConfig, getProviderPresets, fetchOllamaModels, restartBackend, listenBackendCrash, setStatus, setError, setStepMessage, recoverTranslation, discardPersisted } = useTranslate()
-const { pushError } = useToast()
+const { pushError, info } = useToast()
 
 // ── 应用模式 ──────────────────────────────────────────────────
 const { appMode, showAgentChat, modeTransition, setMode, toggleAgentChat } = useAppMode()
@@ -221,6 +230,42 @@ async function handleShellRecent(path: string) {
 }
 
 const showSettings = ref(false)
+const UI_ZOOM_MIN = 0.8
+const UI_ZOOM_MAX = 2
+const UI_ZOOM_STEP = 0.1
+const uiZoom = ref(loadUiZoom())
+
+function loadUiZoom(): number {
+  try {
+    const saved = Number(localStorage.getItem('ui-zoom') || '1')
+    return Number.isFinite(saved) ? Math.min(UI_ZOOM_MAX, Math.max(UI_ZOOM_MIN, saved)) : 1
+  } catch { return 1 }
+}
+
+async function applyUiZoom(value: number) {
+  const normalized = Math.round(Math.min(UI_ZOOM_MAX, Math.max(UI_ZOOM_MIN, value)) * 10) / 10
+  uiZoom.value = normalized
+  try { localStorage.setItem('ui-zoom', String(normalized)) } catch { /* storage can be unavailable */ }
+  try {
+    await getCurrentWebview().setZoom(normalized)
+  } catch {
+    document.documentElement.style.setProperty('zoom', String(normalized))
+  }
+}
+
+function handleUiZoomShortcut(event: KeyboardEvent) {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+  if (event.key === '0') {
+    event.preventDefault()
+    void applyUiZoom(1)
+  } else if (event.key === '+' || event.key === '=') {
+    event.preventDefault()
+    void applyUiZoom(uiZoom.value + UI_ZOOM_STEP)
+  } else if (event.key === '-' || event.key === '_') {
+    event.preventDefault()
+    void applyUiZoom(uiZoom.value - UI_ZOOM_STEP)
+  }
+}
 
 function openLegacySettings() {
   showSettings.value = true
@@ -377,6 +422,8 @@ const cloudError = ref<string | null>(null)
 const cloudChecking = ref(false)
 const tectonicOk = ref(false)
 const tectonicChecking = ref(false)
+const updateChecking = ref(false)
+const updateResult = ref<UpdateCheckResult | null>(null)
 const globalDragging = ref(false)
 const mouseX = ref(0)
 const mouseY = ref(0)
@@ -689,6 +736,8 @@ let timer: ReturnType<typeof setInterval> | null = null
 let unlistenDragDrop: (() => void) | null = null
 
 onMounted(async () => {
+  window.addEventListener('keydown', handleUiZoomShortcut)
+  await applyUiZoom(uiZoom.value)
   checkArgumentMapV2Flag().catch(() => {})
   window.addEventListener('shell-section-change', handleShellSectionChange)
   loadRecentProjects().catch(() => {})
@@ -734,25 +783,30 @@ onMounted(async () => {
     cloudError.value = r.error ?? null
   }
   timer = setInterval(async () => {
-    if (state.status === 'idle') {
-      const prev = healthOk.value
-      healthOk.value = await checkHealth()
-      // 后端从在线变为离线且非用户主动关闭 → 提示重启
-      if (prev && !healthOk.value) {
-        setError(t('app.backendOffline'))
-      }
-      if (engineType.value === 'ollama') {
-        ollamaOk.value = await checkOllama()
-      } else {
-        const r = await checkCloudApi()
-        cloudOk.value = r.ok
-        cloudError.value = r.error ?? null
-      }
+    // Backend availability is a global shell concern. Keep polling even when
+    // a failed request has moved the feature state to `error`, otherwise the
+    // settings drawer can remain falsely "online" and hide its restart action.
+    const prev = healthOk.value
+    healthOk.value = await checkHealth()
+    if (prev && !healthOk.value) {
+      setError(t('app.backendOffline'))
+    }
+    if (!healthOk.value || state.status !== 'idle') return
+
+    if (engineType.value === 'ollama') {
+      ollamaOk.value = await checkOllama()
+    } else {
+      const r = await checkCloudApi()
+      cloudOk.value = r.ok
+      cloudError.value = r.error ?? null
     }
   }, 8000)
 
   // Check for updates (5s delay, silent on failure)
-  setTimeout(() => checkForUpdate().catch(() => {}), 5000)
+  setTimeout(async () => {
+    const result = await checkForUpdate().catch(() => undefined)
+    if (result) updateResult.value = result
+  }, 5000)
 
   // Tauri v2 native drag-drop events (WebView2 intercepts HTML5 drag)
   try {
@@ -779,6 +833,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('keydown', handleUiZoomShortcut)
   window.removeEventListener('shell-section-change', handleShellSectionChange)
   window.removeEventListener('mousemove', onMouseMove)
   window.removeEventListener('voice-command-trigger', handleVoiceCommandTrigger)
@@ -958,9 +1013,39 @@ async function handleRestartBackend() {
   const ok = await restartBackend()
   if (ok) {
     healthOk.value = true
+    // The app may have mounted while the backend was unavailable and fallen
+    // back to local UI defaults. Reload the authoritative runtime config after
+    // recovery so the model badge and settings do not falsely show Ollama.
+    await loadEngineSettings()
+    if (engineType.value === 'cloud') {
+      const result = await checkCloudApi()
+      cloudOk.value = result.ok
+      cloudError.value = result.error ?? null
+    }
     setStatus('idle')
   } else {
     setError(t('app.restartFailed'))
+  }
+}
+
+async function handleCheckUpdate() {
+  updateChecking.value = true
+  try {
+    const result = await checkForUpdate({ notify: false })
+    updateResult.value = result ?? null
+    if (!result) info(t('settingsCenter.updateUnavailable'))
+  } finally {
+    updateChecking.value = false
+  }
+}
+
+async function openReleasePage(url: string) {
+  if (!/^https:\/\/github\.com\//i.test(url)) return
+  try {
+    const { open: openExternal } = await import('@tauri-apps/plugin-shell')
+    await openExternal(url)
+  } catch {
+    window.open(url, '_blank', 'noopener,noreferrer')
   }
 }
 </script>

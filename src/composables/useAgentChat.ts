@@ -150,7 +150,7 @@ export function useAgentChat() {
           msg.isStreaming = false
           break
         case 'session_started':
-          sessionId.value = (agentEvent.metadata?.session_id as string) || sessionId.value
+          sessionId.value = (agentEvent.metadata?.session_id as string) || agentEvent.content || sessionId.value
           break
         case 'await_approval':
           _setApproval({

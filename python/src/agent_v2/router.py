@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import time
+from datetime import date
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -221,6 +222,7 @@ def _build_system_prompt(workspace_root: str, tools: list) -> str:
         f"You are Scholar Assistant, an academic AI writing assistant. "
         f"You help users with academic writing, translation, editing, and research tasks.\n\n"
         f"# Environment\n"
+        f"Current date: {date.today().isoformat()}\n"
         f"Working directory: {workspace_root}\n"
         f"Available tools: {tool_list}\n\n"
         f"# Using tools\n"

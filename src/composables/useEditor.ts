@@ -122,7 +122,9 @@ export async function inlineEdit(instruction: string, taskType?: string): Promis
     applyInlineDecoration(sel.startLine, sel.startCol, sel.endLine, sel.endCol)
     await readSseStream(reader, (_type, evt) => {
       if (evt.content) {
-        aiResult.value = (aiResult.value || '') + (evt.content as string)
+        // /api/edit sends the complete accumulated output in every delta.
+        // Appending it duplicates all earlier tokens and corrupts replacements.
+        aiResult.value = evt.content as string
         editor.executeEdits('ai-inline', [{
           range: new Range(sel.startLine, sel.startCol, sel.endLine, sel.endCol),
           text: aiResult.value,

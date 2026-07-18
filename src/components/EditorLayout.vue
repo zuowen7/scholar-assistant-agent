@@ -22,12 +22,13 @@
           <button type="button" class="header-action mode-toggle" @click="toggleEditorMode">{{ isLatexMode ? t('editor.writingView') : 'LaTeX' }}</button>
           <button type="button" class="header-action" @click="handleSaveFile"><Save :size="16" /> {{ t('editor.saveAction') }}</button>
           <button type="button" class="header-action primary" @click="isLatexMode ? aiPanelRef?.sendPreset('polish') : handleSelectionTask(t('editor.polish'))"><Sparkles :size="16" /> {{ t('editor.aiPolish') }}</button>
+          <button type="button" class="header-icon" :title="sidebarCollapsed ? t('editor.fileTree') : t('editor.collapseSidebar')" @click="sidebarCollapsed = !sidebarCollapsed"><PanelLeftOpen v-if="sidebarCollapsed" :size="18" /><PanelLeftClose v-else :size="18" /></button>
           <button type="button" class="header-icon" :title="rightPanelVisible ? t('editor.collapseRight') : t('editor.expandRight')" @click="rightPanelVisible = !rightPanelVisible"><PanelRightClose :size="18" /></button>
           <button v-if="currentProject" type="button" class="header-icon" :title="t('project.closeProject')" @click="requestCloseProject"><FolderX :size="17" /></button>
         </AppHeader>
 
         <div class="editor-workbench" :class="{ 'latex-mode': isLatexMode, 'writing-mode': !isLatexMode, 'right-collapsed': !rightPanelVisible }">
-          <div class="workbench-left" :style="{ width: (isLatexMode ? 250 : 226) + 'px' }">
+          <div v-if="!sidebarCollapsed" class="workbench-left" :style="{ width: (isLatexMode ? 250 : 226) + 'px' }">
             <FileTree v-if="isLatexMode" @collapse="sidebarCollapsed = true" />
             <DocumentOutline v-else :content="content" :active-line="selection.startLine" @navigate="navigateToLine" @add="addSection" />
           </div>
@@ -160,7 +161,7 @@ import AppConfirmDialog from './shell/AppConfirmDialog.vue'
 import AppPromptDialog from './shell/AppPromptDialog.vue'
 import SegmentedControl from './shell/SegmentedControl.vue'
 import StatusBadge from './shell/StatusBadge.vue'
-import { FileCode2, FileText, FolderX, PanelRightClose, Save, Sparkles } from 'lucide-vue-next'
+import { FileCode2, FileText, FolderX, PanelLeftClose, PanelLeftOpen, PanelRightClose, Save, Sparkles } from 'lucide-vue-next'
 
 // -- State composables ---------------------------------------------------
 import { useEditorState, getRange } from '../composables/useEditorState'
@@ -731,6 +732,10 @@ function startResize(e: MouseEvent, target: 'sidebar' | 'panel') {
 // -- Keyboard -------------------------------------------------------------
 function onKeyDown(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSaveFile() }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+    e.preventDefault()
+    sidebarCollapsed.value = !sidebarCollapsed.value
+  }
 }
 
 // -- Lifecycle -------------------------------------------------------------

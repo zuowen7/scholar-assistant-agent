@@ -152,20 +152,6 @@ async function openLogFolder() {
               color var(--motion-fast) var(--ease-brush);
   flex-shrink: 0;
 }
-.dp-trigger::after {
-  content: '';
-  position: absolute;
-  inset: -4px;
-  border-radius: inherit;
-  background: radial-gradient(circle at center, var(--c-accent) 0%, transparent 70%);
-  opacity: 0;
-  transform: scale(0.7);
-  transition: opacity 340ms var(--ease-brush), transform 380ms var(--ease-brush);
-  pointer-events: none;
-  z-index: -1;
-  filter: blur(5px);
-}
-.dp-trigger:hover::after { opacity: 0.12; transform: scale(1.18); }
 .dp-trigger:hover  { background: var(--c-surface-2); color: var(--c-text-0); }
 .dp-trigger.active { color: var(--c-accent-hover); background: var(--c-accent-bg); }
 .dp-trigger.has-errors { color: var(--c-danger); }
