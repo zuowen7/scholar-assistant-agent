@@ -52,12 +52,29 @@ export function clearActiveEdit(): void {
 export function shouldShowInlineDiff(
   toolName: string,
   args: Record<string, unknown>,
-  openTabPaths: string[],
+  openTabs: Array<string | { path: string | null; content?: string }>,
+  preview?: Record<string, unknown>,
 ): boolean {
   if (toolName !== 'str_replace' && toolName !== 'write_file') return false
   const filePath = args.file_path as string
   if (!filePath) return false
-  return openTabPaths.some(p => p === filePath)
+  const normalize = (path: string) => path.replace(/\\/g, '/').toLowerCase()
+  const tab = openTabs.find(candidate => {
+    const path = typeof candidate === 'string' ? candidate : candidate.path
+    return Boolean(path && normalize(path) === normalize(filePath))
+  })
+  if (!tab) return false
+
+  if (toolName === 'write_file') {
+    return Boolean(preview?.new_text ?? args.content)
+  }
+
+  const oldText = String(preview?.old_text ?? args.old_string ?? '')
+  const newText = String(preview?.new_text ?? args.new_string ?? '')
+  if (!oldText || !newText) return false
+  if (typeof tab === 'string' || tab.content == null) return true
+  const occurrences = tab.content.split(oldText).length - 1
+  return occurrences === 1
 }
 
 // ── Monaco Range helper ──────────────────────────────────────────────────

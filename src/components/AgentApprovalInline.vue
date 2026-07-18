@@ -4,9 +4,9 @@
       <span class="approval-icon">&#x26A0;</span>
       <span class="approval-label">{{ t('agent.approvalRequest') }}</span>
       <code class="approval-tool">{{ pending.tool_name }}</code>
-      <span v-if="pending.risk" class="approval-risk" :class="'risk-' + pending.risk">{{ pending.risk }}</span>
+      <span v-if="pending.risk" class="approval-risk" :class="'risk-' + pending.risk.toLowerCase()">{{ riskLabel }}</span>
     </div>
-    <div v-if="pending.reason" class="approval-reason">{{ pending.reason }}</div>
+    <div v-if="approvalReason" class="approval-reason">{{ approvalReason }}</div>
     <div v-if="previewText" class="approval-preview">
       <code class="approval-preview-code">{{ previewText }}</code>
     </div>
@@ -46,6 +46,17 @@ const emit = defineEmits<{
 
 const deciding = ref(false)
 const pendingDecision = ref<'allow_once' | 'allow_session' | 'deny' | null>(null)
+
+const approvalReason = computed(() => {
+  const reason = props.pending?.reason || ''
+  const editMatch = reason.match(/^Agent wants to edit (.+)$/)
+  return editMatch ? t('agent.approvalEditReason', { path: editMatch[1] }) : reason
+})
+
+const riskLabel = computed(() => {
+  const risk = props.pending?.risk?.toLowerCase()
+  return risk ? t(`agent.risk.${risk}`, risk) : ''
+})
 
 const previewText = computed(() => {
   if (!props.pending) return ''

@@ -257,6 +257,32 @@ describe('useAgentChat', () => {
     })
   })
 
+  describe('session history', () => {
+    it('loads persisted text and tool events into the current workflow', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+        session_id: 'sess_history',
+        messages: [
+          { role: 'user', content: 'Review the draft', events: [] },
+          {
+            role: 'assistant', content: '', events: [
+              { type: 'tool_call', content: 'read_file', metadata: { tool_name: 'read_file' } },
+            ],
+          },
+          { role: 'assistant', content: 'Review complete', events: [] },
+        ],
+      }), { status: 200 })))
+
+      const { loadWorkflowMessages, messages, sessionId } = useAgentChat()
+      const loaded = await loadWorkflowMessages('sess_history')
+
+      expect(loaded).toBe(true)
+      expect(sessionId.value).toBe('sess_history')
+      expect(messages.value).toHaveLength(3)
+      expect(messages.value[1].events[0].metadata?.tool_name).toBe('read_file')
+      expect(messages.value[2].content).toBe('Review complete')
+    })
+  })
+
   // ── Approval state ──────────────────────────────────────────────────
 
   describe('pendingApproval', () => {
@@ -308,6 +334,19 @@ describe('useAgentChat', () => {
   // ── Singleton isolation ─────────────────────────────────────────────
 
   describe('singleton isolation', () => {
+    it('starts a clean workflow without deleting the persisted session', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+        makeSseResponse([makeSessionStartedChunk('sess_existing'), makeDoneChunk()])
+      ))
+      const { sendMessage, startNewWorkflow, messages, sessionId } = useAgentChat()
+      await sendMessage('First task')
+
+      startNewWorkflow()
+
+      expect(messages.value).toHaveLength(0)
+      expect(sessionId.value).toBeNull()
+    })
+
     it('_resetForTesting clears all state', () => {
       const { messages, sendMessage, sessionId } = useAgentChat()
 

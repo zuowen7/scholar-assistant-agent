@@ -69,6 +69,10 @@ export function _resetForTesting(): void {
   skillsLoading.value = false
   sessionId.value = null
   _approvalBySession.clear()
+  _messagesByWorkflow.clear()
+  pipelineStage.value = ''
+  pipelineCompleted.value = []
+  pendingCheckpoint.value = null
 }
 
 /** Agent chat composable (singleton). Manages ReAct loop SSE streaming, session lifecycle, per-session approval state, and RAG documents. */
@@ -364,9 +368,7 @@ export function useAgentChat() {
   }
 
   function clearHistory(): void {
-    messages.value = []
-    sessionId.value = null
-    _clearApproval()
+    startNewWorkflow()
   }
 
   // ── v2 Approval ──────────────────────────────────────────────────
@@ -544,30 +546,41 @@ export function useAgentChat() {
   }
 
   // Per-workflow message loading (Phase 3)
-  async function loadWorkflowMessages(wfId: string) {
+  async function loadWorkflowMessages(wfId: string): Promise<boolean> {
     try {
       const resp = await fetch(`${API_URL}/api/agent/v2/workflows/${wfId}/messages`)
-      if (!resp.ok) return
+      if (!resp.ok) return false
       const data = await resp.json()
       const loaded: AgentChatMessage[] = (data.messages || []).map((m: any, i: number) => ({
         id: `hist_${i}`,
-        role: m.role as 'user' | 'assistant',
+        role: m.role === 'user' ? 'user' : 'assistant',
         content: m.content || '',
-        events: [],
+        events: Array.isArray(m.events) ? m.events : [],
         isStreaming: false,
-        timestamp: Date.now(),
+        timestamp: Date.now() + i,
       }))
       _messagesByWorkflow.set(wfId, loaded)
+      _clearApproval()
       workflowId.value = wfId
       messages.value = loaded
+      pipelineStage.value = ''
+      pipelineCompleted.value = []
+      pendingCheckpoint.value = null
+      return true
     } catch (e) {
       logger.error('loadWorkflowMessages failed:', e)
+      return false
     }
   }
 
   function startNewWorkflow() {
+    const previousWorkflowId = workflowId.value
+    if (previousWorkflowId && messages.value.length) {
+      _messagesByWorkflow.set(previousWorkflowId, [...messages.value])
+    }
     workflowId.value = null
     messages.value = []
+    _clearApproval()
     pipelineStage.value = ''
     pipelineCompleted.value = []
     pendingCheckpoint.value = null

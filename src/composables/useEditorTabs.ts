@@ -81,6 +81,37 @@ function setEditorInstance(editor: import('monaco-editor').editor.IStandaloneCod
   monacoEditor.value = editor
 }
 
+export type ExternalFileUpdateResult = 'applied' | 'unchanged' | 'conflict' | 'not-open'
+
+/**
+ * Apply content written by an external actor such as Agent V2 to an open tab.
+ * Unsaved Monaco content always wins: a dirty tab is reported as a conflict and
+ * left byte-for-byte unchanged so the caller can surface a recovery warning.
+ */
+function applyExternalFileUpdate(path: string, fresh: string): ExternalFileUpdateResult {
+  const normalizedPath = path.replace(/\\/g, '/').toLowerCase()
+  const tab = tabs.value.find(candidate => (
+    candidate.path?.replace(/\\/g, '/').toLowerCase() === normalizedPath
+  ))
+  if (!tab) return 'not-open'
+  if (tab.isModified) return 'conflict'
+  if (tab.content === fresh) return 'unchanged'
+
+  tab.content = fresh
+  tab.isModified = false
+  contentVersion.value++
+
+  if (tab.id === activeTabId.value && monacoEditor.value) {
+    const model = monacoEditor.value.getModel()
+    if (model) {
+      const position = monacoEditor.value.getPosition()
+      model.setValue(fresh)
+      if (position) monacoEditor.value.setPosition(position)
+    }
+  }
+  return 'applied'
+}
+
 /**
  * Reload all open tabs that have a path by re-reading from disk.
  * Called after the Agent writes/modifies files so Monaco shows fresh content.
@@ -162,5 +193,5 @@ export {
   monacoEditor, contentVersion, selection,
   setEditorInstance, setContent, updateSelection, markClean, markDirty,
   openFile, openNewUntitled, closeTab, setActiveTab, renameTabPath, saveFile,
-  reloadOpenTabs,
+  reloadOpenTabs, applyExternalFileUpdate,
 }

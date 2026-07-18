@@ -33,22 +33,22 @@
       <div
         v-for="(s, idx) in sessions"
         :key="s.id"
-        class="session-item u-interactive"
-        :class="{ resumable: isResumable(s) }"
+        class="session-item openable u-interactive"
         :style="{ '--stagger-i': idx }"
-        @click="resumeSession(s)"
+        @click="openSession(s)"
         tabindex="0"
-        @keydown.enter="resumeSession(s)"
+        @keydown.enter="openSession(s)"
       >
         <div class="session-main">
           <span class="session-query">{{ truncate(s.query || s.id, 40) }}</span>
-          <span class="session-badge" :class="stateClass(s.state)">{{ s.state }}</span>
+          <span class="session-badge" :class="stateClass(s.state)">{{ stateLabel(s.state) }}</span>
         </div>
         <div class="session-meta">
-          <span>{{ t('agent.taskCount', { done: s.tasks_done, total: s.tasks_total }) }}</span>
+          <span v-if="s.tasks_total > 0">{{ t('agent.taskCount', { done: s.tasks_done, total: s.tasks_total }) }}</span>
+          <span v-else>{{ t('agent.messageCount', { count: s.messages || 0 }) }}</span>
           <span v-if="s.updated_at" class="session-time">{{ formatTime(s.updated_at) }}</span>
         </div>
-        <span v-if="isResumable(s)" class="session-resume-hint">{{ t('agent.resume') }}</span>
+        <span class="session-resume-hint">{{ isResumable(s) ? t('agent.resume') : t('agent.viewSession') }}</span>
       </div>
     </TransitionGroup>
   </div>
@@ -64,7 +64,7 @@ import { API_BASE } from '../utils/api'
 import UiSkeleton from './ui/UiSkeleton.vue'
 
 const emit = defineEmits<{
-  (e: 'resume', sessionId: string): void
+  (e: 'open', session: AgentSessionInfo): void
 }>()
 
 const sessions = ref<AgentSessionInfo[]>([])
@@ -92,7 +92,16 @@ function stateClass(state: string): string {
   if (state === 'DONE') return 'done'
   if (state === 'ABORTED') return 'aborted'
   if (state === 'EXECUTING') return 'executing'
+  if (state === 'persisted') return 'persisted'
   return 'idle'
+}
+
+function stateLabel(state: string): string {
+  if (state === 'DONE') return t('agent.sessionDone')
+  if (state === 'ABORTED') return t('agent.sessionAborted')
+  if (state === 'EXECUTING' || state === 'active') return t('agent.sessionActive')
+  if (state === 'persisted') return t('agent.sessionSaved')
+  return state
 }
 
 function truncate(text: string, max: number): string {
@@ -116,9 +125,8 @@ function formatTime(iso: string): string {
   }
 }
 
-async function resumeSession(s: AgentSessionInfo) {
-  if (!isResumable(s)) return
-  emit('resume', s.id)
+function openSession(s: AgentSessionInfo) {
+  emit('open', s)
 }
 
 onMounted(fetchSessions)
@@ -174,12 +182,13 @@ defineExpose({ fetchSessions })
   color: var(--c-text-1);
   border-left: 2px solid transparent;
 }
-.session-item.resumable { cursor: pointer; }
-.session-item.resumable:hover {
+.session-item.openable { cursor: pointer; }
+.session-item.openable:hover {
   background: var(--c-surface-2);
   border-left-color: var(--c-accent);
 }
-.session-item.resumable:hover .session-resume-hint { opacity: 1; transform: translateX(0); }
+.session-item.openable:hover .session-resume-hint,
+.session-item.openable:focus-visible .session-resume-hint { opacity: 1; transform: translateX(0); }
 .session-item:focus-visible { outline: none; box-shadow: var(--ring-focus); border-radius: var(--radius-sm); }
 
 .session-main {
@@ -205,6 +214,7 @@ defineExpose({ fetchSessions })
 }
 .session-badge.done { background: var(--c-success-bg); color: var(--c-success); }
 .session-badge.aborted { background: var(--c-danger-bg); color: var(--c-danger); }
+.session-badge.persisted { background: var(--c-surface-2); color: var(--c-text-2); }
 .session-badge.executing {
   background: var(--c-info-bg); color: var(--c-info);
   animation: badge-pulse 1.6s ease-in-out infinite;

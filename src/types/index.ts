@@ -223,6 +223,7 @@ export interface AgentSessionInfo {
   global_step: number
   tasks_total: number
   tasks_done: number
+  messages?: number
   workspace_root?: string
   query?: string
   created_at?: string

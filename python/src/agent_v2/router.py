@@ -7,7 +7,7 @@
   POST /api/agent/v2/abort/{sid}     — 中止会话
   GET  /api/agent/v2/sessions        — 会话列表
   GET  /api/agent/v2/tools            — 工具列表
-  GET  /api/agent/v2/workflows/{id}/messages — 工作流消息 (stub)
+  GET  /api/agent/v2/workflows/{id}/messages — 持久化会话消息
   POST /api/agent/v2/workflows/cleanup        — 清理工作流 (stub)
   DELETE /api/agent/v2/workflows/{id}          — 删除工作流 (stub)
 """
@@ -17,8 +17,9 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -36,7 +37,15 @@ from src.agent_v2.tools.sub_agent import register_sub_agent
 from src.agent_v2.skills import SkillRegistry, _BUILTIN_SKILLS
 from src.agent_v2.hooks import HookRunner, HookEvent, HookPoint
 from src.agent_v2.plugins import PluginManager, create_default_plugin_manager
-from src.agent_v2.types import AgentEvent, Message, MessageRole, TextBlock
+from src.agent_v2.types import (
+    AgentEvent,
+    Message,
+    MessageRole,
+    TextBlock,
+    ThinkingBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +65,7 @@ _SESSION_DIR = Path(os.environ.get("AGENT_SESSION_DIR", str(_DEFAULT_SESSION_DIR
 _SESSION_POOL: dict[str, ConversationRuntime] = {}
 _SESSION_LOCK = asyncio.Lock()
 _SESSION_TTL = 3600
+_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 
 class ChatRequestV2(BaseModel):
@@ -72,6 +82,88 @@ class ChatRequestV2(BaseModel):
 class ApproveRequest(BaseModel):
     decision: str = "allow_once"  # allow_once, allow_session, deny
     reason: str | None = None
+
+
+def _visible_user_text(text: str) -> str:
+    """Hide editor/context envelopes that the frontend appended to a user task."""
+    cut_at = len(text)
+    for marker in ("\n\n<task_constraints>", "\n\n<active_file>", "\n\n<editor_context>"):
+        position = text.find(marker)
+        if position >= 0:
+            cut_at = min(cut_at, position)
+    return text[:cut_at].strip()
+
+
+def _session_messages_for_frontend(session: Session) -> list[dict]:
+    """Convert persisted Agent V2 blocks into the existing panel message model."""
+    result: list[dict] = []
+    for message in session.messages:
+        if message.role == MessageRole.SYSTEM:
+            continue
+        events: list[dict] = []
+        text_parts: list[str] = []
+        for block in message.blocks:
+            if isinstance(block, TextBlock):
+                text_parts.append(block.text)
+            elif isinstance(block, ThinkingBlock):
+                events.append({"type": "thought", "content": block.thinking})
+            elif isinstance(block, ToolUseBlock):
+                try:
+                    arguments = json.loads(block.input)
+                except (TypeError, json.JSONDecodeError):
+                    arguments = {"raw": block.input}
+                events.append({
+                    "type": "tool_call",
+                    "content": block.name,
+                    "metadata": {
+                        "tool_name": block.name,
+                        "arguments": arguments,
+                        "args": arguments,
+                    },
+                })
+            elif isinstance(block, ToolResultBlock):
+                events.append({
+                    "type": "tool_result",
+                    "content": block.output,
+                    "metadata": {
+                        "tool_name": block.tool_name,
+                        "error": block.is_error,
+                    },
+                })
+        content = "".join(text_parts)
+        if message.role == MessageRole.USER:
+            content = _visible_user_text(content)
+        if not content and not events:
+            continue
+        result.append({
+            "role": "user" if message.role == MessageRole.USER else "assistant",
+            "content": content,
+            "events": events,
+        })
+    return result
+
+
+def _session_summary(session: Session, *, state: str, source: str) -> dict:
+    messages = session.messages
+    raw_query = next((msg.text_content() for msg in messages if msg.role == MessageRole.USER and msg.text_content()), "")
+    query = _visible_user_text(raw_query)[:500]
+    created_at = datetime.fromtimestamp(session.meta.created_ms / 1000, tz=timezone.utc).isoformat() if session.meta.created_ms else None
+    updated_at = datetime.fromtimestamp(session.meta.updated_ms / 1000, tz=timezone.utc).isoformat() if session.meta.updated_ms else None
+    return {
+        "id": session.session_id,
+        "state": state,
+        "global_step": session.message_count,
+        "tasks_total": 0,
+        "tasks_done": 0,
+        "workspace_root": session.meta.workspace,
+        "workspace": session.meta.workspace,
+        "model": session.meta.model,
+        "messages": session.message_count,
+        "query": query,
+        "created_at": created_at,
+        "updated_at": updated_at,
+        "source": source,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -422,17 +514,20 @@ def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> Non
 
     @app.get(f"{prefix}/sessions")
     async def v2_list_sessions(request: Request):
-        """列出所有活跃会话。"""
+        """List active and persisted sessions with real display metadata."""
         async with _SESSION_LOCK:
-            result = [{"id": sid, "state": "active", "workspace": rt.session.meta.workspace,
-                       "model": rt.session.meta.model, "messages": rt.session.message_count}
-                      for sid, rt in _SESSION_POOL.items()]
+            result = [_session_summary(rt.session, state="active", source="memory")
+                      for rt in _SESSION_POOL.values()]
         # Also list persisted sessions
         if _SESSION_DIR.exists():
             for f in sorted(_SESSION_DIR.glob("*.jsonl"), reverse=True)[:20]:
                 fid = f.stem
                 if not any(s["id"] == fid for s in result):
-                    result.append({"id": fid, "state": "persisted", "workspace": "", "model": "", "messages": 0})
+                    try:
+                        loaded = Session.load(f)
+                        result.append(_session_summary(loaded, state="persisted", source="store"))
+                    except (OSError, ValueError, json.JSONDecodeError):
+                        logger.warning("Could not read persisted Agent session %s", fid, exc_info=True)
         return result
 
     @app.post(f"{prefix}/resume/{{session_id}}")
@@ -486,10 +581,24 @@ def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> Non
         return [{"name": d.name, "description": d.description, "input_schema": d.input_schema}
                 for d in registry.definitions()]
 
-    # Workflow stubs (保持前端兼容)
     @app.get(f"{prefix}/workflows/{{workflow_id}}/messages")
     async def v2_workflow_messages(workflow_id: str):
-        return []
+        """Return real persisted messages for the session-history panel."""
+        if not _SESSION_ID_RE.fullmatch(workflow_id):
+            raise HTTPException(400, "Invalid workflow id")
+        async with _SESSION_LOCK:
+            runtime = _SESSION_POOL.get(workflow_id)
+        if runtime is not None:
+            session = runtime.session
+        else:
+            session_path = _SESSION_DIR / f"{workflow_id}.jsonl"
+            if not session_path.is_file():
+                raise HTTPException(404, f"Session {workflow_id} not found")
+            session = Session.load(session_path)
+        return {
+            "session_id": session.session_id,
+            "messages": _session_messages_for_frontend(session),
+        }
 
     @app.post(f"{prefix}/workflows/cleanup")
     async def v2_workflow_cleanup():

@@ -80,11 +80,11 @@
 | 写作页任务式 Agent | PARTIALLY_ADAPTED | 当前任务/范围/步骤/待确认/结果，接 Agent V2 真状态 | 长任务与多次审批 |
 | 全局 Agent 主面板 | PARTIALLY_ADAPTED | 任务、工具、审批、结果层级；安全 Markdown 渲染 | 1024/200% 长输出 |
 | Agent 独立窗口 | PARTIALLY_ADAPTED | 复用同一 AgentPanel 和真实会话单例 | 独立窗口恢复、缩放和多屏 |
-| 会话列表/恢复 | PARTIALLY_ADAPTED | Agent V2 session API 和 AgentSessionList 保留 | 真实恢复、空/损坏会话 |
+| 会话列表/恢复 | PARTIALLY_ADAPTED | 会话列表读取真实 JSONL 元数据、首条任务、消息数和时间；已完成/持久化会话可打开真实文本与工具轨迹；新增不删除历史的“新会话”入口，均已 Tauri 实机 | 运行中会话跨窗口恢复、空/损坏会话 |
 | 工具调用过程/错误 | PARTIALLY_ADAPTED | `tool_name` 协议、折叠参数和结果 | 超长参数、二进制结果、超时 |
 | 审批 allow once/session/deny | PARTIALLY_ADAPTED | allow once/deny 已实机；修复 SSE 适配层硬编码 `force_approval` 后，“本次会话”入口真实可达；Tauri 中一次会话许可连续执行两个独立 `str_replace`，仅首次审批且两次均写盘；超时自动 deny、终止且不写盘 | 敏感工具强制逐次审批与长任务 |
-| Inline Diff 接受/拒绝 | PARTIALLY_ADAPTED | 真实 `str_replace` 内联差异已实机接受和拒绝；拒绝后磁盘不变、会话结束，见 `agent-denial-localized-rejected-live.png` | 脏标签冲突和超长差异 |
-| checkpoint 与文件刷新 | PARTIALLY_ADAPTED | 真实新文件写入和已打开文件替换后，磁盘/Monaco/保存状态同步；dirty tab 保护保留 | 多文件写入和跨标签刷新 |
+| Inline Diff 接受/拒绝 | PARTIALLY_ADAPTED | 真实 `str_replace` 内联差异已实机接受和拒绝；脏标签中找不到或存在多个替换锚点时会可靠回退到文本审批，不再丢失审批入口 | 超长差异与 `write_file` 大文件预览 |
+| checkpoint 与文件刷新 | PARTIALLY_ADAPTED | 实机验证 Agent 把磁盘日期写为 2028 时，Monaco 仍保留未保存的 2027 和本地草稿、脏状态未清；干净标签继续即时同步并保留光标 | 多文件写入和跨标签刷新 |
 | 附件、RAG 文档、@引用 | PARTIALLY_ADAPTED | 真实上传/文档 API/文件引用 | 删除、重名和大文件 |
 | Skills 发现/选择/调用 | PARTIALLY_ADAPTED | 真实 `/api/agent/v2/skills`；8 个 Nature 工作流；`nature_reviewer` 真实 SSE/Claim Ledger 调用 | 连续切换和失效 Skill |
 | 中止/恢复/结果 | PARTIALLY_ADAPTED | abort/resume/result API 和面板状态保留 | 真实长任务中断与超时 |
@@ -164,6 +164,8 @@
 - 修复 Agent 审批在 CRLF SSE 暂停点不显示、真实 session_id 丢失；写入审批、Inline Diff 接受和 checkpoint 已完成真实 Tauri 验收。
 - 修复 Agent 文件修改被拒后换用另一写入工具重试的问题；运行时现在确定性终止本轮，真实 Tauri 验证会话 persisted 且磁盘内容未变。
 - 修复 SSE 适配层把全部写入都错误标记为强制逐次审批；真实 Tauri 点击一次“本次会话”后，两个独立 `str_replace` 连续完成且磁盘内容一致，未出现第二张审批卡。
+- 补齐 Agent “新会话”和历史会话读取：真实 JSONL 文本、工具调用与结果可在会话页重新打开，历史不会因新建会话被删除。
+- 修复 Agent checkpoint 直接覆盖未保存 Monaco 标签并清脏状态的问题；真实 Agent 写盘后用户草稿保持不变，并补齐内联差异无法定位时的文本审批回退。
 - Agent 系统提示注入运行时当前日期，避免日期任务依赖模型旧知识；真实验收文件已从错误的 2025 修正为 2026。
 - 恢复编辑器 Ctrl+B/标题栏侧栏开关；修复后端 error 状态停止健康轮询和恢复后模型状态不刷新的问题。
 - 重构翻译空态、SSE 进度、双栏结果、QA、重试、搜索、取消和导出；真实 TXT 2 块翻译通过。
@@ -175,7 +177,7 @@
 - 新增 Tauri 界面 80%–200% 缩放及快捷键；修复 200% 时欢迎页标题越界。
 - 重构语音助手为安静任务浮层；去除文件树、共享按钮和诊断入口的发光涟漪。
 
-下一项未完成入口：继续 Agent 新会话入口、脏标签冲突和多文件 checkpoint；随后走语音命令、Provider 失败和输出失败分支。
+下一项未完成入口：继续 Agent 多文件 checkpoint；随后走语音命令、Provider 失败和输出失败分支。
 
 代表性实机证据：
 
@@ -195,4 +197,8 @@
 - `agent-inline-diff-accepted-checkpoint.png`
 - `agent-session-approval-enabled-live2.png`
 - `agent-session-two-edits-complete-live.png`
+- `agent-session-history-open-live.png`
+- `agent-new-session-cleared-live.png`
+- `agent-dirty-preserved-live.png`
+- `agent-dirty-fallback-approval-live.png`
 - `settings-offline-restart-visible-fixed.png`
