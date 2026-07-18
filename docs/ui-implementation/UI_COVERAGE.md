@@ -13,7 +13,7 @@
 | 入口 / 状态 | 当前状态 | 当前证据 | 未完成验收 |
 | --- | --- | --- | --- |
 | 主窗口 AppShell、统一导航、窗口控制 | PARTIALLY_ADAPTED | 四个核心模块统一一级导航；浅色原生黑边已去除 | 全模式键盘焦点扫描 |
-| 启动加载 InkBrushLoader | PARTIALLY_ADAPTED | 暖白低饱和加载层与 5 秒安全退出 | 真实后端超时与启动失败录屏 |
+| 启动加载 InkBrushLoader | PARTIALLY_ADAPTED | 暖白低饱和加载层与 5 秒安全退出；PyMuPDF 原生扩展改为 PDF 布局解析时按需加载，`create_app` 冷启动不再预载 `fitz` | 真实后端超时与启动失败录屏 |
 | 全局拖放文件遮罩 | PARTIALLY_ADAPTED | 统一面板、真实 Tauri drag-drop 路由和扩展名校验 | 真实拖放与不支持文件录屏 |
 | 翻译恢复 Banner | PARTIALLY_ADAPTED | 恢复/丢弃接原有持久化 | 中断后重启恢复实验 |
 | Toast 成功/错误/警告/信息 | PARTIALLY_ADAPTED | 统一 Toast；文件树失败、更新、设置均已接入 | 四类状态的实机触发 |
@@ -82,7 +82,7 @@
 | Agent 独立窗口 | PARTIALLY_ADAPTED | 复用同一 AgentPanel 和真实会话单例 | 独立窗口恢复、缩放和多屏 |
 | 会话列表/恢复 | PARTIALLY_ADAPTED | Agent V2 session API 和 AgentSessionList 保留 | 真实恢复、空/损坏会话 |
 | 工具调用过程/错误 | PARTIALLY_ADAPTED | `tool_name` 协议、折叠参数和结果 | 超长参数、二进制结果、超时 |
-| 审批 allow once/session/deny | PARTIALLY_ADAPTED | allow once/deny 已实机；session 许可确定性验证同工具两次修改只审批一次；超时自动 deny、终止且不写盘；拒绝后不会换写入工具重试 | session 许可的真实 Tauri 长任务 |
+| 审批 allow once/session/deny | PARTIALLY_ADAPTED | allow once/deny 已实机；修复 SSE 适配层硬编码 `force_approval` 后，“本次会话”入口真实可达；Tauri 中一次会话许可连续执行两个独立 `str_replace`，仅首次审批且两次均写盘；超时自动 deny、终止且不写盘 | 敏感工具强制逐次审批与长任务 |
 | Inline Diff 接受/拒绝 | PARTIALLY_ADAPTED | 真实 `str_replace` 内联差异已实机接受和拒绝；拒绝后磁盘不变、会话结束，见 `agent-denial-localized-rejected-live.png` | 脏标签冲突和超长差异 |
 | checkpoint 与文件刷新 | PARTIALLY_ADAPTED | 真实新文件写入和已打开文件替换后，磁盘/Monaco/保存状态同步；dirty tab 保护保留 | 多文件写入和跨标签刷新 |
 | 附件、RAG 文档、@引用 | PARTIALLY_ADAPTED | 真实上传/文档 API/文件引用 | 删除、重名和大文件 |
@@ -137,7 +137,7 @@
 | 确认/输入对话框 | PARTIALLY_ADAPTED | 文件创建/删除、Zotero、关项目均使用共享对话框 | 所有长文本与 Tab 顺序 |
 | 空状态 | PARTIALLY_ADAPTED | 项目、文件树、翻译搜索、Agent、Reviewer 均有任务型空状态 | 全入口无数据录屏 |
 | 加载/Skeleton | PARTIALLY_ADAPTED | 文件树、模板、翻译、审稿、Agent 分层加载 | 慢网络和超时 |
-| API 错误/后端离线 | PARTIALLY_ADAPTED | 重启改为异步 60 秒冷启动；校验新监听 PID 所有权；真实杀死 PID 65964 后单击重启，窗口保持响应、PID 57608 接管且 health 200；恢复后清除本地化离线提示但不清任务结果 | 启动阶段连续崩溃和强制占端口失败 |
+| API 错误/后端离线 | PARTIALLY_ADAPTED | 重启改为异步 60 秒冷启动并校验新监听 PID；定位 Windows 冷启动曾卡在 `pymupdf._extra`，改为请求时加载后，真实单击重启由 PID 38516 在 1.5 秒接管、health 200 且窗口持续响应；恢复后清除本地化离线提示但不清任务结果 | 启动阶段连续崩溃和强制占端口失败 |
 | 权限/审批错误 | PARTIALLY_ADAPTED | Agent V2 拒绝路径已实机：一次审批、会话终止、磁盘不变；审批超时确定性验证自动 deny 且不写盘 | 越界写入实机 |
 
 ## 当前统计
@@ -163,17 +163,19 @@
 - Agent Skills 接真实目录，加入 8 个 Nature 工作流；保留 Agent V2 单一运行时。
 - 修复 Agent 审批在 CRLF SSE 暂停点不显示、真实 session_id 丢失；写入审批、Inline Diff 接受和 checkpoint 已完成真实 Tauri 验收。
 - 修复 Agent 文件修改被拒后换用另一写入工具重试的问题；运行时现在确定性终止本轮，真实 Tauri 验证会话 persisted 且磁盘内容未变。
+- 修复 SSE 适配层把全部写入都错误标记为强制逐次审批；真实 Tauri 点击一次“本次会话”后，两个独立 `str_replace` 连续完成且磁盘内容一致，未出现第二张审批卡。
 - Agent 系统提示注入运行时当前日期，避免日期任务依赖模型旧知识；真实验收文件已从错误的 2025 修正为 2026。
 - 恢复编辑器 Ctrl+B/标题栏侧栏开关；修复后端 error 状态停止健康轮询和恢复后模型状态不刷新的问题。
 - 重构翻译空态、SSE 进度、双栏结果、QA、重试、搜索、取消和导出；真实 TXT 2 块翻译通过。
 - 修复翻译重试只更新单块、未同步 chunk/QA/最终内容与导出的问题；重启后再次完成真实 2 块翻译并打开 37,399B 双语 Word 产物。
 - 修复桌面端后端冷启动 15 秒超时、同步命令卡住窗口、旧端口误判成功及恢复后残留英文错误；真实离线→单击重启→新 PID/health 200 已通过。
+- 将 PyMuPDF 原生扩展从 API 启动路径移到 PDF 布局解析请求路径，消除 Windows 偶发 `_extra` 冷启动阻塞；修复后真实重启 1.5 秒恢复。
 - AI 编辑预设回到 `/api/edit`，自由任务留在 Agent V2；修复 SSE 累积 delta 重复拼接。
 - 建立系统/更新/诊断设置页，恢复 Provider、Ollama、Tectonic、代理、阅读、背景、语音、主题和语言入口。
 - 新增 Tauri 界面 80%–200% 缩放及快捷键；修复 200% 时欢迎页标题越界。
 - 重构语音助手为安静任务浮层；去除文件树、共享按钮和诊断入口的发光涟漪。
 
-下一项未完成入口：继续 Agent session 许可真实 Tauri 验收、脏标签冲突和多文件 checkpoint；随后走语音命令、Provider 失败和输出失败分支。
+下一项未完成入口：继续 Agent 新会话入口、脏标签冲突和多文件 checkpoint；随后走语音命令、Provider 失败和输出失败分支。
 
 代表性实机证据：
 
@@ -191,4 +193,6 @@
 - `agent-nature-reviewer-selected-1440x900.png`
 - `agent-approval-after-sse-fix-live.png`
 - `agent-inline-diff-accepted-checkpoint.png`
+- `agent-session-approval-enabled-live2.png`
+- `agent-session-two-edits-complete-live.png`
 - `settings-offline-restart-visible-fixed.png`

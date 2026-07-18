@@ -104,6 +104,17 @@ class TestAdapter:
         assert result["metadata"]["preview"]["old_text"] == "a"
         assert result["metadata"]["preview"]["new_text"] == "b"
         assert result["metadata"]["preview"]["file_path"] == "test.md"
+        assert result["metadata"]["force_approval"] is False
+
+    def test_await_approval_preserves_explicit_force_confirmation(self):
+        event = AgentEvent.await_approval(
+            "appr_force",
+            "write_file",
+            "sensitive change",
+            force_approval=True,
+        )
+        result = agent_event_to_sse(event)
+        assert result["metadata"]["force_approval"] is True
 
     def test_checkpoint_preserves_metadata(self):
         event = AgentEvent(type=AgentEventType.CHECKPOINT, data={

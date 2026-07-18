@@ -7,10 +7,12 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-import fitz
 import pdfplumber
+
+if TYPE_CHECKING:
+    import fitz
 
 logger = logging.getLogger(__name__)
 
@@ -564,6 +566,12 @@ def extract_document_with_layout(
     pages_content: list[PageContent] = []
 
     try:
+        # PyMuPDF loads native extensions and can occasionally stall during a
+        # cold Windows process start. Translation routes do not need it until a
+        # layout-preserving PDF extraction is actually requested, so keep the
+        # import on this request path instead of blocking the whole API startup.
+        import fitz
+
         with fitz.open(pdf_path) as doc:
             for page_num, page in enumerate(doc):
                 blocks = _extract_blocks_from_fitz_page(page)
