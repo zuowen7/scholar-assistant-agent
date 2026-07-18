@@ -275,7 +275,9 @@ function openLegacySettings() {
 
 function handleShellSectionChange(event: Event) {
   const section = (event as CustomEvent).detail
-  if (section === 'write' || section === 'mindmap') shellSection.value = section
+  if (section === 'translate' || section === 'write' || section === 'mindmap' || section === 'review') {
+    shellSection.value = section
+  }
 }
 
 // Register voice commands
@@ -310,7 +312,9 @@ const { cleanup: editorCleanup } = useEditor()
 const voiceCmd = useVoiceCommand()
 
 function handleVoiceCommandTrigger() {
-  // Don't force-switch mode or open agent — let the router decide
+  // Don't force-switch mode or open agent — let the router decide. Clear the
+  // previous result so a new listening session never shows stale feedback.
+  useVoiceRouter().clearLastResult()
 }
 
 function handleVoiceCommandSubmit(e: Event) {
@@ -331,7 +335,9 @@ function handleVoiceCommandSubmit(e: Event) {
       const { activeTab } = useEditor()
 
       if (sending.value) {
-        logger.warn('[voice] Agent is busy (sending=true), queueing...')
+        logger.warn('[voice] Agent is busy; voice request was not submitted')
+        voiceCmd.fail(t('voice.agentBusy'))
+        return
       }
 
       // Close voice overlay immediately — user sees response in AgentPanel
@@ -351,11 +357,12 @@ function handleVoiceCommandSubmit(e: Event) {
     } else {
       // Command dispatched
       logger.debug('[voice] command executed:', result.commandId, result.success ? 'ok' : result.error)
-      voiceCmd.done()
+      if (result.success) voiceCmd.finish()
+      else voiceCmd.fail(result.error || t('voice.commandFailed'))
     }
   }).catch((err) => {
     logger.warn('[voice] routeCommand failed:', err)
-    voiceCmd.done()
+    voiceCmd.fail(err instanceof Error ? err.message : t('voice.commandFailed'))
   })
 }
 

@@ -192,7 +192,6 @@ import { useEditorState } from '../composables/useEditorState'
 import { setContent } from '../composables/useEditorTabs'
 import { useEditor } from '../composables/useEditor'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
-import { setSpeechBusy } from '../composables/useSpeechBusy'
 import { Mic } from './ui/icons'
 
 let voiceBaseInput = ''
@@ -205,11 +204,9 @@ function togglePanelSpeech() {
   if (panelSpeech.status.value === 'listening') {
     voiceBaseInput = ''
     panelSpeech.stop()
-    setSpeechBusy(false)
     inputRef.value?.focus()
   } else {
     voiceBaseInput = input.value
-    setSpeechBusy(true)
     panelSpeech.start()
   }
 }

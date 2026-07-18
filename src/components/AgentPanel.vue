@@ -322,7 +322,6 @@ import { Pin, PinOff, Mic, Plus } from './ui/icons'
 import { API_BASE } from '../utils/api'
 import type { AgentSessionInfo, AgentSkill } from '../types'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
-import { setSpeechBusy } from '../composables/useSpeechBusy'
 import UiSpinner from './ui/UiSpinner.vue'
 import UiSkeleton from './ui/UiSkeleton.vue'
 import { renderMarkdown } from '../utils/markdown'
@@ -338,11 +337,9 @@ function toggleAgentSpeech() {
   if (agentSpeech.status.value === 'listening') {
     voiceBaseInput = ''
     agentSpeech.stop()
-    setSpeechBusy(false)
     agentInputEl.value?.focus()
   } else {
     voiceBaseInput = input.value
-    setSpeechBusy(true)
     agentSpeech.start()
   }
 }

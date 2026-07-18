@@ -1,5 +1,10 @@
 import type { VoiceCommandDef } from '../../types/voice'
-import { useAppMode } from '../useAppMode'
+import { activateVoiceWorkspace } from './workspace'
+
+async function dispatchTranslationEvent(name: string, detail?: Record<string, unknown>) {
+  await activateVoiceWorkspace('translate')
+  window.dispatchEvent(new CustomEvent(name, { detail }))
+}
 
 export function registerTier4Commands(register: (defs: VoiceCommandDef[]) => void) {
   register([
@@ -10,8 +15,7 @@ export function registerTier4Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['start translation', 'translate file', 'new translation', 'upload translation'],
       priority: 6,
       handler: async () => {
-        useAppMode().setMode('translate')
-        window.dispatchEvent(new CustomEvent('voice-translate-new'))
+        await dispatchTranslationEvent('voice-translate-new')
       },
     },
     {
@@ -21,8 +25,7 @@ export function registerTier4Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['retry translation', 'retry failed', 'retry failed blocks'],
       priority: 5,
       handler: async () => {
-        useAppMode().setMode('translate')
-        window.dispatchEvent(new CustomEvent('voice-translate-retry'))
+        await dispatchTranslationEvent('voice-translate-retry')
       },
     },
     {
@@ -32,7 +35,7 @@ export function registerTier4Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['export bilingual', 'export bilingual word', 'export bilingual docx'],
       priority: 5,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-translate-export', { detail: { format: 'bilingual-docx' } }))
+        await dispatchTranslationEvent('voice-translate-export', { format: 'bilingual-docx' })
       },
     },
     {
@@ -42,7 +45,7 @@ export function registerTier4Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['export translation word', 'export translation docx'],
       priority: 5,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-translate-export', { detail: { format: 'translation-docx' } }))
+        await dispatchTranslationEvent('voice-translate-export', { format: 'translation-docx' })
       },
     },
     {
@@ -52,7 +55,7 @@ export function registerTier4Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['export bilingual markdown', 'export bilingual md'],
       priority: 5,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-translate-export', { detail: { format: 'bilingual-md' } }))
+        await dispatchTranslationEvent('voice-translate-export', { format: 'bilingual-md' })
       },
     },
     {
@@ -62,7 +65,7 @@ export function registerTier4Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['export translation markdown', 'export translation md'],
       priority: 5,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-translate-export', { detail: { format: 'translation-md' } }))
+        await dispatchTranslationEvent('voice-translate-export', { format: 'translation-md' })
       },
     },
     {
@@ -72,7 +75,7 @@ export function registerTier4Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['export pptx', 'export ppt', 'export slides'],
       priority: 5,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-translate-export', { detail: { format: 'pptx' } }))
+        await dispatchTranslationEvent('voice-translate-export', { format: 'pptx' })
       },
     },
   ])

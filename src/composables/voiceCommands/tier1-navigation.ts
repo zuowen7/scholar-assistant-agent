@@ -1,5 +1,6 @@
 import type { VoiceCommandDef } from '../../types/voice'
 import { useAppMode } from '../useAppMode'
+import { activateVoiceWorkspace } from './workspace'
 
 export function registerTier1Commands(register: (defs: VoiceCommandDef[]) => void) {
   register([
@@ -10,7 +11,7 @@ export function registerTier1Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['translate mode', 'switch to translate', 'open translate', 'go to translate'],
       priority: 10,
       handler: async () => {
-        useAppMode().setMode('translate')
+        await activateVoiceWorkspace('translate')
       },
     },
     {
@@ -20,7 +21,7 @@ export function registerTier1Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['editor mode', 'switch to editor', 'open editor', 'go to editor'],
       priority: 10,
       handler: async () => {
-        useAppMode().setMode('editor')
+        await activateVoiceWorkspace('write')
       },
     },
     {
@@ -30,7 +31,7 @@ export function registerTier1Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['argument mode', 'switch to argument', 'open argument'],
       priority: 10,
       handler: async () => {
-        useAppMode().setMode('argument')
+        await activateVoiceWorkspace('review')
       },
     },
     {
@@ -60,8 +61,7 @@ export function registerTier1Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['mind map', 'open mindmap', 'switch to mindmap'],
       priority: 9,
       handler: async () => {
-        useAppMode().setMode('editor')
-        window.dispatchEvent(new CustomEvent('voice-set-mindmap'))
+        await activateVoiceWorkspace('mindmap')
       },
     },
     {
