@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { setSpeechBusy } from './useSpeechBusy'
 
 type SpeechStatus = 'idle' | 'listening'
 
@@ -27,6 +28,7 @@ function getSpeechRecognition(): SpeechRecognition | null {
 export interface SpeechRecognitionOptions {
   onResult?: (text: string) => void
   onEnd?: () => void
+  onError?: (error: string) => void
 }
 
 function normalize(s: string) {
@@ -113,9 +115,22 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
   let lastEmitted = ''
   let processedUpTo = -1
   let utterances: string[] = []
+  let busyClaimed = false
 
-  function start(lang = 'zh-CN') {
-    if (status.value === 'listening') return
+  function claimBusy() {
+    if (busyClaimed) return
+    busyClaimed = true
+    setSpeechBusy(true)
+  }
+
+  function releaseBusy() {
+    if (!busyClaimed) return
+    busyClaimed = false
+    setSpeechBusy(false)
+  }
+
+  function start(lang = 'zh-CN'): boolean {
+    if (status.value === 'listening') return true
     error.value = ''
     interimText.value = ''
     finalText = ''
@@ -126,7 +141,8 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
     const sr = getSpeechRecognition()
     if (!sr) {
       error.value = 'Speech recognition not supported'
-      return
+      options?.onError?.(error.value)
+      return false
     }
 
     recognition = sr
@@ -135,12 +151,20 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
     sr.lang = lang
 
     sr.onstart = () => { status.value = 'listening' }
-    sr.onend = () => { status.value = 'idle'; options?.onEnd?.() }
+    sr.onend = () => {
+      status.value = 'idle'
+      recognition = null
+      releaseBusy()
+      options?.onEnd?.()
+    }
     sr.onerror = (e: SpeechRecognitionErrorEvent) => {
       if (e.error !== 'no-speech' && e.error !== 'aborted') {
         error.value = e.error
       }
       status.value = 'idle'
+      recognition = null
+      releaseBusy()
+      if (e.error !== 'aborted') options?.onError?.(e.message || e.error)
     }
 
     sr.onresult = (e: SpeechRecognitionEvent) => {
@@ -225,17 +249,33 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
       }
     }
 
-    sr.start()
+    // Claim synchronously so a running wake-word recognizer is stopped before
+    // WebView2 starts this recognizer. Most engines only allow one at a time.
+    claimBusy()
+    try {
+      sr.start()
+      return true
+    } catch (e) {
+      recognition = null
+      status.value = 'idle'
+      releaseBusy()
+      error.value = e instanceof Error ? e.message : String(e)
+      options?.onError?.(error.value)
+      return false
+    }
   }
 
   function stop(): string {
     const text = interimText.value
     if (recognition) {
       recognition.onresult = null
-      recognition.stop()
+      recognition.onend = null
+      recognition.onerror = null
+      try { recognition.stop() } catch { /* recognizer may already be stopped */ }
     }
     recognition = null
     status.value = 'idle'
+    releaseBusy()
     interimText.value = ''
     finalText = ''
     lastEmitted = ''

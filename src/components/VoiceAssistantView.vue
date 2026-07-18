@@ -6,7 +6,7 @@ import { useVoiceCommand } from '../composables/useVoiceCommand'
 import { useVoiceRouter } from '../composables/useVoiceRouter'
 
 const { t } = useI18n()
-const { state, transcript, response, error, cancel } = useVoiceCommand()
+const { state, transcript, response, error, cancel, triggerVoiceCommand } = useVoiceCommand()
 const router = useVoiceRouter()
 
 const wakeWordName = computed(() => {
@@ -22,12 +22,14 @@ const wakeWordName = computed(() => {
 
 const statusText = computed(() => {
   if (error.value) return t('voice.error')
+  if (state.value === 'result') return t('voice.done')
   if (state.value === 'listening') return `${wakeWordName.value}${t('voice.listening')}`
   if (state.value === 'submitting' || state.value === 'processing') return t('voice.processing')
   return ''
 })
 const showRipples = computed(() => state.value === 'listening')
 const commandFeedback = computed(() => {
+  if (state.value !== 'result' && state.value !== 'error') return null
   const result = router.lastCommandResult.value
   if (!result || result.type === 'chat') return null
   const locale = localStorage.getItem('locale') || 'zh-CN'
@@ -76,6 +78,10 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
           </Transition>
 
           <Transition name="va-text"><div v-if="error" class="va-error" role="alert">{{ error }}</div></Transition>
+          <div v-if="state === 'error'" class="va-error-actions">
+            <button type="button" class="va-retry" @click="triggerVoiceCommand">{{ t('voice.retry') }}</button>
+            <button type="button" class="va-dismiss" @click="cancel">{{ t('general.close') }}</button>
+          </div>
         </div>
 
         <footer><span>Esc</span>{{ t('voice.cancelHint') }}</footer>
@@ -96,6 +102,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 .va-body { min-height: 160px; overflow-y: auto; padding: 20px 22px 24px; }.va-transcript, .va-response { padding: 13px 0; }.va-transcript + .va-response { border-top: 1px solid var(--c-border); }.va-transcript::before, .va-response > span { display: block; margin-bottom: 7px; color: var(--c-text-3); font-size: 10px; font-weight: 620; letter-spacing: .08em; text-transform: uppercase; }.va-transcript::before { content: attr(data-label); }.va-transcript p, .va-response p { margin: 0; overflow-wrap: anywhere; line-height: 1.7; }.va-transcript p { font-family: var(--font-serif-zh); font-size: 19px; }.va-response p { color: var(--c-text-1); font-size: 13px; }.va-listening-note { display: grid; min-height: 120px; place-items: center; color: var(--c-text-3); font-size: 13px; }
 .va-cmd-feedback { display: flex; align-items: flex-start; gap: 10px; margin-top: 12px; padding: 11px 12px; border-left: 3px solid var(--c-success); background: var(--c-success-bg); color: var(--c-success-fg); font-size: 12px; }.va-cmd-err { border-left-color: var(--c-warn); background: var(--c-warn-bg); color: var(--c-warn-fg); }.va-cmd-icon { display: grid; width: 18px; height: 18px; place-items: center; border: 1px solid currentColor; border-radius: 50%; font-size: 11px; }.va-cmd-feedback strong { font-weight: 620; }.va-cmd-error-detail { margin: 4px 0 0; opacity: .8; font-size: 11px; line-height: 1.5; }
 .va-error { margin-top: 12px; padding: 11px 12px; border-left: 3px solid var(--c-danger); background: var(--c-danger-bg); color: var(--c-danger-fg); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+.va-error-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }.va-error-actions button { min-height: 32px; padding: 0 13px; border: 1px solid var(--c-border); border-radius: 8px; background: var(--c-panel); color: var(--c-text-1); font: inherit; cursor: pointer; }.va-error-actions button:hover { border-color: var(--c-border-strong); color: var(--c-text-0); }.va-error-actions button:focus-visible { outline: none; box-shadow: var(--ring-focus); }.va-error-actions .va-retry { border-color: var(--c-accent); background: var(--c-accent); color: var(--c-on-accent); }
 footer { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 10px 18px; border-top: 1px solid var(--c-border); color: var(--c-text-3); font-size: 10px; } footer span { padding: 2px 6px; border: 1px solid var(--c-border); border-radius: 4px; background: var(--c-surface-1); color: var(--c-text-2); font-family: var(--font-mono); }
 @keyframes va-level { from { transform: scaleY(.45); opacity: .45; } to { transform: scaleY(1); opacity: 1; } }
 .va-fade-enter-active, .va-fade-leave-active { transition: opacity var(--motion-fast) var(--ease-out); }.va-fade-enter-from, .va-fade-leave-to { opacity: 0; }.va-text-enter-active, .va-text-leave-active { transition: opacity var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out); }.va-text-enter-from { opacity: 0; transform: translateY(4px); }.va-text-leave-to { opacity: 0; }

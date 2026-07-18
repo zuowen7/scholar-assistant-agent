@@ -120,8 +120,8 @@
 | 自定义背景/透明度 | PARTIALLY_ADAPTED | Tauri 选择、清除、持久化和预览 | 大图/视频/损坏文件 |
 | 主题切换 | PARTIALLY_ADAPTED | 设置实机切换与持久化 | 所有生产弹窗深色 |
 | 语言切换 | PARTIALLY_ADAPTED | 设置实机 zh-CN/en-US 切换与持久化 | 全页长文溢出 |
-| 语音开关/热键/唤醒词/灵敏度 | PARTIALLY_ADAPTED | 真实 localStorage 配置、支持检测和冲突保护 | 唤醒词实地口述测试 |
-| 语音助手浮层 | PARTIALLY_ADAPTED | Alt+Shift+V 真实打开；转写/结果/命令链路保留；已去发光大球 | 真实语音命令全旅程 |
+| 语音开关/热键/唤醒词/灵敏度 | PARTIALLY_ADAPTED | 真实 localStorage 配置、支持检测；识别器统一持有/释放 busy 锁；低/中/高灵敏度分别控制同音词与 interim 触发，测试覆盖自然结束和手动停止后的唤醒恢复 | 真实麦克风口述唤醒与系统权限拒绝 |
+| 语音助手浮层 | PARTIALLY_ADAPTED | Alt+Shift+V 实机打开；无语音超时保留本地化错误及重试；重试实机恢复监听；Agent 忙碌不再静默丢指令；各类命令会先激活真实写作/翻译/导图工作区再分发 | 真实口述逐项走通命令与 Agent fallback |
 | 服务状态/Debug/更新 | PARTIALLY_ADAPTED | 系统页真实后端/Provider/Tectonic；DebugPanel；GitHub Release 检查 | 离线、新版本、日志目录打开 |
 
 ## 8. 输出、弹窗与边界状态
@@ -176,8 +176,10 @@
 - 建立系统/更新/诊断设置页，恢复 Provider、Ollama、Tectonic、代理、阅读、背景、语音、主题和语言入口。
 - 新增 Tauri 界面 80%–200% 缩放及快捷键；修复 200% 时欢迎页标题越界。
 - 重构语音助手为安静任务浮层；去除文件树、共享按钮和诊断入口的发光涟漪。
+- 修复语音超时/不支持错误随浮层消失、命令结果不可见、静默提交后识别器未停止、自然结束后 speech busy 锁不释放；Tauri 中完成热键→超时错误→重新聆听回归。
+- 修复未进入目标工作区时语音导图、翻译导出、编辑命令事件无人消费却报告成功；命令现在先激活对应生产页面再调用原有真实入口。
 
-下一项未完成入口：继续 Agent 多文件 checkpoint；随后走语音命令、Provider 失败和输出失败分支。
+下一项未完成入口：继续 Agent 多文件 checkpoint；随后走 Provider 失败和输出失败分支。语音仍保留真实麦克风逐命令口述验收。
 
 代表性实机证据：
 
@@ -190,6 +192,8 @@
 - `settings-display-dark-en-zoom-1440x900.png`
 - `settings-system-1440x900.png`
 - `voice-assistant-redesign-1440x900.png`
+- `voice-timeout-retry-live.png`
+- `voice-retry-listening-live.png`
 - `mindmap-ai-review-real.png`
 - `argument-map-fitted-real.png`
 - `agent-nature-reviewer-selected-1440x900.png`
