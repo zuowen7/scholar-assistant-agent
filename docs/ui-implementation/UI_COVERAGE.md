@@ -45,13 +45,13 @@
 | 翻译引擎/模型选择 | PARTIALLY_ADAPTED | SettingsCenter 真实 Provider/Ollama/模型配置 | 切换 Provider 后立即翻译回归 |
 | SSE 五阶段进度 | PARTIALLY_ADAPTED | 步骤列表、块进度、实时预览；真实进度截图 | 长文稳定性和中途恢复 |
 | 取消翻译 | PARTIALLY_ADAPTED | 新增处理中取消，直接 abort 现有 SSE | 大文件中途取消实机 |
-| 块级失败与重试 | PARTIALLY_ADAPTED | 失败卡、单块 loading/错误和原 `retry_block` API | 可控真实失败注入与重试 |
-| 术语/QA 警告 | PARTIALLY_ADAPTED | 真实 qaWarnings 折叠阅读，低饱和警告色 | 多警告长列表实机 |
+| 块级失败与重试 | PARTIALLY_ADAPTED | 失败卡、单块 loading/错误接原 `retry_block` API；路由契约已验证重试会同步块、chunk、最终 Markdown、QA、fallback 和输出文件，重复调用不会负计数 | 可控真实 Provider 失败后的 Tauri 点击重试 |
+| 术语/QA 警告 | PARTIALLY_ADAPTED | 真实 qaWarnings 折叠阅读；已修复生产 SSE `chunk_index`/旧 `index` 与前端 `chunkIndex` 不一致 | 多警告长列表实机 |
 | 双栏阅读/译文阅读 | PARTIALLY_ADAPTED | 真实 2 块翻译；1440、1200、1024 无横向页面滚动 | 百页级长文滚动性能 |
 | 句子联动高亮 | PARTIALLY_ADAPTED | 复用 sentenceAlign 并保留真实原/译句映射 | 错位块和一对多句子 |
 | 结果搜索/筛选 | PARTIALLY_ADAPTED | 新增基于真实 original/translated 块的搜索、计数和无结果 | 长文搜索和键盘清除 |
 | 双语/译文 Markdown 导出 | PARTIALLY_ADAPTED | 真实菜单与现有导出函数 | 保存、取消、文件内容校验 |
-| 双语/译文 Word 导出 | PARTIALLY_ADAPTED | 真实后端生成 37KB DOCX 证据；新菜单已实机 | 新结果文件内容与失败反馈 |
+| 双语/译文 Word 导出 | PARTIALLY_ADAPTED | 重启后真实翻译结果导出 37,399B DOCX；本机 Word 已打开，XML 验证两段英文与两段中文均存在 | 取消保存与写入失败反馈 |
 | PPTX / Data Availability 导出 | PARTIALLY_ADAPTED | 接原有真实导出 API，新菜单可达 | 产物打开和可选依赖失败 |
 
 ## 4. 写作、LaTeX 与编辑器
@@ -82,7 +82,7 @@
 | Agent 独立窗口 | PARTIALLY_ADAPTED | 复用同一 AgentPanel 和真实会话单例 | 独立窗口恢复、缩放和多屏 |
 | 会话列表/恢复 | PARTIALLY_ADAPTED | Agent V2 session API 和 AgentSessionList 保留 | 真实恢复、空/损坏会话 |
 | 工具调用过程/错误 | PARTIALLY_ADAPTED | `tool_name` 协议、折叠参数和结果 | 超长参数、二进制结果、超时 |
-| 审批 allow once/session/deny | PARTIALLY_ADAPTED | 修复 CRLF SSE 暂停事件不 flush 和真实 session_id 丢失；allow once 写入与 deny 终止均已实机，拒绝后不会改用其他写入工具重试 | session 许可和审批超时 |
+| 审批 allow once/session/deny | PARTIALLY_ADAPTED | allow once/deny 已实机；session 许可确定性验证同工具两次修改只审批一次；超时自动 deny、终止且不写盘；拒绝后不会换写入工具重试 | session 许可的真实 Tauri 长任务 |
 | Inline Diff 接受/拒绝 | PARTIALLY_ADAPTED | 真实 `str_replace` 内联差异已实机接受和拒绝；拒绝后磁盘不变、会话结束，见 `agent-denial-localized-rejected-live.png` | 脏标签冲突和超长差异 |
 | checkpoint 与文件刷新 | PARTIALLY_ADAPTED | 真实新文件写入和已打开文件替换后，磁盘/Monaco/保存状态同步；dirty tab 保护保留 | 多文件写入和跨标签刷新 |
 | 附件、RAG 文档、@引用 | PARTIALLY_ADAPTED | 真实上传/文档 API/文件引用 | 删除、重名和大文件 |
@@ -137,8 +137,8 @@
 | 确认/输入对话框 | PARTIALLY_ADAPTED | 文件创建/删除、Zotero、关项目均使用共享对话框 | 所有长文本与 Tab 顺序 |
 | 空状态 | PARTIALLY_ADAPTED | 项目、文件树、翻译搜索、Agent、Reviewer 均有任务型空状态 | 全入口无数据录屏 |
 | 加载/Skeleton | PARTIALLY_ADAPTED | 文件树、模板、翻译、审稿、Agent 分层加载 | 慢网络和超时 |
-| API 错误/后端离线 | PARTIALLY_ADAPTED | 统一 Toast/ErrorLog；error 状态仍持续健康检查；离线状态和重启按钮已实机；重启后重载真实 Provider 配置 | 启动阶段连续崩溃与重启失败 |
-| 权限/审批错误 | PARTIALLY_ADAPTED | Agent V2 拒绝路径已实机：只出现一次审批、会话终止、磁盘不变；状态已中英文本地化 | 越界写入和审批超时 |
+| API 错误/后端离线 | PARTIALLY_ADAPTED | 重启改为异步 60 秒冷启动；校验新监听 PID 所有权；真实杀死 PID 65964 后单击重启，窗口保持响应、PID 57608 接管且 health 200；恢复后清除本地化离线提示但不清任务结果 | 启动阶段连续崩溃和强制占端口失败 |
+| 权限/审批错误 | PARTIALLY_ADAPTED | Agent V2 拒绝路径已实机：一次审批、会话终止、磁盘不变；审批超时确定性验证自动 deny 且不写盘 | 越界写入实机 |
 
 ## 当前统计
 
@@ -166,12 +166,14 @@
 - Agent 系统提示注入运行时当前日期，避免日期任务依赖模型旧知识；真实验收文件已从错误的 2025 修正为 2026。
 - 恢复编辑器 Ctrl+B/标题栏侧栏开关；修复后端 error 状态停止健康轮询和恢复后模型状态不刷新的问题。
 - 重构翻译空态、SSE 进度、双栏结果、QA、重试、搜索、取消和导出；真实 TXT 2 块翻译通过。
+- 修复翻译重试只更新单块、未同步 chunk/QA/最终内容与导出的问题；重启后再次完成真实 2 块翻译并打开 37,399B 双语 Word 产物。
+- 修复桌面端后端冷启动 15 秒超时、同步命令卡住窗口、旧端口误判成功及恢复后残留英文错误；真实离线→单击重启→新 PID/health 200 已通过。
 - AI 编辑预设回到 `/api/edit`，自由任务留在 Agent V2；修复 SSE 累积 delta 重复拼接。
 - 建立系统/更新/诊断设置页，恢复 Provider、Ollama、Tectonic、代理、阅读、背景、语音、主题和语言入口。
 - 新增 Tauri 界面 80%–200% 缩放及快捷键；修复 200% 时欢迎页标题越界。
 - 重构语音助手为安静任务浮层；去除文件树、共享按钮和诊断入口的发光涟漪。
 
-下一项未完成入口：用可控真实失败走通“翻译块失败→单块重试→QA 更新→Word 产物打开”，然后继续 Agent 审批超时/session 许可、脏标签冲突和多文件 checkpoint 验收。
+下一项未完成入口：继续 Agent session 许可真实 Tauri 验收、脏标签冲突和多文件 checkpoint；随后走语音命令、Provider 失败和输出失败分支。
 
 代表性实机证据：
 

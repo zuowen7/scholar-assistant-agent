@@ -60,6 +60,7 @@ function createState(): TranslateState {
 const state = reactive<TranslateState>(createState())
 let abortController: AbortController | null = null
 let crashListener: UnlistenFn | null = null
+let backendAvailabilityError = false
 let _currentStreamId = 0
 let _isReconnecting = false
 
@@ -70,6 +71,7 @@ function reset(): void {
   }
   _currentStreamId++
   _isReconnecting = false
+  backendAvailabilityError = false
   Object.assign(state, createState())
 }
 
@@ -86,8 +88,22 @@ function setStatus(s: TranslateStatus): void {
 }
 
 function setError(msg: string): void {
+  backendAvailabilityError = false
   state.errorMessage = msg
   state.status = 'error'
+}
+
+function setBackendError(msg: string): void {
+  backendAvailabilityError = true
+  state.errorMessage = msg
+  state.status = 'error'
+}
+
+function clearBackendError(): void {
+  if (!backendAvailabilityError) return
+  backendAvailabilityError = false
+  state.errorMessage = null
+  if (state.status === 'error') state.status = 'idle'
 }
 
 function setStepMessage(msg: string): void {
@@ -332,9 +348,7 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       break
     }
     case 'translate.qa_warnings': {
-      // P0: Post-translation QA warnings
-      const qa = data as unknown as QAWarning
-      state.qaWarnings.push(qa)
+      upsertQaWarning(normalizeQaWarning(data))
       break
     }
     case 'translate.chunk_error':
@@ -375,6 +389,22 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       }
       break
   }
+}
+
+export function normalizeQaWarning(data: Record<string, unknown>): QAWarning {
+  const rawIndex = data.chunkIndex ?? data.chunk_index ?? data.index ?? 0
+  const chunkIndex = Number(rawIndex)
+  return {
+    chunkIndex: Number.isFinite(chunkIndex) ? chunkIndex : 0,
+    sectionType: String(data.sectionType ?? data.section_type ?? 'unknown'),
+    score: Number(data.score ?? 100),
+    flags: Array.isArray(data.flags) ? data.flags as QAWarning['flags'] : [],
+  }
+}
+
+function upsertQaWarning(warning: QAWarning): void {
+  const remaining = state.qaWarnings.filter(item => item.chunkIndex !== warning.chunkIndex)
+  state.qaWarnings = warning.flags.length ? [...remaining, warning] : remaining
 }
 
 function stepToStatus(step: number): TranslateStatus {
@@ -552,6 +582,57 @@ async function exportTranslationOnlyMarkdown(): Promise<void> {
   )
 }
 
+interface RetryBlockResponse {
+  translated: string
+  status: BlockData['status']
+  chunk_index?: number
+  chunks?: TranslateState['chunks']
+  content?: string
+  qa_warning?: Record<string, unknown>
+  fallback_count?: number
+}
+
+async function retryBlock(blockId: string): Promise<void> {
+  if (!state.taskId) throw new Error(i18n.global.t('translate.retryMissingTask'))
+
+  const response = await fetch(`${API_URL}/api/translate/${state.taskId}/retry_block`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ block_id: blockId }),
+  })
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }))
+    throw new Error(detail.detail || i18n.global.t('translate.retryFailed', { status: response.status }))
+  }
+
+  const result = await response.json() as RetryBlockResponse
+  state.blocks = state.blocks.map(block => block.id === blockId
+    ? markRaw({ ...block, translated: result.translated, status: result.status })
+    : block)
+  if (Array.isArray(result.chunks)) state.chunks = result.chunks
+  if (typeof result.content === 'string') state.finalContent = result.content
+  if (typeof result.fallback_count === 'number') state.fallbackChunks = result.fallback_count
+  if (result.qa_warning) upsertQaWarning(normalizeQaWarning(result.qa_warning))
+
+  const chunkIndex = Number(result.chunk_index)
+  if (Number.isFinite(chunkIndex)) {
+    const translatedPreview = state.chunks[chunkIndex]?.translated?.slice(0, 200) ?? ''
+    state.translations = state.translations.map(chunk => chunk.index === chunkIndex
+      ? { ...chunk, translated_preview: translatedPreview, fallback: false }
+      : chunk)
+  }
+  persistTranslation({
+    id: state.taskId,
+    finalContent: state.finalContent,
+    blocks: state.blocks,
+    chunks: state.chunks,
+    parsedInfo: state.parsedInfo,
+    stepMessage: state.stepMessage,
+    fallbackChunks: state.fallbackChunks,
+    misalignedChunks: state.misalignedChunks,
+  })
+}
+
 // ── P2: PPTX 导出 ──────────────────────────────────────────────────────
 
 async function exportPPTX(): Promise<void> {
@@ -628,10 +709,9 @@ async function restartBackend(): Promise<boolean> {
 
 function listenBackendCrash(): void {
   if (!isTauri) return
-  listen<{ message: string; exit_status: string }>('backend-crashed', (event) => {
+  listen<{ message: string; exit_status: string }>('backend-crashed', () => {
     if (state.status === 'idle' || state.status === 'error') {
-      state.errorMessage = event.payload.message || 'Python backend exited unexpectedly'
-      setStatus('error')
+      setBackendError(i18n.global.t('app.backendOffline'))
     }
   }).then(fn => { crashListener = fn }).catch(() => {})
 }
@@ -653,6 +733,8 @@ export function useTranslate() {
     listenBackendCrash,
     setStatus,
     setError,
+    setBackendError,
+    clearBackendError,
     setStepMessage,
     recoverTranslation,
     discardPersisted,
@@ -665,6 +747,7 @@ export function useTranslate() {
     exportBilingualDocx,
     exportTranslationOnlyDocx,
     exportTranslationOnlyMarkdown,
+    retryBlock,
     // P2-P3: New export formats
     exportPPTX,
     exportDataAvailability,

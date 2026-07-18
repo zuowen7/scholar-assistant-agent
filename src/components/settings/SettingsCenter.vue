@@ -237,7 +237,7 @@
             <div class="setting-row setting-row--service">
               <div class="setting-copy"><h4>{{ t('topbar.backend') }}</h4><p>{{ t('settingsCenter.backendDescription') }}</p></div>
               <span class="connection-state" :class="healthOk ? 'ok' : 'warn'"><i />{{ healthOk ? t('status.online') : t('status.offline') }}</span>
-              <UiButton v-if="!healthOk" variant="secondary" size="sm" @click="$emit('restart-backend')">{{ t('translate.restartBackend') }}</UiButton>
+              <UiButton v-if="!healthOk" variant="secondary" size="sm" :loading="backendRestarting" @click="$emit('restart-backend')">{{ t('translate.restartBackend') }}</UiButton>
             </div>
             <div class="setting-row setting-row--service">
               <div class="setting-copy"><h4>{{ engineType === 'cloud' ? activePreset?.name || cloudConfig.provider : 'Ollama' }}</h4><p>{{ t('settingsCenter.modelServiceDescription') }}</p></div>
@@ -306,6 +306,7 @@ const props = defineProps<{
   cloudOk: boolean
   cloudError: string | null
   healthOk: boolean
+  backendRestarting: boolean
   ollamaOk: boolean
   ollamaLoading: boolean
   ollamaError: string | null

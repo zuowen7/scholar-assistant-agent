@@ -224,6 +224,7 @@
     "export": "导出",
     "newTranslate": "新翻译",
     "retryFailed": "重试失败 (HTTP {status})",
+    "retryMissingTask": "翻译任务已失效，请重新翻译后再重试",
     "unknownError": "未知错误",
     "translationFailed": "翻译失败",
     "retry": "重试",
@@ -1051,6 +1052,7 @@
     "backendOffline": "Python 后端已离线，请点击「重启后端」",
     "installFailed": "安装失败",
     "restartingBackend": "正在重启后端...",
+    "restartSuccess": "后端已恢复，真实配置已重新载入",
     "restartFailed": "后端重启失败，请手动检查 Python 环境"
   },
   "files": {
