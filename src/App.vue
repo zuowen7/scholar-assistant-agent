@@ -67,6 +67,7 @@
               v-if="appMode === 'translate'"
               key="translate"
               :health-ok="healthOk"
+              :backend-restarting="backendRestarting"
               :read-settings="readSettings"
               @restart-backend="handleRestartBackend"
               @open-agent-docs="openAgentDocs"
@@ -95,6 +96,7 @@
         :cloud-ok="cloudOk"
         :cloud-error="cloudError"
         :health-ok="healthOk"
+        :backend-restarting="backendRestarting"
         :ollama-ok="ollamaOk"
         :ollama-loading="ollamaLoading"
         :ollama-error="ollamaError"
@@ -193,8 +195,8 @@ import VoiceAssistantView from './components/VoiceAssistantView.vue'
 import { logger } from './utils/logger'
 import { useProject } from './composables/useProject'
 
-const { state, translate, translateFromPath, cleanup, checkHealth, checkOllama, startOllama, checkCloudApi, getConfig, updateConfig, getProviderPresets, fetchOllamaModels, restartBackend, listenBackendCrash, setStatus, setError, setStepMessage, recoverTranslation, discardPersisted } = useTranslate()
-const { pushError, info } = useToast()
+const { state, translate, translateFromPath, cleanup, checkHealth, checkOllama, startOllama, checkCloudApi, getConfig, updateConfig, getProviderPresets, fetchOllamaModels, restartBackend, listenBackendCrash, setBackendError, clearBackendError, recoverTranslation, discardPersisted } = useTranslate()
+const { pushError, info, success } = useToast()
 
 // ── 应用模式 ──────────────────────────────────────────────────
 const { appMode, showAgentChat, modeTransition, setMode, toggleAgentChat } = useAppMode()
@@ -414,6 +416,7 @@ watch(() => voiceCmd.state.value, (s) => {
 })
 
 const healthOk = ref(false)
+const backendRestarting = ref(false)
 const ollamaOk = ref(false)
 const ollamaLoading = ref(false)
 const ollamaError = ref<string | null>(null)
@@ -789,7 +792,7 @@ onMounted(async () => {
     const prev = healthOk.value
     healthOk.value = await checkHealth()
     if (prev && !healthOk.value) {
-      setError(t('app.backendOffline'))
+      setBackendError(t('app.backendOffline'))
     }
     if (!healthOk.value || state.status !== 'idle') return
 
@@ -1008,23 +1011,29 @@ async function testCloudConnection() {
 }
 
 async function handleRestartBackend() {
-  setStepMessage(t('app.restartingBackend'))
-  setStatus('uploading')
-  const ok = await restartBackend()
-  if (ok) {
-    healthOk.value = true
-    // The app may have mounted while the backend was unavailable and fallen
-    // back to local UI defaults. Reload the authoritative runtime config after
-    // recovery so the model badge and settings do not falsely show Ollama.
-    await loadEngineSettings()
-    if (engineType.value === 'cloud') {
-      const result = await checkCloudApi()
-      cloudOk.value = result.ok
-      cloudError.value = result.error ?? null
+  if (backendRestarting.value) return
+  backendRestarting.value = true
+  info(t('app.restartingBackend'))
+  try {
+    const ok = await restartBackend()
+    if (ok) {
+      healthOk.value = true
+      clearBackendError()
+      // The app may have mounted while the backend was unavailable and fallen
+      // back to local UI defaults. Reload the authoritative runtime config after
+      // recovery so the model badge and settings do not falsely show Ollama.
+      await loadEngineSettings()
+      if (engineType.value === 'cloud') {
+        const result = await checkCloudApi()
+        cloudOk.value = result.ok
+        cloudError.value = result.error ?? null
+      }
+      success(t('app.restartSuccess'))
+    } else {
+      pushError(t('app.restartFailed'))
     }
-    setStatus('idle')
-  } else {
-    setError(t('app.restartFailed'))
+  } finally {
+    backendRestarting.value = false
   }
 }
 

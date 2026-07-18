@@ -224,6 +224,7 @@
     "export": "Export",
     "newTranslate": "New Translation",
     "retryFailed": "Retry failed (HTTP {status})",
+    "retryMissingTask": "This translation task has expired. Translate the document again before retrying.",
     "unknownError": "Unknown error",
     "translationFailed": "Translation failed",
     "retry": "Retry",
@@ -1051,6 +1052,7 @@
     "backendOffline": "Python backend is offline. Click 'Restart Backend'",
     "installFailed": "Install failed",
     "restartingBackend": "Restarting backend...",
+    "restartSuccess": "Backend restored and runtime configuration reloaded.",
     "restartFailed": "Backend restart failed. Check Python environment manually."
   },
   "files": {

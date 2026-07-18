@@ -429,6 +429,16 @@ def register_translate(
 
             blocks_by_id = {b.id: b for b in block_result.blocks}
             total_chunks = len(block_result.chunks)
+            task["chunk_blocks"] = {
+                str(chunk.index): list(chunk.block_ids)
+                for chunk in block_result.chunks
+            }
+            task["block_chunk_map"] = {
+                block_id: chunk.index
+                for chunk in block_result.chunks
+                for block_id in chunk.block_ids
+            }
+            task["chunk_sections"] = {}
 
             # 类型分布统计——用于前端显示和调试
             type_counts: dict[str, int] = {}
@@ -578,6 +588,7 @@ def register_translate(
                         max_concurrency=max_concurrency,
                         source_lang=src_lang,
                     ):
+                        task["chunk_sections"][str(cr.chunk_index)] = cr.section_type
                         if cr.error:
                             yield {
                                 "event": "translate.chunk_error",
@@ -643,6 +654,7 @@ def register_translate(
                                 yield {
                                     "event": "translate.qa_warnings",
                                     "data": json.dumps({
+                                        "chunk_index": cr.chunk_index,
                                         "index": cr.chunk_index,
                                         "total": total_chunks,
                                         "section_type": cr.section_type,
@@ -1282,14 +1294,92 @@ def register_translate(
                     "重试结果未通过质量校验（译文为空 / 与原文相同 / 过短）。请检查模型或调小段落。",
                 )
 
+            was_failed = block_translations[target_index].get("status") == "failed"
             block_translations[target_index]["translated"] = sanitized
             block_translations[target_index]["status"] = "ok"
+
+            chunk_index = int(t.get("block_chunk_map", {}).get(block_id, target_index))
+            chunk_block_ids = t.get("chunk_blocks", {}).get(str(chunk_index), [block_id])
+            translations_by_id = {bt.get("id"): bt for bt in block_translations}
+            chunk_items = [
+                translations_by_id[bid]
+                for bid in chunk_block_ids
+                if bid in translations_by_id
+            ]
+            chunk_original = "\n\n".join(
+                item.get("original", "") for item in chunk_items
+                if item.get("translatable")
+            )
+            chunk_translated = "\n\n".join(
+                item.get("translated", "") for item in chunk_items
+                if item.get("translatable") and item.get("translated")
+            )
+
+            chunks = t.get("chunks", [])
+            if 0 <= chunk_index < len(chunks):
+                chunks[chunk_index]["translated"] = chunk_translated
+
+            section_type = t.get("chunk_sections", {}).get(str(chunk_index), "unknown")
+            qa_result = run_post_translation_qa(
+                translated=chunk_translated,
+                original=chunk_original,
+                section_type=section_type,
+                source_lang=src_lang,
+                expected_hedging_tier=get_hedging_tier_for_section(section_type),
+            )
+            qa_warning = {
+                "chunk_index": chunk_index,
+                "index": chunk_index,
+                "section_type": section_type,
+                "score": qa_result.score,
+                "flags": [
+                    {
+                        "type": flag.type,
+                        "severity": flag.severity,
+                        "location": flag.location,
+                        "message": flag.message,
+                        "suggestion": flag.suggestion,
+                    }
+                    for flag in qa_result.flags
+                ],
+            }
+
+            rebuilt = [
+                BlockTranslation(
+                    block_id=item.get("id", ""),
+                    type=item.get("type", "paragraph"),
+                    original=item.get("original", ""),
+                    translated=item.get("translated", ""),
+                    translatable=bool(item.get("translatable", True)),
+                    status=item.get("status", "ok"),
+                )
+                for item in block_translations
+            ]
+            fmt_cfg = load_config().get("formatter", {})
+            content = format_blocks(
+                rebuilt,
+                output_format=fmt_cfg.get("output_format", "bilingual"),
+            )
+            output_path = t.get("output_path")
+            if output_path:
+                Path(output_path).write_text(content, encoding="utf-8")
+
+            if was_failed and not any(item.get("status") == "failed" for item in chunk_items):
+                if t.get("fallback_count", 0) > 0:
+                    t["fallback_count"] -= 1
+            if not t.get("fallback_count", 0) and not t.get("misalign_count", 0):
+                t["status"] = "done"
 
             return {
                 "success": True,
                 "block_id": block_id,
                 "translated": sanitized,
                 "status": "ok",
+                "chunk_index": chunk_index,
+                "chunks": chunks,
+                "content": content,
+                "qa_warning": qa_warning,
+                "fallback_count": t.get("fallback_count", 0),
             }
         except HTTPException:
             raise

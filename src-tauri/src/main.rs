@@ -1,4 +1,7 @@
-#![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
+#![cfg_attr(
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
+)]
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -82,7 +85,8 @@ fn is_port_listening(port: u16, timeout_ms: u64) -> bool {
     let addr = format!("127.0.0.1:{}", port)
         .parse::<std::net::SocketAddr>()
         .expect("invalid socket address");
-    std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(timeout_ms)).is_ok()
+    std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(timeout_ms))
+        .is_ok()
 }
 
 macro_rules! lock_state {
@@ -143,7 +147,10 @@ fn pipe_output(child: &mut std::process::Child, label: &str) {
 }
 
 #[tauri::command]
-fn start_ollama(window: tauri::WebviewWindow, state: tauri::State<'_, ManagedProcesses>) -> Result<String, String> {
+fn start_ollama(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, ManagedProcesses>,
+) -> Result<String, String> {
     require_main_window(&window)?;
     if lock_state!(state.ollama).is_some() || is_port_listening(11434, 2000) {
         return Ok("already running".into());
@@ -153,7 +160,12 @@ fn start_ollama(window: tauri::WebviewWindow, state: tauri::State<'_, ManagedPro
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| format!("Failed to start Ollama: {}. Please make sure Ollama is installed.", e))?;
+        .map_err(|e| {
+            format!(
+                "Failed to start Ollama: {}. Please make sure Ollama is installed.",
+                e
+            )
+        })?;
 
     eprintln!("[INFO] Ollama started PID={}", child.id());
     pipe_output(&mut child, "ollama");
@@ -204,7 +216,10 @@ fn save_file(path: String, content: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn stop_ollama(window: tauri::WebviewWindow, state: tauri::State<'_, ManagedProcesses>) -> Result<String, String> {
+fn stop_ollama(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, ManagedProcesses>,
+) -> Result<String, String> {
     require_main_window(&window)?;
     if let Some(mut child) = lock_state!(state.ollama).take() {
         wait_or_kill(&mut child, std::time::Duration::from_secs(3));
@@ -215,25 +230,32 @@ fn stop_ollama(window: tauri::WebviewWindow, state: tauri::State<'_, ManagedProc
 }
 
 #[tauri::command]
-fn restart_backend(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Result<String, String> {
+async fn restart_backend(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
     require_main_window(&window)?;
+    tauri::async_runtime::spawn_blocking(move || restart_backend_blocking(&app))
+        .await
+        .map_err(|e| format!("Backend restart task failed: {}", e))?
+}
+
+fn restart_backend_blocking(app: &tauri::AppHandle) -> Result<String, String> {
     let state = app.state::<ManagedProcesses>();
 
     if let Some(mut child) = lock_state!(state.python).take() {
         eprintln!("[INFO] Restart: killing Python PID={}", child.id());
         kill_child(&mut child);
-        for i in 0..60 {
-            if !is_port_listening(18088, 500) {
-                break;
-            }
-            if i % 10 == 0 {
-                eprintln!("[INFO] Waiting for port 18088 to be freed... ({})", i);
-            }
-            std::thread::sleep(std::time::Duration::from_millis(500));
-        }
     }
 
-    spawn_python_inner(&app, Some(&app))
+    // The tracked child can already have exited while another stale process is
+    // still holding the port. Do not let that listener masquerade as the newly
+    // spawned backend.
+    if !wait_for_port_release(18088, std::time::Duration::from_secs(5)) {
+        kill_port_owner(18088)?;
+    }
+
+    spawn_python_inner(app, Some(app))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -321,7 +343,12 @@ fn spawn_ollama(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| format!("Failed to start Ollama: {}. Please make sure Ollama is installed.", e))?;
+        .map_err(|e| {
+            format!(
+                "Failed to start Ollama: {}. Please make sure Ollama is installed.",
+                e
+            )
+        })?;
 
     eprintln!("[INFO] Ollama spawned PID={}", child.id());
     pipe_output(&mut child, "ollama");
@@ -329,31 +356,92 @@ fn spawn_ollama(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn kill_port_owner(port: u16) {
-    // On Windows, find and kill any process listening on the given port
+#[cfg(windows)]
+fn listening_port_owner(port: u16) -> Option<u32> {
+    let output = std::process::Command::new("netstat")
+        .args(["-ano", "-p", "tcp"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .ok()?;
+    let port_suffix = format!(":{}", port);
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .find_map(|line| {
+            let fields = line.split_whitespace().collect::<Vec<_>>();
+            if fields.len() >= 5
+                && fields[0].eq_ignore_ascii_case("TCP")
+                && fields[1].ends_with(&port_suffix)
+                && fields[3].eq_ignore_ascii_case("LISTENING")
+            {
+                fields[4].parse::<u32>().ok()
+            } else {
+                None
+            }
+        })
+}
+
+#[cfg(not(windows))]
+fn listening_port_owner(_port: u16) -> Option<u32> {
+    None
+}
+
+fn wait_for_port_release(port: u16, timeout: std::time::Duration) -> bool {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        if !is_port_listening(port, 200) {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+}
+
+fn kill_port_owner(port: u16) -> Result<(), String> {
     #[cfg(windows)]
     {
-        let output = std::process::Command::new("netstat")
-            .args(["-ano"])
-            .output();
-        if let Ok(out) = output {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            for line in stdout.lines() {
-                let addr = format!("127.0.0.1:{}", port);
-                if line.contains("LISTENING") && line.contains(&addr) {
-                    if let Some(pid_str) = line.split_whitespace().last() {
-                        if let Ok(pid) = pid_str.parse::<u32>() {
-                            eprintln!("[INFO] Killing stale process PID={} on port {}", pid, port);
-                            let _ = std::process::Command::new("taskkill")
-                                .args(["/F", "/PID", &pid.to_string()])
-                                .status();
-                            // Wait briefly for port to be released
-                            std::thread::sleep(std::time::Duration::from_millis(500));
-                        }
-                    }
-                }
-            }
+        let pid = listening_port_owner(port).ok_or_else(|| {
+            format!(
+                "Port {} is listening but its owner could not be resolved",
+                port
+            )
+        })?;
+        eprintln!("[INFO] Killing stale process PID={} on port {}", pid, port);
+
+        // Stop-Process reliably terminates detached/no-window Python processes
+        // for which taskkill can report success too early or fail to traverse a
+        // stale parent tree. The PID is parsed as u32 above, so this command does
+        // not interpolate user-controlled shell text.
+        let command = format!("Stop-Process -Id {} -Force -ErrorAction Stop", pid);
+        let status = std::process::Command::new("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &command])
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map_err(|e| format!("Failed to stop stale backend PID={}: {}", pid, e))?;
+        if !status.success() {
+            return Err(format!(
+                "Failed to stop stale backend PID={} on port {}",
+                pid, port
+            ));
         }
+        if !wait_for_port_release(port, std::time::Duration::from_secs(10)) {
+            return Err(format!(
+                "Backend port {} remained occupied after stopping PID={}",
+                port, pid
+            ));
+        }
+        Ok(())
+    }
+
+    #[cfg(not(windows))]
+    {
+        Err(format!(
+            "Port {} is already occupied by an unmanaged process",
+            port
+        ))
     }
 }
 
@@ -365,7 +453,7 @@ fn spawn_python_inner<R: tauri::Runtime, M: Manager<R>>(
 
     // Kill any stale process on port 18088 before spawning a new one
     if is_port_listening(18088, 500) {
-        kill_port_owner(18088);
+        kill_port_owner(18088)?;
     }
 
     let mut child = if cfg!(debug_assertions) {
@@ -387,7 +475,12 @@ fn spawn_python_inner<R: tauri::Runtime, M: Manager<R>>(
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
-            .map_err(|e| format!("Failed to start Python: {}. Please make sure Python is installed.", e))?
+            .map_err(|e| {
+                format!(
+                    "Failed to start Python: {}. Please make sure Python is installed.",
+                    e
+                )
+            })?
     } else {
         let api_exe = python_dir.join(if cfg!(windows) { "api.exe" } else { "api" });
         if !api_exe.exists() {
@@ -416,46 +509,74 @@ fn spawn_python_inner<R: tauri::Runtime, M: Manager<R>>(
     let state = app.state::<ManagedProcesses>();
 
     pipe_output(&mut child, "python");
-    *lock_state!(state.python) = Some(child);
 
     eprintln!("[INFO] Python spawned PID={}", pid);
 
-    if let Some(h) = app_handle.cloned() {
-        // Prevent duplicate monitor threads when restart_backend is called multiple times
-        if !HEALTH_MONITOR_RUNNING.swap(true, Ordering::SeqCst) {
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_secs(15));
-                let mut interval_secs = 30u64;
-                loop {
-                    std::thread::sleep(std::time::Duration::from_secs(interval_secs));
-                    if !is_port_listening(18088, 1000) {
-                        eprintln!("[WARN] Python backend port not responding");
-                        let _ = h.emit(
-                            "backend-crashed",
-                            serde_json::json!({
-                                "message": "Python backend may have exited. Please restart it.",
-                            }),
-                        );
-                        // Back off but keep monitoring; backend might be restarting
-                        interval_secs = (interval_secs * 2).min(120);
-                    } else {
-                        interval_secs = 30;
-                    }
-                }
-            });
-        }
-    }
-
     eprintln!("[INFO] Waiting for Python server to be ready...");
-    for i in 0..30 {
+    // Cold Windows starts may spend well over 15 seconds loading PyMuPDF and
+    // the plugin registry. Keep the process alive long enough to become ready
+    // instead of reporting failure and encouraging a second click that kills it.
+    for i in 0..120 {
         std::thread::sleep(std::time::Duration::from_millis(500));
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                return Err(format!(
+                    "Python backend exited before becoming ready (PID={}, status={})",
+                    pid, status
+                ));
+            }
+            Ok(None) => {}
+            Err(e) => {
+                return Err(format!(
+                    "Could not inspect Python backend PID={}: {}",
+                    pid, e
+                ));
+            }
+        }
         if is_port_listening(18088, 1000) {
+            #[cfg(windows)]
+            if listening_port_owner(18088) != Some(pid) {
+                let owner = listening_port_owner(18088);
+                kill_child(&mut child);
+                return Err(format!(
+                    "Port 18088 is owned by PID={:?}, not the new backend PID={}",
+                    owner, pid
+                ));
+            }
+
+            *lock_state!(state.python) = Some(child);
+            if let Some(h) = app_handle.cloned() {
+                // Prevent duplicate monitor threads when restart_backend is called multiple times
+                if !HEALTH_MONITOR_RUNNING.swap(true, Ordering::SeqCst) {
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_secs(15));
+                        let mut interval_secs = 30u64;
+                        loop {
+                            std::thread::sleep(std::time::Duration::from_secs(interval_secs));
+                            if !is_port_listening(18088, 1000) {
+                                eprintln!("[WARN] Python backend port not responding");
+                                let _ = h.emit(
+                                    "backend-crashed",
+                                    serde_json::json!({
+                                        "message": "Python backend may have exited. Please restart it.",
+                                    }),
+                                );
+                                // Back off but keep monitoring; backend might be restarting
+                                interval_secs = (interval_secs * 2).min(120);
+                            } else {
+                                interval_secs = 30;
+                            }
+                        }
+                    });
+                }
+            }
             eprintln!("[INFO] Python server ready after {}ms", (i + 1) * 500);
             return Ok(format!("Python backend started (PID={})", pid));
         }
     }
+    kill_child(&mut child);
     Err(format!(
-        "Python process started but was not ready within 15 seconds (PID={}). \
+        "Python process started but was not ready within 60 seconds (PID={}). \
         Check the backend logs or restart the application.",
         pid
     ))

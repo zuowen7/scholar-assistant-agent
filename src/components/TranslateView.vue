@@ -45,7 +45,7 @@
         <div v-if="state.status === 'error' && state.errorMessage" class="state-banner state-banner--error" role="alert">
           <AlertCircle :size="17" :stroke-width="1.8" />
           <div><strong>{{ t('general.error') }}</strong><span>{{ state.errorMessage }}</span></div>
-          <UiButton v-if="!healthOk" variant="secondary" size="sm" @click="$emit('restart-backend')">{{ t('translate.restartBackend') }}</UiButton>
+          <UiButton v-if="!healthOk" variant="secondary" size="sm" :loading="backendRestarting" @click="$emit('restart-backend')">{{ t('translate.restartBackend') }}</UiButton>
         </div>
       </section>
     </template>
@@ -195,7 +195,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, toRaw } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { AlertCircle, AlertTriangle, Check, ChevronDown, Database, Download, FileText, PresentationScreen, Search, SearchX, UploadCloud } from './ui/icons'
 import UiButton from './ui/UiButton.vue'
@@ -204,7 +204,6 @@ import type { DropdownItem } from './ui/UiDropdown.vue'
 import UiSegmented from './ui/UiSegmented.vue'
 import UiSpinner from './ui/UiSpinner.vue'
 import { useTranslate } from '../composables/useTranslate'
-import { API_BASE } from '../utils/api'
 import { renderBlock, renderMarkdown } from '../utils/markdown'
 import { findCorrespondingSentenceIdx, splitSentences } from '../utils/sentenceAlign'
 import { filterTranslationBlocks } from '../utils/translationSearch'
@@ -212,11 +211,12 @@ import { filterTranslationBlocks } from '../utils/translationSearch'
 const { t } = useI18n()
 const props = defineProps<{
   healthOk: boolean
+  backendRestarting: boolean
   readSettings: { fontSize: number; lineHeight: number; fontFamily: string; transColor: string }
 }>()
 defineEmits<{ (e: 'restart-backend'): void; (e: 'open-agent-docs'): void }>()
 
-const { state, translate, reset, downloadResult, overallProgress, exportBilingualDocx, exportTranslationOnlyDocx, exportTranslationOnlyMarkdown, exportPPTX, exportDataAvailability } = useTranslate()
+const { state, translate, reset, downloadResult, overallProgress, retryBlock, exportBilingualDocx, exportTranslationOnlyDocx, exportTranslationOnlyMarkdown, exportPPTX, exportDataAvailability } = useTranslate()
 const viewMode = ref<'bilingual' | 'translation'>('bilingual')
 const searchQuery = ref('')
 const zoneHover = ref(false)
@@ -254,23 +254,10 @@ async function retryFailedBlock(blockId: string) {
   retryingBlockIds.value.add(blockId)
   retryErrors.value.delete(blockId)
   try {
-    const response = await fetch(`${API_BASE}/api/translate/${state.taskId}/retry_block`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ block_id: blockId }),
-    })
-    if (!response.ok) {
-      const detail = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }))
-      throw new Error(detail.detail || t('translate.retryFailed', { status: response.status }))
-    }
-    const result = await response.json()
-    const current = toRaw(state) as any
-    const index = current.blocks.findIndex((block: any) => block.id === blockId)
-    if (index !== -1) Object.assign(current.blocks[index], { translated: result.translated, status: result.status })
+    await retryBlock(blockId)
   } catch (error) {
     const message = error instanceof Error ? error.message : t('translate.unknownError')
     retryErrors.value.set(blockId, message)
-    const current = toRaw(state) as any
-    const index = current.blocks.findIndex((block: any) => block.id === blockId)
-    if (index !== -1) current.blocks[index].status = 'failed'
   } finally {
     retryingBlockIds.value.delete(blockId)
   }
