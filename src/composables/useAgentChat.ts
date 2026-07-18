@@ -135,7 +135,9 @@ export function useAgentChat() {
           msg.events = [...msg.events, agentEvent]
           break
         case 'aborted':
-          msg.content = agentEvent.content || i18n.global.t('agent.sessionAborted', 'Session aborted')
+          msg.content = agentEvent.content === 'File edit rejected; no changes were applied'
+            ? i18n.global.t('agent.fileEditRejected', 'File edit rejected; no changes were applied')
+            : agentEvent.content || i18n.global.t('agent.sessionAborted', 'Session aborted')
           msg.isStreaming = false
           _clearApproval()
           msg.events = [...msg.events, agentEvent]

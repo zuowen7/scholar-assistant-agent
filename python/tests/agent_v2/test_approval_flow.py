@@ -151,6 +151,10 @@ class TestApprovalPause:
         denied = [e for e in events if e.type in (AgentEventType.TOOL_RESULT, AgentEventType.TOOL_ERROR)
                   and "denied" in str(e.data).lower()]
         assert len(denied) >= 1 or AgentEventType.APPROVAL_RECEIVED in types, f"Expected denial evidence, got types: {types}"
+        assert types.count(AgentEventType.AWAIT_APPROVAL) == 1
+        assert AgentEventType.ABORTED in types
+        assert AgentEventType.DONE in types
+        assert not (workspace / "new.txt").exists()
 
 
 class TestApprovalRecovery:

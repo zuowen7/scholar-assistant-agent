@@ -397,6 +397,7 @@
     "allowSession": "Allow This Session",
     "confirmEach": "Requires Approval Each Time",
     "sessionAborted": "Session aborted",
+    "fileEditRejected": "File edit rejected; no changes were applied",
     "workspaceLabel": "Workspace: ",
     "noWorkspaceLabel": "Open a project folder in the editor first",
     "refreshSessions": "Refresh",

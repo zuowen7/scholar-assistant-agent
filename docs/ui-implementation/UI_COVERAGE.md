@@ -82,8 +82,8 @@
 | Agent 独立窗口 | PARTIALLY_ADAPTED | 复用同一 AgentPanel 和真实会话单例 | 独立窗口恢复、缩放和多屏 |
 | 会话列表/恢复 | PARTIALLY_ADAPTED | Agent V2 session API 和 AgentSessionList 保留 | 真实恢复、空/损坏会话 |
 | 工具调用过程/错误 | PARTIALLY_ADAPTED | `tool_name` 协议、折叠参数和结果 | 超长参数、二进制结果、超时 |
-| 审批 allow once/session/deny | PARTIALLY_ADAPTED | 修复 CRLF SSE 暂停事件不 flush 和真实 session_id 丢失；`read_file → await_approval → allow once → write_file` 已实机 | deny 后继续、session 许可和超时 |
-| Inline Diff 接受/拒绝 | PARTIALLY_ADAPTED | 打开真实文件后 `str_replace` 内联差异已实机接受；`agent-inline-diff-accepted-checkpoint.png` | 拒绝、脏标签冲突和超长差异 |
+| 审批 allow once/session/deny | PARTIALLY_ADAPTED | 修复 CRLF SSE 暂停事件不 flush 和真实 session_id 丢失；allow once 写入与 deny 终止均已实机，拒绝后不会改用其他写入工具重试 | session 许可和审批超时 |
+| Inline Diff 接受/拒绝 | PARTIALLY_ADAPTED | 真实 `str_replace` 内联差异已实机接受和拒绝；拒绝后磁盘不变、会话结束，见 `agent-denial-localized-rejected-live.png` | 脏标签冲突和超长差异 |
 | checkpoint 与文件刷新 | PARTIALLY_ADAPTED | 真实新文件写入和已打开文件替换后，磁盘/Monaco/保存状态同步；dirty tab 保护保留 | 多文件写入和跨标签刷新 |
 | 附件、RAG 文档、@引用 | PARTIALLY_ADAPTED | 真实上传/文档 API/文件引用 | 删除、重名和大文件 |
 | Skills 发现/选择/调用 | PARTIALLY_ADAPTED | 真实 `/api/agent/v2/skills`；8 个 Nature 工作流；`nature_reviewer` 真实 SSE/Claim Ledger 调用 | 连续切换和失效 Skill |
@@ -138,7 +138,7 @@
 | 空状态 | PARTIALLY_ADAPTED | 项目、文件树、翻译搜索、Agent、Reviewer 均有任务型空状态 | 全入口无数据录屏 |
 | 加载/Skeleton | PARTIALLY_ADAPTED | 文件树、模板、翻译、审稿、Agent 分层加载 | 慢网络和超时 |
 | API 错误/后端离线 | PARTIALLY_ADAPTED | 统一 Toast/ErrorLog；error 状态仍持续健康检查；离线状态和重启按钮已实机；重启后重载真实 Provider 配置 | 启动阶段连续崩溃与重启失败 |
-| 权限/审批错误 | PARTIALLY_ADAPTED | Agent V2 权限与 deny 路径保留 | 真实拒绝与越界写入 |
+| 权限/审批错误 | PARTIALLY_ADAPTED | Agent V2 拒绝路径已实机：只出现一次审批、会话终止、磁盘不变；状态已中英文本地化 | 越界写入和审批超时 |
 
 ## 当前统计
 
@@ -162,6 +162,7 @@
 - 恢复 Reviewer-2、Claim Ledger、Argument Map 固定一级入口与真实数据链路。
 - Agent Skills 接真实目录，加入 8 个 Nature 工作流；保留 Agent V2 单一运行时。
 - 修复 Agent 审批在 CRLF SSE 暂停点不显示、真实 session_id 丢失；写入审批、Inline Diff 接受和 checkpoint 已完成真实 Tauri 验收。
+- 修复 Agent 文件修改被拒后换用另一写入工具重试的问题；运行时现在确定性终止本轮，真实 Tauri 验证会话 persisted 且磁盘内容未变。
 - Agent 系统提示注入运行时当前日期，避免日期任务依赖模型旧知识；真实验收文件已从错误的 2025 修正为 2026。
 - 恢复编辑器 Ctrl+B/标题栏侧栏开关；修复后端 error 状态停止健康轮询和恢复后模型状态不刷新的问题。
 - 重构翻译空态、SSE 进度、双栏结果、QA、重试、搜索、取消和导出；真实 TXT 2 块翻译通过。
@@ -170,7 +171,7 @@
 - 新增 Tauri 界面 80%–200% 缩放及快捷键；修复 200% 时欢迎页标题越界。
 - 重构语音助手为安静任务浮层；去除文件树、共享按钮和诊断入口的发光涟漪。
 
-下一项未完成入口：用可控真实失败走通“翻译块失败→单块重试→QA 更新→Word 产物打开”，然后继续 Agent deny/超时、脏标签冲突和多文件 checkpoint 验收。
+下一项未完成入口：用可控真实失败走通“翻译块失败→单块重试→QA 更新→Word 产物打开”，然后继续 Agent 审批超时/session 许可、脏标签冲突和多文件 checkpoint 验收。
 
 代表性实机证据：
 
