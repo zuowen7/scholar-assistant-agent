@@ -28,7 +28,7 @@
     <div v-if="workspaceVariant && !streaming" class="workspace-actions">
       <button type="button" class="primary" @click="sendPreset('polish')">✦ {{ t('aiPanel.workspacePolish') }}</button>
       <button type="button" @click="sendPreset('expand')">↗ {{ t('aiPanel.workspaceExpand') }}</button>
-      <button type="button" @click="sendPreset('review')">↻ {{ t('aiPanel.workspaceRewrite') }}</button>
+      <button type="button" @click="sendPreset('rewrite')">↻ {{ t('aiPanel.workspaceRewrite') }}</button>
       <button type="button" @click="input = t('aiPanel.compliancePrompt'); send()">✓ {{ t('aiPanel.workspaceCompliance') }}</button>
     </div>
 
@@ -407,7 +407,7 @@ async function sendPreset(action: string) {
   if (streaming.value) return
   const ctx = props.editorContext?.trim()
   const instructions: Record<string, string> = {
-    polish: t('aiPanel.prompts.polish'), expand: t('aiPanel.prompts.expand'), review: t('aiPanel.prompts.review'),
+    polish: t('aiPanel.prompts.polish'), expand: t('aiPanel.prompts.expand'), rewrite: t('aiPanel.prompts.rewrite'), review: t('aiPanel.prompts.review'),
     en: t('aiPanel.prompts.en'), zh: t('aiPanel.prompts.zh'),
   }
   const instruction = instructions[action] || action
@@ -417,10 +417,58 @@ async function sendPreset(action: string) {
     return
   }
   const fileHint = props.activeFile ? `\n${t('aiPanel.currentFile', { file: props.activeFile })}` : ''
-  await doSend(`${instruction}${fileHint}`)
+  await doEdit(ctx || '', `${instruction}${fileHint}`, action)
 }
 
-// 一次性文本改写：调用 /api/edit（无工具、不可能循环），流式写入聊天面板。
+// Presets are one-shot editor transforms. They intentionally bypass Agent V2:
+// no tools, approvals, workspace writes, or session state are involved.
+async function doEdit(text: string, instruction: string, taskType: string) {
+  pendingApproval.value = null
+  acSessionId.value = null
+  messages.value.push({ id: crypto.randomUUID(), role: 'user', content: instruction })
+  scrollBottom()
+
+  streaming.value = true
+  streamContent.value = ''
+  thinkingText.value = t('aiPanel.editing')
+  aiAbortCtrl.value = new AbortController()
+
+  try {
+    const response = await fetch(`${API}/api/edit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, instruction, task_type: taskType }),
+      signal: aiAbortCtrl.value.signal,
+    })
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({ detail: t('aiPanel.requestFailed') }))
+      throw new Error(detail.detail || `HTTP ${response.status}`)
+    }
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error(t('aiPanel.responseEmpty'))
+    await readSseStream(reader, (eventType, event) => {
+      if (eventType === 'error') {
+        streamContent.value = (event.message as string) || (event.content as string) || t('aiPanel.error')
+      } else if (event.content) {
+        // /api/edit emits the complete accumulated result on every delta.
+        streamContent.value = event.content as string
+      }
+      scrollBottom()
+    }, aiAbortCtrl.value.signal)
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') return
+    streamContent.value = t('aiPanel.errorPrefix', { msg: error instanceof Error ? error.message : String(error) })
+  } finally {
+    streaming.value = false
+    thinkingText.value = ''
+    if (streamContent.value) messages.value.push({ id: crypto.randomUUID(), role: 'assistant', content: streamContent.value })
+    streamContent.value = ''
+    aiAbortCtrl.value = null
+    scrollBottom()
+  }
+}
+
+// Free-form tasks keep the full Agent V2 path and its tools/approval protocol.
 async function doSend(text: string) {
   pendingApproval.value = null
   acSessionId.value = null

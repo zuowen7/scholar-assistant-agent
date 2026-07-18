@@ -133,6 +133,12 @@
             <input id="settings-line-height" type="range" min="14" max="26" :value="Math.round(readSettings.lineHeight * 10)" @input="$emit('line-height-change', Number(($event.target as HTMLInputElement).value))" />
             <output>{{ readSettings.lineHeight.toFixed(1) }}</output>
           </div>
+          <div class="range-row">
+            <label for="settings-ui-zoom">{{ t('settingsCenter.uiZoom') }}</label>
+            <input id="settings-ui-zoom" type="range" min="80" max="200" step="10" :value="Math.round(uiZoom * 100)" @input="$emit('ui-zoom-change', Number(($event.target as HTMLInputElement).value) / 100)" />
+            <output>{{ Math.round(uiZoom * 100) }}%</output>
+          </div>
+          <p class="form-hint">{{ t('settingsCenter.uiZoomHint') }}</p>
           <div class="form-section form-section--compact">
             <label class="field">
               <span>{{ t('settings.fontFamily') }}</span>
@@ -187,7 +193,7 @@
           </div>
         </section>
 
-        <section v-else class="settings-page">
+        <section v-else-if="tab === 'voice'" class="settings-page">
           <SettingsHeading :title="t('voice.title')" :description="t('settingsCenter.voiceDescription')" />
           <label class="setting-row">
             <div class="setting-copy"><h4>{{ t('voice.enabled') }}</h4><p>{{ t('settingsCenter.voiceEnabledDescription') }}</p></div>
@@ -223,6 +229,44 @@
           </div>
           <p v-if="!speechSupported" class="inline-error" role="status">{{ t('voice.notSupported') }}</p>
         </section>
+
+        <section v-else class="settings-page">
+          <SettingsHeading :title="t('settingsCenter.systemTitle')" :description="t('settingsCenter.systemDescription')" />
+
+          <div class="service-list">
+            <div class="setting-row setting-row--service">
+              <div class="setting-copy"><h4>{{ t('topbar.backend') }}</h4><p>{{ t('settingsCenter.backendDescription') }}</p></div>
+              <span class="connection-state" :class="healthOk ? 'ok' : 'warn'"><i />{{ healthOk ? t('status.online') : t('status.offline') }}</span>
+              <UiButton v-if="!healthOk" variant="secondary" size="sm" @click="$emit('restart-backend')">{{ t('translate.restartBackend') }}</UiButton>
+            </div>
+            <div class="setting-row setting-row--service">
+              <div class="setting-copy"><h4>{{ engineType === 'cloud' ? activePreset?.name || cloudConfig.provider : 'Ollama' }}</h4><p>{{ t('settingsCenter.modelServiceDescription') }}</p></div>
+              <span class="connection-state" :class="(engineType === 'cloud' ? cloudOk : ollamaOk) ? 'ok' : 'warn'"><i />{{ (engineType === 'cloud' ? cloudOk : ollamaOk) ? t('status.connected') : t('status.disconnected') }}</span>
+            </div>
+            <div class="setting-row setting-row--service">
+              <div class="setting-copy"><h4>Tectonic</h4><p>{{ t('settingsCenter.tectonicDescription') }}</p></div>
+              <span class="connection-state" :class="tectonicOk ? 'ok' : 'warn'"><i />{{ tectonicOk ? t('status.ready') : t('status.notInstalled') }}</span>
+            </div>
+          </div>
+
+          <div class="divider" />
+          <SettingsHeading :title="t('settingsCenter.updateTitle')" :description="t('settingsCenter.updateDescription')" compact />
+          <div class="setting-row">
+            <div class="setting-copy">
+              <h4>{{ updateLabel }}</h4>
+              <p>{{ updateDetail }}</p>
+            </div>
+            <UiButton v-if="updateResult?.status === 'available'" variant="primary" size="sm" @click="$emit('open-release', updateResult.releaseUrl)">{{ t('settingsCenter.viewRelease') }}</UiButton>
+            <UiButton variant="secondary" size="sm" :loading="updateChecking" @click="$emit('check-update')">{{ t('settingsCenter.checkUpdate') }}</UiButton>
+          </div>
+
+          <div class="divider" />
+          <SettingsHeading :title="t('settingsCenter.diagnosticsTitle')" :description="t('settingsCenter.diagnosticsDescription')" compact />
+          <div class="setting-row">
+            <div class="setting-copy"><h4>{{ t('editor.debugTitle') }}</h4><p>{{ t('settingsCenter.logDescription') }}</p></div>
+            <DebugPanel />
+          </div>
+        </section>
       </div>
     </div>
   </AppDialog>
@@ -236,6 +280,8 @@ import { useLocale } from '../../composables/useLocale'
 import AppDialog from '../shell/AppDialog.vue'
 import UiButton from '../ui/UiButton.vue'
 import SettingsHeading from './SettingsHeading.vue'
+import DebugPanel from '../DebugPanel.vue'
+import type { UpdateCheckResult } from '../../composables/useUpdateChecker'
 
 interface CloudConfig { provider: string; api_key: string; base_url: string; model: string; max_tokens: number }
 interface VoiceSettings {
@@ -267,7 +313,10 @@ const props = defineProps<{
   tectonicChecking: boolean
   bgSettings: { path: string; type: 'image' | 'video'; opacity: number }
   readSettings: { fontSize: number; lineHeight: number; fontFamily: string; transColor: string }
+  uiZoom: number
   proxyUrl: string
+  updateChecking: boolean
+  updateResult: UpdateCheckResult | null
 }>()
 
 const emit = defineEmits<{
@@ -291,12 +340,16 @@ const emit = defineEmits<{
   'line-height-change': [value: number]
   'font-family-change': [value: string]
   'color-change': [value: string]
+  'ui-zoom-change': [value: number]
   'voice-settings-change': [value: VoiceSettings]
+  'restart-backend': []
+  'check-update': []
+  'open-release': [url: string]
 }>()
 
 const { t } = useI18n()
 const { currentLocale, setLocale } = useLocale()
-const tab = ref<'engine' | 'display' | 'network' | 'background' | 'voice'>('engine')
+const tab = ref<'engine' | 'display' | 'network' | 'background' | 'voice' | 'system'>('engine')
 const speechSupported = !!(window as any).SpeechRecognition || !!(window as any).webkitSpeechRecognition
 
 function icon(paths: string[]) {
@@ -309,6 +362,7 @@ const tabs = computed(() => [
   { value: 'network' as const, label: t('settings.network'), icon: icon(['M5 12a7 7 0 0 1 14 0M8 15a4 4 0 0 1 8 0M11 18a1 1 0 0 1 2 0']) },
   { value: 'background' as const, label: t('settings.background'), icon: icon(['M4 5h16v14H4zM7 15l3-3 3 3 2-2 3 3M16 9h.01']) },
   { value: 'voice' as const, label: t('voice.title'), icon: icon(['M9 5a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0zM5 10v1a7 7 0 0 0 14 0v-1M12 18v3']) },
+  { value: 'system' as const, label: t('settingsCenter.systemTitle'), icon: icon(['M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', 'M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1']) },
 ])
 
 const activePreset = computed(() => props.providerPresets[props.cloudConfig.provider])
@@ -318,6 +372,16 @@ const previewStyle = computed(() => ({
   fontFamily: props.readSettings.fontFamily,
   color: props.readSettings.transColor || undefined,
 }))
+const updateLabel = computed(() => {
+  if (!props.updateResult) return t('settingsCenter.updateUnknown')
+  return props.updateResult.status === 'available'
+    ? t('settingsCenter.updateAvailable', { version: props.updateResult.remoteVersion })
+    : t('settingsCenter.updateCurrent')
+})
+const updateDetail = computed(() => {
+  if (!props.updateResult) return t('settingsCenter.updateNotChecked')
+  return t('settingsCenter.versionDetail', { local: props.updateResult.localVersion, remote: props.updateResult.remoteVersion })
+})
 
 const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
   enabled: true,
@@ -416,6 +480,9 @@ function selectOllamaModel(model: string) {
 .switch:checked::after { transform: translateX(16px); }
 .switch:focus-visible { outline: none; box-shadow: var(--ring-focus); }
 .setting-row--service { margin-top: 24px; }
+.service-list .setting-row--service { margin-top: 0; }
+.service-list .setting-row--service:first-child { margin-top: 18px; }
+.service-list + .divider { margin-top: 10px; }
 
 button:focus-visible { outline: none; box-shadow: var(--ring-focus); }
 

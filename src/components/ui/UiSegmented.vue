@@ -107,7 +107,7 @@ watch(() => props.options, () => {
 }
 .ui-segmented.use-vermilion .seg-indicator {
   background: var(--vermilion-0);
-  box-shadow: 0 0 8px rgba(200, 80, 58, 0.3);
+  box-shadow: var(--elevation-1);
 }
 
 .seg-item {

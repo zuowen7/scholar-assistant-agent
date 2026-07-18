@@ -158,6 +158,20 @@ describe('useAgentChat', () => {
       expect(sessionId.value).toBe('sess_abc')
     })
 
+    it('accepts sessionId from session_started content for older live backends', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+        makeSseResponse([
+          { event: 'session_started', data: { type: 'session_started', content: 'sess_content' } },
+          makeDoneChunk(),
+        ])
+      ))
+
+      const { sendMessage, sessionId } = useAgentChat()
+      await sendMessage('Start compatible session')
+
+      expect(sessionId.value).toBe('sess_content')
+    })
+
     it('marks assistant streaming complete after done event', async () => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
         makeSseResponse([makeSessionStartedChunk('sess_001'), makeTaskDoneChunk('result'), makeDoneChunk()])

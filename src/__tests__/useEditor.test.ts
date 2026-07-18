@@ -9,6 +9,10 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
+const { mockReadSseStream } = vi.hoisted(() => ({
+  mockReadSseStream: vi.fn(),
+}))
+
 // ---------------------------------------------------------------------------
 // Mock external modules
 // ---------------------------------------------------------------------------
@@ -29,6 +33,8 @@ vi.mock('../utils/api', () => ({
   API_BASE: 'http://127.0.0.1:18088',
 }))
 
+vi.mock('../utils/streamReader', () => ({ readSseStream: mockReadSseStream }))
+
 vi.mock('@tauri-apps/plugin-fs', () => ({
   writeTextFile: vi.fn().mockResolvedValue(undefined),
 }))
@@ -47,6 +53,7 @@ import {
   openFile, openNewUntitled, closeTab, setActiveTab,
   setContent, updateSelection, markClean, markDirty, saveFile,
 } from '../composables/useEditorTabs'
+import { inlineEdit } from '../composables/useEditor'
 
 describe('editor state composables (split)', () => {
   beforeEach(() => {
@@ -54,6 +61,30 @@ describe('editor state composables (split)', () => {
     const ids = tabs.value.map((t: { id: string }) => t.id)
     for (const id of ids) { closeTab(id) }
     selection.value = { startLine: 0, endLine: 0, startCol: 0, endCol: 0, text: '' }
+    monacoEditor.value = null
+    mockReadSseStream.mockReset()
+  })
+
+  describe('inline edit streaming', () => {
+    it('replaces with cumulative /api/edit deltas without duplicating earlier text', async () => {
+      openFile('/paper.md', 'Original')
+      selection.value = { startLine: 1, endLine: 1, startCol: 1, endCol: 9, text: 'Original' }
+      const executeEdits = vi.fn()
+      monacoEditor.value = {
+        executeEdits,
+        deltaDecorations: vi.fn(() => []),
+      } as any
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: { getReader: () => ({}) } }))
+      mockReadSseStream.mockImplementation(async (_reader, handler) => {
+        handler('delta', { content: 'Revised' })
+        handler('delta', { content: 'Revised sentence' })
+      })
+
+      const result = await inlineEdit('Polish', 'polish')
+
+      expect(result).toBe('Revised sentence')
+      expect(executeEdits.mock.calls.at(-1)?.[1]?.[0]?.text).toBe('Revised sentence')
+    })
   })
 
   // ── Initial state ──────────────────────────────────────────────────────

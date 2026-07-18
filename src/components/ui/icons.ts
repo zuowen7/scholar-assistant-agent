@@ -22,6 +22,7 @@ export {
   X,
   Check,
   Search,
+  SearchX,
   Settings,
   SlidersHorizontal as Sliders,
   RefreshCw,

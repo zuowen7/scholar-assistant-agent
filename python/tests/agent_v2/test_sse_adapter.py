@@ -51,6 +51,13 @@ class TestAdapter:
         assert result["type"] == "response"
         assert result["content"] == "final answer"
 
+    def test_session_started_exposes_session_id_to_frontend(self):
+        event = AgentEvent.session_started("sess_123")
+        result = agent_event_to_sse(event)
+        assert result["type"] == "session_started"
+        assert result["content"] == "sess_123"
+        assert result["metadata"]["session_id"] == "sess_123"
+
     def test_error_stays_error(self):
         event = AgentEvent(type=AgentEventType.ERROR, data={"message": "fail"})
         result = agent_event_to_sse(event)

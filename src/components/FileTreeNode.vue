@@ -11,7 +11,6 @@
         @click="handleClick"
         @keydown.enter.prevent="handleClick"
         @keydown.space.prevent="handleClick"
-        @pointermove="onPointerMove"
       >
         <span
           v-if="entry.isDir"
@@ -124,14 +123,6 @@ const skeletonCount = computed(() => {
   const n = props.entry.children?.length ?? 0
   return Math.min(Math.max(n || 3, 2), 5)
 })
-
-// 墨韵涟漪：跟踪指针位置，让 hover 高光从光标处扩散
-function onPointerMove(e: PointerEvent) {
-  const el = e.currentTarget as HTMLElement
-  const rect = el.getBoundingClientRect()
-  el.style.setProperty('--mx', `${((e.clientX - rect.left) / rect.width) * 100}%`)
-  el.style.setProperty('--my', `${((e.clientY - rect.top) / rect.height) * 100}%`)
-}
 
 const ctx = reactive({ visible: false, x: 0, y: 0, origin: 'top left' })
 const canPaste = computed(() => {
@@ -256,21 +247,6 @@ function cancelRename() {
   z-index: 2;
 }
 
-/* 墨韵涟漪 — 悬浮时从光标处扩散 */
-.tree-item::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), var(--c-accent) 0%, transparent 65%);
-  opacity: 0;
-  pointer-events: none;
-  z-index: 0;
-  transition: opacity var(--motion-base) var(--ease-brush);
-}
-.tree-item:hover::after { opacity: 0.05; }
-.tree-item.active::after { opacity: 0.07; }
-
 .tree-item > * { position: relative; z-index: 1; }
 
 /* 文件夹展开折叠箭头 */
@@ -339,8 +315,6 @@ function cancelRename() {
   padding: var(--space-1) 0;
   min-width: 160px;
   box-shadow: var(--elevation-3);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 .ctx-item {
   display: flex;
@@ -371,7 +345,6 @@ function cancelRename() {
   .tree-item,
   .tree-item.dir .tree-icon,
   .tree-item::before,
-  .tree-item::after,
   .ctx-item { transition: none; }
   .tree-skeleton-row { animation: none; opacity: 1; }
   .tree-item.u-interactive:not(:disabled):active { transform: none; }
