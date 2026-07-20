@@ -1,9 +1,17 @@
 {
+  "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
     "target": "ES2021",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
+    // ── 渐进收紧策略 ────────────────────────────────────
+    // 这三个选项当前关闭，因为开启后会暴露大量历史问题。
+    // 渐进开启步骤：
+    //   1. 先在 PR 里手动跑 `npx vue-tsc --noEmit --noUnusedLocals` 看暴露多少
+    //   2. 修复高优先级问题（未使用 import、未使用私有变量）
+    //   3. 全部修复后再打开下列开关
+    // 目标：3 个月内打开 noUnusedLocals 和 noUnusedParameters
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noImplicitReturns": false,

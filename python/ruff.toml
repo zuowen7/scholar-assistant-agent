@@ -1,0 +1,89 @@
+# Ruff configuration for Scholar Assistant backend
+# Docs: https://docs.astral.sh/ruff/configuration/
+#
+# 用途：统一 Python 后端代码风格 + 静态检查 + 自动排序 import
+# 配套命令：
+#   ruff check .            # 静态检查（不修改文件）
+#   ruff check . --fix      # 自动修复可修复的问题
+#   ruff format .           # 代码格式化（替代 black）
+#   ruff check . --diff     # 预览会修改什么，不实际改
+
+# 扫描范围：所有 .py 文件，但排除以下目录
+extend-exclude = [
+    "src-tauri",            # Tauri 打包产物，不参与 lint
+    "data",                 # 运行时数据
+    "logs",                 # 运行时日志
+    "output",               # 运行时输出
+    "test_chroma",          # 测试临时数据库
+    "argument_graphs",      # 运行时生成的图谱
+    "argument_output_v2",   # 运行时输出
+    "runtime",              # 运行时缓存
+    "plugins",              # 第三方插件目录（可能含非项目代码）
+    ".venv",                # 虚拟环境
+    "__pycache__",          # 字节码缓存
+    "build",                # 构建产物
+    "dist",                 # 前端构建产物
+    "node_modules",         # 前端依赖
+]
+
+# 行宽：项目里 docstring 较长，给到 100 字符
+line-length = 100
+
+# 目标 Python 版本（项目用 3.12，见 AGENTS.md）
+target-version = "py312"
+
+# 文件包含模式：默认已覆盖 .py，这里显式声明便于维护
+include = ["*.py", "*.pyi"]
+
+[lint]
+# 启用的规则集：
+# E   - pycodestyle errors（PEP 8 错误）
+# W   - pycodestyle warnings
+# F   - pyflakes（未使用变量、未定义变量等）
+# I   - isort（import 排序）
+# B   - flake8-bugbear（常见 bug 模式）
+# UP  - pyupgrade（升级到现代语法，如 str | None）
+# SIM - flake8-simplify（代码简化建议）
+# C4  - flake8-comprehensions（推导式优化）
+# ANN - flake8-annotations（类型注解检查，warn-only）
+#   注：ANN 暂不启用，等类型注解覆盖更全后再开
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "C4"]
+
+# 忽略的规则（项目实际情况）：
+ignore = [
+    "E501",   # 行太长 — 由 formatter 处理，不强制
+    "B008",   # 函数默认值调用函数 — FastAPI Depends() 必须这么用
+    "B904",   # raise from — 项目里有大量 re-raise 场景，先放行
+    "SIM117", # 嵌套 with — 可读性有时不如分开
+    "UP007",  # X | None — 项目已用新语法，但部分旧文件还在用 Optional，渐进迁移
+]
+
+# 自动修复：只修复安全规则
+fixable = ["ALL"]
+unfixable = ["B", "UP"]  # bugbear 和 pyupgrade 的修复需要人工确认
+
+[lint.per-file-ignores]
+# 测试文件放宽规则
+"tests/**/*.py" = [
+    "E402",  # import 顺序可乱（conftest 常需先 import）
+    "F401",  # 未使用 import（fixture 注入模式）
+    "F841",  # 未使用变量（有时用于断言副作用）
+]
+# 脚本和工具文件
+"scripts/**/*.py" = [
+    "E402",  # import 顺序可乱
+]
+
+[format]
+# 格式化风格：与 black 兼容
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "lf"
+
+[lint.isort]
+# import 排序：与项目现有风格一致
+known-first-party = ["src", "routers", "api", "api_factory"]
+known-third-party = ["fastapi", "pydantic", "pytest", "httpx"]
+force-single-line = false
+combine-as-imports = true
