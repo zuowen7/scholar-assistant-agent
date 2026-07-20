@@ -1,4 +1,4 @@
-import { ref, watch } from 'vue'
+import { ref, watch, onScopeDispose, getCurrentScope } from 'vue'
 import type { AgentChatMessage, AgentEvent, AgentSessionInfo, AgentSkill, RAGDocument } from '../types'
 import { API_BASE } from '../utils/api'
 import { i18n } from '../i18n'
@@ -41,6 +41,8 @@ export interface PendingCheckpoint {
   file?: string
   /** New file content after modification (for Monaco inline update) */
   content?: string
+  /** Content is only a preview; reload the full file from disk instead. */
+  content_truncated?: boolean
 }
 
 const pipelineStage = ref('')
@@ -90,15 +92,22 @@ export function useAgentChat() {
     pendingApproval.value = value
   }
 
-  function _clearApproval() {
+  function _clearApproval(eventId?: string) {
+    // Approval events can overlap in a multi-tool turn. A late HTTP response or
+    // approval_received event for tool A must never clear tool B's newer card.
+    if (eventId && pendingApproval.value?.event_id !== eventId) return
     _setApproval(null)
   }
 
   // When sessionId changes (e.g. user switches to a different session via resumeSession
   // or a new session starts), sync pendingApproval to whatever was stored for that session.
-  watch(sessionId, (newSid) => {
+  // useAgentChat() is a singleton called from multiple components, so each call would
+  // register a new watcher on the shared sessionId — stop it when this scope dies to
+  // avoid watcher accumulation and stale closures across remounts.
+  const stopSessionWatch = watch(sessionId, (newSid) => {
     pendingApproval.value = (newSid ? (_approvalBySession.get(newSid) ?? null) : null)
   })
+  if (getCurrentScope()) onScopeDispose(() => stopSessionWatch())
 
   // ── Shared SSE event handler ──────────────────────────────────────
 
@@ -172,7 +181,7 @@ export function useAgentChat() {
           msg.events = [...msg.events, agentEvent]
           break
         case 'approval_received':
-          _clearApproval()
+          _clearApproval(agentEvent.event_id)
           msg.events = [...msg.events, agentEvent]
           break
         case 'pipeline_stage':
@@ -190,14 +199,17 @@ export function useAgentChat() {
             options: (agentEvent.metadata?.options as string[]) || ['continue'],
             file: agentEvent.metadata?.file as string | undefined,
             content: agentEvent.metadata?.content as string | undefined,
+            content_truncated: agentEvent.metadata?.content_truncated as boolean | undefined,
           }
           msg.events = [...msg.events, agentEvent]
-          // Notify editor to reload modified files from disk
-          if ((agentEvent.metadata?.deliverables as string[])?.length) {
-            window.dispatchEvent(new CustomEvent('agent-files-changed', {
-              detail: { files: agentEvent.metadata?.deliverables },
-            }))
-          }
+          // Emit every file checkpoint synchronously. A reactive watch can
+          // coalesce consecutive checkpoints from one multi-file Agent turn.
+          const checkpointFile = agentEvent.metadata?.file as string | undefined
+          const deliverables = (agentEvent.metadata?.deliverables as string[]) || []
+          const changedFiles = checkpointFile ? [checkpointFile, ...deliverables] : deliverables
+          if (changedFiles.length) window.dispatchEvent(new CustomEvent('agent-files-changed', {
+            detail: { files: [...new Set(changedFiles)] },
+          }))
           break
         default:
           msg.events = [...msg.events, agentEvent]
@@ -305,7 +317,7 @@ export function useAgentChat() {
                 const reader = resumeResp.body?.getReader()
                 if (reader) {
                   try {
-                    await readSseStream(reader, trackingHandler, abortController?.signal)
+                    await readSseStream(reader, trackingHandler, abortController?.signal, () => streamDone)
                     lastErr = null
                     break
                   } catch (streamErr) {
@@ -391,7 +403,7 @@ export function useAgentChat() {
         },
       )
       if (resp.ok) {
-        _clearApproval()
+        _clearApproval(eventId)
         return true
       }
     } catch (e) {

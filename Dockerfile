@@ -16,7 +16,7 @@ FROM python:3.12.10-slim
 LABEL maintainer="zuowen"
 LABEL description="Scholar Assistant - 学术文献智能翻译工具"
 LABEL org.opencontainers.image.source="https://github.com/zuowen7/scholar-assistant-agent"
-LABEL org.opencontainers.image.version="0.3.6"
+LABEL org.opencontainers.image.version="0.4.2"
 LABEL org.opencontainers.image.revision=""
 
 # 创建非 root 用户
@@ -30,7 +30,6 @@ COPY --from=builder /install /usr/local
 # 复制项目代码
 COPY python/src/ src/
 COPY python/config/ config/
-COPY python/main.py .
 COPY python/api.py .
 
 # 输出目录

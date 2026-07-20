@@ -1,8 +1,7 @@
 # Scholar Assistant - Docker Compose
 #
 # 用法:
-#   docker compose up              # 启动 Ollama + 服务
-#   docker compose run app /data/input/paper.pdf -o /data/output/paper.md
+#   docker compose up              # 启动 Ollama + API 服务(:18088)
 #   docker compose down            # 停止
 
 services:
@@ -43,7 +42,8 @@ services:
       - ./data/output:/data/output
     environment:
       - OLLAMA_HOST=http://ollama:11434
-    entrypoint: ["python", "main.py"]
+    entrypoint: ["python", "api.py"]
+    command: ["--port", "18088"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:18088/api/health"]
       interval: 30s
