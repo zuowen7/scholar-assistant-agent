@@ -493,6 +493,13 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         startup_editor = state_editor.get("startup")
         if startup_editor:
             startup_editor()
+        # Start Agent V2 background tasks (session cleanup loop) if registered.
+        state_agent_startup = getattr(app.state, "_state_agent", {}).get("startup")
+        if state_agent_startup:
+            try:
+                await state_agent_startup()
+            except Exception as e:
+                logger.exception("Agent startup failed")
         try:
             cfg = _load_config()
             engine = cfg.get("translator", {}).get("engine", "ollama")

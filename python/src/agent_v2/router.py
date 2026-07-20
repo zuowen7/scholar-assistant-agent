@@ -181,8 +181,8 @@ def _load_cloud_config() -> dict:
         try:
             with open(default_path, encoding="utf-8") as f:
                 merged = yaml.safe_load(f) or {}
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to load %s: %s", default_path, e)
 
     # 2. 用 local.yaml 覆盖
     local_path = _RUNTIME_DIR / "config" / "default.local.yaml"
@@ -191,8 +191,8 @@ def _load_cloud_config() -> dict:
             with open(local_path, encoding="utf-8") as f:
                 local = yaml.safe_load(f) or {}
             _deep_merge(merged, local)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to load %s: %s", local_path, e)
 
     return merged.get("translator", {}).get("cloud", {})
 
@@ -220,8 +220,8 @@ def _load_agent_config() -> dict:
             try:
                 with open(cfg_path, encoding="utf-8") as f:
                     _deep_merge(merged, yaml.safe_load(f) or {})
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to load %s: %s", cfg_path, e)
 
     agent_cfg = merged.get("agent", {})
 
@@ -395,7 +395,7 @@ def _create_runtime(
     registry = create_default_registry(workspace_root=ws)
     register_academic_tools(registry)
     register_sub_agent(registry)
-    registry._provider = provider
+    registry.set_provider(provider)
 
     # Skills
     skill_registry = SkillRegistry()
@@ -439,15 +439,55 @@ def _create_runtime(
                                 max_steps=max_steps)
 
 
-async def _cleanup_pool():
-    """Remove stale sessions."""
+async def _cleanup_pool() -> int:
+    """Remove stale sessions from the in-memory pool.
+
+    A session is evicted when:
+      - It has been idle (no active stream) for longer than _SESSION_TTL, AND
+      - It is not currently streaming (turn() in progress).
+
+    Returns the number of evicted sessions. Safe to call concurrently — uses
+    _SESSION_LOCK. Persisted JSONL files on disk are NOT touched here; disk
+    cleanup is handled by v2_workflow_cleanup on explicit request.
+    """
     now = time.monotonic()
-    stale = []
+    stale_sids: list[str] = []
+    # First pass (lock held briefly): identify candidates without blocking
+    # streaming sessions. We check _is_streaming under the lock to avoid a
+    # race where a session starts streaming right after we evict it.
     async with _SESSION_LOCK:
-        for sid, rt in _SESSION_POOL.items():
-            # Stale if older than 1 hour and not the only session
-            pass  # Simple cleanup — don't auto-evict unless requested
-    return len(stale)
+        for sid, rt in list(_SESSION_POOL.items()):
+            # Skip any session currently streaming — evicting mid-turn would
+            # break approve()/abort() and orphan approval events.
+            if getattr(rt, "_is_streaming", False):
+                continue
+            last_active = getattr(rt, "last_active_monotonic", now)
+            if now - last_active > _SESSION_TTL:
+                stale_sids.append(sid)
+                _SESSION_POOL.pop(sid, None)
+
+    if stale_sids:
+        logger.info("Agent V2: cleaned up %d stale session(s) from pool: %s",
+                    len(stale_sids), stale_sids)
+    return len(stale_sids)
+
+
+async def _background_cleanup_loop() -> None:
+    """Background task that periodically evicts stale sessions.
+
+    Registered as a startup task on the FastAPI app. Runs every 10 minutes.
+    Catches its own exceptions so a single failure never kills the loop.
+    """
+    while True:
+        try:
+            await asyncio.sleep(600)  # 10 minutes
+            await _cleanup_pool()
+        except asyncio.CancelledError:
+            # App shutdown — exit cleanly.
+            break
+        except Exception:
+            logger.exception("Agent V2: background cleanup loop error (will retry)")
+            await asyncio.sleep(60)  # Back off before retrying
 
 
 # ---------------------------------------------------------------------------
@@ -455,6 +495,34 @@ async def _cleanup_pool():
 # ---------------------------------------------------------------------------
 
 def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> None:
+    # Background cleanup task — started/stopped via app.state so the host
+    # app's lifespan handler (api_factory._lifespan) controls the lifecycle.
+    # This avoids the deprecated @app.on_event("startup"/"shutdown") API.
+    _cleanup_task: asyncio.Task | None = None
+
+    async def _start_cleanup_loop() -> None:
+        nonlocal _cleanup_task
+        if _cleanup_task is None or _cleanup_task.done():
+            _cleanup_task = asyncio.create_task(_background_cleanup_loop())
+            logger.info("Agent V2: background session cleanup loop started (interval=600s, TTL=%ss)", _SESSION_TTL)
+
+    async def _stop_cleanup_loop() -> None:
+        nonlocal _cleanup_task
+        if _cleanup_task is not None and not _cleanup_task.done():
+            _cleanup_task.cancel()
+            try:
+                await _cleanup_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Agent V2: background session cleanup loop stopped")
+
+    # Register with app.state so api_factory._lifespan can drive the lifecycle.
+    state_agent = getattr(app.state, "_state_agent", None)
+    if state_agent is None:
+        state_agent = {}
+        app.state._state_agent = state_agent
+    state_agent["startup"] = _start_cleanup_loop
+    state_agent["shutdown"] = _stop_cleanup_loop
 
     @app.post(f"{prefix}/chat")
     async def v2_chat(req: ChatRequestV2, request: Request):
@@ -601,12 +669,74 @@ def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> Non
         }
 
     @app.post(f"{prefix}/workflows/cleanup")
-    async def v2_workflow_cleanup():
-        return {"status": "ok"}
+    async def v2_workflow_cleanup(request: Request):
+        """清理过期 session — 内存池 + 磁盘 JSONL 文件。
+
+        内存池：调用 _cleanup_pool 清理超过 _SESSION_TTL 的非流式 session。
+        磁盘：扫描 _SESSION_DIR，删除修改时间超过 _SESSION_TTL 的 .jsonl 文件
+              （保守起见，磁盘 TTL 用文件 mtime 而非 session 内部时间戳，
+               避免误删仍在恢复中的会话）。
+        """
+        evicted_memory = await _cleanup_pool()
+        evicted_disk = 0
+        now_ts = time.time()
+        if _SESSION_DIR.exists():
+            for f in _SESSION_DIR.glob("*.jsonl"):
+                try:
+                    mtime = f.stat().st_mtime
+                    if now_ts - mtime > _SESSION_TTL:
+                        # Don't delete a file whose session is still in memory
+                        # (e.g., long-running stream that hasn't updated mtime).
+                        if f.stem in _SESSION_POOL:
+                            continue
+                        f.unlink()
+                        evicted_disk += 1
+                except OSError:
+                    logger.warning("Failed to stat/remove stale session file %s", f, exc_info=True)
+        logger.info("workflow cleanup: evicted %d memory + %d disk sessions",
+                    evicted_memory, evicted_disk)
+        return {
+            "status": "ok",
+            "evicted_memory": evicted_memory,
+            "evicted_disk": evicted_disk,
+        }
 
     @app.delete(f"{prefix}/workflows/{{workflow_id}}")
     async def v2_workflow_delete(workflow_id: str):
-        return {"status": "ok", "deleted": workflow_id}
+        """删除指定 workflow — 内存池 + 磁盘 JSONL 文件。
+
+        路径穿越防护：workflow_id 必须匹配 _SESSION_ID_RE（^[A-Za-z0-9_-]{1,128}$），
+        且不允许包含路径分隔符。
+        """
+        if not _SESSION_ID_RE.fullmatch(workflow_id):
+            raise HTTPException(400, "Invalid workflow_id")
+        # Defense in depth — never allow path separators even if regex changes.
+        if "/" in workflow_id or "\\" in workflow_id or ".." in workflow_id:
+            raise HTTPException(400, "Invalid workflow_id")
+
+        # Don't allow deleting a session that is currently streaming.
+        async with _SESSION_LOCK:
+            rt = _SESSION_POOL.get(workflow_id)
+            if rt is not None and getattr(rt, "_is_streaming", False):
+                raise HTTPException(409, f"Session {workflow_id} is currently streaming; abort it first")
+            _SESSION_POOL.pop(workflow_id, None)
+
+        deleted_disk = False
+        session_path = _SESSION_DIR / f"{workflow_id}.jsonl"
+        if session_path.is_file():
+            try:
+                session_path.unlink()
+                deleted_disk = True
+            except OSError as e:
+                logger.warning("Failed to delete session file %s: %s", session_path, e)
+                raise HTTPException(500, f"Failed to delete session file: {e}")
+
+        logger.info("workflow delete: %s (memory=yes, disk=%s)", workflow_id, deleted_disk)
+        return {
+            "status": "ok",
+            "deleted": workflow_id,
+            "disk_removed": deleted_disk,
+        }
 
     @app.get(f"{prefix}/cost/{{session_id}}")
     async def v2_cost(session_id: str, request: Request):

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Any, AsyncGenerator
 
@@ -68,6 +69,10 @@ class ConversationRuntime:
         self._session_approved_tools: set[str] = set()
         self._approval_denied = False
         self._aborted = False
+        # Lifecycle tracking — used by router._cleanup_pool to evict stale
+        # sessions safely (never evict a streaming session).
+        self.last_active_monotonic: float = time.monotonic()
+        self._is_streaming: bool = False
 
     # ---- Public API ----
 
@@ -78,65 +83,76 @@ class ConversationRuntime:
             return
 
         self._approval_denied = False
-        yield AgentEvent.session_started(self.session.session_id)
-        self.session.append(Message(role=MessageRole.USER, blocks=[TextBlock(text=user_message)]))
-        self._auto_save()
+        self._is_streaming = True
+        self.last_active_monotonic = time.monotonic()
+        try:
+            yield AgentEvent.session_started(self.session.session_id)
+            self.session.append(Message(role=MessageRole.USER, blocks=[TextBlock(text=user_message)]))
+            self._auto_save()
 
-        for step in range(self.max_steps):
-            if self._aborted:
-                yield AgentEvent.aborted("Session aborted by user")
-                yield AgentEvent.done()
-                return
+            for step in range(self.max_steps):
+                if self._aborted:
+                    yield AgentEvent.aborted("Session aborted by user")
+                    yield AgentEvent.done()
+                    return
 
-            for retry in range(3):
-                try:
-                    async for event in self._llm_turn():
-                        yield event
-                        if event.type in (AgentEventType.RESPONSE, AgentEventType.ERROR):
-                            self._auto_save()
-                            yield AgentEvent.usage(TokenUsage(
-                                input_tokens=self.usage.total_input,
-                                output_tokens=self.usage.total_output,
-                            ))
+                for retry in range(3):
+                    try:
+                        async for event in self._llm_turn():
+                            yield event
+                            if event.type in (AgentEventType.RESPONSE, AgentEventType.ERROR):
+                                self._auto_save()
+                                yield AgentEvent.usage(TokenUsage(
+                                    input_tokens=self.usage.total_input,
+                                    output_tokens=self.usage.total_output,
+                                ))
+                                yield AgentEvent.done()
+                                return
+                            if event.type == AgentEventType.DONE:
+                                return
+                        if self._aborted:
+                            yield AgentEvent.aborted("Session aborted by user")
                             yield AgentEvent.done()
                             return
-                        if event.type == AgentEventType.DONE:
+                        if self._approval_denied:
+                            self._auto_save()
+                            yield AgentEvent.aborted("File edit rejected; no changes were applied")
+                            yield AgentEvent.done()
                             return
-                    if self._aborted:
-                        yield AgentEvent.aborted("Session aborted by user")
+                        break
+                    except ApiError as e:
+                        if e.status_code == 429 and retry < 2:
+                            wait = e.retry_after or (2 ** retry)
+                            yield AgentEvent.token(f"\n[Rate limited, retrying in {wait:.0f}s...]\n")
+                            await asyncio.sleep(wait)
+                            continue
+                        if e.status_code == 0 and retry < 2:
+                            yield AgentEvent.token(f"\n[Connection failed, retrying ({retry+1}/3)...]\n")
+                            await asyncio.sleep(2.0)
+                            continue
+                        yield AgentEvent.error(f"API error: {e}")
                         yield AgentEvent.done()
                         return
-                    if self._approval_denied:
-                        self._auto_save()
-                        yield AgentEvent.aborted("File edit rejected; no changes were applied")
+                    except Exception as e:
+                        if retry < 2:
+                            yield AgentEvent.token(f"\n[Error, retrying ({retry+1}/3)...]\n")
+                            await asyncio.sleep(1.0)
+                            continue
+                        logger.exception("unexpected error in turn")
+                        yield AgentEvent.error(f"unexpected error: {e}")
                         yield AgentEvent.done()
                         return
-                    break
-                except ApiError as e:
-                    if e.status_code == 429 and retry < 2:
-                        wait = e.retry_after or (2 ** retry)
-                        yield AgentEvent.token(f"\n[Rate limited, retrying in {wait:.0f}s...]\n")
-                        await asyncio.sleep(wait)
-                        continue
-                    if e.status_code == 0 and retry < 2:
-                        yield AgentEvent.token(f"\n[Connection failed, retrying ({retry+1}/3)...]\n")
-                        await asyncio.sleep(2.0)
-                        continue
-                    yield AgentEvent.error(f"API error: {e}")
-                    yield AgentEvent.done()
-                    return
-                except Exception as e:
-                    if retry < 2:
-                        yield AgentEvent.token(f"\n[Error, retrying ({retry+1}/3)...]\n")
-                        await asyncio.sleep(1.0)
-                        continue
-                    logger.exception("unexpected error in turn")
-                    yield AgentEvent.error(f"unexpected error: {e}")
-                    yield AgentEvent.done()
-                    return
-        else:
-            yield AgentEvent.error(f"max steps ({self.max_steps}) reached")
-            yield AgentEvent.done()
+                self.last_active_monotonic = time.monotonic()
+            else:
+                yield AgentEvent.error(f"max steps ({self.max_steps}) reached")
+                yield AgentEvent.done()
+        finally:
+            # Guaranteed cleanup on any exit path (normal return, exception,
+            # generator close, client disconnect). Prevents _approval_events
+            # from leaking if the generator is abandoned mid-approval.
+            self._is_streaming = False
+            if self._approval_events:
+                self._approval_events.clear()
 
     def approve(self, event_id: str, decision: str) -> bool:
         """Handle approval decision from frontend. Returns True if event was found."""
@@ -319,18 +335,19 @@ class ConversationRuntime:
         # Checkpoint after file modifications: include new content for frontend
         if tb.name in ("write_file", "str_replace") and not is_error:
             new_content = ""
-            if file_path:
+            if resolved_path:
                 try:
-                    fp = Path(file_path) if Path(file_path).is_absolute() else (self.tool_registry._workspace_root / file_path) if self.tool_registry._workspace_root else Path(file_path)
+                    fp = Path(resolved_path)
                     if fp.is_file():
                         new_content = fp.read_text(encoding="utf-8", errors="replace")
                 except Exception:
                     pass
             yield AgentEvent.checkpoint({
                 "action": tb.name,
-                "file": file_path,
+                "file": resolved_path,
                 "workspace": self.session.meta.workspace,
                 "content": new_content[:10000] if new_content else tool_output,
+                "content_truncated": len(new_content) > 10000,
             })
 
     def _auto_save(self) -> None:

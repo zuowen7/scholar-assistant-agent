@@ -92,6 +92,23 @@ class ToolRegistry:
     def __init__(self, workspace_root: str | Path | None = None):
         self._tools: dict[str, ToolSpec] = {}
         self._workspace_root = Path(workspace_root).resolve() if workspace_root else None
+        # Provider injected by the runtime; used by tools that need LLM access
+        # (e.g., sub_agent). Set via set_provider() — do NOT assign _provider
+        # directly from outside the class.
+        self._provider: Any = None
+
+    def set_provider(self, provider: Any) -> None:
+        """Inject the LLM provider for tools that need it (e.g., sub_agent).
+
+        Replaces the previous pattern of ``registry._provider = provider``
+        which bypassed encapsulation and would break if ``_provider`` is
+        renamed or ``__slots__`` is added.
+        """
+        self._provider = provider
+
+    def get_provider(self) -> Any:
+        """Return the injected provider, or None if not set."""
+        return self._provider
 
     def register(
         self,
