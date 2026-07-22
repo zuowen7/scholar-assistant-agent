@@ -28,11 +28,10 @@ class TestMaskApiKey:
         self._mask(cfg)
         assert cfg["translator"]["cloud"]["api_key"] == "sk-12345****cdef"
 
-    def test_short_key_not_masked(self) -> None:
-        # <=8 chars: unchanged
+    def test_short_key_masked(self) -> None:
         cfg = {"translator": {"cloud": {"api_key": "short"}}}
         self._mask(cfg)
-        assert cfg["translator"]["cloud"]["api_key"] == "short"
+        assert cfg["translator"]["cloud"]["api_key"] == "****"
 
     def test_empty_key_untouched(self) -> None:
         cfg = {"translator": {"cloud": {"api_key": ""}}}
@@ -46,17 +45,29 @@ class TestMaskApiKey:
     def test_missing_translator_section_no_error(self) -> None:
         self._mask({})
 
-    def test_exactly_8_chars_not_masked(self) -> None:
-        # exactly 8 chars: not > 8, so unchanged
+    def test_exactly_8_chars_masked(self) -> None:
         cfg = {"translator": {"cloud": {"api_key": "12345678"}}}
         self._mask(cfg)
-        assert cfg["translator"]["cloud"]["api_key"] == "12345678"
+        assert cfg["translator"]["cloud"]["api_key"] == "****"
 
     def test_exactly_9_chars_masked(self) -> None:
         # 9-12 chars: show head4 + **** + tail4
         cfg = {"translator": {"cloud": {"api_key": "123456789"}}}
         self._mask(cfg)
         assert cfg["translator"]["cloud"]["api_key"] == "1234****6789"
+
+    def test_all_nested_api_keys_are_masked(self) -> None:
+        cfg = {
+            "translator": {"cloud": {"api_key": "cloud-secret-key"}},
+            "agent": {"api_key": "agent-secret-key"},
+            "zotero": {"api_key": "zotero-secret-key"},
+            "vision": {"api_key": "vision-secret-key"},
+        }
+        self._mask(cfg)
+        assert "****" in cfg["translator"]["cloud"]["api_key"]
+        assert "****" in cfg["agent"]["api_key"]
+        assert "****" in cfg["zotero"]["api_key"]
+        assert "****" in cfg["vision"]["api_key"]
 
 
 class TestIsMasked:
@@ -108,6 +119,23 @@ class TestDeepMerge:
         result = self._merge({"a": {"b": 1}}, {"a": "flat"})
         assert result == {"a": "flat"}
 
+
+def test_create_app_preserves_agent_lifecycle_callbacks(tmp_path, monkeypatch):
+    import api_factory
+
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    config_path = config_dir / "default.yaml"
+    config_path.write_text("translator:\n  engine: ollama\n", encoding="utf-8")
+    monkeypatch.setattr(api_factory, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(api_factory, "RUNTIME_DIR", tmp_path)
+
+    app = api_factory.create_app()
+
+    assert callable(app.state._state_agent.get("startup"))
+    assert callable(app.state._state_agent.get("shutdown"))
+    assert callable(app.state._state_agent.get("ensure_rag_store"))
+
     def test_empty_base(self) -> None:
         result = self._merge({}, {"a": 1})
         assert result == {"a": 1}
@@ -144,6 +172,39 @@ class TestStripEmptyStrings:
 
     def test_empty_input(self) -> None:
         assert self._strip({}) == {}
+
+
+def test_save_config_keeps_all_secrets_local_and_preserves_overrides(tmp_path, monkeypatch):
+    import yaml
+    import api_factory
+
+    config_path = tmp_path / "config" / "default.yaml"
+    config_path.parent.mkdir()
+    config_path.write_text("{}\n", encoding="utf-8")
+    local_path = config_path.parent / "default.local.yaml"
+    local_path.write_text("network:\n  proxy: http://127.0.0.1:7890\n", encoding="utf-8")
+    monkeypatch.setattr(api_factory, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(api_factory, "_config_cache", None)
+    monkeypatch.setattr(api_factory, "_config_cache_mtime", 0.0)
+
+    api_factory._save_config({
+        "translator": {"cloud": {"api_key": "cloud-secret"}},
+        "agent": {"api_key": "agent-secret"},
+        "zotero": {"api_key": "zotero-secret"},
+        "vision": {"api_key": "vision-secret"},
+    })
+
+    public = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    private = yaml.safe_load(local_path.read_text(encoding="utf-8"))
+    assert public["translator"]["cloud"]["api_key"] == ""
+    assert public["agent"]["api_key"] == ""
+    assert public["zotero"]["api_key"] == ""
+    assert public["vision"]["api_key"] == ""
+    assert private["translator"]["cloud"]["api_key"] == "cloud-secret"
+    assert private["agent"]["api_key"] == "agent-secret"
+    assert private["zotero"]["api_key"] == "zotero-secret"
+    assert private["vision"]["api_key"] == "vision-secret"
+    assert private["network"]["proxy"] == "http://127.0.0.1:7890"
 
 
 # ── _validate_file_path ────────────────────────────────────────────────
@@ -186,6 +247,11 @@ class TestValidateFilePath:
     def test_program_files_blocked(self) -> None:
         with pytest.raises(HTTPException) as exc_info:
             self._validate(Path("C:\\Program Files\\app\\config.ini"))
+        assert exc_info.value.status_code == 403
+
+    def test_windows_system_path_matching_is_case_insensitive(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            self._validate(Path("c:\\wInDoWs\\System32\\drivers\\etc\\hosts"))
         assert exc_info.value.status_code == 403
 
     def test_dot_env_extension_blocked(self, tmp_path: Path) -> None:
@@ -276,6 +342,16 @@ class TestValidateFilePath:
         with pytest.raises(HTTPException) as exc_info:
             self._validate(home / "AppData" / "Local" / "Microsoft" / "VSCode" / "settings.json")
         assert exc_info.value.status_code == 403
+
+    def test_appdata_matching_is_case_insensitive(self) -> None:
+        home = Path.home()
+        with pytest.raises(HTTPException) as exc_info:
+            self._validate(home / "appdata" / "ROAMING" / "vendor" / "credentials.json")
+        assert exc_info.value.status_code == 403
+
+    def test_appdata_local_temp_is_allowed(self) -> None:
+        home = Path.home()
+        self._validate(home / "AppData" / "Local" / "Temp" / "translation.pdf")
 
 
 # ── _load_config cache behavior ─────────────────────────────────────────

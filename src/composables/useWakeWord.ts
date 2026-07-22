@@ -13,6 +13,17 @@ function getWakeWordPhrase(): string {
   return '小研'
 }
 
+function getWakeWordSensitivity(): 'low' | 'medium' | 'high' {
+  try {
+    const raw = localStorage.getItem('voice-settings')
+    if (raw) {
+      const value = JSON.parse(raw).sensitivity
+      if (value === 'low' || value === 'medium' || value === 'high') return value
+    }
+  } catch { /* ignore invalid settings */ }
+  return 'medium'
+}
+
 // Common homophones for wake word characters — speech recognition often
 // picks different characters for the same sound
 const HOMOPHONE_GROUPS: Record<string, string[]> = {
@@ -42,10 +53,11 @@ function buildVariants(phrase: string): string[] {
   return variants
 }
 
-function matchWakeWord(text: string): boolean {
+function matchWakeWord(text: string, sensitivity = getWakeWordSensitivity()): boolean {
   const phrase = getWakeWordPhrase()
   // Exact match
   if (text.includes(phrase)) return true
+  if (sensitivity === 'low') return false
   // Homophone match
   const variants = buildVariants(phrase)
   for (const v of variants) {
@@ -88,10 +100,14 @@ export function useWakeWord(onWakeWord: () => void) {
         // Don't trigger while dictation is active or during cooldown
         if (isSpeechBusy() || cooldown) return
         for (let i = event.resultIndex; i < event.results.length; i++) {
+          const sensitivity = getWakeWordSensitivity()
+          // Low and medium sensitivity wait for a finalized recognition result;
+          // high sensitivity may react to interim results for faster wake-up.
+          if (sensitivity !== 'high' && !event.results[i].isFinal) continue
           for (let j = 0; j < event.results[i].length; j++) {
             const text = event.results[i][j].transcript.toLowerCase()
             logger.debug('[wake-word] heard:', text)
-            if (matchWakeWord(text)) {
+            if (matchWakeWord(text, sensitivity)) {
               logger.debug('[wake-word] MATCH:', text)
               // Stop listening immediately to prevent re-triggering
               try { sr?.stop() } catch { /* ignore */ }

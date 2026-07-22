@@ -1,0 +1,152 @@
+# CI quality gate for Scholar Assistant
+#
+# 触发：push 到任意分支、任意 PR
+# 目标：在代码合入前自动跑 lint + typecheck + test，作为本地 pre-commit hook 的兜底
+#
+# 与 release.yml 的关系：
+#   - release.yml：tag 触发，跑完整测试 + 构建 + 发布
+#   - ci.yml：push/PR 触发，跑质量门禁（lint + typecheck + unit test），不构建
+#
+# 设计原则：
+#   1. 前端 / 后端 job 并行，缩短 CI 时长
+#   2. 缓存依赖，目标总时长 < 3 min
+#   3. 功能门禁失败即阻断；全仓格式/静态审计在建立基线前保留为可见告警
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["!v*"]  # tag 推送由 release.yml 处理
+  pull_request:
+    branches: ["**"]
+
+# 同分支新 push 时取消旧的运行
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── 前端质量门禁 ────────────────────────────────────
+  frontend:
+    name: Frontend lint + typecheck + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript type check
+        run: npm run typecheck
+
+      - name: ESLint
+        run: npm run lint
+
+      # 当前仓库尚未完成一次独立的全量 Prettier 基线提交。先保留完整
+      # 审计输出，避免 CI 因历史格式债务跳过真正的 Vitest 功能门禁。
+      - name: Prettier format audit (non-blocking until baseline)
+        run: npm run format:check || echo "::warning::Prettier 全仓基线尚未建立"
+
+      - name: Vitest
+        run: npm run test
+
+  # ── 后端质量门禁 ────────────────────────────────────
+  backend:
+    name: Backend ruff + pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: python/requirements-lock.txt
+
+      - name: Install dependencies
+        run: |
+          pip install -r python/requirements-lock.txt
+          pip install -r python/requirements-dev.txt
+          pip install pytest pytest-asyncio hypothesis
+
+      # Ruff 是后加入的全仓审计，现有代码尚未建立 lint/format 基线。
+      # 两项仍在 Actions 中完整运行并显示告警，但 pytest 必须继续阻断。
+      - name: Ruff audit (non-blocking until baseline)
+        run: cd python && ruff check . --statistics || echo "::warning::Ruff lint 全仓基线尚未建立"
+
+      - name: Ruff format audit (non-blocking until baseline)
+        run: cd python && ruff format --check . || echo "::warning::Ruff format 全仓基线尚未建立"
+
+      - name: Pytest (unit only on CI for speed)
+        run: cd python && pytest tests/unit/ -q --tb=short
+
+      - name: Pytest (integration excluding Ollama)
+        run: |
+          cd python && pytest tests/integration/ -q --tb=short \
+            -m "not ollama" \
+            --ignore=tests/integration/test_ollama_translate_e2e.py \
+            --ignore=tests/integration/test_ollama_models_endpoint.py
+
+  # ── 跨层契约检查 ────────────────────────────────────
+  # 确保 SSE 事件名、tool_name 等跨前后端的契约没有被破坏
+  contract:
+    name: Cross-layer contract check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check SSE event name consistency
+        shell: bash
+        run: |
+          # AGENTS.md 声明的 translate.* 事件必须前后端都有
+          EVENTS=(
+            "translate.progress"
+            "translate.parsed"
+            "translate.cleaned"
+            "translate.chunked"
+            "translate.block_translated"
+            "translate.chunk_tm_hit"
+            "translate.chunk_done"
+            "translate.chunk_error"
+            "translate.glossary_violation"
+            "translate.qa_warnings"
+            "translate.complete"
+            "translate.error"
+          )
+          FAIL=0
+          for evt in "${EVENTS[@]}"; do
+            # 后端必须 emit
+            if ! grep -rq "\"$evt\"\|'$evt'" python/routers/ python/src/ 2>/dev/null; then
+              echo "::error::后端未找到 SSE 事件: $evt"
+              FAIL=1
+            fi
+            # 前端必须 listen
+            if ! grep -rq "$evt" src/composables/ src/utils/ 2>/dev/null; then
+              echo "::error::前端未监听 SSE 事件: $evt"
+              FAIL=1
+            fi
+          done
+          exit $FAIL
+
+      - name: Check tool_name metadata key
+        shell: bash
+        run: |
+          # AGENTS.md 规定：canonical metadata key 是 tool_name，不是 tool
+          # 后端新代码不应再用 bare 'tool' 作为 canonical field
+          if grep -rn "['\"]tool['\"]\s*:" python/src/agent_v2/ 2>/dev/null | \
+             grep -v "tool_name\|tool_call\|tool_result\|tool_use\|tool_input\|# "; then
+            echo "::error::检测到 bare 'tool' 字段，应使用 'tool_name'（见 AGENTS.md）"
+            exit 1
+          fi
+          echo "tool_name 契约检查通过"

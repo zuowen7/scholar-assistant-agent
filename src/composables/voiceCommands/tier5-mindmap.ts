@@ -1,4 +1,10 @@
 import type { VoiceCommandDef } from '../../types/voice'
+import { activateVoiceWorkspace } from './workspace'
+
+async function dispatchMindMapCommand(action: string) {
+  await activateVoiceWorkspace('mindmap')
+  window.dispatchEvent(new CustomEvent('voice-mindmap-command', { detail: { action } }))
+}
 
 export function registerTier5Commands(register: (defs: VoiceCommandDef[]) => void) {
   register([
@@ -9,7 +15,7 @@ export function registerTier5Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['add node', 'new node', 'add child'],
       priority: 4,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-mindmap-command', { detail: { action: 'add-child' } }))
+        await dispatchMindMapCommand('add-child')
       },
     },
     {
@@ -19,7 +25,7 @@ export function registerTier5Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['delete node', 'remove node'],
       priority: 4,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-mindmap-command', { detail: { action: 'delete-node' } }))
+        await dispatchMindMapCommand('delete-node')
       },
     },
     {
@@ -29,7 +35,7 @@ export function registerTier5Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['ai expand', 'expand node', 'smart expand'],
       priority: 4,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-mindmap-command', { detail: { action: 'ai-expand' } }))
+        await dispatchMindMapCommand('ai-expand')
       },
     },
     {
@@ -39,7 +45,7 @@ export function registerTier5Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['auto layout', 'layout', 'reorganize layout'],
       priority: 4,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-mindmap-command', { detail: { action: 'layout' } }))
+        await dispatchMindMapCommand('layout')
       },
     },
     {
@@ -49,7 +55,7 @@ export function registerTier5Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['save mindmap', 'save mind map'],
       priority: 4,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-mindmap-command', { detail: { action: 'save' } }))
+        await dispatchMindMapCommand('save')
       },
     },
     {
@@ -59,7 +65,7 @@ export function registerTier5Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['analyze map', 'analyze mind map', 'ai analyze'],
       priority: 4,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-mindmap-command', { detail: { action: 'analyze' } }))
+        await dispatchMindMapCommand('analyze')
       },
     },
     {
@@ -69,7 +75,7 @@ export function registerTier5Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['zoom in', 'zoom closer'],
       priority: 4,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-mindmap-command', { detail: { action: 'zoom-in' } }))
+        await dispatchMindMapCommand('zoom-in')
       },
     },
     {
@@ -79,7 +85,7 @@ export function registerTier5Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['zoom out', 'zoom farther'],
       priority: 4,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-mindmap-command', { detail: { action: 'zoom-out' } }))
+        await dispatchMindMapCommand('zoom-out')
       },
     },
     {
@@ -89,7 +95,7 @@ export function registerTier5Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['fit view', 'fit screen', 'show all'],
       priority: 4,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-mindmap-command', { detail: { action: 'fit-view' } }))
+        await dispatchMindMapCommand('fit-view')
       },
     },
     {
@@ -99,7 +105,7 @@ export function registerTier5Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['reset view', 'restore view'],
       priority: 4,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-mindmap-command', { detail: { action: 'reset-view' } }))
+        await dispatchMindMapCommand('reset-view')
       },
     },
   ])

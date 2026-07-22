@@ -1,6 +1,9 @@
 import { ref } from 'vue'
 import { useSpeechRecognition } from './useSpeechRecognition'
 import { logger } from '../utils/logger'
+import { i18n } from '../i18n'
+import { useToast } from './useToast'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const isTauri = '__TAURI_INTERNALS__' in window
 
@@ -15,7 +18,7 @@ function getVoiceLanguage(): string {
   return 'zh-CN'
 }
 
-export type VoiceCommandState = 'idle' | 'activating' | 'listening' | 'submitting' | 'processing'
+export type VoiceCommandState = 'idle' | 'activating' | 'listening' | 'submitting' | 'processing' | 'result' | 'error'
 
 // ── Module-level singleton state ───────────────────────────────────────
 
@@ -26,17 +29,26 @@ const error = ref('')
 
 let timeoutHandle: ReturnType<typeof setTimeout> | null = null
 let silenceHandle: ReturnType<typeof setTimeout> | null = null
+let resultHandle: ReturnType<typeof setTimeout> | null = null
 let speechStarted = false
 
 function clearTimeout_() {
   if (timeoutHandle !== null) { clearTimeout(timeoutHandle); timeoutHandle = null }
   if (silenceHandle !== null) { clearTimeout(silenceHandle); silenceHandle = null }
+  if (resultHandle !== null) { clearTimeout(resultHandle); resultHandle = null }
+}
+
+function stopSpeech() {
+  if (!speechStarted) return
+  speech.stop()
+  speechStarted = false
 }
 
 function submit() {
   clearTimeout_()
   const text = transcript.value.trim()
   if (!text) { cancel(); return }
+  stopSpeech()
   state.value = 'submitting'
   logger.debug('[voice] submitting:', text)
   window.dispatchEvent(new CustomEvent('voice-command-submit', {
@@ -46,11 +58,11 @@ function submit() {
 
 function cancel() {
   clearTimeout_()
-  if (speechStarted) {
-    speech.stop()
-    speechStarted = false
-  }
+  stopSpeech()
   state.value = 'idle'
+  transcript.value = ''
+  response.value = ''
+  error.value = ''
 }
 
 // Silence-based auto-submit: 2s after last speech result, auto-submit
@@ -75,18 +87,44 @@ const speech = useSpeechRecognition({
       submit()
     }
   },
+  onError(message: string) {
+    if (state.value === 'listening' || state.value === 'activating') {
+      fail(describeSpeechError(message))
+    }
+  },
 })
+
+function describeSpeechError(message: string) {
+  const normalized = message.trim().toLowerCase()
+  if (normalized === 'no-speech') return i18n.global.t('voice.noSpeech')
+  if (normalized === 'not-allowed' || normalized === 'service-not-allowed') return i18n.global.t('voice.permissionDenied')
+  if (normalized === 'audio-capture') return i18n.global.t('voice.microphoneUnavailable')
+  if (normalized === 'network') return i18n.global.t('voice.networkError')
+  return message || i18n.global.t('voice.startFailed')
+}
+
+function fail(message: string) {
+  clearTimeout_()
+  stopSpeech()
+  error.value = message
+  state.value = 'error'
+  // Show a user-visible toast so the user knows why voice failed
+  // (without this, the error is only in composable state — invisible to the user)
+  try { useToast().pushError(message) } catch { /* ignore if no toast context */ }
+}
 
 export function useVoiceCommand() {
   function triggerVoiceCommand() {
     logger.debug('[voice] triggerVoiceCommand, state=', state.value)
-    if (state.value !== 'idle') {
+    if (state.value === 'error' || state.value === 'result') {
+      cancel()
+    } else if (state.value !== 'idle') {
       cancel()
       return
     }
 
     if (!speech.isSupported) {
-      error.value = '当前浏览器不支持语音识别'
+      fail(i18n.global.t('voice.notSupported'))
       return
     }
 
@@ -100,7 +138,6 @@ export function useVoiceCommand() {
     const activateWindow = async () => {
       if (isTauri) {
         try {
-          const { getCurrentWindow } = await import('@tauri-apps/api/window')
           const win = getCurrentWindow()
           await win.unminimize()
           await win.setFocus()
@@ -117,13 +154,16 @@ export function useVoiceCommand() {
       state.value = 'listening'
       speechStarted = true
       const lang = getVoiceLanguage()
-      speech.start(lang)
+      if (!speech.start(lang)) {
+        speechStarted = false
+        fail(describeSpeechError(speech.error.value))
+        return
+      }
 
       // 10s absolute timeout — no speech at all
       timeoutHandle = setTimeout(() => {
         if (state.value === 'listening') {
-          error.value = '没有检测到语音'
-          cancel()
+          fail(i18n.global.t('voice.noSpeech'))
         }
       }, 10_000)
     })
@@ -137,10 +177,21 @@ export function useVoiceCommand() {
   }
 
   function done() {
+    clearTimeout_()
+    stopSpeech()
     state.value = 'idle'
     response.value = ''
     transcript.value = ''
     error.value = ''
+  }
+
+  function finish(message = '') {
+    clearTimeout_()
+    stopSpeech()
+    error.value = ''
+    response.value = message
+    state.value = 'result'
+    resultHandle = setTimeout(done, 2200)
   }
 
   return {
@@ -151,6 +202,8 @@ export function useVoiceCommand() {
     triggerVoiceCommand,
     cancel,
     setProcessing,
+    finish,
+    fail,
     done,
   }
 }

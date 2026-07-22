@@ -64,6 +64,11 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
     elif t == AgentEventType.APPROVAL_RECEIVED:
         content = data.get("decision", "")
         evt_type = "approval_received"
+        return {
+            "type": evt_type,
+            "content": content,
+            "event_id": data.get("id", _event_id()),
+        }
     elif t == AgentEventType.AWAIT_APPROVAL:
         tool_name = data.get("tool_name", "")
         content = f"Agent wants to modify {tool_name}"
@@ -76,7 +81,10 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
             "tool_name": tool_name,
             "reason": data.get("reason", ""),
             "risk": "MODERATE",
-            "force_approval": True,
+            # Only hide session approval when the runtime explicitly marks this
+            # operation as requiring a fresh confirmation every time. Ordinary
+            # workspace edits can use the visible "allow this session" path.
+            "force_approval": bool(data.get("force_approval", False)),
             # args: used by showInlineDiff to check file_path and as fallback for old/new text
             "args": {
                 "file_path": file_path,
@@ -102,11 +110,18 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
             "action": data.get("action", ""),
             "file": data.get("file", ""),
             "content": data.get("content", ""),
+            "content_truncated": bool(data.get("content_truncated", False)),
         }
         return {"type": evt_type, "content": content, "event_id": _event_id(), "metadata": metadata}
     elif t == AgentEventType.SESSION_STARTED:
         content = data.get("session_id", "")
         evt_type = t.value
+        return {
+            "type": evt_type,
+            "content": content,
+            "event_id": _event_id(),
+            "metadata": {"session_id": content},
+        }
     elif t == AgentEventType.RESPONSE:
         content = data.get("text", "")
         evt_type = "response"

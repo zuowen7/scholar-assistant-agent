@@ -12,7 +12,7 @@ import time
 import threading
 import uuid
 from contextvars import ContextVar
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import yaml
 from fastapi import FastAPI, HTTPException, Request
@@ -323,11 +323,47 @@ _config_read_lock = threading.Lock()
 def _save_config(config: dict) -> None:
     global _config_cache, _config_cache_mtime
     save_copy = copy.deepcopy(config)
-    # Strip API keys from default.yaml, but persist them in default.local.yaml
-    original_api_key = save_copy.get("translator", {}).get("cloud", {}).get("api_key", "")
-    cloud_cfg = save_copy.get("translator", {}).get("cloud", {})
-    if cloud_cfg.get("api_key"):
-        cloud_cfg["api_key"] = ""
+    # Strip secrets from default.yaml, but persist them in default.local.yaml.
+    # Keep unrelated local overrides intact when rotating or clearing a key.
+    secret_paths = (
+        ("translator", "cloud", "api_key"),
+        ("agent", "api_key"),
+        ("zotero", "api_key"),
+        ("vision", "api_key"),
+    )
+
+    def _get_nested(data: dict, path: tuple[str, ...]):
+        current = data
+        for key in path:
+            if not isinstance(current, dict) or key not in current:
+                return ""
+            current = current[key]
+        return current
+
+    def _set_nested(data: dict, path: tuple[str, ...], value) -> None:
+        current = data
+        for key in path[:-1]:
+            current = current.setdefault(key, {})
+        current[path[-1]] = value
+
+    def _pop_nested(data: dict, path: tuple[str, ...]) -> None:
+        current = data
+        parents = []
+        for key in path[:-1]:
+            child = current.get(key)
+            if not isinstance(child, dict):
+                return
+            parents.append((current, key))
+            current = child
+        current.pop(path[-1], None)
+        for parent, key in reversed(parents):
+            if isinstance(parent.get(key), dict) and not parent[key]:
+                parent.pop(key, None)
+
+    secrets = {path: _get_nested(save_copy, path) for path in secret_paths}
+    for path, value in secrets.items():
+        if value:
+            _set_nested(save_copy, path, "")
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with _save_config_lock:
         import tempfile as _tempfile
@@ -345,25 +381,41 @@ def _save_config(config: dict) -> None:
             except OSError:
                 pass
             raise
-        # Persist API key to default.local.yaml so it survives config reloads
+        # Persist API keys to default.local.yaml so they survive config reloads.
         local_path = CONFIG_PATH.parent / "default.local.yaml"
-        if original_api_key:
-            local_data = {"translator": {"cloud": {"api_key": original_api_key}}}
-            with open(local_path, "w", encoding="utf-8") as f:
-                yaml.dump(local_data, f, allow_unicode=True, default_flow_style=False)
-        elif local_path.exists():
-            # Key was cleared — remove it from local overrides
-            try:
+        try:
+            if local_path.exists():
                 with open(local_path, encoding="utf-8") as f:
                     local_data = yaml.safe_load(f) or {}
-                local_data.setdefault("translator", {}).setdefault("cloud", {}).pop("api_key", None)
-                if local_data.get("translator", {}).get("cloud"):
-                    with open(local_path, "w", encoding="utf-8") as f:
-                        yaml.dump(local_data, f, allow_unicode=True, default_flow_style=False)
+            else:
+                local_data = {}
+            for path, value in secrets.items():
+                if value:
+                    _set_nested(local_data, path, value)
                 else:
-                    local_path.unlink()
-            except Exception as e:
-                logger.warning("failed to write local config override: %s", e)
+                    _pop_nested(local_data, path)
+            local_data = _strip_empty_strings(local_data)
+            if local_data:
+                local_fd, local_tmp = _tempfile.mkstemp(
+                    dir=CONFIG_PATH.parent, suffix=".local.tmp"
+                )
+                try:
+                    with os.fdopen(local_fd, "w", encoding="utf-8") as f:
+                        yaml.dump(local_data, f, allow_unicode=True, default_flow_style=False)
+                        f.flush()
+                        os.fsync(f.fileno())
+                    os.replace(local_tmp, local_path)
+                except Exception:
+                    try:
+                        os.unlink(local_tmp)
+                    except OSError:
+                        pass
+                    raise
+            else:
+                local_path.unlink(missing_ok=True)
+        except Exception as e:
+            logger.warning("failed to write local config override: %s", e)
+            raise
         with _config_read_lock:
             _config_cache = copy.deepcopy(config)
             _config_cache_mtime = CONFIG_PATH.stat().st_mtime
@@ -393,15 +445,20 @@ def _is_masked(value: str) -> bool:
     return _is_masked_impl(value)
 
 
-_DENIED_PATH_PREFIXES = (
-    "/etc", "/proc", "/sys", "/dev", "/root",
-    "C:\\Windows", "C:\\Program Files",
-)
+_DENIED_POSIX_PATH_PREFIXES = ("/etc", "/proc", "/sys", "/dev", "/root")
+_DENIED_WINDOWS_PATH_PREFIXES = ("c:/windows", "c:/program files")
 _DENIED_HOME_SUBPATHS = (
     ".ssh", ".aws", ".gnupg", ".gitconfig", ".docker",
     ".kube", ".netrc", ".npmrc", ".pypirc",
 )
 _DENIED_EXTENSIONS = {".env", ".key", ".pem", ".p12", ".pfx", ".secret", ".credentials"}
+
+
+def _has_path_prefix(path_value: str, prefix: str) -> bool:
+    """Match a normalized path prefix without accepting sibling lookalikes."""
+    path_value = path_value.rstrip("/")
+    prefix = prefix.rstrip("/")
+    return path_value == prefix or path_value.startswith(f"{prefix}/")
 
 
 def _validate_file_path(file_path: Path) -> None:
@@ -412,7 +469,17 @@ def _validate_file_path(file_path: Path) -> None:
     For agent workspace path resolution see WorkspaceEnv.resolve().
     For command/tool risk classification see SecurityGate.classify().
     """
-    original = file_path
+    raw_path = str(file_path)
+    normalized_windows_path = raw_path.replace("\\", "/").casefold()
+    windows_path = PureWindowsPath(raw_path)
+    for prefix in _DENIED_WINDOWS_PATH_PREFIXES:
+        if _has_path_prefix(normalized_windows_path, prefix):
+            raise HTTPException(403, f"禁止访问系统目录: {prefix}")
+    # pathlib on POSIX treats ``C:\\...`` as a relative filename. Reject such
+    # paths explicitly instead of accidentally resolving them inside the cwd.
+    if os.name != "nt" and windows_path.is_absolute():
+        raise HTTPException(403, "当前平台不支持 Windows 绝对路径")
+
     # Symlink TOCTOU guard: reject symlinks before resolve() follows them.
     # lstat() does not follow the final symlink, so we can detect it.
     try:
@@ -433,7 +500,6 @@ def _validate_file_path(file_path: Path) -> None:
         pass
 
     resolved = file_path.resolve()
-    resolved_str = str(resolved)
 
     home = Path.home().resolve()
     try:
@@ -449,8 +515,9 @@ def _validate_file_path(file_path: Path) -> None:
             except ValueError:
                 raise HTTPException(403, "文件路径必须在用户目录、数据目录或临时目录内")
 
-    for prefix in _DENIED_PATH_PREFIXES:
-        if resolved_str.startswith(prefix):
+    normalized_resolved = resolved.as_posix().casefold()
+    for prefix in _DENIED_POSIX_PATH_PREFIXES:
+        if _has_path_prefix(normalized_resolved, prefix):
             raise HTTPException(403, f"禁止访问系统目录: {prefix}")
     try:
         rel = resolved.relative_to(home)
@@ -459,14 +526,29 @@ def _validate_file_path(file_path: Path) -> None:
             raise HTTPException(403, f"禁止访问敏感目录: ~/{parts[0]}")
     except ValueError:
         pass
-    # Block Windows AppData — absolute paths like C:\Users\<user>\AppData\...
-    # Exceptions: AppData\Local\Temp (temp files) and RUNTIME_DIR (app user-data).
-    _runtime_str = str(RUNTIME_DIR.resolve())
-    if resolved_str.startswith(f"{home}\\AppData\\Roaming\\") or \
-            (resolved_str.startswith(f"{home}\\AppData\\Local\\") and
-             not resolved_str.startswith(f"{home}\\AppData\\Local\\Temp\\") and
-             not resolved_str.startswith(_runtime_str)):
-        raise HTTPException(403, "禁止访问 AppData 目录")
+    # Block Windows AppData on every host so the security contract and tests do
+    # not depend on the current OS path separator. AppData/Local/Temp and the
+    # application's own runtime directory remain allowed.
+    try:
+        home_parts = tuple(part.casefold() for part in resolved.relative_to(home).parts)
+    except ValueError:
+        home_parts = ()
+    if len(home_parts) >= 2 and home_parts[0] == "appdata":
+        appdata_area = home_parts[1]
+        is_local_temp = (
+            appdata_area == "local"
+            and len(home_parts) >= 3
+            and home_parts[2] == "temp"
+        )
+        try:
+            resolved.relative_to(RUNTIME_DIR.resolve())
+            is_runtime_path = True
+        except ValueError:
+            is_runtime_path = False
+        if appdata_area == "roaming" or (
+            appdata_area == "local" and not is_local_temp and not is_runtime_path
+        ):
+            raise HTTPException(403, "禁止访问 AppData 目录")
     if resolved.suffix.lower() in _DENIED_EXTENSIONS:
         raise HTTPException(403, f"禁止访问敏感文件: {resolved.suffix}")
     if resolved.name.startswith("."):
@@ -488,11 +570,26 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
 
     @asynccontextmanager
     async def _lifespan(app: FastAPI):
+        import inspect
+
+        async def _run_lifecycle(callback):
+            result = callback()
+            if inspect.isawaitable(result):
+                await result
+
         # startup
         state_editor = app.state._state_editor if hasattr(app.state, "_state_editor") else {}
+        state_translate = app.state._state_translate if hasattr(app.state, "_state_translate") else {}
         startup_editor = state_editor.get("startup")
         if startup_editor:
-            startup_editor()
+            await _run_lifecycle(startup_editor)
+        # Start Agent V2 background tasks (session cleanup loop) if registered.
+        state_agent_startup = getattr(app.state, "_state_agent", {}).get("startup")
+        if state_agent_startup:
+            try:
+                await state_agent_startup()
+            except Exception as e:
+                logger.exception("Agent startup failed")
         try:
             cfg = _load_config()
             engine = cfg.get("translator", {}).get("engine", "ollama")
@@ -518,9 +615,15 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         shutdown_editor = state_editor2.get("shutdown")
         if shutdown_editor:
             try:
-                shutdown_editor()
+                await _run_lifecycle(shutdown_editor)
             except Exception as e:
                 logger.exception("Editor shutdown failed")
+        shutdown_translate = state_translate.get("shutdown")
+        if shutdown_translate:
+            try:
+                await _run_lifecycle(shutdown_translate)
+            except Exception:
+                logger.exception("Translate shutdown failed")
 
     app = FastAPI(title=_app_title, version=__version__, lifespan=_lifespan)
 
@@ -657,12 +760,13 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
     # Agent V2 — claw-code-inspired ConversationRuntime (replaces old ReAct agent)
     logger.info("Registering Agent V2 routes")
     from src.agent_v2.router import register_agent_v2_routes
-    register_agent_v2_routes(app)
-    state_agent = {
+    register_agent_v2_routes(app, load_config=_load_config)
+    state_agent = getattr(app.state, "_state_agent", {})
+    state_agent.update({
         "rag_store": None,
         "get_rag_store": lambda: None,
         "ensure_rag_store": lambda: None,
-    }
+    })
 
     # RAG store (ChromaDB-backed)
     logger.info("Registering RAG routes")
@@ -756,5 +860,6 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
     # Wire lifecycle state so lifespan context manager can access them
     app.state._state_agent = state_agent
     app.state._state_editor = state_editor
+    app.state._state_translate = state_translate
 
     return app

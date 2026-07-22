@@ -12,10 +12,20 @@
       <div class="agent-tabs">
         <button class="agent-tab u-interactive" :class="{ active: tab === 'chat' }" @click="tab = 'chat'">{{ t('agent.tabChat') }}</button>
         <button class="agent-tab u-interactive" :class="{ active: tab === 'docs' }" @click="tab = 'docs'">{{ t('agent.tabDocs') }}</button>
-        <button class="agent-tab u-interactive" :class="{ active: tab === 'templates' }" @click="tab = 'templates'">{{ t('agent.tabTemplates') }}</button>
+        <button class="agent-tab u-interactive" :class="{ active: tab === 'templates' }" @click="tab = 'templates'">{{ t('agent.tabSkills') }}</button>
         <button class="agent-tab u-interactive" :class="{ active: tab === 'sessions' }" @click="tab = 'sessions'; refreshSessions()">{{ t('agent.tabSessions') }}</button>
       </div>
       <div class="agent-header-actions">
+        <button
+          v-if="tab === 'chat'"
+          class="agent-hdr-btn"
+          :title="t('agent.newSession')"
+          :aria-label="t('agent.newSession')"
+          :disabled="sending || !!pendingApproval"
+          @click="handleNewSession"
+        >
+          <Plus :size="14" :stroke-width="1.8" />
+        </button>
         <!-- Standalone window: dock back to main -->
         <button v-if="isStandalone" class="agent-hdr-btn" :title="t('agent.dockBack')" @click="onDockBack">
           <PinOff :size="13" :stroke-width="1.8" />
@@ -35,7 +45,7 @@
 
     <!-- Sessions Tab -->
     <div v-show="tab === 'sessions'" class="agent-sessions">
-      <AgentSessionList ref="sessionListRef" @resume="handleSessionResume" />
+      <AgentSessionList ref="sessionListRef" @open="handleSessionOpen" />
     </div>
 
     <!-- Chat Tab -->
@@ -90,14 +100,19 @@
                 <span class="evt-result-tool">{{ evt.metadata?.tool_name || evt.metadata?.tool }}</span>
                 <span v-if="evt.metadata?.duration_ms" class="evt-duration">{{ evt.metadata.duration_ms }}ms</span>
               </div>
-              <div class="evt-result-preview">{{ truncateResult(evt.content) }}</div>
+              <div class="evt-result-preview">{{ formatToolResult(evt.content) }}</div>
             </div>
             <div v-else-if="evt.type === 'warning'" class="agent-event warning">
               <span class="evt-warning-icon">&#x26A0;</span>
               <span class="evt-content-text">{{ evt.content }}</span>
             </div>
           </template>
-          <div v-if="msg.content" class="agent-bubble">{{ msg.content }}</div>
+          <div
+            v-if="msg.content && msg.role === 'assistant'"
+            class="agent-bubble agent-markdown"
+            v-html="renderMarkdown(msg.content)"
+          />
+          <div v-else-if="msg.content" class="agent-bubble">{{ msg.content }}</div>
           <div v-if="msg.isStreaming" class="agent-streaming">
             <span class="dot-wave"><i></i><i></i><i></i></span>
           </div>
@@ -118,6 +133,18 @@
         <div v-if="contextText" class="agent-context-note">
           {{ t('agent.contextEditor', { type: editorSelection.text ? t('agent.contextSelection') : t('agent.contextDocument'), count: contextText.length }) }}
         </div>
+        <div v-if="selectedSkills.length" class="agent-selected-skills" :aria-label="t('agent.selectedSkills')">
+          <span class="selected-skills-label">{{ t('agent.selectedSkills') }}</span>
+          <button
+            v-for="skill in selectedSkills"
+            :key="skill.name"
+            class="selected-skill-chip"
+            :title="t('agent.removeSkill')"
+            @click="removeSkill(skill.name)"
+          >
+            <span>{{ skillDisplayName(skill) }}</span><span aria-hidden="true">×</span>
+          </button>
+        </div>
         <!-- File attachments -->
         <div class="agent-attachments" v-if="files.length">
           <div class="agent-file" v-for="f in files" :key="f.name">
@@ -130,14 +157,15 @@
           <button class="agent-attach-btn" @click="attachFile" :title="t('agent.addAttachment')" :disabled="sending">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
           </button>
-          <input
+          <textarea
             ref="agentInputEl"
             v-model="input"
-            @keydown.enter="sendMessage"
+            rows="2"
+            @keydown.enter.exact.prevent="sendMessage"
             :disabled="sending"
             :placeholder="t('agent.inputPlaceholder')"
             class="agent-input"
-          />
+          ></textarea>
           <button
             v-if="agentSpeech.isSupported"
             class="agent-attach-btn"
@@ -212,29 +240,58 @@
       </TransitionGroup>
     </div>
 
-    <!-- Templates Tab -->
+    <!-- Skills and paper templates -->
     <div v-show="tab === 'templates'" class="agent-templates">
       <div class="docs-toolbar">
-        <span class="docs-title">{{ t('agent.templatesTitle') }}</span>
-        <button class="btn ghost u-interactive" :class="{ refreshing: templatesLoading }" @click="loadPaperTemplates" :disabled="templatesLoading">{{ t('agent.refreshTemplates') }}</button>
+        <div class="skills-heading">
+          <span class="docs-title">{{ t('agent.skillsTitle') }}</span>
+          <span class="docs-subtitle">{{ t('agent.skillsSubtitle') }}</span>
+        </div>
+        <button class="btn ghost u-interactive" :class="{ refreshing: skillsLoading }" @click="fetchAgentSkills" :disabled="skillsLoading">{{ t('agent.refresh') }}</button>
       </div>
-      <div v-if="templatesLoading && templates.length === 0" class="template-grid">
-        <UiSkeleton v-for="i in 4" :key="i" shape="card" height="58" :style="{ '--stagger-i': i - 1 }" class="tpl-skel" />
+      <div v-if="skillsLoading && agentSkills.length === 0" class="skills-list">
+        <UiSkeleton v-for="i in 5" :key="i" shape="card" height="66" class="tpl-skel" />
       </div>
-      <div v-else-if="templates.length === 0" class="docs-empty anim-fade-in-up">
-        <span class="empty-glyph">◳</span>
-        <p>{{ t('agent.noTemplates') }}</p>
-        <button class="btn ghost u-interactive" style="margin-top:8px" @click="ingestPaperAssets">{{ t('agent.indexTemplates') }}</button>
+      <div v-else-if="agentSkills.length === 0" class="docs-empty anim-fade-in-up">
+        <span class="empty-glyph">◇</span>
+        <p>{{ t('agent.noSkills') }}</p>
       </div>
-      <TransitionGroup v-else name="v-list-stagger" tag="div" class="template-grid">
-        <div v-for="(t, idx) in templates" :key="t.id" class="template-card u-interactive" :style="{ '--stagger-i': idx }" @click="previewingTemplate = t">
-          <span class="template-icon">{{ t.icon }}</span>
-          <div class="template-info">
-            <span class="template-name">{{ t.name }}</span>
-            <span class="template-venue">{{ t.venue }}</span>
+      <TransitionGroup v-else name="v-list-stagger" tag="div" class="skills-list">
+        <div v-for="(skill, idx) in visibleAgentSkills" :key="skill.name" class="skill-row" :class="{ selected: isSkillSelected(skill.name) }" :style="{ '--stagger-i': idx }">
+          <div class="skill-copy">
+            <div class="skill-name-row">
+              <span class="skill-name">{{ skillDisplayName(skill) }}</span>
+              <span v-if="skill.category === 'nature'" class="skill-family">Nature</span>
+            </div>
+            <span class="skill-description">{{ skillDisplayDescription(skill) }}</span>
           </div>
+          <button class="skill-use-btn" @click="useSkill(skill)">{{ isSkillSelected(skill.name) ? t('agent.skillSelected') : t('agent.useSkill') }}</button>
         </div>
       </TransitionGroup>
+
+      <details class="paper-template-section">
+        <summary>{{ t('agent.templatesTitle') }}</summary>
+        <div class="template-section-toolbar">
+          <span>{{ t('agent.templatesSubtitle') }}</span>
+          <button class="btn ghost u-interactive" :class="{ refreshing: templatesLoading }" @click="loadPaperTemplates" :disabled="templatesLoading">{{ t('agent.refreshTemplates') }}</button>
+        </div>
+        <div v-if="templatesLoading && templates.length === 0" class="template-grid">
+          <UiSkeleton v-for="i in 4" :key="i" shape="card" height="58" class="tpl-skel" />
+        </div>
+        <div v-else-if="templates.length === 0" class="template-empty">
+          <span>{{ t('agent.noTemplates') }}</span>
+          <button class="btn ghost u-interactive" @click="ingestPaperAssets">{{ t('agent.indexTemplates') }}</button>
+        </div>
+        <TransitionGroup v-else name="v-list-stagger" tag="div" class="template-grid">
+          <button v-for="template in templates" :key="template.id" class="template-card u-interactive" @click="previewingTemplate = template">
+            <span class="template-icon">{{ template.icon }}</span>
+            <span class="template-info">
+              <span class="template-name">{{ template.name }}</span>
+              <span class="template-venue">{{ template.venue }}</span>
+            </span>
+          </button>
+        </TransitionGroup>
+      </details>
       <Transition name="v-scale-in">
         <div v-if="previewingTemplate" class="template-preview">
           <div class="template-preview-header">
@@ -253,7 +310,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 import { useAgentChat } from '../composables/useAgentChat'
 import { useEditor } from '../composables/useEditor'
@@ -261,13 +318,16 @@ import { useEditorState } from '../composables/useEditorState'
 import { useFileTree } from '../composables/useFileTree'
 import AgentApprovalInline from './AgentApprovalInline.vue'
 import AgentSessionList from './AgentSessionList.vue'
-import { Pin, PinOff, Mic } from './ui/icons'
+import { Pin, PinOff, Mic, Plus } from './ui/icons'
 import { API_BASE } from '../utils/api'
-import type { AgentSessionInfo } from '../types'
+import type { AgentSessionInfo, AgentSkill } from '../types'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
-import { setSpeechBusy } from '../composables/useSpeechBusy'
 import UiSpinner from './ui/UiSpinner.vue'
 import UiSkeleton from './ui/UiSkeleton.vue'
+import { renderMarkdown } from '../utils/markdown'
+import { useToast } from '../composables/useToast'
+import { getCurrentWindow } from '@tauri-apps/api/window'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
 
 let voiceBaseInput = ''
 const agentSpeech = useSpeechRecognition({
@@ -279,11 +339,9 @@ function toggleAgentSpeech() {
   if (agentSpeech.status.value === 'listening') {
     voiceBaseInput = ''
     agentSpeech.stop()
-    setSpeechBusy(false)
     agentInputEl.value?.focus()
   } else {
     voiceBaseInput = input.value
-    setSpeechBusy(true)
     agentSpeech.start()
   }
 }
@@ -320,7 +378,7 @@ async function openAgentWindow() {
   const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow')
 
   // Close any existing agent window first
-  try { const old = await WebviewWindow.getByLabel('agent'); if (old) await old.close() } catch {}
+  try { const old = await WebviewWindow.getByLabel('agent'); if (old) await old.close() } catch { /* Window may already be gone. */ }
 
   // Pass agent-only flag and optional session via URL params — sessionStorage is
   // window-isolated in Tauri so URL params are the only reliable cross-window channel.
@@ -364,7 +422,7 @@ async function closeAgentWindow() {
     const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow')
     const w = await WebviewWindow.getByLabel('agent')
     if (w) await w.close()
-  } catch {}
+  } catch { /* Non-Tauri/browser preview. */ }
   _agentWindow = null
   emit('update:open', true)
 }
@@ -429,9 +487,7 @@ function _onDragUp() {
 function onHeaderMouseDown_standalone(e: MouseEvent) {
   const target = e.target as HTMLElement
   if (target.closest('button')) return
-  import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
-    getCurrentWindow().startDragging()
-  })
+  getCurrentWindow().startDragging()
 }
 
 function _headerMouseDown(e: MouseEvent) {
@@ -444,7 +500,6 @@ function _headerMouseDown(e: MouseEvent) {
 
 // Standalone: dock back to main window
 async function onDockBack() {
-  const { getCurrentWindow } = await import('@tauri-apps/api/window')
   localStorage.setItem('agent-dock-back', Date.now().toString())
   await getCurrentWindow().close()
 }
@@ -456,7 +511,7 @@ onMounted(async () => {
     // Read session from URL params (passed by openAgentWindow)
     const params = new URLSearchParams(window.location.search)
     const sid = params.get('session')
-    if (sid) await resumeSession(sid)
+    if (sid) await loadWorkflowMessages(sid)
   } else {
     // Listen for dock-back signal from standalone window
     const handler = (e: StorageEvent) => {
@@ -474,20 +529,23 @@ onMounted(async () => {
 const {
   messages, sending, pendingApproval,
   ragDocuments, ragLoading,
+  agentSkills, skillsLoading,
   sendMessage: agentSendMessage,
   sendApproval, abortSession,
-  resumeSession,
+  startNewWorkflow,
+  loadWorkflowMessages,
   sessionId,
   pendingCheckpoint,
   fetchSessions: _fetchSessions,
   fetchRAGDocuments: _fetchRAGDocs,
   deleteRAGDocument,
   uploadRAGFile,
+  fetchAgentSkills,
 } = useAgentChat()
 
-const { selection: editorSelection, content: editorContent, activeTab: editorActiveTab, reloadOpenTabs, setContent, contentVersion } = useEditor()
+const { selection: editorSelection, content: editorContent, activeTab: editorActiveTab, reloadOpenTabs, applyExternalFileUpdate } = useEditor()
 
-const { tabs: editorTabs, setActiveEdit, clearActiveEdit } = useEditorState()
+const { tabs: editorTabs, setActiveEdit, clearActiveEdit, shouldShowInlineDiff } = useEditorState()
 
 const { rootDir, refresh: refreshFileTree } = useFileTree()
 
@@ -498,7 +556,7 @@ const workspaceName = computed(() => {
 
 const tab = ref<'chat' | 'docs' | 'templates' | 'sessions'>('chat')
 const input = ref('')
-const agentInputEl = ref<HTMLInputElement | null>(null)
+const agentInputEl = ref<HTMLTextAreaElement | null>(null)
 const messagesRef = ref<HTMLElement | null>(null)
 const sessionListRef = ref<InstanceType<typeof AgentSessionList> | null>(null)
 // 自动滚动：用户未手动上滚时保持跟底
@@ -522,6 +580,44 @@ const files = ref<{ name: string; path: string }[]>([])
 const ragFileInput = ref<HTMLInputElement | null>(null)
 const ragUploading = ref(false)
 const ragUploadError = ref('')
+const selectedSkillNames = ref<string[]>([])
+const { warn: showWarning } = useToast()
+
+const visibleAgentSkills = computed(() => [...agentSkills.value].sort((a, b) => {
+  if (a.category === b.category) return skillDisplayName(a).localeCompare(skillDisplayName(b))
+  return a.category === 'nature' ? -1 : 1
+}))
+
+const selectedSkills = computed(() => selectedSkillNames.value
+  .map(name => agentSkills.value.find(skill => skill.name === name))
+  .filter((skill): skill is AgentSkill => Boolean(skill)))
+
+function skillDisplayName(skill: AgentSkill): string {
+  const key = `agent.skills.${skill.name}.name`
+  return te(key) ? t(key) : skill.name.replaceAll('_', ' ')
+}
+
+function skillDisplayDescription(skill: AgentSkill): string {
+  const key = `agent.skills.${skill.name}.description`
+  return te(key) ? t(key) : skill.description
+}
+
+function isSkillSelected(name: string): boolean {
+  return selectedSkillNames.value.includes(name)
+}
+
+async function useSkill(skill: AgentSkill) {
+  selectedSkillNames.value = [skill.name]
+  const promptKey = `agent.skills.${skill.name}.prompt`
+  if (!input.value.trim()) input.value = te(promptKey) ? t(promptKey) : t('agent.skillPromptFallback', { skill: skillDisplayName(skill) })
+  tab.value = 'chat'
+  await nextTick()
+  agentInputEl.value?.focus()
+}
+
+function removeSkill(name: string) {
+  selectedSkillNames.value = selectedSkillNames.value.filter(skillName => skillName !== name)
+}
 
 const contextText = computed(() => {
   if (!editorActiveTab.value) return ''
@@ -550,7 +646,8 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   search_documents: t('agent.tool.search_documents'),
   read_argument_graph: t('agent.tool.read_argument_graph'),
   read_argument_ledger: t('agent.tool.read_argument_ledger'),
-  crawl_arxiv: t('agent.tool.crawl_arxiv'),
+  read_reviewer_state: t('agent.tool.read_reviewer_state'),
+  arxiv_search: t('agent.tool.crawl_arxiv'),
   read_file: t('agent.tool.read_file'),
   write_file: t('agent.tool.write_file'),
   str_replace: t('agent.tool.str_replace'),
@@ -605,16 +702,15 @@ const currentStatus = computed(() => {
 })
 
 // ── Approval ──
-const normPath = (p: string) => p.replace(/\\/g, '/').toLowerCase()
-
 const showInlineDiff = computed(() => {
   const p = pendingApproval.value
   if (!p) return false
-  const tool = p.tool_name
-  if (tool !== 'str_replace' && tool !== 'write_file') return false
-  const filePath = (p.args?.file_path as string) || ''
-  if (!filePath) return false
-  return editorTabs.value.some(t => t.path && normPath(t.path) === normPath(filePath))
+  return shouldShowInlineDiff(
+    p.tool_name,
+    p.args || {},
+    editorTabs.value,
+    p.preview,
+  )
 })
 
 async function handleApprovalDecision(decision: 'allow_once' | 'allow_session' | 'deny') {
@@ -648,19 +744,11 @@ watch(pendingCheckpoint, () => {
   if (cp) {
     const filePath = cp.file as string | undefined
     const content = cp.content as string | undefined
-    if (filePath && content) {
-      // 找到对应标签并直接更新内容，避免 reloadOpenTabs 需要 Tauri fs
-      const normPath = (p: string) => p.replace(/\\/g, '/').toLowerCase()
-      const tab = editorTabs.value.find((t: any) => t.path && normPath(t.path) === normPath(filePath))
-      if (tab) {
-        const changed = tab.content !== content
-        tab.content = content
-        tab.isModified = false
-        contentVersion.value++
-        // 更新 Monaco 编辑器（如果是当前激活标签）
-        if (changed && tab.id === editorActiveTab.value?.id) {
-          setContent(content)
-        }
+    if (filePath && content && !cp.content_truncated) {
+      const result = applyExternalFileUpdate(filePath, content)
+      if (result === 'conflict') {
+        const name = filePath.split(/[\\/]/).pop() || filePath
+        showWarning(t('agent.unsavedFileConflict', { name }), 8000)
       }
     }
     refreshFileTree()
@@ -674,12 +762,32 @@ async function refreshSessions() {
   sessionListRef.value?.fetchSessions()
 }
 
-async function handleSessionResume(sessionId: string) {
-  await resumeSession(sessionId)
+async function handleSessionOpen(session: AgentSessionInfo) {
+  const loaded = await loadWorkflowMessages(session.id)
+  if (!loaded) {
+    showWarning(t('agent.sessionLoadFailed'), 6000)
+    return
+  }
   tab.value = 'chat'
   _userScrolledUp.value = false
   await nextTick()
   _scrollToBottom()
+}
+
+function formatToolResult(content: string): string {
+  const denied = content.match(/^User denied the change to (.+)$/)
+  if (denied) return t('agent.userDeniedChange', { path: denied[1] })
+  return truncateResult(content)
+}
+
+function handleNewSession() {
+  if (sending.value || pendingApproval.value) return
+  startNewWorkflow()
+  input.value = ''
+  files.value = []
+  selectedSkillNames.value = []
+  _userScrolledUp.value = false
+  nextTick(() => agentInputEl.value?.focus())
 }
 
 // ── Send message ──
@@ -705,6 +813,7 @@ async function sendMessage() {
     '',
     rootDir.value || undefined,
     editorActiveTab.value?.path || undefined,
+    selectedSkillNames.value,
   )
   refreshFileTree()
   reloadOpenTabs()
@@ -715,8 +824,7 @@ async function sendMessage() {
 // ── File operations ─────────────────────────────────────────
 async function attachFile() {
   try {
-    const { open } = await import('@tauri-apps/plugin-dialog')
-    const selected = await open({
+    const selected = await openDialog({
       multiple: true,
       filters: [{ name: 'Text', extensions: ['md','txt','tex','py','js','ts','json','yaml','yml','xml','html','css','csv','pdf'] }]
     })
@@ -782,11 +890,14 @@ function createFromTemplate(t: any) {
 
 // ── Watchers ──
 watch(() => props.open, async (isOpen) => {
-  if (isOpen) await fetchDocs()
+  if (isOpen) await Promise.all([fetchDocs(), fetchAgentSkills()])
 })
 
 watch(tab, (t) => {
-  if (t === 'templates' && templates.value.length === 0) loadPaperTemplates()
+  if (t === 'templates') {
+    if (templates.value.length === 0) loadPaperTemplates()
+    if (agentSkills.value.length === 0) fetchAgentSkills()
+  }
 })
 
 // 流式输出自动跟底：监听 messages 深度变化，若用户没有手动上滚则自动滚底
@@ -941,6 +1052,8 @@ onUnmounted(() => {
   transition: all var(--motion-fast);
 }
 .agent-hdr-btn:hover { color: var(--c-text-0); background: var(--c-surface-2); }
+.agent-hdr-btn:disabled,
+.agent-hdr-btn:disabled:hover { color: var(--c-text-3); opacity: 0.45; cursor: not-allowed; background: transparent; }
 
 .agent-close-btn {
   background: none; border: none; color: var(--c-text-3);
@@ -1190,8 +1303,18 @@ onUnmounted(() => {
   position: relative;
 }
 .agent-context-note { width: 100%; color: var(--c-text-3); font-size: 11px; }
+.agent-selected-skills { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.selected-skills-label { flex-shrink: 0; color: var(--c-text-3); font-size: 11px; }
+.selected-skill-chip {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0;
+  padding: 4px 7px; border: 1px solid var(--c-accent); border-radius: 6px;
+  background: var(--c-accent-bg); color: var(--c-accent-hover); font: inherit; font-size: 11px;
+  cursor: pointer;
+}
+.selected-skill-chip span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.selected-skill-chip:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
 .agent-input-row {
-  width: 100%; display: flex; gap: 6px; align-items: center;
+  width: 100%; display: flex; gap: 6px; align-items: flex-end;
   background: var(--c-surface-2);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 24px;
@@ -1205,7 +1328,7 @@ onUnmounted(() => {
   background: var(--c-surface-3);
 }
 .agent-input {
-  flex: 1; padding: 8px 12px;
+  flex: 1; min-height: 42px; max-height: 116px; padding: 8px 12px; resize: vertical;
   border: none;
   background: transparent;
   color: var(--c-text-0); font-size: 14px; font-family: inherit;
@@ -1231,8 +1354,8 @@ onUnmounted(() => {
   animation: voice-pulse 1.5s ease-in-out infinite;
 }
 @keyframes voice-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--c-accent-rgb, 99,102,241), 0.4); }
-  50% { box-shadow: 0 0 0 6px rgba(var(--c-accent-rgb, 99,102,241), 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--c-accent-rgb), 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(var(--c-accent-rgb), 0); }
 }
 .agent-send-btn {
   width: 36px; height: 36px;
@@ -1298,12 +1421,34 @@ onUnmounted(() => {
 
 /* Templates tab */
 .agent-templates { flex: 1; overflow-y: auto; padding: 16px; }
+.skills-heading { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.skills-list { display: flex; flex-direction: column; gap: 6px; }
+.skill-row {
+  display: flex; align-items: center; gap: 10px; padding: 10px 11px;
+  border-bottom: 1px solid var(--c-border); background: transparent;
+}
+.skill-row.selected { border-radius: 8px; border-bottom-color: transparent; background: var(--c-accent-bg); }
+.skill-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+.skill-name-row { display: flex; align-items: center; gap: 7px; }
+.skill-name { color: var(--c-text-0); font-size: 13px; font-weight: 650; }
+.skill-family { color: var(--brand-red); font-family: var(--font-serif); font-size: 10px; letter-spacing: .03em; }
+.skill-description { color: var(--c-text-3); font-size: 11px; line-height: 1.45; }
+.skill-use-btn {
+  flex-shrink: 0; padding: 5px 8px; border: 1px solid var(--c-border); border-radius: 6px;
+  background: var(--c-panel); color: var(--c-text-2); font: inherit; font-size: 11px; cursor: pointer;
+}
+.skill-use-btn:hover { border-color: var(--c-accent); color: var(--c-accent); }
+.skill-use-btn:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+.paper-template-section { margin-top: 18px; border-top: 1px solid var(--c-border); padding-top: 12px; }
+.paper-template-section > summary { color: var(--c-text-1); font-size: 12px; font-weight: 650; cursor: pointer; }
+.template-section-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; color: var(--c-text-3); font-size: 11px; }
+.template-empty { display: flex; align-items: center; justify-content: space-between; padding: 14px 4px; color: var(--c-text-3); font-size: 11px; }
 .template-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .template-card {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 12px; background: var(--c-surface-2);
   border: 1px solid var(--c-surface-3); border-radius: 8px;
-  cursor: pointer; transition: all 0.15s;
+  color: inherit; font: inherit; text-align: left; cursor: pointer; transition: all 0.15s;
 }
 .template-card:hover { border-color: var(--c-accent-hover); background: var(--c-accent-bg2); }
 .template-icon { font-size: 24px; }
@@ -1348,16 +1493,90 @@ onUnmounted(() => {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--c-text-muted);
+  background: var(--c-text-3);
   flex-shrink: 0;
 }
 .agent-workspace-bar.active .ws-dot { background: #4ade80; }
-.ws-name { color: var(--c-text-secondary); font-family: var(--font-mono, monospace); }
-.ws-name.muted { color: var(--c-text-muted); font-style: italic; }
+.ws-name { color: var(--c-text-2); font-family: var(--font-mono, monospace); }
+.ws-name.muted { color: var(--c-text-3); font-style: italic; }
 .docs-subtitle {
   font-size: 11px;
-  color: var(--c-text-muted);
+  color: var(--c-text-3);
   margin-top: 2px;
 }
 .hint.warn { color: var(--c-warn, #f59e0b); }
+
+/* Reference-driven task panel. The event stream remains real Agent V2 data. */
+.agent-panel {
+  top: 0;
+  width: min(460px, calc(100vw - 76px));
+  height: 100vh;
+  margin-top: 0;
+  border-left: 1px solid var(--c-border);
+  background: var(--c-panel);
+  box-shadow: var(--elevation-3);
+  backdrop-filter: none;
+  transition: transform var(--motion-page) var(--ease-out);
+}
+.agent-panel.standalone { border: 0; border-radius: 0; box-shadow: none; }
+.agent-panel.floating { border: 1px solid var(--c-border); border-radius: 11px; background: var(--c-panel); box-shadow: var(--elevation-4); }
+.agent-header { min-height: 70px; box-sizing: border-box; gap: 10px; padding: 27px 54px 12px 16px; border-bottom: 1px solid var(--c-border); background: var(--c-panel); }
+.agent-tabs { gap: 0; padding: 3px; border-radius: 8px; background: var(--c-surface-2); }
+.agent-tab { flex: 1; min-width: 0; padding: 6px 7px; border-radius: 6px; font-size: 11px; }
+.agent-tab.active { background: var(--c-panel); box-shadow: var(--elevation-1); }
+.agent-chat { background: var(--c-app-bg); }
+.agent-messages { gap: 14px; padding: 18px; }
+.agent-empty { padding: 52px 20px; }
+.agent-empty p:first-child { color: var(--c-text-1); font-family: var(--font-sans); font-size: 14px; font-style: normal; }
+.agent-msg { width: 100%; max-width: 100%; }
+.agent-msg.user { align-self: stretch; }
+.agent-bubble { border-radius: 8px; }
+.agent-msg.user .agent-bubble { padding: 11px 12px; border: 1px solid var(--c-border); border-left: 3px solid var(--c-accent); border-radius: 8px; background: var(--c-panel); color: var(--c-text-0); box-shadow: none; }
+.agent-msg.assistant .agent-bubble { padding: 12px 2px 4px; border-top: 1px solid var(--c-border); font-size: 13px; line-height: 1.65; }
+.agent-markdown { white-space: normal; }
+.agent-markdown :deep(p) { margin: 0 0 9px; }
+.agent-markdown :deep(p:last-child) { margin-bottom: 0; }
+.agent-markdown :deep(h1),
+.agent-markdown :deep(h2),
+.agent-markdown :deep(h3) { margin: 14px 0 7px; font-family: var(--font-sans), var(--font-zh); font-size: 14px; line-height: 1.4; }
+.agent-markdown :deep(ul),
+.agent-markdown :deep(ol) { margin: 6px 0 10px; padding-left: 20px; }
+.agent-markdown :deep(li) { margin: 3px 0; }
+.agent-markdown :deep(code) { padding: 1px 4px; border-radius: 4px; background: var(--c-surface-2); font-family: var(--font-mono); font-size: 12px; }
+.agent-markdown :deep(pre) { margin: 9px 0; padding: 10px; overflow: auto; border: 1px solid var(--c-border); border-radius: 7px; background: var(--c-surface-2); }
+.agent-markdown :deep(pre code) { padding: 0; background: transparent; }
+.agent-markdown :deep(table) { width: 100%; margin: 9px 0; border-collapse: collapse; font-size: 12px; }
+.agent-markdown :deep(th),
+.agent-markdown :deep(td) { padding: 6px 7px; border: 1px solid var(--c-border); text-align: left; vertical-align: top; }
+.agent-markdown :deep(th) { background: var(--c-surface-2); font-weight: 650; }
+.agent-event { margin-bottom: 6px; padding: 9px 10px; border-color: var(--c-border); border-radius: 7px; background: var(--c-panel); box-shadow: none; backdrop-filter: none; }
+.agent-event.thinking { border-left-color: var(--c-accent); mask-image: none; -webkit-mask-image: none; }
+.agent-event.tool-call,
+.agent-event.tool-result,
+.agent-event.tool-result.evt-error,
+.agent-event.task-lifecycle,
+.agent-event.task-lifecycle.done,
+.agent-event.warning { background: var(--c-panel); }
+.evt-risk-badge { border-radius: 4px; }
+.agent-thinking-bar { background: var(--c-accent); animation: none; opacity: .7; }
+.agent-status-bar { padding: 7px 10px; border: 1px solid var(--c-border); border-radius: 7px; background: var(--c-panel); }
+.agent-status-bar::after { display: none; }
+.agent-input-area { gap: 7px; padding: 12px 14px 16px; border-top: 1px solid var(--c-border); background: var(--c-panel); }
+.agent-input-row { padding: 4px; border-color: var(--c-border); border-radius: 9px; background: var(--input-bg); box-shadow: none; }
+.agent-input-row:focus-within { border-color: var(--c-accent); background: var(--input-bg); box-shadow: var(--ring-focus); }
+.agent-attach-btn,
+.agent-send-btn { width: 34px; height: 34px; border-radius: 7px; box-shadow: none; }
+.agent-workspace-bar { padding: 3px 0; border: 0; }
+.agent-docs,
+.agent-templates,
+.agent-sessions { background: var(--c-app-bg); }
+.doc-card,
+.template-card,
+.template-preview { border-color: var(--c-border); background: var(--c-panel); }
+
+@media (max-width: 640px) {
+  .agent-panel { width: calc(100vw - 76px); }
+  .agent-header { padding-right: 12px; }
+  .agent-tab { font-size: 10px; }
+}
 </style>

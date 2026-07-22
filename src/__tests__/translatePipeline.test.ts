@@ -48,8 +48,107 @@ describe('Translate Pipeline E2E', () => {
     mockFetch.mockReset()
   })
 
+  it('clears only backend availability errors after recovery', async () => {
+    const { useTranslate } = await import('../composables/useTranslate')
+    const translate = useTranslate()
+    translate.reset()
+
+    translate.setBackendError('offline')
+    expect(translate.state.status).toBe('error')
+    expect(translate.state.errorMessage).toBe('offline')
+
+    translate.clearBackendError()
+    expect(translate.state.status).toBe('idle')
+    expect(translate.state.errorMessage).toBeNull()
+
+    translate.setError('real translation failure')
+    translate.clearBackendError()
+    expect(translate.state.status).toBe('error')
+    expect(translate.state.errorMessage).toBe('real translation failure')
+    translate.reset()
+  })
+
   // ── SSE Event Parsing ──────────────────────────────────────────────────
   describe('SSE event stream parsing', () => {
+    it('records translation-memory hits and preserves glossary violations alongside QA flags', async () => {
+      const {
+        useTranslate,
+        _resetForTesting,
+        _handleSseEventForTesting,
+      } = await import('../composables/useTranslate')
+
+      _resetForTesting()
+      const translate = useTranslate()
+
+      _handleSseEventForTesting('translate.chunk_tm_hit', {
+        index: 1,
+        total: 3,
+        match_type: 'exact',
+        score: 1,
+        original_preview: 'Source sentence',
+        translated_preview: '译文',
+      })
+
+      expect(translate.state.completedChunks).toBe(1)
+      expect(translate.state.translations).toContainEqual(expect.objectContaining({
+        index: 1,
+        translated_preview: '译文',
+        tokens: 0,
+      }))
+
+      _handleSseEventForTesting('translate.glossary_violation', {
+        index: 1,
+        total: 3,
+        violations: [{
+          source: 'agent',
+          expected: '智能体',
+          message: 'Expected glossary translation was not found',
+        }],
+      })
+      _handleSseEventForTesting('translate.qa_warnings', {
+        index: 1,
+        section_type: 'methods',
+        score: 88,
+        flags: [{
+          type: 'overclaim',
+          severity: 'warning',
+          location: '',
+          message: 'Claim is too strong',
+          suggestion: 'Use more cautious language',
+        }],
+      })
+
+      expect(translate.state.qaWarnings).toHaveLength(1)
+      expect(translate.state.qaWarnings[0]).toMatchObject({
+        chunkIndex: 1,
+        sectionType: 'methods',
+        score: 88,
+      })
+      expect(translate.state.qaWarnings[0].flags.map(flag => flag.type)).toEqual([
+        'glossary',
+        'overclaim',
+      ])
+      _resetForTesting()
+    })
+
+    it('normalizes live QA payload field names for the UI contract', async () => {
+      const { normalizeQaWarning } = await import('../composables/useTranslate')
+
+      expect(normalizeQaWarning({
+        index: 2,
+        section_type: 'results',
+        score: 85,
+        flags: [{ type: 'overclaim', severity: 'warning', location: '', message: 'm', suggestion: 's' }],
+      })).toMatchObject({ chunkIndex: 2, sectionType: 'results', score: 85 })
+
+      expect(normalizeQaWarning({
+        chunk_index: 3,
+        section_type: 'discussion',
+        score: 92,
+        flags: [],
+      })).toEqual({ chunkIndex: 3, sectionType: 'discussion', score: 92, flags: [] })
+    })
+
     it('parses progress events in correct order', async () => {
       const events = [
         { event: 'progress', data: { step: 1, total: 5, message: '上传中...' } },

@@ -58,12 +58,12 @@ const REL_LABELS: Record<RelationType, string> = {
 const relLabel = computed(() => REL_LABELS[props.data?.relation_type ?? 'supports'] ?? props.data?.relation_type)
 
 const REL_COLORS: Record<RelationType, string> = {
-  supports: '#10b981',
-  warrants: '#3b82f6',
-  backs: '#93c5fd',
-  qualifies: '#f59e0b',
-  rebuts: 'var(--c-danger)',
-  counters: '#f97316',
+  supports: '#6f9276',
+  warrants: '#7182a6',
+  backs: '#94a3a5',
+  qualifies: '#aa8757',
+  rebuts: '#a76f62',
+  counters: '#a77b5c',
 }
 const edgeColor = computed(() => REL_COLORS[props.data?.relation_type ?? 'supports'] ?? 'var(--c-surface-4)')
 
@@ -105,28 +105,28 @@ async function doDelete() {
   font-size: 10px;
   font-weight: 600;
   padding: 2px 6px;
-  border-radius: 999px;
-  background: var(--c-surface-2);
-  border: 1px solid var(--c-surface-3);
+  border-radius: 5px;
+  background: var(--c-panel);
+  border: 1px solid var(--c-border);
   color: var(--c-text-1);
   white-space: nowrap;
   pointer-events: none;
 }
-.arg-edge-label.rel-supports { border-color: #10b981; color: #10b981; }
-.arg-edge-label.rel-warrants { border-color: #3b82f6; color: #3b82f6; }
-.arg-edge-label.rel-backs    { border-color: #93c5fd; color: #93c5fd; }
-.arg-edge-label.rel-qualifies { border-color: #f59e0b; color: #f59e0b; }
-.arg-edge-label.rel-rebuts   { border-color: var(--c-danger); color: var(--c-danger); }
-.arg-edge-label.rel-counters { border-color: #f97316; color: #f97316; }
+.arg-edge-label.rel-supports { color: #5f7f66; }
+.arg-edge-label.rel-warrants { color: #647595; }
+.arg-edge-label.rel-backs    { color: #758486; }
+.arg-edge-label.rel-qualifies { color: #8d704a; }
+.arg-edge-label.rel-rebuts   { color: #8d5d53; }
+.arg-edge-label.rel-counters { color: #8d684f; }
 
 .arg-edge-menu {
   position: fixed;
   z-index: 9999;
   min-width: 120px;
-  background: var(--c-surface-2);
-  border: 1px solid var(--c-surface-3);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  background: var(--c-panel);
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  box-shadow: var(--elevation-3);
   padding: 4px;
 }
 .arg-edge-menu button {

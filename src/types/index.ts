@@ -214,6 +214,7 @@ export interface AgentEvent {
     options?: string[]
     file?: string
     content?: string
+    content_truncated?: boolean
   }
 }
 
@@ -223,11 +224,22 @@ export interface AgentSessionInfo {
   global_step: number
   tasks_total: number
   tasks_done: number
+  messages?: number
   workspace_root?: string
   query?: string
   created_at?: string
   updated_at?: string
   source?: 'memory' | 'store'
+}
+
+export interface AgentSkill {
+  name: string
+  description: string
+  layer: string
+  category: string
+  active: boolean
+  default_active: boolean
+  source?: string
 }
 
 export interface AgentChatMessage {

@@ -170,7 +170,6 @@ class TestAgentResume:
                 resp = client.post(
                     "/api/agent/v2/resume/fake-session-id",
                     json={"message": "continue"},
-                    timeout=3.0,
                 )
                 result["status"] = resp.status_code
             except Exception:

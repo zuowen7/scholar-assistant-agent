@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -27,8 +28,10 @@ def register_academic_tools(registry: ToolRegistry) -> None:
         if not file_path:
             return ToolResult("error: file_path is required", is_error=True)
 
-        ws = registry._workspace_root
-        full = Path(file_path) if Path(file_path).is_absolute() else (ws / file_path) if ws else Path(file_path)
+        try:
+            full = registry._resolve_path(file_path)
+        except ValueError as e:
+            return ToolResult(f"error: {e}", is_error=True)
         if not full.is_file():
             return ToolResult(f"error: file not found: {file_path}", is_error=True)
 
@@ -37,13 +40,9 @@ def register_academic_tools(registry: ToolRegistry) -> None:
             import httpx
             api_base = os.environ.get("SCHOLAR_API_BASE", "http://localhost:18088")
             async with httpx.AsyncClient(timeout=300.0) as client:
-                # Step 1: Parse
-                resp = await client.post(f"{api_base}/api/translate/parse", json={
-                    "file_path": str(full),
-                    "source_lang": source_lang,
-                    "target_lang": target_lang,
-                    "engine": engine,
-                })
+                resp = await client.post(
+                    f"{api_base}/api/translate/path", json={"path": str(full)}
+                )
                 if resp.status_code != 200:
                     return ToolResult(f"error: translation API returned {resp.status_code}", is_error=True)
                 data = resp.json()
@@ -63,8 +62,10 @@ def register_academic_tools(registry: ToolRegistry) -> None:
         if not file_path:
             return ToolResult("error: file_path is required", is_error=True)
 
-        ws = registry._workspace_root
-        full = Path(file_path) if Path(file_path).is_absolute() else (ws / file_path) if ws else Path(file_path)
+        try:
+            full = registry._resolve_path(file_path)
+        except ValueError as e:
+            return ToolResult(f"error: {e}", is_error=True)
         if not full.is_file():
             return ToolResult(f"error: file not found: {file_path}", is_error=True)
 
@@ -72,14 +73,42 @@ def register_academic_tools(registry: ToolRegistry) -> None:
             import httpx
             api_base = os.environ.get("SCHOLAR_API_BASE", "http://localhost:18088")
             async with httpx.AsyncClient(timeout=120.0) as client:
-                resp = await client.post(f"{api_base}/api/editor/export", json={
-                    "file_path": str(full),
-                    "format": fmt,
-                })
+                markdown = await asyncio.to_thread(full.read_text, encoding="utf-8")
+                normalized = fmt.lower()
+                if normalized in ("word", "docx"):
+                    resp = await client.post(
+                        f"{api_base}/api/export/word",
+                        json={"content": markdown, "title": full.stem},
+                    )
+                elif normalized == "pdf":
+                    resp = await client.post(
+                        f"{api_base}/api/export/pdf",
+                        json={"markdown": markdown, "title": full.stem},
+                    )
+                else:
+                    resp = await client.post(
+                        f"{api_base}/api/export",
+                        json={"markdown": markdown, "title": full.stem},
+                    )
                 if resp.status_code != 200:
                     return ToolResult(f"error: export API returned {resp.status_code}", is_error=True)
+                if normalized == "pdf":
+                    out_path = full.with_suffix(".pdf")
+                    await asyncio.to_thread(out_path.write_bytes, resp.content)
+                    return ToolResult(f"Export successful: {out_path}")
                 data = resp.json()
-                out_path = data.get("output_path", f"{file_path}.{fmt}")
+                if normalized in ("word", "docx"):
+                    generated_path = data.get("path")
+                    if not generated_path or not Path(generated_path).is_file():
+                        return ToolResult("error: Word export did not produce a file", is_error=True)
+                    out_path = full.with_suffix(".docx")
+                    await asyncio.to_thread(shutil.copy2, generated_path, out_path)
+                else:
+                    tex = data.get("tex")
+                    if not isinstance(tex, str) or not tex:
+                        return ToolResult("error: LaTeX export returned no content", is_error=True)
+                    out_path = full.with_suffix(".tex")
+                    await asyncio.to_thread(out_path.write_text, tex, encoding="utf-8")
                 return ToolResult(f"Export successful: {out_path}")
         except Exception as e:
             return ToolResult(f"error connecting to export API: {e}", is_error=True)
@@ -180,6 +209,110 @@ def register_academic_tools(registry: ToolRegistry) -> None:
         },
         "required": ["query"],
     }, rag_search, permission="read-only")
+
+    # ---- Argument Companion / Reviewer read tools -----------------------
+    # These tools expose the existing production stores through their public
+    # API. They do not duplicate Reviewer-2, Claim Ledger, or Argument Map
+    # logic; the Agent receives the same persisted data as the visible panels.
+
+    async def read_argument_graph(args: dict) -> ToolResult:
+        graph_id = str(args.get("graph_id", "")).strip()
+        source_doc = str(args.get("source_doc", "")).strip()
+        try:
+            import httpx
+            api_base = os.environ.get("SCHOLAR_API_BASE", "http://localhost:18088")
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                if graph_id:
+                    resp = await client.get(f"{api_base}/api/argument/graph/{graph_id}")
+                    if resp.status_code == 404:
+                        return ToolResult(f"Argument graph not found: {graph_id}", is_error=True)
+                    resp.raise_for_status()
+                    return ToolResult(json.dumps(resp.json(), ensure_ascii=False))
+
+                resp = await client.get(f"{api_base}/api/argument/graphs")
+                resp.raise_for_status()
+                graphs = resp.json()
+                if source_doc:
+                    normalized = source_doc.replace("\\", "/").lower()
+                    graphs = [
+                        graph for graph in graphs
+                        if str(graph.get("source_doc", "")).replace("\\", "/").lower() == normalized
+                    ]
+                if not graphs:
+                    return ToolResult("No argument graph found for the requested document.")
+                return ToolResult(json.dumps(graphs, ensure_ascii=False))
+        except Exception as e:
+            return ToolResult(f"Argument graph lookup failed: {e}", is_error=True)
+
+    registry.register("read_argument_graph", (
+        "Read the real Toulmin argument map. Provide graph_id for one full graph, "
+        "or source_doc to find graphs linked to a manuscript."
+    ), {
+        "type": "object",
+        "properties": {
+            "graph_id": {"type": "string", "description": "Argument graph ID"},
+            "source_doc": {"type": "string", "description": "Workspace document path"},
+        },
+    }, read_argument_graph, permission="read-only")
+
+    async def read_argument_ledger(args: dict) -> ToolResult:
+        doc_id = str(args.get("doc_id", "")).strip()
+        if not doc_id:
+            return ToolResult("error: doc_id is required", is_error=True)
+        try:
+            import httpx
+            api_base = os.environ.get("SCHOLAR_API_BASE", "http://localhost:18088")
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                # doc_id remains a query parameter because it may be a full path.
+                resp = await client.get(f"{api_base}/api/companion/ledger", params={"doc_id": doc_id})
+                if resp.status_code == 404:
+                    return ToolResult(f"Claim Ledger not found for: {doc_id}", is_error=True)
+                resp.raise_for_status()
+                return ToolResult(json.dumps(resp.json(), ensure_ascii=False))
+        except Exception as e:
+            return ToolResult(f"Claim Ledger lookup failed: {e}", is_error=True)
+
+    registry.register("read_argument_ledger", (
+        "Read the real Claim Ledger for a manuscript, including promises, "
+        "source anchors, discharge anchors, and fulfillment status."
+    ), {
+        "type": "object",
+        "properties": {
+            "doc_id": {"type": "string", "description": "Document ID or full workspace file path"},
+        },
+        "required": ["doc_id"],
+    }, read_argument_ledger, permission="read-only")
+
+    async def read_reviewer_state(args: dict) -> ToolResult:
+        session_id = str(args.get("session_id", "")).strip()
+        doc_id = str(args.get("doc_id", "")).strip()
+        if not session_id and not doc_id:
+            return ToolResult("error: session_id or doc_id is required", is_error=True)
+        try:
+            import httpx
+            api_base = os.environ.get("SCHOLAR_API_BASE", "http://localhost:18088")
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                if session_id:
+                    resp = await client.get(f"{api_base}/api/companion/review/{session_id}")
+                else:
+                    resp = await client.get(f"{api_base}/api/companion/reviews", params={"doc_id": doc_id})
+                if resp.status_code == 404:
+                    return ToolResult("Reviewer-2 state not found.", is_error=True)
+                resp.raise_for_status()
+                return ToolResult(json.dumps(resp.json(), ensure_ascii=False))
+        except Exception as e:
+            return ToolResult(f"Reviewer-2 lookup failed: {e}", is_error=True)
+
+    registry.register("read_reviewer_state", (
+        "Read persisted Reviewer-2 criticism, response status, rebuttal data, "
+        "and anchored manuscript evidence."
+    ), {
+        "type": "object",
+        "properties": {
+            "session_id": {"type": "string", "description": "Reviewer session ID"},
+            "doc_id": {"type": "string", "description": "Document ID or full workspace file path"},
+        },
+    }, read_reviewer_state, permission="read-only")
 
     # ---- web_search (参考 claw-code WebSearch) ----
     async def web_search(args: dict) -> ToolResult:

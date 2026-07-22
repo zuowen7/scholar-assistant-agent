@@ -10,6 +10,8 @@ import {
   activeTab, content, activeFile, isModified,
 } from './useEditorState'
 import { i18n } from '../i18n'
+import { save } from '@tauri-apps/plugin-dialog'
+import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 
 function setContent(text: string) {
   const tab = activeTab.value
@@ -81,6 +83,37 @@ function setEditorInstance(editor: import('monaco-editor').editor.IStandaloneCod
   monacoEditor.value = editor
 }
 
+export type ExternalFileUpdateResult = 'applied' | 'unchanged' | 'conflict' | 'not-open'
+
+/**
+ * Apply content written by an external actor such as Agent V2 to an open tab.
+ * Unsaved Monaco content always wins: a dirty tab is reported as a conflict and
+ * left byte-for-byte unchanged so the caller can surface a recovery warning.
+ */
+function applyExternalFileUpdate(path: string, fresh: string): ExternalFileUpdateResult {
+  const normalizedPath = path.replace(/\\/g, '/').toLowerCase()
+  const tab = tabs.value.find(candidate => (
+    candidate.path?.replace(/\\/g, '/').toLowerCase() === normalizedPath
+  ))
+  if (!tab) return 'not-open'
+  if (tab.isModified) return 'conflict'
+  if (tab.content === fresh) return 'unchanged'
+
+  tab.content = fresh
+  tab.isModified = false
+  contentVersion.value++
+
+  if (tab.id === activeTabId.value && monacoEditor.value) {
+    const model = monacoEditor.value.getModel()
+    if (model) {
+      const position = monacoEditor.value.getPosition()
+      model.setValue(fresh)
+      if (position) monacoEditor.value.setPosition(position)
+    }
+  }
+  return 'applied'
+}
+
 /**
  * Reload all open tabs that have a path by re-reading from disk.
  * Called after the Agent writes/modifies files so Monaco shows fresh content.
@@ -88,19 +121,12 @@ function setEditorInstance(editor: import('monaco-editor').editor.IStandaloneCod
  * For the active tab the Monaco model value is also updated in-place.
  */
 async function reloadOpenTabs(): Promise<void> {
-  let readTextFile: ((path: string) => Promise<string>) | null = null
-  try {
-    const fs = await import('@tauri-apps/plugin-fs')
-    readTextFile = fs.readTextFile
-  } catch {
-    return  // Not running in Tauri — file reload not available in web mode
-  }
   for (const tab of tabs.value) {
     if (!tab.path) continue
     // Skip tabs with unsaved user edits to avoid clobbering their work.
     if (tab.isModified) continue
     try {
-      const fresh = await readTextFile!(tab.path)
+      const fresh = await readTextFile(tab.path)
       if (fresh === tab.content) continue  // no change — skip expensive Monaco update
       tab.content = fresh
       contentVersion.value++
@@ -127,13 +153,11 @@ async function saveFile(): Promise<string | null> {
   // Untitled tab — prompt Save As dialog
   if (!tab.path) {
     try {
-      const { save } = await import('@tauri-apps/plugin-dialog')
       const chosen = await save({
         defaultPath: `${tab.name || 'untitled'}.md`,
         filters: [{ name: 'Markdown', extensions: ['md'] }],
       })
       if (!chosen) return null  // user cancelled
-      const { writeTextFile } = await import('@tauri-apps/plugin-fs')
       await writeTextFile(chosen, tab.content)
       tab.path = chosen
       tab.id = chosen
@@ -148,7 +172,6 @@ async function saveFile(): Promise<string | null> {
 
   // Named tab — save in place
   try {
-    const { writeTextFile } = await import('@tauri-apps/plugin-fs')
     await writeTextFile(tab.path, tab.content)
     tab.isModified = false
     return null
@@ -162,5 +185,5 @@ export {
   monacoEditor, contentVersion, selection,
   setEditorInstance, setContent, updateSelection, markClean, markDirty,
   openFile, openNewUntitled, closeTab, setActiveTab, renameTabPath, saveFile,
-  reloadOpenTabs,
+  reloadOpenTabs, applyExternalFileUpdate,
 }

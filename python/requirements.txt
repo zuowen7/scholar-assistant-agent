@@ -31,6 +31,9 @@ striprtf==0.0.29
 
 # MCP Server support (stdio transport for Claude Code / Cursor IDE integration)
 mcp==1.27.0
+# MCP uses this only on Windows; keeping the marker explicit makes the shared
+# lock file installable on Linux CI runners as well.
+pywin32==311; sys_platform == "win32"
 
 # Agent workspace tools: diff preview generation
 unidiff==0.7.5

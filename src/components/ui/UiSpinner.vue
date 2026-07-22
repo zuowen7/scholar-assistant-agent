@@ -70,7 +70,6 @@ const ariaLabel = computed(() => props.label || t('general.loading'))
   inset: 38%;
   border-radius: 50%;
   background: var(--c-accent);
-  box-shadow: 0 0 8px 1px var(--c-accent-ring);
   animation: sp-pulse 1.2s ease-in-out infinite;
 }
 

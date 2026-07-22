@@ -92,6 +92,23 @@ class ToolRegistry:
     def __init__(self, workspace_root: str | Path | None = None):
         self._tools: dict[str, ToolSpec] = {}
         self._workspace_root = Path(workspace_root).resolve() if workspace_root else None
+        # Provider injected by the runtime; used by tools that need LLM access
+        # (e.g., sub_agent). Set via set_provider() — do NOT assign _provider
+        # directly from outside the class.
+        self._provider: Any = None
+
+    def set_provider(self, provider: Any) -> None:
+        """Inject the LLM provider for tools that need it (e.g., sub_agent).
+
+        Replaces the previous pattern of ``registry._provider = provider``
+        which bypassed encapsulation and would break if ``_provider`` is
+        renamed or ``__slots__`` is added.
+        """
+        self._provider = provider
+
+    def get_provider(self) -> Any:
+        """Return the injected provider, or None if not set."""
+        return self._provider
 
     def register(
         self,
@@ -277,8 +294,10 @@ def _create_file_ops(registry: ToolRegistry) -> None:
         path_str = str(args.get("path", "."))
         if not pattern:
             return ToolResult("error: pattern is required", is_error=True)
-        p = Path(path_str)
-        root = p if p.is_absolute() else (ws / p) if ws else p
+        try:
+            root = registry._resolve_path(path_str)
+        except ValueError as e:
+            return ToolResult(f"error: {e}", is_error=True)
         if not root.exists():
             return ToolResult(f"error: path not found: {path_str}", is_error=True)
         try:
@@ -421,8 +440,8 @@ def _create_file_ops(registry: ToolRegistry) -> None:
         cwd = str(args.get("cwd", "."))
         try:
             root = registry._resolve_path(cwd) if cwd != "." else (registry._workspace_root or Path.cwd())
-        except ValueError:
-            root = Path(cwd)
+        except ValueError as e:
+            return ToolResult(f"error: {e}", is_error=True)
 
         from src.agent_v2.runtime.bash_validation import validate_command
         from src.agent_v2.runtime.permissions import PermissionMode
@@ -445,12 +464,14 @@ def _create_file_ops(registry: ToolRegistry) -> None:
             if len(output) > _TOOL_RESULT_MAX:
                 output = output[:_TOOL_RESULT_MAX] + "\n... [truncated]"
             if proc.returncode != 0:
-                return ToolResult(f"{output}\nexit code: {proc.returncode}", is_error=False)
+                return ToolResult(f"{output}\nexit code: {proc.returncode}", is_error=True)
             result = ToolResult(output or "(no output)")
             if validation.is_warn:
                 result = ToolResult(f"[WARNING: {validation.message}]\n{output or '(no output)'}")
             return result
         except _aio.TimeoutError:
+            proc.kill()
+            await proc.wait()
             return ToolResult("error: command timed out (30s)", is_error=True)
         except Exception as e:
             return ToolResult(f"error running command: {e}", is_error=True)

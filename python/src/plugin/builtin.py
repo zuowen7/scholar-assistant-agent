@@ -13,6 +13,7 @@ https://modelcontextprotocol.io/specification/tools
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from src.plugin.registry import PluginServer, PluginRegistry, ToolSpec
@@ -63,12 +64,25 @@ def _tool_translate_text(text: str, source_lang: str = "en", target_lang: str = 
             client.close()
 
 
-def _tool_parse_document(file_path: str) -> str:
+def _resolve_workspace_file(file_path: str, workspace_root: str) -> Path:
+    if not workspace_root:
+        raise ValueError("workspace_root is required")
+    workspace = Path(workspace_root).resolve(strict=True)
+    candidate = Path(file_path)
+    resolved = (workspace / candidate if not candidate.is_absolute() else candidate).resolve(strict=True)
+    resolved.relative_to(workspace)
+    if not resolved.is_file():
+        raise ValueError("path is not a file")
+    return resolved
+
+
+def _tool_parse_document(file_path: str, workspace_root: str = "") -> str:
     """解析文档，提取纯文本。"""
     from src.parser import extract_document
     MAX_LEN = 4000
     try:
-        doc = extract_document(file_path)
+        resolved = _resolve_workspace_file(file_path, workspace_root)
+        doc = extract_document(str(resolved))
         text = doc.full_text
         if len(text) > MAX_LEN:
             text = text[:MAX_LEN] + "\n...[内容已截断]"
@@ -231,16 +245,18 @@ def _tool_get_citation_context(text: str, citation_key: str) -> str:
     return get_citation_context(text, citation_key)
 
 
-def _tool_analyze_image_with_vision(image_path: str) -> str:
+def _tool_analyze_image_with_vision(image_path: str, workspace_root: str = "") -> str:
     """使用 Vision API 分析图片内容。"""
     from src.agent_v2.special_elements import analyze_image_with_vision
-    return analyze_image_with_vision(image_path)
+    resolved = _resolve_workspace_file(image_path, workspace_root)
+    return analyze_image_with_vision(str(resolved))
 
 
-def _tool_analyze_chart_image(image_path: str) -> str:
+def _tool_analyze_chart_image(image_path: str, workspace_root: str = "") -> str:
     """使用 Vision API 分析图表图片。"""
     from src.agent_v2.special_elements import analyze_chart_image
-    return analyze_chart_image(image_path)
+    resolved = _resolve_workspace_file(image_path, workspace_root)
+    return analyze_chart_image(str(resolved))
 
 
 def _call_llm_simple(prompt: str) -> str:
@@ -331,10 +347,11 @@ def create_builtin_server() -> PluginServer:
                     "type": "object",
                     "properties": {
                         "file_path": {"type": "string", "description": "文档文件的绝对路径"},
+                        "workspace_root": {"type": "string", "description": "已选择的工作区根目录"},
                     },
-                    "required": ["file_path"],
+                    "required": ["file_path", "workspace_root"],
                 },
-                handler=_make_handler("file_path", _tool_parse_document, ["file_path"]),
+                handler=_make_handler("file_path", _tool_parse_document, ["file_path", "workspace_root"]),
             ),
             ToolSpec(
                 name="search_documents",
@@ -511,10 +528,11 @@ def create_builtin_server() -> PluginServer:
                     "type": "object",
                     "properties": {
                         "image_path": {"type": "string", "description": "图片文件的绝对路径（不支持远程 URL）"},
+                        "workspace_root": {"type": "string", "description": "已选择的工作区根目录"},
                     },
-                    "required": ["image_path"],
+                    "required": ["image_path", "workspace_root"],
                 },
-                handler=_make_handler("image_path", _tool_analyze_image_with_vision, ["image_path"]),
+                handler=_make_handler("image_path", _tool_analyze_image_with_vision, ["image_path", "workspace_root"]),
             ),
             ToolSpec(
                 name="analyze_chart_image",
@@ -523,10 +541,11 @@ def create_builtin_server() -> PluginServer:
                     "type": "object",
                     "properties": {
                         "image_path": {"type": "string", "description": "图表图片文件的绝对路径"},
+                        "workspace_root": {"type": "string", "description": "已选择的工作区根目录"},
                     },
-                    "required": ["image_path"],
+                    "required": ["image_path", "workspace_root"],
                 },
-                handler=_make_handler("image_path", _tool_analyze_chart_image, ["image_path"]),
+                handler=_make_handler("image_path", _tool_analyze_chart_image, ["image_path", "workspace_root"]),
             ),
         ],
     )

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +34,14 @@ def register_mindmap(
     load_config=None,
     build_cloud_client=None,
 ) -> None:
-    mindmap_path = runtime_dir / "mindmap.json"
+    def _mindmap_path(workspace_root: str) -> Path:
+        try:
+            workspace = Path(workspace_root).resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise HTTPException(422, f"无效工作区路径: {exc}")
+        if not workspace.is_dir():
+            raise HTTPException(422, "工作区路径必须是目录")
+        return workspace / ".yanmo" / "mindmap.json"
 
     async def _llm_call(system_prompt: str, user_prompt: str) -> str | None:
         if not load_config:
@@ -74,14 +83,29 @@ def register_mindmap(
     # ── Persistence ────────────────────────────────────────────────
 
     @app.post("/api/mindmap/save")
-    async def save_mindmap(data: dict) -> dict:
+    async def save_mindmap(data: dict, workspace_root: str) -> dict:
+        mindmap_path = _mindmap_path(workspace_root)
         mindmap_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(mindmap_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        fd, tmp_name = tempfile.mkstemp(
+            dir=mindmap_path.parent, prefix=".mindmap.", suffix=".tmp"
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_name, mindmap_path)
+        except Exception:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
         return {"ok": True}
 
     @app.get("/api/mindmap/load")
-    async def load_mindmap() -> JSONResponse:
+    async def load_mindmap(workspace_root: str) -> JSONResponse:
+        mindmap_path = _mindmap_path(workspace_root)
         if not mindmap_path.exists():
             raise HTTPException(status_code=404, detail="没有已保存的思维导图")
         try:
@@ -93,7 +117,8 @@ def register_mindmap(
         return JSONResponse(data)
 
     @app.delete("/api/mindmap")
-    async def clear_mindmap() -> dict:
+    async def clear_mindmap(workspace_root: str) -> dict:
+        mindmap_path = _mindmap_path(workspace_root)
         if mindmap_path.exists():
             mindmap_path.unlink()
         return {"ok": True}

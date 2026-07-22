@@ -170,6 +170,25 @@ describe('useSpeechRecognition', () => {
     expect(mockInstance.stop).toHaveBeenCalled()
   })
 
+  it('claims and releases the shared speech lock on natural end', async () => {
+    const sr = await getFresh()
+    const { speechBusyCount } = await import('../composables/useSpeechBusy')
+    expect(speechBusyCount.value).toBe(0)
+
+    sr.start()
+    expect(speechBusyCount.value).toBe(1)
+    mockInstance.simulateEnd()
+    expect(speechBusyCount.value).toBe(0)
+  })
+
+  it('releases the shared speech lock on manual stop', async () => {
+    const sr = await getFresh()
+    const { speechBusyCount } = await import('../composables/useSpeechBusy')
+    sr.start()
+    sr.stop()
+    expect(speechBusyCount.value).toBe(0)
+  })
+
   // ── toggle ───────────────────────────────────────────────────────────────
 
   it('toggle starts when idle', async () => {

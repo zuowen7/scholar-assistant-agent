@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import logging
 import os
 import re
@@ -19,7 +20,9 @@ logger = logging.getLogger(__name__)
 
 
 def _safe(doc_id: str) -> str:
-    return re.sub(r"[^\w.-]", "_", doc_id)
+    readable = re.sub(r"[^\w.-]", "_", doc_id).strip("._")[:80] or "document"
+    digest = hashlib.sha256(doc_id.encode("utf-8")).hexdigest()[:16]
+    return f"{readable}-{digest}"
 
 
 class CompanionStore:

@@ -29,6 +29,7 @@ beforeEach(() => {
   mockSRInstance = null
   mockStart.mockReset()
   mockStop.mockReset()
+  localStorage.removeItem('voice-settings')
 
   // Install mock as a constructor function (not arrow function)
   ;(globalThis as any).SpeechRecognition = MockSpeechRecognition
@@ -100,6 +101,51 @@ describe('useWakeWord', () => {
       }],
     })
     expect(callback).toHaveBeenCalledTimes(1)
+    stopWakeWord()
+  })
+
+  it('low sensitivity ignores homophones', async () => {
+    localStorage.setItem('voice-settings', JSON.stringify({ wakeWordPhrase: '小研', sensitivity: 'low' }))
+    const callback = vi.fn()
+    const useWakeWord = await getFresh()
+    const { startWakeWord, stopWakeWord } = useWakeWord(callback)
+    await startWakeWord()
+
+    mockSRInstance.onresult({
+      resultIndex: 0,
+      results: [{ 0: { transcript: '小严 帮我翻译' }, length: 1, isFinal: true }],
+    })
+    expect(callback).not.toHaveBeenCalled()
+    stopWakeWord()
+  })
+
+  it('medium sensitivity waits for a final recognition result', async () => {
+    localStorage.setItem('voice-settings', JSON.stringify({ wakeWordPhrase: '小研', sensitivity: 'medium' }))
+    const callback = vi.fn()
+    const useWakeWord = await getFresh()
+    const { startWakeWord, stopWakeWord } = useWakeWord(callback)
+    await startWakeWord()
+
+    mockSRInstance.onresult({
+      resultIndex: 0,
+      results: [{ 0: { transcript: '小研' }, length: 1, isFinal: false }],
+    })
+    expect(callback).not.toHaveBeenCalled()
+    stopWakeWord()
+  })
+
+  it('high sensitivity can react to an interim recognition result', async () => {
+    localStorage.setItem('voice-settings', JSON.stringify({ wakeWordPhrase: '小研', sensitivity: 'high' }))
+    const callback = vi.fn()
+    const useWakeWord = await getFresh()
+    const { startWakeWord, stopWakeWord } = useWakeWord(callback)
+    await startWakeWord()
+
+    mockSRInstance.onresult({
+      resultIndex: 0,
+      results: [{ 0: { transcript: '小研' }, length: 1, isFinal: false }],
+    })
+    expect(callback).toHaveBeenCalledOnce()
     stopWakeWord()
   })
 

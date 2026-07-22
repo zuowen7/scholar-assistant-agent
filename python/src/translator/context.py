@@ -53,6 +53,12 @@ def _extract_title(lines: list[str]) -> str:
             continue
         if len(stripped) > 200:
             continue
+        # A body paragraph near the top of a plain-text document is not a title.
+        # Duplicating it as LLM context can make paragraph translations reorder.
+        if re.search(r"[.!?。！？]”?\s*$", stripped):
+            continue
+        if len(stripped.split()) > 24:
+            continue
         if stripped.isupper() and len(stripped) > 20:
             continue
         return stripped

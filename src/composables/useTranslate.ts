@@ -1,6 +1,5 @@
 ﻿import { reactive, readonly, markRaw } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import { save } from '@tauri-apps/plugin-dialog'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { API_BASE } from '../utils/api'
 import { logger } from '../utils/logger'
@@ -9,6 +8,7 @@ import { persistTranslation, loadLastTranslation, clearPersistedTranslation } fr
 import { toastFromError } from './useToast'
 import { validateTranslateUpload, extractApiErrorMessage } from '../utils/validation'
 import { i18n } from '../i18n'
+import { saveBlob } from './useEditorIO'
 import type {
   TranslateState,
   TranslateStatus,
@@ -61,6 +61,7 @@ function createState(): TranslateState {
 const state = reactive<TranslateState>(createState())
 let abortController: AbortController | null = null
 let crashListener: UnlistenFn | null = null
+let backendAvailabilityError = false
 let _currentStreamId = 0
 let _isReconnecting = false
 
@@ -71,6 +72,7 @@ function reset(): void {
   }
   _currentStreamId++
   _isReconnecting = false
+  backendAvailabilityError = false
   Object.assign(state, createState())
 }
 
@@ -87,8 +89,22 @@ function setStatus(s: TranslateStatus): void {
 }
 
 function setError(msg: string): void {
+  backendAvailabilityError = false
   state.errorMessage = msg
   state.status = 'error'
+}
+
+function setBackendError(msg: string): void {
+  backendAvailabilityError = true
+  state.errorMessage = msg
+  state.status = 'error'
+}
+
+function clearBackendError(): void {
+  if (!backendAvailabilityError) return
+  backendAvailabilityError = false
+  state.errorMessage = null
+  if (state.status === 'error') state.status = 'idle'
 }
 
 function setStepMessage(msg: string): void {
@@ -214,6 +230,14 @@ async function startStream(taskId: string, attempt: number = 0): Promise<void> {
       if (myStreamId !== _currentStreamId) return
       handleSseEvent(event, data)
     })
+    if (
+      myStreamId === _currentStreamId
+      && state.status !== 'done'
+      && state.status !== 'error'
+      && state.status !== 'idle'
+    ) {
+      throw new Error(i18n.global.t('errors.streamEnded'))
+    }
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
       return
@@ -299,15 +323,23 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       }
       break
     }
+    case 'translate.chunk_tm_hit': {
+      const chunk: ChunkDoneEvent = {
+        index: Number(data.index ?? 0),
+        total: Number(data.total ?? state.totalChunks),
+        original_preview: String(data.original_preview ?? ''),
+        translated_preview: String(data.translated_preview ?? ''),
+        tokens: 0,
+      }
+      upsertTranslation(chunk)
+      state.completedChunks = state.translations.length
+      state.stepMessage = `Translation memory hit for chunk ${chunk.index + 1}/${chunk.total}`
+      break
+    }
     case 'translate.chunk_done': {
       const chunk = data as unknown as ChunkDoneEvent
-      const existingIdx = state.translations.findIndex(t => t.index === chunk.index)
-      if (existingIdx >= 0) {
-        state.translations[existingIdx] = chunk
-      } else {
-        state.translations.push(chunk)
-      }
-      state.completedChunks = Math.max(state.completedChunks, chunk.index + 1)
+      upsertTranslation(chunk)
+      state.completedChunks = state.translations.length
       if ((data as Record<string, unknown>).fallback) {
         state.fallbackChunks += 1
         state.stepMessage = `Chunk ${chunk.index + 1}/${chunk.total} failed; original text was kept`
@@ -324,10 +356,28 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       }
       break
     }
+    case 'translate.glossary_violation': {
+      const chunkIndex = Number(data.index ?? 0)
+      const violations = Array.isArray(data.violations) ? data.violations : []
+      upsertQaWarning({
+        chunkIndex: Number.isFinite(chunkIndex) ? chunkIndex : 0,
+        sectionType: state.sectionMap[chunkIndex] ?? 'glossary',
+        score: 100,
+        flags: violations.map((violation) => {
+          const item = violation as Record<string, unknown>
+          return {
+            type: 'glossary',
+            severity: 'warning',
+            location: String(item.source ?? ''),
+            message: String(item.message ?? 'Glossary term was not applied consistently'),
+            suggestion: String(item.expected ?? ''),
+          }
+        }),
+      })
+      break
+    }
     case 'translate.qa_warnings': {
-      // P0: Post-translation QA warnings
-      const qa = data as unknown as QAWarning
-      state.qaWarnings.push(qa)
+      upsertQaWarning(normalizeQaWarning(data))
       break
     }
     case 'translate.chunk_error':
@@ -368,6 +418,40 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       }
       break
   }
+}
+
+function upsertTranslation(chunk: ChunkDoneEvent): void {
+  const existingIdx = state.translations.findIndex(item => item.index === chunk.index)
+  if (existingIdx >= 0) {
+    state.translations[existingIdx] = chunk
+  } else {
+    state.translations.push(chunk)
+  }
+}
+
+export function normalizeQaWarning(data: Record<string, unknown>): QAWarning {
+  const rawIndex = data.chunkIndex ?? data.chunk_index ?? data.index ?? 0
+  const chunkIndex = Number(rawIndex)
+  return {
+    chunkIndex: Number.isFinite(chunkIndex) ? chunkIndex : 0,
+    sectionType: String(data.sectionType ?? data.section_type ?? 'unknown'),
+    score: Number(data.score ?? 100),
+    flags: Array.isArray(data.flags) ? data.flags as QAWarning['flags'] : [],
+  }
+}
+
+function upsertQaWarning(warning: QAWarning): void {
+  const existing = state.qaWarnings.find(item => item.chunkIndex === warning.chunkIndex)
+  const hasIncomingGlossaryFlags = warning.flags.some(flag => flag.type === 'glossary')
+  const preservedGlossaryFlags = hasIncomingGlossaryFlags
+    ? []
+    : existing?.flags.filter(flag => flag.type === 'glossary') ?? []
+  const mergedWarning = {
+    ...warning,
+    flags: [...preservedGlossaryFlags, ...warning.flags],
+  }
+  const remaining = state.qaWarnings.filter(item => item.chunkIndex !== warning.chunkIndex)
+  state.qaWarnings = mergedWarning.flags.length ? [...remaining, mergedWarning] : remaining
 }
 
 function stepToStatus(step: number): TranslateStatus {
@@ -460,24 +544,10 @@ async function downloadResult(): Promise<void> {
   const content = state.finalContent
   if (!content) return
 
-  try {
-    const filePath = await save({
-      defaultPath: `translated_${state.taskId}.md`,
-      filters: [{ name: 'Markdown', extensions: ['md'] }, { name: 'All Files', extensions: ['*'] }],
-    })
-    if (!filePath) return
-
-    await invoke<string>('save_file', { path: filePath, content })
-  } catch {
-    // 非 Tauri 环境：浏览器下载
-    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
-    const blobUrl = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = blobUrl
-    a.download = `translated_${state.taskId}.md`
-    a.click()
-    URL.revokeObjectURL(blobUrl)
-  }
+  await saveBlob(
+    new Blob([content], { type: 'text/markdown;charset=utf-8' }),
+    `${state.taskId}_bilingual.md`,
+  )
 }
 
 async function exportBilingualDocx(): Promise<void> {
@@ -499,7 +569,6 @@ async function exportBilingualDocx(): Promise<void> {
 
     const blob = await resp.blob()
     const defaultName = `${state.taskId}_bilingual.docx`
-    const { saveBlob } = await import('./useEditorIO')
     const result = await saveBlob(blob, defaultName)
     if (result === 'Cancelled') return
   } catch (err: unknown) {
@@ -527,7 +596,6 @@ async function exportTranslationOnlyDocx(): Promise<void> {
 
     const blob = await resp.blob()
     const defaultName = `${state.taskId}_translation_only.docx`
-    const { saveBlob } = await import('./useEditorIO')
     const result = await saveBlob(blob, defaultName)
     if (result === 'Cancelled') return
   } catch (err: unknown) {
@@ -551,24 +619,61 @@ async function exportTranslationOnlyMarkdown(): Promise<void> {
   }
   const content = parts.join('\n\n')
 
-  try {
-    const filePath = await save({
-      defaultPath: `translated_${state.taskId}.md`,
-      filters: [{ name: 'Markdown', extensions: ['md'] }, { name: 'All Files', extensions: ['*'] }],
-    })
-    if (!filePath) return
+  await saveBlob(
+    new Blob([content], { type: 'text/markdown;charset=utf-8' }),
+    `${state.taskId}_translation_only.md`,
+  )
+}
 
-    await invoke<string>('save_file', { path: filePath, content })
-  } catch {
-    // 非 Tauri 环境：浏览器下载
-    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
-    const blobUrl = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = blobUrl
-    a.download = `translated_${state.taskId}.md`
-    a.click()
-    URL.revokeObjectURL(blobUrl)
+interface RetryBlockResponse {
+  translated: string
+  status: BlockData['status']
+  chunk_index?: number
+  chunks?: TranslateState['chunks']
+  content?: string
+  qa_warning?: Record<string, unknown>
+  fallback_count?: number
+}
+
+async function retryBlock(blockId: string): Promise<void> {
+  if (!state.taskId) throw new Error(i18n.global.t('translate.retryMissingTask'))
+
+  const response = await fetch(`${API_URL}/api/translate/${state.taskId}/retry_block`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ block_id: blockId }),
+  })
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }))
+    throw new Error(detail.detail || i18n.global.t('translate.retryFailed', { status: response.status }))
   }
+
+  const result = await response.json() as RetryBlockResponse
+  state.blocks = state.blocks.map(block => block.id === blockId
+    ? markRaw({ ...block, translated: result.translated, status: result.status })
+    : block)
+  if (Array.isArray(result.chunks)) state.chunks = result.chunks
+  if (typeof result.content === 'string') state.finalContent = result.content
+  if (typeof result.fallback_count === 'number') state.fallbackChunks = result.fallback_count
+  if (result.qa_warning) upsertQaWarning(normalizeQaWarning(result.qa_warning))
+
+  const chunkIndex = Number(result.chunk_index)
+  if (Number.isFinite(chunkIndex)) {
+    const translatedPreview = state.chunks[chunkIndex]?.translated?.slice(0, 200) ?? ''
+    state.translations = state.translations.map(chunk => chunk.index === chunkIndex
+      ? { ...chunk, translated_preview: translatedPreview, fallback: false }
+      : chunk)
+  }
+  persistTranslation({
+    id: state.taskId,
+    finalContent: state.finalContent,
+    blocks: state.blocks,
+    chunks: state.chunks,
+    parsedInfo: state.parsedInfo,
+    stepMessage: state.stepMessage,
+    fallbackChunks: state.fallbackChunks,
+    misalignedChunks: state.misalignedChunks,
+  })
 }
 
 // ── P2: PPTX 导出 ──────────────────────────────────────────────────────
@@ -592,7 +697,6 @@ async function exportPPTX(): Promise<void> {
 
     const blob = await resp.blob()
     const defaultName = `${state.taskId}_presentation.pptx`
-    const { saveBlob } = await import('./useEditorIO')
     await saveBlob(blob, defaultName)
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : i18n.global.t('errors.unknownError')
@@ -622,7 +726,6 @@ async function exportDataAvailability(): Promise<void> {
     const data = await resp.json()
     // 复制到剪贴板 + 保存为文件
     const content = data.section || JSON.stringify(data, null, 2)
-    const { saveBlob } = await import('./useEditorIO')
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
     await saveBlob(blob, `${state.taskId}_data_availability.md`)
   } catch (err: unknown) {
@@ -647,10 +750,9 @@ async function restartBackend(): Promise<boolean> {
 
 function listenBackendCrash(): void {
   if (!isTauri) return
-  listen<{ message: string; exit_status: string }>('backend-crashed', (event) => {
+  listen<{ message: string; exit_status: string }>('backend-crashed', () => {
     if (state.status === 'idle' || state.status === 'error') {
-      state.errorMessage = event.payload.message || 'Python backend exited unexpectedly'
-      setStatus('error')
+      setBackendError(i18n.global.t('app.backendOffline'))
     }
   }).then(fn => { crashListener = fn }).catch(() => {})
 }
@@ -672,6 +774,8 @@ export function useTranslate() {
     listenBackendCrash,
     setStatus,
     setError,
+    setBackendError,
+    clearBackendError,
     setStepMessage,
     recoverTranslation,
     discardPersisted,
@@ -684,6 +788,7 @@ export function useTranslate() {
     exportBilingualDocx,
     exportTranslationOnlyDocx,
     exportTranslationOnlyMarkdown,
+    retryBlock,
     // P2-P3: New export formats
     exportPPTX,
     exportDataAvailability,
@@ -701,6 +806,11 @@ export function _resetForTesting(): void {
     crashListener = null
   }
   Object.assign(state, createState())
+}
+
+/** Feed a backend SSE event through the production handler — for tests only. */
+export function _handleSseEventForTesting(event: string, data: Record<string, unknown>): void {
+  handleSseEvent(event, data)
 }
 
 async function recoverTranslation(): Promise<boolean> {

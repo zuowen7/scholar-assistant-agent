@@ -138,7 +138,7 @@ function formatPath(p: string | undefined | null): string {
 .editor-welcome {
   flex: 1;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: var(--space-7) var(--space-6);
   background: var(--editor-bg);
@@ -168,6 +168,7 @@ function formatPath(p: string | undefined | null): string {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+  margin-block: auto;
 }
 
 /* Hero */
@@ -238,7 +239,7 @@ function formatPath(p: string | undefined | null): string {
 
 .wc-card-line {
   height: 1px;
-  background: linear-gradient(90deg, var(--c-accent-soft), transparent 60%);
+  background: var(--c-accent-soft);
   opacity: 0;
   transition: opacity var(--motion-fast) var(--ease-out);
 }
@@ -249,7 +250,7 @@ function formatPath(p: string | undefined | null): string {
 }
 .wc-card:hover .wc-card-line {
   opacity: 1;
-  background: linear-gradient(90deg, var(--accent-0), transparent 60%);
+  background: var(--accent-0);
 }
 
 .wc-card--hero {

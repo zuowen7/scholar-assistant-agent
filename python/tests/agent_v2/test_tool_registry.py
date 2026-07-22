@@ -92,6 +92,35 @@ class TestToolExecution:
         assert "hello" in result.output
 
     @pytest.mark.asyncio
+    async def test_grep_rejects_path_outside_workspace(
+        self, registry: ToolRegistry, temp_workspace: Path
+    ):
+        outside = temp_workspace.parent / "outside.txt"
+        outside.write_text("outside sentinel", encoding="utf-8")
+        result = await registry.execute(
+            "grep_files", {"pattern": "sentinel", "path": str(outside)}
+        )
+        assert result.is_error
+        assert "outside workspace" in result.output
+
+    @pytest.mark.asyncio
+    async def test_run_command_rejects_cwd_outside_workspace(
+        self, registry: ToolRegistry, temp_workspace: Path
+    ):
+        result = await registry.execute(
+            "run_command", {"command": "cd", "cwd": str(temp_workspace.parent)}
+        )
+        assert result.is_error
+        assert "outside workspace" in result.output
+
+    @pytest.mark.asyncio
+    async def test_run_command_nonzero_exit_is_error(self, registry: ToolRegistry):
+        command = "cmd /c exit 7" if os.name == "nt" else "sh -c 'exit 7'"
+        result = await registry.execute("run_command", {"command": command})
+        assert result.is_error
+        assert "exit code: 7" in result.output
+
+    @pytest.mark.asyncio
     async def test_tr013_glob(self, registry: ToolRegistry, temp_workspace: Path):
         """TR-013: glob 返回匹配路径"""
         result = await registry.execute("glob_files", {"pattern": "*.md", "path": "."})
