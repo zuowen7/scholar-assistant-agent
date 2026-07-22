@@ -36,14 +36,19 @@ export default defineConfig({
     exclude: ['@tauri-apps/api'],
   },
   build: {
+    // Tauri 2 runs on a modern WebView2/Chromium engine; avoid legacy syntax
+    // transforms that add bytes without improving supported-runtime coverage.
+    target: 'es2022',
     sourcemap: false,
     // Monaco is intentionally isolated and ships its own large language workers.
     // Warn only when an application chunk exceeds that known editor boundary.
     chunkSizeWarningLimit: 4500,
     rollupOptions: {
       output: {
+        onlyExplicitManualChunks: true,
         manualChunks(id) {
           const moduleId = id.replaceAll('\\', '/')
+          if (moduleId.includes('vite/preload-helper')) return 'vendor'
           if (!moduleId.includes('/node_modules/')) return undefined
           if (moduleId.includes('/node_modules/monaco-editor/')) return 'monaco'
           if (moduleId.includes('/node_modules/@tauri-apps/')) return 'tauri'

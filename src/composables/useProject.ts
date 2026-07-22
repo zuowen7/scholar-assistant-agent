@@ -128,6 +128,8 @@ export async function closeProject(): Promise<void> {
   const { rootDir, files } = useFileTree()
   rootDir.value = null
   files.value = []
+  tabs.value = []
+  activeTabId.value = null
 }
 
 export async function detectProject(path: string): Promise<boolean> {

@@ -1,4 +1,4 @@
-import { ref, watch } from 'vue'
+import { getCurrentScope, onScopeDispose, ref, watch } from 'vue'
 import { isSpeechBusy, speechBusyCount } from './useSpeechBusy'
 import { logger } from '../utils/logger'
 
@@ -196,7 +196,7 @@ export function useWakeWord(onWakeWord: () => void) {
   // Only one SpeechRecognition can be active at a time on most platforms.
   // Use flush:'sync' so the wake word SR is stopped BEFORE the dictation SR starts.
   let pausedByDictation = false
-  watch(speechBusyCount, (count) => {
+  const stopSpeechBusyWatch = watch(speechBusyCount, (count) => {
     if (count > 0 && active.value && !pausedByDictation) {
       pausedByDictation = true
       try { sr?.stop() } catch { /* ignore */ }
@@ -213,10 +213,24 @@ export function useWakeWord(onWakeWord: () => void) {
   window.addEventListener('focus', onFocus)
   document.addEventListener('visibilitychange', onVisibility)
 
+  let cleanedUp = false
+  function cleanup() {
+    if (cleanedUp) return
+    cleanedUp = true
+    stopWakeWord()
+    stopSpeechBusyWatch()
+    window.removeEventListener('blur', onBlur)
+    window.removeEventListener('focus', onFocus)
+    document.removeEventListener('visibilitychange', onVisibility)
+  }
+
+  if (getCurrentScope()) onScopeDispose(cleanup)
+
   return {
     active,
     error,
     startWakeWord,
     stopWakeWord,
+    cleanup,
   }
 }

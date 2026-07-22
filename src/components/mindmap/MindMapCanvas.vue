@@ -70,6 +70,10 @@ import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 import { VueFlow, useVueFlow } from '@vue-flow/core'
+import '@vue-flow/core/dist/style.css'
+import '@vue-flow/core/dist/theme-default.css'
+import '@vue-flow/controls/dist/style.css'
+import '@vue-flow/minimap/dist/style.css'
 import type { Connection, NodeChange, GraphEdge } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'

@@ -21,7 +21,7 @@ vi.mock('../utils/api', () => ({
 
 // ── Imports ─────────────────────────────────────────────────────────────
 
-import { useAgentChat, _resetForTesting } from '../composables/useAgentChat'
+import { useAgentChat, _getWorkflowCacheKeysForTesting, _resetForTesting } from '../composables/useAgentChat'
 import { ref } from 'vue'
 
 // ── SSE helper ──────────────────────────────────────────────────────────
@@ -331,6 +331,22 @@ describe('useAgentChat', () => {
       expect(messages.value).toHaveLength(3)
       expect(messages.value[1].events[0].metadata?.tool_name).toBe('read_file')
       expect(messages.value[2].content).toBe('Review complete')
+    })
+
+    it('bounds the in-memory workflow message cache', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({
+        messages: [{ role: 'user', content: 'cached', events: [] }],
+      }), { status: 200 }))))
+      const { loadWorkflowMessages } = useAgentChat()
+
+      for (let index = 0; index < 21; index++) {
+        await loadWorkflowMessages(`workflow-${index}`)
+      }
+
+      const cacheKeys = _getWorkflowCacheKeysForTesting()
+      expect(cacheKeys).toHaveLength(20)
+      expect(cacheKeys).not.toContain('workflow-0')
+      expect(cacheKeys.at(-1)).toBe('workflow-20')
     })
   })
 
