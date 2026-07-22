@@ -158,3 +158,6 @@ python/nul_test/
 python/data/argument_output/
 outputs/
 *.docx
+
+# Local archive — untracked, kept on disk only, never pushed to the cloud repo
+docs/_archive/
