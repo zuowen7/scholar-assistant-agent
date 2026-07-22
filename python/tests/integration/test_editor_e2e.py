@@ -295,6 +295,16 @@ class TestWordExport:
             _safe_child_path(output, r"..\output_backup\secret.docx")
         assert exc.value.status_code == 403
 
+    def test_component_safe_path_rejects_windows_absolute_path(self, tmp_path):
+        from fastapi import HTTPException
+        from routers.editor import _safe_child_path
+
+        output = tmp_path / "output"
+        output.mkdir()
+        with pytest.raises(HTTPException) as exc:
+            _safe_child_path(output, r"C:\Windows\System32\config\SAM")
+        assert exc.value.status_code == 403
+
 
 # ── /api/upload/image + /api/assets ──────────────────────────────────────
 

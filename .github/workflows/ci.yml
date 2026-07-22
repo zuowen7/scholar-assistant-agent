@@ -33,10 +33,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: 'npm'
@@ -53,8 +53,7 @@ jobs:
       # 当前仓库尚未完成一次独立的全量 Prettier 基线提交。先保留完整
       # 审计输出，避免 CI 因历史格式债务跳过真正的 Vitest 功能门禁。
       - name: Prettier format audit (non-blocking until baseline)
-        continue-on-error: true
-        run: npm run format:check
+        run: npm run format:check || echo "::warning::Prettier 全仓基线尚未建立"
 
       - name: Vitest
         run: npm run test
@@ -65,10 +64,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -83,23 +82,20 @@ jobs:
       # Ruff 是后加入的全仓审计，现有代码尚未建立 lint/format 基线。
       # 两项仍在 Actions 中完整运行并显示告警，但 pytest 必须继续阻断。
       - name: Ruff audit (non-blocking until baseline)
-        continue-on-error: true
-        run: cd python && ruff check .
+        run: cd python && ruff check . --statistics || echo "::warning::Ruff lint 全仓基线尚未建立"
 
       - name: Ruff format audit (non-blocking until baseline)
-        continue-on-error: true
-        run: cd python && ruff format --check .
+        run: cd python && ruff format --check . || echo "::warning::Ruff format 全仓基线尚未建立"
 
       - name: Pytest (unit only on CI for speed)
         run: cd python && pytest tests/unit/ -q --tb=short
 
-      - name: Pytest (integration, allow failure for env-dependent tests)
+      - name: Pytest (integration excluding Ollama)
         run: |
           cd python && pytest tests/integration/ -q --tb=short \
             -m "not ollama" \
             --ignore=tests/integration/test_ollama_translate_e2e.py \
-            --ignore=tests/integration/test_ollama_models_endpoint.py 2>/dev/null || \
-          echo "::warning::部分集成测试依赖本地 Ollama，已跳过"
+            --ignore=tests/integration/test_ollama_models_endpoint.py
 
   # ── 跨层契约检查 ────────────────────────────────────
   # 确保 SSE 事件名、tool_name 等跨前后端的契约没有被破坏
@@ -108,7 +104,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check SSE event name consistency
         shell: bash

@@ -8,7 +8,7 @@ import logging
 import re
 import time
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import AsyncGenerator, Literal
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -20,9 +20,18 @@ logger = logging.getLogger(__name__)
 
 
 def _safe_child_path(root: Path, filename: str) -> Path:
-    """Resolve a single routed filename without allowing sibling-prefix escapes."""
+    """Resolve a routed filename without allowing cross-platform path escapes."""
+    if "\x00" in filename:
+        raise HTTPException(403, "禁止访问该文件")
+    posix_path = PurePosixPath(filename)
+    windows_path = PureWindowsPath(filename)
+    if posix_path.is_absolute() or windows_path.is_absolute() or windows_path.drive:
+        raise HTTPException(403, "禁止访问该文件")
+
     resolved_root = root.resolve()
-    resolved = (resolved_root / filename).resolve()
+    # Treat both slash styles as separators regardless of the server OS. Without
+    # this normalization POSIX accepts ``..\\sibling`` as an ordinary filename.
+    resolved = (resolved_root / filename.replace("\\", "/")).resolve()
     try:
         resolved.relative_to(resolved_root)
     except ValueError:
