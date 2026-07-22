@@ -239,8 +239,10 @@ python-multipart==0.0.22
     #   mcp
 python-pptx==1.0.2
     # via -r requirements.txt
-pywin32==311
-    # via mcp
+pywin32==311 ; sys_platform == "win32"
+    # via
+    #   -r requirements.txt
+    #   mcp
 pyyaml==6.0.3
     # via
     #   -r requirements.txt

@@ -20,6 +20,8 @@ extend-exclude = [
     "runtime",              # 运行时缓存
     "plugins",              # 第三方插件目录（可能含非项目代码）
     ".venv",                # 虚拟环境
+    ".ci-tools",            # 本地 CI 工具临时目录
+    ".test-deps",           # 本地测试依赖临时目录
     "__pycache__",          # 字节码缓存
     "build",                # 构建产物
     "dist",                 # 前端构建产物
