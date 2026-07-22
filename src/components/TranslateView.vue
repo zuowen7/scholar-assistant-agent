@@ -170,9 +170,14 @@
               <component :is="`h${Math.min(Math.max(b.level || 2, 1), 6)}`" class="dual-heading-orig">{{ stripHeadingMark(b.original) }}</component>
               <component v-if="b.translated" :is="`h${Math.min(Math.max(b.level || 2, 1), 6)}`" class="dual-heading-trans">{{ stripHeadingMark(b.translated) }}</component>
             </template>
-            <div v-else-if="!b.translatable" class="dual-untranslated" v-html="renderBlock(b.original, b.type)" />
+            <TranslationBlockHtml
+              v-else-if="!b.translatable"
+              class="dual-untranslated"
+              :text="b.original"
+              :block-type="b.type"
+            />
             <template v-else-if="b.status === 'failed'">
-              <div class="dual-orig" v-html="renderBlock(b.original, b.type)" />
+              <TranslationBlockHtml class="dual-orig" :text="b.original" :block-type="b.type" />
               <div class="failed-card">
                 <span><AlertCircle :size="15" :stroke-width="1.8" />{{ t('translate.translationFailed') }}</span>
                 <UiButton v-if="!retryingBlockIds.has(b.id)" variant="secondary" size="sm" @click="retryFailedBlock(b.id)">{{ t('translate.retry') }}</UiButton>
@@ -181,8 +186,27 @@
               </div>
             </template>
             <template v-else>
-              <div class="dual-orig" v-html="renderSentenceMarked(b.original, 'en', b.id, 'orig')" @mouseover="handleSentenceMouseEnter" @mouseleave="clearSentHover" />
-              <div v-if="b.translated" class="dual-trans" v-html="renderSentenceMarked(b.translated, 'zh', b.id, 'trans')" @mouseover="handleSentenceMouseEnter" @mouseleave="clearSentHover" />
+              <TranslationBlockHtml
+                class="dual-orig"
+                :text="b.original"
+                mode="sentence"
+                lang="en"
+                :block-id="b.id"
+                side="orig"
+                @mouseover="handleSentenceMouseEnter"
+                @mouseleave="clearSentHover"
+              />
+              <TranslationBlockHtml
+                v-if="b.translated"
+                class="dual-trans"
+                :text="b.translated"
+                mode="sentence"
+                lang="zh"
+                :block-id="b.id"
+                side="trans"
+                @mouseover="handleSentenceMouseEnter"
+                @mouseleave="clearSentHover"
+              />
               <div v-else class="dual-pending"><UiSpinner size="sm" :label="t('translate.translating')" /></div>
             </template>
           </article>
@@ -203,9 +227,10 @@ import UiDropdown from './ui/UiDropdown.vue'
 import type { DropdownItem } from './ui/UiDropdown.vue'
 import UiSegmented from './ui/UiSegmented.vue'
 import UiSpinner from './ui/UiSpinner.vue'
+import TranslationBlockHtml from './TranslationBlockHtml.vue'
 import { useTranslate } from '../composables/useTranslate'
-import { renderBlock, renderMarkdown } from '../utils/markdown'
-import { findCorrespondingSentenceIndices, renderSentenceMarkedHtml, splitSentences } from '../utils/sentenceAlign'
+import { renderMarkdown } from '../utils/markdown'
+import { findCorrespondingSentenceIndices, splitSentences } from '../utils/sentenceAlign'
 import { filterTranslationBlocks } from '../utils/translationSearch'
 
 const { t } = useI18n()
@@ -319,9 +344,6 @@ function flagTypeLabel(value: string) {
   return keys[value] ? t(`translate.flag.${keys[value]}`) : value
 }
 
-function renderSentenceMarked(text: string, lang: 'en' | 'zh', blockId: string, side: 'orig' | 'trans') {
-  return renderSentenceMarkedHtml(text, lang, blockId, side)
-}
 function clearSentHover() { document.querySelectorAll('.sent-active').forEach(element => element.classList.remove('sent-active')) }
 function handleSentenceMouseEnter(event: MouseEvent) {
   const target = (event.target as HTMLElement).closest<HTMLElement>('[data-sent-idx]')

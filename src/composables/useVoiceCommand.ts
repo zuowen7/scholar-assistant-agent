@@ -205,5 +205,6 @@ export function useVoiceCommand() {
     finish,
     fail,
     done,
+    cleanup: cancel,
   }
 }

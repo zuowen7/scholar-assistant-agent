@@ -810,6 +810,7 @@
     "openFull": "Open Full",
     "deleteRelation": "Delete Relation",
     "invalidRelation": "Invalid relation: {src} → {tgt}",
+    "positionSaveFailed": "Failed to save argument-map positions. Please retry.",
     "buildingMap": "Building argument map",
     "extractingStructure": "Extracting argument structure",
     "noArgMap": "No argument map yet",

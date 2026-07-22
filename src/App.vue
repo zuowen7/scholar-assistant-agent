@@ -156,12 +156,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, defineAsyncComponent, onMounted, onUnmounted, watch } from 'vue'
 import { useAppMode } from './composables/useAppMode'
 import { useVoiceRouter } from './composables/useVoiceRouter'
 import { registerAllVoiceCommands } from './composables/voiceCommands'
 import { checkArgumentMapV2Flag, _openFullArgMapTick } from './composables/useArgumentMap'
-import ArgumentMapView from './components/argument/ArgumentMapView.vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useToast } from './composables/useToast'
 import { useI18n } from 'vue-i18n'
@@ -174,9 +173,7 @@ import type { UpdateCheckResult } from './composables/useUpdateChecker'
 import { useEditor } from './composables/useEditor'
 import EditorLayout from './components/EditorLayout.vue'
 import AgentPanel from './components/AgentPanel.vue'
-import TranslateView from './components/TranslateView.vue'
 import AppShell from './components/shell/AppShell.vue'
-import ReviewerWorkspace from './components/argument/ReviewerWorkspace.vue'
 import SettingsCenter from './components/settings/SettingsCenter.vue'
 import InkBrushLoader from './components/InkBrushLoader.vue'
 import UiButton from './components/ui/UiButton.vue'
@@ -195,6 +192,9 @@ import { useReadSettings } from './composables/useReadSettings'
 import { useBackground } from './composables/useBackground'
 import { useAppTheme } from './composables/useAppTheme'
 import { useAppWindow } from './composables/useAppWindow'
+
+const TranslateView = defineAsyncComponent(() => import('./components/TranslateView.vue'))
+const ReviewerWorkspace = defineAsyncComponent(() => import('./components/argument/ReviewerWorkspace.vue'))
 
 const { state, translate, translateFromPath, cleanup, checkHealth, checkOllama, startOllama, checkCloudApi, getConfig, updateConfig, getProviderPresets, fetchOllamaModels, restartBackend, listenBackendCrash, setBackendError, clearBackendError, recoverTranslation, discardPersisted } = useTranslate()
 const { pushError, info, success } = useToast()
@@ -225,6 +225,14 @@ function handleShellNavigate(section: 'translate' | 'write' | 'mindmap' | 'revie
     }))
   }
 }
+
+// Keep the shell highlight aligned when a non-shell action changes the app
+// mode (recovery banner, Agent navigation, argument-map shortcut, etc.).
+watch(appMode, (mode) => {
+  if (mode === 'translate') shellSection.value = 'translate'
+  else if (mode === 'argument') shellSection.value = 'review'
+  else if (shellSection.value === 'translate' || shellSection.value === 'review') shellSection.value = 'write'
+})
 
 async function handleShellRecent(path: string) {
   shellSection.value = 'write'
@@ -264,6 +272,10 @@ function handleVoiceCommandTrigger() {
   // Don't force-switch mode or open agent — let the router decide. Clear the
   // previous result so a new listening session never shows stale feedback.
   useVoiceRouter().clearLastResult()
+}
+
+function handleVoiceToggleTheme() {
+  toggleTheme()
 }
 
 function handleVoiceCommandSubmit(e: Event) {
@@ -363,7 +375,7 @@ async function applyVoiceSettings(settings: Required<VoiceSettings>) {
 
 window.addEventListener('voice-command-trigger', handleVoiceCommandTrigger)
 window.addEventListener('voice-command-submit', handleVoiceCommandSubmit)
-window.addEventListener('voice-toggle-theme', () => toggleTheme())
+window.addEventListener('voice-toggle-theme', handleVoiceToggleTheme)
 
 // Pause wake word during active voice command, resume when idle
 watch(() => voiceCmd.state.value, (s) => {
@@ -559,8 +571,10 @@ onUnmounted(() => {
   window.removeEventListener('mousemove', onMouseMove)
   window.removeEventListener('voice-command-trigger', handleVoiceCommandTrigger)
   window.removeEventListener('voice-command-submit', handleVoiceCommandSubmit)
+  window.removeEventListener('voice-toggle-theme', handleVoiceToggleTheme)
   hotkey.cleanup()
-  wakeWord?.stopWakeWord()
+  wakeWord?.cleanup()
+  voiceCmd.cleanup()
   if (timer) clearInterval(timer)
   if (unlistenDragDrop) unlistenDragDrop()
   if (bootSafetyTimer) { clearTimeout(bootSafetyTimer); bootSafetyTimer = null }

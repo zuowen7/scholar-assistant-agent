@@ -344,4 +344,24 @@ describe('useArgumentMap undo/redo', () => {
     undo()
     expect(state.graph!.nodes).toHaveLength(0)
   })
+
+  it('persists node positions without adding an undo history entry', async () => {
+    const node = makeNode({ id: 'n_position', position: null })
+    const { state, persistNodePositions, undo } = useArgumentMap()
+    state.graph = makeGraph({ id: 'g_position', nodes: [node] }) as any
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true } as Response)
+
+    await persistNodePositions({ n_position: { x: 120, y: 240 } })
+
+    expect(state.graph!.nodes[0].position).toEqual({ x: 120, y: 240 })
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:18088/api/argument/graph/g_position/node',
+      expect.objectContaining({
+        method: 'PUT',
+        body: expect.stringContaining('"position":{"x":120,"y":240}'),
+      }),
+    )
+    undo()
+    expect(state.graph!.nodes[0].position).toEqual({ x: 120, y: 240 })
+  })
 })
