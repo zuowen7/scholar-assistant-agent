@@ -86,6 +86,32 @@ describe('editor state composables (split)', () => {
       expect(result).toBe('Revised sentence')
       expect(executeEdits.mock.calls.at(-1)?.[1]?.[0]?.text).toBe('Revised sentence')
     })
+
+    it('decorates exactly the streamed replacement range', async () => {
+      openFile('/paper.md', 'Original tail')
+      selection.value = { startLine: 1, endLine: 1, startCol: 1, endCol: 9, text: 'Original' }
+      const deltaDecorations = vi.fn(() => ['decoration'])
+      monacoEditor.value = {
+        executeEdits: vi.fn(),
+        deltaDecorations,
+      } as any
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: { getReader: () => ({}) } }))
+      mockReadSseStream.mockImplementation(async (_reader, handler) => {
+        handler('delta', { content: 'New' })
+      })
+
+      await inlineEdit('Polish', 'polish')
+
+      const streamedDecoration = deltaDecorations.mock.calls
+        .map(call => call[1]?.[0]?.range)
+        .find(range => range?.endColumn === 4)
+      expect(streamedDecoration).toMatchObject({
+        startLineNumber: 1,
+        startColumn: 1,
+        endLineNumber: 1,
+        endColumn: 4,
+      })
+    })
   })
 
   // ── Initial state ──────────────────────────────────────────────────────

@@ -13,9 +13,24 @@ import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 import { marked } from 'marked'
-import hljs from 'highlight.js'
+import hljs from 'highlight.js/lib/core'
+import bash from 'highlight.js/lib/languages/bash'
+import javascript from 'highlight.js/lib/languages/javascript'
+import json from 'highlight.js/lib/languages/json'
+import plaintext from 'highlight.js/lib/languages/plaintext'
+import python from 'highlight.js/lib/languages/python'
+import typescript from 'highlight.js/lib/languages/typescript'
+import xml from 'highlight.js/lib/languages/xml'
 import katex from 'katex'
 import DOMPurify from 'dompurify'
+
+hljs.registerLanguage('bash', bash)
+hljs.registerLanguage('javascript', javascript)
+hljs.registerLanguage('json', json)
+hljs.registerLanguage('plaintext', plaintext)
+hljs.registerLanguage('python', python)
+hljs.registerLanguage('typescript', typescript)
+hljs.registerLanguage('xml', xml)
 
 const props = defineProps<{
   content: string

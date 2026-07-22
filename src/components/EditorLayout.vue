@@ -23,7 +23,7 @@
           <button type="button" class="header-action" @click="handleSaveFile"><Save :size="16" /> {{ t('editor.saveAction') }}</button>
           <button type="button" class="header-action primary" @click="isLatexMode ? aiPanelRef?.sendPreset('polish') : handleSelectionTask(t('editor.polish'))"><Sparkles :size="16" /> {{ t('editor.aiPolish') }}</button>
           <button type="button" class="header-icon" :title="sidebarCollapsed ? t('editor.fileTree') : t('editor.collapseSidebar')" @click="sidebarCollapsed = !sidebarCollapsed"><PanelLeftOpen v-if="sidebarCollapsed" :size="18" /><PanelLeftClose v-else :size="18" /></button>
-          <button type="button" class="header-icon" :title="rightPanelVisible ? t('editor.collapseRight') : t('editor.expandRight')" @click="rightPanelVisible = !rightPanelVisible"><PanelRightClose :size="18" /></button>
+          <button type="button" class="header-icon" :title="rightPanelVisible ? t('editor.collapseRight') : t('editor.expandRight')" @click="toggleHeaderRightPanel"><PanelRightClose :size="18" /></button>
           <button v-if="currentProject" type="button" class="header-icon" :title="t('project.closeProject')" @click="requestCloseProject"><FolderX :size="17" /></button>
         </AppHeader>
 
@@ -151,7 +151,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, defineAsyncComponent, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -163,13 +163,8 @@ import EditorNewProject from './EditorNewProject.vue'
 import EditorCompliance from './EditorCompliance.vue'
 import EditorTabs from './EditorTabs.vue'
 import EditorRightTabBar from './EditorRightTabBar.vue'
-import MonacoEditor from './MonacoEditor.vue'
-import MarkdownPreview from './MarkdownPreview.vue'
 import FileTree from './FileTree.vue'
-import AiPanel from './AiPanel.vue'
-import CompanionPanel from './argument/CompanionPanel.vue'
 import TemplatePicker from './TemplatePicker.vue'
-import MindMapView from './MindMapView.vue'
 import DocumentOutline from './DocumentOutline.vue'
 import TaskAgentPanel from './TaskAgentPanel.vue'
 import AppHeader from './shell/AppHeader.vue'
@@ -187,13 +182,18 @@ import { useToast } from '../composables/useToast'
 import { useEditorCitation } from '../composables/useEditorCitation'
 import { useEditorIO } from '../composables/useEditorIO'
 import { useMindMap, markdownToMindMapNodes } from '../composables/useMindMap'
-import { useMindMapLayout } from '../composables/useMindMapLayout'
 import { useFileTree } from '../composables/useFileTree'
 import { useArgumentCompanion } from '../composables/useArgumentCompanion'
 import { useAgentChat } from '../composables/useAgentChat'
 import { API_BASE } from '../utils/api'
 import { closeProject, currentProject, useProject } from '../composables/useProject'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
+
+const MonacoEditor = defineAsyncComponent(() => import('./MonacoEditor.vue'))
+const MarkdownPreview = defineAsyncComponent(() => import('./MarkdownPreview.vue'))
+const MindMapView = defineAsyncComponent(() => import('./MindMapView.vue'))
+const AiPanel = defineAsyncComponent(() => import('./AiPanel.vue'))
+const CompanionPanel = defineAsyncComponent(() => import('./argument/CompanionPanel.vue'))
 
 defineProps<{ isDark: boolean }>()
 
@@ -214,7 +214,6 @@ const { analyzeVision, insertImageFile } = useEditorVision()
 const { processCitations, previewCitations, getZoteroStatus, searchZotero } = useEditorCitation()
 const { exportToWord, exportLatex, exportPdf, loadExportTemplates, saveBlob } = useEditorIO()
 const { resetMindMap, loadSavedMindMap, saveMindMap, addChild, updateNodeText, updateNodeBody, skipNextBackendLoad } = useMindMap()
-const { autoLayout: layoutMindMap } = useMindMapLayout()
 const { readFileContent, refresh: refreshFileTree, rootDir } = useFileTree()
 const { sendMessage: sendAgentMessage } = useAgentChat()
 
@@ -266,6 +265,14 @@ const setRightPanelTab = (tab: RightTab | null) => {
     return
   }
   toggleRightPanel(tab)
+}
+const toggleHeaderRightPanel = () => {
+  if (rightPanelVisible.value) {
+    rightPanelVisible.value = false
+    return
+  }
+  if (rightPanelTab.value === null) rightPanelTab.value = 'ai'
+  rightPanelVisible.value = true
 }
 
 // -- Export state ---------------------------------------------------------
@@ -359,7 +366,13 @@ async function handleSelectionTask(action: string) {
 
 function handleShellWorkspaceMode(event: Event) {
   const mode = (event as CustomEvent).detail
-  if (mode === 'mindmap') openMindMapFromEditor()
+  if (mode === 'mindmap') {
+    if (workspaceMode.value === 'mindmap') {
+      sidebarCollapsed.value = true
+      return
+    }
+    openMindMapFromEditor()
+  }
   else if (mode === 'editor') workspaceMode.value = 'editor'
 }
 
@@ -451,7 +464,7 @@ function buildTreeNode(parentId: string, node: import('../composables/useMindMap
   }
 }
 
-function openMindMapFromEditor() {
+async function openMindMapFromEditor() {
   sidebarCollapsed.value = true
   skipNextBackendLoad()
   _contentBeforeMindMap = content.value
@@ -477,7 +490,10 @@ function openMindMapFromEditor() {
   } else {
     loadSavedMindMap()
   }
-  if (md.trim()) layoutMindMap('radial')
+  if (md.trim()) {
+    const { useMindMapLayout } = await import('../composables/useMindMapLayout')
+    useMindMapLayout().autoLayout('radial')
+  }
   workspaceMode.value = 'mindmap'
 }
 
@@ -504,7 +520,8 @@ async function handleExportWord() {
 }
 
 async function handleExportLatex() {
-  if (!selectedTemplate.value || exportLoading.value) return
+  if (exportLoading.value) return
+  if (!selectedTemplate.value) { showExportToast(t('editor.selectTemplate')); return }
   if (!content.value.trim()) { showExportToast(t('editor.pleaseInputContent')); return }
   exportLoading.value = true
   try {
@@ -523,7 +540,8 @@ async function handleExportLatex() {
 }
 
 async function handleExportPdf() {
-  if (!selectedTemplate.value || exportLoading.value) return
+  if (exportLoading.value) return
+  if (!selectedTemplate.value) { showExportToast(t('editor.selectTemplate')); return }
   if (!content.value.trim()) { showExportToast(t('editor.pleaseInputContent')); return }
   if (!tectonicAvailable.value) {
     const { tectonic_available } = await loadExportTemplates()

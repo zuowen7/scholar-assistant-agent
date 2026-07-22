@@ -91,7 +91,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, reactive, computed } from 'vue'
+import { ref, nextTick, reactive, computed, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -117,6 +117,9 @@ const loadingChildren = ref(false)
 const isRenaming = ref(false)
 const newName = ref('')
 const renameInput = ref<HTMLInputElement | null>(null)
+let skeletonFrame: number | null = null
+let skeletonTimer: ReturnType<typeof setTimeout> | null = null
+let contextListenerTimer: ReturnType<typeof setTimeout> | null = null
 
 // 展开时显示的骨架行数（依据 children 数量，缺省给个轻量占位）
 const skeletonCount = computed(() => {
@@ -138,8 +141,14 @@ function handleClick() {
     // 展开时若有较多子项，先显示骨架，给一个可见的"加载"反馈节拍
     if (next && (props.entry.children?.length ?? 0) > 6) {
       loadingChildren.value = true
-      requestAnimationFrame(() => {
-        setTimeout(() => { loadingChildren.value = false }, 180)
+      if (skeletonFrame !== null) cancelAnimationFrame(skeletonFrame)
+      if (skeletonTimer !== null) clearTimeout(skeletonTimer)
+      skeletonFrame = requestAnimationFrame(() => {
+        skeletonFrame = null
+        skeletonTimer = setTimeout(() => {
+          skeletonTimer = null
+          loadingChildren.value = false
+        }, 180)
       })
     } else {
       loadingChildren.value = false
@@ -150,6 +159,7 @@ function handleClick() {
 }
 
 function showContextMenu(e: MouseEvent) {
+  closeContextMenu()
   ctx.x = e.clientX
   ctx.y = e.clientY
   ctx.origin = 'top left'
@@ -159,8 +169,21 @@ function showContextMenu(e: MouseEvent) {
     if (ctx.x + 160 > window.innerWidth) { ctx.x = window.innerWidth - 170; ctx.origin = ctx.origin.replace('left', 'right') }
   })
   ctx.visible = true
-  const close = () => { ctx.visible = false; document.removeEventListener('click', close); document.removeEventListener('contextmenu', close) }
-  setTimeout(() => { document.addEventListener('click', close); document.addEventListener('contextmenu', close) }, 0)
+  contextListenerTimer = setTimeout(() => {
+    contextListenerTimer = null
+    document.addEventListener('click', closeContextMenu)
+    document.addEventListener('contextmenu', closeContextMenu)
+  }, 0)
+}
+
+function closeContextMenu() {
+  ctx.visible = false
+  if (contextListenerTimer !== null) {
+    clearTimeout(contextListenerTimer)
+    contextListenerTimer = null
+  }
+  document.removeEventListener('click', closeContextMenu)
+  document.removeEventListener('contextmenu', closeContextMenu)
 }
 
 function action(a: string) {
@@ -198,6 +221,12 @@ async function confirmRename() {
 function cancelRename() {
   isRenaming.value = false
 }
+
+onBeforeUnmount(() => {
+  if (skeletonFrame !== null) cancelAnimationFrame(skeletonFrame)
+  if (skeletonTimer !== null) clearTimeout(skeletonTimer)
+  closeContextMenu()
+})
 </script>
 
 <style scoped>

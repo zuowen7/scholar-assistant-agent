@@ -158,13 +158,17 @@ describe('useProject', () => {
   })
 
   describe('closeProject', () => {
-    it('clears currentProject and file tree', async () => {
+    it('clears currentProject, file tree, and editor tabs', async () => {
       const { openProject, closeProject } = await import('../composables/useProject')
       mockFetch.mockResolvedValueOnce(rst(200, meta('X')))
       await openProject('/tmp/X')
       expect(currentProject.value).not.toBeNull()
+      tabs.value = [{ id: 'open-tab', name: 'draft.md', path: '/tmp/X/draft.md', content: 'draft', isModified: false, docId: 'draft.md' }]
+      activeTabId.value = 'open-tab'
       await closeProject()
       expect(currentProject.value).toBeNull()
+      expect(tabs.value).toEqual([])
+      expect(activeTabId.value).toBeNull()
     })
   })
 

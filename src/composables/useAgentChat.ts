@@ -28,6 +28,23 @@ const _approvalBySession = new Map<string, PendingApproval | null>()
 
 // Per-workflow message isolation: messages are keyed by workflow/session ID.
 const _messagesByWorkflow = new Map<string, AgentChatMessage[]>()
+const WORKFLOW_MESSAGE_CACHE_LIMIT = 20
+
+function cacheWorkflowMessages(workflowKey: string, workflowMessages: AgentChatMessage[]) {
+  // Refresh insertion order so recently used workflows remain cached.
+  _messagesByWorkflow.delete(workflowKey)
+  _messagesByWorkflow.set(workflowKey, workflowMessages)
+  while (_messagesByWorkflow.size > WORKFLOW_MESSAGE_CACHE_LIMIT) {
+    const oldestWorkflowKey = _messagesByWorkflow.keys().next().value as string | undefined
+    if (!oldestWorkflowKey) break
+    _messagesByWorkflow.delete(oldestWorkflowKey)
+    _approvalBySession.delete(oldestWorkflowKey)
+  }
+}
+
+export function _getWorkflowCacheKeysForTesting(): string[] {
+  return [..._messagesByWorkflow.keys()]
+}
 
 // Pipeline state (Phase 4)
 export interface PendingCheckpoint {
@@ -572,7 +589,7 @@ export function useAgentChat() {
         isStreaming: false,
         timestamp: Date.now() + i,
       }))
-      _messagesByWorkflow.set(wfId, loaded)
+      cacheWorkflowMessages(wfId, loaded)
       _clearApproval()
       workflowId.value = wfId
       messages.value = loaded
@@ -589,7 +606,7 @@ export function useAgentChat() {
   function startNewWorkflow() {
     const previousWorkflowId = workflowId.value
     if (previousWorkflowId && messages.value.length) {
-      _messagesByWorkflow.set(previousWorkflowId, [...messages.value])
+      cacheWorkflowMessages(previousWorkflowId, [...messages.value])
     }
     workflowId.value = null
     messages.value = []
@@ -646,6 +663,7 @@ export function useAgentChat() {
       const resp = await fetch(`${API_URL}/api/agent/v2/workflows/${wfId}`, { method: 'DELETE' })
       if (!resp.ok) return false
       _messagesByWorkflow.delete(wfId)
+      _approvalBySession.delete(wfId)
       return true
     } catch {
       return false
