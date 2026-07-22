@@ -30,7 +30,14 @@
         <div class="editor-workbench" :class="{ 'latex-mode': isLatexMode, 'writing-mode': !isLatexMode, 'right-collapsed': !rightPanelVisible }">
           <div v-if="!sidebarCollapsed" class="workbench-left" :style="{ width: (isLatexMode ? 250 : 226) + 'px' }">
             <FileTree v-if="isLatexMode" @collapse="sidebarCollapsed = true" />
-            <DocumentOutline v-else :content="content" :active-line="selection.startLine" @navigate="navigateToLine" @add="addSection" />
+            <template v-else>
+              <div class="sidebar-tabs">
+                <button type="button" class="sidebar-tab" :class="{ active: writingSidebarTab === 'files' }" @click="writingSidebarTab = 'files'">{{ t('editor.files') }}</button>
+                <button type="button" class="sidebar-tab" :class="{ active: writingSidebarTab === 'outline' }" @click="writingSidebarTab = 'outline'">{{ t('editor.outline') }}</button>
+              </div>
+              <FileTree v-if="writingSidebarTab === 'files'" @collapse="sidebarCollapsed = true" />
+              <DocumentOutline v-else :content="content" :active-line="selection.startLine" @navigate="navigateToLine" @add="addSection" />
+            </template>
           </div>
 
           <main class="workbench-center">
@@ -78,8 +85,17 @@
           </main>
 
           <aside v-if="rightPanelVisible" class="workbench-right" :style="{ width: (isLatexMode ? 340 : 356) + 'px' }">
-            <AiPanel v-if="isLatexMode" ref="aiPanelRef" workspace-variant :editor-context="selection.text || content" :active-file="activeFile" :can-undo="!!previousContent" :workspace-files="workspaceFiles" class="rp-content" @insert="handleInsert" @undo="handleUndo" @close="rightPanelVisible = false" />
-            <TaskAgentPanel v-else :context="content" :selection="selection.text" :active-file="activeFile" />
+            <EditorRightTabBar
+              :model-value="rightPanelTab"
+              :agent-mode="!isLatexMode"
+              @update:model-value="setRightPanelTab"
+            />
+            <MarkdownPreview v-if="rightPanelTab === 'preview'" :content="content" :version="contentVersion" class="rp-content rp-preview" />
+            <CompanionPanel v-else-if="rightPanelTab === 'argument'" :content="content" class="rp-content" />
+            <template v-else>
+              <AiPanel v-if="isLatexMode" ref="aiPanelRef" workspace-variant :editor-context="selection.text || content" :active-file="activeFile" :can-undo="!!previousContent" :workspace-files="workspaceFiles" class="rp-content" @insert="handleInsert" @undo="handleUndo" @close="rightPanelVisible = false" />
+              <TaskAgentPanel v-else :context="content" :selection="selection.text" :active-file="activeFile" />
+            </template>
           </aside>
         </div>
       </template>
@@ -208,6 +224,7 @@ const zoteroSearching = ref(false)
 const zoteroPromptError = ref('')
 let _contentBeforeMindMap = ''
 const sidebarCollapsed = ref(false)
+const writingSidebarTab = ref<'files' | 'outline'>('files')
 const collapsedSidebarWidth = 44
 const documentView = ref<'body' | 'outline' | 'preview'>('body')
 const rightPanelVisible = ref(true)
@@ -240,6 +257,14 @@ const aiPanelRef = ref<InstanceType<typeof AiPanel> | null>(null)
 const toggleRightPanel = (tab: RightTab) => {
   rightPanelTab.value = tab
   rightPanelVisible.value = true
+}
+const setRightPanelTab = (tab: RightTab | null) => {
+  if (tab === null) {
+    rightPanelVisible.value = false
+    rightPanelTab.value = null
+    return
+  }
+  toggleRightPanel(tab)
 }
 
 // -- Export state ---------------------------------------------------------
@@ -317,6 +342,11 @@ function addSection() {
 async function handleSelectionTask(action: string) {
   const target = selection.value.text || content.value
   if (!target.trim()) return
+  // Auto-open the right panel so the user sees the agent working (writing mode)
+  if (!isLatexMode.value) {
+    rightPanelTab.value = 'ai'
+    rightPanelVisible.value = true
+  }
   await sendAgentMessage(
     t('editor.selectionTaskPrompt', { action, target: selection.value.text ? t('editor.selectedText') : t('editor.documentTarget') }),
     target,
@@ -978,7 +1008,32 @@ async function handleAgentFileChange() {
   min-height: 0;
   overflow: hidden;
   background: var(--c-panel);
+  display: flex;
+  flex-direction: column;
 }
+
+.sidebar-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--c-surface-3);
+  flex-shrink: 0;
+}
+
+.sidebar-tab {
+  flex: 1;
+  padding: 4px 8px;
+  border: none;
+  background: none;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--c-text-3);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.sidebar-tab:hover { color: var(--c-text-1); background: var(--c-surface-2); }
+.sidebar-tab.active { color: var(--c-accent); background: var(--c-accent-soft); }
 .workbench-center {
   flex: 1;
   min-width: 0;
@@ -994,6 +1049,9 @@ async function handleAgentFileChange() {
   min-height: 0;
   overflow: hidden;
   background: var(--c-panel);
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--c-border);
 }
 .editor-surface {
   position: relative;
@@ -1046,15 +1104,15 @@ async function handleAgentFileChange() {
 .writing-mode :deep(.editor-tabs) { display: none; }
 .latex-mode :deep(.editor-tabs) { border-color: var(--c-border); background: var(--c-panel); }
 
-@media (max-width: 1280px) {
-  .workbench-right { display: none; }
-}
 @media (max-width: 1180px) {
   .workbench-left { width: 208px !important; }
+  .workbench-right { width: 332px !important; min-width: 300px; }
 }
 @media (max-width: 980px) {
   .workbench-left { width: 190px !important; }
   .header-action:not(.primary) { display: none; }
+  .editor-workbench { position: relative; }
+  .workbench-right { position: absolute; z-index: 35; top: 0; right: 0; bottom: 0; width: min(356px, calc(100% - 56px)) !important; box-shadow: var(--elevation-3); }
 }
 @media (max-width: 760px) {
   .workbench-left { display: none; }

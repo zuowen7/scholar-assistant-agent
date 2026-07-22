@@ -52,6 +52,27 @@ function makeSseResponse(chunks: { event: string; data: Record<string, unknown> 
   })
 }
 
+function makeOpenSseResponse(chunks: { event: string; data: Record<string, unknown> }[]) {
+  const encoder = new TextEncoder()
+  let streamController: ReadableStreamDefaultController<Uint8Array> | null = null
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController = controller
+      for (const { event, data } of chunks) {
+        controller.enqueue(encoder.encode(`event:${event}\ndata:${JSON.stringify(data)}\n\n`))
+      }
+    },
+  })
+
+  return {
+    response: new Response(stream, {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+    }),
+    close: () => streamController?.close(),
+  }
+}
+
 function makeSessionStartedChunk(sessionId: string) {
   return {
     event: 'session_started',
@@ -89,6 +110,16 @@ function makeAwaitApprovalChunk(toolName: string, reason: string, eventId: strin
         reason,
         force_approval: true,
       },
+    },
+  }
+}
+
+function makeCheckpointChunk(file: string, content: string) {
+  return {
+    event: 'checkpoint',
+    data: {
+      content: `${file} updated`,
+      metadata: { file, content, checkpoint_type: 'SLIM', content_truncated: false },
     },
   }
 }
@@ -238,6 +269,26 @@ describe('useAgentChat', () => {
       expect(body.context_file).toBe('draft/main.md')
       expect(body.history).toEqual([])
     })
+
+    it('notifies the editor for every file in a multi-file checkpoint stream', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeSseResponse([
+        makeSessionStartedChunk('sess_multi'),
+        makeCheckpointChunk('D:/paper/a.md', 'A'),
+        makeCheckpointChunk('D:/paper/b.md', 'B'),
+        makeDoneChunk(),
+      ])))
+      const changed: string[][] = []
+      const onChanged = (event: Event) => changed.push((event as CustomEvent).detail.files)
+      window.addEventListener('agent-files-changed', onChanged)
+
+      const { sendMessage, pendingCheckpoint } = useAgentChat()
+      await sendMessage('Update both files')
+
+      window.removeEventListener('agent-files-changed', onChanged)
+      expect(changed).toEqual([['D:/paper/a.md'], ['D:/paper/b.md']])
+      expect(pendingCheckpoint.value?.file).toBe('D:/paper/b.md')
+      expect(pendingCheckpoint.value?.content_truncated).toBe(false)
+    })
   })
 
   describe('skills', () => {
@@ -314,6 +365,32 @@ describe('useAgentChat', () => {
       }
       // Regardless, the event should be recorded in the message
       expect(approvalEvents.length).toBeGreaterThan(0)
+    })
+
+    it('does not let an older approval_received event clear a newer tool approval', async () => {
+      const openStream = makeOpenSseResponse([
+        makeSessionStartedChunk('sess_overlap'),
+        makeAwaitApprovalChunk('str_replace', 'edit first file', 'edit_1'),
+        makeAwaitApprovalChunk('write_file', 'create second file', 'edit_2'),
+        { event: 'approval_received', data: { event_id: 'edit_1', content: 'allow_once' } },
+      ])
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(openStream.response)
+        .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+      vi.stubGlobal('fetch', fetchMock)
+
+      const { sendMessage, sendApproval, pendingApproval } = useAgentChat()
+      const streamPromise = sendMessage('Edit two files')
+      await vi.waitFor(() => expect(pendingApproval.value?.event_id).toBe('edit_2'))
+
+      expect(pendingApproval.value?.tool_name).toBe('write_file')
+
+      // A delayed HTTP response for the first approval must be equally harmless.
+      expect(await sendApproval('edit_1', 'allow_once')).toBe(true)
+      expect(pendingApproval.value?.event_id).toBe('edit_2')
+
+      openStream.close()
+      await streamPromise
     })
   })
 

@@ -54,6 +54,7 @@ class ConfigUpdate(BaseModel):
     cloud: dict | None = None
     network: dict | None = None
     agent: dict | None = None
+    zotero: dict | None = None
 
 
 class FilePathPayload(BaseModel):
@@ -880,6 +881,15 @@ def register_translate(
             val = getattr(cfg, section)
             if val:
                 current[section] = {**current.get(section, {}), **val}
+        if cfg.zotero:
+            existing_zotero = current.get("zotero", {})
+            new_zotero = dict(cfg.zotero)
+            new_zotero_key = new_zotero.get("api_key", "")
+            if new_zotero_key and is_masked(new_zotero_key):
+                new_zotero["api_key"] = existing_zotero.get("api_key", "")
+            elif new_zotero_key and new_zotero_key != existing_zotero.get("api_key", ""):
+                logger.info("[AUDIT] Zotero API key updated")
+            current["zotero"] = {**existing_zotero, **new_zotero}
         if cfg.cloud:
             trans = current.setdefault("translator", {})
             existing_cloud = trans.get("cloud", {})

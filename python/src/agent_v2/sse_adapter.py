@@ -64,6 +64,11 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
     elif t == AgentEventType.APPROVAL_RECEIVED:
         content = data.get("decision", "")
         evt_type = "approval_received"
+        return {
+            "type": evt_type,
+            "content": content,
+            "event_id": data.get("id", _event_id()),
+        }
     elif t == AgentEventType.AWAIT_APPROVAL:
         tool_name = data.get("tool_name", "")
         content = f"Agent wants to modify {tool_name}"
@@ -105,6 +110,7 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
             "action": data.get("action", ""),
             "file": data.get("file", ""),
             "content": data.get("content", ""),
+            "content_truncated": bool(data.get("content_truncated", False)),
         }
         return {"type": evt_type, "content": content, "event_id": _event_id(), "metadata": metadata}
     elif t == AgentEventType.SESSION_STARTED:

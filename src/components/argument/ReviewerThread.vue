@@ -271,6 +271,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   transition: border-color 0.15s;
 }
 .status-chip:hover { border-color: var(--c-accent, #6366f1); color: var(--c-accent, #6366f1); }
+.status-chip:focus-visible { outline: none; box-shadow: var(--ring-focus); }
 .chip-caret { opacity: 0.5; flex-shrink: 0; }
 
 .chip-rebutted  { border-color: rgba(34, 197, 94, 0.27); color: var(--c-success); background: var(--c-success-bg); }
@@ -382,7 +383,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
 .turn-reviewer .turn-role { color: var(--c-warning, #f59e0b); }
 
 .turn-text {
-  color: var(--c-text-2, #ccc);
+  color: var(--c-text-1);
   line-height: 1.5;
   flex: 1;
 }
@@ -407,7 +408,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   gap: 8px;
   padding: 4px 0;
 }
-.sending-text { font-size: 11px; color: var(--c-text-3, #777); font-style: italic; }
+.sending-text { font-size: 11px; color: var(--c-text-2); font-style: italic; }
 
 .dot-wave { display: flex; gap: 4px; align-items: center; }
 .dot-wave i {
@@ -424,15 +425,15 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
 
 .rebut-toggle {
   font-size: 11px;
-  color: var(--c-text-3, #666);
+  color: var(--c-text-2);
   background: none;
-  border: 1px dashed var(--c-border, #333);
+  border: 1px dashed var(--c-border);
   border-radius: 4px;
   padding: 3px 10px;
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
 }
-.rebut-toggle:hover { color: var(--c-accent, #6366f1); border-color: var(--c-accent, #6366f1); }
+.rebut-toggle:hover { color: var(--c-accent); border-color: var(--c-accent); }
 
 .rebut-input-wrap {
   display: flex;
@@ -446,17 +447,17 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   box-sizing: border-box;
   font-size: 12px;
   padding: 8px 10px;
-  border: 1px solid var(--c-border, #333);
+  border: 1px solid var(--c-border);
   border-radius: 6px;
-  background: var(--c-surface-2, #222);
-  color: var(--c-text, #e5e7eb);
+  background: var(--c-surface-2);
+  color: var(--c-text-0);
   resize: vertical;
   font-family: inherit;
   line-height: 1.5;
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out);
 }
-.rebut-input:focus { border-color: var(--c-accent, #6366f1); }
+.rebut-input:focus-visible { border-color: var(--c-accent); box-shadow: var(--ring-focus); }
 
 .rebut-actions {
   display: flex;
@@ -468,23 +469,36 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   font-size: 11px;
   padding: 3px 10px;
   border-radius: 4px;
-  border: 1px solid var(--c-border, #333);
+  border: 1px solid var(--c-border);
   background: none;
-  color: var(--c-text-3, #777);
+  color: var(--c-text-3);
   cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out);
 }
-.rebut-cancel:hover { color: var(--c-text, #ccc); }
+.rebut-cancel:hover { color: var(--c-text-0); border-color: var(--c-text-3); }
+.rebut-cancel:focus-visible { outline: none; box-shadow: var(--ring-focus); }
 
 .rebut-send {
   font-size: 11px;
   padding: 3px 12px;
   border-radius: 4px;
   border: none;
-  background: var(--c-accent, #6366f1);
-  color: #fff;
+  background: var(--c-accent);
+  color: var(--c-on-accent, #fff);
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition: filter var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out);
 }
 .rebut-send:disabled { opacity: 0.35; cursor: not-allowed; }
-.rebut-send:not(:disabled):hover { opacity: 0.85; }
+.rebut-send:not(:disabled):hover { filter: brightness(1.08); }
+.rebut-send:not(:disabled):active { transform: scale(0.97); }
+.rebut-send:focus-visible { outline: none; box-shadow: var(--ring-focus); }
+
+/* Consistent keyboard focus ring across all interactive elements in the card */
+.anchor-btn:focus-visible,
+.rebut-toggle:focus-visible,
+.expand-btn:focus-visible,
+.turn-expand-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
 </style>

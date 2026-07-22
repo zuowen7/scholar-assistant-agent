@@ -28,11 +28,10 @@ class TestMaskApiKey:
         self._mask(cfg)
         assert cfg["translator"]["cloud"]["api_key"] == "sk-12345****cdef"
 
-    def test_short_key_not_masked(self) -> None:
-        # <=8 chars: unchanged
+    def test_short_key_masked(self) -> None:
         cfg = {"translator": {"cloud": {"api_key": "short"}}}
         self._mask(cfg)
-        assert cfg["translator"]["cloud"]["api_key"] == "short"
+        assert cfg["translator"]["cloud"]["api_key"] == "****"
 
     def test_empty_key_untouched(self) -> None:
         cfg = {"translator": {"cloud": {"api_key": ""}}}
@@ -46,17 +45,29 @@ class TestMaskApiKey:
     def test_missing_translator_section_no_error(self) -> None:
         self._mask({})
 
-    def test_exactly_8_chars_not_masked(self) -> None:
-        # exactly 8 chars: not > 8, so unchanged
+    def test_exactly_8_chars_masked(self) -> None:
         cfg = {"translator": {"cloud": {"api_key": "12345678"}}}
         self._mask(cfg)
-        assert cfg["translator"]["cloud"]["api_key"] == "12345678"
+        assert cfg["translator"]["cloud"]["api_key"] == "****"
 
     def test_exactly_9_chars_masked(self) -> None:
         # 9-12 chars: show head4 + **** + tail4
         cfg = {"translator": {"cloud": {"api_key": "123456789"}}}
         self._mask(cfg)
         assert cfg["translator"]["cloud"]["api_key"] == "1234****6789"
+
+    def test_all_nested_api_keys_are_masked(self) -> None:
+        cfg = {
+            "translator": {"cloud": {"api_key": "cloud-secret-key"}},
+            "agent": {"api_key": "agent-secret-key"},
+            "zotero": {"api_key": "zotero-secret-key"},
+            "vision": {"api_key": "vision-secret-key"},
+        }
+        self._mask(cfg)
+        assert "****" in cfg["translator"]["cloud"]["api_key"]
+        assert "****" in cfg["agent"]["api_key"]
+        assert "****" in cfg["zotero"]["api_key"]
+        assert "****" in cfg["vision"]["api_key"]
 
 
 class TestIsMasked:

@@ -745,7 +745,7 @@ watch(pendingCheckpoint, () => {
   if (cp) {
     const filePath = cp.file as string | undefined
     const content = cp.content as string | undefined
-    if (filePath && content) {
+    if (filePath && content && !cp.content_truncated) {
       const result = applyExternalFileUpdate(filePath, content)
       if (result === 'conflict') {
         const name = filePath.split(/[\\/]/).pop() || filePath

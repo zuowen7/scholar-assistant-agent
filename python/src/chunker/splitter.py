@@ -467,9 +467,9 @@ def _looks_like_pdf_heading(text: str) -> int:
     if not s or "\n" in s or len(s) > _HEADING_MAX_CHARS:
         return 0
 
-    # 排除: 含 "F. Last" 模式（人名如 "Laurie S. Huning"）
-    if re.search(r"\b[A-Z]\.\s+[A-Z][a-z]+\b", s):
-        return 0
+    # (P0-3 旧版曾排除含 "F. Last" 模式的人名行，但这会把作者行"Laurie S. Huning and ..."
+    # 误判为非标题，导致作者行按 paragraph 渲染、位置错乱。现改为：含 "X." 缩写的词在 Title Case
+    # 判据里也计作大写词，并降低阈值到 0.5，让作者行通过)
 
     if s[-1] in _HEADING_PUNCT_END:
         # 允许 "1. Introduction" 这种以 "." 在编号后的形式
@@ -490,11 +490,12 @@ def _looks_like_pdf_heading(text: str) -> int:
         if s.upper() == s and len(s.split()) <= 8:
             return 1
 
-    # Title Case: "Conclusions and Future Work"
+    # Title Case: 识别学术作者行（"Laurie S. Huning and Manuela I. Brunner"）和章节标题
+    # 含 "X." 缩写的词（如 "S." "I." "Dr."）也计作大写词，让作者行能匹配
     words = s.split()
-    if 1 < len(words) <= 10:
-        capitalized = sum(1 for w in words if w[:1].isupper())
-        if capitalized / len(words) >= 0.7:
+    if 1 < len(words) <= 12:
+        capitalized = sum(1 for w in words if w[:1].isupper() or re.match(r"^[A-Z]\.$", w))
+        if capitalized / len(words) >= 0.5:
             return 2
 
     return 0

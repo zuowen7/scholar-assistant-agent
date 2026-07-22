@@ -129,6 +129,14 @@ class PandocError(Exception):
 TECTONIC_CMD: str | None = None
 
 
+def _candidate_exists(path: Path) -> bool:
+    """Return whether a Tectonic candidate is accessible without leaking OS errors."""
+    try:
+        return path.is_file()
+    except OSError:
+        return False
+
+
 def _find_tectonic() -> str | None:
     """查找 Tectonic 可执行文件。"""
     global TECTONIC_CMD
@@ -146,14 +154,14 @@ def _find_tectonic() -> str | None:
     local_app = os.environ.get("LOCALAPPDATA", "")
     if local_app:
         app_tectonic = Path(local_app) / "ScholarTranslate" / "tools" / "tectonic.exe"
-        if app_tectonic.exists():
+        if _candidate_exists(app_tectonic):
             TECTONIC_CMD = str(app_tectonic)
             return TECTONIC_CMD
 
     # 2b. api.exe 旁边的 tools/ 目录（开发/打包通用，PyInstaller --onedir 不设 sys.frozen）
     exe_dir = Path(sys.executable).parent
     bundled_tectonic = exe_dir / "tools" / "tectonic.exe"
-    if bundled_tectonic.exists():
+    if _candidate_exists(bundled_tectonic):
         TECTONIC_CMD = str(bundled_tectonic)
         return TECTONIC_CMD
 
@@ -162,7 +170,7 @@ def _find_tectonic() -> str | None:
     pf86 = os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")
     for pf in [program_files, pf86]:
         path = Path(pf) / "Tectonic" / "tectonic.exe"
-        if path.exists():
+        if _candidate_exists(path):
             TECTONIC_CMD = str(path)
             return TECTONIC_CMD
 
@@ -174,7 +182,7 @@ def _find_tectonic() -> str | None:
             "ScholarTranslate/tools/Tectonic",
         ]:
             path = Path(local_app) / subdir / "tectonic.exe"
-            if path.exists():
+            if _candidate_exists(path):
                 TECTONIC_CMD = str(path)
                 return TECTONIC_CMD
 

@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { API_BASE } from '../utils/api'
 import type { ProjectMetadata, RecentProject } from '../types'
+import { activeTabId, tabs } from './useEditorState'
 
 export const currentProject = ref<ProjectMetadata | null>(null)
 export const recentProjects = ref<RecentProject[]>([])
@@ -79,16 +80,27 @@ export async function openProject(path: string): Promise<void> {
     const ftm = await getFileTreeModule().catch(() => null)
     if (ftm) prevRootDir = ftm.useFileTree().rootDir.value
 
+    // A project switch must never discard unsaved Monaco content. Clean tabs
+    // are cleared after the new project has loaded successfully; dirty tabs
+    // require the user to save or explicitly close the current project first.
+    if (tabs.value.some(tab => tab.isModified)) {
+      throw new Error('当前项目有未保存的编辑内容，请先保存或关闭当前项目后再切换。')
+    }
+
     const resp = await fetch(apiUrl(`/api/project/load?path=${encodeURIComponent(path)}`))
     if (!resp.ok) {
       const err = await parseResponse(resp).catch(() => ({ detail: resp.statusText }))
       throw new Error(err.detail || `打开项目失败 (${resp.status})`)
     }
     const meta = await parseResponse(resp) as ProjectMetadata
-    currentProject.value = meta
+    if (thisOp !== _operationId) return
     if (ftm) {
       try { await ftm.useFileTree().openFolder(path) } catch { /* Non-Tauri */ }
     }
+    if (thisOp !== _operationId) return
+    currentProject.value = meta
+    tabs.value = []
+    activeTabId.value = null
   } catch (err) {
     // Only roll back if no newer operation has started
     if (thisOp === _operationId) {

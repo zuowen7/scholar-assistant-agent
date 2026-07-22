@@ -119,8 +119,16 @@ class TestAdapter:
     def test_checkpoint_preserves_metadata(self):
         event = AgentEvent(type=AgentEventType.CHECKPOINT, data={
             "action": "write_file", "file": "test.md", "content": "updated",
+            "content_truncated": True,
         })
         result = agent_event_to_sse(event)
         assert result["type"] == "checkpoint"
         assert result["metadata"]["file"] == "test.md"
         assert result["metadata"]["content"] == "updated"
+        assert result["metadata"]["content_truncated"] is True
+
+    def test_approval_received_preserves_tool_event_id(self):
+        event = AgentEvent.approval_received("edit_123", "allow_once")
+        result = agent_event_to_sse(event)
+        assert result["type"] == "approval_received"
+        assert result["event_id"] == "edit_123"

@@ -496,6 +496,7 @@ onMounted(async () => {
   // Health checks
   healthOk.value = await checkHealth()
   ollamaOk.value = await checkOllama()
+  if (ollamaOk.value) refreshOllamaModels()
   checkTectonic()
   if (engineType.value === 'cloud') {
     const r = await checkCloudApi()
@@ -602,6 +603,7 @@ async function toggleOllama() {
       ollamaError.value = err
     } else {
       ollamaOk.value = true
+      refreshOllamaModels()
     }
   } finally {
     ollamaLoading.value = false

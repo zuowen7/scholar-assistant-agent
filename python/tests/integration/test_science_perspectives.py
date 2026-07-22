@@ -122,14 +122,15 @@ class TestCitationNormalization:
         assert not re.search(r"\(\s+\d+\s+\)", result.text)
 
 
-class TestAuthorHeadingExclusion:
-    """P0-3: Author names should not be classified as headings."""
+class TestAuthorHeading:
+    """Author lines should be classified as headings (h2) so the dual-view
+    renders them with the proper heading style and position, not as paragraphs."""
 
-    def test_author_not_heading(self):
+    def test_author_is_h2(self):
         from src.chunker.splitter import _looks_like_pdf_heading
 
         assert (
-            _looks_like_pdf_heading("Laurie S. Huning and Manuela I. Brunner") == 0
+            _looks_like_pdf_heading("Laurie S. Huning and Manuela I. Brunner") >= 2
         )
 
 

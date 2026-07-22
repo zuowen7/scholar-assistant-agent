@@ -108,6 +108,21 @@ class TestConfigEndpoints:
         # The returned value should be masked
         assert "****" in data["translator"]["cloud"]["api_key"]
 
+    def test_config_masks_and_preserves_zotero_key(self, client):
+        client.put("/api/config", json={
+            "zotero": {"api_key": "zotero-real-test-key", "user_id": "123"},
+        })
+
+        first = client.get("/api/config").json()["zotero"]
+        assert first["api_key"] != "zotero-real-test-key"
+        assert "****" in first["api_key"]
+
+        updated = client.put("/api/config", json={
+            "zotero": {"api_key": first["api_key"], "user_id": "456"},
+        }).json()["zotero"]
+        assert updated["api_key"] == first["api_key"]
+        assert updated["user_id"] == "456"
+
 
 # ── 2. Health endpoint ──────────────────────────────────────────────────
 

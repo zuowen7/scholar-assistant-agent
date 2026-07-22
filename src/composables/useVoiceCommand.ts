@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { useSpeechRecognition } from './useSpeechRecognition'
 import { logger } from '../utils/logger'
 import { i18n } from '../i18n'
+import { useToast } from './useToast'
 
 const isTauri = '__TAURI_INTERNALS__' in window
 
@@ -106,6 +107,9 @@ function fail(message: string) {
   stopSpeech()
   error.value = message
   state.value = 'error'
+  // Show a user-visible toast so the user knows why voice failed
+  // (without this, the error is only in composable state — invisible to the user)
+  try { useToast().pushError(message) } catch { /* ignore if no toast context */ }
 }
 
 export function useVoiceCommand() {

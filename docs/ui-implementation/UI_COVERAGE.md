@@ -12,7 +12,7 @@
 
 | 入口 / 状态 | 当前状态 | 当前证据 | 未完成验收 |
 | --- | --- | --- | --- |
-| 主窗口 AppShell、统一导航、窗口控制 | PARTIALLY_ADAPTED | 四个核心模块统一一级导航；浅色原生黑边已去除 | 全模式键盘焦点扫描 |
+| 主窗口 AppShell、统一导航、窗口控制 | PARTIALLY_ADAPTED | 四个核心模块统一一级导航；真实活动壳层已增加原生拖拽轨、双击最大化与回归测试；浅色原生黑边已去除 | Tauri 实机拖拽与全模式键盘焦点扫描 |
 | 启动加载 InkBrushLoader | PARTIALLY_ADAPTED | 暖白低饱和加载层与 5 秒安全退出；PyMuPDF 原生扩展改为 PDF 布局解析时按需加载，`create_app` 冷启动不再预载 `fitz` | 真实后端超时与启动失败录屏 |
 | 全局拖放文件遮罩 | PARTIALLY_ADAPTED | 统一面板、真实 Tauri drag-drop 路由和扩展名校验 | 真实拖放与不支持文件录屏 |
 | 翻译恢复 Banner | PARTIALLY_ADAPTED | 恢复/丢弃接原有持久化 | 中断后重启恢复实验 |
@@ -48,7 +48,7 @@
 | 块级失败与重试 | PARTIALLY_ADAPTED | 失败卡、单块 loading/错误接原 `retry_block` API；路由契约已验证重试会同步块、chunk、最终 Markdown、QA、fallback 和输出文件，重复调用不会负计数 | 可控真实 Provider 失败后的 Tauri 点击重试 |
 | 术语/QA 警告 | PARTIALLY_ADAPTED | 真实 qaWarnings 折叠阅读；已修复生产 SSE `chunk_index`/旧 `index` 与前端 `chunkIndex` 不一致 | 多警告长列表实机 |
 | 双栏阅读/译文阅读 | PARTIALLY_ADAPTED | 真实 2 块翻译；1440、1200、1024 无横向页面滚动 | 百页级长文滚动性能 |
-| 句子联动高亮 | PARTIALLY_ADAPTED | 复用 sentenceAlign 并保留真实原/译句映射 | 错位块和一对多句子 |
+| 句子联动高亮 | PARTIALLY_ADAPTED | sentenceAlign 保留无标点尾句、段落换行和真实字符范围；中文分号不再误切；按句序支持一对多联动，32 项专项测试通过 | 真实 Provider 的错位块、一对多与百页长文滚动 |
 | 结果搜索/筛选 | PARTIALLY_ADAPTED | 新增基于真实 original/translated 块的搜索、计数和无结果 | 长文搜索和键盘清除 |
 | 双语/译文 Markdown 导出 | PARTIALLY_ADAPTED | 真实菜单与现有导出函数 | 保存、取消、文件内容校验 |
 | 双语/译文 Word 导出 | PARTIALLY_ADAPTED | 重启后真实翻译结果导出 37,399B DOCX；本机 Word 已打开，XML 验证两段英文与两段中文均存在 | 取消保存与写入失败反馈 |
@@ -62,7 +62,7 @@
 | LaTeX 编辑器 | PARTIALLY_ADAPTED | 真实 `.tex`、Monaco、文件树、标签和任务助手 | 编译错误、多标签与 200% |
 | 文件树 | PARTIALLY_ADAPTED | 真实创建/重命名/剪切/复制/粘贴/删除；统一对话框与 Toast | 权限失败和跨盘符粘贴 |
 | 标签页与脏状态 | PARTIALLY_ADAPTED | 打开即脏问题已修；关项目前确认；Agent Inline Diff 接受后恢复已保存状态 | 多标签关闭与代理写入冲突 |
-| 编辑器工具栏 | PARTIALLY_ADAPTED | 低密度工具栏与按需更多菜单；恢复 Ctrl+B 和标题栏左右侧栏开关 | 全 Tooltip/键盘入口扫描 |
+| 编辑器工具栏 | PARTIALLY_ADAPTED | 低密度工具栏与按需更多菜单；恢复 Ctrl+B 和标题栏左右侧栏开关；右侧 Dock 接通文字 Tab，窄窗不再被 1280px 媒体规则强制隐藏 | Tauri 1024/200% Dock 覆盖与全 Tooltip/键盘入口扫描 |
 | 正文/大纲/预览 | PARTIALLY_ADAPTED | 共享 SegmentedControl；真实 Markdown Preview | 超长文稿与滚动位置保留 |
 | 选文浮动工具栏 | PARTIALLY_ADAPTED | 润色/压缩/扩写/论证检查连真实编辑能力 | 多行/跨段选区实机 |
 | AI 编辑 `/api/edit` | PARTIALLY_ADAPTED | 预设已与 Agent V2 分离；真实 SSE 返回已验证；累积 delta 重复 bug 已修 | 取消、错误、实际接受/撤销录屏 |
@@ -77,8 +77,8 @@
 
 | 入口 / 状态 | 当前状态 | 当前证据 | 未完成验收 |
 | --- | --- | --- | --- |
-| 写作页任务式 Agent | PARTIALLY_ADAPTED | 当前任务/范围/步骤/待确认/结果，接 Agent V2 真状态 | 长任务与多次审批 |
-| 全局 Agent 主面板 | PARTIALLY_ADAPTED | 任务、工具、审批、结果层级；安全 Markdown 渲染 | 1024/200% 长输出 |
+| 写作页任务式 Agent | PARTIALLY_ADAPTED | Agent 成为写作右侧常驻 Dock：当前文件/选区、连续对话、工具活动、步骤、审批和新任务均接 Agent V2 真状态 | Tauri 长任务、多次审批与脏标签写入冲突 |
+| 全局 Agent 主面板 | PARTIALLY_ADAPTED | 从左下角图标提升为主导航明确入口；任务、工具、审批、结果层级与安全 Markdown 渲染保持 | 1024/200% 长输出与跨模块上下文 |
 | Agent 独立窗口 | PARTIALLY_ADAPTED | 复用同一 AgentPanel 和真实会话单例 | 独立窗口恢复、缩放和多屏 |
 | 会话列表/恢复 | PARTIALLY_ADAPTED | 会话列表读取真实 JSONL 元数据、首条任务、消息数和时间；已完成/持久化会话可打开真实文本与工具轨迹；新增不删除历史的“新会话”入口，均已 Tauri 实机 | 运行中会话跨窗口恢复、空/损坏会话 |
 | 工具调用过程/错误 | PARTIALLY_ADAPTED | `tool_name` 协议、折叠参数和结果 | 超长参数、二进制结果、超时 |
@@ -122,7 +122,7 @@
 | 语言切换 | PARTIALLY_ADAPTED | 设置实机 zh-CN/en-US 切换与持久化 | 全页长文溢出 |
 | 语音开关/热键/唤醒词/灵敏度 | PARTIALLY_ADAPTED | 真实 localStorage 配置、支持检测；识别器统一持有/释放 busy 锁；低/中/高灵敏度分别控制同音词与 interim 触发，测试覆盖自然结束和手动停止后的唤醒恢复 | 真实麦克风口述唤醒与系统权限拒绝 |
 | 语音助手浮层 | PARTIALLY_ADAPTED | Alt+Shift+V 实机打开；无语音超时保留本地化错误及重试；重试实机恢复监听；Agent 忙碌不再静默丢指令；各类命令会先激活真实写作/翻译/导图工作区再分发 | 真实口述逐项走通命令与 Agent fallback |
-| 服务状态/Debug/更新 | PARTIALLY_ADAPTED | 系统页真实后端/Provider/Tectonic；DebugPanel；GitHub Release 检查 | 离线、新版本、日志目录打开 |
+| 服务状态/Debug/更新 | PARTIALLY_ADAPTED | 系统页真实后端/Provider/Tectonic；修复 DebugPanel Teleport 被设置 Drawer 层级遮挡；GitHub Release 检查 | Tauri 离线、新版本、前后端日志与日志目录打开 |
 
 ## 8. 输出、弹窗与边界状态
 
@@ -158,6 +158,10 @@
 ## 2026-07-18 当前迭代记录
 
 - 去除浅色 Tauri 主窗口原生黑边，统一 `html/body/#app` 背景。
+- 修复真实 AppShell 无拖拽区的问题；顶部原生拖拽轨支持左键拖动和双击最大化，旧 AppTopBar 不再承担无效拖拽逻辑。
+- 修复写作右侧栏在 1280px 以下被 CSS 永久隐藏；接通文字 Tab 与窄屏覆盖式 Dock，并将 Agent 上下文、对话、工具活动、审批和新任务留在当前文稿旁。
+- 修复系统页 DebugPanel 已打开却被 Drawer 遮住的问题；Popover 浮层现在位于 AppDialog 之上。
+- 修复翻译句对照丢尾句、中文分号误切、换行丢失和按字符长度错配；一对多句子会联动高亮完整对应范围。
 - 恢复思维导图快捷键、编辑工具和 AI 审查；Tab、Ctrl+Z 和 DeepSeek 真实审查通过。
 - 恢复 Reviewer-2、Claim Ledger、Argument Map 固定一级入口与真实数据链路。
 - Agent Skills 接真实目录，加入 8 个 Nature 工作流；保留 Agent V2 单一运行时。
