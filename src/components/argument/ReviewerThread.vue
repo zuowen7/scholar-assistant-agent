@@ -77,12 +77,14 @@
         <button
           v-if="!chatExpanded"
           class="rebut-toggle"
+          data-rebut-btn
           @click="chatExpanded = true"
         >{{ t('reviewerThread.rebut') }}</button>
         <div v-else class="rebut-input-wrap">
           <textarea
             v-model="rebuttalText"
             class="rebut-input"
+            data-rebut-input
             :placeholder="t('reviewerThread.rebutPlaceholder')"
             rows="3"
           />
@@ -90,6 +92,7 @@
             <button class="rebut-cancel" @click="chatExpanded = false">{{ t('reviewerThread.rebuteCancel') }}</button>
             <button
               class="rebut-send"
+              data-rebut-send
               :disabled="!rebuttalText.trim()"
               @click="sendRebuttal"
             >{{ t('reviewerThread.rebutSend') }}</button>
@@ -207,7 +210,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
 .sev-fatal { border-left-color: var(--c-danger); }
 .sev-major { border-left-color: var(--c-warn); }
 .sev-minor { border-left-color: color-mix(in srgb, var(--c-accent) 70%, transparent); }
-.sev-info  { border-left-color: var(--c-border, #333); }
+.sev-info  { border-left-color: var(--c-border); }
 
 /* ── Header ── */
 .card-header {
@@ -224,17 +227,17 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   border-radius: 50%;
   flex-shrink: 0;
 }
-.pip-fatal { background: var(--c-error, #ef4444); }
-.pip-major { background: var(--c-warning, #f59e0b); }
-.pip-minor { background: var(--c-accent, #6366f1); opacity: 0.7; }
-.pip-info  { background: var(--c-text-3, #555); }
+.pip-fatal { background: var(--c-danger); }
+.pip-major { background: var(--c-warn); }
+.pip-minor { background: var(--c-accent); opacity: 0.7; }
+.pip-info  { background: var(--c-text-3); }
 
 .card-category {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--c-text-2, #888);
+  color: var(--c-text-2);
   padding: 1px 5px;
   border-radius: 3px;
   background: var(--c-surface-2);
@@ -244,11 +247,11 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   font-size: 10px;
   padding: 1px 5px;
   border-radius: 3px;
-  background: var(--c-surface-2, #232323);
-  color: var(--c-text-3, #666);
+  background: var(--c-surface-2);
+  color: var(--c-text-3);
 }
 .src-ledger_check { color: color-mix(in srgb, var(--c-accent) 80%, #fff); }
-.src-scoped       { color: var(--c-warning, #f59e0b); }
+.src-scoped       { color: var(--c-warn); }
 
 .header-spacer { flex: 1; }
 
@@ -263,14 +266,14 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   font-weight: 600;
   padding: 5px 9px;
   border-radius: 12px;
-  border: 1px solid var(--c-border, #333);
-  background: var(--c-surface-2, #232323);
-  color: var(--c-text-2, #999);
+  border: 1px solid var(--c-border);
+  background: var(--c-surface-2);
+  color: var(--c-text-2);
   cursor: pointer;
   white-space: nowrap;
   transition: border-color 0.15s;
 }
-.status-chip:hover { border-color: var(--c-accent, #6366f1); color: var(--c-accent, #6366f1); }
+.status-chip:hover { border-color: var(--c-accent); color: var(--c-accent); }
 .status-chip:focus-visible { outline: none; box-shadow: var(--ring-focus); }
 .chip-caret { opacity: 0.5; flex-shrink: 0; }
 
@@ -282,8 +285,8 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   position: absolute;
   right: 0;
   top: calc(100% + 4px);
-  background: var(--c-surface-2, #1e1e1e);
-  border: 1px solid var(--c-border, #333);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
   border-radius: 6px;
   overflow: hidden;
   z-index: 50;
@@ -297,13 +300,13 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   text-align: left;
   padding: 6px 10px;
   font-size: 11px;
-  color: var(--c-text-2, #bbb);
+  color: var(--c-text-2);
   background: none;
   border: none;
   cursor: pointer;
   transition: background 0.1s;
 }
-.menu-item:hover, .menu-item.active { background: var(--c-surface-3, #2a2a2a); color: var(--c-text, #e5e7eb); }
+.menu-item:hover, .menu-item.active { background: var(--c-surface-3); color: var(--c-text-0); }
 
 /* ── Content ── */
 .card-title {
@@ -323,7 +326,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
 
 .expand-btn {
   font-size: 11px;
-  color: var(--c-accent, #6366f1);
+  color: var(--c-accent);
   background: none;
   border: none;
   cursor: pointer;
@@ -348,7 +351,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   text-align: left;
   transition: color 0.15s;
 }
-.anchor-btn:hover { color: var(--c-accent, #6366f1); }
+.anchor-btn:hover { color: var(--c-accent); }
 .anchor-label { color: var(--c-text-3); font-weight: 650; }
 .anchor-quote { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .anchor-jump { color: var(--c-accent); }
@@ -379,8 +382,8 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   padding-top: 2px;
   flex-shrink: 0;
 }
-.turn-author .turn-role { color: var(--c-accent, #6366f1); }
-.turn-reviewer .turn-role { color: var(--c-warning, #f59e0b); }
+.turn-author .turn-role { color: var(--c-accent); }
+.turn-reviewer .turn-role { color: var(--c-warn); }
 
 .turn-text {
   color: var(--c-text-1);
@@ -390,7 +393,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
 
 .turn-expand-btn {
   font-size: 10px;
-  color: var(--c-accent, #6366f1);
+  color: var(--c-accent);
   background: none;
   border: none;
   cursor: pointer;
@@ -413,7 +416,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
 .dot-wave { display: flex; gap: 4px; align-items: center; }
 .dot-wave i {
   width: 5px; height: 5px; border-radius: 50%;
-  background: var(--c-accent, #6366f1); display: block;
+  background: var(--c-accent); display: block;
   animation: wave-bounce 1.1s ease-in-out infinite;
 }
 .dot-wave i:nth-child(2) { animation-delay: 0.18s; }
@@ -484,7 +487,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   border-radius: 4px;
   border: none;
   background: var(--c-accent);
-  color: var(--c-on-accent, #fff);
+  color: var(--c-on-accent);
   cursor: pointer;
   transition: filter var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out);
 }

@@ -255,7 +255,7 @@ function promiseStatus(status: string) {
 
 <style scoped>
 .reviewer-workspace { height: 100%; min-height: 0; display: flex; flex-direction: column; background: var(--c-app-bg); color: var(--c-text-0); }
-.review-surface-nav { flex: 0 0 44px; display: flex; align-items: stretch; gap: 4px; padding: 5px 18px 0; border-bottom: 1px solid var(--c-border); background: var(--c-nav-bg); }
+.review-surface-nav { flex: 0 0 44px; display: flex; align-items: stretch; gap: 4px; padding: 5px 18px 0; border-bottom: 1px solid var(--c-border); background: var(--c-nav); }
 .review-surface-nav button { min-width: 0; display: flex; align-items: center; gap: 7px; padding: 0 13px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--c-text-2); font: 550 13px/1 var(--font-sans), var(--font-zh); cursor: pointer; }
 .review-surface-nav button:hover { color: var(--c-text-0); background: var(--c-surface-2); }
 .review-surface-nav button.active { border-bottom-color: var(--brand-red); color: var(--c-text-0); background: var(--c-panel); }
