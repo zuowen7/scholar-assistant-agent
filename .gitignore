@@ -68,6 +68,11 @@ src-tauri/data/
 # Code review dumps (临时产物)
 docs/code-review-*.md
 
+# Local agent memory and visual acceptance evidence
+.workbuddy/
+docs/ui-implementation/*.png
+docs/ui-reference/*.png
+
 # Mind map 运行时数据
 python/mindmap.json
 
@@ -109,6 +114,8 @@ Thumbs.db
 
 # Tauri / Node
 node_modules/
+pnpm-lock.yaml
+pnpm-workspace.yaml
 src-tauri/target/
 src-tauri/python-dist/
 src-tauri/python/

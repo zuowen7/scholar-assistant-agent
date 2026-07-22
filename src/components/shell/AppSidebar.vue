@@ -17,6 +17,15 @@
         <component :is="item.icon" :size="20" stroke-width="1.8" aria-hidden="true" />
         <span>{{ item.label }}</span>
       </button>
+      <button
+        type="button"
+        class="nav-item nav-agent"
+        data-testid="workspace-agent"
+        @click="$emit('agent')"
+      >
+        <Bot :size="20" stroke-width="1.8" aria-hidden="true" />
+        <span>{{ t('topbar.agentAssistant') }}</span>
+      </button>
     </nav>
 
     <RecentFiles class="sidebar-recents" :items="recentFiles" @open="$emit('openRecent', $event)" />
@@ -27,7 +36,6 @@
         <span class="user-avatar">研</span>
         <div class="user-copy"><strong>{{ t('shell.localUser') }}</strong><span>{{ t('shell.localWorkspace') }}</span></div>
         <div class="user-actions">
-          <button type="button" class="settings-button" :title="t('topbar.agentAssistant')" @click="$emit('agent')"><Bot :size="18" /></button>
           <button type="button" class="settings-button" :title="t('topbar.settings')" @click="$emit('settings')"><Settings :size="18" /></button>
         </div>
       </div>
@@ -76,6 +84,7 @@ const navItems = computed(() => [
 .nav-item { width: 100%; height: 44px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: var(--c-text-1); font: 500 14px/1 var(--font-sans), var(--font-zh); cursor: pointer; }
 .nav-item:hover { background: color-mix(in srgb, var(--c-panel) 55%, transparent); color: var(--c-text-0); }
 .nav-item.active { color: var(--c-accent); background: var(--c-accent-soft); font-weight: 650; }
+.nav-agent { margin-top: 7px; border-top: 1px solid var(--c-border); border-radius: 0 0 8px 8px; }
 .sidebar-recents { margin-top: 20px; }
 .sidebar-footer { margin-top: auto; display: grid; gap: 12px; }
 .user-row { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 3px 4px; }

@@ -120,6 +120,34 @@ class TestBasicFlow:
         types = _event_types(events)
         assert AgentEventType.RESPONSE in types
 
+    @pytest.mark.asyncio
+    async def test_file_checkpoints_cover_every_file_with_resolved_paths(self, workspace: Path):
+        provider = MockProvider(scenarios=[
+            Scenario("multi-write", trigger_patterns=["update both"], turn_index=0,
+                     response_factory=lambda m, t: ProviderResponse(
+                         blocks=[
+                             ToolUseBlock(id="write_a", name="write_file", input=json.dumps({"file_path": "a.md", "content": "A"})),
+                             ToolUseBlock(id="write_b", name="write_file", input=json.dumps({"file_path": "b.md", "content": "B"})),
+                         ],
+                         stop_reason="tool_use",
+                     )),
+        ])
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        session = Session(workspace=str(workspace))
+        rt = ConversationRuntime(provider=provider, tool_registry=registry, permission_policy=policy,
+                                 session=session, auto_approve=True)
+
+        events = await _collect_events(rt, "update both")
+        checkpoints = [event for event in events if event.type == AgentEventType.CHECKPOINT]
+
+        assert [Path(event.data["file"]) for event in checkpoints] == [
+            (workspace / "a.md").resolve(),
+            (workspace / "b.md").resolve(),
+        ]
+        assert [event.data["content"] for event in checkpoints] == ["A", "B"]
+        assert all(event.data["content_truncated"] is False for event in checkpoints)
+
 
 # ============================================================================
 # 6.2 权限集成

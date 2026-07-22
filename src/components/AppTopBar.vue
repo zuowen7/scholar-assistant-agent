@@ -1,6 +1,6 @@
 <template>
   <div class="topbar-wrapper">
-  <header class="topbar" data-tauri-drag-region>
+  <header class="topbar" data-tauri-drag-region @mousedown="onTopbarMouseDown">
 
     <!-- ── Left: Brand ──────────────────────────────────────── -->
     <div class="brand" data-tauri-drag-region>
@@ -270,6 +270,34 @@
               <UiButton variant="primary" size="sm" @click="$emit('save-proxy')">{{ t('settings.saveProxy') }}</UiButton>
             </div>
             <p class="sp-hint">{{ t('settings.proxyHint') }}</p>
+
+            <!-- Zotero API config -->
+            <div class="sp-section-label" style="margin-top: 14px;">{{ t('settings.zoteroApi') }}</div>
+            <div class="sp-field">
+              <label class="sp-label">{{ t('settings.apiKey') }}</label>
+              <UiInput
+                :model-value="zoteroApiKey"
+                :placeholder="zoteroHasStoredKey ? t('settings.zoteroKeyStored') : t('settings.zoteroKeyPlaceholder')"
+                type="password"
+                @update:model-value="zoteroApiKey = $event"
+              />
+            </div>
+            <div class="sp-field">
+              <label class="sp-label">{{ t('settings.zoteroUserId') }}</label>
+              <UiInput
+                :model-value="zoteroUserId"
+                :placeholder="t('settings.zoteroUserIdPlaceholder')"
+                @update:model-value="zoteroUserId = $event"
+              />
+            </div>
+            <div class="sp-actions">
+              <UiButton variant="primary" size="sm" :loading="zoteroSaving" @click="saveZoteroConfig">{{ t('settings.zoteroSave') }}</UiButton>
+              <UiButton variant="ghost" size="sm" :loading="zoteroChecking" @click="checkZoteroStatus">{{ t('settings.zoteroCheck') }}</UiButton>
+            </div>
+            <p v-if="zoteroStatus" class="sp-hint" :class="{ 'sp-hint-ok': zoteroStatus === 'ok', 'sp-hint-err': zoteroStatus === 'error' }">
+              {{ zoteroStatus === 'ok' ? `✓ ${zoteroStatusMsg}` : `✕ ${zoteroStatusMsg}` }}
+            </p>
+            <p v-else class="sp-hint">{{ t('settings.zoteroHint') }}</p>
           </div>
 
           <!-- Background tab -->
@@ -406,7 +434,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { argMapV2Enabled } from '../composables/useArgumentMap'
 import { useLocale } from '../composables/useLocale'
@@ -420,6 +448,7 @@ import UiSelect from './ui/UiSelect.vue'
 import UiSlider from './ui/UiSlider.vue'
 import DebugPanel from './DebugPanel.vue'
 import type { AppMode } from '../types'
+import { API_BASE } from '../utils/api'
 
 const { t } = useI18n()
 const { currentLocale, setLocale } = useLocale()
@@ -427,6 +456,18 @@ const { currentProject, closeProject } = useProject()
 
 function handleCloseProject() {
   closeProject()
+}
+
+// Programmatic window drag — data-tauri-drag-region is inert when
+// withGlobalTauri=false, so use the OS-level startDragging() API instead.
+function onTopbarMouseDown(e: MouseEvent) {
+  if (e.button !== 0) return
+  const target = e.target as HTMLElement
+  // Skip interactive controls so clicks still work
+  if (target.closest('button, a, input, select, textarea, [role="button"], .status-trigger, .topbar-right, .project-chip')) return
+  import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+    getCurrentWindow().startDragging()
+  }).catch(() => { /* Non-Tauri env */ })
 }
 
 const props = defineProps<{
@@ -486,6 +527,90 @@ const statusPopoverRef = ref<InstanceType<typeof UiPopover> | null>(null)
 const settingsPopoverOpen = computed(() => settingsPopoverRef.value?.open ?? false)
 const speechSupported = !!(window as any).SpeechRecognition || !!(window as any).webkitSpeechRecognition
 const settingsTab = ref<'engine' | 'display' | 'network' | 'background' | 'voice'>('engine')
+
+// Zotero config (self-contained — loads/saves via /api/config directly)
+const zoteroApiKey = ref('')
+const zoteroUserId = ref('')
+const zoteroHasStoredKey = ref(false)
+const zoteroSaving = ref(false)
+const zoteroChecking = ref(false)
+const zoteroStatus = ref<'ok' | 'error' | ''>('')
+const zoteroStatusMsg = ref('')
+
+async function loadZoteroConfig() {
+  try {
+    const resp = await fetch(`${API_BASE}/api/config`)
+    if (!resp.ok) return
+    const cfg = await resp.json()
+    const z = cfg.zotero || {}
+    zoteroHasStoredKey.value = typeof z.api_key === 'string' && z.api_key.includes('****')
+    zoteroApiKey.value = zoteroHasStoredKey.value ? '' : (z.api_key || '')
+    zoteroUserId.value = z.user_id || ''
+  } catch { /* ignore */ }
+}
+
+async function saveZoteroConfig() {
+  zoteroSaving.value = true
+  zoteroStatus.value = ''
+  try {
+    const zotero: Record<string, string> = { user_id: zoteroUserId.value.trim(), style: 'ieee' }
+    const newApiKey = zoteroApiKey.value.trim()
+    if (newApiKey) zotero.api_key = newApiKey
+    const resp = await fetch(`${API_BASE}/api/config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ zotero }),
+    })
+    if (resp.ok) {
+      if (newApiKey) {
+        zoteroHasStoredKey.value = true
+        zoteroApiKey.value = ''
+      }
+      zoteroStatus.value = 'ok'
+      zoteroStatusMsg.value = t('settings.zoteroSaved')
+    } else {
+      zoteroStatus.value = 'error'
+      zoteroStatusMsg.value = t('settings.zoteroSaveFailed')
+    }
+  } catch {
+    zoteroStatus.value = 'error'
+    zoteroStatusMsg.value = t('settings.zoteroNetworkError')
+  } finally {
+    zoteroSaving.value = false
+  }
+}
+
+async function checkZoteroStatus() {
+  zoteroChecking.value = true
+  zoteroStatus.value = ''
+  try {
+    const resp = await fetch(`${API_BASE}/api/zotero/status`)
+    if (resp.ok) {
+      const data = await resp.json()
+      if (data.connected) {
+        zoteroStatus.value = 'ok'
+        zoteroStatusMsg.value = t('settings.zoteroConfigured')
+      } else {
+        zoteroStatus.value = 'error'
+        zoteroStatusMsg.value = data.message || t('settings.zoteroNotConfigured')
+      }
+    } else {
+      zoteroStatus.value = 'error'
+      zoteroStatusMsg.value = t('settings.zoteroBackendError')
+    }
+  } catch {
+    zoteroStatus.value = 'error'
+    zoteroStatusMsg.value = t('settings.zoteroNetworkError')
+  } finally {
+    zoteroChecking.value = false
+  }
+}
+
+// Load Zotero config both when the popover opens on Network and when the user
+// switches to Network after opening it.
+watch([settingsPopoverOpen, settingsTab], ([open, tab]) => {
+  if (open && tab === 'network') loadZoteroConfig()
+})
 
 const modeOptions = computed(() => [
   { value: 'translate' as AppMode, label: t('mode.translate') },
@@ -575,7 +700,9 @@ function onVoiceSettingChange<K extends keyof VoiceSettings>(key: K, value: Voic
   border: 1px solid var(--ink-4);
   border-radius: var(--radius-card);
   margin: 8px 12px 0;
-  -webkit-app-region: drag;
+  /* Drag handled programmatically via onTopbarMouseDown → startDragging().
+     Do NOT use -webkit-app-region: drag here — it intercepts all mouse
+     events at the Chromium level, breaking button clicks in the topbar. */
 }
 
 /* ── Fade line separator ────────────────────────────────── */
@@ -661,7 +788,6 @@ function onVoiceSettingChange<K extends keyof VoiceSettings>(key: K, value: Voic
   display: flex;
   align-items: center;
   justify-content: center;
-  -webkit-app-region: drag;
 }
 
 /* ── Right ────────────────────────────────────────────────── */
@@ -853,6 +979,8 @@ function onVoiceSettingChange<K extends keyof VoiceSettings>(key: K, value: Voic
 .sp-status.off { color: var(--c-danger); background: var(--c-danger-bg); }
 .sp-error { font-size: var(--text-xs); color: var(--c-text-2); text-align: center; }
 .sp-hint { font-size: var(--text-xs); color: var(--c-text-3); line-height: var(--leading-normal); }
+.sp-hint-ok { color: var(--c-success, #16a34a); }
+.sp-hint-err { color: var(--c-danger, #dc2626); }
 
 /* Toggle switch */
 .sp-toggle { position: relative; display: inline-block; width: 36px; height: 20px; }

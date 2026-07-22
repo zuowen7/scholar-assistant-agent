@@ -142,8 +142,12 @@ export function useBackground() {
       saveBgSettings()
       // generate data URL for reliable display (bypasses asset protocol scope)
       if (!isVideo) {
-        bgDataUrl.value = ''
-        pathToDataUrl(filePath).then(url => { if (url) bgDataUrl.value = url })
+        const url = await pathToDataUrl(filePath)
+        if (url) {
+          bgDataUrl.value = url
+        } else {
+          pushError(t('app.bgLoadFailed'))
+        }
       }
     } catch {
       // Show error to user - might be browser mode or permission issue
