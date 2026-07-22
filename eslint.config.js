@@ -15,6 +15,7 @@
 
 import js from '@eslint/js'
 import vuePlugin from 'eslint-plugin-vue'
+import vueParser from 'vue-eslint-parser'
 import tsParser from '@typescript-eslint/parser'
 import tsPlugin from '@typescript-eslint/eslint-plugin'
 import prettierConfig from 'eslint-config-prettier'
@@ -26,6 +27,7 @@ export default [
       'dist/**',
       'build/**',
       'node_modules/**',
+      '.pytest_cache/**',
       'src-tauri/**',
       'python/**',
       'outputs/**',
@@ -45,7 +47,7 @@ export default [
   {
     files: ['src/**/*.{ts,vue}'],
     languageOptions: {
-      parser: vueParserWithTs(tsParser),
+      parser: vueParser,
       parserOptions: {
         parser: tsParser,
         ecmaVersion: 'latest',
@@ -67,6 +69,9 @@ export default [
       'no-console': ['warn', { allow: ['warn', 'error'] }],
       // TS 项目里用 no-unused-vars 替代会被 ts 接管的规则
       'no-unused-vars': 'off',
+      // TypeScript resolves DOM and type-only names; the base JS rule reports
+      // those as runtime globals even though vue-tsc has already validated them.
+      'no-undef': 'off',
       '@typescript-eslint/no-unused-vars': [
         'warn',
         {
@@ -88,6 +93,7 @@ export default [
     files: ['src/__tests__/**/*.{ts,vue}'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-this-alias': 'off',
       'no-console': 'off',
     },
   },
@@ -95,11 +101,3 @@ export default [
   // ── Prettier 兼容（关闭所有与 Prettier 冲突的规则） ──
   prettierConfig,
 ]
-
-// ── 工具函数：让 vue-eslint-parser 内部用 TS parser ──
-function vueParserWithTs(tsParser) {
-  // 动态引入 vue-eslint-parser 避免在非 vue 项目里报错
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const vueParser = require('vue-eslint-parser')
-  return vueParser
-}

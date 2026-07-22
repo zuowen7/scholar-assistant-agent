@@ -192,7 +192,8 @@ import { useFileTree } from '../composables/useFileTree'
 import { useArgumentCompanion } from '../composables/useArgumentCompanion'
 import { useAgentChat } from '../composables/useAgentChat'
 import { API_BASE } from '../utils/api'
-import { closeProject, currentProject } from '../composables/useProject'
+import { closeProject, currentProject, useProject } from '../composables/useProject'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
 
 defineProps<{ isDark: boolean }>()
 
@@ -364,12 +365,10 @@ function handleShellWorkspaceMode(event: Event) {
 
 async function openWorkspaceFolder() {
   try {
-    const { open } = await import('@tauri-apps/plugin-dialog')
-    const selected = await open({ directory: true, multiple: false })
+    const selected = await openDialog({ directory: true, multiple: false })
     if (selected) {
       window.dispatchEvent(new CustomEvent('open-workspace-folder', { detail: { path: selected } }))
       // Auto-detect and load project metadata if available
-      const { useProject } = await import('../composables/useProject')
       const isProject = await useProject().detectProject(selected as string)
       if (isProject) {
         try { await useProject().openProject(selected as string) } catch { /* */ }
@@ -397,7 +396,6 @@ function _mainMdPath(projectPath: string): string {
 }
 
 async function _openProjectAndMainMd(path: string) {
-  const { useProject } = await import('../composables/useProject')
   await useProject().openProject(path)
   const mainMd = _mainMdPath(path)
   try {

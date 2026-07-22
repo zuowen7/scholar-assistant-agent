@@ -138,7 +138,8 @@ const expandedTurnIds = ref<Set<string>>(new Set())
 function isExpanded(id: string) { return expandedTurnIds.value.has(id) }
 function toggleTurn(id: string) {
   const s = new Set(expandedTurnIds.value)
-  s.has(id) ? s.delete(id) : s.add(id)
+  if (s.has(id)) s.delete(id)
+  else s.add(id)
   expandedTurnIds.value = s
 }
 

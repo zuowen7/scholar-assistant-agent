@@ -8,6 +8,7 @@ import { persistTranslation, loadLastTranslation, clearPersistedTranslation } fr
 import { toastFromError } from './useToast'
 import { validateTranslateUpload, extractApiErrorMessage } from '../utils/validation'
 import { i18n } from '../i18n'
+import { saveBlob } from './useEditorIO'
 import type {
   TranslateState,
   TranslateStatus,
@@ -497,7 +498,6 @@ async function downloadResult(): Promise<void> {
   const content = state.finalContent
   if (!content) return
 
-  const { saveBlob } = await import('./useEditorIO')
   await saveBlob(
     new Blob([content], { type: 'text/markdown;charset=utf-8' }),
     `${state.taskId}_bilingual.md`,
@@ -523,7 +523,6 @@ async function exportBilingualDocx(): Promise<void> {
 
     const blob = await resp.blob()
     const defaultName = `${state.taskId}_bilingual.docx`
-    const { saveBlob } = await import('./useEditorIO')
     const result = await saveBlob(blob, defaultName)
     if (result === 'Cancelled') return
   } catch (err: unknown) {
@@ -551,7 +550,6 @@ async function exportTranslationOnlyDocx(): Promise<void> {
 
     const blob = await resp.blob()
     const defaultName = `${state.taskId}_translation_only.docx`
-    const { saveBlob } = await import('./useEditorIO')
     const result = await saveBlob(blob, defaultName)
     if (result === 'Cancelled') return
   } catch (err: unknown) {
@@ -575,7 +573,6 @@ async function exportTranslationOnlyMarkdown(): Promise<void> {
   }
   const content = parts.join('\n\n')
 
-  const { saveBlob } = await import('./useEditorIO')
   await saveBlob(
     new Blob([content], { type: 'text/markdown;charset=utf-8' }),
     `${state.taskId}_translation_only.md`,
@@ -654,7 +651,6 @@ async function exportPPTX(): Promise<void> {
 
     const blob = await resp.blob()
     const defaultName = `${state.taskId}_presentation.pptx`
-    const { saveBlob } = await import('./useEditorIO')
     await saveBlob(blob, defaultName)
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : i18n.global.t('errors.unknownError')
@@ -684,7 +680,6 @@ async function exportDataAvailability(): Promise<void> {
     const data = await resp.json()
     // 复制到剪贴板 + 保存为文件
     const content = data.section || JSON.stringify(data, null, 2)
-    const { saveBlob } = await import('./useEditorIO')
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
     await saveBlob(blob, `${state.taskId}_data_availability.md`)
   } catch (err: unknown) {

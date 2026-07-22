@@ -54,7 +54,8 @@ const panelRef = ref<HTMLElement | null>(null)
 const panelPos = ref({ top: 0, left: 0 })
 
 function toggle() {
-  open.value ? close() : show()
+  if (open.value) close()
+  else show()
 }
 function show() {
   open.value = true

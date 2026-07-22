@@ -449,6 +449,7 @@ import UiSlider from './ui/UiSlider.vue'
 import DebugPanel from './DebugPanel.vue'
 import type { AppMode } from '../types'
 import { API_BASE } from '../utils/api'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const { t } = useI18n()
 const { currentLocale, setLocale } = useLocale()
@@ -465,9 +466,7 @@ function onTopbarMouseDown(e: MouseEvent) {
   const target = e.target as HTMLElement
   // Skip interactive controls so clicks still work
   if (target.closest('button, a, input, select, textarea, [role="button"], .status-trigger, .topbar-right, .project-chip')) return
-  import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
-    getCurrentWindow().startDragging()
-  }).catch(() => { /* Non-Tauri env */ })
+  getCurrentWindow().startDragging().catch(() => { /* Non-Tauri env */ })
 }
 
 const props = defineProps<{

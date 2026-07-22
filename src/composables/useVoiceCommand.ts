@@ -3,6 +3,7 @@ import { useSpeechRecognition } from './useSpeechRecognition'
 import { logger } from '../utils/logger'
 import { i18n } from '../i18n'
 import { useToast } from './useToast'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const isTauri = '__TAURI_INTERNALS__' in window
 
@@ -137,7 +138,6 @@ export function useVoiceCommand() {
     const activateWindow = async () => {
       if (isTauri) {
         try {
-          const { getCurrentWindow } = await import('@tauri-apps/api/window')
           const win = getCurrentWindow()
           await win.unminimize()
           await win.setFocus()

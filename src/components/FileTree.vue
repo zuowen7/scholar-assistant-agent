@@ -118,6 +118,7 @@ import { useFileTree } from '../composables/useFileTree'
 import { useEditor } from '../composables/useEditor'
 import { useToast } from '../composables/useToast'
 import type { FileEntry } from '../types'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
 
 const { files, rootDir, openFolder, readFileContent, createFile, createFolder, renameFile, deleteFile, copyFileTo, setClipboard, getClipboard, clearClipboard } = useFileTree()
 const { openFile: openEditorFile, activeFile, renameTabPath, closeTab } = useEditor()
@@ -158,8 +159,7 @@ const filteredFiles = computed(() => filterTree(files.value, searchQuery.value))
 
 async function handleOpenFolder() {
   try {
-    const { open } = await import('@tauri-apps/plugin-dialog')
-    const selected = await open({ directory: true, multiple: false })
+    const selected = await openDialog({ directory: true, multiple: false })
     if (selected && typeof selected === 'string') {
       await openFolder(selected)
     }

@@ -189,7 +189,7 @@ export function useAgentChat() {
           pipelineCompleted.value = (agentEvent.metadata?.completed as string[]) || []
           msg.events = [...msg.events, agentEvent]
           break
-        case 'checkpoint':
+        case 'checkpoint': {
           pendingCheckpoint.value = {
             stage: (agentEvent.metadata?.stage as string) || '',
             checkpoint_type: (agentEvent.metadata?.checkpoint_type as 'MANDATORY' | 'SLIM') || 'SLIM',
@@ -211,6 +211,7 @@ export function useAgentChat() {
             detail: { files: [...new Set(changedFiles)] },
           }))
           break
+        }
         default:
           msg.events = [...msg.events, agentEvent]
           break
