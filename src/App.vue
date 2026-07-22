@@ -1044,7 +1044,7 @@ body::after {
   padding: 32px 36px;
   border: 1px solid var(--c-border);
   border-radius: 12px;
-  background: var(--c-panel-bg);
+  background: var(--c-panel);
   box-shadow: var(--elevation-2);
 }
 .drag-ring {
@@ -1152,9 +1152,9 @@ body::after {
   gap: var(--space-3);
   max-width: min(620px, calc(100vw - 32px));
   padding: 10px 12px 10px 16px;
-  background: var(--c-panel-bg);
+  background: var(--c-panel);
   border: 1px solid var(--c-border);
-  border-left: 3px solid var(--c-warning, #b8793d);
+  border-left: 3px solid var(--c-warn);
   border-radius: 10px;
   box-shadow: var(--elevation-2);
 }

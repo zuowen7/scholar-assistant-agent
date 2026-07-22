@@ -277,7 +277,7 @@ function startMinimapDrag(event: PointerEvent) {
   flex-direction: column;
   border-radius: 11px;
   border: 1px solid color-mix(in srgb, var(--border-color) 42%, transparent);
-  background: var(--c-panel-bg);
+  background: var(--c-panel);
   box-shadow: var(--elevation-1);
   overflow: hidden;
   opacity: 0.54;

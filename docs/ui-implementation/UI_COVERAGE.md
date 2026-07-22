@@ -98,7 +98,7 @@
 | 快捷键/撤销/节点编辑 | PARTIALLY_ADAPTED | Tab 新建、Ctrl+Z 撤销实机；快捷键帮助恢复 | 全快捷键和焦点冲突 |
 | AI 扩展 | PARTIALLY_ADAPTED | 选中节点后调原 `/api/mindmap/expand` | 真实扩展、取消与失败 |
 | AI 审查/提示 | PARTIALLY_ADAPTED | DeepSeek `/api/mindmap/analyze` 真实 200 与中文意见定位 | 多意见定位、英文和错误 |
-| Reviewer-2 对抗审稿 | PARTIALLY_ADAPTED | 固定一级入口、角色/串并行、真实 12 条批评 | 恢复、长文、深色/英文 |
+| Reviewer-2 对抗审稿 | PARTIALLY_ADAPTED | 固定一级入口、角色/串并行、真实 12 条批评；评审卡已统一规范语义 token、亮/暗输入对比度与键盘焦点环 | 恢复、长文、深色/英文实机复核 |
 | 真实评审导入 | PARTIALLY_ADAPTED | 导入表单连现有 Reviewer-2 解析 | 真实长评审和解析失败 |
 | Claim Ledger / 承诺兑付 | PARTIALLY_ADAPTED | 独立入口、真实 doc_id 查询和补实验建议 | 编辑/删除/重定位 |
 | rebuttal | PARTIALLY_ADAPTED | 作者回应编辑与现有真实保存链路 | 提交、失败与状态刷新 |
@@ -158,6 +158,7 @@
 ## 2026-07-18 当前迭代记录
 
 - 去除浅色 Tauri 主窗口原生黑边，统一 `html/body/#app` 背景。
+- 收敛全局设计 token：历史别名调用迁移到规范词汇，仅保留 3 个跨组件派生语义；静态未定义引用仅剩 5 个有意的运行时变量，并加入自动扫描门禁。ReviewerThread 输入框亮/暗对比度分别为 15.84:1 / 13.84:1。
 - 修复真实 AppShell 无拖拽区的问题；顶部原生拖拽轨支持左键拖动和双击最大化，旧 AppTopBar 不再承担无效拖拽逻辑。
 - 修复写作右侧栏在 1280px 以下被 CSS 永久隐藏；接通文字 Tab 与窄屏覆盖式 Dock，并将 Agent 上下文、对话、工具活动、审批和新任务留在当前文稿旁。
 - 修复系统页 DebugPanel 已打开却被 Drawer 遮住的问题；Popover 浮层现在位于 AppDialog 之上。

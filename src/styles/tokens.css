@@ -162,32 +162,11 @@
   --c-info-border: rgba(91, 108, 255, 0.20);
   --c-info-fg: #7a89ff;
 
-  /* ── Semantic alias bridge ──
-     Several feature components reference these shorter names (--c-error,
-     --c-warning, --c-text, --c-text-secondary, --c-text-muted, --c-brand-red).
-     They were never defined in the canonical token set (which uses --c-danger /
-     --c-warn / --c-text-0…), so every usage silently fell back to a hard-coded
-     hex — breaking light-mode contrast (e.g. ReviewerThread's input rendered
-     near-white text on a light surface) and drifting from the Ink palette.
-     Bridge them to the canonical tokens. Because custom-property references
-     resolve lazily at use-time, a single definition here follows both themes. */
-  --c-error: var(--c-danger);
-  --c-warning: var(--c-warn);
-  --c-text: var(--c-text-0);
-  --c-text-secondary: var(--c-text-2);
-  --c-text-muted: var(--c-text-3);
-  --c-brand-red: var(--brand-red);
-
-  /* More semantic aliases referenced by feature components but never wired
-     into the canonical set. Bridge them so panels stop relying on hard-coded
-     fallbacks / invalid values: */
-  --c-panel-bg: var(--c-panel);          /* modal / dialog / floating surfaces */
-  --c-nav-bg: var(--c-nav);              /* reviewer workspace nav strip */
-  --c-brand: var(--brand-red);          /* brand mark in loader */
+  /* Cross-component derived semantics. Keep these as first-class tokens: each
+     has multiple consumers and expresses a stable interaction contract. */
   --c-border-strong: color-mix(in srgb, var(--c-border) 78%, var(--c-text-2));
-  --c-on-accent: #fff;                  /* text/icon on accent fill */
-  --c-accent-rgb: 91, 108, 255;         /* RGB triplet for rgba() composition */
-  --ease: var(--ease-out);              /* typo bridge: var(--ease) → ease-out */
+  --c-on-accent: #fff;
+  --c-accent-rgb: 91, 108, 255;
 
   /* Derived composites */
   --c-accent-bg: rgba(91, 108, 255, 0.08);
