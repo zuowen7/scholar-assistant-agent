@@ -590,8 +590,9 @@ def register_editor(
         ext = type_extensions[file.content_type]
         filename = f"{uuid.uuid4().hex[:12]}{ext}"
         file_path = assets_dir / filename
-        content = await file.read()
-        if len(content) > 50 * 1024 * 1024:
+        max_bytes = 50 * 1024 * 1024
+        content = await file.read(max_bytes + 1)
+        if len(content) > max_bytes:
             raise HTTPException(413, "图片大小超过 50MB 限制")
         with open(file_path, "wb") as f:
             f.write(content)
@@ -628,8 +629,9 @@ def register_editor(
         ext = Path(file.filename).suffix.lower() if file.filename else ".png"
         temp_filename = f"vision_{uuid.uuid4().hex[:12]}{ext}"
         temp_path = assets_dir / temp_filename
-        content = await file.read()
-        if len(content) > 20 * 1024 * 1024:
+        max_bytes = 20 * 1024 * 1024
+        content = await file.read(max_bytes + 1)
+        if len(content) > max_bytes:
             raise HTTPException(413, "图片大小超过 20MB 限制")
         with open(temp_path, "wb") as f:
             f.write(content)

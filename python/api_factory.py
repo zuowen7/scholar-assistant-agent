@@ -730,7 +730,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
     # Agent V2 — claw-code-inspired ConversationRuntime (replaces old ReAct agent)
     logger.info("Registering Agent V2 routes")
     from src.agent_v2.router import register_agent_v2_routes
-    register_agent_v2_routes(app)
+    register_agent_v2_routes(app, load_config=_load_config)
     state_agent = getattr(app.state, "_state_agent", {})
     state_agent.update({
         "rag_store": None,

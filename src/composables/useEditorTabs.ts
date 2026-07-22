@@ -10,6 +10,8 @@ import {
   activeTab, content, activeFile, isModified,
 } from './useEditorState'
 import { i18n } from '../i18n'
+import { save } from '@tauri-apps/plugin-dialog'
+import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 
 function setContent(text: string) {
   const tab = activeTab.value
@@ -119,19 +121,12 @@ function applyExternalFileUpdate(path: string, fresh: string): ExternalFileUpdat
  * For the active tab the Monaco model value is also updated in-place.
  */
 async function reloadOpenTabs(): Promise<void> {
-  let readTextFile: ((path: string) => Promise<string>) | null = null
-  try {
-    const fs = await import('@tauri-apps/plugin-fs')
-    readTextFile = fs.readTextFile
-  } catch {
-    return  // Not running in Tauri — file reload not available in web mode
-  }
   for (const tab of tabs.value) {
     if (!tab.path) continue
     // Skip tabs with unsaved user edits to avoid clobbering their work.
     if (tab.isModified) continue
     try {
-      const fresh = await readTextFile!(tab.path)
+      const fresh = await readTextFile(tab.path)
       if (fresh === tab.content) continue  // no change — skip expensive Monaco update
       tab.content = fresh
       contentVersion.value++
@@ -158,13 +153,11 @@ async function saveFile(): Promise<string | null> {
   // Untitled tab — prompt Save As dialog
   if (!tab.path) {
     try {
-      const { save } = await import('@tauri-apps/plugin-dialog')
       const chosen = await save({
         defaultPath: `${tab.name || 'untitled'}.md`,
         filters: [{ name: 'Markdown', extensions: ['md'] }],
       })
       if (!chosen) return null  // user cancelled
-      const { writeTextFile } = await import('@tauri-apps/plugin-fs')
       await writeTextFile(chosen, tab.content)
       tab.path = chosen
       tab.id = chosen
@@ -179,7 +172,6 @@ async function saveFile(): Promise<string | null> {
 
   // Named tab — save in place
   try {
-    const { writeTextFile } = await import('@tauri-apps/plugin-fs')
     await writeTextFile(tab.path, tab.content)
     tab.isModified = false
     return null

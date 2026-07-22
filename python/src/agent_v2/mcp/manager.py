@@ -112,9 +112,36 @@ class McpManager:
             ]
             state.lifecycle = McpLifecycleState.READY
         except Exception as e:
-            if state.process and state.process.returncode is None:
-                state.process.terminate()
+            if state.process:
+                await self._dispose_process(state.process)
             raise
+
+    @staticmethod
+    async def _dispose_process(process: asyncio.subprocess.Process) -> None:
+        """Stop a child and drain its pipes before the event loop is closed.
+
+        Merely calling ``terminate()``/``wait()`` leaves Proactor pipe
+        transports pending on Windows, which later surfaces as unraisable
+        exceptions during an unrelated test or application shutdown.
+        """
+        if process.returncode is None:
+            try:
+                process.terminate()
+            except ProcessLookupError:
+                pass
+        try:
+            await asyncio.wait_for(process.communicate(), timeout=5.0)
+        except asyncio.TimeoutError:
+            if process.returncode is None:
+                try:
+                    process.kill()
+                except ProcessLookupError:
+                    pass
+            await process.communicate()
+        except (BrokenPipeError, ConnectionResetError):
+            await process.wait()
+        # Give the Proactor loop one cycle to deliver connection_lost callbacks.
+        await asyncio.sleep(0)
 
     async def _send_jsonrpc(self, state: McpServerState, method: str, params: dict) -> dict:
         if not state.process or not state.process.stdin or not state.process.stdout:
@@ -173,15 +200,11 @@ class McpManager:
 
     async def shutdown_all(self) -> None:
         for name, state in self._servers.items():
-            if state.process and state.process.returncode is None:
+            if state.process:
                 try:
-                    state.process.terminate()
-                    await asyncio.wait_for(state.process.wait(), timeout=5.0)
-                except Exception:
-                    try:
-                        state.process.kill()
-                    except Exception:
-                        pass
+                    await self._dispose_process(state.process)
+                except Exception as exc:
+                    logger.warning("failed to stop MCP server '%s': %s", name, exc)
             state.lifecycle = McpLifecycleState.SHUTDOWN
 
     def get_state(self, name: str) -> McpServerState | None:

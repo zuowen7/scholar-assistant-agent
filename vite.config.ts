@@ -37,10 +37,33 @@ export default defineConfig({
   },
   build: {
     sourcemap: false,
+    // Monaco is intentionally isolated and ships its own large language workers.
+    // Warn only when an application chunk exceeds that known editor boundary.
+    chunkSizeWarningLimit: 4500,
     rollupOptions: {
       output: {
-        manualChunks: {
-          monaco: ['monaco-editor'],
+        manualChunks(id) {
+          const moduleId = id.replaceAll('\\', '/')
+          if (!moduleId.includes('/node_modules/')) return undefined
+          if (moduleId.includes('/node_modules/monaco-editor/')) return 'monaco'
+          if (moduleId.includes('/node_modules/@tauri-apps/')) return 'tauri'
+          if (
+            moduleId.includes('/node_modules/@vue-flow/')
+            || moduleId.includes('/node_modules/dagre/')
+          ) return 'graph'
+          if (
+            moduleId.includes('/node_modules/katex/')
+            || moduleId.includes('/node_modules/highlight.js/')
+            || moduleId.includes('/node_modules/marked/')
+            || moduleId.includes('/node_modules/dompurify/')
+          ) return 'document-rendering'
+          if (moduleId.includes('/node_modules/lucide-vue-next/')) return 'icons'
+          if (
+            moduleId.includes('/node_modules/vue/')
+            || moduleId.includes('/node_modules/vue-i18n/')
+            || moduleId.includes('/node_modules/@vue/')
+          ) return 'vue'
+          return 'vendor'
         },
       },
     },

@@ -50,7 +50,8 @@ export function useMindMapKeyboard() {
 
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
       e.preventDefault()
-      e.shiftKey ? redo() : undo()
+      if (e.shiftKey) redo()
+      else undo()
       return
     }
 

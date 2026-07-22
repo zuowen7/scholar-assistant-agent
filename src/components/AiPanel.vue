@@ -192,6 +192,8 @@ import { useEditorState } from '../composables/useEditorState'
 import { useEditor } from '../composables/useEditor'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
 import { useToast } from '../composables/useToast'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
+import { readTextFile } from '@tauri-apps/plugin-fs'
 import { Mic } from './ui/icons'
 
 let voiceBaseInput = ''
@@ -360,8 +362,7 @@ function renderMd(text: string, msgId: string): string {
 // ── File operations ─────────────────────────────────────────
 async function attachFile() {
   try {
-    const { open } = await import('@tauri-apps/plugin-dialog')
-    const selected = await open({
+    const selected = await openDialog({
       multiple: true,
       filters: [{ name: 'Text', extensions: ['md','txt','tex','py','js','ts','json','yaml','yml','xml','html','css','csv','pdf'] }]
     })
@@ -371,7 +372,6 @@ async function attachFile() {
       const name = p.split(/[\\/]/).pop() || p
       if (files.value.some(f => f.name === name)) continue
       try {
-        const { readTextFile } = await import('@tauri-apps/plugin-fs')
         const content = await readTextFile(p)
         files.value.push({ name, content })
       } catch { /* skip unreadable files */ }

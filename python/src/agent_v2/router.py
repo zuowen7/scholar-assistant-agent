@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import logging
 import os
@@ -22,7 +23,7 @@ import time
 import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Callable
 
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -185,51 +186,8 @@ def _session_summary(session: Session, *, state: str, source: str) -> dict:
 # Provider / Runtime factory
 # ---------------------------------------------------------------------------
 
-def _load_cloud_config() -> dict:
-    """从 config 文件读取翻译器云配置（合并 default.yaml + local.yaml）。"""
-    import yaml
-    merged = {}
-
-    # 1. 先读 default.yaml
-    default_path = _RUNTIME_DIR / "config" / "default.yaml"
-    if default_path.is_file():
-        try:
-            with open(default_path, encoding="utf-8") as f:
-                merged = yaml.safe_load(f) or {}
-        except Exception as e:
-            logger.warning("Failed to load %s: %s", default_path, e)
-
-    # 2. 用 local.yaml 覆盖
-    local_path = _RUNTIME_DIR / "config" / "default.local.yaml"
-    if local_path.is_file():
-        try:
-            with open(local_path, encoding="utf-8") as f:
-                local = yaml.safe_load(f) or {}
-            _deep_merge(merged, local)
-        except Exception as e:
-            logger.warning("Failed to load %s: %s", local_path, e)
-
-    cloud = merged.get("translator", {}).get("cloud", {})
-    env_key = os.environ.get("SCHOLAR_CLOUD_API_KEY", "").strip()
-    if env_key:
-        cloud["api_key"] = env_key
-    return cloud
-
-
-def _deep_merge(base: dict, override: dict) -> None:
-    """递归合并 override 到 base。"""
-    for k, v in override.items():
-        if k in base and isinstance(base[k], dict) and isinstance(v, dict):
-            _deep_merge(base[k], v)
-        else:
-            base[k] = v
-
-
-def _load_agent_config() -> dict:
-    """读取 agent 配置段（合并 default.yaml + local.yaml + env override）。
-
-    优先级: env var > config/local.yaml > config/default.yaml
-    """
+def _load_root_config() -> dict:
+    """Standalone fallback config loader for direct Agent V2 use and tests."""
     import yaml
     merged = {}
 
@@ -241,12 +199,38 @@ def _load_agent_config() -> dict:
                     _deep_merge(merged, yaml.safe_load(f) or {})
             except Exception as e:
                 logger.warning("Failed to load %s: %s", cfg_path, e)
+    return merged
 
-    agent_cfg = merged.get("agent", {})
+
+def _cloud_config_from(root_config: dict) -> dict:
+    cloud = copy.deepcopy(root_config.get("translator", {}).get("cloud", {}))
+    env_key = os.environ.get("SCHOLAR_CLOUD_API_KEY", "").strip()
+    if env_key:
+        cloud["api_key"] = env_key
+    return cloud
+
+
+def _load_cloud_config() -> dict:
+    """Load cloud configuration for standalone Agent V2 usage."""
+    return _cloud_config_from(_load_root_config())
+
+
+def _deep_merge(base: dict, override: dict) -> None:
+    """递归合并 override 到 base。"""
+    for k, v in override.items():
+        if k in base and isinstance(base[k], dict) and isinstance(v, dict):
+            _deep_merge(base[k], v)
+        else:
+            base[k] = v
+
+
+def _agent_config_from(root_config: dict) -> dict:
+    """Resolve Agent settings from the canonical app config plus env overrides."""
+    agent_cfg = copy.deepcopy(root_config.get("agent", {}))
 
     # Fallback: network.proxy → agent.proxy if not explicitly set
     if not agent_cfg.get("proxy"):
-        network_proxy = merged.get("network", {}).get("proxy", "").strip()
+        network_proxy = root_config.get("network", {}).get("proxy", "").strip()
         if network_proxy:
             agent_cfg["proxy"] = network_proxy
 
@@ -265,23 +249,30 @@ def _load_agent_config() -> dict:
     return agent_cfg
 
 
+def _load_agent_config() -> dict:
+    """Load Agent settings for standalone Agent V2 usage."""
+    return _agent_config_from(_load_root_config())
+
+
 def _resolve_model_alias(model: str, aliases: dict) -> str:
     """解析模型别名。参考 claw-code resolve_model_alias。别名从 config 读取。"""
     return aliases.get(model.lower(), model)
 
 
-def _create_provider():
+def _create_provider(root_config: dict | None = None):
     from src.agent_v2.providers.anthropic import AnthropicProvider
     from src.agent_v2.providers.openai_compat import OpenAiCompatProvider
 
-    cfg = _load_agent_config()
+    cfg = _agent_config_from(root_config) if root_config is not None else _load_agent_config()
     aliases = cfg.get("model_aliases", {})
     model = _resolve_model_alias(cfg.get("model", "").strip(), aliases)
     provider = cfg.get("provider", "auto").strip().lower()
     api_key = cfg.get("api_key", "").strip()
     base_url = cfg.get("base_url", "").strip()
     proxy = cfg.get("proxy", "").strip() or None
-    translator_cloud = _load_cloud_config()
+    translator_cloud = (
+        _cloud_config_from(root_config) if root_config is not None else _load_cloud_config()
+    )
 
     # 1. Explicit provider from config
     if provider == "anthropic" and api_key:
@@ -407,6 +398,7 @@ def _create_runtime(
     history: list[dict] | None = None,
     current_message: str = "",
     selected_skills: list[str] | None = None,
+    root_config: dict | None = None,
 ) -> ConversationRuntime:
     sid = _validate_session_id(session_id) if session_id else f"sess_{uuid.uuid4().hex}"
     _SESSION_DIR.mkdir(parents=True, exist_ok=True)
@@ -423,7 +415,7 @@ def _create_runtime(
     else:
         ws = Path(workspace_root) if workspace_root else Path.cwd()
 
-    provider = _create_provider()
+    provider = _create_provider(root_config) if root_config is not None else _create_provider()
 
     # Tool registry
     registry = create_default_registry(workspace_root=ws)
@@ -463,7 +455,7 @@ def _create_runtime(
     sp = base_prompt + "\n" + skill_prompt if skill_prompt else base_prompt
 
     # Read max_steps from config
-    agent_cfg = _load_agent_config()
+    agent_cfg = _agent_config_from(root_config) if root_config is not None else _load_agent_config()
     max_steps = int(agent_cfg.get("max_steps", 48) or 48)
 
     return ConversationRuntime(provider=provider, tool_registry=registry,
@@ -527,7 +519,15 @@ async def _background_cleanup_loop() -> None:
 # Route registration
 # ---------------------------------------------------------------------------
 
-def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> None:
+def register_agent_v2_routes(
+    app: FastAPI,
+    prefix: str = "/api/agent/v2",
+    *,
+    load_config: Callable[[], dict] | None = None,
+) -> None:
+    def _current_root_config() -> dict | None:
+        return load_config() if load_config is not None else None
+
     # Background cleanup task — started/stopped via app.state so the host
     # app's lifespan handler (api_factory._lifespan) controls the lifecycle.
     # This avoids the deprecated @app.on_event("startup"/"shutdown") API.
@@ -569,6 +569,7 @@ def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> Non
                 history=req.history,
                 current_message=req.message,
                 selected_skills=req.skills,
+                root_config=_current_root_config(),
             )
         except ValueError as e:
             raise HTTPException(400, str(e))
@@ -654,7 +655,11 @@ def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> Non
         async def _stream() -> AsyncGenerator[dict, None]:
             rt = None
             try:
-                rt = _create_runtime(workspace, session_id=session_id)
+                rt = _create_runtime(
+                    workspace,
+                    session_id=session_id,
+                    root_config=_current_root_config(),
+                )
                 async with _SESSION_LOCK:
                     if session_id in _SESSION_POOL:
                         raise RuntimeError(f"Session {session_id} is already active")

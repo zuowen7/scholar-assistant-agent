@@ -326,6 +326,8 @@ import UiSpinner from './ui/UiSpinner.vue'
 import UiSkeleton from './ui/UiSkeleton.vue'
 import { renderMarkdown } from '../utils/markdown'
 import { useToast } from '../composables/useToast'
+import { getCurrentWindow } from '@tauri-apps/api/window'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
 
 let voiceBaseInput = ''
 const agentSpeech = useSpeechRecognition({
@@ -376,7 +378,7 @@ async function openAgentWindow() {
   const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow')
 
   // Close any existing agent window first
-  try { const old = await WebviewWindow.getByLabel('agent'); if (old) await old.close() } catch {}
+  try { const old = await WebviewWindow.getByLabel('agent'); if (old) await old.close() } catch { /* Window may already be gone. */ }
 
   // Pass agent-only flag and optional session via URL params — sessionStorage is
   // window-isolated in Tauri so URL params are the only reliable cross-window channel.
@@ -420,7 +422,7 @@ async function closeAgentWindow() {
     const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow')
     const w = await WebviewWindow.getByLabel('agent')
     if (w) await w.close()
-  } catch {}
+  } catch { /* Non-Tauri/browser preview. */ }
   _agentWindow = null
   emit('update:open', true)
 }
@@ -485,9 +487,7 @@ function _onDragUp() {
 function onHeaderMouseDown_standalone(e: MouseEvent) {
   const target = e.target as HTMLElement
   if (target.closest('button')) return
-  import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
-    getCurrentWindow().startDragging()
-  })
+  getCurrentWindow().startDragging()
 }
 
 function _headerMouseDown(e: MouseEvent) {
@@ -500,7 +500,6 @@ function _headerMouseDown(e: MouseEvent) {
 
 // Standalone: dock back to main window
 async function onDockBack() {
-  const { getCurrentWindow } = await import('@tauri-apps/api/window')
   localStorage.setItem('agent-dock-back', Date.now().toString())
   await getCurrentWindow().close()
 }
@@ -825,8 +824,7 @@ async function sendMessage() {
 // ── File operations ─────────────────────────────────────────
 async function attachFile() {
   try {
-    const { open } = await import('@tauri-apps/plugin-dialog')
-    const selected = await open({
+    const selected = await openDialog({
       multiple: true,
       filters: [{ name: 'Text', extensions: ['md','txt','tex','py','js','ts','json','yaml','yml','xml','html','css','csv','pdf'] }]
     })

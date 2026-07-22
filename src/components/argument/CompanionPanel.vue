@@ -167,6 +167,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { API_BASE } from '../../utils/api'
+import { saveBlob } from '../../composables/useEditorIO'
+import { useToast } from '../../composables/useToast'
 
 const { t } = useI18n()
 import { useArgumentCompanion } from '../../composables/useArgumentCompanion'
@@ -220,7 +223,6 @@ async function handleSuggestExperiment(promiseId: string) {
   if (!promise) return
   suggestingId.value = promiseId
   try {
-    const { API_BASE } = await import('../../utils/api')
     const resp = await fetch(
       `${API_BASE}/api/companion/ledger/promise/${promiseId}/suggest-experiment?doc_id=${encodeURIComponent(companion.state.docId)}`,
       { method: 'POST' },
@@ -237,20 +239,16 @@ async function handleDownload() {
   const sid = companion.state.review?.id
   if (!sid) return
   try {
-    const { API_BASE } = await import('../../utils/api')
     const url = `${API_BASE}/api/companion/download/review/${sid}`
     const resp = await fetch(url)
     if (!resp.ok) {
-      const { useToast } = await import('../../composables/useToast')
       useToast().pushError(t('argument.exportRebuttalFailed', { status: resp.status }))
       return
     }
     const blob = await resp.blob()
-    const { saveBlob } = await import('../../composables/useEditorIO')
     await saveBlob(blob, `rebuttal_${sid.slice(0, 8)}.md`)
   } catch (e) {
     console.error('[companion] download failed:', e)
-    const { useToast } = await import('../../composables/useToast')
     useToast().pushError(t('argument.exportRebuttalRetry'))
   }
 }
@@ -260,7 +258,6 @@ async function updatePointStatus(pointId: string, status: string) {
   const sid = companion.state.review.id
   if (!sid) return
   try {
-    const { API_BASE } = await import('../../utils/api')
     await fetch(`${API_BASE}/api/companion/review/${sid}/point/${pointId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
