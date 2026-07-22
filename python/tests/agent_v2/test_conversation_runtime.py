@@ -289,7 +289,10 @@ class TestFaultInjection:
 
         events = await _collect_events(rt, "boom boom")
         # Tool returns error result (is_error=True), runtime continues
-        tool_results = [e for e in events if e.type == AgentEventType.TOOL_ERROR]
+        tool_results = [
+            e for e in events
+            if e.type == AgentEventType.TOOL_RESULT and e.data.get("is_error") is True
+        ]
         assert len(tool_results) >= 1
 
     @pytest.mark.asyncio

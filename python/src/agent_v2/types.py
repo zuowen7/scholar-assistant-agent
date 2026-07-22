@@ -167,8 +167,10 @@ class AgentEvent:
 
     @staticmethod
     def tool_result(id: str, name: str, output: str, is_error: bool = False) -> AgentEvent:
-        evt_type = AgentEventType.TOOL_ERROR if is_error else AgentEventType.TOOL_RESULT
-        return AgentEvent(type=evt_type, data={"id": id, "tool_name": name, "output": output})
+        return AgentEvent(
+            type=AgentEventType.TOOL_RESULT,
+            data={"id": id, "tool_name": name, "output": output, "is_error": is_error},
+        )
 
     @staticmethod
     def tool_denied(id: str, name: str, reason: str) -> AgentEvent:

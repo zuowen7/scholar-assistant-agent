@@ -283,6 +283,18 @@ class TestWordExport:
         resp = client.get("/api/export/word/../../../etc/passwd.docx")
         assert resp.status_code in (403, 404)
 
+    def test_component_safe_path_rejects_sibling_prefix(self, tmp_path):
+        from fastapi import HTTPException
+        from routers.editor import _safe_child_path
+
+        output = tmp_path / "output"
+        output.mkdir()
+        sibling = tmp_path / "output_backup"
+        sibling.mkdir()
+        with pytest.raises(HTTPException) as exc:
+            _safe_child_path(output, r"..\output_backup\secret.docx")
+        assert exc.value.status_code == 403
+
 
 # ── /api/upload/image + /api/assets ──────────────────────────────────────
 
@@ -303,6 +315,13 @@ class TestImageUpload:
         assert "url" in data
         assert "filename" in data
         assert "path" in data
+
+    def test_upload_uses_content_type_extension(self, client):
+        resp = client.post("/api/upload/image", files={
+            "file": ("misleading.exe", io.BytesIO(b"image bytes"), "image/png"),
+        })
+        assert resp.status_code == 200
+        assert resp.json()["filename"].endswith(".png")
 
     def test_serve_uploaded_asset(self, client):
         png = (

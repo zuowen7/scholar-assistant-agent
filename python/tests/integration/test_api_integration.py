@@ -233,7 +233,7 @@ class TestChatEndpoint:
                         {"role": "user", "content": "previous question"},
                         {"role": "assistant", "content": "previous answer"},
                     ],
-                }, timeout=5.0)
+                })
                 result["status"] = resp.status_code
             except Exception as e:
                 result["error"] = str(e)

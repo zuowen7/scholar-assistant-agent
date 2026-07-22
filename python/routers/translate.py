@@ -81,6 +81,7 @@ def register_translate(
     """Register translate/config/health routes. Returns shared state dict."""
     tasks: dict[str, dict] = {}
     _task_lock = asyncio.Lock()
+    _background_tasks: set[asyncio.Task] = set()
     _state: dict = {"rag_store_getter": rag_store_getter}
 
     tm_store = TranslationMemory(runtime_dir / "tm.db")
@@ -104,7 +105,10 @@ def register_translate(
 
     def _cleanup_tasks() -> None:
         max_tasks, _, _ = _get_limits()
-        done_ids = [tid for tid, t in tasks.items() if t["status"] in ("done", "error")]
+        done_ids = [
+            tid for tid, t in tasks.items()
+            if t["status"] in ("done", "done_with_warnings", "error")
+        ]
         if len(done_ids) <= max_tasks:
             return
         excess = len(done_ids) - max_tasks
@@ -152,12 +156,13 @@ def register_translate(
                 tasks[tid]["status"] = "error"
                 tasks[tid]["error"] = "任务超时未启动"
             has_running = any(
-                t["status"] == "running"
+                t["status"] in ("running", "pending")
                 for tid, t in tasks.items()
                 if tid != task_id
             )
             if has_running:
                 raise HTTPException(409, "已有翻译任务在运行，请等待完成")
+            tasks[task_id]["status"] = "running"
 
     def _mark_task_created(task_id: str) -> None:
         tasks[task_id]["_created_at"] = time.monotonic()
@@ -210,8 +215,12 @@ def register_translate(
         if not cloud_cfg.get("api_key"):
             return {"reachable": False, "error": "未配置 API Key"}
         client = build_cloud_client(trans_cfg, cloud_cfg)
-        reachable, error_detail = client.health_check_detail()
-        return {"reachable": reachable, "error": error_detail}
+        try:
+            reachable, error_detail = client.health_check_detail()
+            return {"reachable": reachable, "error": error_detail}
+        finally:
+            if hasattr(client, "close"):
+                client.close()
 
     @app.get("/api/cloud/providers")
     def cloud_providers():
@@ -236,13 +245,6 @@ def register_translate(
                 raise HTTPException(413, f"文件过大，最大支持 {max_mb} MB")
 
         # Reject if a running or pending task already exists
-        has_active = any(
-            t["status"] in ("running", "pending")
-            for t in tasks.values()
-        )
-        if has_active:
-            raise HTTPException(409, "已有翻译任务在运行，请等待完成")
-
         task_id = uuid.uuid4().hex[:8]
         input_dir.mkdir(parents=True, exist_ok=True)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -252,17 +254,21 @@ def register_translate(
             with open(input_file, "wb") as f:
                 f.write(file_data)
 
-            tasks[task_id] = {
-                "status": "pending",
-                "input_path": str(input_file),
-                "output_path": None,
-                "content": None,
-                "error": None,
-                "filename": file.filename or "unknown",
-                "blocks": None,
-                "layout_doc": None,
-            }
-            _mark_task_created(task_id)
+            async with _task_lock:
+                if any(t["status"] in ("running", "pending") for t in tasks.values()):
+                    input_file.unlink(missing_ok=True)
+                    raise HTTPException(409, "已有翻译任务在运行，请等待完成")
+                tasks[task_id] = {
+                    "status": "pending",
+                    "input_path": str(input_file),
+                    "output_path": None,
+                    "content": None,
+                    "error": None,
+                    "filename": file.filename or "unknown",
+                    "blocks": None,
+                    "layout_doc": None,
+                }
+                _mark_task_created(task_id)
             return {"task_id": task_id}
         except Exception as e:
             logger.warning("file upload failed: %s", e)
@@ -291,16 +297,20 @@ def register_translate(
         try:
             shutil.copy2(file_path, in_path)
 
-            tasks[task_id] = {
-                "status": "pending",
-                "input_path": str(in_path),
-                "output_path": None,
-                "content": None,
-                "error": None,
-                "blocks": None,
-                "layout_doc": None,
-            }
-            _mark_task_created(task_id)
+            async with _task_lock:
+                if any(t["status"] in ("running", "pending") for t in tasks.values()):
+                    in_path.unlink(missing_ok=True)
+                    raise HTTPException(409, "已有翻译任务在运行，请等待完成")
+                tasks[task_id] = {
+                    "status": "pending",
+                    "input_path": str(in_path),
+                    "output_path": None,
+                    "content": None,
+                    "error": None,
+                    "blocks": None,
+                    "layout_doc": None,
+                }
+                _mark_task_created(task_id)
             return {"task_id": task_id}
         except Exception as e:
             logger.warning("file path upload failed: %s", e)
@@ -311,6 +321,7 @@ def register_translate(
     async def _run_pipeline(task_id: str) -> AsyncGenerator[dict, None]:
         task = tasks[task_id]
         task["status"] = "running"
+        client = None
 
         try:
             config = load_config()
@@ -692,6 +703,7 @@ def register_translate(
             finally:
                 if hasattr(client, "close"):
                     client.close()
+                client = None
 
             # 构造按原始块顺序的扁平翻译列表
             ordered_block_translations: list[BlockTranslation] = []
@@ -794,7 +806,9 @@ def register_translate(
                                 logger.warning("翻译结果入库 RAG 失败: %s", exc)
 
                     _bg_task = asyncio.create_task(_bg_ingest())
+                    _background_tasks.add(_bg_task)
                     def _log_bg_exc(t: asyncio.Task) -> None:
+                        _background_tasks.discard(t)
                         if not t.cancelled() and t.exception():
                             logger.error("RAG 后台入库失败: %s", t.exception(), exc_info=t.exception())
                     _bg_task.add_done_callback(_log_bg_exc)
@@ -827,6 +841,8 @@ def register_translate(
                 "data": json.dumps({"message": "翻译失败，请稍后重试"}),
             }
         finally:
+            if client is not None and hasattr(client, "close"):
+                client.close()
             # If the generator exited abnormally (client disconnect, early exception),
             # the status may still be "running". Forcibly mark it done so the slot
             # is released for the next translation.
@@ -1401,7 +1417,18 @@ def register_translate(
             if hasattr(client, "close"):
                 client.close()
 
+    async def _shutdown() -> None:
+        pending = [task for task in _background_tasks if not task.done()]
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        _background_tasks.clear()
+        tm_store.close()
+
     _state["tasks"] = tasks
     _state["tm_store"] = tm_store
+    _state["shutdown"] = _shutdown
+    _state["background_tasks"] = _background_tasks
     _state["glossary_store"] = glossary_store
     return _state

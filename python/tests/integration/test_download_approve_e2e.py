@@ -12,7 +12,7 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -86,11 +86,10 @@ def _inject_task(tasks_dict: dict, task_id: str, output_path: str) -> None:
 
 def _inject_session(session_pool: dict, sid: str, approve_returns: bool = True) -> Any:
     """Create and inject a mock AgentSession into the pool."""
-    from unittest.mock import MagicMock
     mock = MagicMock()
     mock.session_id = sid
-    mock.approve = AsyncMock(return_value=approve_returns)
-    mock.abort = AsyncMock()
+    mock.approve = MagicMock(return_value=approve_returns)
+    mock.abort = MagicMock()
     mock.journal = None
     mock.state = MagicMock(status="running")
     mock.task_queue = None

@@ -117,6 +117,41 @@ class TestApprovalPause:
         assert AgentEventType.TOOL_RESULT in types
 
     @pytest.mark.asyncio
+    async def test_approval_is_registered_before_event_is_emitted(self, workspace: Path):
+        provider = MockProvider(scenarios=[
+            Scenario(
+                "w",
+                trigger_patterns=["write"],
+                response_factory=lambda m, t: _tool_response(
+                    "write_file", {"file_path": "new.txt", "content": "data"}
+                ),
+            ),
+        ])
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        rt = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy,
+            session=Session(workspace=str(workspace)),
+            auto_approve=False,
+        )
+
+        stream = rt.turn("write new file")
+        try:
+            approved = False
+            async for event in stream:
+                if event.type == AgentEventType.AWAIT_APPROVAL:
+                    assert rt.approve(event.data["id"], "allow_once") is True
+                    approved = True
+                if approved and event.type == AgentEventType.TOOL_RESULT:
+                    break
+        finally:
+            await stream.aclose()
+
+        assert (workspace / "new.txt").read_text(encoding="utf-8") == "data"
+
+    @pytest.mark.asyncio
     async def test_deny_blocks_execution(self, workspace: Path):
         provider = MockProvider(scenarios=[
             Scenario("w", trigger_patterns=["write"],

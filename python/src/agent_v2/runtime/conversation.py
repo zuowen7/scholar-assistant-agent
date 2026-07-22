@@ -76,8 +76,10 @@ class ConversationRuntime:
 
     # ---- Public API ----
 
-    async def turn(self, user_message: str) -> AsyncGenerator[AgentEvent, None]:
-        if not user_message.strip():
+    async def turn(
+        self, user_message: str, *, resume: bool = False
+    ) -> AsyncGenerator[AgentEvent, None]:
+        if not resume and not user_message.strip():
             yield AgentEvent.error("empty message")
             yield AgentEvent.done()
             return
@@ -87,8 +89,9 @@ class ConversationRuntime:
         self.last_active_monotonic = time.monotonic()
         try:
             yield AgentEvent.session_started(self.session.session_id)
-            self.session.append(Message(role=MessageRole.USER, blocks=[TextBlock(text=user_message)]))
-            self._auto_save()
+            if not resume:
+                self.session.append(Message(role=MessageRole.USER, blocks=[TextBlock(text=user_message)]))
+                self._auto_save()
 
             for step in range(self.max_steps):
                 if self._aborted:
@@ -229,6 +232,7 @@ class ConversationRuntime:
                     assistant_blocks.append(TextBlock(text=full_text))
                 if assistant_blocks:
                     self.session.append(Message(role=MessageRole.ASSISTANT, blocks=assistant_blocks, usage=chunk.usage))
+                    self._auto_save()
 
                 if not tool_blocks:
                     if full_text.strip():
@@ -286,19 +290,36 @@ class ConversationRuntime:
             tool_output = f"Permission denied: {perm_result.reason}"
             is_error = True
         else:
-            # ── 文件修改工具：暂停等用户审批 ──
+            # ── 有副作用的工具：暂停等用户审批 ──
             if (
-                tb.name in ("write_file", "str_replace")
+                tb.name in ("write_file", "str_replace", "run_command", "export_document")
                 and not self.auto_approve
                 and tb.name not in self._session_approved_tools
             ):
-                yield AgentEvent.await_approval(
-                    tb.id, tb.name, f"Agent wants to edit {file_path}",
-                    preview={"old_text": old_text, "new_text": new_text, "file_path": resolved_path},
-                )
-                # Wait for approval
+                if tb.name == "run_command":
+                    approval_reason = (
+                        f"Agent wants to run a command in {args.get('cwd', '.')}: "
+                        f"{args.get('command', '')}"
+                    )
+                elif tb.name == "export_document":
+                    approval_reason = f"Agent wants to export {file_path} as {args.get('format', 'latex')}"
+                else:
+                    approval_reason = f"Agent wants to edit {file_path}"
+                # Register before yielding. The frontend may POST its decision as
+                # soon as it receives the SSE event.
                 evt = asyncio.Event()
                 self._approval_events[tb.id] = evt
+                yield AgentEvent.await_approval(
+                    tb.id, tb.name, approval_reason,
+                    preview={
+                        "old_text": old_text,
+                        "new_text": new_text,
+                        "file_path": resolved_path,
+                        "command": args.get("command", ""),
+                        "cwd": args.get("cwd", "."),
+                    },
+                )
+                # Wait for approval
                 try:
                     await asyncio.wait_for(evt.wait(), timeout=_APPROVAL_TIMEOUT)
                 except asyncio.TimeoutError:
@@ -312,10 +333,11 @@ class ConversationRuntime:
                 if decision != "allow_once" and decision != "allow_session":
                     tool_output = f"User denied the change to {file_path}"
                     is_error = True
-                    yield AgentEvent.tool_result(tb.id, tb.name, tool_output, is_error=True)
                     self.session.append(Message(role=MessageRole.TOOL, blocks=[
                         ToolResultBlock(tool_use_id=tb.id, tool_name=tb.name, output=tool_output, is_error=True),
                     ]))
+                    self._auto_save()
+                    yield AgentEvent.tool_result(tb.id, tb.name, tool_output, is_error=True)
                     if not self._aborted:
                         self._approval_denied = True
                     return
@@ -327,10 +349,11 @@ class ConversationRuntime:
             tool_output = result.output
             is_error = result.is_error
 
-        yield AgentEvent.tool_result(tb.id, tb.name, tool_output, is_error=is_error)
         self.session.append(Message(role=MessageRole.TOOL, blocks=[
             ToolResultBlock(tool_use_id=tb.id, tool_name=tb.name, output=tool_output[:_TOOL_RESULT_MAX_CHARS], is_error=is_error),
         ]))
+        self._auto_save()
+        yield AgentEvent.tool_result(tb.id, tb.name, tool_output, is_error=is_error)
 
         # Checkpoint after file modifications: include new content for frontend
         if tb.name in ("write_file", "str_replace") and not is_error:

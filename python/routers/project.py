@@ -142,13 +142,20 @@ def _validate_project_path(p: str) -> Path:
         raise HTTPException(422, f"路径必须是绝对路径: {p}")
 
     resolved = path.resolve()
-    resolved_str = os.path.normcase(str(resolved))
-
-    allowed = _get_allowed_prefixes()
-    if not any(resolved_str.startswith(prefix) for prefix in allowed):
+    allowed = [Path(prefix).resolve() for prefix in _get_allowed_prefixes()]
+    if not any(_is_relative_to(resolved, prefix) for prefix in allowed):
         raise HTTPException(422, f"路径不在允许的工作目录内: {p}")
 
     return resolved
+
+
+def _is_relative_to(path: Path, parent: Path) -> bool:
+    """Return whether *path* is inside *parent* using path components."""
+    try:
+        path.relative_to(parent)
+        return True
+    except ValueError:
+        return False
 
 
 def _validate_project_name(name: str) -> str:

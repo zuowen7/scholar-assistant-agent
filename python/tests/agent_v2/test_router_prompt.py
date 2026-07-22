@@ -1,5 +1,6 @@
 from datetime import date
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -63,3 +64,48 @@ def test_session_history_rejects_invalid_or_missing_ids(tmp_path, monkeypatch):
 
     assert client.get("/api/agent/v2/workflows/invalid%20id/messages").status_code == 400
     assert client.get("/api/agent/v2/workflows/sess_missing/messages").status_code == 404
+
+
+def test_session_path_rejects_traversal(tmp_path, monkeypatch):
+    import src.agent_v2.router as router
+
+    monkeypatch.setattr(router, "_SESSION_DIR", tmp_path)
+    with pytest.raises(ValueError, match="Invalid session id"):
+        router._session_path(r"..\outside")
+
+    app = FastAPI()
+    register_agent_v2_routes(app)
+    client = TestClient(app)
+    assert client.get("/api/agent/v2/cost/..%5Coutside").status_code == 400
+
+
+def test_generated_session_ids_are_unique(tmp_path, monkeypatch):
+    import src.agent_v2.router as router
+    from src.agent_v2.providers.mock_provider import MockProvider
+
+    monkeypatch.setattr(router, "_SESSION_DIR", tmp_path)
+    def provider():
+        value = MockProvider()
+        value.model = "test-model"
+        return value
+
+    monkeypatch.setattr(router, "_create_provider", provider)
+    first = router._create_runtime(str(tmp_path))
+    second = router._create_runtime(str(tmp_path))
+
+    assert first.session.session_id != second.session.session_id
+    assert first.session._save_path != second.session._save_path
+
+
+def test_cloud_config_applies_environment_api_key(tmp_path, monkeypatch):
+    import src.agent_v2.router as router
+
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "default.yaml").write_text(
+        "translator:\n  cloud:\n    api_key: file-key\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(router, "_RUNTIME_DIR", tmp_path)
+    monkeypatch.setenv("SCHOLAR_CLOUD_API_KEY", "environment-key")
+
+    assert router._load_cloud_config()["api_key"] == "environment-key"

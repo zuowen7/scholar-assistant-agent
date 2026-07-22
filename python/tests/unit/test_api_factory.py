@@ -119,6 +119,23 @@ class TestDeepMerge:
         result = self._merge({"a": {"b": 1}}, {"a": "flat"})
         assert result == {"a": "flat"}
 
+
+def test_create_app_preserves_agent_lifecycle_callbacks(tmp_path, monkeypatch):
+    import api_factory
+
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    config_path = config_dir / "default.yaml"
+    config_path.write_text("translator:\n  engine: ollama\n", encoding="utf-8")
+    monkeypatch.setattr(api_factory, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(api_factory, "RUNTIME_DIR", tmp_path)
+
+    app = api_factory.create_app()
+
+    assert callable(app.state._state_agent.get("startup"))
+    assert callable(app.state._state_agent.get("shutdown"))
+    assert callable(app.state._state_agent.get("ensure_rag_store"))
+
     def test_empty_base(self) -> None:
         result = self._merge({}, {"a": 1})
         assert result == {"a": 1}
@@ -155,6 +172,39 @@ class TestStripEmptyStrings:
 
     def test_empty_input(self) -> None:
         assert self._strip({}) == {}
+
+
+def test_save_config_keeps_all_secrets_local_and_preserves_overrides(tmp_path, monkeypatch):
+    import yaml
+    import api_factory
+
+    config_path = tmp_path / "config" / "default.yaml"
+    config_path.parent.mkdir()
+    config_path.write_text("{}\n", encoding="utf-8")
+    local_path = config_path.parent / "default.local.yaml"
+    local_path.write_text("network:\n  proxy: http://127.0.0.1:7890\n", encoding="utf-8")
+    monkeypatch.setattr(api_factory, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(api_factory, "_config_cache", None)
+    monkeypatch.setattr(api_factory, "_config_cache_mtime", 0.0)
+
+    api_factory._save_config({
+        "translator": {"cloud": {"api_key": "cloud-secret"}},
+        "agent": {"api_key": "agent-secret"},
+        "zotero": {"api_key": "zotero-secret"},
+        "vision": {"api_key": "vision-secret"},
+    })
+
+    public = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    private = yaml.safe_load(local_path.read_text(encoding="utf-8"))
+    assert public["translator"]["cloud"]["api_key"] == ""
+    assert public["agent"]["api_key"] == ""
+    assert public["zotero"]["api_key"] == ""
+    assert public["vision"]["api_key"] == ""
+    assert private["translator"]["cloud"]["api_key"] == "cloud-secret"
+    assert private["agent"]["api_key"] == "agent-secret"
+    assert private["zotero"]["api_key"] == "zotero-secret"
+    assert private["vision"]["api_key"] == "vision-secret"
+    assert private["network"]["proxy"] == "http://127.0.0.1:7890"
 
 
 # ── _validate_file_path ────────────────────────────────────────────────
