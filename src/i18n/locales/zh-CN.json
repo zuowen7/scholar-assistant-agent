@@ -813,6 +813,7 @@
     "openFull": "全屏打开",
     "deleteRelation": "删除关系",
     "invalidRelation": "无效关系：{src} → {tgt}",
+    "positionSaveFailed": "论证图位置保存失败，请重试。",
     "buildingMap": "正在构建论证图",
     "extractingStructure": "正在提取论证结构",
     "noArgMap": "尚无论证图",

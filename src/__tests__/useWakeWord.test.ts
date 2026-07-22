@@ -195,6 +195,23 @@ describe('useWakeWord', () => {
     expect(mockStop).toHaveBeenCalled()
   })
 
+  it('cleanup removes global listeners while stopWakeWord remains restartable', async () => {
+    const removeWindowSpy = vi.spyOn(window, 'removeEventListener')
+    const removeDocumentSpy = vi.spyOn(document, 'removeEventListener')
+    const useWakeWord = await getFresh()
+    const { startWakeWord, stopWakeWord, cleanup } = useWakeWord(vi.fn())
+
+    await startWakeWord()
+    stopWakeWord()
+    await startWakeWord()
+    expect(mockStart).toHaveBeenCalledTimes(2)
+
+    cleanup()
+    expect(removeWindowSpy).toHaveBeenCalledWith('blur', expect.any(Function))
+    expect(removeWindowSpy).toHaveBeenCalledWith('focus', expect.any(Function))
+    expect(removeDocumentSpy).toHaveBeenCalledWith('visibilitychange', expect.any(Function))
+  })
+
   it('auto-restarts on onend event', async () => {
     const useWakeWord = await getFresh()
     const { startWakeWord, stopWakeWord, active } = useWakeWord(vi.fn())

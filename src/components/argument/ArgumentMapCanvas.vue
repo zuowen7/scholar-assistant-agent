@@ -33,6 +33,9 @@ import { computed, markRaw } from 'vue'
 import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 import { VueFlow, useVueFlow } from '@vue-flow/core'
+import '@vue-flow/core/dist/style.css'
+import '@vue-flow/core/dist/theme-default.css'
+import '@vue-flow/controls/dist/style.css'
 import type { Connection, NodeChange, NodeMouseEvent, EdgeMouseEvent } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
@@ -44,7 +47,7 @@ import ArgEdge from './ArgEdge.vue'
 
 withDefaults(defineProps<{ readonly?: boolean }>(), { readonly: false })
 
-const { state, upsertEdge } = useArgumentMap()
+const { state, upsertEdge, persistNodePositions } = useArgumentMap()
 const { danger } = useToast()
 const { fitView } = useVueFlow()
 
@@ -103,12 +106,18 @@ async function onConnect(conn: Connection) {
 }
 
 function onNodesChange(changes: NodeChange[]) {
-  // Sync position changes to local state (no API call for position drag)
+  const settledPositions: Record<string, { x: number; y: number }> = {}
   for (const change of changes) {
     if (change.type === 'position' && change.position && state.graph) {
       const node = state.graph.nodes.find(n => n.id === change.id)
       if (node) node.position = change.position
+      if (change.dragging === false) settledPositions[change.id] = change.position
     }
+  }
+  if (Object.keys(settledPositions).length) {
+    void persistNodePositions(settledPositions).catch(() => {
+      danger(t('argument.positionSaveFailed'))
+    })
   }
 }
 </script>
