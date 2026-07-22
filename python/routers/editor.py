@@ -18,6 +18,17 @@ from sse_starlette.sse import EventSourceResponse
 
 logger = logging.getLogger(__name__)
 
+
+def _safe_child_path(root: Path, filename: str) -> Path:
+    """Resolve a single routed filename without allowing sibling-prefix escapes."""
+    resolved_root = root.resolve()
+    resolved = (resolved_root / filename).resolve()
+    try:
+        resolved.relative_to(resolved_root)
+    except ValueError:
+        raise HTTPException(403, "禁止访问该文件")
+    return resolved
+
 # ── Lightweight pydantic schemas for LLM response parsing (H5) ──────────────
 
 class _CloudDelta(BaseModel):
@@ -550,9 +561,7 @@ def register_editor(
     @app.get("/api/export/word/{filename}")
     async def download_word(filename: str):
         safe_dir = output_dir
-        safe_path = (safe_dir / filename).resolve()
-        if not str(safe_path).startswith(str(safe_dir.resolve())):
-            raise HTTPException(403, "禁止访问该文件")
+        safe_path = _safe_child_path(safe_dir, filename)
         if not safe_path.exists() or safe_path.suffix.lower() != ".docx":
             raise HTTPException(404, "文件不存在")
         age_minutes = (time.time() - safe_path.stat().st_mtime) / 60
@@ -567,12 +576,18 @@ def register_editor(
 
     @app.post("/api/upload/image")
     async def upload_image(file: UploadFile = File(...)):
-        allowed_types = {"image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp"}
-        if file.content_type not in allowed_types:
+        type_extensions = {
+            "image/png": ".png",
+            "image/jpeg": ".jpg",
+            "image/gif": ".gif",
+            "image/webp": ".webp",
+            "image/bmp": ".bmp",
+        }
+        if file.content_type not in type_extensions:
             raise HTTPException(400, f"不支持的图片格式: {file.content_type}")
         assets_dir = data_root / "assets"
         assets_dir.mkdir(parents=True, exist_ok=True)
-        ext = Path(file.filename).suffix.lower() if file.filename else ".png"
+        ext = type_extensions[file.content_type]
         filename = f"{uuid.uuid4().hex[:12]}{ext}"
         file_path = assets_dir / filename
         content = await file.read()
@@ -591,9 +606,7 @@ def register_editor(
     @app.get("/api/assets/{filename}")
     async def serve_asset(filename: str):
         assets_dir = data_root / "assets"
-        safe_path = (assets_dir / filename).resolve()
-        if not str(safe_path).startswith(str(assets_dir.resolve())):
-            raise HTTPException(403, "禁止访问该文件")
+        safe_path = _safe_child_path(assets_dir, filename)
         if not safe_path.exists():
             raise HTTPException(404, "文件不存在")
         content_types = {

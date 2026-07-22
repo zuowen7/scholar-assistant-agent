@@ -19,6 +19,7 @@ import logging
 import os
 import re
 import time
+import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import AsyncGenerator
@@ -68,6 +69,20 @@ _SESSION_TTL = 3600
 _SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 
+def _validate_session_id(session_id: str) -> str:
+    if not _SESSION_ID_RE.fullmatch(session_id):
+        raise ValueError("Invalid session id")
+    return session_id
+
+
+def _session_path(session_id: str) -> Path:
+    sid = _validate_session_id(session_id)
+    root = _SESSION_DIR.resolve()
+    path = (root / f"{sid}.jsonl").resolve()
+    path.relative_to(root)
+    return path
+
+
 class ChatRequestV2(BaseModel):
     message: str = Field(min_length=1, max_length=100_000)
     history: list[dict] | None = Field(default=None, max_length=50)
@@ -75,7 +90,7 @@ class ChatRequestV2(BaseModel):
     context_file: str | None = Field(default=None, max_length=4_000)
     constraints: str | None = Field(default=None, max_length=10_000)
     workspace_root: str | None = None
-    workflow_id: str | None = Field(default=None, max_length=128)
+    workflow_id: str | None = Field(default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
     skills: list[str] = Field(default_factory=list, max_length=8)
 
 
@@ -194,7 +209,11 @@ def _load_cloud_config() -> dict:
         except Exception as e:
             logger.warning("Failed to load %s: %s", local_path, e)
 
-    return merged.get("translator", {}).get("cloud", {})
+    cloud = merged.get("translator", {}).get("cloud", {})
+    env_key = os.environ.get("SCHOLAR_CLOUD_API_KEY", "").strip()
+    if env_key:
+        cloud["api_key"] = env_key
+    return cloud
 
 
 def _deep_merge(base: dict, override: dict) -> None:
@@ -252,6 +271,7 @@ def _resolve_model_alias(model: str, aliases: dict) -> str:
 
 
 def _create_provider():
+    from src.agent_v2.providers.anthropic import AnthropicProvider
     from src.agent_v2.providers.openai_compat import OpenAiCompatProvider
 
     cfg = _load_agent_config()
@@ -266,7 +286,7 @@ def _create_provider():
     # 1. Explicit provider from config
     if provider == "anthropic" and api_key:
         logger.info("Agent V2: config[agent].provider=anthropic — %s", model or "claude-sonnet-4-6")
-        return OpenAiCompatProvider(
+        return AnthropicProvider(
             base_url=base_url or "https://api.anthropic.com",
             api_key=api_key, model=model or "claude-sonnet-4-6", proxy=proxy)
 
@@ -281,7 +301,7 @@ def _create_provider():
     if api_key:
         if api_key.startswith("sk-ant-"):
             logger.info("Agent V2: Anthropic key detected — %s", model or "claude-sonnet-4-6")
-            return OpenAiCompatProvider(
+            return AnthropicProvider(
                 base_url=base_url or "https://api.anthropic.com",
                 api_key=api_key, model=model or "claude-sonnet-4-6", proxy=proxy)
         logger.info("Agent V2: OpenAI-compatible key — %s", model or "gpt-4o")
@@ -388,8 +408,22 @@ def _create_runtime(
     current_message: str = "",
     selected_skills: list[str] | None = None,
 ) -> ConversationRuntime:
+    sid = _validate_session_id(session_id) if session_id else f"sess_{uuid.uuid4().hex}"
+    _SESSION_DIR.mkdir(parents=True, exist_ok=True)
+    save_path = _session_path(sid)
+    session = None
+    if session_id and save_path.is_file():
+        session = Session.load(save_path)
+        if session.session_id != sid:
+            raise ValueError("Persisted session id does not match requested id")
+        stored_ws = Path(session.meta.workspace).resolve()
+        if workspace_root and stored_ws != Path(workspace_root).resolve():
+            raise ValueError("Session workspace does not match requested workspace")
+        ws = Path(workspace_root) if workspace_root else stored_ws
+    else:
+        ws = Path(workspace_root) if workspace_root else Path.cwd()
+
     provider = _create_provider()
-    ws = Path(workspace_root) if workspace_root else Path.cwd()
 
     # Tool registry
     registry = create_default_registry(workspace_root=ws)
@@ -418,11 +452,10 @@ def _create_runtime(
     # Policy
     policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
 
-    sid = session_id or f"sess_{int(time.time() * 1000) % 10_000_000:07d}"
-    session = Session(workspace=str(ws), model=provider.model, session_id=sid)
-    _append_history(session, history, current_message)
-    _SESSION_DIR.mkdir(parents=True, exist_ok=True)
-    session._save_path = str(_SESSION_DIR / f"{session.session_id}.jsonl")
+    if session is None:
+        session = Session(workspace=str(ws), model=provider.model, session_id=sid)
+        _append_history(session, history, current_message)
+    session._save_path = str(save_path)
 
     # System prompt with skill injection
     base_prompt = _build_system_prompt(str(ws), registry.definitions())
@@ -529,19 +562,24 @@ def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> Non
         """主对话端点 — SSE 流式。"""
         workspace = req.workspace_root or ""
 
+        try:
+            rt = _create_runtime(
+                workspace,
+                session_id=req.workflow_id or "",
+                history=req.history,
+                current_message=req.message,
+                selected_skills=req.skills,
+            )
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        sid = rt.session.session_id
+        async with _SESSION_LOCK:
+            if sid in _SESSION_POOL:
+                raise HTTPException(409, f"Session {sid} is already active")
+            _SESSION_POOL[sid] = rt
+
         async def _stream() -> AsyncGenerator[dict, None]:
-            rt = None
             try:
-                rt = _create_runtime(
-                    workspace,
-                    session_id=req.workflow_id or "",
-                    history=req.history,
-                    current_message=req.message,
-                    selected_skills=req.skills,
-                )
-                sid = rt.session.session_id
-                async with _SESSION_LOCK:
-                    _SESSION_POOL[sid] = rt
                 async for event in rt.turn(_compose_turn_message(req)):
                     yield agent_event_to_sse_stream(event)
             except Exception as e:
@@ -549,9 +587,11 @@ def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> Non
                 yield {"event": "error",
                        "data": json.dumps({"type": "error", "content": f"Agent error: {e}", "event_id": "err_0001"}, ensure_ascii=False)}
             finally:
-                if rt:
-                    async with _SESSION_LOCK:
-                        _SESSION_POOL.pop(rt.session.session_id, None)
+                async with _SESSION_LOCK:
+                    _SESSION_POOL.pop(rt.session.session_id, None)
+                close = getattr(rt.provider, "close", None)
+                if close:
+                    await close()
 
         from sse_starlette.sse import EventSourceResponse
         return EventSourceResponse(_stream(), media_type="text/event-stream")
@@ -601,7 +641,10 @@ def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> Non
     @app.post(f"{prefix}/resume/{{session_id}}")
     async def v2_resume(session_id: str, request: Request):
         """恢复会话 — 加载持久化 session 并继续。"""
-        session_path = _SESSION_DIR / f"{session_id}.jsonl"
+        try:
+            session_path = _session_path(session_id)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
         if not session_path.is_file():
             raise HTTPException(404, f"Session {session_id} not found")
 
@@ -611,23 +654,13 @@ def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> Non
         async def _stream() -> AsyncGenerator[dict, None]:
             rt = None
             try:
-                provider = _create_provider()
-                ws = Path(workspace) if workspace else Path.cwd()
-                registry = create_default_registry(workspace_root=ws)
-                policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
-                loaded._save_path = str(session_path)
-                sp = _build_system_prompt(str(ws), registry.definitions())
-                agent_cfg = _load_agent_config()
-                max_steps = int(agent_cfg.get("max_steps", 48) or 48)
-                rt = ConversationRuntime(provider=provider, tool_registry=registry, permission_policy=policy, session=loaded, system_prompt=sp, auto_approve=False, max_steps=max_steps)
+                rt = _create_runtime(workspace, session_id=session_id)
                 async with _SESSION_LOCK:
+                    if session_id in _SESSION_POOL:
+                        raise RuntimeError(f"Session {session_id} is already active")
                     _SESSION_POOL[session_id] = rt
-                # Emit session start + restore info for the frontend
-                from src.agent_v2.types import AgentEvent
-                yield agent_event_to_sse_stream(AgentEvent.session_started(session_id))
-                yield {"event": "response", "data": json.dumps(
-                    {"type": "response", "content": f"Session {session_id} restored ({loaded.message_count} messages)."}, ensure_ascii=False)}
-                yield {"event": "done", "data": json.dumps({"type": "done", "metadata": {"session_id": session_id}}, ensure_ascii=False)}
+                async for event in rt.turn("", resume=True):
+                    yield agent_event_to_sse_stream(event)
             except Exception as e:
                 logger.exception("V2 resume error")
                 yield {"event": "error", "data": json.dumps({"type": "error", "content": f"Resume error: {e}", "event_id": "err_resume"}, ensure_ascii=False)}
@@ -635,6 +668,9 @@ def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> Non
                 if rt:
                     async with _SESSION_LOCK:
                         _SESSION_POOL.pop(session_id, None)
+                    close = getattr(rt.provider, "close", None)
+                    if close:
+                        await close()
 
         from sse_starlette.sse import EventSourceResponse
         return EventSourceResponse(_stream(), media_type="text/event-stream")
@@ -659,7 +695,7 @@ def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> Non
         if runtime is not None:
             session = runtime.session
         else:
-            session_path = _SESSION_DIR / f"{workflow_id}.jsonl"
+            session_path = _session_path(workflow_id)
             if not session_path.is_file():
                 raise HTTPException(404, f"Session {workflow_id} not found")
             session = Session.load(session_path)
@@ -722,7 +758,7 @@ def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> Non
             _SESSION_POOL.pop(workflow_id, None)
 
         deleted_disk = False
-        session_path = _SESSION_DIR / f"{workflow_id}.jsonl"
+        session_path = _session_path(workflow_id)
         if session_path.is_file():
             try:
                 session_path.unlink()
@@ -741,12 +777,15 @@ def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> Non
     @app.get(f"{prefix}/cost/{{session_id}}")
     async def v2_cost(session_id: str, request: Request):
         """会话成本统计。"""
+        try:
+            session_path = _session_path(session_id)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
         async with _SESSION_LOCK:
             rt = _SESSION_POOL.get(session_id)
         if rt is not None:
             return rt.usage.to_dict()
         # Try persisted session
-        session_path = _SESSION_DIR / f"{session_id}.jsonl"
         if session_path.is_file():
             loaded = Session.load(session_path)
             usage = UsageTracker(model=loaded.meta.model)
@@ -793,7 +832,8 @@ def register_agent_v2_routes(app: FastAPI, prefix: str = "/api/agent/v2") -> Non
     async def v2_health():
         async with _SESSION_LOCK:
             active = len(_SESSION_POOL)
-        return {"status": "ok", "version": "0.4.1", "runtime": "ConversationRuntime", "active_sessions": active}
+        from src._version import __version__
+        return {"status": "ok", "version": __version__, "runtime": "ConversationRuntime", "active_sessions": active}
 
     @app.get("/api/agent/stats")
     async def agent_stats():

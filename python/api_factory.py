@@ -323,11 +323,47 @@ _config_read_lock = threading.Lock()
 def _save_config(config: dict) -> None:
     global _config_cache, _config_cache_mtime
     save_copy = copy.deepcopy(config)
-    # Strip API keys from default.yaml, but persist them in default.local.yaml
-    original_api_key = save_copy.get("translator", {}).get("cloud", {}).get("api_key", "")
-    cloud_cfg = save_copy.get("translator", {}).get("cloud", {})
-    if cloud_cfg.get("api_key"):
-        cloud_cfg["api_key"] = ""
+    # Strip secrets from default.yaml, but persist them in default.local.yaml.
+    # Keep unrelated local overrides intact when rotating or clearing a key.
+    secret_paths = (
+        ("translator", "cloud", "api_key"),
+        ("agent", "api_key"),
+        ("zotero", "api_key"),
+        ("vision", "api_key"),
+    )
+
+    def _get_nested(data: dict, path: tuple[str, ...]):
+        current = data
+        for key in path:
+            if not isinstance(current, dict) or key not in current:
+                return ""
+            current = current[key]
+        return current
+
+    def _set_nested(data: dict, path: tuple[str, ...], value) -> None:
+        current = data
+        for key in path[:-1]:
+            current = current.setdefault(key, {})
+        current[path[-1]] = value
+
+    def _pop_nested(data: dict, path: tuple[str, ...]) -> None:
+        current = data
+        parents = []
+        for key in path[:-1]:
+            child = current.get(key)
+            if not isinstance(child, dict):
+                return
+            parents.append((current, key))
+            current = child
+        current.pop(path[-1], None)
+        for parent, key in reversed(parents):
+            if isinstance(parent.get(key), dict) and not parent[key]:
+                parent.pop(key, None)
+
+    secrets = {path: _get_nested(save_copy, path) for path in secret_paths}
+    for path, value in secrets.items():
+        if value:
+            _set_nested(save_copy, path, "")
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with _save_config_lock:
         import tempfile as _tempfile
@@ -345,25 +381,41 @@ def _save_config(config: dict) -> None:
             except OSError:
                 pass
             raise
-        # Persist API key to default.local.yaml so it survives config reloads
+        # Persist API keys to default.local.yaml so they survive config reloads.
         local_path = CONFIG_PATH.parent / "default.local.yaml"
-        if original_api_key:
-            local_data = {"translator": {"cloud": {"api_key": original_api_key}}}
-            with open(local_path, "w", encoding="utf-8") as f:
-                yaml.dump(local_data, f, allow_unicode=True, default_flow_style=False)
-        elif local_path.exists():
-            # Key was cleared — remove it from local overrides
-            try:
+        try:
+            if local_path.exists():
                 with open(local_path, encoding="utf-8") as f:
                     local_data = yaml.safe_load(f) or {}
-                local_data.setdefault("translator", {}).setdefault("cloud", {}).pop("api_key", None)
-                if local_data.get("translator", {}).get("cloud"):
-                    with open(local_path, "w", encoding="utf-8") as f:
-                        yaml.dump(local_data, f, allow_unicode=True, default_flow_style=False)
+            else:
+                local_data = {}
+            for path, value in secrets.items():
+                if value:
+                    _set_nested(local_data, path, value)
                 else:
-                    local_path.unlink()
-            except Exception as e:
-                logger.warning("failed to write local config override: %s", e)
+                    _pop_nested(local_data, path)
+            local_data = _strip_empty_strings(local_data)
+            if local_data:
+                local_fd, local_tmp = _tempfile.mkstemp(
+                    dir=CONFIG_PATH.parent, suffix=".local.tmp"
+                )
+                try:
+                    with os.fdopen(local_fd, "w", encoding="utf-8") as f:
+                        yaml.dump(local_data, f, allow_unicode=True, default_flow_style=False)
+                        f.flush()
+                        os.fsync(f.fileno())
+                    os.replace(local_tmp, local_path)
+                except Exception:
+                    try:
+                        os.unlink(local_tmp)
+                    except OSError:
+                        pass
+                    raise
+            else:
+                local_path.unlink(missing_ok=True)
+        except Exception as e:
+            logger.warning("failed to write local config override: %s", e)
+            raise
         with _config_read_lock:
             _config_cache = copy.deepcopy(config)
             _config_cache_mtime = CONFIG_PATH.stat().st_mtime
@@ -488,11 +540,19 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
 
     @asynccontextmanager
     async def _lifespan(app: FastAPI):
+        import inspect
+
+        async def _run_lifecycle(callback):
+            result = callback()
+            if inspect.isawaitable(result):
+                await result
+
         # startup
         state_editor = app.state._state_editor if hasattr(app.state, "_state_editor") else {}
+        state_translate = app.state._state_translate if hasattr(app.state, "_state_translate") else {}
         startup_editor = state_editor.get("startup")
         if startup_editor:
-            startup_editor()
+            await _run_lifecycle(startup_editor)
         # Start Agent V2 background tasks (session cleanup loop) if registered.
         state_agent_startup = getattr(app.state, "_state_agent", {}).get("startup")
         if state_agent_startup:
@@ -525,9 +585,15 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         shutdown_editor = state_editor2.get("shutdown")
         if shutdown_editor:
             try:
-                shutdown_editor()
+                await _run_lifecycle(shutdown_editor)
             except Exception as e:
                 logger.exception("Editor shutdown failed")
+        shutdown_translate = state_translate.get("shutdown")
+        if shutdown_translate:
+            try:
+                await _run_lifecycle(shutdown_translate)
+            except Exception:
+                logger.exception("Translate shutdown failed")
 
     app = FastAPI(title=_app_title, version=__version__, lifespan=_lifespan)
 
@@ -665,11 +731,12 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
     logger.info("Registering Agent V2 routes")
     from src.agent_v2.router import register_agent_v2_routes
     register_agent_v2_routes(app)
-    state_agent = {
+    state_agent = getattr(app.state, "_state_agent", {})
+    state_agent.update({
         "rag_store": None,
         "get_rag_store": lambda: None,
         "ensure_rag_store": lambda: None,
-    }
+    })
 
     # RAG store (ChromaDB-backed)
     logger.info("Registering RAG routes")
@@ -763,5 +830,6 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
     # Wire lifecycle state so lifespan context manager can access them
     app.state._state_agent = state_agent
     app.state._state_editor = state_editor
+    app.state._state_translate = state_translate
 
     return app

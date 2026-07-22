@@ -43,6 +43,7 @@ class TranslationMemory:
     def __init__(self, db_path: str | Path) -> None:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._db_lock = threading.RLock()
         self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
@@ -140,10 +141,11 @@ class TranslationMemory:
         source_hash = hashlib.sha256(source_text.encode()).hexdigest()
 
         # Exact hash match
-        row = self._conn.execute(
-            "SELECT target_text, metadata FROM tm_entries WHERE source_hash = ?",
-            (source_hash,),
-        ).fetchone()
+        with self._db_lock:
+            row = self._conn.execute(
+                "SELECT target_text, metadata FROM tm_entries WHERE source_hash = ?",
+                (source_hash,),
+            ).fetchone()
         if row:
             import json
             return TMHit(
@@ -162,11 +164,12 @@ class TranslationMemory:
 
         # Fuzzy match via embeddings
         query_vec = self._embed(source_text)[0]
-        rows = self._conn.execute(
-            "SELECT source_text, target_text, embedding, metadata "
-            "FROM tm_entries WHERE source_lang = ? AND target_lang = ?",
-            (source_lang, target_lang),
-        ).fetchall()
+        with self._db_lock:
+            rows = self._conn.execute(
+                "SELECT source_text, target_text, embedding, metadata "
+                "FROM tm_entries WHERE source_lang = ? AND target_lang = ?",
+                (source_lang, target_lang),
+            ).fetchall()
 
         best_hit: TMHit | None = None
         best_score = 0.0
@@ -211,22 +214,25 @@ class TranslationMemory:
             # An optional embedding failure must not prevent exact-match TM storage.
             logger.debug("TM embedding unavailable; storing exact pair only: %s", exc)
 
-        self._conn.execute(
-            """INSERT OR REPLACE INTO tm_entries
-               (source_hash, source_text, target_text, source_lang, target_lang, metadata, embedding)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (source_hash, source_text, target_text, source_lang, target_lang, meta_str, emb_blob),
-        )
-        self._conn.commit()
+        with self._db_lock:
+            self._conn.execute(
+                """INSERT OR REPLACE INTO tm_entries
+                   (source_hash, source_text, target_text, source_lang, target_lang, metadata, embedding)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (source_hash, source_text, target_text, source_lang, target_lang, meta_str, emb_blob),
+            )
+            self._conn.commit()
 
     def stats(self) -> TMStats:
-        row = self._conn.execute(
-            "SELECT COUNT(*), source_lang, target_lang FROM tm_entries LIMIT 1"
-        ).fetchone()
-        if row and row[0] > 0:
-            lang_row = self._conn.execute(
-                "SELECT source_lang, target_lang FROM tm_entries LIMIT 1"
+        with self._db_lock:
+            row = self._conn.execute(
+                "SELECT COUNT(*), source_lang, target_lang FROM tm_entries LIMIT 1"
             ).fetchone()
+        if row and row[0] > 0:
+            with self._db_lock:
+                lang_row = self._conn.execute(
+                    "SELECT source_lang, target_lang FROM tm_entries LIMIT 1"
+                ).fetchone()
             return TMStats(
                 total_pairs=row[0],
                 source_lang=lang_row[0] if lang_row else "en",
@@ -282,11 +288,12 @@ class TranslationMemory:
     def export_tmx(self, tmx_path: str | Path, *,
                    source_lang: str = "en", target_lang: str = "zh") -> int:
         """Export all pairs as a TMX 1.4 file compatible with OmegaT."""
-        rows = self._conn.execute(
-            "SELECT source_text, target_text FROM tm_entries "
-            "WHERE source_lang = ? AND target_lang = ?",
-            (source_lang, target_lang),
-        ).fetchall()
+        with self._db_lock:
+            rows = self._conn.execute(
+                "SELECT source_text, target_text FROM tm_entries "
+                "WHERE source_lang = ? AND target_lang = ?",
+                (source_lang, target_lang),
+            ).fetchall()
 
         tmx = ET.Element("tmx", version="1.4")
         header = ET.SubElement(tmx, "header",
@@ -319,6 +326,7 @@ class TranslationMemory:
         return len(rows)
 
     def close(self) -> None:
-        if self._conn:
-            self._conn.close()
-            self._conn = None  # type: ignore[assignment]
+        with self._db_lock:
+            if self._conn:
+                self._conn.close()
+                self._conn = None  # type: ignore[assignment]
