@@ -249,6 +249,11 @@ class TestValidateFilePath:
             self._validate(Path("C:\\Program Files\\app\\config.ini"))
         assert exc_info.value.status_code == 403
 
+    def test_windows_system_path_matching_is_case_insensitive(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            self._validate(Path("c:\\wInDoWs\\System32\\drivers\\etc\\hosts"))
+        assert exc_info.value.status_code == 403
+
     def test_dot_env_extension_blocked(self, tmp_path: Path) -> None:
         f = tmp_path / "secrets.env"
         with pytest.raises(HTTPException) as exc_info:
@@ -337,6 +342,16 @@ class TestValidateFilePath:
         with pytest.raises(HTTPException) as exc_info:
             self._validate(home / "AppData" / "Local" / "Microsoft" / "VSCode" / "settings.json")
         assert exc_info.value.status_code == 403
+
+    def test_appdata_matching_is_case_insensitive(self) -> None:
+        home = Path.home()
+        with pytest.raises(HTTPException) as exc_info:
+            self._validate(home / "appdata" / "ROAMING" / "vendor" / "credentials.json")
+        assert exc_info.value.status_code == 403
+
+    def test_appdata_local_temp_is_allowed(self) -> None:
+        home = Path.home()
+        self._validate(home / "AppData" / "Local" / "Temp" / "translation.pdf")
 
 
 # ── _load_config cache behavior ─────────────────────────────────────────
