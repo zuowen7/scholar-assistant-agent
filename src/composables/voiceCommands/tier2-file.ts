@@ -1,4 +1,10 @@
 import type { VoiceCommandDef } from '../../types/voice'
+import { activateVoiceWorkspace } from './workspace'
+
+async function dispatchEditorEvent(name: string) {
+  await activateVoiceWorkspace('write')
+  window.dispatchEvent(new CustomEvent(name))
+}
 
 export function registerTier2Commands(register: (defs: VoiceCommandDef[]) => void) {
   register([
@@ -9,7 +15,7 @@ export function registerTier2Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['open folder', 'open directory', 'open project', 'open workspace'],
       priority: 7,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-open-folder'))
+        await dispatchEditorEvent('voice-open-folder')
       },
     },
     {
@@ -19,7 +25,7 @@ export function registerTier2Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['new file', 'new document', 'create file', 'create document'],
       priority: 7,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-new-file'))
+        await dispatchEditorEvent('voice-new-file')
       },
     },
     {
@@ -29,7 +35,7 @@ export function registerTier2Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['save', 'save file'],
       priority: 7,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-save'))
+        await dispatchEditorEvent('voice-save')
       },
     },
   ])

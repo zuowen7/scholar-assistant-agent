@@ -8,7 +8,7 @@ import logging
 import re
 import time
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import AsyncGenerator, Literal
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -17,6 +17,26 @@ from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_child_path(root: Path, filename: str) -> Path:
+    """Resolve a routed filename without allowing cross-platform path escapes."""
+    if "\x00" in filename:
+        raise HTTPException(403, "禁止访问该文件")
+    posix_path = PurePosixPath(filename)
+    windows_path = PureWindowsPath(filename)
+    if posix_path.is_absolute() or windows_path.is_absolute() or windows_path.drive:
+        raise HTTPException(403, "禁止访问该文件")
+
+    resolved_root = root.resolve()
+    # Treat both slash styles as separators regardless of the server OS. Without
+    # this normalization POSIX accepts ``..\\sibling`` as an ordinary filename.
+    resolved = (resolved_root / filename.replace("\\", "/")).resolve()
+    try:
+        resolved.relative_to(resolved_root)
+    except ValueError:
+        raise HTTPException(403, "禁止访问该文件")
+    return resolved
 
 # ── Lightweight pydantic schemas for LLM response parsing (H5) ──────────────
 
@@ -550,9 +570,7 @@ def register_editor(
     @app.get("/api/export/word/{filename}")
     async def download_word(filename: str):
         safe_dir = output_dir
-        safe_path = (safe_dir / filename).resolve()
-        if not str(safe_path).startswith(str(safe_dir.resolve())):
-            raise HTTPException(403, "禁止访问该文件")
+        safe_path = _safe_child_path(safe_dir, filename)
         if not safe_path.exists() or safe_path.suffix.lower() != ".docx":
             raise HTTPException(404, "文件不存在")
         age_minutes = (time.time() - safe_path.stat().st_mtime) / 60
@@ -567,16 +585,23 @@ def register_editor(
 
     @app.post("/api/upload/image")
     async def upload_image(file: UploadFile = File(...)):
-        allowed_types = {"image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp"}
-        if file.content_type not in allowed_types:
+        type_extensions = {
+            "image/png": ".png",
+            "image/jpeg": ".jpg",
+            "image/gif": ".gif",
+            "image/webp": ".webp",
+            "image/bmp": ".bmp",
+        }
+        if file.content_type not in type_extensions:
             raise HTTPException(400, f"不支持的图片格式: {file.content_type}")
         assets_dir = data_root / "assets"
         assets_dir.mkdir(parents=True, exist_ok=True)
-        ext = Path(file.filename).suffix.lower() if file.filename else ".png"
+        ext = type_extensions[file.content_type]
         filename = f"{uuid.uuid4().hex[:12]}{ext}"
         file_path = assets_dir / filename
-        content = await file.read()
-        if len(content) > 50 * 1024 * 1024:
+        max_bytes = 50 * 1024 * 1024
+        content = await file.read(max_bytes + 1)
+        if len(content) > max_bytes:
             raise HTTPException(413, "图片大小超过 50MB 限制")
         with open(file_path, "wb") as f:
             f.write(content)
@@ -591,9 +616,7 @@ def register_editor(
     @app.get("/api/assets/{filename}")
     async def serve_asset(filename: str):
         assets_dir = data_root / "assets"
-        safe_path = (assets_dir / filename).resolve()
-        if not str(safe_path).startswith(str(assets_dir.resolve())):
-            raise HTTPException(403, "禁止访问该文件")
+        safe_path = _safe_child_path(assets_dir, filename)
         if not safe_path.exists():
             raise HTTPException(404, "文件不存在")
         content_types = {
@@ -615,8 +638,9 @@ def register_editor(
         ext = Path(file.filename).suffix.lower() if file.filename else ".png"
         temp_filename = f"vision_{uuid.uuid4().hex[:12]}{ext}"
         temp_path = assets_dir / temp_filename
-        content = await file.read()
-        if len(content) > 20 * 1024 * 1024:
+        max_bytes = 20 * 1024 * 1024
+        content = await file.read(max_bytes + 1)
+        if len(content) > max_bytes:
             raise HTTPException(413, "图片大小超过 20MB 限制")
         with open(temp_path, "wb") as f:
             f.write(content)

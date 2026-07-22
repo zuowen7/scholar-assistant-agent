@@ -355,8 +355,8 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--c-surface-0);
-  border-right: 1px solid var(--c-surface-2);
+  background: var(--c-panel);
+  border-right: 1px solid var(--c-border);
   min-width: 0;
   overflow: hidden;
 }
@@ -367,8 +367,8 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   align-items: center;
   gap: 7px;
   padding: 7px 10px;
-  border-bottom: 1px solid var(--c-surface-2);
-  background: var(--c-surface-1);
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-panel);
   flex-shrink: 0;
   flex-wrap: wrap;
 }
@@ -388,8 +388,8 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
 .source-btn {
   padding: 2px 7px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--c-surface-3);
-  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  background: var(--c-surface-1);
   color: var(--c-text-1);
   font: inherit;
   font-size: 11px;
@@ -397,7 +397,7 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   transition: background 100ms, border-color 100ms;
   white-space: nowrap;
 }
-.source-btn:hover { background: var(--c-surface-3); }
+.source-btn:hover { background: var(--c-surface-2); }
 .source-btn.active {
   border-color: var(--c-accent);
   color: var(--c-accent);
@@ -407,14 +407,14 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   margin-left: auto;
   padding: 2px 7px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--c-surface-3);
-  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  background: var(--c-surface-1);
   color: var(--c-text-1);
   font: inherit;
   font-size: 11px;
   cursor: pointer;
 }
-.source-side-toggle:hover { background: var(--c-surface-3); }
+.source-side-toggle:hover { background: var(--c-surface-2); }
 
 .extract-scanning-bar {
   height: 2px;
@@ -476,7 +476,7 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
 /* Paste area */
 .source-paste-area {
   padding: 8px 10px;
-  border-bottom: 1px solid var(--c-surface-2);
+  border-bottom: 1px solid var(--c-border);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -484,8 +484,8 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
 }
 
 .source-paste-input {
-  background: var(--c-surface-2);
-  border: 1px solid var(--c-surface-3);
+  background: var(--c-surface-1);
+  border: 1px solid var(--c-border);
   border-radius: var(--radius-sm);
   color: var(--c-text-0);
   font: inherit;
@@ -564,10 +564,10 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
 .arg-bind-popup {
   position: fixed;
   z-index: 9999;
-  background: var(--c-surface-1);
-  border: 1px solid var(--c-surface-3);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
+  background: var(--c-panel);
+  border: 1px solid var(--c-border);
+  border-radius: 9px;
+  box-shadow: var(--elevation-3);
   padding: 10px 12px;
   min-width: 200px;
   max-width: 260px;

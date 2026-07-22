@@ -148,6 +148,20 @@ class TestDocIdSafeFilename:
         files = list(ledger_dir.glob("*.json"))
         assert any(expected_stem in f.name for f in files)
 
+    def test_distinct_paths_do_not_collide(self, tmp_path):
+        first = r"C:\paper\a_b.md"
+        second = r"C:\paper\a\b.md"
+        store = _make_store(tmp_path)
+        store.save_ledger(_make_ledger(first))
+        store.save_ledger(_make_ledger(second))
+
+        files = list((tmp_path / "companion" / "ledgers").glob("*.json"))
+        assert len(files) == 2
+
+        reloaded = _make_store(tmp_path)
+        assert reloaded.get_ledger(first) is not None
+        assert reloaded.get_ledger(second) is not None
+
 
 # ── Promise CRUD ──────────────────────────────────────────────────────────────
 

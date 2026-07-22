@@ -22,7 +22,7 @@ vi.mock('../composables/useSpeechRecognition', () => ({
       interimText: ref(''),
       error: ref(''),
       isSupported: true,
-      start: vi.fn(),
+      start: vi.fn(() => true),
       stop: vi.fn(() => ''),
       toggle: vi.fn(),
     }
@@ -132,14 +132,14 @@ describe('Voice command E2E integration', () => {
   // Test 4: 10s timeout with no speech
   // ═══════════════════════════════════════════════════════════════════
 
-  it('10s timeout with no speech → auto cancel with error', async () => {
+  it('10s timeout with no speech → visible error state', async () => {
     const vc = await getFresh()
     vc.triggerVoiceCommand()
     await vi.advanceTimersByTimeAsync(200)
     expect(vc.state.value).toBe('listening')
 
     vi.advanceTimersByTime(10_500)
-    expect(vc.state.value).toBe('idle')
+    expect(vc.state.value).toBe('error')
     expect(vc.error.value).toBeTruthy()
   })
 
@@ -205,7 +205,7 @@ describe('Voice command E2E integration', () => {
 
     // Eventually 10s timeout fires
     vi.advanceTimersByTime(8500)
-    expect(vc.state.value).toBe('idle')
+    expect(vc.state.value).toBe('error')
     expect(vc.error.value).toBeTruthy()
   })
 

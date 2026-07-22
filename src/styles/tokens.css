@@ -83,12 +83,20 @@
   --page-width: 880px;          /* 正文版心最大宽度 */
   --page-width-wide: 1200px;    /* 对照视图版心宽度 */
   --page-gutter: 48px;          /* 版心两侧留白 */
+
+  /* Reference-driven application shell */
+  --shell-sidebar-width: 236px;
+  --brand-red: #C8503A;
 }
 
 /* ══════════════════════════════════════════════════════════════
    DARK THEME (default — :root)
    ══════════════════════════════════════════════════════════════ */
 :root {
+  --c-app-bg: #14130f;
+  --c-nav: #1b1914;
+  --c-panel: #211f19;
+  --c-border: #3b362c;
   /* Ink palette — 中性墨色：微暖不黄 */
   --ink-0: #0d0d0f;
   --ink-1: #131315;
@@ -154,6 +162,12 @@
   --c-info-border: rgba(91, 108, 255, 0.20);
   --c-info-fg: #7a89ff;
 
+  /* Cross-component derived semantics. Keep these as first-class tokens: each
+     has multiple consumers and expresses a stable interaction contract. */
+  --c-border-strong: color-mix(in srgb, var(--c-border) 78%, var(--c-text-2));
+  --c-on-accent: #fff;
+  --c-accent-rgb: 91, 108, 255;
+
   /* Derived composites */
   --c-accent-bg: rgba(91, 108, 255, 0.08);
   --c-accent-bg2: rgba(91, 108, 255, 0.05);
@@ -207,6 +221,10 @@
    LIGHT THEME
    ══════════════════════════════════════════════════════════════ */
 [data-theme="light"] {
+  --c-app-bg: #FAF8F3;
+  --c-nav: #F2EEE5;
+  --c-panel: #FFFFFF;
+  --c-border: #E8E1D3;
   /* Ink palette — 素纸色系：微暖中性白 */
   --ink-0: #f0f0f3;
   --ink-1: #fafafa;
@@ -226,22 +244,22 @@
   --vermilion-1: #B84030;
 
   /* Paper — 素纸 */
-  --paper-0: #f0f0f3;
-  --paper-1: #e4e4e8;
+  --paper-0: #FAF8F3;
+  --paper-1: #F2EEE5;
 
   /* Surface — 纸页层级：底→浮→顶逐层提亮 */
-  --c-surface-0: #f0f0f3;
-  --c-surface-1: #fafafa;
-  --c-surface-2: #f4f4f7;
-  --c-surface-3: #d4d4da;
-  --c-surface-4: #e2e2e6;
-  --c-surface-5: #ccccd2;
+  --c-surface-0: #FAF8F3;
+  --c-surface-1: #FFFFFF;
+  --c-surface-2: #F7F4ED;
+  --c-surface-3: #E8E1D3;
+  --c-surface-4: #DED6C7;
+  --c-surface-5: #CEC5B4;
 
   /* Text — 中性墨色 */
-  --c-text-0: #1e1e26;
-  --c-text-1: #3a3a44;
-  --c-text-2: #5a5a66;
-  --c-text-3: #7a7a88;
+  --c-text-0: #1C1A14;
+  --c-text-1: #4E4A40;
+  --c-text-2: #6F695C;
+  --c-text-3: #8A8474;
 
   /* Accent (semantic) */
   --c-accent: #5b6cff;
@@ -252,15 +270,15 @@
   --c-accent-gradient: linear-gradient(135deg, #5b6cff 0%, #8b74e6 100%);
 
   /* Semantic colors */
-  --c-success: #2d8a4e;
-  --c-success-bg: rgba(45, 138, 78, 0.08);
-  --c-success-border: rgba(45, 138, 78, 0.22);
-  --c-success-fg: #2d8a4e;
+  --c-success: #31945A;
+  --c-success-bg: #EDF7F0;
+  --c-success-border: #CFE9D7;
+  --c-success-fg: #277A49;
 
-  --c-warn: #b45309;
-  --c-warn-bg: rgba(180, 83, 9, 0.08);
-  --c-warn-border: rgba(180, 83, 9, 0.22);
-  --c-warn-fg: #b45309;
+  --c-warn: #C47A1B;
+  --c-warn-bg: #FBF3E7;
+  --c-warn-border: #EDD7B8;
+  --c-warn-fg: #9B5F15;
 
   --c-danger: #c53030;
   --c-danger-bg: rgba(197, 48, 48, 0.08);
@@ -275,14 +293,14 @@
   /* Derived composites */
   --c-accent-bg: rgba(91, 108, 255, 0.06);
   --c-accent-bg2: rgba(91, 108, 255, 0.04);
-  --c-overlay: rgba(240, 240, 243, 0.75);
+  --c-overlay: rgba(28, 26, 20, 0.32);
   --c-shadow: rgba(30, 30, 38, 0.10);
   --c-sent-border: rgba(30, 30, 38, 0.06);
 
   /* Glass — 半透素纸 */
-  --c-glass: rgba(250, 250, 250, 0.88);
-  --c-glass2: rgba(244, 244, 247, 0.82);
-  --c-glass-border: rgba(192, 192, 200, 0.55);
+  --c-glass: rgba(255, 255, 255, 0.92);
+  --c-glass2: rgba(250, 248, 243, 0.88);
+  --c-glass-border: rgba(232, 225, 211, 0.82);
 
   /* Layer tokens */
   --layer-1: #e2e2e6;
@@ -298,17 +316,17 @@
   --elevation-4: 0 12px 36px rgba(30, 30, 38, 0.14);
 
   /* Semantic aliases (editor UI) */
-  --editor-bg: #fafafa;
-  --sidebar-bg: #f4f4f7;
-  --panel-bg: #fafafa;
-  --toolbar-bg: #f4f4f7;
-  --border-color: #ccccd2;
-  --text-primary: #3a3a44;
-  --text-secondary: #5a5a66;
-  --hover-bg: #e2e2e6;
-  --active-bg: #d4d4da;
-  --code-bg: #f0f0f3;
-  --input-bg: #f4f4f7;
+  --editor-bg: #FFFFFF;
+  --sidebar-bg: #F7F4ED;
+  --panel-bg: #FFFFFF;
+  --toolbar-bg: #FFFFFF;
+  --border-color: #E8E1D3;
+  --text-primary: #4E4A40;
+  --text-secondary: #8A8474;
+  --hover-bg: #F7F4ED;
+  --active-bg: #EEF0FF;
+  --code-bg: #F7F4ED;
+  --input-bg: #FFFFFF;
 
   /* Legacy short aliases */
   --accent: #5b6cff;

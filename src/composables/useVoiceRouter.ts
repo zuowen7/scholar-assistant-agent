@@ -53,6 +53,10 @@ export function useVoiceRouter() {
     commandRegistry.length = 0
   }
 
+  function clearLastResult() {
+    lastCommandResult.value = null
+  }
+
   function classifyIntent(text: string): VoiceCommandMatch | null {
     const trimmed = text.trim()
     if (!trimmed) return null
@@ -114,6 +118,7 @@ export function useVoiceRouter() {
     lastCommandResult,
     registerCommands,
     clearCommands,
+    clearLastResult,
     classifyIntent,
     routeCommand,
   }

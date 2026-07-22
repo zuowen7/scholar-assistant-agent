@@ -167,16 +167,29 @@ class AgentEvent:
 
     @staticmethod
     def tool_result(id: str, name: str, output: str, is_error: bool = False) -> AgentEvent:
-        evt_type = AgentEventType.TOOL_ERROR if is_error else AgentEventType.TOOL_RESULT
-        return AgentEvent(type=evt_type, data={"id": id, "tool_name": name, "output": output})
+        return AgentEvent(
+            type=AgentEventType.TOOL_RESULT,
+            data={"id": id, "tool_name": name, "output": output, "is_error": is_error},
+        )
 
     @staticmethod
     def tool_denied(id: str, name: str, reason: str) -> AgentEvent:
         return AgentEvent(type=AgentEventType.TOOL_DENIED, data={"id": id, "tool_name": name, "reason": reason})
 
     @staticmethod
-    def await_approval(id: str, name: str, reason: str, preview: dict[str, Any] | None = None) -> AgentEvent:
-        data: dict[str, Any] = {"id": id, "tool_name": name, "reason": reason}
+    def await_approval(
+        id: str,
+        name: str,
+        reason: str,
+        preview: dict[str, Any] | None = None,
+        force_approval: bool = False,
+    ) -> AgentEvent:
+        data: dict[str, Any] = {
+            "id": id,
+            "tool_name": name,
+            "reason": reason,
+            "force_approval": force_approval,
+        }
         if preview:
             data["preview"] = preview
         return AgentEvent(type=AgentEventType.AWAIT_APPROVAL, data=data)

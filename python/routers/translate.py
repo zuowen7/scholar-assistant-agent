@@ -54,6 +54,7 @@ class ConfigUpdate(BaseModel):
     cloud: dict | None = None
     network: dict | None = None
     agent: dict | None = None
+    zotero: dict | None = None
 
 
 class FilePathPayload(BaseModel):
@@ -80,6 +81,7 @@ def register_translate(
     """Register translate/config/health routes. Returns shared state dict."""
     tasks: dict[str, dict] = {}
     _task_lock = asyncio.Lock()
+    _background_tasks: set[asyncio.Task] = set()
     _state: dict = {"rag_store_getter": rag_store_getter}
 
     tm_store = TranslationMemory(runtime_dir / "tm.db")
@@ -103,7 +105,10 @@ def register_translate(
 
     def _cleanup_tasks() -> None:
         max_tasks, _, _ = _get_limits()
-        done_ids = [tid for tid, t in tasks.items() if t["status"] in ("done", "error")]
+        done_ids = [
+            tid for tid, t in tasks.items()
+            if t["status"] in ("done", "done_with_warnings", "error")
+        ]
         if len(done_ids) <= max_tasks:
             return
         excess = len(done_ids) - max_tasks
@@ -151,12 +156,13 @@ def register_translate(
                 tasks[tid]["status"] = "error"
                 tasks[tid]["error"] = "任务超时未启动"
             has_running = any(
-                t["status"] == "running"
+                t["status"] in ("running", "pending")
                 for tid, t in tasks.items()
                 if tid != task_id
             )
             if has_running:
                 raise HTTPException(409, "已有翻译任务在运行，请等待完成")
+            tasks[task_id]["status"] = "running"
 
     def _mark_task_created(task_id: str) -> None:
         tasks[task_id]["_created_at"] = time.monotonic()
@@ -209,8 +215,12 @@ def register_translate(
         if not cloud_cfg.get("api_key"):
             return {"reachable": False, "error": "未配置 API Key"}
         client = build_cloud_client(trans_cfg, cloud_cfg)
-        reachable, error_detail = client.health_check_detail()
-        return {"reachable": reachable, "error": error_detail}
+        try:
+            reachable, error_detail = client.health_check_detail()
+            return {"reachable": reachable, "error": error_detail}
+        finally:
+            if hasattr(client, "close"):
+                client.close()
 
     @app.get("/api/cloud/providers")
     def cloud_providers():
@@ -235,13 +245,6 @@ def register_translate(
                 raise HTTPException(413, f"文件过大，最大支持 {max_mb} MB")
 
         # Reject if a running or pending task already exists
-        has_active = any(
-            t["status"] in ("running", "pending")
-            for t in tasks.values()
-        )
-        if has_active:
-            raise HTTPException(409, "已有翻译任务在运行，请等待完成")
-
         task_id = uuid.uuid4().hex[:8]
         input_dir.mkdir(parents=True, exist_ok=True)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -251,17 +254,21 @@ def register_translate(
             with open(input_file, "wb") as f:
                 f.write(file_data)
 
-            tasks[task_id] = {
-                "status": "pending",
-                "input_path": str(input_file),
-                "output_path": None,
-                "content": None,
-                "error": None,
-                "filename": file.filename or "unknown",
-                "blocks": None,
-                "layout_doc": None,
-            }
-            _mark_task_created(task_id)
+            async with _task_lock:
+                if any(t["status"] in ("running", "pending") for t in tasks.values()):
+                    input_file.unlink(missing_ok=True)
+                    raise HTTPException(409, "已有翻译任务在运行，请等待完成")
+                tasks[task_id] = {
+                    "status": "pending",
+                    "input_path": str(input_file),
+                    "output_path": None,
+                    "content": None,
+                    "error": None,
+                    "filename": file.filename or "unknown",
+                    "blocks": None,
+                    "layout_doc": None,
+                }
+                _mark_task_created(task_id)
             return {"task_id": task_id}
         except Exception as e:
             logger.warning("file upload failed: %s", e)
@@ -290,16 +297,20 @@ def register_translate(
         try:
             shutil.copy2(file_path, in_path)
 
-            tasks[task_id] = {
-                "status": "pending",
-                "input_path": str(in_path),
-                "output_path": None,
-                "content": None,
-                "error": None,
-                "blocks": None,
-                "layout_doc": None,
-            }
-            _mark_task_created(task_id)
+            async with _task_lock:
+                if any(t["status"] in ("running", "pending") for t in tasks.values()):
+                    in_path.unlink(missing_ok=True)
+                    raise HTTPException(409, "已有翻译任务在运行，请等待完成")
+                tasks[task_id] = {
+                    "status": "pending",
+                    "input_path": str(in_path),
+                    "output_path": None,
+                    "content": None,
+                    "error": None,
+                    "blocks": None,
+                    "layout_doc": None,
+                }
+                _mark_task_created(task_id)
             return {"task_id": task_id}
         except Exception as e:
             logger.warning("file path upload failed: %s", e)
@@ -310,6 +321,7 @@ def register_translate(
     async def _run_pipeline(task_id: str) -> AsyncGenerator[dict, None]:
         task = tasks[task_id]
         task["status"] = "running"
+        client = None
 
         try:
             config = load_config()
@@ -429,6 +441,16 @@ def register_translate(
 
             blocks_by_id = {b.id: b for b in block_result.blocks}
             total_chunks = len(block_result.chunks)
+            task["chunk_blocks"] = {
+                str(chunk.index): list(chunk.block_ids)
+                for chunk in block_result.chunks
+            }
+            task["block_chunk_map"] = {
+                block_id: chunk.index
+                for chunk in block_result.chunks
+                for block_id in chunk.block_ids
+            }
+            task["chunk_sections"] = {}
 
             # 类型分布统计——用于前端显示和调试
             type_counts: dict[str, int] = {}
@@ -578,6 +600,7 @@ def register_translate(
                         max_concurrency=max_concurrency,
                         source_lang=src_lang,
                     ):
+                        task["chunk_sections"][str(cr.chunk_index)] = cr.section_type
                         if cr.error:
                             yield {
                                 "event": "translate.chunk_error",
@@ -643,6 +666,7 @@ def register_translate(
                                 yield {
                                     "event": "translate.qa_warnings",
                                     "data": json.dumps({
+                                        "chunk_index": cr.chunk_index,
                                         "index": cr.chunk_index,
                                         "total": total_chunks,
                                         "section_type": cr.section_type,
@@ -679,6 +703,7 @@ def register_translate(
             finally:
                 if hasattr(client, "close"):
                     client.close()
+                client = None
 
             # 构造按原始块顺序的扁平翻译列表
             ordered_block_translations: list[BlockTranslation] = []
@@ -781,7 +806,9 @@ def register_translate(
                                 logger.warning("翻译结果入库 RAG 失败: %s", exc)
 
                     _bg_task = asyncio.create_task(_bg_ingest())
+                    _background_tasks.add(_bg_task)
                     def _log_bg_exc(t: asyncio.Task) -> None:
+                        _background_tasks.discard(t)
                         if not t.cancelled() and t.exception():
                             logger.error("RAG 后台入库失败: %s", t.exception(), exc_info=t.exception())
                     _bg_task.add_done_callback(_log_bg_exc)
@@ -814,6 +841,8 @@ def register_translate(
                 "data": json.dumps({"message": "翻译失败，请稍后重试"}),
             }
         finally:
+            if client is not None and hasattr(client, "close"):
+                client.close()
             # If the generator exited abnormally (client disconnect, early exception),
             # the status may still be "running". Forcibly mark it done so the slot
             # is released for the next translation.
@@ -868,6 +897,15 @@ def register_translate(
             val = getattr(cfg, section)
             if val:
                 current[section] = {**current.get(section, {}), **val}
+        if cfg.zotero:
+            existing_zotero = current.get("zotero", {})
+            new_zotero = dict(cfg.zotero)
+            new_zotero_key = new_zotero.get("api_key", "")
+            if new_zotero_key and is_masked(new_zotero_key):
+                new_zotero["api_key"] = existing_zotero.get("api_key", "")
+            elif new_zotero_key and new_zotero_key != existing_zotero.get("api_key", ""):
+                logger.info("[AUDIT] Zotero API key updated")
+            current["zotero"] = {**existing_zotero, **new_zotero}
         if cfg.cloud:
             trans = current.setdefault("translator", {})
             existing_cloud = trans.get("cloud", {})
@@ -1282,14 +1320,92 @@ def register_translate(
                     "重试结果未通过质量校验（译文为空 / 与原文相同 / 过短）。请检查模型或调小段落。",
                 )
 
+            was_failed = block_translations[target_index].get("status") == "failed"
             block_translations[target_index]["translated"] = sanitized
             block_translations[target_index]["status"] = "ok"
+
+            chunk_index = int(t.get("block_chunk_map", {}).get(block_id, target_index))
+            chunk_block_ids = t.get("chunk_blocks", {}).get(str(chunk_index), [block_id])
+            translations_by_id = {bt.get("id"): bt for bt in block_translations}
+            chunk_items = [
+                translations_by_id[bid]
+                for bid in chunk_block_ids
+                if bid in translations_by_id
+            ]
+            chunk_original = "\n\n".join(
+                item.get("original", "") for item in chunk_items
+                if item.get("translatable")
+            )
+            chunk_translated = "\n\n".join(
+                item.get("translated", "") for item in chunk_items
+                if item.get("translatable") and item.get("translated")
+            )
+
+            chunks = t.get("chunks", [])
+            if 0 <= chunk_index < len(chunks):
+                chunks[chunk_index]["translated"] = chunk_translated
+
+            section_type = t.get("chunk_sections", {}).get(str(chunk_index), "unknown")
+            qa_result = run_post_translation_qa(
+                translated=chunk_translated,
+                original=chunk_original,
+                section_type=section_type,
+                source_lang=src_lang,
+                expected_hedging_tier=get_hedging_tier_for_section(section_type),
+            )
+            qa_warning = {
+                "chunk_index": chunk_index,
+                "index": chunk_index,
+                "section_type": section_type,
+                "score": qa_result.score,
+                "flags": [
+                    {
+                        "type": flag.type,
+                        "severity": flag.severity,
+                        "location": flag.location,
+                        "message": flag.message,
+                        "suggestion": flag.suggestion,
+                    }
+                    for flag in qa_result.flags
+                ],
+            }
+
+            rebuilt = [
+                BlockTranslation(
+                    block_id=item.get("id", ""),
+                    type=item.get("type", "paragraph"),
+                    original=item.get("original", ""),
+                    translated=item.get("translated", ""),
+                    translatable=bool(item.get("translatable", True)),
+                    status=item.get("status", "ok"),
+                )
+                for item in block_translations
+            ]
+            fmt_cfg = load_config().get("formatter", {})
+            content = format_blocks(
+                rebuilt,
+                output_format=fmt_cfg.get("output_format", "bilingual"),
+            )
+            output_path = t.get("output_path")
+            if output_path:
+                Path(output_path).write_text(content, encoding="utf-8")
+
+            if was_failed and not any(item.get("status") == "failed" for item in chunk_items):
+                if t.get("fallback_count", 0) > 0:
+                    t["fallback_count"] -= 1
+            if not t.get("fallback_count", 0) and not t.get("misalign_count", 0):
+                t["status"] = "done"
 
             return {
                 "success": True,
                 "block_id": block_id,
                 "translated": sanitized,
                 "status": "ok",
+                "chunk_index": chunk_index,
+                "chunks": chunks,
+                "content": content,
+                "qa_warning": qa_warning,
+                "fallback_count": t.get("fallback_count", 0),
             }
         except HTTPException:
             raise
@@ -1301,7 +1417,18 @@ def register_translate(
             if hasattr(client, "close"):
                 client.close()
 
+    async def _shutdown() -> None:
+        pending = [task for task in _background_tasks if not task.done()]
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        _background_tasks.clear()
+        tm_store.close()
+
     _state["tasks"] = tasks
     _state["tm_store"] = tm_store
+    _state["shutdown"] = _shutdown
+    _state["background_tasks"] = _background_tasks
     _state["glossary_store"] = glossary_store
     return _state

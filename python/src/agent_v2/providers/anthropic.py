@@ -47,11 +47,13 @@ class AnthropicProvider(BaseProvider):
         api_key: str = "",
         model: str = "claude-sonnet-4-6",
         timeout: float = 300.0,
+        proxy: str | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
         self.timeout = timeout
+        self.proxy = proxy
         self._client: httpx.AsyncClient | None = None
         self.model_max_tokens = 8192  # Anthropic models support 8K
 
@@ -62,7 +64,9 @@ class AnthropicProvider(BaseProvider):
                 "x-api-key": self.api_key,
                 "anthropic-version": "2023-06-01",
             }
-            self._client = httpx.AsyncClient(timeout=self.timeout, headers=headers)
+            self._client = httpx.AsyncClient(
+                timeout=self.timeout, headers=headers, proxy=self.proxy
+            )
         return self._client
 
     # ---- Message conversion ----

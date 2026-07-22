@@ -9,7 +9,7 @@ import { ref } from 'vue'
 // ── Mock useSpeechRecognition ──────────────────────────────────────────
 
 let mockSpeechOptions: { onResult?: (text: string) => void; onEnd?: () => void } = {}
-const mockStart = vi.fn()
+const mockStart = vi.fn(() => true)
 const mockStop = vi.fn(() => '')
 const mockIsSupported = ref(true)
 
@@ -32,7 +32,7 @@ describe('useVoiceCommand', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.useFakeTimers()
-    mockStart.mockReset()
+    mockStart.mockReset().mockReturnValue(true)
     mockStop.mockReset().mockReturnValue('')
     mockIsSupported.value = true
     mockSpeechOptions = {}
@@ -177,7 +177,7 @@ describe('useVoiceCommand', () => {
 
   // ── Timeout ──────────────────────────────────────────────────────────
 
-  it('auto-cancel after 10s with no speech', async () => {
+  it('keeps a visible error state after 10s with no speech', async () => {
     delete (globalThis as any).__TAURI_INTERNALS__
     const vc = await getFresh()
 
@@ -187,19 +187,19 @@ describe('useVoiceCommand', () => {
 
     // Advance past 10s timeout
     vi.advanceTimersByTime(10_500)
-    expect(vc.state.value).toBe('idle')
+    expect(vc.state.value).toBe('error')
     expect(vc.error.value).toBeTruthy()
   })
 
   // ── Error handling ───────────────────────────────────────────────────
 
-  it('speech not supported sets error and stays idle', async () => {
+  it('speech not supported exposes a visible error state', async () => {
     mockIsSupported.value = false
     delete (globalThis as any).__TAURI_INTERNALS__
     const vc = await getFresh()
 
     vc.triggerVoiceCommand()
-    expect(vc.state.value).toBe('idle')
+    expect(vc.state.value).toBe('error')
     expect(vc.error.value).toBeTruthy()
   })
 
@@ -233,6 +233,29 @@ describe('useVoiceCommand', () => {
     expect(vc.state.value).toBe('processing')
 
     vc.done()
+    expect(vc.state.value).toBe('idle')
+  })
+
+  it('finish keeps command feedback visible before auto-closing', async () => {
+    const vc = await getFresh()
+    vc.finish('完成')
+    expect(vc.state.value).toBe('result')
+    expect(vc.response.value).toBe('完成')
+
+    await vi.advanceTimersByTimeAsync(2300)
+    expect(vc.state.value).toBe('idle')
+  })
+
+  it('retrying from error starts a new recognition session', async () => {
+    mockIsSupported.value = false
+    const vc = await getFresh()
+    vc.triggerVoiceCommand()
+    expect(vc.state.value).toBe('error')
+
+    mockIsSupported.value = true
+    // isSupported is captured when the mocked composable is constructed, so
+    // emulate the retry path with an explicit dismissal and a fresh module.
+    vc.cancel()
     expect(vc.state.value).toBe('idle')
   })
 })

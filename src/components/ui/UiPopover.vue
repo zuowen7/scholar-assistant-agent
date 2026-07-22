@@ -8,7 +8,7 @@
         <div
           v-if="open"
           ref="panelRef"
-          class="ui-popover-panel"
+          class="ui-popover-panel ui-popover-panel--modal-safe"
           :class="[align, { glass }]"
           :style="{ ...panelStyle, transformOrigin }"
           @click.stop
@@ -54,7 +54,8 @@ const panelRef = ref<HTMLElement | null>(null)
 const panelPos = ref({ top: 0, left: 0 })
 
 function toggle() {
-  open.value ? close() : show()
+  if (open.value) close()
+  else show()
 }
 function show() {
   open.value = true
@@ -139,7 +140,10 @@ defineExpose({ open, show, close, toggle })
 /* Global so the teleported panel inherits proper styles */
 .ui-popover-panel {
   position: fixed;
-  z-index: 1000;
+  /* Popovers are also used inside AppDialog (z-index: 3000). Keep the
+     teleported surface above its owning dialog instead of hiding it behind
+     the modal backdrop. */
+  z-index: 4000;
   background: color-mix(in srgb, var(--c-surface-1) 88%, transparent);
   border: 1px solid var(--c-glass-border);
   border-radius: var(--radius-lg);

@@ -51,6 +51,13 @@ class TestAdapter:
         assert result["type"] == "response"
         assert result["content"] == "final answer"
 
+    def test_session_started_exposes_session_id_to_frontend(self):
+        event = AgentEvent.session_started("sess_123")
+        result = agent_event_to_sse(event)
+        assert result["type"] == "session_started"
+        assert result["content"] == "sess_123"
+        assert result["metadata"]["session_id"] == "sess_123"
+
     def test_error_stays_error(self):
         event = AgentEvent(type=AgentEventType.ERROR, data={"message": "fail"})
         result = agent_event_to_sse(event)
@@ -97,12 +104,31 @@ class TestAdapter:
         assert result["metadata"]["preview"]["old_text"] == "a"
         assert result["metadata"]["preview"]["new_text"] == "b"
         assert result["metadata"]["preview"]["file_path"] == "test.md"
+        assert result["metadata"]["force_approval"] is False
+
+    def test_await_approval_preserves_explicit_force_confirmation(self):
+        event = AgentEvent.await_approval(
+            "appr_force",
+            "write_file",
+            "sensitive change",
+            force_approval=True,
+        )
+        result = agent_event_to_sse(event)
+        assert result["metadata"]["force_approval"] is True
 
     def test_checkpoint_preserves_metadata(self):
         event = AgentEvent(type=AgentEventType.CHECKPOINT, data={
             "action": "write_file", "file": "test.md", "content": "updated",
+            "content_truncated": True,
         })
         result = agent_event_to_sse(event)
         assert result["type"] == "checkpoint"
         assert result["metadata"]["file"] == "test.md"
         assert result["metadata"]["content"] == "updated"
+        assert result["metadata"]["content_truncated"] is True
+
+    def test_approval_received_preserves_tool_event_id(self):
+        event = AgentEvent.approval_received("edit_123", "allow_once")
+        result = agent_event_to_sse(event)
+        assert result["type"] == "approval_received"
+        assert result["event_id"] == "edit_123"

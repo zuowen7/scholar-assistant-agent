@@ -1,4 +1,10 @@
 import type { VoiceCommandDef } from '../../types/voice'
+import { activateVoiceWorkspace } from './workspace'
+
+async function dispatchEditorEvent(name: string, detail?: Record<string, unknown>) {
+  await activateVoiceWorkspace('write')
+  window.dispatchEvent(new CustomEvent(name, { detail }))
+}
 
 export function registerTier3Commands(register: (defs: VoiceCommandDef[]) => void) {
   register([
@@ -9,7 +15,7 @@ export function registerTier3Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['export word', 'export docx', 'export document'],
       priority: 6,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-export', { detail: { format: 'word' } }))
+        await dispatchEditorEvent('voice-export', { format: 'word' })
       },
     },
     {
@@ -19,7 +25,7 @@ export function registerTier3Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['export pdf', 'export to pdf'],
       priority: 6,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-export', { detail: { format: 'pdf' } }))
+        await dispatchEditorEvent('voice-export', { format: 'pdf' })
       },
     },
     {
@@ -29,7 +35,7 @@ export function registerTier3Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['export latex', 'export tex'],
       priority: 6,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-export', { detail: { format: 'latex' } }))
+        await dispatchEditorEvent('voice-export', { format: 'latex' })
       },
     },
     {
@@ -39,7 +45,7 @@ export function registerTier3Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['polish', 'polish text', 'refine text'],
       priority: 5,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-ai-preset', { detail: { action: 'polish' } }))
+        await dispatchEditorEvent('voice-ai-preset', { action: 'polish' })
       },
     },
     {
@@ -49,7 +55,7 @@ export function registerTier3Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['expand', 'expand text', 'elaborate'],
       priority: 5,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-ai-preset', { detail: { action: 'expand' } }))
+        await dispatchEditorEvent('voice-ai-preset', { action: 'expand' })
       },
     },
     {
@@ -59,7 +65,7 @@ export function registerTier3Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['review', 'review text', 'critique text'],
       priority: 5,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-ai-preset', { detail: { action: 'review' } }))
+        await dispatchEditorEvent('voice-ai-preset', { action: 'review' })
       },
     },
     {
@@ -69,7 +75,7 @@ export function registerTier3Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['translate to english', 'translate into english'],
       priority: 5,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-ai-preset', { detail: { action: 'en' } }))
+        await dispatchEditorEvent('voice-ai-preset', { action: 'en' })
       },
     },
     {
@@ -79,7 +85,7 @@ export function registerTier3Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['translate to chinese', 'translate into chinese'],
       priority: 5,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-ai-preset', { detail: { action: 'zh' } }))
+        await dispatchEditorEvent('voice-ai-preset', { action: 'zh' })
       },
     },
     {
@@ -89,7 +95,7 @@ export function registerTier3Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['compliance check', 'compliance', 'check compliance'],
       priority: 5,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-compliance'))
+        await dispatchEditorEvent('voice-compliance')
       },
     },
     {
@@ -99,7 +105,7 @@ export function registerTier3Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['process citations', 'format citations', 'handle citations'],
       priority: 5,
       handler: async () => {
-        window.dispatchEvent(new CustomEvent('voice-citations'))
+        await dispatchEditorEvent('voice-citations')
       },
     },
   ])

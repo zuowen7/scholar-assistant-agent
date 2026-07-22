@@ -74,9 +74,9 @@ def register_sub_agent(registry: ToolRegistry) -> None:
         messages = [Message(role=MessageRole.USER, blocks=[TextBlock(text=user_msg)])]
 
         # Use the provider from the parent runtime (stored in registry context)
-        provider = getattr(registry, '_provider', None)
+        provider = registry.get_provider() if hasattr(registry, "get_provider") else getattr(registry, "_provider", None)
         if provider is None:
-            return ToolResult("error: sub-agent requires provider (set registry._provider)", is_error=True)
+            return ToolResult("error: sub-agent requires provider (call registry.set_provider() first)", is_error=True)
 
         try:
             resp = await provider.chat(

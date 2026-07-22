@@ -71,9 +71,34 @@
       :icon="FolderOpen"
       :icon-size="28"
       :title="t('files.noFolderOpen')"
-      subtitle="Open a folder to browse your files."
+      :subtitle="t('files.noFolderSubtitle')"
       :action-label="t('files.openFolder2')"
       @action="handleOpenFolder"
+    />
+
+    <AppPromptDialog
+      v-model="showCreatePrompt"
+      :title="createKind === 'file' ? t('files.newFile') : t('files.newFolder')"
+      :description="t('files.createDescription')"
+      :label="t('files.fileName')"
+      :initial-value="createKind === 'file' ? 'untitled.md' : 'new_folder'"
+      :confirm-label="t('general.create')"
+      :cancel-label="t('general.cancel')"
+      :error="createError"
+      :busy="createBusy"
+      @submit="confirmCreate"
+    />
+
+    <AppConfirmDialog
+      v-model="showDeleteConfirm"
+      :title="t('files.deleteConfirmTitle')"
+      :description="t('files.deleteConfirmDescription')"
+      :detail="t('files.deleteConfirmDetail', { name: pendingDelete?.name || '' })"
+      :confirm-label="t('files.delete')"
+      :cancel-label="t('general.cancel')"
+      tone="danger"
+      :busy="deleteBusy"
+      @confirm="confirmDelete"
     />
   </div>
 </template>
@@ -86,19 +111,32 @@ const { t } = useI18n()
 import FileTreeNode from './FileTreeNode.vue'
 import UiEmpty from './ui/UiEmpty.vue'
 import UiSkeleton from './ui/UiSkeleton.vue'
+import AppPromptDialog from './shell/AppPromptDialog.vue'
+import AppConfirmDialog from './shell/AppConfirmDialog.vue'
 import { FolderOpen } from './ui/icons'
 import { useFileTree } from '../composables/useFileTree'
 import { useEditor } from '../composables/useEditor'
+import { useToast } from '../composables/useToast'
 import type { FileEntry } from '../types'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
 
 const { files, rootDir, openFolder, readFileContent, createFile, createFolder, renameFile, deleteFile, copyFileTo, setClipboard, getClipboard, clearClipboard } = useFileTree()
 const { openFile: openEditorFile, activeFile, renameTabPath, closeTab } = useEditor()
+const { success, pushError } = useToast()
 
 defineEmits<{ (e: 'collapse'): void }>()
 
 const searchQuery = ref('')
 const loading = ref(false)
 const refreshing = ref(false)
+const showCreatePrompt = ref(false)
+const createKind = ref<'file' | 'folder'>('file')
+const createTarget = ref('')
+const createBusy = ref(false)
+const createError = ref('')
+const showDeleteConfirm = ref(false)
+const pendingDelete = ref<{ path: string; name: string } | null>(null)
+const deleteBusy = ref(false)
 
 function filterTree(entries: FileEntry[], query: string): FileEntry[] {
   if (!query) return entries
@@ -121,8 +159,7 @@ const filteredFiles = computed(() => filterTree(files.value, searchQuery.value))
 
 async function handleOpenFolder() {
   try {
-    const { open } = await import('@tauri-apps/plugin-dialog')
-    const selected = await open({ directory: true, multiple: false })
+    const selected = await openDialog({ directory: true, multiple: false })
     if (selected && typeof selected === 'string') {
       await openFolder(selected)
     }
@@ -147,10 +184,7 @@ async function handleNewFile() {
     await handleOpenFolder()
     return
   }
-  const name = prompt(t('files.newFilePrompt'), 'untitled.md')
-  if (!name) return
-  const path = await createFile(rootDir.value, name)
-  openEditorFile(path, '')
+  openCreatePrompt('file', rootDir.value)
 }
 
 async function handleNewFolder() {
@@ -158,9 +192,47 @@ async function handleNewFolder() {
     await handleOpenFolder()
     return
   }
-  const name = prompt(t('files.newFolder'), 'new_folder')
-  if (!name) return
-  await createFolder(rootDir.value, name)
+  openCreatePrompt('folder', rootDir.value)
+}
+
+function openCreatePrompt(kind: 'file' | 'folder', target: string) {
+  createKind.value = kind
+  createTarget.value = target
+  createError.value = ''
+  showCreatePrompt.value = true
+}
+
+async function confirmCreate(name: string) {
+  createBusy.value = true
+  createError.value = ''
+  try {
+    if (createKind.value === 'file') {
+      const path = await createFile(createTarget.value, name)
+      openEditorFile(path, '')
+    } else {
+      await createFolder(createTarget.value, name)
+    }
+    showCreatePrompt.value = false
+  } catch (error) {
+    createError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    createBusy.value = false
+  }
+}
+
+async function confirmDelete() {
+  if (!pendingDelete.value) return
+  deleteBusy.value = true
+  try {
+    await deleteFile(pendingDelete.value.path)
+    closeTab(pendingDelete.value.path)
+    showDeleteConfirm.value = false
+    pendingDelete.value = null
+  } catch (error) {
+    pushError(t('files.operationFailed', { message: error instanceof Error ? error.message : String(error) }))
+  } finally {
+    deleteBusy.value = false
+  }
 }
 
 async function handleRefresh() {
@@ -172,13 +244,18 @@ async function handleRefresh() {
 async function handleAction(action: string, path: string, extra: string) {
   switch (action) {
     case 'new-file': {
+      if (!extra) {
+        openCreatePrompt('file', path)
+        break
+      }
       const newFile = await createFile(path, extra)
       openEditorFile(newFile, '')
       break
     }
 
     case 'new-folder':
-      await createFolder(path, extra)
+      if (!extra) openCreatePrompt('folder', path)
+      else await createFolder(path, extra)
       break
 
     case 'cut':
@@ -201,7 +278,7 @@ async function handleAction(action: string, path: string, extra: string) {
           clearClipboard()
         }
       } catch (e) {
-        console.error('Paste failed:', e)
+        pushError(t('files.operationFailed', { message: e instanceof Error ? e.message : String(e) }))
       }
       break
     }
@@ -211,25 +288,21 @@ async function handleAction(action: string, path: string, extra: string) {
         const newPath = await renameFile(path, extra)
         renameTabPath(path, newPath)
       } catch (e) {
-        console.error('Rename failed:', e)
+        pushError(t('files.operationFailed', { message: e instanceof Error ? e.message : String(e) }))
       }
       break
 
     case 'delete':
-      if (!confirm(`Delete "${extra}"?`)) return
-      try {
-        await deleteFile(path)
-        closeTab(path)
-      } catch (e) {
-        console.error('Delete failed:', e)
-      }
+      pendingDelete.value = { path, name: extra }
+      showDeleteConfirm.value = true
       break
 
     case 'copy-path':
       try {
         await navigator.clipboard.writeText(path)
+        success(t('files.pathCopied'))
       } catch {
-        // Fallback: not available in some environments
+        pushError(t('files.operationFailed', { message: t('files.clipboardUnavailable') }))
       }
       break
   }
@@ -286,20 +359,6 @@ onBeforeUnmount(() => {
               color var(--motion-fast) var(--ease-out);
 }
 .tree-btn:hover { background: var(--c-surface-2); color: var(--c-text-0); }
-/* 墨韵涟漪 */
-.tree-btn::after {
-  content: '';
-  position: absolute;
-  inset: -2px;
-  border-radius: inherit;
-  background: radial-gradient(circle at center, var(--c-accent) 0%, transparent 70%);
-  opacity: 0;
-  transform: scale(0.7);
-  transition: opacity 300ms var(--ease-brush), transform 340ms var(--ease-brush);
-  pointer-events: none;
-  filter: blur(4px);
-}
-.tree-btn:hover::after { opacity: 0.1; transform: scale(1.15); }
 
 .tree-btn-sep {
   width: 1px;

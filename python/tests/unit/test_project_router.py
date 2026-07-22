@@ -83,6 +83,20 @@ class TestProjectTemplates:
             assert "name" in tpl
 
 
+def test_project_path_rejects_prefix_sibling(tmp_path: Path):
+    from fastapi import HTTPException
+    from routers.project import _validate_project_path
+
+    allowed = tmp_path / "allowed"
+    sibling = tmp_path / "allowed-sibling"
+    allowed.mkdir()
+    sibling.mkdir()
+    with patch("routers.project._get_allowed_prefixes", return_value=[str(allowed)]):
+        with pytest.raises(HTTPException) as exc:
+            _validate_project_path(str(sibling))
+    assert exc.value.status_code == 422
+
+
 # ── TestCreateProject ────────────────────────────────────────────────────
 
 

@@ -15,7 +15,7 @@ def mask_key(key: str) -> str:
         return key[:8] + "****" + key[-4:]
     if len(key) > 8:
         return key[:4] + "****" + key[-4:]
-    return key
+    return "****"
 
 
 def is_masked(value: str) -> bool:
@@ -29,8 +29,14 @@ def mask_bearer(text: str) -> str:
 
 
 def mask_config(config: dict) -> None:
-    """Mask the api_key field inside a config dict in-place."""
-    cloud_cfg = config.get("translator", {}).get("cloud", {})
-    api_key = cloud_cfg.get("api_key", "")
-    if api_key:
-        cloud_cfg["api_key"] = mask_key(api_key)
+    """Mask every ``api_key`` field inside a config dict in-place.
+
+    Config sections are extended independently (cloud translation, Agent,
+    Zotero, Vision, and future providers). Traversing the config prevents a new
+    section from accidentally exposing its credential through ``/api/config``.
+    """
+    for key, value in config.items():
+        if key == "api_key" and isinstance(value, str):
+            config[key] = mask_key(value)
+        elif isinstance(value, dict):
+            mask_config(value)

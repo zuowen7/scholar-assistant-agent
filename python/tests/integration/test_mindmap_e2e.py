@@ -50,6 +50,9 @@ def client():
         patch("api_factory.BASE_DIR", Path(test_dir)),
     ):
         app = create_app()
+        workspace = Path(test_dir) / "workspace"
+        workspace.mkdir()
+        app.state.test_workspace = workspace
         yield TestClient(app)
 
     shutil.rmtree(test_dir, ignore_errors=True)
@@ -69,15 +72,16 @@ class TestMindMapPersistence:
     """save → load → delete round-trip."""
 
     def test_load_404_when_empty(self, client):
-        resp = client.get("/api/mindmap/load")
+        resp = client.get("/api/mindmap/load", params={"workspace_root": str(client.app.state.test_workspace)})
         assert resp.status_code == 404
 
     def test_save_and_load_roundtrip(self, client):
-        resp = client.post("/api/mindmap/save", json=SAMPLE_MAP)
+        params = {"workspace_root": str(client.app.state.test_workspace)}
+        resp = client.post("/api/mindmap/save", params=params, json=SAMPLE_MAP)
         assert resp.status_code == 200
         assert resp.json()["ok"] is True
 
-        resp = client.get("/api/mindmap/load")
+        resp = client.get("/api/mindmap/load", params=params)
         assert resp.status_code == 200
         data = resp.json()
         assert data["nodes"]["root"]["text"] == "Research Topic"
@@ -85,20 +89,22 @@ class TestMindMapPersistence:
 
     def test_save_overwrites_previous(self, client):
         alt = {**SAMPLE_MAP, "nodes": {"x": {"id": "x", "text": "Solo", "children": []}}}
-        client.post("/api/mindmap/save", json=alt)
-        data = client.get("/api/mindmap/load").json()
+        params = {"workspace_root": str(client.app.state.test_workspace)}
+        client.post("/api/mindmap/save", params=params, json=alt)
+        data = client.get("/api/mindmap/load", params=params).json()
         assert "x" in data["nodes"]
         assert "root" not in data["nodes"]
 
     def test_delete_clears(self, client):
-        client.post("/api/mindmap/save", json=SAMPLE_MAP)
-        resp = client.delete("/api/mindmap")
+        params = {"workspace_root": str(client.app.state.test_workspace)}
+        client.post("/api/mindmap/save", params=params, json=SAMPLE_MAP)
+        resp = client.delete("/api/mindmap", params=params)
         assert resp.status_code == 200
         assert resp.json()["ok"] is True
-        assert client.get("/api/mindmap/load").status_code == 404
+        assert client.get("/api/mindmap/load", params=params).status_code == 404
 
     def test_delete_idempotent(self, client):
-        resp = client.delete("/api/mindmap")
+        resp = client.delete("/api/mindmap", params={"workspace_root": str(client.app.state.test_workspace)})
         assert resp.status_code == 200
         assert resp.json()["ok"] is True
 

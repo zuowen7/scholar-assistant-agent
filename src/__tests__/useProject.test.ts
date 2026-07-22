@@ -25,15 +25,18 @@ globalThis.fetch = mockFetch
 vi.mock('../utils/api', () => ({ API_BASE: '' }))
 
 const mockOpenFolder = vi.fn().mockResolvedValue(undefined)
+const mockRootDir = { value: null as string | null }
+const mockFiles = { value: [] as unknown[] }
 vi.mock('../composables/useFileTree', () => ({
   useFileTree: () => ({
     openFolder: mockOpenFolder,
-    rootDir: { value: null },
-    files: { value: [] },
+    rootDir: mockRootDir,
+    files: mockFiles,
   }),
 }))
 
 import { currentProject, recentProjects, projectLoading } from '../composables/useProject'
+import { activeTabId, tabs } from '../composables/useEditorState'
 
 function meta(name: string) {
   return { version: 1, name, status: 'ready', template_id: 'research_paper', tags: [], created_at: '', updated_at: '', vcs: { initialized: false }, env: { type: null, path: null } }
@@ -44,6 +47,10 @@ describe('useProject', () => {
     currentProject.value = null
     recentProjects.value = []
     projectLoading.value = false
+    tabs.value = []
+    activeTabId.value = null
+    mockRootDir.value = null
+    mockFiles.value = []
     mockFetch.mockReset()
     mockOpenFolder.mockReset().mockResolvedValue(undefined)
   })
@@ -93,6 +100,37 @@ describe('useProject', () => {
       mockFetch.mockResolvedValueOnce(rst(500, { detail: 'Fail' }))
       await expect(openProject('/bad')).rejects.toThrow()
       expect(currentProject.value!.name).toBe('Prev')
+    })
+
+    it('clears clean editor tabs after a successful project switch', async () => {
+      const { openProject } = await import('../composables/useProject')
+      tabs.value = [{ id: 'old.md', path: '/old/old.md', name: 'old.md', content: 'old', isModified: false, docId: 'old.md' }]
+      activeTabId.value = 'old.md'
+      mockRootDir.value = '/old'
+      currentProject.value = meta('Old')
+      mockFetch.mockResolvedValueOnce(rst(200, meta('New')))
+
+      await openProject('/new')
+
+      expect(currentProject.value!.name).toBe('New')
+      expect(tabs.value).toEqual([])
+      expect(activeTabId.value).toBeNull()
+    })
+
+    it('refuses to switch projects while an editor tab is dirty', async () => {
+      const { openProject } = await import('../composables/useProject')
+      const dirtyTab = { id: 'draft.md', path: '/old/draft.md', name: 'draft.md', content: 'unsaved', isModified: true, docId: 'draft.md' }
+      tabs.value = [dirtyTab]
+      activeTabId.value = dirtyTab.id
+      mockRootDir.value = '/old'
+      currentProject.value = meta('Old')
+
+      await expect(openProject('/new')).rejects.toThrow('未保存')
+
+      expect(mockFetch).not.toHaveBeenCalled()
+      expect(currentProject.value!.name).toBe('Old')
+      expect(tabs.value).toEqual([dirtyTab])
+      expect(activeTabId.value).toBe(dirtyTab.id)
     })
   })
 

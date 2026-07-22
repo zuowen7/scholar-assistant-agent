@@ -53,7 +53,7 @@ defineEmits<{
 
 /* Tones */
 .ui-pill.ok { color: var(--c-success); background: rgba(74, 222, 128, 0.10); }
-.ui-pill.ok .pill-dot { opacity: 1; box-shadow: 0 0 6px var(--c-success); }
+.ui-pill.ok .pill-dot { opacity: 1; }
 .ui-pill.off { color: var(--c-text-3); background: var(--c-surface-2); }
 .ui-pill.off .pill-dot { background: var(--c-danger); opacity: 0.6; }
 .ui-pill.warn { color: var(--c-warn); background: rgba(245, 158, 11, 0.10); }

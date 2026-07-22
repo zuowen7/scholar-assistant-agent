@@ -17,7 +17,7 @@ import { i18n } from '../i18n'
 import {
   setEditorInstance, setContent, updateSelection, markClean, markDirty,
   openFile, openNewUntitled, closeTab, setActiveTab, renameTabPath, saveFile,
-  reloadOpenTabs,
+  reloadOpenTabs, applyExternalFileUpdate,
 } from './useEditorTabs'
 
 // ── AI Edit ──────────────────────────────────────────────────────────────
@@ -122,7 +122,9 @@ export async function inlineEdit(instruction: string, taskType?: string): Promis
     applyInlineDecoration(sel.startLine, sel.startCol, sel.endLine, sel.endCol)
     await readSseStream(reader, (_type, evt) => {
       if (evt.content) {
-        aiResult.value = (aiResult.value || '') + (evt.content as string)
+        // /api/edit sends the complete accumulated output in every delta.
+        // Appending it duplicates all earlier tokens and corrupts replacements.
+        aiResult.value = evt.content as string
         editor.executeEdits('ai-inline', [{
           range: new Range(sel.startLine, sel.startCol, sel.endLine, sel.endCol),
           text: aiResult.value,
@@ -201,6 +203,6 @@ export function useEditor() {
     setEditorInstance, setContent, updateSelection, markClean, markDirty,
     openFile, openNewUntitled, closeTab, setActiveTab, renameTabPath, saveFile,
     aiEdit, inlineEdit, cancelAiEdit, applyAiResult, rejectAiResult, undoEdit,
-    cleanup, reloadOpenTabs,
+    cleanup, reloadOpenTabs, applyExternalFileUpdate,
   }
 }

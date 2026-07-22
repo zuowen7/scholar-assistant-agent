@@ -1,6 +1,8 @@
 import { API_BASE } from '../utils/api'
 import { i18n } from '../i18n'
 import { logger } from '../utils/logger'
+import { save } from '@tauri-apps/plugin-dialog'
+import { writeFile } from '@tauri-apps/plugin-fs'
 
 export interface WordExportResponse {
   filename?: string
@@ -8,8 +10,6 @@ export interface WordExportResponse {
 
 export async function saveBlob(blob: Blob, defaultName: string): Promise<string | null> {
   try {
-    const { save } = await import('@tauri-apps/plugin-dialog')
-    const { writeFile } = await import('@tauri-apps/plugin-fs')
     const ext = defaultName.split('.').pop() || 'bin'
     const path = await save({
       defaultPath: defaultName,

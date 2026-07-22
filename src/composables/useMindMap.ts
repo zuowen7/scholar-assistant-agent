@@ -2,6 +2,7 @@ import { computed, ref } from 'vue'
 import { API_BASE } from '../utils/api'
 import { i18n } from '../i18n'
 import { logger } from '../utils/logger'
+import { useFileTree } from './useFileTree'
 
 export interface MindMapNode {
   id: string
@@ -262,7 +263,12 @@ export function useMindMap() {
   function saveMindMap() {
     draftMindMap.value.updatedAt = Date.now()
     savedMindMap.value = cloneMap(draftMindMap.value)
-    fetch(`${API_BASE}/api/mindmap/save`, {
+    const workspaceRoot = useFileTree().rootDir.value
+    if (!workspaceRoot) {
+      logger.warn('[mindmap] save skipped: no active workspace')
+      return
+    }
+    fetch(`${API_BASE}/api/mindmap/save?workspace_root=${encodeURIComponent(workspaceRoot)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(savedMindMap.value),
@@ -274,8 +280,10 @@ export function useMindMap() {
       _skipNextBackendLoad = false
       return false
     }
+    const workspaceRoot = useFileTree().rootDir.value
+    if (!workspaceRoot) return false
     try {
-      const res = await fetch(`${API_BASE}/api/mindmap/load`)
+      const res = await fetch(`${API_BASE}/api/mindmap/load?workspace_root=${encodeURIComponent(workspaceRoot)}`)
       if (!res.ok) return false
       const data: MindMapData = await res.json()
       savedMindMap.value = data
@@ -321,6 +329,16 @@ export function useMindMap() {
   function commitNodePosition(id: string, position: MindMapPosition) {
     pushHistory()
     setNodePosition(id, position)
+  }
+
+  function commitNodePositions(positions: Record<string, MindMapPosition>) {
+    const entries = Object.entries(positions).filter(([id]) => Boolean(draftMindMap.value.nodes[id]))
+    if (!entries.length) return
+    pushHistory()
+    for (const [id, position] of entries) {
+      draftMindMap.value.positions[id] = { ...position }
+    }
+    draftMindMap.value.updatedAt = Date.now()
   }
 
   function addChild(parentId = selectedNodeId.value, position?: MindMapPosition): string | undefined {
@@ -499,6 +517,7 @@ export function useMindMap() {
     skipNextBackendLoad: () => { _skipNextBackendLoad = true },
     setNodePosition,
     commitNodePosition,
+    commitNodePositions,
     addChild,
     addSibling,
     addAssociationLink,

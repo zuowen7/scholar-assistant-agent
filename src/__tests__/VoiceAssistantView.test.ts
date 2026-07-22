@@ -15,6 +15,7 @@ const mockTranscript = ref('')
 const mockResponse = ref('')
 const mockError = ref('')
 const mockCancel = vi.fn()
+const mockTrigger = vi.fn()
 
 vi.mock('../composables/useVoiceCommand', () => ({
   useVoiceCommand: () => ({
@@ -23,7 +24,7 @@ vi.mock('../composables/useVoiceCommand', () => ({
     response: mockResponse,
     error: mockError,
     cancel: mockCancel,
-    triggerVoiceCommand: vi.fn(),
+    triggerVoiceCommand: mockTrigger,
     setProcessing: vi.fn(),
     done: vi.fn(),
   }),
@@ -42,6 +43,7 @@ describe('VoiceAssistantView', () => {
     mockResponse.value = ''
     mockError.value = ''
     mockCancel.mockReset()
+    mockTrigger.mockReset()
   })
 
   function mountView() {
@@ -105,11 +107,20 @@ describe('VoiceAssistantView', () => {
   // ── Error display ────────────────────────────────────────────────────
 
   it('shows error message when error is set', async () => {
-    mockState.value = 'listening'
+    mockState.value = 'error'
     mockError.value = '语音识别不可用'
     const wrapper = mountView()
     await nextTick()
     expect(wrapper.find('.va-error').text()).toContain('语音识别不可用')
+    expect(wrapper.find('.va-retry').exists()).toBe(true)
+  })
+
+  it('retry button starts listening again from an error', async () => {
+    mockState.value = 'error'
+    mockError.value = '没有检测到语音'
+    const wrapper = mountView()
+    await wrapper.find('.va-retry').trigger('click')
+    expect(mockTrigger).toHaveBeenCalledOnce()
   })
 
   // ── Interaction ──────────────────────────────────────────────────────

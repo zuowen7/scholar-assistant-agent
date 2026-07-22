@@ -1,5 +1,15 @@
 import { ref } from 'vue'
 import type { FileEntry } from '../types'
+import {
+  copyFile,
+  exists,
+  mkdir,
+  readDir as tauriReadDir,
+  readTextFile,
+  remove,
+  rename,
+  writeTextFile,
+} from '@tauri-apps/plugin-fs'
 
 const files = ref<FileEntry[]>([])
 const rootDir = ref<string | null>(null)
@@ -15,7 +25,6 @@ export function useFileTree() {
 
   async function readDir(dirPath: string): Promise<FileEntry[]> {
     try {
-      const { readDir: tauriReadDir } = await import('@tauri-apps/plugin-fs')
       const entries = await tauriReadDir(dirPath)
       const result: FileEntry[] = []
       for (const entry of entries) {
@@ -43,12 +52,10 @@ export function useFileTree() {
   }
 
   async function readFileContent(path: string): Promise<string> {
-    const { readTextFile } = await import('@tauri-apps/plugin-fs')
     return readTextFile(path)
   }
 
   async function writeFile(path: string, content: string): Promise<void> {
-    const { writeTextFile } = await import('@tauri-apps/plugin-fs')
     await writeTextFile(path, content)
   }
 
@@ -60,7 +67,6 @@ export function useFileTree() {
   }
 
   async function createFolder(dirPath: string, name: string): Promise<string> {
-    const { mkdir } = await import('@tauri-apps/plugin-fs')
     const path = `${dirPath}/${name}`
     await mkdir(path)
     await refresh()
@@ -68,7 +74,6 @@ export function useFileTree() {
   }
 
   async function renameFile(oldPath: string, newName: string): Promise<string> {
-    const { rename } = await import('@tauri-apps/plugin-fs')
     const lastSep = Math.max(oldPath.lastIndexOf('/'), oldPath.lastIndexOf('\\'))
     const dir = oldPath.substring(0, lastSep)
     const sep = oldPath.includes('\\') ? '\\' : '/'
@@ -79,13 +84,11 @@ export function useFileTree() {
   }
 
   async function deleteFile(path: string): Promise<void> {
-    const { remove } = await import('@tauri-apps/plugin-fs')
     await remove(path)
     await refresh()
   }
 
   async function copyFileTo(srcPath: string, destDir: string): Promise<string> {
-    const { copyFile } = await import('@tauri-apps/plugin-fs')
     const lastSep = Math.max(srcPath.lastIndexOf('/'), srcPath.lastIndexOf('\\'))
     const name = srcPath.substring(lastSep + 1)
     const sep = destDir.includes('\\') ? '\\' : '/'
@@ -133,7 +136,6 @@ export function useFileTree() {
 }
 
 async function resolveUniqueName(destPath: string): Promise<string> {
-  const { exists } = await import('@tauri-apps/plugin-fs')
   if (!await exists(destPath)) return destPath
   const dotIdx = destPath.lastIndexOf('.')
   const base = dotIdx > 0 ? destPath.substring(0, dotIdx) : destPath

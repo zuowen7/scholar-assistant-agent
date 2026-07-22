@@ -43,14 +43,14 @@ function extractMath(text: string): { text: string; blocks: string[] } {
   let result = text.replace(/\$\$([\s\S]*?)\$\$/g, (_, math) => {
     const idx = blocks.length
     blocks.push(renderKatex(math, true))
-    return `\x00MATH${idx}\x00`
+    return `\uE000MATH${idx}\uE001`
   })
 
   // Inline math: $...$
-  result = result.replace(/\$([^\$\n]+?)\$/g, (_, math) => {
+  result = result.replace(/\$([^$\n]+?)\$/g, (_, math) => {
     const idx = blocks.length
     blocks.push(renderKatex(math, false))
-    return `\x00MATH${idx}\x00`
+    return `\uE000MATH${idx}\uE001`
   })
 
   return { text: result, blocks }
@@ -98,8 +98,8 @@ const renderedHtml = computed(() => {
 
   // Protect KaTeX output from XSS cleanup
   const katexBlocks: string[] = []
-  let protectedHtml = raw.replace(/\x00MATH(\d+)\x00/g, (_, idx) => {
-    const ph = `\x00KX${katexBlocks.length}\x00`
+  let protectedHtml = raw.replace(/\uE000MATH(\d+)\uE001/g, (_, idx) => {
+    const ph = `\uE000KX${katexBlocks.length}\uE001`
     katexBlocks.push(blocks[parseInt(idx)])
     return ph
   })
@@ -110,7 +110,7 @@ const renderedHtml = computed(() => {
   })
 
   // Restore KaTeX blocks, then sanitize once more to catch any XSS in KaTeX output
-  protectedHtml = protectedHtml.replace(/\x00KX(\d+)\x00/g, (_, idx) => katexBlocks[parseInt(idx)] ?? '')
+  protectedHtml = protectedHtml.replace(/\uE000KX(\d+)\uE001/g, (_, idx) => katexBlocks[parseInt(idx)] ?? '')
   return DOMPurify.sanitize(protectedHtml, {
     ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac',
                'munder', 'mover', 'munderover', 'mtext', 'mspace', 'mstyle', 'mpadded',

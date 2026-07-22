@@ -1,10 +1,10 @@
 <template>
-  <div class="ai-chat-panel">
+  <div class="ai-chat-panel" :class="{ 'workspace-variant': workspaceVariant }">
     <!-- Header -->
     <div class="ac-header">
       <div class="ac-title-row">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-        <span class="ac-title">{{ t('aiPanel.title') }}</span>
+        <span class="ac-title">{{ workspaceVariant ? t('aiPanel.writingTitle') : t('aiPanel.title') }}</span>
       </div>
       <div class="ac-header-actions">
         <button class="ac-icon-btn u-interactive" @click="clearHistory" :title="t('aiPanel.clear')" :disabled="messages.length===0||streaming">
@@ -23,6 +23,13 @@
     <div class="ac-context" v-if="editorContext">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
       <span>{{ t('aiPanel.contextChars', { count: editorContext.length }) }}</span>
+    </div>
+
+    <div v-if="workspaceVariant && !streaming" class="workspace-actions">
+      <button type="button" class="primary" @click="sendPreset('polish')">✦ {{ t('aiPanel.workspacePolish') }}</button>
+      <button type="button" @click="sendPreset('expand')">↗ {{ t('aiPanel.workspaceExpand') }}</button>
+      <button type="button" @click="sendPreset('rewrite')">↻ {{ t('aiPanel.workspaceRewrite') }}</button>
+      <button type="button" @click="input = t('aiPanel.compliancePrompt'); send()">✓ {{ t('aiPanel.workspaceCompliance') }}</button>
     </div>
 
     <!-- Thinking scan bar -->
@@ -182,10 +189,11 @@ import AgentApprovalInline from './AgentApprovalInline.vue'
 import type { PendingApproval } from '../composables/useAgentChat'
 import { useFileTree } from '../composables/useFileTree'
 import { useEditorState } from '../composables/useEditorState'
-import { setContent } from '../composables/useEditorTabs'
 import { useEditor } from '../composables/useEditor'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
-import { setSpeechBusy } from '../composables/useSpeechBusy'
+import { useToast } from '../composables/useToast'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
+import { readTextFile } from '@tauri-apps/plugin-fs'
 import { Mic } from './ui/icons'
 
 let voiceBaseInput = ''
@@ -198,11 +206,9 @@ function togglePanelSpeech() {
   if (panelSpeech.status.value === 'listening') {
     voiceBaseInput = ''
     panelSpeech.stop()
-    setSpeechBusy(false)
     inputRef.value?.focus()
   } else {
     voiceBaseInput = input.value
-    setSpeechBusy(true)
     panelSpeech.start()
   }
 }
@@ -212,6 +218,7 @@ const props = defineProps<{
   activeFile?: string | null
   canUndo?: boolean
   workspaceFiles?: { name: string; content?: string }[]
+  workspaceVariant?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -240,8 +247,9 @@ let copiedTimer: ReturnType<typeof setTimeout> | null = null
 const acSessionId = ref<string | null>(null)
 const pendingApproval = ref<PendingApproval | null>(null)
 const { rootDir, refresh: refreshFileTree } = useFileTree()
-const { tabs: editorTabs, setActiveEdit, clearActiveEdit, contentVersion, activeTab } = useEditorState()
-const { reloadOpenTabs } = useEditor()
+const { tabs: editorTabs, setActiveEdit, clearActiveEdit } = useEditorState()
+const { reloadOpenTabs, applyExternalFileUpdate } = useEditor()
+const { warn: showWarning } = useToast()
 
 const normPath = (p: string) => p.replace(/\\/g, '/').toLowerCase()
 
@@ -354,8 +362,7 @@ function renderMd(text: string, msgId: string): string {
 // ── File operations ─────────────────────────────────────────
 async function attachFile() {
   try {
-    const { open } = await import('@tauri-apps/plugin-dialog')
-    const selected = await open({
+    const selected = await openDialog({
       multiple: true,
       filters: [{ name: 'Text', extensions: ['md','txt','tex','py','js','ts','json','yaml','yml','xml','html','css','csv','pdf'] }]
     })
@@ -365,7 +372,6 @@ async function attachFile() {
       const name = p.split(/[\\/]/).pop() || p
       if (files.value.some(f => f.name === name)) continue
       try {
-        const { readTextFile } = await import('@tauri-apps/plugin-fs')
         const content = await readTextFile(p)
         files.value.push({ name, content })
       } catch { /* skip unreadable files */ }
@@ -399,11 +405,8 @@ async function sendPreset(action: string) {
   if (streaming.value) return
   const ctx = props.editorContext?.trim()
   const instructions: Record<string, string> = {
-    polish: '润色当前打开的文件：改进语法、用词和流畅度，保持原意，直接编辑文件。',
-    expand: '扩写当前打开的文件：补充细节、论证和支撑内容，直接编辑文件。',
-    review: '审阅当前打开的文件：指出问题并给出改进建议，把意见写在文件末尾。',
-    en: '把当前打开的文件翻译成学术英文，保存为新文件。',
-    zh: '把当前打开的文件翻译成学术中文，保存为新文件。',
+    polish: t('aiPanel.prompts.polish'), expand: t('aiPanel.prompts.expand'), rewrite: t('aiPanel.prompts.rewrite'), review: t('aiPanel.prompts.review'),
+    en: t('aiPanel.prompts.en'), zh: t('aiPanel.prompts.zh'),
   }
   const instruction = instructions[action] || action
   if (!ctx && !props.activeFile) {
@@ -411,11 +414,59 @@ async function sendPreset(action: string) {
     scrollBottom()
     return
   }
-  const fileHint = props.activeFile ? `\n当前文件: ${props.activeFile}` : ''
-  await doSend(`${instruction}${fileHint}`)
+  const fileHint = props.activeFile ? `\n${t('aiPanel.currentFile', { file: props.activeFile })}` : ''
+  await doEdit(ctx || '', `${instruction}${fileHint}`, action)
 }
 
-// 一次性文本改写：调用 /api/edit（无工具、不可能循环），流式写入聊天面板。
+// Presets are one-shot editor transforms. They intentionally bypass Agent V2:
+// no tools, approvals, workspace writes, or session state are involved.
+async function doEdit(text: string, instruction: string, taskType: string) {
+  pendingApproval.value = null
+  acSessionId.value = null
+  messages.value.push({ id: crypto.randomUUID(), role: 'user', content: instruction })
+  scrollBottom()
+
+  streaming.value = true
+  streamContent.value = ''
+  thinkingText.value = t('aiPanel.editing')
+  aiAbortCtrl.value = new AbortController()
+
+  try {
+    const response = await fetch(`${API}/api/edit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, instruction, task_type: taskType }),
+      signal: aiAbortCtrl.value.signal,
+    })
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({ detail: t('aiPanel.requestFailed') }))
+      throw new Error(detail.detail || `HTTP ${response.status}`)
+    }
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error(t('aiPanel.responseEmpty'))
+    await readSseStream(reader, (eventType, event) => {
+      if (eventType === 'error') {
+        streamContent.value = (event.message as string) || (event.content as string) || t('aiPanel.error')
+      } else if (event.content) {
+        // /api/edit emits the complete accumulated result on every delta.
+        streamContent.value = event.content as string
+      }
+      scrollBottom()
+    }, aiAbortCtrl.value.signal)
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') return
+    streamContent.value = t('aiPanel.errorPrefix', { msg: error instanceof Error ? error.message : String(error) })
+  } finally {
+    streaming.value = false
+    thinkingText.value = ''
+    if (streamContent.value) messages.value.push({ id: crypto.randomUUID(), role: 'assistant', content: streamContent.value })
+    streamContent.value = ''
+    aiAbortCtrl.value = null
+    scrollBottom()
+  }
+}
+
+// Free-form tasks keep the full Agent V2 path and its tools/approval protocol.
 async function doSend(text: string) {
   pendingApproval.value = null
   acSessionId.value = null
@@ -520,20 +571,16 @@ async function doSend(text: string) {
       else if (evtType === 'checkpoint') {
         const cpFile = meta?.file as string | undefined
         const cpContent = meta?.content as string | undefined
-        if (cpFile && cpContent) {
-          const tab = editorTabs.value.find((t: any) => t.path && normPath(t.path) === normPath(cpFile))
-          if (tab) {
-            const changed = tab.content !== cpContent
-            tab.content = cpContent
-            tab.isModified = false
-            contentVersion.value++
-            if (changed && tab.id === activeTab.value?.id) {
-              setContent(cpContent)
-            }
+        const contentTruncated = Boolean(meta?.content_truncated)
+        if (cpFile && cpContent && !contentTruncated) {
+          const result = applyExternalFileUpdate(cpFile, cpContent)
+          if (result === 'conflict') {
+            const name = cpFile.split(/[\\/]/).pop() || cpFile
+            showWarning(t('agent.unsavedFileConflict', { name }), 8000)
           }
         }
-        refreshFileTree()
-        reloadOpenTabs()
+        void refreshFileTree()
+        void reloadOpenTabs()
       }
     })
   } catch (e) {
@@ -753,4 +800,18 @@ defineExpose({ sendPreset })
   30%            { transform: translateY(-5px); opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) { .dot-wave i { animation: none; opacity: .7; } }
+
+/* Reference-driven editor variant */
+.workspace-variant { background: var(--c-panel); border: 0; }
+.workspace-variant .ac-header { height: 54px; padding: 0 15px; border-color: var(--c-border); background: var(--c-panel); }
+.workspace-variant .ac-title { color: var(--c-text-0); font-size: 14px; font-weight: 650; }
+.workspace-variant .ac-context { margin: 10px 12px 0; padding: 7px 9px; border: 1px solid #DDE0FF; border-radius: 7px; background: var(--c-accent-soft); color: var(--c-accent); }
+.workspace-actions { display: grid; gap: 8px; padding: 12px; }
+.workspace-actions button { min-height: 42px; padding: 0 13px; border: 1px solid var(--c-border); border-radius: 9px; background: var(--c-panel); color: var(--c-text-1); font: 500 12px/1.3 var(--font-sans), var(--font-zh); text-align: left; cursor: pointer; }
+.workspace-actions button:hover { border-color: #CDD2FF; background: var(--c-accent-soft); color: var(--c-accent); }
+.workspace-actions button.primary { border-color: transparent; background: var(--c-accent-soft); color: var(--c-accent); font-weight: 650; }
+.workspace-variant .ac-empty { display: none; }
+.workspace-variant .ac-messages { padding: 0 12px 12px; }
+.workspace-variant .ac-presets { display: none; }
+.workspace-variant .ac-input-area { margin: 0 10px 10px; border: 1px solid var(--c-border); border-radius: 9px; background: var(--c-panel); }
 </style>

@@ -1,0 +1,3 @@
+Large language models can support academic writing, but their suggestions must remain traceable to evidence. This short document is used to verify the real translation, retry, reading, and export workflow.
+
+Reliable research software should preserve user intent, surface failures clearly, and avoid overwriting unsaved work.

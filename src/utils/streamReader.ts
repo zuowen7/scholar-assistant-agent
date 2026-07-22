@@ -37,7 +37,11 @@ export async function readSseStream(
       const lines = buffer.split('\n')
       buffer = lines.pop() || ''
 
-      for (const line of lines) {
+      for (const rawLine of lines) {
+        // EventSourceResponse uses CRLF separators. Keep payload content intact,
+        // but normalize the protocol delimiter so a paused approval event is
+        // flushed immediately instead of waiting for the next SSE event.
+        const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
         if (line.startsWith(':')) continue
         if (line.startsWith('event:')) {
           flush()
