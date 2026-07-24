@@ -75,11 +75,13 @@ describe('useWakeWord', () => {
     // Exact match
     mockSRInstance.onresult({
       resultIndex: 0,
-      results: [{
-        0: { transcript: '小研 帮我翻译' },
-        length: 1,
-        isFinal: true,
-      }],
+      results: [
+        {
+          0: { transcript: '小研 帮我翻译' },
+          length: 1,
+          isFinal: true,
+        },
+      ],
     })
     expect(callback).toHaveBeenCalledTimes(1)
     stopWakeWord()
@@ -94,18 +96,23 @@ describe('useWakeWord', () => {
     // Homophone — speech recognition hears "严" instead of "研"
     mockSRInstance.onresult({
       resultIndex: 0,
-      results: [{
-        0: { transcript: '小严 帮我翻译' },
-        length: 1,
-        isFinal: true,
-      }],
+      results: [
+        {
+          0: { transcript: '小严 帮我翻译' },
+          length: 1,
+          isFinal: true,
+        },
+      ],
     })
     expect(callback).toHaveBeenCalledTimes(1)
     stopWakeWord()
   })
 
   it('low sensitivity ignores homophones', async () => {
-    localStorage.setItem('voice-settings', JSON.stringify({ wakeWordPhrase: '小研', sensitivity: 'low' }))
+    localStorage.setItem(
+      'voice-settings',
+      JSON.stringify({ wakeWordPhrase: '小研', sensitivity: 'low' }),
+    )
     const callback = vi.fn()
     const useWakeWord = await getFresh()
     const { startWakeWord, stopWakeWord } = useWakeWord(callback)
@@ -120,7 +127,10 @@ describe('useWakeWord', () => {
   })
 
   it('medium sensitivity waits for a final recognition result', async () => {
-    localStorage.setItem('voice-settings', JSON.stringify({ wakeWordPhrase: '小研', sensitivity: 'medium' }))
+    localStorage.setItem(
+      'voice-settings',
+      JSON.stringify({ wakeWordPhrase: '小研', sensitivity: 'medium' }),
+    )
     const callback = vi.fn()
     const useWakeWord = await getFresh()
     const { startWakeWord, stopWakeWord } = useWakeWord(callback)
@@ -135,7 +145,10 @@ describe('useWakeWord', () => {
   })
 
   it('high sensitivity can react to an interim recognition result', async () => {
-    localStorage.setItem('voice-settings', JSON.stringify({ wakeWordPhrase: '小研', sensitivity: 'high' }))
+    localStorage.setItem(
+      'voice-settings',
+      JSON.stringify({ wakeWordPhrase: '小研', sensitivity: 'high' }),
+    )
     const callback = vi.fn()
     const useWakeWord = await getFresh()
     const { startWakeWord, stopWakeWord } = useWakeWord(callback)
@@ -157,11 +170,13 @@ describe('useWakeWord', () => {
 
     mockSRInstance.onresult({
       resultIndex: 0,
-      results: [{
-        0: { transcript: '你好小言帮我翻译' },
-        length: 1,
-        isFinal: true,
-      }],
+      results: [
+        {
+          0: { transcript: '你好小言帮我翻译' },
+          length: 1,
+          isFinal: true,
+        },
+      ],
     })
     expect(callback).toHaveBeenCalledTimes(1)
     stopWakeWord()
@@ -175,11 +190,13 @@ describe('useWakeWord', () => {
 
     mockSRInstance.onresult({
       resultIndex: 0,
-      results: [{
-        0: { transcript: '今天天气不错' },
-        length: 1,
-        isFinal: true,
-      }],
+      results: [
+        {
+          0: { transcript: '今天天气不错' },
+          length: 1,
+          isFinal: true,
+        },
+      ],
     })
     expect(callback).not.toHaveBeenCalled()
     stopWakeWord()
@@ -262,22 +279,26 @@ describe('useWakeWord', () => {
     // Should NOT trigger on "小研"
     mockSRInstance.onresult({
       resultIndex: 0,
-      results: [{
-        0: { transcript: '小研 帮我翻译' },
-        length: 1,
-        isFinal: true,
-      }],
+      results: [
+        {
+          0: { transcript: '小研 帮我翻译' },
+          length: 1,
+          isFinal: true,
+        },
+      ],
     })
     expect(callback).not.toHaveBeenCalled()
 
     // Should trigger on "你好助手"
     mockSRInstance.onresult({
       resultIndex: 0,
-      results: [{
-        0: { transcript: '你好助手 帮我翻译' },
-        length: 1,
-        isFinal: true,
-      }],
+      results: [
+        {
+          0: { transcript: '你好助手 帮我翻译' },
+          length: 1,
+          isFinal: true,
+        },
+      ],
     })
     expect(callback).toHaveBeenCalledTimes(1)
 

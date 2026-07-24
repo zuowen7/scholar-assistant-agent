@@ -9,7 +9,9 @@ function getWakeWordPhrase(): string {
       const s = JSON.parse(raw)
       if (s.wakeWordPhrase) return s.wakeWordPhrase
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return '小研'
 }
 
@@ -20,20 +22,22 @@ function getWakeWordSensitivity(): 'low' | 'medium' | 'high' {
       const value = JSON.parse(raw).sensitivity
       if (value === 'low' || value === 'medium' || value === 'high') return value
     }
-  } catch { /* ignore invalid settings */ }
+  } catch {
+    /* ignore invalid settings */
+  }
   return 'medium'
 }
 
 // Common homophones for wake word characters — speech recognition often
 // picks different characters for the same sound
 const HOMOPHONE_GROUPS: Record<string, string[]> = {
-  '研': ['研', '严', '言', '岩', '颜', '盐', '炎', '延'],
-  '小': ['小', '晓', '筱'],
-  '你': ['你', '尼', '拟'],
-  '好': ['好', '号'],
-  '贾': ['贾', '假', '甲', '加', '家', '佳'],
-  '维': ['维', '围', '唯', '微', '韦', '威'],
-  '斯': ['斯', '丝', '司', '思', '私', '撕'],
+  研: ['研', '严', '言', '岩', '颜', '盐', '炎', '延'],
+  小: ['小', '晓', '筱'],
+  你: ['你', '尼', '拟'],
+  好: ['好', '号'],
+  贾: ['贾', '假', '甲', '加', '家', '佳'],
+  维: ['维', '围', '唯', '微', '韦', '威'],
+  斯: ['斯', '丝', '司', '思', '私', '撕'],
 }
 
 function buildVariants(phrase: string): string[] {
@@ -45,9 +49,9 @@ function buildVariants(phrase: string): string[] {
   for (const char of phrase) {
     const group = HOMOPHONE_GROUPS[char]
     if (group) {
-      variants = variants.flatMap(v => group.map(g => v + g))
+      variants = variants.flatMap((v) => group.map((g) => v + g))
     } else {
-      variants = variants.map(v => v + char)
+      variants = variants.map((v) => v + char)
     }
   }
   return variants
@@ -80,7 +84,8 @@ export function useWakeWord(onWakeWord: () => void) {
   let restartTimer: ReturnType<typeof setTimeout> | null = null
   let cooldown = false
 
-  const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+  const SpeechRecognition =
+    (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
 
   async function startWakeWord() {
     if (active.value) return
@@ -110,11 +115,17 @@ export function useWakeWord(onWakeWord: () => void) {
             if (matchWakeWord(text, sensitivity)) {
               logger.debug('[wake-word] MATCH:', text)
               // Stop listening immediately to prevent re-triggering
-              try { sr?.stop() } catch { /* ignore */ }
+              try {
+                sr?.stop()
+              } catch {
+                /* ignore */
+              }
               cooldown = true
               onWakeWord()
               // Cooldown: ignore matches for 5 seconds
-              setTimeout(() => { cooldown = false }, 5000)
+              setTimeout(() => {
+                cooldown = false
+              }, 5000)
               return
             }
           }
@@ -166,11 +177,18 @@ export function useWakeWord(onWakeWord: () => void) {
   }
 
   function stopWakeWord() {
-    if (restartTimer) { clearTimeout(restartTimer); restartTimer = null }
+    if (restartTimer) {
+      clearTimeout(restartTimer)
+      restartTimer = null
+    }
     restarting = false
     pausedByDictation = false
     if (sr) {
-      try { sr.stop() } catch { /* ignore */ }
+      try {
+        sr.stop()
+      } catch {
+        /* ignore */
+      }
       sr = null
     }
     active.value = false
@@ -179,12 +197,20 @@ export function useWakeWord(onWakeWord: () => void) {
   // Auto-pause on blur/hidden, resume on focus
   function onBlur() {
     if (active.value) {
-      try { sr?.stop() } catch { /* ignore */ }
+      try {
+        sr?.stop()
+      } catch {
+        /* ignore */
+      }
     }
   }
   function onFocus() {
     if (active.value && !pausedByDictation) {
-      try { sr?.start() } catch { /* ignore */ }
+      try {
+        sr?.start()
+      } catch {
+        /* ignore */
+      }
     }
   }
   function onVisibility() {
@@ -196,17 +222,29 @@ export function useWakeWord(onWakeWord: () => void) {
   // Only one SpeechRecognition can be active at a time on most platforms.
   // Use flush:'sync' so the wake word SR is stopped BEFORE the dictation SR starts.
   let pausedByDictation = false
-  const stopSpeechBusyWatch = watch(speechBusyCount, (count) => {
-    if (count > 0 && active.value && !pausedByDictation) {
-      pausedByDictation = true
-      try { sr?.stop() } catch { /* ignore */ }
-    } else if (count === 0 && pausedByDictation) {
-      pausedByDictation = false
-      if (active.value) {
-        try { sr?.start() } catch { /* ignore */ }
+  const stopSpeechBusyWatch = watch(
+    speechBusyCount,
+    (count) => {
+      if (count > 0 && active.value && !pausedByDictation) {
+        pausedByDictation = true
+        try {
+          sr?.stop()
+        } catch {
+          /* ignore */
+        }
+      } else if (count === 0 && pausedByDictation) {
+        pausedByDictation = false
+        if (active.value) {
+          try {
+            sr?.start()
+          } catch {
+            /* ignore */
+          }
+        }
       }
-    }
-  }, { flush: 'sync' })
+    },
+    { flush: 'sync' },
+  )
 
   // Register listeners once (they check active.value)
   window.addEventListener('blur', onBlur)

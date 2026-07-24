@@ -6,12 +6,15 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { renderMarkdown } from '../utils/markdown'
 
-const props = withDefaults(defineProps<{
-  source: string
-  streaming?: boolean
-}>(), {
-  streaming: false,
-})
+const props = withDefaults(
+  defineProps<{
+    source: string
+    streaming?: boolean
+  }>(),
+  {
+    streaming: false,
+  },
+)
 
 // Parsing + KaTeX + sanitizing is comparatively expensive. During SSE
 // streaming, coalesce token bursts while still flushing the final response
@@ -26,18 +29,21 @@ function clearRenderTimer() {
   }
 }
 
-watch(() => [props.source, props.streaming] as const, ([source, streaming]) => {
-  if (!streaming) {
-    clearRenderTimer()
-    renderedSource.value = source
-    return
-  }
-  if (renderTimer !== null) return
-  renderTimer = setTimeout(() => {
-    renderTimer = null
-    renderedSource.value = props.source
-  }, 40)
-})
+watch(
+  () => [props.source, props.streaming] as const,
+  ([source, streaming]) => {
+    if (!streaming) {
+      clearRenderTimer()
+      renderedSource.value = source
+      return
+    }
+    if (renderTimer !== null) return
+    renderTimer = setTimeout(() => {
+      renderTimer = null
+      renderedSource.value = props.source
+    }, 40)
+  },
+)
 
 onBeforeUnmount(clearRenderTimer)
 

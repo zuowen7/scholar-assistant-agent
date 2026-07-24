@@ -160,7 +160,9 @@ defineEmits<{
   animation: anim-fade-in-up var(--motion-slow) var(--ease-out) both;
   animation-delay: calc(var(--stagger-i, 0) * var(--motion-stagger));
 }
-.skeleton-card :deep(.ui-skeleton.circle) { margin-top: 4px; }
+.skeleton-card :deep(.ui-skeleton.circle) {
+  margin-top: 4px;
+}
 .skeleton-lines {
   flex: 1;
   min-width: 0;

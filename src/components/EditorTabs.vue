@@ -32,7 +32,12 @@
         </button>
       </TransitionGroup>
     </div>
-    <button class="new-tab-btn" :title="t('editor.tabNewFile')" :aria-label="t('editor.tabNewFile')" @click="openNewUntitled">
+    <button
+      class="new-tab-btn"
+      :title="t('editor.tabNewFile')"
+      :aria-label="t('editor.tabNewFile')"
+      @click="openNewUntitled"
+    >
       <Plus :size="14" :stroke-width="2" />
     </button>
   </div>
@@ -67,7 +72,9 @@ const { tabs, activeTabId, setActiveTab, closeTab, openNewUntitled } = useEditor
   overflow-y: hidden;
   scrollbar-width: none;
 }
-.tabs-scroll::-webkit-scrollbar { display: none; }
+.tabs-scroll::-webkit-scrollbar {
+  display: none;
+}
 
 .tab-item {
   position: relative;
@@ -86,8 +93,9 @@ const { tabs, activeTabId, setActiveTab, closeTab, openNewUntitled } = useEditor
   font: inherit;
   font-size: var(--text-sm);
   white-space: nowrap;
-  transition: background var(--motion-fast) var(--ease-out),
-              color var(--motion-fast) var(--ease-out);
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
 }
 
 /* Bottom accent line for active tab — grows from center */
@@ -100,20 +108,47 @@ const { tabs, activeTabId, setActiveTab, closeTab, openNewUntitled } = useEditor
   height: 2px;
   background: var(--vermilion-0);
   opacity: 0;
-  transition: left var(--motion-base) var(--ease-spring),
-              right var(--motion-base) var(--ease-spring),
-              opacity var(--motion-fast) var(--ease-out);
+  transition:
+    left var(--motion-base) var(--ease-spring),
+    right var(--motion-base) var(--ease-spring),
+    opacity var(--motion-fast) var(--ease-out);
 }
 
-.tab-item:hover { background: var(--c-surface-4); color: var(--c-text-1); }
-.tab-item:active { background: var(--c-surface-5); }
-.tab-item:focus-visible { outline: none; box-shadow: inset var(--ring-focus); }
-.tab-item.active { background: var(--c-surface-2); color: var(--c-text-0); }
-.tab-item.active::after { left: 0; right: 0; opacity: 1; }
+.tab-item:hover {
+  background: var(--c-surface-4);
+  color: var(--c-text-1);
+}
+.tab-item:active {
+  background: var(--c-surface-5);
+}
+.tab-item:focus-visible {
+  outline: none;
+  box-shadow: inset var(--ring-focus);
+}
+.tab-item.active {
+  background: var(--c-surface-2);
+  color: var(--c-text-0);
+}
+.tab-item.active::after {
+  left: 0;
+  right: 0;
+  opacity: 1;
+}
 
-.tab-icon { flex-shrink: 0; opacity: 0.45; transition: opacity var(--motion-fast), color var(--motion-fast); }
-.tab-item:hover .tab-icon { opacity: 0.65; }
-.tab-item.active .tab-icon { opacity: 0.7; color: var(--c-accent); }
+.tab-icon {
+  flex-shrink: 0;
+  opacity: 0.45;
+  transition:
+    opacity var(--motion-fast),
+    color var(--motion-fast);
+}
+.tab-item:hover .tab-icon {
+  opacity: 0.65;
+}
+.tab-item.active .tab-icon {
+  opacity: 0.7;
+  color: var(--c-accent);
+}
 
 .tab-name {
   min-width: 0;
@@ -133,8 +168,13 @@ const { tabs, activeTabId, setActiveTab, closeTab, openNewUntitled } = useEditor
   animation: dot-pulse 2s var(--ease-smooth) infinite;
 }
 @keyframes dot-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 var(--c-accent-ring); }
-  50%      { box-shadow: 0 0 0 3px transparent; }
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--c-accent-ring);
+  }
+  50% {
+    box-shadow: 0 0 0 3px transparent;
+  }
 }
 
 .tab-close {
@@ -148,15 +188,26 @@ const { tabs, activeTabId, setActiveTab, closeTab, openNewUntitled } = useEditor
   color: var(--c-text-3);
   opacity: 0;
   transform: scale(0.8);
-  transition: opacity var(--motion-fast) var(--ease-out),
-              transform var(--motion-fast) var(--ease-spring),
-              background var(--motion-fast), color var(--motion-fast);
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-spring),
+    background var(--motion-fast),
+    color var(--motion-fast);
   cursor: pointer;
 }
 .tab-item:hover .tab-close,
-.tab-item.active .tab-close { opacity: 1; transform: scale(1); }
-.tab-close:hover { background: var(--c-danger-bg); color: var(--c-danger); transform: scale(1.12); }
-.tab-close:active { transform: scale(0.9); }
+.tab-item.active .tab-close {
+  opacity: 1;
+  transform: scale(1);
+}
+.tab-close:hover {
+  background: var(--c-danger-bg);
+  color: var(--c-danger);
+  transform: scale(1.12);
+}
+.tab-close:active {
+  transform: scale(0.9);
+}
 
 .new-tab-btn {
   flex-shrink: 0;
@@ -169,16 +220,35 @@ const { tabs, activeTabId, setActiveTab, closeTab, openNewUntitled } = useEditor
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background var(--motion-fast), color var(--motion-fast), transform var(--motion-fast) var(--ease-spring);
+  transition:
+    background var(--motion-fast),
+    color var(--motion-fast),
+    transform var(--motion-fast) var(--ease-spring);
 }
-.new-tab-btn:hover { background: var(--c-surface-4); color: var(--c-text-0); }
-.new-tab-btn:hover :deep(svg) { transform: rotate(90deg); }
-.new-tab-btn :deep(svg) { transition: transform var(--motion-base) var(--ease-spring); }
-.new-tab-btn:active { transform: scale(0.9); }
-.new-tab-btn:focus-visible { outline: none; box-shadow: inset var(--ring-focus); }
+.new-tab-btn:hover {
+  background: var(--c-surface-4);
+  color: var(--c-text-0);
+}
+.new-tab-btn:hover :deep(svg) {
+  transform: rotate(90deg);
+}
+.new-tab-btn :deep(svg) {
+  transition: transform var(--motion-base) var(--ease-spring);
+}
+.new-tab-btn:active {
+  transform: scale(0.9);
+}
+.new-tab-btn:focus-visible {
+  outline: none;
+  box-shadow: inset var(--ring-focus);
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .modified-dot { animation: none; }
-  .new-tab-btn:hover :deep(svg) { transform: none; }
+  .modified-dot {
+    animation: none;
+  }
+  .new-tab-btn:hover :deep(svg) {
+    transform: none;
+  }
 }
 </style>

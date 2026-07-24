@@ -1,435 +1,620 @@
 <template>
   <div class="topbar-wrapper">
-  <header class="topbar" data-tauri-drag-region @mousedown="onTopbarMouseDown">
+    <header class="topbar" data-tauri-drag-region @mousedown="onTopbarMouseDown">
+      <!-- ── Left: Brand ──────────────────────────────────────── -->
+      <div class="brand" data-tauri-drag-region>
+        <div class="logo" aria-hidden="true">研</div>
+        <span class="brand-name">研墨</span>
+      </div>
 
-    <!-- ── Left: Brand ──────────────────────────────────────── -->
-    <div class="brand" data-tauri-drag-region>
-      <div class="logo" aria-hidden="true">研</div>
-      <span class="brand-name">研墨</span>
-    </div>
+      <!-- ── Project indicator ────────────────────────────────── -->
+      <div v-if="currentProject" class="project-chip" :title="currentProject.name">
+        <span class="project-chip-name">{{ currentProject.name }}</span>
+        <button
+          class="project-chip-close"
+          :aria-label="t('project.closeProject')"
+          @click="handleCloseProject"
+        >
+          <X :size="12" />
+        </button>
+      </div>
 
-    <!-- ── Project indicator ────────────────────────────────── -->
-    <div v-if="currentProject" class="project-chip" :title="currentProject.name">
-      <span class="project-chip-name">{{ currentProject.name }}</span>
-      <button class="project-chip-close" :aria-label="t('project.closeProject')" @click="handleCloseProject">
-        <X :size="12" />
-      </button>
-    </div>
+      <!-- ── Center: Mode switch ─────────────────────────────── -->
+      <div class="topbar-center" data-tauri-drag-region>
+        <UiSegmented
+          :model-value="appMode"
+          :options="modeOptions"
+          size="sm"
+          vermilion-indicator
+          @update:model-value="$emit('update:appMode', $event as any)"
+        />
+      </div>
 
-    <!-- ── Center: Mode switch ─────────────────────────────── -->
-    <div class="topbar-center" data-tauri-drag-region>
-      <UiSegmented
-        :model-value="appMode"
-        :options="modeOptions"
-        size="sm"
-        vermilion-indicator
-        @update:model-value="$emit('update:appMode', $event as any)"
-      />
-    </div>
-
-    <!-- ── Right: Actions ──────────────────────────────────── -->
-    <div class="topbar-right">
-
-      <!-- Status dot + engine chip -->
-      <UiPopover ref="statusPopoverRef" :width="300" align="end" :offset="8">
-        <template #trigger>
-          <button class="status-trigger" :class="overallStatus" :title="t('topbar.serviceStatus')" :aria-label="t('topbar.serviceStatus')">
-            <span class="status-dot" />
-            <span class="status-label">{{ engineType === 'ollama' ? 'Ollama' : t('topbar.cloud') }}</span>
-          </button>
-        </template>
-        <div class="status-popover">
-          <div class="sp-header">
-            <span class="sp-title">{{ t('topbar.serviceStatus') }}</span>
-          </div>
-
-          <div class="status-rows">
-            <div class="status-row">
-              <span class="sr-dot" :class="healthOk ? 'ok' : 'off'" />
-              <span class="sr-label">{{ t('topbar.backend') }}</span>
-              <span class="sr-state">{{ healthOk ? t('status.online') : t('status.offline') }}</span>
-            </div>
-            <template v-if="engineType === 'ollama'">
-              <div class="status-row">
-                <span class="sr-dot" :class="ollamaOk ? 'ok' : 'off'" />
-                <span class="sr-label">Ollama</span>
-                <span class="sr-state">
-                  <template v-if="ollamaLoading">{{ t('status.starting') }}</template>
-                  <template v-else>{{ ollamaOk ? t('status.online') : t('status.offline') }}</template>
-                </span>
-                <UiButton v-if="!ollamaOk && !ollamaLoading" variant="ghost" size="sm" @click="$emit('toggle-ollama')">{{ t('topbar.start') }}</UiButton>
-              </div>
-            </template>
-            <template v-else>
-              <div class="status-row">
-                <span class="sr-dot" :class="cloudOk ? 'ok' : 'off'" />
-                <span class="sr-label">{{ t('settings.cloudApi') }}</span>
-                <span class="sr-state">{{ cloudOk ? t('status.connected') : t('status.disconnected') }}</span>
-              </div>
-            </template>
-            <div class="status-row">
-              <span class="sr-dot" :class="tectonicOk ? 'ok' : 'off'" />
-              <span class="sr-label">LaTeX</span>
-              <span class="sr-state">{{ tectonicChecking ? t('status.detecting') : tectonicOk ? t('status.ready') : t('status.notInstalled') }}</span>
-              <UiButton v-if="!tectonicOk && !tectonicChecking" variant="ghost" size="sm" @click="$emit('handle-tectonic')">{{ t('topbar.install') }}</UiButton>
-            </div>
-          </div>
-
-          <div class="sp-divider" />
-
-          <!-- Engine switch inside popover -->
-          <div class="sp-section-label">{{ t('settings.engineLabel') }}</div>
-          <UiSegmented
-            :model-value="engineType"
-            :options="engineOptions"
-            size="sm"
-            full
-            @update:model-value="$emit('update:engineType', $event as any); $emit('save-engine-settings')"
-          />
-        </div>
-      </UiPopover>
-
-      <div class="topbar-sep" />
-
-      <!-- Unified Settings popover -->
-      <UiPopover ref="settingsPopoverRef" :width="380" align="end" :offset="8">
-        <template #trigger>
-          <button
-            class="topbar-icon-btn"
-            :class="{ active: settingsPopoverOpen }"
-            :title="t('topbar.settings')"
-          >
-            <Settings :size="15" :stroke-width="1.6" />
-          </button>
-        </template>
-
-        <div class="settings-popover">
-          <div class="sp-header">
-            <span class="sp-title">{{ t('topbar.settings') }}</span>
-          </div>
-          <UiSegmented
-            v-model="settingsTab"
-            :options="settingsTabOptions"
-            size="sm"
-            full
-            class="sp-tabs"
-          />
-
-          <div class="sp-lang-row">
-            <label class="sp-label">{{ t('settings.language') }}</label>
-            <UiSelect
-              :model-value="currentLocale"
-              @update:model-value="setLocale($event as any)"
+      <!-- ── Right: Actions ──────────────────────────────────── -->
+      <div class="topbar-right">
+        <!-- Status dot + engine chip -->
+        <UiPopover ref="statusPopoverRef" :width="300" align="end" :offset="8">
+          <template #trigger>
+            <button
+              class="status-trigger"
+              :class="overallStatus"
+              :title="t('topbar.serviceStatus')"
+              :aria-label="t('topbar.serviceStatus')"
             >
-              <option value="zh-CN">简体中文</option>
-              <option value="en-US">English</option>
-            </UiSelect>
-          </div>
+              <span class="status-dot" />
+              <span class="status-label">{{
+                engineType === 'ollama' ? 'Ollama' : t('topbar.cloud')
+              }}</span>
+            </button>
+          </template>
+          <div class="status-popover">
+            <div class="sp-header">
+              <span class="sp-title">{{ t('topbar.serviceStatus') }}</span>
+            </div>
 
-          <!-- Engine tab -->
-          <div v-show="settingsTab === 'engine'" class="sp-body">
+            <div class="status-rows">
+              <div class="status-row">
+                <span class="sr-dot" :class="healthOk ? 'ok' : 'off'" />
+                <span class="sr-label">{{ t('topbar.backend') }}</span>
+                <span class="sr-state">{{
+                  healthOk ? t('status.online') : t('status.offline')
+                }}</span>
+              </div>
+              <template v-if="engineType === 'ollama'">
+                <div class="status-row">
+                  <span class="sr-dot" :class="ollamaOk ? 'ok' : 'off'" />
+                  <span class="sr-label">Ollama</span>
+                  <span class="sr-state">
+                    <template v-if="ollamaLoading">{{ t('status.starting') }}</template>
+                    <template v-else>{{
+                      ollamaOk ? t('status.online') : t('status.offline')
+                    }}</template>
+                  </span>
+                  <UiButton
+                    v-if="!ollamaOk && !ollamaLoading"
+                    variant="ghost"
+                    size="sm"
+                    @click="$emit('toggle-ollama')"
+                    >{{ t('topbar.start') }}</UiButton
+                  >
+                </div>
+              </template>
+              <template v-else>
+                <div class="status-row">
+                  <span class="sr-dot" :class="cloudOk ? 'ok' : 'off'" />
+                  <span class="sr-label">{{ t('settings.cloudApi') }}</span>
+                  <span class="sr-state">{{
+                    cloudOk ? t('status.connected') : t('status.disconnected')
+                  }}</span>
+                </div>
+              </template>
+              <div class="status-row">
+                <span class="sr-dot" :class="tectonicOk ? 'ok' : 'off'" />
+                <span class="sr-label">LaTeX</span>
+                <span class="sr-state">{{
+                  tectonicChecking
+                    ? t('status.detecting')
+                    : tectonicOk
+                      ? t('status.ready')
+                      : t('status.notInstalled')
+                }}</span>
+                <UiButton
+                  v-if="!tectonicOk && !tectonicChecking"
+                  variant="ghost"
+                  size="sm"
+                  @click="$emit('handle-tectonic')"
+                  >{{ t('topbar.install') }}</UiButton
+                >
+              </div>
+            </div>
+
+            <div class="sp-divider" />
+
+            <!-- Engine switch inside popover -->
             <div class="sp-section-label">{{ t('settings.engineLabel') }}</div>
             <UiSegmented
               :model-value="engineType"
               :options="engineOptions"
               size="sm"
               full
-              @update:model-value="$emit('update:engineType', $event as any); $emit('save-engine-settings')"
-            />
-            <template v-if="engineType === 'cloud'">
-              <div class="sp-gap" />
-              <div class="sp-section-label">{{ t('settings.cloudConfig') }}</div>
-              <div class="sp-field">
-                <label class="sp-label">{{ t('settings.provider') }}</label>
-                <UiSelect
-                  :model-value="cloudConfig.provider"
-                  @update:model-value="$emit('update:cloudConfig', { ...cloudConfig, provider: $event }); $emit('provider-change', $event)"
-                >
-                  <option v-for="(preset, key) in providerPresets" :key="key" :value="key">{{ preset.name }}</option>
-                </UiSelect>
-              </div>
-              <div class="sp-field">
-                <label class="sp-label">API Key</label>
-                <UiInput
-                  type="password"
-                  :model-value="cloudConfig.api_key"
-                  :placeholder="t('settings.apiKeyPlaceholder')"
-                  @update:model-value="$emit('update:cloudConfig', { ...cloudConfig, api_key: $event })"
-                />
-              </div>
-              <div class="sp-field">
-                <label class="sp-label">Base URL</label>
-                <UiInput
-                  :model-value="cloudConfig.base_url"
-                  placeholder="https://api.openai.com/v1"
-                  @update:model-value="$emit('update:cloudConfig', { ...cloudConfig, base_url: $event })"
-                />
-              </div>
-              <div class="sp-field">
-                <label class="sp-label">{{ t('settings.model') }}</label>
-                <div class="sp-row">
-                  <UiInput
-                    :model-value="cloudConfig.model"
-                    placeholder="gpt-4o"
-                    @update:model-value="$emit('update:cloudConfig', { ...cloudConfig, model: $event })"
-                  />
-                  <UiSelect
-                    v-if="providerPresets[cloudConfig.provider]?.models?.length"
-                    class="sp-select-narrow"
-                    @update:model-value="$emit('update:cloudConfig', { ...cloudConfig, model: $event })"
-                  >
-                    <option value="" disabled selected>{{ t('settings.preset') }}</option>
-                    <option v-for="m in providerPresets[cloudConfig.provider]?.models" :key="m" :value="m">{{ m }}</option>
-                  </UiSelect>
-                </div>
-              </div>
-              <div class="sp-actions">
-                <UiButton variant="secondary" size="sm" :loading="cloudChecking" :disabled="!cloudConfig.api_key" @click="$emit('test-cloud')">{{ t('settings.testConnection') }}</UiButton>
-                <UiButton variant="primary" size="sm" @click="$emit('save-engine-settings')">{{ t('settings.save') }}</UiButton>
-              </div>
-              <div v-if="cloudConfig.api_key" class="sp-status" :class="cloudOk ? 'ok' : 'off'">
-                {{ cloudOk ? t('status.connected') : t('status.disconnected') }}
-              </div>
-              <div v-if="cloudError" class="sp-error">{{ cloudError }}</div>
-            </template>
-            <template v-if="engineType === 'ollama'">
-              <div class="sp-gap" />
-              <div class="sp-section-label">{{ t('settings.ollamaSettings') }}</div>
-              <div class="sp-field">
-                <label class="sp-label">{{ t('settings.localModel') }}</label>
-                <div class="sp-row">
-                  <UiSelect
-                    :model-value="ollamaModel"
-                    @update:model-value="$emit('update:ollamaModel', $event as string); $emit('save-engine-settings')"
-                  >
-                    <option v-if="ollamaModels.length === 0" :value="ollamaModel">{{ ollamaModel }}</option>
-                    <option v-for="m in ollamaModels" :key="m" :value="m">{{ m }}</option>
-                  </UiSelect>
-                  <UiButton variant="ghost" size="sm" :disabled="ollamaModelsLoading" @click="$emit('refreshOllamaModels')">
-                    {{ ollamaModelsLoading ? '...' : t('settings.refreshModels') }}
-                  </UiButton>
-                </div>
-              </div>
-              <div v-if="ollamaModels.length" class="sp-status ok">{{ t('settings.modelsAvailable', { count: ollamaModels.length }) }}</div>
-            </template>
-          </div>
-
-          <!-- Display tab -->
-          <div v-show="settingsTab === 'display'" class="sp-body">
-            <div class="sp-section-label">{{ t('settings.typography') }}</div>
-            <UiSlider
-              :label="t('settings.fontSize')"
-              :model-value="readSettings.fontSize"
-              :min="12"
-              :max="28"
-              suffix="px"
-              @update:model-value="$emit('font-size-change', $event)"
-            />
-            <UiSlider
-              :label="t('settings.lineHeight')"
-              :model-value="Math.round(readSettings.lineHeight * 10)"
-              :min="14"
-              :max="32"
-              @update:model-value="$emit('line-height-change', $event)"
-            />
-            <div class="sp-field">
-              <label class="sp-label">{{ t('settings.fontFamily') }}</label>
-              <UiSelect
-                :model-value="readSettings.fontFamily"
-                @update:model-value="$emit('font-family-change', $event)"
-              >
-                <option value="system-ui">{{ t('settings.systemDefault') }}</option>
-                <option value="'Noto Sans SC', sans-serif">思源黑体</option>
-                <option value="'Noto Serif SC', serif">思源宋体</option>
-                <option value="'LXGW WenKai', serif">霞鹜文楷</option>
-                <option value="'Microsoft YaHei', sans-serif">微软雅黑</option>
-                <option value="SimSun, serif">宋体</option>
-              </UiSelect>
-            </div>
-            <div class="sp-field">
-              <label class="sp-label">{{ t('settings.transColor') }}</label>
-              <div class="sp-color-row">
-                <input type="color" :value="readSettings.transColor" class="sp-color" @input="$emit('color-change', ($event.target as HTMLInputElement).value)" />
-                <span class="sp-color-hex">{{ readSettings.transColor }}</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Network tab -->
-          <div v-show="settingsTab === 'network'" class="sp-body">
-            <div class="sp-section-label">{{ t('settings.httpProxy') }}</div>
-            <div class="sp-field">
-              <label class="sp-label">{{ t('settings.proxyAddress') }}</label>
-              <UiInput
-                :model-value="proxyUrl"
-                :placeholder="t('settings.proxyPlaceholder')"
-                @update:model-value="$emit('update:proxyUrl', $event)"
-              />
-            </div>
-            <div class="sp-actions">
-              <UiButton variant="primary" size="sm" @click="$emit('save-proxy')">{{ t('settings.saveProxy') }}</UiButton>
-            </div>
-            <p class="sp-hint">{{ t('settings.proxyHint') }}</p>
-
-            <!-- Zotero API config -->
-            <div class="sp-section-label" style="margin-top: 14px;">{{ t('settings.zoteroApi') }}</div>
-            <div class="sp-field">
-              <label class="sp-label">{{ t('settings.apiKey') }}</label>
-              <UiInput
-                :model-value="zoteroApiKey"
-                :placeholder="zoteroHasStoredKey ? t('settings.zoteroKeyStored') : t('settings.zoteroKeyPlaceholder')"
-                type="password"
-                @update:model-value="zoteroApiKey = $event"
-              />
-            </div>
-            <div class="sp-field">
-              <label class="sp-label">{{ t('settings.zoteroUserId') }}</label>
-              <UiInput
-                :model-value="zoteroUserId"
-                :placeholder="t('settings.zoteroUserIdPlaceholder')"
-                @update:model-value="zoteroUserId = $event"
-              />
-            </div>
-            <div class="sp-actions">
-              <UiButton variant="primary" size="sm" :loading="zoteroSaving" @click="saveZoteroConfig">{{ t('settings.zoteroSave') }}</UiButton>
-              <UiButton variant="ghost" size="sm" :loading="zoteroChecking" @click="checkZoteroStatus">{{ t('settings.zoteroCheck') }}</UiButton>
-            </div>
-            <p v-if="zoteroStatus" class="sp-hint" :class="{ 'sp-hint-ok': zoteroStatus === 'ok', 'sp-hint-err': zoteroStatus === 'error' }">
-              {{ zoteroStatus === 'ok' ? `✓ ${zoteroStatusMsg}` : `✕ ${zoteroStatusMsg}` }}
-            </p>
-            <p v-else class="sp-hint">{{ t('settings.zoteroHint') }}</p>
-          </div>
-
-          <!-- Background tab -->
-          <div v-show="settingsTab === 'background'" class="sp-body">
-            <div class="sp-section-label">{{ t('settings.customBackground') }}</div>
-            <div class="sp-actions">
-              <UiButton variant="secondary" size="sm" @click="$emit('pick-background')">
-                <template #icon-left><Upload :size="13" :stroke-width="1.8" /></template>
-                {{ t('settings.chooseFile') }}
-              </UiButton>
-              <UiButton variant="danger" size="sm" :disabled="!bgSettings.path" @click="$emit('clear-background')">
-                <template #icon-left><Trash2 :size="13" :stroke-width="1.8" /></template>
-                {{ t('settings.clear') }}
-              </UiButton>
-            </div>
-            <div v-if="bgSettings.path" class="sp-bg-path">{{ bgSettings.path.split(/[\\/]/).pop() }}</div>
-            <UiSlider
-              :label="t('settings.opacity')"
-              :model-value="bgSettings.opacity"
-              :min="5"
-              :max="100"
-              suffix="%"
-              @update:model-value="$emit('opacity-change', $event)"
+              @update:model-value="
+                $emit('update:engineType', $event as any)
+                $emit('save-engine-settings')
+              "
             />
           </div>
+        </UiPopover>
 
-          <!-- Voice tab -->
-          <div v-show="settingsTab === 'voice'" class="sp-body">
-            <div class="sp-section-label">{{ t('voice.title') }}</div>
+        <div class="topbar-sep" />
 
-            <div class="sp-field">
-              <label class="sp-label">{{ t('voice.enabled') }}</label>
-              <label class="sp-toggle">
-                <input type="checkbox" :checked="voiceSettings.enabled" @change="onVoiceSettingChange('enabled', ($event.target as HTMLInputElement).checked)" />
-                <span class="sp-toggle-slider" />
-              </label>
+        <!-- Unified Settings popover -->
+        <UiPopover ref="settingsPopoverRef" :width="380" align="end" :offset="8">
+          <template #trigger>
+            <button
+              class="topbar-icon-btn"
+              :class="{ active: settingsPopoverOpen }"
+              :title="t('topbar.settings')"
+            >
+              <Settings :size="15" :stroke-width="1.6" />
+            </button>
+          </template>
+
+          <div class="settings-popover">
+            <div class="sp-header">
+              <span class="sp-title">{{ t('topbar.settings') }}</span>
             </div>
+            <UiSegmented
+              v-model="settingsTab"
+              :options="settingsTabOptions"
+              size="sm"
+              full
+              class="sp-tabs"
+            />
 
-            <div class="sp-field">
-              <label class="sp-label">{{ t('voice.hotkey') }}</label>
-              <UiInput
-                :model-value="voiceSettings.hotkey"
-                placeholder="Alt+Space"
-                @update:model-value="onVoiceSettingChange('hotkey', $event)"
-              />
-            </div>
-
-            <div class="sp-section-label" style="margin-top: 8px;">{{ t('voice.wakeWord') }}</div>
-
-            <div class="sp-field">
-              <label class="sp-label">{{ t('voice.wakeWordEnabled') }}</label>
-              <label class="sp-toggle">
-                <input type="checkbox" :checked="voiceSettings.wakeWordEnabled" @change="onVoiceSettingChange('wakeWordEnabled', ($event.target as HTMLInputElement).checked)" />
-              </label>
-            </div>
-
-            <div v-if="voiceSettings.wakeWordEnabled" class="sp-field">
-              <label class="sp-label">{{ t('voice.wakeWord') }}</label>
-              <UiInput
-                :model-value="voiceSettings.wakeWordPhrase"
-                placeholder="小研"
-                @update:model-value="onVoiceSettingChange('wakeWordPhrase', $event)"
-              />
-            </div>
-
-            <div class="sp-field">
-              <label class="sp-label">{{ t('voice.sensitivity') }}</label>
-              <UiSelect
-                :model-value="voiceSettings.sensitivity"
-                @update:model-value="onVoiceSettingChange('sensitivity', $event as any)"
-              >
-                <option value="low">{{ t('voice.low') }}</option>
-                <option value="medium">{{ t('voice.medium') }}</option>
-                <option value="high">{{ t('voice.high') }}</option>
-              </UiSelect>
-            </div>
-
-            <div class="sp-field">
-              <label class="sp-label">{{ t('voice.language') }}</label>
-              <UiSelect
-                :model-value="voiceSettings.language"
-                @update:model-value="onVoiceSettingChange('language', $event)"
-              >
-                <option value="zh-CN">中文</option>
+            <div class="sp-lang-row">
+              <label class="sp-label">{{ t('settings.language') }}</label>
+              <UiSelect :model-value="currentLocale" @update:model-value="setLocale($event as any)">
+                <option value="zh-CN">简体中文</option>
                 <option value="en-US">English</option>
               </UiSelect>
             </div>
 
-            <p v-if="!speechSupported" class="sp-hint">{{ t('voice.notSupported') }}</p>
+            <!-- Engine tab -->
+            <div v-show="settingsTab === 'engine'" class="sp-body">
+              <div class="sp-section-label">{{ t('settings.engineLabel') }}</div>
+              <UiSegmented
+                :model-value="engineType"
+                :options="engineOptions"
+                size="sm"
+                full
+                @update:model-value="
+                  $emit('update:engineType', $event as any)
+                  $emit('save-engine-settings')
+                "
+              />
+              <template v-if="engineType === 'cloud'">
+                <div class="sp-gap" />
+                <div class="sp-section-label">{{ t('settings.cloudConfig') }}</div>
+                <div class="sp-field">
+                  <label class="sp-label">{{ t('settings.provider') }}</label>
+                  <UiSelect
+                    :model-value="cloudConfig.provider"
+                    @update:model-value="
+                      $emit('update:cloudConfig', { ...cloudConfig, provider: $event })
+                      $emit('provider-change', $event)
+                    "
+                  >
+                    <option v-for="(preset, key) in providerPresets" :key="key" :value="key">
+                      {{ preset.name }}
+                    </option>
+                  </UiSelect>
+                </div>
+                <div class="sp-field">
+                  <label class="sp-label">API Key</label>
+                  <UiInput
+                    type="password"
+                    :model-value="cloudConfig.api_key"
+                    :placeholder="t('settings.apiKeyPlaceholder')"
+                    @update:model-value="
+                      $emit('update:cloudConfig', { ...cloudConfig, api_key: $event })
+                    "
+                  />
+                </div>
+                <div class="sp-field">
+                  <label class="sp-label">Base URL</label>
+                  <UiInput
+                    :model-value="cloudConfig.base_url"
+                    placeholder="https://api.openai.com/v1"
+                    @update:model-value="
+                      $emit('update:cloudConfig', { ...cloudConfig, base_url: $event })
+                    "
+                  />
+                </div>
+                <div class="sp-field">
+                  <label class="sp-label">{{ t('settings.model') }}</label>
+                  <div class="sp-row">
+                    <UiInput
+                      :model-value="cloudConfig.model"
+                      placeholder="gpt-4o"
+                      @update:model-value="
+                        $emit('update:cloudConfig', { ...cloudConfig, model: $event })
+                      "
+                    />
+                    <UiSelect
+                      v-if="providerPresets[cloudConfig.provider]?.models?.length"
+                      class="sp-select-narrow"
+                      @update:model-value="
+                        $emit('update:cloudConfig', { ...cloudConfig, model: $event })
+                      "
+                    >
+                      <option value="" disabled selected>{{ t('settings.preset') }}</option>
+                      <option
+                        v-for="m in providerPresets[cloudConfig.provider]?.models"
+                        :key="m"
+                        :value="m"
+                      >
+                        {{ m }}
+                      </option>
+                    </UiSelect>
+                  </div>
+                </div>
+                <div class="sp-actions">
+                  <UiButton
+                    variant="secondary"
+                    size="sm"
+                    :loading="cloudChecking"
+                    :disabled="!cloudConfig.api_key"
+                    @click="$emit('test-cloud')"
+                    >{{ t('settings.testConnection') }}</UiButton
+                  >
+                  <UiButton variant="primary" size="sm" @click="$emit('save-engine-settings')">{{
+                    t('settings.save')
+                  }}</UiButton>
+                </div>
+                <div v-if="cloudConfig.api_key" class="sp-status" :class="cloudOk ? 'ok' : 'off'">
+                  {{ cloudOk ? t('status.connected') : t('status.disconnected') }}
+                </div>
+                <div v-if="cloudError" class="sp-error">{{ cloudError }}</div>
+              </template>
+              <template v-if="engineType === 'ollama'">
+                <div class="sp-gap" />
+                <div class="sp-section-label">{{ t('settings.ollamaSettings') }}</div>
+                <div class="sp-field">
+                  <label class="sp-label">{{ t('settings.localModel') }}</label>
+                  <div class="sp-row">
+                    <UiSelect
+                      :model-value="ollamaModel"
+                      @update:model-value="
+                        $emit('update:ollamaModel', $event as string)
+                        $emit('save-engine-settings')
+                      "
+                    >
+                      <option v-if="ollamaModels.length === 0" :value="ollamaModel">
+                        {{ ollamaModel }}
+                      </option>
+                      <option v-for="m in ollamaModels" :key="m" :value="m">{{ m }}</option>
+                    </UiSelect>
+                    <UiButton
+                      variant="ghost"
+                      size="sm"
+                      :disabled="ollamaModelsLoading"
+                      @click="$emit('refreshOllamaModels')"
+                    >
+                      {{ ollamaModelsLoading ? '...' : t('settings.refreshModels') }}
+                    </UiButton>
+                  </div>
+                </div>
+                <div v-if="ollamaModels.length" class="sp-status ok">
+                  {{ t('settings.modelsAvailable', { count: ollamaModels.length }) }}
+                </div>
+              </template>
+            </div>
+
+            <!-- Display tab -->
+            <div v-show="settingsTab === 'display'" class="sp-body">
+              <div class="sp-section-label">{{ t('settings.typography') }}</div>
+              <UiSlider
+                :label="t('settings.fontSize')"
+                :model-value="readSettings.fontSize"
+                :min="12"
+                :max="28"
+                suffix="px"
+                @update:model-value="$emit('font-size-change', $event)"
+              />
+              <UiSlider
+                :label="t('settings.lineHeight')"
+                :model-value="Math.round(readSettings.lineHeight * 10)"
+                :min="14"
+                :max="32"
+                @update:model-value="$emit('line-height-change', $event)"
+              />
+              <div class="sp-field">
+                <label class="sp-label">{{ t('settings.fontFamily') }}</label>
+                <UiSelect
+                  :model-value="readSettings.fontFamily"
+                  @update:model-value="$emit('font-family-change', $event)"
+                >
+                  <option value="system-ui">{{ t('settings.systemDefault') }}</option>
+                  <option value="'Noto Sans SC', sans-serif">思源黑体</option>
+                  <option value="'Noto Serif SC', serif">思源宋体</option>
+                  <option value="'LXGW WenKai', serif">霞鹜文楷</option>
+                  <option value="'Microsoft YaHei', sans-serif">微软雅黑</option>
+                  <option value="SimSun, serif">宋体</option>
+                </UiSelect>
+              </div>
+              <div class="sp-field">
+                <label class="sp-label">{{ t('settings.transColor') }}</label>
+                <div class="sp-color-row">
+                  <input
+                    type="color"
+                    :value="readSettings.transColor"
+                    class="sp-color"
+                    @input="$emit('color-change', ($event.target as HTMLInputElement).value)"
+                  />
+                  <span class="sp-color-hex">{{ readSettings.transColor }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Network tab -->
+            <div v-show="settingsTab === 'network'" class="sp-body">
+              <div class="sp-section-label">{{ t('settings.httpProxy') }}</div>
+              <div class="sp-field">
+                <label class="sp-label">{{ t('settings.proxyAddress') }}</label>
+                <UiInput
+                  :model-value="proxyUrl"
+                  :placeholder="t('settings.proxyPlaceholder')"
+                  @update:model-value="$emit('update:proxyUrl', $event)"
+                />
+              </div>
+              <div class="sp-actions">
+                <UiButton variant="primary" size="sm" @click="$emit('save-proxy')">{{
+                  t('settings.saveProxy')
+                }}</UiButton>
+              </div>
+              <p class="sp-hint">{{ t('settings.proxyHint') }}</p>
+
+              <!-- Zotero API config -->
+              <div class="sp-section-label" style="margin-top: 14px">
+                {{ t('settings.zoteroApi') }}
+              </div>
+              <div class="sp-field">
+                <label class="sp-label">{{ t('settings.apiKey') }}</label>
+                <UiInput
+                  :model-value="zoteroApiKey"
+                  :placeholder="
+                    zoteroHasStoredKey
+                      ? t('settings.zoteroKeyStored')
+                      : t('settings.zoteroKeyPlaceholder')
+                  "
+                  type="password"
+                  @update:model-value="zoteroApiKey = $event"
+                />
+              </div>
+              <div class="sp-field">
+                <label class="sp-label">{{ t('settings.zoteroUserId') }}</label>
+                <UiInput
+                  :model-value="zoteroUserId"
+                  :placeholder="t('settings.zoteroUserIdPlaceholder')"
+                  @update:model-value="zoteroUserId = $event"
+                />
+              </div>
+              <div class="sp-actions">
+                <UiButton
+                  variant="primary"
+                  size="sm"
+                  :loading="zoteroSaving"
+                  @click="saveZoteroConfig"
+                  >{{ t('settings.zoteroSave') }}</UiButton
+                >
+                <UiButton
+                  variant="ghost"
+                  size="sm"
+                  :loading="zoteroChecking"
+                  @click="checkZoteroStatus"
+                  >{{ t('settings.zoteroCheck') }}</UiButton
+                >
+              </div>
+              <p
+                v-if="zoteroStatus"
+                class="sp-hint"
+                :class="{
+                  'sp-hint-ok': zoteroStatus === 'ok',
+                  'sp-hint-err': zoteroStatus === 'error',
+                }"
+              >
+                {{ zoteroStatus === 'ok' ? `✓ ${zoteroStatusMsg}` : `✕ ${zoteroStatusMsg}` }}
+              </p>
+              <p v-else class="sp-hint">{{ t('settings.zoteroHint') }}</p>
+            </div>
+
+            <!-- Background tab -->
+            <div v-show="settingsTab === 'background'" class="sp-body">
+              <div class="sp-section-label">{{ t('settings.customBackground') }}</div>
+              <div class="sp-actions">
+                <UiButton variant="secondary" size="sm" @click="$emit('pick-background')">
+                  <template #icon-left><Upload :size="13" :stroke-width="1.8" /></template>
+                  {{ t('settings.chooseFile') }}
+                </UiButton>
+                <UiButton
+                  variant="danger"
+                  size="sm"
+                  :disabled="!bgSettings.path"
+                  @click="$emit('clear-background')"
+                >
+                  <template #icon-left><Trash2 :size="13" :stroke-width="1.8" /></template>
+                  {{ t('settings.clear') }}
+                </UiButton>
+              </div>
+              <div v-if="bgSettings.path" class="sp-bg-path">
+                {{ bgSettings.path.split(/[\\/]/).pop() }}
+              </div>
+              <UiSlider
+                :label="t('settings.opacity')"
+                :model-value="bgSettings.opacity"
+                :min="5"
+                :max="100"
+                suffix="%"
+                @update:model-value="$emit('opacity-change', $event)"
+              />
+            </div>
+
+            <!-- Voice tab -->
+            <div v-show="settingsTab === 'voice'" class="sp-body">
+              <div class="sp-section-label">{{ t('voice.title') }}</div>
+
+              <div class="sp-field">
+                <label class="sp-label">{{ t('voice.enabled') }}</label>
+                <label class="sp-toggle">
+                  <input
+                    type="checkbox"
+                    :checked="voiceSettings.enabled"
+                    @change="
+                      onVoiceSettingChange('enabled', ($event.target as HTMLInputElement).checked)
+                    "
+                  />
+                  <span class="sp-toggle-slider" />
+                </label>
+              </div>
+
+              <div class="sp-field">
+                <label class="sp-label">{{ t('voice.hotkey') }}</label>
+                <UiInput
+                  :model-value="voiceSettings.hotkey"
+                  placeholder="Alt+Space"
+                  @update:model-value="onVoiceSettingChange('hotkey', $event)"
+                />
+              </div>
+
+              <div class="sp-section-label" style="margin-top: 8px">{{ t('voice.wakeWord') }}</div>
+
+              <div class="sp-field">
+                <label class="sp-label">{{ t('voice.wakeWordEnabled') }}</label>
+                <label class="sp-toggle">
+                  <input
+                    type="checkbox"
+                    :checked="voiceSettings.wakeWordEnabled"
+                    @change="
+                      onVoiceSettingChange(
+                        'wakeWordEnabled',
+                        ($event.target as HTMLInputElement).checked,
+                      )
+                    "
+                  />
+                </label>
+              </div>
+
+              <div v-if="voiceSettings.wakeWordEnabled" class="sp-field">
+                <label class="sp-label">{{ t('voice.wakeWord') }}</label>
+                <UiInput
+                  :model-value="voiceSettings.wakeWordPhrase"
+                  placeholder="小研"
+                  @update:model-value="onVoiceSettingChange('wakeWordPhrase', $event)"
+                />
+              </div>
+
+              <div class="sp-field">
+                <label class="sp-label">{{ t('voice.sensitivity') }}</label>
+                <UiSelect
+                  :model-value="voiceSettings.sensitivity"
+                  @update:model-value="onVoiceSettingChange('sensitivity', $event as any)"
+                >
+                  <option value="low">{{ t('voice.low') }}</option>
+                  <option value="medium">{{ t('voice.medium') }}</option>
+                  <option value="high">{{ t('voice.high') }}</option>
+                </UiSelect>
+              </div>
+
+              <div class="sp-field">
+                <label class="sp-label">{{ t('voice.language') }}</label>
+                <UiSelect
+                  :model-value="voiceSettings.language"
+                  @update:model-value="onVoiceSettingChange('language', $event)"
+                >
+                  <option value="zh-CN">中文</option>
+                  <option value="en-US">English</option>
+                </UiSelect>
+              </div>
+
+              <p v-if="!speechSupported" class="sp-hint">{{ t('voice.notSupported') }}</p>
+            </div>
           </div>
+        </UiPopover>
+
+        <!-- Agent toggle -->
+        <button
+          class="topbar-icon-btn"
+          :class="{ active: showAgentChat }"
+          :title="t('topbar.agentAssistant')"
+          @click="$emit('update:showAgentChat', !showAgentChat)"
+        >
+          <MessageSquare :size="15" :stroke-width="1.6" />
+        </button>
+
+        <!-- Debug panel -->
+        <DebugPanel />
+
+        <!-- Theme toggle -->
+        <button
+          class="topbar-icon-btn"
+          :title="isDark ? t('topbar.switchLight') : t('topbar.switchDark')"
+          @click="$emit('toggle-theme', $event)"
+        >
+          <Sun v-if="isDark" :size="15" :stroke-width="1.6" />
+          <Moon v-else :size="15" :stroke-width="1.6" />
+        </button>
+
+        <!-- Window controls -->
+        <div class="window-controls">
+          <button
+            class="win-btn minimize"
+            :title="t('topbar.minimize')"
+            :aria-label="t('topbar.minimize')"
+            @click="$emit('window-minimize')"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10">
+              <line
+                x1="2"
+                y1="5"
+                x2="8"
+                y2="5"
+                stroke="currentColor"
+                stroke-width="1.2"
+                stroke-linecap="round"
+              />
+            </svg>
+          </button>
+          <button
+            class="win-btn maximize"
+            :title="t('topbar.maximize')"
+            :aria-label="t('topbar.maximize')"
+            @click="$emit('window-maximize')"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10">
+              <rect
+                x="2"
+                y="2"
+                width="6"
+                height="6"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.2"
+                rx="1"
+              />
+            </svg>
+          </button>
+          <button
+            class="win-btn close"
+            :title="t('topbar.close')"
+            :aria-label="t('topbar.close')"
+            @click="$emit('window-close')"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10">
+              <line
+                x1="2.5"
+                y1="2.5"
+                x2="7.5"
+                y2="7.5"
+                stroke="currentColor"
+                stroke-width="1.2"
+                stroke-linecap="round"
+              />
+              <line
+                x1="7.5"
+                y1="2.5"
+                x2="2.5"
+                y2="7.5"
+                stroke="currentColor"
+                stroke-width="1.2"
+                stroke-linecap="round"
+              />
+            </svg>
+          </button>
         </div>
-      </UiPopover>
-
-      <!-- Agent toggle -->
-      <button
-        class="topbar-icon-btn"
-        :class="{ active: showAgentChat }"
-        :title="t('topbar.agentAssistant')"
-        @click="$emit('update:showAgentChat', !showAgentChat)"
-      >
-        <MessageSquare :size="15" :stroke-width="1.6" />
-      </button>
-
-      <!-- Debug panel -->
-      <DebugPanel />
-
-      <!-- Theme toggle -->
-      <button
-        class="topbar-icon-btn"
-        :title="isDark ? t('topbar.switchLight') : t('topbar.switchDark')"
-        @click="$emit('toggle-theme', $event)"
-      >
-        <Sun v-if="isDark" :size="15" :stroke-width="1.6" />
-        <Moon v-else :size="15" :stroke-width="1.6" />
-      </button>
-
-      <!-- Window controls -->
-      <div class="window-controls">
-        <button class="win-btn minimize" :title="t('topbar.minimize')" :aria-label="t('topbar.minimize')" @click="$emit('window-minimize')">
-          <svg width="10" height="10" viewBox="0 0 10 10"><line x1="2" y1="5" x2="8" y2="5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-        </button>
-        <button class="win-btn maximize" :title="t('topbar.maximize')" :aria-label="t('topbar.maximize')" @click="$emit('window-maximize')">
-          <svg width="10" height="10" viewBox="0 0 10 10"><rect x="2" y="2" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1.2" rx="1"/></svg>
-        </button>
-        <button class="win-btn close" :title="t('topbar.close')" :aria-label="t('topbar.close')" @click="$emit('window-close')">
-          <svg width="10" height="10" viewBox="0 0 10 10"><line x1="2.5" y1="2.5" x2="7.5" y2="7.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><line x1="7.5" y1="2.5" x2="2.5" y2="7.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-        </button>
       </div>
-    </div>
-  </header>
-  <!-- Separator line: fading gradient -->
-  <div class="topbar-fade-line" aria-hidden="true" />
+    </header>
+    <!-- Separator line: fading gradient -->
+    <div class="topbar-fade-line" aria-hidden="true" />
   </div>
 </template>
 
@@ -465,8 +650,17 @@ function onTopbarMouseDown(e: MouseEvent) {
   if (e.button !== 0) return
   const target = e.target as HTMLElement
   // Skip interactive controls so clicks still work
-  if (target.closest('button, a, input, select, textarea, [role="button"], .status-trigger, .topbar-right, .project-chip')) return
-  getCurrentWindow().startDragging().catch(() => { /* Non-Tauri env */ })
+  if (
+    target.closest(
+      'button, a, input, select, textarea, [role="button"], .status-trigger, .topbar-right, .project-chip',
+    )
+  )
+    return
+  getCurrentWindow()
+    .startDragging()
+    .catch(() => {
+      /* Non-Tauri env */
+    })
 }
 
 const props = defineProps<{
@@ -474,7 +668,13 @@ const props = defineProps<{
   isDark: boolean
   showAgentChat: boolean
   engineType: 'ollama' | 'cloud'
-  cloudConfig: { provider: string; api_key: string; base_url: string; model: string; max_tokens: number }
+  cloudConfig: {
+    provider: string
+    api_key: string
+    base_url: string
+    model: string
+    max_tokens: number
+  }
   ollamaModel: string
   ollamaModels: string[]
   ollamaModelsLoading: boolean
@@ -524,7 +724,8 @@ defineEmits<{
 const settingsPopoverRef = ref<InstanceType<typeof UiPopover> | null>(null)
 const statusPopoverRef = ref<InstanceType<typeof UiPopover> | null>(null)
 const settingsPopoverOpen = computed(() => settingsPopoverRef.value?.open ?? false)
-const speechSupported = !!(window as any).SpeechRecognition || !!(window as any).webkitSpeechRecognition
+const speechSupported =
+  !!(window as any).SpeechRecognition || !!(window as any).webkitSpeechRecognition
 const settingsTab = ref<'engine' | 'display' | 'network' | 'background' | 'voice'>('engine')
 
 // Zotero config (self-contained — loads/saves via /api/config directly)
@@ -543,9 +744,11 @@ async function loadZoteroConfig() {
     const cfg = await resp.json()
     const z = cfg.zotero || {}
     zoteroHasStoredKey.value = typeof z.api_key === 'string' && z.api_key.includes('****')
-    zoteroApiKey.value = zoteroHasStoredKey.value ? '' : (z.api_key || '')
+    zoteroApiKey.value = zoteroHasStoredKey.value ? '' : z.api_key || ''
     zoteroUserId.value = z.user_id || ''
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 async function saveZoteroConfig() {
@@ -660,12 +863,18 @@ function loadVoiceSettings(): VoiceSettings {
   try {
     const raw = localStorage.getItem('voice-settings')
     if (raw) return { ...DEFAULT_VOICE_SETTINGS, ...JSON.parse(raw) }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return { ...DEFAULT_VOICE_SETTINGS }
 }
 
 function saveVoiceSettings(s: VoiceSettings) {
-  try { localStorage.setItem('voice-settings', JSON.stringify(s)) } catch { /* ignore */ }
+  try {
+    localStorage.setItem('voice-settings', JSON.stringify(s))
+  } catch {
+    /* ignore */
+  }
 }
 
 const voiceSettings = ref<VoiceSettings>(loadVoiceSettings())
@@ -675,7 +884,6 @@ function onVoiceSettingChange<K extends keyof VoiceSettings>(key: K, value: Voic
   saveVoiceSettings(voiceSettings.value)
   // Re-initialize hotkey/wake word on next app restart (settings are read at mount time)
 }
-
 </script>
 
 <style scoped>
@@ -708,7 +916,13 @@ function onVoiceSettingChange<K extends keyof VoiceSettings>(key: K, value: Voic
 .topbar-fade-line {
   height: 1px;
   margin: 0 28px;
-  background: linear-gradient(to right, transparent, var(--ink-4) 20%, var(--ink-4) 80%, transparent);
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--ink-4) 20%,
+    var(--ink-4) 80%,
+    transparent
+  );
 }
 
 /* ── Brand ────────────────────────────────────────────────── */
@@ -820,10 +1034,13 @@ function onVoiceSettingChange<K extends keyof VoiceSettings>(key: K, value: Voic
   font: inherit;
   font-size: var(--text-xs);
   cursor: pointer;
-  transition: background var(--motion-fast) var(--ease-out),
-              border-color var(--motion-fast) var(--ease-out);
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
 }
-.status-trigger:hover { background: var(--c-surface-3); }
+.status-trigger:hover {
+  background: var(--c-surface-3);
+}
 .status-dot {
   width: 8px;
   height: 8px;
@@ -831,14 +1048,33 @@ function onVoiceSettingChange<K extends keyof VoiceSettings>(key: K, value: Voic
   flex-shrink: 0;
   border: 1px solid transparent;
 }
-.status-trigger.ok .status-dot    { background: var(--c-success); box-shadow: 0 0 4px var(--c-success); }
-.status-trigger.warn .status-dot  { background: var(--c-warn);    box-shadow: 0 0 4px var(--c-warn); }
-.status-trigger.danger .status-dot{ background: var(--c-danger);  box-shadow: 0 0 4px var(--c-danger); }
-.status-label { font-feature-settings: "tnum"; }
+.status-trigger.ok .status-dot {
+  background: var(--c-success);
+  box-shadow: 0 0 4px var(--c-success);
+}
+.status-trigger.warn .status-dot {
+  background: var(--c-warn);
+  box-shadow: 0 0 4px var(--c-warn);
+}
+.status-trigger.danger .status-dot {
+  background: var(--c-danger);
+  box-shadow: 0 0 4px var(--c-danger);
+}
+.status-label {
+  font-feature-settings: 'tnum';
+}
 
 /* ── Status popover ─────────────────────────────────────── */
-.status-popover { display: flex; flex-direction: column; gap: 0; }
-.status-rows { display: flex; flex-direction: column; gap: var(--space-2); }
+.status-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.status-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
 .status-row {
   display: flex;
   align-items: center;
@@ -851,8 +1087,12 @@ function onVoiceSettingChange<K extends keyof VoiceSettings>(key: K, value: Voic
   border-radius: 50%;
   flex-shrink: 0;
 }
-.sr-dot.ok  { background: var(--c-success); }
-.sr-dot.off { background: var(--c-danger); }
+.sr-dot.ok {
+  background: var(--c-success);
+}
+.sr-dot.off {
+  background: var(--c-danger);
+}
 .sr-label {
   font-size: var(--text-sm);
   color: var(--c-text-1);
@@ -882,8 +1122,9 @@ function onVoiceSettingChange<K extends keyof VoiceSettings>(key: K, value: Voic
   color: var(--c-text-3);
   cursor: pointer;
   position: relative;
-  transition: background var(--motion-fast) var(--ease-brush),
-              color var(--motion-fast) var(--ease-brush);
+  transition:
+    background var(--motion-fast) var(--ease-brush),
+    color var(--motion-fast) var(--ease-brush);
   flex-shrink: 0;
 }
 .topbar-icon-btn::after {
@@ -894,14 +1135,25 @@ function onVoiceSettingChange<K extends keyof VoiceSettings>(key: K, value: Voic
   background: radial-gradient(circle at center, var(--c-accent) 0%, transparent 70%);
   opacity: 0;
   transform: scale(0.7);
-  transition: opacity 340ms var(--ease-brush), transform 380ms var(--ease-brush);
+  transition:
+    opacity 340ms var(--ease-brush),
+    transform 380ms var(--ease-brush);
   pointer-events: none;
   z-index: -1;
   filter: blur(5px);
 }
-.topbar-icon-btn:hover::after { opacity: 0.12; transform: scale(1.18); }
-.topbar-icon-btn:hover { background: var(--c-surface-2); color: var(--c-text-0); }
-.topbar-icon-btn.active { color: var(--c-accent-hover); background: var(--c-accent-bg); }
+.topbar-icon-btn:hover::after {
+  opacity: 0.12;
+  transform: scale(1.18);
+}
+.topbar-icon-btn:hover {
+  background: var(--c-surface-2);
+  color: var(--c-text-0);
+}
+.topbar-icon-btn.active {
+  color: var(--c-accent-hover);
+  background: var(--c-accent-bg);
+}
 
 /* ── Window controls ──────────────────────────────────────── */
 .window-controls {
@@ -923,16 +1175,32 @@ function onVoiceSettingChange<K extends keyof VoiceSettings>(key: K, value: Voic
   color: var(--c-text-3);
   cursor: pointer;
   border-radius: 50%;
-  transition: background var(--motion-fast) var(--ease-out),
-              color var(--motion-fast) var(--ease-out);
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
   opacity: 0.5;
 }
-.window-controls:hover .win-btn { opacity: 1; width: 32px; height: 28px; border-radius: var(--radius-xs); }
-.win-btn:hover { background: var(--c-surface-2); color: var(--c-text-0); }
-.win-btn.close:hover { background: var(--c-danger); color: #fff; }
+.window-controls:hover .win-btn {
+  opacity: 1;
+  width: 32px;
+  height: 28px;
+  border-radius: var(--radius-xs);
+}
+.win-btn:hover {
+  background: var(--c-surface-2);
+  color: var(--c-text-0);
+}
+.win-btn.close:hover {
+  background: var(--c-danger);
+  color: #fff;
+}
 
 /* ── Settings popover content ─────────────────────────────── */
-.settings-popover { display: flex; flex-direction: column; gap: 0; }
+.settings-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
 
 .sp-header {
   display: flex;
@@ -942,12 +1210,24 @@ function onVoiceSettingChange<K extends keyof VoiceSettings>(key: K, value: Voic
   margin-bottom: var(--space-2);
   border-bottom: 1px solid var(--c-surface-3);
 }
-.sp-title { font-size: var(--text-sm); font-weight: 600; color: var(--c-text-0); }
+.sp-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--c-text-0);
+}
 
-.sp-tabs { margin-bottom: var(--space-3); }
+.sp-tabs {
+  margin-bottom: var(--space-3);
+}
 
-.sp-body { display: flex; flex-direction: column; gap: var(--space-3); }
-.sp-gap { height: var(--space-1); }
+.sp-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.sp-gap {
+  height: var(--space-1);
+}
 
 .sp-section-label {
   font-size: var(--text-xs);
@@ -957,15 +1237,37 @@ function onVoiceSettingChange<K extends keyof VoiceSettings>(key: K, value: Voic
   color: var(--c-text-3);
 }
 
-.sp-field { display: flex; flex-direction: column; gap: 5px; }
-.sp-label { font-size: var(--text-xs); color: var(--c-text-2); font-weight: 500; }
+.sp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.sp-label {
+  font-size: var(--text-xs);
+  color: var(--c-text-2);
+  font-weight: 500;
+}
 
-.sp-row { display: flex; gap: 4px; }
-.sp-row :deep(.ui-input-wrap) { flex: 1; min-width: 0; }
-.sp-select-narrow { width: 70px; flex-shrink: 0; }
+.sp-row {
+  display: flex;
+  gap: 4px;
+}
+.sp-row :deep(.ui-input-wrap) {
+  flex: 1;
+  min-width: 0;
+}
+.sp-select-narrow {
+  width: 70px;
+  flex-shrink: 0;
+}
 
-.sp-actions { display: flex; gap: 6px; }
-.sp-actions .ui-btn { flex: 1; }
+.sp-actions {
+  display: flex;
+  gap: 6px;
+}
+.sp-actions .ui-btn {
+  flex: 1;
+}
 
 .sp-status {
   text-align: center;
@@ -974,30 +1276,74 @@ function onVoiceSettingChange<K extends keyof VoiceSettings>(key: K, value: Voic
   padding: 5px 8px;
   border-radius: var(--radius-sm);
 }
-.sp-status.ok { color: var(--c-success); background: var(--c-success-bg); }
-.sp-status.off { color: var(--c-danger); background: var(--c-danger-bg); }
-.sp-error { font-size: var(--text-xs); color: var(--c-text-2); text-align: center; }
-.sp-hint { font-size: var(--text-xs); color: var(--c-text-3); line-height: var(--leading-normal); }
-.sp-hint-ok { color: var(--c-success, #16a34a); }
-.sp-hint-err { color: var(--c-danger, #dc2626); }
+.sp-status.ok {
+  color: var(--c-success);
+  background: var(--c-success-bg);
+}
+.sp-status.off {
+  color: var(--c-danger);
+  background: var(--c-danger-bg);
+}
+.sp-error {
+  font-size: var(--text-xs);
+  color: var(--c-text-2);
+  text-align: center;
+}
+.sp-hint {
+  font-size: var(--text-xs);
+  color: var(--c-text-3);
+  line-height: var(--leading-normal);
+}
+.sp-hint-ok {
+  color: var(--c-success, #16a34a);
+}
+.sp-hint-err {
+  color: var(--c-danger, #dc2626);
+}
 
 /* Toggle switch */
-.sp-toggle { position: relative; display: inline-block; width: 36px; height: 20px; }
-.sp-toggle input { opacity: 0; width: 0; height: 0; }
+.sp-toggle {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+}
+.sp-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
 .sp-toggle-slider {
-  position: absolute; inset: 0; cursor: pointer;
-  background: var(--c-surface-3); border-radius: 10px;
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+  background: var(--c-surface-3);
+  border-radius: 10px;
   transition: background 0.2s;
 }
 .sp-toggle-slider::before {
-  content: ''; position: absolute; width: 14px; height: 14px;
-  left: 3px; bottom: 3px; background: #fff; border-radius: 50%;
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  left: 3px;
+  bottom: 3px;
+  background: #fff;
+  border-radius: 50%;
   transition: transform 0.2s;
 }
-.sp-toggle input:checked + .sp-toggle-slider { background: var(--c-accent); }
-.sp-toggle input:checked + .sp-toggle-slider::before { transform: translateX(16px); }
+.sp-toggle input:checked + .sp-toggle-slider {
+  background: var(--c-accent);
+}
+.sp-toggle input:checked + .sp-toggle-slider::before {
+  transform: translateX(16px);
+}
 
-.sp-color-row { display: flex; align-items: center; gap: 8px; }
+.sp-color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .sp-color {
   width: 32px;
   height: 26px;
@@ -1007,7 +1353,11 @@ function onVoiceSettingChange<K extends keyof VoiceSettings>(key: K, value: Voic
   cursor: pointer;
   background: none;
 }
-.sp-color-hex { font-size: var(--text-xs); color: var(--c-text-3); font-family: var(--font-mono); }
+.sp-color-hex {
+  font-size: var(--text-xs);
+  color: var(--c-text-3);
+  font-family: var(--font-mono);
+}
 
 .sp-bg-path {
   font-size: var(--text-xs);
@@ -1021,14 +1371,21 @@ function onVoiceSettingChange<K extends keyof VoiceSettings>(key: K, value: Voic
 }
 
 /* ── Light mode ───────────────────────────────────────────── */
-:global([data-theme="light"]) .topbar {
+:global([data-theme='light']) .topbar {
   background: color-mix(in srgb, #ffffff 80%, transparent);
   border-color: var(--border-color);
   box-shadow: 0 1px 3px rgba(20, 20, 40, 0.06);
 }
-:global([data-theme="light"]) .topbar-fade-line {
-  background: linear-gradient(to right, transparent, var(--c-surface-3) 20%, var(--c-surface-3) 80%, transparent);
+:global([data-theme='light']) .topbar-fade-line {
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--c-surface-3) 20%,
+    var(--c-surface-3) 80%,
+    transparent
+  );
 }
-:global([data-theme="light"]) .brand-name { color: var(--c-text-0); }
-
+:global([data-theme='light']) .brand-name {
+  color: var(--c-text-0);
+}
 </style>

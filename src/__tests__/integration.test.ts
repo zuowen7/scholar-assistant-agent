@@ -15,18 +15,20 @@ import { nextTick, ref } from 'vue'
 let capturedCallbacks: { onResult?: (text: string) => void; onEnd?: () => void } = {}
 
 vi.mock('../composables/useSpeechRecognition', () => ({
-  useSpeechRecognition: vi.fn((options?: { onResult?: (text: string) => void; onEnd?: () => void }) => {
-    capturedCallbacks = options || {}
-    return {
-      status: ref('idle'),
-      interimText: ref(''),
-      error: ref(''),
-      isSupported: true,
-      start: vi.fn(() => true),
-      stop: vi.fn(() => ''),
-      toggle: vi.fn(),
-    }
-  }),
+  useSpeechRecognition: vi.fn(
+    (options?: { onResult?: (text: string) => void; onEnd?: () => void }) => {
+      capturedCallbacks = options || {}
+      return {
+        status: ref('idle'),
+        interimText: ref(''),
+        error: ref(''),
+        isSupported: true,
+        start: vi.fn(() => true),
+        stop: vi.fn(() => ''),
+        toggle: vi.fn(),
+      }
+    },
+  ),
 }))
 
 describe('Voice command E2E integration', () => {

@@ -44,8 +44,8 @@ describe('useArgumentLayout.autoLayout', () => {
 
     const result = autoLayout(nodes, edges)
 
-    const claim = result.find(r => r.id === 'n_c')!
-    const grounds = result.find(r => r.id === 'n_g')!
+    const claim = result.find((r) => r.id === 'n_c')!
+    const grounds = result.find((r) => r.id === 'n_g')!
 
     expect(claim.position!.y).toBeGreaterThan(grounds.position!.y)
   })
@@ -57,8 +57,8 @@ describe('useArgumentLayout.autoLayout', () => {
 
     const result = autoLayout(nodes, edges)
 
-    const warrant = result.find(r => r.id === 'n_w')!
-    const backing = result.find(r => r.id === 'n_b')!
+    const warrant = result.find((r) => r.id === 'n_w')!
+    const backing = result.find((r) => r.id === 'n_b')!
 
     expect(backing.position!.y).toBeLessThan(warrant.position!.y)
   })
@@ -77,41 +77,27 @@ describe('useArgumentLayout.autoLayout', () => {
   })
 
   it('preserves node id in returned positions', () => {
-    const nodes = [
-      node('n_c1', 'claim'),
-      node('n_g1', 'grounds'),
-      node('n_w1', 'warrant'),
-    ]
-    const edges = [
-      edge('e_1', 'n_g1', 'n_c1', 'supports'),
-      edge('e_2', 'n_w1', 'n_c1', 'warrants'),
-    ]
+    const nodes = [node('n_c1', 'claim'), node('n_g1', 'grounds'), node('n_w1', 'warrant')]
+    const edges = [edge('e_1', 'n_g1', 'n_c1', 'supports'), edge('e_2', 'n_w1', 'n_c1', 'warrants')]
 
     const result = autoLayout(nodes, edges)
 
     expect(result).toHaveLength(3)
-    const ids = result.map(r => r.id).sort()
+    const ids = result.map((r) => r.id).sort()
     expect(ids).toEqual(['n_c1', 'n_g1', 'n_w1'])
   })
 
   it('full Toulmin stack: backing above warrant above claim', () => {
     // backing → warrant → claim (via backs + warrants edges)
     // TB layout: backing.y < warrant.y < claim.y
-    const nodes = [
-      node('n_c', 'claim'),
-      node('n_w', 'warrant'),
-      node('n_b', 'backing'),
-    ]
-    const edges = [
-      edge('e_1', 'n_b', 'n_w', 'backs'),
-      edge('e_2', 'n_w', 'n_c', 'warrants'),
-    ]
+    const nodes = [node('n_c', 'claim'), node('n_w', 'warrant'), node('n_b', 'backing')]
+    const edges = [edge('e_1', 'n_b', 'n_w', 'backs'), edge('e_2', 'n_w', 'n_c', 'warrants')]
 
     const result = autoLayout(nodes, edges)
 
-    const claim = result.find(r => r.id === 'n_c')!
-    const warrant = result.find(r => r.id === 'n_w')!
-    const backing = result.find(r => r.id === 'n_b')!
+    const claim = result.find((r) => r.id === 'n_c')!
+    const warrant = result.find((r) => r.id === 'n_w')!
+    const backing = result.find((r) => r.id === 'n_b')!
 
     expect(backing.position!.y).toBeLessThan(warrant.position!.y)
     expect(warrant.position!.y).toBeLessThan(claim.position!.y)

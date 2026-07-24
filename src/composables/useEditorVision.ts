@@ -27,16 +27,19 @@ export function useEditorVision() {
     formData.append('file', file)
     const resp = await fetch(`${API}/api/upload/image`, { method: 'POST', body: formData })
     if (!resp.ok) return null
-    return await resp.json() as ImageUploadResponse
+    return (await resp.json()) as ImageUploadResponse
   }
 
-  async function analyzeVision(file: File, analysisType: VisionAnalysisType = 'general'): Promise<VisionAnalysisResponse | null> {
+  async function analyzeVision(
+    file: File,
+    analysisType: VisionAnalysisType = 'general',
+  ): Promise<VisionAnalysisResponse | null> {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('analysis_type', analysisType)
     const resp = await fetch(`${API}/api/vision/analyze`, { method: 'POST', body: formData })
     if (!resp.ok) return null
-    return await resp.json() as VisionAnalysisResponse
+    return (await resp.json()) as VisionAnalysisResponse
   }
 
   async function ocrImage(file: File): Promise<VisionAnalysisResponse | null> {
@@ -44,7 +47,7 @@ export function useEditorVision() {
     formData.append('file', file)
     const resp = await fetch(`${API}/api/vision/ocr`, { method: 'POST', body: formData })
     if (!resp.ok) return null
-    return await resp.json() as VisionAnalysisResponse
+    return (await resp.json()) as VisionAnalysisResponse
   }
 
   async function analyzeChart(file: File): Promise<VisionAnalysisResponse | null> {
@@ -52,7 +55,7 @@ export function useEditorVision() {
     formData.append('file', file)
     const resp = await fetch(`${API}/api/vision/chart`, { method: 'POST', body: formData })
     if (!resp.ok) return null
-    return await resp.json() as VisionAnalysisResponse
+    return (await resp.json()) as VisionAnalysisResponse
   }
 
   async function extractTableFromImage(file: File): Promise<VisionAnalysisResponse | null> {
@@ -60,7 +63,7 @@ export function useEditorVision() {
     formData.append('file', file)
     const resp = await fetch(`${API}/api/vision/table`, { method: 'POST', body: formData })
     if (!resp.ok) return null
-    return await resp.json() as VisionAnalysisResponse
+    return (await resp.json()) as VisionAnalysisResponse
   }
 
   async function insertImageFile(file: File): Promise<ImageUploadResponse | null> {
@@ -70,5 +73,12 @@ export function useEditorVision() {
     return data
   }
 
-  return { uploadImage, insertImageFile, analyzeVision, ocrImage, analyzeChart, extractTableFromImage }
+  return {
+    uploadImage,
+    insertImageFile,
+    analyzeVision,
+    ocrImage,
+    analyzeChart,
+    extractTableFromImage,
+  }
 }

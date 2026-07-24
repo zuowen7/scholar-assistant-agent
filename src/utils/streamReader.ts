@@ -14,15 +14,23 @@ export async function readSseStream(
     try {
       onEvent(currentEvent || 'data', JSON.parse(dataBuffer))
     } catch {
-      console.warn('[streamReader] malformed JSON in SSE event, skipping:', dataBuffer.slice(0, 120))
+      console.warn(
+        '[streamReader] malformed JSON in SSE event, skipping:',
+        dataBuffer.slice(0, 120),
+      )
     }
     currentEvent = ''
     dataBuffer = ''
   }
 
-  const onAbort = () => { reader.cancel().catch(() => {}) }
+  const onAbort = () => {
+    reader.cancel().catch(() => {})
+  }
   if (signal) {
-    if (signal.aborted) { reader.cancel().catch(() => {}); return }
+    if (signal.aborted) {
+      reader.cancel().catch(() => {})
+      return
+    }
     signal.addEventListener('abort', onAbort, { once: true })
   }
 
@@ -31,7 +39,10 @@ export async function readSseStream(
       const { done, value } = await reader.read()
       if (done) break
       if (signal?.aborted) break
-      if (isDone?.()) { reader.cancel().catch(() => {}); break }
+      if (isDone?.()) {
+        reader.cancel().catch(() => {})
+        break
+      }
 
       buffer += decoder.decode(value, { stream: true })
       const lines = buffer.split('\n')

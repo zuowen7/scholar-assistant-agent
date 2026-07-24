@@ -44,19 +44,22 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
-const props = withDefaults(defineProps<{
-  modelValue: boolean
-  title: string
-  subtitle?: string
-  closeLabel?: string
-  variant?: 'dialog' | 'drawer'
-  closeOnBackdrop?: boolean
-}>(), {
-  subtitle: '',
-  closeLabel: 'Close',
-  variant: 'dialog',
-  closeOnBackdrop: true,
-})
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean
+    title: string
+    subtitle?: string
+    closeLabel?: string
+    variant?: 'dialog' | 'drawer'
+    closeOnBackdrop?: boolean
+  }>(),
+  {
+    subtitle: '',
+    closeLabel: 'Close',
+    variant: 'dialog',
+    closeOnBackdrop: true,
+  },
+)
 
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
 const dialog = ref<HTMLElement | null>(null)
@@ -74,9 +77,11 @@ function onBackdrop() {
 }
 
 function focusableElements() {
-  return Array.from(dialog.value?.querySelectorAll<HTMLElement>(
-    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-  ) ?? []).filter(element => !element.hasAttribute('hidden'))
+  return Array.from(
+    dialog.value?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ) ?? [],
+  ).filter((element) => !element.hasAttribute('hidden'))
 }
 
 function onKeydown(event: KeyboardEvent) {
@@ -103,20 +108,23 @@ function onKeydown(event: KeyboardEvent) {
   }
 }
 
-watch(() => props.modelValue, async (open) => {
-  if (open) {
-    previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    document.body.classList.add('app-dialog-open')
-    await nextTick()
-    const firstFocusable = focusableElements()[0]
-    if (firstFocusable) firstFocusable.focus()
-    else dialog.value?.focus()
-  } else {
-    document.body.classList.remove('app-dialog-open')
-    previousFocus?.focus()
-    previousFocus = null
-  }
-})
+watch(
+  () => props.modelValue,
+  async (open) => {
+    if (open) {
+      previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      document.body.classList.add('app-dialog-open')
+      await nextTick()
+      const firstFocusable = focusableElements()[0]
+      if (firstFocusable) firstFocusable.focus()
+      else dialog.value?.focus()
+    } else {
+      document.body.classList.remove('app-dialog-open')
+      previousFocus?.focus()
+      previousFocus = null
+    }
+  },
+)
 
 onBeforeUnmount(() => document.body.classList.remove('app-dialog-open'))
 </script>
@@ -174,7 +182,7 @@ onBeforeUnmount(() => document.body.classList.remove('app-dialog-open'))
   margin: 0;
   font-size: 18px;
   font-weight: 650;
-  letter-spacing: -.015em;
+  letter-spacing: -0.015em;
 }
 
 .app-dialog__heading p {
@@ -197,9 +205,20 @@ onBeforeUnmount(() => document.body.classList.remove('app-dialog-open'))
   cursor: pointer;
 }
 
-.app-dialog__close:hover { background: var(--c-surface-2); color: var(--c-text-0); }
-.app-dialog__close:focus-visible { outline: none; box-shadow: var(--ring-focus); }
-.app-dialog__close svg { width: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.app-dialog__close:hover {
+  background: var(--c-surface-2);
+  color: var(--c-text-0);
+}
+.app-dialog__close:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+.app-dialog__close svg {
+  width: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+}
 
 .app-dialog__body {
   min-height: 0;
@@ -217,18 +236,34 @@ onBeforeUnmount(() => document.body.classList.remove('app-dialog-open'))
 }
 
 .app-dialog-enter-active,
-.app-dialog-leave-active { transition: opacity var(--motion-base) var(--ease-out); }
+.app-dialog-leave-active {
+  transition: opacity var(--motion-base) var(--ease-out);
+}
 .app-dialog-enter-active .app-dialog,
-.app-dialog-leave-active .app-dialog { transition: transform var(--motion-base) var(--ease-out), opacity var(--motion-base); }
+.app-dialog-leave-active .app-dialog {
+  transition:
+    transform var(--motion-base) var(--ease-out),
+    opacity var(--motion-base);
+}
 .app-dialog-enter-from,
-.app-dialog-leave-to { opacity: 0; }
+.app-dialog-leave-to {
+  opacity: 0;
+}
 .app-dialog-enter-from .app-dialog,
-.app-dialog-leave-to .app-dialog { opacity: 0; transform: translateY(8px) scale(.99); }
+.app-dialog-leave-to .app-dialog {
+  opacity: 0;
+  transform: translateY(8px) scale(0.99);
+}
 .app-dialog-layer--drawer.app-dialog-enter-from .app-dialog,
-.app-dialog-layer--drawer.app-dialog-leave-to .app-dialog { transform: translateX(24px); }
+.app-dialog-layer--drawer.app-dialog-leave-to .app-dialog {
+  transform: translateX(24px);
+}
 
 @media (max-width: 720px) {
-  .app-dialog-layer { padding: 0; place-items: end stretch; }
+  .app-dialog-layer {
+    padding: 0;
+    place-items: end stretch;
+  }
   .app-dialog,
   .app-dialog--drawer {
     width: 100%;
@@ -241,5 +276,7 @@ onBeforeUnmount(() => document.body.classList.remove('app-dialog-open'))
 </style>
 
 <style>
-body.app-dialog-open { overflow: hidden; }
+body.app-dialog-open {
+  overflow: hidden;
+}
 </style>

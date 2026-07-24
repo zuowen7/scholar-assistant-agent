@@ -9,36 +9,68 @@
 
     <template v-if="collapsed">
       <button class="workflow-primary" @click.stop="$emit('save')">{{ t('mindmap.save') }}</button>
-      <button class="icon-btn" :title="t('mindmap.expandToolbar')" @click.stop="$emit('update:collapsed', false)">▣</button>
+      <button
+        class="icon-btn"
+        :title="t('mindmap.expandToolbar')"
+        @click.stop="$emit('update:collapsed', false)"
+      >
+        ▣
+      </button>
     </template>
 
     <template v-else>
       <div class="toolbar-group structure-group" :aria-label="t('mindmap.structure')">
         <span class="group-label">{{ t('mindmap.structure') }}</span>
-        <button @click.stop="$emit('reset-map')" :title="t('mindmap.newMap')">{{ t('mindmap.newMap') }}</button>
-        <button @click.stop="$emit('add-child')" :disabled="!canAdd" :title="t('mindmap.childNode')">{{ t('mindmap.childNode') }}</button>
+        <button @click.stop="$emit('reset-map')" :title="t('mindmap.newMap')">
+          {{ t('mindmap.newMap') }}
+        </button>
+        <button
+          @click.stop="$emit('add-child')"
+          :disabled="!canAdd"
+          :title="t('mindmap.childNode')"
+        >
+          {{ t('mindmap.childNode') }}
+        </button>
         <button
           :class="{ active: connecting }"
           @click.stop="$emit('start-connect')"
           :disabled="!canAdd"
           :title="t('mindmap.connectNode')"
         >
-          {{ t("mindmap.connect2") }}
+          {{ t('mindmap.connect2') }}
         </button>
-        <button @click.stop="$emit('delete-node')" :disabled="!canDelete" :title="t('mindmap.deleteNode')">{{ t('mindmap.delete') }}</button>
+        <button
+          @click.stop="$emit('delete-node')"
+          :disabled="!canDelete"
+          :title="t('mindmap.deleteNode')"
+        >
+          {{ t('mindmap.delete') }}
+        </button>
       </div>
 
       <div class="toolbar-group view-group" :aria-label="t('mindmap.view')">
         <span class="group-label">{{ t('mindmap.view') }}</span>
-        <button class="icon-btn" @click.stop="$emit('zoom-in')" :title="t('mindmap.zoomIn')">+</button>
-        <button class="icon-btn" @click.stop="$emit('zoom-out')" :title="t('mindmap.zoomOut')">-</button>
-        <button @click.stop="$emit('reset-view')" :title="t('mindmap.resetView')">{{ t('mindmap.reset') }}</button>
-        <button @click.stop="$emit('fit-view')" :title="t('mindmap.fitView')">{{ t('mindmap.fit') }}</button>
+        <button class="icon-btn" @click.stop="$emit('zoom-in')" :title="t('mindmap.zoomIn')">
+          +
+        </button>
+        <button class="icon-btn" @click.stop="$emit('zoom-out')" :title="t('mindmap.zoomOut')">
+          -
+        </button>
+        <button @click.stop="$emit('reset-view')" :title="t('mindmap.resetView')">
+          {{ t('mindmap.reset') }}
+        </button>
+        <button @click.stop="$emit('fit-view')" :title="t('mindmap.fitView')">
+          {{ t('mindmap.fit') }}
+        </button>
       </div>
 
       <div class="toolbar-group ai-group optional-on-small" :aria-label="t('mindmap.aiAssist')">
         <span class="group-label">AI</span>
-        <button @click.stop="$emit('ai-expand')" :disabled="!canAdd || expanding" :title="t('mindmap.aiExpand')">
+        <button
+          @click.stop="$emit('ai-expand')"
+          :disabled="!canAdd || expanding"
+          :title="t('mindmap.aiExpand')"
+        >
           {{ expanding ? t('mindmap.expanding') : t('mindmap.aiExpandBtn') }}
         </button>
         <button @click.stop="$emit('analyze')" :disabled="analyzing" :title="t('mindmap.aiCheck')">
@@ -48,21 +80,63 @@
 
       <div class="toolbar-group workflow-group" :aria-label="t('mindmap.workflow')">
         <span class="group-label">{{ t('mindmap.workflow') }}</span>
-        <button class="subtle-on-small" @click.stop="$emit('auto-layout')" :title="t('mindmap.autoLayout')">{{ t('mindmap.autoLayoutBtn') }}</button>
-        <button class="workflow-primary" @click.stop="$emit('save')" :title="t('mindmap.saveToProject')">{{ t('mindmap.save') }}</button>
-        <button class="workflow-primary" @click.stop="$emit('enter-editor')" :title="t('mindmap.enterEditor')">{{ t('mindmap.editor') }}</button>
+        <button
+          class="subtle-on-small"
+          @click.stop="$emit('auto-layout')"
+          :title="t('mindmap.autoLayout')"
+        >
+          {{ t('mindmap.autoLayoutBtn') }}
+        </button>
+        <button
+          class="workflow-primary"
+          @click.stop="$emit('save')"
+          :title="t('mindmap.saveToProject')"
+        >
+          {{ t('mindmap.save') }}
+        </button>
+        <button
+          class="workflow-primary"
+          @click.stop="$emit('enter-editor')"
+          :title="t('mindmap.enterEditor')"
+        >
+          {{ t('mindmap.editor') }}
+        </button>
       </div>
 
       <div class="toolbar-group utility-group">
-        <button class="icon-btn help-btn" :class="{ active: showHelp }" @click.stop="toggleHelp" :title="t('mindmap.shortcuts')">?</button>
-        <button class="icon-btn" :title="t('mindmap.collapseToolbar')" @click.stop="$emit('update:collapsed', true)">▥</button>
-        <button class="icon-btn more-btn" :class="{ active: showMore }" :title="t('mindmap.more')" @click.stop="toggleMore">⋯</button>
+        <button
+          class="icon-btn help-btn"
+          :class="{ active: showHelp }"
+          @click.stop="toggleHelp"
+          :title="t('mindmap.shortcuts')"
+        >
+          ?
+        </button>
+        <button
+          class="icon-btn"
+          :title="t('mindmap.collapseToolbar')"
+          @click.stop="$emit('update:collapsed', true)"
+        >
+          ▥
+        </button>
+        <button
+          class="icon-btn more-btn"
+          :class="{ active: showMore }"
+          :title="t('mindmap.more')"
+          @click.stop="toggleMore"
+        >
+          ⋯
+        </button>
       </div>
     </template>
 
     <div v-if="showMore && !collapsed" class="more-panel" @click.stop @pointerdown.stop>
-      <button @click="$emit('ai-expand')" :disabled="!canAdd || expanding">{{ expanding ? t('mindmap.expanding2') : t('mindmap.aiExpand2') }}</button>
-      <button @click="$emit('analyze')" :disabled="analyzing">{{ analyzing ? t('mindmap.checking2') : t('mindmap.aiCheck2') }}</button>
+      <button @click="$emit('ai-expand')" :disabled="!canAdd || expanding">
+        {{ expanding ? t('mindmap.expanding2') : t('mindmap.aiExpand2') }}
+      </button>
+      <button @click="$emit('analyze')" :disabled="analyzing">
+        {{ analyzing ? t('mindmap.checking2') : t('mindmap.aiCheck2') }}
+      </button>
       <button @click="$emit('auto-layout')">{{ t('mindmap.autoLayout') }}</button>
       <button @click="$emit('reset-layout')">{{ t('mindmap.resetLayout') }}</button>
       <button @click="$emit('save')">{{ t('mindmap.saveToProject') }}</button>
@@ -74,9 +148,13 @@
       <div class="shortcut-title">{{ t('mindmap.shortcuts') }}</div>
       <div class="shortcut-row"><kbd>Tab</kbd> {{ t('mindmap.shortcutAddChild') }}</div>
       <div class="shortcut-row"><kbd>Enter</kbd> {{ t('mindmap.shortcutAddSibling') }}</div>
-      <div class="shortcut-row"><kbd>F2</kbd> / Double-click {{ t('mindmap.shortcutEditNode') }}</div>
+      <div class="shortcut-row">
+        <kbd>F2</kbd> / Double-click {{ t('mindmap.shortcutEditNode') }}
+      </div>
       <div class="shortcut-row"><kbd>Del</kbd> {{ t('mindmap.shortcutDeleteEdge') }}</div>
-      <div class="shortcut-row"><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> {{ t('mindmap.shortcutNavigate') }}</div>
+      <div class="shortcut-row">
+        <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> {{ t('mindmap.shortcutNavigate') }}
+      </div>
       <div class="shortcut-row"><kbd>Ctrl+Z</kbd> {{ t('mindmap.shortcutUndo') }}</div>
       <div class="shortcut-row"><kbd>Ctrl+Shift+Z</kbd> {{ t('mindmap.shortcutRedo') }}</div>
     </div>
@@ -155,7 +233,8 @@ function startDrag(event: PointerEvent) {
     toolbar.removeEventListener('pointermove', move)
     toolbar.removeEventListener('pointerup', up)
     toolbar.removeEventListener('pointercancel', up)
-    if (toolbar.hasPointerCapture(upEvent.pointerId)) toolbar.releasePointerCapture(upEvent.pointerId)
+    if (toolbar.hasPointerCapture(upEvent.pointerId))
+      toolbar.releasePointerCapture(upEvent.pointerId)
   }
 
   toolbar.addEventListener('pointermove', move)
@@ -193,8 +272,7 @@ function startDrag(event: PointerEvent) {
   width: 7px;
   height: 24px;
   border-radius: 4px;
-  background:
-    radial-gradient(circle, var(--text-secondary) 1px, transparent 1.5px) 0 0 / 4px 4px;
+  background: radial-gradient(circle, var(--text-secondary) 1px, transparent 1.5px) 0 0 / 4px 4px;
   opacity: 0.38;
   flex-shrink: 0;
 }
@@ -217,7 +295,10 @@ function startDrag(event: PointerEvent) {
   font-weight: 700;
   line-height: 25px;
 }
-.utility-group { padding-right: 0; border-right: 0; }
+.utility-group {
+  padding-right: 0;
+  border-right: 0;
+}
 button {
   height: 25px;
   border: 1px solid transparent;

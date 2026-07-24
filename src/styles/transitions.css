@@ -5,28 +5,64 @@
  */
 
 /* ── v-fade: 通用淡入淡出 ────────────────────────────────── */
-.v-fade-enter-active { transition: opacity var(--motion-base) var(--ease-out); }
-.v-fade-leave-active { transition: opacity var(--motion-fast) ease-in; }
+.v-fade-enter-active {
+  transition: opacity var(--motion-base) var(--ease-out);
+}
+.v-fade-leave-active {
+  transition: opacity var(--motion-fast) ease-in;
+}
 .v-fade-enter-from,
-.v-fade-leave-to      { opacity: 0; }
+.v-fade-leave-to {
+  opacity: 0;
+}
 
 /* ── v-slide-up: toast / hint ────────────────────────────── */
-.v-slide-up-enter-active { transition: all var(--motion-base) var(--ease-out); }
-.v-slide-up-leave-active { transition: all var(--motion-fast) ease-in; }
-.v-slide-up-enter-from   { opacity: 0; transform: translateY(8px); }
-.v-slide-up-leave-to     { opacity: 0; transform: translateY(4px); }
+.v-slide-up-enter-active {
+  transition: all var(--motion-base) var(--ease-out);
+}
+.v-slide-up-leave-active {
+  transition: all var(--motion-fast) ease-in;
+}
+.v-slide-up-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.v-slide-up-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+}
 
 /* ── v-scale-in: popover / dropdown / modal ──────────────── */
-.v-scale-in-enter-active { transition: all var(--motion-base) var(--ease-spring); }
-.v-scale-in-leave-active { transition: all var(--motion-fast) ease-in; }
-.v-scale-in-enter-from   { opacity: 0; transform: scale(0.97); }
-.v-scale-in-leave-to     { opacity: 0; transform: scale(0.99); }
+.v-scale-in-enter-active {
+  transition: all var(--motion-base) var(--ease-spring);
+}
+.v-scale-in-leave-active {
+  transition: all var(--motion-fast) ease-in;
+}
+.v-scale-in-enter-from {
+  opacity: 0;
+  transform: scale(0.97);
+}
+.v-scale-in-leave-to {
+  opacity: 0;
+  transform: scale(0.99);
+}
 
 /* ── v-page-cross: 模式切换 / view 切换 ─────────────────── */
-.v-page-cross-enter-active { transition: all var(--motion-page) var(--ease-emphasis); }
-.v-page-cross-leave-active { transition: all var(--motion-base) ease-in; }
-.v-page-cross-enter-from   { opacity: 0; transform: translateX(8px); }
-.v-page-cross-leave-to     { opacity: 0; transform: translateX(-8px); }
+.v-page-cross-enter-active {
+  transition: all var(--motion-page) var(--ease-emphasis);
+}
+.v-page-cross-leave-active {
+  transition: all var(--motion-base) ease-in;
+}
+.v-page-cross-enter-from {
+  opacity: 0;
+  transform: translateX(8px);
+}
+.v-page-cross-leave-to {
+  opacity: 0;
+  transform: translateX(-8px);
+}
 
 /* ── v-list-stagger: 列表批量渲染 ───────────────────────── */
 .v-list-stagger-enter-active {
@@ -36,40 +72,82 @@
 .v-list-stagger-leave-active {
   transition: all var(--motion-fast) ease-in;
 }
-.v-list-stagger-enter-from { opacity: 0; transform: translateY(6px); }
-.v-list-stagger-leave-to   { opacity: 0; }
+.v-list-stagger-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.v-list-stagger-leave-to {
+  opacity: 0;
+}
 
 /* ── v-spring: 弹性弹出（印章、徽章） ───────────────────── */
-.v-spring-enter-active { transition: all 420ms var(--ease-spring); }
-.v-spring-leave-active { transition: all var(--motion-base) ease-in; }
-.v-spring-enter-from   { opacity: 0; transform: scale(0.6); }
-.v-spring-leave-to     { opacity: 0; transform: scale(0.96); }
+.v-spring-enter-active {
+  transition: all 420ms var(--ease-spring);
+}
+.v-spring-leave-active {
+  transition: all var(--motion-base) ease-in;
+}
+.v-spring-enter-from {
+  opacity: 0;
+  transform: scale(0.6);
+}
+.v-spring-leave-to {
+  opacity: 0;
+  transform: scale(0.96);
+}
 
 /* ── v-ink-bleed: 墨韵扩散（按钮、交互元素） ─────────────── */
-.v-ink-bleed-enter-active { transition: all 380ms var(--ease-brush); }
-.v-ink-bleed-leave-active { transition: all 220ms var(--ease-brush); }
-.v-ink-bleed-enter-from   { opacity: 0; transform: scale(0.8); filter: blur(8px); }
-.v-ink-bleed-leave-to     { opacity: 0; transform: scale(1.1); filter: blur(4px); }
+.v-ink-bleed-enter-active {
+  transition: all 380ms var(--ease-brush);
+}
+.v-ink-bleed-leave-active {
+  transition: all 220ms var(--ease-brush);
+}
+.v-ink-bleed-enter-from {
+  opacity: 0;
+  transform: scale(0.8);
+  filter: blur(8px);
+}
+.v-ink-bleed-leave-to {
+  opacity: 0;
+  transform: scale(1.1);
+  filter: blur(4px);
+}
 
 /* ── v-brush-stroke: 笔触动画（文本逐字显现） ────────────── */
-.v-brush-stroke-enter-active { transition: all 500ms var(--ease-brush); }
-.v-brush-stroke-leave-active { transition: all 200ms ease-in; }
-.v-brush-stroke-enter-from   {
+.v-brush-stroke-enter-active {
+  transition: all 500ms var(--ease-brush);
+}
+.v-brush-stroke-leave-active {
+  transition: all 200ms ease-in;
+}
+.v-brush-stroke-enter-from {
   opacity: 0;
   clip-path: inset(0 100% 0 0);
 }
-.v-brush-stroke-leave-to     { opacity: 0; }
+.v-brush-stroke-leave-to {
+  opacity: 0;
+}
 
 /* ── v-unfurl: 宣纸展开（翻译完成） ─────────────────────── */
-.v-unfurl-enter-active { transition: clip-path 600ms var(--ease-emphasis), transform 600ms var(--ease-emphasis), opacity 300ms ease-out; }
-.v-unfurl-leave-active { transition: opacity var(--motion-fast) ease-in; }
+.v-unfurl-enter-active {
+  transition:
+    clip-path 600ms var(--ease-emphasis),
+    transform 600ms var(--ease-emphasis),
+    opacity 300ms ease-out;
+}
+.v-unfurl-leave-active {
+  transition: opacity var(--motion-fast) ease-in;
+}
 .v-unfurl-enter-from {
   opacity: 0;
   clip-path: inset(0 0 100% 0);
   transform: scaleY(0.98);
   transform-origin: top;
 }
-.v-unfurl-leave-to { opacity: 0; }
+.v-unfurl-leave-to {
+  opacity: 0;
+}
 
 /* ══════════════════════════════════════════════════════════════
    通用动效工具类（"明显活泼"基调）
@@ -77,66 +155,111 @@
    ══════════════════════════════════════════════════════════════ */
 
 /* 入场：自下淡入上浮 */
-.anim-fade-in-up { animation: anim-fade-in-up var(--motion-slow) var(--ease-out) both; }
+.anim-fade-in-up {
+  animation: anim-fade-in-up var(--motion-slow) var(--ease-out) both;
+}
 @keyframes anim-fade-in-up {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* 入场：弹性弹入（卡片/徽章/印章） */
-.anim-pop-in { animation: anim-pop-in 360ms var(--ease-spring) both; }
+.anim-pop-in {
+  animation: anim-pop-in 360ms var(--ease-spring) both;
+}
 @keyframes anim-pop-in {
-  from { opacity: 0; transform: scale(0.85); }
-  to   { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* 入场：墨韵笔触自左揭示 */
-.anim-brush-in { animation: anim-brush-in 480ms var(--ease-brush) both; }
+.anim-brush-in {
+  animation: anim-brush-in 480ms var(--ease-brush) both;
+}
 @keyframes anim-brush-in {
-  from { opacity: 0; clip-path: inset(0 100% 0 0); }
-  to   { opacity: 1; clip-path: inset(0 0 0 0); }
+  from {
+    opacity: 0;
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+  }
 }
 
 /* 列表错峰：父元素给子项设 --stagger-i（0,1,2…），自动延迟 */
-.anim-stagger { animation-delay: calc(var(--stagger-i, 0) * var(--motion-stagger)); }
+.anim-stagger {
+  animation-delay: calc(var(--stagger-i, 0) * var(--motion-stagger));
+}
 
 /* hover 抬升 + 按压回弹（交互反馈） */
 .u-interactive {
-  transition: transform var(--motion-fast) var(--ease-brush),
-              box-shadow var(--motion-base) var(--ease-out),
-              background var(--motion-fast) var(--ease-out),
-              border-color var(--motion-fast) var(--ease-out);
+  transition:
+    transform var(--motion-fast) var(--ease-brush),
+    box-shadow var(--motion-base) var(--ease-out),
+    background var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
 }
-.u-interactive:not(:disabled):hover { transform: translateY(-1px); }
-.u-interactive:not(:disabled):active { transform: scale(0.97); }
+.u-interactive:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+.u-interactive:not(:disabled):active {
+  transform: scale(0.97);
+}
 
 /* 加载文字微光扫过 */
 .anim-shimmer-text {
   background: linear-gradient(90deg, var(--c-text-2) 30%, var(--c-text-0) 50%, var(--c-text-2) 70%);
   background-size: 200% 100%;
-  -webkit-background-clip: text; background-clip: text;
-  -webkit-text-fill-color: transparent; color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
   animation: anim-shimmer-text 1.6s linear infinite;
 }
 @keyframes anim-shimmer-text {
-  from { background-position: 200% 0; }
-  to   { background-position: -200% 0; }
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
 }
 
 /* 进度扫描条（不确定进度的等待） */
 .anim-scan-bar {
-  position: relative; height: 2px; overflow: hidden;
+  position: relative;
+  height: 2px;
+  overflow: hidden;
   background: var(--c-surface-3);
 }
 .anim-scan-bar::after {
-  content: ''; position: absolute; inset: 0;
+  content: '';
+  position: absolute;
+  inset: 0;
   width: 38%;
   background: linear-gradient(90deg, transparent, var(--c-accent), transparent);
   animation: anim-scan 1.1s var(--ease-smooth, ease-in-out) infinite;
 }
 @keyframes anim-scan {
-  from { transform: translateX(-120%); }
-  to   { transform: translateX(360%); }
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(360%);
+  }
 }
 
 /* 锚点定位高亮闪烁（编辑器跳转反馈） */
@@ -144,12 +267,30 @@
   animation: anim-flash 1.1s var(--ease-out) 1;
 }
 @keyframes anim-flash {
-  0%   { background: var(--c-accent-soft); box-shadow: 0 0 0 6px var(--c-accent-soft); }
-  100% { background: transparent; box-shadow: 0 0 0 0 transparent; }
+  0% {
+    background: var(--c-accent-soft);
+    box-shadow: 0 0 0 6px var(--c-accent-soft);
+  }
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 0 transparent;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .anim-fade-in-up, .anim-pop-in, .anim-brush-in,
-  .anim-shimmer-text, .anim-scan-bar::after, .anim-flash { animation: none; }
-  .anim-fade-in-up, .anim-pop-in, .anim-brush-in { opacity: 1; transform: none; clip-path: none; }
+  .anim-fade-in-up,
+  .anim-pop-in,
+  .anim-brush-in,
+  .anim-shimmer-text,
+  .anim-scan-bar::after,
+  .anim-flash {
+    animation: none;
+  }
+  .anim-fade-in-up,
+  .anim-pop-in,
+  .anim-brush-in {
+    opacity: 1;
+    transform: none;
+    clip-path: none;
+  }
 }

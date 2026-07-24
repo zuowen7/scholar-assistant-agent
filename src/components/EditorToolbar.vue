@@ -16,10 +16,20 @@
     />
 
     <div class="tb-left">
-      <button class="tb-btn u-interactive" :title="t('editor.newPaper')" :aria-label="t('editor.newPaper')" @click="$emit('new-paper')">
+      <button
+        class="tb-btn u-interactive"
+        :title="t('editor.newPaper')"
+        :aria-label="t('editor.newPaper')"
+        @click="$emit('new-paper')"
+      >
         <FilePlus :size="15" :stroke-width="1.7" />
       </button>
-      <button class="tb-btn u-interactive" :title="t('editor.save')" :aria-label="t('editor.save')" @click="$emit('save')">
+      <button
+        class="tb-btn u-interactive"
+        :title="t('editor.save')"
+        :aria-label="t('editor.save')"
+        @click="$emit('save')"
+      >
         <Save :size="15" :stroke-width="1.7" />
       </button>
       <div class="tb-divider" />
@@ -28,7 +38,9 @@
         v-if="speech.isSupported"
         class="tb-btn u-interactive"
         :class="{ active: speech.status.value === 'listening' }"
-        :title="speech.status.value === 'listening' ? t('editor.voiceStop') : t('editor.voiceStart')"
+        :title="
+          speech.status.value === 'listening' ? t('editor.voiceStop') : t('editor.voiceStart')
+        "
         :aria-label="t('editor.voiceStart')"
         @click="toggleSpeech"
       >
@@ -83,7 +95,11 @@
 
       <UiDropdown :items="moreItems" :width="230" align="end">
         <template #trigger>
-          <button class="tb-btn u-interactive" :title="t('editor.moreTools')" :aria-label="t('editor.moreTools')">
+          <button
+            class="tb-btn u-interactive"
+            :title="t('editor.moreTools')"
+            :aria-label="t('editor.moreTools')"
+          >
             <MoreHorizontal :size="15" :stroke-width="1.7" />
           </button>
         </template>
@@ -119,7 +135,9 @@ import type { DropdownItem } from './ui/UiDropdown.vue'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
 
 const speech = useSpeechRecognition({
-  onResult: (text) => { if (text.trim()) emit('voice-update', text.trim()) },
+  onResult: (text) => {
+    if (text.trim()) emit('voice-update', text.trim())
+  },
 })
 
 function resetVoiceAccumulated() {
@@ -172,8 +190,12 @@ const emit = defineEmits<{
 const imageInputRef = ref<HTMLInputElement | null>(null)
 const visionInputRef = ref<HTMLInputElement | null>(null)
 
-function openImagePicker() { imageInputRef.value?.click() }
-function openVisionPicker() { visionInputRef.value?.click() }
+function openImagePicker() {
+  imageInputRef.value?.click()
+}
+function openVisionPicker() {
+  visionInputRef.value?.click()
+}
 
 function handleImageSelected(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]
@@ -224,7 +246,8 @@ const moreItems = computed<DropdownItem[]>(() => [
   flex-shrink: 0;
 }
 
-.tb-left, .tb-right {
+.tb-left,
+.tb-right {
   display: flex;
   align-items: center;
   gap: 2px;
@@ -241,14 +264,28 @@ const moreItems = computed<DropdownItem[]>(() => [
   background: transparent;
   color: var(--c-text-3);
   cursor: pointer;
-  transition: background var(--motion-fast) var(--ease-out),
-              color var(--motion-fast) var(--ease-out);
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
   flex-shrink: 0;
 }
-.tb-btn:hover { background: var(--c-surface-4); color: var(--c-text-0); }
-.tb-btn:focus-visible { outline: none; box-shadow: var(--ring-focus); }
-.tb-btn.active { background: var(--c-accent-soft); color: var(--c-accent); box-shadow: inset 0 0 0 1px var(--c-accent-soft); }
-.tb-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.tb-btn:hover {
+  background: var(--c-surface-4);
+  color: var(--c-text-0);
+}
+.tb-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+.tb-btn.active {
+  background: var(--c-accent-soft);
+  color: var(--c-accent);
+  box-shadow: inset 0 0 0 1px var(--c-accent-soft);
+}
+.tb-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 
 .tb-divider {
   width: 1px;
@@ -297,7 +334,9 @@ const moreItems = computed<DropdownItem[]>(() => [
   text-overflow: ellipsis;
 }
 
-.hidden-file-input { display: none; }
+.hidden-file-input {
+  display: none;
+}
 
 .dd-template-row {
   display: flex;
@@ -325,7 +364,14 @@ const moreItems = computed<DropdownItem[]>(() => [
   cursor: pointer;
   outline: none;
 }
-.dd-template-select:hover { border-color: var(--c-accent); }
-.dd-template-select:disabled { opacity: 0.5; cursor: not-allowed; }
-.dd-template-select option { background: var(--c-surface-2); }
+.dd-template-select:hover {
+  border-color: var(--c-accent);
+}
+.dd-template-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.dd-template-select option {
+  background: var(--c-surface-2);
+}
 </style>

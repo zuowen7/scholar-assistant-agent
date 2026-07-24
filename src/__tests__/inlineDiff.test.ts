@@ -31,47 +31,83 @@ describe('shouldShowInlineDiff', () => {
   })
 
   it('returns true for str_replace on open file', () => {
-    expect(shouldShowInlineDiff('str_replace', {
-      file_path: '/project/paper.md',
-      old_string: 'hello',
-      new_string: 'world',
-    }, ['/project/paper.md'])).toBe(true)
+    expect(
+      shouldShowInlineDiff(
+        'str_replace',
+        {
+          file_path: '/project/paper.md',
+          old_string: 'hello',
+          new_string: 'world',
+        },
+        ['/project/paper.md'],
+      ),
+    ).toBe(true)
   })
 
   it('falls back to text approval when dirty content no longer contains the replacement anchor', () => {
-    expect(shouldShowInlineDiff('str_replace', {
-      file_path: 'C:\\project\\paper.md',
-      old_string: 'disk version',
-      new_string: 'agent version',
-    }, [{ path: 'c:/project/paper.md', content: 'unsaved user version' }])).toBe(false)
+    expect(
+      shouldShowInlineDiff(
+        'str_replace',
+        {
+          file_path: 'C:\\project\\paper.md',
+          old_string: 'disk version',
+          new_string: 'agent version',
+        },
+        [{ path: 'c:/project/paper.md', content: 'unsaved user version' }],
+      ),
+    ).toBe(false)
   })
 
   it('falls back to text approval when the replacement anchor is ambiguous', () => {
-    expect(shouldShowInlineDiff('str_replace', {
-      file_path: '/project/paper.md',
-      old_string: 'repeat',
-      new_string: 'replacement',
-    }, [{ path: '/project/paper.md', content: 'repeat and repeat' }])).toBe(false)
+    expect(
+      shouldShowInlineDiff(
+        'str_replace',
+        {
+          file_path: '/project/paper.md',
+          old_string: 'repeat',
+          new_string: 'replacement',
+        },
+        [{ path: '/project/paper.md', content: 'repeat and repeat' }],
+      ),
+    ).toBe(false)
   })
 
   it('shows inline diff when dirty content still has one exact replacement anchor', () => {
-    expect(shouldShowInlineDiff('str_replace', {
-      file_path: '/project/paper.md',
-      old_string: 'old',
-      new_string: 'new',
-    }, [{ path: '/project/paper.md', content: 'unsaved prefix old suffix' }])).toBe(true)
+    expect(
+      shouldShowInlineDiff(
+        'str_replace',
+        {
+          file_path: '/project/paper.md',
+          old_string: 'old',
+          new_string: 'new',
+        },
+        [{ path: '/project/paper.md', content: 'unsaved prefix old suffix' }],
+      ),
+    ).toBe(true)
   })
 
   it('returns false for str_replace on non-open file', () => {
-    expect(shouldShowInlineDiff('str_replace', {
-      file_path: '/project/other.md',
-    }, ['/project/paper.md'])).toBe(false)
+    expect(
+      shouldShowInlineDiff(
+        'str_replace',
+        {
+          file_path: '/project/other.md',
+        },
+        ['/project/paper.md'],
+      ),
+    ).toBe(false)
   })
 
   it('returns false for run_command', () => {
-    expect(shouldShowInlineDiff('run_command', {
-      command: 'ls',
-    }, [])).toBe(false)
+    expect(
+      shouldShowInlineDiff(
+        'run_command',
+        {
+          command: 'ls',
+        },
+        [],
+      ),
+    ).toBe(false)
   })
 
   it('returns false for str_replace without file_path', () => {
@@ -79,22 +115,40 @@ describe('shouldShowInlineDiff', () => {
   })
 
   it('returns true for write_file on open file', () => {
-    expect(shouldShowInlineDiff('write_file', {
-      file_path: '/project/notes.md',
-      content: 'new',
-    }, ['/project/notes.md'])).toBe(true)
+    expect(
+      shouldShowInlineDiff(
+        'write_file',
+        {
+          file_path: '/project/notes.md',
+          content: 'new',
+        },
+        ['/project/notes.md'],
+      ),
+    ).toBe(true)
   })
 
   it('returns false for git_op', () => {
-    expect(shouldShowInlineDiff('git_op', {
-      operation: 'commit',
-    }, [])).toBe(false)
+    expect(
+      shouldShowInlineDiff(
+        'git_op',
+        {
+          operation: 'commit',
+        },
+        [],
+      ),
+    ).toBe(false)
   })
 
   it('returns false for read_file even if open', () => {
-    expect(shouldShowInlineDiff('read_file', {
-      file_path: '/project/paper.md',
-    }, ['/project/paper.md'])).toBe(false)
+    expect(
+      shouldShowInlineDiff(
+        'read_file',
+        {
+          file_path: '/project/paper.md',
+        },
+        ['/project/paper.md'],
+      ),
+    ).toBe(false)
   })
 })
 
@@ -109,7 +163,8 @@ describe('activeEdit state', () => {
   })
 
   it('setActiveEdit sets value', async () => {
-    const { activeEdit, setActiveEdit, clearActiveEdit } = await import('../composables/useEditorState')
+    const { activeEdit, setActiveEdit, clearActiveEdit } =
+      await import('../composables/useEditorState')
     const edit = {
       editId: 'test-1',
       eventId: 'evt_abc',
@@ -125,7 +180,8 @@ describe('activeEdit state', () => {
   })
 
   it('clearActiveEdit resets to null', async () => {
-    const { activeEdit, setActiveEdit, clearActiveEdit } = await import('../composables/useEditorState')
+    const { activeEdit, setActiveEdit, clearActiveEdit } =
+      await import('../composables/useEditorState')
     setActiveEdit({
       editId: 'test-2',
       eventId: 'evt_def',

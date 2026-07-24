@@ -27,9 +27,16 @@
           :class="{ 'has-body': bodyPreview }"
           @click="toggleBody"
           :title="bodyExpanded ? t('mindmap.collapseBody') : t('mindmap.editBody')"
-        >{{ bodyExpanded ? '▾' : '▸' }}</button>
+        >
+          {{ bodyExpanded ? '▾' : '▸' }}
+        </button>
       </div>
-      <span v-if="expanding" class="node-spinner" role="status" :aria-label="t('mindmap.aiExpanding')">
+      <span
+        v-if="expanding"
+        class="node-spinner"
+        role="status"
+        :aria-label="t('mindmap.aiExpanding')"
+      >
         <UiSpinner size="sm" />
       </span>
       <span v-else-if="issueCount" class="node-badge">{{ issueCount }}</span>
@@ -51,7 +58,11 @@
     </Transition>
 
     <!-- Body preview (collapsed) -->
-    <div v-if="!bodyExpanded && bodyPreview" class="node-body-preview nodrag" @dblclick="toggleBody">
+    <div
+      v-if="!bodyExpanded && bodyPreview"
+      class="node-body-preview nodrag"
+      @dblclick="toggleBody"
+    >
       {{ bodyPreview }}
     </div>
 
@@ -66,7 +77,12 @@
     <Handle type="target" :position="Position.Left" class="mind-handle" />
     <Handle type="source" :position="Position.Right" class="mind-handle" />
     <Handle type="source" :position="Position.Top" class="mind-handle hidden-handle" id="top" />
-    <Handle type="source" :position="Position.Bottom" class="mind-handle hidden-handle" id="bottom" />
+    <Handle
+      type="source"
+      :position="Position.Bottom"
+      class="mind-handle hidden-handle"
+      id="bottom"
+    />
 
     <Teleport to="body">
       <div
@@ -77,11 +93,19 @@
         @contextmenu.prevent
       >
         <button @click="menuEdit"><span class="cm-ico">✎</span>{{ t('mindmap.editNode') }}</button>
-        <button @click="menuAddChild"><span class="cm-ico">＋</span>{{ t('mindmap.childNode') }}</button>
-        <button @click="menuAddSibling"><span class="cm-ico">⊕</span>{{ t('mindmap.addSibling') }}</button>
-        <button @click="menuExpand"><span class="cm-ico">✦</span>{{ t('mindmap.aiExpand') }}</button>
+        <button @click="menuAddChild">
+          <span class="cm-ico">＋</span>{{ t('mindmap.childNode') }}
+        </button>
+        <button @click="menuAddSibling">
+          <span class="cm-ico">⊕</span>{{ t('mindmap.addSibling') }}
+        </button>
+        <button @click="menuExpand">
+          <span class="cm-ico">✦</span>{{ t('mindmap.aiExpand') }}
+        </button>
         <div v-if="!data.isRoot" class="cm-sep" />
-        <button v-if="!data.isRoot" class="cm-danger" @click="menuDelete"><span class="cm-ico">✕</span>{{ t('mindmap.deleteNode') }}</button>
+        <button v-if="!data.isRoot" class="cm-danger" @click="menuDelete">
+          <span class="cm-ico">✕</span>{{ t('mindmap.deleteNode') }}
+        </button>
       </div>
     </Teleport>
   </div>
@@ -97,15 +121,27 @@ import type { NodeProps } from '@vue-flow/core'
 import { useMindMap } from '../../composables/useMindMap'
 import UiSpinner from '../ui/UiSpinner.vue'
 
-const props = defineProps<NodeProps<{
-  text: string
-  body: string
-  depth: number
-  isRoot: boolean
-  hasChildren: boolean
-}>>()
+const props = defineProps<
+  NodeProps<{
+    text: string
+    body: string
+    depth: number
+    isRoot: boolean
+    hasChildren: boolean
+  }>
+>()
 
-const { commitNodeText, updateNodeBody, selectedNodeId, analysisIssuesByNode, draftMindMap, addChild, addSibling, deleteNode, expandNode } = useMindMap()
+const {
+  commitNodeText,
+  updateNodeBody,
+  selectedNodeId,
+  analysisIssuesByNode,
+  draftMindMap,
+  addChild,
+  addSibling,
+  deleteNode,
+  expandNode,
+} = useMindMap()
 
 const expandingNodeId = inject<Ref<string>>('expandingNodeId', ref(''))
 
@@ -136,7 +172,7 @@ const bodyPreview = computed(() => {
 const DEPTH_COLORS = ['#6366f1', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444']
 const DEPTH_ICONS = ['●', '◆', '■', '●', '◆', '■']
 const barColor = computed(() => DEPTH_COLORS[Math.min(props.data.depth, DEPTH_COLORS.length - 1)])
-const icon = computed(() => props.data.isRoot ? '●' : DEPTH_ICONS[Math.min(props.data.depth, 5)])
+const icon = computed(() => (props.data.isRoot ? '●' : DEPTH_ICONS[Math.min(props.data.depth, 5)]))
 
 function startEdit() {
   editing.value = true
@@ -153,7 +189,9 @@ function commit() {
   editing.value = false
 }
 
-function cancel() { editing.value = false }
+function cancel() {
+  editing.value = false
+}
 
 function toggleBody() {
   bodyExpanded.value = !bodyExpanded.value
@@ -243,22 +281,27 @@ defineExpose({ startEdit })
   background: var(--c-surface-1);
   border: 1px solid var(--c-border);
   border-radius: 11px;
-  box-shadow: 0 4px 14px rgba(45, 39, 29, .09);
+  box-shadow: 0 4px 14px rgba(45, 39, 29, 0.09);
   overflow: hidden;
   position: relative;
-  transition: transform 200ms var(--ease-spring),
-              box-shadow 220ms var(--ease-out),
-              border-color 200ms var(--ease-out),
-              background 200ms var(--ease-out);
+  transition:
+    transform 200ms var(--ease-spring),
+    box-shadow 220ms var(--ease-out),
+    border-color 200ms var(--ease-out),
+    background 200ms var(--ease-out);
   cursor: grab;
 }
-.mind-node:active { cursor: grabbing; }
+.mind-node:active {
+  cursor: grabbing;
+}
 .mind-node:hover {
   transform: translateY(-1px);
-  box-shadow: 0 7px 20px rgba(45, 39, 29, .12);
-  border-color: #D8D0C2;
+  box-shadow: 0 7px 20px rgba(45, 39, 29, 0.12);
+  border-color: #d8d0c2;
 }
-.mind-node:active { transform: scale(0.985); }
+.mind-node:active {
+  transform: scale(0.985);
+}
 .mind-node:focus-visible {
   outline: none;
   box-shadow: var(--ring-focus), var(--elevation-2);
@@ -266,32 +309,53 @@ defineExpose({ startEdit })
 }
 .mind-node.selected {
   border-color: var(--c-accent);
-  box-shadow: 0 0 0 2px var(--c-accent-ring), 0 7px 20px rgba(45, 39, 29, .11);
+  box-shadow:
+    0 0 0 2px var(--c-accent-ring),
+    0 7px 20px rgba(45, 39, 29, 0.11);
 }
 .mind-node.selected:hover {
-  box-shadow: 0 0 0 2px var(--c-accent-ring), var(--elevation-3);
+  box-shadow:
+    0 0 0 2px var(--c-accent-ring),
+    var(--elevation-3);
 }
 .mind-node.editing {
   border-color: var(--c-accent);
-  box-shadow: 0 0 0 3px var(--c-accent-ring), var(--elevation-2);
+  box-shadow:
+    0 0 0 3px var(--c-accent-ring),
+    var(--elevation-2);
 }
 .mind-node.expanding {
   border-color: var(--c-accent);
   animation: node-busy-pulse 1.4s var(--ease-smooth) infinite;
 }
 @keyframes node-busy-pulse {
-  0%, 100% { box-shadow: 0 0 0 1px var(--c-accent-soft), var(--elevation-1); }
-  50%      { box-shadow: 0 0 0 2px var(--c-accent-soft), var(--elevation-2); }
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px var(--c-accent-soft),
+      var(--elevation-1);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px var(--c-accent-soft),
+      var(--elevation-2);
+  }
 }
 .mind-node.root {
   min-width: 260px;
   max-width: 320px;
   background: var(--c-accent);
   border-color: var(--c-accent);
-  box-shadow: 0 5px 14px rgba(45, 39, 29, .12);
+  box-shadow: 0 5px 14px rgba(45, 39, 29, 0.12);
 }
-.mind-node.root.selected { box-shadow: 0 0 0 2px var(--c-accent-ring), 0 5px 14px rgba(45, 39, 29, .12); }
-.mind-node.root .color-bar { display: none; }
+.mind-node.root.selected {
+  box-shadow:
+    0 0 0 2px var(--c-accent-ring),
+    0 5px 14px rgba(45, 39, 29, 0.12);
+}
+.mind-node.root .color-bar {
+  display: none;
+}
 
 .color-bar {
   width: 4px;
@@ -342,7 +406,9 @@ defineExpose({ startEdit })
   letter-spacing: var(--tracking-tight);
 }
 .mind-node.root .node-icon,
-.mind-node.root .body-toggle { color: rgba(255,255,255,.82); }
+.mind-node.root .body-toggle {
+  color: rgba(255, 255, 255, 0.82);
+}
 
 .body-toggle {
   background: none;
@@ -355,10 +421,18 @@ defineExpose({ startEdit })
   flex-shrink: 0;
   line-height: 1;
   opacity: 0.5;
-  transition: opacity 150ms var(--ease-out), color 150ms var(--ease-out);
+  transition:
+    opacity 150ms var(--ease-out),
+    color 150ms var(--ease-out);
 }
-.body-toggle:hover { opacity: 1; color: var(--c-accent); }
-.body-toggle.has-body { opacity: 0.8; color: var(--c-accent); }
+.body-toggle:hover {
+  opacity: 1;
+  color: var(--c-accent);
+}
+.body-toggle.has-body {
+  opacity: 0.8;
+  color: var(--c-accent);
+}
 
 .node-content-area {
   padding: 0 10px 6px 14px;
@@ -466,7 +540,9 @@ defineExpose({ startEdit })
   border: 2px solid var(--c-surface-1);
   opacity: 0;
   border-radius: 50%;
-  transition: opacity 160ms var(--ease-out), transform 120ms var(--ease-spring);
+  transition:
+    opacity 160ms var(--ease-out),
+    transform 120ms var(--ease-spring);
   transform: scale(0.6);
 }
 .mind-node:hover .mind-handle,
@@ -474,19 +550,33 @@ defineExpose({ startEdit })
   opacity: 1;
   transform: scale(1);
 }
-.mind-node:hover .mind-handle { transform: scale(1.12); }
+.mind-node:hover .mind-handle {
+  transform: scale(1.12);
+}
 .mind-handle:hover {
   transform: scale(1.35) !important;
   box-shadow: 0 0 0 4px var(--c-accent-soft);
 }
-.hidden-handle { opacity: 0 !important; pointer-events: none; }
+.hidden-handle {
+  opacity: 0 !important;
+  pointer-events: none;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .mind-node,
-  .mind-node.expanding { animation: none; transition: none; }
-  .mind-node:hover { transform: none; }
-  .mind-node:active { transform: none; }
-  .node-badge { animation: none; }
+  .mind-node.expanding {
+    animation: none;
+    transition: none;
+  }
+  .mind-node:hover {
+    transform: none;
+  }
+  .mind-node:active {
+    transform: none;
+  }
+  .node-badge {
+    animation: none;
+  }
 }
 </style>
 
@@ -499,7 +589,7 @@ defineExpose({ startEdit })
   background: var(--c-surface-1, #fff);
   border: 1px solid var(--c-glass-border, #e0dccf);
   border-radius: 10px;
-  box-shadow: 0 8px 28px rgba(45, 39, 29, .16);
+  box-shadow: 0 8px 28px rgba(45, 39, 29, 0.16);
   padding: 5px;
   backdrop-filter: blur(20px) saturate(1.5);
   -webkit-backdrop-filter: blur(20px) saturate(1.5);
@@ -509,8 +599,14 @@ defineExpose({ startEdit })
   animation: ncm-in 140ms var(--ease-spring, ease-out) both;
 }
 @keyframes ncm-in {
-  from { opacity: 0; transform: scale(0.94) translateY(-4px); }
-  to   { opacity: 1; transform: scale(1) translateY(0); }
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 .node-context-menu button {
   display: flex;
@@ -524,15 +620,17 @@ defineExpose({ startEdit })
   text-align: left;
   border-radius: 6px;
   cursor: pointer;
-  transition: background 100ms ease, color 100ms ease;
+  transition:
+    background 100ms ease,
+    color 100ms ease;
   font-family: inherit;
 }
 .node-context-menu button:hover {
-  background: var(--c-accent-soft, rgba(200, 80, 58, .1));
+  background: var(--c-accent-soft, rgba(200, 80, 58, 0.1));
   color: var(--c-accent-hover, #b0432f);
 }
 .node-context-menu button.cm-danger:hover {
-  background: var(--c-danger-bg, rgba(220, 60, 60, .1));
+  background: var(--c-danger-bg, rgba(220, 60, 60, 0.1));
   color: var(--c-danger, #dc3c3c);
 }
 .node-context-menu .cm-ico {

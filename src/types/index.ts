@@ -168,10 +168,23 @@ export interface ProviderPreset {
 // ── Agent / RAG 类型 ────────────────────────────────────────────
 
 export interface AgentEvent {
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'response' | 'error'
-    | 'session_started' | 'task_started' | 'thought' | 'await_approval'
-    | 'approval_received' | 'task_done' | 'warning' | 'done' | 'aborted'
-    | 'pipeline_stage' | 'checkpoint'
+  type:
+    | 'thinking'
+    | 'tool_call'
+    | 'tool_result'
+    | 'response'
+    | 'error'
+    | 'session_started'
+    | 'task_started'
+    | 'thought'
+    | 'await_approval'
+    | 'approval_received'
+    | 'task_done'
+    | 'warning'
+    | 'done'
+    | 'aborted'
+    | 'pipeline_stage'
+    | 'checkpoint'
   content: string
   event_id?: string
   metadata?: {
@@ -300,12 +313,24 @@ export interface Ledger {
 
 export type PointSeverity = 'minor' | 'major' | 'fatal'
 export type PointCategory =
-  | 'motivation' | 'novelty' | 'baseline' | 'ablation' | 'soundness'
-  | 'claim_overreach' | 'missing_related_work' | 'reproducibility'
-  | 'experiment_design' | 'writing_clarity'
-  | 'inconsistency' | 'gap_mismatch' | 'weak_positioning' | 'term_drift' | 'other'
+  | 'motivation'
+  | 'novelty'
+  | 'baseline'
+  | 'ablation'
+  | 'soundness'
+  | 'claim_overreach'
+  | 'missing_related_work'
+  | 'reproducibility'
+  | 'experiment_design'
+  | 'writing_clarity'
+  | 'inconsistency'
+  | 'gap_mismatch'
+  | 'weak_positioning'
+  | 'term_drift'
+  | 'other'
 export type PointStatus = 'open' | 'rebutted' | 'accepted' | 'dismissed'
-export type PointSource = 'llm' | 'ledger_check' | 'coherence_check' | 'rw_check' | 'scoped' | 'imported'
+export type PointSource =
+  'llm' | 'ledger_check' | 'coherence_check' | 'rw_check' | 'scoped' | 'imported'
 
 export interface RebuttalTurn {
   id: string
@@ -355,12 +380,12 @@ export interface ReviewSummary {
 // ── 编辑器 / Scholar Cursor 类型 ─────────────────────────────────
 
 export interface EditorTab {
-  id: string        // unique per open file (path as id)
-  path: string | null  // null = untitled
+  id: string // unique per open file (path as id)
+  path: string | null // null = untitled
   name: string
   content: string
   isModified: boolean
-  docId: string     // stable id for argument companion keying
+  docId: string // stable id for argument companion keying
 }
 
 export interface FileEntry {

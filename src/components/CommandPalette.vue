@@ -1,12 +1,12 @@
 <template>
-    <Transition name="v-scale-in">
-      <div
-        v-if="visible"
-        class="cmd-palette"
-        :style="{ top: position.y + 'px', left: position.x + 'px', transformOrigin: 'top center' }"
-        role="dialog"
-        :aria-label="t('commandPalette.aiCommand')"
-      >
+  <Transition name="v-scale-in">
+    <div
+      v-if="visible"
+      class="cmd-palette"
+      :style="{ top: position.y + 'px', left: position.x + 'px', transformOrigin: 'top center' }"
+      role="dialog"
+      :aria-label="t('commandPalette.aiCommand')"
+    >
       <div class="cmd-task-tabs" role="tablist">
         <button
           v-for="t in taskTypes"
@@ -16,7 +16,9 @@
           :class="{ active: activeTask === t.id }"
           :aria-selected="activeTask === t.id"
           @click="activeTask = t.id"
-        >{{ t.label }}</button>
+        >
+          {{ t.label }}
+        </button>
       </div>
 
       <div v-if="activeTask === 'coherence'" class="cmd-hint">
@@ -33,7 +35,12 @@
           @keydown.escape="$emit('cancel')"
           @keydown.stop
         />
-        <button class="cmd-submit" @click="handleSubmit" :disabled="loading" :aria-label="t('commandPalette.execute')">
+        <button
+          class="cmd-submit"
+          @click="handleSubmit"
+          :disabled="loading"
+          :aria-label="t('commandPalette.execute')"
+        >
           <span v-if="!loading">{{ t('commandPalette.apply') }}</span>
           <span v-else class="cmd-spinner"></span>
         </button>
@@ -44,10 +51,12 @@
           v-for="p in currentTask.presets"
           :key="p.label"
           @click="setAndSubmit(p.instruction)"
-        >{{ p.label }}</button>
+        >
+          {{ p.label }}
+        </button>
       </div>
-      </div>
-    </Transition>
+    </div>
+  </Transition>
 </template>
 
 <script setup lang="ts">
@@ -85,8 +94,14 @@ const taskTypes = computed<TaskType[]>(() => [
     label: t('commandPalette.polishLabel'),
     placeholder: t('commandPalette.polishPlaceholder'),
     presets: [
-      { label: t('commandPalette.academicPolish'), instruction: 'Polish for formal academic English' },
-      { label: t('commandPalette.moreConcise'), instruction: 'Make more concise without losing meaning' },
+      {
+        label: t('commandPalette.academicPolish'),
+        instruction: 'Polish for formal academic English',
+      },
+      {
+        label: t('commandPalette.moreConcise'),
+        instruction: 'Make more concise without losing meaning',
+      },
       { label: t('commandPalette.fixGrammar'), instruction: 'Fix grammar and improve clarity' },
     ],
   },
@@ -95,8 +110,14 @@ const taskTypes = computed<TaskType[]>(() => [
     label: t('commandPalette.expandLabel'),
     placeholder: t('commandPalette.expandPlaceholder'),
     presets: [
-      { label: t('commandPalette.expandToParagraph'), instruction: 'Expand into a complete academic paragraph' },
-      { label: t('commandPalette.condenseExpression'), instruction: 'Condense into fewer sentences' },
+      {
+        label: t('commandPalette.expandToParagraph'),
+        instruction: 'Expand into a complete academic paragraph',
+      },
+      {
+        label: t('commandPalette.condenseExpression'),
+        instruction: 'Condense into fewer sentences',
+      },
     ],
   },
   {
@@ -104,7 +125,10 @@ const taskTypes = computed<TaskType[]>(() => [
     label: t('commandPalette.coherenceLabel'),
     placeholder: t('commandPalette.coherencePlaceholder'),
     presets: [
-      { label: t('commandPalette.transitionPrev'), instruction: 'Improve transition from previous paragraph' },
+      {
+        label: t('commandPalette.transitionPrev'),
+        instruction: 'Improve transition from previous paragraph',
+      },
       { label: t('commandPalette.improveFlow'), instruction: 'Better serve the section goal' },
     ],
   },
@@ -114,23 +138,29 @@ const taskTypes = computed<TaskType[]>(() => [
     placeholder: t('commandPalette.grammarPlaceholder'),
     presets: [
       { label: t('commandPalette.fixGrammar'), instruction: 'Fix grammar and spelling errors' },
-      { label: t('commandPalette.improveClarity'), instruction: 'Improve sentence clarity and readability' },
+      {
+        label: t('commandPalette.improveClarity'),
+        instruction: 'Improve sentence clarity and readability',
+      },
     ],
   },
 ])
 
-const currentTask = computed(() =>
-  taskTypes.value.find(task => task.id === activeTask.value) || taskTypes.value[0]
+const currentTask = computed(
+  () => taskTypes.value.find((task) => task.id === activeTask.value) || taskTypes.value[0],
 )
 
-watch(() => props.visible, async (v) => {
-  if (v) {
-    instruction.value = ''
-    activeTask.value = 'polish'
-    await nextTick()
-    inputRef.value?.focus()
-  }
-})
+watch(
+  () => props.visible,
+  async (v) => {
+    if (v) {
+      instruction.value = ''
+      activeTask.value = 'polish'
+      await nextTick()
+      inputRef.value?.focus()
+    }
+  },
+)
 
 function handleSubmit() {
   const inst = instruction.value.trim() || currentTask.value.presets[0].instruction
@@ -185,8 +215,14 @@ function setAndSubmit(text: string) {
   transition: all var(--motion-fast);
   font-family: inherit;
 }
-.cmd-tab:hover { color: var(--c-text-0); background: var(--c-surface-3); }
-.cmd-tab.active { background: var(--c-accent); color: #fff; }
+.cmd-tab:hover {
+  color: var(--c-text-0);
+  background: var(--c-surface-3);
+}
+.cmd-tab.active {
+  background: var(--c-accent);
+  color: #fff;
+}
 
 .cmd-hint {
   font-size: var(--text-xs);
@@ -211,8 +247,12 @@ function setAndSubmit(text: string) {
   outline: none;
   font-family: inherit;
 }
-.cmd-input:focus { border-color: var(--c-accent); }
-.cmd-input::placeholder { color: var(--c-text-3); }
+.cmd-input:focus {
+  border-color: var(--c-accent);
+}
+.cmd-input::placeholder {
+  color: var(--c-text-3);
+}
 
 .cmd-submit {
   background: var(--c-accent);
@@ -226,8 +266,13 @@ function setAndSubmit(text: string) {
   font-family: inherit;
   transition: opacity var(--motion-fast);
 }
-.cmd-submit:hover:not(:disabled) { opacity: 0.88; }
-.cmd-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+.cmd-submit:hover:not(:disabled) {
+  opacity: 0.88;
+}
+.cmd-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 .cmd-presets {
   display: flex;
@@ -247,16 +292,23 @@ function setAndSubmit(text: string) {
   font-family: inherit;
   transition: all var(--motion-fast);
 }
-.cmd-presets button:hover { background: var(--c-surface-4); color: var(--c-text-0); }
+.cmd-presets button:hover {
+  background: var(--c-surface-4);
+  color: var(--c-text-0);
+}
 
 .cmd-spinner {
   display: inline-block;
   width: 12px;
   height: 12px;
-  border: 2px solid rgba(255,255,255,0.3);
+  border: 2px solid rgba(255, 255, 255, 0.3);
   border-top-color: #fff;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
-@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 </style>

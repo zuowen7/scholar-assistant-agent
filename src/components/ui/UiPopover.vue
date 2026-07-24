@@ -23,24 +23,27 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
 
-const props = withDefaults(defineProps<{
-  /** Width of the panel in pixels */
-  width?: number
-  /** Horizontal alignment relative to trigger */
-  align?: 'start' | 'end' | 'center'
-  /** Vertical placement: below or above the trigger */
-  placement?: 'bottom' | 'top'
-  /** Use frosted-glass background */
-  glass?: boolean
-  /** Pixel offset from trigger */
-  offset?: number
-}>(), {
-  width: 280,
-  align: 'end',
-  placement: 'bottom',
-  glass: false,
-  offset: 6,
-})
+const props = withDefaults(
+  defineProps<{
+    /** Width of the panel in pixels */
+    width?: number
+    /** Horizontal alignment relative to trigger */
+    align?: 'start' | 'end' | 'center'
+    /** Vertical placement: below or above the trigger */
+    placement?: 'bottom' | 'top'
+    /** Use frosted-glass background */
+    glass?: boolean
+    /** Pixel offset from trigger */
+    offset?: number
+  }>(),
+  {
+    width: 280,
+    align: 'end',
+    placement: 'bottom',
+    glass: false,
+    offset: 6,
+  },
+)
 
 const emit = defineEmits<{
   (e: 'open'): void
@@ -95,9 +98,12 @@ const panelStyle = computed(() => ({
 
 const transformOrigin = computed(() => {
   switch (props.align) {
-    case 'start': return 'top left'
-    case 'end': return 'top right'
-    default: return 'top center'
+    case 'start':
+      return 'top left'
+    case 'end':
+      return 'top right'
+    default:
+      return 'top center'
   }
 })
 
@@ -132,8 +138,12 @@ defineExpose({ open, show, close, toggle })
 </script>
 
 <style scoped>
-.ui-popover-root { display: inline-flex; }
-.ui-popover-trigger { display: inline-flex; }
+.ui-popover-root {
+  display: inline-flex;
+}
+.ui-popover-trigger {
+  display: inline-flex;
+}
 </style>
 
 <style>

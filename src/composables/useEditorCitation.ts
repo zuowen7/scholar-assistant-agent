@@ -44,19 +44,21 @@ export function useEditorCitation() {
       body: JSON.stringify({ content: targetContent, bibliography, style }),
     })
     if (!resp.ok) return null
-    return await resp.json() as CitationIndexResponse
+    return (await resp.json()) as CitationIndexResponse
   }
 
   async function previewCitations(targetContent: string): Promise<CitationExtractResponse | null> {
-    const resp = await fetch(`${API}/api/citation/extract?content=${encodeURIComponent(targetContent)}`)
+    const resp = await fetch(
+      `${API}/api/citation/extract?content=${encodeURIComponent(targetContent)}`,
+    )
     if (!resp.ok) return null
-    return await resp.json() as CitationExtractResponse
+    return (await resp.json()) as CitationExtractResponse
   }
 
   async function getZoteroStatus(): Promise<ZoteroStatusResponse | null> {
     const resp = await fetch(`${API}/api/zotero/status`)
     if (!resp.ok) return null
-    return await resp.json() as ZoteroStatusResponse
+    return (await resp.json()) as ZoteroStatusResponse
   }
 
   async function searchZotero(query: string, limit = 20): Promise<ZoteroItem[]> {
@@ -66,14 +68,14 @@ export function useEditorCitation() {
       body: JSON.stringify({ query, limit }),
     })
     if (!resp.ok) return []
-    const data = await resp.json() as { items?: ZoteroItem[] }
+    const data = (await resp.json()) as { items?: ZoteroItem[] }
     return data.items || []
   }
 
   async function getZoteroItem(key: string): Promise<ZoteroItem | null> {
     const resp = await fetch(`${API}/api/zotero/item/${encodeURIComponent(key)}`)
     if (!resp.ok) return null
-    return await resp.json() as ZoteroItem
+    return (await resp.json()) as ZoteroItem
   }
 
   async function insertZoteroCitation(key: string): Promise<ZoteroItem | null> {
@@ -81,5 +83,12 @@ export function useEditorCitation() {
     return item
   }
 
-  return { processCitations, previewCitations, getZoteroStatus, searchZotero, getZoteroItem, insertZoteroCitation }
+  return {
+    processCitations,
+    previewCitations,
+    getZoteroStatus,
+    searchZotero,
+    getZoteroItem,
+    insertZoteroCitation,
+  }
 }

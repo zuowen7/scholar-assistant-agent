@@ -14,18 +14,20 @@ const mockStop = vi.fn(() => '')
 const mockIsSupported = ref(true)
 
 vi.mock('../composables/useSpeechRecognition', () => ({
-  useSpeechRecognition: vi.fn((options?: { onResult?: (text: string) => void; onEnd?: () => void }) => {
-    mockSpeechOptions = options || {}
-    return {
-      status: ref('idle'),
-      interimText: ref(''),
-      error: ref(''),
-      isSupported: mockIsSupported.value,
-      start: mockStart,
-      stop: mockStop,
-      toggle: vi.fn(),
-    }
-  }),
+  useSpeechRecognition: vi.fn(
+    (options?: { onResult?: (text: string) => void; onEnd?: () => void }) => {
+      mockSpeechOptions = options || {}
+      return {
+        status: ref('idle'),
+        interimText: ref(''),
+        error: ref(''),
+        isSupported: mockIsSupported.value,
+        start: mockStart,
+        stop: mockStop,
+        toggle: vi.fn(),
+      }
+    },
+  ),
 }))
 
 describe('useVoiceCommand', () => {

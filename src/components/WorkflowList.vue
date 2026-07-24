@@ -2,9 +2,7 @@
   <div class="workflow-list">
     <div class="workflow-list-header">
       <h3>{{ t('agent.sessions') }}</h3>
-      <button class="btn-new-chat" @click="$emit('newChat')">
-        + {{ t('agent.newChat') }}
-      </button>
+      <button class="btn-new-chat" @click="$emit('newChat')">+ {{ t('agent.newChat') }}</button>
     </div>
 
     <div v-if="loading" class="workflow-loading">
@@ -47,12 +45,7 @@
           <span class="wf-time">{{ formatTime(wf.updated_at || wf.created_at) }}</span>
         </div>
 
-        <button
-          class="btn-delete-wf"
-          @click.stop="$emit('delete', wf.id)"
-        >
-          ×
-        </button>
+        <button class="btn-delete-wf" @click.stop="$emit('delete', wf.id)">×</button>
       </div>
     </div>
 

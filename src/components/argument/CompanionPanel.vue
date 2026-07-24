@@ -100,14 +100,13 @@
       </div>
 
       <!-- Review point list -->
-      <div v-if="companion.state.review && companion.state.review.points.length > 0" class="point-list">
+      <div
+        v-if="companion.state.review && companion.state.review.points.length > 0"
+        class="point-list"
+      >
         <div v-if="companion.state.reviewing" class="anim-scan-bar point-list-scan" />
         <div class="point-list-toolbar">
-          <button
-            v-if="companion.state.review?.id"
-            class="download-btn"
-            @click="handleDownload"
-          >
+          <button v-if="companion.state.review?.id" class="download-btn" @click="handleDownload">
             ↓ {{ t('argument.exportRebuttal') }}
           </button>
         </div>
@@ -127,7 +126,14 @@
       <div v-else-if="companion.state.reviewing" class="reviewing-block">
         <div class="anim-scan-bar" />
         <div class="reviewing-status">
-          <UiSpinner size="sm" :label="reviewMode === 'parallel' ? t('argument.reviewParallelSpinner') : t('argument.reviewSerialSpinner')" />
+          <UiSpinner
+            size="sm"
+            :label="
+              reviewMode === 'parallel'
+                ? t('argument.reviewParallelSpinner')
+                : t('argument.reviewSerialSpinner')
+            "
+          />
         </div>
         <div v-for="i in 3" :key="i" class="rv-sk-card" :style="{ '--stagger-i': i }">
           <UiSkeleton shape="line" width="30%" height="11px" />
@@ -157,7 +163,11 @@
           :disabled="!importText.trim() || companion.state.reviewing"
           @click="handleImportReviews"
         >
-          {{ companion.state.reviewing ? t('argument.importingReviews') : t('argument.importReviewsBtn') }}
+          {{
+            companion.state.reviewing
+              ? t('argument.importingReviews')
+              : t('argument.importReviewsBtn')
+          }}
         </button>
       </div>
     </div>
@@ -219,7 +229,7 @@ async function handleRebut(pointId: string, message: string) {
 async function handleSuggestExperiment(promiseId: string) {
   const ledger = companion.state.ledger
   if (!ledger) return
-  const promise = ledger.promises.find(p => p.id === promiseId)
+  const promise = ledger.promises.find((p) => p.id === promiseId)
   if (!promise) return
   suggestingId.value = promiseId
   try {
@@ -230,7 +240,9 @@ async function handleSuggestExperiment(promiseId: string) {
     if (!resp.ok) return
     const data = await resp.json()
     experimentSuggestion.value = data.suggestion ?? ''
-  } catch { /* ignore */ } finally {
+  } catch {
+    /* ignore */
+  } finally {
     suggestingId.value = ''
   }
 }
@@ -263,9 +275,11 @@ async function updatePointStatus(pointId: string, status: string) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
     })
-    const point = companion.state.review.points.find(p => p.id === pointId)
+    const point = companion.state.review.points.find((p) => p.id === pointId)
     if (point) point.status = status as typeof point.status
-  } catch { /* ignore network errors */ }
+  } catch {
+    /* ignore network errors */
+  }
 }
 </script>
 
@@ -314,8 +328,14 @@ async function updatePointStatus(pointId: string, status: string) {
   animation: sonar-ring 1.8s ease-out infinite;
 }
 @keyframes sonar-ring {
-  0%   { transform: scale(1);   opacity: 0.7; }
-  100% { transform: scale(2.6); opacity: 0; }
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
 }
 
 .sub-tab {
@@ -327,7 +347,10 @@ async function updatePointStatus(pointId: string, status: string) {
   color: var(--c-text-2);
   cursor: pointer;
   border-bottom: 2px solid transparent;
-  transition: color var(--motion-fast) var(--ease-out), border-color var(--motion-base) var(--ease-out), background var(--motion-fast) ease;
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-base) var(--ease-out),
+    background var(--motion-fast) ease;
 }
 
 .sub-tab.active {
@@ -406,7 +429,10 @@ async function updatePointStatus(pointId: string, status: string) {
   color: var(--c-accent);
   cursor: pointer;
   white-space: nowrap;
-  transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-brush);
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-brush);
 }
 
 .run-review-btn:hover:not(:disabled) {
@@ -443,18 +469,40 @@ async function updatePointStatus(pointId: string, status: string) {
 }
 
 /* 评审加载态 */
-.rv-loading { display: inline-flex; align-items: center; gap: var(--space-2); }
-.rv-dots { display: inline-flex; gap: 3px; }
+.rv-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.rv-dots {
+  display: inline-flex;
+  gap: 3px;
+}
 .rv-dots i {
-  width: 4px; height: 4px; border-radius: 50%;
-  background: currentColor; opacity: 0.4;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.4;
   animation: al-breathe 1.2s ease-in-out infinite;
 }
-.rv-dots i:nth-child(2) { animation-delay: 0.15s; }
-.rv-dots i:nth-child(3) { animation-delay: 0.3s; }
+.rv-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.rv-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
 @keyframes al-breathe {
-  0%, 80%, 100% { opacity: 0.35; transform: scale(0.8); }
-  40% { opacity: 1; transform: scale(1.15); }
+  0%,
+  80%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
 }
 
 .reviewing-block {
@@ -464,7 +512,9 @@ async function updatePointStatus(pointId: string, status: string) {
   padding: var(--space-3);
   overflow-y: auto;
 }
-.reviewing-status { padding: var(--space-1) 0; }
+.reviewing-status {
+  padding: var(--space-1) 0;
+}
 .rv-sk-card {
   display: flex;
   flex-direction: column;
@@ -476,7 +526,9 @@ async function updatePointStatus(pointId: string, status: string) {
   animation: anim-fade-in-up var(--motion-slow) var(--ease-out) both;
   animation-delay: calc(var(--stagger-i, 0) * 110ms);
 }
-.point-list-scan { flex-shrink: 0; }
+.point-list-scan {
+  flex-shrink: 0;
+}
 
 .import-section {
   flex-shrink: 0;
@@ -515,7 +567,10 @@ async function updatePointStatus(pointId: string, status: string) {
   background: none;
   color: var(--c-text-2);
   cursor: pointer;
-  transition: color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-brush);
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-brush);
 }
 .import-btn:active:not(:disabled) {
   transform: scale(0.94);
@@ -549,7 +604,11 @@ async function updatePointStatus(pointId: string, status: string) {
   background: none;
   color: var(--c-text-2);
   cursor: pointer;
-  transition: color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out), background var(--motion-fast) ease, transform var(--motion-fast) var(--ease-brush);
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    background var(--motion-fast) ease,
+    transform var(--motion-fast) var(--ease-brush);
 }
 
 .download-btn:hover {
@@ -571,7 +630,7 @@ async function updatePointStatus(pointId: string, status: string) {
   background: var(--c-surface-2);
   border: 1px solid var(--c-surface-4);
   border-radius: var(--radius-md);
-  box-shadow: var(--elevation-3, 0 8px 24px rgba(0,0,0,0.3));
+  box-shadow: var(--elevation-3, 0 8px 24px rgba(0, 0, 0, 0.3));
   z-index: 10;
   animation: anim-fade-in-up var(--motion-base) var(--ease-spring) both;
   max-height: 200px;

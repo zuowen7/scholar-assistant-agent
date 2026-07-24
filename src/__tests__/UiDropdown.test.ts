@@ -92,9 +92,7 @@ describe('UiDropdown', () => {
   })
 
   it('applies disabled class and attribute', async () => {
-    const disabledItems: DropdownItem[] = [
-      { text: 'Disabled', disabled: true, onClick: () => {} },
-    ]
+    const disabledItems: DropdownItem[] = [{ text: 'Disabled', disabled: true, onClick: () => {} }]
     await mountOpen(disabledItems)
     const btn = document.body.querySelector('.dd-item')
     expect(btn?.classList.contains('disabled')).toBe(true)
