@@ -10,6 +10,7 @@ vi.mock('vue-i18n', () => ({
 
 const mockRecentProjects = ref<any[]>([])
 const mockLoadRecentProjects = vi.fn()
+const mockRemoveRecentProject = vi.fn()
 
 vi.mock('../composables/useProject', () => ({
   useProject: () => ({
@@ -17,6 +18,7 @@ vi.mock('../composables/useProject', () => ({
     currentProject: { value: null },
     projectLoading: { value: false },
     loadRecentProjects: mockLoadRecentProjects,
+    removeRecentProject: mockRemoveRecentProject,
   }),
 }))
 
@@ -31,6 +33,7 @@ describe('EditorWelcome', () => {
   beforeEach(() => {
     mockRecentProjects.value = []
     mockLoadRecentProjects.mockReset()
+    mockRemoveRecentProject.mockReset()
   })
 
   it('renders the welcome screen', () => {
@@ -85,6 +88,16 @@ describe('EditorWelcome', () => {
     await wrapper.find('[data-test="recent-item"]').trigger('click')
     expect(wrapper.emitted('open-recent')).toHaveLength(1)
     expect(wrapper.emitted('open-recent')![0]).toEqual(['/tmp/A'])
+  })
+
+  it('removes a recent project without opening it', async () => {
+    mockRecentProjects.value = [
+      { path: '/tmp/A', name: 'Project A', template_id: 'research_paper', opened_at: '2026-01-01T00:00:00Z' },
+    ]
+    const wrapper = mount(EditorWelcome)
+    await wrapper.find('[data-test="recent-remove"]').trigger('click')
+    expect(mockRemoveRecentProject).toHaveBeenCalledWith('/tmp/A')
+    expect(wrapper.emitted('open-recent')).toBeUndefined()
   })
 
   it('formats path to last 2 segments', () => {

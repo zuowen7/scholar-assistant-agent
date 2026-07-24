@@ -9,6 +9,7 @@ Stages under test:
   4. TridentConfig + TridentStats
   5. Full pipeline: trident_compact_session
 """
+
 from __future__ import annotations
 
 import json
@@ -19,9 +20,9 @@ from src.agent_v2.types import (
     Message,
     MessageRole,
     TextBlock,
-    ToolUseBlock,
-    ToolResultBlock,
     TokenUsage,
+    ToolResultBlock,
+    ToolUseBlock,
 )
 
 
@@ -38,26 +39,33 @@ def _system_msg(text: str) -> Message:
 
 
 def _tool_use_msg(name: str, tool_id: str, input_json: str) -> Message:
-    return Message(role=MessageRole.ASSISTANT, blocks=[
-        ToolUseBlock(id=tool_id, name=name, input=input_json),
-    ])
+    return Message(
+        role=MessageRole.ASSISTANT,
+        blocks=[
+            ToolUseBlock(id=tool_id, name=name, input=input_json),
+        ],
+    )
 
 
 def _tool_result_msg(tool_id: str, tool_name: str, output: str) -> Message:
-    return Message(role=MessageRole.TOOL, blocks=[
-        ToolResultBlock(tool_use_id=tool_id, tool_name=tool_name, output=output),
-    ])
+    return Message(
+        role=MessageRole.TOOL,
+        blocks=[
+            ToolResultBlock(tool_use_id=tool_id, tool_name=tool_name, output=output),
+        ],
+    )
 
 
 # ============================================================================
 # 1. Stage 1: Supersede
 # ============================================================================
 
-class TestStage1Supersede:
 
+class TestStage1Supersede:
     @pytest.fixture(autouse=True)
     def _import(self):
         from src.agent_v2.runtime.trident import stage1_supersede
+
         self.stage1 = stage1_supersede
 
     def test_no_file_ops_no_change(self):
@@ -122,7 +130,9 @@ class TestStage1Supersede:
         messages = [
             _tool_use_msg("read_file", "t1", '{"file_path": "a.txt"}'),
             _tool_result_msg("t1", "read_file", "content"),
-            _tool_use_msg("str_replace", "t2", '{"file_path": "a.txt", "old_string": "x", "new_string": "y"}'),
+            _tool_use_msg(
+                "str_replace", "t2", '{"file_path": "a.txt", "old_string": "x", "new_string": "y"}'
+            ),
             _tool_result_msg("t2", "str_replace", "ok"),
         ]
         kept, count = self.stage1(messages)
@@ -148,11 +158,12 @@ class TestStage1Supersede:
 # 2. Stage 2: Collapse
 # ============================================================================
 
-class TestStage2Collapse:
 
+class TestStage2Collapse:
     @pytest.fixture(autouse=True)
     def _import(self):
         from src.agent_v2.runtime.trident import stage2_collapse
+
         self.stage2 = stage2_collapse
 
     def test_short_messages_no_collapse(self):
@@ -189,14 +200,16 @@ class TestStage2Collapse:
     def test_chatty_then_tool_preserves_tool(self):
         """Chatty messages collapse, but tool messages after them are preserved."""
         messages = [
-            _user_msg("ok"), _assistant_msg("sure"), _user_msg("go"),
-            _assistant_msg("fine"), _user_msg("yes"),
+            _user_msg("ok"),
+            _assistant_msg("sure"),
+            _user_msg("go"),
+            _assistant_msg("fine"),
+            _user_msg("yes"),
             _tool_use_msg("read_file", "t1", '{"file_path": "a.txt"}'),
         ]
         result, chains, collapsed = self.stage2(messages, threshold=4)
         # Chatty messages collapse, tool message preserved
-        tool_msgs = [m for m in result if any(
-            isinstance(b, ToolUseBlock) for b in m.blocks)]
+        tool_msgs = [m for m in result if any(isinstance(b, ToolUseBlock) for b in m.blocks)]
         assert len(tool_msgs) == 1
 
     def test_below_threshold_no_collapse(self):
@@ -214,11 +227,12 @@ class TestStage2Collapse:
 # 3. Stage 3: Cluster
 # ============================================================================
 
-class TestStage3Cluster:
 
+class TestStage3Cluster:
     @pytest.fixture(autouse=True)
     def _import(self):
         from src.agent_v2.runtime.trident import stage3_cluster
+
         self.stage3 = stage3_cluster
 
     def test_too_few_messages_no_cluster(self):
@@ -259,10 +273,11 @@ class TestStage3Cluster:
 # 4. TridentConfig + TridentStats
 # ============================================================================
 
-class TestTridentConfigAndStats:
 
+class TestTridentConfigAndStats:
     def test_config_defaults(self):
         from src.agent_v2.runtime.trident import TridentConfig
+
         config = TridentConfig()
         assert config.supersede_enabled
         assert config.collapse_enabled
@@ -273,12 +288,14 @@ class TestTridentConfigAndStats:
 
     def test_config_custom(self):
         from src.agent_v2.runtime.trident import TridentConfig
+
         config = TridentConfig(supersede_enabled=False, collapse_threshold=8)
         assert not config.supersede_enabled
         assert config.collapse_threshold == 8
 
     def test_stats_default(self):
         from src.agent_v2.runtime.trident import TridentStats
+
         stats = TridentStats()
         assert stats.superseded_count == 0
         assert stats.collapsed_chains == 0
@@ -288,6 +305,7 @@ class TestTridentConfigAndStats:
 
     def test_stats_format_report(self):
         from src.agent_v2.runtime.trident import TridentStats
+
         stats = TridentStats(
             superseded_count=5,
             collapsed_chains=2,
@@ -309,11 +327,12 @@ class TestTridentConfigAndStats:
 # 5. Full pipeline: trident_compact_session
 # ============================================================================
 
-class TestTridentCompactSession:
 
+class TestTridentCompactSession:
     @pytest.fixture(autouse=True)
     def _import(self):
-        from src.agent_v2.runtime.trident import trident_compact_session, TridentConfig
+        from src.agent_v2.runtime.trident import TridentConfig, trident_compact_session
+
         self.trident_compact = trident_compact_session
         self.TridentConfig = TridentConfig
 
@@ -355,7 +374,9 @@ class TestTridentCompactSession:
         session.append(_assistant_msg("hello"))
         config = CompactionConfig(input_token_threshold=1_000_000)
         no_trident = self.TridentConfig(
-            supersede_enabled=False, collapse_enabled=False, cluster_enabled=False,
+            supersede_enabled=False,
+            collapse_enabled=False,
+            cluster_enabled=False,
         )
         result = self.trident_compact(session, config, no_trident)
         assert result is not None

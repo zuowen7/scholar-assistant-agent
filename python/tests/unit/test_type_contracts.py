@@ -6,6 +6,7 @@
 3. 导出端点请求/响应结构
 4. 配置结构
 """
+
 from __future__ import annotations
 
 import inspect
@@ -14,8 +15,8 @@ from dataclasses import dataclass, fields
 
 import pytest
 
-
 # ── Helper: check field existence ──────────────────────────────────────
+
 
 def get_dataclass_fields(cls) -> dict[str, str]:
     """Return {field_name: field_type} for a dataclass."""
@@ -39,14 +40,17 @@ class TestQAFlagsContract:
 
     def test_qaflag_fields_match_typescript(self) -> None:
         from src.translator.post_qa import QAFlag
+
         py_fields = get_dataclass_fields(QAFlag)
         required_ts_fields = {"type", "severity", "location", "message", "suggestion"}
-        assert set(py_fields.keys()) == required_ts_fields, \
+        assert set(py_fields.keys()) == required_ts_fields, (
             f"Mismatch: Python has {set(py_fields.keys())}, TS expects {required_ts_fields}"
+        )
 
     def test_qaflag_all_strings(self) -> None:
         """All QAFlag fields should be strings (matching TS interface)."""
         from src.translator.post_qa import QAFlag
+
         flag = QAFlag(
             type="overclaim",
             severity="warning",
@@ -77,21 +81,31 @@ class TestQAResultContract:
 
     def test_qaresult_has_flags_and_score(self) -> None:
         from src.translator.post_qa import QAResult
+
         py_fields = get_dataclass_fields(QAResult)
         assert "flags" in py_fields
         assert "score" in py_fields
 
     def test_qaresult_score_is_int(self) -> None:
         from src.translator.post_qa import QAResult
+
         result = QAResult(flags=[], score=100)
         assert isinstance(result.score, int)
         assert 0 <= result.score <= 100
 
     def test_qaresult_flags_is_list_of_qaflag(self) -> None:
-        from src.translator.post_qa import QAResult, QAFlag
+        from src.translator.post_qa import QAFlag, QAResult
+
         result = QAResult(
-            flags=[QAFlag(type="overclaim", severity="warning",
-                         location="x", message="msg", suggestion="fix")],
+            flags=[
+                QAFlag(
+                    type="overclaim",
+                    severity="warning",
+                    location="x",
+                    message="msg",
+                    suggestion="fix",
+                )
+            ],
             score=90,
         )
         assert len(result.flags) == 1
@@ -99,11 +113,18 @@ class TestQAResultContract:
 
     def test_ss_e_event_structure_matches(self) -> None:
         """验证 qa_warnings SSE 事件的 JSON 结构与 TypeScript 期望一致"""
-        from src.translator.post_qa import QAResult, QAFlag
+        from src.translator.post_qa import QAFlag, QAResult
 
         result = QAResult(
-            flags=[QAFlag(type="overclaim", severity="warning",
-                         location="test.", message="Found 'prove'", suggestion="Use 'show'")],
+            flags=[
+                QAFlag(
+                    type="overclaim",
+                    severity="warning",
+                    location="test.",
+                    message="Found 'prove'",
+                    suggestion="Use 'show'",
+                )
+            ],
             score=85,
         )
 
@@ -169,8 +190,16 @@ class TestSSEEventContracts:
             "source": "cloud",
             "status": "ok",  # P0 retry support
         }
-        required = {"chunk_index", "block_id", "type", "translatable",
-                    "original", "translated", "aligned", "status"}
+        required = {
+            "chunk_index",
+            "block_id",
+            "type",
+            "translatable",
+            "original",
+            "translated",
+            "aligned",
+            "status",
+        }
         assert set(event_data.keys()) >= required
 
     def test_complete_event_fields(self) -> None:
@@ -252,7 +281,7 @@ class TestExportEndpointContracts:
                     "base_url": "",
                     "model": "",
                     "max_tokens": 16384,
-                }
+                },
             }
         }
         assert "translator" in config
@@ -268,12 +297,26 @@ class TestTranslateStateContract:
     def test_state_has_p0_fields(self) -> None:
         """TranslateState must have qaWarnings and sectionMap (P0 additions)."""
         state_fields = {
-            "status", "currentStep", "totalSteps", "stepMessage",
-            "parsedInfo", "totalChunks", "completedChunks",
-            "totalBlocks", "completedBlocks", "translations",
-            "finalContent", "blocks", "chunks", "errorMessage",
-            "taskId", "fallbackChunks", "misalignedChunks",
-            "ragIngested", "qaWarnings", "sectionMap",
+            "status",
+            "currentStep",
+            "totalSteps",
+            "stepMessage",
+            "parsedInfo",
+            "totalChunks",
+            "completedChunks",
+            "totalBlocks",
+            "completedBlocks",
+            "translations",
+            "finalContent",
+            "blocks",
+            "chunks",
+            "errorMessage",
+            "taskId",
+            "fallbackChunks",
+            "misalignedChunks",
+            "ragIngested",
+            "qaWarnings",
+            "sectionMap",
         }
         # Verify P0 fields are included
         assert "qaWarnings" in state_fields
@@ -288,8 +331,13 @@ class TestTranslateStateContract:
             "sectionType": "results",
             "score": 85,
             "flags": [
-                {"type": "overclaim", "severity": "warning",
-                 "location": "...", "message": "...", "suggestion": "..."}
+                {
+                    "type": "overclaim",
+                    "severity": "warning",
+                    "location": "...",
+                    "message": "...",
+                    "suggestion": "...",
+                }
             ],
         }
         assert isinstance(ts_qa_warning["chunkIndex"], int)

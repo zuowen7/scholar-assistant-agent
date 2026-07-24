@@ -16,7 +16,6 @@ import argparse
 import json
 import logging
 import os
-import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -59,7 +58,13 @@ def _self_test(base_url: str) -> int:
             logger.info("[OK] %s %s -> %s", label, path, data)
         except urllib.error.HTTPError as e:
             ok = False
-            logger.error("[HTTP %d] %s %s: %s", e.code, label, path, e.read().decode("utf-8", errors="replace")[:500])
+            logger.error(
+                "[HTTP %d] %s %s: %s",
+                e.code,
+                label,
+                path,
+                e.read().decode("utf-8", errors="replace")[:500],
+            )
         except urllib.error.URLError as e:
             ok = False
             logger.error("[FAIL] %s %s: %s", label, path, e.reason)
@@ -81,9 +86,15 @@ def main() -> None:
     parser.add_argument("--cloud-only", action="store_true", help="Cloud-only mode (no Ollama)")
     parser.add_argument("--port", type=int, default=18088)
     parser.add_argument("--host", type=str, default="127.0.0.1")
-    parser.add_argument("--static-dir", type=str, default=None, help="Optional frontend static directory")
-    parser.add_argument("--self-test", action="store_true", help="Probe a running instance, don't start server")
-    parser.add_argument("--base-url", type=str, default="http://127.0.0.1:18088", help="--self-test root URL")
+    parser.add_argument(
+        "--static-dir", type=str, default=None, help="Optional frontend static directory"
+    )
+    parser.add_argument(
+        "--self-test", action="store_true", help="Probe a running instance, don't start server"
+    )
+    parser.add_argument(
+        "--base-url", type=str, default="http://127.0.0.1:18088", help="--self-test root URL"
+    )
     args = parser.parse_args()
 
     if args.self_test:

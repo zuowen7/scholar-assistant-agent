@@ -59,7 +59,7 @@ withDefaults(defineProps<{
   padding: 16px 18px;
   border: 1px solid var(--c-border);
   border-radius: 10px;
-  background: var(--c-panel-bg);
+  background: var(--c-panel);
 }
 
 .loader--overlay .loader__panel { min-width: 248px; }
@@ -70,7 +70,7 @@ withDefaults(defineProps<{
   height: var(--loader-size);
   place-items: center;
   border-radius: 9px;
-  background: var(--c-brand, #c8503a);
+  background: var(--brand-red);
   color: #fffaf4;
   font-family: var(--font-serif-zh);
   font-size: calc(var(--loader-size) * .52);

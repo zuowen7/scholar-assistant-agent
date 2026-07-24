@@ -15,10 +15,15 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from starlette.requests import Request
+
+if TYPE_CHECKING:
+    # attach_to_app 的参数注解需要 FastAPI 类型；运行时不导入以避免不必要开销。
+    from fastapi import FastAPI
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +33,7 @@ def _make_route_handler(tool_handler: Callable) -> Callable:
 
     定义在模块级别，确保 FastAPI 能正确解析 Request 类型注解。
     """
+
     async def route_fn(request: Request) -> Any:
         try:
             body = await request.json()
@@ -35,6 +41,7 @@ def _make_route_handler(tool_handler: Callable) -> Callable:
             logger.debug("Failed to parse request body as JSON, using empty dict: %s", e)
             body = {}
         return await tool_handler(body)
+
     return route_fn
 
 
@@ -48,6 +55,7 @@ class ToolSpec:
     - inputSchema: JSON Schema 格式的参数定义（与 MCP types.Tool 一致）
     - handler: 可选的 FastAPI 路由 handler（注册时注入）
     """
+
     name: str
     description: str
     inputSchema: dict[str, Any]
@@ -61,7 +69,9 @@ class ToolSpec:
             "inputSchema": self.inputSchema,
         }
 
-    def to_fastapi_route(self, method: str = "POST", path: str | None = None) -> dict[str, Any] | None:
+    def to_fastapi_route(
+        self, method: str = "POST", path: str | None = None
+    ) -> dict[str, Any] | None:
         """如果有 handler，生成 FastAPI 路由信息。
 
         Returns:
@@ -88,6 +98,7 @@ class PluginServer:
     - "zotero" server: search_items, get_item, export_bibtex...
     - "arxiv" server: search, download_pdf...
     """
+
     name: str
     version: str
     description: str = ""
@@ -166,7 +177,9 @@ class PluginRegistry:
         self._servers[server.name] = server
         for tool in server.tools:
             self._tool_map[tool.name] = (server.name, tool)
-        logger.info("插件已注册: %s (v%s, %d tools)", server.name, server.version, len(server.tools))
+        logger.info(
+            "插件已注册: %s (v%s, %d tools)", server.name, server.version, len(server.tools)
+        )
 
     def register_tool(self, server_name: str, tool: ToolSpec) -> None:
         """向指定服务器注册单个工具（服务器不存在则自动创建）。"""

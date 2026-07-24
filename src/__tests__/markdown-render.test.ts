@@ -41,7 +41,7 @@ function renderMarkdown(md: string): string {
 
   function extract(re: RegExp, processor: (m: RegExpMatchArray) => string): void {
     md = md.replace(re, (...args) => {
-      const ph = `\x00EX${extracted.length}\x00`
+      const ph = `\uE000EX${extracted.length}\uE001`
       extracted.push(processor(args as unknown as RegExpMatchArray))
       return ph
     })
@@ -65,7 +65,7 @@ function renderMarkdown(md: string): string {
   md = md.replace(/^---$/gm, '<hr/>')
 
   // Restore extracted blocks
-  md = md.replace(/\x00EX(\d+)\x00/g, (_: string, idx: string) => extracted[parseInt(idx)])
+  md = md.replace(/\uE000EX(\d+)\uE001/g, (_: string, idx: string) => extracted[parseInt(idx)])
 
   // Paragraph wrapping
   md = md.replace(/\n{2,}/g, '</p><p>')

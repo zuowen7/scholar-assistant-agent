@@ -7,14 +7,13 @@ import json
 import logging
 import re
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 from io import StringIO
 from pathlib import Path
-from typing import Callable
-
-logger = logging.getLogger(__name__)
 
 from src.parser.extractor import DocumentContent, PageContent, extract_pages
 
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # 支持的文件格式 (后缀 → 格式名)
@@ -51,16 +50,19 @@ _REGISTRY: _Registry = {}
 
 def _register(*exts: str):
     """装饰器：将提取函数注册到指定后缀"""
+
     def decorator(fn: Callable[[Path], DocumentContent]):
         for ext in exts:
             _REGISTRY[ext.lower()] = fn
         return fn
+
     return decorator
 
 
 # ---------------------------------------------------------------------------
 # 纯文本类 (无额外依赖)
 # ---------------------------------------------------------------------------
+
 
 def _read_text(path: Path) -> str:
     """读取文本文件，UTF-8 优先，自动检测编码"""
@@ -70,6 +72,7 @@ def _read_text(path: Path) -> str:
     except UnicodeDecodeError:
         try:
             from charset_normalizer import from_bytes
+
             result = from_bytes(raw)
             best = result.best()
             if best:
@@ -179,6 +182,7 @@ def _extract_srt(path: Path) -> DocumentContent:
 # PDF (已有 pdfplumber)
 # ---------------------------------------------------------------------------
 
+
 @_register(".pdf")
 def _extract_pdf(path: Path) -> DocumentContent:
     return extract_pages(path)
@@ -187,6 +191,7 @@ def _extract_pdf(path: Path) -> DocumentContent:
 # ---------------------------------------------------------------------------
 # Word (.docx) — python-docx
 # ---------------------------------------------------------------------------
+
 
 @_register(".docx")
 def _extract_docx(path: Path) -> DocumentContent:
@@ -220,6 +225,7 @@ def _extract_docx(path: Path) -> DocumentContent:
 # HTML — BeautifulSoup
 # ---------------------------------------------------------------------------
 
+
 @_register(".html", ".htm")
 def _extract_html(path: Path) -> DocumentContent:
     try:
@@ -245,12 +251,13 @@ def _extract_html(path: Path) -> DocumentContent:
 # EPUB — ebooklib
 # ---------------------------------------------------------------------------
 
+
 @_register(".epub")
 def _extract_epub(path: Path) -> DocumentContent:
     try:
         import ebooklib
-        from ebooklib import epub
         from bs4 import BeautifulSoup
+        from ebooklib import epub
     except ImportError:
         raise ImportError("请安装 ebooklib 和 beautifulsoup4")
 
@@ -283,6 +290,7 @@ def _extract_epub(path: Path) -> DocumentContent:
 # RTF — striprtf
 # ---------------------------------------------------------------------------
 
+
 @_register(".rtf")
 def _extract_rtf(path: Path) -> DocumentContent:
     try:
@@ -302,6 +310,7 @@ def _extract_rtf(path: Path) -> DocumentContent:
 # LaTeX — pylatexenc
 # ---------------------------------------------------------------------------
 
+
 @_register(".tex")
 def _extract_latex(path: Path) -> DocumentContent:
     try:
@@ -320,6 +329,7 @@ def _extract_latex(path: Path) -> DocumentContent:
 # ---------------------------------------------------------------------------
 # PowerPoint (.pptx) — python-pptx
 # ---------------------------------------------------------------------------
+
 
 @_register(".pptx")
 def _extract_pptx(path: Path) -> DocumentContent:
@@ -346,6 +356,7 @@ def _extract_pptx(path: Path) -> DocumentContent:
 # ---------------------------------------------------------------------------
 # Excel (.xlsx) — openpyxl
 # ---------------------------------------------------------------------------
+
 
 @_register(".xlsx")
 def _extract_xlsx(path: Path) -> DocumentContent:
@@ -375,6 +386,7 @@ def _extract_xlsx(path: Path) -> DocumentContent:
 # Word 旧版 (.doc) — 提示用户转换
 # ---------------------------------------------------------------------------
 
+
 @_register(".doc")
 def _extract_doc(path: Path) -> DocumentContent:
     raise ValueError(
@@ -386,6 +398,7 @@ def _extract_doc(path: Path) -> DocumentContent:
 # ---------------------------------------------------------------------------
 # 公共 API
 # ---------------------------------------------------------------------------
+
 
 def extract_document(file_path: str | Path) -> DocumentContent:
     """根据文件后缀自动分发到对应提取器

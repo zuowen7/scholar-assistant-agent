@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Scholar Assistant · Quiet Teal 概念稿 v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    /* 干净中性，微偏冷（非旧暖纸墨，非冷钴蓝） */
+    --bg:#F5F8F7; --surface:#FFFFFF; --sunken:#EEF2F1; --border:#E4E9E8; --border-strong:#D2DAD8;
+    --text:#19211F; --text-2:#56615E; --text-3:#8A9491;
+    /* 单一强调色：深青绿 teal（既非旧朱红，也非 AI 钴蓝） */
+    --accent:#0F766E; --accent-press:#0B5C55; --accent-soft:#E2F1EF; --on-accent:#FFFFFF; --accent-ring:rgba(15,118,110,.32);
+    --danger:#C2413B; --danger-soft:#FBEAE9;
+    --shadow-1:0 1px 2px rgba(16,32,28,.06); --shadow-2:0 8px 24px rgba(16,32,28,.09); --shadow-3:0 18px 48px rgba(16,32,28,.13);
+    --r:12px; --r-sm:9px; --r-lg:16px; --r-pill:999px;
+    --ease:cubic-bezier(.16,1,.3,1);
+    --rail:68px;
+    --font:'Plus Jakarta Sans',system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+  }
+  [data-theme="dark"]{
+    --bg:#0F1614; --surface:#16201D; --sunken:#0E1513; --border:#26302D; --border-strong:#33403B;
+    --text:#E5ECEA; --text-2:#9FAAA6; --text-3:#67756F;
+    --accent:#2FB0A3; --accent-press:#269184; --accent-soft:#102623; --on-accent:#04201C; --accent-ring:rgba(47,176,163,.38);
+    --danger:#E5746E; --danger-soft:#2A1715;
+    --shadow-1:0 1px 2px rgba(0,0,0,.4); --shadow-2:0 8px 24px rgba(0,0,0,.45); --shadow-3:0 18px 48px rgba(0,0,0,.55);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased;overflow:hidden}
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  ::selection{background:var(--accent-soft);color:var(--accent)}
+  .hidden{display:none!important}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:99px;border:3px solid transparent;background-clip:content-box}
+
+  /* ── 外壳 ── */
+  .app{display:grid;grid-template-columns:var(--rail) 1fr;height:100vh}
+  .rail{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 0}
+  .rail .logo{width:38px;height:38px;border-radius:11px;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-weight:700;font-size:17px;margin-bottom:10px}
+  .nav-btn{width:44px;height:44px;border-radius:11px;display:grid;place-items:center;color:var(--text-3);position:relative;transition:background .18s,color .18s}
+  .nav-btn svg{width:20px;height:20px}
+  .nav-btn:hover{background:var(--sunken);color:var(--text)}
+  .nav-btn.active{color:var(--accent);background:var(--accent-soft)}
+  .nav-btn.active::before{content:"";position:absolute;left:-14px;top:11px;bottom:11px;width:3px;border-radius:2px;background:var(--accent)}
+  .rail .sp{flex:1}
+  .nav-btn:focus-visible{outline:none;box-shadow:0 0 0 3px var(--accent-ring)}
+
+  .main{display:flex;flex-direction:column;min-width:0}
+  .topbar{height:56px;flex:none;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;padding:0 18px;background:var(--surface)}
+  .topbar .title{font-weight:600;font-size:15px}
+  .topbar .sub{color:var(--text-3);font-size:13px}
+  .search{flex:1;max-width:420px;margin:0 auto;display:flex;align-items:center;gap:8px;height:38px;padding:0 14px;background:var(--sunken);border:1px solid transparent;border-radius:var(--r-pill);color:var(--text-3);font-size:14px;transition:border-color .18s,box-shadow .18s}
+  .search:hover{border-color:var(--border-strong)}
+  .search:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring);color:var(--text-2)}
+  .search .k{margin-left:auto;font-size:12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:1px 7px;color:var(--text-2)}
+  .actions{display:flex;align-items:center;gap:6px;margin-left:auto}
+  .icon-btn{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;color:var(--text-2);transition:background .18s,color .18s}
+  .icon-btn:hover{background:var(--sunken);color:var(--text)}
+  .icon-btn:focus-visible{outline:none;box-shadow:0 0 0 3px var(--accent-ring)}
+  .avatar{width:32px;height:32px;border-radius:50%;background:var(--sunken);border:1px solid var(--border);display:grid;place-items:center;font-weight:700;color:var(--text-2);margin-left:4px}
+
+  .stage{flex:1;position:relative;overflow:hidden}
+  .screen{position:absolute;inset:0;overflow:auto;padding:32px;opacity:0;transform:translateY(12px);pointer-events:none;transition:opacity .24s var(--ease),transform .24s var(--ease)}
+  .screen.active{opacity:1;transform:none;pointer-events:auto}
+
+  /* ── 通用组件 ── */
+  .btn{height:40px;padding:0 18px;border-radius:var(--r);font-weight:600;font-size:14px;display:inline-flex;align-items:center;gap:8px;transition:transform .18s var(--ease),background .18s,box-shadow .18s,color .18s}
+  .btn:active{transform:translateY(1px)}
+  .btn.primary{background:var(--accent);color:var(--on-accent);box-shadow:var(--shadow-1)}
+  .btn.primary:hover{background:var(--accent-press);box-shadow:var(--shadow-2);transform:translateY(-1px)}
+  .btn.secondary{background:var(--surface);border:1px solid var(--border-strong);color:var(--text)}
+  .btn.secondary:hover{background:var(--sunken)}
+  .btn.ghost{color:var(--text-2)}
+  .btn.ghost:hover{background:var(--sunken);color:var(--text)}
+  .btn.danger{background:var(--danger);color:#fff}
+  .btn.danger:hover{transform:translateY(-1px);box-shadow:var(--shadow-2)}
+  .btn:focus-visible{outline:none;box-shadow:0 0 0 3px var(--accent-ring)}
+  .btn.sm{height:32px;padding:0 13px;font-size:13px}
+
+  .field{display:block;margin-bottom:14px}
+  .field label{display:block;font-size:13px;font-weight:600;color:var(--text-2);margin-bottom:6px}
+  .input{width:100%;height:40px;padding:0 14px;background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--r);color:var(--text);font-family:inherit;font-size:14px;transition:border-color .18s,box-shadow .18s}
+  .input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+  .input.err{border-color:var(--danger)}
+  .hint-err{color:var(--danger);font-size:12px;margin-top:5px}
+
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:20px;box-shadow:var(--shadow-1);transition:transform .2s var(--ease),box-shadow .2s var(--ease),border-color .2s}
+  .card:hover{transform:translateY(-2px);box-shadow:var(--shadow-2);border-color:var(--border-strong)}
+  .card h3{font-size:16px;font-weight:700;margin-bottom:6px}
+  .card p{color:var(--text-2);font-size:14px;line-height:1.6}
+
+  .badge{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:var(--r-pill);font-size:12px;font-weight:600;background:var(--accent-soft);color:var(--accent)}
+  .badge.neutral{background:var(--sunken);color:var(--text-2)}
+  .badge.warn{background:#FBF1DE;color:#94630A}
+  .badge.danger{background:var(--danger-soft);color:var(--danger)}
+
+  .toggle{width:42px;height:26px;border-radius:99px;background:var(--border-strong);position:relative;transition:background .2s var(--ease)}
+  .toggle::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:var(--shadow-1);transition:transform .22s var(--ease)}
+  .toggle.on{background:var(--accent)}
+  .toggle.on::after{transform:translateX(16px)}
+
+  .seg{display:inline-flex;background:var(--sunken);border-radius:var(--r);padding:3px}
+  .seg button{padding:7px 14px;border-radius:9px;font-size:13px;font-weight:600;color:var(--text-2);transition:background .18s,color .18s}
+  .seg button.on{background:var(--surface);color:var(--text);box-shadow:var(--shadow-1)}
+
+  .bar{height:6px;border-radius:99px;background:var(--sunken);overflow:hidden}
+  .bar > i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .6s var(--ease)}
+
+  /* 组件画廊网格 */
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
+  .demo{padding:18px}
+  .demo .lab{font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text-3);margin-bottom:14px}
+  .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+
+  /* 编辑器 */
+  .editor{display:grid;grid-template-columns:1fr 0px;height:100%;transition:grid-template-columns .26s var(--ease)}
+  .editor.open{grid-template-columns:1fr 340px}
+  .canvas{overflow:auto;padding:7vh 24px 14vh;display:flex;justify-content:center}
+  .doc{max-width:68ch;width:100%}
+  .doc .eyebrow{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  .doc h1{font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.22;margin-bottom:10px}
+  .doc .meta{color:var(--text-3);font-size:13px;margin-bottom:34px;display:flex;gap:12px;align-items:center}
+  .doc p{margin-bottom:20px;font-size:16px;line-height:1.8}
+  .doc p strong{font-weight:700}
+  .doc blockquote{border-left:3px solid var(--accent);padding:6px 18px;margin:24px 0;color:var(--text-2);background:var(--surface);border-radius:0 var(--r-sm) var(--r-sm) 0}
+  .panel{background:var(--surface);border-left:1px solid var(--border);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+  .panel .ph{display:flex;align-items:center;gap:8px;padding:16px 18px;border-bottom:1px solid var(--border);font-weight:600;font-size:14px}
+  .panel .body{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+  .msg{padding:12px 14px;border-radius:var(--r);font-size:14px;line-height:1.6}
+  .msg.ai{background:var(--sunken);color:var(--text-2)}
+  .msg.me{background:var(--accent-soft);color:var(--accent);align-self:flex-end;max-width:88%}
+  .composer{display:flex;gap:8px;padding:14px;border-top:1px solid var(--border)}
+  .composer input{flex:1;height:38px;padding:0 14px;background:var(--sunken);border:1px solid transparent;border-radius:var(--r);color:var(--text);font-family:inherit;font-size:14px}
+  .composer input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+
+  /* 翻译双栏 */
+  .trans{display:grid;grid-template-columns:1fr 1fr;gap:18px;height:100%}
+  .pane{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:20px;overflow:auto}
+  .pane h4{font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text-3);margin-bottom:14px}
+  .pane p{font-size:15px;line-height:1.8;color:var(--text-2)}
+  .pane .hl{background:var(--accent-soft);color:var(--accent);border-radius:4px;padding:0 3px}
+  .prog-wrap{margin-bottom:18px}
+
+  /* 思维导图 */
+  .map{width:100%;height:100%}
+  .node{fill:var(--surface);stroke:var(--border-strong);stroke-width:1.5}
+  .node:hover{stroke:var(--accent);stroke-width:2.5}
+  .node-t{fill:var(--text);font-size:13px;font-weight:600;font-family:var(--font)}
+  .edge{stroke:var(--border-strong);stroke-width:1.5;fill:none}
+
+  /* 设置 */
+  .set{max-width:640px}
+  .set .group{margin-bottom:26px}
+  .set .group h3{font-size:14px;font-weight:700;margin-bottom:12px;color:var(--text)}
+  .set .line{display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:1px solid var(--border)}
+  .set .line:last-child{border-bottom:none}
+  .set .line .t{font-size:14px}
+  .set .line .d{font-size:12px;color:var(--text-3);margin-top:2px}
+
+  /* 命令面板 / 模态 / Toast */
+  .mask{position:fixed;inset:0;background:rgba(16,32,28,.30);backdrop-filter:blur(6px);display:none;align-items:flex-start;justify-content:center;padding-top:13vh;z-index:50;opacity:0;transition:opacity .18s var(--ease)}
+  .mask.open{display:flex;opacity:1}
+  .palette{width:min(580px,92vw);background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--r-lg);box-shadow:var(--shadow-3);overflow:hidden;transform:translateY(-12px);opacity:0;transition:transform .22s var(--ease),opacity .22s var(--ease)}
+  .mask.open .palette{transform:none;opacity:1}
+  .palette input{width:100%;height:52px;padding:0 20px;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-family:inherit;font-size:15px}
+  .palette input:focus{outline:none}
+  .palette .list{max-height:320px;overflow:auto;padding:8px}
+  .palette .item{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--r);color:var(--text-2);font-size:14px;cursor:pointer}
+  .palette .item .ic{width:30px;height:30px;border-radius:8px;background:var(--sunken);display:grid;place-items:center;color:var(--text-3);flex:none}
+  .palette .item.sel,.palette .item:hover{background:var(--sunken);color:var(--text)}
+
+  .modal{width:min(460px,92vw);background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--r-lg);box-shadow:var(--shadow-3);padding:24px;transform:scale(.96);opacity:0;transition:transform .2s var(--ease),opacity .2s var(--ease)}
+  .mask.open .modal{transform:scale(1);opacity:1}
+  .modal h3{font-size:18px;font-weight:700;margin-bottom:8px}
+  .modal p{color:var(--text-2);font-size:14px;line-height:1.6;margin-bottom:20px}
+  .modal .acts{display:flex;justify-content:flex-end;gap:10px}
+
+  .toast{position:fixed;right:24px;bottom:24px;background:var(--surface);border:1px solid var(--border-strong);border-left:3px solid var(--accent);border-radius:var(--r);padding:13px 16px;box-shadow:var(--shadow-2);display:flex;align-items:center;gap:10px;font-size:14px;transform:translateY(20px);opacity:0;transition:transform .24s var(--ease),opacity .24s var(--ease);z-index:60}
+  .toast.show{transform:none;opacity:1}
+
+  /* 保存对勾绘制（无发光） */
+  .check{width:18px;height:18px}
+  .check path{stroke:var(--on-accent);stroke-width:2.5;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:24;stroke-dashoffset:24;transition:stroke-dashoffset .35s var(--ease)}
+  .saved .check path{stroke-dashoffset:0}
+
+  @media (prefers-reduced-motion:reduce){*{transition-duration:.001ms!important;animation-duration:.001ms!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- 左导航（安静，按需切换屏幕） -->
+  <aside class="rail">
+    <div class="logo">研</div>
+    <button class="nav-btn active" data-screen="components" title="组件"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
+    <button class="nav-btn" data-screen="editor" title="编辑器"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h11l3 3v13H5z"/><path d="M9 9h7M9 13h7M9 17h4"/></svg></button>
+    <button class="nav-btn" data-screen="translate" title="翻译"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h7M7.5 5v0M9 5c0 4-2 7-5 8M14 20l4-9 4 9M16 17h4"/></svg></button>
+    <button class="nav-btn" data-screen="mindmap" title="导图"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8 11l8-4M8 13l8 4"/></svg></button>
+    <button class="nav-btn" data-screen="agent" title="Agent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 8V5M9 5h6"/></svg></button>
+    <button class="nav-btn" data-screen="settings" title="设置"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+    <div class="sp"></div>
+    <button class="nav-btn" id="themeBtn" title="主题"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A8 8 0 1111.2 3a6 6 0 009.8 9.8z"/></svg></button>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="title" id="barTitle">组件库</div>
+      <div class="sub" id="barSub">统一语言 · 一套令牌</div>
+      <div class="search" id="search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg> 搜索或下达命令 <span class="k">⌘K</span></div>
+      <div class="actions">
+        <button class="btn primary sm" id="saveBtn"><span>保存</span><svg class="check" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg></button>
+        <button class="icon-btn" id="aiQuick" title="AI 助手"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 8V5M9 5h6"/></svg></button>
+        <div class="avatar">研</div>
+      </div>
+    </header>
+
+    <div class="stage" id="stage">
+
+      <!-- 组件库 -->
+      <section class="screen active" id="components">
+        <div class="grid">
+          <div class="card demo">
+            <div class="lab">按钮</div>
+            <div class="row">
+              <button class="btn primary">主操作</button>
+              <button class="btn secondary">次操作</button>
+              <button class="btn ghost">幽灵</button>
+              <button class="btn danger">删除</button>
+            </div>
+          </div>
+          <div class="card demo">
+            <div class="lab">输入</div>
+            <div class="field"><label>文档标题</label><input class="input" value="气候政策综述.docx" /></div>
+            <div class="field"><label>引擎（错误态示例）</label><input class="input err" value="" placeholder="必填" /><div class="hint-err">此项不能为空</div></div>
+          </div>
+          <div class="card demo">
+            <div class="lab">标签 / 徽章</div>
+            <div class="row">
+              <span class="badge">已保存</span>
+              <span class="badge neutral">草稿</span>
+              <span class="badge warn">待审</span>
+              <span class="badge danger">冲突</span>
+            </div>
+          </div>
+          <div class="card demo">
+            <div class="lab">开关 / 分段</div>
+            <div class="row">
+              <div class="toggle on" id="tg1"></div>
+              <div class="toggle" id="tg2"></div>
+              <div class="seg"><button class="on">编辑器</button><button>导图</button><button>预览</button></div>
+            </div>
+          </div>
+          <div class="card demo">
+            <div class="lab">进度</div>
+            <div class="bar"><i style="width:0%" id="prog"></i></div>
+            <button class="btn secondary sm" id="runProg" style="margin-top:14px">运行翻译</button>
+          </div>
+          <div class="card demo">
+            <div class="lab">反馈（点我）</div>
+            <div class="row">
+              <button class="btn secondary sm" id="toastBtn">弹出 Toast</button>
+              <button class="btn secondary sm" id="modalBtn">打开模态</button>
+            </div>
+          </div>
+          <div class="card demo" style="grid-column:span 2">
+            <div class="lab">卡片（悬浮抬升）</div>
+            <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+              <div class="card"><h3>最近项目</h3><p>打开继续上次的写作会话。</p></div>
+              <div class="card"><h3>模板</h3><p>论文 / 综述 / 笔记，一键起头。</p></div>
+              <div class="card"><h3>导入</h3><p>拖入 PDF，自动双语对照。</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 编辑器 -->
+      <section class="screen" id="editor">
+        <div class="editor" id="editorShell">
+          <div class="canvas">
+            <article class="doc">
+              <div class="eyebrow">第 3 节</div>
+              <h1>全球气候治理中的政策协同机制</h1>
+              <div class="meta"><span>自动保存于 2 分钟前</span><span>·</span><span>1,284 词</span></div>
+              <p>近年来，<strong>跨国气候政策</strong>的协同从自愿承诺转向具有约束力的核算框架。本文认为，协同失效主要源于信息不对称与减排成本的不均衡分布。</p>
+              <p>既有研究多聚焦单一国家的减排路径，忽视了缔约方之间的策略互动。我们引入多边博弈模型，刻画当一国强化本土政策时，邻国可能的"搭便车"倾向及其对总体目标的抵消效应。</p>
+              <blockquote>"政策协同不是目标的简单相加，而是激励结构的重新对齐。"</blockquote>
+              <p>下一节将基于模拟，量化不同协同强度下的边际减排成本，并为制度设计建议提供实证支撑。</p>
+            </article>
+          </div>
+          <aside class="panel" id="aiPanel">
+            <div class="ph">AI 助手</div>
+            <div class="body">
+              <div class="msg ai">已读取第 3 节。要我扩写"搭便车"的实证，还是先生成图 2 的数据说明？</div>
+              <div class="msg me">先扩写实证，控制在 200 词。</div>
+              <div class="msg ai">好的，正在生成…</div>
+            </div>
+            <div class="composer"><input placeholder="问 AI 助手…" /><button class="btn primary" style="height:38px;padding:0 16px">发送</button></div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- 翻译 -->
+      <section class="screen" id="translate">
+        <div class="prog-wrap"><div class="bar"><i style="width:64%"></i></div></div>
+        <div class="trans">
+          <div class="pane"><h4>原文 · English</h4><p>Climate governance has shifted from voluntary pledges toward binding accounting frameworks. We model strategic interaction among parties to quantify free-riding effects.</p></div>
+          <div class="pane"><h4>译文 · 中文</h4><p>气候治理已从<span class="hl">自愿承诺</span>转向具有约束力的核算框架。我们建立缔约方之间的策略互动模型，以量化<span class="hl">搭便车</span>效应。</p></div>
+        </div>
+      </section>
+
+      <!-- 思维导图 -->
+      <section class="screen" id="mindmap">
+        <svg class="map" viewBox="0 0 800 460" preserveAspectRatio="xMidYMid meet">
+          <path class="edge" d="M400 230 L220 120"/>
+          <path class="edge" d="M400 230 L220 340"/>
+          <path class="edge" d="M400 230 L600 120"/>
+          <path class="edge" d="M400 230 L600 340"/>
+          <g><rect class="node" x="340" y="200" width="120" height="60" rx="12"/><text class="node-t" x="400" y="234" text-anchor="middle">研究问题</text></g>
+          <g><rect class="node" x="160" y="90" width="120" height="60" rx="12"/><text class="node-t" x="220" y="124" text-anchor="middle">文献综述</text></g>
+          <g><rect class="node" x="160" y="310" width="120" height="60" rx="12"/><text class="node-t" x="220" y="344" text-anchor="middle">方法论</text></g>
+          <g><rect class="node" x="540" y="90" width="120" height="60" rx="12"/><text class="node-t" x="600" y="124" text-anchor="middle">实证结果</text></g>
+          <g><rect class="node" x="540" y="310" width="120" height="60" rx="12"/><text class="node-t" x="600" y="344" text-anchor="middle">政策建议</text></g>
+        </svg>
+      </section>
+
+      <!-- Agent -->
+      <section class="screen" id="agent">
+        <div class="editor open" style="grid-template-columns:1fr 340px">
+          <div class="canvas"><article class="doc"><div class="eyebrow">Agent 会话</div><h1>重构 argument 模块</h1><div class="meta"><span>进行中</span><span>·</span><span>3 个工具调用</span></div><p>Agent 正在读取相关文件并提议最小改动。所有写操作需你批准。</p></article></div>
+          <aside class="panel"><div class="ph">Agent</div><div class="body">
+            <div class="msg.ai">我建议把关系色抽到 <code>--rel-*</code> 单源。要我直接改吗？</div>
+            <div class="msg.me">可以，改完给我看 diff。</div>
+            <div class="msg.ai">已修改 ArgEdge / ArgInspector，等待你批准写入。</div>
+          </div><div class="composer"><input placeholder="给 Agent 下指令…" /><button class="btn primary" style="height:38px;padding:0 16px">发送</button></div></aside>
+        </div>
+      </section>
+
+      <!-- 设置 -->
+      <section class="screen" id="settings">
+        <div class="set">
+          <div class="group"><h3>外观</h3>
+            <div class="line"><div><div class="t">主题</div><div class="d">暗 / 亮 / 跟随系统</div></div><div class="seg"><button class="on">亮</button><button>暗</button><button>跟随</button></div></div>
+            <div class="line"><div><div class="t">密度</div><div class="d">舒适 / 紧凑</div></div><div class="seg"><button class="on">舒适</button><button>紧凑</button></div></div>
+            <div class="line"><div><div class="t">专注模式默认开启</div><div class="d">进入编辑器自动隐藏 chrome</div></div><div class="toggle" id="tg3"></div></div>
+          </div>
+          <div class="group"><h3>模型与隐私</h3>
+            <div class="line"><div><div class="t">本地优先</div><div class="d">文档不离开本机</div></div><div class="toggle on" id="tg4"></div></div>
+            <div class="line"><div><div class="t">默认引擎</div><div class="d">Ollama · Qwen3:8b</div></div><div class="seg"><button class="on">本地</button><button>云端</button></div></div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<!-- 命令面板 -->
+<div class="mask" id="mask"><div class="palette" role="dialog" aria-label="命令面板">
+  <input placeholder="输入命令或搜索…" id="pin" />
+  <div class="list">
+    <div class="item sel"><span class="ic">⌘</span> 新建文档 <span class="h">↵</span></div>
+    <div class="item"><span class="ic">⌘</span> 打开：气候政策综述.docx</div>
+    <div class="item"><span class="ic">⌘</span> 让 AI 续写这一段</div>
+    <div class="item"><span class="ic">⌘</span> 切换主题</div>
+    <div class="item"><span class="ic">⌘</span> 导出：Word / LaTeX / PDF</div>
+  </div>
+</div></div>
+
+<!-- 模态 -->
+<div class="mask" id="modalMask"><div class="modal" role="dialog" aria-modal="true" aria-label="确认" id="modalBox">
+  <h3>删除这个项目？</h3>
+  <p>「量子纠错笔记.md」将被移除。此操作可在 5 秒内撤销。</p>
+  <div class="acts"><button class="btn ghost" id="modalCancel">取消</button><button class="btn danger" id="modalOk">删除</button></div>
+</div></div>
+
+<div class="toast" id="toast">✓ 已保存到本地</div>
+
+<script>
+  const root=document.documentElement;
+  const $=(s,r=document)=>r.querySelector(s);
+  // 屏幕切换
+  const screens={components:'组件库|统一语言 · 一套令牌',editor:'编辑器|第 3 节 · 气候政策综述',translate:'翻译|双语对照 · 实时进度',mindmap:'思维导图|论点结构',agent:'Agent|重构 argument 模块',settings:'设置|外观 · 模型 · 隐私'};
+  const navBtns=document.querySelectorAll('.nav-btn[data-screen]');
+  function go(name){
+    navBtns.forEach(b=>b.classList.toggle('active',b.dataset.screen===name));
+    document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id===name));
+    const [t,s]=screens[name].split('|'); $('#barTitle').textContent=t; $('#barSub').textContent=s;
+  }
+  navBtns.forEach(b=>b.onclick=()=>go(b.dataset.screen));
+  // 主题
+  $('#themeBtn').onclick=()=>root.dataset.theme=root.dataset.theme==='light'?'dark':'light';
+  // 开关
+  ['tg1','tg2','tg3','tg4'].forEach(id=>{const el=$('#'+id);if(el)el.onclick=()=>el.classList.toggle('on');});
+  // 编辑器 AI 面板
+  $('#aiQuick').onclick=()=>{const e=$('#editorShell');if(e){e.classList.toggle('open');go('editor');}};
+  // 进度
+  $('#runProg').onclick=()=>{const p=$('#prog');p.style.width='0%';requestAnimationFrame(()=>{p.style.width='100%';});};
+  // Toast
+  const toast=$('#toast');let tt;
+  function showToast(){toast.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>toast.classList.remove('show'),2400);}
+  $('#toastBtn').onclick=showToast;
+  // 保存对勾
+  $('#saveBtn').onclick=function(){this.classList.add('saved');showToast();setTimeout(()=>this.classList.remove('saved'),1600);};
+  // 模态（焦点陷阱 + Esc + 焦点归还）
+  const modalMask=$('#modalMask'),modalBox=$('#modalBox');let lastFocus;
+  function openModal(){lastFocus=document.activeElement;modalMask.classList.add('open');setTimeout(()=>$('#modalOk').focus(),60);}
+  function closeModal(){modalMask.classList.remove('open');if(lastFocus)lastFocus.focus();}
+  $('#modalBtn').onclick=openModal;$('#modalCancel').onclick=closeModal;$('#modalOk').onclick=()=>{closeModal();showToast();};
+  modalMask.onclick=e=>{if(e.target===modalMask)closeModal();};
+  // 命令面板
+  const mask=$('#mask'),pin=$('#pin');
+  function openP(){mask.classList.add('open');setTimeout(()=>pin.focus(),60);}
+  function closeP(){mask.classList.remove('open');}
+  $('#search').onclick=openP;
+  window.addEventListener('keydown',e=>{
+    if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();mask.classList.contains('open')?closeP():openP();}
+    if(e.key==='Escape'){closeP();closeModal();}
+  });
+  mask.onclick=e=>{if(e.target===mask)closeP();};
+  // 初始化进度（演示动效）
+  requestAnimationFrame(()=>{$('#prog').style.width='64%';});
+</script>
+</body>
+</html>

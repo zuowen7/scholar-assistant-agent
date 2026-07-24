@@ -48,6 +48,7 @@ features:
 @pytest.fixture(scope="module")
 def client():
     from fastapi.testclient import TestClient
+
     from api_factory import create_app
 
     test_dir = tempfile.mkdtemp()
@@ -68,40 +69,56 @@ def client():
 # ── LLM mock helpers ──────────────────────────────────────────────────────────
 
 # Canned LLM responses for build_ledger (2 sequential calls)
-_LEDGER_PROMISE_JSON = json.dumps({
-    "promises": [{
-        "local_id": "p1",
-        "kind": "contribution",
-        "text": "We propose a novel method",
-        "verbatim_quote": "We propose a novel method",
-    }]
-})
-_LEDGER_DISCHARGE_JSON = json.dumps([{
-    "promise_local_id": "p1",
-    "status": "unpaid",
-    "discharge_quotes": [],
-    "note": "Not demonstrated in body",
-}])
+_LEDGER_PROMISE_JSON = json.dumps(
+    {
+        "promises": [
+            {
+                "local_id": "p1",
+                "kind": "contribution",
+                "text": "We propose a novel method",
+                "verbatim_quote": "We propose a novel method",
+            }
+        ]
+    }
+)
+_LEDGER_DISCHARGE_JSON = json.dumps(
+    [
+        {
+            "promise_local_id": "p1",
+            "status": "unpaid",
+            "discharge_quotes": [],
+            "note": "Not demonstrated in body",
+        }
+    ]
+)
 
 # Canned LLM response for run_review (2 sequential calls: coherence + main)
 _REVIEW_COHERENCE_JSON = "[]"
-_REVIEW_MAIN_JSON = json.dumps([{
-    "category": "baseline",
-    "severity": "major",
-    "title": "Weak baselines",
-    "detail": "The paper compares against outdated baselines.",
-    "verbatim_quote": "",
-}])
+_REVIEW_MAIN_JSON = json.dumps(
+    [
+        {
+            "category": "baseline",
+            "severity": "major",
+            "title": "Weak baselines",
+            "detail": "The paper compares against outdated baselines.",
+            "verbatim_quote": "",
+        }
+    ]
+)
 
 # Canned LLM response for import_real_reviews (1 call)
-_IMPORT_JSON = json.dumps([{
-    "reviewer_label": "Reviewer 1",
-    "severity": "major",
-    "category": "baseline",
-    "title": "Weak baselines",
-    "detail": "Need stronger baselines.",
-    "quote_from_paper": "",
-}])
+_IMPORT_JSON = json.dumps(
+    [
+        {
+            "reviewer_label": "Reviewer 1",
+            "severity": "major",
+            "category": "baseline",
+            "title": "Weak baselines",
+            "detail": "Need stronger baselines.",
+            "quote_from_paper": "",
+        }
+    ]
+)
 
 # Canned LLM response for rebuttal (1 call)
 _REBUTTAL_JSON = "Fair point, but our 2024 baselines are competitive."
@@ -114,11 +131,13 @@ def _ledger_llm_side_effect():
     """Sequential LLM mock for build_ledger: call1=promises, call2=discharge."""
     calls = [_LEDGER_PROMISE_JSON, _LEDGER_DISCHARGE_JSON]
     it = iter(calls)
+
     async def _mock(prompt, *args, **kwargs):
         try:
             return next(it)
         except StopIteration:
             return "[]"
+
     return _mock
 
 
@@ -126,15 +145,18 @@ def _review_llm_side_effect():
     """Sequential LLM mock for run_review: call1=coherence, call2=main review."""
     calls = [_REVIEW_COHERENCE_JSON, _REVIEW_MAIN_JSON]
     it = iter(calls)
+
     async def _mock(prompt, *args, **kwargs):
         try:
             return next(it)
         except StopIteration:
             return "[]"
+
     return _mock
 
 
 # ── SSE response parser ───────────────────────────────────────────────────────
+
 
 def _parse_sse(text: str) -> list[dict]:
     """Parse raw SSE response text into list of {event, data} dicts."""
@@ -142,9 +164,9 @@ def _parse_sse(text: str) -> list[dict]:
     current: dict = {}
     for line in text.splitlines():
         if line.startswith("event:"):
-            current["event"] = line[len("event:"):].strip()
+            current["event"] = line[len("event:") :].strip()
         elif line.startswith("data:"):
-            raw = line[len("data:"):].strip()
+            raw = line[len("data:") :].strip()
             try:
                 current["data"] = json.loads(raw)
             except json.JSONDecodeError:
@@ -158,6 +180,7 @@ def _parse_sse(text: str) -> list[dict]:
 
 
 # ── Shared mutable state (populated by earlier tests, scoped per module run) ──
+
 
 @pytest.fixture(scope="module")
 def state():
@@ -177,8 +200,8 @@ DOC_TEXT = (
 
 # ── 1. Ledger endpoints ───────────────────────────────────────────────────────
 
-class TestLedgerEndpoints:
 
+class TestLedgerEndpoints:
     def test_build_ledger_sse_200(self, client):
         mock = _ledger_llm_side_effect()
         with patch("src.argument.ledger.call_llm_chat", mock):
@@ -247,8 +270,8 @@ class TestLedgerEndpoints:
 
 # ── 2. Review endpoints ───────────────────────────────────────────────────────
 
-class TestReviewEndpoints:
 
+class TestReviewEndpoints:
     def test_run_review_sse_200(self, client, state):
         mock = _review_llm_side_effect()
         with patch("src.argument.reviewer.call_llm_chat", mock):
@@ -352,8 +375,8 @@ class TestReviewEndpoints:
 
 # ── 3. Phase 5 endpoints ──────────────────────────────────────────────────────
 
-class TestPhase5Endpoints:
 
+class TestPhase5Endpoints:
     def test_import_reviews_sse_200(self, client, state):
         mock = AsyncMock(return_value=_IMPORT_JSON)
         with patch("src.argument.reviewer.call_llm_chat", mock):
@@ -450,8 +473,8 @@ class TestPhase5Endpoints:
 
 # ── 4. Ledger + review delete (teardown) ──────────────────────────────────────
 
-class TestDeleteEndpoints:
 
+class TestDeleteEndpoints:
     def test_delete_review_session(self, client, state):
         sid = state.get("session_id")
         if not sid:
@@ -491,47 +514,77 @@ _CONTRACT_DOC_TEXT = (
 )
 
 # Pre-recorded LLM responses — exact bytes the mock will return
-_CONTRACT_LEDGER_PROMISES = json.dumps({
-    "promises": [
-        {"local_id": "c1", "kind": "contribution", "text": "We introduce ContractNet",
-         "verbatim_quote": "We introduce ContractNet"},
-        {"local_id": "c2", "kind": "claim", "text": "92% accuracy on BenchX",
-         "verbatim_quote": "achieve 92% accuracy on BenchX"},
+_CONTRACT_LEDGER_PROMISES = json.dumps(
+    {
+        "promises": [
+            {
+                "local_id": "c1",
+                "kind": "contribution",
+                "text": "We introduce ContractNet",
+                "verbatim_quote": "We introduce ContractNet",
+            },
+            {
+                "local_id": "c2",
+                "kind": "claim",
+                "text": "92% accuracy on BenchX",
+                "verbatim_quote": "achieve 92% accuracy on BenchX",
+            },
+        ]
+    }
+)
+_CONTRACT_LEDGER_DISCHARGE = json.dumps(
+    [
+        {
+            "promise_local_id": "c1",
+            "status": "paid",
+            "discharge_quotes": ["ContractNet"],
+            "note": "",
+        },
+        {
+            "promise_local_id": "c2",
+            "status": "unpaid",
+            "discharge_quotes": [],
+            "note": "Not proven",
+        },
     ]
-})
-_CONTRACT_LEDGER_DISCHARGE = json.dumps([
-    {"promise_local_id": "c1", "status": "paid", "discharge_quotes": ["ContractNet"], "note": ""},
-    {"promise_local_id": "c2", "status": "unpaid", "discharge_quotes": [], "note": "Not proven"},
-])
+)
 _CONTRACT_REVIEW_COHERENCE = "[]"
-_CONTRACT_REVIEW_MAIN = json.dumps([{
-    "category": "method",
-    "severity": "minor",
-    "title": "Missing ablation",
-    "detail": "No ablation study provided.",
-    "verbatim_quote": "",
-}])
+_CONTRACT_REVIEW_MAIN = json.dumps(
+    [
+        {
+            "category": "method",
+            "severity": "minor",
+            "title": "Missing ablation",
+            "detail": "No ablation study provided.",
+            "verbatim_quote": "",
+        }
+    ]
+)
 
 
 def _contract_ledger_mock():
     calls = [_CONTRACT_LEDGER_PROMISES, _CONTRACT_LEDGER_DISCHARGE]
     it = iter(calls)
+
     async def _m(prompt, *args, **kwargs):
         try:
             return next(it)
         except StopIteration:
             return "[]"
+
     return _m
 
 
 def _contract_review_mock():
     calls = [_CONTRACT_REVIEW_COHERENCE, _CONTRACT_REVIEW_MAIN]
     it = iter(calls)
+
     async def _m(prompt, *args, **kwargs):
         try:
             return next(it)
         except StopIteration:
             return "[]"
+
     return _m
 
 
@@ -572,9 +625,11 @@ class TestContractShapes:
             with patch("src.argument.ledger.call_llm_chat", _contract_ledger_mock()):
                 client.post(
                     "/api/companion/ledger/build",
-                    json={"doc_id": _CONTRACT_DOC_ID,
-                          "doc_title": "Contract Test Paper",
-                          "text": _CONTRACT_DOC_TEXT},
+                    json={
+                        "doc_id": _CONTRACT_DOC_ID,
+                        "doc_title": "Contract Test Paper",
+                        "text": _CONTRACT_DOC_TEXT,
+                    },
                 )
 
         with patch("src.argument.reviewer.call_llm_chat", _contract_review_mock()):

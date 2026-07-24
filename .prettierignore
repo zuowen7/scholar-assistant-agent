@@ -1,0 +1,40 @@
+# Prettier 忽略清单 — 这些目录不参与格式化
+# 与 eslint.config.js ignores 保持一致
+
+# 构建产物
+dist/
+build/
+*.min.js
+*.min.css
+
+# 依赖
+node_modules/
+
+# Tauri / Python 后端
+src-tauri/
+python/
+
+# 运行时输出
+outputs/
+data/
+logs/
+
+# 文档资源（图片等二进制）
+docs/
+*.png
+*.jpg
+*.gif
+*.pdf
+*.docx
+
+# 锁文件（不要格式化）
+package-lock.json
+pnpm-lock.yaml
+
+# 自动生成文件
+src-tauri/python-dist/
+src/auto-imports.d.ts
+src/components.d.ts
+
+# 第三方库
+CHANGELOG.md

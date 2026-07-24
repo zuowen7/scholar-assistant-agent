@@ -1,8 +1,12 @@
 """Mind map persistence + AI analysis/expansion endpoints."""
+
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +36,14 @@ def register_mindmap(
     load_config=None,
     build_cloud_client=None,
 ) -> None:
-    mindmap_path = runtime_dir / "mindmap.json"
+    def _mindmap_path(workspace_root: str) -> Path:
+        try:
+            workspace = Path(workspace_root).resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise HTTPException(422, f"无效工作区路径: {exc}")
+        if not workspace.is_dir():
+            raise HTTPException(422, "工作区路径必须是目录")
+        return workspace / ".yanmo" / "mindmap.json"
 
     async def _llm_call(system_prompt: str, user_prompt: str) -> str | None:
         if not load_config:
@@ -47,6 +58,7 @@ def register_mindmap(
             return None
         try:
             import httpx
+
             async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as http:
                 resp = await http.post(
                     f"{base_url}/chat/completions",
@@ -74,14 +86,25 @@ def register_mindmap(
     # ── Persistence ────────────────────────────────────────────────
 
     @app.post("/api/mindmap/save")
-    async def save_mindmap(data: dict) -> dict:
+    async def save_mindmap(data: dict, workspace_root: str) -> dict:
+        mindmap_path = _mindmap_path(workspace_root)
         mindmap_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(mindmap_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        fd, tmp_name = tempfile.mkstemp(dir=mindmap_path.parent, prefix=".mindmap.", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_name, mindmap_path)
+        except Exception:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_name)
+            raise
         return {"ok": True}
 
     @app.get("/api/mindmap/load")
-    async def load_mindmap() -> JSONResponse:
+    async def load_mindmap(workspace_root: str) -> JSONResponse:
+        mindmap_path = _mindmap_path(workspace_root)
         if not mindmap_path.exists():
             raise HTTPException(status_code=404, detail="没有已保存的思维导图")
         try:
@@ -93,7 +116,8 @@ def register_mindmap(
         return JSONResponse(data)
 
     @app.delete("/api/mindmap")
-    async def clear_mindmap() -> dict:
+    async def clear_mindmap(workspace_root: str) -> dict:
+        mindmap_path = _mindmap_path(workspace_root)
         if mindmap_path.exists():
             mindmap_path.unlink()
         return {"ok": True}
@@ -169,16 +193,20 @@ def register_mindmap(
                 parsed = json.loads(cleaned)
                 if isinstance(parsed, list):
                     for i, item in enumerate(parsed[:12]):
-                        issues.append({
-                            "id": f"issue-{i + 1}",
-                            "type": item.get("type", "logic_gap"),
-                            "severity": item.get("severity", "info"),
-                            "title": str(item.get("title", "")),
-                            "message": str(item.get("message", "")),
-                            "node_texts": item.get("node_texts", []),
-                        })
+                        issues.append(
+                            {
+                                "id": f"issue-{i + 1}",
+                                "type": item.get("type", "logic_gap"),
+                                "severity": item.get("severity", "info"),
+                                "title": str(item.get("title", "")),
+                                "message": str(item.get("message", "")),
+                                "node_texts": item.get("node_texts", []),
+                            }
+                        )
             except (json.JSONDecodeError, KeyError, TypeError):
-                logger.warning("Failed to parse LLM analysis response, returning structural analysis")
+                logger.warning(
+                    "Failed to parse LLM analysis response, returning structural analysis"
+                )
 
         # If LLM didn't return usable results, fall back to structural analysis
         if not issues:
@@ -218,11 +246,13 @@ def register_mindmap(
 
                 parsed = json.loads(cleaned)
                 if isinstance(parsed, list):
-                    for item in parsed[:req.max_children]:
-                        children.append({
-                            "text": str(item.get("text", "新节点")),
-                            "rationale": str(item.get("rationale", "")),
-                        })
+                    for item in parsed[: req.max_children]:
+                        children.append(
+                            {
+                                "text": str(item.get("text", "新节点")),
+                                "rationale": str(item.get("rationale", "")),
+                            }
+                        )
             except (json.JSONDecodeError, KeyError, TypeError):
                 logger.warning("Failed to parse LLM expand response, using fallback")
 
@@ -246,14 +276,16 @@ def _structural_analysis(
 
     root = nodes.get(root_id)
     if root and not root.get("children"):
-        issues.append({
-            "id": f"issue-{idx}",
-            "type": "shallow_branch",
-            "severity": "warning",
-            "title": "主链还没有展开",
-            "message": "中心主题下面还没有分支，建议先拆出研究问题、方法、论据或结论。",
-            "node_texts": [root.get("text", "")],
-        })
+        issues.append(
+            {
+                "id": f"issue-{idx}",
+                "type": "shallow_branch",
+                "severity": "warning",
+                "title": "主链还没有展开",
+                "message": "中心主题下面还没有分支，建议先拆出研究问题、方法、论据或结论。",
+                "node_texts": [root.get("text", "")],
+            }
+        )
         idx += 1
 
     # Build text-to-ids map for duplicate detection
@@ -265,27 +297,31 @@ def _structural_analysis(
 
     for text, ids in text_to_ids.items():
         if len(ids) > 1:
-            issues.append({
-                "id": f"issue-{idx}",
-                "type": "duplicate",
-                "severity": "warning",
-                "title": "存在相似表达",
-                "message": f"有 {len(ids)} 个节点使用了相近表述「{text}」，建议合并或区分论点侧重点。",
-                "node_texts": [nodes[nid].get("text", "") for nid in ids],
-            })
+            issues.append(
+                {
+                    "id": f"issue-{idx}",
+                    "type": "duplicate",
+                    "severity": "warning",
+                    "title": "存在相似表达",
+                    "message": f"有 {len(ids)} 个节点使用了相近表述「{text}」，建议合并或区分论点侧重点。",
+                    "node_texts": [nodes[nid].get("text", "") for nid in ids],
+                }
+            )
             idx += 1
 
     for nid, node in nodes.items():
         parent_id = node.get("parentId")
         if nid != root_id and parent_id and parent_id not in nodes:
-            issues.append({
-                "id": f"issue-{idx}",
-                "type": "isolated",
-                "severity": "critical",
-                "title": "发现孤立节点",
-                "message": "这个节点没有有效父节点，建议把它接回主链或删除。",
-                "node_texts": [node.get("text", "")],
-            })
+            issues.append(
+                {
+                    "id": f"issue-{idx}",
+                    "type": "isolated",
+                    "severity": "critical",
+                    "title": "发现孤立节点",
+                    "message": "这个节点没有有效父节点，建议把它接回主链或删除。",
+                    "node_texts": [node.get("text", "")],
+                }
+            )
             idx += 1
             continue
 
@@ -293,14 +329,16 @@ def _structural_analysis(
         if nid != root_id and not children:
             text = node.get("text", "").strip()
             if not text or len(text) < 6 or text in GENERIC:
-                issues.append({
-                    "id": f"issue-{idx}",
-                    "type": "missing_support",
-                    "severity": "info",
-                    "title": "建议补充支撑信息",
-                    "message": "节点内容较短，建议补充前置条件、证据来源或预期结论。",
-                    "node_texts": [text],
-                })
+                issues.append(
+                    {
+                        "id": f"issue-{idx}",
+                        "type": "missing_support",
+                        "severity": "info",
+                        "title": "建议补充支撑信息",
+                        "message": "节点内容较短，建议补充前置条件、证据来源或预期结论。",
+                        "node_texts": [text],
+                    }
+                )
                 idx += 1
 
     return issues[:12]
@@ -323,4 +361,4 @@ def _fallback_expand(topic: str, max_children: int) -> list[dict[str, str]]:
             ("实验验证", "设计实验验证方法的有效性"),
             ("结论与展望", "总结发现并指出未来方向"),
         ]
-    return [{"text": t, "rationale": r} for t, r in templates[:max(1, max_children)]]
+    return [{"text": t, "rationale": r} for t, r in templates[: max(1, max_children)]]

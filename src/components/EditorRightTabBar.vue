@@ -1,6 +1,7 @@
 <template>
   <div class="rp-tab-bar">
     <button
+      data-testid="right-tab-preview"
       class="rp-tab"
       :class="{ active: modelValue === 'preview' }"
       @click="emit('update:modelValue', 'preview')"
@@ -8,20 +9,22 @@
       <Eye :size="13" :stroke-width="1.7" /> {{ t('editor.rightPreview') }}
     </button>
     <button
+      data-testid="right-tab-agent"
       class="rp-tab"
       :class="{ active: modelValue === 'ai' }"
       @click="emit('update:modelValue', 'ai')"
     >
-      <Bot :size="13" :stroke-width="1.7" /> {{ t('editor.rightAiEdit') }}
+      <Bot :size="13" :stroke-width="1.7" /> {{ t(agentMode ? 'editor.rightAgent' : 'editor.rightAiEdit') }}
     </button>
     <button
+      data-testid="right-tab-argument"
       class="rp-tab"
       :class="{ active: modelValue === 'argument' }"
       @click="emit('update:modelValue', 'argument')"
     >
       <GitBranch :size="13" :stroke-width="1.7" /> {{ t('editor.rightArgument') }}
     </button>
-    <button class="rp-close" :title="t('editor.rightClosePanel')" @click="emit('update:modelValue', null)">
+    <button data-testid="right-tab-close" class="rp-close" :title="t('editor.rightClosePanel')" @click="emit('update:modelValue', null)">
       <X :size="13" :stroke-width="2" />
     </button>
   </div>
@@ -34,7 +37,7 @@ const { t } = useI18n()
 
 type RightTab = 'preview' | 'ai' | 'argument'
 
-defineProps<{ modelValue: RightTab | null }>()
+defineProps<{ modelValue: RightTab | null; agentMode?: boolean }>()
 const emit = defineEmits<{
   (e: 'update:modelValue', value: RightTab | null): void
 }>()

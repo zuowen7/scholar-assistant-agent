@@ -83,13 +83,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--strict", action="store_true", help="Exit 1 on mismatch")
     parser.add_argument("--repo", default=str(_REPO_DEFAULT), help="Repo default.yaml path")
-    parser.add_argument("--runtime", default=str(_RUNTIME_DEFAULT), help="Runtime default.yaml path")
+    parser.add_argument(
+        "--runtime", default=str(_RUNTIME_DEFAULT), help="Runtime default.yaml path"
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    missing = check_sync(
-        Path(args.repo), Path(args.runtime), strict=args.strict
-    )
+    missing = check_sync(Path(args.repo), Path(args.runtime), strict=args.strict)
     if missing and args.strict:
         print(f"ERROR: {len(missing)} config key(s) out of sync.", file=sys.stderr)
         return 1

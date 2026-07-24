@@ -1,14 +1,16 @@
 """章节感知翻译 — 单元测试"""
+
 from __future__ import annotations
 
 import pytest
+
 from src.translator.section_aware import (
-    SectionType,
     SectionContext,
+    SectionType,
+    classify_document_type,
     detect_section,
     detect_section_from_heading,
     get_section_prompt,
-    classify_document_type,
 )
 
 

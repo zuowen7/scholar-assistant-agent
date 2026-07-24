@@ -77,12 +77,14 @@
         <button
           v-if="!chatExpanded"
           class="rebut-toggle"
+          data-rebut-btn
           @click="chatExpanded = true"
         >{{ t('reviewerThread.rebut') }}</button>
         <div v-else class="rebut-input-wrap">
           <textarea
             v-model="rebuttalText"
             class="rebut-input"
+            data-rebut-input
             :placeholder="t('reviewerThread.rebutPlaceholder')"
             rows="3"
           />
@@ -90,6 +92,7 @@
             <button class="rebut-cancel" @click="chatExpanded = false">{{ t('reviewerThread.rebuteCancel') }}</button>
             <button
               class="rebut-send"
+              data-rebut-send
               :disabled="!rebuttalText.trim()"
               @click="sendRebuttal"
             >{{ t('reviewerThread.rebutSend') }}</button>
@@ -135,7 +138,8 @@ const expandedTurnIds = ref<Set<string>>(new Set())
 function isExpanded(id: string) { return expandedTurnIds.value.has(id) }
 function toggleTurn(id: string) {
   const s = new Set(expandedTurnIds.value)
-  s.has(id) ? s.delete(id) : s.add(id)
+  if (s.has(id)) s.delete(id)
+  else s.add(id)
   expandedTurnIds.value = s
 }
 
@@ -207,7 +211,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
 .sev-fatal { border-left-color: var(--c-danger); }
 .sev-major { border-left-color: var(--c-warn); }
 .sev-minor { border-left-color: color-mix(in srgb, var(--c-accent) 70%, transparent); }
-.sev-info  { border-left-color: var(--c-border, #333); }
+.sev-info  { border-left-color: var(--c-border); }
 
 /* ── Header ── */
 .card-header {
@@ -224,17 +228,17 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   border-radius: 50%;
   flex-shrink: 0;
 }
-.pip-fatal { background: var(--c-error, #ef4444); }
-.pip-major { background: var(--c-warning, #f59e0b); }
-.pip-minor { background: var(--c-accent, #6366f1); opacity: 0.7; }
-.pip-info  { background: var(--c-text-3, #555); }
+.pip-fatal { background: var(--c-danger); }
+.pip-major { background: var(--c-warn); }
+.pip-minor { background: var(--c-accent); opacity: 0.7; }
+.pip-info  { background: var(--c-text-3); }
 
 .card-category {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--c-text-2, #888);
+  color: var(--c-text-2);
   padding: 1px 5px;
   border-radius: 3px;
   background: var(--c-surface-2);
@@ -244,11 +248,11 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   font-size: 10px;
   padding: 1px 5px;
   border-radius: 3px;
-  background: var(--c-surface-2, #232323);
-  color: var(--c-text-3, #666);
+  background: var(--c-surface-2);
+  color: var(--c-text-3);
 }
 .src-ledger_check { color: color-mix(in srgb, var(--c-accent) 80%, #fff); }
-.src-scoped       { color: var(--c-warning, #f59e0b); }
+.src-scoped       { color: var(--c-warn); }
 
 .header-spacer { flex: 1; }
 
@@ -263,14 +267,15 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   font-weight: 600;
   padding: 5px 9px;
   border-radius: 12px;
-  border: 1px solid var(--c-border, #333);
-  background: var(--c-surface-2, #232323);
-  color: var(--c-text-2, #999);
+  border: 1px solid var(--c-border);
+  background: var(--c-surface-2);
+  color: var(--c-text-2);
   cursor: pointer;
   white-space: nowrap;
   transition: border-color 0.15s;
 }
-.status-chip:hover { border-color: var(--c-accent, #6366f1); color: var(--c-accent, #6366f1); }
+.status-chip:hover { border-color: var(--c-accent); color: var(--c-accent); }
+.status-chip:focus-visible { outline: none; box-shadow: var(--ring-focus); }
 .chip-caret { opacity: 0.5; flex-shrink: 0; }
 
 .chip-rebutted  { border-color: rgba(34, 197, 94, 0.27); color: var(--c-success); background: var(--c-success-bg); }
@@ -281,8 +286,8 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   position: absolute;
   right: 0;
   top: calc(100% + 4px);
-  background: var(--c-surface-2, #1e1e1e);
-  border: 1px solid var(--c-border, #333);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
   border-radius: 6px;
   overflow: hidden;
   z-index: 50;
@@ -296,13 +301,13 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   text-align: left;
   padding: 6px 10px;
   font-size: 11px;
-  color: var(--c-text-2, #bbb);
+  color: var(--c-text-2);
   background: none;
   border: none;
   cursor: pointer;
   transition: background 0.1s;
 }
-.menu-item:hover, .menu-item.active { background: var(--c-surface-3, #2a2a2a); color: var(--c-text, #e5e7eb); }
+.menu-item:hover, .menu-item.active { background: var(--c-surface-3); color: var(--c-text-0); }
 
 /* ── Content ── */
 .card-title {
@@ -322,7 +327,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
 
 .expand-btn {
   font-size: 11px;
-  color: var(--c-accent, #6366f1);
+  color: var(--c-accent);
   background: none;
   border: none;
   cursor: pointer;
@@ -347,7 +352,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   text-align: left;
   transition: color 0.15s;
 }
-.anchor-btn:hover { color: var(--c-accent, #6366f1); }
+.anchor-btn:hover { color: var(--c-accent); }
 .anchor-label { color: var(--c-text-3); font-weight: 650; }
 .anchor-quote { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .anchor-jump { color: var(--c-accent); }
@@ -378,18 +383,18 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   padding-top: 2px;
   flex-shrink: 0;
 }
-.turn-author .turn-role { color: var(--c-accent, #6366f1); }
-.turn-reviewer .turn-role { color: var(--c-warning, #f59e0b); }
+.turn-author .turn-role { color: var(--c-accent); }
+.turn-reviewer .turn-role { color: var(--c-warn); }
 
 .turn-text {
-  color: var(--c-text-2, #ccc);
+  color: var(--c-text-1);
   line-height: 1.5;
   flex: 1;
 }
 
 .turn-expand-btn {
   font-size: 10px;
-  color: var(--c-accent, #6366f1);
+  color: var(--c-accent);
   background: none;
   border: none;
   cursor: pointer;
@@ -407,12 +412,12 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   gap: 8px;
   padding: 4px 0;
 }
-.sending-text { font-size: 11px; color: var(--c-text-3, #777); font-style: italic; }
+.sending-text { font-size: 11px; color: var(--c-text-2); font-style: italic; }
 
 .dot-wave { display: flex; gap: 4px; align-items: center; }
 .dot-wave i {
   width: 5px; height: 5px; border-radius: 50%;
-  background: var(--c-accent, #6366f1); display: block;
+  background: var(--c-accent); display: block;
   animation: wave-bounce 1.1s ease-in-out infinite;
 }
 .dot-wave i:nth-child(2) { animation-delay: 0.18s; }
@@ -424,15 +429,15 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
 
 .rebut-toggle {
   font-size: 11px;
-  color: var(--c-text-3, #666);
+  color: var(--c-text-2);
   background: none;
-  border: 1px dashed var(--c-border, #333);
+  border: 1px dashed var(--c-border);
   border-radius: 4px;
   padding: 3px 10px;
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
 }
-.rebut-toggle:hover { color: var(--c-accent, #6366f1); border-color: var(--c-accent, #6366f1); }
+.rebut-toggle:hover { color: var(--c-accent); border-color: var(--c-accent); }
 
 .rebut-input-wrap {
   display: flex;
@@ -446,17 +451,17 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   box-sizing: border-box;
   font-size: 12px;
   padding: 8px 10px;
-  border: 1px solid var(--c-border, #333);
+  border: 1px solid var(--c-border);
   border-radius: 6px;
-  background: var(--c-surface-2, #222);
-  color: var(--c-text, #e5e7eb);
+  background: var(--c-surface-2);
+  color: var(--c-text-0);
   resize: vertical;
   font-family: inherit;
   line-height: 1.5;
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out);
 }
-.rebut-input:focus { border-color: var(--c-accent, #6366f1); }
+.rebut-input:focus-visible { border-color: var(--c-accent); box-shadow: var(--ring-focus); }
 
 .rebut-actions {
   display: flex;
@@ -468,23 +473,36 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   font-size: 11px;
   padding: 3px 10px;
   border-radius: 4px;
-  border: 1px solid var(--c-border, #333);
+  border: 1px solid var(--c-border);
   background: none;
-  color: var(--c-text-3, #777);
+  color: var(--c-text-3);
   cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out);
 }
-.rebut-cancel:hover { color: var(--c-text, #ccc); }
+.rebut-cancel:hover { color: var(--c-text-0); border-color: var(--c-text-3); }
+.rebut-cancel:focus-visible { outline: none; box-shadow: var(--ring-focus); }
 
 .rebut-send {
   font-size: 11px;
   padding: 3px 12px;
   border-radius: 4px;
   border: none;
-  background: var(--c-accent, #6366f1);
-  color: #fff;
+  background: var(--c-accent);
+  color: var(--c-on-accent);
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition: filter var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out);
 }
 .rebut-send:disabled { opacity: 0.35; cursor: not-allowed; }
-.rebut-send:not(:disabled):hover { opacity: 0.85; }
+.rebut-send:not(:disabled):hover { filter: brightness(1.08); }
+.rebut-send:not(:disabled):active { transform: scale(0.97); }
+.rebut-send:focus-visible { outline: none; box-shadow: var(--ring-focus); }
+
+/* Consistent keyboard focus ring across all interactive elements in the card */
+.anchor-btn:focus-visible,
+.rebut-toggle:focus-visible,
+.expand-btn:focus-visible,
+.turn-expand-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
 </style>

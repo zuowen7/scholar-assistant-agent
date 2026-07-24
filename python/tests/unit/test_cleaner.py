@@ -1,12 +1,12 @@
 """文本清洗模块单元测试"""
 
 from src.cleaner.pipeline import (
+    _detect_references,
+    _is_continuation,
+    _remove_orphan_unicode,
+    _remove_watermarks,
     clean_text,
     clean_text_full,
-    _remove_watermarks,
-    _detect_references,
-    _remove_orphan_unicode,
-    _is_continuation,
 )
 
 

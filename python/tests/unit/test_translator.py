@@ -8,14 +8,13 @@ import httpx
 import pytest
 
 from src.translator.ollama_client import (
-    OllamaClient,
+    _PROMPT_MAX_CHARS,
+    MAX_RETRIES,
     Glossary,
+    OllamaClient,
     TranslationResult,
     _strip_think_tags,
-    MAX_RETRIES,
-    _PROMPT_MAX_CHARS,
 )
-
 
 # ---------------------------------------------------------------------------
 # _strip_think_tags (existing)
@@ -23,7 +22,6 @@ from src.translator.ollama_client import (
 
 
 class TestStripThinkTags:
-
     def test_basic_think_tag(self) -> None:
         text = "<think >some reasoning</think >翻译结果"
         assert _strip_think_tags(text) == "翻译结果"
@@ -47,7 +45,6 @@ class TestStripThinkTags:
 
 
 class TestGlossary:
-
     def test_empty_glossary(self) -> None:
         g = Glossary()
         assert g.to_prompt_text() == ""
@@ -116,7 +113,6 @@ def _make_ollama_generate_response(text: str) -> MagicMock:
 
 
 class TestOllamaClientSuccess:
-
     def test_translate_with_chat_api(self) -> None:
         client = OllamaClient(base_url="http://localhost:11434")
         mock_resp = _make_ollama_chat_response("翻译结果")
@@ -210,15 +206,12 @@ class TestOllamaClientSuccess:
 
 
 class TestOllamaClientErrors:
-
     def test_connection_error_raises(self) -> None:
         client = OllamaClient()
 
         with patch.object(client, "_get_http_client") as mock_get:
             mock_http = MagicMock()
-            mock_http.post.side_effect = httpx.ConnectError(
-                "refused", request=MagicMock()
-            )
+            mock_http.post.side_effect = httpx.ConnectError("refused", request=MagicMock())
             mock_get.return_value = mock_http
             with patch("src.translator.ollama_client.time.sleep"):
                 with pytest.raises(ConnectionError, match="无法连接"):
@@ -232,9 +225,7 @@ class TestOllamaClientErrors:
         mock_err_resp = MagicMock()
         mock_err_resp.status_code = 500
         mock_err_resp.text = "Internal Server Error"
-        http_err = httpx.HTTPStatusError(
-            "500", request=MagicMock(), response=mock_err_resp
-        )
+        http_err = httpx.HTTPStatusError("500", request=MagicMock(), response=mock_err_resp)
 
         call_count = 0
 
@@ -265,9 +256,7 @@ class TestOllamaClientErrors:
 
         with patch.object(client, "_get_http_client") as mock_get:
             mock_http = MagicMock()
-            mock_http.post.side_effect = httpx.TimeoutException(
-                "timeout", request=MagicMock()
-            )
+            mock_http.post.side_effect = httpx.TimeoutException("timeout", request=MagicMock())
             mock_get.return_value = mock_http
             with patch("src.translator.ollama_client.time.sleep"):
                 with pytest.raises(ConnectionError, match="超时"):
@@ -302,7 +291,6 @@ class TestOllamaClientErrors:
 
 
 class TestOllamaClientPrompt:
-
     def test_system_prompt_includes_glossary(self) -> None:
         client = OllamaClient(system_prompt="你是一个翻译助手")
         client._glossary.update("attention", "注意力（Attention）机制")

@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import difflib
 import hashlib
 import json
 import logging
 import re
 import time
+from collections.abc import AsyncIterator
+from typing import Any
 
 from src.utils.json_extract import extract_json_array, extract_json_object
-from typing import Any, AsyncIterator
 
 from .anchor import make_anchor_from_quote, relocate, relocate_all
 from .companion_models import Ledger, Promise
@@ -52,7 +52,7 @@ def _extract_promise_zone(text: str) -> tuple[str, str]:
     # Try to find where methods/approach starts
     m_method = _METHOD_RE.search(text)
     if m_method:
-        return text[:m_method.start()], text[m_method.start():]
+        return text[: m_method.start()], text[m_method.start() :]
 
     # Fallback: find first promise-related section and go to next major section
     m = _PROMISE_SECTION_RE.search(text)
@@ -62,9 +62,9 @@ def _extract_promise_zone(text: str) -> tuple[str, str]:
     start = m.start()
     # Collect subsequent headers until a non-promise section
     for h in _HEADER_RE.finditer(text, m.end()):
-        header_text = h.group().strip().lstrip('#').strip()
+        h.group().strip().lstrip("#").strip()
         if _METHOD_RE.search(h.group()):
-            return text[start:h.start()], text[h.start():]
+            return text[start : h.start()], text[h.start() :]
     # No method header found — use first 40% of text as promise zone
     cut = min(len(text), max(6000, len(text) * 2 // 5))
     return text[:cut], text[cut:]
@@ -77,8 +77,9 @@ async def _call_with_retry(
     max_tokens: int,
     temperature: float,
 ) -> str:
-    raw = await call_llm_chat(prompt, cloud_client, ollama_client,
-                               max_tokens=max_tokens, temperature=temperature)
+    raw = await call_llm_chat(
+        prompt, cloud_client, ollama_client, max_tokens=max_tokens, temperature=temperature
+    )
     return raw
 
 
@@ -116,10 +117,11 @@ async def build_ledger(
     for attempt in range(2):
         try:
             raw1 = await _call_with_retry(
-                prompt1 if attempt == 0
-                else f"请只输出有效的 JSON 对象：\n{raw1[:500]}",
-                cloud_client, ollama_client,
-                max_tokens=4096, temperature=0.3,
+                prompt1 if attempt == 0 else f"请只输出有效的 JSON 对象：\n{raw1[:500]}",
+                cloud_client,
+                ollama_client,
+                max_tokens=4096,
+                temperature=0.3,
             )
             if raw1.strip():
                 parsed1_attempt = extract_json_object(raw1)
@@ -127,7 +129,10 @@ async def build_ledger(
                     break
         except (json.JSONDecodeError, ValueError):
             if attempt == 1:
-                yield {"event": "error", "data": json.dumps({"message": "LLM 未返回有效 JSON，请重试"})}
+                yield {
+                    "event": "error",
+                    "data": json.dumps({"message": "LLM 未返回有效 JSON，请重试"}),
+                }
                 return
         except Exception as exc:
             yield {"event": "error", "data": json.dumps({"message": f"LLM 调用失败: {exc}"})}
@@ -159,12 +164,17 @@ async def build_ledger(
             last_built_at=time.time(),
         )
         store.save_ledger(ledger)
-        yield {"event": "complete", "data": json.dumps({
-            "ledger_id": ledger.id,
-            "promise_count": 0,
-            "by_status": {},
-            "warnings": ["LLM 未提取到承诺"],
-        })}
+        yield {
+            "event": "complete",
+            "data": json.dumps(
+                {
+                    "ledger_id": ledger.id,
+                    "promise_count": 0,
+                    "by_status": {},
+                    "warnings": ["LLM 未提取到承诺"],
+                }
+            ),
+        }
         return
 
     # ── LLM #2: discharge resolution ─────────────────────────────────────────
@@ -177,15 +187,14 @@ async def build_ledger(
         return (
             body[:chunk]
             + f"\n\n[... 中间省略 {mid - chunk} 字符 ...]\n\n"
-            + body[mid - chunk // 2: mid + chunk // 2]
-            + f"\n\n[... 省略至末尾 ...]\n\n"
+            + body[mid - chunk // 2 : mid + chunk // 2]
+            + "\n\n[... 省略至末尾 ...]\n\n"
             + body[-chunk:]
         )
 
     body_sample = _sample_body(body_zone)
     promises_summary = "\n".join(
-        f"- (id={p.get('local_id','?')}) {p.get('text','')}"
-        for p in raw_promises
+        f"- (id={p.get('local_id', '?')}) {p.get('text', '')}" for p in raw_promises
     )
     prompt2 = (
         "你是严格的学术审稿人。对以下每条承诺，在论文正文里找兑现证据，按以下标准判断状态：\n\n"
@@ -206,10 +215,11 @@ async def build_ledger(
     for attempt in range(2):
         try:
             raw2 = await _call_with_retry(
-                prompt2 if attempt == 0
-                else f"请只输出有效的 JSON 数组：\n{raw2[:500]}",
-                cloud_client, ollama_client,
-                max_tokens=4096, temperature=0.3,
+                prompt2 if attempt == 0 else f"请只输出有效的 JSON 数组：\n{raw2[:500]}",
+                cloud_client,
+                ollama_client,
+                max_tokens=4096,
+                temperature=0.3,
             )
             if raw2.strip():
                 arr = extract_json_array(raw2)
@@ -298,12 +308,17 @@ async def build_ledger(
         last_built_at=time.time(),
     )
     store.save_ledger(ledger)
-    yield {"event": "complete", "data": json.dumps({
-        "ledger_id": ledger.id,
-        "promise_count": len(new_promises),
-        "by_status": by_status,
-        "warnings": warnings,
-    })}
+    yield {
+        "event": "complete",
+        "data": json.dumps(
+            {
+                "ledger_id": ledger.id,
+                "promise_count": len(new_promises),
+                "by_status": by_status,
+                "warnings": warnings,
+            }
+        ),
+    }
 
 
 async def rebuild_ledger(
@@ -335,7 +350,8 @@ async def rebuild_ledger(
             relocated_map = {a.id: a for a in relocated}
             # Update overridden promises with relocated anchor references (anchors stay same id)
             existing_anchors_updated = [
-                relocated_map.get(a.id, a) for a in existing.anchors
+                relocated_map.get(a.id, a)
+                for a in existing.anchors
                 if a.id in overridden_anchor_ids
             ]
         else:
@@ -387,6 +403,7 @@ async def rebuild_ledger(
 
 # ── Phase 5: suggest experiment ───────────────────────────────────────────────
 
+
 async def suggest_experiment_for_promise(
     promise_text: str,
     promise_note: str | None,
@@ -404,7 +421,9 @@ async def suggest_experiment_for_promise(
         "【当前已覆盖条件】...\n【还需要的条件】...\n【建议实验设计】..."
     )
     try:
-        result = await call_llm_chat(prompt, cloud_client, ollama_client, max_tokens=4096, temperature=0.4)
+        result = await call_llm_chat(
+            prompt, cloud_client, ollama_client, max_tokens=4096, temperature=0.4
+        )
         return result or "（LLM 返回为空，请手动填写建议）"
     except Exception as exc:
         return f"（LLM 不可用：{exc}；请手动补充实验设计。）"

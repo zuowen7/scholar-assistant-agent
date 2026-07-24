@@ -25,7 +25,6 @@ from fastapi.testclient import TestClient
 
 import api_factory as _api_factory_mod
 
-
 # ── Rate-limit bypass fixture ─────────────────────────────────────────────────
 
 
@@ -116,9 +115,11 @@ async def _empty_gen(*args, **kwargs):
 
 def _make_mock_generator(*chunk_results):
     """Return an async generator factory that yields given ChunkBlockResult items."""
+
     async def _gen(*args, **kwargs):
         for cr in chunk_results:
             yield cr
+
     return _gen
 
 
@@ -126,7 +127,6 @@ def _make_mock_generator(*chunk_results):
 
 
 class TestTranslateSSEPipeline:
-
     def test_upload_returns_task_id(self, client):
         """POST /api/translate 返回 task_id，然后消费任务以免阻塞后续测试。"""
         with patch(_PARALLEL_TARGET, _empty_gen):
@@ -179,9 +179,7 @@ class TestTranslateSSEPipeline:
 
         events = _parse_sse_events(body)
         event_types = [e.get("event") for e in events]
-        assert "translate.progress" in event_types, (
-            f"No progress event. Got: {event_types}"
-        )
+        assert "translate.progress" in event_types, f"No progress event. Got: {event_types}"
 
     def test_task_not_found_returns_404(self, client):
         """不存在的 task_id 返回 404。"""
@@ -346,6 +344,7 @@ class TestTranslateSSEPipeline:
     def test_rag_documents_list_includes_translated_file(self, client):
         """翻译完成后 /api/rag/documents 包含刚入库的文档（知识库 UI 列表）。"""
         import time
+
         from src.translator.block_translator import BlockTranslation, ChunkBlockResult
 
         mock_cr = ChunkBlockResult(
@@ -375,6 +374,8 @@ class TestTranslateSSEPipeline:
         assert resp.status_code == 200
         docs = resp.json()
         assert isinstance(docs, list)
-        trans_docs = [d for d in docs if (d.get("id") or d.get("doc_id") or "").startswith("trans_")]
+        trans_docs = [
+            d for d in docs if (d.get("id") or d.get("doc_id") or "").startswith("trans_")
+        ]
         # Background ingest may not complete in TestClient; just verify the endpoint is reachable
         # and returns a list. trans_docs presence depends on chromadb availability.

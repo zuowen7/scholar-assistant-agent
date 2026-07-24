@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // 测试文件也纳入类型检查 — 之前 tsconfig.json 的 exclude 把测试排除了，
+    // 意味着测试代码本身没有类型保护，bug 容易在测试里隐藏。
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    // 测试里允许 any（mock 场景多）
+    "strict": true,
+    "noImplicitAny": false
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.vue",
+    "src/__tests__/**/*.ts",
+    "src/__tests__/**/*.vue"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build",
+    "src-tauri"
+  ]
+}

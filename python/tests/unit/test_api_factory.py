@@ -5,10 +5,10 @@ from __future__ import annotations
 import os
 import sys
 import textwrap
+from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
-from pathlib import Path
 
 _IS_WIN = sys.platform == "win32"
 
@@ -17,9 +17,9 @@ _IS_WIN = sys.platform == "win32"
 
 
 class TestMaskApiKey:
-
     def _mask(self, cfg: dict) -> None:
         from api_factory import _mask_api_key
+
         _mask_api_key(cfg)
 
     def test_long_key_masked(self) -> None:
@@ -28,11 +28,10 @@ class TestMaskApiKey:
         self._mask(cfg)
         assert cfg["translator"]["cloud"]["api_key"] == "sk-12345****cdef"
 
-    def test_short_key_not_masked(self) -> None:
-        # <=8 chars: unchanged
+    def test_short_key_masked(self) -> None:
         cfg = {"translator": {"cloud": {"api_key": "short"}}}
         self._mask(cfg)
-        assert cfg["translator"]["cloud"]["api_key"] == "short"
+        assert cfg["translator"]["cloud"]["api_key"] == "****"
 
     def test_empty_key_untouched(self) -> None:
         cfg = {"translator": {"cloud": {"api_key": ""}}}
@@ -46,11 +45,10 @@ class TestMaskApiKey:
     def test_missing_translator_section_no_error(self) -> None:
         self._mask({})
 
-    def test_exactly_8_chars_not_masked(self) -> None:
-        # exactly 8 chars: not > 8, so unchanged
+    def test_exactly_8_chars_masked(self) -> None:
         cfg = {"translator": {"cloud": {"api_key": "12345678"}}}
         self._mask(cfg)
-        assert cfg["translator"]["cloud"]["api_key"] == "12345678"
+        assert cfg["translator"]["cloud"]["api_key"] == "****"
 
     def test_exactly_9_chars_masked(self) -> None:
         # 9-12 chars: show head4 + **** + tail4
@@ -58,19 +56,34 @@ class TestMaskApiKey:
         self._mask(cfg)
         assert cfg["translator"]["cloud"]["api_key"] == "1234****6789"
 
+    def test_all_nested_api_keys_are_masked(self) -> None:
+        cfg = {
+            "translator": {"cloud": {"api_key": "cloud-secret-key"}},
+            "agent": {"api_key": "agent-secret-key"},
+            "zotero": {"api_key": "zotero-secret-key"},
+            "vision": {"api_key": "vision-secret-key"},
+        }
+        self._mask(cfg)
+        assert "****" in cfg["translator"]["cloud"]["api_key"]
+        assert "****" in cfg["agent"]["api_key"]
+        assert "****" in cfg["zotero"]["api_key"]
+        assert "****" in cfg["vision"]["api_key"]
+
 
 class TestIsMasked:
-
     def test_masked_value(self) -> None:
         from api_factory import _is_masked
+
         assert _is_masked("sk-1****cdef")
 
     def test_unmasked_value(self) -> None:
         from api_factory import _is_masked
+
         assert not _is_masked("sk-1234567890")
 
     def test_empty_string(self) -> None:
         from api_factory import _is_masked
+
         assert not _is_masked("")
 
 
@@ -78,9 +91,9 @@ class TestIsMasked:
 
 
 class TestDeepMerge:
-
     def _merge(self, base: dict, override: dict) -> dict:
         from api_factory import _deep_merge
+
         return _deep_merge(base, override)
 
     def test_shallow_override(self) -> None:
@@ -108,6 +121,23 @@ class TestDeepMerge:
         result = self._merge({"a": {"b": 1}}, {"a": "flat"})
         assert result == {"a": "flat"}
 
+
+def test_create_app_preserves_agent_lifecycle_callbacks(tmp_path, monkeypatch):
+    import api_factory
+
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    config_path = config_dir / "default.yaml"
+    config_path.write_text("translator:\n  engine: ollama\n", encoding="utf-8")
+    monkeypatch.setattr(api_factory, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(api_factory, "RUNTIME_DIR", tmp_path)
+
+    app = api_factory.create_app()
+
+    assert callable(app.state._state_agent.get("startup"))
+    assert callable(app.state._state_agent.get("shutdown"))
+    assert callable(app.state._state_agent.get("ensure_rag_store"))
+
     def test_empty_base(self) -> None:
         result = self._merge({}, {"a": 1})
         assert result == {"a": 1}
@@ -121,13 +151,15 @@ class TestDeepMerge:
 
 
 class TestStripEmptyStrings:
-
     def _strip(self, d: dict) -> dict:
         from api_factory import _strip_empty_strings
+
         return _strip_empty_strings(d)
 
     def test_removes_empty_string_values(self) -> None:
-        result = self._strip({"translator": {"cloud": {"api_key": "", "base_url": "https://api.openai.com"}}})
+        result = self._strip(
+            {"translator": {"cloud": {"api_key": "", "base_url": "https://api.openai.com"}}}
+        )
         assert result == {"translator": {"cloud": {"base_url": "https://api.openai.com"}}}
 
     def test_removes_empty_nested_dict(self) -> None:
@@ -146,13 +178,49 @@ class TestStripEmptyStrings:
         assert self._strip({}) == {}
 
 
+def test_save_config_keeps_all_secrets_local_and_preserves_overrides(tmp_path, monkeypatch):
+    import yaml
+
+    import api_factory
+
+    config_path = tmp_path / "config" / "default.yaml"
+    config_path.parent.mkdir()
+    config_path.write_text("{}\n", encoding="utf-8")
+    local_path = config_path.parent / "default.local.yaml"
+    local_path.write_text("network:\n  proxy: http://127.0.0.1:7890\n", encoding="utf-8")
+    monkeypatch.setattr(api_factory, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(api_factory, "_config_cache", None)
+    monkeypatch.setattr(api_factory, "_config_cache_mtime", 0.0)
+
+    api_factory._save_config(
+        {
+            "translator": {"cloud": {"api_key": "cloud-secret"}},
+            "agent": {"api_key": "agent-secret"},
+            "zotero": {"api_key": "zotero-secret"},
+            "vision": {"api_key": "vision-secret"},
+        }
+    )
+
+    public = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    private = yaml.safe_load(local_path.read_text(encoding="utf-8"))
+    assert public["translator"]["cloud"]["api_key"] == ""
+    assert public["agent"]["api_key"] == ""
+    assert public["zotero"]["api_key"] == ""
+    assert public["vision"]["api_key"] == ""
+    assert private["translator"]["cloud"]["api_key"] == "cloud-secret"
+    assert private["agent"]["api_key"] == "agent-secret"
+    assert private["zotero"]["api_key"] == "zotero-secret"
+    assert private["vision"]["api_key"] == "vision-secret"
+    assert private["network"]["proxy"] == "http://127.0.0.1:7890"
+
+
 # ── _validate_file_path ────────────────────────────────────────────────
 
 
 class TestValidateFilePath:
-
     def _validate(self, p: Path) -> None:
         from api_factory import _validate_file_path
+
         _validate_file_path(p)
 
     def test_normal_path_passes(self, tmp_path: Path) -> None:
@@ -186,6 +254,11 @@ class TestValidateFilePath:
     def test_program_files_blocked(self) -> None:
         with pytest.raises(HTTPException) as exc_info:
             self._validate(Path("C:\\Program Files\\app\\config.ini"))
+        assert exc_info.value.status_code == 403
+
+    def test_windows_system_path_matching_is_case_insensitive(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            self._validate(Path("c:\\wInDoWs\\System32\\drivers\\etc\\hosts"))
         assert exc_info.value.status_code == 403
 
     def test_dot_env_extension_blocked(self, tmp_path: Path) -> None:
@@ -277,23 +350,34 @@ class TestValidateFilePath:
             self._validate(home / "AppData" / "Local" / "Microsoft" / "VSCode" / "settings.json")
         assert exc_info.value.status_code == 403
 
+    def test_appdata_matching_is_case_insensitive(self) -> None:
+        home = Path.home()
+        with pytest.raises(HTTPException) as exc_info:
+            self._validate(home / "appdata" / "ROAMING" / "vendor" / "credentials.json")
+        assert exc_info.value.status_code == 403
+
+    def test_appdata_local_temp_is_allowed(self) -> None:
+        home = Path.home()
+        self._validate(home / "AppData" / "Local" / "Temp" / "translation.pdf")
+
 
 # ── _load_config cache behavior ─────────────────────────────────────────
 
 
 class TestConfigCache:
-
     def test_loads_from_yaml(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         import api_factory
 
         config_file = tmp_path / "config" / "default.yaml"
         config_file.parent.mkdir(parents=True)
-        config_file.write_text(textwrap.dedent("""\
+        config_file.write_text(
+            textwrap.dedent("""\
             translator:
               temperature: 0.5
             agent:
               max_steps: 10
-        """))
+        """)
+        )
         monkeypatch.setattr(api_factory, "CONFIG_PATH", config_file)
         monkeypatch.setattr(api_factory, "_config_cache", None)
         monkeypatch.setattr(api_factory, "_config_cache_mtime", 0.0)
@@ -302,9 +386,12 @@ class TestConfigCache:
         assert cfg["translator"]["temperature"] == 0.5
         assert cfg["agent"]["max_steps"] == 10
 
-    def test_returns_cached_on_same_mtime(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        import api_factory
+    def test_returns_cached_on_same_mtime(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         import time as _time
+
+        import api_factory
 
         config_file = tmp_path / "config" / "default.yaml"
         config_file.parent.mkdir(parents=True)
@@ -335,7 +422,9 @@ class TestConfigCache:
         assert "old" not in cfg
         assert cfg["translator"]["temperature"] == 0.3
 
-    def test_missing_config_returns_empty(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_missing_config_returns_empty(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         import api_factory
 
         missing = tmp_path / "nonexistent" / "default.yaml"

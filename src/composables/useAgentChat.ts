@@ -28,6 +28,23 @@ const _approvalBySession = new Map<string, PendingApproval | null>()
 
 // Per-workflow message isolation: messages are keyed by workflow/session ID.
 const _messagesByWorkflow = new Map<string, AgentChatMessage[]>()
+const WORKFLOW_MESSAGE_CACHE_LIMIT = 20
+
+function cacheWorkflowMessages(workflowKey: string, workflowMessages: AgentChatMessage[]) {
+  // Refresh insertion order so recently used workflows remain cached.
+  _messagesByWorkflow.delete(workflowKey)
+  _messagesByWorkflow.set(workflowKey, workflowMessages)
+  while (_messagesByWorkflow.size > WORKFLOW_MESSAGE_CACHE_LIMIT) {
+    const oldestWorkflowKey = _messagesByWorkflow.keys().next().value as string | undefined
+    if (!oldestWorkflowKey) break
+    _messagesByWorkflow.delete(oldestWorkflowKey)
+    _approvalBySession.delete(oldestWorkflowKey)
+  }
+}
+
+export function _getWorkflowCacheKeysForTesting(): string[] {
+  return [..._messagesByWorkflow.keys()]
+}
 
 // Pipeline state (Phase 4)
 export interface PendingCheckpoint {
@@ -189,7 +206,7 @@ export function useAgentChat() {
           pipelineCompleted.value = (agentEvent.metadata?.completed as string[]) || []
           msg.events = [...msg.events, agentEvent]
           break
-        case 'checkpoint':
+        case 'checkpoint': {
           pendingCheckpoint.value = {
             stage: (agentEvent.metadata?.stage as string) || '',
             checkpoint_type: (agentEvent.metadata?.checkpoint_type as 'MANDATORY' | 'SLIM') || 'SLIM',
@@ -211,6 +228,7 @@ export function useAgentChat() {
             detail: { files: [...new Set(changedFiles)] },
           }))
           break
+        }
         default:
           msg.events = [...msg.events, agentEvent]
           break
@@ -571,7 +589,7 @@ export function useAgentChat() {
         isStreaming: false,
         timestamp: Date.now() + i,
       }))
-      _messagesByWorkflow.set(wfId, loaded)
+      cacheWorkflowMessages(wfId, loaded)
       _clearApproval()
       workflowId.value = wfId
       messages.value = loaded
@@ -588,13 +606,18 @@ export function useAgentChat() {
   function startNewWorkflow() {
     const previousWorkflowId = workflowId.value
     if (previousWorkflowId && messages.value.length) {
-      _messagesByWorkflow.set(previousWorkflowId, [...messages.value])
+      cacheWorkflowMessages(previousWorkflowId, [...messages.value])
     }
     workflowId.value = null
     messages.value = []
     _clearApproval()
     pipelineStage.value = ''
     pipelineCompleted.value = []
+    pendingCheckpoint.value = null
+  }
+
+  async function respondCheckpoint(_decision: string) {
+    // Handled via SSE checkpoint event — decision flows through agent stream
     pendingCheckpoint.value = null
   }
 
@@ -640,6 +663,7 @@ export function useAgentChat() {
       const resp = await fetch(`${API_URL}/api/agent/v2/workflows/${wfId}`, { method: 'DELETE' })
       if (!resp.ok) return false
       _messagesByWorkflow.delete(wfId)
+      _approvalBySession.delete(wfId)
       return true
     } catch {
       return false
@@ -664,6 +688,7 @@ export function useAgentChat() {
     fetchSessions,
     startNewWorkflow,
     loadWorkflowMessages,
+    respondCheckpoint,
     fetchTools,
     agentSkills,
     skillsLoading,

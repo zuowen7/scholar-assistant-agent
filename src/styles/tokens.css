@@ -162,6 +162,12 @@
   --c-info-border: rgba(91, 108, 255, 0.20);
   --c-info-fg: #7a89ff;
 
+  /* Cross-component derived semantics. Keep these as first-class tokens: each
+     has multiple consumers and expresses a stable interaction contract. */
+  --c-border-strong: color-mix(in srgb, var(--c-border) 78%, var(--c-text-2));
+  --c-on-accent: #fff;
+  --c-accent-rgb: 91, 108, 255;
+
   /* Derived composites */
   --c-accent-bg: rgba(91, 108, 255, 0.08);
   --c-accent-bg2: rgba(91, 108, 255, 0.05);

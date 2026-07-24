@@ -161,6 +161,7 @@ import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 import type { NodeType, RelationType, SuggestCandidate, SuggestResult } from '../../composables/useArgumentMap'
 import { useArgumentMap, focusSpan, inferRelationType } from '../../composables/useArgumentMap'
+import { saveBlob } from '../../composables/useEditorIO'
 import { API_BASE } from '../../utils/api'
 import { readSseStream } from '../../utils/streamReader'
 
@@ -215,7 +216,6 @@ async function doExport() {
       if (dlResp.ok) {
         const blob = await dlResp.blob()
         const ext = exportTemplate.value === 'latex' ? 'tex' : 'md'
-        const { saveBlob } = await import('../../composables/useEditorIO')
         await saveBlob(blob, `argument_draft.${ext}`)
         exportMsg.value = t('argument.draftExported', { count: capturedWordCount })
       } else {

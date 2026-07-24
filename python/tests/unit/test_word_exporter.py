@@ -1,15 +1,16 @@
 """Word 导出器单元测试"""
 
-import pytest
-from pathlib import Path
 import re
+from pathlib import Path
+
+import pytest
+from docx import Document
 
 from src.formatter.word_exporter import (
-    markdown_to_docx,
-    _parse_inline_format,
     _apply_inline,
+    _parse_inline_format,
+    markdown_to_docx,
 )
-from docx import Document
 
 
 class TestInlineFormatParsing:

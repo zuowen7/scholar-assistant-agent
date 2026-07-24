@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Any, AsyncGenerator
 
@@ -68,75 +69,93 @@ class ConversationRuntime:
         self._session_approved_tools: set[str] = set()
         self._approval_denied = False
         self._aborted = False
+        # Lifecycle tracking — used by router._cleanup_pool to evict stale
+        # sessions safely (never evict a streaming session).
+        self.last_active_monotonic: float = time.monotonic()
+        self._is_streaming: bool = False
 
     # ---- Public API ----
 
-    async def turn(self, user_message: str) -> AsyncGenerator[AgentEvent, None]:
-        if not user_message.strip():
+    async def turn(
+        self, user_message: str, *, resume: bool = False
+    ) -> AsyncGenerator[AgentEvent, None]:
+        if not resume and not user_message.strip():
             yield AgentEvent.error("empty message")
             yield AgentEvent.done()
             return
 
         self._approval_denied = False
-        yield AgentEvent.session_started(self.session.session_id)
-        self.session.append(Message(role=MessageRole.USER, blocks=[TextBlock(text=user_message)]))
-        self._auto_save()
+        self._is_streaming = True
+        self.last_active_monotonic = time.monotonic()
+        try:
+            yield AgentEvent.session_started(self.session.session_id)
+            if not resume:
+                self.session.append(Message(role=MessageRole.USER, blocks=[TextBlock(text=user_message)]))
+                self._auto_save()
 
-        for step in range(self.max_steps):
-            if self._aborted:
-                yield AgentEvent.aborted("Session aborted by user")
-                yield AgentEvent.done()
-                return
+            for step in range(self.max_steps):
+                if self._aborted:
+                    yield AgentEvent.aborted("Session aborted by user")
+                    yield AgentEvent.done()
+                    return
 
-            for retry in range(3):
-                try:
-                    async for event in self._llm_turn():
-                        yield event
-                        if event.type in (AgentEventType.RESPONSE, AgentEventType.ERROR):
-                            self._auto_save()
-                            yield AgentEvent.usage(TokenUsage(
-                                input_tokens=self.usage.total_input,
-                                output_tokens=self.usage.total_output,
-                            ))
+                for retry in range(3):
+                    try:
+                        async for event in self._llm_turn():
+                            yield event
+                            if event.type in (AgentEventType.RESPONSE, AgentEventType.ERROR):
+                                self._auto_save()
+                                yield AgentEvent.usage(TokenUsage(
+                                    input_tokens=self.usage.total_input,
+                                    output_tokens=self.usage.total_output,
+                                ))
+                                yield AgentEvent.done()
+                                return
+                            if event.type == AgentEventType.DONE:
+                                return
+                        if self._aborted:
+                            yield AgentEvent.aborted("Session aborted by user")
                             yield AgentEvent.done()
                             return
-                        if event.type == AgentEventType.DONE:
+                        if self._approval_denied:
+                            self._auto_save()
+                            yield AgentEvent.aborted("File edit rejected; no changes were applied")
+                            yield AgentEvent.done()
                             return
-                    if self._aborted:
-                        yield AgentEvent.aborted("Session aborted by user")
+                        break
+                    except ApiError as e:
+                        if e.status_code == 429 and retry < 2:
+                            wait = e.retry_after or (2 ** retry)
+                            yield AgentEvent.token(f"\n[Rate limited, retrying in {wait:.0f}s...]\n")
+                            await asyncio.sleep(wait)
+                            continue
+                        if e.status_code == 0 and retry < 2:
+                            yield AgentEvent.token(f"\n[Connection failed, retrying ({retry+1}/3)...]\n")
+                            await asyncio.sleep(2.0)
+                            continue
+                        yield AgentEvent.error(f"API error: {e}")
                         yield AgentEvent.done()
                         return
-                    if self._approval_denied:
-                        self._auto_save()
-                        yield AgentEvent.aborted("File edit rejected; no changes were applied")
+                    except Exception as e:
+                        if retry < 2:
+                            yield AgentEvent.token(f"\n[Error, retrying ({retry+1}/3)...]\n")
+                            await asyncio.sleep(1.0)
+                            continue
+                        logger.exception("unexpected error in turn")
+                        yield AgentEvent.error(f"unexpected error: {e}")
                         yield AgentEvent.done()
                         return
-                    break
-                except ApiError as e:
-                    if e.status_code == 429 and retry < 2:
-                        wait = e.retry_after or (2 ** retry)
-                        yield AgentEvent.token(f"\n[Rate limited, retrying in {wait:.0f}s...]\n")
-                        await asyncio.sleep(wait)
-                        continue
-                    if e.status_code == 0 and retry < 2:
-                        yield AgentEvent.token(f"\n[Connection failed, retrying ({retry+1}/3)...]\n")
-                        await asyncio.sleep(2.0)
-                        continue
-                    yield AgentEvent.error(f"API error: {e}")
-                    yield AgentEvent.done()
-                    return
-                except Exception as e:
-                    if retry < 2:
-                        yield AgentEvent.token(f"\n[Error, retrying ({retry+1}/3)...]\n")
-                        await asyncio.sleep(1.0)
-                        continue
-                    logger.exception("unexpected error in turn")
-                    yield AgentEvent.error(f"unexpected error: {e}")
-                    yield AgentEvent.done()
-                    return
-        else:
-            yield AgentEvent.error(f"max steps ({self.max_steps}) reached")
-            yield AgentEvent.done()
+                self.last_active_monotonic = time.monotonic()
+            else:
+                yield AgentEvent.error(f"max steps ({self.max_steps}) reached")
+                yield AgentEvent.done()
+        finally:
+            # Guaranteed cleanup on any exit path (normal return, exception,
+            # generator close, client disconnect). Prevents _approval_events
+            # from leaking if the generator is abandoned mid-approval.
+            self._is_streaming = False
+            if self._approval_events:
+                self._approval_events.clear()
 
     def approve(self, event_id: str, decision: str) -> bool:
         """Handle approval decision from frontend. Returns True if event was found."""
@@ -213,6 +232,7 @@ class ConversationRuntime:
                     assistant_blocks.append(TextBlock(text=full_text))
                 if assistant_blocks:
                     self.session.append(Message(role=MessageRole.ASSISTANT, blocks=assistant_blocks, usage=chunk.usage))
+                    self._auto_save()
 
                 if not tool_blocks:
                     if full_text.strip():
@@ -270,19 +290,36 @@ class ConversationRuntime:
             tool_output = f"Permission denied: {perm_result.reason}"
             is_error = True
         else:
-            # ── 文件修改工具：暂停等用户审批 ──
+            # ── 有副作用的工具：暂停等用户审批 ──
             if (
-                tb.name in ("write_file", "str_replace")
+                tb.name in ("write_file", "str_replace", "run_command", "export_document")
                 and not self.auto_approve
                 and tb.name not in self._session_approved_tools
             ):
-                yield AgentEvent.await_approval(
-                    tb.id, tb.name, f"Agent wants to edit {file_path}",
-                    preview={"old_text": old_text, "new_text": new_text, "file_path": resolved_path},
-                )
-                # Wait for approval
+                if tb.name == "run_command":
+                    approval_reason = (
+                        f"Agent wants to run a command in {args.get('cwd', '.')}: "
+                        f"{args.get('command', '')}"
+                    )
+                elif tb.name == "export_document":
+                    approval_reason = f"Agent wants to export {file_path} as {args.get('format', 'latex')}"
+                else:
+                    approval_reason = f"Agent wants to edit {file_path}"
+                # Register before yielding. The frontend may POST its decision as
+                # soon as it receives the SSE event.
                 evt = asyncio.Event()
                 self._approval_events[tb.id] = evt
+                yield AgentEvent.await_approval(
+                    tb.id, tb.name, approval_reason,
+                    preview={
+                        "old_text": old_text,
+                        "new_text": new_text,
+                        "file_path": resolved_path,
+                        "command": args.get("command", ""),
+                        "cwd": args.get("cwd", "."),
+                    },
+                )
+                # Wait for approval
                 try:
                     await asyncio.wait_for(evt.wait(), timeout=_APPROVAL_TIMEOUT)
                 except asyncio.TimeoutError:
@@ -296,10 +333,11 @@ class ConversationRuntime:
                 if decision != "allow_once" and decision != "allow_session":
                     tool_output = f"User denied the change to {file_path}"
                     is_error = True
-                    yield AgentEvent.tool_result(tb.id, tb.name, tool_output, is_error=True)
                     self.session.append(Message(role=MessageRole.TOOL, blocks=[
                         ToolResultBlock(tool_use_id=tb.id, tool_name=tb.name, output=tool_output, is_error=True),
                     ]))
+                    self._auto_save()
+                    yield AgentEvent.tool_result(tb.id, tb.name, tool_output, is_error=True)
                     if not self._aborted:
                         self._approval_denied = True
                     return
@@ -311,26 +349,28 @@ class ConversationRuntime:
             tool_output = result.output
             is_error = result.is_error
 
-        yield AgentEvent.tool_result(tb.id, tb.name, tool_output, is_error=is_error)
         self.session.append(Message(role=MessageRole.TOOL, blocks=[
             ToolResultBlock(tool_use_id=tb.id, tool_name=tb.name, output=tool_output[:_TOOL_RESULT_MAX_CHARS], is_error=is_error),
         ]))
+        self._auto_save()
+        yield AgentEvent.tool_result(tb.id, tb.name, tool_output, is_error=is_error)
 
         # Checkpoint after file modifications: include new content for frontend
         if tb.name in ("write_file", "str_replace") and not is_error:
             new_content = ""
-            if file_path:
+            if resolved_path:
                 try:
-                    fp = Path(file_path) if Path(file_path).is_absolute() else (self.tool_registry._workspace_root / file_path) if self.tool_registry._workspace_root else Path(file_path)
+                    fp = Path(resolved_path)
                     if fp.is_file():
                         new_content = fp.read_text(encoding="utf-8", errors="replace")
                 except Exception:
                     pass
             yield AgentEvent.checkpoint({
                 "action": tb.name,
-                "file": file_path,
+                "file": resolved_path,
                 "workspace": self.session.meta.workspace,
                 "content": new_content[:10000] if new_content else tool_output,
+                "content_truncated": len(new_content) > 10000,
             })
 
     def _auto_save(self) -> None:

@@ -102,6 +102,7 @@ def clean_text_full(raw_text: str) -> CleanResult:
     else:
         # 8.1 检测 Perspectives 风格的内联编号引用（无 REFERENCES header）
         from src.cleaner.article_splitter import detect_inline_refs
+
         text, inline_refs = detect_inline_refs(text)
         if inline_refs:
             ref_text = inline_refs
@@ -158,12 +159,13 @@ def _detect_references(text: str) -> tuple[int, str]:
             stripped = line.strip()
             # 允许 \s 匹配空白（单/多个空格），但必须是完整词匹配
             # 用 re.match 匹配行首，避免子串误匹配（如 "no references" 中的 "references"）
-            if re.match(pattern, stripped, re.IGNORECASE):
-                # 验证：检查后面几行是否像引用条目
-                if _looks_like_reference_section(lines, i):
-                    line_start = sum(len(l) + 1 for l in lines[:i])
-                    if line_start > best_pos:
-                        best_pos = line_start
+            # 验证：检查后面几行是否像引用条目
+            if re.match(pattern, stripped, re.IGNORECASE) and _looks_like_reference_section(
+                lines, i
+            ):
+                line_start = sum(len(item) + 1 for item in lines[:i])
+                if line_start > best_pos:
+                    best_pos = line_start
 
     if best_pos >= 0:
         return best_pos, text[best_pos:]
@@ -232,7 +234,8 @@ def _remove_watermarks(text: str) -> str:
     # 单行 "Downloaded from ... on ..." 水印
     text = re.sub(
         r"Downloaded\s+from\s+[^\n]+\s+on\s+\w+\s+\d+[^\n]*",
-        "", text,
+        "",
+        text,
     )
     # 混合格式: "Downloaded from https://... at\n" + 多行机构名 + "on\n" + 日期
     text = re.sub(
@@ -242,13 +245,17 @@ def _remove_watermarks(text: str) -> str:
         r"(?:[A-Z][a-z]+\s*\n)?"
         r"(?:\d+,?\s*\n)?"
         r"\d{4}",
-        "", text, flags=re.MULTILINE,
+        "",
+        text,
+        flags=re.MULTILINE,
     )
     # 多行变体: 每个词一行 (Science 期刊常见)
     # "Downloaded\nfrom\nURL\nat\nInstitute\nof\n...\non\nMarch\n28,\n2026"
     text = re.sub(
         r"^Downloaded\s*$\n^from\s*$\n(?:.+\n)+?^on\s*$\n(?:.+\n)*?\d{4}\s*$",
-        "", text, flags=re.MULTILINE,
+        "",
+        text,
+        flags=re.MULTILINE,
     )
     for pattern in _WATERMARK_PATTERNS:
         text = re.sub(pattern, "", text, flags=re.MULTILINE)
@@ -288,15 +295,36 @@ def _remove_figure_artifacts(text: str) -> str:
     """
     # 常见反向文字词表（正向）
     _REVERSE_WORDS = {
-        "PRODUCT", "SMOKE", "AND", "FIRE", "SYSTEM", "MAPPING", "HAZARD",
-        "NOAA", "INC", "CENTRE", "FOREST", "INTERAGENCY", "CANADIAN",
-        "DATA", "SCIENCE", "PENNEY", "GRAPHIC", "CREDITS",
+        "PRODUCT",
+        "SMOKE",
+        "AND",
+        "FIRE",
+        "SYSTEM",
+        "MAPPING",
+        "HAZARD",
+        "NOAA",
+        "INC",
+        "CENTRE",
+        "FOREST",
+        "INTERAGENCY",
+        "CANADIAN",
+        "DATA",
+        "SCIENCE",
+        "PENNEY",
+        "GRAPHIC",
+        "CREDITS",
     }
 
     # 地理标注词（图片中的地图标签）
     _GEO_LABELS = {
-        "GREENLAND", "CANADA", "UNITEDSTATES", "UNITED STATES",
-        "ALASKA", "MEXICO", "ATLANTIC", "PACIFIC",
+        "GREENLAND",
+        "CANADA",
+        "UNITEDSTATES",
+        "UNITED STATES",
+        "ALASKA",
+        "MEXICO",
+        "ATLANTIC",
+        "PACIFIC",
     }
 
     lines = text.split("\n")
@@ -357,13 +385,13 @@ def _remove_orphan_unicode(text: str) -> str:
     _NOISE_CHARS = "óñáéíúäëïöüåæœ"
     noise_class = f"[{_NOISE_CHARS}]"
     # 单独一行的噪声字符: "ó", "ñ ñ", "ó ó" 等
-    text = re.sub(
-        rf"^{noise_class}(?:\s+{noise_class})*\s*$", "", text, flags=re.MULTILINE
-    )
+    text = re.sub(rf"^{noise_class}(?:\s+{noise_class})*\s*$", "", text, flags=re.MULTILINE)
     # 行末噪声: "...discovered. ó ó" → "...discovered."
     text = re.sub(
         rf"\s+{noise_class}\s+{noise_class}(?:\s+{noise_class})*\s*$",
-        "", text, flags=re.MULTILINE,
+        "",
+        text,
+        flags=re.MULTILINE,
     )
     return text
 
@@ -414,21 +442,65 @@ def _remove_noise_fragments(text: str) -> str:
 
 
 # 已知有意义的短大写词（章节标题、通用缩写等），不视为噪声
-_MEANINGFUL_CAPS = frozenset({
-    # 章节标题
-    "ABSTRACT", "INTRODUCTION", "METHODS", "METHOD", "RESULTS", "RESULT",
-    "DISCUSSION", "CONCLUSION", "CONCLUSIONS", "REFERENCES", "APPENDIX",
-    "APPENDICES", "BACKGROUND", "MOTIVATION", "OVERVIEW", "SUMMARY",
-    "RELATED", "ACKNOWLEDGMENTS", "ACKNOWLEDGEMENTS", "FUNDING",
-    "NOTES", "NOTE", "SUPPLEMENTARY", "SUPPORTING", "LIMITATIONS",
-    # 表格 / 图
-    "TABLE", "FIGURE", "FIGURES", "TABLES", "BOX", "FIG",
-    # 常见学科缩写
-    "DNA", "RNA", "PCR", "MRI", "CT", "PET", "NMR", "UV", "IR",
-    "USA", "UK", "EU", "UN", "WHO", "CDC",
-    # 常见英文词（偶尔独立成段）
-    "THE", "AND", "OR", "NOT", "BUT",
-})
+_MEANINGFUL_CAPS = frozenset(
+    {
+        # 章节标题
+        "ABSTRACT",
+        "INTRODUCTION",
+        "METHODS",
+        "METHOD",
+        "RESULTS",
+        "RESULT",
+        "DISCUSSION",
+        "CONCLUSION",
+        "CONCLUSIONS",
+        "REFERENCES",
+        "APPENDIX",
+        "APPENDICES",
+        "BACKGROUND",
+        "MOTIVATION",
+        "OVERVIEW",
+        "SUMMARY",
+        "RELATED",
+        "ACKNOWLEDGMENTS",
+        "ACKNOWLEDGEMENTS",
+        "FUNDING",
+        "NOTES",
+        "NOTE",
+        "SUPPLEMENTARY",
+        "SUPPORTING",
+        "LIMITATIONS",
+        # 表格 / 图
+        "TABLE",
+        "FIGURE",
+        "FIGURES",
+        "TABLES",
+        "BOX",
+        "FIG",
+        # 常见学科缩写
+        "DNA",
+        "RNA",
+        "PCR",
+        "MRI",
+        "CT",
+        "PET",
+        "NMR",
+        "UV",
+        "IR",
+        "USA",
+        "UK",
+        "EU",
+        "UN",
+        "WHO",
+        "CDC",
+        # 常见英文词（偶尔独立成段）
+        "THE",
+        "AND",
+        "OR",
+        "NOT",
+        "BUT",
+    }
+)
 
 
 def _is_noise_fragment(text: str) -> bool:
@@ -459,10 +531,7 @@ def _is_noise_fragment(text: str) -> bool:
     if len(alpha_only) > 10:
         return False
 
-    if text.strip().upper() in _MEANINGFUL_CAPS:
-        return False
-
-    return True
+    return text.strip().upper() not in _MEANINGFUL_CAPS
 
 
 def _remove_author_affiliations(text: str) -> str:
@@ -521,17 +590,21 @@ def _fix_intra_word_spaces(text: str) -> str:
     # 匹配: 行首或空格后，一个大写字母 + 空格 + 2+个小写字母（看起来像一个被拆开的单词）
     text = re.sub(
         r"(?<=\s)([A-Z])\s([a-z]{2,})",
-        lambda m: m.group(1) + m.group(2)
-        if _looks_like_merged_word(m.group(1) + m.group(2))
-        else m.group(0),
+        lambda m: (
+            m.group(1) + m.group(2)
+            if _looks_like_merged_word(m.group(1) + m.group(2))
+            else m.group(0)
+        ),
         text,
     )
     # 行首的情况
     text = re.sub(
         r"^([A-Z])\s([a-z]{2,})",
-        lambda m: m.group(1) + m.group(2)
-        if _looks_like_merged_word(m.group(1) + m.group(2))
-        else m.group(0),
+        lambda m: (
+            m.group(1) + m.group(2)
+            if _looks_like_merged_word(m.group(1) + m.group(2))
+            else m.group(0)
+        ),
         text,
         flags=re.MULTILINE,
     )
@@ -551,39 +624,117 @@ def _looks_like_merged_word(word: str) -> bool:
     """
     # 不合并冠词 A + 空格 + 单词 的情况
     # 这些是合法的 "A different", "A major" 等短语
-    if len(word) >= 3 and word[0] == 'A':
+    if len(word) >= 3 and word[0] == "A":
         # "A" + lowercase word → 不合并（冠词+名词/形容词）
         # 但 "Accompanied" 这种实际拆分的词需要合并
         # 简单策略: 如果第二部分本身不像合法英文单词(以辅音开头且短),
         # 则合并；否则不合并
         rest = word[1:]  # 去掉 A 后的部分
-        if rest and rest[0].islower():
-            # "Adifferent" vs "Accompanied"
-            # 如果rest是一个常见英文词，不合并
-            if _is_common_english_word(rest):
-                return False
-    if len(word) >= 3:
-        return True
-    return False
+        # "Adifferent" vs "Accompanied"
+        # 如果rest是一个常见英文词，不合并
+        if rest and rest[0].islower() and _is_common_english_word(rest):
+            return False
+    return len(word) >= 3
 
 
 # 常见英文单词（用于判断 "A xxx" 是否为冠词短语）
-_COMMON_WORDS = frozenset({
-    "different", "major", "single", "recent", "simple", "common", "critical",
-    "key", "large", "small", "specific", "novel", "better", "wide", "new",
-    "given", "global", "result", "more", "database", "chain", "positive",
-    "given", "local", "myriad", "drought", "groundwater", "wildfire",
-    "shift", "stem", "hominid", "crown", "ban", "combination",
-    "niche", "specific", "chromatin", "mouse",
-    "about", "above", "after", "again", "being", "below", "between",
-    "both", "certain", "each", "few", "first", "great", "having",
-    "here", "into", "just", "last", "long", "many", "most", "much",
-    "never", "next", "only", "other", "over", "part", "same", "some",
-    "such", "than", "that", "their", "them", "then", "there", "these",
-    "they", "this", "those", "through", "time", "under", "very",
-    "well", "were", "what", "when", "where", "which", "while", "will",
-    "with", "would", "year", "young",
-})
+_COMMON_WORDS = frozenset(
+    {
+        "different",
+        "major",
+        "single",
+        "recent",
+        "simple",
+        "common",
+        "critical",
+        "key",
+        "large",
+        "small",
+        "specific",
+        "novel",
+        "better",
+        "wide",
+        "new",
+        "given",
+        "global",
+        "result",
+        "more",
+        "database",
+        "chain",
+        "positive",
+        "local",
+        "myriad",
+        "drought",
+        "groundwater",
+        "wildfire",
+        "shift",
+        "stem",
+        "hominid",
+        "crown",
+        "ban",
+        "combination",
+        "niche",
+        "chromatin",
+        "mouse",
+        "about",
+        "above",
+        "after",
+        "again",
+        "being",
+        "below",
+        "between",
+        "both",
+        "certain",
+        "each",
+        "few",
+        "first",
+        "great",
+        "having",
+        "here",
+        "into",
+        "just",
+        "last",
+        "long",
+        "many",
+        "most",
+        "much",
+        "never",
+        "next",
+        "only",
+        "other",
+        "over",
+        "part",
+        "same",
+        "some",
+        "such",
+        "than",
+        "that",
+        "their",
+        "them",
+        "then",
+        "there",
+        "these",
+        "they",
+        "this",
+        "those",
+        "through",
+        "time",
+        "under",
+        "very",
+        "well",
+        "were",
+        "what",
+        "when",
+        "where",
+        "which",
+        "while",
+        "will",
+        "with",
+        "would",
+        "year",
+        "young",
+    }
+)
 
 
 def _is_common_english_word(word: str) -> bool:
@@ -625,17 +776,26 @@ def _remove_trailing_citation(text: str) -> str:
             found_citation = True
             continue
         # 匹配: 纯作者行 (大写开头名字，用 and/comma 连接)
-        if re.match(r"^[A-Z][a-z]+(?:\s+[A-Z]\.?)?(?:\s+(?:and|&|,)\s+[A-Z][a-z]+(?:\s+[A-Z]\.?)?){0,3}$", line):
+        if re.match(
+            r"^[A-Z][a-z]+(?:\s+[A-Z]\.?)?(?:\s+(?:and|&|,)\s+[A-Z][a-z]+(?:\s+[A-Z]\.?)?){0,3}$",
+            line,
+        ):
             cutoff = i
             found_citation = True
             continue
         # 匹配: 文章标题行（不以句号结尾且较短，紧跟在已识别的引用行之前）
-        if not line.endswith((".", "。", "!", "?", ";")) and len(line) < 120:
-            # 如果已找到引用行，或上一行不以句号结尾，也视为引用元数据
-            if found_citation or (i > 0 and not lines[i - 1].strip().endswith((".", "。", "!", "?"))):
-                cutoff = i
-                found_citation = True
-                continue
+        # 如果已找到引用行，或上一行不以句号结尾，也视为引用元数据
+        if (
+            not line.endswith((".", "。", "!", "?", ";"))
+            and len(line) < 120
+            and (
+                found_citation
+                or (i > 0 and not lines[i - 1].strip().endswith((".", "。", "!", "?")))
+            )
+        ):
+            cutoff = i
+            found_citation = True
+            continue
         break
 
     if found_citation and cutoff < len(lines):
@@ -695,7 +855,11 @@ def _fix_truncated_words_in_text(text: str) -> str:
                 trailing = first_word[-1] + trailing
                 first_word = first_word[:-1]
 
-            new_line = replacement + trailing + " " + " ".join(words[1:]) if len(words) > 1 else replacement + trailing
+            new_line = (
+                replacement + trailing + " " + " ".join(words[1:])
+                if len(words) > 1
+                else replacement + trailing
+            )
             if new_line != line:
                 logger.info("段内截断修复: '%s' → '%s'", stripped[:40], new_line[:40])
             fixed_lines.append(new_line)
@@ -825,7 +989,9 @@ def _remove_annotations(text: str) -> str:
         # 匹配 header 行及后续直到空行的内容（header 必须单独占行）
         text = re.sub(
             pattern + r"(?:\n(?!\n)[^\n]*)*",
-            "", text, flags=re.MULTILINE | re.IGNORECASE,
+            "",
+            text,
+            flags=re.MULTILINE | re.IGNORECASE,
         )
     # 删除单独的脚注内容行: "1 Author Name, Title, Journal (2020) pp. 1-10"
     text = re.sub(r"^\d{1,3}\s+[A-Z][a-z]+.+?\(\d{4}\).*$", "", text, flags=re.MULTILINE)
@@ -915,9 +1081,28 @@ def _is_continuation(prev_line: str, current_line: str) -> bool:
     if prev_stripped:
         last_word = prev_stripped.split()[-1].lower().rstrip(",;:")
         _CONNECTIVES = {
-            "to", "of", "in", "on", "at", "by", "for", "with", "and",
-            "or", "but", "the", "a", "an", "as", "from", "into",
-            "than", "that", "which", "where", "while",
+            "to",
+            "of",
+            "in",
+            "on",
+            "at",
+            "by",
+            "for",
+            "with",
+            "and",
+            "or",
+            "but",
+            "the",
+            "a",
+            "an",
+            "as",
+            "from",
+            "into",
+            "than",
+            "that",
+            "which",
+            "where",
+            "while",
         }
         if last_word in _CONNECTIVES:
             return True
@@ -937,10 +1122,29 @@ def _is_continuation(prev_line: str, current_line: str) -> bool:
     if prev_stripped:
         last_word = prev_stripped.split()[-1].lower().rstrip(".,;:")
         _ADJECTIVE_ENDINGS = {
-            "other", "many", "such", "these", "those", "some", "both", "all",
-            "western", "eastern", "northern", "southern", "central",
-            "global", "local", "human", "social", "mental", "physical",
-            "economic", "environmental", "several", "various",
+            "other",
+            "many",
+            "such",
+            "these",
+            "those",
+            "some",
+            "both",
+            "all",
+            "western",
+            "eastern",
+            "northern",
+            "southern",
+            "central",
+            "global",
+            "local",
+            "human",
+            "social",
+            "mental",
+            "physical",
+            "economic",
+            "environmental",
+            "several",
+            "various",
         }
         if last_word in _ADJECTIVE_ENDINGS:
             return True
@@ -949,10 +1153,27 @@ def _is_continuation(prev_line: str, current_line: str) -> bool:
     if cur_stripped:
         first_word = cur_stripped.split()[0].lower().rstrip(".,;:")
         _MID_SENTENCE_STARTERS = {
-            "countries", "regions", "areas", "effects", "changes",
-            "mechanisms", "systems", "processes", "factors", "conditions",
-            "patterns", "which", "that", "this", "these", "those",
-            "australia", "africa", "europe", "asia", "america",
+            "countries",
+            "regions",
+            "areas",
+            "effects",
+            "changes",
+            "mechanisms",
+            "systems",
+            "processes",
+            "factors",
+            "conditions",
+            "patterns",
+            "which",
+            "that",
+            "this",
+            "these",
+            "those",
+            "australia",
+            "africa",
+            "europe",
+            "asia",
+            "america",
         }
         if first_word in _MID_SENTENCE_STARTERS:
             return True
@@ -996,13 +1217,8 @@ def _is_continuation(prev_line: str, current_line: str) -> bool:
     if first_char.islower():
         return True
 
-    # 中文行首也视为续行
-    if "一" <= first_char <= "鿿":
-        return True
-
-    # 默认视为新段落
-    return False
-
+    # 中文行首也视为续行，否则默认视为新段落
+    return "一" <= first_char <= "鿿"
 
 
 def _looks_like_heading(line: str) -> bool:
@@ -1038,51 +1254,264 @@ def _fix_concatenated_words(text: str) -> str:
     """
     # 最常见的英文单词（覆盖 50%+ 的学术文本词汇）
     _WORDS = {
-        "a", "an", "the", "and", "or", "but", "not", "is", "are", "was",
-        "were", "be", "been", "being", "have", "has", "had", "do", "does",
-        "did", "will", "would", "could", "should", "may", "might", "can",
-        "shall", "to", "of", "in", "for", "on", "with", "at", "by", "from",
-        "as", "into", "through", "during", "before", "after", "above",
-        "below", "between", "under", "over", "about", "without", "within",
-        "along", "across", "behind", "beyond", "toward", "upon", "around",
-        "that", "this", "these", "those", "it", "its", "he", "she", "they",
-        "we", "you", "who", "which", "what", "where", "when", "how", "why",
-        "all", "each", "every", "both", "few", "more", "most", "other",
-        "some", "such", "no", "nor", "only", "own", "same", "so", "than",
-        "too", "very", "also", "just", "then", "there", "here", "now",
-        "if", "else", "while", "because", "since", "although", "though",
-        "however", "therefore", "thus", "hence", "yet", "still", "even",
-        "much", "many", "well", "only", "like", "new", "old", "first",
-        "last", "long", "great", "little", "own", "good", "large",
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "but",
+        "not",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "can",
+        "shall",
+        "to",
+        "of",
+        "in",
+        "for",
+        "on",
+        "with",
+        "at",
+        "by",
+        "from",
+        "as",
+        "into",
+        "through",
+        "during",
+        "before",
+        "after",
+        "above",
+        "below",
+        "between",
+        "under",
+        "over",
+        "about",
+        "without",
+        "within",
+        "along",
+        "across",
+        "behind",
+        "beyond",
+        "toward",
+        "upon",
+        "around",
+        "that",
+        "this",
+        "these",
+        "those",
+        "it",
+        "its",
+        "he",
+        "she",
+        "they",
+        "we",
+        "you",
+        "who",
+        "which",
+        "what",
+        "where",
+        "when",
+        "how",
+        "why",
+        "all",
+        "each",
+        "every",
+        "both",
+        "few",
+        "more",
+        "most",
+        "other",
+        "some",
+        "such",
+        "no",
+        "nor",
+        "only",
+        "own",
+        "same",
+        "so",
+        "than",
+        "too",
+        "very",
+        "also",
+        "just",
+        "then",
+        "there",
+        "here",
+        "now",
+        "if",
+        "else",
+        "while",
+        "because",
+        "since",
+        "although",
+        "though",
+        "however",
+        "therefore",
+        "thus",
+        "hence",
+        "yet",
+        "still",
+        "even",
+        "much",
+        "many",
+        "well",
+        "like",
+        "new",
+        "old",
+        "first",
+        "last",
+        "long",
+        "great",
+        "little",
+        "good",
+        "large",
         # 学术常用
-        "based", "using", "used", "use", "which", "their", "such", "will",
-        "each", "group", "groups", "attention", "self", "matrix",
-        "window", "windows", "feature", "features", "model", "models",
-        "data", "method", "methods", "time", "timeseries", "result",
-        "results", "approach", "approaches", "segment", "segments",
-        "embedding", "embeddings", "vector", "vectors", "query", "queries",
-        "training", "train", "trained", "batch", "size", "number",
-        "making", "making", "tunable", "easily", "efficient", "fully",
-        "compressed", "compute", "computed", "computing", "computes",
-        "restored", "restore", "restoring", "produces", "produced",
-        "produce", "producing", "following", "followed", "follow",
-        "include", "includes", "including", "contain", "contains",
-        "require", "requires", "required", "requiring", "obtain",
-        "obtained", "obtaining", "ensure", "ensures", "ensuring",
-        "perform", "performs", "performed", "performing",
-        "different", "differs", "similar", "similarly",
-        "single", "multiple", "several", "various",
-        "input", "output", "given", "according",
-        "show", "shown", "shows", "showing",
-        "one", "two", "three", "four", "five",
-        "set", "sets", "key", "keys", "value", "values",
-        "layer", "layers", "level", "levels",
-        "process", "processes", "processing",
-        "transformer", "transformers", "vanilla",
-        "scale", "scales", "scaling", "scalable",
-        "learn", "learns", "learned", "learning",
-        "correlation", "correlations", "correlate",
-        "complexity", "quality", "accuracy",
+        "based",
+        "using",
+        "used",
+        "use",
+        "their",
+        "group",
+        "groups",
+        "attention",
+        "self",
+        "matrix",
+        "window",
+        "windows",
+        "feature",
+        "features",
+        "model",
+        "models",
+        "data",
+        "method",
+        "methods",
+        "time",
+        "timeseries",
+        "result",
+        "results",
+        "approach",
+        "approaches",
+        "segment",
+        "segments",
+        "embedding",
+        "embeddings",
+        "vector",
+        "vectors",
+        "query",
+        "queries",
+        "training",
+        "train",
+        "trained",
+        "batch",
+        "size",
+        "number",
+        "making",
+        "tunable",
+        "easily",
+        "efficient",
+        "fully",
+        "compressed",
+        "compute",
+        "computed",
+        "computing",
+        "computes",
+        "restored",
+        "restore",
+        "restoring",
+        "produces",
+        "produced",
+        "produce",
+        "producing",
+        "following",
+        "followed",
+        "follow",
+        "include",
+        "includes",
+        "including",
+        "contain",
+        "contains",
+        "require",
+        "requires",
+        "required",
+        "requiring",
+        "obtain",
+        "obtained",
+        "obtaining",
+        "ensure",
+        "ensures",
+        "ensuring",
+        "perform",
+        "performs",
+        "performed",
+        "performing",
+        "different",
+        "differs",
+        "similar",
+        "similarly",
+        "single",
+        "multiple",
+        "several",
+        "various",
+        "input",
+        "output",
+        "given",
+        "according",
+        "show",
+        "shown",
+        "shows",
+        "showing",
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "set",
+        "sets",
+        "key",
+        "keys",
+        "value",
+        "values",
+        "layer",
+        "layers",
+        "level",
+        "levels",
+        "process",
+        "processes",
+        "processing",
+        "transformer",
+        "transformers",
+        "vanilla",
+        "scale",
+        "scales",
+        "scaling",
+        "scalable",
+        "learn",
+        "learns",
+        "learned",
+        "learning",
+        "correlation",
+        "correlations",
+        "correlate",
+        "complexity",
+        "quality",
+        "accuracy",
     }
 
     def _split_long_word(word: str) -> str:
@@ -1099,7 +1528,7 @@ def _fix_concatenated_words(text: str) -> str:
         for i in range(n - 1, -1, -1):
             best = None
             for length in range(min(15, n - i), 0, -1):
-                candidate = word[i:i + length]
+                candidate = word[i : i + length]
                 if candidate in _WORDS:
                     rest_can, rest_splits = dp[i + length]
                     if rest_can:
@@ -1120,9 +1549,10 @@ def _fix_concatenated_words(text: str) -> str:
                     idx = result.find(w)
                     while idx >= 0:
                         before = result[:idx]
-                        after = result[idx + len(w):]
-                        if (not before or not before[-1].isalpha()) and \
-                           (not after or not after[0].isalpha()):
+                        after = result[idx + len(w) :]
+                        if (not before or not before[-1].isalpha()) and (
+                            not after or not after[0].isalpha()
+                        ):
                             pass  # already has boundary
                         elif before and after:
                             result = before + w + " " + after
@@ -1145,7 +1575,7 @@ def _fix_concatenated_words(text: str) -> str:
         word = m.group(0)
         return _split_long_word(word)
 
-    return re.sub(r'\b[a-z]{20,}\b', _replace_long, text)
+    return re.sub(r"\b[a-z]{20,}\b", _replace_long, text)
 
 
 def _normalize_citation_spacing(text: str) -> str:
@@ -1166,6 +1596,7 @@ def _normalize_citation_spacing(text: str) -> str:
 # Citation placeholder protection / restoration
 # ---------------------------------------------------------------------------
 
+
 def protect_citations(text: str) -> tuple[str, list[str]]:
     """Replace inline citations with rare-Unicode placeholders to prevent LLM rewrites.
 
@@ -1183,13 +1614,11 @@ def protect_citations(text: str) -> tuple[str, list[str]]:
     # Author-year: [Smith, 2020], [Smith et al., 2020a], [Smith and Jones, 2020]
     text = re.sub(
         r"\[[A-Z][a-zA-Z]+(?:\s+et\s+al\.?)?(?:\s+and\s+[A-Z][a-zA-Z]+)?,\s*\d{4}[a-z]?\]",
-        _sub, text
+        _sub,
+        text,
     )
     # Author-year: (Smith and Jones, 2019), (Smith, 2020a)
-    text = re.sub(
-        r"\([A-Z][a-zA-Z]+(?:\s+and\s+[A-Z][a-zA-Z]+)?,\s*\d{4}[a-z]?\)",
-        _sub, text
-    )
+    text = re.sub(r"\([A-Z][a-zA-Z]+(?:\s+and\s+[A-Z][a-zA-Z]+)?,\s*\d{4}[a-z]?\)", _sub, text)
     return text, placeholders
 
 

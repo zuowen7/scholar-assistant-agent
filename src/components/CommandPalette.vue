@@ -155,7 +155,7 @@ function setAndSubmit(text: string) {
 .cmd-palette {
   position: fixed;
   z-index: 9999;
-  background: var(--c-panel-bg);
+  background: var(--c-panel);
   border: 1px solid var(--c-border);
   border-radius: 10px;
   padding: 10px;

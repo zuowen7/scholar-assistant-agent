@@ -5,18 +5,19 @@
 - 术语提取与一致性检查
 - 逻辑感知翻译提示构建
 """
+
 from __future__ import annotations
 
 import pytest
-from src.translator.proposition_extractor import (
-    Proposition,
-    ExtractedLogic,
-    extract_propositions,
-    build_logic_aware_prompt,
-    extract_key_terms_cn,
-    check_term_consistency,
-)
 
+from src.translator.proposition_extractor import (
+    ExtractedLogic,
+    Proposition,
+    build_logic_aware_prompt,
+    check_term_consistency,
+    extract_key_terms_cn,
+    extract_propositions,
+)
 
 # ── 真实中文文本逻辑提取 ────────────────────────────────────────────────
 
@@ -29,8 +30,7 @@ class TestExtractCausality:
         result = extract_propositions(text)
         assert result.has_explicit_causality is True
         # 应至少提取出一个因果命题
-        cause_effect_props = [p for p in result.propositions
-                             if p.logic_type == "cause-effect"]
+        cause_effect_props = [p for p in result.propositions if p.logic_type == "cause-effect"]
         assert len(cause_effect_props) >= 1
 
     def test_detects_daozhi_as_cause_effect(self) -> None:
@@ -46,8 +46,7 @@ class TestExtractCausality:
     def test_detects_yinci_with_connector_info(self) -> None:
         text = "A表达上调，因此B被抑制。"
         result = extract_propositions(text)
-        ce_props = [p for p in result.propositions
-                   if p.logic_type == "cause-effect"]
+        ce_props = [p for p in result.propositions if p.logic_type == "cause-effect"]
         if ce_props:
             assert len(ce_props[0].connector_cn) > 0
             assert len(ce_props[0].connector_en) > 0
@@ -79,8 +78,7 @@ class TestExtractAddition:
     def test_detects_ciwai(self) -> None:
         text = "该蛋白定位于线粒体。此外，它还参与内质网应激反应。"
         result = extract_propositions(text)
-        addition_props = [p for p in result.propositions
-                         if p.logic_type == "addition"]
+        addition_props = [p for p in result.propositions if p.logic_type == "addition"]
         assert len(addition_props) >= 1
 
 
@@ -99,8 +97,7 @@ class TestExtractCondition:
     def test_detects_ruguo(self) -> None:
         text = "如果pH值低于6.0，酶的活性将显著下降。"
         result = extract_propositions(text)
-        condition_props = [p for p in result.propositions
-                          if p.logic_type == "condition"]
+        condition_props = [p for p in result.propositions if p.logic_type == "condition"]
         assert len(condition_props) >= 1
 
 
@@ -110,8 +107,7 @@ class TestExtractImplication:
     def test_detects_yiweizhe(self) -> None:
         text = "敲除该基因后细胞停止分裂，这意味着该基因对细胞周期是必需的。"
         result = extract_propositions(text)
-        imply_props = [p for p in result.propositions
-                      if p.logic_type == "implication"]
+        imply_props = [p for p in result.propositions if p.logic_type == "implication"]
         assert len(imply_props) >= 1
 
 
@@ -147,9 +143,7 @@ class TestMixedLogic:
 class TestKeyTermsExtraction:
     def test_extracts_bilingual_terms(self) -> None:
         """中文(English) 格式，如 '细胞凋亡(apoptosis)'"""
-        terms = extract_key_terms_cn(
-            "细胞凋亡(apoptosis)和自噬(autophagy)是两种程序性死亡方式。"
-        )
+        terms = extract_key_terms_cn("细胞凋亡(apoptosis)和自噬(autophagy)是两种程序性死亡方式。")
         # 应提取到至少一个双语术语
         assert len(terms) >= 1
 

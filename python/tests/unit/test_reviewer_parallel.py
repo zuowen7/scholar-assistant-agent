@@ -1,4 +1,5 @@
 """Unit tests for Reviewer-2 DAG three-perspective parallel review (Phase D)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -17,8 +18,8 @@ from src.argument._reviewer_perspectives import (
 )
 from src.argument.companion_models import ReviewPoint
 
-
 # ── D1: three perspectives run in parallel ────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_three_perspectives_run_in_parallel():
@@ -39,17 +40,22 @@ async def test_three_perspectives_run_in_parallel():
         )
         elapsed = time.monotonic() - t0
 
-    assert elapsed < 0.13, f"Expected parallel (~0.05s) but took {elapsed:.3f}s (serial would be ~0.15s)"
+    assert elapsed < 0.13, (
+        f"Expected parallel (~0.05s) but took {elapsed:.3f}s (serial would be ~0.15s)"
+    )
     assert call_count[0] == 3
 
 
 # ── D2: aggregator merges all three ──────────────────────────────────────────
 
+
 def test_aggregator_merges_three():
     """D2: aggregate_perspectives collects points from all three angles."""
     m = [ReviewPoint(severity="major", category="soundness", title="Method issue", detail="d")]
     e = [ReviewPoint(severity="minor", category="ablation", title="Experiment issue", detail="d")]
-    w = [ReviewPoint(severity="minor", category="writing_clarity", title="Writing issue", detail="d")]
+    w = [
+        ReviewPoint(severity="minor", category="writing_clarity", title="Writing issue", detail="d")
+    ]
 
     result = aggregate_perspectives(m, e, w)
 
@@ -61,6 +67,7 @@ def test_aggregator_merges_three():
 
 
 # ── D3–D5: each perspective prompt focuses on its domain ─────────────────────
+
 
 @pytest.mark.asyncio
 async def test_perspective_method_prompt_focused():
@@ -76,7 +83,9 @@ async def test_perspective_method_prompt_focused():
 
     assert captured, "call_llm_chat was not called"
     text = captured[0].lower()
-    assert any(kw in text for kw in ["method", "methodology", "soundness", "theoretical", "approach"])
+    assert any(
+        kw in text for kw in ["method", "methodology", "soundness", "theoretical", "approach"]
+    )
 
 
 @pytest.mark.asyncio
@@ -93,7 +102,9 @@ async def test_perspective_experiment_prompt_focused():
 
     assert captured
     text = captured[0].lower()
-    assert any(kw in text for kw in ["experiment", "baseline", "ablation", "reproducib", "evaluation"])
+    assert any(
+        kw in text for kw in ["experiment", "baseline", "ablation", "reproducib", "evaluation"]
+    )
 
 
 @pytest.mark.asyncio
@@ -115,11 +126,14 @@ async def test_perspective_writing_prompt_focused():
 
 # ── D6: aggregator deduplicates by (title, category) ─────────────────────────
 
+
 def test_aggregator_no_duplicate_points():
     """D6: identical (title, category) across perspectives appears only once."""
     pt1 = ReviewPoint(severity="major", category="baseline", title="Missing baseline", detail="d1")
     pt2 = ReviewPoint(severity="minor", category="baseline", title="Missing baseline", detail="d2")
-    pt3 = ReviewPoint(severity="minor", category="writing_clarity", title="Unclear writing", detail="d3")
+    pt3 = ReviewPoint(
+        severity="minor", category="writing_clarity", title="Unclear writing", detail="d3"
+    )
 
     result = aggregate_perspectives([pt1], [pt2], [pt3])
 
@@ -130,9 +144,11 @@ def test_aggregator_no_duplicate_points():
 
 # ── D7: one perspective failing doesn't crash the others ─────────────────────
 
+
 @pytest.mark.asyncio
 async def test_failure_partial_tolerance():
     """D7: when one perspective LLM fails, others still return results."""
+
     async def selective(prompt, *a, **kw):
         if "experiment" in prompt.lower():
             raise RuntimeError("simulated LLM timeout")
@@ -144,12 +160,13 @@ async def test_failure_partial_tolerance():
         w_pts = await run_writing_perspective("paper", "generic", None, None)
 
     assert isinstance(m_pts, list)
-    assert isinstance(e_pts, list)   # empty because exception was caught
+    assert isinstance(e_pts, list)  # empty because exception was caught
     assert isinstance(w_pts, list)
-    assert len(e_pts) == 0           # exception path returns []
+    assert len(e_pts) == 0  # exception path returns []
 
 
 # ── D8: rebuttal continues on aggregated session ──────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_rebuttal_continues_on_aggregated(tmp_path):
@@ -174,8 +191,13 @@ async def test_rebuttal_continues_on_aggregated(tmp_path):
     with patch("src.argument.reviewer.call_llm_chat", mock_reply):
         events = []
         async for ev in continue_rebuttal(
-            session.id, point.id, "We added baseline X in Table 3.",
-            "full paper text", store, None, None,
+            session.id,
+            point.id,
+            "We added baseline X in Table 3.",
+            "full paper text",
+            store,
+            None,
+            None,
         ):
             events.append(ev)
 
@@ -185,6 +207,7 @@ async def test_rebuttal_continues_on_aggregated(tmp_path):
 
 
 # ── D9: output order is stable (method → experiment → writing) ────────────────
+
 
 def test_perspective_order_stable():
     """D9: aggregate_perspectives preserves method→experiment→writing order."""
@@ -204,6 +227,7 @@ def test_perspective_order_stable():
 
 
 # ── D10: three perspectives make exactly 3 LLM calls ─────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_token_cost_logged():

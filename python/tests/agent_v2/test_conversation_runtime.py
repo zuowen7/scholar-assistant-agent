@@ -1,4 +1,5 @@
 """ConversationRuntime 测试 — CR-001 ~ CR-054。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -7,7 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from src.agent_v2.providers.mock_provider import MockProvider, Scenario, _text_response, _tool_response
+from src.agent_v2.providers.mock_provider import (
+    MockProvider,
+    Scenario,
+    _text_response,
+    _tool_response,
+)
 from src.agent_v2.runtime.conversation import ConversationRuntime
 from src.agent_v2.runtime.permissions import PermissionMode, PermissionPolicy, policy_from_registry
 from src.agent_v2.runtime.session import Session
@@ -52,16 +58,17 @@ def runtime(workspace: Path) -> ConversationRuntime:
         registry.permission_specs(),
     )
     session = Session(workspace=str(workspace), model="mock")
-    return ConversationRuntime(provider=provider, tool_registry=registry,
-                                permission_policy=policy, session=session)
+    return ConversationRuntime(
+        provider=provider, tool_registry=registry, permission_policy=policy, session=session
+    )
 
 
 # ============================================================================
 # 6.1 基础对话流
 # ============================================================================
 
-class TestBasicFlow:
 
+class TestBasicFlow:
     @pytest.mark.asyncio
     async def test_cr001_single_text_reply(self, runtime: ConversationRuntime):
         """CR-001: user → LLM(text) → response"""
@@ -75,16 +82,32 @@ class TestBasicFlow:
     @pytest.mark.asyncio
     async def test_cr002_tool_call_then_reply(self, workspace: Path):
         """CR-002: user → tool_call → execute → tool_result → reply"""
-        provider = MockProvider(scenarios=[
-            Scenario("r0", trigger_patterns=["read it"], turn_index=0,
-                     response_factory=lambda m, t: _tool_response("read_file", {"file_path": "main.md"})),
-            Scenario("r1", trigger_patterns=["read it"], turn_index=1,
-                     response_factory=lambda m, t: _text_response("The file contains 'Hello World'.")),
-        ])
+        provider = MockProvider(
+            scenarios=[
+                Scenario(
+                    "r0",
+                    trigger_patterns=["read it"],
+                    turn_index=0,
+                    response_factory=lambda m, t: _tool_response(
+                        "read_file", {"file_path": "main.md"}
+                    ),
+                ),
+                Scenario(
+                    "r1",
+                    trigger_patterns=["read it"],
+                    turn_index=1,
+                    response_factory=lambda m, t: _text_response(
+                        "The file contains 'Hello World'."
+                    ),
+                ),
+            ]
+        )
         registry = create_default_registry(workspace_root=workspace)
         policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
         session = Session(workspace=str(workspace))
-        rt = ConversationRuntime(provider=provider, tool_registry=registry, permission_policy=policy, session=session)
+        rt = ConversationRuntime(
+            provider=provider, tool_registry=registry, permission_policy=policy, session=session
+        )
 
         events = await _collect_events(rt, "read it")
         types = _event_types(events)
@@ -114,30 +137,88 @@ class TestBasicFlow:
         registry = create_default_registry(workspace_root=workspace)
         policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
         session = Session(workspace=str(workspace))
-        rt = ConversationRuntime(provider=provider, tool_registry=registry, permission_policy=policy, session=session)
+        rt = ConversationRuntime(
+            provider=provider, tool_registry=registry, permission_policy=policy, session=session
+        )
 
         events = await _collect_events(rt, "explain this concept")
         types = _event_types(events)
         assert AgentEventType.RESPONSE in types
+
+    @pytest.mark.asyncio
+    async def test_file_checkpoints_cover_every_file_with_resolved_paths(self, workspace: Path):
+        provider = MockProvider(
+            scenarios=[
+                Scenario(
+                    "multi-write",
+                    trigger_patterns=["update both"],
+                    turn_index=0,
+                    response_factory=lambda m, t: ProviderResponse(
+                        blocks=[
+                            ToolUseBlock(
+                                id="write_a",
+                                name="write_file",
+                                input=json.dumps({"file_path": "a.md", "content": "A"}),
+                            ),
+                            ToolUseBlock(
+                                id="write_b",
+                                name="write_file",
+                                input=json.dumps({"file_path": "b.md", "content": "B"}),
+                            ),
+                        ],
+                        stop_reason="tool_use",
+                    ),
+                ),
+            ]
+        )
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        session = Session(workspace=str(workspace))
+        rt = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy,
+            session=session,
+            auto_approve=True,
+        )
+
+        events = await _collect_events(rt, "update both")
+        checkpoints = [event for event in events if event.type == AgentEventType.CHECKPOINT]
+
+        assert [Path(event.data["file"]) for event in checkpoints] == [
+            (workspace / "a.md").resolve(),
+            (workspace / "b.md").resolve(),
+        ]
+        assert [event.data["content"] for event in checkpoints] == ["A", "B"]
+        assert all(event.data["content_truncated"] is False for event in checkpoints)
 
 
 # ============================================================================
 # 6.2 权限集成
 # ============================================================================
 
-class TestPermissionIntegration:
 
+class TestPermissionIntegration:
     @pytest.mark.asyncio
     async def test_cr010_tool_denied(self, workspace: Path):
         """CR-010: 工具被 Deny"""
-        provider = MockProvider(scenarios=[
-            Scenario("write", trigger_patterns=["write"],
-                     response_factory=lambda m, t: _tool_response("write_file", {"file_path": "out.txt", "content": "x"})),
-        ])
+        provider = MockProvider(
+            scenarios=[
+                Scenario(
+                    "write",
+                    trigger_patterns=["write"],
+                    response_factory=lambda m, t: _tool_response(
+                        "write_file", {"file_path": "out.txt", "content": "x"}
+                    ),
+                ),
+            ]
+        )
         registry = create_default_registry(workspace_root=workspace)
         policy = policy_from_registry(PermissionMode.READ_ONLY, registry.permission_specs())
         session = Session(workspace=str(workspace))
-        rt = ConversationRuntime(provider=provider, tool_registry=registry, permission_policy=policy, session=session)
+        rt = ConversationRuntime(
+            provider=provider, tool_registry=registry, permission_policy=policy, session=session
+        )
 
         events = await _collect_events(rt, "write something")
         types = _event_types(events)
@@ -146,20 +227,35 @@ class TestPermissionIntegration:
     @pytest.mark.asyncio
     async def test_cr013_partial_deny(self, workspace: Path):
         """CR-013: 多工具部分拒绝"""
-        provider = MockProvider(scenarios=[
-            Scenario("multi", trigger_patterns=["multi"],
-                     response_factory=lambda m, t: ProviderResponse(
-                         blocks=[
-                             ToolUseBlock(id="tu_1", name="read_file", input=json.dumps({"file_path": "main.md"})),
-                             ToolUseBlock(id="tu_2", name="write_file", input=json.dumps({"file_path": "out.txt", "content": "x"})),
-                         ],
-                         stop_reason="tool_use",
-                     )),
-        ])
+        provider = MockProvider(
+            scenarios=[
+                Scenario(
+                    "multi",
+                    trigger_patterns=["multi"],
+                    response_factory=lambda m, t: ProviderResponse(
+                        blocks=[
+                            ToolUseBlock(
+                                id="tu_1",
+                                name="read_file",
+                                input=json.dumps({"file_path": "main.md"}),
+                            ),
+                            ToolUseBlock(
+                                id="tu_2",
+                                name="write_file",
+                                input=json.dumps({"file_path": "out.txt", "content": "x"}),
+                            ),
+                        ],
+                        stop_reason="tool_use",
+                    ),
+                ),
+            ]
+        )
         registry = create_default_registry(workspace_root=workspace)
         policy = policy_from_registry(PermissionMode.READ_ONLY, registry.permission_specs())
         session = Session(workspace=str(workspace))
-        rt = ConversationRuntime(provider=provider, tool_registry=registry, permission_policy=policy, session=session)
+        rt = ConversationRuntime(
+            provider=provider, tool_registry=registry, permission_policy=policy, session=session
+        )
 
         events = await _collect_events(rt, "multi operation")
         denied = [e for e in events if e.type == AgentEventType.TOOL_DENIED]
@@ -173,8 +269,8 @@ class TestPermissionIntegration:
 # 6.3 会话管理
 # ============================================================================
 
-class TestSessionIntegration:
 
+class TestSessionIntegration:
     @pytest.mark.asyncio
     async def test_cr020_session_auto_save(self, workspace: Path):
         """CR-020: 会话自动追加消息"""
@@ -182,7 +278,9 @@ class TestSessionIntegration:
         registry = create_default_registry(workspace_root=workspace)
         policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
         session = Session(workspace=str(workspace))
-        rt = ConversationRuntime(provider=provider, tool_registry=registry, permission_policy=policy, session=session)
+        rt = ConversationRuntime(
+            provider=provider, tool_registry=registry, permission_policy=policy, session=session
+        )
 
         await _collect_events(rt, "hello")
         # Session should have user + assistant messages
@@ -195,8 +293,8 @@ class TestSessionIntegration:
 # 6.4 边缘测试
 # ============================================================================
 
-class TestEdgeCases:
 
+class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_cr030_empty_user_message(self, runtime: ConversationRuntime):
         """CR-030: 空用户消息"""
@@ -218,7 +316,9 @@ class TestEdgeCases:
         registry = create_default_registry(workspace_root=workspace)
         policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
         session = Session(workspace=str(workspace))
-        rt = ConversationRuntime(provider=provider, tool_registry=registry, permission_policy=policy, session=session)
+        rt = ConversationRuntime(
+            provider=provider, tool_registry=registry, permission_policy=policy, session=session
+        )
 
         events1 = await _collect_events(rt, "hello")
         events2 = await _collect_events(rt, "hello")
@@ -231,8 +331,8 @@ class TestEdgeCases:
 # 6.5 故障注入
 # ============================================================================
 
-class TestFaultInjection:
 
+class TestFaultInjection:
     @pytest.mark.asyncio
     async def test_cr040_llm_call_fails(self, workspace: Path):
         """CR-040: LLM 调用失败"""
@@ -240,28 +340,47 @@ class TestFaultInjection:
         registry = create_default_registry(workspace_root=workspace)
         policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
         session = Session(workspace=str(workspace))
-        rt = ConversationRuntime(provider=provider, tool_registry=registry, permission_policy=policy, session=session)
+        rt = ConversationRuntime(
+            provider=provider, tool_registry=registry, permission_policy=policy, session=session
+        )
 
         events = await _collect_events(rt, "hello")
         types = _event_types(events)
         assert AgentEventType.ERROR in types
-        assert any("API error" in e.data.get("message", "") for e in events if e.type == AgentEventType.ERROR)
+        assert any(
+            "API error" in e.data.get("message", "")
+            for e in events
+            if e.type == AgentEventType.ERROR
+        )
 
     @pytest.mark.asyncio
     async def test_cr041_tool_execution_exception(self, workspace: Path):
         """CR-041: 工具执行中途异常"""
-        provider = MockProvider(scenarios=[
-            Scenario("boom", trigger_patterns=["boom"],
-                     response_factory=lambda m, t: _tool_response("read_file", {"file_path": "nonexistent.txt"})),
-        ])
+        provider = MockProvider(
+            scenarios=[
+                Scenario(
+                    "boom",
+                    trigger_patterns=["boom"],
+                    response_factory=lambda m, t: _tool_response(
+                        "read_file", {"file_path": "nonexistent.txt"}
+                    ),
+                ),
+            ]
+        )
         registry = create_default_registry(workspace_root=workspace)
         policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
         session = Session(workspace=str(workspace))
-        rt = ConversationRuntime(provider=provider, tool_registry=registry, permission_policy=policy, session=session)
+        rt = ConversationRuntime(
+            provider=provider, tool_registry=registry, permission_policy=policy, session=session
+        )
 
         events = await _collect_events(rt, "boom boom")
         # Tool returns error result (is_error=True), runtime continues
-        tool_results = [e for e in events if e.type == AgentEventType.TOOL_ERROR]
+        tool_results = [
+            e
+            for e in events
+            if e.type == AgentEventType.TOOL_RESULT and e.data.get("is_error") is True
+        ]
         assert len(tool_results) >= 1
 
     @pytest.mark.asyncio
@@ -273,8 +392,12 @@ class TestFaultInjection:
 
         async def single_turn(msg_id: int):
             session = Session(workspace=str(workspace))
-            rt = ConversationRuntime(provider=MockProvider(), tool_registry=registry,
-                                      permission_policy=policy, session=session)
+            rt = ConversationRuntime(
+                provider=MockProvider(),
+                tool_registry=registry,
+                permission_policy=policy,
+                session=session,
+            )
             events = await _collect_events(rt, "hello")
             return msg_id, events
 
@@ -287,25 +410,41 @@ class TestFaultInjection:
 # 6.6 极限测试
 # ============================================================================
 
-class TestStress:
 
+class TestStress:
     @pytest.mark.asyncio
     async def test_cr050_max_steps_boundary(self, workspace: Path):
         """CR-050: 恰好 max_steps 时正确终止"""
-        provider = MockProvider(scenarios=[
-            Scenario("loop", trigger_patterns=[],
-                     response_factory=lambda m, t: _tool_response("read_file", {"file_path": "main.md"})),
-        ])
+        provider = MockProvider(
+            scenarios=[
+                Scenario(
+                    "loop",
+                    trigger_patterns=[],
+                    response_factory=lambda m, t: _tool_response(
+                        "read_file", {"file_path": "main.md"}
+                    ),
+                ),
+            ]
+        )
         registry = create_default_registry(workspace_root=workspace)
         policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
         session = Session(workspace=str(workspace))
-        rt = ConversationRuntime(provider=provider, tool_registry=registry, permission_policy=policy,
-                                  session=session, max_steps=3)
+        rt = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy,
+            session=session,
+            max_steps=3,
+        )
 
         events = await _collect_events(rt, "keep going")
         types = _event_types(events)
         assert AgentEventType.ERROR in types
-        assert any("max steps" in e.data.get("message", "") for e in events if e.type == AgentEventType.ERROR)
+        assert any(
+            "max steps" in e.data.get("message", "")
+            for e in events
+            if e.type == AgentEventType.ERROR
+        )
 
     @pytest.mark.asyncio
     async def test_cr054_fast_sequential(self, workspace: Path):
@@ -314,7 +453,9 @@ class TestStress:
         registry = create_default_registry(workspace_root=workspace)
         policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
         session = Session(workspace=str(workspace))
-        rt = ConversationRuntime(provider=provider, tool_registry=registry, permission_policy=policy, session=session)
+        rt = ConversationRuntime(
+            provider=provider, tool_registry=registry, permission_policy=policy, session=session
+        )
 
         for i in range(10):
             events = await _collect_events(rt, f"message {i}")

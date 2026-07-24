@@ -3,10 +3,10 @@
 import difflib
 import json
 import logging
-import re
+from collections.abc import AsyncIterator
+from typing import Any
 
 from src.utils.json_extract import extract_json_object
-from typing import Any, AsyncIterator
 
 from .graph_store import ArgGraphStore
 from .llm_client import call_llm_chat
@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 # ── Span quote locator ────────────────────────────────────────────────────────
+
 
 def _locate_quote(text: str, quote: str) -> tuple[int | None, int | None]:
     """Locate quote in text. Returns (char_start, char_end) or (None, None)."""
@@ -54,6 +55,7 @@ def _locate_quote(text: str, quote: str) -> tuple[int | None, int | None]:
 
 
 # ── extract_argument ──────────────────────────────────────────────────────────
+
 
 async def extract_argument(
     gid: str,
@@ -197,16 +199,19 @@ async def extract_argument(
 
     yield {
         "event": "complete",
-        "data": json.dumps({
-            "node_count": len(new_nodes),
-            "edge_count": len(new_edges),
-            "span_count": len(new_spans),
-            "warnings": warnings,
-        }),
+        "data": json.dumps(
+            {
+                "node_count": len(new_nodes),
+                "edge_count": len(new_edges),
+                "span_count": len(new_spans),
+                "warnings": warnings,
+            }
+        ),
     }
 
 
 # ── suggest_element ───────────────────────────────────────────────────────────
+
 
 async def suggest_element(
     graph_id: str,

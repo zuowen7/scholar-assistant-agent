@@ -40,6 +40,7 @@ agent:
 @pytest.fixture(scope="module")
 def client():
     from fastapi.testclient import TestClient
+
     from api_factory import create_app
 
     test_dir = tempfile.mkdtemp()
@@ -72,18 +73,24 @@ class TestEditEndpoint:
 
     def test_edit_with_instruction_ollama_not_running(self, client):
         """With instruction → tries LLM, may fail gracefully if unavailable."""
-        resp = client.post("/api/edit", json={
-            "text": "This is a test paragraph.",
-            "instruction": "polish",
-        })
+        resp = client.post(
+            "/api/edit",
+            json={
+                "text": "This is a test paragraph.",
+                "instruction": "polish",
+            },
+        )
         assert resp.status_code in (200, 503, 500)
 
     def test_edit_with_task_type(self, client):
-        resp = client.post("/api/edit", json={
-            "text": "test text",
-            "instruction": "translate to Chinese",
-            "task_type": "translate",
-        })
+        resp = client.post(
+            "/api/edit",
+            json={
+                "text": "test text",
+                "instruction": "translate to Chinese",
+                "task_type": "translate",
+            },
+        )
         assert resp.status_code in (200, 503, 500)
 
     def test_edit_validation_missing_instruction_field(self, client):
@@ -103,10 +110,13 @@ class TestCompleteEndpoint:
         assert data["completion"] == ""
 
     def test_complete_with_context(self, client):
-        resp = client.post("/api/complete", json={
-            "context": "The results show that the proposed method",
-            "max_tokens": 16,
-        })
+        resp = client.post(
+            "/api/complete",
+            json={
+                "context": "The results show that the proposed method",
+                "max_tokens": 16,
+            },
+        )
         assert resp.status_code in (200, 503, 500)
         if resp.status_code == 200:
             data = resp.json()
@@ -134,33 +144,45 @@ class TestExportEndpoints:
         assert "tectonic_available" in data
 
     def test_export_latex(self, client):
-        resp = client.post("/api/export", json={
-            "markdown": "# Introduction\n\nThis is a test paragraph.",
-            "template_id": "generic_article",
-            "title": "Test Paper",
-        })
+        resp = client.post(
+            "/api/export",
+            json={
+                "markdown": "# Introduction\n\nThis is a test paragraph.",
+                "template_id": "generic_article",
+                "title": "Test Paper",
+            },
+        )
         assert resp.status_code in (200, 400)
 
     def test_export_latex_empty_markdown(self, client):
-        resp = client.post("/api/export", json={
-            "markdown": "",
-            "template_id": "generic_article",
-        })
+        resp = client.post(
+            "/api/export",
+            json={
+                "markdown": "",
+                "template_id": "generic_article",
+            },
+        )
         assert resp.status_code in (200, 400)
 
     def test_export_latex_missing_template(self, client):
-        resp = client.post("/api/export", json={
-            "markdown": "# test",
-            "template_id": "nonexistent_template_xyz",
-        })
+        resp = client.post(
+            "/api/export",
+            json={
+                "markdown": "# test",
+                "template_id": "nonexistent_template_xyz",
+            },
+        )
         assert resp.status_code in (200, 400, 404)
 
     def test_export_pdf(self, client):
-        resp = client.post("/api/export/pdf", json={
-            "markdown": "# Test\n\nContent here.",
-            "template_id": "generic_article",
-            "title": "PDF Test",
-        })
+        resp = client.post(
+            "/api/export/pdf",
+            json={
+                "markdown": "# Test\n\nContent here.",
+                "template_id": "generic_article",
+                "title": "PDF Test",
+            },
+        )
         assert resp.status_code in (200, 400, 500)
 
 
@@ -203,20 +225,26 @@ class TestPaperAssets:
 
 class TestPaperScaffold:
     def test_scaffold_generic(self, client):
-        resp = client.post("/api/paper-scaffold", json={
-            "template_id": "generic_article",
-            "title": "My Paper",
-        })
+        resp = client.post(
+            "/api/paper-scaffold",
+            json={
+                "template_id": "generic_article",
+                "title": "My Paper",
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert "markdown" in data
 
     def test_scaffold_with_sections(self, client):
-        resp = client.post("/api/paper-scaffold", json={
-            "template_id": "generic_article",
-            "title": "Paper",
-            "sections": ["introduction", "methods", "results"],
-        })
+        resp = client.post(
+            "/api/paper-scaffold",
+            json={
+                "template_id": "generic_article",
+                "title": "Paper",
+                "sections": ["introduction", "methods", "results"],
+            },
+        )
         assert resp.status_code == 200
 
     def test_scaffold_default_template(self, client):
@@ -227,11 +255,14 @@ class TestPaperScaffold:
 
 class TestPaperStyleTransfer:
     def test_style_transfer(self, client):
-        resp = client.post("/api/paper-style-transfer", json={
-            "text": "This is a test paragraph for style analysis.",
-            "template_id": "generic_article",
-            "section": "introduction",
-        })
+        resp = client.post(
+            "/api/paper-style-transfer",
+            json={
+                "text": "This is a test paragraph for style analysis.",
+                "template_id": "generic_article",
+                "section": "introduction",
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert "style_context" in data
@@ -243,12 +274,15 @@ class TestPaperStyleTransfer:
 class TestCompliance:
     def test_compliance_no_llm(self, client):
         """Without LLM available, should return error gracefully."""
-        resp = client.post("/api/compliance", json={
-            "markdown": "# Abstract\n\nTest content.",
-            "title": "Test",
-            "venue": "arxiv",
-            "required_sections": "",
-        })
+        resp = client.post(
+            "/api/compliance",
+            json={
+                "markdown": "# Abstract\n\nTest content.",
+                "title": "Test",
+                "venue": "arxiv",
+                "required_sections": "",
+            },
+        )
         assert resp.status_code in (200, 500)
         if resp.status_code == 200:
             data = resp.json()
@@ -260,10 +294,13 @@ class TestCompliance:
 
 class TestWordExport:
     def test_export_and_download_roundtrip(self, client):
-        resp = client.post("/api/export/word", json={
-            "content": "# Test\n\nHello world.",
-            "title": "Test Export",
-        })
+        resp = client.post(
+            "/api/export/word",
+            json={
+                "content": "# Test\n\nHello world.",
+                "title": "Test Export",
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert "filename" in data
@@ -283,6 +320,30 @@ class TestWordExport:
         resp = client.get("/api/export/word/../../../etc/passwd.docx")
         assert resp.status_code in (403, 404)
 
+    def test_component_safe_path_rejects_sibling_prefix(self, tmp_path):
+        from fastapi import HTTPException
+
+        from routers.editor import _safe_child_path
+
+        output = tmp_path / "output"
+        output.mkdir()
+        sibling = tmp_path / "output_backup"
+        sibling.mkdir()
+        with pytest.raises(HTTPException) as exc:
+            _safe_child_path(output, r"..\output_backup\secret.docx")
+        assert exc.value.status_code == 403
+
+    def test_component_safe_path_rejects_windows_absolute_path(self, tmp_path):
+        from fastapi import HTTPException
+
+        from routers.editor import _safe_child_path
+
+        output = tmp_path / "output"
+        output.mkdir()
+        with pytest.raises(HTTPException) as exc:
+            _safe_child_path(output, r"C:\Windows\System32\config\SAM")
+        assert exc.value.status_code == 403
+
 
 # ── /api/upload/image + /api/assets ──────────────────────────────────────
 
@@ -295,14 +356,27 @@ class TestImageUpload:
             b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f"
             b"\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
         )
-        resp = client.post("/api/upload/image", files={
-            "file": ("test.png", io.BytesIO(png), "image/png"),
-        })
+        resp = client.post(
+            "/api/upload/image",
+            files={
+                "file": ("test.png", io.BytesIO(png), "image/png"),
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert "url" in data
         assert "filename" in data
         assert "path" in data
+
+    def test_upload_uses_content_type_extension(self, client):
+        resp = client.post(
+            "/api/upload/image",
+            files={
+                "file": ("misleading.exe", io.BytesIO(b"image bytes"), "image/png"),
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["filename"].endswith(".png")
 
     def test_serve_uploaded_asset(self, client):
         png = (
@@ -310,18 +384,24 @@ class TestImageUpload:
             b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f"
             b"\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
         )
-        upload = client.post("/api/upload/image", files={
-            "file": ("test.png", io.BytesIO(png), "image/png"),
-        })
+        upload = client.post(
+            "/api/upload/image",
+            files={
+                "file": ("test.png", io.BytesIO(png), "image/png"),
+            },
+        )
         filename = upload.json()["filename"]
         resp = client.get(f"/api/assets/{filename}")
         assert resp.status_code == 200
         assert resp.headers["content-type"].startswith("image/")
 
     def test_upload_rejects_bad_type(self, client):
-        resp = client.post("/api/upload/image", files={
-            "file": ("bad.txt", io.BytesIO(b"not an image"), "text/plain"),
-        })
+        resp = client.post(
+            "/api/upload/image",
+            files={
+                "file": ("bad.txt", io.BytesIO(b"not an image"), "text/plain"),
+            },
+        )
         assert resp.status_code == 400
 
     def test_upload_rejects_no_file(self, client):
@@ -338,20 +418,26 @@ class TestImageUpload:
 
 class TestCitationEndpoints:
     def test_extract_citations(self, client):
-        resp = client.get("/api/citation/extract", params={
-            "content": "See [1] and [2] for details.",
-        })
+        resp = client.get(
+            "/api/citation/extract",
+            params={
+                "content": "See [1] and [2] for details.",
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert "keys" in data
         assert "index" in data
 
     def test_index_citations(self, client):
-        resp = client.put("/api/citation/index", json={
-            "content": "This is described in [1].",
-            "bibliography": [{"id": 1, "title": "Test Ref", "authors": "A. Smith"}],
-            "style": "ieee",
-        })
+        resp = client.put(
+            "/api/citation/index",
+            json={
+                "content": "This is described in [1].",
+                "bibliography": [{"id": 1, "title": "Test Ref", "authors": "A. Smith"}],
+                "style": "ieee",
+            },
+        )
         assert resp.status_code in (200, 500)
 
 
@@ -399,28 +485,40 @@ class TestVisionEndpoints:
         )
 
     def test_vision_analyze(self, client, png_file):
-        resp = client.post("/api/vision/analyze", files={
-            "file": ("img.png", png_file, "image/png"),
-        })
+        resp = client.post(
+            "/api/vision/analyze",
+            files={
+                "file": ("img.png", png_file, "image/png"),
+            },
+        )
         assert resp.status_code in (200, 500)
 
     def test_vision_ocr(self, client, png_file):
         png_file.seek(0)
-        resp = client.post("/api/vision/ocr", files={
-            "file": ("img.png", png_file, "image/png"),
-        })
+        resp = client.post(
+            "/api/vision/ocr",
+            files={
+                "file": ("img.png", png_file, "image/png"),
+            },
+        )
         assert resp.status_code in (200, 500)
 
     def test_vision_chart(self, client, png_file):
         png_file.seek(0)
-        resp = client.post("/api/vision/chart", files={
-            "file": ("chart.png", png_file, "image/png"),
-        })
+        resp = client.post(
+            "/api/vision/chart",
+            files={
+                "file": ("chart.png", png_file, "image/png"),
+            },
+        )
         assert resp.status_code in (200, 500)
 
     def test_vision_table(self, client, png_file):
         png_file.seek(0)
-        resp = client.post("/api/vision/table", files={
-            "file": ("table.png", png_file, "image/png"),
-        })
+        resp = client.post(
+            "/api/vision/table",
+            files={
+                "file": ("table.png", png_file, "image/png"),
+            },
+        )
         assert resp.status_code in (200, 500)

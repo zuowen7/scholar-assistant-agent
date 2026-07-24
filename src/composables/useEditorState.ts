@@ -6,7 +6,10 @@
  */
 import { ref, shallowRef, computed } from 'vue'
 import type { EditorSelection, EditorTab } from '../types'
-import * as monaco from 'monaco-editor'
+// This module stores Monaco-shaped state but never executes Monaco itself.
+// Keep the import type-only so the editor runtime remains behind MonacoEditor's
+// async component boundary instead of leaking into the application entry.
+import type * as monaco from 'monaco-editor'
 
 export const tabs = ref<EditorTab[]>([])
 export const activeTabId = ref<string | null>(null)

@@ -8,9 +8,9 @@ import pytest
 
 
 class TestRateLimiter:
-
     def _get_checker(self):
         from api_factory import _check_rate_limit
+
         return _check_rate_limit
 
     def test_allows_requests_under_limit(self) -> None:
@@ -20,6 +20,7 @@ class TestRateLimiter:
 
     def test_blocks_requests_over_limit(self) -> None:
         from api_factory import _RATE_LIMIT_RPM
+
         check = self._get_checker()
         ip = f"test-ip-block-{time.monotonic()}"
 
@@ -38,7 +39,8 @@ class TestRateLimiter:
         assert check(ip_b) is True
 
     def test_window_resets_after_time(self) -> None:
-        from api_factory import _rl_windows, _rl_lock, _RATE_LIMIT_RPM
+        from api_factory import _RATE_LIMIT_RPM, _rl_lock, _rl_windows
+
         check = self._get_checker()
         ip = f"test-ip-reset-{time.monotonic()}"
 

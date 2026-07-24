@@ -1,13 +1,14 @@
 """Sub-agent 测试。"""
+
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
 
-from src.agent_v2.tools.sub_agent import register_sub_agent, _PRESETS
-from src.agent_v2.tools.registry import ToolRegistry
 from src.agent_v2.providers.mock_provider import MockProvider
+from src.agent_v2.tools.registry import ToolRegistry
+from src.agent_v2.tools.sub_agent import _PRESETS, register_sub_agent
 
 
 @pytest.fixture
@@ -42,57 +43,75 @@ class TestPresets:
 class TestSubAgentExecution:
     @pytest.mark.asyncio
     async def test_run_audit(self, registry: ToolRegistry):
-        result = await registry.execute("run_sub_agent", {
-            "preset": "audit",
-            "content": "AI will replace all jobs.",
-        })
+        result = await registry.execute(
+            "run_sub_agent",
+            {
+                "preset": "audit",
+                "content": "AI will replace all jobs.",
+            },
+        )
         assert not result.is_error
         assert "[audit]" in result.output
 
     @pytest.mark.asyncio
     async def test_run_explain(self, registry: ToolRegistry):
-        result = await registry.execute("run_sub_agent", {
-            "preset": "explain",
-            "content": "Quantum computing uses qubits.",
-        })
+        result = await registry.execute(
+            "run_sub_agent",
+            {
+                "preset": "explain",
+                "content": "Quantum computing uses qubits.",
+            },
+        )
         assert not result.is_error
         assert "[explain]" in result.output
 
     @pytest.mark.asyncio
     async def test_run_translate(self, registry: ToolRegistry):
-        result = await registry.execute("run_sub_agent", {
-            "preset": "translate",
-            "content": "Machine learning is transforming science.",
-        })
+        result = await registry.execute(
+            "run_sub_agent",
+            {
+                "preset": "translate",
+                "content": "Machine learning is transforming science.",
+            },
+        )
         assert not result.is_error
         assert "[translate]" in result.output
 
     @pytest.mark.asyncio
     async def test_with_instruction(self, registry: ToolRegistry):
-        result = await registry.execute("run_sub_agent", {
-            "preset": "implement",
-            "content": "The cat sat on the mat.",
-            "instruction": "Change 'cat' to 'dog'",
-        })
+        result = await registry.execute(
+            "run_sub_agent",
+            {
+                "preset": "implement",
+                "content": "The cat sat on the mat.",
+                "instruction": "Change 'cat' to 'dog'",
+            },
+        )
         assert not result.is_error
 
 
 class TestSubAgentEdge:
     @pytest.mark.asyncio
     async def test_unknown_preset(self, registry: ToolRegistry):
-        result = await registry.execute("run_sub_agent", {
-            "preset": "nonsense_preset_xyz",
-            "content": "test",
-        })
+        result = await registry.execute(
+            "run_sub_agent",
+            {
+                "preset": "nonsense_preset_xyz",
+                "content": "test",
+            },
+        )
         assert result.is_error
         assert "unknown preset" in result.output.lower()
 
     @pytest.mark.asyncio
     async def test_empty_content(self, registry: ToolRegistry):
-        result = await registry.execute("run_sub_agent", {
-            "preset": "audit",
-            "content": "",
-        })
+        result = await registry.execute(
+            "run_sub_agent",
+            {
+                "preset": "audit",
+                "content": "",
+            },
+        )
         assert result.is_error
         assert "content" in result.output.lower()
 
@@ -101,36 +120,48 @@ class TestSubAgentEdge:
         reg = ToolRegistry()
         register_sub_agent(reg)
         # No _provider set
-        result = await reg.execute("run_sub_agent", {
-            "preset": "audit",
-            "content": "test",
-        })
+        result = await reg.execute(
+            "run_sub_agent",
+            {
+                "preset": "audit",
+                "content": "test",
+            },
+        )
         assert result.is_error
         assert "provider" in result.output.lower()
 
     @pytest.mark.asyncio
     async def test_very_long_content(self, registry: ToolRegistry):
-        result = await registry.execute("run_sub_agent", {
-            "preset": "explain",
-            "content": "test " * 5000,
-        })
+        result = await registry.execute(
+            "run_sub_agent",
+            {
+                "preset": "explain",
+                "content": "test " * 5000,
+            },
+        )
         assert not result.is_error
 
     @pytest.mark.asyncio
     async def test_special_characters(self, registry: ToolRegistry):
-        result = await registry.execute("run_sub_agent", {
-            "preset": "audit",
-            "content": "test \x00 null \U0001f600 中文 العربية",
-        })
+        result = await registry.execute(
+            "run_sub_agent",
+            {
+                "preset": "audit",
+                "content": "test \x00 null \U0001f600 中文 العربية",
+            },
+        )
         assert not result.is_error
 
     @pytest.mark.asyncio
     async def test_concurrent_sub_agents(self, registry: ToolRegistry):
         import asyncio
-        results = await asyncio.gather(*[
-            registry.execute("run_sub_agent", {"preset": "audit", "content": f"test {i}"})
-            for i in range(5)
-        ])
+
+        results = await asyncio.gather(
+            *[
+                registry.execute("run_sub_agent", {"preset": "audit", "content": f"test {i}"})
+                for i in range(5)
+            ]
+        )
         for r in results:
             assert not r.is_error
             assert "[audit]" in r.output

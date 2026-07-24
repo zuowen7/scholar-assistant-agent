@@ -9,16 +9,17 @@ RED state (before Phase A GREEN implementation):
 After GREEN all 15 should PASS.  Run with:
     cd python && pytest tests/unit/test_translate_prompt_v2.py -v
 """
+
 from __future__ import annotations
 
 import pytest
 
 from src.cleaner.pipeline import protect_citations, restore_citations
 
-
 # ── _prompt_loader fixture ─────────────────────────────────────────────────
 # If Phase A GREEN is not yet implemented this fixture skips A1-A12
 # without affecting A13-A15.
+
 
 @pytest.fixture(scope="module")
 def load_fn():
@@ -38,8 +39,8 @@ def _p(load_fn, section: str = "unknown", glossary: str = "") -> str:
 # A1-A3  Template loading + core identity rules
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestTemplateAndCoreRules:
 
+class TestTemplateAndCoreRules:
     def test_A1_prompt_loaded_from_template(self, load_fn):
         """A1: System prompt must carry the new template header '## 翻译五原则'."""
         prompt = _p(load_fn)
@@ -51,9 +52,7 @@ class TestTemplateAndCoreRules:
     def test_A2_rule1_accuracy_first(self, load_fn):
         """A2: Rule 1 — accuracy-first instruction present."""
         prompt = _p(load_fn)
-        assert "准确性优先" in prompt, (
-            "Rule 1 missing: add '准确性优先' to academic_translate.md."
-        )
+        assert "准确性优先" in prompt, "Rule 1 missing: add '准确性优先' to academic_translate.md."
 
     def test_A3_rule2_glossary_injected(self, load_fn):
         """A3: Rule 2 — glossary text injected when provided."""
@@ -62,17 +61,15 @@ class TestTemplateAndCoreRules:
         assert "已确定的术语翻译" in prompt, (
             "Glossary header '已确定的术语翻译' missing from prompt with glossary."
         )
-        assert "attention mechanism" in prompt, (
-            "Glossary content not injected into prompt."
-        )
+        assert "attention mechanism" in prompt, "Glossary content not injected into prompt."
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # A4-A7  Rule 3 — Code + math preservation instructions
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestRule3ProtectionInstructions:
 
+class TestRule3ProtectionInstructions:
     def test_A4_rule3_code_block_instruction(self, load_fn):
         """A4: System prompt must explicitly instruct to preserve fenced code blocks."""
         prompt = _p(load_fn)
@@ -111,8 +108,8 @@ class TestRule3ProtectionInstructions:
 # A8-A9  Rule 4 — Section-aware context injection
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestRule4SectionContext:
 
+class TestRule4SectionContext:
     def test_A8_abstract_section_injected(self, load_fn):
         """A8: '[SECTION: ABSTRACT]' included when section='abstract'."""
         prompt = _p(load_fn, section="abstract")
@@ -141,8 +138,8 @@ class TestRule4SectionContext:
 # A10-A12  Rule 5 — Markdown format preservation instructions
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestRule5FormatInstructions:
 
+class TestRule5FormatInstructions:
     def test_A10_markdown_heading_instruction(self, load_fn):
         """A10: Template must instruct to preserve Markdown headings (# ## ###)."""
         prompt = _p(load_fn)
@@ -166,8 +163,7 @@ class TestRule5FormatInstructions:
         prompt = _p(load_fn)
         has_table = "表格" in prompt or "table" in prompt.lower()
         assert has_table, (
-            "Rule 5 table instruction missing. "
-            "Add Markdown table (|col|col|) preservation rule."
+            "Rule 5 table instruction missing. Add Markdown table (|col|col|) preservation rule."
         )
 
 
@@ -175,17 +171,20 @@ class TestRule5FormatInstructions:
 # A13-A15  Citation protection — no _prompt_loader dependency
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestCitationProtection:
 
+class TestCitationProtection:
     # A13 — regression baseline, must PASS in RED
-    @pytest.mark.parametrize("text,expected_placeholders", [
-        ("[1]",            ["[1]"]),
-        ("(1)",            ["(1)"]),
-        ("(1,3)",          ["(1,3)"]),
-        ("[1,3]",          ["[1,3]"]),
-        ("(1-5)",          ["(1-5)"]),
-        ("see [1] and [2,3]", ["[1]", "[2,3]"]),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected_placeholders",
+        [
+            ("[1]", ["[1]"]),
+            ("(1)", ["(1)"]),
+            ("(1,3)", ["(1,3)"]),
+            ("[1,3]", ["[1,3]"]),
+            ("(1-5)", ["(1-5)"]),
+            ("see [1] and [2,3]", ["[1]", "[2,3]"]),
+        ],
+    )
     def test_A13_citation_protect_numeric(self, text, expected_placeholders):
         """A13: Existing numeric citation patterns protected — regression."""
         result, placeholders = protect_citations(text)
@@ -193,13 +192,16 @@ class TestCitationProtection:
         assert "⟦C" in result
 
     # A14 — MUST FAIL in RED (author-year regex not yet implemented)
-    @pytest.mark.parametrize("text,n_expected", [
-        ("[Smith, 2020]",              1),
-        ("[Smith et al., 2020]",       1),
-        ("[Smith et al., 2020a]",      1),
-        ("(Smith and Jones, 2019)",    1),
-        ("[Smith, 2020] and [Jones, 2021]", 2),
-    ])
+    @pytest.mark.parametrize(
+        "text,n_expected",
+        [
+            ("[Smith, 2020]", 1),
+            ("[Smith et al., 2020]", 1),
+            ("[Smith et al., 2020a]", 1),
+            ("(Smith and Jones, 2019)", 1),
+            ("[Smith, 2020] and [Jones, 2021]", 2),
+        ],
+    )
     def test_A14_citation_protect_author_year(self, text, n_expected):
         """A14: Author-year citations must be protected — NEW regex required."""
         result, placeholders = protect_citations(text)
@@ -211,17 +213,18 @@ class TestCitationProtection:
         assert "⟦C" in result
 
     # A15 — regression baseline, must PASS in RED
-    @pytest.mark.parametrize("original", [
-        "[1]",
-        "(1,3)",
-        "(1-5)",
-        "text [1] and [2] here",
-        "[1] start and end [2]",
-    ])
+    @pytest.mark.parametrize(
+        "original",
+        [
+            "[1]",
+            "(1,3)",
+            "(1-5)",
+            "text [1] and [2] here",
+            "[1] start and end [2]",
+        ],
+    )
     def test_A15_citation_restore_idempotent(self, original):
         """A15: protect → restore must return the exact original string."""
         result, placeholders = protect_citations(original)
         restored = restore_citations(result, placeholders)
-        assert restored == original, (
-            f"restore_citations lost data: {original!r} → {restored!r}"
-        )
+        assert restored == original, f"restore_citations lost data: {original!r} → {restored!r}"

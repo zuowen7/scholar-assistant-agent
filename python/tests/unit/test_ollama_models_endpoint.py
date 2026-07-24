@@ -1,4 +1,5 @@
 """Ollama list_models() 和 /api/ollama/models 端点测试"""
+
 from unittest.mock import Mock, patch
 
 import pytest

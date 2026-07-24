@@ -4,28 +4,59 @@ from __future__ import annotations
 
 import re
 
-
 # English clause/subordinate conjunction patterns
 _EN_CLAUSE_CONNECTORS = [
-    r"\bwhich\b", r"\bthat\b", r"\bwhere\b", r"\bwhen\b",
-    r"\bbecause\b", r"\balthough\b", r"\bwhile\b", r"\bif\b",
-    r"\bsince\b", r"\bunless\b", r"\bafter\b", r"\bbefore\b",
-    r"\bthough\b", r"\bas\b", r"\bonce\b",
-    r"\bhowever\b", r"\btherefore\b", r"\bfurthermore\b",
-    r"\bmoreover\b", r"\bnevertheless\b", r"\bconsequently\b",
-    r"\bspecifically\b", r"\bparticularly\b", r"\badditionally\b",
-    r"\bcompared\b", r"\boverall\b",
+    r"\bwhich\b",
+    r"\bthat\b",
+    r"\bwhere\b",
+    r"\bwhen\b",
+    r"\bbecause\b",
+    r"\balthough\b",
+    r"\bwhile\b",
+    r"\bif\b",
+    r"\bsince\b",
+    r"\bunless\b",
+    r"\bafter\b",
+    r"\bbefore\b",
+    r"\bthough\b",
+    r"\bas\b",
+    r"\bonce\b",
+    r"\bhowever\b",
+    r"\btherefore\b",
+    r"\bfurthermore\b",
+    r"\bmoreover\b",
+    r"\bnevertheless\b",
+    r"\bconsequently\b",
+    r"\bspecifically\b",
+    r"\bparticularly\b",
+    r"\badditionally\b",
+    r"\bcompared\b",
+    r"\boverall\b",
 ]
 _EN_PATTERN = "|".join(_EN_CLAUSE_CONNECTORS)
 
 # Chinese clause separators (全角标点 + 复合虚词)
 _CN_SEPARATORS = [
-    "；", "：",
-    "，但是", "，然而", "，因此", "，所以",
-    "，并且", "，而且", "，同时", "，此外",
-    "，由于", "，既然", "，虽然", "，即使",
-    "，如果", "，只要", "，除非",
-    "，于是", "，从而", "，故",
+    "；",
+    "：",
+    "，但是",
+    "，然而",
+    "，因此",
+    "，所以",
+    "，并且",
+    "，而且",
+    "，同时",
+    "，此外",
+    "，由于",
+    "，既然",
+    "，虽然",
+    "，即使",
+    "，如果",
+    "，只要",
+    "，除非",
+    "，于是",
+    "，从而",
+    "，故",
 ]
 
 
@@ -56,10 +87,12 @@ def _split_long_sentence(text: str, max_chars: int) -> list[str]:
 
     # 预保护: 数字+句号格式
     protected: list[str] = []
+
     def _dig(m):
         idx = len(protected)
         protected.append(m.group(0))
         return f"\x00D{idx}\x00"
+
     t = re.sub(r"\d+\.\d+", _dig, text)
 
     candidates: dict[int, str] = {}
@@ -69,7 +102,7 @@ def _split_long_sentence(text: str, max_chars: int) -> list[str]:
         pos = m.start()
         if _is_inside_paren(t, pos):
             continue
-        before = t[max(0, pos - 2):pos]
+        before = t[max(0, pos - 2) : pos]
         if before and re.match(r"[，;,\s]", before[-1]):
             candidates[pos] = m.group(0)
 

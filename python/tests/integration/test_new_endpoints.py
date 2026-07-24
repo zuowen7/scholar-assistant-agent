@@ -5,6 +5,7 @@
 - 正常响应
 - 异常处理（无效 task_id 等）
 """
+
 from __future__ import annotations
 
 import json
@@ -22,8 +23,9 @@ def client():
     """创建 TestClient，隔离配置和数据目录"""
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-    from api_factory import create_app
     from fastapi.testclient import TestClient
+
+    from api_factory import create_app
 
     test_dir = tempfile.mkdtemp()
     config_dir = Path(test_dir) / "config"
@@ -65,19 +67,25 @@ class TestPPTXExport:
         assert resp.status_code == 422
 
     def test_invalid_task_id_returns_400(self, client) -> None:
-        resp = client.post("/api/export/pptx", json={
-            "task_id": "nonexistent-task-id",
-            "block_translations": [],
-        })
+        resp = client.post(
+            "/api/export/pptx",
+            json={
+                "task_id": "nonexistent-task-id",
+                "block_translations": [],
+            },
+        )
         # Should return 400 or 404 for nonexistent task
         assert resp.status_code in (400, 404)
 
     def test_valid_task_id_with_empty_blocks(self, client) -> None:
         """Valid task_id with empty blocks — 404 if task doesn't exist in fresh app"""
-        resp = client.post("/api/export/pptx", json={
-            "task_id": "test-task-empty",
-            "block_translations": [],
-        })
+        resp = client.post(
+            "/api/export/pptx",
+            json={
+                "task_id": "test-task-empty",
+                "block_translations": [],
+            },
+        )
         # 404 = task doesn't exist (fresh test app), 200/400 otherwise
         assert resp.status_code in (200, 400, 404)
 
@@ -97,9 +105,12 @@ class TestDataAvailabilityExport:
         assert resp.status_code == 422
 
     def test_accepts_task_id(self, client) -> None:
-        resp = client.post("/api/export/data_availability", json={
-            "task_id": "test-da-task",
-        })
+        resp = client.post(
+            "/api/export/data_availability",
+            json={
+                "task_id": "test-da-task",
+            },
+        )
         # May return 404 if task doesn't exist, but shouldn't 422
         assert resp.status_code != 422
 

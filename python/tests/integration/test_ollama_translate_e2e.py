@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 def _ollama_reachable() -> bool:
     try:
         import urllib.request
+
         req = urllib.request.Request("http://localhost:11434/api/tags")
         resp = urllib.request.urlopen(req, timeout=5)
         data = json.loads(resp.read())
@@ -48,6 +49,7 @@ needs_ollama = pytest.mark.skipif(
 @pytest.fixture(autouse=True)
 def clear_rate_limit():
     import api_factory as _mod
+
     with _mod._rl_lock:
         _mod._rl_windows.clear()
     yield
@@ -61,6 +63,7 @@ def clear_rate_limit():
 @pytest.fixture(scope="module")
 def client(tmp_path_factory):
     from fastapi.testclient import TestClient
+
     from api_factory import create_app
 
     tmp = tmp_path_factory.mktemp("ollama_e2e")
@@ -95,9 +98,9 @@ def _upload(client, text: str = "Hello world. Test content.") -> str:
     return resp.json()["task_id"]
 
 
-def _consume(client, task_id: str, timeout: int = 180) -> tuple[bytes, int]:
+def _consume(client, task_id: str) -> tuple[bytes, int]:
     """Stream a task and return (body_bytes, status_code)."""
-    resp = client.get(f"/api/translate/{task_id}/stream", timeout=timeout)
+    resp = client.get(f"/api/translate/{task_id}/stream")
     return resp.content, resp.status_code
 
 
@@ -131,7 +134,7 @@ class TestOllamaTranslationPipeline:
             "It enables computers to learn from data without being explicitly programmed."
         )
         task_id = _upload(client, text)
-        body, status = _consume(client, task_id, timeout=180)
+        body, status = _consume(client, task_id)
 
         assert status == 200, f"Stream returned {status}"
         events = _parse_sse_events(body)
@@ -144,7 +147,7 @@ class TestOllamaTranslationPipeline:
         """Verify actual translated content contains Chinese characters."""
         text = "Artificial intelligence has transformed many industries."
         task_id = _upload(client, text)
-        body, status = _consume(client, task_id, timeout=180)
+        body, status = _consume(client, task_id)
 
         assert status == 200
         events = _parse_sse_events(body)
@@ -167,7 +170,7 @@ class TestOllamaTranslationPipeline:
         """All 5 pipeline steps emit events: progress, parsed, cleaned, chunked, complete."""
         text = "Deep learning uses neural networks with many layers."
         task_id = _upload(client, text)
-        body, status = _consume(client, task_id, timeout=180)
+        body, status = _consume(client, task_id)
 
         assert status == 200
         events = _parse_sse_events(body)
@@ -180,16 +183,14 @@ class TestOllamaTranslationPipeline:
             "translate.chunked",
         ]
         for r in required:
-            assert r in event_types, (
-                f"Missing required step '{r}' in events: {event_types}"
-            )
+            assert r in event_types, f"Missing required step '{r}' in events: {event_types}"
         assert "translate.complete" in event_types
 
     def test_short_sentence_translation(self, client):
         """Single short sentence should translate cleanly."""
         text = "The cat sat on the mat."
         task_id = _upload(client, text)
-        body, status = _consume(client, task_id, timeout=180)
+        body, status = _consume(client, task_id)
 
         assert status == 200
         events = _parse_sse_events(body)
@@ -208,7 +209,7 @@ class TestOllamaTranslationPipeline:
             "The key idea is learning through trial and error."
         )
         task_id = _upload(client, text)
-        body, status = _consume(client, task_id, timeout=180)
+        body, status = _consume(client, task_id)
 
         assert status == 200
         events = _parse_sse_events(body)
@@ -232,7 +233,7 @@ class TestOllamaTranslationPipeline:
         """Translation result should be auto-ingested into RAG."""
         text = "Natural language processing enables computers to understand human language."
         task_id = _upload(client, text)
-        body, status = _consume(client, task_id, timeout=180)
+        body, status = _consume(client, task_id)
 
         assert status == 200
         events = _parse_sse_events(body)
@@ -246,7 +247,7 @@ class TestOllamaTranslationPipeline:
         """After real translation completes, download should return the file."""
         text = "Download this translated content after pipeline finishes."
         task_id = _upload(client, text)
-        body, status = _consume(client, task_id, timeout=180)
+        body, status = _consume(client, task_id)
 
         assert status == 200
         events = _parse_sse_events(body)

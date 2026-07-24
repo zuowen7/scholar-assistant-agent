@@ -38,22 +38,33 @@ features:
 """
 
 # Canned LLM response for argument extraction
-_EXTRACT_JSON = json.dumps({
-    "nodes": [
-        {"local_id": "c1", "type": "claim", "text": "Deep learning improves accuracy",
-         "verbatim_quote": "Deep learning models significantly improve accuracy"},
-        {"local_id": "g1", "type": "grounds", "text": "Experiments show 15% improvement",
-         "verbatim_quote": "our experiments demonstrate a 15% improvement over baselines"},
-    ],
-    "edges": [
-        {"source": "g1", "target": "c1", "relation": "supports"},
-    ],
-})
+_EXTRACT_JSON = json.dumps(
+    {
+        "nodes": [
+            {
+                "local_id": "c1",
+                "type": "claim",
+                "text": "Deep learning improves accuracy",
+                "verbatim_quote": "Deep learning models significantly improve accuracy",
+            },
+            {
+                "local_id": "g1",
+                "type": "grounds",
+                "text": "Experiments show 15% improvement",
+                "verbatim_quote": "our experiments demonstrate a 15% improvement over baselines",
+            },
+        ],
+        "edges": [
+            {"source": "g1", "target": "c1", "relation": "supports"},
+        ],
+    }
+)
 
 
 @pytest.fixture(scope="module")
 def client():
     from fastapi.testclient import TestClient
+
     from api_factory import create_app
 
     test_dir = tempfile.mkdtemp()
@@ -77,9 +88,9 @@ def _parse_sse(text: str) -> list[dict]:
     current = {}
     for line in text.splitlines():
         if line.startswith("event:"):
-            current["event"] = line[len("event:"):].strip()
+            current["event"] = line[len("event:") :].strip()
         elif line.startswith("data:"):
-            current["data"] = line[len("data:"):].strip()
+            current["data"] = line[len("data:") :].strip()
             events.append({**current})
             current = {}
     return events
@@ -98,11 +109,14 @@ class TestArgumentExtractSSE:
             "src.argument.ai_ops.call_llm_chat",
             AsyncMock(return_value=_EXTRACT_JSON),
         ):
-            resp = client.post(f"/api/argument/graph/{graph_id}/extract", json={
-                "text": "Deep learning models significantly improve accuracy. "
-                        "Our experiments demonstrate a 15% improvement over baselines.",
-                "source_label": "test.md",
-            })
+            resp = client.post(
+                f"/api/argument/graph/{graph_id}/extract",
+                json={
+                    "text": "Deep learning models significantly improve accuracy. "
+                    "Our experiments demonstrate a 15% improvement over baselines.",
+                    "source_label": "test.md",
+                },
+            )
             assert resp.status_code == 200
             events = _parse_sse(resp.text)
             assert len(events) > 0
@@ -112,10 +126,13 @@ class TestArgumentExtractSSE:
             "src.argument.ai_ops.call_llm_chat",
             AsyncMock(return_value=_EXTRACT_JSON),
         ):
-            resp = client.post(f"/api/argument/graph/{graph_id}/extract", json={
-                "text": "Test content for extraction.",
-                "side": "orig",
-            })
+            resp = client.post(
+                f"/api/argument/graph/{graph_id}/extract",
+                json={
+                    "text": "Test content for extraction.",
+                    "side": "orig",
+                },
+            )
             events = _parse_sse(resp.text)
             event_types = [e.get("event") for e in events]
 
@@ -128,22 +145,29 @@ class TestArgumentExtractSSE:
             )
 
     def test_extract_graph_not_found(self, client):
-        resp = client.post("/api/argument/graph/fake-gid/extract", json={
-            "text": "Some text.",
-        })
+        resp = client.post(
+            "/api/argument/graph/fake-gid/extract",
+            json={
+                "text": "Some text.",
+            },
+        )
         assert resp.status_code == 404
 
 
 class TestArgumentCritiqueSSE:
     """POST /api/argument/graph/{gid}/critique with mock LLM."""
 
-    _CRITIQUE_JSON = json.dumps([{
-        "category": "logic_gap",
-        "severity": "major",
-        "title": "Missing warrant",
-        "detail": "Claim c1 lacks a warrant connecting it to ground g1.",
-        "node_ids": ["c1"],
-    }])
+    _CRITIQUE_JSON = json.dumps(
+        [
+            {
+                "category": "logic_gap",
+                "severity": "major",
+                "title": "Missing warrant",
+                "detail": "Claim c1 lacks a warrant connecting it to ground g1.",
+                "node_ids": ["c1"],
+            }
+        ]
+    )
 
     @pytest.fixture
     def graph_id(self, client):
@@ -169,11 +193,13 @@ class TestArgumentCritiqueSSE:
 class TestArgumentSuggestSSE:
     """POST /api/argument/graph/{gid}/suggest with mock LLM."""
 
-    _SUGGEST_JSON = json.dumps({
-        "node_type": "backing",
-        "text": "The warrant is supported by established theory.",
-        "rationale": "Adding theoretical backing strengthens the warrant.",
-    })
+    _SUGGEST_JSON = json.dumps(
+        {
+            "node_type": "backing",
+            "text": "The warrant is supported by established theory.",
+            "rationale": "Adding theoretical backing strengthens the warrant.",
+        }
+    )
 
     @pytest.fixture
     def graph_id(self, client):
@@ -185,9 +211,12 @@ class TestArgumentSuggestSSE:
             "src.argument.ai_ops.call_llm_chat",
             AsyncMock(return_value=self._SUGGEST_JSON),
         ):
-            resp = client.post(f"/api/argument/graph/{graph_id}/suggest", json={
-                "node_id": "c1",
-            })
+            resp = client.post(
+                f"/api/argument/graph/{graph_id}/suggest",
+                json={
+                    "node_id": "c1",
+                },
+            )
             assert resp.status_code in (200, 400, 422)
 
 

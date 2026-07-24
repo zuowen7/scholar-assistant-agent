@@ -9,6 +9,7 @@ Tests cover:
   4. SessionStore — workspace-namespaced session persistence
   5. SessionHandle — reference resolution (id, path, alias)
 """
+
 from __future__ import annotations
 
 import json
@@ -31,11 +32,12 @@ def _asst_msg(text: str) -> Message:
 # 1. Session.fork()
 # ============================================================================
 
-class TestSessionFork:
 
+class TestSessionFork:
     @pytest.fixture(autouse=True)
     def _import(self):
         from src.agent_v2.runtime.session import Session
+
         self.Session = Session
 
     def test_fork_creates_new_session_id(self):
@@ -88,6 +90,7 @@ class TestSessionFork:
     def test_fork_has_new_timestamps(self):
         session = self.Session()
         import time
+
         time.sleep(0.01)
         forked = session.fork()
         assert forked.meta.created_ms >= session.meta.created_ms
@@ -97,16 +100,18 @@ class TestSessionFork:
 # 2. SessionFork dataclass
 # ============================================================================
 
-class TestSessionForkDataclass:
 
+class TestSessionForkDataclass:
     def test_fork_metadata(self):
         from src.agent_v2.runtime.session import SessionFork
+
         f = SessionFork(parent_session_id="abc123", branch_name="feature/x")
         assert f.parent_session_id == "abc123"
         assert f.branch_name == "feature/x"
 
     def test_fork_no_branch(self):
         from src.agent_v2.runtime.session import SessionFork
+
         f = SessionFork(parent_session_id="abc123")
         assert f.branch_name is None
 
@@ -115,16 +120,18 @@ class TestSessionForkDataclass:
 # 3. SessionControl — pause / resume
 # ============================================================================
 
-class TestSessionControl:
 
+class TestSessionControl:
     @pytest.fixture(autouse=True)
     def _import(self):
         from src.agent_v2.runtime.session_control import SessionControl, SessionState
+
         self.Control = SessionControl
         self.State = SessionState
 
     def test_initial_state_is_active(self):
         from src.agent_v2.runtime.session_control import SessionState
+
         ctrl = self.Control()
         assert ctrl.state == SessionState.ACTIVE
 
@@ -158,6 +165,7 @@ class TestSessionControl:
 
     def test_state_values(self):
         from src.agent_v2.runtime.session_control import SessionState
+
         assert SessionState.ACTIVE.value == "active"
         assert SessionState.PAUSED.value == "paused"
         assert SessionState.ABORTED.value == "aborted"
@@ -172,11 +180,12 @@ class TestSessionControl:
 # 4. SessionStore — workspace-namespaced persistence
 # ============================================================================
 
-class TestSessionStore:
 
+class TestSessionStore:
     @pytest.fixture(autouse=True)
     def _import(self):
         from src.agent_v2.runtime.session_control import SessionStore
+
         self.Store = SessionStore
 
     def test_from_cwd_creates_store(self, tmp_path: Path):
@@ -186,6 +195,7 @@ class TestSessionStore:
 
     def test_sessions_dir_created_on_save(self, tmp_path: Path):
         from src.agent_v2.runtime.session import Session
+
         store = self.Store.from_cwd(tmp_path)
         session = Session()
         session.append(_user_msg("test"))
@@ -194,6 +204,7 @@ class TestSessionStore:
 
     def test_save_and_load_roundtrip(self, tmp_path: Path):
         from src.agent_v2.runtime.session import Session
+
         store = self.Store.from_cwd(tmp_path)
         session = Session()
         session.append(_user_msg("hello"))
@@ -210,6 +221,7 @@ class TestSessionStore:
 
     def test_list_sessions(self, tmp_path: Path):
         from src.agent_v2.runtime.session import Session
+
         store = self.Store.from_cwd(tmp_path)
         s1 = Session()
         s1.append(_user_msg("s1"))
@@ -221,8 +233,10 @@ class TestSessionStore:
         assert len(sessions) >= 2
 
     def test_latest_session(self, tmp_path: Path):
-        from src.agent_v2.runtime.session import Session
         import time
+
+        from src.agent_v2.runtime.session import Session
+
         store = self.Store.from_cwd(tmp_path)
         s1 = Session()
         s1.append(_user_msg("old"))
@@ -237,6 +251,7 @@ class TestSessionStore:
 
     def test_delete_session(self, tmp_path: Path):
         from src.agent_v2.runtime.session import Session
+
         store = self.Store.from_cwd(tmp_path)
         session = Session()
         session.append(_user_msg("to delete"))

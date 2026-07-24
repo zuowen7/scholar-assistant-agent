@@ -27,9 +27,9 @@ PDF_PATH = r"C:\Users\zuowen\Desktop\science.adn8744.pdf"
 
 @pytest.fixture(scope="module")
 def pipeline_result():
-    from src.parser.extractor import extract_pages
-    from src.cleaner import clean_text_full
     from src.chunker.splitter import chunk_text_with_blocks
+    from src.cleaner import clean_text_full
+    from src.parser.extractor import extract_pages
 
     doc = extract_pages(PDF_PATH)
     result = clean_text_full(doc.full_text)
@@ -40,10 +40,10 @@ def pipeline_result():
 @pytest.fixture(scope="module")
 def split_result():
     """Pipeline with article splitting (round 2 fix)."""
-    from src.parser.extractor import extract_pages
-    from src.parser.article_detector import extract_articles
-    from src.cleaner import clean_text_full
     from src.chunker.splitter import parse_blocks
+    from src.cleaner import clean_text_full
+    from src.parser.article_detector import extract_articles
+    from src.parser.extractor import extract_pages
 
     doc = extract_pages(PDF_PATH)
     raw_articles = extract_articles(doc.full_text)
@@ -122,15 +122,14 @@ class TestCitationNormalization:
         assert not re.search(r"\(\s+\d+\s+\)", result.text)
 
 
-class TestAuthorHeadingExclusion:
-    """P0-3: Author names should not be classified as headings."""
+class TestAuthorHeading:
+    """Author lines should be classified as headings (h2) so the dual-view
+    renders them with the proper heading style and position, not as paragraphs."""
 
-    def test_author_not_heading(self):
+    def test_author_is_h2(self):
         from src.chunker.splitter import _looks_like_pdf_heading
 
-        assert (
-            _looks_like_pdf_heading("Laurie S. Huning and Manuela I. Brunner") == 0
-        )
+        assert _looks_like_pdf_heading("Laurie S. Huning and Manuela I. Brunner") >= 2
 
 
 # ── Round 2 fixes ──────────────────────────────────────────────────────────
@@ -158,7 +157,7 @@ class TestArticleSplitting:
     def test_articles_non_trivial_size(self, split_result):
         _, raw_articles, _ = split_result
         for i, art in enumerate(raw_articles):
-            assert len(art) > 500, f"Article {i+1} too short ({len(art)} chars)"
+            assert len(art) > 500, f"Article {i + 1} too short ({len(art)} chars)"
 
 
 class TestTruncationFixedPerArticle:
@@ -180,15 +179,17 @@ class TestTruncationFixedPerArticle:
         _, _, article_data = split_result
         for i, (_, blocks) in enumerate(article_data):
             for b in blocks:
-                assert not b.text.strip().startswith("n 2023"), \
-                    f"Article {i+1} block {b.id} starts with 'n 2023'"
+                assert not b.text.strip().startswith("n 2023"), (
+                    f"Article {i + 1} block {b.id} starts with 'n 2023'"
+                )
 
     def test_no_nflammation_anywhere(self, split_result):
         _, _, article_data = split_result
         for i, (_, blocks) in enumerate(article_data):
             for b in blocks:
-                assert not b.text.strip().startswith("nflammation"), \
-                    f"Article {i+1} block {b.id} starts with 'nflammation'"
+                assert not b.text.strip().startswith("nflammation"), (
+                    f"Article {i + 1} block {b.id} starts with 'nflammation'"
+                )
 
 
 class TestNoiseRemovedPerArticle:
@@ -198,8 +199,7 @@ class TestNoiseRemovedPerArticle:
         _, _, article_data = split_result
         for i, (_, blocks) in enumerate(article_data):
             for b in blocks:
-                assert "ó ó" not in b.text, \
-                    f"Article {i+1} block {b.id} has ó ó noise"
+                assert "ó ó" not in b.text, f"Article {i + 1} block {b.id} has ó ó noise"
 
 
 class TestBlocksPerArticle:
@@ -208,8 +208,7 @@ class TestBlocksPerArticle:
     def test_article_block_counts(self, split_result):
         _, _, article_data = split_result
         for i, (_, blocks) in enumerate(article_data):
-            assert len(blocks) >= 3, \
-                f"Article {i+1} has only {len(blocks)} blocks"
+            assert len(blocks) >= 3, f"Article {i + 1} has only {len(blocks)} blocks"
 
     def test_total_blocks_reduced(self, split_result):
         """Splitting should produce cleaner block boundaries."""

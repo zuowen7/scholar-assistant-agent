@@ -1,6 +1,7 @@
 """Zotero 客户端单元测试"""
 
 import pytest
+
 from src.zotero.client import ZoteroClient, ZoteroItem
 
 
@@ -179,7 +180,7 @@ class TestZoteroEdgeCases:
         item = ZoteroItem(
             key="1",
             item_type="article",
-            title="Test: \"Quotes\" & <Special>",
+            title='Test: "Quotes" & <Special>',
             authors=["Smith, J."],
             year="2020",
         )

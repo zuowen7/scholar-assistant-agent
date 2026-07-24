@@ -8,18 +8,19 @@
   - lifecycle phases: NotStarted → Initializing → Ready → Failed/Shutdown
   - required vs optional servers
 """
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum, auto
-from pathlib import Path
+from enum import Enum
 from typing import Any
 
-from src.agent_v2.types import ToolDefinition, ToolError
+from src.agent_v2.types import ToolDefinition
 
 logger = logging.getLogger(__name__)
 
@@ -96,25 +97,55 @@ class McpManager:
             )
             state.process = process
             # Initialize handshake
-            await self._send_jsonrpc(state, "initialize", {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "scholar-assistant", "version": "0.3.6"},
-            })
+            await self._send_jsonrpc(
+                state,
+                "initialize",
+                {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "scholar-assistant", "version": "0.3.6"},
+                },
+            )
             # Send initialized notification
             await self._send_notification(state, "notifications/initialized")
             # Discover tools
             tools_result = await self._send_jsonrpc(state, "tools/list", {})
             state.tools = [
-                ToolDefinition(name=t["name"], description=t.get("description", ""),
-                               input_schema=t.get("inputSchema", {}))
+                ToolDefinition(
+                    name=t["name"],
+                    description=t.get("description", ""),
+                    input_schema=t.get("inputSchema", {}),
+                )
                 for t in tools_result.get("tools", [])
             ]
             state.lifecycle = McpLifecycleState.READY
-        except Exception as e:
-            if state.process and state.process.returncode is None:
-                state.process.terminate()
+        except Exception:
+            if state.process:
+                await self._dispose_process(state.process)
             raise
+
+    @staticmethod
+    async def _dispose_process(process: asyncio.subprocess.Process) -> None:
+        """Stop a child and drain its pipes before the event loop is closed.
+
+        Merely calling ``terminate()``/``wait()`` leaves Proactor pipe
+        transports pending on Windows, which later surfaces as unraisable
+        exceptions during an unrelated test or application shutdown.
+        """
+        if process.returncode is None:
+            with contextlib.suppress(ProcessLookupError):
+                process.terminate()
+        try:
+            await asyncio.wait_for(process.communicate(), timeout=5.0)
+        except TimeoutError:
+            if process.returncode is None:
+                with contextlib.suppress(ProcessLookupError):
+                    process.kill()
+            await process.communicate()
+        except (BrokenPipeError, ConnectionResetError):
+            await process.wait()
+        # Give the Proactor loop one cycle to deliver connection_lost callbacks.
+        await asyncio.sleep(0)
 
     async def _send_jsonrpc(self, state: McpServerState, method: str, params: dict) -> dict:
         if not state.process or not state.process.stdin or not state.process.stdout:
@@ -126,8 +157,10 @@ class McpManager:
         await state.process.stdin.drain()
         # Read response
         try:
-            line = await asyncio.wait_for(state.process.stdout.readline(), timeout=state.config.timeout_seconds)
-        except asyncio.TimeoutError:
+            line = await asyncio.wait_for(
+                state.process.stdout.readline(), timeout=state.config.timeout_seconds
+            )
+        except TimeoutError:
             raise McpError(f"timeout waiting for response from '{state.config.name}'")
         if not line:
             raise McpError(f"server '{state.config.name}' closed stdout")
@@ -158,10 +191,14 @@ class McpManager:
                 continue
             if any(t.name == tool_name for t in state.tools):
                 try:
-                    result = await self._send_jsonrpc(state, "tools/call", {
-                        "name": tool_name,
-                        "arguments": arguments,
-                    })
+                    result = await self._send_jsonrpc(
+                        state,
+                        "tools/call",
+                        {
+                            "name": tool_name,
+                            "arguments": arguments,
+                        },
+                    )
                     contents = result.get("content", [])
                     texts = [c.get("text", "") for c in contents if c.get("type") == "text"]
                     return "\n".join(texts) if texts else json.dumps(result)
@@ -173,15 +210,11 @@ class McpManager:
 
     async def shutdown_all(self) -> None:
         for name, state in self._servers.items():
-            if state.process and state.process.returncode is None:
+            if state.process:
                 try:
-                    state.process.terminate()
-                    await asyncio.wait_for(state.process.wait(), timeout=5.0)
-                except Exception:
-                    try:
-                        state.process.kill()
-                    except Exception:
-                        pass
+                    await self._dispose_process(state.process)
+                except Exception as exc:
+                    logger.warning("failed to stop MCP server '%s': %s", name, exc)
             state.lifecycle = McpLifecycleState.SHUTDOWN
 
     def get_state(self, name: str) -> McpServerState | None:

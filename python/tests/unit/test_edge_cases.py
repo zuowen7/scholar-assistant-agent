@@ -8,20 +8,21 @@
 - 配置加载/保存
 """
 
-import pytest
 from pathlib import Path
 
-from src.chunker.splitter import chunk_text_full, ChunkResult
+import pytest
+
+from src.chunker.splitter import ChunkResult, chunk_text_full
 from src.cleaner import clean_text_full
-from src.formatter.word_exporter import markdown_to_docx
 from src.formatter.renderer import format_output
+from src.formatter.word_exporter import markdown_to_docx
 from src.translator._helpers import (
-    _validate_translation,
-    _repair_truncation,
-    _strip_think_tags,
-    _strip_code_block_wrapping,
     _deduplicate_repetition,
+    _repair_truncation,
     _restore_paragraphs,
+    _strip_code_block_wrapping,
+    _strip_think_tags,
+    _validate_translation,
 )
 
 
@@ -103,18 +104,21 @@ class TestCleanerEdgeCases:
 class TestFormattersEdgeCases:
     def test_format_empty_results(self):
         from src.translator._helpers import TranslationResult
+
         results = []
         output = format_output(results, "bilingual")
         assert output == ""
 
     def test_format_with_single_result(self):
         from src.translator._helpers import TranslationResult
+
         results = [TranslationResult(original="Hello", translated="你好")]
         output = format_output(results, "bilingual")
         assert "你好" in output
 
     def test_format_parallel_mode(self):
         from src.translator._helpers import TranslationResult
+
         results = [
             TranslationResult(original="Hello", translated="你好"),
             TranslationResult(original="World", translated="世界"),
@@ -125,6 +129,7 @@ class TestFormattersEdgeCases:
 
     def test_format_translated_only(self):
         from src.translator._helpers import TranslationResult
+
         results = [
             TranslationResult(original="Hello", translated="你好"),
         ]
@@ -136,15 +141,21 @@ class TestFormattersEdgeCases:
 class TestHelperEdgeCases:
     def test_validate_empty_text(self):
         from src.translator._helpers import TranslationResult
+
         # 当前实现：有效翻译返回 True
         result = _validate_translation(TranslationResult(original="Hello", translated="你好"))
         assert result is True
 
     def test_validate_gibberish(self):
         from src.translator._helpers import TranslationResult
+
         # 译文过短且原文 > 100 字符时会被检测（返回 False）
         # 原文 50 字符不触发检测，所以目前返回 True（待后续增强）
-        bad_result = _validate_translation(TranslationResult(original="This is a valid paragraph with multiple sentences.", translated="ab"))
+        bad_result = _validate_translation(
+            TranslationResult(
+                original="This is a valid paragraph with multiple sentences.", translated="ab"
+            )
+        )
         # 当前逻辑行为：短原文不触发检测，返回 True
         assert bad_result is True
 

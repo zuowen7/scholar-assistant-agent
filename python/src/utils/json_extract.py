@@ -8,15 +8,14 @@ Algorithm:
 2. Strip markdown fences and retry
 3. Balanced-brace scan from first open char to its match (handles preamble)
 """
+
 from __future__ import annotations
 
 import json
 import re
 from typing import Any
 
-_FENCE_RE = re.compile(
-    r"```(?:[a-zA-Z]*)\s*\n(.*?)\n\s*```", re.DOTALL
-)
+_FENCE_RE = re.compile(r"```(?:[a-zA-Z]*)\s*\n(.*?)\n\s*```", re.DOTALL)
 
 
 def extract_json_object(text: str) -> dict | None:

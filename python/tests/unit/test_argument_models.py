@@ -9,20 +9,27 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-
 # ── 工具函数 ──────────────────────────────────────────────────────────────────
+
 
 def _import_models():
     """延迟导入，使测试文件即便实现未就绪也能被收集。"""
     from src.argument.models_v2 import (
-        NodeType, RelationType,
-        SpanMapping, ArgIssue, ArgNode, ArgEdge, ArgGraph,
         ALLOWED_EDGES,
+        ArgEdge,
+        ArgGraph,
+        ArgIssue,
+        ArgNode,
+        NodeType,
+        RelationType,
+        SpanMapping,
     )
+
     return NodeType, RelationType, SpanMapping, ArgIssue, ArgNode, ArgEdge, ArgGraph, ALLOWED_EDGES
 
 
 # ── NodeType / RelationType 枚举校验 ────────────────────────────────────────
+
 
 class TestNodeType:
     def test_valid_values(self):
@@ -51,6 +58,7 @@ class TestRelationType:
 
 
 # ── SpanMapping ──────────────────────────────────────────────────────────────
+
 
 class TestSpanMapping:
     def test_minimal_required_fields(self):
@@ -87,6 +95,7 @@ class TestSpanMapping:
 
 # ── ArgIssue ─────────────────────────────────────────────────────────────────
 
+
 class TestArgIssue:
     def test_valid_severity_and_category(self):
         _, _, _, ArgIssue, _, _, _, _ = _import_models()
@@ -108,9 +117,15 @@ class TestArgIssue:
     def test_all_valid_categories(self):
         _, _, _, ArgIssue, _, _, _, _ = _import_models()
         cats = [
-            "missing_grounds", "missing_warrant", "missing_backing",
-            "unaddressed_rebuttal", "fallacy", "weak_link", "orphan",
-            "unsupported_qualifier", "other",
+            "missing_grounds",
+            "missing_warrant",
+            "missing_backing",
+            "unaddressed_rebuttal",
+            "fallacy",
+            "weak_link",
+            "orphan",
+            "unsupported_qualifier",
+            "other",
         ]
         for cat in cats:
             issue = ArgIssue(severity="info", category=cat, message="x")
@@ -118,6 +133,7 @@ class TestArgIssue:
 
 
 # ── ArgNode ──────────────────────────────────────────────────────────────────
+
 
 class TestArgNode:
     def test_default_created_by_is_user(self):
@@ -154,6 +170,7 @@ class TestArgNode:
 
 # ── ArgEdge ──────────────────────────────────────────────────────────────────
 
+
 class TestArgEdge:
     def test_auto_id_starts_with_e(self):
         _, _, _, _, _, ArgEdge, _, _ = _import_models()
@@ -170,6 +187,7 @@ class TestArgEdge:
 
 
 # ── ArgGraph ─────────────────────────────────────────────────────────────────
+
 
 class TestArgGraph:
     def test_empty_graph_defaults(self):
@@ -201,6 +219,7 @@ class TestArgGraph:
 
 # ── ALLOWED_EDGES constraint dict ────────────────────────────────────────────
 
+
 class TestAllowedEdges:
     def test_supports_only_grounds_to_claim(self):
         *_, ALLOWED_EDGES = _import_models()
@@ -231,5 +250,10 @@ class TestAllowedEdges:
     def test_all_six_relation_types_present(self):
         *_, ALLOWED_EDGES = _import_models()
         assert set(ALLOWED_EDGES.keys()) == {
-            "supports", "warrants", "backs", "qualifies", "rebuts", "counters"
+            "supports",
+            "warrants",
+            "backs",
+            "qualifies",
+            "rebuts",
+            "counters",
         }

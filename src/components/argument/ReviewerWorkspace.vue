@@ -1,17 +1,17 @@
 <template>
   <div class="reviewer-workspace">
     <nav class="review-surface-nav" :aria-label="t('reviewerWorkspace.workspaceNav')">
-      <button type="button" :class="{ active: surface === 'reviewer' }" @click="surface = 'reviewer'">
+      <button type="button" :class="{ active: surface === 'reviewer' }" :aria-pressed="surface === 'reviewer'" @click="surface = 'reviewer'">
         <SquareCheckBig :size="16" />
         <span>{{ t('reviewerWorkspace.reviewerTab') }}</span>
         <small>{{ points.length }}</small>
       </button>
-      <button type="button" :class="{ active: surface === 'ledger' }" @click="surface = 'ledger'">
+      <button type="button" :class="{ active: surface === 'ledger' }" :aria-pressed="surface === 'ledger'" @click="surface = 'ledger'">
         <ListChecks :size="16" />
         <span>{{ t('reviewerWorkspace.ledgerTab') }}</span>
         <small>{{ companion.state.ledger?.promises.length ?? 0 }}</small>
       </button>
-      <button type="button" :class="{ active: surface === 'map' }" @click="surface = 'map'">
+      <button type="button" :class="{ active: surface === 'map' }" :aria-pressed="surface === 'map'" @click="surface = 'map'">
         <Network :size="16" />
         <span>{{ t('reviewerWorkspace.argumentMap') }}</span>
       </button>
@@ -85,7 +85,7 @@
         <aside class="review-side">
           <Panel class="ledger-card">
             <div class="side-title-row">
-              <h2>Claim Ledger</h2>
+              <h2>{{ t('reviewerWorkspace.ledgerTab') }}</h2>
               <button type="button" @click="companion.buildOrRebuildLedger(content)" :disabled="companion.state.building || !content.trim()">
                 {{ companion.state.ledger ? t('reviewerWorkspace.rebuildLedger') : t('reviewerWorkspace.buildLedger') }}
               </button>
@@ -255,10 +255,17 @@ function promiseStatus(status: string) {
 
 <style scoped>
 .reviewer-workspace { height: 100%; min-height: 0; display: flex; flex-direction: column; background: var(--c-app-bg); color: var(--c-text-0); }
-.review-surface-nav { flex: 0 0 44px; display: flex; align-items: stretch; gap: 4px; padding: 5px 18px 0; border-bottom: 1px solid var(--c-border); background: var(--c-nav-bg); }
+.review-surface-nav { flex: 0 0 44px; display: flex; align-items: stretch; gap: 4px; padding: 5px 18px 0; border-bottom: 1px solid var(--c-border); background: var(--c-nav); }
 .review-surface-nav button { min-width: 0; display: flex; align-items: center; gap: 7px; padding: 0 13px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--c-text-2); font: 550 13px/1 var(--font-sans), var(--font-zh); cursor: pointer; }
 .review-surface-nav button:hover { color: var(--c-text-0); background: var(--c-surface-2); }
 .review-surface-nav button.active { border-bottom-color: var(--brand-red); color: var(--c-text-0); background: var(--c-panel); }
+.review-surface-nav button:focus-visible,
+.header-button:focus-visible,
+.empty-action:focus-visible,
+.import-strip button:focus-visible,
+.quiet-select:focus-visible,
+.side-title-row button:focus-visible,
+.ledger-row:focus-visible { outline: none; box-shadow: var(--ring-focus); }
 .review-surface-nav small { min-width: 20px; padding: 2px 6px; border-radius: 8px; background: var(--c-surface-2); color: var(--c-text-3); font-size: 10px; text-align: center; }
 .header-button, .empty-action { height: 36px; padding: 0 14px; border: 1px solid var(--c-border); border-radius: var(--radius-sm); background: var(--c-panel); color: var(--c-text-1); font: 500 13px/1 var(--font-sans), var(--font-zh); cursor: pointer; }
 .header-button:hover, .empty-action:hover { border-color: #D4CCBD; background: var(--c-surface-2); }
@@ -309,4 +316,13 @@ function promiseStatus(status: string) {
 @keyframes pulse { 50% { opacity: .45; } }
 @media (max-width: 1120px) { .reviewer-body { grid-template-columns: minmax(0,1fr) 310px; gap: 14px; padding-inline: 16px; } }
 @media (max-width: 920px) { .reviewer-body { grid-template-columns: 1fr; overflow: auto; } .critique-list { overflow: visible; } .review-side { overflow: visible; } }
+@media (max-width: 640px) {
+  .review-surface-nav { padding-inline: 8px; overflow-x: auto; }
+  .review-surface-nav button { flex: 1 0 auto; justify-content: center; padding-inline: 10px; }
+  .reviewer-body, .ledger-workspace { padding-inline: 12px; }
+  .review-toolbar { align-items: stretch; flex-wrap: wrap; }
+  .toolbar-spacer { display: none; }
+  .quiet-select { flex: 1 1 140px; min-width: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .loading-line { animation: none; } }
 </style>

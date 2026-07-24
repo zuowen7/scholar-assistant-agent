@@ -3,17 +3,21 @@
     class="agent-panel"
     :class="{ open: open && !isFloating, standalone: isStandalone, floating: isFloating }"
     :style="isFloating ? { left: floatX + 'px', top: floatY + 'px' } : {}"
+    role="complementary"
+    :aria-label="t('agent.title')"
+    :aria-hidden="panelInactive ? 'true' : undefined"
+    :inert="panelInactive"
   >
     <div
       class="agent-header"
       :class="{ draggable: isStandalone || isFloating }"
       @mousedown="_headerMouseDown"
     >
-      <div class="agent-tabs">
-        <button class="agent-tab u-interactive" :class="{ active: tab === 'chat' }" @click="tab = 'chat'">{{ t('agent.tabChat') }}</button>
-        <button class="agent-tab u-interactive" :class="{ active: tab === 'docs' }" @click="tab = 'docs'">{{ t('agent.tabDocs') }}</button>
-        <button class="agent-tab u-interactive" :class="{ active: tab === 'templates' }" @click="tab = 'templates'">{{ t('agent.tabSkills') }}</button>
-        <button class="agent-tab u-interactive" :class="{ active: tab === 'sessions' }" @click="tab = 'sessions'; refreshSessions()">{{ t('agent.tabSessions') }}</button>
+      <div class="agent-tabs" role="tablist" :aria-label="t('agent.title')" @keydown="onTabKeydown">
+        <button id="agent-tab-chat" role="tab" aria-controls="agent-panel-chat" :aria-selected="tab === 'chat'" :tabindex="tab === 'chat' ? 0 : -1" class="agent-tab u-interactive" :class="{ active: tab === 'chat' }" @click="selectTab('chat')">{{ t('agent.tabChat') }}</button>
+        <button id="agent-tab-docs" role="tab" aria-controls="agent-panel-docs" :aria-selected="tab === 'docs'" :tabindex="tab === 'docs' ? 0 : -1" class="agent-tab u-interactive" :class="{ active: tab === 'docs' }" @click="selectTab('docs')">{{ t('agent.tabDocs') }}</button>
+        <button id="agent-tab-templates" role="tab" aria-controls="agent-panel-templates" :aria-selected="tab === 'templates'" :tabindex="tab === 'templates' ? 0 : -1" class="agent-tab u-interactive" :class="{ active: tab === 'templates' }" @click="selectTab('templates')">{{ t('agent.tabSkills') }}</button>
+        <button id="agent-tab-sessions" role="tab" aria-controls="agent-panel-sessions" :aria-selected="tab === 'sessions'" :tabindex="tab === 'sessions' ? 0 : -1" class="agent-tab u-interactive" :class="{ active: tab === 'sessions' }" @click="selectTab('sessions')">{{ t('agent.tabSessions') }}</button>
       </div>
       <div class="agent-header-actions">
         <button
@@ -44,12 +48,12 @@
     </div>
 
     <!-- Sessions Tab -->
-    <div v-show="tab === 'sessions'" class="agent-sessions">
+    <div id="agent-panel-sessions" v-show="tab === 'sessions'" role="tabpanel" aria-labelledby="agent-tab-sessions" class="agent-sessions">
       <AgentSessionList ref="sessionListRef" @open="handleSessionOpen" />
     </div>
 
     <!-- Chat Tab -->
-    <div v-show="tab === 'chat'" class="agent-chat">
+    <div id="agent-panel-chat" v-show="tab === 'chat'" role="tabpanel" aria-labelledby="agent-tab-chat" class="agent-chat">
       <div v-if="sending && !pendingApproval" class="agent-thinking-bar"></div>
       <div class="agent-messages" ref="messagesRef" @scroll="_onMessagesScroll">
         <div v-if="currentStatus && sending && !pendingApproval" class="agent-status-bar">
@@ -107,10 +111,11 @@
               <span class="evt-content-text">{{ evt.content }}</span>
             </div>
           </template>
-          <div
+          <MarkdownBlock
             v-if="msg.content && msg.role === 'assistant'"
+            :source="msg.content"
+            :streaming="msg.isStreaming"
             class="agent-bubble agent-markdown"
-            v-html="renderMarkdown(msg.content)"
           />
           <div v-else-if="msg.content" class="agent-bubble">{{ msg.content }}</div>
           <div v-if="msg.isStreaming" class="agent-streaming">
@@ -195,7 +200,7 @@
     </div>
 
     <!-- Docs Tab -->
-    <div v-show="tab === 'docs'" class="agent-docs">
+    <div id="agent-panel-docs" v-show="tab === 'docs'" role="tabpanel" aria-labelledby="agent-tab-docs" class="agent-docs">
       <div class="docs-toolbar">
         <span class="docs-title">{{ t('agent.docsTitle') }}</span>
         <span class="docs-subtitle">{{ t('agent.docsSubtitle') }}</span>
@@ -241,7 +246,7 @@
     </div>
 
     <!-- Skills and paper templates -->
-    <div v-show="tab === 'templates'" class="agent-templates">
+    <div id="agent-panel-templates" v-show="tab === 'templates'" role="tabpanel" aria-labelledby="agent-tab-templates" class="agent-templates">
       <div class="docs-toolbar">
         <div class="skills-heading">
           <span class="docs-title">{{ t('agent.skillsTitle') }}</span>
@@ -307,7 +312,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, defineAsyncComponent, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t, te } = useI18n()
@@ -324,8 +329,13 @@ import type { AgentSessionInfo, AgentSkill } from '../types'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
 import UiSpinner from './ui/UiSpinner.vue'
 import UiSkeleton from './ui/UiSkeleton.vue'
-import { renderMarkdown } from '../utils/markdown'
 import { useToast } from '../composables/useToast'
+import { getCurrentWindow } from '@tauri-apps/api/window'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
+
+// Keep the Markdown parser/sanitizer and KaTeX outside the initial Agent shell.
+// Each block recomputes only when its own message content changes.
+const MarkdownBlock = defineAsyncComponent(() => import('./MarkdownBlock.vue'))
 
 let voiceBaseInput = ''
 const agentSpeech = useSpeechRecognition({
@@ -360,6 +370,7 @@ const emit = defineEmits<{
 // ── Floating panel: native OS window (Tauri) or in-app overlay (web) ─────────
 
 const isStandalone = computed(() => props.standalone === true)
+const panelInactive = computed(() => !props.open && !isFloating.value && !isStandalone.value)
 
 // In-app float fallback (web mode only)
 const isFloating = ref(false)
@@ -376,7 +387,7 @@ async function openAgentWindow() {
   const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow')
 
   // Close any existing agent window first
-  try { const old = await WebviewWindow.getByLabel('agent'); if (old) await old.close() } catch {}
+  try { const old = await WebviewWindow.getByLabel('agent'); if (old) await old.close() } catch { /* Window may already be gone. */ }
 
   // Pass agent-only flag and optional session via URL params — sessionStorage is
   // window-isolated in Tauri so URL params are the only reliable cross-window channel.
@@ -420,7 +431,7 @@ async function closeAgentWindow() {
     const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow')
     const w = await WebviewWindow.getByLabel('agent')
     if (w) await w.close()
-  } catch {}
+  } catch { /* Non-Tauri/browser preview. */ }
   _agentWindow = null
   emit('update:open', true)
 }
@@ -485,9 +496,7 @@ function _onDragUp() {
 function onHeaderMouseDown_standalone(e: MouseEvent) {
   const target = e.target as HTMLElement
   if (target.closest('button')) return
-  import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
-    getCurrentWindow().startDragging()
-  })
+  getCurrentWindow().startDragging()
 }
 
 function _headerMouseDown(e: MouseEvent) {
@@ -500,7 +509,6 @@ function _headerMouseDown(e: MouseEvent) {
 
 // Standalone: dock back to main window
 async function onDockBack() {
-  const { getCurrentWindow } = await import('@tauri-apps/api/window')
   localStorage.setItem('agent-dock-back', Date.now().toString())
   await getCurrentWindow().close()
 }
@@ -556,12 +564,33 @@ const workspaceName = computed(() => {
 })
 
 const tab = ref<'chat' | 'docs' | 'templates' | 'sessions'>('chat')
+type AgentTab = typeof tab.value
+const AGENT_TABS: AgentTab[] = ['chat', 'docs', 'templates', 'sessions']
 const input = ref('')
 const agentInputEl = ref<HTMLTextAreaElement | null>(null)
 const messagesRef = ref<HTMLElement | null>(null)
 const sessionListRef = ref<InstanceType<typeof AgentSessionList> | null>(null)
 // 自动滚动：用户未手动上滚时保持跟底
 const _userScrolledUp = ref(false)
+let _focusBeforeOpen: HTMLElement | null = null
+
+function selectTab(nextTab: AgentTab) {
+  tab.value = nextTab
+  if (nextTab === 'sessions') refreshSessions()
+}
+
+function onTabKeydown(event: KeyboardEvent) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+  event.preventDefault()
+  const currentIndex = AGENT_TABS.indexOf(tab.value)
+  const nextIndex = event.key === 'Home'
+    ? 0
+    : event.key === 'End'
+      ? AGENT_TABS.length - 1
+      : (currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + AGENT_TABS.length) % AGENT_TABS.length
+  selectTab(AGENT_TABS[nextIndex])
+  nextTick(() => document.getElementById(`agent-tab-${AGENT_TABS[nextIndex]}`)?.focus())
+}
 
 function _scrollToBottom(smooth = false) {
   const el = messagesRef.value
@@ -745,7 +774,7 @@ watch(pendingCheckpoint, () => {
   if (cp) {
     const filePath = cp.file as string | undefined
     const content = cp.content as string | undefined
-    if (filePath && content) {
+    if (filePath && content && !cp.content_truncated) {
       const result = applyExternalFileUpdate(filePath, content)
       if (result === 'conflict') {
         const name = filePath.split(/[\\/]/).pop() || filePath
@@ -797,9 +826,6 @@ async function sendMessage() {
   if (!text || sending.value) return
   input.value = ''
 
-  // Reset mid-stream file-write event counter for this new task.
-  _lastSeenToolResultCount = 0
-
   // Pass file paths to agent — let it read with read_file tool
   let fullMsg = text
   if (files.value.length) {
@@ -825,8 +851,7 @@ async function sendMessage() {
 // ── File operations ─────────────────────────────────────────
 async function attachFile() {
   try {
-    const { open } = await import('@tauri-apps/plugin-dialog')
-    const selected = await open({
+    const selected = await openDialog({
       multiple: true,
       filters: [{ name: 'Text', extensions: ['md','txt','tex','py','js','ts','json','yaml','yml','xml','html','css','csv','pdf'] }]
     })
@@ -892,7 +917,15 @@ function createFromTemplate(t: any) {
 
 // ── Watchers ──
 watch(() => props.open, async (isOpen) => {
-  if (isOpen) await Promise.all([fetchDocs(), fetchAgentSkills()])
+  if (isOpen) {
+    if (!_focusBeforeOpen) _focusBeforeOpen = document.activeElement as HTMLElement | null
+    await Promise.all([fetchDocs(), fetchAgentSkills()])
+    await nextTick()
+    if (tab.value === 'chat') agentInputEl.value?.focus()
+  } else if (!isFloating.value && !isStandalone.value) {
+    _focusBeforeOpen?.focus()
+    _focusBeforeOpen = null
+  }
 })
 
 watch(tab, (t) => {
@@ -902,15 +935,22 @@ watch(tab, (t) => {
   }
 })
 
-// 流式输出自动跟底：监听 messages 深度变化，若用户没有手动上滚则自动滚底
+// Track only the fields that can change the rendered message height. This
+// avoids recursively traversing every historical Agent event on each token.
+const messageRenderSignal = computed(() => {
+  const lastMessage = messages.value[messages.value.length - 1]
+  if (!lastMessage) return '0'
+  return `${messages.value.length}:${lastMessage.id}:${lastMessage.content.length}:${lastMessage.events.length}:${lastMessage.isStreaming ? 1 : 0}`
+})
+
+// 流式输出自动跟底：若用户没有手动上滚则自动滚底
 watch(
-  messages,
+  messageRenderSignal,
   async () => {
     if (_userScrolledUp.value) return
     await nextTick()
     _scrollToBottom()
   },
-  { deep: true },
 )
 
 // 发送新消息时强制重置到底部（无论用户之前是否上滚）
@@ -925,34 +965,6 @@ watch(sending, (nowSending) => {
 watch(pendingApproval, (val) => {
   if (val) _userScrolledUp.value = true
 })
-
-// Mid-stream refresh: when the Agent completes a file-write tool call, immediately
-// refresh the file tree and reload any open Monaco tabs so the user sees changes
-// without waiting for the full task to finish.
-const _FILE_WRITE_TOOLS = new Set(['write_file', 'str_replace', 'create_file'])
-let _lastSeenToolResultCount = 0
-
-watch(
-  messages,
-  () => {
-    if (!sending.value) return
-    // Count tool_result events across all streaming messages for file-writing tools.
-    let count = 0
-    for (const msg of messages.value) {
-      for (const evt of msg.events) {
-        if (evt.type === 'tool_result' && _FILE_WRITE_TOOLS.has((evt.metadata?.tool_name as string) || '')) {
-          count++
-        }
-      }
-    }
-    if (count > _lastSeenToolResultCount) {
-      _lastSeenToolResultCount = count
-      refreshFileTree()
-      reloadOpenTabs()
-    }
-  },
-  { deep: true },
-)
 
 onUnmounted(() => {
   window.removeEventListener('mousemove', _onDragMove)
@@ -1356,8 +1368,8 @@ onUnmounted(() => {
   animation: voice-pulse 1.5s ease-in-out infinite;
 }
 @keyframes voice-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--c-accent-rgb, 99,102,241), 0.4); }
-  50% { box-shadow: 0 0 0 6px rgba(var(--c-accent-rgb, 99,102,241), 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--c-accent-rgb), 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(var(--c-accent-rgb), 0); }
 }
 .agent-send-btn {
   width: 36px; height: 36px;
@@ -1433,7 +1445,7 @@ onUnmounted(() => {
 .skill-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
 .skill-name-row { display: flex; align-items: center; gap: 7px; }
 .skill-name { color: var(--c-text-0); font-size: 13px; font-weight: 650; }
-.skill-family { color: var(--c-brand-red, #c8503a); font-family: var(--font-serif); font-size: 10px; letter-spacing: .03em; }
+.skill-family { color: var(--brand-red); font-family: var(--font-serif); font-size: 10px; letter-spacing: .03em; }
 .skill-description { color: var(--c-text-3); font-size: 11px; line-height: 1.45; }
 .skill-use-btn {
   flex-shrink: 0; padding: 5px 8px; border: 1px solid var(--c-border); border-radius: 6px;
@@ -1495,15 +1507,15 @@ onUnmounted(() => {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--c-text-muted);
+  background: var(--c-text-3);
   flex-shrink: 0;
 }
 .agent-workspace-bar.active .ws-dot { background: #4ade80; }
-.ws-name { color: var(--c-text-secondary); font-family: var(--font-mono, monospace); }
-.ws-name.muted { color: var(--c-text-muted); font-style: italic; }
+.ws-name { color: var(--c-text-2); font-family: var(--font-mono, monospace); }
+.ws-name.muted { color: var(--c-text-3); font-style: italic; }
 .docs-subtitle {
   font-size: 11px;
-  color: var(--c-text-muted);
+  color: var(--c-text-3);
   margin-top: 2px;
 }
 .hint.warn { color: var(--c-warn, #f59e0b); }

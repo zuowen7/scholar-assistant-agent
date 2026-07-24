@@ -1,4 +1,5 @@
 """Session 测试 — SE-001 ~ SE-042。"""
+
 from __future__ import annotations
 
 import json
@@ -7,9 +8,9 @@ from pathlib import Path
 import pytest
 
 from src.agent_v2.runtime.session import (
-    Session,
     _MAX_FIELD_CHARS,
     _ROTATE_AFTER_BYTES,
+    Session,
     _truncate,
 )
 from src.agent_v2.types import (
@@ -37,8 +38,8 @@ def session_path(tmp_path: Path) -> Path:
 # 5.1 基础操作
 # ============================================================================
 
-class TestBasics:
 
+class TestBasics:
     def test_se001_create(self, session: Session):
         assert session.session_id
         assert len(session.session_id) == 12
@@ -49,17 +50,30 @@ class TestBasics:
         assert session.messages[0].role == MessageRole.USER
 
     def test_se003_append_assistant(self, session: Session):
-        session.append(Message(role=MessageRole.ASSISTANT, blocks=[
-            TextBlock(text="hi"), ToolUseBlock(id="tu_1", name="read_file", input='{"file_path":"a.txt"}'),
-        ]))
+        session.append(
+            Message(
+                role=MessageRole.ASSISTANT,
+                blocks=[
+                    TextBlock(text="hi"),
+                    ToolUseBlock(id="tu_1", name="read_file", input='{"file_path":"a.txt"}'),
+                ],
+            )
+        )
         msg = session.messages[0]
         assert len(msg.blocks) == 2
         assert isinstance(msg.blocks[1], ToolUseBlock)
 
     def test_se004_append_tool_result(self, session: Session):
-        session.append(Message(role=MessageRole.TOOL, blocks=[
-            ToolResultBlock(tool_use_id="tu_1", tool_name="read_file", output="file content"),
-        ]))
+        session.append(
+            Message(
+                role=MessageRole.TOOL,
+                blocks=[
+                    ToolResultBlock(
+                        tool_use_id="tu_1", tool_name="read_file", output="file content"
+                    ),
+                ],
+            )
+        )
         assert session.messages[0].blocks[0].tool_use_id == "tu_1"
 
     def test_se005_get_history(self, session: Session):
@@ -71,10 +85,20 @@ class TestBasics:
         assert msgs[1].text_content() == "b"
 
     def test_se006_token_usage(self, session: Session):
-        session.append(Message(role=MessageRole.ASSISTANT, blocks=[TextBlock(text="x")],
-                               usage=TokenUsage(input_tokens=100, output_tokens=50)))
-        session.append(Message(role=MessageRole.ASSISTANT, blocks=[TextBlock(text="y")],
-                               usage=TokenUsage(input_tokens=200, output_tokens=80)))
+        session.append(
+            Message(
+                role=MessageRole.ASSISTANT,
+                blocks=[TextBlock(text="x")],
+                usage=TokenUsage(input_tokens=100, output_tokens=50),
+            )
+        )
+        session.append(
+            Message(
+                role=MessageRole.ASSISTANT,
+                blocks=[TextBlock(text="y")],
+                usage=TokenUsage(input_tokens=200, output_tokens=80),
+            )
+        )
         assert session.total_tokens() == 430
 
 
@@ -82,8 +106,8 @@ class TestBasics:
 # 5.2 持久化与恢复
 # ============================================================================
 
-class TestPersistence:
 
+class TestPersistence:
     def test_se010_save(self, session: Session, session_path: Path):
         session.append(Message(role=MessageRole.USER, blocks=[TextBlock(text="hello")]))
         session.save(session_path)
@@ -93,9 +117,15 @@ class TestPersistence:
 
     def test_se011_restore(self, session: Session, session_path: Path):
         session.append(Message(role=MessageRole.USER, blocks=[TextBlock(text="hello")]))
-        session.append(Message(role=MessageRole.ASSISTANT, blocks=[
-            TextBlock(text="world"), ToolUseBlock(id="t1", name="read_file", input='{}'),
-        ]))
+        session.append(
+            Message(
+                role=MessageRole.ASSISTANT,
+                blocks=[
+                    TextBlock(text="world"),
+                    ToolUseBlock(id="t1", name="read_file", input="{}"),
+                ],
+            )
+        )
         session.save(session_path)
         loaded = Session.load(session_path)
         assert loaded.message_count == 2
@@ -141,8 +171,8 @@ class TestPersistence:
 # 5.3 边缘测试
 # ============================================================================
 
-class TestEdgeCases:
 
+class TestEdgeCases:
     def test_se020_empty_session(self, session: Session, session_path: Path):
         session.save(session_path)
         loaded = Session.load(session_path)
@@ -164,15 +194,22 @@ class TestEdgeCases:
     def test_se023_thousand_turns(self, session: Session, session_path: Path):
         for i in range(1000):
             session.append(Message(role=MessageRole.USER, blocks=[TextBlock(text=f"msg {i}")]))
-            session.append(Message(role=MessageRole.ASSISTANT, blocks=[TextBlock(text=f"reply {i}")]))
+            session.append(
+                Message(role=MessageRole.ASSISTANT, blocks=[TextBlock(text=f"reply {i}")])
+            )
         session.save(session_path)
         loaded = Session.load(session_path)
         assert loaded.message_count == 2000
 
     def test_se025_special_characters(self, session: Session, session_path: Path):
-        session.append(Message(role=MessageRole.USER, blocks=[
-            TextBlock(text="中文 🎉 العربية \n\t\r special <>&\"'"),
-        ]))
+        session.append(
+            Message(
+                role=MessageRole.USER,
+                blocks=[
+                    TextBlock(text="中文 🎉 العربية \n\t\r special <>&\"'"),
+                ],
+            )
+        )
         session.save(session_path)
         loaded = Session.load(session_path)
         assert "中文" in loaded.messages[0].text_content()
@@ -183,7 +220,9 @@ class TestEdgeCases:
         # Append a corrupted line
         with open(session_path, "a", encoding="utf-8") as f:
             f.write("NOT JSON!!!\n")
-            f.write(json.dumps({"role": "user", "blocks": [{"type": "text", "text": "good2"}]}) + "\n")
+            f.write(
+                json.dumps({"role": "user", "blocks": [{"type": "text", "text": "good2"}]}) + "\n"
+            )
         loaded = Session.load(session_path)
         texts = [m.text_content() for m in loaded.messages]
         assert "good1" in texts
@@ -194,8 +233,8 @@ class TestEdgeCases:
 # 5.4 故障注入
 # ============================================================================
 
-class TestFaultInjection:
 
+class TestFaultInjection:
     def test_se033_nonexistent_file(self):
         loaded = Session.load("/nonexistent/path/session.jsonl")
         assert loaded.message_count == 0
@@ -208,6 +247,7 @@ class TestFaultInjection:
         # Make file read-only
         import os
         import stat
+
         os.chmod(str(ro_file), stat.S_IRUSR)
         try:
             new_session = Session()
@@ -222,10 +262,11 @@ class TestFaultInjection:
 # 5.5 极限测试
 # ============================================================================
 
-class TestStress:
 
+class TestStress:
     def test_se040_ten_thousand_messages(self, session: Session, session_path: Path):
         import time
+
         for i in range(10000):
             session.append(Message(role=MessageRole.USER, blocks=[TextBlock(text=f"msg{i}")]))
         start = time.monotonic()

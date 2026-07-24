@@ -2,7 +2,7 @@
 
 from src.agent_v2.router import ChatRequestV2, _append_history, _compose_turn_message
 from src.agent_v2.runtime.session import Session
-from src.agent_v2.skills import SkillRegistry, _BUILTIN_SKILLS
+from src.agent_v2.skills import _BUILTIN_SKILLS, SkillRegistry
 
 
 def _registry() -> SkillRegistry:

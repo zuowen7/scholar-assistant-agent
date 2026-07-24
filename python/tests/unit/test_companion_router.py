@@ -15,13 +15,12 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 
 def _build_app(tmp_path: Path, flag_enabled: bool = True) -> FastAPI:
-    from src.argument.companion_store import CompanionStore
     from routers.argument import register_companion
+    from src.argument.companion_store import CompanionStore
 
     app = FastAPI()
     store = CompanionStore(runtime_dir=tmp_path)
@@ -42,6 +41,7 @@ def client_off(tmp_path):
 @pytest.fixture
 def store(tmp_path):
     from src.argument.companion_store import CompanionStore
+
     return CompanionStore(runtime_dir=tmp_path)
 
 
@@ -50,8 +50,7 @@ def store(tmp_path):
 
 class TestFeatureFlagOff:
     def test_build_returns_404(self, client_off):
-        r = client_off.post("/api/companion/ledger/build",
-                            json={"doc_id": "d1", "text": "text"})
+        r = client_off.post("/api/companion/ledger/build", json={"doc_id": "d1", "text": "text"})
         assert r.status_code == 404
 
     def test_get_ledger_returns_404(self, client_off):
@@ -59,8 +58,7 @@ class TestFeatureFlagOff:
         assert r.status_code == 404
 
     def test_review_returns_404(self, client_off):
-        r = client_off.post("/api/companion/review",
-                            json={"doc_id": "d1", "text": "text"})
+        r = client_off.post("/api/companion/review", json={"doc_id": "d1", "text": "text"})
         assert r.status_code == 404
 
     def test_reviews_list_returns_404(self, client_off):
@@ -75,28 +73,37 @@ class TestLedgerBuildEndpoint:
     def test_accepts_doc_id_and_text(self, tmp_path):
         # Patch the heavy ledger function to yield a minimal complete event
         async def fake_build(*a, **kw):
-            yield {"event": "complete",
-                   "data": json.dumps({"promise_count": 0, "by_status": {}, "warnings": []})}
+            yield {
+                "event": "complete",
+                "data": json.dumps({"promise_count": 0, "by_status": {}, "warnings": []}),
+            }
 
         app = _build_app(tmp_path)
-        with patch("src.argument.ledger.build_ledger", new=fake_build), \
-             patch("src.argument.ledger.rebuild_ledger", new=fake_build):
+        with (
+            patch("src.argument.ledger.build_ledger", new=fake_build),
+            patch("src.argument.ledger.rebuild_ledger", new=fake_build),
+        ):
             client = TestClient(app)
-            r = client.post("/api/companion/ledger/build",
-                            json={"doc_id": "d1", "doc_title": "Paper", "text": "Some text."})
+            r = client.post(
+                "/api/companion/ledger/build",
+                json={"doc_id": "d1", "doc_title": "Paper", "text": "Some text."},
+            )
             assert r.status_code == 200
 
     def test_content_type_is_event_stream(self, tmp_path):
         async def fake_build(*a, **kw):
-            yield {"event": "complete",
-                   "data": json.dumps({"promise_count": 0, "by_status": {}, "warnings": []})}
+            yield {
+                "event": "complete",
+                "data": json.dumps({"promise_count": 0, "by_status": {}, "warnings": []}),
+            }
 
         app = _build_app(tmp_path)
-        with patch("src.argument.ledger.build_ledger", new=fake_build), \
-             patch("src.argument.ledger.rebuild_ledger", new=fake_build):
+        with (
+            patch("src.argument.ledger.build_ledger", new=fake_build),
+            patch("src.argument.ledger.rebuild_ledger", new=fake_build),
+        ):
             client = TestClient(app)
-            r = client.post("/api/companion/ledger/build",
-                            json={"doc_id": "d1", "text": "text"})
+            r = client.post("/api/companion/ledger/build", json={"doc_id": "d1", "text": "text"})
             assert "text/event-stream" in r.headers.get("content-type", "")
 
     def test_missing_doc_id_returns_422(self, client):
@@ -109,8 +116,10 @@ class TestLedgerBuildEndpoint:
 
     def test_uses_rebuild_when_ledger_exists(self, tmp_path):
         from src.argument.companion_models import Ledger
+
         store_obj = __import__("src.argument.companion_store", fromlist=["CompanionStore"])
         from src.argument.companion_store import CompanionStore
+
         store = CompanionStore(runtime_dir=tmp_path)
         store.save_ledger(Ledger(doc_id="existing_doc"))
 
@@ -118,23 +127,32 @@ class TestLedgerBuildEndpoint:
 
         async def fake_rebuild(*a, **kw):
             rebuild_called.append(True)
-            yield {"event": "complete",
-                   "data": json.dumps({"promise_count": 0, "by_status": {}, "warnings": []})}
+            yield {
+                "event": "complete",
+                "data": json.dumps({"promise_count": 0, "by_status": {}, "warnings": []}),
+            }
 
         async def fake_build(*a, **kw):
-            yield {"event": "complete",
-                   "data": json.dumps({"promise_count": 0, "by_status": {}, "warnings": []})}
+            yield {
+                "event": "complete",
+                "data": json.dumps({"promise_count": 0, "by_status": {}, "warnings": []}),
+            }
 
         from fastapi import FastAPI
+
         from routers.argument import register_companion
+
         app2 = FastAPI()
         register_companion(app2, store=store, flag_enabled=True)
 
-        with patch("src.argument.ledger.rebuild_ledger", new=fake_rebuild), \
-             patch("src.argument.ledger.build_ledger", new=fake_build):
+        with (
+            patch("src.argument.ledger.rebuild_ledger", new=fake_rebuild),
+            patch("src.argument.ledger.build_ledger", new=fake_build),
+        ):
             client2 = TestClient(app2)
-            client2.post("/api/companion/ledger/build",
-                         json={"doc_id": "existing_doc", "text": "some text"})
+            client2.post(
+                "/api/companion/ledger/build", json={"doc_id": "existing_doc", "text": "some text"}
+            )
         assert rebuild_called, "rebuild_ledger should be called when ledger already exists"
 
 
@@ -147,9 +165,10 @@ class TestGetLedger:
         assert r.status_code == 404
 
     def test_returns_ledger_when_exists(self, tmp_path):
+        from routers.argument import register_companion
         from src.argument.companion_models import Ledger
         from src.argument.companion_store import CompanionStore
-        from routers.argument import register_companion
+
         store = CompanionStore(runtime_dir=tmp_path)
         ledger = Ledger(doc_id="doc_present", doc_title="My Paper")
         store.save_ledger(ledger)
@@ -168,9 +187,10 @@ class TestGetLedger:
 
 class TestPromiseEndpoints:
     def _setup(self, tmp_path):
+        from routers.argument import register_companion
         from src.argument.companion_models import Ledger
         from src.argument.companion_store import CompanionStore
-        from routers.argument import register_companion
+
         store = CompanionStore(runtime_dir=tmp_path)
         store.save_ledger(Ledger(doc_id="doc_p"))
         app = FastAPI()
@@ -179,10 +199,14 @@ class TestPromiseEndpoints:
 
     def test_put_promise_creates_new(self, tmp_path):
         client, store = self._setup(tmp_path)
-        r = client.put("/api/companion/ledger/promise?doc_id=doc_p", json={
-            "text": "We show X.", "kind": "contribution",
-            "source_anchor_id": "a_001",
-        })
+        r = client.put(
+            "/api/companion/ledger/promise?doc_id=doc_p",
+            json={
+                "text": "We show X.",
+                "kind": "contribution",
+                "source_anchor_id": "a_001",
+            },
+        )
         assert r.status_code == 200
         data = r.json()
         assert data["text"] == "We show X."
@@ -190,28 +214,41 @@ class TestPromiseEndpoints:
 
     def test_put_promise_sets_user_overridden(self, tmp_path):
         client, store = self._setup(tmp_path)
-        r = client.put("/api/companion/ledger/promise?doc_id=doc_p", json={
-            "text": "User edited.", "kind": "claim",
-            "source_anchor_id": "a_001",
-        })
+        r = client.put(
+            "/api/companion/ledger/promise?doc_id=doc_p",
+            json={
+                "text": "User edited.",
+                "kind": "claim",
+                "source_anchor_id": "a_001",
+            },
+        )
         assert r.status_code == 200
         data = r.json()
         assert data["user_overridden"] is True
 
     def test_delete_promise(self, tmp_path):
         client, store = self._setup(tmp_path)
-        r_put = client.put("/api/companion/ledger/promise?doc_id=doc_p", json={
-            "text": "To delete.", "kind": "scope",
-            "source_anchor_id": "a_001",
-        })
+        r_put = client.put(
+            "/api/companion/ledger/promise?doc_id=doc_p",
+            json={
+                "text": "To delete.",
+                "kind": "scope",
+                "source_anchor_id": "a_001",
+            },
+        )
         pid = r_put.json()["id"]
         r_del = client.delete(f"/api/companion/ledger/promise/{pid}?doc_id=doc_p")
         assert r_del.status_code == 200
 
     def test_put_promise_on_missing_ledger_returns_404(self, client):
-        r = client.put("/api/companion/ledger/promise?doc_id=no_doc", json={
-            "text": "t.", "kind": "claim", "source_anchor_id": "a_001",
-        })
+        r = client.put(
+            "/api/companion/ledger/promise?doc_id=no_doc",
+            json={
+                "text": "t.",
+                "kind": "claim",
+                "source_anchor_id": "a_001",
+            },
+        )
         assert r.status_code == 404
 
 
@@ -220,9 +257,10 @@ class TestPromiseEndpoints:
 
 class TestRelocateEndpoint:
     def test_relocate_returns_updated_ledger(self, tmp_path):
-        from src.argument.companion_models import Ledger, Anchor
-        from src.argument.companion_store import CompanionStore
         from routers.argument import register_companion
+        from src.argument.companion_models import Anchor, Ledger
+        from src.argument.companion_store import CompanionStore
+
         store = CompanionStore(runtime_dir=tmp_path)
         anchor = Anchor(doc_id="doc_rel", quote="original phrase", char_start=0, char_end=15)
         ledger = Ledger(doc_id="doc_rel", anchors=[anchor])
@@ -230,16 +268,17 @@ class TestRelocateEndpoint:
         app = FastAPI()
         register_companion(app, store=store, flag_enabled=True)
         client = TestClient(app)
-        r = client.post("/api/companion/ledger/relocate?doc_id=doc_rel",
-                        json={"text": "New text: original phrase at a different position."})
+        r = client.post(
+            "/api/companion/ledger/relocate?doc_id=doc_rel",
+            json={"text": "New text: original phrase at a different position."},
+        )
         assert r.status_code == 200
         data = r.json()
         assert "doc_id" in data
         assert "anchors" in data
 
     def test_relocate_404_for_missing_ledger(self, client):
-        r = client.post("/api/companion/ledger/relocate?doc_id=no_doc",
-                        json={"text": "some text"})
+        r = client.post("/api/companion/ledger/relocate?doc_id=no_doc", json={"text": "some text"})
         assert r.status_code == 404
 
 
@@ -249,26 +288,28 @@ class TestRelocateEndpoint:
 class TestReviewEndpoint:
     def test_accepts_doc_id_and_text(self, tmp_path):
         async def fake_review(*a, **kw):
-            yield {"event": "complete",
-                   "data": json.dumps({"session_id": "R_test", "by_category": {}, "warnings": []})}
+            yield {
+                "event": "complete",
+                "data": json.dumps({"session_id": "R_test", "by_category": {}, "warnings": []}),
+            }
 
         app = _build_app(tmp_path)
         with patch("src.argument.reviewer.run_review", new=fake_review):
             client = TestClient(app)
-            r = client.post("/api/companion/review",
-                            json={"doc_id": "d1", "text": "Paper text."})
+            r = client.post("/api/companion/review", json={"doc_id": "d1", "text": "Paper text."})
             assert r.status_code == 200
 
     def test_content_type_is_event_stream(self, tmp_path):
         async def fake_review(*a, **kw):
-            yield {"event": "complete",
-                   "data": json.dumps({"session_id": "R_test", "by_category": {}, "warnings": []})}
+            yield {
+                "event": "complete",
+                "data": json.dumps({"session_id": "R_test", "by_category": {}, "warnings": []}),
+            }
 
         app = _build_app(tmp_path)
         with patch("src.argument.reviewer.run_review", new=fake_review):
             client = TestClient(app)
-            r = client.post("/api/companion/review",
-                            json={"doc_id": "d1", "text": "text"})
+            r = client.post("/api/companion/review", json={"doc_id": "d1", "text": "text"})
             assert "text/event-stream" in r.headers.get("content-type", "")
 
     def test_missing_doc_id_returns_422(self, client):
@@ -289,9 +330,10 @@ class TestGetReview:
         assert r.status_code == 404
 
     def test_returns_session_when_exists(self, tmp_path):
+        from routers.argument import register_companion
         from src.argument.companion_models import ReviewSession
         from src.argument.companion_store import CompanionStore
-        from routers.argument import register_companion
+
         store = CompanionStore(runtime_dir=tmp_path)
         s = ReviewSession(doc_id="doc_rv", venue="NeurIPS")
         store.save_review(s)
@@ -315,9 +357,10 @@ class TestListReviews:
         assert r.json() == []
 
     def test_returns_list_for_known_doc(self, tmp_path):
+        from routers.argument import register_companion
         from src.argument.companion_models import ReviewSession
         from src.argument.companion_store import CompanionStore
-        from routers.argument import register_companion
+
         store = CompanionStore(runtime_dir=tmp_path)
         s = ReviewSession(doc_id="doc_lst")
         store.save_review(s)
@@ -336,12 +379,14 @@ class TestListReviews:
 
 class TestUpdatePoint:
     def _setup(self, tmp_path):
-        from src.argument.companion_models import ReviewSession, ReviewPoint
-        from src.argument.companion_store import CompanionStore
         from routers.argument import register_companion
+        from src.argument.companion_models import ReviewPoint, ReviewSession
+        from src.argument.companion_store import CompanionStore
+
         store = CompanionStore(runtime_dir=tmp_path)
-        rp = ReviewPoint(severity="major", category="baseline",
-                         title="Missing", detail="No baselines.")
+        rp = ReviewPoint(
+            severity="major", category="baseline", title="Missing", detail="No baselines."
+        )
         s = ReviewSession(doc_id="doc_up", points=[rp])
         store.save_review(s)
         app = FastAPI()
@@ -377,13 +422,14 @@ class TestUpdatePoint:
 
 class TestRebutEndpoint:
     def test_accepts_message_and_text(self, tmp_path):
-        from src.argument.companion_models import ReviewSession, ReviewPoint
-        from src.argument.companion_store import CompanionStore
         from routers.argument import register_companion
+        from src.argument.companion_models import ReviewPoint, ReviewSession
+        from src.argument.companion_store import CompanionStore
 
         store = CompanionStore(runtime_dir=tmp_path)
-        rp = ReviewPoint(severity="major", category="baseline",
-                         title="Missing", detail="No baselines.")
+        rp = ReviewPoint(
+            severity="major", category="baseline", title="Missing", detail="No baselines."
+        )
         s = ReviewSession(doc_id="doc_rebut", points=[rp])
         store.save_review(s)
 
@@ -404,9 +450,9 @@ class TestRebutEndpoint:
             assert r.status_code == 200
 
     def test_missing_message_returns_422(self, tmp_path):
-        from src.argument.companion_models import ReviewSession, ReviewPoint
-        from src.argument.companion_store import CompanionStore
         from routers.argument import register_companion
+        from src.argument.companion_models import ReviewPoint, ReviewSession
+        from src.argument.companion_store import CompanionStore
 
         store = CompanionStore(runtime_dir=tmp_path)
         rp = ReviewPoint(severity="minor", category="other", title="t", detail="d")
@@ -427,9 +473,10 @@ class TestRebutEndpoint:
 
 class TestDeleteEndpoints:
     def test_delete_ledger(self, tmp_path):
+        from routers.argument import register_companion
         from src.argument.companion_models import Ledger
         from src.argument.companion_store import CompanionStore
-        from routers.argument import register_companion
+
         store = CompanionStore(runtime_dir=tmp_path)
         store.save_ledger(Ledger(doc_id="doc_del"))
         app = FastAPI()
@@ -444,9 +491,10 @@ class TestDeleteEndpoints:
         assert r.status_code == 404
 
     def test_delete_review(self, tmp_path):
+        from routers.argument import register_companion
         from src.argument.companion_models import ReviewSession
         from src.argument.companion_store import CompanionStore
-        from routers.argument import register_companion
+
         store = CompanionStore(runtime_dir=tmp_path)
         s = ReviewSession(doc_id="doc_del_rv")
         store.save_review(s)
@@ -472,29 +520,47 @@ class TestReviewSSESequence:
         async def fake_review(*a, **kw):
             yield {
                 "event": "review_point",
-                "data": json.dumps({
-                    "id": "rp_001", "severity": "major", "category": "baseline",
-                    "title": "Missing baselines", "detail": "No comparison to prior work.",
-                    "anchor_id": None, "status": "open", "source": "llm",
-                    "reviewer_label": None, "thread": [],
-                }),
+                "data": json.dumps(
+                    {
+                        "id": "rp_001",
+                        "severity": "major",
+                        "category": "baseline",
+                        "title": "Missing baselines",
+                        "detail": "No comparison to prior work.",
+                        "anchor_id": None,
+                        "status": "open",
+                        "source": "llm",
+                        "reviewer_label": None,
+                        "thread": [],
+                    }
+                ),
             }
             yield {
                 "event": "review_point",
-                "data": json.dumps({
-                    "id": "rp_002", "severity": "minor", "category": "writing_clarity",
-                    "title": "Unclear notation", "detail": "Section 3 notation undefined.",
-                    "anchor_id": None, "status": "open", "source": "llm",
-                    "reviewer_label": None, "thread": [],
-                }),
+                "data": json.dumps(
+                    {
+                        "id": "rp_002",
+                        "severity": "minor",
+                        "category": "writing_clarity",
+                        "title": "Unclear notation",
+                        "detail": "Section 3 notation undefined.",
+                        "anchor_id": None,
+                        "status": "open",
+                        "source": "llm",
+                        "reviewer_label": None,
+                        "thread": [],
+                    }
+                ),
             }
             yield {
                 "event": "complete",
-                "data": json.dumps({
-                    "session_id": "S_seq_test",
-                    "by_category": {"baseline": 1, "writing_clarity": 1},
-                    "warnings": [],
-                }),
+                "data": json.dumps(
+                    {
+                        "session_id": "S_seq_test",
+                        "by_category": {"baseline": 1, "writing_clarity": 1},
+                        "warnings": [],
+                    }
+                ),
             }
 
         app = _build_app(tmp_path)
@@ -516,11 +582,13 @@ class TestReviewSSESequence:
         async def fake_review(*a, **kw):
             yield {
                 "event": "complete",
-                "data": json.dumps({
-                    "session_id": "S_known_id",
-                    "by_category": {"soundness": 1},
-                    "warnings": [],
-                }),
+                "data": json.dumps(
+                    {
+                        "session_id": "S_known_id",
+                        "by_category": {"soundness": 1},
+                        "warnings": [],
+                    }
+                ),
             }
 
         app = _build_app(tmp_path)
@@ -545,12 +613,20 @@ class TestScopedReview:
             source = "scoped" if focus else "llm"
             yield {
                 "event": "review_point",
-                "data": json.dumps({
-                    "id": "rp_sc", "severity": "major", "category": "claim_overreach",
-                    "title": "Overreach", "detail": "Claim not supported.",
-                    "anchor_id": None, "status": "open", "source": source,
-                    "reviewer_label": None, "thread": [],
-                }),
+                "data": json.dumps(
+                    {
+                        "id": "rp_sc",
+                        "severity": "major",
+                        "category": "claim_overreach",
+                        "title": "Overreach",
+                        "detail": "Claim not supported.",
+                        "anchor_id": None,
+                        "status": "open",
+                        "source": source,
+                        "reviewer_label": None,
+                        "thread": [],
+                    }
+                ),
             }
             yield {
                 "event": "complete",
@@ -571,12 +647,20 @@ class TestScopedReview:
             source = "scoped" if focus else "llm"
             yield {
                 "event": "review_point",
-                "data": json.dumps({
-                    "id": "rp_src", "severity": "minor", "category": "other",
-                    "title": "T", "detail": "D", "anchor_id": None,
-                    "status": "open", "source": source,
-                    "reviewer_label": None, "thread": [],
-                }),
+                "data": json.dumps(
+                    {
+                        "id": "rp_src",
+                        "severity": "minor",
+                        "category": "other",
+                        "title": "T",
+                        "detail": "D",
+                        "anchor_id": None,
+                        "status": "open",
+                        "source": source,
+                        "reviewer_label": None,
+                        "thread": [],
+                    }
+                ),
             }
             yield {
                 "event": "complete",
@@ -618,12 +702,17 @@ class TestRebutSSESequence:
     """Verify /rebut SSE stream: reviewer_reply → status → complete."""
 
     def _setup(self, tmp_path):
-        from src.argument.companion_models import ReviewSession, ReviewPoint
-        from src.argument.companion_store import CompanionStore
         from routers.argument import register_companion
+        from src.argument.companion_models import ReviewPoint, ReviewSession
+        from src.argument.companion_store import CompanionStore
+
         store = CompanionStore(runtime_dir=tmp_path)
-        rp = ReviewPoint(severity="major", category="baseline",
-                         title="Weak baselines", detail="Missing comparison.")
+        rp = ReviewPoint(
+            severity="major",
+            category="baseline",
+            title="Weak baselines",
+            detail="Missing comparison.",
+        )
         s = ReviewSession(doc_id="doc_rebut_seq", points=[rp])
         store.save_review(s)
         app = FastAPI()
@@ -634,7 +723,10 @@ class TestRebutSSESequence:
         client, s, rp = self._setup(tmp_path)
 
         async def fake_rebut(*a, **kw):
-            yield {"event": "reviewer_reply", "data": json.dumps({"text": "Your baselines are still weak."})}
+            yield {
+                "event": "reviewer_reply",
+                "data": json.dumps({"text": "Your baselines are still weak."}),
+            }
             yield {"event": "status", "data": json.dumps({"status": "open"})}
             yield {"event": "complete", "data": json.dumps({})}
 
@@ -671,7 +763,10 @@ class TestRebutSSESequence:
         client, s, rp = self._setup(tmp_path)
 
         async def fake_rebut(*a, **kw):
-            yield {"event": "reviewer_reply", "data": json.dumps({"text": "这点可以认为已 rebutted."})}
+            yield {
+                "event": "reviewer_reply",
+                "data": json.dumps({"text": "这点可以认为已 rebutted."}),
+            }
             yield {"event": "status", "data": json.dumps({"status": "rebutted"})}
             yield {"event": "complete", "data": json.dumps({})}
 
@@ -701,6 +796,7 @@ class TestImportReviewRoute:
     def _setup(self, tmp_path):
         from routers.argument import register_companion
         from src.argument.companion_store import CompanionStore
+
         app = FastAPI()
         store = CompanionStore(runtime_dir=tmp_path)
         register_companion(app, store=store, flag_enabled=True)
@@ -711,9 +807,15 @@ class TestImportReviewRoute:
 
         async def fake_import(*a, **kw):
             from src.argument.companion_models import ReviewPoint
-            rp = ReviewPoint(severity="major", category="baseline",
-                             title="Missing baseline", detail="Compare with XYZ.",
-                             source="imported", reviewer_label="Reviewer 1")
+
+            rp = ReviewPoint(
+                severity="major",
+                category="baseline",
+                title="Missing baseline",
+                detail="Compare with XYZ.",
+                source="imported",
+                reviewer_label="Reviewer 1",
+            )
             yield {"event": "review_point", "data": rp.model_dump_json()}
             yield {"event": "complete", "data": json.dumps({"session_id": "R_fake"})}
 
@@ -758,16 +860,21 @@ class TestDownloadReviewRoute:
 
     def _setup(self, tmp_path):
         from routers.argument import register_companion
+        from src.argument.companion_models import RebuttalTurn, ReviewPoint, ReviewSession
         from src.argument.companion_store import CompanionStore
-        from src.argument.companion_models import ReviewSession, ReviewPoint, RebuttalTurn
+
         app = FastAPI()
         store = CompanionStore(runtime_dir=tmp_path)
-        rp = ReviewPoint(severity="major", category="baseline",
-                         title="Missing baseline", detail="Compare with XYZ.",
-                         thread=[
-                             RebuttalTurn(role="author", text="We added baseline A."),
-                             RebuttalTurn(role="reviewer", text="Insufficient."),
-                         ])
+        rp = ReviewPoint(
+            severity="major",
+            category="baseline",
+            title="Missing baseline",
+            detail="Compare with XYZ.",
+            thread=[
+                RebuttalTurn(role="author", text="We added baseline A."),
+                RebuttalTurn(role="reviewer", text="Insufficient."),
+            ],
+        )
         s = ReviewSession(doc_id="d1", points=[rp])
         store.save_review(s)
         register_companion(app, store=store, flag_enabled=True)
@@ -800,14 +907,19 @@ class TestSuggestExperimentRoute:
 
     def _setup(self, tmp_path):
         from routers.argument import register_companion
-        from src.argument.companion_store import CompanionStore
-        from src.argument.companion_models import Ledger, Promise
         from src.argument.anchor import make_anchor_from_quote
+        from src.argument.companion_models import Ledger, Promise
+        from src.argument.companion_store import CompanionStore
+
         app = FastAPI()
         store = CompanionStore(runtime_dir=tmp_path)
         anchor = make_anchor_from_quote("d1", "Some paper text here.", "Some paper text")
-        promise = Promise(text="Our method scales to N=1e6.", kind="contribution",
-                         source_anchor_id=anchor.id, status="partial")
+        promise = Promise(
+            text="Our method scales to N=1e6.",
+            kind="contribution",
+            source_anchor_id=anchor.id,
+            status="partial",
+        )
         ledger = Ledger(doc_id="d1", promises=[promise], anchors=[anchor])
         store.save_ledger(ledger)
         register_companion(app, store=store, flag_enabled=True)
@@ -816,8 +928,10 @@ class TestSuggestExperimentRoute:
     def test_suggest_experiment_returns_200_with_suggestion(self, tmp_path):
         client, promise = self._setup(tmp_path)
 
-        with patch("src.argument.ledger.suggest_experiment_for_promise",
-                   new=AsyncMock(return_value="Run N=1e6 scale experiment.")):
+        with patch(
+            "src.argument.ledger.suggest_experiment_for_promise",
+            new=AsyncMock(return_value="Run N=1e6 scale experiment."),
+        ):
             r = client.post(
                 f"/api/companion/ledger/promise/{promise.id}/suggest-experiment?doc_id=d1",
             )

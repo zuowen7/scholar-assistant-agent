@@ -73,6 +73,7 @@ class VisionClient:
         """从配置文件加载云端设置"""
         try:
             import yaml
+
             config_path = Path(__file__).parent.parent.parent / "config" / "default.yaml"
             if config_path.exists():
                 with open(config_path, encoding="utf-8") as f:
@@ -87,18 +88,17 @@ class VisionClient:
         vision_cfg = config.get("vision", {})
         cloud_cfg = config.get("translator", {}).get("cloud", {})
 
-        base_url = (vision_cfg.get("base_url", "").rstrip("/")
-                    or cloud_cfg.get("base_url", "").rstrip("/")
-                    or self.base_url)
-        api_key = (self.api_key
-                   or vision_cfg.get("api_key", "")
-                   or cloud_cfg.get("api_key", ""))
-        model = (vision_cfg.get("model", "")
-                 or cloud_cfg.get("model", "")
-                 or self.model)
+        base_url = (
+            vision_cfg.get("base_url", "").rstrip("/")
+            or cloud_cfg.get("base_url", "").rstrip("/")
+            or self.base_url
+        )
+        api_key = self.api_key or vision_cfg.get("api_key", "") or cloud_cfg.get("api_key", "")
+        model = vision_cfg.get("model", "") or cloud_cfg.get("model", "") or self.model
 
         if not api_key:
             import os
+
             api_key = os.environ.get("OPENAI_API_KEY", "")
             base_url = os.environ.get("OPENAI_BASE_URL", base_url)
 
@@ -174,6 +174,7 @@ class VisionClient:
         except ImportError:
             try:
                 import httpx
+
                 use_httpx = True
             except ImportError:
                 raise ImportError("需要安装 aiohttp 或 httpx")
@@ -292,6 +293,7 @@ class VisionClient:
             import aiohttp
         except ImportError:
             import httpx
+
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 resp = await client.post(
                     f"{base_url}/messages",
