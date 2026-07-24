@@ -15,19 +15,21 @@ from pathlib import Path
 
 import pytest
 
-from src.translator.glossary_store import GlossaryEntry, GlossaryStore
 from src.translator._helpers import _extract_term_pairs, build_glossary_prompt
-
+from src.translator.glossary_store import GlossaryEntry, GlossaryStore
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def ml_glossary():
     """Load the ML seed glossary."""
     store = GlossaryStore()
-    glossary_dir = Path(__file__).resolve().parent.parent.parent / "data" / "translator" / "glossaries"
+    glossary_dir = (
+        Path(__file__).resolve().parent.parent.parent / "data" / "translator" / "glossaries"
+    )
     store.load_yaml_dir(glossary_dir)
     return store
 
@@ -41,18 +43,21 @@ def empty_glossary():
 def locked_glossary():
     """Small glossary with locked entries for enforcement tests."""
     store = GlossaryStore()
-    store.update_from_list([
-        {"source": "attention mechanism", "target": "注意力机制", "locked": True},
-        {"source": "BERT", "target": "", "locked": True},
-        {"source": "fine-tuning", "target": "微调", "locked": True},
-        {"source": "gradient descent", "target": "梯度下降", "locked": False},
-    ])
+    store.update_from_list(
+        [
+            {"source": "attention mechanism", "target": "注意力机制", "locked": True},
+            {"source": "BERT", "target": "", "locked": True},
+            {"source": "fine-tuning", "target": "微调", "locked": True},
+            {"source": "gradient descent", "target": "梯度下降", "locked": False},
+        ]
+    )
     return store
 
 
 # ---------------------------------------------------------------------------
 # GlossaryEntry basics
 # ---------------------------------------------------------------------------
+
 
 class TestGlossaryEntry:
     def test_passthrough(self):
@@ -69,6 +74,7 @@ class TestGlossaryEntry:
 # ---------------------------------------------------------------------------
 # Loading
 # ---------------------------------------------------------------------------
+
 
 class TestLoading:
     def test_load_yaml(self, ml_glossary):
@@ -100,6 +106,7 @@ class TestLoading:
 # Prompt building
 # ---------------------------------------------------------------------------
 
+
 class TestPromptBuilding:
     def test_prompt_contains_locked_header(self, locked_glossary):
         prompt = locked_glossary.build_prompt_text()
@@ -123,6 +130,7 @@ class TestPromptBuilding:
 # ---------------------------------------------------------------------------
 # build_glossary_prompt helper
 # ---------------------------------------------------------------------------
+
 
 class TestBuildGlossaryPrompt:
     def test_combines_store_and_learned(self, locked_glossary):
@@ -157,6 +165,7 @@ class TestBuildGlossaryPrompt:
 # ---------------------------------------------------------------------------
 # Enforcement
 # ---------------------------------------------------------------------------
+
 
 class TestEnforcement:
     def test_locked_violation_detected(self, locked_glossary):
@@ -200,14 +209,17 @@ class TestEnforcement:
 # Acceptance: 5 consecutive chunks all use consistent "注意力机制"
 # ---------------------------------------------------------------------------
 
+
 class TestConsistencyAcrossChunks:
     def test_five_chunks_all_use_attention_mechanism(self):
         """同一原文连续 5 chunk 都含 'attention'，全部译成'注意力机制'。"""
         store = GlossaryStore()
-        store.update_from_list([
-            {"source": "attention mechanism", "target": "注意力机制", "locked": True},
-            {"source": "attention", "target": "注意力", "locked": True},
-        ])
+        store.update_from_list(
+            [
+                {"source": "attention mechanism", "target": "注意力机制", "locked": True},
+                {"source": "attention", "target": "注意力", "locked": True},
+            ]
+        )
 
         originals = [
             "Self-attention mechanism is the core of this model.",
@@ -242,13 +254,16 @@ class TestConsistencyAcrossChunks:
 # Acceptance: passthrough BERT stays as-is
 # ---------------------------------------------------------------------------
 
+
 class TestPassthrough:
     def test_bert_preserved(self):
         """标了 target="" 的 BERT 在译文里原样出现。"""
         store = GlossaryStore()
-        store.update_from_list([
-            {"source": "BERT", "target": "", "locked": True},
-        ])
+        store.update_from_list(
+            [
+                {"source": "BERT", "target": "", "locked": True},
+            ]
+        )
 
         # Good: BERT appears as-is
         correct = "BERT是一种预训练语言模型。"
@@ -265,13 +280,16 @@ class TestPassthrough:
 # CSV import/export
 # ---------------------------------------------------------------------------
 
+
 class TestCSV:
     def test_import_export_roundtrip(self, tmp_path):
         store = GlossaryStore()
-        store.update_from_list([
-            {"source": "attention", "target": "注意力", "locked": True, "category": "ML"},
-            {"source": "embedding", "target": "嵌入", "locked": False, "category": "ML"},
-        ])
+        store.update_from_list(
+            [
+                {"source": "attention", "target": "注意力", "locked": True, "category": "ML"},
+                {"source": "embedding", "target": "嵌入", "locked": False, "category": "ML"},
+            ]
+        )
 
         csv_path = tmp_path / "test.csv"
         count = store.export_csv(csv_path)
@@ -301,6 +319,7 @@ class TestCSV:
 # TBX import/export
 # ---------------------------------------------------------------------------
 
+
 class TestTBX:
     def _write_tbx(self, path: Path, entries: list[tuple[str, str]]):
         """Helper: write a minimal TBX file."""
@@ -320,10 +339,13 @@ class TestTBX:
 
     def test_import_tbx(self, tmp_path):
         tbx_path = tmp_path / "test.tbx"
-        self._write_tbx(tbx_path, [
-            ("attention", "注意力"),
-            ("transformer", "变换器"),
-        ])
+        self._write_tbx(
+            tbx_path,
+            [
+                ("attention", "注意力"),
+                ("transformer", "变换器"),
+            ],
+        )
 
         store = GlossaryStore()
         count = store.import_tbx(tbx_path)
@@ -333,9 +355,11 @@ class TestTBX:
 
     def test_export_tbx(self, tmp_path):
         store = GlossaryStore()
-        store.update_from_list([
-            {"source": "loss", "target": "损失", "locked": True},
-        ])
+        store.update_from_list(
+            [
+                {"source": "loss", "target": "损失", "locked": True},
+            ]
+        )
 
         tbx_path = tmp_path / "export.tbx"
         count = store.export_tbx(tbx_path)
@@ -353,13 +377,16 @@ class TestTBX:
 # Suggestion feeding from _extract_term_pairs
 # ---------------------------------------------------------------------------
 
+
 class TestSuggestionFeeding:
     def test_add_suggestions_no_overwrite(self, locked_glossary):
         # "attention mechanism" already exists as locked
-        added = locked_glossary.add_suggestions([
-            ("attention mechanism", "注意"),
-            ("new term", "新术语"),
-        ])
+        added = locked_glossary.add_suggestions(
+            [
+                ("attention mechanism", "注意"),
+                ("new term", "新术语"),
+            ]
+        )
         assert added == 1  # only "new term" added
         assert locked_glossary.get("attention mechanism").target == "注意力机制"
         assert locked_glossary.get("new term").target == "新术语"
@@ -375,13 +402,16 @@ class TestSuggestionFeeding:
 # Parallel safety: shared GlossaryStore reference
 # ---------------------------------------------------------------------------
 
+
 class TestParallelSafety:
     def test_shared_reference_thread_safe_reads(self):
         """GlossaryStore is read-only during translation — parallel reads are safe."""
         store = GlossaryStore()
-        store.update_from_list([
-            {"source": "attention", "target": "注意力", "locked": True},
-        ])
+        store.update_from_list(
+            [
+                {"source": "attention", "target": "注意力", "locked": True},
+            ]
+        )
 
         import concurrent.futures
 
@@ -405,6 +435,7 @@ class TestParallelSafety:
 # ---------------------------------------------------------------------------
 # CRUD API helpers
 # ---------------------------------------------------------------------------
+
 
 class TestCRUD:
     def test_to_dict_list(self, locked_glossary):

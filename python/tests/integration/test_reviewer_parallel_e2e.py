@@ -1,4 +1,5 @@
 """Integration tests for Reviewer-2 DAG parallel perspectives (Phase D)."""
+
 from __future__ import annotations
 
 import json
@@ -10,8 +11,8 @@ import pytest
 from src.argument.companion_models import ReviewPoint, ReviewSession
 from src.argument.companion_store import CompanionStore
 
-
 # ── E1: basic parallel review flow ───────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_run_review_parallel_basic(tmp_path: Path):
@@ -42,6 +43,7 @@ async def test_run_review_parallel_basic(tmp_path: Path):
 
 # ── E2: deduplication across perspectives ─────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_run_review_parallel_deduplicates(tmp_path: Path):
     """E2: identical (title, category) points across perspectives appear once."""
@@ -70,6 +72,7 @@ async def test_run_review_parallel_deduplicates(tmp_path: Path):
 
 
 # ── E3: session persisted to store ───────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_run_review_parallel_persists(tmp_path: Path):

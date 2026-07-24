@@ -11,6 +11,7 @@ Anthropic 格式与 OpenAI 的关键差异:
   - tool_result: role="user", content=[{type:"tool_result", tool_use_id, content}]
   - stop_reason: "end_turn" | "tool_use"
 """
+
 from __future__ import annotations
 
 import json
@@ -47,11 +48,13 @@ class AnthropicProvider(BaseProvider):
         api_key: str = "",
         model: str = "claude-sonnet-4-6",
         timeout: float = 300.0,
+        proxy: str | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
         self.timeout = timeout
+        self.proxy = proxy
         self._client: httpx.AsyncClient | None = None
         self.model_max_tokens = 8192  # Anthropic models support 8K
 
@@ -62,7 +65,9 @@ class AnthropicProvider(BaseProvider):
                 "x-api-key": self.api_key,
                 "anthropic-version": "2023-06-01",
             }
-            self._client = httpx.AsyncClient(timeout=self.timeout, headers=headers)
+            self._client = httpx.AsyncClient(
+                timeout=self.timeout, headers=headers, proxy=self.proxy
+            )
         return self._client
 
     # ---- Message conversion ----
@@ -84,32 +89,42 @@ class AnthropicProvider(BaseProvider):
                             inp = json.loads(b.input)
                         except (json.JSONDecodeError, TypeError):
                             inp = {"input": b.input}
-                        blocks.append({"type": "tool_use", "id": b.id, "name": b.name, "input": inp})
+                        blocks.append(
+                            {"type": "tool_use", "id": b.id, "name": b.name, "input": inp}
+                        )
                 if blocks:
                     result.append({"role": "assistant", "content": blocks})
             elif msg.role == MessageRole.TOOL:
                 from src.agent_v2.types import ToolResultBlock
+
                 for b in msg.blocks:
                     if isinstance(b, ToolResultBlock):
-                        result.append({
-                            "role": "user",
-                            "content": [{
-                                "type": "tool_result",
-                                "tool_use_id": b.tool_use_id,
-                                "content": b.output,
-                            }],
-                        })
+                        result.append(
+                            {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "tool_result",
+                                        "tool_use_id": b.tool_use_id,
+                                        "content": b.output,
+                                    }
+                                ],
+                            }
+                        )
         return result
 
     def _build_tools(self, tools: list[ToolDefinition] | None) -> list[dict] | None:
         """转换为 Anthropic 工具格式（无 type:function 包装）。"""
         if not tools:
             return None
-        return [{
-            "name": t.name,
-            "description": t.description,
-            "input_schema": t.input_schema,
-        } for t in tools]
+        return [
+            {
+                "name": t.name,
+                "description": t.description,
+                "input_schema": t.input_schema,
+            }
+            for t in tools
+        ]
 
     # ---- API call ----
 
@@ -137,7 +152,7 @@ class AnthropicProvider(BaseProvider):
 
         url = f"{self.base_url}/messages"
         if not url.startswith("http"):
-            url = f"https://{url}" if "api" in url else f"https://api.anthropic.com/v1/messages"
+            url = f"https://{url}" if "api" in url else "https://api.anthropic.com/v1/messages"
 
         resp = await client.post(url, json=body)
         resp.raise_for_status()
@@ -157,11 +172,13 @@ class AnthropicProvider(BaseProvider):
             elif t == "tool_use":
                 inp = block.get("input", {})
                 inp_str = json.dumps(inp, ensure_ascii=False) if isinstance(inp, dict) else str(inp)
-                blocks.append(ToolUseBlock(
-                    id=block.get("id", f"tu_{uuid.uuid4().hex[:8]}"),
-                    name=block.get("name", "unknown"),
-                    input=inp_str,
-                ))
+                blocks.append(
+                    ToolUseBlock(
+                        id=block.get("id", f"tu_{uuid.uuid4().hex[:8]}"),
+                        name=block.get("name", "unknown"),
+                        input=inp_str,
+                    )
+                )
             elif t == "thinking":
                 pass  # thinking is metadata, not content
 

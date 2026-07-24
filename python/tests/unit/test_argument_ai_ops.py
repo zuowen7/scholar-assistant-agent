@@ -12,31 +12,44 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.argument.models_v2 import ArgGraph, ArgNode
 from src.argument.graph_store import ArgGraphStore
-
+from src.argument.models_v2 import ArgGraph, ArgNode
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
-VALID_LLM_JSON = json.dumps({
-    "nodes": [
-        {"local_id": "c1", "type": "claim", "text": "AI accelerates science.", "verbatim_quote": "AI accelerates"},
-        {"local_id": "g1", "type": "grounds", "text": "Papers published 3x faster.", "verbatim_quote": "Papers published"},
-    ],
-    "edges": [
-        {"source": "g1", "target": "c1", "relation": "supports"},
-    ],
-})
+VALID_LLM_JSON = json.dumps(
+    {
+        "nodes": [
+            {
+                "local_id": "c1",
+                "type": "claim",
+                "text": "AI accelerates science.",
+                "verbatim_quote": "AI accelerates",
+            },
+            {
+                "local_id": "g1",
+                "type": "grounds",
+                "text": "Papers published 3x faster.",
+                "verbatim_quote": "Papers published",
+            },
+        ],
+        "edges": [
+            {"source": "g1", "target": "c1", "relation": "supports"},
+        ],
+    }
+)
 
-SUGGEST_LLM_JSON = json.dumps({
-    "candidates": [
-        {"local_id": "g1", "type": "grounds", "text": "Empirical studies support this."},
-        {"local_id": "w1", "type": "warrant", "text": "Evidence from peer review."},
-    ],
-    "suggested_edges": [
-        {"source": "g1", "target": "CLAIM_ID", "relation": "supports"},
-    ],
-})
+SUGGEST_LLM_JSON = json.dumps(
+    {
+        "candidates": [
+            {"local_id": "g1", "type": "grounds", "text": "Empirical studies support this."},
+            {"local_id": "w1", "type": "warrant", "text": "Evidence from peer review."},
+        ],
+        "suggested_edges": [
+            {"source": "g1", "target": "CLAIM_ID", "relation": "supports"},
+        ],
+    }
+)
 
 SOURCE_TEXT = "AI accelerates science in many ways. Papers published 3x faster since 2020."
 
@@ -60,16 +73,21 @@ def _run(coro):
 async def _collect_extract(graph_id, store, llm_json):
     """Consume the async generator from extract_argument."""
     from src.argument.ai_ops import extract_argument
+
     events = []
     async for ev in extract_argument(
-        gid=graph_id, text=SOURCE_TEXT,
-        source_label="test", side="trans", store=store,
+        gid=graph_id,
+        text=SOURCE_TEXT,
+        source_label="test",
+        side="trans",
+        store=store,
     ):
         events.append(ev)
     return events
 
 
 # ── extract_argument ───────────────────────────────────────────────────────────
+
 
 class TestExtractArgument:
     def test_emits_node_events(self, store, graph_id):
@@ -114,10 +132,14 @@ class TestExtractArgument:
     def test_invalid_json_emits_error_not_complete(self, store, graph_id):
         async def _run_bad():
             from src.argument.ai_ops import extract_argument
+
             events = []
             async for ev in extract_argument(
-                gid=graph_id, text=SOURCE_TEXT,
-                source_label="test", side="trans", store=store,
+                gid=graph_id,
+                text=SOURCE_TEXT,
+                source_label="test",
+                side="trans",
+                store=store,
             ):
                 events.append(ev)
             return events
@@ -132,9 +154,13 @@ class TestExtractArgument:
     def test_invalid_json_does_not_write_dirty_data(self, store, graph_id):
         async def _run_bad():
             from src.argument.ai_ops import extract_argument
+
             async for _ in extract_argument(
-                gid=graph_id, text=SOURCE_TEXT,
-                source_label="test", side="trans", store=store,
+                gid=graph_id,
+                text=SOURCE_TEXT,
+                source_label="test",
+                side="trans",
+                store=store,
             ):
                 pass
 
@@ -147,22 +173,38 @@ class TestExtractArgument:
 
     def test_illegal_edge_skipped_with_warning(self, store, graph_id):
         """claim->claim via supports is illegal — edge dropped, warning emitted."""
-        bad_json = json.dumps({
-            "nodes": [
-                {"local_id": "c1", "type": "claim", "text": "Claim 1.", "verbatim_quote": "AI accelerates"},
-                {"local_id": "c2", "type": "claim", "text": "Claim 2.", "verbatim_quote": "Papers published"},
-            ],
-            "edges": [
-                {"source": "c1", "target": "c2", "relation": "supports"},
-            ],
-        })
+        bad_json = json.dumps(
+            {
+                "nodes": [
+                    {
+                        "local_id": "c1",
+                        "type": "claim",
+                        "text": "Claim 1.",
+                        "verbatim_quote": "AI accelerates",
+                    },
+                    {
+                        "local_id": "c2",
+                        "type": "claim",
+                        "text": "Claim 2.",
+                        "verbatim_quote": "Papers published",
+                    },
+                ],
+                "edges": [
+                    {"source": "c1", "target": "c2", "relation": "supports"},
+                ],
+            }
+        )
 
         async def _run_bad():
             from src.argument.ai_ops import extract_argument
+
             events = []
             async for ev in extract_argument(
-                gid=graph_id, text=SOURCE_TEXT,
-                source_label="test", side="trans", store=store,
+                gid=graph_id,
+                text=SOURCE_TEXT,
+                source_label="test",
+                side="trans",
+                store=store,
             ):
                 events.append(ev)
             return events
@@ -180,12 +222,14 @@ class TestExtractArgument:
 
 # ── suggest_element ────────────────────────────────────────────────────────────
 
+
 class TestSuggestElement:
     def test_returns_candidates(self, store, graph_id):
         claim = store.upsert_node(graph_id, ArgNode(node_type="claim", text="My claim."))
 
         async def _run_suggest():
             from src.argument.ai_ops import suggest_element
+
             return await suggest_element(graph_id=graph_id, node_id=claim.id, store=store)
 
         with patch("src.argument.ai_ops.call_llm_chat", new_callable=AsyncMock) as m:
@@ -200,6 +244,7 @@ class TestSuggestElement:
 
         async def _run_suggest():
             from src.argument.ai_ops import suggest_element
+
             await suggest_element(graph_id=graph_id, node_id=claim.id, store=store)
 
         with patch("src.argument.ai_ops.call_llm_chat", new_callable=AsyncMock) as m:
@@ -212,6 +257,7 @@ class TestSuggestElement:
     def test_unknown_node_returns_empty(self, store, graph_id):
         async def _run_suggest():
             from src.argument.ai_ops import suggest_element
+
             return await suggest_element(graph_id=graph_id, node_id="n_nonexistent", store=store)
 
         result = _run(_run_suggest())
@@ -222,6 +268,7 @@ class TestSuggestElement:
 
         async def _run_suggest():
             from src.argument.ai_ops import suggest_element
+
             return await suggest_element(graph_id=graph_id, node_id=claim.id, store=store)
 
         with patch("src.argument.ai_ops.call_llm_chat", new_callable=AsyncMock) as m:

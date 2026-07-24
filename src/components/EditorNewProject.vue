@@ -72,6 +72,7 @@ import UiButton from './ui/UiButton.vue'
 import { useProject } from '../composables/useProject'
 import { API_BASE } from '../utils/api'
 import type { ProjectTemplate } from '../types'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
 
 const { t } = useI18n()
 const props = defineProps<{ visible: boolean }>()
@@ -112,8 +113,7 @@ watch(() => props.visible, visible => { if (visible && !templates.value.length) 
 
 async function browseLocation() {
   try {
-    const { open } = await import('@tauri-apps/plugin-dialog')
-    const selected = await open({ directory: true, multiple: false })
+    const selected = await openDialog({ directory: true, multiple: false })
     if (typeof selected === 'string') form.location = selected
   } catch { /* cancellation is not an error */ }
 }

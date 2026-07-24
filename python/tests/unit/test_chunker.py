@@ -1,19 +1,19 @@
 """文本切块模块单元测试"""
 
 from src.chunker.splitter import (
-    chunk_text,
+    BLOCK_CODE,
+    BLOCK_FIGURE_CAPTION,
+    BLOCK_FORMULA,
+    BLOCK_HEADING,
+    BLOCK_LIST,
+    BLOCK_PARAGRAPH,
+    BLOCK_TABLE,
     Chunk,
     _estimate_tokens,
-    parse_blocks,
-    pack_blocks_into_chunks,
+    chunk_text,
     chunk_text_with_blocks,
-    BLOCK_PARAGRAPH,
-    BLOCK_HEADING,
-    BLOCK_FORMULA,
-    BLOCK_CODE,
-    BLOCK_TABLE,
-    BLOCK_LIST,
-    BLOCK_FIGURE_CAPTION,
+    pack_blocks_into_chunks,
+    parse_blocks,
 )
 
 

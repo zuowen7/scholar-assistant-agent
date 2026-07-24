@@ -3,11 +3,13 @@
 覆盖从 LLM 输出中提取 JSON 对象/数组的所有边界情况：
 纯 JSON、markdown fence 包裹、前后缀说明文字、嵌套结构、多对象取首个。
 """
+
 import pytest
 
 
 def _import():
-    from src.utils.json_extract import extract_json_object, extract_json_array
+    from src.utils.json_extract import extract_json_array, extract_json_object
+
     return extract_json_object, extract_json_array
 
 
@@ -132,7 +134,9 @@ class TestExtractJsonArray:
     def test_array_with_prefix_text(self):
         """常见 LLM 前缀 + 数组。"""
         _, extract_json_array = _import()
-        text = 'I found the following issues:\n```json\n[{"severity": "major", "title": "test"}]\n```'
+        text = (
+            'I found the following issues:\n```json\n[{"severity": "major", "title": "test"}]\n```'
+        )
         result = extract_json_array(text)
         assert len(result) == 1
         assert result[0]["severity"] == "major"

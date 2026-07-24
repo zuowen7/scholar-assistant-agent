@@ -47,20 +47,24 @@ def test_retry_refreshes_chunk_content_and_qa(tmp_path: Path) -> None:
         rag_store_getter=lambda: None,
     )
 
-    original = "This result demonstrates that the retry path updates every derived translation artifact."
+    original = (
+        "This result demonstrates that the retry path updates every derived translation artifact."
+    )
     output_path = tmp_path / "data_cloud" / "output" / "task-retry_translated.md"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("stale output", encoding="utf-8")
     state["tasks"]["task-retry"] = {
         "status": "done_with_warnings",
-        "block_translations": [{
-            "id": "b1",
-            "type": "paragraph",
-            "translatable": True,
-            "original": original,
-            "translated": "",
-            "status": "failed",
-        }],
+        "block_translations": [
+            {
+                "id": "b1",
+                "type": "paragraph",
+                "translatable": True,
+                "original": original,
+                "translated": "",
+                "status": "failed",
+            }
+        ],
         "block_chunk_map": {"b1": 0},
         "chunk_blocks": {"0": ["b1"]},
         "chunk_sections": {"0": "results"},

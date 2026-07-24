@@ -42,7 +42,7 @@ const { toasts, dismiss } = useToast()
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  background: var(--c-panel-bg);
+  background: var(--c-panel);
   border: 1px solid var(--c-border);
   border-radius: 10px;
   box-shadow: var(--elevation-2);

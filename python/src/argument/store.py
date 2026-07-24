@@ -76,8 +76,12 @@ class ArgumentStore:
     def get_tree(self) -> ArgumentTree:
         return self._tree
 
-    def create_tree(self, topic: str, domain_tags: list[str] | None = None,
-                    position: dict[str, float] | None = None) -> ArgumentNode:
+    def create_tree(
+        self,
+        topic: str,
+        domain_tags: list[str] | None = None,
+        position: dict[str, float] | None = None,
+    ) -> ArgumentNode:
         root = ArgumentNode(
             id="node_root",
             topic=topic,
@@ -186,8 +190,14 @@ class ArgumentStore:
 
     # ── Reference binding ─────────────────────────────────────────
 
-    def bind_reference(self, node_id: str, doc_id: str, citation_key: str,
-                       binding_type: str, relevance_score: float) -> ArgumentNode | None:
+    def bind_reference(
+        self,
+        node_id: str,
+        doc_id: str,
+        citation_key: str,
+        binding_type: str,
+        relevance_score: float,
+    ) -> ArgumentNode | None:
         from src.argument.models import BindingType, Reference
 
         node = self._tree.nodes.get(node_id)

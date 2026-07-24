@@ -1,4 +1,5 @@
 """极限/压力测试 — 并发、大量数据、快速序列、内存、超时。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -7,21 +8,30 @@ from pathlib import Path
 
 import pytest
 
-from src.agent_v2.providers.mock_provider import MockProvider, Scenario, _text_response, _tool_response
+from src.agent_v2.providers.mock_provider import (
+    MockProvider,
+    Scenario,
+    _text_response,
+    _tool_response,
+)
 from src.agent_v2.runtime.conversation import ConversationRuntime
 from src.agent_v2.runtime.permissions import PermissionMode, PermissionPolicy, policy_from_registry
 from src.agent_v2.runtime.session import Session
 from src.agent_v2.runtime.usage import UsageTracker
 from src.agent_v2.tools.registry import ToolRegistry, create_default_registry
 from src.agent_v2.types import (
-    TokenUsage, Message, MessageRole, TextBlock, ToolUseBlock,
     AgentEventType,
+    Message,
+    MessageRole,
+    TextBlock,
+    TokenUsage,
+    ToolUseBlock,
 )
-
 
 # ============================================================================
 # PermissionPolicy — 大规模规则匹配性能
 # ============================================================================
+
 
 class TestPolicyStress:
     def test_1000_rules_performance(self):
@@ -38,10 +48,13 @@ class TestPolicyStress:
         assert result2.is_allowed
 
     def test_10000_authorize_calls(self):
-        policy = PermissionPolicy(PermissionMode.READ_ONLY, {
-            "read_file": PermissionMode.READ_ONLY,
-            "write_file": PermissionMode.WORKSPACE_WRITE,
-        })
+        policy = PermissionPolicy(
+            PermissionMode.READ_ONLY,
+            {
+                "read_file": PermissionMode.READ_ONLY,
+                "write_file": PermissionMode.WORKSPACE_WRITE,
+            },
+        )
         for i in range(10000):
             result = policy.authorize("read_file", '{"file_path":"test.txt"}')
             assert result.is_allowed
@@ -50,6 +63,7 @@ class TestPolicyStress:
 # ============================================================================
 # Session — 极端数据量
 # ============================================================================
+
 
 class TestSessionStress:
     def test_100000_messages(self, tmp_path: Path):
@@ -74,13 +88,17 @@ class TestSessionStress:
 # ToolRegistry — 大量工具 + 并发执行
 # ============================================================================
 
+
 class TestRegistryStress:
     def test_1000_tools_registered(self):
         reg = ToolRegistry()
         for i in range(1000):
+
             async def tool(args, n=i):
                 from src.agent_v2.tools.registry import ToolResult
+
                 return ToolResult(f"tool {n}")
+
             reg.register(f"tool_{i:04d}", f"Tool {i}", {}, tool)
         assert len(reg.definitions()) == 1000
         # Quick lookup
@@ -90,10 +108,9 @@ class TestRegistryStress:
     async def test_100_concurrent_executions(self, tmp_path: Path):
         reg = create_default_registry(workspace_root=tmp_path)
         (tmp_path / "big.txt").write_text("x\n" * 1000, encoding="utf-8")
-        results = await asyncio.gather(*[
-            reg.execute("read_file", {"file_path": "big.txt"})
-            for _ in range(100)
-        ])
+        results = await asyncio.gather(
+            *[reg.execute("read_file", {"file_path": "big.txt"}) for _ in range(100)]
+        )
         for r in results:
             assert not r.is_error
 
@@ -111,6 +128,7 @@ class TestRegistryStress:
 # ============================================================================
 # UsageTracker — 大数精度
 # ============================================================================
+
 
 class TestUsageStress:
     def test_billion_tokens(self):
@@ -132,14 +150,13 @@ class TestUsageStress:
 # MockProvider — 高并发场景匹配
 # ============================================================================
 
+
 class TestProviderStress:
     @pytest.mark.asyncio
     async def test_100_concurrent_chat_calls(self):
         provider = MockProvider()
         msgs = [Message(role=MessageRole.USER, blocks=[TextBlock(text="hello")])]
-        results = await asyncio.gather(*[
-            provider.chat(msgs) for _ in range(100)
-        ])
+        results = await asyncio.gather(*[provider.chat(msgs) for _ in range(100)])
         for r in results:
             assert len(r.blocks) > 0
 
@@ -147,6 +164,7 @@ class TestProviderStress:
 # ============================================================================
 # ConversationRuntime — 长对话序列
 # ============================================================================
+
 
 class TestRuntimeStress:
     @pytest.mark.asyncio
@@ -157,13 +175,17 @@ class TestRuntimeStress:
         registry = create_default_registry(workspace_root=tmp_path)
         policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
         session = Session(workspace=str(tmp_path))
-        rt = ConversationRuntime(provider=provider, tool_registry=registry,
-                                  permission_policy=policy, session=session)
+        rt = ConversationRuntime(
+            provider=provider, tool_registry=registry, permission_policy=policy, session=session
+        )
         for i in range(100):
             events = []
             async for e in rt.turn(f"message {i}"):
                 events.append(e)
-            assert any(t in (AgentEventType.RESPONSE, AgentEventType.DONE) for t in [e.type for e in events])
+            assert any(
+                t in (AgentEventType.RESPONSE, AgentEventType.DONE)
+                for t in [e.type for e in events]
+            )
 
     @pytest.mark.asyncio
     async def test_rapid_concurrent_runtimes(self, tmp_path: Path):
@@ -173,10 +195,13 @@ class TestRuntimeStress:
         async def single():
             provider = MockProvider()
             registry = create_default_registry(workspace_root=tmp_path)
-            policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+            policy = policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            )
             session = Session(workspace=str(tmp_path))
-            rt = ConversationRuntime(provider=provider, tool_registry=registry,
-                                      permission_policy=policy, session=session)
+            rt = ConversationRuntime(
+                provider=provider, tool_registry=registry, permission_policy=policy, session=session
+            )
             events = []
             async for e in rt.turn("hello"):
                 events.append(e)
@@ -191,6 +216,7 @@ class TestRuntimeStress:
 # ============================================================================
 # 边界值/注入攻击
 # ============================================================================
+
 
 class TestBoundaryInjection:
     def test_null_byte_injection_tool_name(self):
@@ -210,7 +236,7 @@ class TestBoundaryInjection:
         policy.authorize(name, "{}")  # should not crash
 
     def test_deeply_nested_json_input(self):
-        nested = '{"a":' * 100 + '"x"' + '}' * 100
+        nested = '{"a":' * 100 + '"x"' + "}" * 100
         policy = PermissionPolicy(PermissionMode.READ_ONLY)
         try:
             policy.authorize("read_file", nested)
@@ -228,7 +254,9 @@ class TestBoundaryInjection:
         reg = create_default_registry(workspace_root=tmp_path)
         (tmp_path / "small.txt").write_text("hello", encoding="utf-8")
         # Repeated reads should all succeed
-        results = await asyncio.gather(*[reg.execute("read_file", {"file_path": "small.txt"}) for _ in range(50)])
+        results = await asyncio.gather(
+            *[reg.execute("read_file", {"file_path": "small.txt"}) for _ in range(50)]
+        )
         for r in results:
             assert not r.is_error
             assert "hello" in r.output

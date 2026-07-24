@@ -9,6 +9,7 @@ This script runs at CI time and verifies:
 
 Exit code 1 if any category is missing or fails.
 """
+
 import subprocess
 import sys
 from pathlib import Path
@@ -50,9 +51,21 @@ def find_files_with_marker(marker: str) -> list[Path]:
 def run_category(marker: str) -> tuple[int, str]:
     """Run pytest for a specific marker. Returns (exit_code, output)."""
     result = subprocess.run(
-        [sys.executable, "-m", "pytest", str(TEST_DIR), "-m", marker,
-         "-q", "--tb=line", "--no-header"],
-        capture_output=True, text=True, timeout=600, cwd=str(ROOT),
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            str(TEST_DIR),
+            "-m",
+            marker,
+            "-q",
+            "--tb=line",
+            "--no-header",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=600,
+        cwd=str(ROOT),
     )
     return result.returncode, result.stdout.strip() + "\n" + result.stderr.strip()
 
@@ -70,13 +83,13 @@ def main() -> int:
                 errors.append(f"{marker}: NO test files found (required)")
                 print(f"  FAIL: No test files with @pytest.mark.{marker}")
             else:
-                print(f"  SKIP: No test files (optional)")
+                print("  SKIP: No test files (optional)")
             continue
 
         exit_code, output = run_category(marker)
         if exit_code != 0:
             errors.append(f"{marker}: tests FAILED (exit {exit_code})")
-            print(f"  FAIL:")
+            print("  FAIL:")
             for line in output.split("\n")[-10:]:
                 print(f"    {line}")
         else:
@@ -87,13 +100,13 @@ def main() -> int:
                     break
 
     if errors:
-        print(f"\n{'='*50}")
+        print(f"\n{'=' * 50}")
         print(f"TEST QUALITY GATE FAILED ({len(errors)} failures):")
         for e in errors:
             print(f"  - {e}")
         return 1
 
-    print(f"\n{'='*50}")
+    print(f"\n{'=' * 50}")
     print("TEST QUALITY GATE PASSED")
     return 0
 

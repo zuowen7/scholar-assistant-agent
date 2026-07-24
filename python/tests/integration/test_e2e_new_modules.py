@@ -3,6 +3,7 @@
 Tests the full chain from HTTP request to runtime behavior,
 covering all 10 newly ported modules in realistic scenarios.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -12,7 +13,12 @@ from pathlib import Path
 import pytest
 
 from src.agent_v2.types import (
-    Message, MessageRole, TextBlock, ToolUseBlock, ToolResultBlock, TokenUsage,
+    Message,
+    MessageRole,
+    TextBlock,
+    TokenUsage,
+    ToolResultBlock,
+    ToolUseBlock,
 )
 
 
@@ -28,41 +34,62 @@ def _asst(text: str) -> Message:
 # 1. Runtime construction with all new modules wired in
 # ============================================================================
 
-class TestRuntimeConstruction:
 
+class TestRuntimeConstruction:
     def test_runtime_with_bash_validation(self, tmp_path: Path):
         """Runtime's run_command uses bash validation pipeline."""
         from src.agent_v2.tools.registry import create_default_registry
+
         registry = create_default_registry(workspace_root=tmp_path)
         spec = registry.get("run_command")
         assert spec is not None
         # The permission mode is wired in
         from src.agent_v2.runtime.permissions import PermissionMode
+
         registry.set_permission_mode(PermissionMode.READ_ONLY)
         assert registry._active_permission_mode == PermissionMode.READ_ONLY
 
     def test_runtime_with_git_context_in_prompt(self, tmp_path: Path):
         """Git context can be injected into system prompt."""
         from src.agent_v2.runtime.git_context import GitContext
+
         ctx = GitContext(branch="main", recent_commits=[], staged_files=[])
         rendered = ctx.render()
         assert "main" in rendered
 
     def test_runtime_with_trident_compact(self, tmp_path: Path):
         """Trident compact integrates with session messages."""
-        from src.agent_v2.runtime.trident import trident_compact_session, TridentConfig
         from src.agent_v2.runtime.compact import CompactionConfig
         from src.agent_v2.runtime.session import Session
+        from src.agent_v2.runtime.trident import TridentConfig, trident_compact_session
 
         session = Session()
         # Simulate a session with file ops that can be superseded
         for m in [
             _user("read a.txt"),
-            Message(role=MessageRole.ASSISTANT, blocks=[ToolUseBlock(id="t1", name="read_file", input='{"file_path": "a.txt"}')]),
-            Message(role=MessageRole.TOOL, blocks=[ToolResultBlock(tool_use_id="t1", tool_name="read_file", output="old content")]),
+            Message(
+                role=MessageRole.ASSISTANT,
+                blocks=[ToolUseBlock(id="t1", name="read_file", input='{"file_path": "a.txt"}')],
+            ),
+            Message(
+                role=MessageRole.TOOL,
+                blocks=[
+                    ToolResultBlock(tool_use_id="t1", tool_name="read_file", output="old content")
+                ],
+            ),
             _user("write a.txt"),
-            Message(role=MessageRole.ASSISTANT, blocks=[ToolUseBlock(id="t2", name="write_file", input='{"file_path": "a.txt", "content": "new"}')]),
-            Message(role=MessageRole.TOOL, blocks=[ToolResultBlock(tool_use_id="t2", tool_name="write_file", output="ok")]),
+            Message(
+                role=MessageRole.ASSISTANT,
+                blocks=[
+                    ToolUseBlock(
+                        id="t2", name="write_file", input='{"file_path": "a.txt", "content": "new"}'
+                    )
+                ],
+            ),
+            Message(
+                role=MessageRole.TOOL,
+                blocks=[ToolResultBlock(tool_use_id="t2", tool_name="write_file", output="ok")],
+            ),
         ]:
             session.append(m)
 
@@ -72,7 +99,8 @@ class TestRuntimeConstruction:
 
     def test_runtime_with_recovery(self):
         """Recovery recipes can be attempted during runtime errors."""
-        from src.agent_v2.runtime.recovery import RecoveryContext, FailureScenario, attempt_recovery
+        from src.agent_v2.runtime.recovery import FailureScenario, RecoveryContext, attempt_recovery
+
         ctx = RecoveryContext()
         result = attempt_recovery(FailureScenario.PROVIDER_FAILURE, ctx)
         assert result.is_recovered
@@ -80,6 +108,7 @@ class TestRuntimeConstruction:
     def test_runtime_with_session_fork(self, tmp_path: Path):
         """Session can be forked during a conversation."""
         from src.agent_v2.runtime.session import Session
+
         session = Session(workspace=str(tmp_path))
         session.append(_user("hello"))
         session.append(_asst("hi there"))
@@ -92,6 +121,7 @@ class TestRuntimeConstruction:
     def test_runtime_with_session_control(self):
         """Session can be paused and resumed."""
         from src.agent_v2.runtime.session_control import SessionControl, SessionState
+
         ctrl = SessionControl()
         assert ctrl.is_active()
         ctrl.pause()
@@ -102,7 +132,8 @@ class TestRuntimeConstruction:
     @pytest.mark.asyncio
     async def test_runtime_with_hooks_advanced(self):
         """Hooks can modify tool input and provide permission overrides."""
-        from src.agent_v2.hooks import HookRunner, HookPoint, HookEvent, HookResult, HookDecision
+        from src.agent_v2.hooks import HookDecision, HookEvent, HookPoint, HookResult, HookRunner
+
         runner = HookRunner()
 
         def rewrite(event: HookEvent) -> HookResult:
@@ -111,8 +142,11 @@ class TestRuntimeConstruction:
             return HookResult(decision=HookDecision.ALLOW, updated_input=json.dumps(data))
 
         runner.register_callable("sanitize", HookPoint.PRE_TOOL_USE, rewrite, priority=10)
-        event = HookEvent(hook=HookPoint.PRE_TOOL_USE, tool_name="write_file",
-                          tool_input='{"file_path": "test.md"}')
+        event = HookEvent(
+            hook=HookPoint.PRE_TOOL_USE,
+            tool_name="write_file",
+            tool_input='{"file_path": "test.md"}',
+        )
 
         result = await runner.run(HookPoint.PRE_TOOL_USE, event)
         assert result.updated_input is not None
@@ -141,7 +175,8 @@ class TestRuntimeConstruction:
 
     def test_runtime_with_lsp_registry(self):
         """LSP registry can be queried during agent operation."""
-        from src.agent_v2.runtime.lsp_client import LspRegistry, LspAction
+        from src.agent_v2.runtime.lsp_client import LspAction, LspRegistry
+
         reg = LspRegistry()
         reg.register("python", {"command": "pylsp"})
         reg.connect("python")
@@ -152,20 +187,30 @@ class TestRuntimeConstruction:
 
     def test_runtime_with_policy_engine(self):
         """Policy engine can drive runtime decisions."""
-        from src.agent_v2.runtime.policy_engine import PolicyEngine, PolicyRule, PolicyCondition, PolicyAction
+        from src.agent_v2.runtime.policy_engine import (
+            PolicyAction,
+            PolicyCondition,
+            PolicyEngine,
+            PolicyRule,
+        )
+
         engine = PolicyEngine()
-        engine.add_rule(PolicyRule(
-            name="escalate_stale",
-            condition=PolicyCondition(key="stale_branch", value=True),
-            action=PolicyAction.ESCALATE,
-            priority=10,
-        ))
-        engine.add_rule(PolicyRule(
-            name="retry_provider",
-            condition=PolicyCondition(key="retry_available", value=True),
-            action=PolicyAction.RETRY,
-            priority=20,
-        ))
+        engine.add_rule(
+            PolicyRule(
+                name="escalate_stale",
+                condition=PolicyCondition(key="stale_branch", value=True),
+                action=PolicyAction.ESCALATE,
+                priority=10,
+            )
+        )
+        engine.add_rule(
+            PolicyRule(
+                name="retry_provider",
+                condition=PolicyCondition(key="retry_available", value=True),
+                action=PolicyAction.RETRY,
+                priority=20,
+            )
+        )
         actions = engine.evaluate({"stale_branch": True, "retry_available": True})
         assert len(actions) == 2
         assert actions[0].action == PolicyAction.ESCALATE  # lower priority number wins
@@ -173,6 +218,7 @@ class TestRuntimeConstruction:
     def test_runtime_with_sandbox_config(self):
         """Sandbox config can be applied to command execution."""
         from src.agent_v2.runtime.sandbox import SandboxConfig
+
         config = SandboxConfig(timeout_seconds=10, clear_env_vars=True)
         env = {"HTTP_PROXY": "http://evil:8080", "PATH": "/usr/bin"}
         cleaned = config.clean_env(env)
@@ -184,8 +230,8 @@ class TestRuntimeConstruction:
 # 2. Git Context + System Prompt integration
 # ============================================================================
 
-class TestGitContextSystemPrompt:
 
+class TestGitContextSystemPrompt:
     def test_git_context_injected_into_build_prompt(self, tmp_path: Path):
         """_build_system_prompt should include git context when available."""
         from src.agent_v2.router import _build_system_prompt
@@ -209,13 +255,13 @@ class TestGitContextSystemPrompt:
 # 3. Bash Validation + run_command integration
 # ============================================================================
 
-class TestBashValidationIntegration:
 
+class TestBashValidationIntegration:
     @pytest.mark.asyncio
     async def test_run_command_blocked_in_read_only(self, tmp_path: Path):
         """run_command blocks dangerous commands in read-only mode."""
-        from src.agent_v2.tools.registry import create_default_registry
         from src.agent_v2.runtime.permissions import PermissionMode
+        from src.agent_v2.tools.registry import create_default_registry
 
         registry = create_default_registry(workspace_root=tmp_path)
         registry.set_permission_mode(PermissionMode.READ_ONLY)
@@ -226,8 +272,8 @@ class TestBashValidationIntegration:
     @pytest.mark.asyncio
     async def test_run_command_allows_safe_read(self, tmp_path: Path):
         """run_command allows read-only commands in read-only mode."""
-        from src.agent_v2.tools.registry import create_default_registry
         from src.agent_v2.runtime.permissions import PermissionMode
+        from src.agent_v2.tools.registry import create_default_registry
 
         registry = create_default_registry(workspace_root=tmp_path)
         registry.set_permission_mode(PermissionMode.READ_ONLY)
@@ -237,8 +283,8 @@ class TestBashValidationIntegration:
     @pytest.mark.asyncio
     async def test_run_command_warns_destructive_in_write_mode(self, tmp_path: Path):
         """run_command warns but proceeds for destructive commands in write mode."""
-        from src.agent_v2.tools.registry import create_default_registry
         from src.agent_v2.runtime.permissions import PermissionMode
+        from src.agent_v2.tools.registry import create_default_registry
 
         registry = create_default_registry(workspace_root=tmp_path)
         registry.set_permission_mode(PermissionMode.WORKSPACE_WRITE)
@@ -252,8 +298,8 @@ class TestBashValidationIntegration:
 # 4. Session lifecycle: create → fork → compact → store → load
 # ============================================================================
 
-class TestSessionLifecycle:
 
+class TestSessionLifecycle:
     def test_full_session_lifecycle(self, tmp_path: Path):
         from src.agent_v2.runtime.session import Session
         from src.agent_v2.runtime.session_control import SessionStore
@@ -296,19 +342,43 @@ class TestSessionLifecycle:
         # Build conversation with repeated file ops
         for i in range(3):
             session.append(_user(f"read file{i}.txt"))
-            session.append(Message(role=MessageRole.ASSISTANT, blocks=[
-                ToolUseBlock(id=f"r{i}", name="read_file", input=f'{{"file_path": "shared.md"}}')
-            ]))
-            session.append(Message(role=MessageRole.TOOL, blocks=[
-                ToolResultBlock(tool_use_id=f"r{i}", tool_name="read_file", output=f"v{i}")
-            ]))
+            session.append(
+                Message(
+                    role=MessageRole.ASSISTANT,
+                    blocks=[
+                        ToolUseBlock(
+                            id=f"r{i}", name="read_file", input=f'{{"file_path": "shared.md"}}'
+                        )
+                    ],
+                )
+            )
+            session.append(
+                Message(
+                    role=MessageRole.TOOL,
+                    blocks=[
+                        ToolResultBlock(tool_use_id=f"r{i}", tool_name="read_file", output=f"v{i}")
+                    ],
+                )
+            )
         # Final write supersedes all reads
-        session.append(Message(role=MessageRole.ASSISTANT, blocks=[
-            ToolUseBlock(id="w1", name="write_file", input='{"file_path": "shared.md", "content": "final"}')
-        ]))
-        session.append(Message(role=MessageRole.TOOL, blocks=[
-            ToolResultBlock(tool_use_id="w1", tool_name="write_file", output="ok")
-        ]))
+        session.append(
+            Message(
+                role=MessageRole.ASSISTANT,
+                blocks=[
+                    ToolUseBlock(
+                        id="w1",
+                        name="write_file",
+                        input='{"file_path": "shared.md", "content": "final"}',
+                    )
+                ],
+            )
+        )
+        session.append(
+            Message(
+                role=MessageRole.TOOL,
+                blocks=[ToolResultBlock(tool_use_id="w1", tool_name="write_file", output="ok")],
+            )
+        )
 
         msgs = session.messages
         kept, count = stage1_supersede(msgs)
@@ -323,31 +393,42 @@ class TestSessionLifecycle:
 # 5. Recovery + Policy integration
 # ============================================================================
 
-class TestRecoveryPolicyIntegration:
 
+class TestRecoveryPolicyIntegration:
     def test_provider_failure_triggers_recovery_then_policy(self):
         """Provider failure → auto-recovery → policy escalation if exhausted."""
-        from src.agent_v2.runtime.recovery import (
-            RecoveryContext, FailureScenario, attempt_recovery,
-        )
         from src.agent_v2.runtime.policy_engine import (
-            PolicyEngine, PolicyRule, PolicyCondition, PolicyAction,
+            PolicyAction,
+            PolicyCondition,
+            PolicyEngine,
+            PolicyRule,
+        )
+        from src.agent_v2.runtime.recovery import (
+            FailureScenario,
+            RecoveryContext,
+            attempt_recovery,
         )
 
         ctx = RecoveryContext()
         engine = PolicyEngine()
 
         # Policy: escalate on provider failure exhaustion
-        engine.add_rule(PolicyRule(
-            name="escalate_provider",
-            condition=PolicyCondition(key="provider_exhausted", value=True),
-            action=PolicyAction.ESCALATE, priority=10,
-        ))
-        engine.add_rule(PolicyRule(
-            name="retry_provider",
-            condition=PolicyCondition(key="provider_retry_available", value=True),
-            action=PolicyAction.RETRY, priority=20,
-        ))
+        engine.add_rule(
+            PolicyRule(
+                name="escalate_provider",
+                condition=PolicyCondition(key="provider_exhausted", value=True),
+                action=PolicyAction.ESCALATE,
+                priority=10,
+            )
+        )
+        engine.add_rule(
+            PolicyRule(
+                name="retry_provider",
+                condition=PolicyCondition(key="provider_retry_available", value=True),
+                action=PolicyAction.RETRY,
+                priority=20,
+            )
+        )
 
         # First attempt: recovery succeeds
         r1 = attempt_recovery(FailureScenario.PROVIDER_FAILURE, ctx)
@@ -358,28 +439,38 @@ class TestRecoveryPolicyIntegration:
         assert r2.is_escalation_required
 
         # Evaluate policy with exhaustion context
-        actions = engine.evaluate({
-            "provider_exhausted": True,
-            "provider_retry_available": False,
-        })
+        actions = engine.evaluate(
+            {
+                "provider_exhausted": True,
+                "provider_retry_available": False,
+            }
+        )
         assert len(actions) == 1
         assert actions[0].action == PolicyAction.ESCALATE
 
     def test_mcp_failure_recovery_with_policy(self):
         """MCP handshake failure → recovery → log policy."""
-        from src.agent_v2.runtime.recovery import RecoveryContext, FailureScenario, attempt_recovery
-        from src.agent_v2.runtime.policy_engine import PolicyEngine, PolicyRule, PolicyCondition, PolicyAction
+        from src.agent_v2.runtime.policy_engine import (
+            PolicyAction,
+            PolicyCondition,
+            PolicyEngine,
+            PolicyRule,
+        )
+        from src.agent_v2.runtime.recovery import FailureScenario, RecoveryContext, attempt_recovery
 
         ctx = RecoveryContext()
         result = attempt_recovery(FailureScenario.MCP_HANDSHAKE_FAILURE, ctx)
         assert result.is_recovered
 
         engine = PolicyEngine()
-        engine.add_rule(PolicyRule(
-            name="log_mcp",
-            condition=PolicyCondition(key="mcp_recovered", value=True),
-            action=PolicyAction.LOG, priority=50,
-        ))
+        engine.add_rule(
+            PolicyRule(
+                name="log_mcp",
+                condition=PolicyCondition(key="mcp_recovered", value=True),
+                action=PolicyAction.LOG,
+                priority=50,
+            )
+        )
         actions = engine.evaluate({"mcp_recovered": True})
         assert actions[0].action == PolicyAction.LOG
 
@@ -388,13 +479,13 @@ class TestRecoveryPolicyIntegration:
 # 6. Hooks + Permission integration
 # ============================================================================
 
-class TestHooksPermissionIntegration:
 
+class TestHooksPermissionIntegration:
     @pytest.mark.asyncio
     async def test_hook_deny_blocks_tool_despite_permission(self):
         """Hook denial overrides permission policy allow."""
-        from src.agent_v2.hooks import HookRunner, HookPoint, HookEvent, HookResult, HookDecision
-        from src.agent_v2.runtime.permissions import PermissionPolicy, PermissionMode
+        from src.agent_v2.hooks import HookDecision, HookEvent, HookPoint, HookResult, HookRunner
+        from src.agent_v2.runtime.permissions import PermissionMode, PermissionPolicy
 
         runner = HookRunner()
 
@@ -403,20 +494,21 @@ class TestHooksPermissionIntegration:
 
         runner.register_callable("security", HookPoint.PRE_TOOL_USE, deny_all, priority=10)
 
-        event = HookEvent(hook=HookPoint.PRE_TOOL_USE, tool_name="run_command",
-                          tool_input='{"command": "ls"}')
+        event = HookEvent(
+            hook=HookPoint.PRE_TOOL_USE, tool_name="run_command", tool_input='{"command": "ls"}'
+        )
         result = await runner.run(HookPoint.PRE_TOOL_USE, event)
         assert result.decision == HookDecision.DENY
 
         # Even though permission policy would allow
         policy = PermissionPolicy(active_mode=PermissionMode.ALLOW)
-        auth = policy.authorize("run_command", '{}')
+        auth = policy.authorize("run_command", "{}")
         assert auth.is_allowed  # policy allows, but hook denied
 
     @pytest.mark.asyncio
     async def test_hook_updated_input_changes_tool_behavior(self, tmp_path: Path):
         """Hook can rewrite tool input to sanitize path traversal."""
-        from src.agent_v2.hooks import HookRunner, HookPoint, HookEvent, HookResult, HookDecision
+        from src.agent_v2.hooks import HookDecision, HookEvent, HookPoint, HookResult, HookRunner
 
         runner = HookRunner()
 
@@ -431,8 +523,11 @@ class TestHooksPermissionIntegration:
 
         runner.register_callable("sanitize", HookPoint.PRE_TOOL_USE, sanitize_path, priority=10)
 
-        event = HookEvent(hook=HookPoint.PRE_TOOL_USE, tool_name="write_file",
-                          tool_input='{"file_path": "../../../etc/passwd", "content": "hacked"}')
+        event = HookEvent(
+            hook=HookPoint.PRE_TOOL_USE,
+            tool_name="write_file",
+            tool_input='{"file_path": "../../../etc/passwd", "content": "hacked"}',
+        )
         result = await runner.run(HookPoint.PRE_TOOL_USE, event)
         data = json.loads(result.updated_input)
         assert "../" not in data["file_path"]
@@ -442,35 +537,47 @@ class TestHooksPermissionIntegration:
 # 7. Edge: concurrent sessions, abort, timeout
 # ============================================================================
 
-class TestConcurrencyEdges:
 
+class TestConcurrencyEdges:
     @pytest.mark.asyncio
     async def test_abort_unblocks_pending_approval(self):
         """Aborting a runtime should unblock pending approval waits."""
+        from src.agent_v2.providers.mock_provider import MockProvider, Scenario
         from src.agent_v2.runtime.conversation import ConversationRuntime
-        from src.agent_v2.runtime.permissions import PermissionPolicy, PermissionMode
+        from src.agent_v2.runtime.permissions import PermissionMode, PermissionPolicy
         from src.agent_v2.runtime.session import Session
         from src.agent_v2.tools.registry import create_default_registry
-        from src.agent_v2.providers.mock_provider import MockProvider, Scenario
 
         provider = MockProvider()
+
         # Use response_factory for a tool-use response
         def _tool_use_resp(msgs, turn_idx, tools, system_prompt=""):
-            from src.agent_v2.types import ToolUseBlock, TokenUsage, ProviderResponse
+            from src.agent_v2.types import ProviderResponse, TokenUsage, ToolUseBlock
+
             return ProviderResponse(
-                blocks=[ToolUseBlock(id="tu_abort_test", name="write_file",
-                                      input='{"file_path":"x","content":"y"}')],
+                blocks=[
+                    ToolUseBlock(
+                        id="tu_abort_test",
+                        name="write_file",
+                        input='{"file_path":"x","content":"y"}',
+                    )
+                ],
                 usage=TokenUsage(input_tokens=50, output_tokens=20),
                 stop_reason="end_turn",
             )
+
         provider.scenarios = [Scenario("write", response_factory=_tool_use_resp)]
         registry = create_default_registry()
         policy = PermissionPolicy(active_mode=PermissionMode.WORKSPACE_WRITE)
         session = Session()
 
-        rt = ConversationRuntime(provider=provider, tool_registry=registry,
-                                   permission_policy=policy, session=session,
-                                   auto_approve=False)
+        rt = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy,
+            session=session,
+            auto_approve=False,
+        )
 
         async def _run_and_abort():
             await asyncio.sleep(0.1)
@@ -483,12 +590,13 @@ class TestConcurrencyEdges:
 
         await task
         assert any(e.type.value == "aborted" for e in events) or any(
-            e.type.value == "done" for e in events)
+            e.type.value == "done" for e in events
+        )
 
     def test_session_store_isolation(self, tmp_path: Path):
         """Different workspaces have isolated session stores."""
-        from src.agent_v2.runtime.session_control import SessionStore
         from src.agent_v2.runtime.session import Session
+        from src.agent_v2.runtime.session_control import SessionStore
 
         ws1 = tmp_path / "project1"
         ws2 = tmp_path / "project2"
@@ -516,11 +624,12 @@ class TestConcurrencyEdges:
 # 8. Edge: sandbox config + run_command
 # ============================================================================
 
-class TestSandboxEdgeCases:
 
+class TestSandboxEdgeCases:
     def test_sandbox_truncate_unicode(self):
         """Sandbox truncation handles multi-byte characters."""
         from src.agent_v2.runtime.sandbox import SandboxConfig
+
         config = SandboxConfig(max_output_bytes=20)
         output = "你好世界" * 100  # Chinese chars, multi-byte
         truncated = config.truncate_output(output)
@@ -529,6 +638,7 @@ class TestSandboxEdgeCases:
 
     def test_sandbox_clean_env_preserves_path(self):
         from src.agent_v2.runtime.sandbox import SandboxConfig
+
         config = SandboxConfig(clear_env_vars=True)
         env = {"PATH": "/usr/bin", "HOME": "/home/user", "HTTPS_PROXY": "http://proxy"}
         cleaned = config.clean_env(env)
@@ -540,6 +650,7 @@ class TestSandboxEdgeCases:
     async def test_run_command_with_sandbox_timeout(self, tmp_path: Path):
         """run_command respects timeout (30s default)."""
         from src.agent_v2.tools.registry import create_default_registry
+
         registry = create_default_registry(workspace_root=tmp_path)
         result = await registry.execute("run_command", {"command": "echo fast"})
         assert not result.is_error
@@ -549,11 +660,12 @@ class TestSandboxEdgeCases:
 # 9. Edge: recovery ledger + multiple scenarios
 # ============================================================================
 
-class TestRecoveryEdgeCases:
 
+class TestRecoveryEdgeCases:
     def test_multiple_scenarios_independent(self):
         """Recovery of one scenario doesn't affect another."""
-        from src.agent_v2.runtime.recovery import RecoveryContext, FailureScenario, attempt_recovery
+        from src.agent_v2.runtime.recovery import FailureScenario, RecoveryContext, attempt_recovery
+
         ctx = RecoveryContext()
         r1 = attempt_recovery(FailureScenario.PROVIDER_FAILURE, ctx)
         r2 = attempt_recovery(FailureScenario.MCP_HANDSHAKE_FAILURE, ctx)
@@ -561,7 +673,8 @@ class TestRecoveryEdgeCases:
         assert r2.is_recovered
 
     def test_partial_recovery_tracks_remaining_steps(self):
-        from src.agent_v2.runtime.recovery import RecoveryContext, FailureScenario, attempt_recovery
+        from src.agent_v2.runtime.recovery import FailureScenario, RecoveryContext, attempt_recovery
+
         ctx = RecoveryContext().with_fail_at_step(1)
         result = attempt_recovery(FailureScenario.PARTIAL_PLUGIN_STARTUP, ctx)
         if result.is_partial_recovery:
@@ -569,7 +682,8 @@ class TestRecoveryEdgeCases:
             assert len(result.recovered) > 0
 
     def test_ledger_reports_correct_state_after_exhaustion(self):
-        from src.agent_v2.runtime.recovery import RecoveryContext, FailureScenario, attempt_recovery
+        from src.agent_v2.runtime.recovery import FailureScenario, RecoveryContext, attempt_recovery
+
         ctx = RecoveryContext()
         attempt_recovery(FailureScenario.TRUST_PROMPT_UNRESOLVED, ctx)
         attempt_recovery(FailureScenario.TRUST_PROMPT_UNRESOLVED, ctx)
@@ -582,8 +696,8 @@ class TestRecoveryEdgeCases:
 # 10. Prompt cache + usage tracker integration
 # ============================================================================
 
-class TestCacheUsageIntegration:
 
+class TestCacheUsageIntegration:
     def test_cache_tracking_with_real_usage(self):
         from src.agent_v2.runtime.prompt_cache import PromptCacheTracker
         from src.agent_v2.runtime.usage import UsageTracker, pricing_for_model
@@ -592,14 +706,12 @@ class TestCacheUsageIntegration:
         cache = PromptCacheTracker()
 
         # Turn 1: cache miss
-        usage1 = TokenUsage(input_tokens=5000, output_tokens=1000,
-                              cache_creation_tokens=3000)
+        usage1 = TokenUsage(input_tokens=5000, output_tokens=1000, cache_creation_tokens=3000)
         tracker.record(usage1)
         cache.record_miss(tokens_written=3000)
 
         # Turn 2: cache hit
-        usage2 = TokenUsage(input_tokens=5000, output_tokens=800,
-                              cache_read_tokens=3000)
+        usage2 = TokenUsage(input_tokens=5000, output_tokens=800, cache_read_tokens=3000)
         tracker.record(usage2)
         cache.record_hit(tokens_saved=3000)
 

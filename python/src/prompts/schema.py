@@ -2,6 +2,7 @@
 
 Layers: role, task, constraints, format, examples, fallback
 """
+
 from __future__ import annotations
 
 import re
@@ -28,7 +29,9 @@ def _parse_frontmatter(text: str) -> dict[str, Any]:
     # Match ---\n...\n--- at start of file (with optional leading whitespace)
     m = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
     if not m:
-        raise PromptSchemaError("No YAML frontmatter found (expected --- ... --- block at top of file)")
+        raise PromptSchemaError(
+            "No YAML frontmatter found (expected --- ... --- block at top of file)"
+        )
     return yaml.safe_load(m.group(1)) or {}
 
 
@@ -42,7 +45,7 @@ class PromptSpec:
     fallback: str = ""
 
     @classmethod
-    def from_yaml_frontmatter(cls, text: str) -> "PromptSpec":
+    def from_yaml_frontmatter(cls, text: str) -> PromptSpec:
         """Parse and validate a PromptSpec from a .md file's YAML frontmatter."""
         data = _parse_frontmatter(text)
         # Check required layers
@@ -67,8 +70,12 @@ class PromptSpec:
         # B9: at least 1 constraint must contain a digit
         has_number = any(re.search(r"\d", c) for c in self.constraints)
         if not has_number:
-            warnings.append("constraints layer should contain at least 1 quantified constraint (with a number)")
+            warnings.append(
+                "constraints layer should contain at least 1 quantified constraint (with a number)"
+            )
         # B10: fallback should mention empty input
-        if not re.search(r"empty|fewer than|no input|short|zero|blank", self.fallback, re.IGNORECASE):
+        if not re.search(
+            r"empty|fewer than|no input|short|zero|blank", self.fallback, re.IGNORECASE
+        ):
             warnings.append("fallback layer should describe handling of empty or very short input")
         return warnings

@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import tempfile
-import time
 import uuid
 from pathlib import Path
 from typing import Literal
@@ -19,12 +18,14 @@ logger = logging.getLogger(__name__)
 
 # ── v2 request body models (module-level so FastAPI can resolve annotations) ─
 
+
 class V2CreateGraphRequest(BaseModel):
     title: str = "Untitled Argument Map"
     source_doc: str | None = None
 
 
 # ── companion v3 request body models (module-level for FastAPI annotation resolution) ─
+
 
 class CompanionBuildLedgerRequest(BaseModel):
     doc_id: str
@@ -77,7 +78,8 @@ class CompanionImportReviewsRequest(BaseModel):
 # v2 models imported eagerly at module level so that `from __future__ import
 # annotations` string-annotation resolution finds them in module globals.
 try:
-    from src.argument.models_v2 import ArgNode, ArgEdge, SpanMapping  # noqa: F401
+    from src.argument.models_v2 import ArgEdge, ArgNode, SpanMapping  # noqa: F401
+
     _V2_MODELS_AVAILABLE = True
 except ImportError:
     _V2_MODELS_AVAILABLE = False
@@ -161,7 +163,12 @@ def register_argument_v2(
             edge = store.upsert_edge(gid, req)
         except ValueError as exc:
             msg = str(exc)
-            if "invalid_edge" in msg or "self_loop" in msg or "self loop" in msg or "duplicate" in msg:
+            if (
+                "invalid_edge" in msg
+                or "self_loop" in msg
+                or "self loop" in msg
+                or "duplicate" in msg
+            ):
                 return JSONResponse(
                     status_code=400,
                     content={"error": "invalid_edge", "detail": msg},
@@ -222,7 +229,7 @@ def register_argument_v2(
                     cloud_client=cloud_client,
                 ):
                     yield {"event": ev["event"], "data": ev["data"]}
-            except Exception as e:
+            except Exception:
                 logger.exception("v2_extract AI 调用失败 gid=%s", gid)
                 yield {"event": "error", "data": json.dumps({"message": "服务内部错误，请重试"})}
 
@@ -242,7 +249,7 @@ def register_argument_v2(
             return {"issues": [i.model_dump() for i in issues]}
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             logger.exception("v2_critique AI 调用失败 gid=%s", gid)
             raise HTTPException(500, "服务内部错误，请重试")
 
@@ -263,14 +270,16 @@ def register_argument_v2(
             return result
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             logger.exception("v2_suggest AI 调用失败 gid=%s node=%s", gid, req.node_id)
             raise HTTPException(500, "服务内部错误，请重试")
 
     # ── Flatten 端点（图→草稿） ─────────────────────────────────────────────
 
     _flatten_tasks_v2: dict[str, dict] = {}
-    _flatten_output_dir_v2 = (runtime_dir / "argument_output_v2") if runtime_dir else Path("argument_output_v2")
+    _flatten_output_dir_v2 = (
+        (runtime_dir / "argument_output_v2") if runtime_dir else Path("argument_output_v2")
+    )
     _flatten_output_dir_v2.mkdir(parents=True, exist_ok=True)
 
     class FlattenGraphRequest(BaseModel):
@@ -362,6 +371,7 @@ def register_companion(
         trans_cfg = config.get("translator", {})
         try:
             from src.translator.ollama_client import OllamaClient
+
             ollama_url = os.environ.get("OLLAMA_HOST") or trans_cfg.get(
                 "ollama_base_url", "http://localhost:11434"
             )
@@ -384,9 +394,17 @@ def register_companion(
 
         cloud_client = _get_cloud_client()
         ollama_client = _get_ollama_client() if cloud_client is None else None
-        print(f"[companion] build_ledger called: doc_id={req.doc_id} has_cloud={cloud_client is not None} has_ollama={ollama_client is not None} text_len={len(req.text or '')}", flush=True)
-        logger.info("companion_build_ledger doc_id=%s has_cloud=%s has_ollama=%s text_len=%d",
-                     req.doc_id, cloud_client is not None, ollama_client is not None, len(req.text or ""))
+        print(
+            f"[companion] build_ledger called: doc_id={req.doc_id} has_cloud={cloud_client is not None} has_ollama={ollama_client is not None} text_len={len(req.text or '')}",
+            flush=True,
+        )
+        logger.info(
+            "companion_build_ledger doc_id=%s has_cloud=%s has_ollama=%s text_len=%d",
+            req.doc_id,
+            cloud_client is not None,
+            ollama_client is not None,
+            len(req.text or ""),
+        )
         fn = rebuild_ledger if store.get_ledger(req.doc_id) else build_ledger
 
         async def _gen():
@@ -400,7 +418,7 @@ def register_companion(
                     ollama_client=ollama_client,
                 ):
                     yield {"event": ev["event"], "data": ev["data"]}
-            except Exception as e:
+            except Exception:
                 logger.exception("companion_build_ledger AI 调用失败 doc_id=%s", req.doc_id)
                 yield {"event": "error", "data": json.dumps({"message": "服务内部错误，请重试"})}
 
@@ -416,19 +434,20 @@ def register_companion(
     @app.put("/api/companion/ledger/promise")
     def companion_upsert_promise(doc_id: str, req: CompanionPromiseUpsertRequest):
         from src.argument.companion_models import Promise
+
         ledger = store.get_ledger(doc_id)
         if ledger is None:
             raise HTTPException(status_code=404, detail="Ledger not found")
-        kwargs = dict(
-            text=req.text,
-            kind=req.kind,
-            source_anchor_id=req.source_anchor_id,
-            discharge_anchor_ids=req.discharge_anchor_ids,
-            status=req.status,
-            note=req.note,
-            created_by="user",
-            user_overridden=True,
-        )
+        kwargs = {
+            "text": req.text,
+            "kind": req.kind,
+            "source_anchor_id": req.source_anchor_id,
+            "discharge_anchor_ids": req.discharge_anchor_ids,
+            "status": req.status,
+            "note": req.note,
+            "created_by": "user",
+            "user_overridden": True,
+        }
         if req.id:
             kwargs["id"] = req.id
         p = Promise(**kwargs)  # type: ignore[arg-type]
@@ -444,8 +463,10 @@ def register_companion(
 
     @app.post("/api/companion/ledger/relocate")
     def companion_relocate(doc_id: str, req: CompanionRelocateRequest):
-        from src.argument.anchor import relocate_all
         import hashlib
+
+        from src.argument.anchor import relocate_all
+
         ledger = store.get_ledger(doc_id)
         if ledger is None:
             raise HTTPException(status_code=404, detail="Ledger not found")
@@ -471,17 +492,17 @@ def register_companion(
 
         # Determine whether to use parallel review
         use_parallel = req.mode == "parallel"
-        if use_parallel:
-            # Config flag gates the feature
-            if load_config:
-                cfg = load_config()
-                if not cfg.get("features", {}).get("parallel_review", False):
-                    use_parallel = False
+        # Config flag gates the feature
+        if use_parallel and load_config:
+            cfg = load_config()
+            if not cfg.get("features", {}).get("parallel_review", False):
+                use_parallel = False
 
         async def _gen():
             try:
                 if use_parallel:
                     from src.argument.reviewer import run_review_parallel
+
                     async for ev in run_review_parallel(
                         doc_id=req.doc_id,
                         doc_title=req.doc_title,
@@ -499,6 +520,7 @@ def register_companion(
                         yield {"event": ev["event"], "data": ev["data"]}
                 else:
                     from src.argument.reviewer import run_review
+
                     async for ev in run_review(
                         doc_id=req.doc_id,
                         doc_title=req.doc_title,
@@ -514,7 +536,7 @@ def register_companion(
                         ollama_client=ollama_client,
                     ):
                         yield {"event": ev["event"], "data": ev["data"]}
-            except Exception as e:
+            except Exception:
                 logger.exception("companion_review AI 调用失败 doc_id=%s", req.doc_id)
                 yield {"event": "error", "data": json.dumps({"message": "服务内部错误，请重试"})}
 
@@ -566,7 +588,7 @@ def register_companion(
                     cloud_client=cloud_client,
                 ):
                     yield {"event": ev["event"], "data": ev["data"]}
-            except Exception as e:
+            except Exception:
                 logger.exception("companion_rebut AI 调用失败 session=%s pid=%s", session_id, pid)
                 yield {"event": "error", "data": json.dumps({"message": "服务内部错误，请重试"})}
 
@@ -598,7 +620,7 @@ def register_companion(
                     cloud_client=cloud_client,
                 ):
                     yield {"event": ev["event"], "data": ev["data"]}
-            except Exception as e:
+            except Exception:
                 logger.exception("companion_import_reviews AI 调用失败 doc_id=%s", req.doc_id)
                 yield {"event": "error", "data": json.dumps({"message": "服务内部错误，请重试"})}
 
@@ -661,6 +683,8 @@ def register_companion(
             return {"suggestion": suggestion}
         except HTTPException:
             raise
-        except Exception as e:
-            logger.exception("companion_suggest_experiment AI 调用失败 doc_id=%s pid=%s", doc_id, pid)
+        except Exception:
+            logger.exception(
+                "companion_suggest_experiment AI 调用失败 doc_id=%s pid=%s", doc_id, pid
+            )
             raise HTTPException(500, "服务内部错误，请重试")

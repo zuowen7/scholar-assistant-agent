@@ -19,9 +19,10 @@ logger = logging.getLogger(__name__)
 
 try:
     from pptx import Presentation
-    from pptx.util import Inches, Pt, Emu
     from pptx.dml.color import RGBColor
-    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+    from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
+    from pptx.util import Emu, Inches, Pt
+
     HAS_PPTX = True
 except ImportError:
     HAS_PPTX = False
@@ -53,14 +54,14 @@ except ImportError:
 
 # ── 设计常量 ──────────────────────────────────────────────────────────────────
 
-SLIDE_WIDTH = Inches(13.333)   # 16:9
+SLIDE_WIDTH = Inches(13.333)  # 16:9
 SLIDE_HEIGHT = Inches(7.5)
 
 # Nature 风格配色
 COLOR_BG = RGBColor(0xFF, 0xFF, 0xFF)
 COLOR_TEXT = RGBColor(0x27, 0x27, 0x27)
-COLOR_ACCENT = RGBColor(0x0F, 0x4D, 0x92)       # Nature blue
-COLOR_SECONDARY = RGBColor(0x76, 0x76, 0x76)    # 灰色
+COLOR_ACCENT = RGBColor(0x0F, 0x4D, 0x92)  # Nature blue
+COLOR_SECONDARY = RGBColor(0x76, 0x76, 0x76)  # 灰色
 COLOR_LIGHT_BG = RGBColor(0xF5, 0xF5, 0xF5)
 COLOR_BORDER = RGBColor(0xD8, 0xD8, 0xD8)
 COLOR_GAIN = RGBColor(0x2E, 0x9E, 0x44)
@@ -112,9 +113,7 @@ class PPTXBuilder:
 
     def __init__(self):
         if not HAS_PPTX:
-            raise ImportError(
-                "python-pptx 未安装。请运行: pip install python-pptx"
-            )
+            raise ImportError("python-pptx 未安装。请运行: pip install python-pptx")
         self.prs = Presentation()
         self.prs.slide_width = SLIDE_WIDTH
         self.prs.slide_height = SLIDE_HEIGHT
@@ -149,9 +148,7 @@ class PPTXBuilder:
         font_name: str = FONT_BODY,
     ) -> Any:
         """添加文本框"""
-        txBox = slide.shapes.add_textbox(
-            Inches(left), Inches(top), Inches(width), Inches(height)
-        )
+        txBox = slide.shapes.add_textbox(Inches(left), Inches(top), Inches(width), Inches(height))
         tf = txBox.text_frame
         tf.word_wrap = True
         p = tf.paragraphs[0]
@@ -175,17 +172,12 @@ class PPTXBuilder:
         color: RGBColor = COLOR_TEXT,
     ) -> Any:
         """添加项目符号列表"""
-        txBox = slide.shapes.add_textbox(
-            Inches(left), Inches(top), Inches(width), Inches(height)
-        )
+        txBox = slide.shapes.add_textbox(Inches(left), Inches(top), Inches(width), Inches(height))
         tf = txBox.text_frame
         tf.word_wrap = True
 
         for i, item in enumerate(items):
-            if i == 0:
-                p = tf.paragraphs[0]
-            else:
-                p = tf.add_paragraph()
+            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
             p.text = item
             p.font.size = font_size
             p.font.color.rgb = color
@@ -196,12 +188,14 @@ class PPTXBuilder:
             pPr = p._pPr
             if pPr is None:
                 from pptx.oxml.ns import qn
+
                 pPr = p._p.get_or_add_pPr()
             from pptx.oxml.ns import qn
-            buChar = pPr.makeelement(qn('a:buChar'), {'char': '•'})
+
+            buChar = pPr.makeelement(qn("a:buChar"), {"char": "•"})
             # 移除旧的项目符号设置
             for child in list(pPr):
-                if child.tag in (qn('a:buChar'), qn('a:buNone')):
+                if child.tag in (qn("a:buChar"), qn("a:buNone")):
                     pPr.remove(child)
             pPr.append(buChar)
 
@@ -215,13 +209,14 @@ class PPTXBuilder:
         tf = notes_slide.notes_text_frame
         tf.text = notes_text
 
-    def _add_source_label(
-        self, slide: Any, source_text: str
-    ) -> None:
+    def _add_source_label(self, slide: Any, source_text: str) -> None:
         """在幻灯片底部添加来源标签"""
         self._add_textbox(
             slide,
-            left=0.5, top=7.0, width=12, height=0.3,
+            left=0.5,
+            top=7.0,
+            width=12,
+            height=0.3,
             text=source_text,
             font_size=Pt(8),
             color=COLOR_SECONDARY,
@@ -243,7 +238,10 @@ class PPTXBuilder:
         # 顶部装饰线
         line = slide.shapes.add_shape(
             1,  # MSO_SHAPE.RECTANGLE
-            Inches(1), Inches(2.0), Inches(11.333), Pt(3),
+            Inches(1),
+            Inches(2.0),
+            Inches(11.333),
+            Pt(3),
         )
         line.fill.solid()
         line.fill.fore_color.rgb = COLOR_ACCENT
@@ -251,7 +249,11 @@ class PPTXBuilder:
 
         # 标题
         self._add_textbox(
-            slide, left=1, top=2.2, width=11.333, height=1.5,
+            slide,
+            left=1,
+            top=2.2,
+            width=11.333,
+            height=1.5,
             text=title,
             font_size=SLIDE_TEMPLATES["title"]["title_size"],
             color=SLIDE_TEMPLATES["title"]["title_color"],
@@ -261,7 +263,11 @@ class PPTXBuilder:
         # 副标题
         if subtitle:
             self._add_textbox(
-                slide, left=1, top=3.5, width=11.333, height=0.8,
+                slide,
+                left=1,
+                top=3.5,
+                width=11.333,
+                height=0.8,
                 text=subtitle,
                 font_size=SLIDE_TEMPLATES["title"]["subtitle_size"],
                 color=SLIDE_TEMPLATES["title"]["subtitle_color"],
@@ -270,14 +276,22 @@ class PPTXBuilder:
         # 作者 / 期刊
         if authors:
             self._add_textbox(
-                slide, left=1, top=5.0, width=11.333, height=0.5,
+                slide,
+                left=1,
+                top=5.0,
+                width=11.333,
+                height=0.5,
                 text=authors,
                 font_size=Pt(12),
                 color=COLOR_SECONDARY,
             )
         if venue:
             self._add_textbox(
-                slide, left=1, top=5.4, width=11.333, height=0.4,
+                slide,
+                left=1,
+                top=5.4,
+                width=11.333,
+                height=0.4,
                 text=venue,
                 font_size=Pt(10),
                 color=COLOR_SECONDARY,
@@ -297,7 +311,11 @@ class PPTXBuilder:
 
         # 标题
         self._add_textbox(
-            slide, left=0.8, top=0.5, width=11.733, height=0.8,
+            slide,
+            left=0.8,
+            top=0.5,
+            width=11.733,
+            height=0.8,
             text=title,
             font_size=SLIDE_TEMPLATES["content"]["title_size"],
             color=SLIDE_TEMPLATES["content"]["title_color"],
@@ -306,7 +324,11 @@ class PPTXBuilder:
 
         # 标题下划线
         line = slide.shapes.add_shape(
-            1, Inches(0.8), Inches(1.2), Inches(2), Pt(2),
+            1,
+            Inches(0.8),
+            Inches(1.2),
+            Inches(2),
+            Pt(2),
         )
         line.fill.solid()
         line.fill.fore_color.rgb = COLOR_BORDER
@@ -315,7 +337,11 @@ class PPTXBuilder:
         # 正文要点
         if bullets:
             self._add_bullet_list(
-                slide, left=0.8, top=1.6, width=11.733, height=5.0,
+                slide,
+                left=0.8,
+                top=1.6,
+                width=11.733,
+                height=5.0,
                 items=bullets,
                 font_size=SLIDE_TEMPLATES["content"]["body_size"],
             )
@@ -337,7 +363,11 @@ class PPTXBuilder:
 
         # 标题
         self._add_textbox(
-            slide, left=0.5, top=0.3, width=12.333, height=0.7,
+            slide,
+            left=0.5,
+            top=0.3,
+            width=12.333,
+            height=0.7,
             text=title,
             font_size=SLIDE_TEMPLATES["result"]["title_size"],
             color=SLIDE_TEMPLATES["result"]["title_color"],
@@ -348,15 +378,21 @@ class PPTXBuilder:
         if figure_path and Path(figure_path).exists():
             try:
                 # 图片放在左侧
-                pic = slide.shapes.add_picture(
+                slide.shapes.add_picture(
                     str(figure_path),
-                    Inches(0.5), Inches(1.2),
-                    Inches(8.5), Inches(5.5),
+                    Inches(0.5),
+                    Inches(1.2),
+                    Inches(8.5),
+                    Inches(5.5),
                 )
                 # 要点放在右侧窄栏
                 if bullets:
                     self._add_bullet_list(
-                        slide, left=9.3, top=1.5, width=3.7, height=5.0,
+                        slide,
+                        left=9.3,
+                        top=1.5,
+                        width=3.7,
+                        height=5.0,
                         items=bullets,
                         font_size=Pt(11),
                         color=COLOR_TEXT,
@@ -365,7 +401,11 @@ class PPTXBuilder:
                 logger.warning("插入图片失败 %s: %s", figure_path, e)
                 if bullets:
                     self._add_bullet_list(
-                        slide, left=0.5, top=1.5, width=12.333, height=5.0,
+                        slide,
+                        left=0.5,
+                        top=1.5,
+                        width=12.333,
+                        height=5.0,
                         items=bullets,
                         font_size=SLIDE_TEMPLATES["result"]["body_size"],
                     )
@@ -373,7 +413,11 @@ class PPTXBuilder:
             # 无图时使用全宽要点
             if bullets:
                 self._add_bullet_list(
-                    slide, left=0.5, top=1.2, width=12.333, height=5.5,
+                    slide,
+                    left=0.5,
+                    top=1.2,
+                    width=12.333,
+                    height=5.5,
                     items=bullets,
                     font_size=SLIDE_TEMPLATES["result"]["body_size"],
                 )
@@ -394,7 +438,11 @@ class PPTXBuilder:
 
         # 标题
         self._add_textbox(
-            slide, left=0.8, top=0.5, width=11.733, height=0.8,
+            slide,
+            left=0.8,
+            top=0.5,
+            width=11.733,
+            height=0.8,
             text=title,
             font_size=SLIDE_TEMPLATES["conclusion"]["title_size"],
             color=SLIDE_TEMPLATES["conclusion"]["title_color"],
@@ -404,7 +452,11 @@ class PPTXBuilder:
         # 核心要点
         if key_points:
             self._add_bullet_list(
-                slide, left=0.8, top=1.5, width=11.733, height=3.5,
+                slide,
+                left=0.8,
+                top=1.5,
+                width=11.733,
+                height=3.5,
                 items=key_points,
                 font_size=SLIDE_TEMPLATES["conclusion"]["body_size"],
                 color=COLOR_TEXT,
@@ -414,7 +466,11 @@ class PPTXBuilder:
         if limitations:
             limit_text = "局限性: " + "; ".join(limitations)
             self._add_textbox(
-                slide, left=0.8, top=5.5, width=11.733, height=1.0,
+                slide,
+                left=0.8,
+                top=5.5,
+                width=11.733,
+                height=1.0,
                 text=limit_text,
                 font_size=Pt(11),
                 color=COLOR_SECONDARY,
@@ -432,6 +488,7 @@ class PPTXBuilder:
 
 
 # ── 便捷函数 ──────────────────────────────────────────────────────────────────
+
 
 def build_paper_pptx(
     output_path: str | Path,
@@ -470,7 +527,7 @@ def build_paper_pptx(
     )
 
     # 内容页
-    for sd in (slides or []):
+    for sd in slides or []:
         stype = sd.get("type", "section")
         title = sd.get("title", "")
         bullets = sd.get("bullets", [])
@@ -532,14 +589,16 @@ def export_translated_paper_to_pptx(
     """
     slides_data: list[dict] = []
 
-    for ss in (section_slides or []):
-        slides_data.append({
-            "type": "section",
-            "title": ss.get("section_title", ""),
-            "bullets": ss.get("key_points", []),
-            "notes": ss.get("notes", ""),
-            "source": "",
-        })
+    for ss in section_slides or []:
+        slides_data.append(
+            {
+                "type": "section",
+                "title": ss.get("section_title", ""),
+                "bullets": ss.get("key_points", []),
+                "notes": ss.get("notes", ""),
+                "source": "",
+            }
+        )
 
     return build_paper_pptx(
         output_path,

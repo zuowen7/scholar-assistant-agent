@@ -5,17 +5,17 @@
   - runtime/session.rs: ContentBlock, ConversationMessage, MessageRole
   - runtime/conversation.rs: AssistantEvent
 """
+
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass, field
-from enum import Enum, auto
+from enum import Enum
 from typing import Any
-
 
 # ---------------------------------------------------------------------------
 # Message roles
 # ---------------------------------------------------------------------------
+
 
 class MessageRole(Enum):
     SYSTEM = "system"
@@ -27,6 +27,7 @@ class MessageRole(Enum):
 # ---------------------------------------------------------------------------
 # Content blocks (unified across providers)
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class TextBlock:
@@ -61,6 +62,7 @@ ContentBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock
 # Messages
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class Message:
     role: MessageRole
@@ -88,6 +90,7 @@ class InputMessage:
 # Token usage
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class TokenUsage:
     input_tokens: int = 0
@@ -111,6 +114,7 @@ class TokenUsage:
 # Tool definition
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class ToolDefinition:
     name: str
@@ -121,6 +125,7 @@ class ToolDefinition:
 # ---------------------------------------------------------------------------
 # Agent events (SSE stream output)
 # ---------------------------------------------------------------------------
+
 
 class AgentEventType(Enum):
     SESSION_STARTED = "session_started"
@@ -163,16 +168,22 @@ class AgentEvent:
 
     @staticmethod
     def tool_call(id: str, name: str, input_str: str) -> AgentEvent:
-        return AgentEvent(type=AgentEventType.TOOL_CALL, data={"id": id, "tool_name": name, "input": input_str})
+        return AgentEvent(
+            type=AgentEventType.TOOL_CALL, data={"id": id, "tool_name": name, "input": input_str}
+        )
 
     @staticmethod
     def tool_result(id: str, name: str, output: str, is_error: bool = False) -> AgentEvent:
-        evt_type = AgentEventType.TOOL_ERROR if is_error else AgentEventType.TOOL_RESULT
-        return AgentEvent(type=evt_type, data={"id": id, "tool_name": name, "output": output})
+        return AgentEvent(
+            type=AgentEventType.TOOL_RESULT,
+            data={"id": id, "tool_name": name, "output": output, "is_error": is_error},
+        )
 
     @staticmethod
     def tool_denied(id: str, name: str, reason: str) -> AgentEvent:
-        return AgentEvent(type=AgentEventType.TOOL_DENIED, data={"id": id, "tool_name": name, "reason": reason})
+        return AgentEvent(
+            type=AgentEventType.TOOL_DENIED, data={"id": id, "tool_name": name, "reason": reason}
+        )
 
     @staticmethod
     def await_approval(
@@ -206,7 +217,9 @@ class AgentEvent:
 
     @staticmethod
     def approval_received(id: str, decision: str) -> AgentEvent:
-        return AgentEvent(type=AgentEventType.APPROVAL_RECEIVED, data={"id": id, "decision": decision})
+        return AgentEvent(
+            type=AgentEventType.APPROVAL_RECEIVED, data={"id": id, "decision": decision}
+        )
 
     @staticmethod
     def done() -> AgentEvent:
@@ -229,6 +242,7 @@ class AgentEvent:
 # Provider response
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ProviderResponse:
     blocks: list[ContentBlock] = field(default_factory=list)
@@ -248,6 +262,7 @@ class ProviderResponse:
 # ---------------------------------------------------------------------------
 # Errors
 # ---------------------------------------------------------------------------
+
 
 class AgentError(Exception):
     pass

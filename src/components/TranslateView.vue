@@ -170,9 +170,14 @@
               <component :is="`h${Math.min(Math.max(b.level || 2, 1), 6)}`" class="dual-heading-orig">{{ stripHeadingMark(b.original) }}</component>
               <component v-if="b.translated" :is="`h${Math.min(Math.max(b.level || 2, 1), 6)}`" class="dual-heading-trans">{{ stripHeadingMark(b.translated) }}</component>
             </template>
-            <div v-else-if="!b.translatable" class="dual-untranslated" v-html="renderBlock(b.original, b.type)" />
+            <TranslationBlockHtml
+              v-else-if="!b.translatable"
+              class="dual-untranslated"
+              :text="b.original"
+              :block-type="b.type"
+            />
             <template v-else-if="b.status === 'failed'">
-              <div class="dual-orig" v-html="renderBlock(b.original, b.type)" />
+              <TranslationBlockHtml class="dual-orig" :text="b.original" :block-type="b.type" />
               <div class="failed-card">
                 <span><AlertCircle :size="15" :stroke-width="1.8" />{{ t('translate.translationFailed') }}</span>
                 <UiButton v-if="!retryingBlockIds.has(b.id)" variant="secondary" size="sm" @click="retryFailedBlock(b.id)">{{ t('translate.retry') }}</UiButton>
@@ -181,8 +186,27 @@
               </div>
             </template>
             <template v-else>
-              <div class="dual-orig" v-html="renderSentenceMarked(b.original, 'en', b.id, 'orig')" @mouseover="handleSentenceMouseEnter" @mouseleave="clearSentHover" />
-              <div v-if="b.translated" class="dual-trans" v-html="renderSentenceMarked(b.translated, 'zh', b.id, 'trans')" @mouseover="handleSentenceMouseEnter" @mouseleave="clearSentHover" />
+              <TranslationBlockHtml
+                class="dual-orig"
+                :text="b.original"
+                mode="sentence"
+                lang="en"
+                :block-id="b.id"
+                side="orig"
+                @mouseover="handleSentenceMouseEnter"
+                @mouseleave="clearSentHover"
+              />
+              <TranslationBlockHtml
+                v-if="b.translated"
+                class="dual-trans"
+                :text="b.translated"
+                mode="sentence"
+                lang="zh"
+                :block-id="b.id"
+                side="trans"
+                @mouseover="handleSentenceMouseEnter"
+                @mouseleave="clearSentHover"
+              />
               <div v-else class="dual-pending"><UiSpinner size="sm" :label="t('translate.translating')" /></div>
             </template>
           </article>
@@ -203,9 +227,10 @@ import UiDropdown from './ui/UiDropdown.vue'
 import type { DropdownItem } from './ui/UiDropdown.vue'
 import UiSegmented from './ui/UiSegmented.vue'
 import UiSpinner from './ui/UiSpinner.vue'
+import TranslationBlockHtml from './TranslationBlockHtml.vue'
 import { useTranslate } from '../composables/useTranslate'
-import { renderBlock, renderMarkdown } from '../utils/markdown'
-import { findCorrespondingSentenceIdx, splitSentences } from '../utils/sentenceAlign'
+import { renderMarkdown } from '../utils/markdown'
+import { findCorrespondingSentenceIndices, splitSentences } from '../utils/sentenceAlign'
 import { filterTranslationBlocks } from '../utils/translationSearch'
 
 const { t } = useI18n()
@@ -319,12 +344,6 @@ function flagTypeLabel(value: string) {
   return keys[value] ? t(`translate.flag.${keys[value]}`) : value
 }
 
-function renderSentenceMarked(text: string, lang: 'en' | 'zh', blockId: string, side: 'orig' | 'trans') {
-  const sentences = splitSentences(text, lang)
-  if (sentences.length <= 1) return escapeHtml(text)
-  return sentences.map((sentence, index) => `<span data-sent-idx="${index}" data-block-id="${blockId}" data-side="${side}" class="sent">${escapeHtml(sentence.text)}</span>`).join(' ')
-}
-function escapeHtml(value: string) { return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
 function clearSentHover() { document.querySelectorAll('.sent-active').forEach(element => element.classList.remove('sent-active')) }
 function handleSentenceMouseEnter(event: MouseEvent) {
   const target = (event.target as HTMLElement).closest<HTMLElement>('[data-sent-idx]')
@@ -343,12 +362,14 @@ function updateSentenceHighlight(blockId: string, side: 'orig' | 'trans', sentId
   const targetText = side === 'orig' ? block.translated : block.original
   const sourceLang = side === 'orig' ? 'en' : 'zh'
   const targetLang = side === 'orig' ? 'zh' : 'en'
-  const otherIndex = findCorrespondingSentenceIdx(splitSentences(sourceText, sourceLang), sourceText.length, splitSentences(targetText, targetLang), targetText.length, sentIdx)
+  const otherIndices = findCorrespondingSentenceIndices(splitSentences(sourceText, sourceLang), splitSentences(targetText, targetLang), sentIdx)
   const ownSelector = `[data-block-id="${CSS.escape(blockId)}"][data-side="${side}"][data-sent-idx="${sentIdx}"]`
   const otherSide = side === 'orig' ? 'trans' : 'orig'
-  const otherSelector = `[data-block-id="${CSS.escape(blockId)}"][data-side="${otherSide}"][data-sent-idx="${otherIndex}"]`
   document.querySelector(ownSelector)?.classList.add('sent-active')
-  document.querySelector(otherSelector)?.classList.add('sent-active')
+  otherIndices.forEach(otherIndex => {
+    const otherSelector = `[data-block-id="${CSS.escape(blockId)}"][data-side="${otherSide}"][data-sent-idx="${otherIndex}"]`
+    document.querySelector(otherSelector)?.classList.add('sent-active')
+  })
 }
 function openFilePicker() {
   const input = document.createElement('input')
@@ -388,7 +409,7 @@ h1, h2, p { margin-top: 0; }
 .quality-panel { flex: 0 0 auto; margin: 12px 42px 0; border: 1px solid var(--c-warn-border); border-radius: 9px; background: var(--c-warn-bg); }.quality-panel summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 13px; color: var(--c-warn-fg); font-size: 12px; cursor: pointer; }.quality-panel summary > span:first-child { display: inline-flex; align-items: center; gap: 8px; font-weight: 620; }.quality-summary { font-variant-numeric: tabular-nums; }.quality-list { max-height: 220px; overflow-y: auto; padding: 0 13px 12px; }.quality-list section { padding: 10px 0; border-top: 1px solid var(--c-warn-border); }.quality-list header { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 7px; font-size: 11px; }.quality-list p { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; margin: 5px 0; color: var(--c-text-1); font-size: 11px; line-height: 1.5; }.quality-list em { grid-column: 2; color: var(--c-text-2); font-style: normal; }
 .reader-shell { display: flex; min-height: 0; flex: 1; flex-direction: column; overflow: hidden; }.reader-columns { display: grid; flex: 0 0 auto; grid-template-columns: 1fr 1fr; gap: 32px; padding: 10px 46px; border-bottom: 1px solid var(--c-border); background: var(--c-panel); color: var(--c-text-3); font-size: 10px; font-weight: 620; letter-spacing: .07em; text-transform: uppercase; }
 .result-empty { display: grid; min-height: 280px; flex: 1; place-content: center; justify-items: center; gap: 7px; color: var(--c-text-3); text-align: center; }.result-empty strong { color: var(--c-text-1); font-size: 13px; }.result-empty span { max-width: 340px; font-size: 11px; line-height: 1.5; }
-.dual-view, .reading-view { min-height: 0; flex: 1; overflow-y: auto; padding: 0 42px 54px; }.dual-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; padding: 20px 4px; border-bottom: 1px solid var(--c-border); }.dual-row:hover { background: color-mix(in srgb, var(--c-accent-soft) 28%, transparent); }.dual-orig, .dual-trans { min-width: 0; font-size: 13px; line-height: 1.75; overflow-wrap: anywhere; }.dual-orig { color: var(--c-text-2); }.dual-trans { color: var(--read-trans-color, var(--c-text-0)); font-family: var(--read-ff, system-ui); font-size: var(--read-fs, 15px); line-height: var(--read-lh, 1.8); }.dual-heading-orig, .dual-heading-trans { margin: 5px 0 0; font-family: var(--font-serif-zh); font-size: 16px; line-height: 1.4; }.dual-heading-orig { color: var(--c-text-2); font-weight: 500; }.dual-heading-trans { color: var(--c-text-0); font-weight: 650; }.dual-untranslated { grid-column: 1 / -1; padding: 12px 14px; overflow-x: auto; border-left: 2px solid var(--c-border-strong); background: var(--c-surface-1); }.dual-pending { display: flex; align-items: center; }.failed-card { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; padding: 11px 12px; border-left: 3px solid var(--c-danger); background: var(--c-danger-bg); color: var(--c-danger-fg); font-size: 12px; }.failed-card > span { display: inline-flex; align-items: center; gap: 7px; margin-right: auto; }.failed-card p { flex-basis: 100%; margin: 0; overflow-wrap: anywhere; }
+.dual-view, .reading-view { min-height: 0; flex: 1; overflow-y: auto; padding: 0 42px 54px; }.dual-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; padding: 20px 4px; border-bottom: 1px solid var(--c-border); }.dual-row:hover { background: color-mix(in srgb, var(--c-accent-soft) 28%, transparent); }.dual-orig, .dual-trans { min-width: 0; font-size: 13px; line-height: 1.75; overflow-wrap: anywhere; white-space: pre-wrap; }.dual-orig { color: var(--c-text-2); }.dual-trans { color: var(--read-trans-color, var(--c-text-0)); font-family: var(--read-ff, system-ui); font-size: var(--read-fs, 15px); line-height: var(--read-lh, 1.8); }.dual-heading-orig, .dual-heading-trans { margin: 5px 0 0; font-family: var(--font-serif-zh); font-size: 16px; line-height: 1.4; }.dual-heading-orig { color: var(--c-text-2); font-weight: 500; }.dual-heading-trans { color: var(--c-text-0); font-weight: 650; }.dual-untranslated { grid-column: 1 / -1; padding: 12px 14px; overflow-x: auto; border-left: 2px solid var(--c-border-strong); background: var(--c-surface-1); }.dual-pending { display: flex; align-items: center; }.failed-card { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; padding: 11px 12px; border-left: 3px solid var(--c-danger); background: var(--c-danger-bg); color: var(--c-danger-fg); font-size: 12px; }.failed-card > span { display: inline-flex; align-items: center; gap: 7px; margin-right: auto; }.failed-card p { flex-basis: 100%; margin: 0; overflow-wrap: anywhere; }
 .dual-orig :deep(.sent), .dual-trans :deep(.sent) { padding: 1px 2px; border-radius: 3px; transition: background var(--motion-fast), box-shadow var(--motion-fast); }.dual-orig :deep(.sent:hover), .dual-trans :deep(.sent:hover), .dual-orig :deep(.sent-active), .dual-trans :deep(.sent-active) { background: var(--c-accent-soft); box-shadow: inset 2px 0 var(--c-accent); }
 .reading-view { padding-top: 34px; }.prose { max-width: 74ch; margin: 0 auto; color: var(--read-trans-color, var(--c-text-0)); font-family: var(--read-ff, system-ui); font-size: var(--read-fs, 15px); line-height: var(--read-lh, 1.8); }.prose :deep(h1), .prose :deep(h2), .prose :deep(h3) { font-family: var(--font-serif-zh); }.prose :deep(h1) { font-size: 25px; }.prose :deep(h2) { margin-top: 30px; padding-bottom: 8px; border-bottom: 1px solid var(--c-border); font-size: 20px; }.prose :deep(pre), .prose :deep(table) { max-width: 100%; overflow: auto; }
 button:focus-visible, summary:focus-visible, .result-meta button:focus-visible { outline: none; box-shadow: var(--ring-focus); }

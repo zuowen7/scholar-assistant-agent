@@ -250,6 +250,7 @@ class CitationIndexer:
         Returns:
             替换后的文本
         """
+
         def replacer(match):
             key = match.group(1)
             page_ref = match.group(2) or ""
@@ -289,7 +290,7 @@ class CitationIndexer:
             self.set_bibliography(bibliography)
 
         # 提取并索引
-        keys = self.extract_citations(text)
+        self.extract_citations(text)
         index = self.build_index(text)
 
         # 替换原文中的引用
@@ -298,12 +299,14 @@ class CitationIndexer:
         # 构建引用信息
         citations = []
         for key, number in sorted(index.items(), key=lambda x: x[1]):
-            citations.append({
-                "key": key,
-                "number": number,
-                "raw_citation": f"[@{key}]",
-                "found": key in self.bibliography,
-            })
+            citations.append(
+                {
+                    "key": key,
+                    "number": number,
+                    "raw_citation": f"[@{key}]",
+                    "found": key in self.bibliography,
+                }
+            )
 
         # 生成参考文献节
         bib_section = ""

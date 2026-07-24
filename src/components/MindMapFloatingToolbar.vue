@@ -178,7 +178,7 @@ function startDrag(event: PointerEvent) {
   padding: 5px;
   border: 1px solid color-mix(in srgb, var(--border-color) 52%, transparent);
   border-radius: 10px;
-  background: var(--c-panel-bg);
+  background: var(--c-panel);
   box-shadow: var(--elevation-1);
   cursor: grab;
   user-select: none;
@@ -261,7 +261,7 @@ button:disabled {
   top: calc(100% + 6px);
   right: 0;
   max-width: min(300px, calc(100vw - 24px));
-  background: var(--c-panel-bg);
+  background: var(--c-panel);
   border: 1px solid var(--c-border);
   border-radius: 10px;
   box-shadow: var(--elevation-2);

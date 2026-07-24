@@ -7,10 +7,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 
-class AccessRoute(str, Enum):
+class AccessRoute(StrEnum):
     PUBLIC_REPO = "public_repository"
     CONTROLLED_ACCESS = "controlled_access"
     WITHIN_PAPER = "within_paper_or_supplement"
@@ -23,24 +23,26 @@ class AccessRoute(str, Enum):
 @dataclass
 class DatasetInfo:
     """单个数据集信息"""
+
     name: str = ""
     access_route: AccessRoute = AccessRoute.NOT_APPLICABLE
-    repository: str = ""          # 仓库名称
-    identifier: str = ""           # DOI / accession / 永久链接
-    description: str = ""          # 内容简述
-    license_info: str = ""         # 许可信息
-    restriction_reason: str = ""   # 限制原因（如有）
-    access_contact: str = ""       # 申请联系方式（如有）
+    repository: str = ""  # 仓库名称
+    identifier: str = ""  # DOI / accession / 永久链接
+    description: str = ""  # 内容简述
+    license_info: str = ""  # 许可信息
+    restriction_reason: str = ""  # 限制原因（如有）
+    access_contact: str = ""  # 申请联系方式（如有）
 
 
 @dataclass
 class DataAvailabilityResult:
     """数据可用性声明结果"""
-    statement: str = ""            # 提交就绪的英文声明
+
+    statement: str = ""  # 提交就绪的英文声明
     repository_actions: list[str] = field(default_factory=list)
     missing_fields: list[str] = field(default_factory=list)
-    cn_checks: list[str] = field(default_factory=list)   # 中文核对项
-    fair_score: int = 0            # FAIR 评分 (0-100)
+    cn_checks: list[str] = field(default_factory=list)  # 中文核对项
+    fair_score: int = 0  # FAIR 评分 (0-100)
 
 
 # ── 中→英术语映射 ─────────────────────────────────────────────────────────────
@@ -154,28 +156,20 @@ def generate_statement(datasets: list[DatasetInfo]) -> DataAvailabilityResult:
             AccessRoute.CONTROLLED_ACCESS,
             AccessRoute.THIRD_PARTY,
         ):
-            result.missing_fields.append(
-                f"数据集 '{ds.name}' 缺少仓库名称"
-            )
+            result.missing_fields.append(f"数据集 '{ds.name}' 缺少仓库名称")
         if not ds.identifier and ds.access_route in (
             AccessRoute.PUBLIC_REPO,
             AccessRoute.REUSED_PUBLIC,
         ):
-            result.missing_fields.append(
-                f"数据集 '{ds.name}' 缺少 DOI/登录号"
-            )
+            result.missing_fields.append(f"数据集 '{ds.name}' 缺少 DOI/登录号")
         if not ds.restriction_reason and ds.access_route == AccessRoute.CONTROLLED_ACCESS:
-            result.missing_fields.append(
-                f"数据集 '{ds.name}' 缺少限制原因"
-            )
+            result.missing_fields.append(f"数据集 '{ds.name}' 缺少限制原因")
         if not ds.access_contact and ds.access_route in (
             AccessRoute.CONTROLLED_ACCESS,
             AccessRoute.THIRD_PARTY,
             AccessRoute.ON_REQUEST,
         ):
-            result.missing_fields.append(
-                f"数据集 '{ds.name}' 缺少申请联系方式"
-            )
+            result.missing_fields.append(f"数据集 '{ds.name}' 缺少申请联系方式")
 
         # 弱表述检测
         if "upon reasonable request" in statement and not ds.restriction_reason:
@@ -198,13 +192,9 @@ def _generate_repository_actions(datasets: list[DatasetInfo]) -> list[str]:
     actions: list[str] = []
     for ds in datasets:
         if ds.access_route in (AccessRoute.PUBLIC_REPO, AccessRoute.CONTROLLED_ACCESS):
-            actions.append(
-                f"上传 {ds.name} 到 {ds.repository or '[待选仓库]'}，获取 DOI/登录号"
-            )
+            actions.append(f"上传 {ds.name} 到 {ds.repository or '[待选仓库]'}，获取 DOI/登录号")
         if ds.access_route == AccessRoute.CONTROLLED_ACCESS:
-            actions.append(
-                f"为 {ds.name} 准备元数据记录（不含敏感数据）"
-            )
+            actions.append(f"为 {ds.name} 准备元数据记录（不含敏感数据）")
     return actions
 
 
@@ -282,7 +272,9 @@ def format_data_availability_section(
         lines.append(statement_text)
     else:
         lines.append("")
-        lines.append("Data sharing is not applicable to this article as no datasets "
-                     "were generated or analysed during the current study.")
+        lines.append(
+            "Data sharing is not applicable to this article as no datasets "
+            "were generated or analysed during the current study."
+        )
 
     return "\n".join(lines)

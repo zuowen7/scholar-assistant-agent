@@ -2,6 +2,7 @@
   <div
     class="mind-node anim-pop-in"
     :class="[`depth-${data.depth}`, { selected, root: data.isRoot, editing, expanding }]"
+    @contextmenu.prevent="onContextMenu"
   >
     <div class="color-bar" :style="{ background: barColor }"></div>
     <div class="node-body">
@@ -66,6 +67,23 @@
     <Handle type="source" :position="Position.Right" class="mind-handle" />
     <Handle type="source" :position="Position.Top" class="mind-handle hidden-handle" id="top" />
     <Handle type="source" :position="Position.Bottom" class="mind-handle hidden-handle" id="bottom" />
+
+    <Teleport to="body">
+      <div
+        v-if="menuOpen"
+        class="node-context-menu"
+        :style="{ left: `${menuPos.x}px`, top: `${menuPos.y}px` }"
+        @click.stop
+        @contextmenu.prevent
+      >
+        <button @click="menuEdit"><span class="cm-ico">✎</span>{{ t('mindmap.editNode') }}</button>
+        <button @click="menuAddChild"><span class="cm-ico">＋</span>{{ t('mindmap.childNode') }}</button>
+        <button @click="menuAddSibling"><span class="cm-ico">⊕</span>{{ t('mindmap.addSibling') }}</button>
+        <button @click="menuExpand"><span class="cm-ico">✦</span>{{ t('mindmap.aiExpand') }}</button>
+        <div v-if="!data.isRoot" class="cm-sep" />
+        <button v-if="!data.isRoot" class="cm-danger" @click="menuDelete"><span class="cm-ico">✕</span>{{ t('mindmap.deleteNode') }}</button>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -87,7 +105,7 @@ const props = defineProps<NodeProps<{
   hasChildren: boolean
 }>>()
 
-const { commitNodeText, updateNodeBody, selectedNodeId, analysisIssuesByNode, draftMindMap } = useMindMap()
+const { commitNodeText, updateNodeBody, selectedNodeId, analysisIssuesByNode, draftMindMap, addChild, addSibling, deleteNode, expandNode } = useMindMap()
 
 const expandingNodeId = inject<Ref<string>>('expandingNodeId', ref(''))
 
@@ -98,6 +116,9 @@ const inputRef = ref<HTMLTextAreaElement>()
 const bodyExpanded = ref(false)
 const draftBody = ref('')
 const bodyRef = ref<HTMLTextAreaElement>()
+
+const menuOpen = ref(false)
+const menuPos = ref({ x: 0, y: 0 })
 
 const selected = computed(() => selectedNodeId.value === props.id)
 const expanding = computed(() => !!expandingNodeId.value && expandingNodeId.value === props.id)
@@ -147,6 +168,53 @@ function toggleBody() {
 
 function commitBody() {
   updateNodeBody(props.id, draftBody.value)
+}
+
+// ── Right-click context menu ──────────────────────────────
+function onContextMenu(e: MouseEvent) {
+  selectedNodeId.value = props.id
+  menuPos.value = { x: e.clientX, y: e.clientY }
+  menuOpen.value = true
+  const close = () => {
+    menuOpen.value = false
+    document.removeEventListener('click', close)
+    document.removeEventListener('contextmenu', close)
+  }
+  setTimeout(() => {
+    document.addEventListener('click', close)
+    document.addEventListener('contextmenu', close)
+  }, 0)
+}
+
+function menuEdit() {
+  menuOpen.value = false
+  startEdit()
+}
+
+function menuAddChild() {
+  menuOpen.value = false
+  const newId = addChild(props.id)
+  if (newId) {
+    // Auto-start editing the new node's text
+    nextTick(() => {
+      selectedNodeId.value = newId
+    })
+  }
+}
+
+function menuAddSibling() {
+  menuOpen.value = false
+  addSibling(props.id)
+}
+
+async function menuExpand() {
+  menuOpen.value = false
+  await expandNode(props.id)
+}
+
+function menuDelete() {
+  menuOpen.value = false
+  deleteNode(props.id)
 }
 
 function autosize(e: Event) {
@@ -419,5 +487,64 @@ defineExpose({ startEdit })
   .mind-node:hover { transform: none; }
   .mind-node:active { transform: none; }
   .node-badge { animation: none; }
+}
+</style>
+
+<!-- Context menu (global — teleported to body) -->
+<style>
+.node-context-menu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 168px;
+  background: var(--c-surface-1, #fff);
+  border: 1px solid var(--c-glass-border, #e0dccf);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(45, 39, 29, .16);
+  padding: 5px;
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  animation: ncm-in 140ms var(--ease-spring, ease-out) both;
+}
+@keyframes ncm-in {
+  from { opacity: 0; transform: scale(0.94) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.node-context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: none;
+  background: none;
+  color: var(--c-text-1, #3a3328);
+  font-size: 13px;
+  text-align: left;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+  font-family: inherit;
+}
+.node-context-menu button:hover {
+  background: var(--c-accent-soft, rgba(200, 80, 58, .1));
+  color: var(--c-accent-hover, #b0432f);
+}
+.node-context-menu button.cm-danger:hover {
+  background: var(--c-danger-bg, rgba(220, 60, 60, .1));
+  color: var(--c-danger, #dc3c3c);
+}
+.node-context-menu .cm-ico {
+  font-size: 14px;
+  width: 16px;
+  text-align: center;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+.node-context-menu .cm-sep {
+  height: 1px;
+  background: var(--c-surface-3, #e8e4d8);
+  margin: 3px 4px;
 }
 </style>

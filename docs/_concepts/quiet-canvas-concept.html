@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Scholar Assistant · Quiet Canvas 概念稿</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    /* 暖调中性（brand-biased，非纯白纯黑） */
+    --bg:#FBF9F5; --surface:#FFFFFF; --sunken:#F4F1EA; --border:#ECE7DE; --border-strong:#E1D9CB;
+    --text:#211E18; --text-2:#6B6358; --text-3:#9A9183;
+    /* 单一克制强调色：精炼陶土（非蓝/非渐变/非霓虹） */
+    --accent:#C0623E; --accent-press:#A8512F; --accent-soft:#F6E9E2; --on-accent:#FFF8F2; --accent-ring:rgba(192,98,62,.34);
+    --shadow-1:0 1px 2px rgba(40,32,24,.05); --shadow-2:0 8px 24px rgba(40,32,24,.08); --shadow-3:0 18px 48px rgba(40,32,24,.12);
+    --r:12px; --r-sm:9px; --r-lg:16px; --r-pill:999px;
+    --ease:cubic-bezier(.16,1,.3,1);
+    --rail:0px;
+    --font:'Plus Jakarta Sans',system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+  }
+  [data-theme="dark"]{
+    --bg:#18160F; --surface:#211E17; --sunken:#15140E; --border:#2E2A20; --border-strong:#3A3527;
+    --text:#ECE7DD; --text-2:#A89E8C; --text-3:#756C5B;
+    --accent:#DD7E54; --accent-press:#C9693F; --accent-soft:#2C2018; --on-accent:#1A140E; --accent-ring:rgba(221,126,84,.40);
+    --shadow-1:0 1px 2px rgba(0,0,0,.4); --shadow-2:0 8px 24px rgba(0,0,0,.45); --shadow-3:0 18px 48px rgba(0,0,0,.55);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased;overflow:hidden}
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  ::selection{background:var(--accent-soft);color:var(--accent)}
+  .hidden{display:none!important}
+
+  /* 视图切换：淡入+轻微上浮（指数缓动，无回弹） */
+  .view{position:absolute;inset:0;display:flex;flex-direction:column;opacity:0;transform:translateY(10px);pointer-events:none;transition:opacity .24s var(--ease),transform .24s var(--ease)}
+  .view.active{opacity:1;transform:none;pointer-events:auto}
+
+  /* ── 欢迎视图 ── */
+  .welcome{align-items:center;justify-content:center;text-align:center;padding:8vh 24px}
+  .brand{display:inline-flex;align-items:center;gap:10px;color:var(--text-2);font-size:13px;font-weight:600;letter-spacing:.02em;margin-bottom:28px}
+  .brand .mark{width:30px;height:30px;border-radius:9px;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;font-weight:700;font-size:15px}
+  .welcome h1{font-size:clamp(30px,4.4vw,44px);font-weight:700;letter-spacing:-.02em;line-height:1.12;max-width:14ch;margin:0 auto 18px}
+  .welcome p.sub{color:var(--text-2);font-size:16px;max-width:46ch;margin:0 auto 36px;line-height:1.7}
+  .cta-row{display:flex;gap:12px;justify-content:center;align-items:center;flex-wrap:wrap}
+  .btn{height:44px;padding:0 22px;border-radius:var(--r);font-weight:600;font-size:15px;display:inline-flex;align-items:center;gap:8px;transition:transform .18s var(--ease),background .18s var(--ease),box-shadow .18s var(--ease)}
+  .btn:active{transform:translateY(1px)}
+  .btn.primary{background:var(--accent);color:var(--on-accent);box-shadow:var(--shadow-1)}
+  .btn.primary:hover{background:var(--accent-press);box-shadow:var(--shadow-2);transform:translateY(-1px)}
+  .btn.ghost{color:var(--text-2)}
+  .btn.ghost:hover{background:var(--sunken);color:var(--text)}
+  .btn:focus-visible{outline:none;box-shadow:0 0 0 3px var(--accent-ring)}
+
+  .recent{margin-top:56px;width:min(460px,90vw);text-align:left}
+  .recent .lab{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);margin-bottom:12px;padding-left:4px}
+  .rec-item{display:flex;align-items:center;gap:14px;padding:14px 16px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);margin-bottom:8px;transition:box-shadow .18s var(--ease),transform .18s var(--ease),border-color .18s var(--ease);cursor:pointer}
+  .rec-item:hover{box-shadow:var(--shadow-2);transform:translateY(-1px);border-color:var(--border-strong)}
+  .rec-item .dot{width:34px;height:34px;border-radius:9px;background:var(--sunken);display:grid;place-items:center;color:var(--text-3);font-size:13px;font-weight:700;flex:none}
+  .rec-item .nm{font-weight:600;font-size:14px}
+  .rec-item .mt{font-size:12px;color:var(--text-3);margin-top:2px}
+  .hint{margin-top:40px;font-size:13px;color:var(--text-3)}
+  .hint kbd{font-family:var(--font);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:1px 7px;color:var(--text-2);font-weight:600}
+
+  /* ── 编辑器视图 ── */
+  .topbar{height:58px;flex:none;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;padding:0 18px;background:var(--surface)}
+  .crumb{display:flex;align-items:center;gap:10px;color:var(--text-2);font-size:14px;min-width:0}
+  .crumb b{color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .crumb .back{color:var(--text-2);display:grid;place-items:center;width:32px;height:32px;border-radius:8px;transition:background .18s}
+  .crumb .back:hover{background:var(--sunken);color:var(--text)}
+  .search{flex:1;max-width:440px;margin:0 auto;display:flex;align-items:center;gap:8px;height:38px;padding:0 14px;background:var(--sunken);border:1px solid transparent;border-radius:var(--r-pill);color:var(--text-3);font-size:14px;transition:border-color .18s,box-shadow .18s}
+  .search:hover{border-color:var(--border-strong)}
+  .search:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring);color:var(--text-2)}
+  .search .k{margin-left:auto;font-size:12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:1px 7px;color:var(--text-2)}
+  .actions{display:flex;align-items:center;gap:6px;margin-left:auto}
+  .icon-btn{width:38px;height:38px;border-radius:9px;display:grid;place-items:center;color:var(--text-2);transition:background .18s,color .18s}
+  .icon-btn:hover{background:var(--sunken);color:var(--text)}
+  .icon-btn:focus-visible{outline:none;box-shadow:0 0 0 3px var(--accent-ring)}
+  .icon-btn.on{color:var(--accent);background:var(--accent-soft)}
+  .avatar{width:32px;height:32px;border-radius:50%;background:var(--sunken);border:1px solid var(--border);display:grid;place-items:center;font-weight:700;color:var(--text-2);margin-left:4px}
+
+  .stage{flex:1;display:grid;grid-template-columns:1fr 0px;min-height:0;transition:grid-template-columns .26s var(--ease)}
+  .stage.panel-open{grid-template-columns:1fr 340px}
+  .canvas{overflow:auto;padding:8vh 24px 16vh;display:flex;justify-content:center}
+  .doc{max-width:68ch;width:100%}
+  .doc .eyebrow{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  .doc h1{font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.22;margin-bottom:10px}
+  .doc .meta{color:var(--text-3);font-size:13px;margin-bottom:36px;display:flex;gap:12px;align-items:center}
+  .doc p{margin-bottom:20px;color:#2E2A22;font-size:16px;line-height:1.8}
+  [data-theme="dark"] .doc p{color:var(--text)}
+  .doc p strong{color:var(--text);font-weight:700}
+  .doc blockquote{border-left:3px solid var(--accent);padding:6px 18px;margin:24px 0;color:var(--text-2);background:var(--surface);border-radius:0 var(--r-sm) var(--r-sm) 0}
+  .empty-tip{margin-top:8px;color:var(--text-3);font-size:13px;display:flex;align-items:center;gap:8px}
+  .empty-tip kbd{font-family:var(--font);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:1px 7px;color:var(--text-2)}
+
+  .panel{background:var(--surface);border-left:1px solid var(--border);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+  .panel .ph{display:flex;align-items:center;gap:8px;padding:16px 18px;border-bottom:1px solid var(--border);font-weight:600;font-size:14px}
+  .panel .body{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+  .msg{padding:12px 14px;border-radius:var(--r);font-size:14px;line-height:1.6}
+  .msg.ai{background:var(--sunken);color:var(--text-2)}
+  .msg.me{background:var(--accent-soft);color:var(--accent);align-self:flex-end;max-width:88%}
+  .composer{display:flex;gap:8px;padding:14px;border-top:1px solid var(--border)}
+  .composer input{flex:1;height:38px;padding:0 14px;background:var(--sunken);border:1px solid transparent;border-radius:var(--r);color:var(--text);font-family:inherit;font-size:14px}
+  .composer input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+
+  /* 命令面板 */
+  .mask{position:fixed;inset:0;background:rgba(33,30,24,.32);backdrop-filter:blur(6px);display:none;align-items:flex-start;justify-content:center;padding-top:14vh;z-index:50;opacity:0;transition:opacity .18s var(--ease)}
+  .mask.open{display:flex;opacity:1}
+  .palette{width:min(560px,92vw);background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--r-lg);box-shadow:var(--shadow-3);overflow:hidden;transform:translateY(-10px);opacity:0;transition:transform .22s var(--ease),opacity .22s var(--ease)}
+  .mask.open .palette{transform:none;opacity:1}
+  .palette input{width:100%;height:52px;padding:0 20px;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-family:inherit;font-size:15px}
+  .palette input:focus{outline:none}
+  .palette .list{max-height:320px;overflow:auto;padding:8px}
+  .palette .item{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--r);color:var(--text-2);font-size:14px;cursor:pointer}
+  .palette .item .ic{width:30px;height:30px;border-radius:8px;background:var(--sunken);display:grid;place-items:center;color:var(--text-3);flex:none}
+  .palette .item.sel,.palette .item:hover{background:var(--sunken);color:var(--text)}
+  .palette .item .h{margin-left:auto;font-size:12px;color:var(--text-3)}
+
+  @media (prefers-reduced-motion:reduce){*{transition-duration:.001ms!important;animation-duration:.001ms!important}}
+</style>
+</head>
+<body>
+
+<!-- 欢迎视图 -->
+<section class="view welcome active" id="welcome">
+  <div class="brand"><span class="mark">研</span> Scholar Assistant · 研墨</div>
+  <h1>把论文，写得更轻松</h1>
+  <p class="sub">隐私优先的学术写作空间。你的文档留在本地，AI 只在你需要时到场。</p>
+  <div class="cta-row">
+    <button class="btn primary" id="toEditor">新建文档</button>
+    <button class="btn ghost">导入 PDF</button>
+  </div>
+
+  <div class="recent">
+    <div class="lab">最近</div>
+    <div class="rec-item" data-open><span class="dot">论</span><div><div class="nm">气候政策综述.docx</div><div class="mt">2 分钟前 · 1,284 词</div></div></div>
+    <div class="rec-item" data-open><span class="dot">笔</span><div><div class="nm">量子纠错笔记.md</div><div class="mt">昨天 · 860 词</div></div></div>
+    <div class="rec-item" data-open><span class="dot">献</span><div><div class="nm">文献综述 v3.docx</div><div class="mt">3 天前 · 2,041 词</div></div></div>
+  </div>
+
+  <div class="hint">随时按 <kbd>⌘</kbd> <kbd>K</kbd> 呼出命令</div>
+</section>
+
+<!-- 编辑器视图 -->
+<section class="view editor" id="editor">
+  <header class="topbar">
+    <div class="crumb"><button class="back" id="toWelcome" title="返回库">‹</button> <b>气候政策综述.docx</b></div>
+    <div class="search" id="search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg> 搜索或下达命令 <span class="k">⌘K</span></div>
+    <div class="actions">
+      <button class="icon-btn" id="focusBtn" title="专注模式"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 9V5a1 1 0 011-1h4M20 9V5a1 1 0 00-1-1h-4M4 15v4a1 1 0 001 1h4M20 15v4a1 1 0 01-1 1h-4"/></svg></button>
+      <button class="icon-btn" id="aiBtn" title="AI 助手">AI</button>
+      <button class="icon-btn" id="themeBtn" title="主题"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A8 8 0 1111.2 3a6 6 0 009.8 9.8z"/></svg></button>
+      <div class="avatar">研</div>
+    </div>
+  </header>
+
+  <div class="stage" id="stage">
+    <div class="canvas">
+      <article class="doc">
+        <div class="eyebrow">第 3 节</div>
+        <h1>全球气候治理中的政策协同机制</h1>
+        <div class="meta"><span>自动保存于 2 分钟前</span><span>·</span><span>1,284 词</span></div>
+        <p>近年来，<strong>跨国气候政策</strong>的协同从自愿承诺转向具有约束力的核算框架。本文认为，协同失效主要源于<strong>信息不对称</strong>与减排成本的不均衡分布。</p>
+        <p>既有研究多聚焦单一国家的减排路径，忽视了缔约方之间的策略互动。我们引入多边博弈模型，刻画当一国强化本土政策时，邻国可能的"搭便车"倾向及其对总体目标的抵消效应。</p>
+        <blockquote>"政策协同不是目标的简单相加，而是激励结构的重新对齐。"</blockquote>
+        <p>下一节将基于模拟，量化不同协同强度下的边际减排成本，并为制度设计建议提供实证支撑。</p>
+        <div class="empty-tip">卡住了？按 <kbd>⌘</kbd> <kbd>K</kbd> 让 AI 帮你起头，或呼出大纲。</div>
+      </article>
+    </div>
+
+    <aside class="panel" id="panel">
+      <div class="ph">AI 助手</div>
+      <div class="body">
+        <div class="msg ai">已读取第 3 节。要我扩写"搭便车"的实证，还是先生成图 2 的数据说明？</div>
+        <div class="msg me">先扩写实证，控制在 200 词。</div>
+        <div class="msg ai">好的，正在生成…</div>
+      </div>
+      <div class="composer"><input placeholder="问 AI 助手…" /><button class="btn primary" style="height:38px;padding:0 16px">发送</button></div>
+    </aside>
+  </div>
+</section>
+
+<!-- 命令面板 -->
+<div class="mask" id="mask">
+  <div class="palette" role="dialog" aria-label="命令面板">
+    <input placeholder="输入命令或搜索…" id="pin" />
+    <div class="list">
+      <div class="item sel"><span class="ic">⌘</span> 新建文档 <span class="h">↵</span></div>
+      <div class="item"><span class="ic">⌘</span> 打开：气候政策综述.docx</div>
+      <div class="item"><span class="ic">⌘</span> 让 AI 续写这一段</div>
+      <div class="item"><span class="ic">⌘</span> 切换主题</div>
+      <div class="item"><span class="ic">⌘</span> 导出：Word / LaTeX / PDF</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const root=document.documentElement;
+  const welcome=document.getElementById('welcome'),editor=document.getElementById('editor');
+  const show=el=>{welcome.classList.toggle('active',el===welcome);editor.classList.toggle('active',el===editor);};
+  document.getElementById('toEditor').onclick=()=>show(editor);
+  document.getElementById('toWelcome').onclick=()=>show(welcome);
+  document.querySelectorAll('[data-open]').forEach(e=>e.onclick=()=>show(editor));
+  document.getElementById('themeBtn').onclick=()=>root.dataset.theme=root.dataset.theme==='light'?'dark':'light';
+
+  const stage=document.getElementById('stage'),aiBtn=document.getElementById('aiBtn');
+  aiBtn.onclick=()=>{stage.classList.toggle('panel-open');aiBtn.classList.toggle('on');};
+
+  const focusBtn=document.getElementById('focusBtn');
+  focusBtn.onclick=()=>{document.body.classList.toggle('focus');focusBtn.classList.toggle('on');};
+
+  const mask=document.getElementById('mask'),pin=document.getElementById('pin');
+  const openP=()=>{mask.classList.add('open');setTimeout(()=>pin.focus(),60);};
+  const closeP=()=>mask.classList.remove('open');
+  document.getElementById('search').onclick=openP;
+  window.addEventListener('keydown',e=>{
+    if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();mask.classList.contains('open')?closeP():openP();}
+    if(e.key==='Escape')closeP();
+  });
+  mask.onclick=e=>{if(e.target===mask)closeP();};
+</script>
+</body>
+</html>

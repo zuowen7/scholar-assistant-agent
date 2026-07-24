@@ -12,7 +12,7 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -63,6 +63,7 @@ def _get_closure_var_by_name(handler: Any, name: str) -> Any:
 def _find_route_endpoint(app, path: str, method: str = "GET"):
     """Find a FastAPI route endpoint by path and method."""
     from fastapi.routing import APIRoute
+
     for route in app.routes:
         if isinstance(route, APIRoute) and route.path == path and method in route.methods:
             return route.endpoint
@@ -86,11 +87,10 @@ def _inject_task(tasks_dict: dict, task_id: str, output_path: str) -> None:
 
 def _inject_session(session_pool: dict, sid: str, approve_returns: bool = True) -> Any:
     """Create and inject a mock AgentSession into the pool."""
-    from unittest.mock import MagicMock
     mock = MagicMock()
     mock.session_id = sid
-    mock.approve = AsyncMock(return_value=approve_returns)
-    mock.abort = AsyncMock()
+    mock.approve = MagicMock(return_value=approve_returns)
+    mock.abort = MagicMock()
     mock.journal = None
     mock.state = MagicMock(status="running")
     mock.task_queue = None
@@ -106,6 +106,7 @@ def _inject_session(session_pool: dict, sid: str, approve_returns: bool = True) 
 @pytest.fixture(scope="module")
 def client():
     from fastapi.testclient import TestClient
+
     from api_factory import create_app
 
     test_dir = tempfile.mkdtemp()
@@ -132,9 +133,16 @@ class TestDownloadTask:
 
     def test_download_pending_task_returns_400(self, client):
         """Newly created task has status=pending → download must return 400."""
-        resp = client.post("/api/translate", files={
-            "file": ("test.txt", b"This is a test document for download testing.", "text/plain"),
-        })
+        resp = client.post(
+            "/api/translate",
+            files={
+                "file": (
+                    "test.txt",
+                    b"This is a test document for download testing.",
+                    "text/plain",
+                ),
+            },
+        )
         if resp.status_code == 409:
             pytest.skip("Another task already active, skip")
         assert resp.status_code == 200, f"Upload failed: {resp.text}"
@@ -164,6 +172,7 @@ class TestDownloadTask:
 def app_with_tasks(client):
     """Inject a completed task with a real output file into the app."""
     from fastapi.testclient import TestClient
+
     from api_factory import create_app
 
     test_dir = tempfile.mkdtemp()
@@ -207,9 +216,12 @@ class TestApproveEndpoint:
     """POST /api/agent/v2/approve/{session_id}/{event_id}."""
 
     def test_approve_nonexistent_session_404(self, client):
-        resp = client.post("/api/agent/v2/approve/fake-session/evt_001", json={
-            "decision": "allow_once",
-        })
+        resp = client.post(
+            "/api/agent/v2/approve/fake-session/evt_001",
+            json={
+                "decision": "allow_once",
+            },
+        )
         assert resp.status_code in (403, 404)
 
     def test_approve_happy_path(self, client, agent_app_with_session):
@@ -238,6 +250,7 @@ class TestApproveEndpoint:
 def agent_app_with_session():
     """Create an app with a mock session injected, returning session_id and event_id."""
     from fastapi.testclient import TestClient
+
     from api_factory import create_app
 
     test_dir = tempfile.mkdtemp()
@@ -255,6 +268,7 @@ def agent_app_with_session():
 
         # Inject mock session into _SESSION_POOL via module-level import
         import src.agent_v2.router as agent_router
+
         session_pool = agent_router._SESSION_POOL
 
         session_id = "test_session_approve_001"

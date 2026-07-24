@@ -64,20 +64,27 @@
       <div v-if="recentProjects.length" data-test="recent-projects" class="recent-section">
         <div class="recent-header anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 4 }">{{ t('project.recentProjects') }}</div>
         <div class="recent-list">
-          <button
+          <div
             v-for="(proj, ri) in recentProjects.slice(0, 5)"
             :key="proj.path"
-            data-test="recent-item"
             class="recent-item anim-fade-in-up anim-stagger"
             :style="{ '--stagger-i': 5 + ri }"
-            @click="$emit('open-recent', proj.path)"
           >
-            <span class="recent-name">{{ proj.name }}</span>
-            <span class="recent-path">{{ formatPath(proj.path) }}</span>
-            <span class="recent-remove" @click.stop="removeRecent(proj.path)" :title="t('project.removeRecent')">
+            <button type="button" data-test="recent-item" class="recent-open" @click="$emit('open-recent', proj.path)">
+              <span class="recent-name">{{ proj.name }}</span>
+              <span class="recent-path">{{ formatPath(proj.path) }}</span>
+            </button>
+            <button
+              type="button"
+              data-test="recent-remove"
+              class="recent-remove"
+              :title="t('project.removeRecent')"
+              :aria-label="`${t('project.removeRecent')}: ${proj.name}`"
+              @click="removeRecent(proj.path)"
+            >
               <X :size="12" :stroke-width="2" />
-            </span>
-          </button>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -311,20 +318,30 @@ function formatPath(p: string | undefined | null): string {
 .recent-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
   border: 1px solid var(--c-surface-3);
   border-radius: var(--radius-sm);
   background: var(--c-surface-1);
   color: var(--c-text-1);
-  font: inherit;
-  cursor: pointer;
-  text-align: left;
   transition: border-color var(--motion-fast), background var(--motion-fast);
 }
 .recent-item:hover {
   border-color: var(--c-accent);
   background: var(--c-surface-2);
+}
+
+.recent-open {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px 8px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
 }
 
 .recent-name {
@@ -340,12 +357,16 @@ function formatPath(p: string | undefined | null): string {
 
 .recent-remove {
   flex-shrink: 0;
-  width: 18px;
-  height: 18px;
+  width: 26px;
+  height: 26px;
+  margin-right: 5px;
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 4px;
+  border: 0;
+  background: transparent;
   color: var(--c-text-3);
   opacity: 0;
   transform: scale(0.8);
@@ -355,7 +376,8 @@ function formatPath(p: string | undefined | null): string {
               color var(--motion-fast);
   cursor: pointer;
 }
-.recent-item:hover .recent-remove { opacity: 1; transform: scale(1); }
+.recent-item:hover .recent-remove,
+.recent-item:focus-within .recent-remove { opacity: 1; transform: scale(1); }
 .recent-remove:hover { background: var(--c-danger-bg); color: var(--c-danger); transform: scale(1.12); }
 .recent-remove:active { transform: scale(0.9); }
 

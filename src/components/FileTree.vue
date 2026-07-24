@@ -104,7 +104,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -118,6 +118,7 @@ import { useFileTree } from '../composables/useFileTree'
 import { useEditor } from '../composables/useEditor'
 import { useToast } from '../composables/useToast'
 import type { FileEntry } from '../types'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
 
 const { files, rootDir, openFolder, readFileContent, createFile, createFolder, renameFile, deleteFile, copyFileTo, setClipboard, getClipboard, clearClipboard } = useFileTree()
 const { openFile: openEditorFile, activeFile, renameTabPath, closeTab } = useEditor()
@@ -126,6 +127,8 @@ const { success, pushError } = useToast()
 defineEmits<{ (e: 'collapse'): void }>()
 
 const searchQuery = ref('')
+const deferredSearchQuery = ref('')
+let searchTimer: ReturnType<typeof setTimeout> | null = null
 const loading = ref(false)
 const refreshing = ref(false)
 const showCreatePrompt = ref(false)
@@ -154,12 +157,24 @@ function filterTree(entries: FileEntry[], query: string): FileEntry[] {
   return result
 }
 
-const filteredFiles = computed(() => filterTree(files.value, searchQuery.value))
+watch(searchQuery, (query) => {
+  if (searchTimer !== null) clearTimeout(searchTimer)
+  if (!query) {
+    searchTimer = null
+    deferredSearchQuery.value = ''
+    return
+  }
+  searchTimer = setTimeout(() => {
+    searchTimer = null
+    deferredSearchQuery.value = query
+  }, 100)
+})
+
+const filteredFiles = computed(() => filterTree(files.value, deferredSearchQuery.value))
 
 async function handleOpenFolder() {
   try {
-    const { open } = await import('@tauri-apps/plugin-dialog')
-    const selected = await open({ directory: true, multiple: false })
+    const selected = await openDialog({ directory: true, multiple: false })
     if (selected && typeof selected === 'string') {
       await openFolder(selected)
     }
@@ -313,6 +328,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (searchTimer !== null) clearTimeout(searchTimer)
   window.removeEventListener('open-workspace-folder', handleOpenWorkspaceFolder as EventListener)
 })
 </script>

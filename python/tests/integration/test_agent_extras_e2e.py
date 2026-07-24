@@ -46,6 +46,7 @@ features:
 @pytest.fixture(scope="module")
 def client():
     from fastapi.testclient import TestClient
+
     from api_factory import create_app
 
     test_dir = tempfile.mkdtemp()
@@ -118,10 +119,13 @@ class TestAgentDirectTool:
         assert resp.status_code in (403, 422, 400)
 
     def test_tool_endpoint_validation_invalid_tool(self, client):
-        resp = client.post("/api/agent/v2/tool", json={
-            "tool_name": "nonexistent_tool_xyz",
-            "arguments": {},
-        })
+        resp = client.post(
+            "/api/agent/v2/tool",
+            json={
+                "tool_name": "nonexistent_tool_xyz",
+                "arguments": {},
+            },
+        )
         assert resp.status_code in (403, 400, 422)
 
 
@@ -145,9 +149,12 @@ class TestDebugState:
 
 class TestRetryBlock:
     def test_retry_nonexistent_task_404(self, client):
-        resp = client.post("/api/translate/nonexistent-task/retry_block", json={
-            "block_id": "b1",
-        })
+        resp = client.post(
+            "/api/translate/nonexistent-task/retry_block",
+            json={
+                "block_id": "b1",
+            },
+        )
         assert resp.status_code == 404
 
     def test_retry_missing_block_id_400(self, client):
@@ -170,7 +177,6 @@ class TestAgentResume:
                 resp = client.post(
                     "/api/agent/v2/resume/fake-session-id",
                     json={"message": "continue"},
-                    timeout=3.0,
                 )
                 result["status"] = resp.status_code
             except Exception:

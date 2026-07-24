@@ -9,6 +9,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -178,10 +180,21 @@ class Session:
         if self.fork_meta:
             meta_dict["fork"] = {"parent_session_id": self.fork_meta.parent_session_id,
                                  "branch_name": self.fork_meta.branch_name}
-        with open(p, "w", encoding="utf-8") as f:
-            f.write(json.dumps(meta_dict, ensure_ascii=False) + "\n")
-            for msg in self._messages:
-                f.write(json.dumps(_message_to_dict(msg), ensure_ascii=False) + "\n")
+        fd, tmp_name = tempfile.mkstemp(dir=p.parent, prefix=f".{p.name}.", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(json.dumps(meta_dict, ensure_ascii=False) + "\n")
+                for msg in self._messages:
+                    f.write(json.dumps(_message_to_dict(msg), ensure_ascii=False) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_name, p)
+        except Exception:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
 
     @staticmethod
     def load(path: str | Path) -> Session:

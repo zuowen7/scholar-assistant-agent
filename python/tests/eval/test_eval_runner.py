@@ -1,4 +1,5 @@
 """Phase B — eval runner tests (E1-E8)."""
+
 from __future__ import annotations
 
 import textwrap
@@ -20,6 +21,7 @@ EvalCase = runner_mod.EvalCase
 
 # ── helpers ────────────────────────────────────────────────────────────────
 
+
 def _write_yaml(tmp_path: Path, suite: str, filename: str, data: dict) -> None:
     suite_dir = tmp_path / suite
     suite_dir.mkdir(parents=True, exist_ok=True)
@@ -28,15 +30,21 @@ def _write_yaml(tmp_path: Path, suite: str, filename: str, data: dict) -> None:
 
 # ── E1: load cases ─────────────────────────────────────────────────────────
 
+
 def test_eval_loads_cases(tmp_path):
     """E1: load_cases reads YAML files from cases/<suite>/ directory."""
-    _write_yaml(tmp_path, "translate", "t001.yaml", {
-        "id": "t001",
-        "description": "test case one",
-        "input": "Hello world",
-        "mock_output": "你好世界",
-        "assertions": [],
-    })
+    _write_yaml(
+        tmp_path,
+        "translate",
+        "t001.yaml",
+        {
+            "id": "t001",
+            "description": "test case one",
+            "input": "Hello world",
+            "mock_output": "你好世界",
+            "assertions": [],
+        },
+    )
     cases = load_cases("translate", cases_dir=tmp_path)
     assert len(cases) == 1
     assert cases[0].id == "t001"
@@ -44,6 +52,7 @@ def test_eval_loads_cases(tmp_path):
 
 
 # ── E2: contains assertion ─────────────────────────────────────────────────
+
 
 def test_eval_assertion_contains():
     """E2: 'contains' assertion passes when value is in output."""
@@ -61,6 +70,7 @@ def test_eval_assertion_contains_fails():
 
 # ── E3: not_contains assertion ─────────────────────────────────────────────
 
+
 def test_eval_assertion_not_contains():
     """E3: 'not_contains' assertion passes when value is NOT in output."""
     ok, msg = run_assertion({"type": "not_contains", "value": "forbidden"}, "clean output")
@@ -69,6 +79,7 @@ def test_eval_assertion_not_contains():
 
 
 # ── E4: regex_match assertion ──────────────────────────────────────────────
+
 
 def test_eval_assertion_regex_match():
     """E4: 'regex_match' assertion passes when pattern matches output."""
@@ -86,6 +97,7 @@ def test_eval_assertion_regex_match_fails():
 
 # ── E5: length_range assertion ─────────────────────────────────────────────
 
+
 def test_eval_assertion_length_range():
     """E5: 'length_range' assertion passes when output length is in range."""
     ok, msg = run_assertion({"type": "length_range", "min": 5, "max": 100}, "hello world")
@@ -97,22 +109,33 @@ def test_eval_assertion_length_range():
 
 # ── E6: passrate report ────────────────────────────────────────────────────
 
+
 def test_eval_passrate_report(tmp_path):
     """E6: run_suite returns a dict with passrate key."""
-    _write_yaml(tmp_path, "mysuite", "c001.yaml", {
-        "id": "c001",
-        "description": "passing case",
-        "input": "input",
-        "mock_output": "the expected value is here",
-        "assertions": [{"type": "contains", "value": "expected"}],
-    })
-    _write_yaml(tmp_path, "mysuite", "c002.yaml", {
-        "id": "c002",
-        "description": "failing case",
-        "input": "input",
-        "mock_output": "output without the word",
-        "assertions": [{"type": "contains", "value": "missing_word"}],
-    })
+    _write_yaml(
+        tmp_path,
+        "mysuite",
+        "c001.yaml",
+        {
+            "id": "c001",
+            "description": "passing case",
+            "input": "input",
+            "mock_output": "the expected value is here",
+            "assertions": [{"type": "contains", "value": "expected"}],
+        },
+    )
+    _write_yaml(
+        tmp_path,
+        "mysuite",
+        "c002.yaml",
+        {
+            "id": "c002",
+            "description": "failing case",
+            "input": "input",
+            "mock_output": "output without the word",
+            "assertions": [{"type": "contains", "value": "missing_word"}],
+        },
+    )
     report = run_suite("mysuite", cases_dir=tmp_path)
     assert "passrate" in report
     assert report["total"] == 2
@@ -123,15 +146,21 @@ def test_eval_passrate_report(tmp_path):
 
 # ── E7: failure diagnostic ─────────────────────────────────────────────────
 
+
 def test_eval_failure_diagnostic(tmp_path):
     """E7: a failed assertion includes input/expected/actual in the failure message."""
-    _write_yaml(tmp_path, "diag", "c001.yaml", {
-        "id": "c001",
-        "description": "diagnostic test",
-        "input": "my input text",
-        "mock_output": "completely different output",
-        "assertions": [{"type": "contains", "value": "expected_string"}],
-    })
+    _write_yaml(
+        tmp_path,
+        "diag",
+        "c001.yaml",
+        {
+            "id": "c001",
+            "description": "diagnostic test",
+            "input": "my input text",
+            "mock_output": "completely different output",
+            "assertions": [{"type": "contains", "value": "expected_string"}],
+        },
+    )
     report = run_suite("diag", cases_dir=tmp_path)
     assert report["failed"] == 1
     result = report["results"][0]
@@ -144,21 +173,29 @@ def test_eval_failure_diagnostic(tmp_path):
 
 # ── E8: no real LLM called ─────────────────────────────────────────────────
 
+
 def test_eval_mock_llm(tmp_path, monkeypatch):
     """E8: eval runner uses mock_output from YAML; never calls any real LLM."""
     # Monkeypatch to detect if any real HTTP/LLM call is attempted
     import urllib.request as _urllib
+
     def _block(*args, **kwargs):
         raise AssertionError("eval runner must not make real network calls")
+
     monkeypatch.setattr(_urllib, "urlopen", _block)
 
-    _write_yaml(tmp_path, "mock_suite", "m001.yaml", {
-        "id": "m001",
-        "description": "mock llm test",
-        "input": "some input",
-        "mock_output": "some mock output",
-        "assertions": [{"type": "contains", "value": "mock"}],
-    })
+    _write_yaml(
+        tmp_path,
+        "mock_suite",
+        "m001.yaml",
+        {
+            "id": "m001",
+            "description": "mock llm test",
+            "input": "some input",
+            "mock_output": "some mock output",
+            "assertions": [{"type": "contains", "value": "mock"}],
+        },
+    )
     report = run_suite("mock_suite", cases_dir=tmp_path)
     assert report["passed"] == 1
     # No network call was made (if it were, the monkeypatch would have raised)

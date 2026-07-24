@@ -6,28 +6,54 @@
   - claw-analog dispatch_tool: join_under_root, assert_workspace_path,
     ignore-aware directory listing (WalkBuilder with .gitignore/.clawignore)
 """
+
 from __future__ import annotations
 
 import fnmatch
-import json
 import logging
 import os
 import re
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Callable, Awaitable
+from typing import TYPE_CHECKING, Any
 
 from src.agent_v2.types import ToolDefinition, ToolError
+
+if TYPE_CHECKING:
+    # 仅用于 set_permission_mode 的参数注解；运行时在
+    # _permission_policy_check 内局部导入以规避循环依赖。
+    from src.agent_v2.runtime.permissions import PermissionMode
 
 logger = logging.getLogger(__name__)
 
 # Windows reserved names
-_WINDOWS_RESERVED = frozenset({
-    "CON", "PRN", "AUX", "NUL",
-    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
-})
+_WINDOWS_RESERVED = frozenset(
+    {
+        "CON",
+        "PRN",
+        "AUX",
+        "NUL",
+        "COM1",
+        "COM2",
+        "COM3",
+        "COM4",
+        "COM5",
+        "COM6",
+        "COM7",
+        "COM8",
+        "COM9",
+        "LPT1",
+        "LPT2",
+        "LPT3",
+        "LPT4",
+        "LPT5",
+        "LPT6",
+        "LPT7",
+        "LPT8",
+        "LPT9",
+    }
+)
 
 _MAX_READ_BYTES = 256 * 1024
 _MAX_GREP_LINES = 200
@@ -44,7 +70,9 @@ class ToolResult:
     def truncated(self, max_chars: int = _TOOL_RESULT_MAX) -> ToolResult:
         if len(self.output) <= max_chars:
             return self
-        return ToolResult(output=self.output[:max_chars] + "\n... [truncated]", is_error=self.is_error)
+        return ToolResult(
+            output=self.output[:max_chars] + "\n... [truncated]", is_error=self.is_error
+        )
 
 
 def _normalize_schema(schema: dict) -> None:
@@ -92,6 +120,23 @@ class ToolRegistry:
     def __init__(self, workspace_root: str | Path | None = None):
         self._tools: dict[str, ToolSpec] = {}
         self._workspace_root = Path(workspace_root).resolve() if workspace_root else None
+        # Provider injected by the runtime; used by tools that need LLM access
+        # (e.g., sub_agent). Set via set_provider() — do NOT assign _provider
+        # directly from outside the class.
+        self._provider: Any = None
+
+    def set_provider(self, provider: Any) -> None:
+        """Inject the LLM provider for tools that need it (e.g., sub_agent).
+
+        Replaces the previous pattern of ``registry._provider = provider``
+        which bypassed encapsulation and would break if ``_provider`` is
+        renamed or ``__slots__`` is added.
+        """
+        self._provider = provider
+
+    def get_provider(self) -> Any:
+        """Return the injected provider, or None if not set."""
+        return self._provider
 
     def register(
         self,
@@ -106,7 +151,9 @@ class ToolRegistry:
             raise ToolError(f"tool '{name}' is already registered")
         _normalize_schema(input_schema)
         self._tools[key] = ToolSpec(
-            definition=ToolDefinition(name=name, description=description, input_schema=input_schema),
+            definition=ToolDefinition(
+                name=name, description=description, input_schema=input_schema
+            ),
             func=func,
             permission=permission,
         )
@@ -137,9 +184,10 @@ class ToolRegistry:
         Defaults to WORKSPACE_WRITE if no policy is configured.
         """
         from src.agent_v2.runtime.permissions import PermissionMode
-        return (getattr(self, '_active_permission_mode', None) or PermissionMode.WORKSPACE_WRITE,)
 
-    def set_permission_mode(self, mode: 'PermissionMode') -> None:
+        return (getattr(self, "_active_permission_mode", None) or PermissionMode.WORKSPACE_WRITE,)
+
+    def set_permission_mode(self, mode: PermissionMode) -> None:
         self._active_permission_mode = mode
 
     def check_workspace_escape(self, path_str: str) -> bool:
@@ -164,7 +212,9 @@ class ToolRegistry:
         try:
             resolved.relative_to(self._workspace_root)
         except ValueError:
-            raise ValueError(f"path '{path_str}' resolved to '{resolved}' — outside workspace root '{self._workspace_root}'")
+            raise ValueError(
+                f"path '{path_str}' resolved to '{resolved}' — outside workspace root '{self._workspace_root}'"
+            )
         return resolved
 
     def _load_ignore_patterns(self) -> list[tuple[str, bool]]:
@@ -174,7 +224,9 @@ class ToolRegistry:
             ignore_file = self._workspace_root / fname if self._workspace_root else None
             if ignore_file and ignore_file.is_file():
                 try:
-                    for line in ignore_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+                    for line in ignore_file.read_text(
+                        encoding="utf-8", errors="ignore"
+                    ).splitlines():
                         line = line.strip()
                         if line and not line.startswith("#"):
                             negate = line.startswith("!")
@@ -202,6 +254,7 @@ class ToolRegistry:
 # Builtin tool implementations
 # ---------------------------------------------------------------------------
 
+
 def _create_file_ops(registry: ToolRegistry) -> None:
     ws = registry._workspace_root
 
@@ -224,7 +277,9 @@ def _create_file_ops(registry: ToolRegistry) -> None:
             size = len(raw)
             text = raw.decode("utf-8", errors="replace")
             if size > _MAX_READ_BYTES:
-                return ToolResult(f"{text[:_MAX_READ_BYTES]}\n... [truncated at {_MAX_READ_BYTES} bytes]")
+                return ToolResult(
+                    f"{text[:_MAX_READ_BYTES]}\n... [truncated at {_MAX_READ_BYTES} bytes]"
+                )
             return ToolResult(text)
         except Exception as e:
             return ToolResult(f"error reading file: {e}", is_error=True)
@@ -265,7 +320,10 @@ def _create_file_ops(registry: ToolRegistry) -> None:
             if count == 0:
                 return ToolResult(f"error: old_string not found in {path_str}", is_error=True)
             if count > 1:
-                return ToolResult(f"error: old_string found {count} times in {path_str}, expected exactly 1", is_error=True)
+                return ToolResult(
+                    f"error: old_string found {count} times in {path_str}, expected exactly 1",
+                    is_error=True,
+                )
             new_content = content.replace(old_string, new_string, 1)
             full.write_text(new_content, encoding="utf-8")
             return ToolResult(f"ok: replaced in {path_str}")
@@ -277,8 +335,10 @@ def _create_file_ops(registry: ToolRegistry) -> None:
         path_str = str(args.get("path", "."))
         if not pattern:
             return ToolResult("error: pattern is required", is_error=True)
-        p = Path(path_str)
-        root = p if p.is_absolute() else (ws / p) if ws else p
+        try:
+            root = registry._resolve_path(path_str)
+        except ValueError as e:
+            return ToolResult(f"error: {e}", is_error=True)
         if not root.exists():
             return ToolResult(f"error: path not found: {path_str}", is_error=True)
         try:
@@ -383,35 +443,59 @@ def _create_file_ops(registry: ToolRegistry) -> None:
             return ToolResult(f"no files matching '{pattern_str}'")
         return ToolResult("\n".join(matches))
 
-    registry.register("read_file", "Read file contents", {
-        "type": "object",
-        "properties": {"file_path": {"type": "string", "description": "Path to file"}},
-        "required": ["file_path"],
-    }, read_file, permission="read-only")
-
-    registry.register("write_file", "Write content to file", {
-        "type": "object",
-        "properties": {
-            "file_path": {"type": "string"},
-            "content": {"type": "string"},
+    registry.register(
+        "read_file",
+        "Read file contents",
+        {
+            "type": "object",
+            "properties": {"file_path": {"type": "string", "description": "Path to file"}},
+            "required": ["file_path"],
         },
-        "required": ["file_path", "content"],
-    }, write_file, permission="workspace-write")
+        read_file,
+        permission="read-only",
+    )
 
-    registry.register("str_replace", "Replace text in file", {
-        "type": "object",
-        "properties": {
-            "file_path": {"type": "string"},
-            "old_string": {"type": "string"},
-            "new_string": {"type": "string"},
+    registry.register(
+        "write_file",
+        "Write content to file",
+        {
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string"},
+                "content": {"type": "string"},
+            },
+            "required": ["file_path", "content"],
         },
-        "required": ["file_path", "old_string", "new_string"],
-    }, str_replace, permission="workspace-write")
+        write_file,
+        permission="workspace-write",
+    )
 
-    registry.register("list_dir", "List files in directory (ignore-aware)", {
-        "type": "object",
-        "properties": {"path": {"type": "string", "default": "."}},
-    }, list_dir, permission="read-only")
+    registry.register(
+        "str_replace",
+        "Replace text in file",
+        {
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string"},
+                "old_string": {"type": "string"},
+                "new_string": {"type": "string"},
+            },
+            "required": ["file_path", "old_string", "new_string"],
+        },
+        str_replace,
+        permission="workspace-write",
+    )
+
+    registry.register(
+        "list_dir",
+        "List files in directory (ignore-aware)",
+        {
+            "type": "object",
+            "properties": {"path": {"type": "string", "default": "."}},
+        },
+        list_dir,
+        permission="read-only",
+    )
 
     # ---- run_command — 执行 shell 命令 ----
     async def run_command(args: dict) -> ToolResult:
@@ -420,12 +504,15 @@ def _create_file_ops(registry: ToolRegistry) -> None:
             return ToolResult("error: command is required", is_error=True)
         cwd = str(args.get("cwd", "."))
         try:
-            root = registry._resolve_path(cwd) if cwd != "." else (registry._workspace_root or Path.cwd())
-        except ValueError:
-            root = Path(cwd)
+            root = (
+                registry._resolve_path(cwd)
+                if cwd != "."
+                else (registry._workspace_root or Path.cwd())
+            )
+        except ValueError as e:
+            return ToolResult(f"error: {e}", is_error=True)
 
         from src.agent_v2.runtime.bash_validation import validate_command
-        from src.agent_v2.runtime.permissions import PermissionMode
 
         perm_result = registry._permission_policy_check(command)
         validation = validate_command(command, perm_result[0], root)
@@ -436,8 +523,11 @@ def _create_file_ops(registry: ToolRegistry) -> None:
 
         try:
             import asyncio as _aio
+
             proc = await _aio.create_subprocess_shell(
-                command, cwd=str(root), stdout=_aio.subprocess.PIPE,
+                command,
+                cwd=str(root),
+                stdout=_aio.subprocess.PIPE,
                 stderr=_aio.subprocess.STDOUT,
             )
             stdout, _ = await _aio.wait_for(proc.communicate(), timeout=30.0)
@@ -445,41 +535,61 @@ def _create_file_ops(registry: ToolRegistry) -> None:
             if len(output) > _TOOL_RESULT_MAX:
                 output = output[:_TOOL_RESULT_MAX] + "\n... [truncated]"
             if proc.returncode != 0:
-                return ToolResult(f"{output}\nexit code: {proc.returncode}", is_error=False)
+                return ToolResult(f"{output}\nexit code: {proc.returncode}", is_error=True)
             result = ToolResult(output or "(no output)")
             if validation.is_warn:
                 result = ToolResult(f"[WARNING: {validation.message}]\n{output or '(no output)'}")
             return result
-        except _aio.TimeoutError:
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
             return ToolResult("error: command timed out (30s)", is_error=True)
         except Exception as e:
             return ToolResult(f"error running command: {e}", is_error=True)
 
-    registry.register("run_command", "Execute a shell command in the workspace", {
-        "type": "object",
-        "properties": {
-            "command": {"type": "string", "description": "Shell command to run"},
-            "cwd": {"type": "string", "default": ".", "description": "Working directory"},
+    registry.register(
+        "run_command",
+        "Execute a shell command in the workspace",
+        {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "description": "Shell command to run"},
+                "cwd": {"type": "string", "default": ".", "description": "Working directory"},
+            },
+            "required": ["command"],
         },
-        "required": ["command"],
-    }, run_command, permission="workspace-write")
+        run_command,
+        permission="workspace-write",
+    )
 
-    registry.register("grep_files", "Search for pattern in files", {
-        "type": "object",
-        "properties": {
-            "pattern": {"type": "string"},
-            "path": {"type": "string", "default": "."},
+    registry.register(
+        "grep_files",
+        "Search for pattern in files",
+        {
+            "type": "object",
+            "properties": {
+                "pattern": {"type": "string"},
+                "path": {"type": "string", "default": "."},
+            },
+            "required": ["pattern"],
         },
-        "required": ["pattern"],
-    }, grep_files, permission="read-only")
+        grep_files,
+        permission="read-only",
+    )
 
-    registry.register("glob_files", "Find files matching glob pattern", {
-        "type": "object",
-        "properties": {
-            "pattern": {"type": "string", "default": "*"},
-            "path": {"type": "string", "default": "."},
+    registry.register(
+        "glob_files",
+        "Find files matching glob pattern",
+        {
+            "type": "object",
+            "properties": {
+                "pattern": {"type": "string", "default": "*"},
+                "path": {"type": "string", "default": "."},
+            },
         },
-    }, glob_files, permission="read-only")
+        glob_files,
+        permission="read-only",
+    )
 
 
 def create_default_registry(workspace_root: str | Path | None = None) -> ToolRegistry:

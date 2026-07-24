@@ -136,7 +136,7 @@ def generate_table_markdown(headers: list[str], rows: list[list[str]]) -> str:
     lines.append(sep)
 
     for row in rows:
-        cells = row[:len(headers)]
+        cells = row[: len(headers)]
         while len(cells) < len(headers):
             cells.append("")
         lines.append("| " + " | ".join(cells) + " |")

@@ -8,6 +8,7 @@ import { persistTranslation, loadLastTranslation, clearPersistedTranslation } fr
 import { toastFromError } from './useToast'
 import { validateTranslateUpload, extractApiErrorMessage } from '../utils/validation'
 import { i18n } from '../i18n'
+import { saveBlob } from './useEditorIO'
 import type {
   TranslateState,
   TranslateStatus,
@@ -322,15 +323,23 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       }
       break
     }
+    case 'translate.chunk_tm_hit': {
+      const chunk: ChunkDoneEvent = {
+        index: Number(data.index ?? 0),
+        total: Number(data.total ?? state.totalChunks),
+        original_preview: String(data.original_preview ?? ''),
+        translated_preview: String(data.translated_preview ?? ''),
+        tokens: 0,
+      }
+      upsertTranslation(chunk)
+      state.completedChunks = state.translations.length
+      state.stepMessage = `Translation memory hit for chunk ${chunk.index + 1}/${chunk.total}`
+      break
+    }
     case 'translate.chunk_done': {
       const chunk = data as unknown as ChunkDoneEvent
-      const existingIdx = state.translations.findIndex(t => t.index === chunk.index)
-      if (existingIdx >= 0) {
-        state.translations[existingIdx] = chunk
-      } else {
-        state.translations.push(chunk)
-      }
-      state.completedChunks = Math.max(state.completedChunks, chunk.index + 1)
+      upsertTranslation(chunk)
+      state.completedChunks = state.translations.length
       if ((data as Record<string, unknown>).fallback) {
         state.fallbackChunks += 1
         state.stepMessage = `Chunk ${chunk.index + 1}/${chunk.total} failed; original text was kept`
@@ -345,6 +354,26 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       if (secType && secType !== 'unknown') {
         state.sectionMap[chunk.index] = secType
       }
+      break
+    }
+    case 'translate.glossary_violation': {
+      const chunkIndex = Number(data.index ?? 0)
+      const violations = Array.isArray(data.violations) ? data.violations : []
+      upsertQaWarning({
+        chunkIndex: Number.isFinite(chunkIndex) ? chunkIndex : 0,
+        sectionType: state.sectionMap[chunkIndex] ?? 'glossary',
+        score: 100,
+        flags: violations.map((violation) => {
+          const item = violation as Record<string, unknown>
+          return {
+            type: 'glossary',
+            severity: 'warning',
+            location: String(item.source ?? ''),
+            message: String(item.message ?? 'Glossary term was not applied consistently'),
+            suggestion: String(item.expected ?? ''),
+          }
+        }),
+      })
       break
     }
     case 'translate.qa_warnings': {
@@ -391,6 +420,15 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
   }
 }
 
+function upsertTranslation(chunk: ChunkDoneEvent): void {
+  const existingIdx = state.translations.findIndex(item => item.index === chunk.index)
+  if (existingIdx >= 0) {
+    state.translations[existingIdx] = chunk
+  } else {
+    state.translations.push(chunk)
+  }
+}
+
 export function normalizeQaWarning(data: Record<string, unknown>): QAWarning {
   const rawIndex = data.chunkIndex ?? data.chunk_index ?? data.index ?? 0
   const chunkIndex = Number(rawIndex)
@@ -403,8 +441,17 @@ export function normalizeQaWarning(data: Record<string, unknown>): QAWarning {
 }
 
 function upsertQaWarning(warning: QAWarning): void {
+  const existing = state.qaWarnings.find(item => item.chunkIndex === warning.chunkIndex)
+  const hasIncomingGlossaryFlags = warning.flags.some(flag => flag.type === 'glossary')
+  const preservedGlossaryFlags = hasIncomingGlossaryFlags
+    ? []
+    : existing?.flags.filter(flag => flag.type === 'glossary') ?? []
+  const mergedWarning = {
+    ...warning,
+    flags: [...preservedGlossaryFlags, ...warning.flags],
+  }
   const remaining = state.qaWarnings.filter(item => item.chunkIndex !== warning.chunkIndex)
-  state.qaWarnings = warning.flags.length ? [...remaining, warning] : remaining
+  state.qaWarnings = mergedWarning.flags.length ? [...remaining, mergedWarning] : remaining
 }
 
 function stepToStatus(step: number): TranslateStatus {
@@ -497,7 +544,6 @@ async function downloadResult(): Promise<void> {
   const content = state.finalContent
   if (!content) return
 
-  const { saveBlob } = await import('./useEditorIO')
   await saveBlob(
     new Blob([content], { type: 'text/markdown;charset=utf-8' }),
     `${state.taskId}_bilingual.md`,
@@ -523,7 +569,6 @@ async function exportBilingualDocx(): Promise<void> {
 
     const blob = await resp.blob()
     const defaultName = `${state.taskId}_bilingual.docx`
-    const { saveBlob } = await import('./useEditorIO')
     const result = await saveBlob(blob, defaultName)
     if (result === 'Cancelled') return
   } catch (err: unknown) {
@@ -551,7 +596,6 @@ async function exportTranslationOnlyDocx(): Promise<void> {
 
     const blob = await resp.blob()
     const defaultName = `${state.taskId}_translation_only.docx`
-    const { saveBlob } = await import('./useEditorIO')
     const result = await saveBlob(blob, defaultName)
     if (result === 'Cancelled') return
   } catch (err: unknown) {
@@ -575,7 +619,6 @@ async function exportTranslationOnlyMarkdown(): Promise<void> {
   }
   const content = parts.join('\n\n')
 
-  const { saveBlob } = await import('./useEditorIO')
   await saveBlob(
     new Blob([content], { type: 'text/markdown;charset=utf-8' }),
     `${state.taskId}_translation_only.md`,
@@ -654,7 +697,6 @@ async function exportPPTX(): Promise<void> {
 
     const blob = await resp.blob()
     const defaultName = `${state.taskId}_presentation.pptx`
-    const { saveBlob } = await import('./useEditorIO')
     await saveBlob(blob, defaultName)
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : i18n.global.t('errors.unknownError')
@@ -684,7 +726,6 @@ async function exportDataAvailability(): Promise<void> {
     const data = await resp.json()
     // 复制到剪贴板 + 保存为文件
     const content = data.section || JSON.stringify(data, null, 2)
-    const { saveBlob } = await import('./useEditorIO')
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
     await saveBlob(blob, `${state.taskId}_data_availability.md`)
   } catch (err: unknown) {
@@ -765,6 +806,11 @@ export function _resetForTesting(): void {
     crashListener = null
   }
   Object.assign(state, createState())
+}
+
+/** Feed a backend SSE event through the production handler — for tests only. */
+export function _handleSseEventForTesting(event: string, data: Record<string, unknown>): void {
+  handleSseEvent(event, data)
 }
 
 async function recoverTranslation(): Promise<boolean> {

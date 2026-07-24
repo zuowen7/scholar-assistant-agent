@@ -9,10 +9,6 @@ window.addEventListener('unhandledrejection', (event) => {
 
 import './styles/tokens.css'
 import './styles/transitions.css'
-import '@vue-flow/core/dist/style.css'
-import '@vue-flow/core/dist/theme-default.css'
-import '@vue-flow/controls/dist/style.css'
-import '@vue-flow/minimap/dist/style.css'
 import App from './App.vue'
 import { i18n } from './i18n'
 import { useLocale } from './composables/useLocale'

@@ -1,18 +1,12 @@
 import { ref } from 'vue'
 import { API_BASE } from '../utils/api'
 import type { ProjectMetadata, RecentProject } from '../types'
+import { activeTabId, tabs } from './useEditorState'
+import { useFileTree } from './useFileTree'
 
 export const currentProject = ref<ProjectMetadata | null>(null)
 export const recentProjects = ref<RecentProject[]>([])
 export const projectLoading = ref(false)
-
-// Lazy-loaded file tree ref holders to avoid import cycles
-let _fileTreeModule: typeof import('./useFileTree') | null = null
-
-async function getFileTreeModule() {
-  if (!_fileTreeModule) { _fileTreeModule = await import('./useFileTree') }
-  return _fileTreeModule
-}
 
 // Concurrency guard tokens
 let _operationId = 0
@@ -76,8 +70,15 @@ export async function openProject(path: string): Promise<void> {
   const prevProject = currentProject.value
   let prevRootDir: string | null = null
   try {
-    const ftm = await getFileTreeModule().catch(() => null)
-    if (ftm) prevRootDir = ftm.useFileTree().rootDir.value
+    const fileTree = useFileTree()
+    prevRootDir = fileTree.rootDir.value
+
+    // A project switch must never discard unsaved Monaco content. Clean tabs
+    // are cleared after the new project has loaded successfully; dirty tabs
+    // require the user to save or explicitly close the current project first.
+    if (tabs.value.some(tab => tab.isModified)) {
+      throw new Error('当前项目有未保存的编辑内容，请先保存或关闭当前项目后再切换。')
+    }
 
     const resp = await fetch(apiUrl(`/api/project/load?path=${encodeURIComponent(path)}`))
     if (!resp.ok) {
@@ -85,17 +86,18 @@ export async function openProject(path: string): Promise<void> {
       throw new Error(err.detail || `打开项目失败 (${resp.status})`)
     }
     const meta = await parseResponse(resp) as ProjectMetadata
+    if (thisOp !== _operationId) return
+    try { await fileTree.openFolder(path) } catch { /* Non-Tauri */ }
+    if (thisOp !== _operationId) return
     currentProject.value = meta
-    if (ftm) {
-      try { await ftm.useFileTree().openFolder(path) } catch { /* Non-Tauri */ }
-    }
+    tabs.value = []
+    activeTabId.value = null
   } catch (err) {
     // Only roll back if no newer operation has started
     if (thisOp === _operationId) {
       currentProject.value = prevProject
-      const ftm = await getFileTreeModule().catch(() => null)
-      if (ftm && prevRootDir) {
-        try { await ftm.useFileTree().openFolder(prevRootDir) } catch { /* */ }
+      if (prevRootDir) {
+        try { await useFileTree().openFolder(prevRootDir) } catch { /* */ }
       }
     }
     throw err
@@ -123,12 +125,11 @@ export async function loadRecentProjects(): Promise<void> {
 
 export async function closeProject(): Promise<void> {
   currentProject.value = null
-  const ftm = await getFileTreeModule().catch(() => null)
-  if (ftm) {
-    const { rootDir, files } = ftm.useFileTree()
-    rootDir.value = null
-    files.value = []
-  }
+  const { rootDir, files } = useFileTree()
+  rootDir.value = null
+  files.value = []
+  tabs.value = []
+  activeTabId.value = null
 }
 
 export async function detectProject(path: string): Promise<boolean> {

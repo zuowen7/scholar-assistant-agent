@@ -134,7 +134,9 @@ export async function inlineEdit(instruction: string, taskType?: string): Promis
           ? sel.startCol + aiResult.value.length
           : aiResult.value.length - aiResult.value.lastIndexOf('\n') - 1
         clearInlineDecoration()
-        applyInlineDecoration(sel.startLine, sel.startCol, newEndLine, newEndCol + 1)
+        // Monaco ranges are end-exclusive. newEndCol already points one column
+        // past the replacement, so adding another column highlights unrelated text.
+        applyInlineDecoration(sel.startLine, sel.startCol, newEndLine, newEndCol)
       }
     })
     clearInlineDecoration()

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Scholar Assistant · Atlas 概念稿</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500;6..72,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --n-1:#161B23; --n-2:#1C232E; --n-3:#263040; --n-4:#384457; --n-5:#5A6678;
+    --t-0:#E8ECF2; --t-1:#AEB8C7; --t-2:#7C879A; --t-3:#566175;
+    --accent:#2F6FED; --accent-hover:#1F5BD6; --accent-soft:#EAF1FE; --accent-ring:rgba(47,111,237,.38); --accent-glow:rgba(47,111,237,.22);
+    --accent-gradient:linear-gradient(135deg,#2F6FED 0%,#5B8DEF 100%); --on-accent:#fff;
+    --success:#1F9D57; --success-bg:#E7F6EE; --success-fg:#157A43;
+    --danger:#E04646;
+    --app-bg:#0E1117; --surface-1:#161B23; --surface-2:#1C232E; --surface-3:#222B38; --sunken:#0B0E13;
+    --border:#263040; --border-strong:#384457;
+    --elevation-1:0 1px 2px rgba(0,0,0,.40); --elevation-2:0 6px 20px rgba(0,0,0,.45); --elevation-3:0 16px 40px rgba(0,0,0,.50);
+    --r-sm:8px; --r-md:12px; --r-lg:16px; --r-xl:20px; --r-pill:999px;
+    --s-1:4px;--s-2:8px;--s-3:12px;--s-4:16px;--s-5:24px;--s-6:32px;--s-7:48px;
+    --ease-spring:cubic-bezier(.22,1,.36,1); --ease-out:cubic-bezier(.16,1,.3,1);
+    --m-fast:140ms; --m-base:200ms; --m-slow:300ms;
+    --rail:72px; --topbar:56px; --right:340px;
+    --font-sans:'Inter',system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+    --font-serif:'Newsreader','Source Serif 4',Georgia,'Times New Roman',serif;
+    --font-mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+  }
+  [data-theme="light"]{
+    --app-bg:#F5F7FA; --surface-1:#FFFFFF; --surface-2:#FBFCFE; --surface-3:#EEF1F6; --sunken:#EEF1F6;
+    --border:#E3E8F0; --border-strong:#D2DAE6;
+    --t-0:#161A22; --t-1:#4A5468; --t-2:#7A8597; --t-3:#A2ABBA;
+    --accent-soft:#EAF1FE; --accent-ring:rgba(47,111,237,.30);
+    --elevation-1:0 1px 2px rgba(16,24,40,.06); --elevation-2:0 4px 14px rgba(16,24,40,.08); --elevation-3:0 12px 32px rgba(16,24,40,.12);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:var(--font-sans);background:var(--app-bg);color:var(--t-0);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased;overflow:hidden}
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  ::selection{background:var(--accent-ring)}
+
+  /* ── Shell ── */
+  .shell{display:grid;grid-template-columns:var(--rail) 1fr;grid-template-rows:100%;height:100vh;transition:grid-template-columns var(--m-base) var(--ease-out)}
+  .shell.focus{grid-template-columns:var(--rail) 1fr}
+  .rail{background:var(--surface-1);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;gap:var(--s-2);padding:var(--s-3) 0}
+  .rail .logo{width:40px;height:40px;border-radius:var(--r-md);background:var(--accent-gradient);display:grid;place-items:center;color:#fff;font-family:var(--font-serif);font-weight:600;font-size:20px;margin-bottom:var(--s-3)}
+  .rail .nav-btn{width:48px;height:48px;border-radius:var(--r-md);display:grid;place-items:center;color:var(--t-2);position:relative;transition:background var(--m-fast),color var(--m-fast)}
+  .rail .nav-btn svg{width:22px;height:22px}
+  .rail .nav-btn:hover{background:var(--surface-3);color:var(--t-0)}
+  .rail .nav-btn.active{color:var(--accent)}
+  .rail .nav-btn.active::before{content:"";position:absolute;left:-12px;top:12px;bottom:12px;width:3px;border-radius:2px;background:var(--accent);box-shadow:0 0 12px var(--accent-glow)}
+  .rail .spacer{flex:1}
+
+  .main{display:flex;flex-direction:column;min-width:0}
+  .topbar{height:var(--topbar);flex:0 0 var(--topbar);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:var(--s-4);padding:0 var(--s-4);background:var(--surface-1);transition:opacity var(--m-base),transform var(--m-base)}
+  .crumb{display:flex;align-items:center;gap:var(--s-2);color:var(--t-2);font-size:13px;white-space:nowrap}
+  .crumb b{color:var(--t-0);font-weight:600}
+  .search{flex:1;max-width:420px;margin:0 auto;display:flex;align-items:center;gap:var(--s-2);height:36px;padding:0 var(--s-3);background:var(--sunken);border:1px solid var(--border);border-radius:var(--r-pill);color:var(--t-2);cursor:text;transition:border-color var(--m-fast),box-shadow var(--m-fast)}
+  .search:hover{border-color:var(--border-strong)}
+  .search:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+  .search .kbd{margin-left:auto;font-family:var(--font-mono);font-size:11px;background:var(--surface-3);border:1px solid var(--border);border-radius:6px;padding:1px 6px;color:var(--t-1)}
+  .actions{display:flex;align-items:center;gap:var(--s-2);margin-left:auto}
+  .btn{height:34px;padding:0 var(--s-4);border-radius:var(--r-md);font-weight:600;font-size:13px;display:inline-flex;align-items:center;gap:var(--s-2);transition:background var(--m-fast),transform var(--m-fast),box-shadow var(--m-fast)}
+  .btn:active{transform:translateY(1px)}
+  .btn.primary{background:var(--accent);color:var(--on-accent)}
+  .btn.primary:hover{background:var(--accent-hover);box-shadow:var(--elevation-2)}
+  .btn.ghost{color:var(--t-1)}
+  .btn.ghost:hover{background:var(--surface-3);color:var(--t-0)}
+  .icon-btn{width:36px;height:36px;border-radius:var(--r-md);display:grid;place-items:center;color:var(--t-1);transition:background var(--m-fast),color var(--m-fast)}
+  .icon-btn:hover{background:var(--surface-3);color:var(--t-0)}
+  .icon-btn:focus-visible,.btn:focus-visible,.search:focus-within{outline:none;box-shadow:0 0 0 3px var(--accent-ring)}
+  .avatar{width:32px;height:32px;border-radius:var(--r-pill);background:var(--surface-3);border:1px solid var(--border);display:grid;place-items:center;font-weight:600;color:var(--t-1)}
+
+  .workspace{display:grid;grid-template-columns:1fr var(--right);flex:1;min-height:0;transition:grid-template-columns var(--m-base) var(--ease-out)}
+  .workspace.no-right{grid-template-columns:1fr 0px}
+  .canvas{overflow:auto;padding:var(--s-7) var(--s-6);display:flex;justify-content:center}
+  .doc{max-width:72ch;width:100%}
+  .doc .eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:600;margin-bottom:var(--s-3)}
+  .doc h1{font-family:var(--font-serif);font-weight:600;font-size:34px;line-height:1.18;letter-spacing:-.01em;margin-bottom:var(--s-3)}
+  .doc .meta{color:var(--t-2);font-size:13px;margin-bottom:var(--s-6);display:flex;gap:var(--s-3);align-items:center}
+  .doc p{margin-bottom:var(--s-4);color:var(--t-1)}
+  .doc p strong{color:var(--t-0);font-weight:600}
+  .doc blockquote{border-left:3px solid var(--accent);padding:var(--s-2) var(--s-4);margin:var(--s-4) 0;color:var(--t-2);background:var(--surface-2);border-radius:0 var(--r-md) var(--r-md) 0}
+
+  .panel{background:var(--surface-1);border-left:1px solid var(--border);display:flex;flex-direction:column;min-width:0;overflow:hidden}
+  .panel .tabs{display:flex;border-bottom:1px solid var(--border);padding:0 var(--s-3)}
+  .panel .tab{padding:var(--s-3) var(--s-3);font-size:13px;color:var(--t-2);font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color var(--m-fast)}
+  .panel .tab.active{color:var(--t-0);border-bottom-color:var(--accent)}
+  .panel .body{flex:1;overflow:auto;padding:var(--s-4)}
+  .outline-item{padding:var(--s-2) var(--s-3);border-radius:var(--r-sm);color:var(--t-2);font-size:13px;cursor:pointer;transition:background var(--m-fast),color var(--m-fast)}
+  .outline-item:hover{background:var(--surface-3);color:var(--t-0)}
+  .outline-item.lvl2{padding-left:var(--s-6);font-size:12px}
+
+  .chat{display:flex;flex-direction:column;gap:var(--s-3)}
+  .msg{padding:var(--s-3);border-radius:var(--r-md);font-size:13px;line-height:1.5}
+  .msg.ai{background:var(--surface-2);border:1px solid var(--border);color:var(--t-1)}
+  .msg.me{background:var(--accent-soft);color:var(--accent);align-self:flex-end;max-width:85%}
+  .tool{margin-top:var(--s-2);border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden;font-size:12px}
+  .tool .head{display:flex;align-items:center;gap:var(--s-2);padding:var(--s-2) var(--s-3);background:var(--surface-3);color:var(--t-1);cursor:pointer}
+  .tool .head .dot{width:7px;height:7px;border-radius:50%;background:var(--success)}
+  .composer{display:flex;gap:var(--s-2);padding:var(--s-3);border-top:1px solid var(--border)}
+  .composer input{flex:1;height:36px;padding:0 var(--s-3);background:var(--sunken);border:1px solid var(--border);border-radius:var(--r-md);color:var(--t-0);font-family:inherit;font-size:13px}
+  .composer input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+
+  /* ── Command palette ── */
+  .palette-mask{position:fixed;inset:0;background:rgba(14,17,23,.40);backdrop-filter:blur(8px);display:none;align-items:flex-start;justify-content:center;padding-top:14vh;z-index:50;opacity:0;transition:opacity var(--m-fast)}
+  .palette-mask.open{display:flex;opacity:1}
+  .palette{width:min(560px,92vw);background:var(--surface-1);border:1px solid var(--border-strong);border-radius:var(--r-lg);box-shadow:var(--elevation-3);overflow:hidden;transform:translateY(-12px) scale(.98);opacity:0;transition:transform var(--m-base) var(--ease-spring),opacity var(--m-base)}
+  .palette-mask.open .palette{transform:translateY(0) scale(1);opacity:1}
+  .palette input{width:100%;height:52px;padding:0 var(--s-5);background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--t-0);font-family:inherit;font-size:15px}
+  .palette input:focus{outline:none}
+  .palette .list{max-height:320px;overflow:auto;padding:var(--s-2)}
+  .palette .item{display:flex;align-items:center;gap:var(--s-3);padding:var(--s-3);border-radius:var(--r-md);color:var(--t-1);font-size:14px;cursor:pointer}
+  .palette .item .ic{width:30px;height:30px;border-radius:var(--r-sm);background:var(--surface-3);display:grid;place-items:center;color:var(--t-2)}
+  .palette .item.sel,.palette .item:hover{background:var(--surface-3);color:var(--t-0)}
+  .palette .item .hint{margin-left:auto;font-family:var(--font-mono);font-size:11px;color:var(--t-3)}
+
+  /* ── Completion glow (signature) ── */
+  .glow-btn{position:relative;overflow:hidden}
+  .glow-btn.done{background:var(--success)!important}
+  .glow-btn .check{opacity:0;transform:scale(.6);transition:opacity var(--m-base),transform var(--m-base) var(--ease-spring);margin-left:6px}
+  .glow-btn.done .check{opacity:1;transform:scale(1)}
+  .glow-btn.done .label{display:none}
+  .shine{position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0}
+  .glow-btn.done .shine{animation:shine var(--m-slow) var(--ease-out)}
+  @keyframes shine{0%{opacity:.0;box-shadow:0 0 0 0 var(--accent-glow)}30%{opacity:1;box-shadow:0 0 0 6px var(--accent-glow)}100%{opacity:0;box-shadow:0 0 0 14px transparent}}
+  .toast{position:fixed;right:var(--s-5);bottom:var(--s-5);background:var(--surface-1);border:1px solid var(--border-strong);border-left:3px solid var(--success);border-radius:var(--r-md);padding:var(--s-3) var(--s-4);box-shadow:var(--elevation-2);display:flex;align-items:center;gap:var(--s-2);font-size:13px;transform:translateY(20px);opacity:0;transition:transform var(--m-base) var(--ease-spring),opacity var(--m-base);z-index:60}
+  .toast.show{transform:translateY(0);opacity:1}
+
+  .focus .topbar{opacity:0;transform:translateY(-100%);pointer-events:none;position:absolute}
+  .focus .panel{opacity:0;transform:translateX(20px);pointer-events:none;position:absolute;right:0;top:0;bottom:0}
+
+  @media (prefers-reduced-motion:reduce){*{transition-duration:.001ms!important;animation-duration:.001ms!important}}
+</style>
+</head>
+<body>
+<div class="shell" id="shell">
+  <!-- Icon rail -->
+  <aside class="rail">
+    <div class="logo">S</div>
+    <button class="nav-btn" title="项目库"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg></button>
+    <button class="nav-btn active" title="编辑器"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h11l3 3v13H5z"/><path d="M9 9h7M9 13h7M9 17h4"/></svg></button>
+    <button class="nav-btn" title="翻译"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h7M7.5 5v0M9 5c0 4-2 7-5 8M14 20l4-9 4 9M16 17h4"/></svg></button>
+    <button class="nav-btn" title="思维导图"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8 11l8-4M8 13l8 4"/></svg></button>
+    <button class="nav-btn" title="Agent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 8V5M9 5h6"/></svg></button>
+    <div class="spacer"></div>
+    <button class="nav-btn" id="themeBtn" title="切换主题"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A8 8 0 1111.2 3a6 6 0 009.8 9.8z"/></svg></button>
+  </aside>
+
+  <div class="main">
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="crumb">项目库 <span>/</span> <b>气候政策综述.docx</b></div>
+      <div class="search" id="search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg> 搜索文档、命令、Agent…<span class="kbd">⌘K</span></div>
+      <div class="actions">
+        <button class="btn ghost" id="focusBtn">专注模式</button>
+        <button class="btn primary glow-btn" id="saveBtn"><span class="label">保存</span><span class="check">✓</span><span class="shine"></span></button>
+        <button class="icon-btn" title="设置"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+        <div class="avatar">研</div>
+      </div>
+    </header>
+
+    <!-- Workspace -->
+    <div class="workspace" id="workspace">
+      <section class="canvas">
+        <article class="doc">
+          <div class="eyebrow">论文草稿 · 第 3 节</div>
+          <h1>全球气候治理中的政策协同机制</h1>
+          <div class="meta"><span>上次编辑 2 分钟前</span><span>·</span><span>1,284 词</span></div>
+          <p>近年来，<strong>跨国气候政策</strong>的协同从自愿承诺转向具有约束力的核算框架。本文认为，协同失效主要源于<strong>信息不对称</strong>与减排成本的不均衡分布。</p>
+          <p>既有研究多聚焦单一国家的减排路径，忽视了缔约方之间的策略互动。我们引入多边博弈模型，刻画当一国强化本土政策时，邻国可能的"搭便车"倾向及其对总体目标的抵消效应。</p>
+          <blockquote>"政策协同不是目标的简单相加，而是激励结构的重新对齐。" —— 引自访谈记录 #14</blockquote>
+          <p>下一节将基于 Agent 模拟，量化不同协同强度下的边际减排成本，并为第 6 节的制度设计建议提供实证支撑。</p>
+        </article>
+      </section>
+
+      <aside class="panel">
+        <div class="tabs">
+          <button class="tab">大纲</button>
+          <button class="tab active">AI 助手</button>
+        </div>
+        <div class="body">
+          <div class="chat">
+            <div class="msg ai">已读取第 3 节。需要我扩写"搭便车"的实证部分，还是先生成图 2 的数据说明？</div>
+            <div class="msg me">先扩写实证，控制在 200 词。</div>
+            <div class="msg ai">好的，正在生成…<div class="tool"><div class="head"><span class="dot"></span> tool_call · web_search <span style="margin-left:auto;color:var(--t-3)">已批准</span></div></div></div>
+            <div class="composer"><input placeholder="问 AI 助手…" /><button class="btn primary" style="height:36px">发送</button></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+
+<!-- Command palette -->
+<div class="palette-mask" id="paletteMask">
+  <div class="palette" role="dialog" aria-label="命令面板">
+    <input placeholder="输入命令或搜索…" id="paletteInput" />
+    <div class="list">
+      <div class="item sel"><span class="ic">⌘</span> 跳转：项目库 <span class="hint">↵</span></div>
+      <div class="item"><span class="ic">⌘</span> 打开最近：气候政策综述.docx</div>
+      <div class="item"><span class="ic">⌘</span> 运行 Agent：润色第 3 节</div>
+      <div class="item"><span class="ic">⌘</span> 切换主题：亮 / 暗 / 跟随系统</div>
+      <div class="item"><span class="ic">⌘</span> 导出：Word / LaTeX / PDF</div>
+      <div class="item"><span class="ic">⌘</span> 查看快捷键</div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">✓ 已保存</div>
+
+<script>
+  const root=document.documentElement;
+  // theme toggle
+  document.getElementById('themeBtn').onclick=()=>{root.dataset.theme=root.dataset.theme==='dark'?'light':'dark';};
+  // command palette
+  const mask=document.getElementById('paletteMask'),pin=document.getElementById('paletteInput');
+  const openP=()=>{mask.classList.add('open');setTimeout(()=>pin.focus(),60);};
+  const closeP=()=>mask.classList.remove('open');
+  document.getElementById('search').onclick=openP;
+  window.addEventListener('keydown',e=>{
+    if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();mask.classList.contains('open')?closeP():openP();}
+    if(e.key==='Escape')closeP();
+  });
+  mask.onclick=e=>{if(e.target===mask)closeP();};
+  // focus mode
+  const shell=document.getElementById('shell'),ws=document.getElementById('workspace');
+  document.getElementById('focusBtn').onclick=()=>{shell.classList.toggle('focus');ws.classList.toggle('no-right');};
+  // completion glow (signature interaction)
+  const save=document.getElementById('saveBtn'),toast=document.getElementById('toast');
+  save.onclick=()=>{
+    save.classList.add('done');
+    toast.classList.add('show');
+    setTimeout(()=>toast.classList.remove('show'),2600);
+    setTimeout(()=>save.classList.remove('done'),1800);
+  };
+</script>
+</body>
+</html>

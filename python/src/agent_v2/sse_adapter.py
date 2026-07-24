@@ -7,6 +7,7 @@
 所以把 token/tool_call/tool_result/thought 都映射为 `response` 类型，
 让用户能实时看到 Agent 在做什么。
 """
+
 from __future__ import annotations
 
 import json
@@ -64,6 +65,11 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
     elif t == AgentEventType.APPROVAL_RECEIVED:
         content = data.get("decision", "")
         evt_type = "approval_received"
+        return {
+            "type": evt_type,
+            "content": content,
+            "event_id": data.get("id", _event_id()),
+        }
     elif t == AgentEventType.AWAIT_APPROVAL:
         tool_name = data.get("tool_name", "")
         content = f"Agent wants to modify {tool_name}"
@@ -93,7 +99,12 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
                 "file_path": file_path,
             },
         }
-        return {"type": evt_type, "content": content, "event_id": data.get("id", _event_id()), "metadata": metadata}
+        return {
+            "type": evt_type,
+            "content": content,
+            "event_id": data.get("id", _event_id()),
+            "metadata": metadata,
+        }
 
     # ---- 以下保留原始类型 ----
     elif t == AgentEventType.CHECKPOINT:
@@ -105,6 +116,7 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
             "action": data.get("action", ""),
             "file": data.get("file", ""),
             "content": data.get("content", ""),
+            "content_truncated": bool(data.get("content_truncated", False)),
         }
         return {"type": evt_type, "content": content, "event_id": _event_id(), "metadata": metadata}
     elif t == AgentEventType.SESSION_STARTED:

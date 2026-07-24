@@ -2,18 +2,29 @@
 
 Covers: OpenAI, Ollama, DeepSeek, Groq, and 17+ other providers.
 """
+
 from __future__ import annotations
 
 import json
-import uuid
-from typing import Any, AsyncGenerator
-
 import logging
+import uuid
+from collections.abc import AsyncGenerator
+from typing import Any
 
 import httpx
 
 from src.agent_v2.providers.base import BaseProvider
-from src.agent_v2.types import ApiError
+from src.agent_v2.types import (
+    ApiError,
+    Message,
+    MessageRole,
+    ProviderResponse,
+    TextBlock,
+    ThinkingBlock,
+    TokenUsage,
+    ToolDefinition,
+    ToolUseBlock,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +41,6 @@ def _max_tokens_for_model(model: str) -> int:
     if "qwen" in m or "llama" in m:
         return 4096
     return 4096
-from src.agent_v2.types import (
-    Message,
-    MessageRole,
-    ProviderResponse,
-    TextBlock,
-    ThinkingBlock,
-    TokenUsage,
-    ToolDefinition,
-    ToolUseBlock,
-)
 
 
 class OpenAiCompatProvider(BaseProvider):
@@ -65,6 +66,7 @@ class OpenAiCompatProvider(BaseProvider):
         self._client: httpx.AsyncClient | None = None
         self._direct_client: httpx.AsyncClient | None = None
         from src.agent_v2.providers.quirks import detect_quirks
+
         self.quirks = detect_quirks(model, base_url)
         self.model_max_tokens = _max_tokens_for_model(model)
 
@@ -113,34 +115,43 @@ class OpenAiCompatProvider(BaseProvider):
                                 json.loads(args)
                             except (json.JSONDecodeError, TypeError):
                                 args = json.dumps({"input": args})
-                            tc_list.append({
-                                "id": tc.id, "type": "function",
-                                "function": {"name": tc.name, "arguments": args},
-                            })
+                            tc_list.append(
+                                {
+                                    "id": tc.id,
+                                    "type": "function",
+                                    "function": {"name": tc.name, "arguments": args},
+                                }
+                            )
                         entry["tool_calls"] = tc_list
                     result.append(entry)
             elif msg.role == MessageRole.TOOL:
                 from src.agent_v2.types import ToolResultBlock
+
                 for b in msg.blocks:
                     if isinstance(b, ToolResultBlock):
-                        result.append({
-                            "role": "tool",
-                            "tool_call_id": b.tool_use_id,
-                            "content": b.output,
-                        })
+                        result.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": b.tool_use_id,
+                                "content": b.output,
+                            }
+                        )
         return result
 
     def _build_tools(self, tools: list[ToolDefinition] | None) -> list[dict] | None:
         if not tools:
             return None
-        return [{
-            "type": "function",
-            "function": {
-                "name": t.name,
-                "description": t.description,
-                "parameters": t.input_schema,
-            },
-        } for t in tools]
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.input_schema,
+                },
+            }
+            for t in tools
+        ]
 
     async def chat(
         self,
@@ -187,13 +198,21 @@ class OpenAiCompatProvider(BaseProvider):
             finish = data.get("choices", [{}])[0].get("finish_reason", "?")
             tc_count = len(data.get("choices", [{}])[0].get("message", {}).get("tool_calls") or [])
             text_len = len(data.get("choices", [{}])[0].get("message", {}).get("content") or "")
-            logger.info("chat response: finish=%s, tool_calls=%d, text_len=%d, model=%s, msgs=%d, tools=%d",
-                         finish, tc_count, text_len, data.get("model", "?"), len(messages), len(tools or []))
+            logger.info(
+                "chat response: finish=%s, tool_calls=%d, text_len=%d, model=%s, msgs=%d, tools=%d",
+                finish,
+                tc_count,
+                text_len,
+                data.get("model", "?"),
+                len(messages),
+                len(tools or []),
+            )
             if tc_count == 0 and finish == "stop" and tools:
-                logger.warning("DeepSeek text-only response with %d tools available. "
-                               "Last user msg: %s...",
-                               len(tools),
-                               (messages[-1].text_content() if messages else "")[:200])
+                logger.warning(
+                    "DeepSeek text-only response with %d tools available. Last user msg: %s...",
+                    len(tools),
+                    (messages[-1].text_content() if messages else "")[:200],
+                )
             return self._parse_response(data)
 
         raise ApiError(
@@ -234,7 +253,9 @@ class OpenAiCompatProvider(BaseProvider):
                 return
             except httpx.ConnectError as e:
                 last_err = e
-                logger.debug("stream connect failed with %s, trying next client", client_fn.__name__)
+                logger.debug(
+                    "stream connect failed with %s, trying next client", client_fn.__name__
+                )
                 continue
             except httpx.HTTPStatusError as e:
                 body_text = e.response.text[:500] if e.response else ""
@@ -249,7 +270,10 @@ class OpenAiCompatProvider(BaseProvider):
         ) from last_err
 
     async def _stream_body(
-        self, client: httpx.AsyncClient, url: str, body: dict,
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        body: dict,
     ) -> AsyncGenerator[ProviderResponse | TokenUsage, None]:
         """Streaming SSE parser — single client, no retry logic."""
         blocks: list = []
@@ -313,8 +337,13 @@ class OpenAiCompatProvider(BaseProvider):
         for idx in sorted(tc_map.keys()):
             tc = tc_map[idx]
             if tc["name"]:
-                blocks.append(ToolUseBlock(id=tc["id"] or f"tc_{uuid.uuid4().hex[:8]}",
-                                            name=tc["name"], input=tc["args"] or "{}"))
+                blocks.append(
+                    ToolUseBlock(
+                        id=tc["id"] or f"tc_{uuid.uuid4().hex[:8]}",
+                        name=tc["name"],
+                        input=tc["args"] or "{}",
+                    )
+                )
 
         yield ProviderResponse(
             blocks=blocks,
@@ -332,11 +361,13 @@ class OpenAiCompatProvider(BaseProvider):
         tc_list = msg.get("tool_calls") or []
         for tc in tc_list:
             func = tc.get("function", {})
-            blocks.append(ToolUseBlock(
-                id=tc.get("id", f"tc_{uuid.uuid4().hex[:8]}"),
-                name=func.get("name", "unknown"),
-                input=func.get("arguments", "{}"),
-            ))
+            blocks.append(
+                ToolUseBlock(
+                    id=tc.get("id", f"tc_{uuid.uuid4().hex[:8]}"),
+                    name=func.get("name", "unknown"),
+                    input=func.get("arguments", "{}"),
+                )
+            )
         text = msg.get("content", "")
         if isinstance(text, str) and text:
             reasoning = msg.get("reasoning_content") or ""

@@ -189,9 +189,11 @@ import AgentApprovalInline from './AgentApprovalInline.vue'
 import type { PendingApproval } from '../composables/useAgentChat'
 import { useFileTree } from '../composables/useFileTree'
 import { useEditorState } from '../composables/useEditorState'
-import { setContent } from '../composables/useEditorTabs'
 import { useEditor } from '../composables/useEditor'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
+import { useToast } from '../composables/useToast'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
+import { readTextFile } from '@tauri-apps/plugin-fs'
 import { Mic } from './ui/icons'
 
 let voiceBaseInput = ''
@@ -245,8 +247,9 @@ let copiedTimer: ReturnType<typeof setTimeout> | null = null
 const acSessionId = ref<string | null>(null)
 const pendingApproval = ref<PendingApproval | null>(null)
 const { rootDir, refresh: refreshFileTree } = useFileTree()
-const { tabs: editorTabs, setActiveEdit, clearActiveEdit, contentVersion, activeTab } = useEditorState()
-const { reloadOpenTabs } = useEditor()
+const { tabs: editorTabs, setActiveEdit, clearActiveEdit } = useEditorState()
+const { reloadOpenTabs, applyExternalFileUpdate } = useEditor()
+const { warn: showWarning } = useToast()
 
 const normPath = (p: string) => p.replace(/\\/g, '/').toLowerCase()
 
@@ -359,8 +362,7 @@ function renderMd(text: string, msgId: string): string {
 // ── File operations ─────────────────────────────────────────
 async function attachFile() {
   try {
-    const { open } = await import('@tauri-apps/plugin-dialog')
-    const selected = await open({
+    const selected = await openDialog({
       multiple: true,
       filters: [{ name: 'Text', extensions: ['md','txt','tex','py','js','ts','json','yaml','yml','xml','html','css','csv','pdf'] }]
     })
@@ -370,7 +372,6 @@ async function attachFile() {
       const name = p.split(/[\\/]/).pop() || p
       if (files.value.some(f => f.name === name)) continue
       try {
-        const { readTextFile } = await import('@tauri-apps/plugin-fs')
         const content = await readTextFile(p)
         files.value.push({ name, content })
       } catch { /* skip unreadable files */ }
@@ -570,20 +571,16 @@ async function doSend(text: string) {
       else if (evtType === 'checkpoint') {
         const cpFile = meta?.file as string | undefined
         const cpContent = meta?.content as string | undefined
-        if (cpFile && cpContent) {
-          const tab = editorTabs.value.find((t: any) => t.path && normPath(t.path) === normPath(cpFile))
-          if (tab) {
-            const changed = tab.content !== cpContent
-            tab.content = cpContent
-            tab.isModified = false
-            contentVersion.value++
-            if (changed && tab.id === activeTab.value?.id) {
-              setContent(cpContent)
-            }
+        const contentTruncated = Boolean(meta?.content_truncated)
+        if (cpFile && cpContent && !contentTruncated) {
+          const result = applyExternalFileUpdate(cpFile, cpContent)
+          if (result === 'conflict') {
+            const name = cpFile.split(/[\\/]/).pop() || cpFile
+            showWarning(t('agent.unsavedFileConflict', { name }), 8000)
           }
         }
-        refreshFileTree()
-        reloadOpenTabs()
+        void refreshFileTree()
+        void reloadOpenTabs()
       }
     })
   } catch (e) {

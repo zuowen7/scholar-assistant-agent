@@ -10,12 +10,12 @@ import httpx
 import pytest
 
 from src.translator.cloud_client import (
-    CloudClient,
-    _ProviderRateLimiter,
-    _get_limiter,
-    _rate_limiters,
     _RATE_LIMIT_INTERVAL,
     PROVIDER_PRESETS,
+    CloudClient,
+    _get_limiter,
+    _ProviderRateLimiter,
+    _rate_limiters,
 )
 
 
@@ -58,8 +58,8 @@ def _make_client(provider: str = "openai", **kwargs) -> CloudClient:
 # OpenAI 兼容 API
 # ---------------------------------------------------------------------------
 
-class TestOpenAIFormat:
 
+class TestOpenAIFormat:
     def test_successful_translation(self):
         client = _make_client("openai")
         mock_resp = _make_openai_response("翻译结果")
@@ -110,8 +110,8 @@ class TestOpenAIFormat:
 # Anthropic API
 # ---------------------------------------------------------------------------
 
-class TestAnthropicFormat:
 
+class TestAnthropicFormat:
     def test_successful_translation(self):
         client = _make_client("anthropic")
         mock_resp = _make_anthropic_response("翻译结果")
@@ -160,8 +160,8 @@ class TestAnthropicFormat:
 # 错误路径
 # ---------------------------------------------------------------------------
 
-class TestErrorPaths:
 
+class TestErrorPaths:
     def test_connection_error_retries_then_raises(self):
         client = _make_client("openai")
         call_count = 0
@@ -245,8 +245,8 @@ class TestErrorPaths:
 # 模块级速率限制器
 # ---------------------------------------------------------------------------
 
-class TestRateLimiter:
 
+class TestRateLimiter:
     def test_same_key_returns_same_limiter(self):
         key = "https://api.test.com:sk-testxx"
         l1 = _get_limiter(key)
@@ -299,6 +299,7 @@ class TestRateLimiter:
 # ---------------------------------------------------------------------------
 # API Key 脱敏（防止泄露到日志）
 # ---------------------------------------------------------------------------
+
 
 class TestRedactKey:
     """测试 _redact_key 方法防止 API key 泄露到日志。"""

@@ -6,18 +6,21 @@ LLM 调用全部 mock，不发真实网络请求。
 
 from __future__ import annotations
 
-import json
 import asyncio
-from unittest.mock import AsyncMock, patch, MagicMock
+import json
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.argument.companion_models import (
-    Anchor, Ledger, Promise, ReviewSession, ReviewPoint,
-)
 from src.argument.anchor import make_anchor_from_quote
-
+from src.argument.companion_models import (
+    Anchor,
+    Ledger,
+    Promise,
+    ReviewPoint,
+    ReviewSession,
+)
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -49,6 +52,7 @@ We evaluate on B. Results show 30% improvement. We compare against baseline C.
 We have shown that M works well on B. Future work includes scaling to larger datasets.
 """
 
+
 def make_promise(status: str, note: str | None = None, kind: str = "contribution") -> Promise:
     anchor = make_anchor_from_quote("doc1", SAMPLE_TEXT, "contribution A")
     return Promise(
@@ -59,6 +63,7 @@ def make_promise(status: str, note: str | None = None, kind: str = "contribution
         severity="error" if status in ("unpaid", "mismatch") else "warning",
         note=note,
     )
+
 
 def make_ledger(promises: list[Promise]) -> Ledger:
     anchors = []
@@ -76,9 +81,11 @@ def make_ledger(promises: list[Promise]) -> Ledger:
 
 # ── ledger_cross_check ────────────────────────────────────────────────────────
 
+
 class TestLedgerCrossCheck:
     def test_unpaid_produces_claim_overreach_point(self):
         from src.argument.reviewer import ledger_cross_check
+
         p = make_promise("unpaid")
         ledger = make_ledger([p])
         points = ledger_cross_check(ledger)
@@ -91,6 +98,7 @@ class TestLedgerCrossCheck:
 
     def test_mismatch_produces_point_with_note_in_detail(self):
         from src.argument.reviewer import ledger_cross_check
+
         p = make_promise("mismatch", note="Found N=1e5, expected N=1e6")
         ledger = make_ledger([p])
         points = ledger_cross_check(ledger)
@@ -101,6 +109,7 @@ class TestLedgerCrossCheck:
 
     def test_paid_promise_produces_no_point(self):
         from src.argument.reviewer import ledger_cross_check
+
         p = make_promise("paid")
         ledger = make_ledger([p])
         points = ledger_cross_check(ledger)
@@ -108,6 +117,7 @@ class TestLedgerCrossCheck:
 
     def test_partial_promise_produces_no_point(self):
         from src.argument.reviewer import ledger_cross_check
+
         p = make_promise("partial")
         ledger = make_ledger([p])
         points = ledger_cross_check(ledger)
@@ -115,11 +125,13 @@ class TestLedgerCrossCheck:
 
     def test_none_ledger_returns_empty(self):
         from src.argument.reviewer import ledger_cross_check
+
         points = ledger_cross_check(None)
         assert points == []
 
     def test_multiple_problematic_promises(self):
         from src.argument.reviewer import ledger_cross_check
+
         promises = [
             make_promise("unpaid"),
             make_promise("mismatch", note="wrong scale"),
@@ -132,10 +144,12 @@ class TestLedgerCrossCheck:
 
 # ── coherence_check ───────────────────────────────────────────────────────────
 
+
 class TestCoherenceCheck:
     @pytest.mark.asyncio
     async def test_llm_unavailable_returns_deterministic_only(self):
         from src.argument.reviewer import coherence_check
+
         ledger = make_ledger([make_promise("paid")])
         points = await coherence_check(ledger, SAMPLE_TEXT)
         # Should return without error; may have 0-N deterministic points
@@ -144,16 +158,22 @@ class TestCoherenceCheck:
     @pytest.mark.asyncio
     async def test_inconsistency_point_from_llm(self):
         from src.argument.reviewer import coherence_check
-        inconsistency_json = json.dumps([{
-            "category": "inconsistency",
-            "severity": "major",
-            "title": "Conclusion contradicts abstract",
-            "detail": "Abstract claims A but conclusion discusses B",
-            "verbatim_quote": "We have shown that M works well",
-        }])
 
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(return_value=inconsistency_json)):
+        inconsistency_json = json.dumps(
+            [
+                {
+                    "category": "inconsistency",
+                    "severity": "major",
+                    "title": "Conclusion contradicts abstract",
+                    "detail": "Abstract claims A but conclusion discusses B",
+                    "verbatim_quote": "We have shown that M works well",
+                }
+            ]
+        )
+
+        with patch(
+            "src.argument.reviewer.call_llm_chat", new=AsyncMock(return_value=inconsistency_json)
+        ):
             ledger = make_ledger([make_promise("paid")])
             points = await coherence_check(ledger, SAMPLE_TEXT)
         inconsistency_pts = [p for p in points if p.category == "inconsistency"]
@@ -163,16 +183,20 @@ class TestCoherenceCheck:
     @pytest.mark.asyncio
     async def test_gap_mismatch_point_from_llm(self):
         from src.argument.reviewer import coherence_check
-        gap_json = json.dumps([{
-            "category": "gap_mismatch",
-            "severity": "major",
-            "title": "Gap not addressed",
-            "detail": "Intro claims gap Z but experiments don't address it",
-            "verbatim_quote": "Existing methods fail because of Z",
-        }])
 
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(return_value=gap_json)):
+        gap_json = json.dumps(
+            [
+                {
+                    "category": "gap_mismatch",
+                    "severity": "major",
+                    "title": "Gap not addressed",
+                    "detail": "Intro claims gap Z but experiments don't address it",
+                    "verbatim_quote": "Existing methods fail because of Z",
+                }
+            ]
+        )
+
+        with patch("src.argument.reviewer.call_llm_chat", new=AsyncMock(return_value=gap_json)):
             ledger = make_ledger([make_promise("unpaid", kind="gap_statement")])
             points = await coherence_check(ledger, SAMPLE_TEXT)
         gap_pts = [p for p in points if p.category == "gap_mismatch"]
@@ -181,8 +205,11 @@ class TestCoherenceCheck:
     @pytest.mark.asyncio
     async def test_llm_bad_json_returns_deterministic_only(self):
         from src.argument.reviewer import coherence_check
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(return_value="this is not json {{{")):
+
+        with patch(
+            "src.argument.reviewer.call_llm_chat",
+            new=AsyncMock(return_value="this is not json {{{"),
+        ):
             ledger = make_ledger([make_promise("paid")])
             points = await coherence_check(ledger, SAMPLE_TEXT)
         # Should not crash; may return deterministic points only
@@ -191,10 +218,12 @@ class TestCoherenceCheck:
 
 # ── related_work_check ────────────────────────────────────────────────────────
 
+
 class TestRelatedWorkCheck:
     @pytest.mark.asyncio
     async def test_no_contrast_marker_produces_weak_positioning(self):
         from src.argument.reviewer import related_work_check
+
         text_no_contrast = """\
 # Abstract
 
@@ -205,8 +234,7 @@ We propose method M.
 Smith (2022) proposed A. Jones (2023) extended it. Liu (2021) used technique T.
 Prior methods focused on B. Earlier work studied C.
 """
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(return_value="[]")):
+        with patch("src.argument.reviewer.call_llm_chat", new=AsyncMock(return_value="[]")):
             points = await related_work_check(text_no_contrast)
         wp_pts = [p for p in points if p.category == "weak_positioning"]
         assert len(wp_pts) >= 1
@@ -215,6 +243,7 @@ Prior methods focused on B. Earlier work studied C.
     @pytest.mark.asyncio
     async def test_no_related_work_section_produces_info_point(self):
         from src.argument.reviewer import related_work_check
+
         text_no_rw = """\
 # Abstract
 
@@ -228,8 +257,7 @@ Previous work lacks X.
 
 Results show improvement.
 """
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(return_value="[]")):
+        with patch("src.argument.reviewer.call_llm_chat", new=AsyncMock(return_value="[]")):
             points = await related_work_check(text_no_rw)
         # Either missing_related_work or weak_positioning info point
         relevant = [p for p in points if p.category in ("weak_positioning", "missing_related_work")]
@@ -238,15 +266,19 @@ Results show improvement.
     @pytest.mark.asyncio
     async def test_llm_returns_weak_positioning_point(self):
         from src.argument.reviewer import related_work_check
-        rw_json = json.dumps([{
-            "category": "weak_positioning",
-            "severity": "major",
-            "title": "False comparison claimed",
-            "detail": "The paper claims it outperforms X but X does not address this task",
-            "verbatim_quote": "none handled Y efficiently",
-        }])
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(return_value=rw_json)):
+
+        rw_json = json.dumps(
+            [
+                {
+                    "category": "weak_positioning",
+                    "severity": "major",
+                    "title": "False comparison claimed",
+                    "detail": "The paper claims it outperforms X but X does not address this task",
+                    "verbatim_quote": "none handled Y efficiently",
+                }
+            ]
+        )
+        with patch("src.argument.reviewer.call_llm_chat", new=AsyncMock(return_value=rw_json)):
             points = await related_work_check(SAMPLE_TEXT)
         llm_pts = [p for p in points if p.source == "rw_check" and p.title]
         assert len(llm_pts) >= 1
@@ -254,35 +286,40 @@ Results show improvement.
     @pytest.mark.asyncio
     async def test_llm_unavailable_returns_deterministic_only(self):
         from src.argument.reviewer import related_work_check
+
         # No cloud/ollama client → call_llm_chat returns ""
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(return_value="")):
+        with patch("src.argument.reviewer.call_llm_chat", new=AsyncMock(return_value="")):
             points = await related_work_check(SAMPLE_TEXT)
         assert isinstance(points, list)
 
 
 # ── _load_venue_profile ───────────────────────────────────────────────────────
 
+
 class TestLoadVenueProfile:
     def test_known_venue_neurips(self):
         from src.argument.reviewer import _load_venue_profile
+
         profile = _load_venue_profile("NeurIPS")
         assert profile  # non-empty
         assert isinstance(profile, str)
 
     def test_known_venue_chi(self):
         from src.argument.reviewer import _load_venue_profile
+
         profile = _load_venue_profile("CHI")
         assert profile
 
     def test_unknown_venue_returns_generic_plus_name(self):
         from src.argument.reviewer import _load_venue_profile
+
         profile = _load_venue_profile("MYCONF2099")
         assert profile
         assert "MYCONF2099" in profile or len(profile) > 50  # generic text included
 
     def test_none_venue_returns_generic(self):
         from src.argument.reviewer import _load_venue_profile
+
         profile = _load_venue_profile(None)
         assert profile
         assert isinstance(profile, str)
@@ -290,38 +327,51 @@ class TestLoadVenueProfile:
 
 # ── run_review ────────────────────────────────────────────────────────────────
 
+
 class TestRunReview:
     def _collect(self, coro) -> list[dict]:
         """Run async generator and collect all events."""
+
         async def _run():
             events = []
             async for ev in coro:
                 events.append(ev)
             return events
+
         return asyncio.get_event_loop().run_until_complete(_run())
 
     def _make_store(self, tmp_path: Path):
         from src.argument.companion_store import CompanionStore
+
         return CompanionStore(runtime_dir=tmp_path)
 
     @pytest.mark.asyncio
     async def test_yields_complete_event_with_session_id(self, tmp_path):
         from src.argument.reviewer import run_review
+
         store = self._make_store(tmp_path)
-        llm_json = json.dumps([{
-            "severity": "major",
-            "category": "baseline",
-            "title": "Weak baselines",
-            "detail": "The baselines chosen are not competitive",
-            "verbatim_quote": "compare against baseline C",
-        }])
+        llm_json = json.dumps(
+            [
+                {
+                    "severity": "major",
+                    "category": "baseline",
+                    "title": "Weak baselines",
+                    "detail": "The baselines chosen are not competitive",
+                    "verbatim_quote": "compare against baseline C",
+                }
+            ]
+        )
 
         events = []
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(return_value=llm_json)):
+        with patch("src.argument.reviewer.call_llm_chat", new=AsyncMock(return_value=llm_json)):
             async for ev in run_review(
-                doc_id="doc1", doc_title="Paper", text=SAMPLE_TEXT,
-                venue="NeurIPS", persona="reviewer2", ledger=None, store=store,
+                doc_id="doc1",
+                doc_title="Paper",
+                text=SAMPLE_TEXT,
+                venue="NeurIPS",
+                persona="reviewer2",
+                ledger=None,
+                store=store,
             ):
                 events.append(ev)
 
@@ -334,22 +384,31 @@ class TestRunReview:
     @pytest.mark.asyncio
     async def test_focus_mode_only_yields_scoped_points(self, tmp_path):
         from src.argument.reviewer import run_review
+
         store = self._make_store(tmp_path)
-        scoped_json = json.dumps([{
-            "severity": "major",
-            "category": "soundness",
-            "title": "Claim unsupported",
-            "detail": "This sentence makes an unsupported claim",
-            "verbatim_quote": "30% improvement",
-        }])
+        scoped_json = json.dumps(
+            [
+                {
+                    "severity": "major",
+                    "category": "soundness",
+                    "title": "Claim unsupported",
+                    "detail": "This sentence makes an unsupported claim",
+                    "verbatim_quote": "30% improvement",
+                }
+            ]
+        )
 
         events = []
         focus = {"quote": "30% improvement", "char_start": 100, "char_end": 115}
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(return_value=scoped_json)):
+        with patch("src.argument.reviewer.call_llm_chat", new=AsyncMock(return_value=scoped_json)):
             async for ev in run_review(
-                doc_id="doc1", doc_title="Paper", text=SAMPLE_TEXT,
-                venue=None, persona="reviewer2", ledger=None, store=store,
+                doc_id="doc1",
+                doc_title="Paper",
+                text=SAMPLE_TEXT,
+                venue=None,
+                persona="reviewer2",
+                ledger=None,
+                store=store,
                 focus=focus,
             ):
                 events.append(ev)
@@ -362,13 +421,19 @@ class TestRunReview:
     @pytest.mark.asyncio
     async def test_checks_ledger_only(self, tmp_path):
         from src.argument.reviewer import run_review
+
         store = self._make_store(tmp_path)
         ledger = make_ledger([make_promise("unpaid")])
 
         events = []
         async for ev in run_review(
-            doc_id="doc1", doc_title="Paper", text=SAMPLE_TEXT,
-            venue=None, persona="reviewer2", ledger=ledger, store=store,
+            doc_id="doc1",
+            doc_title="Paper",
+            text=SAMPLE_TEXT,
+            venue=None,
+            persona="reviewer2",
+            ledger=ledger,
+            store=store,
             checks=["ledger"],
         ):
             events.append(ev)
@@ -382,6 +447,7 @@ class TestRunReview:
     @pytest.mark.asyncio
     async def test_session_id_given_appends_to_existing(self, tmp_path):
         from src.argument.reviewer import run_review
+
         store = self._make_store(tmp_path)
 
         # Create an existing session
@@ -392,20 +458,28 @@ class TestRunReview:
         )
         store.save_review(existing_session)
 
-        llm_json = json.dumps([{
-            "severity": "minor",
-            "category": "writing_clarity",
-            "title": "Unclear prose",
-            "detail": "Section 2 is unclear",
-            "verbatim_quote": "technique T with parameter P",
-        }])
+        llm_json = json.dumps(
+            [
+                {
+                    "severity": "minor",
+                    "category": "writing_clarity",
+                    "title": "Unclear prose",
+                    "detail": "Section 2 is unclear",
+                    "verbatim_quote": "technique T with parameter P",
+                }
+            ]
+        )
 
         events = []
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(return_value=llm_json)):
+        with patch("src.argument.reviewer.call_llm_chat", new=AsyncMock(return_value=llm_json)):
             async for ev in run_review(
-                doc_id="doc1", doc_title="Paper", text=SAMPLE_TEXT,
-                venue=None, persona="reviewer2", ledger=None, store=store,
+                doc_id="doc1",
+                doc_title="Paper",
+                text=SAMPLE_TEXT,
+                venue=None,
+                persona="reviewer2",
+                ledger=None,
+                store=store,
                 session_id=existing_session.id,
             ):
                 events.append(ev)
@@ -419,26 +493,33 @@ class TestRunReview:
     @pytest.mark.asyncio
     async def test_llm_parse_failure_discards_bad_items(self, tmp_path):
         from src.argument.reviewer import run_review
+
         store = self._make_store(tmp_path)
 
         # Malformed: missing required fields
-        bad_json = json.dumps([
-            {"severity": "major"},  # missing title/detail/category/verbatim_quote
-            {
-                "severity": "major",
-                "category": "baseline",
-                "title": "Good point",
-                "detail": "Well-formed item",
-                "verbatim_quote": "30% improvement",
-            },
-        ])
+        bad_json = json.dumps(
+            [
+                {"severity": "major"},  # missing title/detail/category/verbatim_quote
+                {
+                    "severity": "major",
+                    "category": "baseline",
+                    "title": "Good point",
+                    "detail": "Well-formed item",
+                    "verbatim_quote": "30% improvement",
+                },
+            ]
+        )
 
         events = []
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(return_value=bad_json)):
+        with patch("src.argument.reviewer.call_llm_chat", new=AsyncMock(return_value=bad_json)):
             async for ev in run_review(
-                doc_id="doc1", doc_title="Paper", text=SAMPLE_TEXT,
-                venue=None, persona="reviewer2", ledger=None, store=store,
+                doc_id="doc1",
+                doc_title="Paper",
+                text=SAMPLE_TEXT,
+                venue=None,
+                persona="reviewer2",
+                ledger=None,
+                store=store,
             ):
                 events.append(ev)
 
@@ -449,20 +530,37 @@ class TestRunReview:
     @pytest.mark.asyncio
     async def test_by_category_count_in_complete(self, tmp_path):
         from src.argument.reviewer import run_review
+
         store = self._make_store(tmp_path)
-        llm_json = json.dumps([
-            {"severity": "major", "category": "baseline", "title": "T1",
-             "detail": "D1", "verbatim_quote": "30% improvement"},
-            {"severity": "minor", "category": "writing_clarity", "title": "T2",
-             "detail": "D2", "verbatim_quote": "technique T"},
-        ])
+        llm_json = json.dumps(
+            [
+                {
+                    "severity": "major",
+                    "category": "baseline",
+                    "title": "T1",
+                    "detail": "D1",
+                    "verbatim_quote": "30% improvement",
+                },
+                {
+                    "severity": "minor",
+                    "category": "writing_clarity",
+                    "title": "T2",
+                    "detail": "D2",
+                    "verbatim_quote": "technique T",
+                },
+            ]
+        )
 
         events = []
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(return_value=llm_json)):
+        with patch("src.argument.reviewer.call_llm_chat", new=AsyncMock(return_value=llm_json)):
             async for ev in run_review(
-                doc_id="doc1", doc_title="Paper", text=SAMPLE_TEXT,
-                venue="NeurIPS", persona="reviewer2", ledger=None, store=store,
+                doc_id="doc1",
+                doc_title="Paper",
+                text=SAMPLE_TEXT,
+                venue="NeurIPS",
+                persona="reviewer2",
+                ledger=None,
+                store=store,
             ):
                 events.append(ev)
 
@@ -473,13 +571,19 @@ class TestRunReview:
     @pytest.mark.asyncio
     async def test_llm_totally_unavailable_no_error_event(self, tmp_path):
         from src.argument.reviewer import run_review
+
         store = self._make_store(tmp_path)
 
         events = []
         with patch("src.argument.reviewer.call_llm_chat", new=AsyncMock(return_value="")):
             async for ev in run_review(
-                doc_id="doc1", doc_title="Paper", text=SAMPLE_TEXT,
-                venue=None, persona="reviewer2", ledger=None, store=store,
+                doc_id="doc1",
+                doc_title="Paper",
+                text=SAMPLE_TEXT,
+                venue=None,
+                persona="reviewer2",
+                ledger=None,
+                store=store,
             ):
                 events.append(ev)
 
@@ -490,14 +594,20 @@ class TestRunReview:
 
 # ── continue_rebuttal ─────────────────────────────────────────────────────────
 
+
 class TestContinueRebuttal:
     def _make_session_with_point(self, tmp_path: Path):
         from src.argument.companion_store import CompanionStore
+
         store = CompanionStore(runtime_dir=tmp_path)
         rp = ReviewPoint(
-            severity="major", category="baseline",
-            title="Missing baselines", detail="No comparison to prior work.",
-            anchor_id=None, status="open", source="llm",
+            severity="major",
+            category="baseline",
+            title="Missing baselines",
+            detail="No comparison to prior work.",
+            anchor_id=None,
+            status="open",
+            source="llm",
         )
         session = ReviewSession(doc_id="doc1", points=[rp])
         store.save_review(session)
@@ -506,10 +616,13 @@ class TestContinueRebuttal:
     @pytest.mark.asyncio
     async def test_appends_author_and_reviewer_turns(self, tmp_path):
         from src.argument.reviewer import continue_rebuttal
+
         store, session, rp = self._make_session_with_point(tmp_path)
 
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(return_value="Your rebuttal is insufficient.")):
+        with patch(
+            "src.argument.reviewer.call_llm_chat",
+            new=AsyncMock(return_value="Your rebuttal is insufficient."),
+        ):
             events = []
             async for ev in continue_rebuttal(
                 session_id=session.id,
@@ -535,10 +648,13 @@ class TestContinueRebuttal:
     @pytest.mark.asyncio
     async def test_author_turn_appears_before_reviewer_turn(self, tmp_path):
         from src.argument.reviewer import continue_rebuttal
+
         store, session, rp = self._make_session_with_point(tmp_path)
 
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(return_value="Still not convinced.")):
+        with patch(
+            "src.argument.reviewer.call_llm_chat",
+            new=AsyncMock(return_value="Still not convinced."),
+        ):
             async for ev in continue_rebuttal(
                 session_id=session.id,
                 point_id=rp.id,
@@ -556,11 +672,13 @@ class TestContinueRebuttal:
     @pytest.mark.asyncio
     async def test_surrender_signal_changes_status_to_rebutted(self, tmp_path):
         from src.argument.reviewer import continue_rebuttal
+
         store, session, rp = self._make_session_with_point(tmp_path)
 
         surrender_reply = "这点可以认为已 rebutted — 你补的实验确实证明了这点。"
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(return_value=surrender_reply)):
+        with patch(
+            "src.argument.reviewer.call_llm_chat", new=AsyncMock(return_value=surrender_reply)
+        ):
             events = []
             async for ev in continue_rebuttal(
                 session_id=session.id,
@@ -575,6 +693,7 @@ class TestContinueRebuttal:
         status_events = [e for e in events if e["event"] == "status"]
         assert len(status_events) == 1
         import json
+
         assert json.loads(status_events[0]["data"])["status"] == "rebutted"
 
         # point in store should be updated
@@ -585,10 +704,13 @@ class TestContinueRebuttal:
     @pytest.mark.asyncio
     async def test_no_surrender_keeps_status_open(self, tmp_path):
         from src.argument.reviewer import continue_rebuttal
+
         store, session, rp = self._make_session_with_point(tmp_path)
 
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(return_value="I am still not satisfied.")):
+        with patch(
+            "src.argument.reviewer.call_llm_chat",
+            new=AsyncMock(return_value="I am still not satisfied."),
+        ):
             events = []
             async for ev in continue_rebuttal(
                 session_id=session.id,
@@ -600,6 +722,7 @@ class TestContinueRebuttal:
                 events.append(ev)
 
         import json
+
         status_events = [e for e in events if e["event"] == "status"]
         assert json.loads(status_events[0]["data"])["status"] == "open"
 
@@ -610,10 +733,13 @@ class TestContinueRebuttal:
     @pytest.mark.asyncio
     async def test_session_persisted_with_thread(self, tmp_path):
         from src.argument.reviewer import continue_rebuttal
+
         store, session, rp = self._make_session_with_point(tmp_path)
 
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(return_value="Your response is noted.")):
+        with patch(
+            "src.argument.reviewer.call_llm_chat",
+            new=AsyncMock(return_value="Your response is noted."),
+        ):
             async for _ in continue_rebuttal(
                 session_id=session.id,
                 point_id=rp.id,
@@ -633,6 +759,7 @@ class TestContinueRebuttal:
     @pytest.mark.asyncio
     async def test_session_not_found_yields_error(self, tmp_path):
         from src.argument.reviewer import continue_rebuttal
+
         store = type(self._make_session_with_point(tmp_path)[0])(runtime_dir=tmp_path)
 
         events = []
@@ -650,10 +777,12 @@ class TestContinueRebuttal:
     @pytest.mark.asyncio
     async def test_llm_unavailable_still_completes(self, tmp_path):
         from src.argument.reviewer import continue_rebuttal
+
         store, session, rp = self._make_session_with_point(tmp_path)
 
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(side_effect=Exception("LLM down"))):
+        with patch(
+            "src.argument.reviewer.call_llm_chat", new=AsyncMock(side_effect=Exception("LLM down"))
+        ):
             events = []
             async for ev in continue_rebuttal(
                 session_id=session.id,
@@ -678,40 +807,48 @@ Reviewer 1: The paper lacks baseline comparisons. You should compare with XYZ.
 Reviewer 2: The theoretical analysis in Section 3 appears to be flawed.
 """
 
-    LLM_IMPORT_RESP = json.dumps([
-        {
-            "reviewer_label": "Reviewer 1",
-            "severity": "major",
-            "category": "baseline",
-            "title": "Missing baseline comparison",
-            "detail": "The paper lacks baseline comparisons with XYZ.",
-            "quote_from_paper": "We outperform all baselines",
-        },
-        {
-            "reviewer_label": "Reviewer 2",
-            "severity": "fatal",
-            "category": "soundness",
-            "title": "Flawed theoretical analysis",
-            "detail": "Section 3 analysis is flawed.",
-            "quote_from_paper": "",
-        },
-    ])
+    LLM_IMPORT_RESP = json.dumps(
+        [
+            {
+                "reviewer_label": "Reviewer 1",
+                "severity": "major",
+                "category": "baseline",
+                "title": "Missing baseline comparison",
+                "detail": "The paper lacks baseline comparisons with XYZ.",
+                "quote_from_paper": "We outperform all baselines",
+            },
+            {
+                "reviewer_label": "Reviewer 2",
+                "severity": "fatal",
+                "category": "soundness",
+                "title": "Flawed theoretical analysis",
+                "detail": "Section 3 analysis is flawed.",
+                "quote_from_paper": "",
+            },
+        ]
+    )
 
     def _make_store(self, tmp_path):
         from src.argument.companion_store import CompanionStore
+
         return CompanionStore(runtime_dir=tmp_path)
 
     @pytest.mark.asyncio
     async def test_import_yields_review_point_events(self, tmp_path):
         from src.argument.reviewer import import_real_reviews
+
         store = self._make_store(tmp_path)
 
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(return_value=self.LLM_IMPORT_RESP)):
+        with patch(
+            "src.argument.reviewer.call_llm_chat", new=AsyncMock(return_value=self.LLM_IMPORT_RESP)
+        ):
             events = []
             async for ev in import_real_reviews(
-                doc_id="doc1", doc_title="Paper", text=SAMPLE_TEXT,
-                reviews_raw=self.REAL_REVIEWS_RAW, store=store,
+                doc_id="doc1",
+                doc_title="Paper",
+                text=SAMPLE_TEXT,
+                reviews_raw=self.REAL_REVIEWS_RAW,
+                store=store,
             ):
                 events.append(ev)
 
@@ -721,14 +858,19 @@ Reviewer 2: The theoretical analysis in Section 3 appears to be flawed.
     @pytest.mark.asyncio
     async def test_import_sets_reviewer_label(self, tmp_path):
         from src.argument.reviewer import import_real_reviews
+
         store = self._make_store(tmp_path)
 
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(return_value=self.LLM_IMPORT_RESP)):
+        with patch(
+            "src.argument.reviewer.call_llm_chat", new=AsyncMock(return_value=self.LLM_IMPORT_RESP)
+        ):
             events = []
             async for ev in import_real_reviews(
-                doc_id="doc1", doc_title="Paper", text=SAMPLE_TEXT,
-                reviews_raw=self.REAL_REVIEWS_RAW, store=store,
+                doc_id="doc1",
+                doc_title="Paper",
+                text=SAMPLE_TEXT,
+                reviews_raw=self.REAL_REVIEWS_RAW,
+                store=store,
             ):
                 events.append(ev)
 
@@ -740,14 +882,19 @@ Reviewer 2: The theoretical analysis in Section 3 appears to be flawed.
     @pytest.mark.asyncio
     async def test_import_creates_real_persona_session(self, tmp_path):
         from src.argument.reviewer import import_real_reviews
+
         store = self._make_store(tmp_path)
 
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(return_value=self.LLM_IMPORT_RESP)):
+        with patch(
+            "src.argument.reviewer.call_llm_chat", new=AsyncMock(return_value=self.LLM_IMPORT_RESP)
+        ):
             events = []
             async for ev in import_real_reviews(
-                doc_id="doc1", doc_title="Paper", text=SAMPLE_TEXT,
-                reviews_raw=self.REAL_REVIEWS_RAW, store=store,
+                doc_id="doc1",
+                doc_title="Paper",
+                text=SAMPLE_TEXT,
+                reviews_raw=self.REAL_REVIEWS_RAW,
+                store=store,
             ):
                 events.append(ev)
 
@@ -761,14 +908,19 @@ Reviewer 2: The theoretical analysis in Section 3 appears to be flawed.
     @pytest.mark.asyncio
     async def test_import_points_have_source_imported(self, tmp_path):
         from src.argument.reviewer import import_real_reviews
+
         store = self._make_store(tmp_path)
 
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(return_value=self.LLM_IMPORT_RESP)):
+        with patch(
+            "src.argument.reviewer.call_llm_chat", new=AsyncMock(return_value=self.LLM_IMPORT_RESP)
+        ):
             events = []
             async for ev in import_real_reviews(
-                doc_id="doc1", doc_title="Paper", text=SAMPLE_TEXT,
-                reviews_raw=self.REAL_REVIEWS_RAW, store=store,
+                doc_id="doc1",
+                doc_title="Paper",
+                text=SAMPLE_TEXT,
+                reviews_raw=self.REAL_REVIEWS_RAW,
+                store=store,
             ):
                 events.append(ev)
 
@@ -779,14 +931,19 @@ Reviewer 2: The theoretical analysis in Section 3 appears to be flawed.
     @pytest.mark.asyncio
     async def test_import_llm_unavailable_yields_error_no_dirty_data(self, tmp_path):
         from src.argument.reviewer import import_real_reviews
+
         store = self._make_store(tmp_path)
 
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(side_effect=Exception("LLM down"))):
+        with patch(
+            "src.argument.reviewer.call_llm_chat", new=AsyncMock(side_effect=Exception("LLM down"))
+        ):
             events = []
             async for ev in import_real_reviews(
-                doc_id="doc1", doc_title="Paper", text=SAMPLE_TEXT,
-                reviews_raw=self.REAL_REVIEWS_RAW, store=store,
+                doc_id="doc1",
+                doc_title="Paper",
+                text=SAMPLE_TEXT,
+                reviews_raw=self.REAL_REVIEWS_RAW,
+                store=store,
             ):
                 events.append(ev)
 
@@ -796,14 +953,19 @@ Reviewer 2: The theoretical analysis in Section 3 appears to be flawed.
     @pytest.mark.asyncio
     async def test_import_malformed_json_yields_error(self, tmp_path):
         from src.argument.reviewer import import_real_reviews
+
         store = self._make_store(tmp_path)
 
-        with patch("src.argument.reviewer.call_llm_chat",
-                   new=AsyncMock(return_value="}}not json{{")):
+        with patch(
+            "src.argument.reviewer.call_llm_chat", new=AsyncMock(return_value="}}not json{{")
+        ):
             events = []
             async for ev in import_real_reviews(
-                doc_id="doc1", doc_title="Paper", text=SAMPLE_TEXT,
-                reviews_raw=self.REAL_REVIEWS_RAW, store=store,
+                doc_id="doc1",
+                doc_title="Paper",
+                text=SAMPLE_TEXT,
+                reviews_raw=self.REAL_REVIEWS_RAW,
+                store=store,
             ):
                 events.append(ev)
 

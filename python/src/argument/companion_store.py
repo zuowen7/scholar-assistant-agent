@@ -5,21 +5,23 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
 import re
 import threading
 from pathlib import Path
-from typing import Optional
 
-from .companion_models import Ledger, Promise, RebuttalTurn, ReviewPoint, ReviewSession
+from .companion_models import Ledger, Promise, RebuttalTurn, ReviewSession
 
 logger = logging.getLogger(__name__)
 
 
 def _safe(doc_id: str) -> str:
-    return re.sub(r"[^\w.-]", "_", doc_id)
+    readable = re.sub(r"[^\w.-]", "_", doc_id).strip("._")[:80] or "document"
+    digest = hashlib.sha256(doc_id.encode("utf-8")).hexdigest()[:16]
+    return f"{readable}-{digest}"
 
 
 class CompanionStore:
@@ -73,10 +75,10 @@ class CompanionStore:
 
     # ── Ledger API ────────────────────────────────────────────────────────────
 
-    def get_ledger(self, doc_id: str) -> Optional[Ledger]:
+    def get_ledger(self, doc_id: str) -> Ledger | None:
         return self._ledgers.get(doc_id)
 
-    def get_ledger_by_path(self, file_path: str) -> Optional[Ledger]:
+    def get_ledger_by_path(self, file_path: str) -> Ledger | None:
         """按文件路径查找账本（doc_id 对已打开文件即为其路径）。
 
         先精确匹配，再 resolve 后比较，吸收 / vs \\ 和相对/绝对差异。
@@ -87,6 +89,7 @@ class CompanionStore:
         if direct is not None:
             return direct
         from pathlib import Path
+
         try:
             target = Path(file_path).resolve()
         except Exception as e:
@@ -109,12 +112,14 @@ class CompanionStore:
     def list_ledgers(self) -> list[dict]:
         result = []
         for ledger in self._ledgers.values():
-            result.append({
-                "doc_id": ledger.doc_id,
-                "doc_title": ledger.doc_title,
-                "promise_count": len(ledger.promises),
-                "last_built_at": ledger.last_built_at,
-            })
+            result.append(
+                {
+                    "doc_id": ledger.doc_id,
+                    "doc_title": ledger.doc_title,
+                    "promise_count": len(ledger.promises),
+                    "last_built_at": ledger.last_built_at,
+                }
+            )
         return result
 
     def delete_ledger(self, doc_id: str) -> None:
@@ -145,7 +150,7 @@ class CompanionStore:
 
     # ── Review API ────────────────────────────────────────────────────────────
 
-    def get_review(self, session_id: str) -> Optional[ReviewSession]:
+    def get_review(self, session_id: str) -> ReviewSession | None:
         return self._reviews.get(session_id)
 
     def save_review(self, session: ReviewSession) -> None:
@@ -159,14 +164,16 @@ class CompanionStore:
             if s.doc_id != doc_id:
                 continue
             open_count = sum(1 for p in s.points if p.status == "open")
-            result.append({
-                "session_id": s.id,
-                "venue": s.venue,
-                "persona": s.persona,
-                "point_count": len(s.points),
-                "open_count": open_count,
-                "created_at": s.created_at,
-            })
+            result.append(
+                {
+                    "session_id": s.id,
+                    "venue": s.venue,
+                    "persona": s.persona,
+                    "point_count": len(s.points),
+                    "open_count": open_count,
+                    "created_at": s.created_at,
+                }
+            )
         return result
 
     def delete_review(self, session_id: str) -> None:
@@ -187,9 +194,7 @@ class CompanionStore:
                     return
             raise KeyError(f"Point not found: {pid!r}")
 
-    def append_turns(
-        self, session_id: str, pid: str, turns: list[RebuttalTurn]
-    ) -> None:
+    def append_turns(self, session_id: str, pid: str, turns: list[RebuttalTurn]) -> None:
         with self._lock:
             session = self._reviews.get(session_id)
             if session is None:

@@ -1,4 +1,5 @@
 """Eval runner — loads YAML test cases and runs assertions against mock LLM output."""
+
 from __future__ import annotations
 
 import math
@@ -40,14 +41,16 @@ def load_cases(suite: str, cases_dir: Path | None = None) -> list[EvalCase]:
     cases = []
     for yaml_path in sorted(suite_dir.glob("*.yaml")):
         data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
-        cases.append(EvalCase(
-            id=data.get("id", yaml_path.stem),
-            description=data.get("description", ""),
-            input=data.get("input", ""),
-            mock_output=data.get("mock_output", ""),
-            assertions=data.get("assertions", []),
-            suite=data.get("suite", suite),
-        ))
+        cases.append(
+            EvalCase(
+                id=data.get("id", yaml_path.stem),
+                description=data.get("description", ""),
+                input=data.get("input", ""),
+                mock_output=data.get("mock_output", ""),
+                assertions=data.get("assertions", []),
+                suite=data.get("suite", suite),
+            )
+        )
     return cases
 
 
@@ -125,13 +128,15 @@ def run_suite(suite: str, cases_dir: Path | None = None) -> dict[str, Any]:
         passed = len(failures) == 0
         if passed:
             passed_count += 1
-        results.append(EvalResult(
-            case_id=case.id,
-            passed=passed,
-            failures=failures,
-            input=case.input,
-            mock_output=output,
-        ))
+        results.append(
+            EvalResult(
+                case_id=case.id,
+                passed=passed,
+                failures=failures,
+                input=case.input,
+                mock_output=output,
+            )
+        )
 
     total = len(cases)
     passrate = (passed_count / total) if total > 0 else 0.0

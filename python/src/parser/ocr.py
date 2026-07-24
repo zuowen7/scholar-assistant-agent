@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import tempfile
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -63,7 +62,9 @@ def _try_paddleocr(pdf_path: str | Path) -> str | None:
                 for line in result[0]:
                     txt = line[-1][0] if isinstance(line[-1], tuple) else str(line)
                     if isinstance(txt, list):
-                        txt = " ".join(part[0] if isinstance(part, tuple) else str(part) for part in txt)
+                        txt = " ".join(
+                            part[0] if isinstance(part, tuple) else str(part) for part in txt
+                        )
                     lines.append(str(txt))
                 text_parts.append(f"[Page {i}]\n" + "\n".join(lines))
         return "\n\n".join(text_parts) if text_parts else None

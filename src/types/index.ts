@@ -214,6 +214,7 @@ export interface AgentEvent {
     options?: string[]
     file?: string
     content?: string
+    content_truncated?: boolean
   }
 }
 

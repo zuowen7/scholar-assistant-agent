@@ -43,7 +43,7 @@
         <div v-if="showRecoveryBanner" class="recovery-banner">
           <span class="recovery-text">{{ t('app.recoveryBanner') }}</span>
           <div class="recovery-actions">
-            <UiButton variant="primary" size="sm" @click="showRecoveryBanner = false; setMode('translate')">{{ t('app.recoveryView') }}</UiButton>
+            <UiButton variant="primary" size="sm" @click="showRecoveryBanner = false; navigateTo('translate')">{{ t('app.recoveryView') }}</UiButton>
             <UiButton variant="ghost" size="sm" @click="showRecoveryBanner = false; discardPersisted()">{{ t('app.recoveryDiscard') }}</UiButton>
           </div>
         </div>
@@ -135,7 +135,7 @@
       />
 
       <!-- Agent 聊天面板 -->
-      <AgentPanel :open="showAgentChat" @update:open="toggleAgentChat($event)" @switch-to-editor="setMode('editor')" />
+      <AgentPanel :open="showAgentChat" @update:open="toggleAgentChat($event)" @switch-to-editor="navigateTo('write')" />
 
       <!-- 语音助手 Siri 风格浮层 -->
       <VoiceAssistantView />
@@ -156,18 +156,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, defineAsyncComponent, onMounted, onUnmounted, watch } from 'vue'
 import { useAppMode } from './composables/useAppMode'
 import { useVoiceRouter } from './composables/useVoiceRouter'
 import { registerAllVoiceCommands } from './composables/voiceCommands'
 import { checkArgumentMapV2Flag, _openFullArgMapTick } from './composables/useArgumentMap'
-import ArgumentMapView from './components/argument/ArgumentMapView.vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { getCurrentWebview } from '@tauri-apps/api/webview'
-import { open } from '@tauri-apps/plugin-dialog'
-import { readFile } from '@tauri-apps/plugin-fs'
 import { useToast } from './composables/useToast'
-import { convertFileSrc } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -178,9 +173,7 @@ import type { UpdateCheckResult } from './composables/useUpdateChecker'
 import { useEditor } from './composables/useEditor'
 import EditorLayout from './components/EditorLayout.vue'
 import AgentPanel from './components/AgentPanel.vue'
-import TranslateView from './components/TranslateView.vue'
 import AppShell from './components/shell/AppShell.vue'
-import ReviewerWorkspace from './components/argument/ReviewerWorkspace.vue'
 import SettingsCenter from './components/settings/SettingsCenter.vue'
 import InkBrushLoader from './components/InkBrushLoader.vue'
 import UiButton from './components/ui/UiButton.vue'
@@ -194,6 +187,14 @@ import { useFileTree } from './composables/useFileTree'
 import VoiceAssistantView from './components/VoiceAssistantView.vue'
 import { logger } from './utils/logger'
 import { useProject } from './composables/useProject'
+import { useUiZoom } from './composables/useUiZoom'
+import { useReadSettings } from './composables/useReadSettings'
+import { useBackground } from './composables/useBackground'
+import { useAppTheme } from './composables/useAppTheme'
+import { useAppWindow } from './composables/useAppWindow'
+
+const TranslateView = defineAsyncComponent(() => import('./components/TranslateView.vue'))
+const ReviewerWorkspace = defineAsyncComponent(() => import('./components/argument/ReviewerWorkspace.vue'))
 
 const { state, translate, translateFromPath, cleanup, checkHealth, checkOllama, startOllama, checkCloudApi, getConfig, updateConfig, getProviderPresets, fetchOllamaModels, restartBackend, listenBackendCrash, setBackendError, clearBackendError, recoverTranslation, discardPersisted } = useTranslate()
 const { pushError, info, success } = useToast()
@@ -213,7 +214,9 @@ const shellProvider = computed(() => engineType.value === 'cloud'
 const shellModel = computed(() => engineType.value === 'cloud' ? cloudConfig.value.model : ollamaModel.value)
 const shellModelOnline = computed(() => engineType.value === 'cloud' ? cloudOk.value : ollamaOk.value)
 
-function handleShellNavigate(section: 'translate' | 'write' | 'mindmap' | 'review') {
+type ShellSection = 'translate' | 'write' | 'mindmap' | 'review'
+
+function navigateTo(section: ShellSection) {
   shellSection.value = section
   if (section === 'translate') setMode('translate')
   else if (section === 'review') setMode('argument')
@@ -225,49 +228,25 @@ function handleShellNavigate(section: 'translate' | 'write' | 'mindmap' | 'revie
   }
 }
 
+function handleShellNavigate(section: ShellSection) {
+  navigateTo(section)
+}
+
+// Keep the shell highlight aligned when a non-shell action changes the app
+// mode (recovery banner, Agent navigation, argument-map shortcut, etc.).
+watch(appMode, (mode) => {
+  if (mode === 'translate') shellSection.value = 'translate'
+  else if (mode === 'argument') shellSection.value = 'review'
+  else if (shellSection.value === 'translate' || shellSection.value === 'review') shellSection.value = 'write'
+})
+
 async function handleShellRecent(path: string) {
-  shellSection.value = 'write'
-  setMode('editor')
+  navigateTo('write')
   await openProject(path).catch((error) => pushError(error instanceof Error ? error.message : '无法打开最近项目'))
 }
 
 const showSettings = ref(false)
-const UI_ZOOM_MIN = 0.8
-const UI_ZOOM_MAX = 2
-const UI_ZOOM_STEP = 0.1
-const uiZoom = ref(loadUiZoom())
-
-function loadUiZoom(): number {
-  try {
-    const saved = Number(localStorage.getItem('ui-zoom') || '1')
-    return Number.isFinite(saved) ? Math.min(UI_ZOOM_MAX, Math.max(UI_ZOOM_MIN, saved)) : 1
-  } catch { return 1 }
-}
-
-async function applyUiZoom(value: number) {
-  const normalized = Math.round(Math.min(UI_ZOOM_MAX, Math.max(UI_ZOOM_MIN, value)) * 10) / 10
-  uiZoom.value = normalized
-  try { localStorage.setItem('ui-zoom', String(normalized)) } catch { /* storage can be unavailable */ }
-  try {
-    await getCurrentWebview().setZoom(normalized)
-  } catch {
-    document.documentElement.style.setProperty('zoom', String(normalized))
-  }
-}
-
-function handleUiZoomShortcut(event: KeyboardEvent) {
-  if (!(event.ctrlKey || event.metaKey) || event.altKey) return
-  if (event.key === '0') {
-    event.preventDefault()
-    void applyUiZoom(1)
-  } else if (event.key === '+' || event.key === '=') {
-    event.preventDefault()
-    void applyUiZoom(uiZoom.value + UI_ZOOM_STEP)
-  } else if (event.key === '-' || event.key === '_') {
-    event.preventDefault()
-    void applyUiZoom(uiZoom.value - UI_ZOOM_STEP)
-  }
-}
+const { uiZoom, applyUiZoom, handleUiZoomShortcut } = useUiZoom()
 
 function openLegacySettings() {
   showSettings.value = true
@@ -283,25 +262,8 @@ function handleShellSectionChange(event: Event) {
 // Register voice commands
 registerAllVoiceCommands()
 
-// ── Agent 独立窗口模式 ──────────────────────────────────────
-const isAgentOnly = ref(false)
-// Detect agent-only mode via URL param — set by AgentPanel's openAgentWindow().
-// URL params survive cross-window navigation in Tauri (unlike sessionStorage which is window-isolated).
-{
-  const _params = new URLSearchParams(window.location.search)
-  if (_params.get('agent-only') === '1') {
-    isAgentOnly.value = true
-    // Clean the URL so refreshing doesn't re-enter agent-only mode accidentally
-    const cleanUrl = window.location.pathname
-    window.history.replaceState({}, '', cleanUrl)
-  }
-}
-
-async function onAgentWindowClose() {
-  if (isAgentOnly.value) {
-    await getCurrentWindow().close()
-  }
-}
+// ── Agent 独立窗口模式 ──
+const { isAgentOnly, onAgentWindowClose } = useAppWindow()
 
 function openAgentDocs() {
   toggleAgentChat(true)
@@ -317,6 +279,10 @@ function handleVoiceCommandTrigger() {
   useVoiceRouter().clearLastResult()
 }
 
+function handleVoiceToggleTheme() {
+  toggleTheme()
+}
+
 function handleVoiceCommandSubmit(e: Event) {
   const { text } = (e as CustomEvent).detail
   if (!text?.trim()) return
@@ -328,7 +294,7 @@ function handleVoiceCommandSubmit(e: Event) {
     if (result.type === 'chat') {
       // Fallback: send to agent chat (existing behavior)
       // Ensure editor mode + agent panel open so user sees the response
-      setMode('editor')
+      navigateTo('write')
       toggleAgentChat(true)
       const { sendMessage, sending } = useAgentChat()
       const { rootDir } = useFileTree()
@@ -414,7 +380,7 @@ async function applyVoiceSettings(settings: Required<VoiceSettings>) {
 
 window.addEventListener('voice-command-trigger', handleVoiceCommandTrigger)
 window.addEventListener('voice-command-submit', handleVoiceCommandSubmit)
-window.addEventListener('voice-toggle-theme', () => toggleTheme())
+window.addEventListener('voice-toggle-theme', handleVoiceToggleTheme)
 
 // Pause wake word during active voice command, resume when idle
 watch(() => voiceCmd.state.value, (s) => {
@@ -437,12 +403,8 @@ const updateResult = ref<UpdateCheckResult | null>(null)
 const globalDragging = ref(false)
 const mouseX = ref(0)
 const mouseY = ref(0)
-const isDark = ref(false)
-function applyTheme(dark: boolean) {
-  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
-}
-watch(() => isDark.value, applyTheme, { immediate: true })
-watch(_openFullArgMapTick, () => { setMode('argument') })
+const { isDark, toggleTheme } = useAppTheme()
+watch(_openFullArgMapTick, () => { navigateTo('review') })
 const appBootLoading = ref(true)
 const bootLoadingStartedAt = Date.now()
 const minBootLoadingMs = 1400
@@ -482,101 +444,15 @@ const proxyUrl = ref('')
 
 // --- 窗口控制 ---
 
-const appWindow = getCurrentWindow()
-
-async function handleMinimize() {
-  await appWindow.minimize()
-}
-
-async function handleToggleMaximize() {
-  await appWindow.toggleMaximize()
-}
-
-async function handleClose() {
-  await appWindow.close()
-}
+const { handleMinimize, handleToggleMaximize, handleClose } = useAppWindow()
 
 // --- 自定义背景 ---
 
-interface BackgroundSettings {
-  path: string
-  type: 'image' | 'video'
-  opacity: number
-}
-
-const bgSettings = ref<BackgroundSettings>({
-  path: '',
-  type: 'image',
-  opacity: 30,
-})
-
-// data URL cache — bypasses convertFileSrc / asset protocol (works in release builds)
-const bgDataUrl = ref('')
+const { bgSettings, bgDataUrl, bgAssetUrl, backgroundLayerStyle, loadBgSettings, saveBgSettings, pickBackground, pathToDataUrl, clearBackground, onOpacityChange, initBackground } = useBackground()
 
 // --- 阅读设置 ---
 
-interface ReadSettings {
-  fontSize: number
-  lineHeight: number
-  fontFamily: string
-  transColor: string
-}
-
-const readSettings = ref<ReadSettings>({
-  fontSize: 16,
-  lineHeight: 1.9,
-  fontFamily: 'system-ui',
-  transColor: '',
-})
-
-function loadReadSettings() {
-  try {
-    const raw = localStorage.getItem('read-settings')
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      if (parsed && typeof parsed.fontSize === 'number') {
-        readSettings.value = { ...readSettings.value, ...parsed }
-      }
-    }
-  } catch (e) { logger.warn('loadReadSettings failed:', e) }
-}
-
-function saveReadSettings() {
-  try {
-    localStorage.setItem('read-settings', JSON.stringify(readSettings.value))
-  } catch (e) { logger.warn('saveReadSettings failed:', e) }
-}
-
-function onFontSizeChange(value: number) {
-  readSettings.value.fontSize = value
-  saveReadSettings()
-}
-
-function onLineHeightChange(value: number) {
-  readSettings.value.lineHeight = value / 10
-  saveReadSettings()
-}
-
-function onFontFamilyChange(value: string) {
-  readSettings.value.fontFamily = value
-  saveReadSettings()
-}
-
-function onColorChange(value: string) {
-  readSettings.value.transColor = value
-  saveReadSettings()
-}
-
-const bgAssetUrl = computed(() => {
-  // prefer in-memory data URL (works in release builds w/o asset protocol)
-  if (bgDataUrl.value) return bgDataUrl.value
-  if (!bgSettings.value.path) return ''
-  try {
-    return convertFileSrc(bgSettings.value.path)
-  } catch {
-    return ''
-  }
-})
+const { readSettings, loadReadSettings, saveReadSettings, onFontSizeChange, onLineHeightChange, onFontFamilyChange, onColorChange } = useReadSettings()
 
 // ── 鼠标微视差：光晕/粒子跟随鼠标 ──
 function onMouseMove(e: MouseEvent) {
@@ -593,151 +469,6 @@ const particleParallaxStyle = computed(() => {
   const y = (mouseY.value / window.innerHeight - 0.5) * 14
   return { transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)` }
 })
-
-const backgroundLayerStyle = computed(() => {
-  const s: Record<string, string> = {}
-  const opacity = bgSettings.value.opacity / 100
-  if (bgSettings.value.type === 'image' && bgSettings.value.path && bgAssetUrl.value) {
-    s['background-image'] = `url("${bgAssetUrl.value}")`
-    s['background-size'] = 'cover'
-    s['background-position'] = 'center'
-    s['background-repeat'] = 'no-repeat'
-    s['opacity'] = String(opacity)
-  } else if (bgSettings.value.type === 'video' && bgSettings.value.path && bgAssetUrl.value) {
-    s['opacity'] = String(opacity)
-  } else {
-    s['display'] = 'none'
-  }
-  return s
-})
-
-function loadBgSettings() {
-  try {
-    const raw = localStorage.getItem('bg-settings')
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      if (parsed && typeof parsed.path === 'string') {
-        bgSettings.value = {
-          path: parsed.path || '',
-          type: parsed.type === 'video' ? 'video' : 'image',
-          opacity: typeof parsed.opacity === 'number' ? parsed.opacity : 30,
-        }
-      }
-    }
-  } catch {
-    // ignore
-  }
-}
-
-function saveBgSettings() {
-  try {
-    localStorage.setItem('bg-settings', JSON.stringify(bgSettings.value))
-  } catch {
-    // ignore
-  }
-}
-
-async function pickBackground() {
-  try {
-    const selected = await open({
-      multiple: false,
-      filters: [
-        {
-          name: t('app.imageAndVideo'),
-          extensions: [
-            'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg',
-            'mp4', 'webm', 'mkv', 'avi', 'mov',
-          ],
-        },
-        { name: t('app.image'), extensions: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'] },
-        { name: t('app.video'), extensions: ['mp4', 'webm', 'mkv', 'avi', 'mov'] },
-        { name: t('app.allFiles'), extensions: ['*'] },
-      ],
-    })
-    if (!selected) return
-
-    const filePath = typeof selected === 'string' ? selected : (selected as string)
-    if (!filePath) return
-
-    const videoExts = ['mp4', 'webm', 'mkv', 'avi', 'mov']
-    const ext = filePath.split('.').pop()?.toLowerCase() || ''
-    const isVideo = videoExts.includes(ext)
-
-    bgSettings.value = {
-      path: filePath,
-      type: isVideo ? 'video' : 'image',
-      opacity: bgSettings.value.opacity,
-    }
-    saveBgSettings()
-    // generate data URL for reliable display (bypasses asset protocol scope)
-    if (!isVideo) {
-      bgDataUrl.value = ''
-      pathToDataUrl(filePath).then(url => { if (url) bgDataUrl.value = url })
-    }
-  } catch (err) {
-    // Show error to user - might be browser mode or permission issue
-    pushError(t('app.bgPickFailed'))
-  }
-}
-
-async function pathToDataUrl(filePath: string): Promise<string> {
-  try {
-    const bytes = await readFile(filePath)
-    const ext = filePath.split('.').pop()?.toLowerCase() || 'jpg'
-    const mimeMap: Record<string, string> = {
-      jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
-      gif: 'image/gif', bmp: 'image/bmp', webp: 'image/webp',
-      svg: 'image/svg+xml',
-    }
-    const mime = mimeMap[ext] || 'image/jpeg'
-    // chunked base64 encode to avoid call stack overflow on large images
-    let binary = ''
-    for (let i = 0; i < bytes.length; i += 8192) {
-      binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + 8192, bytes.length)))
-    }
-    return `data:${mime};base64,${btoa(binary)}`
-  } catch {
-    return ''
-  }
-}
-
-function clearBackground() {
-  bgSettings.value = { path: '', type: 'image', opacity: 30 }
-  bgDataUrl.value = ''
-  saveBgSettings()
-}
-
-function onOpacityChange(value: number) {
-  bgSettings.value.opacity = value
-  saveBgSettings()
-}
-
-
-function toggleTheme(e?: MouseEvent) {
-  const doc = document.documentElement
-  // Capture click position as circle-clip origin
-  if (e) {
-    doc.style.setProperty('--vt-x', `${e.clientX}px`)
-    doc.style.setProperty('--vt-y', `${e.clientY}px`)
-  } else {
-    doc.style.setProperty('--vt-x', '50%')
-    doc.style.setProperty('--vt-y', '50%')
-  }
-  // View Transition API: cinematic circle-clip dissolve
-  if ('startViewTransition' in document) {
-    ;document.startViewTransition(() => {
-      isDark.value = !isDark.value
-      try {
-        localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
-      } catch (err) { logger.warn('saveTheme failed:', err) }
-    })
-  } else {
-    isDark.value = !isDark.value
-    try {
-      localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
-    } catch (err) { logger.warn('saveTheme failed:', err) }
-  }
-}
 
 // --- 拖拽处理 ---
 
@@ -764,12 +495,8 @@ onMounted(async () => {
     isDark.value = saved === 'dark'
   } catch (e) { logger.warn('loadTheme failed:', e) }
 
-  // Load background settings
-  loadBgSettings()
-  // Load background image data URL (bypasses asset protocol for release builds)
-  if (bgSettings.value.path && bgSettings.value.type === 'image') {
-    pathToDataUrl(bgSettings.value.path).then(url => { if (url) bgDataUrl.value = url })
-  }
+  // Load background settings + pre-render data URL
+  initBackground()
 
   // Load read settings
   loadReadSettings()
@@ -786,6 +513,7 @@ onMounted(async () => {
   // Health checks
   healthOk.value = await checkHealth()
   ollamaOk.value = await checkOllama()
+  if (ollamaOk.value) refreshOllamaModels()
   checkTectonic()
   if (engineType.value === 'cloud') {
     const r = await checkCloudApi()
@@ -848,8 +576,10 @@ onUnmounted(() => {
   window.removeEventListener('mousemove', onMouseMove)
   window.removeEventListener('voice-command-trigger', handleVoiceCommandTrigger)
   window.removeEventListener('voice-command-submit', handleVoiceCommandSubmit)
+  window.removeEventListener('voice-toggle-theme', handleVoiceToggleTheme)
   hotkey.cleanup()
-  wakeWord?.stopWakeWord()
+  wakeWord?.cleanup()
+  voiceCmd.cleanup()
   if (timer) clearInterval(timer)
   if (unlistenDragDrop) unlistenDragDrop()
   if (bootSafetyTimer) { clearTimeout(bootSafetyTimer); bootSafetyTimer = null }
@@ -892,6 +622,7 @@ async function toggleOllama() {
       ollamaError.value = err
     } else {
       ollamaOk.value = true
+      refreshOllamaModels()
     }
   } finally {
     ollamaLoading.value = false
@@ -1086,10 +817,16 @@ body {
 }
 
 /* ── Focus indicator — 键盘可访问 ── */
-:focus-visible {
+button:focus-visible,
+[role="button"]:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.u-interactive:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible {
   outline: none;
   box-shadow: var(--ring-focus);
-  border-radius: var(--radius-xs);
 }
 
 /* ── Typography scale: 标题衬线 / 正文无衬线 ── */
@@ -1332,7 +1069,7 @@ body::after {
   padding: 32px 36px;
   border: 1px solid var(--c-border);
   border-radius: 12px;
-  background: var(--c-panel-bg);
+  background: var(--c-panel);
   box-shadow: var(--elevation-2);
 }
 .drag-ring {
@@ -1440,9 +1177,9 @@ body::after {
   gap: var(--space-3);
   max-width: min(620px, calc(100vw - 32px));
   padding: 10px 12px 10px 16px;
-  background: var(--c-panel-bg);
+  background: var(--c-panel);
   border: 1px solid var(--c-border);
-  border-left: 3px solid var(--c-warning, #b8793d);
+  border-left: 3px solid var(--c-warn);
   border-radius: 10px;
   box-shadow: var(--elevation-2);
 }

@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from src.translator.memory_store import TranslationMemory, TMHit, FUZZY_THRESHOLD
+from src.translator.memory_store import FUZZY_THRESHOLD, TMHit, TranslationMemory
 
 
 def _unit_vec(*components):
@@ -174,6 +174,7 @@ class TestTMXExport:
         assert tmx_path.exists()
 
         import xml.etree.ElementTree as ET
+
         tree = ET.parse(str(tmx_path))
         root = tree.getroot()
         assert root.tag == "tmx"
@@ -193,6 +194,7 @@ class TestTMXExport:
         tm.export_tmx(tmx_path)
 
         import xml.etree.ElementTree as ET
+
         tree = ET.parse(str(tmx_path))
         root = tree.getroot()
         ns = "{http://www.w3.org/XML/1998/namespace}"

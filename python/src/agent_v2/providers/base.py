@@ -1,4 +1,5 @@
 """Base Provider ABC。"""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -16,5 +17,4 @@ class BaseProvider(ABC):
         max_tokens: int = 4096,
         temperature: float = 0.3,
         tool_choice: str = "auto",
-    ) -> ProviderResponse:
-        ...
+    ) -> ProviderResponse: ...

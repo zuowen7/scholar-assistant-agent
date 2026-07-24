@@ -13,24 +13,26 @@ https://modelcontextprotocol.io/specification/tools
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
-from src.plugin.registry import PluginServer, PluginRegistry, ToolSpec
+from src.plugin.registry import PluginRegistry, PluginServer, ToolSpec
 
 logger = logging.getLogger(__name__)
 
 
 # ── 工具 Handler（复用 api_factory.py 逻辑）────────────────────────────
 
+
 def _tool_translate_text(text: str, source_lang: str = "en", target_lang: str = "zh") -> str:
     """翻译文本。"""
-    from src.translator.ollama_client import OllamaClient
     from src.translator.cloud_client import CloudClient
-    from src.translator.context import extract_document_context
+    from src.translator.ollama_client import OllamaClient
 
     # 尝试读取全局配置（延迟导入避免循环）
     try:
         from api_factory import _load_config
+
         config = _load_config()
         trans_cfg = config.get("translator", {})
         cloud_cfg = trans_cfg.get("cloud", {})
@@ -63,12 +65,28 @@ def _tool_translate_text(text: str, source_lang: str = "en", target_lang: str = 
             client.close()
 
 
-def _tool_parse_document(file_path: str) -> str:
+def _resolve_workspace_file(file_path: str, workspace_root: str) -> Path:
+    if not workspace_root:
+        raise ValueError("workspace_root is required")
+    workspace = Path(workspace_root).resolve(strict=True)
+    candidate = Path(file_path)
+    resolved = (workspace / candidate if not candidate.is_absolute() else candidate).resolve(
+        strict=True
+    )
+    resolved.relative_to(workspace)
+    if not resolved.is_file():
+        raise ValueError("path is not a file")
+    return resolved
+
+
+def _tool_parse_document(file_path: str, workspace_root: str = "") -> str:
     """解析文档，提取纯文本。"""
     from src.parser import extract_document
+
     MAX_LEN = 4000
     try:
-        doc = extract_document(file_path)
+        resolved = _resolve_workspace_file(file_path, workspace_root)
+        doc = extract_document(str(resolved))
         text = doc.full_text
         if len(text) > MAX_LEN:
             text = text[:MAX_LEN] + "\n...[内容已截断]"
@@ -96,9 +114,10 @@ def _tool_search_documents(query: str, top_k: int = 5, rag_store: Any = None) ->
 
 def _tool_crawl_arxiv(query: str, max_results: int = 5) -> str:
     """搜索 arXiv 学术论文。"""
-    import httpx
     import time
     import xml.etree.ElementTree as ET
+
+    import httpx
 
     try:
         url = "https://export.arxiv.org/api/query"
@@ -134,17 +153,16 @@ def _tool_crawl_arxiv(query: str, max_results: int = 5) -> str:
             authors = entry.findall("atom:author/atom:name", ns)
 
             title_text = title.text.strip().replace("\n", " ") if title is not None else "无标题"
-            summary_text = summary.text.strip().replace("\n", " ")[:300] if summary is not None else ""
+            summary_text = (
+                summary.text.strip().replace("\n", " ")[:300] if summary is not None else ""
+            )
             pub_date = published.text[:10] if published is not None else "未知日期"
             author_names = ", ".join(a.text for a in authors[:3] if a.text)
             if len(authors) > 3:
                 author_names += " et al."
 
             results.append(
-                f"标题: {title_text}\n"
-                f"作者: {author_names}\n"
-                f"日期: {pub_date}\n"
-                f"摘要: {summary_text}"
+                f"标题: {title_text}\n作者: {author_names}\n日期: {pub_date}\n摘要: {summary_text}"
             )
         return "\n\n---\n\n".join(results)
     except Exception as e:
@@ -189,7 +207,9 @@ def _tool_expand_section(section: str, context: str = "") -> str:
     return _call_llm_simple(prompt)
 
 
-def _tool_format_bibliography(bibtex_entry: str, style: str = "ieee", target_lang: str = "zh") -> str:
+def _tool_format_bibliography(
+    bibtex_entry: str, style: str = "ieee", target_lang: str = "zh"
+) -> str:
     """格式化参考文献。"""
     prompt = f"""请将以下 BibTeX 条目格式化为 {style.upper()} 引用格式的文本。
 只输出格式化后的参考文献，不要任何解释。目标语言：{"中文" if target_lang == "zh" else "英文"}。
@@ -199,16 +219,20 @@ BibTeX 条目：{bibtex_entry}"""
 
 def _tool_analyze_markdown_elements(text: str) -> str:
     """分析 Markdown 文本中的特殊元素。"""
-    from src.agent_v2.special_elements import analyze_markdown_elements
     import json
+
+    from src.agent_v2.special_elements import analyze_markdown_elements
+
     result = analyze_markdown_elements(text)
     return json.dumps(result, ensure_ascii=False, indent=2)
 
 
 def _tool_parse_table_structure(table_markdown: str) -> str:
     """解析 Markdown 表格结构。"""
-    from src.agent_v2.special_elements import parse_table_structure
     import json
+
+    from src.agent_v2.special_elements import parse_table_structure
+
     result = parse_table_structure(table_markdown)
     return json.dumps(result, ensure_ascii=False, indent=2)
 
@@ -216,40 +240,49 @@ def _tool_parse_table_structure(table_markdown: str) -> str:
 def _tool_generate_table_markdown(headers: list, rows: list) -> str:
     """从结构化数据生成 Markdown 表格。"""
     from src.agent_v2.special_elements import generate_table_markdown
+
     return generate_table_markdown(headers, rows)
 
 
 def _tool_format_latex_formula(formula: str, display: bool = False) -> str:
     """格式化 LaTeX 公式。"""
     from src.agent_v2.special_elements import format_latex_formula
+
     return format_latex_formula(formula, display=display)
 
 
 def _tool_get_citation_context(text: str, citation_key: str) -> str:
     """获取文献引用的上下文。"""
     from src.agent_v2.special_elements import get_citation_context
+
     return get_citation_context(text, citation_key)
 
 
-def _tool_analyze_image_with_vision(image_path: str) -> str:
+def _tool_analyze_image_with_vision(image_path: str, workspace_root: str = "") -> str:
     """使用 Vision API 分析图片内容。"""
     from src.agent_v2.special_elements import analyze_image_with_vision
-    return analyze_image_with_vision(image_path)
+
+    resolved = _resolve_workspace_file(image_path, workspace_root)
+    return analyze_image_with_vision(str(resolved))
 
 
-def _tool_analyze_chart_image(image_path: str) -> str:
+def _tool_analyze_chart_image(image_path: str, workspace_root: str = "") -> str:
     """使用 Vision API 分析图表图片。"""
     from src.agent_v2.special_elements import analyze_chart_image
-    return analyze_chart_image(image_path)
+
+    resolved = _resolve_workspace_file(image_path, workspace_root)
+    return analyze_chart_image(str(resolved))
 
 
 def _call_llm_simple(prompt: str) -> str:
     """同步调用 LLM（极简版，用于辅助工具）。"""
-    import httpx
     import re
+
+    import httpx
 
     try:
         from api_factory import _load_config
+
         config = _load_config()
         trans_cfg = config.get("translator", {})
         cloud_cfg = trans_cfg.get("cloud", {})
@@ -262,7 +295,10 @@ def _call_llm_simple(prompt: str) -> str:
     try:
         with httpx.Client(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
             if use_cloud and cloud_cfg.get("api_key"):
-                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {cloud_cfg.get('api_key', '')}"}
+                headers = {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {cloud_cfg.get('api_key', '')}",
+                }
                 resp = client.post(
                     f"{cloud_cfg.get('base_url', 'https://api.openai.com/v1')}/chat/completions",
                     json={
@@ -298,6 +334,7 @@ def _call_llm_simple(prompt: str) -> str:
 
 # ── 插件定义 ─────────────────────────────────────────────────────────
 
+
 def create_builtin_server() -> PluginServer:
     """创建内置 Scholar Assistant 插件（所有内置工具的集合）。
 
@@ -317,12 +354,22 @@ def create_builtin_server() -> PluginServer:
                     "type": "object",
                     "properties": {
                         "text": {"type": "string", "description": "待翻译的文本内容"},
-                        "source_lang": {"type": "string", "description": "源语言代码，默认 en", "default": "en"},
-                        "target_lang": {"type": "string", "description": "目标语言代码，默认 zh", "default": "zh"},
+                        "source_lang": {
+                            "type": "string",
+                            "description": "源语言代码，默认 en",
+                            "default": "en",
+                        },
+                        "target_lang": {
+                            "type": "string",
+                            "description": "目标语言代码，默认 zh",
+                            "default": "zh",
+                        },
                     },
                     "required": ["text"],
                 },
-                handler=_make_handler("text", _tool_translate_text, ["text", "source_lang", "target_lang"]),
+                handler=_make_handler(
+                    "text", _tool_translate_text, ["text", "source_lang", "target_lang"]
+                ),
             ),
             ToolSpec(
                 name="parse_document",
@@ -331,10 +378,13 @@ def create_builtin_server() -> PluginServer:
                     "type": "object",
                     "properties": {
                         "file_path": {"type": "string", "description": "文档文件的绝对路径"},
+                        "workspace_root": {"type": "string", "description": "已选择的工作区根目录"},
                     },
-                    "required": ["file_path"],
+                    "required": ["file_path", "workspace_root"],
                 },
-                handler=_make_handler("file_path", _tool_parse_document, ["file_path"]),
+                handler=_make_handler(
+                    "file_path", _tool_parse_document, ["file_path", "workspace_root"]
+                ),
             ),
             ToolSpec(
                 name="search_documents",
@@ -343,7 +393,11 @@ def create_builtin_server() -> PluginServer:
                     "type": "object",
                     "properties": {
                         "query": {"type": "string", "description": "查询文本（中英文均可）"},
-                        "top_k": {"type": "integer", "description": "返回的最大结果数量，默认 5", "default": 5},
+                        "top_k": {
+                            "type": "integer",
+                            "description": "返回的最大结果数量，默认 5",
+                            "default": 5,
+                        },
                     },
                     "required": ["query"],
                 },
@@ -356,7 +410,11 @@ def create_builtin_server() -> PluginServer:
                     "type": "object",
                     "properties": {
                         "query": {"type": "string", "description": "搜索关键词（英文）"},
-                        "max_results": {"type": "integer", "description": "最大返回结果数，默认 5", "default": 5},
+                        "max_results": {
+                            "type": "integer",
+                            "description": "最大返回结果数，默认 5",
+                            "default": 5,
+                        },
                     },
                     "required": ["query"],
                 },
@@ -369,7 +427,11 @@ def create_builtin_server() -> PluginServer:
                     "type": "object",
                     "properties": {
                         "text": {"type": "string", "description": "待润色的文本内容"},
-                        "style": {"type": "string", "description": "润色风格：academic/formal/concise，默认 academic", "default": "academic"},
+                        "style": {
+                            "type": "string",
+                            "description": "润色风格：academic/formal/concise，默认 academic",
+                            "default": "academic",
+                        },
                     },
                     "required": ["text"],
                 },
@@ -382,7 +444,11 @@ def create_builtin_server() -> PluginServer:
                     "type": "object",
                     "properties": {
                         "text": {"type": "string", "description": "待摘要的文本内容"},
-                        "max_sentences": {"type": "integer", "description": "摘要的最大句子数，默认 5", "default": 5},
+                        "max_sentences": {
+                            "type": "integer",
+                            "description": "摘要的最大句子数，默认 5",
+                            "default": 5,
+                        },
                     },
                     "required": ["text"],
                 },
@@ -395,7 +461,11 @@ def create_builtin_server() -> PluginServer:
                     "type": "object",
                     "properties": {
                         "topic": {"type": "string", "description": "论文或报告的主题"},
-                        "sections": {"type": "integer", "description": "大纲的章节数量，默认 5", "default": 5},
+                        "sections": {
+                            "type": "integer",
+                            "description": "大纲的章节数量，默认 5",
+                            "default": 5,
+                        },
                     },
                     "required": ["topic"],
                 },
@@ -408,7 +478,11 @@ def create_builtin_server() -> PluginServer:
                     "type": "object",
                     "properties": {
                         "section": {"type": "string", "description": "待扩写的段落内容"},
-                        "context": {"type": "string", "description": "上下文信息（可选）", "default": ""},
+                        "context": {
+                            "type": "string",
+                            "description": "上下文信息（可选）",
+                            "default": "",
+                        },
                     },
                     "required": ["section"],
                 },
@@ -420,13 +494,28 @@ def create_builtin_server() -> PluginServer:
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "bibtex_entry": {"type": "string", "description": "BibTeX 格式的参考文献条目"},
-                        "style": {"type": "string", "description": "引用格式：ieee/apa/gbt7714/mla", "default": "ieee"},
-                        "target_lang": {"type": "string", "description": "目标语言：zh/en", "default": "zh"},
+                        "bibtex_entry": {
+                            "type": "string",
+                            "description": "BibTeX 格式的参考文献条目",
+                        },
+                        "style": {
+                            "type": "string",
+                            "description": "引用格式：ieee/apa/gbt7714/mla",
+                            "default": "ieee",
+                        },
+                        "target_lang": {
+                            "type": "string",
+                            "description": "目标语言：zh/en",
+                            "default": "zh",
+                        },
                     },
                     "required": ["bibtex_entry"],
                 },
-                handler=_make_handler("bibtex_entry", _tool_format_bibliography, ["bibtex_entry", "style", "target_lang"]),
+                handler=_make_handler(
+                    "bibtex_entry",
+                    _tool_format_bibliography,
+                    ["bibtex_entry", "style", "target_lang"],
+                ),
             ),
             # ── 特殊元素处理工具 ──────────────────────────────────
             ToolSpec(
@@ -447,11 +536,16 @@ def create_builtin_server() -> PluginServer:
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "table_markdown": {"type": "string", "description": "Markdown 格式的表格文本"},
+                        "table_markdown": {
+                            "type": "string",
+                            "description": "Markdown 格式的表格文本",
+                        },
                     },
                     "required": ["table_markdown"],
                 },
-                handler=_make_handler("table_markdown", _tool_parse_table_structure, ["table_markdown"]),
+                handler=_make_handler(
+                    "table_markdown", _tool_parse_table_structure, ["table_markdown"]
+                ),
             ),
             ToolSpec(
                 name="generate_table_markdown",
@@ -472,7 +566,9 @@ def create_builtin_server() -> PluginServer:
                     },
                     "required": ["headers", "rows"],
                 },
-                handler=_make_handler("headers", _tool_generate_table_markdown, ["headers", "rows"]),
+                handler=_make_handler(
+                    "headers", _tool_generate_table_markdown, ["headers", "rows"]
+                ),
             ),
             ToolSpec(
                 name="format_latex_formula",
@@ -489,7 +585,9 @@ def create_builtin_server() -> PluginServer:
                     },
                     "required": ["formula"],
                 },
-                handler=_make_handler("formula", _tool_format_latex_formula, ["formula", "display"]),
+                handler=_make_handler(
+                    "formula", _tool_format_latex_formula, ["formula", "display"]
+                ),
             ),
             ToolSpec(
                 name="get_citation_context",
@@ -498,7 +596,10 @@ def create_builtin_server() -> PluginServer:
                     "type": "object",
                     "properties": {
                         "text": {"type": "string", "description": "完整文档文本"},
-                        "citation_key": {"type": "string", "description": "文献引用 key（如 smith2020）"},
+                        "citation_key": {
+                            "type": "string",
+                            "description": "文献引用 key（如 smith2020）",
+                        },
                     },
                     "required": ["text", "citation_key"],
                 },
@@ -510,11 +611,17 @@ def create_builtin_server() -> PluginServer:
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "image_path": {"type": "string", "description": "图片文件的绝对路径（不支持远程 URL）"},
+                        "image_path": {
+                            "type": "string",
+                            "description": "图片文件的绝对路径（不支持远程 URL）",
+                        },
+                        "workspace_root": {"type": "string", "description": "已选择的工作区根目录"},
                     },
-                    "required": ["image_path"],
+                    "required": ["image_path", "workspace_root"],
                 },
-                handler=_make_handler("image_path", _tool_analyze_image_with_vision, ["image_path"]),
+                handler=_make_handler(
+                    "image_path", _tool_analyze_image_with_vision, ["image_path", "workspace_root"]
+                ),
             ),
             ToolSpec(
                 name="analyze_chart_image",
@@ -523,10 +630,13 @@ def create_builtin_server() -> PluginServer:
                     "type": "object",
                     "properties": {
                         "image_path": {"type": "string", "description": "图表图片文件的绝对路径"},
+                        "workspace_root": {"type": "string", "description": "已选择的工作区根目录"},
                     },
-                    "required": ["image_path"],
+                    "required": ["image_path", "workspace_root"],
                 },
-                handler=_make_handler("image_path", _tool_analyze_chart_image, ["image_path"]),
+                handler=_make_handler(
+                    "image_path", _tool_analyze_chart_image, ["image_path", "workspace_root"]
+                ),
             ),
         ],
     )
@@ -554,6 +664,7 @@ def _make_handler(
 
 
 # ── 注册入口 ─────────────────────────────────────────────────────────
+
 
 def register_builtin(registry: PluginRegistry) -> None:
     """将内置插件注册到全局注册表。"""

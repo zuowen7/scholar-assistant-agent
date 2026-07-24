@@ -9,15 +9,15 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
+import logging
 import re
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Literal
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +35,8 @@ def _find_pandoc() -> str | None:
     if PANDOC_CMD is not None:
         return PANDOC_CMD
 
-    import sys
     import os
+    import sys
 
     # 1. 系统 PATH
     if shutil.which("pandoc"):
@@ -50,9 +50,9 @@ def _find_pandoc() -> str | None:
         PANDOC_CMD = str(bundled_pandoc)
         return PANDOC_CMD
 
-    # Windows 常见安装位置
-    program_files = os.environ.get("ProgramFiles", "C:\\Program Files")
-    pf86 = os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")
+    # Windows 常见安装位置（ProgramFiles/ProgramFiles(x86) 是 Windows 固定的环境变量名，大小写不可改）
+    program_files = os.environ.get("ProgramFiles", "C:\\Program Files")  # noqa: SIM112
+    pf86 = os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")  # noqa: SIM112
     for pf in [program_files, pf86]:
         for suffix in ["", "\\Pandoc", "\\pandoc"]:
             path = Path(pf) / suffix / "pandoc.exe"
@@ -121,12 +121,21 @@ def pandoc_version() -> str:
 
 class PandocError(Exception):
     """Pandoc 转换错误。"""
+
     pass
 
 
 # ── Tectonic PDF 编译 ──────────────────────────────────────────────
 
 TECTONIC_CMD: str | None = None
+
+
+def _candidate_exists(path: Path) -> bool:
+    """Return whether a Tectonic candidate is accessible without leaking OS errors."""
+    try:
+        return path.is_file()
+    except OSError:
+        return False
 
 
 def _find_tectonic() -> str | None:
@@ -143,26 +152,27 @@ def _find_tectonic() -> str | None:
     # 2. 应用自管目录
     import os
     import sys
+
     local_app = os.environ.get("LOCALAPPDATA", "")
     if local_app:
         app_tectonic = Path(local_app) / "ScholarTranslate" / "tools" / "tectonic.exe"
-        if app_tectonic.exists():
+        if _candidate_exists(app_tectonic):
             TECTONIC_CMD = str(app_tectonic)
             return TECTONIC_CMD
 
     # 2b. api.exe 旁边的 tools/ 目录（开发/打包通用，PyInstaller --onedir 不设 sys.frozen）
     exe_dir = Path(sys.executable).parent
     bundled_tectonic = exe_dir / "tools" / "tectonic.exe"
-    if bundled_tectonic.exists():
+    if _candidate_exists(bundled_tectonic):
         TECTONIC_CMD = str(bundled_tectonic)
         return TECTONIC_CMD
 
     # 3. Program Files
-    program_files = os.environ.get("ProgramFiles", "C:\\Program Files")
-    pf86 = os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")
+    program_files = os.environ.get("ProgramFiles", "C:\\Program Files")  # noqa: SIM112
+    pf86 = os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")  # noqa: SIM112
     for pf in [program_files, pf86]:
         path = Path(pf) / "Tectonic" / "tectonic.exe"
-        if path.exists():
+        if _candidate_exists(path):
             TECTONIC_CMD = str(path)
             return TECTONIC_CMD
 
@@ -174,7 +184,7 @@ def _find_tectonic() -> str | None:
             "ScholarTranslate/tools/Tectonic",
         ]:
             path = Path(local_app) / subdir / "tectonic.exe"
-            if path.exists():
+            if _candidate_exists(path):
                 TECTONIC_CMD = str(path)
                 return TECTONIC_CMD
 
@@ -195,7 +205,9 @@ def tectonic_version() -> str:
     try:
         result = subprocess.run(
             [cmd, "--version"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return result.stdout.strip().split("\n")[0]
     except Exception:
@@ -221,6 +233,7 @@ def compile_pdf(tex_source: str, output_dir: str | None = None) -> dict:
         }
 
     import tempfile
+
     out_dir = Path(output_dir) if output_dir else Path(tempfile.mkdtemp(prefix="tectonic_"))
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -251,10 +264,10 @@ def compile_pdf(tex_source: str, output_dir: str | None = None) -> dict:
         fonts_conf = (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">\n'
-            '<fontconfig>\n'
-            f'  <dir>{fonts_dir}</dir>\n'
-            f'  <cachedir>{cache_dir}</cachedir>\n'
-            '</fontconfig>'
+            "<fontconfig>\n"
+            f"  <dir>{fonts_dir}</dir>\n"
+            f"  <cachedir>{cache_dir}</cachedir>\n"
+            "</fontconfig>"
         )
         conf_path = out_dir / "fonts.conf"
         conf_path.write_text(fonts_conf, encoding="utf-8")
@@ -263,8 +276,13 @@ def compile_pdf(tex_source: str, output_dir: str | None = None) -> dict:
     try:
         result = subprocess.run(
             [cmd, "-X", "compile", str(tex_path)],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=120, cwd=str(out_dir), env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+            cwd=str(out_dir),
+            env=env,
         )
     except subprocess.TimeoutExpired:
         return {"success": False, "pdf_path": "", "error": "Tectonic 编译超时（120秒）"}
@@ -286,10 +304,10 @@ def compile_pdf(tex_source: str, output_dir: str | None = None) -> dict:
         # 保留完整错误信息方便排查，截断到 2000 字符
         logger.error("Tectonic compile failed:\n%s", error_msg[:2000])
         # Save the tex source to a persistent location for debugging
-        import sys as _sys2
         debug_dir = os.path.join(
             os.environ.get("LOCALAPPDATA", os.environ.get("APPDATA", os.path.expanduser("~"))),
-            "YanMo", "debug",
+            "YanMo",
+            "debug",
         )
         os.makedirs(debug_dir, exist_ok=True)
         debug_tex = os.path.join(debug_dir, "last_error.tex")
@@ -357,6 +375,7 @@ def _unescape_latex(text: str) -> str:
 
 def _shrink_wide_tables(tex: str) -> str:
     """Wrap Pandoc longtables with >=5 columns in \\small to fit page width."""
+
     def _maybe_shrink(m):
         block = m.group(0)
         # Count the p{}-columns Pandoc uses: >{\\raggedright\\arraybackslash}p{...}
@@ -364,6 +383,7 @@ def _shrink_wide_tables(tex: str) -> str:
         if p_cols >= 5:
             return r"{\small" + block + r"}"
         return block
+
     return re.sub(
         r"\\begin\{longtable\}.*?\\end\{longtable\}",
         _maybe_shrink,
@@ -413,6 +433,7 @@ def _convert_md_tables(text: str) -> str:
 
 def _md_table_to_latex(rows: list[str]) -> str:
     """Convert a list of markdown table row strings to a LaTeX tabular block."""
+
     def _split_cells(row: str) -> list[str]:
         stripped = row.strip()
         if stripped.startswith("|"):
@@ -426,9 +447,7 @@ def _md_table_to_latex(rows: list[str]) -> str:
     data_start = 1
 
     # Detect separator row (|---|:---|---:|)
-    if len(rows) >= 2 and all(
-        re.match(r"^[\s\-:]+$", c) for c in _split_cells(rows[1])
-    ):
+    if len(rows) >= 2 and all(re.match(r"^[\s\-:]+$", c) for c in _split_cells(rows[1])):
         sep_raw = _split_cells(rows[1])
         for c in sep_raw:
             left = c.startswith(":")
@@ -455,7 +474,7 @@ def _md_table_to_latex(rows: list[str]) -> str:
         # Pad or trim to match header column count
         while len(cells) < len(header_cells):
             cells.append("")
-        cells = cells[:len(header_cells)]
+        cells = cells[: len(header_cells)]
         out.append(" & ".join(cells) + r" \\")
 
     out.append(r"\hline")
@@ -497,7 +516,7 @@ def markdown_to_latex(markdown_text: str, metadata: dict | None = None) -> dict:
 
     def _protect_code(m):
         idx = len(code_blocks)
-        lang = m.group(1) or ""
+        m.group(1) or ""
         content = m.group(2)
         # 还原之前转义的字符，但代码块内容保持原始
         code_blocks.append(f"\\begin{{verbatim}}\n{content}\\end{{verbatim}}")
@@ -629,13 +648,15 @@ def markdown_to_latex(markdown_text: str, metadata: dict | None = None) -> dict:
     _protected_placeholders: list[str] = []
 
     def _protect_placeholder(m):
-        idx = len(_protected_placeholders)
+        len(_protected_placeholders)
         # 把中间的下划线用空字节替换，最后再换回来
         protected = m.group(0).replace("_", "\x00")
         _protected_placeholders.append(m.group(0))
         return protected
 
-    tex = re.sub(r"__(?:CODEBLOCK|INLINECODE|MATH_INLINE|MATH_DISPLAY)_\d+__", _protect_placeholder, tex)
+    tex = re.sub(
+        r"__(?:CODEBLOCK|INLINECODE|MATH_INLINE|MATH_DISPLAY)_\d+__", _protect_placeholder, tex
+    )
 
     # 先处理加粗（加粗用 ** 或 __，确保不会被斜体处理）
     tex = re.sub(r"\*\*(.+?)\*\*", r"\\textbf{\1}", tex)
@@ -705,24 +726,45 @@ def markdown_to_latex(markdown_text: str, metadata: dict | None = None) -> dict:
     abstract_tex_raw = meta.get("abstract", "")
 
     _doc_preamble = (
-        r"\documentclass[12pt]{article}" + "\n" +
-        r"\usepackage[UTF8]{inputenc}" + "\n" +
-        r"\usepackage[T1]{fontenc}" + "\n" +
-        r"\usepackage{amsmath,amssymb,bm}" + "\n" +
-        r"\usepackage{graphicx}" + "\n" +
-        r"\usepackage{hyperref}" + "\n" +
-        r"\usepackage{geometry}" + "\n" +
-        r"\geometry{margin=1in}" + "\n" +
-        r"\usepackage{enumitem}" + "\n" +
-        r"\setlist{noitemsep}" + "\n" +
-        r"\hypersetup{colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue}" + "\n"
+        r"\documentclass[12pt]{article}"
+        + "\n"
+        + r"\usepackage[UTF8]{inputenc}"
+        + "\n"
+        + r"\usepackage[T1]{fontenc}"
+        + "\n"
+        + r"\usepackage{amsmath,amssymb,bm}"
+        + "\n"
+        + r"\usepackage{graphicx}"
+        + "\n"
+        + r"\usepackage{hyperref}"
+        + "\n"
+        + r"\usepackage{geometry}"
+        + "\n"
+        + r"\geometry{margin=1in}"
+        + "\n"
+        + r"\usepackage{enumitem}"
+        + "\n"
+        + r"\setlist{noitemsep}"
+        + "\n"
+        + r"\hypersetup{colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue}"
+        + "\n"
     )
 
     _title_part = (
-        (r"\title{" + title_tex + r"}" + "\n" +
-         r"\author{" + author_tex + r"}" + "\n" +
-         r"\date{}" + "\n" +
-         r"\maketitle" + "\n")
+        (
+            r"\title{"
+            + title_tex
+            + r"}"
+            + "\n"
+            + r"\author{"
+            + author_tex
+            + r"}"
+            + "\n"
+            + r"\date{}"
+            + "\n"
+            + r"\maketitle"
+            + "\n"
+        )
         if title_tex
         else ""
     )
@@ -734,12 +776,14 @@ def markdown_to_latex(markdown_text: str, metadata: dict | None = None) -> dict:
     )
 
     _doc_body = (
-        r"\begin{document}" + "\n" +
-        _title_part +
-        _abstract_part +
-        tex_body +
-        "\n" +
-        r"\end{document}" + "\n"
+        r"\begin{document}"
+        + "\n"
+        + _title_part
+        + _abstract_part
+        + tex_body
+        + "\n"
+        + r"\end{document}"
+        + "\n"
     )
 
     latex_doc = _doc_preamble + _doc_body
@@ -799,20 +843,32 @@ def convert_markdown(
 
         # 注入 CJK 字体 + Pandoc 常用表格/排版包 + 兜底命令定义
         inject_preamble = (
-            r"\usepackage{fontspec}" + "\n" +
-            r"\setmainfont{SimSun}" + "\n" +
-            r"\usepackage{xeCJK}" + "\n" +
-            r"\setCJKmainfont{SimSun}" + "\n" +
-            r"\usepackage{longtable}" + "\n" +
-            r"\usepackage{booktabs}" + "\n" +
-            r"\usepackage{array}" + "\n" +
-            r"\usepackage{calc}" + "\n" +
-            r"\usepackage{xcolor}" + "\n" +
-            r"\providecommand{\tightlist}{\setlength{\itemsep}{2pt}\setlength{\parskip}{0pt}}" + "\n"
+            r"\usepackage{fontspec}"
+            + "\n"
+            + r"\setmainfont{SimSun}"
+            + "\n"
+            + r"\usepackage{xeCJK}"
+            + "\n"
+            + r"\setCJKmainfont{SimSun}"
+            + "\n"
+            + r"\usepackage{longtable}"
+            + "\n"
+            + r"\usepackage{booktabs}"
+            + "\n"
+            + r"\usepackage{array}"
+            + "\n"
+            + r"\usepackage{calc}"
+            + "\n"
+            + r"\usepackage{xcolor}"
+            + "\n"
+            + r"\providecommand{\tightlist}{\setlength{\itemsep}{2pt}\setlength{\parskip}{0pt}}"
+            + "\n"
         )
         if r"\usepackage{fontspec}" not in tex:
+
             def _inject_cjk(m):
                 return m.group(1) + inject_preamble
+
             tex = re.sub(
                 r"(\\documentclass[^\n]*\n)",
                 _inject_cjk,
@@ -880,8 +936,10 @@ def convert_markdown(
     # 构建 Pandoc 参数
     args = [
         cmd,
-        "-f", "markdown",
-        "-t", "latex",
+        "-f",
+        "markdown",
+        "-t",
+        "latex",
         "-s",
         "--wrap=none",
     ]
@@ -915,9 +973,10 @@ def convert_markdown(
             md_path = f.name
 
         try:
+            md_content = Path(md_path).read_text(encoding="utf-8")
             result = subprocess.run(
                 args,
-                input=open(md_path, encoding="utf-8").read(),
+                input=md_content,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -929,13 +988,10 @@ def convert_markdown(
                 error_msg = result.stderr.strip() or "Pandoc 转换失败"
                 logger.warning("Pandoc convert failed: %s", error_msg)
                 # 尝试不使用模板再跑一次
-                fallback_args = [
-                    x for x in args
-                    if not x.startswith("--template")
-                ]
+                fallback_args = [x for x in args if not x.startswith("--template")]
                 result2 = subprocess.run(
                     fallback_args,
-                    input=open(md_path, encoding="utf-8").read(),
+                    input=md_content,
                     capture_output=True,
                     text=True,
                     encoding="utf-8",
@@ -1001,10 +1057,8 @@ def convert_markdown(
                 "pandoc_version": pandoc_version(),
             }
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 Path(md_path).unlink(missing_ok=True)
-            except Exception:
-                pass
 
     except subprocess.TimeoutExpired:
         return {
@@ -1046,9 +1100,9 @@ def install_tectonic() -> dict:
     """
     global TECTONIC_CMD
     import os
-    import zipfile
     import tempfile
     import urllib.request
+    import zipfile
 
     local_app = os.environ.get("LOCALAPPDATA", "")
     if not local_app:
@@ -1066,7 +1120,10 @@ def install_tectonic() -> dict:
         with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
             tmp_path = tmp.name
             logger.info("正在下载 Tectonic %s...", TECTONIC_VERSION)
-            urllib.request.urlretrieve(TECTONIC_DOWNLOAD_URL, tmp_path,)
+            urllib.request.urlretrieve(
+                TECTONIC_DOWNLOAD_URL,
+                tmp_path,
+            )
 
         with zipfile.ZipFile(tmp_path, "r") as zf:
             for name in zf.namelist():
@@ -1077,10 +1134,8 @@ def install_tectonic() -> dict:
             else:
                 return {"success": False, "error": "压缩包中未找到 tectonic.exe", "version": ""}
 
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp_path)
-        except OSError:
-            pass
 
         TECTONIC_CMD = str(tectonic_path)
         logger.info("Tectonic 安装成功: %s", tectonic_path)

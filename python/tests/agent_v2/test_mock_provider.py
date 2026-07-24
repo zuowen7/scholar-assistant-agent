@@ -2,6 +2,7 @@
 
 全部使用 MockProvider（确定性），不依赖网络，毫秒级完成。
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -9,7 +10,12 @@ import json
 
 import pytest
 
-from src.agent_v2.providers.mock_provider import MockProvider, Scenario, _text_response, _tool_response
+from src.agent_v2.providers.mock_provider import (
+    MockProvider,
+    Scenario,
+    _text_response,
+    _tool_response,
+)
 from src.agent_v2.types import (
     ApiError,
     Message,
@@ -22,13 +28,12 @@ from src.agent_v2.types import (
 )
 from tests.agent_v2.conftest import make_user_message
 
-
 # ============================================================================
 # 1.1 基础场景 (Happy Path)
 # ============================================================================
 
-class TestBasicScenarios:
 
+class TestBasicScenarios:
     @pytest.mark.asyncio
     async def test_mp001_text_reply(self, mock_provider: MockProvider):
         """MP-001: 纯文本回复"""
@@ -87,8 +92,8 @@ class TestBasicScenarios:
 # 1.2 多轮对话场景
 # ============================================================================
 
-class TestMultiTurnScenarios:
 
+class TestMultiTurnScenarios:
     @pytest.mark.asyncio
     async def test_mp010_read_then_summarize(self, mock_provider: MockProvider):
         """MP-010: read_file → 回复摘要"""
@@ -101,10 +106,18 @@ class TestMultiTurnScenarios:
 
         # 模拟 tool_result 追加
         from src.agent_v2.types import ToolResultBlock
+
         messages.append(Message(role=MessageRole.ASSISTANT, blocks=resp0.blocks))
-        messages.append(Message(role=MessageRole.TOOL, blocks=[
-            ToolResultBlock(tool_use_id=tc.id, tool_name="read_file", output="file content here")
-        ]))
+        messages.append(
+            Message(
+                role=MessageRole.TOOL,
+                blocks=[
+                    ToolResultBlock(
+                        tool_use_id=tc.id, tool_name="read_file", output="file content here"
+                    )
+                ],
+            )
+        )
 
         # Turn 1: 文本摘要
         resp1 = await mock_provider.chat(messages)
@@ -122,20 +135,37 @@ class TestMultiTurnScenarios:
 
         # Turn 1: grep
         from src.agent_v2.types import ToolResultBlock
+
         tc0 = resp0.tool_calls()[0]
         messages.append(Message(role=MessageRole.ASSISTANT, blocks=resp0.blocks))
-        messages.append(Message(role=MessageRole.TOOL, blocks=[
-            ToolResultBlock(tool_use_id=tc0.id, tool_name="read_file", output="file content")
-        ]))
+        messages.append(
+            Message(
+                role=MessageRole.TOOL,
+                blocks=[
+                    ToolResultBlock(
+                        tool_use_id=tc0.id, tool_name="read_file", output="file content"
+                    )
+                ],
+            )
+        )
         resp1 = await mock_provider.chat(messages)
         assert resp1.tool_calls()[0].name == "grep_files"
 
         # Turn 2: str_replace
         tc1 = resp1.tool_calls()[0]
         messages.append(Message(role=MessageRole.ASSISTANT, blocks=resp1.blocks))
-        messages.append(Message(role=MessageRole.TOOL, blocks=[
-            ToolResultBlock(tool_use_id=tc1.id, tool_name="grep_files", output="main.py:3:    # TODO: fix")
-        ]))
+        messages.append(
+            Message(
+                role=MessageRole.TOOL,
+                blocks=[
+                    ToolResultBlock(
+                        tool_use_id=tc1.id,
+                        tool_name="grep_files",
+                        output="main.py:3:    # TODO: fix",
+                    )
+                ],
+            )
+        )
         resp2 = await mock_provider.chat(messages)
         assert resp2.tool_calls()[0].name == "str_replace"
 
@@ -143,10 +173,17 @@ class TestMultiTurnScenarios:
     async def test_mp013_max_steps_terminates(self):
         """MP-013: 超过 max_steps 后应被 ConversationRuntime 终止。
         这里只验证 MockProvider 的 turn counter 正常递增。"""
-        provider = MockProvider(scenarios=[
-            Scenario(name="always_tool", trigger_patterns=[],
-                     response_factory=lambda msgs, turn: _tool_response("read_file", {"file_path": "loop.txt"})),
-        ])
+        provider = MockProvider(
+            scenarios=[
+                Scenario(
+                    name="always_tool",
+                    trigger_patterns=[],
+                    response_factory=lambda msgs, turn: _tool_response(
+                        "read_file", {"file_path": "loop.txt"}
+                    ),
+                ),
+            ]
+        )
         for i in range(20):
             resp = await provider.chat([make_user_message("keep going")])
             assert resp.has_tool_calls()
@@ -157,8 +194,8 @@ class TestMultiTurnScenarios:
 # 1.3 边缘测试
 # ============================================================================
 
-class TestEdgeCases:
 
+class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_mp020_empty_message(self, mock_provider: MockProvider):
         """MP-020: 空字符串消息不崩溃"""
@@ -183,6 +220,7 @@ class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_mp023_concurrent_requests(self, mock_provider: MockProvider):
         """MP-023: 并发请求各自返回正确响应"""
+
         async def single_call(text: str):
             return await mock_provider.chat([make_user_message(text)])
 
@@ -204,8 +242,8 @@ class TestEdgeCases:
 # 1.4 故障注入
 # ============================================================================
 
-class TestFaultInjection:
 
+class TestFaultInjection:
     @pytest.mark.asyncio
     async def test_mp030_simulated_timeout(self):
         """MP-030: 模拟超时 — provider.chat() 在 delay 后返回"""
@@ -216,7 +254,9 @@ class TestFaultInjection:
     @pytest.mark.asyncio
     async def test_mp031_simulated_500_error(self):
         """MP-031: 模拟 500 错误"""
-        provider = MockProvider(error_on_turn={0: ApiError("Internal Server Error", status_code=500)})
+        provider = MockProvider(
+            error_on_turn={0: ApiError("Internal Server Error", status_code=500)}
+        )
         with pytest.raises(ApiError) as exc_info:
             await provider.chat([make_user_message("hello")])
         assert exc_info.value.status_code == 500
@@ -235,7 +275,9 @@ class TestFaultInjection:
     @pytest.mark.asyncio
     async def test_mp033_rate_limit(self):
         """MP-033: 模拟 rate limit (429)"""
-        provider = MockProvider(error_on_turn={0: ApiError("Rate limited", status_code=429, retry_after=2.0)})
+        provider = MockProvider(
+            error_on_turn={0: ApiError("Rate limited", status_code=429, retry_after=2.0)}
+        )
         with pytest.raises(ApiError) as exc_info:
             await provider.chat([make_user_message("hello")])
         assert exc_info.value.status_code == 429
@@ -246,8 +288,8 @@ class TestFaultInjection:
 # 类型系统辅助测试
 # ============================================================================
 
-class TestProviderResponseHelpers:
 
+class TestProviderResponseHelpers:
     def test_has_tool_calls_true(self):
         resp = ProviderResponse(blocks=[ToolUseBlock(id="1", name="read_file", input="{}")])
         assert resp.has_tool_calls()
@@ -261,11 +303,13 @@ class TestProviderResponseHelpers:
         assert resp.text_content() == "hello world"
 
     def test_tool_calls_extracts_only_tool_use(self):
-        resp = ProviderResponse(blocks=[
-            TextBlock(text="thinking..."),
-            ToolUseBlock(id="1", name="read_file", input="{}"),
-            ToolUseBlock(id="2", name="write_file", input="{}"),
-        ])
+        resp = ProviderResponse(
+            blocks=[
+                TextBlock(text="thinking..."),
+                ToolUseBlock(id="1", name="read_file", input="{}"),
+                ToolUseBlock(id="2", name="write_file", input="{}"),
+            ]
+        )
         tc = resp.tool_calls()
         assert len(tc) == 2
         assert tc[0].name == "read_file"
@@ -277,5 +321,6 @@ class TestProviderResponseHelpers:
 
     def test_usage_default(self):
         from src.agent_v2.types import TokenUsage
+
         resp = ProviderResponse()
         assert resp.usage == TokenUsage()
