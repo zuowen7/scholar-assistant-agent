@@ -35,14 +35,34 @@
         @pointerdown.stop="startMinimapDrag"
       >
         <div class="minimap-bar">
-          <span class="minimap-title">{{ minimap.collapsed ? t('mindmap.minimap') : t('mindmap.map') }}</span>
+          <span class="minimap-title">{{
+            minimap.collapsed ? t('mindmap.minimap') : t('mindmap.map')
+          }}</span>
           <button type="button" @click.stop="$emit('toggle-minimap')">
             {{ minimap.collapsed ? t('mindmap.expand') : t('mindmap.collapse') }}
           </button>
           <template v-if="!minimap.collapsed">
-            <button type="button" :class="{ active: minimap.size === 'small' }" @click.stop="$emit('set-minimap-size', 'small')">S</button>
-            <button type="button" :class="{ active: minimap.size === 'medium' }" @click.stop="$emit('set-minimap-size', 'medium')">M</button>
-            <button type="button" :class="{ active: minimap.size === 'large' }" @click.stop="$emit('set-minimap-size', 'large')">L</button>
+            <button
+              type="button"
+              :class="{ active: minimap.size === 'small' }"
+              @click.stop="$emit('set-minimap-size', 'small')"
+            >
+              S
+            </button>
+            <button
+              type="button"
+              :class="{ active: minimap.size === 'medium' }"
+              @click.stop="$emit('set-minimap-size', 'medium')"
+            >
+              M
+            </button>
+            <button
+              type="button"
+              :class="{ active: minimap.size === 'large' }"
+              @click.stop="$emit('set-minimap-size', 'large')"
+            >
+              L
+            </button>
           </template>
         </div>
         <MiniMap
@@ -80,19 +100,20 @@ import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
 import MindNodeCard from './MindNodeCard.vue'
 import MindEdge from './MindEdge.vue'
-import {
-  useMindMap, toFlowNodes, toFlowEdges,
-} from '../../composables/useMindMap'
+import { useMindMap, toFlowNodes, toFlowEdges } from '../../composables/useMindMap'
 import { useMindMapKeyboard } from '../../composables/useMindMapKeyboard'
 
-const props = withDefaults(defineProps<{
-  connectionFromId: string
-  minimap: { collapsed: boolean; size: 'small' | 'medium' | 'large'; x: number; y: number }
-  viewCommand: { seq: number; type: 'zoom-in' | 'zoom-out' | 'reset-view' | 'fit-view' | '' }
-  expandingNodeId?: string
-}>(), {
-  expandingNodeId: '',
-})
+const props = withDefaults(
+  defineProps<{
+    connectionFromId: string
+    minimap: { collapsed: boolean; size: 'small' | 'medium' | 'large'; x: number; y: number }
+    viewCommand: { seq: number; type: 'zoom-in' | 'zoom-out' | 'reset-view' | 'fit-view' | '' }
+    expandingNodeId?: string
+  }>(),
+  {
+    expandingNodeId: '',
+  },
+)
 
 const emit = defineEmits<{
   (e: 'update:connectionFromId', value: string): void
@@ -102,8 +123,12 @@ const emit = defineEmits<{
 }>()
 
 const {
-  draftMindMap, selectNode, commitNodePosition,
-  addAssociationLink, removeAssociationLink, detachChild,
+  draftMindMap,
+  selectNode,
+  commitNodePosition,
+  addAssociationLink,
+  removeAssociationLink,
+  detachChild,
 } = useMindMap()
 
 const { getSelectedEdges, zoomIn, zoomOut, fitView, setViewport, setNodes, setEdges } = useVueFlow()
@@ -133,12 +158,15 @@ async function onFlowInit() {
   await fitView({ padding: 0.2, maxZoom: 1 })
 }
 
-watch(() => props.viewCommand.seq, () => {
-  if (props.viewCommand.type === 'zoom-in') zoomIn()
-  else if (props.viewCommand.type === 'zoom-out') zoomOut()
-  else if (props.viewCommand.type === 'fit-view') fitView({ padding: 0.18, maxZoom: 1 })
-  else if (props.viewCommand.type === 'reset-view') setViewport({ x: 0, y: 0, zoom: 1 })
-})
+watch(
+  () => props.viewCommand.seq,
+  () => {
+    if (props.viewCommand.type === 'zoom-in') zoomIn()
+    else if (props.viewCommand.type === 'zoom-out') zoomOut()
+    else if (props.viewCommand.type === 'fit-view') fitView({ padding: 0.18, maxZoom: 1 })
+    else if (props.viewCommand.type === 'reset-view') setViewport({ x: 0, y: 0, zoom: 1 })
+  },
+)
 
 function onConnect(conn: Connection) {
   if (conn.source && conn.target && conn.source !== conn.target) {
@@ -173,7 +201,7 @@ function onEdgeLeave() {
 function deleteEdgeById(edgeId: string) {
   if (!edgeId) return
   if (edgeId.startsWith('tree-')) {
-    const edge = edges.value.find(e => e.id === edgeId)
+    const edge = edges.value.find((e) => e.id === edgeId)
     const childId = (edge?.data as any)?.childId
     if (childId) detachChild(childId)
   } else {
@@ -227,12 +255,19 @@ function startMinimapDrag(event: PointerEvent) {
 
   const move = (moveEvent: PointerEvent) => {
     const width = props.minimap.size === 'large' ? 176 : props.minimap.size === 'medium' ? 136 : 104
-    const height = (props.minimap.size === 'large' ? 116 : props.minimap.size === 'medium' ? 88 : 66) + 30
+    const height =
+      (props.minimap.size === 'large' ? 116 : props.minimap.size === 'medium' ? 88 : 66) + 30
     const margin = 12
     const topSafe = 50
     emit('update-minimap-position', {
-      x: Math.max(margin, Math.min(rect.width - width - margin, origin.x + moveEvent.clientX - origin.pointerX)),
-      y: Math.max(topSafe, Math.min(rect.height - height - margin, origin.y + moveEvent.clientY - origin.pointerY)),
+      x: Math.max(
+        margin,
+        Math.min(rect.width - width - margin, origin.x + moveEvent.clientX - origin.pointerX),
+      ),
+      y: Math.max(
+        topSafe,
+        Math.min(rect.height - height - margin, origin.y + moveEvent.clientY - origin.pointerY),
+      ),
     })
   }
 
@@ -286,7 +321,11 @@ function startMinimapDrag(event: PointerEvent) {
   overflow: hidden;
   opacity: 0.54;
   cursor: grab;
-  transition: opacity 0.16s, width 0.16s, height 0.16s, transform 0.16s;
+  transition:
+    opacity 0.16s,
+    width 0.16s,
+    height 0.16s,
+    transform 0.16s;
 }
 .minimap-panel:hover {
   opacity: 0.94;

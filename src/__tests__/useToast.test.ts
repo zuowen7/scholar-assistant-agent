@@ -31,7 +31,7 @@ describe('useToast', () => {
     info('note')
 
     expect(toasts.value).toHaveLength(4)
-    expect(toasts.value.map(t => t.level)).toEqual(['success', 'warn', 'danger', 'info'])
+    expect(toasts.value.map((t) => t.level)).toEqual(['success', 'warn', 'danger', 'info'])
   })
 
   it('dismisses a toast by id', () => {
@@ -73,7 +73,7 @@ describe('useToast', () => {
     success('b')
     success('c')
 
-    const ids = toasts.value.map(t => t.id)
+    const ids = toasts.value.map((t) => t.id)
     const unique = new Set(ids)
     expect(unique.size).toBe(3)
   })

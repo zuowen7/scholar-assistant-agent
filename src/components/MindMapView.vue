@@ -1,18 +1,53 @@
 <template>
   <div class="mindmap-view">
-    <AppHeader :title="t('mindmap.headerTitle', { title: mapTitle })" :subtitle="t('mindmap.headerSubtitle', { count: nodeCount })" :icon="Network">
-      <button type="button" class="map-header-button" :title="t('mindmap.fitView')" @click="sendViewCommand('fit-view')"><RefreshCw :size="17" /></button>
-      <button type="button" class="map-header-button primary" :disabled="!selectedNode || expandingNode" @click="aiExpandSelectedNode"><Sparkles :size="16" /> {{ expandingNode ? t('mindmap.expanding') : t('mindmap.aiExpandBtn') }}</button>
-      <button type="button" class="map-header-button" :disabled="analysisLoading" @click="runMindMapAnalysis"><ShieldCheck :size="16" /> {{ analysisLoading ? t('mindmap.checking') : t('mindmap.aiCheckBtn') }}</button>
-      <button type="button" class="map-header-button" @click="autoLayout()"><LayoutGrid :size="16" /> {{ t('mindmap.autoLayout') }}</button>
-      <button type="button" class="map-header-button" @click="addChildWithPosition"><Plus :size="16" /> {{ t('mindmap.childNode') }}</button>
-      <button type="button" class="map-header-button" @click="saveAndEnterEditor">{{ t('mindmap.returnToText') }}</button>
+    <AppHeader
+      :title="t('mindmap.headerTitle', { title: mapTitle })"
+      :subtitle="t('mindmap.headerSubtitle', { count: nodeCount })"
+      :icon="Network"
+    >
+      <button
+        type="button"
+        class="map-header-button"
+        :title="t('mindmap.fitView')"
+        @click="sendViewCommand('fit-view')"
+      >
+        <RefreshCw :size="17" />
+      </button>
+      <button
+        type="button"
+        class="map-header-button primary"
+        :disabled="!selectedNode || expandingNode"
+        @click="aiExpandSelectedNode"
+      >
+        <Sparkles :size="16" />
+        {{ expandingNode ? t('mindmap.expanding') : t('mindmap.aiExpandBtn') }}
+      </button>
+      <button
+        type="button"
+        class="map-header-button"
+        :disabled="analysisLoading"
+        @click="runMindMapAnalysis"
+      >
+        <ShieldCheck :size="16" />
+        {{ analysisLoading ? t('mindmap.checking') : t('mindmap.aiCheckBtn') }}
+      </button>
+      <button type="button" class="map-header-button" @click="autoLayout()">
+        <LayoutGrid :size="16" /> {{ t('mindmap.autoLayout') }}
+      </button>
+      <button type="button" class="map-header-button" @click="addChildWithPosition">
+        <Plus :size="16" /> {{ t('mindmap.childNode') }}
+      </button>
+      <button type="button" class="map-header-button" @click="saveAndEnterEditor">
+        {{ t('mindmap.returnToText') }}
+      </button>
     </AppHeader>
     <div class="mindmap-header">
       <div class="mindmap-title-row">
         <span class="mindmap-badge">&#24605;&#32500;&#23548;&#22270;</span>
         <span class="mindmap-node-count">
-          <span v-if="connectionFromId">&#36873;&#25321;&#30446;&#26631;&#33410;&#28857;&#20197;&#23436;&#25104;&#36830;&#25509;</span>
+          <span v-if="connectionFromId"
+            >&#36873;&#25321;&#30446;&#26631;&#33410;&#28857;&#20197;&#23436;&#25104;&#36830;&#25509;</span
+          >
           <span v-else>{{ nodeCount }} &#20010;&#33410;&#28857;</span>
         </span>
       </div>
@@ -74,108 +109,115 @@
       />
 
       <section class="mindmap-workspace" :style="mindmapWorkspaceStyle">
-      <main class="mindmap-canvas-vf">
-        <MindMapFloatingToolbar
-          :position="viewport.toolbar"
-          :can-add="!!selectedNode"
-          :can-delete="canDelete"
-          :connecting="!!connectionFromId"
-          :analyzing="analysisLoading"
-          :expanding="expandingNode"
-          :collapsed="toolbarCollapsed"
-          @update:position="updateToolbarPosition"
-          @update:collapsed="toolbarCollapsed = $event"
-          @reset-map="resetMap"
-          @add-child="addChildWithPosition"
-          @ai-expand="aiExpandSelectedNode"
-          @analyze="runMindMapAnalysis"
-          @start-connect="startConnection"
-          @delete-node="deleteSelectedNode"
-          @zoom-in="sendViewCommand('zoom-in')"
-          @zoom-out="sendViewCommand('zoom-out')"
-          @reset-view="sendViewCommand('reset-view')"
-          @fit-view="sendViewCommand('fit-view')"
-          @save="saveAndStay"
-          @enter-editor="saveAndEnterEditor"
-          @auto-layout="autoLayout"
-          @reset-layout="resetLayout"
+        <main class="mindmap-canvas-vf">
+          <MindMapFloatingToolbar
+            :position="viewport.toolbar"
+            :can-add="!!selectedNode"
+            :can-delete="canDelete"
+            :connecting="!!connectionFromId"
+            :analyzing="analysisLoading"
+            :expanding="expandingNode"
+            :collapsed="toolbarCollapsed"
+            @update:position="updateToolbarPosition"
+            @update:collapsed="toolbarCollapsed = $event"
+            @reset-map="resetMap"
+            @add-child="addChildWithPosition"
+            @ai-expand="aiExpandSelectedNode"
+            @analyze="runMindMapAnalysis"
+            @start-connect="startConnection"
+            @delete-node="deleteSelectedNode"
+            @zoom-in="sendViewCommand('zoom-in')"
+            @zoom-out="sendViewCommand('zoom-out')"
+            @reset-view="sendViewCommand('reset-view')"
+            @fit-view="sendViewCommand('fit-view')"
+            @save="saveAndStay"
+            @enter-editor="saveAndEnterEditor"
+            @auto-layout="autoLayout"
+            @reset-layout="resetLayout"
+          />
+
+          <MindMapCanvas
+            :connection-from-id="connectionFromId"
+            :minimap="miniMap"
+            :view-command="viewCommand"
+            :expanding-node-id="expandingNode ? selectedNodeId : ''"
+            @update:connection-from-id="connectionFromId = $event"
+            @toggle-minimap="toggleMiniMap"
+            @set-minimap-size="setMiniMapSize"
+            @update-minimap-position="updateMiniMapPosition"
+          />
+        </main>
+
+        <div
+          v-if="!propertiesCollapsed"
+          class="pane-splitter horizontal"
+          :title="t('mindmap.dragPropertiesHeight')"
+          @pointerdown="startPaneResize($event, 'properties')"
         />
 
-        <MindMapCanvas
-          :connection-from-id="connectionFromId"
-          :minimap="miniMap"
-          :view-command="viewCommand"
-          :expanding-node-id="expandingNode ? selectedNodeId : ''"
-          @update:connection-from-id="connectionFromId = $event"
-          @toggle-minimap="toggleMiniMap"
-          @set-minimap-size="setMiniMapSize"
-          @update-minimap-position="updateMiniMapPosition"
-        />
-      </main>
-
-      <div
-        v-if="!propertiesCollapsed"
-        class="pane-splitter horizontal"
-        :title="t('mindmap.dragPropertiesHeight')"
-        @pointerdown="startPaneResize($event, 'properties')"
-      />
-
-      <section class="mindmap-properties" :class="{ collapsed: propertiesCollapsed, detailed: propertyDetailsVisible }">
-        <div class="properties-header">
-          <div class="panel-title">{{ t('mindmap.properties') }}</div>
-          <div class="properties-actions">
-            <button
-              v-if="!propertiesCollapsed"
-              class="properties-detail-button"
-              @click="propertyDetailsOpen = !propertyDetailsOpen"
-            >
-              {{ propertyDetailsOpen ? t('mindmap.collapseBody') : t('mindmap.editBody') }}
-            </button>
-            <button
-              class="properties-collapse-button"
-              :title="propertiesCollapsed ? t('mindmap.expandProperties') : t('mindmap.collapseProperties')"
-              @click="propertiesCollapsed = !propertiesCollapsed"
-            >
-              {{ propertiesCollapsed ? '^' : 'v' }}
-            </button>
-          </div>
-        </div>
-
-        <div v-if="!propertiesCollapsed" class="property-summary">
-          <span class="summary-main">{{ selectedNode?.text || t('mindmap.noSelection') }}</span>
-          <span>{{ t('mindmap.nodeCount', { count: nodeCount }) }}</span>
-          <span>{{ t('mindmap.linkCount', { count: draftMindMap.links.length }) }}</span>
-          <span>{{ Math.round(viewport.zoom * 100) }}%</span>
-          <span>{{ saveMessage || t('editor.unSaved') }}</span>
-        </div>
-
-        <div v-if="propertyDetailsVisible" class="property-details">
-          <label class="inspector-label">
-            {{ t('mindmap.nodeText') }}
-            <textarea
-              v-model="selectedText"
-              class="inspector-input"
-              rows="4"
-              :disabled="!selectedNode"
-              @change="applyInspectorText"
-            />
-          </label>
-          <div class="inspector-meta-grid">
-            <div class="inspector-meta">
-              <span>{{ t('mindmap.nodes') }}</span>
-              <strong>{{ nodeCount }}</strong>
-            </div>
-            <div class="inspector-meta">
-              <span>{{ t('mindmap.links') }}</span>
-              <strong>{{ draftMindMap.links.length }}</strong>
-            </div>
-            <div class="inspector-meta">
-              <span>{{ t('mindmap.saveStatus') }}</span>
-              <strong>{{ saveMessage || t('editor.unSaved') }}</strong>
+        <section
+          class="mindmap-properties"
+          :class="{ collapsed: propertiesCollapsed, detailed: propertyDetailsVisible }"
+        >
+          <div class="properties-header">
+            <div class="panel-title">{{ t('mindmap.properties') }}</div>
+            <div class="properties-actions">
+              <button
+                v-if="!propertiesCollapsed"
+                class="properties-detail-button"
+                @click="propertyDetailsOpen = !propertyDetailsOpen"
+              >
+                {{ propertyDetailsOpen ? t('mindmap.collapseBody') : t('mindmap.editBody') }}
+              </button>
+              <button
+                class="properties-collapse-button"
+                :title="
+                  propertiesCollapsed
+                    ? t('mindmap.expandProperties')
+                    : t('mindmap.collapseProperties')
+                "
+                @click="propertiesCollapsed = !propertiesCollapsed"
+              >
+                {{ propertiesCollapsed ? '^' : 'v' }}
+              </button>
             </div>
           </div>
-        </div>
-      </section>
+
+          <div v-if="!propertiesCollapsed" class="property-summary">
+            <span class="summary-main">{{ selectedNode?.text || t('mindmap.noSelection') }}</span>
+            <span>{{ t('mindmap.nodeCount', { count: nodeCount }) }}</span>
+            <span>{{ t('mindmap.linkCount', { count: draftMindMap.links.length }) }}</span>
+            <span>{{ Math.round(viewport.zoom * 100) }}%</span>
+            <span>{{ saveMessage || t('editor.unSaved') }}</span>
+          </div>
+
+          <div v-if="propertyDetailsVisible" class="property-details">
+            <label class="inspector-label">
+              {{ t('mindmap.nodeText') }}
+              <textarea
+                v-model="selectedText"
+                class="inspector-input"
+                rows="4"
+                :disabled="!selectedNode"
+                @change="applyInspectorText"
+              />
+            </label>
+            <div class="inspector-meta-grid">
+              <div class="inspector-meta">
+                <span>{{ t('mindmap.nodes') }}</span>
+                <strong>{{ nodeCount }}</strong>
+              </div>
+              <div class="inspector-meta">
+                <span>{{ t('mindmap.links') }}</span>
+                <strong>{{ draftMindMap.links.length }}</strong>
+              </div>
+              <div class="inspector-meta">
+                <span>{{ t('mindmap.saveStatus') }}</span>
+                <strong>{{ saveMessage || t('editor.unSaved') }}</strong>
+              </div>
+            </div>
+          </div>
+        </section>
       </section>
 
       <div
@@ -301,22 +343,34 @@ const miniMap = ref({ ...initialLayout.miniMap })
 const viewCommand = ref<{ seq: number; type: ViewCommandType }>({ seq: 0, type: '' })
 let canvasResizeObserver: ResizeObserver | null = null
 
-const canDelete = computed(() => !!selectedNode.value && selectedNodeId.value !== draftMindMap.value.rootId)
+const canDelete = computed(
+  () => !!selectedNode.value && selectedNodeId.value !== draftMindMap.value.rootId,
+)
 const nodeCount = computed(() => Object.keys(draftMindMap.value.nodes).length)
-const mapTitle = computed(() => draftMindMap.value.nodes[draftMindMap.value.rootId]?.text || t('reviewerWorkspace.currentDocument'))
-const propertyDetailsVisible = computed(() => !propertiesCollapsed.value && propertyDetailsOpen.value)
+const mapTitle = computed(
+  () =>
+    draftMindMap.value.nodes[draftMindMap.value.rootId]?.text ||
+    t('reviewerWorkspace.currentDocument'),
+)
+const propertyDetailsVisible = computed(
+  () => !propertiesCollapsed.value && propertyDetailsOpen.value,
+)
 
-watch([
-  outlineMode,
-  outlineWidth,
-  aiPanelOpen,
-  aiPanelWidth,
-  propertiesCollapsed,
-  propertiesHeight,
-  propertyDetailsOpen,
-  toolbarCollapsed,
-  miniMap,
-], persistLayoutState, { deep: true })
+watch(
+  [
+    outlineMode,
+    outlineWidth,
+    aiPanelOpen,
+    aiPanelWidth,
+    propertiesCollapsed,
+    propertiesHeight,
+    propertyDetailsOpen,
+    toolbarCollapsed,
+    miniMap,
+  ],
+  persistLayoutState,
+  { deep: true },
+)
 
 watch([propertiesCollapsed, propertyDetailsOpen, propertiesHeight], () => {
   nextTick(() => clampMiniMapPosition())
@@ -350,7 +404,13 @@ const mindmapWorkspaceStyle = computed(() => ({
 }))
 
 const orderedNodes = computed(() => {
-  const output: Array<{ id: string; text: string; depth: number; hasChildren: boolean; collapsed: boolean }> = []
+  const output: Array<{
+    id: string
+    text: string
+    depth: number
+    hasChildren: boolean
+    collapsed: boolean
+  }> = []
   const visit = (id: string, depth: number) => {
     const node = draftMindMap.value.nodes[id]
     if (!node) return
@@ -358,15 +418,19 @@ const orderedNodes = computed(() => {
     const collapsed = collapsedNodeIds.value.has(id)
     output.push({ id, text: node.text, depth, hasChildren, collapsed })
     if (collapsed) return
-    node.children.forEach(childId => visit(childId, depth + 1))
+    node.children.forEach((childId) => visit(childId, depth + 1))
   }
   visit(draftMindMap.value.rootId, 0)
   return output
 })
 
-watch(selectedNode, (node) => {
-  selectedText.value = node?.text ?? ''
-}, { immediate: true })
+watch(
+  selectedNode,
+  (node) => {
+    selectedText.value = node?.text ?? ''
+  },
+  { immediate: true },
+)
 
 onMounted(async () => {
   canvasResizeObserver = new ResizeObserver(() => {
@@ -477,7 +541,10 @@ function clampPaneSizes() {
 
   outlineWidth.value = Math.min(Math.max(outlineWidth.value, 132), Math.max(132, width * 0.28))
   aiPanelWidth.value = Math.min(Math.max(aiPanelWidth.value, 220), Math.max(220, width * 0.36))
-  propertiesHeight.value = Math.min(Math.max(propertiesHeight.value, 92), Math.max(92, height * 0.28))
+  propertiesHeight.value = Math.min(
+    Math.max(propertiesHeight.value, 92),
+    Math.max(92, height * 0.28),
+  )
 
   if (width < 760) {
     outlineMode.value = 'hidden'
@@ -511,7 +578,10 @@ function startPaneResize(event: PointerEvent, target: PaneResizeTarget) {
     } else if (target === 'ai') {
       aiPanelWidth.value = Math.max(220, Math.min(420, startAi - (moveEvent.clientX - startX)))
     } else {
-      propertiesHeight.value = Math.max(92, Math.min(220, startProperties - (moveEvent.clientY - startY)))
+      propertiesHeight.value = Math.max(
+        92,
+        Math.min(220, startProperties - (moveEvent.clientY - startY)),
+      )
     }
     clampToolbarPosition()
     clampMiniMapPosition()
@@ -621,8 +691,10 @@ function recenterCanvasForSafeArea() {
 
 function sendViewCommand(type: Exclude<ViewCommandType, ''>) {
   viewCommand.value = { seq: viewCommand.value.seq + 1, type }
-  if (type === 'zoom-in') viewport.value.zoom = Math.min(2, Number((viewport.value.zoom + 0.1).toFixed(2)))
-  if (type === 'zoom-out') viewport.value.zoom = Math.max(0.3, Number((viewport.value.zoom - 0.1).toFixed(2)))
+  if (type === 'zoom-in')
+    viewport.value.zoom = Math.min(2, Number((viewport.value.zoom + 0.1).toFixed(2)))
+  if (type === 'zoom-out')
+    viewport.value.zoom = Math.max(0.3, Number((viewport.value.zoom - 0.1).toFixed(2)))
   if (type === 'reset-view' || type === 'fit-view') viewport.value.zoom = 1
 }
 
@@ -635,14 +707,30 @@ function addChildWithPosition() {
 function handleVoiceMindmapCommand(e: Event) {
   const { action } = (e as CustomEvent).detail
   switch (action) {
-    case 'add-child': addChildWithPosition(); break
-    case 'delete-node': deleteSelectedNode(); break
-    case 'ai-expand': aiExpandSelectedNode(); break
-    case 'layout': autoLayout(); break
-    case 'save': saveMindMap(); break
-    case 'analyze': runMindMapAnalysis(); break
-    case 'zoom-in': case 'zoom-out': case 'fit-view': case 'reset-view':
-      sendViewCommand(action); break
+    case 'add-child':
+      addChildWithPosition()
+      break
+    case 'delete-node':
+      deleteSelectedNode()
+      break
+    case 'ai-expand':
+      aiExpandSelectedNode()
+      break
+    case 'layout':
+      autoLayout()
+      break
+    case 'save':
+      saveMindMap()
+      break
+    case 'analyze':
+      runMindMapAnalysis()
+      break
+    case 'zoom-in':
+    case 'zoom-out':
+    case 'fit-view':
+    case 'reset-view':
+      sendViewCommand(action)
+      break
   }
 }
 
@@ -687,7 +775,7 @@ async function runMindMapAnalysis() {
 
 function focusIssue(issue: MindMapAnalysisIssue) {
   activeIssueId.value = issue.id
-  const targetId = issue.nodeIds.find(id => draftMindMap.value.nodes[id])
+  const targetId = issue.nodeIds.find((id) => draftMindMap.value.nodes[id])
   if (!targetId) return
   expandAncestors(targetId)
   selectNode(targetId)
@@ -722,7 +810,8 @@ function saveAndEnterEditor() {
 
 function startConnection() {
   if (!selectedNode.value) return
-  connectionFromId.value = connectionFromId.value === selectedNodeId.value ? '' : selectedNodeId.value
+  connectionFromId.value =
+    connectionFromId.value === selectedNodeId.value ? '' : selectedNodeId.value
 }
 
 function deleteSelectedNode() {
@@ -1207,36 +1296,74 @@ async function aiExpandSelectedNode() {
   border-radius: 8px;
   background: var(--c-panel);
   color: var(--c-text-1);
-  font: 500 12px/1 var(--font-sans), var(--font-zh);
+  font:
+    500 12px/1 var(--font-sans),
+    var(--font-zh);
   cursor: pointer;
 }
-.map-header-button:hover { background: var(--c-surface-2); color: var(--c-text-0); }
-.map-header-button.primary { border-color: var(--c-accent); background: var(--c-accent); color: #fff; }
-.map-header-button:disabled { opacity: .5; cursor: default; }
-.mindmap-header { display: none !important; }
+.map-header-button:hover {
+  background: var(--c-surface-2);
+  color: var(--c-text-0);
+}
+.map-header-button.primary {
+  border-color: var(--c-accent);
+  background: var(--c-accent);
+  color: #fff;
+}
+.map-header-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.mindmap-header {
+  display: none !important;
+}
 .mindmap-body {
   display: grid;
   background: var(--c-app-bg);
 }
 .mindmap-outline,
 .mindmap-ai-panel,
-.mindmap-properties { display: flex; }
-.mindmap-outline { display: block; background: var(--c-nav); }
-.mindmap-ai-panel { display: block; background: var(--c-panel); }
-.mindmap-properties { background: var(--c-panel); }
-.pane-splitter { display: block; }
-:deep(.floating-toolbar) { display: flex !important; }
-.mindmap-workspace { display: grid; width: 100%; height: 100%; }
+.mindmap-properties {
+  display: flex;
+}
+.mindmap-outline {
+  display: block;
+  background: var(--c-nav);
+}
+.mindmap-ai-panel {
+  display: block;
+  background: var(--c-panel);
+}
+.mindmap-properties {
+  background: var(--c-panel);
+}
+.pane-splitter {
+  display: block;
+}
+:deep(.floating-toolbar) {
+  display: flex !important;
+}
+.mindmap-workspace {
+  display: grid;
+  width: 100%;
+  height: 100%;
+}
 .mindmap-canvas-vf {
   min-height: 0;
   overflow: hidden;
   background-color: var(--c-app-bg);
-  background-image: radial-gradient(circle, rgba(91, 108, 255, .11) .8px, transparent .8px);
+  background-image: radial-gradient(circle, rgba(91, 108, 255, 0.11) 0.8px, transparent 0.8px);
   background-size: 24px 24px;
 }
 @media (max-width: 980px) {
-  .map-header-button:not(.primary):not(:first-child) { display: none; }
-  .mindmap-outline { display: none; }
-  .mindmap-body { grid-template-columns: minmax(0, 1fr) 42px !important; }
+  .map-header-button:not(.primary):not(:first-child) {
+    display: none;
+  }
+  .mindmap-outline {
+    display: none;
+  }
+  .mindmap-body {
+    grid-template-columns: minmax(0, 1fr) 42px !important;
+  }
 }
 </style>

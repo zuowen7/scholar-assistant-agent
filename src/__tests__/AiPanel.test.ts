@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
 const { readSseStream } = vi.hoisted(() => ({
-  readSseStream: vi.fn(async (_reader: unknown, handler: (type: string, data: Record<string, unknown>) => void) => {
-    handler('delta', { content: 'edited text' })
-  }),
+  readSseStream: vi.fn(
+    async (_reader: unknown, handler: (type: string, data: Record<string, unknown>) => void) => {
+      handler('delta', { content: 'edited text' })
+    },
+  ),
 }))
 
 vi.mock('../utils/streamReader', () => ({ readSseStream }))
@@ -56,7 +58,9 @@ describe('AiPanel workflow routing', () => {
       },
     })
 
-    await (wrapper.vm as unknown as { sendPreset: (name: string) => Promise<void> }).sendPreset('polish')
+    await (wrapper.vm as unknown as { sendPreset: (name: string) => Promise<void> }).sendPreset(
+      'polish',
+    )
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]

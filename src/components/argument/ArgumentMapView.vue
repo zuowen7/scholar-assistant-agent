@@ -19,14 +19,26 @@
       </div>
 
       <div class="arg-view-right">
-        <button class="arg-toolbar-btn" @click="runAutoLayout">{{ t('argument.autoLayout') }}</button>
-        <button class="arg-toolbar-btn" @click="showNewGraph = true">{{ t('argument.newGraph') }}</button>
+        <button class="arg-toolbar-btn" @click="runAutoLayout">
+          {{ t('argument.autoLayout') }}
+        </button>
+        <button class="arg-toolbar-btn" @click="showNewGraph = true">
+          {{ t('argument.newGraph') }}
+        </button>
         <template v-if="state.graph">
           <span class="arg-toolbar-separator" />
-          <select v-model="newNodeType" class="arg-node-select" :aria-label="t('argument.contentLabel')">
-            <option v-for="option in nodeTypes" :key="option.value" :value="option.value">{{ option.label }}</option>
+          <select
+            v-model="newNodeType"
+            class="arg-node-select"
+            :aria-label="t('argument.contentLabel')"
+          >
+            <option v-for="option in nodeTypes" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option>
           </select>
-          <button class="arg-toolbar-btn arg-toolbar-btn--primary" @click="addNode(newNodeType)">+ {{ t('general.add') }}</button>
+          <button class="arg-toolbar-btn arg-toolbar-btn--primary" @click="addNode(newNodeType)">
+            + {{ t('general.add') }}
+          </button>
         </template>
       </div>
     </div>
@@ -36,7 +48,9 @@
       <!-- Graph list (when no graph selected) -->
       <div v-if="!state.graph && !state.graphList.length" class="arg-view-empty">
         <p>{{ t('argument.noGraph') }}</p>
-        <button class="arg-primary-btn" @click="showNewGraph = true">{{ t('argument.newGraph') }}</button>
+        <button class="arg-primary-btn" @click="showNewGraph = true">
+          {{ t('argument.newGraph') }}
+        </button>
       </div>
 
       <div v-else-if="!state.graph" class="arg-view-empty">
@@ -127,8 +141,12 @@ async function createNewGraph(title: string) {
 
 async function addNode(node_type: NodeType) {
   const label = {
-    claim: t('argument.newClaim'), grounds: t('argument.newGrounds'), warrant: t('argument.newWarrant'),
-    backing: t('argument.newBacking'), qualifier: t('argument.newQualifier'), rebuttal: t('argument.newRebuttal'),
+    claim: t('argument.newClaim'),
+    grounds: t('argument.newGrounds'),
+    warrant: t('argument.newWarrant'),
+    backing: t('argument.newBacking'),
+    qualifier: t('argument.newQualifier'),
+    rebuttal: t('argument.newRebuttal'),
   }[node_type]
   await upsertNode({ node_type, text: label } as any)
 }
@@ -136,10 +154,16 @@ async function addNode(node_type: NodeType) {
 function needsLayout() {
   const nodes = state.graph?.nodes ?? []
   if (nodes.length < 2) return false
-  const positioned = nodes.filter(node => Number.isFinite(node.position?.x) && Number.isFinite(node.position?.y))
+  const positioned = nodes.filter(
+    (node) => Number.isFinite(node.position?.x) && Number.isFinite(node.position?.y),
+  )
   if (positioned.length < nodes.length) return true
-  const unique = new Set(positioned.map(node => `${Math.round(node.position!.x / 20)}:${Math.round(node.position!.y / 20)}`))
-  return unique.size < Math.ceil(nodes.length * .6)
+  const unique = new Set(
+    positioned.map(
+      (node) => `${Math.round(node.position!.x / 20)}:${Math.round(node.position!.y / 20)}`,
+    ),
+  )
+  return unique.size < Math.ceil(nodes.length * 0.6)
 }
 
 async function fitCanvas() {
@@ -151,7 +175,7 @@ async function runAutoLayout() {
   if (!state.graph) return
   const positioned = autoLayout(state.graph.nodes as any[], state.graph.edges as any[], 'LR')
   for (const p of positioned) {
-    const node = state.graph!.nodes.find(n => n.id === p.id)
+    const node = state.graph!.nodes.find((n) => n.id === p.id)
     if (node) node.position = p.position
   }
   await fitCanvas()
@@ -218,7 +242,12 @@ async function runAutoLayout() {
   flex-wrap: wrap;
 }
 
-.arg-toolbar-separator { width: 1px; height: 24px; margin: 0 3px; background: var(--c-border); }
+.arg-toolbar-separator {
+  width: 1px;
+  height: 24px;
+  margin: 0 3px;
+  background: var(--c-border);
+}
 .arg-node-select {
   height: 34px;
   border: 1px solid var(--c-border);
@@ -240,12 +269,24 @@ async function runAutoLayout() {
   font: inherit;
   font-size: 12px;
   cursor: pointer;
-  transition: background 140ms, border-color 140ms;
+  transition:
+    background 140ms,
+    border-color 140ms;
   white-space: nowrap;
 }
-.arg-toolbar-btn:hover { border-color: var(--c-border-strong); background: var(--c-surface-2); }
-.arg-toolbar-btn--primary { border-color: var(--c-accent); background: var(--c-accent); color: white; }
-.arg-toolbar-btn--primary:hover { border-color: var(--c-accent-hover); background: var(--c-accent-hover); }
+.arg-toolbar-btn:hover {
+  border-color: var(--c-border-strong);
+  background: var(--c-surface-2);
+}
+.arg-toolbar-btn--primary {
+  border-color: var(--c-accent);
+  background: var(--c-accent);
+  color: white;
+}
+.arg-toolbar-btn--primary:hover {
+  border-color: var(--c-accent-hover);
+  background: var(--c-accent-hover);
+}
 
 /* Body */
 .arg-view-body {
@@ -306,8 +347,13 @@ async function runAutoLayout() {
   cursor: pointer;
   transition: background 140ms;
 }
-.arg-primary-btn:hover { background: var(--c-accent-hover); }
-.arg-primary-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.arg-primary-btn:hover {
+  background: var(--c-accent-hover);
+}
+.arg-primary-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 
 .arg-ghost-btn {
   padding: 6px 16px;
@@ -319,10 +365,16 @@ async function runAutoLayout() {
   font-size: 13px;
   cursor: pointer;
 }
-.arg-ghost-btn:hover { background: var(--c-surface-2); }
+.arg-ghost-btn:hover {
+  background: var(--c-surface-2);
+}
 
 @media (max-width: 1100px) {
-  .arg-view-split { grid-template-columns: 190px minmax(300px, 1fr) 230px; }
-  .arg-view-toolbar { align-items: flex-start; }
+  .arg-view-split {
+    grid-template-columns: 190px minmax(300px, 1fr) 230px;
+  }
+  .arg-view-toolbar {
+    align-items: flex-start;
+  }
 }
 </style>

@@ -4,20 +4,38 @@ import { setSpeechBusy } from './useSpeechBusy'
 type SpeechStatus = 'idle' | 'listening'
 
 declare class SpeechRecognition extends EventTarget {
-  continuous: boolean; interimResults: boolean; lang: string
-  start(): void; stop(): void; abort(): void
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  start(): void
+  stop(): void
+  abort(): void
   onstart: ((ev: Event) => void) | null
   onend: ((ev: Event) => void) | null
   onerror: ((ev: SpeechRecognitionErrorEvent) => void) | null
   onresult: ((ev: SpeechRecognitionEvent) => void) | null
 }
-declare class SpeechRecognitionErrorEvent extends Event { error: string; message: string }
-declare class SpeechRecognitionEvent extends Event {
-  resultIndex: number; results: SpeechRecognitionResultList
+declare class SpeechRecognitionErrorEvent extends Event {
+  error: string
+  message: string
 }
-declare class SpeechRecognitionResultList { readonly length: number; [index: number]: SpeechRecognitionResult }
-declare class SpeechRecognitionResult { readonly isFinal: boolean; readonly length: number; [index: number]: SpeechRecognitionAlternative }
-declare class SpeechRecognitionAlternative { transcript: string; confidence: number }
+declare class SpeechRecognitionEvent extends Event {
+  resultIndex: number
+  results: SpeechRecognitionResultList
+}
+declare class SpeechRecognitionResultList {
+  readonly length: number;
+  [index: number]: SpeechRecognitionResult
+}
+declare class SpeechRecognitionResult {
+  readonly isFinal: boolean
+  readonly length: number;
+  [index: number]: SpeechRecognitionAlternative
+}
+declare class SpeechRecognitionAlternative {
+  transcript: string
+  confidence: number
+}
 
 function getSpeechRecognition(): SpeechRecognition | null {
   const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
@@ -45,7 +63,8 @@ function commonPrefixLen(a: string, b: string): number {
 
 // Words that unambiguously start a NEW sentence after a pause.
 // Pronouns (我/你/他/它/这/那) are NOT included — they often continue the same sentence.
-const SENTENCE_STARTERS_RE = /^(但是|然而|所以|因此|另外|首先|其次|最后|总之|不过|而且|此外|可是|然后|接着|当然|确实|其实|显然|终于|突然|忽然|偶尔|经常|一直|如果|虽然|因为|由于|为了|关于|根据|按照|通过|经过|比如|例如|除了|包括|尤其|特别|最|更|比|越|[A-Z])/
+const SENTENCE_STARTERS_RE =
+  /^(但是|然而|所以|因此|另外|首先|其次|最后|总之|不过|而且|此外|可是|然后|接着|当然|确实|其实|显然|终于|突然|忽然|偶尔|经常|一直|如果|虽然|因为|由于|为了|关于|根据|按照|通过|经过|比如|例如|除了|包括|尤其|特别|最|更|比|越|[A-Z])/
 
 /**
  * Join a new utterance onto accumulated text, avoiding premature Chrome-added
@@ -81,7 +100,7 @@ function deduplicateWithin(text: string): string {
   // Find the best split point where the two halves have significant overlap
   let bestSplit = -1
   let bestOverlap = 0
-  for (let i = Math.floor(n / 3); i <= Math.floor(n * 2 / 3); i++) {
+  for (let i = Math.floor(n / 3); i <= Math.floor((n * 2) / 3); i++) {
     const normA = normalize(text.slice(0, i))
     const normB = normalize(text.slice(i))
     if (!normA || !normB) continue
@@ -150,7 +169,9 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
     sr.interimResults = true
     sr.lang = lang
 
-    sr.onstart = () => { status.value = 'listening' }
+    sr.onstart = () => {
+      status.value = 'listening'
+    }
     sr.onend = () => {
       status.value = 'idle'
       recognition = null
@@ -205,7 +226,10 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
               let splitAt = transcript.length
               for (let ci = 0; ci < transcript.length; ci++) {
                 if (/[\w一-鿿]/.test(transcript[ci])) counted++
-                if (counted >= prevNorm.length) { splitAt = ci + 1; break }
+                if (counted >= prevNorm.length) {
+                  splitAt = ci + 1
+                  break
+                }
               }
               const newOnly = transcript.slice(splitAt).trim()
               if (newOnly) {
@@ -271,7 +295,11 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
       recognition.onresult = null
       recognition.onend = null
       recognition.onerror = null
-      try { recognition.stop() } catch { /* recognizer may already be stopped */ }
+      try {
+        recognition.stop()
+      } catch {
+        /* recognizer may already be stopped */
+      }
     }
     recognition = null
     status.value = 'idle'
@@ -301,7 +329,9 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
     }
   }
 
-  const isSupported = !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
+  const isSupported = !!(
+    (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+  )
 
   return { status, interimText, error, isSupported, start, stop, toggle, resetAccumulated }
 }

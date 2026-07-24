@@ -22,15 +22,18 @@
 <script setup lang="ts">
 import UiButton from './UiButton.vue'
 
-withDefaults(defineProps<{
-  icon?: any
-  iconSize?: number
-  title?: string
-  subtitle?: string
-  actionLabel?: string
-}>(), {
-  iconSize: 32,
-})
+withDefaults(
+  defineProps<{
+    icon?: any
+    iconSize?: number
+    title?: string
+    subtitle?: string
+    actionLabel?: string
+  }>(),
+  {
+    iconSize: 32,
+  },
+)
 
 defineEmits<{
   action: []

@@ -33,8 +33,9 @@ defineEmits<{
   font-size: var(--text-sm);
   outline: none;
   cursor: pointer;
-  transition: box-shadow var(--motion-fast) var(--ease-out),
-              border-color var(--motion-fast) var(--ease-out);
+  transition:
+    box-shadow var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
   box-sizing: border-box;
   -webkit-appearance: none;
   appearance: none;
@@ -51,5 +52,7 @@ defineEmits<{
   cursor: not-allowed;
 }
 
-:global([data-theme="light"]) .ui-select { background-color: var(--c-surface-2); }
+:global([data-theme='light']) .ui-select {
+  background-color: var(--c-surface-2);
+}
 </style>

@@ -6,13 +6,16 @@
 </template>
 
 <script setup lang="ts">
-withDefaults(defineProps<{
-  tone?: 'neutral' | 'accent' | 'success' | 'warning' | 'danger'
-  dot?: boolean
-}>(), {
-  tone: 'neutral',
-  dot: false,
-})
+withDefaults(
+  defineProps<{
+    tone?: 'neutral' | 'accent' | 'success' | 'warning' | 'danger'
+    dot?: boolean
+  }>(),
+  {
+    tone: 'neutral',
+    dot: false,
+  },
+)
 </script>
 
 <style scoped>
@@ -30,9 +33,26 @@ withDefaults(defineProps<{
   line-height: 1;
   white-space: nowrap;
 }
-.status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-.tone-accent { color: var(--c-accent); background: var(--c-accent-soft); }
-.tone-success { color: var(--c-success); background: var(--c-success-bg); }
-.tone-warning { color: var(--c-warn); background: var(--c-warn-bg); }
-.tone-danger { color: var(--c-danger); background: var(--c-danger-bg); }
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.tone-accent {
+  color: var(--c-accent);
+  background: var(--c-accent-soft);
+}
+.tone-success {
+  color: var(--c-success);
+  background: var(--c-success-bg);
+}
+.tone-warning {
+  color: var(--c-warn);
+  background: var(--c-warn-bg);
+}
+.tone-danger {
+  color: var(--c-danger);
+  background: var(--c-danger-bg);
+}
 </style>

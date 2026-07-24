@@ -76,7 +76,7 @@ export async function openProject(path: string): Promise<void> {
     // A project switch must never discard unsaved Monaco content. Clean tabs
     // are cleared after the new project has loaded successfully; dirty tabs
     // require the user to save or explicitly close the current project first.
-    if (tabs.value.some(tab => tab.isModified)) {
+    if (tabs.value.some((tab) => tab.isModified)) {
       throw new Error('当前项目有未保存的编辑内容，请先保存或关闭当前项目后再切换。')
     }
 
@@ -85,9 +85,13 @@ export async function openProject(path: string): Promise<void> {
       const err = await parseResponse(resp).catch(() => ({ detail: resp.statusText }))
       throw new Error(err.detail || `打开项目失败 (${resp.status})`)
     }
-    const meta = await parseResponse(resp) as ProjectMetadata
+    const meta = (await parseResponse(resp)) as ProjectMetadata
     if (thisOp !== _operationId) return
-    try { await fileTree.openFolder(path) } catch { /* Non-Tauri */ }
+    try {
+      await fileTree.openFolder(path)
+    } catch {
+      /* Non-Tauri */
+    }
     if (thisOp !== _operationId) return
     currentProject.value = meta
     tabs.value = []
@@ -97,7 +101,11 @@ export async function openProject(path: string): Promise<void> {
     if (thisOp === _operationId) {
       currentProject.value = prevProject
       if (prevRootDir) {
-        try { await useFileTree().openFolder(prevRootDir) } catch { /* */ }
+        try {
+          await useFileTree().openFolder(prevRootDir)
+        } catch {
+          /* */
+        }
       }
     }
     throw err
@@ -108,9 +116,13 @@ export async function openProject(path: string): Promise<void> {
 
 export async function removeRecentProject(path: string): Promise<void> {
   try {
-    await fetch(apiUrl(`/api/project/recent?path=${encodeURIComponent(path)}`), { method: 'DELETE' })
-    recentProjects.value = recentProjects.value.filter(p => p.path !== path)
-  } catch { /* */ }
+    await fetch(apiUrl(`/api/project/recent?path=${encodeURIComponent(path)}`), {
+      method: 'DELETE',
+    })
+    recentProjects.value = recentProjects.value.filter((p) => p.path !== path)
+  } catch {
+    /* */
+  }
 }
 
 export async function loadRecentProjects(): Promise<void> {
@@ -120,7 +132,9 @@ export async function loadRecentProjects(): Promise<void> {
       const data = await parseResponse(resp).catch(() => null)
       if (Array.isArray(data)) recentProjects.value = data
     }
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
 }
 
 export async function closeProject(): Promise<void> {

@@ -43,7 +43,11 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
-import { useArgumentMap, requestOpenFullArgMap, loadSourceFromEditor } from '../../composables/useArgumentMap'
+import {
+  useArgumentMap,
+  requestOpenFullArgMap,
+  loadSourceFromEditor,
+} from '../../composables/useArgumentMap'
 import { useEditor } from '../../composables/useEditor'
 import ArgumentMapCanvas from './ArgumentMapCanvas.vue'
 
@@ -54,7 +58,7 @@ const { activeTab } = useEditor()
 
 const extractError = ref('')
 
-const hasContent = computed(() => !!(props.content?.trim()))
+const hasContent = computed(() => !!props.content?.trim())
 
 async function doExtract() {
   if (!props.content?.trim()) return
@@ -115,10 +119,16 @@ function openFull() {
   border-radius: var(--radius-xs);
   white-space: nowrap;
   flex-shrink: 0;
-  transition: background var(--motion-fast) var(--ease-out), transform 0.06s ease;
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    transform 0.06s ease;
 }
-.arg-mini-open:hover { background: var(--c-accent-bg2); }
-.arg-mini-open:active { transform: scale(0.94); }
+.arg-mini-open:hover {
+  background: var(--c-accent-bg2);
+}
+.arg-mini-open:active {
+  transform: scale(0.94);
+}
 
 .arg-mini-linked {
   position: relative;
@@ -138,8 +148,14 @@ function openFull() {
   animation: sonar-ring 1.8s ease-out infinite;
 }
 @keyframes sonar-ring {
-  0%   { transform: scale(1);   opacity: 0.7; }
-  100% { transform: scale(2.6); opacity: 0; }
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
 }
 
 .arg-mini-extract-btn {
@@ -218,8 +234,14 @@ function openFull() {
   animation: pill-appear 0.25s ease-out;
 }
 @keyframes pill-appear {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .arg-mini-extract-text {
@@ -228,35 +250,53 @@ function openFull() {
   white-space: nowrap;
 }
 
-.dot-wave { display: flex; gap: 4px; align-items: center; }
+.dot-wave {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
 .dot-wave i {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--c-accent); display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c-accent);
+  display: block;
   animation: wave-bounce 1.1s ease-in-out infinite;
 }
-.dot-wave i:nth-child(2) { animation-delay: 0.18s; }
-.dot-wave i:nth-child(3) { animation-delay: 0.36s; }
+.dot-wave i:nth-child(2) {
+  animation-delay: 0.18s;
+}
+.dot-wave i:nth-child(3) {
+  animation-delay: 0.36s;
+}
 @keyframes wave-bounce {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.25; }
-  30%            { transform: translateY(-5px); opacity: 1; }
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.25;
+  }
+  30% {
+    transform: translateY(-5px);
+    opacity: 1;
+  }
 }
 
 .arg-mini-extract-track {
   width: 100px;
   height: 2px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--c-accent) 45%,
-    transparent 100%
-  );
+  background: linear-gradient(90deg, transparent 0%, var(--c-accent) 45%, transparent 100%);
   background-size: 40% 100%;
   background-repeat: no-repeat;
   animation: extract-scan 1.4s ease-in-out infinite;
   border-radius: 1px;
 }
 @keyframes extract-scan {
-  0%   { background-position: -40% 0; }
-  100% { background-position: 140% 0; }
+  0% {
+    background-position: -40% 0;
+  }
+  100% {
+    background-position: 140% 0;
+  }
 }
 </style>

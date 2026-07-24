@@ -6,8 +6,15 @@
  */
 import type { EditorSelection } from '../types'
 import {
-  tabs, activeTabId, selection, monacoEditor, contentVersion,
-  activeTab, content, activeFile, isModified,
+  tabs,
+  activeTabId,
+  selection,
+  monacoEditor,
+  contentVersion,
+  activeTab,
+  content,
+  activeFile,
+  isModified,
 } from './useEditorState'
 import { i18n } from '../i18n'
 import { save } from '@tauri-apps/plugin-dialog'
@@ -15,7 +22,10 @@ import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 
 function setContent(text: string) {
   const tab = activeTab.value
-  if (tab) { tab.content = text; contentVersion.value++ }
+  if (tab) {
+    tab.content = text
+    contentVersion.value++
+  }
 }
 
 function updateSelection(sel: EditorSelection) {
@@ -29,11 +39,14 @@ function markClean() {
 
 function markDirty() {
   const tab = activeTab.value
-  if (tab) { tab.isModified = true; contentVersion.value++ }
+  if (tab) {
+    tab.isModified = true
+    contentVersion.value++
+  }
 }
 
 function openFile(path: string, text = '') {
-  const existing = tabs.value.find(t => t.path === path)
+  const existing = tabs.value.find((t) => t.path === path)
   if (existing) {
     activeTabId.value = existing.id
     if (text) existing.content = text
@@ -52,7 +65,7 @@ function openNewUntitled() {
 }
 
 function closeTab(id: string) {
-  const idx = tabs.value.findIndex(t => t.id === id)
+  const idx = tabs.value.findIndex((t) => t.id === id)
   if (idx === -1) return
   tabs.value.splice(idx, 1)
   if (activeTabId.value === id) {
@@ -67,13 +80,14 @@ function closeTab(id: string) {
 }
 
 function setActiveTab(id: string) {
-  if (tabs.value.some(t => t.id === id)) activeTabId.value = id
+  if (tabs.value.some((t) => t.id === id)) activeTabId.value = id
 }
 
 function renameTabPath(oldPath: string, newPath: string) {
-  const tab = tabs.value.find(t => t.path === oldPath)
+  const tab = tabs.value.find((t) => t.path === oldPath)
   if (tab) {
-    tab.path = newPath; tab.id = newPath
+    tab.path = newPath
+    tab.id = newPath
     tab.name = newPath.split(/[\\/]/).pop() || tab.name
     if (activeTabId.value === oldPath) activeTabId.value = newPath
   }
@@ -92,9 +106,9 @@ export type ExternalFileUpdateResult = 'applied' | 'unchanged' | 'conflict' | 'n
  */
 function applyExternalFileUpdate(path: string, fresh: string): ExternalFileUpdateResult {
   const normalizedPath = path.replace(/\\/g, '/').toLowerCase()
-  const tab = tabs.value.find(candidate => (
-    candidate.path?.replace(/\\/g, '/').toLowerCase() === normalizedPath
-  ))
+  const tab = tabs.value.find(
+    (candidate) => candidate.path?.replace(/\\/g, '/').toLowerCase() === normalizedPath,
+  )
   if (!tab) return 'not-open'
   if (tab.isModified) return 'conflict'
   if (tab.content === fresh) return 'unchanged'
@@ -127,7 +141,7 @@ async function reloadOpenTabs(): Promise<void> {
     if (tab.isModified) continue
     try {
       const fresh = await readTextFile(tab.path)
-      if (fresh === tab.content) continue  // no change — skip expensive Monaco update
+      if (fresh === tab.content) continue // no change — skip expensive Monaco update
       tab.content = fresh
       contentVersion.value++
       // If this is the active tab, push the new content into Monaco immediately.
@@ -157,7 +171,7 @@ async function saveFile(): Promise<string | null> {
         defaultPath: `${tab.name || 'untitled'}.md`,
         filters: [{ name: 'Markdown', extensions: ['md'] }],
       })
-      if (!chosen) return null  // user cancelled
+      if (!chosen) return null // user cancelled
       await writeTextFile(chosen, tab.content)
       tab.path = chosen
       tab.id = chosen
@@ -181,9 +195,26 @@ async function saveFile(): Promise<string | null> {
 }
 
 export {
-  tabs, activeTabId, activeTab, content, activeFile, isModified,
-  monacoEditor, contentVersion, selection,
-  setEditorInstance, setContent, updateSelection, markClean, markDirty,
-  openFile, openNewUntitled, closeTab, setActiveTab, renameTabPath, saveFile,
-  reloadOpenTabs, applyExternalFileUpdate,
+  tabs,
+  activeTabId,
+  activeTab,
+  content,
+  activeFile,
+  isModified,
+  monacoEditor,
+  contentVersion,
+  selection,
+  setEditorInstance,
+  setContent,
+  updateSelection,
+  markClean,
+  markDirty,
+  openFile,
+  openNewUntitled,
+  closeTab,
+  setActiveTab,
+  renameTabPath,
+  saveFile,
+  reloadOpenTabs,
+  applyExternalFileUpdate,
 }

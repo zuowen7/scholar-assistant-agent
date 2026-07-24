@@ -26,7 +26,9 @@ vi.mock('../i18n', () => ({
     global: {
       t: (key: string, params?: any) => {
         if (typeof params === 'object' && params !== null) {
-          const parts = Object.entries(params).map(([k, v]) => `${k}=${v}`).join(', ')
+          const parts = Object.entries(params)
+            .map(([k, v]) => `${k}=${v}`)
+            .join(', ')
           return `[${key}](${parts})`
         }
         return `[${key}]`
@@ -47,10 +49,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
   writeTextFile: vi.fn().mockResolvedValue(undefined),
 }))
 
-import {
-  useArgumentCompanion,
-  _resetForTesting,
-} from '../composables/useArgumentCompanion'
+import { useArgumentCompanion, _resetForTesting } from '../composables/useArgumentCompanion'
 import type { RebuttalTurn, ReviewPoint, ReviewSession } from '../types'
 
 // ── helpers ─────────────────────────────────────────────────────────────────
@@ -102,7 +101,7 @@ function makeLedger(overrides: Record<string, unknown> = {}) {
 /** Build a ReadableStream that emits SSE-formatted lines. */
 function makeSseStream(events: { event: string; data: unknown }[]): ReadableStream<Uint8Array> {
   const enc = new TextEncoder()
-  const chunks: Uint8Array[] = events.map(e =>
+  const chunks: Uint8Array[] = events.map((e) =>
     enc.encode(`event: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`),
   )
   let i = 0
@@ -133,7 +132,12 @@ describe('useArgumentCompanion', () => {
   describe('buildOrRebuildLedger', () => {
     it('fills state.ledger.promises one by one from SSE promise events', async () => {
       const p1 = makePromise({ id: 'p_001', text: 'Contribution 1' })
-      const p2 = makePromise({ id: 'p_002', text: 'Contribution 2', status: 'paid', severity: 'info' })
+      const p2 = makePromise({
+        id: 'p_002',
+        text: 'Contribution 2',
+        status: 'paid',
+        severity: 'info',
+      })
       const completeData = {
         promise_count: 2,
         by_status: { unpaid: 1, paid: 1 },
@@ -186,9 +190,7 @@ describe('useArgumentCompanion', () => {
     })
 
     it('handles error SSE event gracefully without crashing', async () => {
-      const stream = makeSseStream([
-        { event: 'error', data: { message: 'LLM failed' } },
-      ])
+      const stream = makeSseStream([{ event: 'error', data: { message: 'LLM failed' } }])
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: stream }))
 
       const companion = useArgumentCompanion()
@@ -316,21 +318,36 @@ describe('useArgumentCompanion', () => {
   describe('runReview', () => {
     it('fills state.review.points from SSE review_point events', async () => {
       const rp1 = {
-        id: 'rp_001', severity: 'major', category: 'baseline',
-        title: 'Missing baselines', detail: 'No comparison.',
-        anchor_id: null, status: 'open', source: 'llm',
-        reviewer_label: null, thread: [],
+        id: 'rp_001',
+        severity: 'major',
+        category: 'baseline',
+        title: 'Missing baselines',
+        detail: 'No comparison.',
+        anchor_id: null,
+        status: 'open',
+        source: 'llm',
+        reviewer_label: null,
+        thread: [],
       }
       const rp2 = {
-        id: 'rp_002', severity: 'minor', category: 'writing_clarity',
-        title: 'Unclear prose', detail: 'Section 3 is unclear.',
-        anchor_id: null, status: 'open', source: 'llm',
-        reviewer_label: null, thread: [],
+        id: 'rp_002',
+        severity: 'minor',
+        category: 'writing_clarity',
+        title: 'Unclear prose',
+        detail: 'Section 3 is unclear.',
+        anchor_id: null,
+        status: 'open',
+        source: 'llm',
+        reviewer_label: null,
+        thread: [],
       }
       const stream = makeSseStream([
         { event: 'review_point', data: rp1 },
         { event: 'review_point', data: rp2 },
-        { event: 'complete', data: { session_id: 'S_test', by_category: { baseline: 1 }, warnings: [] } },
+        {
+          event: 'complete',
+          data: { session_id: 'S_test', by_category: { baseline: 1 }, warnings: [] },
+        },
       ])
 
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: stream }))
@@ -348,10 +365,21 @@ describe('useArgumentCompanion', () => {
 
     it('sets reviewing=true during stream and false after', async () => {
       const stream = makeSseStream([
-        { event: 'review_point', data: {
-          id: 'rp_x', severity: 'minor', category: 'other', title: 'T', detail: 'D',
-          anchor_id: null, status: 'open', source: 'llm', reviewer_label: null, thread: [],
-        }},
+        {
+          event: 'review_point',
+          data: {
+            id: 'rp_x',
+            severity: 'minor',
+            category: 'other',
+            title: 'T',
+            detail: 'D',
+            anchor_id: null,
+            status: 'open',
+            source: 'llm',
+            reviewer_label: null,
+            thread: [],
+          },
+        },
         { event: 'complete', data: { session_id: 'S_x', by_category: {}, warnings: [] } },
       ])
 
@@ -369,9 +397,7 @@ describe('useArgumentCompanion', () => {
     })
 
     it('handles error event gracefully without crashing', async () => {
-      const stream = makeSseStream([
-        { event: 'error', data: { message: 'LLM unavailable' } },
-      ])
+      const stream = makeSseStream([{ event: 'error', data: { message: 'LLM unavailable' } }])
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: stream }))
 
       const companion = useArgumentCompanion()
@@ -387,11 +413,21 @@ describe('useArgumentCompanion', () => {
   describe('scopedReview', () => {
     it('sends focus text to /api/companion/review', async () => {
       const stream = makeSseStream([
-        { event: 'review_point', data: {
-          id: 'rp_sc', severity: 'major', category: 'soundness', title: 'Overreach',
-          detail: 'This sentence is unsupported.', anchor_id: null, status: 'open',
-          source: 'scoped', reviewer_label: null, thread: [],
-        }},
+        {
+          event: 'review_point',
+          data: {
+            id: 'rp_sc',
+            severity: 'major',
+            category: 'soundness',
+            title: 'Overreach',
+            detail: 'This sentence is unsupported.',
+            anchor_id: null,
+            status: 'open',
+            source: 'scoped',
+            reviewer_label: null,
+            thread: [],
+          },
+        },
         { event: 'complete', data: { session_id: 'S_sc', by_category: {}, warnings: [] } },
       ])
 
@@ -405,7 +441,11 @@ describe('useArgumentCompanion', () => {
 
       expect(mockFetch).toHaveBeenCalled()
       const reviewCall = mockFetch.mock.calls.find((c: unknown[]) => {
-        try { return JSON.parse((c[1] as { body: string }).body).focus !== undefined } catch { return false }
+        try {
+          return JSON.parse((c[1] as { body: string }).body).focus !== undefined
+        } catch {
+          return false
+        }
       })
       expect(reviewCall).toBeDefined()
       if (!reviewCall) throw new Error('Expected scoped review fetch call')
@@ -415,10 +455,21 @@ describe('useArgumentCompanion', () => {
 
     it('adds scoped points to existing review or creates new review', async () => {
       const stream = makeSseStream([
-        { event: 'review_point', data: {
-          id: 'rp_sc2', severity: 'minor', category: 'other', title: 'T', detail: 'D',
-          anchor_id: null, status: 'open', source: 'scoped', reviewer_label: null, thread: [],
-        }},
+        {
+          event: 'review_point',
+          data: {
+            id: 'rp_sc2',
+            severity: 'minor',
+            category: 'other',
+            title: 'T',
+            detail: 'D',
+            anchor_id: null,
+            status: 'open',
+            source: 'scoped',
+            reviewer_label: null,
+            thread: [],
+          },
+        },
         { event: 'complete', data: { session_id: 'S_sc2', by_category: {}, warnings: [] } },
       ])
 
@@ -439,10 +490,16 @@ describe('useArgumentCompanion', () => {
   describe('rebut', () => {
     function makeReview() {
       const point: ReviewPoint = {
-        id: 'rp_001', severity: 'major' as const, category: 'baseline' as const,
-        title: 'Missing baselines', detail: 'No comparison.',
-        anchor_id: null, status: 'open' as const, source: 'llm' as const,
-        reviewer_label: null, thread: [] as RebuttalTurn[],
+        id: 'rp_001',
+        severity: 'major' as const,
+        category: 'baseline' as const,
+        title: 'Missing baselines',
+        detail: 'No comparison.',
+        anchor_id: null,
+        status: 'open' as const,
+        source: 'llm' as const,
+        reviewer_label: null,
+        thread: [] as RebuttalTurn[],
       }
       const review: ReviewSession = {
         id: 'S_001',
@@ -582,15 +639,18 @@ describe('Error toast notifications', () => {
     const companion = useArgumentCompanion()
     companion.setDoc('doc-http-fail', 'Test Title')
 
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: false,
-      status: 503,
-      body: null,
-    }))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        body: null,
+      }),
+    )
 
     await companion.buildOrRebuildLedger('Some text content here.')
 
-    const errorToast = toasts.value.find(t => t.level === 'danger')
+    const errorToast = toasts.value.find((t) => t.level === 'danger')
     expect(errorToast).toBeDefined()
     expect(errorToast?.message).toContain('[argument.buildLedgerFailed]')
   })
@@ -601,20 +661,21 @@ describe('Error toast notifications', () => {
     const companion = useArgumentCompanion()
     companion.setDoc('doc-sse-error', 'Test')
 
-    const stream = makeSseStream([
-      { event: 'error', data: { message: 'LLM unavailable' } },
-    ])
+    const stream = makeSseStream([{ event: 'error', data: { message: 'LLM unavailable' } }])
 
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      body: stream,
-    }))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: stream,
+      }),
+    )
 
     toasts.value = []
     await companion.buildOrRebuildLedger('Some meaningful text here.')
 
-    const errorToast = toasts.value.find(t => t.level === 'danger')
+    const errorToast = toasts.value.find((t) => t.level === 'danger')
     expect(errorToast).toBeDefined()
     expect(errorToast?.message).toContain('[argument.buildLedgerFailedMsg]')
   })
@@ -630,16 +691,19 @@ describe('Error toast notifications', () => {
       { event: 'complete', data: { promise_count: 0, by_status: {}, warnings: [] } },
     ])
 
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      body: stream,
-    }))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: stream,
+      }),
+    )
 
     toasts.value = []
     await companion.buildOrRebuildLedger('Some text with enough content here.')
 
-    const warnToast = toasts.value.find(t => t.level === 'warn')
+    const warnToast = toasts.value.find((t) => t.level === 'warn')
     expect(warnToast).toBeDefined()
     expect(warnToast?.message).toContain('[argument.noPromises]')
   })
@@ -656,7 +720,7 @@ describe('Error toast notifications', () => {
 
     await companion.upsertPromise({ id: 'p_test001', text: 'Updated text' })
 
-    const errorToast = toasts.value.find(t => t.level === 'danger')
+    const errorToast = toasts.value.find((t) => t.level === 'danger')
     expect(errorToast).toBeDefined()
     expect(errorToast?.message).toContain('[argument.savePromiseRetry]')
   })
@@ -673,7 +737,7 @@ describe('Error toast notifications', () => {
 
     await companion.deletePromise('p_test001')
 
-    const errorToast = toasts.value.find(t => t.level === 'danger')
+    const errorToast = toasts.value.find((t) => t.level === 'danger')
     expect(errorToast).toBeDefined()
     expect(errorToast?.message).toContain('[argument.deletePromiseRetry]')
   })
@@ -690,7 +754,7 @@ describe('Error toast notifications', () => {
 
     await companion.relocate('some text')
 
-    const errorToast = toasts.value.find(t => t.level === 'danger')
+    const errorToast = toasts.value.find((t) => t.level === 'danger')
     expect(errorToast).toBeDefined()
     expect(errorToast?.message).toContain('[argument.anchorRelocateFailed]')
   })
@@ -700,14 +764,27 @@ describe('Error toast notifications', () => {
   it('updatePointStatus: fetch 抛出异常时推送 pushError toast', async () => {
     const { review } = (() => {
       const point = {
-        id: 'rp_us', severity: 'major' as const, category: 'baseline' as const,
-        title: 'T', detail: 'D', anchor_id: null, status: 'open' as const,
-        source: 'llm' as const, reviewer_label: null, thread: [] as import('../types').RebuttalTurn[],
+        id: 'rp_us',
+        severity: 'major' as const,
+        category: 'baseline' as const,
+        title: 'T',
+        detail: 'D',
+        anchor_id: null,
+        status: 'open' as const,
+        source: 'llm' as const,
+        reviewer_label: null,
+        thread: [] as import('../types').RebuttalTurn[],
       }
       const r: import('../types').ReviewSession = {
-        id: 'S_us', doc_id: 'doc1', doc_title: 'P',
-        venue: null, persona: 'reviewer2' as const, checks: ['llm'],
-        points: [point], anchors: [], doc_hash: null,
+        id: 'S_us',
+        doc_id: 'doc1',
+        doc_title: 'P',
+        venue: null,
+        persona: 'reviewer2' as const,
+        checks: ['llm'],
+        points: [point],
+        anchors: [],
+        doc_hash: null,
         created_at: Date.now() / 1000,
       }
       return { review: r, point }
@@ -721,7 +798,7 @@ describe('Error toast notifications', () => {
 
     await companion.updatePointStatus('rp_us', 'rebutted')
 
-    const errorToast = toasts.value.find(t => t.level === 'danger')
+    const errorToast = toasts.value.find((t) => t.level === 'danger')
     expect(errorToast).toBeDefined()
     expect(errorToast?.message).toContain('[argument.updatePointFailed]')
   })

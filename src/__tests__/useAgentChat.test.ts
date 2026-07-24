@@ -21,7 +21,11 @@ vi.mock('../utils/api', () => ({
 
 // ── Imports ─────────────────────────────────────────────────────────────
 
-import { useAgentChat, _getWorkflowCacheKeysForTesting, _resetForTesting } from '../composables/useAgentChat'
+import {
+  useAgentChat,
+  _getWorkflowCacheKeysForTesting,
+  _resetForTesting,
+} from '../composables/useAgentChat'
 import { ref } from 'vue'
 
 // ── SSE helper ──────────────────────────────────────────────────────────
@@ -165,9 +169,18 @@ describe('useAgentChat', () => {
 
   describe('sendMessage', () => {
     it('appends user and assistant messages', async () => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
-        makeSseResponse([makeSessionStartedChunk('sess_001'), makeTaskDoneChunk('done'), makeDoneChunk()])
-      ))
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(
+            makeSseResponse([
+              makeSessionStartedChunk('sess_001'),
+              makeTaskDoneChunk('done'),
+              makeDoneChunk(),
+            ]),
+          ),
+      )
 
       const { sendMessage, messages } = useAgentChat()
       await sendMessage('Hello')
@@ -179,9 +192,18 @@ describe('useAgentChat', () => {
     })
 
     it('sets sessionId when session_started received', async () => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
-        makeSseResponse([makeSessionStartedChunk('sess_abc'), makeTaskDoneChunk('ok'), makeDoneChunk()])
-      ))
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(
+            makeSseResponse([
+              makeSessionStartedChunk('sess_abc'),
+              makeTaskDoneChunk('ok'),
+              makeDoneChunk(),
+            ]),
+          ),
+      )
 
       const { sendMessage, sessionId } = useAgentChat()
       await sendMessage('Start session')
@@ -190,12 +212,18 @@ describe('useAgentChat', () => {
     })
 
     it('accepts sessionId from session_started content for older live backends', async () => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
-        makeSseResponse([
-          { event: 'session_started', data: { type: 'session_started', content: 'sess_content' } },
-          makeDoneChunk(),
-        ])
-      ))
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          makeSseResponse([
+            {
+              event: 'session_started',
+              data: { type: 'session_started', content: 'sess_content' },
+            },
+            makeDoneChunk(),
+          ]),
+        ),
+      )
 
       const { sendMessage, sessionId } = useAgentChat()
       await sendMessage('Start compatible session')
@@ -204,9 +232,18 @@ describe('useAgentChat', () => {
     })
 
     it('marks assistant streaming complete after done event', async () => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
-        makeSseResponse([makeSessionStartedChunk('sess_001'), makeTaskDoneChunk('result'), makeDoneChunk()])
-      ))
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(
+            makeSseResponse([
+              makeSessionStartedChunk('sess_001'),
+              makeTaskDoneChunk('result'),
+              makeDoneChunk(),
+            ]),
+          ),
+      )
 
       const { sendMessage, messages } = useAgentChat()
       await sendMessage('Do something')
@@ -215,13 +252,19 @@ describe('useAgentChat', () => {
     })
 
     it('localizes the deterministic file-edit rejection state', async () => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
-        makeSseResponse([
-          makeSessionStartedChunk('sess_rejected'),
-          { event: 'aborted', data: { content: 'File edit rejected; no changes were applied' } },
-          makeDoneChunk(),
-        ])
-      ))
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          makeSseResponse([
+            makeSessionStartedChunk('sess_rejected'),
+            {
+              event: 'aborted',
+              data: { content: 'File edit rejected; no changes were applied' },
+            },
+            makeDoneChunk(),
+          ]),
+        ),
+      )
 
       const { sendMessage, messages } = useAgentChat()
       await sendMessage('Reject this edit')
@@ -232,9 +275,9 @@ describe('useAgentChat', () => {
 
     it('does not send when already sending', async () => {
       // Simulate sending state
-      const fetchMock = vi.fn().mockResolvedValue(
-        makeSseResponse([makeSessionStartedChunk('sess_001'), makeDoneChunk()])
-      )
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(makeSseResponse([makeSessionStartedChunk('sess_001'), makeDoneChunk()]))
       vi.stubGlobal('fetch', fetchMock)
 
       const { sendMessage, sending } = useAgentChat()
@@ -254,13 +297,17 @@ describe('useAgentChat', () => {
     })
 
     it('sends selected skills and excludes the current message from history', async () => {
-      const fetchMock = vi.fn().mockResolvedValue(
-        makeSseResponse([makeSessionStartedChunk('sess_skill'), makeDoneChunk()])
-      )
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(
+          makeSseResponse([makeSessionStartedChunk('sess_skill'), makeDoneChunk()]),
+        )
       vi.stubGlobal('fetch', fetchMock)
 
       const { sendMessage } = useAgentChat()
-      await sendMessage('Review this paper', 'source text', '', 'D:/paper', 'draft/main.md', ['nature_reviewer'])
+      await sendMessage('Review this paper', 'source text', '', 'D:/paper', 'draft/main.md', [
+        'nature_reviewer',
+      ])
 
       const request = fetchMock.mock.calls[0][1] as RequestInit
       const body = JSON.parse(String(request.body))
@@ -271,12 +318,19 @@ describe('useAgentChat', () => {
     })
 
     it('notifies the editor for every file in a multi-file checkpoint stream', async () => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeSseResponse([
-        makeSessionStartedChunk('sess_multi'),
-        makeCheckpointChunk('D:/paper/a.md', 'A'),
-        makeCheckpointChunk('D:/paper/b.md', 'B'),
-        makeDoneChunk(),
-      ])))
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(
+            makeSseResponse([
+              makeSessionStartedChunk('sess_multi'),
+              makeCheckpointChunk('D:/paper/a.md', 'A'),
+              makeCheckpointChunk('D:/paper/b.md', 'B'),
+              makeDoneChunk(),
+            ]),
+          ),
+      )
       const changed: string[][] = []
       const onChanged = (event: Event) => changed.push((event as CustomEvent).detail.files)
       window.addEventListener('agent-files-changed', onChanged)
@@ -293,12 +347,24 @@ describe('useAgentChat', () => {
 
   describe('skills', () => {
     it('loads the real Agent V2 skill catalog', async () => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify([
-        {
-          name: 'nature_reviewer', description: 'review', layer: 'agents',
-          category: 'nature', active: false, default_active: false,
-        },
-      ]), { status: 200 })))
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify([
+              {
+                name: 'nature_reviewer',
+                description: 'review',
+                layer: 'agents',
+                category: 'nature',
+                active: false,
+                default_active: false,
+              },
+            ]),
+            { status: 200 },
+          ),
+        ),
+      )
 
       const { fetchAgentSkills, agentSkills } = useAgentChat()
       await fetchAgentSkills()
@@ -310,18 +376,32 @@ describe('useAgentChat', () => {
 
   describe('session history', () => {
     it('loads persisted text and tool events into the current workflow', async () => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
-        session_id: 'sess_history',
-        messages: [
-          { role: 'user', content: 'Review the draft', events: [] },
-          {
-            role: 'assistant', content: '', events: [
-              { type: 'tool_call', content: 'read_file', metadata: { tool_name: 'read_file' } },
-            ],
-          },
-          { role: 'assistant', content: 'Review complete', events: [] },
-        ],
-      }), { status: 200 })))
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              session_id: 'sess_history',
+              messages: [
+                { role: 'user', content: 'Review the draft', events: [] },
+                {
+                  role: 'assistant',
+                  content: '',
+                  events: [
+                    {
+                      type: 'tool_call',
+                      content: 'read_file',
+                      metadata: { tool_name: 'read_file' },
+                    },
+                  ],
+                },
+                { role: 'assistant', content: 'Review complete', events: [] },
+              ],
+            }),
+            { status: 200 },
+          ),
+        ),
+      )
 
       const { loadWorkflowMessages, messages, sessionId } = useAgentChat()
       const loaded = await loadWorkflowMessages('sess_history')
@@ -334,9 +414,19 @@ describe('useAgentChat', () => {
     })
 
     it('bounds the in-memory workflow message cache', async () => {
-      vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({
-        messages: [{ role: 'user', content: 'cached', events: [] }],
-      }), { status: 200 }))))
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockImplementation(() =>
+          Promise.resolve(
+            new Response(
+              JSON.stringify({
+                messages: [{ role: 'user', content: 'cached', events: [] }],
+              }),
+              { status: 200 },
+            ),
+          ),
+        ),
+      )
       const { loadWorkflowMessages } = useAgentChat()
 
       for (let index = 0; index < 21; index++) {
@@ -366,12 +456,15 @@ describe('useAgentChat', () => {
       await sendMessage('Write file outside workspace')
 
       // Flush pending microtasks
-      await new Promise(r => setTimeout(r, 50))
+      await new Promise((r) => setTimeout(r, 50))
 
       // Verify events were received on the assistant message
-      const assistantMsg = messages.value.find(m => m.role === 'assistant')
-      const approvalEvents = assistantMsg?.events.filter(e => e.type === 'await_approval') || []
-      expect(approvalEvents.length, 'await_approval event should be in message events').toBeGreaterThan(0)
+      const assistantMsg = messages.value.find((m) => m.role === 'assistant')
+      const approvalEvents = assistantMsg?.events.filter((e) => e.type === 'await_approval') || []
+      expect(
+        approvalEvents.length,
+        'await_approval event should be in message events',
+      ).toBeGreaterThan(0)
 
       // The watcher may clear pendingApproval asynchronously — skip direct ref check
       // and verify through the message events instead
@@ -390,7 +483,8 @@ describe('useAgentChat', () => {
         makeAwaitApprovalChunk('write_file', 'create second file', 'edit_2'),
         { event: 'approval_received', data: { event_id: 'edit_1', content: 'allow_once' } },
       ])
-      const fetchMock = vi.fn()
+      const fetchMock = vi
+        .fn()
         .mockResolvedValueOnce(openStream.response)
         .mockResolvedValueOnce(new Response('{}', { status: 200 }))
       vi.stubGlobal('fetch', fetchMock)
@@ -420,7 +514,7 @@ describe('useAgentChat', () => {
       // abortSession without a session calls stopGenerating which sets sending=false
       const result = abortSession()
       // abortSession returns a promise resolving to boolean
-      expect(sending.value).toBe(true)  // abort is async, pending state unchanged before await
+      expect(sending.value).toBe(true) // abort is async, pending state unchanged before await
     })
   })
 
@@ -428,9 +522,14 @@ describe('useAgentChat', () => {
 
   describe('singleton isolation', () => {
     it('starts a clean workflow without deleting the persisted session', async () => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
-        makeSseResponse([makeSessionStartedChunk('sess_existing'), makeDoneChunk()])
-      ))
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(
+            makeSseResponse([makeSessionStartedChunk('sess_existing'), makeDoneChunk()]),
+          ),
+      )
       const { sendMessage, startNewWorkflow, messages, sessionId } = useAgentChat()
       await sendMessage('First task')
 
@@ -443,9 +542,18 @@ describe('useAgentChat', () => {
     it('_resetForTesting clears all state', () => {
       const { messages, sendMessage, sessionId } = useAgentChat()
 
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
-        makeSseResponse([makeSessionStartedChunk('sess_001'), makeTaskDoneChunk('result'), makeDoneChunk()])
-      ))
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(
+            makeSseResponse([
+              makeSessionStartedChunk('sess_001'),
+              makeTaskDoneChunk('result'),
+              makeDoneChunk(),
+            ]),
+          ),
+      )
 
       // We can't await here directly but we can check reset works
       sessionId.value = 'test_session'

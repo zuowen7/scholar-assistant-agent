@@ -54,11 +54,14 @@ import CompanionPanel from '../components/argument/CompanionPanel.vue'
 describe('CompanionPanel Phase 5 — import real reviews', () => {
   beforeEach(() => {
     _resetForTesting()
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: false,
-      json: async () => ({}),
-      body: null,
-    }))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        json: async () => ({}),
+        body: null,
+      }),
+    )
   })
 
   it('shows import reviews section in Reviewer 2 tab', async () => {
@@ -66,7 +69,7 @@ describe('CompanionPanel Phase 5 — import real reviews', () => {
       props: { content: 'paper text' },
     })
     // Switch to Reviewer 2 tab
-    const reviewerTab = wrapper.findAll('button').find(b => b.text().includes('Reviewer'))
+    const reviewerTab = wrapper.findAll('button').find((b) => b.text().includes('Reviewer'))
     if (reviewerTab) await reviewerTab.trigger('click')
 
     const html = wrapper.html()
@@ -77,7 +80,7 @@ describe('CompanionPanel Phase 5 — import real reviews', () => {
     const wrapper = mount(CompanionPanel, {
       props: { content: 'paper text' },
     })
-    const reviewerTab = wrapper.findAll('button').find(b => b.text().includes('Reviewer'))
+    const reviewerTab = wrapper.findAll('button').find((b) => b.text().includes('Reviewer'))
     if (reviewerTab) await reviewerTab.trigger('click')
 
     const textarea = wrapper.find('[data-import-textarea]')
@@ -88,7 +91,7 @@ describe('CompanionPanel Phase 5 — import real reviews', () => {
     const wrapper = mount(CompanionPanel, {
       props: { content: 'paper text' },
     })
-    const reviewerTab = wrapper.findAll('button').find(b => b.text().includes('Reviewer'))
+    const reviewerTab = wrapper.findAll('button').find((b) => b.text().includes('Reviewer'))
     if (reviewerTab) await reviewerTab.trigger('click')
 
     const btn = wrapper.find('[data-import-btn]')
@@ -100,16 +103,19 @@ describe('CompanionPanel Phase 5 — import real reviews', () => {
     const companion = useArgumentCompanion()
     companion.setDoc('doc1', 'Test Paper')
     // Re-stub fetch after setDoc (which calls getLedger + listReviews)
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: false,
-      json: async () => ({}),
-      body: null,
-    }))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        json: async () => ({}),
+        body: null,
+      }),
+    )
 
     const wrapper = mount(CompanionPanel, {
       props: { content: 'paper text' },
     })
-    const reviewerTab = wrapper.findAll('button').find(b => b.text().includes('Reviewer'))
+    const reviewerTab = wrapper.findAll('button').find((b) => b.text().includes('Reviewer'))
     if (reviewerTab) await reviewerTab.trigger('click')
 
     const textarea = wrapper.find('[data-import-textarea]')
@@ -121,7 +127,7 @@ describe('CompanionPanel Phase 5 — import real reviews', () => {
     await btn.trigger('click')
 
     // Give the async function a tick to start
-    await new Promise(r => setTimeout(r, 0))
+    await new Promise((r) => setTimeout(r, 0))
 
     // Should have called fetch with the import endpoint
     const mockFetch = vi.mocked(globalThis.fetch)

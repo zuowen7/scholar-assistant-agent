@@ -102,7 +102,19 @@ export function renderMarkdown(src: string): string {
   const html = marked.parse(protectedText, { async: false }) as string
   const withMath = restoreMath(html, slots)
   return DOMPurify.sanitize(withMath, {
-    ADD_TAGS: ['math', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'msqrt', 'annotation', 'semantics'],
+    ADD_TAGS: [
+      'math',
+      'mrow',
+      'mi',
+      'mo',
+      'mn',
+      'msup',
+      'msub',
+      'mfrac',
+      'msqrt',
+      'annotation',
+      'semantics',
+    ],
     ADD_ATTR: ['class', 'style', 'aria-hidden', 'data-mtype'],
   })
 }

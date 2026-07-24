@@ -18,10 +18,23 @@
           :class="{ open: expanded }"
           aria-hidden="true"
         >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <polyline points="9 6 15 12 9 18" />
+          </svg>
         </span>
         <span v-else class="tree-chevron-spacer" aria-hidden="true" />
-        <span class="tree-icon" :data-expanded="expanded || undefined">{{ entry.isDir ? (expanded ? '📂' : '📁') : '📄' }}</span>
+        <span class="tree-icon" :data-expanded="expanded || undefined">{{
+          entry.isDir ? (expanded ? '📂' : '📁') : '📄'
+        }}</span>
         <template v-if="isRenaming">
           <input
             ref="renameInput"
@@ -40,10 +53,19 @@
       </div>
       <Transition name="v-unfurl">
         <div v-if="entry.isDir && expanded" class="tree-children">
-          <div v-if="loadingChildren" class="tree-skeleton" :style="{ paddingLeft: (depth + 1) * 16 + 8 + 'px' }">
-            <div v-for="i in skeletonCount" :key="i" class="tree-skeleton-row" :style="{ '--stagger-i': i - 1 } as any">
+          <div
+            v-if="loadingChildren"
+            class="tree-skeleton"
+            :style="{ paddingLeft: (depth + 1) * 16 + 8 + 'px' }"
+          >
+            <div
+              v-for="i in skeletonCount"
+              :key="i"
+              class="tree-skeleton-row"
+              :style="{ '--stagger-i': i - 1 } as any"
+            >
               <UiSkeleton shape="circle" :width="12" :height="12" />
-              <UiSkeleton shape="line" :width="`${44 + (i * 13) % 40}%`" :height="9" />
+              <UiSkeleton shape="line" :width="`${44 + ((i * 13) % 40)}%`" :height="9" />
             </div>
           </div>
           <template v-else-if="entry.children">
@@ -73,15 +95,21 @@
         >
           <template v-if="entry.isDir">
             <button class="ctx-item" @click="action('new-file')">{{ t('files.newFile') }}</button>
-            <button class="ctx-item" @click="action('new-folder')">{{ t('files.newFolder') }}</button>
+            <button class="ctx-item" @click="action('new-folder')">
+              {{ t('files.newFolder') }}
+            </button>
             <div class="ctx-sep" />
           </template>
           <button class="ctx-item" @click="action('cut')">{{ t('files.cut') }}</button>
           <button class="ctx-item" @click="action('copy')">{{ t('files.copy') }}</button>
-          <button v-if="canPaste" class="ctx-item" @click="action('paste')">{{ t('files.paste') }}</button>
+          <button v-if="canPaste" class="ctx-item" @click="action('paste')">
+            {{ t('files.paste') }}
+          </button>
           <div v-if="canPaste" class="ctx-sep" />
           <button class="ctx-item" @click="action('rename')">{{ t('files.rename') }}</button>
-          <button class="ctx-item ctx-danger" @click="action('delete')">{{ t('files.delete') }}</button>
+          <button class="ctx-item ctx-danger" @click="action('delete')">
+            {{ t('files.delete') }}
+          </button>
           <div class="ctx-sep" />
           <button class="ctx-item" @click="action('copy-path')">{{ t('files.copyPath') }}</button>
         </div>
@@ -165,8 +193,14 @@ function showContextMenu(e: MouseEvent) {
   ctx.origin = 'top left'
   // Clamp to viewport
   nextTick(() => {
-    if (ctx.y + 240 > window.innerHeight) { ctx.y = window.innerHeight - 250; ctx.origin = 'bottom left' }
-    if (ctx.x + 160 > window.innerWidth) { ctx.x = window.innerWidth - 170; ctx.origin = ctx.origin.replace('left', 'right') }
+    if (ctx.y + 240 > window.innerHeight) {
+      ctx.y = window.innerHeight - 250
+      ctx.origin = 'bottom left'
+    }
+    if (ctx.x + 160 > window.innerWidth) {
+      ctx.x = window.innerWidth - 170
+      ctx.origin = ctx.origin.replace('left', 'right')
+    }
   })
   ctx.visible = true
   contextListenerTimer = setTimeout(() => {
@@ -231,7 +265,9 @@ onBeforeUnmount(() => {
 
 <style scoped>
 /* Single root wrapper to fix Vue fragment attrs warning */
-.file-tree-node-root { display: contents; }
+.file-tree-node-root {
+  display: contents;
+}
 .tree-item {
   display: flex;
   align-items: center;
@@ -242,12 +278,17 @@ onBeforeUnmount(() => {
   color: var(--c-text-1);
   position: relative;
   border-radius: var(--radius-xs);
-  transition: background var(--motion-fast) var(--ease-out),
-              color var(--motion-fast) var(--ease-out);
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
 }
 /* u-interactive 自带 hover 抬升/按压回弹，这里中和位移避免树行抖动 */
-.tree-item.u-interactive:not(:disabled):hover { transform: none; }
-.tree-item.u-interactive:not(:disabled):active { transform: scale(0.99); }
+.tree-item.u-interactive:not(:disabled):hover {
+  transform: none;
+}
+.tree-item.u-interactive:not(:disabled):active {
+  transform: scale(0.99);
+}
 
 /* 左侧选中/悬浮指示条 */
 .tree-item::before {
@@ -261,13 +302,26 @@ onBeforeUnmount(() => {
   background: var(--c-accent);
   opacity: 0;
   transform: scaleY(0.6);
-  transition: opacity var(--motion-fast) var(--ease-out),
-              transform var(--motion-base) var(--ease-spring);
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    transform var(--motion-base) var(--ease-spring);
 }
-.tree-item:hover::before { opacity: 0.55; transform: scaleY(1); }
-.tree-item.active::before { opacity: 1; transform: scaleY(1); }
-.tree-item:hover { background: var(--c-surface-2); color: var(--c-text-0); }
-.tree-item.active { background: var(--c-accent-soft); color: var(--c-text-0); }
+.tree-item:hover::before {
+  opacity: 0.55;
+  transform: scaleY(1);
+}
+.tree-item.active::before {
+  opacity: 1;
+  transform: scaleY(1);
+}
+.tree-item:hover {
+  background: var(--c-surface-2);
+  color: var(--c-text-0);
+}
+.tree-item.active {
+  background: var(--c-accent-soft);
+  color: var(--c-text-0);
+}
 
 /* 键盘焦点环 */
 .tree-item:focus-visible {
@@ -276,7 +330,10 @@ onBeforeUnmount(() => {
   z-index: 2;
 }
 
-.tree-item > * { position: relative; z-index: 1; }
+.tree-item > * {
+  position: relative;
+  z-index: 1;
+}
 
 /* 文件夹展开折叠箭头 */
 .tree-chevron {
@@ -288,28 +345,57 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   color: var(--c-text-3);
   transform: rotate(0deg);
-  transition: transform var(--motion-base) var(--ease-spring),
-              color var(--motion-fast) var(--ease-out);
+  transition:
+    transform var(--motion-base) var(--ease-spring),
+    color var(--motion-fast) var(--ease-out);
 }
-.tree-chevron.open { transform: rotate(90deg); color: var(--c-text-1); }
-.tree-item:hover .tree-chevron { color: var(--c-text-1); }
-.tree-chevron-spacer { width: 12px; flex-shrink: 0; }
+.tree-chevron.open {
+  transform: rotate(90deg);
+  color: var(--c-text-1);
+}
+.tree-item:hover .tree-chevron {
+  color: var(--c-text-1);
+}
+.tree-chevron-spacer {
+  width: 12px;
+  flex-shrink: 0;
+}
 
-.tree-icon { font-size: 12px; flex-shrink: 0; filter: grayscale(0.3); }
-.tree-item.dir .tree-icon { filter: none; }
-.tree-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tree-icon {
+  font-size: 12px;
+  flex-shrink: 0;
+  filter: grayscale(0.3);
+}
+.tree-item.dir .tree-icon {
+  filter: none;
+}
+.tree-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* 文件夹图标展开微缩放 */
 .tree-item.dir .tree-icon {
   transition: transform var(--motion-base) var(--ease-spring);
 }
-.tree-item.dir[data-expanded] .tree-icon { transform: scale(1.1); }
+.tree-item.dir[data-expanded] .tree-icon {
+  transform: scale(1.1);
+}
 
 /* 子节点容器 */
-.tree-children { overflow: hidden; }
+.tree-children {
+  overflow: hidden;
+}
 
 /* 目录加载骨架 */
-.tree-skeleton { display: flex; flex-direction: column; gap: 7px; padding-top: 4px; padding-bottom: 4px; }
+.tree-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
 .tree-skeleton-row {
   display: flex;
   align-items: center;
@@ -318,7 +404,16 @@ onBeforeUnmount(() => {
   animation: tree-sk-in var(--motion-base) var(--ease-out) both;
   animation-delay: calc(var(--stagger-i, 0) * var(--motion-stagger));
 }
-@keyframes tree-sk-in { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }
+@keyframes tree-sk-in {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 
 .rename-input {
   flex: 1;
@@ -358,24 +453,51 @@ onBeforeUnmount(() => {
   padding: 6px 16px;
   cursor: pointer;
   white-space: nowrap;
-  transition: background var(--motion-fast) var(--ease-out),
-              color var(--motion-fast) var(--ease-out),
-              padding-left var(--motion-fast) var(--ease-out);
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    padding-left var(--motion-fast) var(--ease-out);
 }
-.ctx-item:hover { background: var(--c-surface-3); color: var(--c-text-0); padding-left: 19px; }
-.ctx-item:active { background: var(--c-surface-4); }
-.ctx-item:focus-visible { outline: none; background: var(--c-surface-3); box-shadow: inset var(--ring-focus); }
-.ctx-item.ctx-danger { color: var(--c-danger); }
-.ctx-item.ctx-danger:hover { background: var(--c-danger-bg); color: var(--c-danger); }
-.ctx-sep { height: 1px; background: var(--c-surface-3); margin: 4px 8px; }
+.ctx-item:hover {
+  background: var(--c-surface-3);
+  color: var(--c-text-0);
+  padding-left: 19px;
+}
+.ctx-item:active {
+  background: var(--c-surface-4);
+}
+.ctx-item:focus-visible {
+  outline: none;
+  background: var(--c-surface-3);
+  box-shadow: inset var(--ring-focus);
+}
+.ctx-item.ctx-danger {
+  color: var(--c-danger);
+}
+.ctx-item.ctx-danger:hover {
+  background: var(--c-danger-bg);
+  color: var(--c-danger);
+}
+.ctx-sep {
+  height: 1px;
+  background: var(--c-surface-3);
+  margin: 4px 8px;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .tree-chevron,
   .tree-item,
   .tree-item.dir .tree-icon,
   .tree-item::before,
-  .ctx-item { transition: none; }
-  .tree-skeleton-row { animation: none; opacity: 1; }
-  .tree-item.u-interactive:not(:disabled):active { transform: none; }
+  .ctx-item {
+    transition: none;
+  }
+  .tree-skeleton-row {
+    animation: none;
+    opacity: 1;
+  }
+  .tree-item.u-interactive:not(:disabled):active {
+    transform: none;
+  }
 }
 </style>

@@ -18,15 +18,18 @@
 </template>
 
 <script setup lang="ts">
-withDefaults(defineProps<{
-  text?: string
-  size?: 'small' | 'medium' | 'large'
-  overlay?: boolean
-}>(), {
-  text: '',
-  size: 'medium',
-  overlay: false,
-})
+withDefaults(
+  defineProps<{
+    text?: string
+    size?: 'small' | 'medium' | 'large'
+    overlay?: boolean
+  }>(),
+  {
+    text: '',
+    size: 'medium',
+    overlay: false,
+  },
+)
 </script>
 
 <style scoped>
@@ -38,8 +41,12 @@ withDefaults(defineProps<{
   color: var(--c-text-0);
 }
 
-.loader--small { --loader-size: 32px; }
-.loader--large { --loader-size: 48px; }
+.loader--small {
+  --loader-size: 32px;
+}
+.loader--large {
+  --loader-size: 48px;
+}
 
 .loader--overlay {
   position: fixed;
@@ -62,7 +69,9 @@ withDefaults(defineProps<{
   background: var(--c-panel);
 }
 
-.loader--overlay .loader__panel { min-width: 248px; }
+.loader--overlay .loader__panel {
+  min-width: 248px;
+}
 
 .loader__mark {
   display: grid;
@@ -73,7 +82,7 @@ withDefaults(defineProps<{
   background: var(--brand-red);
   color: #fffaf4;
   font-family: var(--font-serif-zh);
-  font-size: calc(var(--loader-size) * .52);
+  font-size: calc(var(--loader-size) * 0.52);
   font-weight: 700;
 }
 
@@ -84,8 +93,16 @@ withDefaults(defineProps<{
   gap: 3px;
 }
 
-.loader__copy strong { font-family: var(--font-serif-zh); font-size: 18px; letter-spacing: .08em; }
-.loader__copy span { color: var(--c-text-2); font-size: 12px; line-height: 1.45; }
+.loader__copy strong {
+  font-family: var(--font-serif-zh);
+  font-size: 18px;
+  letter-spacing: 0.08em;
+}
+.loader__copy span {
+  color: var(--c-text-2);
+  font-size: 12px;
+  line-height: 1.45;
+}
 
 .loader__progress {
   position: relative;
@@ -106,11 +123,18 @@ withDefaults(defineProps<{
 }
 
 @keyframes loader-travel {
-  from { transform: translateX(-110%); }
-  to { transform: translateX(345%); }
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(345%);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .loader__progress i { width: 60%; animation: none; }
+  .loader__progress i {
+    width: 60%;
+    animation: none;
+  }
 }
 </style>

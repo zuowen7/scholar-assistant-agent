@@ -25,9 +25,13 @@ vi.mock('../composables/useToast', () => {
 const localStorageStore: Record<string, string> = {}
 vi.stubGlobal('localStorage', {
   getItem: vi.fn((k: string) => localStorageStore[k] ?? null),
-  setItem: vi.fn((k: string, v: string) => { localStorageStore[k] = v }),
-  removeItem: vi.fn((k: string) => { delete localStorageStore[k] }),
-  clear: vi.fn(() => Object.keys(localStorageStore).forEach(k => delete localStorageStore[k])),
+  setItem: vi.fn((k: string, v: string) => {
+    localStorageStore[k] = v
+  }),
+  removeItem: vi.fn((k: string) => {
+    delete localStorageStore[k]
+  }),
+  clear: vi.fn(() => Object.keys(localStorageStore).forEach((k) => delete localStorageStore[k])),
 })
 
 // ---------------------------------------------------------------------------
@@ -86,13 +90,17 @@ describe('checkForUpdate', () => {
         Promise.resolve({
           ok: true,
           json: () => Promise.resolve({ status: 'ok', version: healthVersion }),
-        } as Response)
+        } as Response),
       )
       .mockImplementationOnce(() =>
         Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ tag_name: githubTag, html_url: 'https://github.com/example/releases/tag/' + githubTag }),
-        } as Response)
+          json: () =>
+            Promise.resolve({
+              tag_name: githubTag,
+              html_url: 'https://github.com/example/releases/tag/' + githubTag,
+            }),
+        } as Response),
       )
   }
 
@@ -125,7 +133,7 @@ describe('checkForUpdate', () => {
         Promise.resolve({
           ok: true,
           json: () => Promise.resolve({ status: 'ok', version: '0.3.1' }),
-        } as Response)
+        } as Response),
       )
       .mockRejectedValueOnce(new Error('Network error'))
     await expect(checkForUpdate()).resolves.toBeUndefined()
@@ -158,13 +166,13 @@ describe('checkForUpdate', () => {
         Promise.resolve({
           ok: true,
           json: () => Promise.resolve({ status: 'ok', version: '0.3.1' }),
-        } as Response)
+        } as Response),
       )
       .mockImplementationOnce(() =>
         Promise.resolve({
           ok: true,
           json: () => Promise.resolve({}),
-        } as Response)
+        } as Response),
       )
     await expect(checkForUpdate()).resolves.toBeUndefined()
   })
@@ -175,11 +183,9 @@ describe('checkForUpdate', () => {
         Promise.resolve({
           ok: true,
           json: () => Promise.resolve({ status: 'ok', version: '0.3.1' }),
-        } as Response)
+        } as Response),
       )
-      .mockImplementationOnce(() =>
-        Promise.resolve({ ok: false, status: 403 } as Response)
-      )
+      .mockImplementationOnce(() => Promise.resolve({ ok: false, status: 403 } as Response))
     await expect(checkForUpdate()).resolves.toBeUndefined()
   })
 })

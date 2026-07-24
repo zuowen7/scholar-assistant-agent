@@ -9,7 +9,9 @@ export function useAppMode() {
   function setMode(mode: AppMode) {
     appMode.value = mode
     modeTransition.value = true
-    setTimeout(() => { modeTransition.value = false }, 300)
+    setTimeout(() => {
+      modeTransition.value = false
+    }, 300)
   }
 
   function toggleAgentChat(force?: boolean) {

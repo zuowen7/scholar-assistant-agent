@@ -1,8 +1,5 @@
 <template>
-  <div
-    class="ui-input-wrap"
-    :class="{ 'has-error': error, disabled }"
-  >
+  <div class="ui-input-wrap" :class="{ 'has-error': error, disabled }">
     <span v-if="$slots.prefix" class="ui-input-prefix">
       <slot name="prefix" />
     </span>
@@ -24,8 +21,17 @@
       tabindex="-1"
       @click="$emit('update:modelValue', '')"
     >
-      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-        <line x1="2.5" y1="2.5" x2="7.5" y2="7.5" /><line x1="7.5" y1="2.5" x2="2.5" y2="7.5" />
+      <svg
+        width="10"
+        height="10"
+        viewBox="0 0 10 10"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+      >
+        <line x1="2.5" y1="2.5" x2="7.5" y2="7.5" />
+        <line x1="7.5" y1="2.5" x2="2.5" y2="7.5" />
       </svg>
     </button>
   </div>
@@ -56,8 +62,9 @@ defineEmits<{
   border: 1px solid var(--c-surface-3);
   border-radius: var(--radius-control);
   background: var(--c-surface-2);
-  transition: box-shadow var(--motion-fast) var(--ease-out),
-              border-color var(--motion-fast) var(--ease-out);
+  transition:
+    box-shadow var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
 }
 
 .ui-input-wrap:focus-within {
@@ -88,7 +95,9 @@ defineEmits<{
   outline: none;
 }
 
-.ui-input::placeholder { color: var(--c-text-3); }
+.ui-input::placeholder {
+  color: var(--c-text-3);
+}
 
 .ui-input-prefix,
 .ui-input-suffix {
@@ -99,8 +108,12 @@ defineEmits<{
   padding: 0 2px;
 }
 
-.ui-input-prefix { padding-left: 10px; }
-.ui-input-suffix { padding-right: 10px; }
+.ui-input-prefix {
+  padding-left: 10px;
+}
+.ui-input-suffix {
+  padding-right: 10px;
+}
 
 .ui-input-clear {
   display: inline-flex;
@@ -115,18 +128,37 @@ defineEmits<{
   cursor: pointer;
   margin-right: 6px;
   flex-shrink: 0;
-  transition: background var(--motion-fast), color var(--motion-fast);
+  transition:
+    background var(--motion-fast),
+    color var(--motion-fast);
 }
-.ui-input-clear:hover { background: var(--c-surface-4); color: var(--c-text-0); }
+.ui-input-clear:hover {
+  background: var(--c-surface-4);
+  color: var(--c-text-0);
+}
 
 @keyframes input-shake {
-  0%, 100% { transform: translateX(0); }
-  20%      { transform: translateX(-3px); }
-  40%      { transform: translateX(3px); }
-  60%      { transform: translateX(-2px); }
-  80%      { transform: translateX(2px); }
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-3px);
+  }
+  40% {
+    transform: translateX(3px);
+  }
+  60% {
+    transform: translateX(-2px);
+  }
+  80% {
+    transform: translateX(2px);
+  }
 }
 
 /* Light mode */
-:global([data-theme="light"]) .ui-input-wrap { background: var(--c-surface-2); border-color: var(--c-surface-3); }
+:global([data-theme='light']) .ui-input-wrap {
+  background: var(--c-surface-2);
+  border-color: var(--c-surface-3);
+}
 </style>

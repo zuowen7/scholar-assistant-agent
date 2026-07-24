@@ -20,20 +20,23 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-const props = withDefaults(defineProps<{
-  modelValue: number
-  min?: number
-  max?: number
-  step?: number
-  label?: string
-  suffix?: string
-  disabled?: boolean
-}>(), {
-  min: 0,
-  max: 100,
-  step: 1,
-  suffix: '',
-})
+const props = withDefaults(
+  defineProps<{
+    modelValue: number
+    min?: number
+    max?: number
+    step?: number
+    label?: string
+    suffix?: string
+    disabled?: boolean
+  }>(),
+  {
+    min: 0,
+    max: 100,
+    step: 1,
+    suffix: '',
+  },
+)
 
 defineEmits<{
   (e: 'update:modelValue', value: number): void
@@ -56,8 +59,14 @@ const displayValue = computed(() => `${props.modelValue}${props.suffix}`)
   color: var(--c-text-2);
 }
 
-.ui-slider-label { font-weight: 500; }
-.ui-slider-value { font-family: var(--font-mono); font-feature-settings: "tnum"; color: var(--c-text-1); }
+.ui-slider-label {
+  font-weight: 500;
+}
+.ui-slider-value {
+  font-family: var(--font-mono);
+  font-feature-settings: 'tnum';
+  color: var(--c-text-1);
+}
 
 .ui-slider-track {
   -webkit-appearance: none;
@@ -77,8 +86,9 @@ const displayValue = computed(() => `${props.modelValue}${props.suffix}`)
   border-radius: 50%;
   background: var(--c-accent);
   cursor: pointer;
-  transition: transform var(--motion-fast) var(--ease-spring),
-              box-shadow var(--motion-fast) var(--ease-out);
+  transition:
+    transform var(--motion-fast) var(--ease-spring),
+    box-shadow var(--motion-fast) var(--ease-out);
 }
 .ui-slider-track::-webkit-slider-thumb:hover {
   transform: scale(1.25);

@@ -36,7 +36,10 @@ export function useMindMapLayout() {
         const cached = spanCache.get(nodeId)
         if (cached !== undefined) return cached
         const children = childrenByParent.get(nodeId) ?? []
-        const span = Math.max(1, children.reduce((total, childId) => total + subtreeSpan(childId), 0))
+        const span = Math.max(
+          1,
+          children.reduce((total, childId) => total + subtreeSpan(childId), 0),
+        )
         spanCache.set(nodeId, span)
         return span
       }
@@ -44,7 +47,13 @@ export function useMindMapLayout() {
       const leafGap = 112
       const rootGap = 286
       const depthGap = 252
-      const placeBranch = (nodeId: string, side: -1 | 1, depth: number, startSlot: number, offsetY: number) => {
+      const placeBranch = (
+        nodeId: string,
+        side: -1 | 1,
+        depth: number,
+        startSlot: number,
+        offsetY: number,
+      ) => {
         const span = subtreeSpan(nodeId)
         const centerSlot = startSlot + (span - 1) / 2
         positions[nodeId] = {

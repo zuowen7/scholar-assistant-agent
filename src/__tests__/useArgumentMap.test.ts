@@ -17,7 +17,13 @@ import {
   argMapV2Enabled,
   checkArgumentMapV2Flag,
 } from '../composables/useArgumentMap'
-import type { ArgNode, ArgEdge, ArgGraph, NodeType, RelationType } from '../composables/useArgumentMap'
+import type {
+  ArgNode,
+  ArgEdge,
+  ArgGraph,
+  NodeType,
+  RelationType,
+} from '../composables/useArgumentMap'
 
 let _nodeCounter = 0
 let _edgeCounter = 0
@@ -66,7 +72,12 @@ function makeGraph(partial: Partial<ArgGraph> = {}): ArgGraph {
 
 describe('toFlowNodes', () => {
   it('converts ArgNode to Vue Flow node format', () => {
-    const node = makeNode({ id: 'n_a', node_type: 'claim', text: 'Main claim', position: { x: 100, y: 200 } })
+    const node = makeNode({
+      id: 'n_a',
+      node_type: 'claim',
+      text: 'Main claim',
+      position: { x: 100, y: 200 },
+    })
     const graph = makeGraph({ nodes: [node] })
     const result = toFlowNodes(graph)
 
@@ -128,7 +139,12 @@ describe('toFlowNodes', () => {
 
 describe('toFlowEdges', () => {
   it('converts ArgEdge to Vue Flow edge format', () => {
-    const edge = makeEdge({ id: 'e_a', source_id: 'n_src', target_id: 'n_tgt', relation_type: 'supports' })
+    const edge = makeEdge({
+      id: 'e_a',
+      source_id: 'n_src',
+      target_id: 'n_tgt',
+      relation_type: 'supports',
+    })
     const result = toFlowEdges(makeGraph({ edges: [edge] }))
 
     expect(result).toHaveLength(1)
@@ -151,7 +167,14 @@ describe('toFlowEdges', () => {
   })
 
   it('converts all six relation types', () => {
-    const types: RelationType[] = ['supports', 'warrants', 'backs', 'qualifies', 'rebuts', 'counters']
+    const types: RelationType[] = [
+      'supports',
+      'warrants',
+      'backs',
+      'qualifies',
+      'rebuts',
+      'counters',
+    ]
     const edges = types.map((r, i) =>
       makeEdge({ id: `e_${r}`, relation_type: r, source_id: `n_s${i}`, target_id: `n_t${i}` }),
     )

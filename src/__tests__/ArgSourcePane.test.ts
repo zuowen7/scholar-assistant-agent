@@ -14,8 +14,22 @@ vi.mock('../composables/useTranslate', () => ({
   useTranslate: () => ({
     state: {
       blocks: [
-        { id: 'b1', type: 'paragraph', translatable: true, original: 'Original text.', translated: '翻译文本。', status: 'ok' },
-        { id: 'b2', type: 'paragraph', translatable: true, original: 'Another block.', translated: '另一段文字。', status: 'ok' },
+        {
+          id: 'b1',
+          type: 'paragraph',
+          translatable: true,
+          original: 'Original text.',
+          translated: '翻译文本。',
+          status: 'ok',
+        },
+        {
+          id: 'b2',
+          type: 'paragraph',
+          translatable: true,
+          original: 'Another block.',
+          translated: '另一段文字。',
+          status: 'ok',
+        },
       ],
     },
   }),

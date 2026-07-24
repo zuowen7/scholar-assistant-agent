@@ -39,11 +39,13 @@ import type { EdgeProps } from '@vue-flow/core'
 import type { RelationType } from '../../composables/useArgumentMap'
 import { useArgumentMap } from '../../composables/useArgumentMap'
 
-const props = defineProps<EdgeProps<{
-  relation_type: RelationType
-  label: string | null
-  created_by: 'user' | 'ai'
-}>>()
+const props = defineProps<
+  EdgeProps<{
+    relation_type: RelationType
+    label: string | null
+    created_by: 'user' | 'ai'
+  }>
+>()
 
 const { deleteEdge } = useArgumentMap()
 
@@ -55,7 +57,9 @@ const REL_LABELS: Record<RelationType, string> = {
   rebuts: t('argument.rebuts'),
   counters: t('argument.counters'),
 }
-const relLabel = computed(() => REL_LABELS[props.data?.relation_type ?? 'supports'] ?? props.data?.relation_type)
+const relLabel = computed(
+  () => REL_LABELS[props.data?.relation_type ?? 'supports'] ?? props.data?.relation_type,
+)
 
 const REL_COLORS: Record<RelationType, string> = {
   supports: '#6f9276',
@@ -65,13 +69,20 @@ const REL_COLORS: Record<RelationType, string> = {
   rebuts: '#a76f62',
   counters: '#a77b5c',
 }
-const edgeColor = computed(() => REL_COLORS[props.data?.relation_type ?? 'supports'] ?? 'var(--c-surface-4)')
+const edgeColor = computed(
+  () => REL_COLORS[props.data?.relation_type ?? 'supports'] ?? 'var(--c-surface-4)',
+)
 
-const path = computed(() => getBezierPath({
-  sourceX: props.sourceX, sourceY: props.sourceY,
-  targetX: props.targetX, targetY: props.targetY,
-  sourcePosition: props.sourcePosition, targetPosition: props.targetPosition,
-}))
+const path = computed(() =>
+  getBezierPath({
+    sourceX: props.sourceX,
+    sourceY: props.sourceY,
+    targetX: props.targetX,
+    targetY: props.targetY,
+    sourcePosition: props.sourcePosition,
+    targetPosition: props.targetPosition,
+  }),
+)
 
 const [, labelX, labelY] = path.value
 
@@ -87,7 +98,10 @@ const menuPos = ref({ x: 0, y: 0 })
 function onContextMenu(e: MouseEvent) {
   menuPos.value = { x: e.clientX, y: e.clientY }
   menuOpen.value = true
-  const close = () => { menuOpen.value = false; document.removeEventListener('click', close) }
+  const close = () => {
+    menuOpen.value = false
+    document.removeEventListener('click', close)
+  }
   setTimeout(() => document.addEventListener('click', close), 0)
 }
 
@@ -98,7 +112,9 @@ async function doDelete() {
 </script>
 
 <style>
-.arg-edge-hit { cursor: pointer; }
+.arg-edge-hit {
+  cursor: pointer;
+}
 
 .arg-edge-label {
   position: absolute;
@@ -112,12 +128,24 @@ async function doDelete() {
   white-space: nowrap;
   pointer-events: none;
 }
-.arg-edge-label.rel-supports { color: #5f7f66; }
-.arg-edge-label.rel-warrants { color: #647595; }
-.arg-edge-label.rel-backs    { color: #758486; }
-.arg-edge-label.rel-qualifies { color: #8d704a; }
-.arg-edge-label.rel-rebuts   { color: #8d5d53; }
-.arg-edge-label.rel-counters { color: #8d684f; }
+.arg-edge-label.rel-supports {
+  color: #5f7f66;
+}
+.arg-edge-label.rel-warrants {
+  color: #647595;
+}
+.arg-edge-label.rel-backs {
+  color: #758486;
+}
+.arg-edge-label.rel-qualifies {
+  color: #8d704a;
+}
+.arg-edge-label.rel-rebuts {
+  color: #8d5d53;
+}
+.arg-edge-label.rel-counters {
+  color: #8d684f;
+}
 
 .arg-edge-menu {
   position: fixed;
@@ -142,5 +170,7 @@ async function doDelete() {
   text-align: left;
   cursor: pointer;
 }
-.arg-edge-menu button:hover { background: var(--c-danger-bg); }
+.arg-edge-menu button:hover {
+  background: var(--c-danger-bg);
+}
 </style>

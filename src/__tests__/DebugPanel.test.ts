@@ -12,7 +12,7 @@ vi.mock('vue-i18n', () => ({
 import DebugPanel from '../components/DebugPanel.vue'
 
 afterEach(() => {
-  document.body.querySelectorAll('.ui-popover-panel').forEach(node => node.remove())
+  document.body.querySelectorAll('.ui-popover-panel').forEach((node) => node.remove())
 })
 
 describe('DebugPanel', () => {

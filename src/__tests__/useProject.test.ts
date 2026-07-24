@@ -39,7 +39,17 @@ import { currentProject, recentProjects, projectLoading } from '../composables/u
 import { activeTabId, tabs } from '../composables/useEditorState'
 
 function meta(name: string) {
-  return { version: 1, name, status: 'ready', template_id: 'research_paper', tags: [], created_at: '', updated_at: '', vcs: { initialized: false }, env: { type: null, path: null } }
+  return {
+    version: 1,
+    name,
+    status: 'ready',
+    template_id: 'research_paper',
+    tags: [],
+    created_at: '',
+    updated_at: '',
+    vcs: { initialized: false },
+    env: { type: null, path: null },
+  }
 }
 
 describe('useProject', () => {
@@ -58,7 +68,9 @@ describe('useProject', () => {
   describe('createProject', () => {
     it('calls POST /api/project/create and sets currentProject', async () => {
       const { createProject } = await import('../composables/useProject')
-      mockFetch.mockResolvedValueOnce(rst(200, { project_path: '/tmp/Test', metadata: meta('Test'), warnings: [] }))
+      mockFetch.mockResolvedValueOnce(
+        rst(200, { project_path: '/tmp/Test', metadata: meta('Test'), warnings: [] }),
+      )
       const result = await createProject({ name: 'Test', location: '/tmp', init_git: false })
       expect(mockFetch.mock.calls[0][0]).toContain('/api/project/create')
       expect(result.project_path).toBe('/tmp/Test')
@@ -104,7 +116,16 @@ describe('useProject', () => {
 
     it('clears clean editor tabs after a successful project switch', async () => {
       const { openProject } = await import('../composables/useProject')
-      tabs.value = [{ id: 'old.md', path: '/old/old.md', name: 'old.md', content: 'old', isModified: false, docId: 'old.md' }]
+      tabs.value = [
+        {
+          id: 'old.md',
+          path: '/old/old.md',
+          name: 'old.md',
+          content: 'old',
+          isModified: false,
+          docId: 'old.md',
+        },
+      ]
       activeTabId.value = 'old.md'
       mockRootDir.value = '/old'
       currentProject.value = meta('Old')
@@ -119,7 +140,14 @@ describe('useProject', () => {
 
     it('refuses to switch projects while an editor tab is dirty', async () => {
       const { openProject } = await import('../composables/useProject')
-      const dirtyTab = { id: 'draft.md', path: '/old/draft.md', name: 'draft.md', content: 'unsaved', isModified: true, docId: 'draft.md' }
+      const dirtyTab = {
+        id: 'draft.md',
+        path: '/old/draft.md',
+        name: 'draft.md',
+        content: 'unsaved',
+        isModified: true,
+        docId: 'draft.md',
+      }
       tabs.value = [dirtyTab]
       activeTabId.value = dirtyTab.id
       mockRootDir.value = '/old'
@@ -137,7 +165,9 @@ describe('useProject', () => {
   describe('loadRecentProjects', () => {
     it('fetches and populates recentProjects', async () => {
       const { loadRecentProjects } = await import('../composables/useProject')
-      mockFetch.mockResolvedValueOnce(rst(200, [{ path: '/tmp/A', name: 'A', template_id: 'b', opened_at: '' }]))
+      mockFetch.mockResolvedValueOnce(
+        rst(200, [{ path: '/tmp/A', name: 'A', template_id: 'b', opened_at: '' }]),
+      )
       await loadRecentProjects()
       expect(recentProjects.value).toHaveLength(1)
     })
@@ -163,7 +193,16 @@ describe('useProject', () => {
       mockFetch.mockResolvedValueOnce(rst(200, meta('X')))
       await openProject('/tmp/X')
       expect(currentProject.value).not.toBeNull()
-      tabs.value = [{ id: 'open-tab', name: 'draft.md', path: '/tmp/X/draft.md', content: 'draft', isModified: false, docId: 'draft.md' }]
+      tabs.value = [
+        {
+          id: 'open-tab',
+          name: 'draft.md',
+          path: '/tmp/X/draft.md',
+          content: 'draft',
+          isModified: false,
+          docId: 'draft.md',
+        },
+      ]
       activeTabId.value = 'open-tab'
       await closeProject()
       expect(currentProject.value).toBeNull()

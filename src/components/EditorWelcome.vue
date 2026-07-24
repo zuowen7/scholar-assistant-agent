@@ -15,46 +15,64 @@
 
       <!-- Magazine asymmetric grid -->
       <div class="magazine-grid">
-        <button class="wc-card wc-card--hero anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 0 }" data-test="card-new-project" @click="$emit('new-project')">
+        <button
+          class="wc-card wc-card--hero anim-fade-in-up anim-stagger"
+          :style="{ '--stagger-i': 0 }"
+          data-test="card-new-project"
+          @click="$emit('new-project')"
+        >
           <div class="wc-card-line" />
           <div class="wc-card-inner">
             <span class="wc-icon accent"><FolderPlus :size="18" /></span>
             <div class="wc-text">
-              <strong>{{ t("editor.newProjectStrong") }}</strong>
-              <span>{{ t("editor.newProjectSubStrong") }}</span>
+              <strong>{{ t('editor.newProjectStrong') }}</strong>
+              <span>{{ t('editor.newProjectSubStrong') }}</span>
             </div>
           </div>
         </button>
 
-        <button class="wc-card anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 1 }" @click="$emit('open-template')">
+        <button
+          class="wc-card anim-fade-in-up anim-stagger"
+          :style="{ '--stagger-i': 1 }"
+          @click="$emit('open-template')"
+        >
           <div class="wc-card-line" />
           <div class="wc-card-inner">
             <span class="wc-icon accent"><FileText :size="18" /></span>
             <div class="wc-text">
-              <strong>{{ t("editor.fromTemplateStrong") }}</strong>
-              <span>{{ t("editor.fromTemplateSubStrong") }}</span>
+              <strong>{{ t('editor.fromTemplateStrong') }}</strong>
+              <span>{{ t('editor.fromTemplateSubStrong') }}</span>
             </div>
           </div>
         </button>
 
-        <button class="wc-card anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 2 }" data-test="card-open-folder" @click="$emit('open-folder')">
+        <button
+          class="wc-card anim-fade-in-up anim-stagger"
+          :style="{ '--stagger-i': 2 }"
+          data-test="card-open-folder"
+          @click="$emit('open-folder')"
+        >
           <div class="wc-card-line" />
           <div class="wc-card-inner">
             <span class="wc-icon"><FolderOpen :size="18" /></span>
             <div class="wc-text">
-              <strong>{{ t("editor.openFolderStrong") }}</strong>
-              <span>{{ t("editor.openFolderSubStrong") }}</span>
+              <strong>{{ t('editor.openFolderStrong') }}</strong>
+              <span>{{ t('editor.openFolderSubStrong') }}</span>
             </div>
           </div>
         </button>
 
-        <button class="wc-card anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 3 }" @click="$emit('new-document')">
+        <button
+          class="wc-card anim-fade-in-up anim-stagger"
+          :style="{ '--stagger-i': 3 }"
+          @click="$emit('new-document')"
+        >
           <div class="wc-card-line" />
           <div class="wc-card-inner">
             <span class="wc-icon"><FilePlus :size="18" /></span>
             <div class="wc-text">
-              <strong>{{ t("editor.blankDocStrong") }}</strong>
-              <span>{{ t("editor.blankDocSubStrong") }}</span>
+              <strong>{{ t('editor.blankDocStrong') }}</strong>
+              <span>{{ t('editor.blankDocSubStrong') }}</span>
             </div>
           </div>
         </button>
@@ -62,7 +80,9 @@
 
       <!-- Recent projects -->
       <div v-if="recentProjects.length" data-test="recent-projects" class="recent-section">
-        <div class="recent-header anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 4 }">{{ t('project.recentProjects') }}</div>
+        <div class="recent-header anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 4 }">
+          {{ t('project.recentProjects') }}
+        </div>
         <div class="recent-list">
           <div
             v-for="(proj, ri) in recentProjects.slice(0, 5)"
@@ -70,7 +90,12 @@
             class="recent-item anim-fade-in-up anim-stagger"
             :style="{ '--stagger-i': 5 + ri }"
           >
-            <button type="button" data-test="recent-item" class="recent-open" @click="$emit('open-recent', proj.path)">
+            <button
+              type="button"
+              data-test="recent-item"
+              class="recent-open"
+              @click="$emit('open-recent', proj.path)"
+            >
               <span class="recent-name">{{ proj.name }}</span>
               <span class="recent-path">{{ formatPath(proj.path) }}</span>
             </button>
@@ -92,19 +117,19 @@
       <div class="welcome-shortcuts">
         <span class="shortcut-chip anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 10 }">
           <kbd class="kbd">Ctrl+K</kbd>
-          <span>{{ t("editor.aiEditShortcut") }}</span>
+          <span>{{ t('editor.aiEditShortcut') }}</span>
         </span>
         <span class="shortcut-chip anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 11 }">
           <kbd class="kbd">Ctrl+S</kbd>
-          <span>{{ t("editor.saveShortcut") }}</span>
+          <span>{{ t('editor.saveShortcut') }}</span>
         </span>
         <span class="shortcut-chip anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 12 }">
           <kbd class="kbd">Tab</kbd>
-          <span>{{ t("editor.acceptCompletion") }}</span>
+          <span>{{ t('editor.acceptCompletion') }}</span>
         </span>
         <span class="shortcut-chip anim-fade-in-up anim-stagger" :style="{ '--stagger-i': 13 }">
           <kbd class="kbd">Ctrl+B</kbd>
-          <span>{{ t("editor.fileTree") }}</span>
+          <span>{{ t('editor.fileTree') }}</span>
         </span>
       </div>
     </div>
@@ -120,7 +145,9 @@ import { useProject } from '../composables/useProject'
 const { t } = useI18n()
 const { recentProjects, loadRecentProjects, removeRecentProject } = useProject()
 
-onMounted(() => { loadRecentProjects() })
+onMounted(() => {
+  loadRecentProjects()
+})
 
 async function removeRecent(path: string) {
   await removeRecentProject(path)
@@ -198,7 +225,9 @@ function formatPath(p: string | undefined | null): string {
   animation-delay: 120ms;
 }
 @keyframes pillar-grow {
-  to { transform: scaleY(1); }
+  to {
+    transform: scaleY(1);
+  }
 }
 
 .hero-title {
@@ -240,8 +269,9 @@ function formatPath(p: string | undefined | null): string {
   font: inherit;
   text-align: left;
   overflow: hidden;
-  transition: border-color var(--motion-fast) var(--ease-out),
-              background var(--motion-fast) var(--ease-out);
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    background var(--motion-fast) var(--ease-out);
 }
 
 .wc-card-line {
@@ -287,12 +317,28 @@ function formatPath(p: string | undefined | null): string {
   color: var(--c-text-2);
   flex-shrink: 0;
 }
-.wc-icon.accent { background: var(--c-accent-soft); color: var(--c-accent); }
-.wc-card:hover .wc-icon { background: var(--c-accent-soft); color: var(--c-accent); }
+.wc-icon.accent {
+  background: var(--c-accent-soft);
+  color: var(--c-accent);
+}
+.wc-card:hover .wc-icon {
+  background: var(--c-accent-soft);
+  color: var(--c-accent);
+}
 
-.wc-text { display: flex; flex-direction: column; gap: 3px; }
-.wc-text strong { font-size: var(--text-md); font-weight: 600; }
-.wc-text span { font-size: var(--text-sm); color: var(--c-text-3); }
+.wc-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.wc-text strong {
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+.wc-text span {
+  font-size: var(--text-sm);
+  color: var(--c-text-3);
+}
 
 /* Recent projects */
 .recent-section {
@@ -322,7 +368,9 @@ function formatPath(p: string | undefined | null): string {
   border-radius: var(--radius-sm);
   background: var(--c-surface-1);
   color: var(--c-text-1);
-  transition: border-color var(--motion-fast), background var(--motion-fast);
+  transition:
+    border-color var(--motion-fast),
+    background var(--motion-fast);
 }
 .recent-item:hover {
   border-color: var(--c-accent);
@@ -370,16 +418,26 @@ function formatPath(p: string | undefined | null): string {
   color: var(--c-text-3);
   opacity: 0;
   transform: scale(0.8);
-  transition: opacity var(--motion-fast) var(--ease-out),
-              transform var(--motion-fast) var(--ease-spring),
-              background var(--motion-fast),
-              color var(--motion-fast);
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-spring),
+    background var(--motion-fast),
+    color var(--motion-fast);
   cursor: pointer;
 }
 .recent-item:hover .recent-remove,
-.recent-item:focus-within .recent-remove { opacity: 1; transform: scale(1); }
-.recent-remove:hover { background: var(--c-danger-bg); color: var(--c-danger); transform: scale(1.12); }
-.recent-remove:active { transform: scale(0.9); }
+.recent-item:focus-within .recent-remove {
+  opacity: 1;
+  transform: scale(1);
+}
+.recent-remove:hover {
+  background: var(--c-danger-bg);
+  color: var(--c-danger);
+  transform: scale(1.12);
+}
+.recent-remove:active {
+  transform: scale(0.9);
+}
 
 /* Shortcut chips */
 .welcome-shortcuts {
@@ -399,7 +457,9 @@ function formatPath(p: string | undefined | null): string {
   border: 1px solid var(--c-surface-3);
   font-size: var(--text-sm);
   color: var(--c-text-3);
-  transition: background var(--motion-fast), color var(--motion-fast);
+  transition:
+    background var(--motion-fast),
+    color var(--motion-fast);
 }
 
 .shortcut-chip:hover {
@@ -422,11 +482,22 @@ function formatPath(p: string | undefined | null): string {
 }
 
 /* Light mode */
-:global([data-theme="light"]) .welcome-watermark { color: var(--c-text-0); opacity: 0.04; }
-:global([data-theme="light"]) .wc-card { background: var(--c-surface-1); border-color: var(--c-surface-3); }
-:global([data-theme="light"]) .shortcut-chip { background: var(--c-surface-2); }
+:global([data-theme='light']) .welcome-watermark {
+  color: var(--c-text-0);
+  opacity: 0.04;
+}
+:global([data-theme='light']) .wc-card {
+  background: var(--c-surface-1);
+  border-color: var(--c-surface-3);
+}
+:global([data-theme='light']) .shortcut-chip {
+  background: var(--c-surface-2);
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .hero-pillar { animation: none; transform: none; }
+  .hero-pillar {
+    animation: none;
+    transform: none;
+  }
 }
 </style>

@@ -53,7 +53,7 @@ function renderMarkdown(md: string): string {
   extract(/^(?:&gt;)+\s*(.+(?:(?:\n|^)(?:&gt;)+\s*.+)*)/gm, (m) => {
     const lines = m[1].replace(/^(?:&gt;)+\s?/gm, '').split('\n')
     const content = lines
-      .map(l => l.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>'))
+      .map((l) => l.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>'))
       .join('<br/>')
     return `<blockquote>${content}</blockquote>`
   })

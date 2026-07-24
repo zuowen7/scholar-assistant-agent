@@ -8,10 +8,15 @@
       <div class="header-spacer"></div>
       <!-- Status selector -->
       <div class="status-wrap" ref="statusWrapRef">
-        <button class="status-chip" data-status-btn :class="`chip-${point.status}`" @click="toggleStatusMenu">
+        <button
+          class="status-chip"
+          data-status-btn
+          :class="`chip-${point.status}`"
+          @click="toggleStatusMenu"
+        >
           {{ statusLabel }}
           <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor" class="chip-caret">
-            <path d="M0 2.5 L4 6.5 L8 2.5Z"/>
+            <path d="M0 2.5 L4 6.5 L8 2.5Z" />
           </svg>
         </button>
         <div v-if="showMenu" class="status-menu">
@@ -21,7 +26,9 @@
             class="menu-item"
             :class="{ active: opt.value === point.status }"
             @click="setStatus(opt.value)"
-          >{{ opt.label }}</button>
+          >
+            {{ opt.label }}
+          </button>
         </div>
       </div>
     </div>
@@ -31,13 +38,19 @@
 
     <!-- Detail -->
     <div class="card-detail" :class="{ collapsed: !detailExpanded && point.detail.length > 200 }">
-      {{ detailExpanded || point.detail.length <= 200 ? point.detail : point.detail.slice(0, 200) + '…' }}
+      {{
+        detailExpanded || point.detail.length <= 200
+          ? point.detail
+          : point.detail.slice(0, 200) + '…'
+      }}
     </div>
     <button
       v-if="point.detail.length > 200"
       class="expand-btn"
       @click="detailExpanded = !detailExpanded"
-    >{{ detailExpanded ? t('reviewerThread.collapse') : t('reviewerThread.expandFull') }}</button>
+    >
+      {{ detailExpanded ? t('reviewerThread.collapse') : t('reviewerThread.expandFull') }}
+    </button>
 
     <!-- Anchor -->
     <button
@@ -59,8 +72,12 @@
         class="thread-turn"
         :class="`turn-${turn.role}`"
       >
-        <span class="turn-role">{{ turn.role === 'author' ? t('reviewerThread.author') : t('reviewerThread.reviewer') }}</span>
-        <span class="turn-text">{{ isExpanded(turn.id) || turn.text.length <= 280 ? turn.text : turn.text.slice(0, 280) + '…' }}</span>
+        <span class="turn-role">{{
+          turn.role === 'author' ? t('reviewerThread.author') : t('reviewerThread.reviewer')
+        }}</span>
+        <span class="turn-text">{{
+          isExpanded(turn.id) || turn.text.length <= 280 ? turn.text : turn.text.slice(0, 280) + '…'
+        }}</span>
         <button v-if="turn.text.length > 280" class="turn-expand-btn" @click="toggleTurn(turn.id)">
           {{ isExpanded(turn.id) ? t('reviewerThread.collapse') : t('reviewerThread.expandFull') }}
         </button>
@@ -79,7 +96,9 @@
           class="rebut-toggle"
           data-rebut-btn
           @click="chatExpanded = true"
-        >{{ t('reviewerThread.rebut') }}</button>
+        >
+          {{ t('reviewerThread.rebut') }}
+        </button>
         <div v-else class="rebut-input-wrap">
           <textarea
             v-model="rebuttalText"
@@ -89,13 +108,17 @@
             rows="3"
           />
           <div class="rebut-actions">
-            <button class="rebut-cancel" @click="chatExpanded = false">{{ t('reviewerThread.rebuteCancel') }}</button>
+            <button class="rebut-cancel" @click="chatExpanded = false">
+              {{ t('reviewerThread.rebuteCancel') }}
+            </button>
             <button
               class="rebut-send"
               data-rebut-send
               :disabled="!rebuttalText.trim()"
               @click="sendRebuttal"
-            >{{ t('reviewerThread.rebutSend') }}</button>
+            >
+              {{ t('reviewerThread.rebutSend') }}
+            </button>
           </div>
         </div>
       </template>
@@ -118,8 +141,11 @@ const props = defineProps<{
 const companion = useArgumentCompanion()
 const anchorQuote = computed(() => {
   if (!props.point.anchor_id) return ''
-  const anchors = [...(companion.state.review?.anchors ?? []), ...(companion.state.ledger?.anchors ?? [])]
-  return anchors.find(anchor => anchor.id === props.point.anchor_id)?.quote || ''
+  const anchors = [
+    ...(companion.state.review?.anchors ?? []),
+    ...(companion.state.ledger?.anchors ?? []),
+  ]
+  return anchors.find((anchor) => anchor.id === props.point.anchor_id)?.quote || ''
 })
 
 const emit = defineEmits<{
@@ -135,7 +161,9 @@ const showMenu = ref(false)
 const statusWrapRef = ref<HTMLElement>()
 const expandedTurnIds = ref<Set<string>>(new Set())
 
-function isExpanded(id: string) { return expandedTurnIds.value.has(id) }
+function isExpanded(id: string) {
+  return expandedTurnIds.value.has(id)
+}
 function toggleTurn(id: string) {
   const s = new Set(expandedTurnIds.value)
   if (s.has(id)) s.delete(id)
@@ -146,13 +174,19 @@ function toggleTurn(id: string) {
 const isSending = computed(() => props.rebuttalSending === props.point.id)
 
 // Can rebut unless status is accepted or dismissed
-const canRebut = computed(() =>
-  props.point.status !== 'accepted' && props.point.status !== 'dismissed'
+const canRebut = computed(
+  () => props.point.status !== 'accepted' && props.point.status !== 'dismissed',
 )
 
-const categoryLabel = computed(() => t(`argument.reviewCategory.${props.point.category}`, props.point.category))
+const categoryLabel = computed(() =>
+  t(`argument.reviewCategory.${props.point.category}`, props.point.category),
+)
 const statusLabel = computed(() => t(`argument.status.${props.point.status}`, props.point.status))
-const sourceLabel = computed(() => props.point.source === 'llm' ? 'AI' : t(`argument.checkType.${props.point.source}`, props.point.source))
+const sourceLabel = computed(() =>
+  props.point.source === 'llm'
+    ? 'AI'
+    : t(`argument.checkType.${props.point.source}`, props.point.source),
+)
 
 const statusOptions = computed(() => {
   const all = [
@@ -161,7 +195,7 @@ const statusOptions = computed(() => {
     { value: 'accepted', label: t('argument.status.accepted') },
     { value: 'dismissed', label: t('argument.status.dismissed') },
   ]
-  return all.filter(o => o.value !== props.point.status)
+  return all.filter((o) => o.value !== props.point.status)
 })
 
 function toggleStatusMenu() {
@@ -204,14 +238,28 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
 }
 
 @keyframes card-enter {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.sev-fatal { border-left-color: var(--c-danger); }
-.sev-major { border-left-color: var(--c-warn); }
-.sev-minor { border-left-color: color-mix(in srgb, var(--c-accent) 70%, transparent); }
-.sev-info  { border-left-color: var(--c-border); }
+.sev-fatal {
+  border-left-color: var(--c-danger);
+}
+.sev-major {
+  border-left-color: var(--c-warn);
+}
+.sev-minor {
+  border-left-color: color-mix(in srgb, var(--c-accent) 70%, transparent);
+}
+.sev-info {
+  border-left-color: var(--c-border);
+}
 
 /* ── Header ── */
 .card-header {
@@ -228,10 +276,19 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   border-radius: 50%;
   flex-shrink: 0;
 }
-.pip-fatal { background: var(--c-danger); }
-.pip-major { background: var(--c-warn); }
-.pip-minor { background: var(--c-accent); opacity: 0.7; }
-.pip-info  { background: var(--c-text-3); }
+.pip-fatal {
+  background: var(--c-danger);
+}
+.pip-major {
+  background: var(--c-warn);
+}
+.pip-minor {
+  background: var(--c-accent);
+  opacity: 0.7;
+}
+.pip-info {
+  background: var(--c-text-3);
+}
 
 .card-category {
   font-size: 11px;
@@ -251,13 +308,21 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   background: var(--c-surface-2);
   color: var(--c-text-3);
 }
-.src-ledger_check { color: color-mix(in srgb, var(--c-accent) 80%, #fff); }
-.src-scoped       { color: var(--c-warn); }
+.src-ledger_check {
+  color: color-mix(in srgb, var(--c-accent) 80%, #fff);
+}
+.src-scoped {
+  color: var(--c-warn);
+}
 
-.header-spacer { flex: 1; }
+.header-spacer {
+  flex: 1;
+}
 
 /* ── Status chip ── */
-.status-wrap { position: relative; }
+.status-wrap {
+  position: relative;
+}
 
 .status-chip {
   display: flex;
@@ -274,13 +339,33 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   white-space: nowrap;
   transition: border-color 0.15s;
 }
-.status-chip:hover { border-color: var(--c-accent); color: var(--c-accent); }
-.status-chip:focus-visible { outline: none; box-shadow: var(--ring-focus); }
-.chip-caret { opacity: 0.5; flex-shrink: 0; }
+.status-chip:hover {
+  border-color: var(--c-accent);
+  color: var(--c-accent);
+}
+.status-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+.chip-caret {
+  opacity: 0.5;
+  flex-shrink: 0;
+}
 
-.chip-rebutted  { border-color: rgba(34, 197, 94, 0.27); color: var(--c-success); background: var(--c-success-bg); }
-.chip-accepted  { border-color: rgba(59, 130, 246, 0.27); color: var(--c-accent); background: var(--c-accent-soft); }
-.chip-dismissed { border-color: rgba(85, 85, 85, 0.27); color: var(--c-text-3); }
+.chip-rebutted {
+  border-color: rgba(34, 197, 94, 0.27);
+  color: var(--c-success);
+  background: var(--c-success-bg);
+}
+.chip-accepted {
+  border-color: rgba(59, 130, 246, 0.27);
+  color: var(--c-accent);
+  background: var(--c-accent-soft);
+}
+.chip-dismissed {
+  border-color: rgba(85, 85, 85, 0.27);
+  color: var(--c-text-3);
+}
 
 .status-menu {
   position: absolute;
@@ -292,7 +377,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   overflow: hidden;
   z-index: 50;
   min-width: 90px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
 .menu-item {
@@ -307,7 +392,11 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   cursor: pointer;
   transition: background 0.1s;
 }
-.menu-item:hover, .menu-item.active { background: var(--c-surface-3); color: var(--c-text-0); }
+.menu-item:hover,
+.menu-item.active {
+  background: var(--c-surface-3);
+  color: var(--c-text-0);
+}
 
 /* ── Content ── */
 .card-title {
@@ -338,7 +427,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
 .anchor-btn {
   width: 100%;
   display: grid;
-  grid-template-columns: auto minmax(0,1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   font-size: 11px;
@@ -352,10 +441,21 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   text-align: left;
   transition: color 0.15s;
 }
-.anchor-btn:hover { color: var(--c-accent); }
-.anchor-label { color: var(--c-text-3); font-weight: 650; }
-.anchor-quote { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.anchor-jump { color: var(--c-accent); }
+.anchor-btn:hover {
+  color: var(--c-accent);
+}
+.anchor-label {
+  color: var(--c-text-3);
+  font-weight: 650;
+}
+.anchor-quote {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.anchor-jump {
+  color: var(--c-accent);
+}
 
 /* ── Thread ── */
 .thread-list {
@@ -383,8 +483,12 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   padding-top: 2px;
   flex-shrink: 0;
 }
-.turn-author .turn-role { color: var(--c-accent); }
-.turn-reviewer .turn-role { color: var(--c-warn); }
+.turn-author .turn-role {
+  color: var(--c-accent);
+}
+.turn-reviewer .turn-role {
+  color: var(--c-warn);
+}
 
 .turn-text {
   color: var(--c-text-1);
@@ -404,7 +508,9 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
 }
 
 /* ── Rebuttal area ── */
-.rebuttal-area { margin-top: 8px; }
+.rebuttal-area {
+  margin-top: 8px;
+}
 
 .rebut-sending {
   display: flex;
@@ -412,19 +518,42 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   gap: 8px;
   padding: 4px 0;
 }
-.sending-text { font-size: 11px; color: var(--c-text-2); font-style: italic; }
+.sending-text {
+  font-size: 11px;
+  color: var(--c-text-2);
+  font-style: italic;
+}
 
-.dot-wave { display: flex; gap: 4px; align-items: center; }
+.dot-wave {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
 .dot-wave i {
-  width: 5px; height: 5px; border-radius: 50%;
-  background: var(--c-accent); display: block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--c-accent);
+  display: block;
   animation: wave-bounce 1.1s ease-in-out infinite;
 }
-.dot-wave i:nth-child(2) { animation-delay: 0.18s; }
-.dot-wave i:nth-child(3) { animation-delay: 0.36s; }
+.dot-wave i:nth-child(2) {
+  animation-delay: 0.18s;
+}
+.dot-wave i:nth-child(3) {
+  animation-delay: 0.36s;
+}
 @keyframes wave-bounce {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.25; }
-  30%            { transform: translateY(-5px); opacity: 1; }
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.25;
+  }
+  30% {
+    transform: translateY(-5px);
+    opacity: 1;
+  }
 }
 
 .rebut-toggle {
@@ -435,9 +564,14 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   border-radius: 4px;
   padding: 3px 10px;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
 }
-.rebut-toggle:hover { color: var(--c-accent); border-color: var(--c-accent); }
+.rebut-toggle:hover {
+  color: var(--c-accent);
+  border-color: var(--c-accent);
+}
 
 .rebut-input-wrap {
   display: flex;
@@ -459,9 +593,14 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   font-family: inherit;
   line-height: 1.5;
   outline: none;
-  transition: border-color var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out);
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out);
 }
-.rebut-input:focus-visible { border-color: var(--c-accent); box-shadow: var(--ring-focus); }
+.rebut-input:focus-visible {
+  border-color: var(--c-accent);
+  box-shadow: var(--ring-focus);
+}
 
 .rebut-actions {
   display: flex;
@@ -477,10 +616,18 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   background: none;
   color: var(--c-text-3);
   cursor: pointer;
-  transition: color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out);
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
 }
-.rebut-cancel:hover { color: var(--c-text-0); border-color: var(--c-text-3); }
-.rebut-cancel:focus-visible { outline: none; box-shadow: var(--ring-focus); }
+.rebut-cancel:hover {
+  color: var(--c-text-0);
+  border-color: var(--c-text-3);
+}
+.rebut-cancel:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
 
 .rebut-send {
   font-size: 11px;
@@ -490,12 +637,24 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   background: var(--c-accent);
   color: var(--c-on-accent);
   cursor: pointer;
-  transition: filter var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out);
+  transition:
+    filter var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
 }
-.rebut-send:disabled { opacity: 0.35; cursor: not-allowed; }
-.rebut-send:not(:disabled):hover { filter: brightness(1.08); }
-.rebut-send:not(:disabled):active { transform: scale(0.97); }
-.rebut-send:focus-visible { outline: none; box-shadow: var(--ring-focus); }
+.rebut-send:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.rebut-send:not(:disabled):hover {
+  filter: brightness(1.08);
+}
+.rebut-send:not(:disabled):active {
+  transform: scale(0.97);
+}
+.rebut-send:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
 
 /* Consistent keyboard focus ring across all interactive elements in the card */
 .anchor-btn:focus-visible,
