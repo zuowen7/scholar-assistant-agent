@@ -649,8 +649,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const { currentLocale, setLocale } = useLocale()
 const tab = ref<'engine' | 'display' | 'network' | 'background' | 'voice' | 'system'>('engine')
-const speechSupported =
-  !!(window as any).SpeechRecognition || !!(window as any).webkitSpeechRecognition
+const speechSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition)
 
 function icon(paths: string[]) {
   return () =>

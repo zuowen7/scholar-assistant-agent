@@ -62,8 +62,18 @@ import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 
+interface WorkflowSummary {
+  id: string
+  title?: string
+  state: string
+  current_stage?: string | null
+  message_count?: number
+  updated_at?: string
+  created_at: string
+}
+
 defineProps<{
-  workflows: any[]
+  workflows: WorkflowSummary[]
   activeId: string | null
   loading?: boolean
 }>()

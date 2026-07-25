@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue'
+import type { Edge, Node } from '@vue-flow/core'
 import { API_BASE } from '../utils/api'
 import { i18n } from '../i18n'
 import { logger } from '../utils/logger'
@@ -37,6 +38,24 @@ export interface MindMapViewport {
   zoom: number
   toolbar: { x: number; y: number }
 }
+
+/** Vue Flow node.data payload — mirrors MindNodeCard.vue NodeProps */
+export interface MindFlowNodeData {
+  text: string
+  body: string
+  depth: number
+  isRoot: boolean
+  hasChildren: boolean
+}
+
+/** Vue Flow edge.data payload — mirrors MindEdge.vue EdgeProps */
+export interface MindFlowEdgeData {
+  kind: 'parent' | 'association'
+  childId?: string
+}
+
+export type MindFlowNode = Node<MindFlowNodeData, Record<string, never>, 'mindNode'>
+export type MindFlowEdge = Edge<MindFlowEdgeData>
 
 const createDefaultMap = (): MindMapData => {
   const rootId = `mind-${Date.now()}`
@@ -550,7 +569,7 @@ export function useMindMap() {
 }
 
 // Vue Flow adapters
-export function toFlowNodes(map: MindMapData): any[] {
+export function toFlowNodes(map: MindMapData): MindFlowNode[] {
   return Object.values(map.nodes).map((node) => ({
     id: node.id,
     type: 'mindNode',
@@ -565,8 +584,8 @@ export function toFlowNodes(map: MindMapData): any[] {
   }))
 }
 
-export function toFlowEdges(map: MindMapData): any[] {
-  const parentEdges: any[] = []
+export function toFlowEdges(map: MindMapData): MindFlowEdge[] {
+  const parentEdges: MindFlowEdge[] = []
   for (const node of Object.values(map.nodes)) {
     if (node.parentId) {
       parentEdges.push({
@@ -578,7 +597,7 @@ export function toFlowEdges(map: MindMapData): any[] {
       })
     }
   }
-  const linkEdges: any[] = map.links.map((link) => ({
+  const linkEdges: MindFlowEdge[] = map.links.map((link) => ({
     id: link.id,
     source: link.from,
     target: link.to,

@@ -20,11 +20,12 @@
 </template>
 
 <script setup lang="ts">
+import type { Component } from 'vue'
 import UiButton from './UiButton.vue'
 
 withDefaults(
   defineProps<{
-    icon?: any
+    icon?: Component
     iconSize?: number
     title?: string
     subtitle?: string

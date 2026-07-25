@@ -543,7 +543,7 @@ async function extractArgument(
     if (_state.graph && _state.graph.nodes.length) {
       const { useArgumentLayout } = await import('./useArgumentLayout')
       const { autoLayout } = useArgumentLayout()
-      const pos = autoLayout(_state.graph.nodes as any[], _state.graph.edges as any[], 'LR')
+      const pos = autoLayout(_state.graph.nodes, _state.graph.edges, 'LR')
       try {
         await persistNodePositions(Object.fromEntries(pos.map((item) => [item.id, item.position])))
       } catch {

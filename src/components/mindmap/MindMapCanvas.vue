@@ -202,7 +202,7 @@ function deleteEdgeById(edgeId: string) {
   if (!edgeId) return
   if (edgeId.startsWith('tree-')) {
     const edge = edges.value.find((e) => e.id === edgeId)
-    const childId = (edge?.data as any)?.childId
+    const childId = edge?.data?.childId
     if (childId) detachChild(childId)
   } else {
     removeAssociationLink(edgeId)

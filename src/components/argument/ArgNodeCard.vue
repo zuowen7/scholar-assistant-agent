@@ -84,7 +84,7 @@ async function commit() {
       id: props.id,
       node_type: props.data.node_type,
       text: draftText.value.trim(),
-    } as any)
+    })
   }
 }
 

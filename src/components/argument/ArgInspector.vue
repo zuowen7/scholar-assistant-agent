@@ -7,7 +7,7 @@
         <p v-if="state.graph" class="inspector-graph-title">{{ state.graph.title }}</p>
         <div v-if="state.graph" class="inspector-stats">
           <span class="stat-item" v-for="(count, type) in nodeTypeCounts" :key="type">
-            <span class="stat-type">{{ typeLabel(type as any) }}</span>
+            <span class="stat-type">{{ typeLabel(type as NodeType) }}</span>
             <span class="stat-count">{{ count }}</span>
           </span>
         </div>
@@ -389,7 +389,7 @@ async function commitText() {
     id: selectedNode.value.id,
     node_type: selectedNode.value.node_type,
     text: editText.value,
-  } as any)
+  })
 }
 
 async function deleteSelectedNode() {

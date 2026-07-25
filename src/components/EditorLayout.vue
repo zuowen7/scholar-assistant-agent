@@ -319,6 +319,7 @@ import {
   nextTick,
 } from 'vue'
 import { useI18n } from 'vue-i18n'
+import type { ComplianceReport } from '../types'
 
 const { t } = useI18n()
 
@@ -492,7 +493,7 @@ const tectonicAvailable = ref(false)
 const showCompliance = ref(false)
 const complianceLoading = ref(false)
 const complianceError = ref('')
-const complianceReport = ref<Record<string, unknown> | null>(null)
+const complianceReport = ref<ComplianceReport | null>(null)
 
 // -- Template picker / project start -------------------------------------
 const showTemplatePicker = ref(false)
@@ -656,16 +657,16 @@ async function handleProjectCreated(path: string) {
   showProjectStart.value = false
   try {
     await _openProjectAndMainMd(path)
-  } catch (e: any) {
-    danger(e.message || t('project.openFailed'))
+  } catch (e) {
+    danger(e instanceof Error ? e.message : t('project.openFailed'))
   }
 }
 
 async function handleOpenRecentProject(path: string) {
   try {
     await _openProjectAndMainMd(path)
-  } catch (e: any) {
-    danger(e.message || t('editor.openRecentFailed'))
+  } catch (e) {
+    danger(e instanceof Error ? e.message : t('editor.openRecentFailed'))
   }
 }
 

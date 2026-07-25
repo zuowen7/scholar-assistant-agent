@@ -79,29 +79,28 @@ export function useWakeWord(onWakeWord: () => void) {
   const active = ref(false)
   const error = ref('')
 
-  let sr: any = null
+  let sr: SpeechRecognition | null = null
   let restarting = false
   let restartTimer: ReturnType<typeof setTimeout> | null = null
   let cooldown = false
 
-  const SpeechRecognition =
-    (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+  const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition
 
   async function startWakeWord() {
     if (active.value) return
-    if (!SpeechRecognition) {
+    if (!SpeechRecognitionCtor) {
       error.value = '浏览器不支持语音识别'
       return
     }
 
     try {
-      sr = new SpeechRecognition()
+      sr = new SpeechRecognitionCtor()
       sr.continuous = true
       sr.interimResults = true
       sr.lang = 'zh-CN'
       sr.maxAlternatives = 3
 
-      sr.onresult = (event: any) => {
+      sr.onresult = (event: SpeechRecognitionEvent) => {
         // Don't trigger while dictation is active or during cooldown
         if (isSpeechBusy() || cooldown) return
         for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -132,7 +131,7 @@ export function useWakeWord(onWakeWord: () => void) {
         }
       }
 
-      sr.onerror = (e: any) => {
+      sr.onerror = (e: SpeechRecognitionErrorEvent) => {
         // Don't restart while paused for dictation
         if (pausedByDictation) return
         // 'no-speech' and 'aborted' are normal — restart
@@ -155,8 +154,8 @@ export function useWakeWord(onWakeWord: () => void) {
       sr.start()
       active.value = true
       logger.debug('[wake-word] started, listening for:', getWakeWordPhrase())
-    } catch (e: any) {
-      error.value = e.message || '无法启动语音识别'
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : '无法启动语音识别'
       logger.warn('[wake-word] start failed:', e)
     }
   }
