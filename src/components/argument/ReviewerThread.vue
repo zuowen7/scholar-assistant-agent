@@ -131,7 +131,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
-import type { ReviewPoint } from '../../types'
+import type { ReviewPoint, PointStatus } from '../../types'
 import { useArgumentCompanion } from '../../composables/useArgumentCompanion'
 
 const props = defineProps<{
@@ -150,7 +150,7 @@ const anchorQuote = computed(() => {
 
 const emit = defineEmits<{
   focusAnchor: [anchorId: string]
-  updatePointStatus: [status: string]
+  updatePointStatus: [status: PointStatus]
   rebut: [pointId: string, message: string]
 }>()
 
@@ -189,7 +189,7 @@ const sourceLabel = computed(() =>
 )
 
 const statusOptions = computed(() => {
-  const all = [
+  const all: { value: PointStatus; label: string }[] = [
     { value: 'open', label: t('argument.status.open') },
     { value: 'rebutted', label: t('argument.status.rebutted') },
     { value: 'accepted', label: t('argument.status.accepted') },
@@ -202,7 +202,7 @@ function toggleStatusMenu() {
   showMenu.value = !showMenu.value
 }
 
-function setStatus(status: string) {
+function setStatus(status: PointStatus) {
   showMenu.value = false
   emit('updatePointStatus', status)
 }

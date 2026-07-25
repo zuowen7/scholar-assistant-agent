@@ -11,12 +11,13 @@
 
 <script setup lang="ts">
 import ComplianceModal from './ComplianceModal.vue'
+import type { ComplianceReport } from '../types'
 
 defineProps<{
   visible: boolean
   loading: boolean
   error: string
-  report: Record<string, unknown> | null
+  report: ComplianceReport | null
 }>()
 
 defineEmits<{

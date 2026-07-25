@@ -101,8 +101,15 @@ class _MonacoRange {
   }
 }
 
-export function getRange(editor: any) {
-  return (editor as any).monaco?.Range ?? _MonacoRange
+type RangeCtor = typeof _MonacoRange
+
+/** Monaco editor instances sometimes expose the full `monaco` namespace as `.monaco`. */
+type EditorWithMonacoNs = monaco.editor.IStandaloneCodeEditor & {
+  monaco?: { Range: RangeCtor }
+}
+
+export function getRange(editor: EditorWithMonacoNs): RangeCtor {
+  return editor.monaco?.Range ?? _MonacoRange
 }
 
 // ── Text insertion helpers (依赖 Monaco editor 实例) ──────────────────

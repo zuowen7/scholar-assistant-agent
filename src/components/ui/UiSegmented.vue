@@ -37,10 +37,12 @@
 <script setup lang="ts" generic="T extends string | number">
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 
+import type { Component } from 'vue'
+
 interface SegmentedOption<V> {
   value: V
   label?: string
-  icon?: any
+  icon?: Component
   disabled?: boolean
 }
 

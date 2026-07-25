@@ -62,7 +62,7 @@
               v-for="i in skeletonCount"
               :key="i"
               class="tree-skeleton-row"
-              :style="{ '--stagger-i': i - 1 } as any"
+              :style="{ '--stagger-i': i - 1 } as CSSProperties"
             >
               <UiSkeleton shape="circle" :width="12" :height="12" />
               <UiSkeleton shape="line" :width="`${44 + ((i * 13) % 40)}%`" :height="9" />
@@ -75,7 +75,7 @@
               :entry="child"
               :depth="depth + 1"
               :active-file="activeFile"
-              :style="{ '--stagger-i': Math.min(ci, 12) } as any"
+              :style="{ '--stagger-i': Math.min(ci, 12) } as CSSProperties"
               class="anim-fade-in-up anim-stagger"
               @select="(e: FileEntry) => $emit('select', e)"
               @action="(a: string, p: string, n: string) => $emit('action', a, p, n)"
@@ -119,7 +119,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, reactive, computed, onBeforeUnmount } from 'vue'
+import { ref, nextTick, reactive, computed, onBeforeUnmount, type CSSProperties } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()

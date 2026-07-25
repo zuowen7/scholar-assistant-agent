@@ -26,7 +26,7 @@ import { useAgentChat } from '../composables/useAgentChat'
 import { API_BASE } from '../utils/api'
 import { useArgumentCompanion } from '../composables/useArgumentCompanion'
 import { computeCompanionDecorations } from '../composables/companionGutter'
-import { fetchCompletion, buildContext } from '../utils/inlineCompletion'
+import { fetchCompletion, buildContext, type CompletionModel } from '../utils/inlineCompletion'
 
 // 配置 Monaco Web Worker（解决 Tauri 环境下 worker 无法创建的问题）
 self.MonacoEnvironment = {
@@ -351,7 +351,10 @@ async function triggerGhostCompletion() {
   const model = editor?.getModel()
   if (!pos || !model) return
 
-  const ctx = buildContext(model as any, { lineNumber: pos.lineNumber, column: pos.column })
+  const ctx = buildContext(model as CompletionModel, {
+    lineNumber: pos.lineNumber,
+    column: pos.column,
+  })
   if (!ctx) return
 
   ghostAbort?.abort()

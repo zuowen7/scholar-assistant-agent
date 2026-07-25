@@ -16,6 +16,16 @@ export interface MindMapAnalysisIssue {
   nodeIds: string[]
 }
 
+/** Raw issue shape returned by the backend / structural fallback. */
+interface RawAnalysisIssue {
+  id?: string
+  type?: string
+  severity?: string
+  title?: string
+  message?: string
+  node_texts?: string[]
+}
+
 export function useMindMapAnalysis() {
   async function analyzeMindMap(map: MindMapData): Promise<MindMapAnalysisIssue[]> {
     const raw = await callBackendAnalysis(map)
@@ -32,7 +42,7 @@ export function useMindMapAnalysis() {
   return { analyzeMindMap }
 }
 
-async function callBackendAnalysis(map: MindMapData): Promise<Array<Record<string, any>>> {
+async function callBackendAnalysis(map: MindMapData): Promise<RawAnalysisIssue[]> {
   try {
     const res = await fetch(`${API_BASE}/api/mindmap/analyze`, {
       method: 'POST',
@@ -74,8 +84,8 @@ function getGenericNames(): Set<string> {
   ])
 }
 
-function runStructuralFallback(map: MindMapData): Array<Record<string, any>> {
-  const issues: Array<Record<string, any>> = []
+function runStructuralFallback(map: MindMapData): RawAnalysisIssue[] {
+  const issues: RawAnalysisIssue[] = []
   const root = map.nodes[map.rootId]
 
   if (root && root.children.length === 0) {

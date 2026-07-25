@@ -140,7 +140,9 @@
           v-for="i in 8"
           :key="i"
           class="tree-loading-row"
-          :style="{ paddingLeft: (i % 3 === 0 ? 24 : 8) + 'px', '--stagger-i': i - 1 } as any"
+          :style="
+            { paddingLeft: (i % 3 === 0 ? 24 : 8) + 'px', '--stagger-i': i - 1 } as CSSProperties
+          "
         >
           <UiSkeleton shape="circle" :width="13" :height="13" />
           <UiSkeleton shape="line" :width="`${48 + ((i * 17) % 42)}%`" :height="10" />
@@ -153,7 +155,7 @@
           :entry="entry"
           :depth="0"
           :active-file="activeFile"
-          :style="{ '--stagger-i': Math.min(i, 14) } as any"
+          :style="{ '--stagger-i': Math.min(i, 14) } as CSSProperties"
           class="anim-fade-in-up anim-stagger"
           @select="handleSelect"
           @action="handleAction"
@@ -201,7 +203,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, type CSSProperties } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()

@@ -148,7 +148,7 @@ async function addNode(node_type: NodeType) {
     qualifier: t('argument.newQualifier'),
     rebuttal: t('argument.newRebuttal'),
   }[node_type]
-  await upsertNode({ node_type, text: label } as any)
+  await upsertNode({ node_type, text: label })
 }
 
 function needsLayout() {
@@ -173,7 +173,7 @@ async function fitCanvas() {
 
 async function runAutoLayout() {
   if (!state.graph) return
-  const positioned = autoLayout(state.graph.nodes as any[], state.graph.edges as any[], 'LR')
+  const positioned = autoLayout(state.graph.nodes, state.graph.edges, 'LR')
   for (const p of positioned) {
     const node = state.graph!.nodes.find((n) => n.id === p.id)
     if (node) node.position = p.position

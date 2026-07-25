@@ -3,42 +3,8 @@ import { setSpeechBusy } from './useSpeechBusy'
 
 type SpeechStatus = 'idle' | 'listening'
 
-declare class SpeechRecognition extends EventTarget {
-  continuous: boolean
-  interimResults: boolean
-  lang: string
-  start(): void
-  stop(): void
-  abort(): void
-  onstart: ((ev: Event) => void) | null
-  onend: ((ev: Event) => void) | null
-  onerror: ((ev: SpeechRecognitionErrorEvent) => void) | null
-  onresult: ((ev: SpeechRecognitionEvent) => void) | null
-}
-declare class SpeechRecognitionErrorEvent extends Event {
-  error: string
-  message: string
-}
-declare class SpeechRecognitionEvent extends Event {
-  resultIndex: number
-  results: SpeechRecognitionResultList
-}
-declare class SpeechRecognitionResultList {
-  readonly length: number;
-  [index: number]: SpeechRecognitionResult
-}
-declare class SpeechRecognitionResult {
-  readonly isFinal: boolean
-  readonly length: number;
-  [index: number]: SpeechRecognitionAlternative
-}
-declare class SpeechRecognitionAlternative {
-  transcript: string
-  confidence: number
-}
-
 function getSpeechRecognition(): SpeechRecognition | null {
-  const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition
   if (!SR) return null
   return new SR()
 }
@@ -329,9 +295,7 @@ export function useSpeechRecognition(options?: SpeechRecognitionOptions) {
     }
   }
 
-  const isSupported = !!(
-    (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-  )
+  const isSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition)
 
   return { status, interimText, error, isSupported, start, stop, toggle, resetAccumulated }
 }

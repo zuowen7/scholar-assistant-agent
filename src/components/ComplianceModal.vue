@@ -207,6 +207,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppDialog from './shell/AppDialog.vue'
+import type { ComplianceIssue, ComplianceReport } from '../types'
 
 const { t } = useI18n()
 
@@ -214,7 +215,7 @@ const props = defineProps<{
   visible: boolean
   loading: boolean
   error: string
-  report: any | null
+  report: ComplianceReport | null
 }>()
 
 defineEmits<{
@@ -223,14 +224,14 @@ defineEmits<{
 }>()
 
 const scoreClass = computed(() => {
-  const score = (props.report?.summary as any)?.compliance_score || 0
+  const score = props.report?.summary?.compliance_score || 0
   if (score >= 80) return 'score-high'
   if (score >= 60) return 'score-mid'
   return 'score-low'
 })
 
 const statusLabel = computed(() => {
-  const status = (props.report?.summary as any)?.overall_status || 'unknown'
+  const status = props.report?.summary?.overall_status || 'unknown'
   const labels: Record<string, string> = {
     pass: t('editor.compliancePass'),
     warning: t('editor.complianceWarn'),
@@ -241,7 +242,7 @@ const statusLabel = computed(() => {
 })
 
 const riskLevelLabel = computed(() => {
-  const level = (props.report?.hallucination_risk as any)?.risk_level || 'unknown'
+  const level = props.report?.hallucination_risk?.risk_level || 'unknown'
   const labels: Record<string, string> = {
     low: t('editor.complianceLowRisk'),
     medium: t('editor.complianceMediumRisk'),
@@ -251,24 +252,22 @@ const riskLevelLabel = computed(() => {
   return labels[level] || level
 })
 
-function formatSections(sections: Record<string, any> | null | undefined): string {
+function formatSections(sections: Record<string, ComplianceIssue> | null | undefined): string {
   if (!sections) return t('editor.complianceNone')
   const names = Object.keys(sections)
   return names.length ? names.join(' · ') : t('editor.complianceNone')
 }
 
-function formatTermList(items: any[] | null | undefined): string {
+function formatTermList(items: (string | { term?: string })[] | null | undefined): string {
   if (!items?.length) return ''
   return items
     .map((item) => (typeof item === 'string' ? item : item?.term || JSON.stringify(item)))
     .join(', ')
 }
 
-function fmt(v: unknown): string {
+function fmt(v: ComplianceIssue): string {
   if (typeof v === 'string') return v
-  if (typeof v === 'object' && v !== null)
-    return (v as any).detail || (v as any).text || JSON.stringify(v)
-  return String(v ?? '')
+  return v.detail || v.text || JSON.stringify(v)
 }
 </script>
 

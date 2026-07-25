@@ -124,9 +124,7 @@
               :point="point"
               :rebuttal-sending="companion.state.rebuttalSending"
               @focus-anchor="companion.focusAnchor"
-              @update-point-status="
-                (status) => companion.updatePointStatus(point.id, status as any)
-              "
+              @update-point-status="(status) => companion.updatePointStatus(point.id, status)"
               @rebut="(pointId, message) => companion.rebut(pointId, message, content)"
             />
           </div>

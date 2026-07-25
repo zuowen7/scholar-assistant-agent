@@ -26,7 +26,7 @@
           :options="modeOptions"
           size="sm"
           vermilion-indicator
-          @update:model-value="$emit('update:appMode', $event as any)"
+          @update:model-value="$emit('update:appMode', $event as AppMode)"
         />
       </div>
 
@@ -118,7 +118,7 @@
               size="sm"
               full
               @update:model-value="
-                $emit('update:engineType', $event as any)
+                $emit('update:engineType', $event)
                 $emit('save-engine-settings')
               "
             />
@@ -153,7 +153,10 @@
 
             <div class="sp-lang-row">
               <label class="sp-label">{{ t('settings.language') }}</label>
-              <UiSelect :model-value="currentLocale" @update:model-value="setLocale($event as any)">
+              <UiSelect
+                :model-value="currentLocale"
+                @update:model-value="setLocale($event as SupportedLocale)"
+              >
                 <option value="zh-CN">简体中文</option>
                 <option value="en-US">English</option>
               </UiSelect>
@@ -168,7 +171,7 @@
                 size="sm"
                 full
                 @update:model-value="
-                  $emit('update:engineType', $event as any)
+                  $emit('update:engineType', $event)
                   $emit('save-engine-settings')
                 "
               />
@@ -497,7 +500,9 @@
                 <label class="sp-label">{{ t('voice.sensitivity') }}</label>
                 <UiSelect
                   :model-value="voiceSettings.sensitivity"
-                  @update:model-value="onVoiceSettingChange('sensitivity', $event as any)"
+                  @update:model-value="
+                    onVoiceSettingChange('sensitivity', $event as VoiceSettings['sensitivity'])
+                  "
                 >
                   <option value="low">{{ t('voice.low') }}</option>
                   <option value="medium">{{ t('voice.medium') }}</option>
@@ -633,6 +638,7 @@ import UiSelect from './ui/UiSelect.vue'
 import UiSlider from './ui/UiSlider.vue'
 import DebugPanel from './DebugPanel.vue'
 import type { AppMode } from '../types'
+import type { SupportedLocale } from '../i18n'
 import { API_BASE } from '../utils/api'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
@@ -697,7 +703,7 @@ defineEmits<{
   (e: 'update:appMode', value: AppMode): void
   (e: 'update:showAgentChat', value: boolean): void
   (e: 'update:engineType', value: 'ollama' | 'cloud'): void
-  (e: 'update:cloudConfig', value: any): void
+  (e: 'update:cloudConfig', value: typeof props.cloudConfig): void
   (e: 'update:ollamaModel', value: string): void
   (e: 'update:proxyUrl', value: string): void
   (e: 'toggle-theme', event?: MouseEvent): void
@@ -724,8 +730,7 @@ defineEmits<{
 const settingsPopoverRef = ref<InstanceType<typeof UiPopover> | null>(null)
 const statusPopoverRef = ref<InstanceType<typeof UiPopover> | null>(null)
 const settingsPopoverOpen = computed(() => settingsPopoverRef.value?.open ?? false)
-const speechSupported =
-  !!(window as any).SpeechRecognition || !!(window as any).webkitSpeechRecognition
+const speechSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition)
 const settingsTab = ref<'engine' | 'display' | 'network' | 'background' | 'voice'>('engine')
 
 // Zotero config (self-contained — loads/saves via /api/config directly)

@@ -11,6 +11,13 @@ import { i18n } from '../i18n'
 import { logger } from '../utils/logger'
 import { readSseStream } from '../utils/streamReader'
 
+/** Raw history message shape returned by the workflows messages endpoint. */
+interface RawHistoryMessage {
+  role?: string
+  content?: string
+  events?: AgentEvent[]
+}
+
 const API_URL = API_BASE
 
 // ── Module-level singleton state — survives page switches ──────────
@@ -629,8 +636,8 @@ export function useAgentChat() {
     try {
       const resp = await fetch(`${API_URL}/api/agent/v2/workflows/${wfId}/messages`)
       if (!resp.ok) return false
-      const data = await resp.json()
-      const loaded: AgentChatMessage[] = (data.messages || []).map((m: any, i: number) => ({
+      const data = (await resp.json()) as { messages?: RawHistoryMessage[] }
+      const loaded: AgentChatMessage[] = (data.messages || []).map((m, i) => ({
         id: `hist_${i}`,
         role: m.role === 'user' ? 'user' : 'assistant',
         content: m.content || '',

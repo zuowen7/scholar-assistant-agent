@@ -191,13 +191,13 @@
               <div
                 v-if="
                   (evt.metadata?.arguments || evt.metadata?.args) &&
-                  Object.keys((evt.metadata?.arguments || evt.metadata?.args) as any).length
+                  Object.keys((evt.metadata?.arguments || evt.metadata?.args) ?? {}).length
                 "
                 class="evt-tool-args"
               >
                 <span class="evt-args-label">{{ t('agent.labelParams') }}</span>
                 <code class="evt-args-code">{{
-                  formatToolArgs((evt.metadata?.arguments || evt.metadata?.args) as any)
+                  formatToolArgs((evt.metadata?.arguments || evt.metadata?.args) ?? {})
                 }}</code>
               </div>
             </div>
@@ -1072,10 +1072,10 @@ watch(pendingApproval, (p) => {
 
 // Agent 写入文件后实时刷新文件树和编辑器
 watch(pendingCheckpoint, () => {
-  const cp = pendingCheckpoint.value as any
+  const cp = pendingCheckpoint.value
   if (cp) {
-    const filePath = cp.file as string | undefined
-    const content = cp.content as string | undefined
+    const filePath = cp.file
+    const content = cp.content
     if (filePath && content && !cp.content_truncated) {
       const result = applyExternalFileUpdate(filePath, content)
       if (result === 'conflict') {
@@ -1202,17 +1202,16 @@ async function deleteDoc(id: string) {
 }
 
 // ── Paper templates ──
-const templates = ref<
-  { id: string; name: string; venue: string; description: string; icon: string }[]
->([])
-const templatesLoading = ref(false)
-const previewingTemplate = ref<{
+interface PaperTemplate {
   id: string
   name: string
   venue: string
   description: string
   icon: string
-} | null>(null)
+}
+const templates = ref<PaperTemplate[]>([])
+const templatesLoading = ref(false)
+const previewingTemplate = ref<PaperTemplate | null>(null)
 
 async function loadPaperTemplates() {
   templatesLoading.value = true
@@ -1238,7 +1237,7 @@ async function ingestPaperAssets() {
   }
 }
 
-function createFromTemplate(t: any) {
+function createFromTemplate(t: PaperTemplate) {
   tab.value = 'chat'
   fetch(`${API_BASE}/api/paper-scaffold`, {
     method: 'POST',
