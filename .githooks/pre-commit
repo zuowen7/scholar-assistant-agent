@@ -57,12 +57,11 @@ fi
 
 # ── 前端：Prettier 格式检查暂存文件 ─────────────────
 if [ -n "$TS_FILES" ]; then
-  # 与 CI 一致：Prettier 全仓基线尚未建立（ci.yml: "Prettier format audit
-  # (non-blocking until baseline)"），hook 不应比 CI 更严。
-  # 待独立的全量 format 基线提交后，改回 HAS_ERROR=1 硬阻断。
+  # Prettier 全仓基线已建立（commit 6d94540），与 CI 一致：格式不合规即阻断。
   echo -e "${BLUE}[pre-commit]${NC} Prettier 格式检查..."
   if ! npx --no-install prettier --check $TS_FILES 2>&1; then
-    echo -e "${YELLOW}[pre-commit]${NC} [WARN] 格式检查发现问题（基线建立前不阻断）。运行 ${YELLOW}npm run format${NC} 修复"
+    echo -e "${RED}[pre-commit]${NC} Prettier 格式检查失败。运行 ${YELLOW}npm run format${NC} 修复"
+    HAS_ERROR=1
   fi
 fi
 
@@ -92,18 +91,17 @@ if [ -n "$PY_FILES" ]; then
     # 简化处理：切到 python/ 目录，把路径前缀去掉
     PY_FILES_REL=$(echo "$PY_FILES" | sed 's|^python/||' || true)
     if [ -n "$PY_FILES_REL" ]; then
-      # Ruff lint + format 采用与 CI 一致的「基线建立前不阻断」策略。
-      # ci.yml 中 Ruff audit / Ruff format audit 均为 non-blocking until baseline，
-      # 只有 pytest 是硬门禁。hook 不应比 CI 更严，否则团队会在本地被卡而 CI 放行，
-      # 造成体验割裂。待全仓 lint/format 基线清零后，再把下面两处 WARN 改回 HAS_ERROR=1。
+      # Ruff 全仓 lint/format 基线已建立（commit 359d3c3），与 CI 一致：不合规即阻断。
       if ! (cd python && "$RUFF_PY" -m ruff check $PY_FILES_REL) 2>&1; then
-        echo -e "${YELLOW}[pre-commit]${NC} [WARN] Ruff 检查发现问题（基线建立前不阻断）。运行 ${YELLOW}npm run py:lint:fix${NC} 修复"
+        echo -e "${RED}[pre-commit]${NC} Ruff lint 检查失败。运行 ${YELLOW}npm run py:lint:fix${NC} 修复"
+        HAS_ERROR=1
       fi
 
       # Ruff format --check（只检查不修改）
       echo -e "${BLUE}[pre-commit]${NC} Ruff format 检查..."
       if ! (cd python && "$RUFF_PY" -m ruff format --check $PY_FILES_REL) 2>&1; then
-        echo -e "${YELLOW}[pre-commit]${NC} [WARN] 格式检查发现问题（基线建立前不阻断）。运行 ${YELLOW}npm run py:format${NC} 修复"
+        echo -e "${RED}[pre-commit]${NC} Ruff format 检查失败。运行 ${YELLOW}npm run py:format${NC} 修复"
+        HAS_ERROR=1
       fi
     fi
   fi
