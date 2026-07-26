@@ -365,10 +365,36 @@ class ConversationRuntime:
                     return
 
                 # Execute tool calls
-                for tb in tool_blocks:
+                for idx, tb in enumerate(tool_blocks):
                     async for evt in self._execute_tool(tb):
                         yield evt
                     if self._approval_denied or self._aborted or self._tool_stop_reason:
+                        # Supplement synthetic ToolResultBlocks for remaining
+                        # unexecuted tool calls so the persisted session history
+                        # stays protocol-valid (every ToolUseBlock needs a
+                        # matching ToolResultBlock).
+                        for remaining in tool_blocks[idx + 1 :]:
+                            skip_output = (
+                                "Tool execution skipped because the turn was "
+                                "stopped by a safety limit or user action."
+                            )
+                            self.session.append(
+                                Message(
+                                    role=MessageRole.TOOL,
+                                    blocks=[
+                                        ToolResultBlock(
+                                            tool_use_id=remaining.id,
+                                            tool_name=remaining.name,
+                                            output=skip_output,
+                                            is_error=True,
+                                        ),
+                                    ],
+                                )
+                            )
+                            yield AgentEvent.tool_result(
+                                remaining.id, remaining.name, skip_output, is_error=True
+                            )
+                        self._auto_save()
                         return
                 return
 

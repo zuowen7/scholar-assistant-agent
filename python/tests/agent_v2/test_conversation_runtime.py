@@ -770,3 +770,132 @@ class TestStress:
         for i in range(10):
             events = await _collect_events(rt, f"message {i}")
             assert any(e.type in (AgentEventType.RESPONSE, AgentEventType.ERROR) for e in events)
+
+
+# ============================================================================
+# 6.7 多工具熔断协议完整性 (P0 regression)
+# ============================================================================
+
+
+class _ScriptedProvider:
+    """Returns a scripted response per call index, ignoring message content.
+
+    Lets a test drive multiple LLM turns within a single runtime turn so a
+    circuit breaker can fire mid-batch after an earlier turn has pre-loaded a
+    tool-call fingerprint.
+    """
+
+    model = "scripted"
+
+    def __init__(self, responses: list):
+        self._responses = responses
+        self._index = 0
+
+    async def chat(self, *, messages, tools, system_prompt=None):
+        if self._index >= len(self._responses):
+            return _text_response("done")
+        response = self._responses[self._index]
+        self._index += 1
+        return response
+
+
+def _read(file_path: str = "main.md", tool_id: str = "tu_read") -> ToolUseBlock:
+    return ToolUseBlock(id=tool_id, name="read_file", input=json.dumps({"file_path": file_path}))
+
+
+class TestMultiToolCircuitBreakerProtocol:
+    """Every ToolUseBlock must have a matching ToolResultBlock, even when a
+    circuit breaker stops execution mid-batch. Otherwise the persisted session
+    is protocol-invalid and the next resume fails with 'missing tool result'."""
+
+    @pytest.mark.asyncio
+    async def test_breaker_mid_batch_supplements_skipped_tool_results(self, workspace: Path):
+        """Turn step 0 reads main.md twice (fingerprint count -> 2). Step 1
+        returns [read, write, grep]; the 3rd identical read trips the limit and
+        stops the batch. write and grep were never executed, so they must be
+        supplemented with synthetic 'skipped' error results."""
+        provider = _ScriptedProvider(
+            [
+                ProviderResponse(
+                    blocks=[_read(tool_id="r1"), _read(tool_id="r2")], stop_reason="tool_use"
+                ),
+                ProviderResponse(
+                    blocks=[
+                        _read(tool_id="r3"),
+                        ToolUseBlock(
+                            id="w1",
+                            name="write_file",
+                            input=json.dumps({"file_path": "out.md", "content": "x"}),
+                        ),
+                        ToolUseBlock(
+                            id="g1",
+                            name="grep_files",
+                            input=json.dumps({"pattern": "Hello"}),
+                        ),
+                    ],
+                    stop_reason="tool_use",
+                ),
+                _text_response("final answer"),
+            ]
+        )
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        session = Session(workspace=str(workspace))
+        rt = ConversationRuntime(
+            provider=provider, tool_registry=registry, permission_policy=policy, session=session
+        )
+
+        events = await _collect_events(rt, "read the file a few times then edit")
+
+        call_ids = {e.data["id"] for e in events if e.type == AgentEventType.TOOL_CALL}
+        results = [e for e in events if e.type == AgentEventType.TOOL_RESULT]
+        result_ids = {e.data["id"] for e in results}
+
+        # Every emitted tool call must have exactly one matching result.
+        assert call_ids == result_ids, f"calls {call_ids} != results {result_ids}"
+        # The two never-executed tools are marked as skipped error results.
+        skipped = {e.data["id"] for e in results if e.data.get("is_error")}
+        assert {"w1", "g1"} <= skipped, f"write/grep should be skipped, got {skipped}"
+
+    @pytest.mark.asyncio
+    async def test_persisted_history_pairs_every_tool_use_with_result(self, workspace: Path):
+        """After a mid-batch breaker stop, the session's persisted messages must
+        pair every ToolUseBlock with a ToolResultBlock (protocol invariant)."""
+        provider = _ScriptedProvider(
+            [
+                ProviderResponse(
+                    blocks=[_read(tool_id="r1"), _read(tool_id="r2")], stop_reason="tool_use"
+                ),
+                ProviderResponse(
+                    blocks=[
+                        _read(tool_id="r3"),
+                        ToolUseBlock(
+                            id="w1",
+                            name="write_file",
+                            input=json.dumps({"file_path": "out.md", "content": "x"}),
+                        ),
+                    ],
+                    stop_reason="tool_use",
+                ),
+                _text_response("final answer"),
+            ]
+        )
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        session = Session(workspace=str(workspace))
+        rt = ConversationRuntime(
+            provider=provider, tool_registry=registry, permission_policy=policy, session=session
+        )
+
+        await _collect_events(rt, "read repeatedly then write")
+
+        use_ids: set[str] = set()
+        result_ids: set[str] = set()
+        for message in session.messages:
+            for block in message.blocks:
+                if isinstance(block, ToolUseBlock):
+                    use_ids.add(block.id)
+                elif isinstance(block, ToolResultBlock):
+                    result_ids.add(block.tool_use_id)
+
+        assert use_ids == result_ids, f"ToolUse {use_ids} != ToolResult {result_ids}"
