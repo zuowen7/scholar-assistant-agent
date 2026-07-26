@@ -38,13 +38,9 @@
           <button type="button" class="header-action" @click="handleSaveFile">
             <Save :size="16" /> {{ t('editor.saveAction') }}
           </button>
-          <UiDropdown :items="headerExportItems" :width="210" align="end">
-            <template #trigger>
-              <UiButton variant="primary" size="sm" :loading="exportLoading">
-                {{ t('editor.exportLabel') }}
-              </UiButton>
-            </template>
-          </UiDropdown>
+          <UiButton variant="primary" size="sm" @click="navigate('export')">
+            {{ t('editor.exportLabel') }}
+          </UiButton>
           <button
             type="button"
             class="header-icon"
@@ -121,12 +117,8 @@
             <EditorToolbar
               ref="toolbarRef"
               :active-right-tab="rightPanelTab"
-              :templates="exportTemplates"
-              :selected-template="selectedTemplate"
-              :export-loading="exportLoading"
               :message="exportMessage"
               @toggle-right="toggleRightPanel"
-              @select-template="selectedTemplate = $event"
               @image-selected="handleImageSelected"
               @vision-selected="handleVisionSelected"
               @insert-table="insertTable"
@@ -312,8 +304,6 @@ import AppPromptDialog from './shell/AppPromptDialog.vue'
 import SegmentedControl from './shell/SegmentedControl.vue'
 import StatusBadge from './shell/StatusBadge.vue'
 import UiButton from './ui/UiButton.vue'
-import UiDropdown from './ui/UiDropdown.vue'
-import type { DropdownItem } from './ui/UiDropdown.vue'
 import {
   FileCode2,
   FileText,
@@ -331,7 +321,7 @@ import { useEditor } from '../composables/useEditor'
 import { useEditorVision } from '../composables/useEditorVision'
 import { useToast } from '../composables/useToast'
 import { useEditorCitation } from '../composables/useEditorCitation'
-import { useEditorIO } from '../composables/useEditorIO'
+import { useExportWorkspace } from '../composables/useExportWorkspace'
 import { useMindMap, markdownToMindMapNodes } from '../composables/useMindMap'
 import { useFileTree } from '../composables/useFileTree'
 import { useArgumentCompanion } from '../composables/useArgumentCompanion'
@@ -374,7 +364,6 @@ const { applyAiResult, undoEdit } = useEditor()
 // -- Feature composables ---------------------------------------------------
 const { analyzeVision, insertImageFile } = useEditorVision()
 const { processCitations, previewCitations, getZoteroStatus, searchZotero } = useEditorCitation()
-const { exportToWord, exportLatex, exportPdf, loadExportTemplates, saveBlob } = useEditorIO()
 const {
   resetMindMap,
   hasSavedMindMap,
@@ -388,7 +377,8 @@ const {
 } = useMindMap()
 const { refresh: refreshFileTree, rootDir } = useFileTree()
 const { sendMessage: sendAgentMessage } = useAgentChat()
-const { draftView, rightDock, setDraftView, toggleAgentDock } = useWorkspaceNavigation()
+const { draftView, rightDock, setDraftView, toggleAgentDock, navigate } = useWorkspaceNavigation()
+const exportWorkspace = useExportWorkspace()
 const { openProjectWorkspace } = useProjectWorkspace()
 
 // -- Workspace mode -------------------------------------------------------
@@ -477,18 +467,9 @@ const toggleHeaderRightPanel = () => {
 }
 
 // -- Export state ---------------------------------------------------------
-const exportTemplates = ref<{ id: string; name: string }[]>([])
-const selectedTemplate = ref('')
-const exportLoading = ref(false)
 const exportMessage = ref('')
 const toolbarRef = ref<InstanceType<typeof EditorToolbar> | null>(null)
 let exportToastTimer: ReturnType<typeof setTimeout> | null = null
-const tectonicAvailable = ref(false)
-const headerExportItems = computed<DropdownItem[]>(() => [
-  { text: 'Word (.docx)', onClick: handleExportWord },
-  { text: 'LaTeX (.tex)', onClick: handleExportLatex },
-  { text: 'PDF', onClick: handleExportPdf },
-])
 
 // -- Compliance ------------------------------------------------------------
 const showCompliance = ref(false)
@@ -717,94 +698,6 @@ async function openMindMapFromEditor() {
 async function handleSaveFile() {
   const err = await saveFile()
   showExportToast(err || t('editor.saved'))
-}
-
-function _extractTitle(): string {
-  const m = content.value.match(/^#\s+(.+)$/m)
-  if (m) return m[1].trim()
-  return (activeTab.value?.name || 'paper').replace(/\.md$/i, '')
-}
-
-async function handleExportWord() {
-  if (exportLoading.value) return
-  exportLoading.value = true
-  try {
-    const title = _extractTitle()
-    const err = await exportToWord(content.value, title)
-    showExportToast(err || t('editor.wordExportStarted'))
-  } catch (e) {
-    showExportToast(t('editor.wordExportFailed', { msg: String(e) }))
-  } finally {
-    exportLoading.value = false
-  }
-}
-
-async function handleExportLatex() {
-  if (exportLoading.value) return
-  if (!selectedTemplate.value) {
-    showExportToast(t('editor.selectTemplate'))
-    return
-  }
-  if (!content.value.trim()) {
-    showExportToast(t('editor.pleaseInputContent'))
-    return
-  }
-  exportLoading.value = true
-  try {
-    const { tex, error } = await exportLatex(content.value, selectedTemplate.value)
-    if (error) {
-      showExportToast(error)
-      return
-    }
-    if (tex) {
-      const title = _extractTitle()
-      const blob = new Blob([tex], { type: 'text/x-tex;charset=utf-8' })
-      const saveErr = await saveBlob(blob, `${title}.tex`)
-      if (saveErr === 'Cancelled') {
-        showExportToast(t('editor.cancelled'))
-        return
-      }
-      showExportToast(saveErr || t('editor.latexSaved', 'LaTeX saved'))
-    } else showExportToast(t('editor.conversionEmpty'))
-  } catch (e) {
-    showExportToast(t('editor.exportFailed', { msg: String(e) }))
-  } finally {
-    exportLoading.value = false
-  }
-}
-
-async function handleExportPdf() {
-  if (exportLoading.value) return
-  if (!selectedTemplate.value) {
-    showExportToast(t('editor.selectTemplate'))
-    return
-  }
-  if (!content.value.trim()) {
-    showExportToast(t('editor.pleaseInputContent'))
-    return
-  }
-  if (!tectonicAvailable.value) {
-    const { tectonic_available } = await loadExportTemplates()
-    tectonicAvailable.value = tectonic_available
-    if (!tectonic_available) {
-      showExportToast(t('editor.installTectonic'))
-      return
-    }
-  }
-  exportLoading.value = true
-  try {
-    const title = _extractTitle()
-    const err = await exportPdf(content.value, selectedTemplate.value, title)
-    if (err === 'Cancelled') {
-      showExportToast(t('editor.cancelled'))
-      return
-    }
-    showExportToast(err || t('editor.pdfSaved'))
-  } catch (e) {
-    showExportToast(t('editor.pdfExportFailed', { msg: String(e) }))
-  } finally {
-    exportLoading.value = false
-  }
 }
 
 async function handleProcessCitations() {
@@ -1075,11 +968,6 @@ function onKeyDown(e: KeyboardEvent) {
 // -- Lifecycle -------------------------------------------------------------
 onMounted(() => {
   window.addEventListener('keydown', onKeyDown)
-  loadExportTemplates().then(({ templates, tectonic_available }) => {
-    exportTemplates.value = templates
-    tectonicAvailable.value = tectonic_available
-    if (templates.length && !selectedTemplate.value) selectedTemplate.value = templates[0].id
-  })
   window.addEventListener('paper-scaffold', handlePaperScaffold as EventListener)
   window.addEventListener('agent-files-changed', handleAgentFileChange as EventListener)
 
@@ -1098,6 +986,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (exportToastTimer) clearTimeout(exportToastTimer)
   window.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('paper-scaffold', handlePaperScaffold as EventListener)
   window.removeEventListener('agent-files-changed', handleAgentFileChange as EventListener)
@@ -1129,9 +1018,10 @@ function handleVoiceSetMindmap() {
 
 function handleVoiceExport(e: Event) {
   const { format } = (e as CustomEvent).detail
-  if (format === 'word') handleExportWord()
-  else if (format === 'pdf') handleExportPdf()
-  else if (format === 'latex') handleExportLatex()
+  if (format === 'word' || format === 'pdf' || format === 'latex') {
+    exportWorkspace.format.value = format
+    navigate('export')
+  }
 }
 
 function handleVoiceAiPreset(e: Event) {

@@ -47,7 +47,7 @@
     {
       "id": "neurips",
       "name": "NeurIPS",
-      "description": "NeurIPS 2025 官方模板，AI/ML 顶会",
+      "description": "NeurIPS 官方模板，AI/ML 会议论文",
       "class": "article",
       "color": "#7B1FA2",
       "bib_style": "plain",

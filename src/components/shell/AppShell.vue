@@ -66,7 +66,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 defineProps<{
-  activeModule: 'draft' | 'sources' | 'review' | null
+  activeModule: 'draft' | 'sources' | 'review' | 'export' | null
   projectName?: string | null
   workspaceActive?: boolean
   agentOpen?: boolean
@@ -75,7 +75,7 @@ defineProps<{
   modelOnline?: boolean
 }>()
 defineEmits<{
-  navigate: [module: 'draft' | 'sources' | 'review']
+  navigate: [module: 'draft' | 'sources' | 'review' | 'export']
   home: []
   settings: []
   agent: []

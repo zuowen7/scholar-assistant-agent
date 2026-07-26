@@ -63,11 +63,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Bot, Files, Library, SquareCheckBig, Settings } from 'lucide-vue-next'
+import { Bot, Download, Files, Library, SquareCheckBig, Settings } from 'lucide-vue-next'
 import ModelStatus from './ModelStatus.vue'
 
 defineProps<{
-  activeModule: 'draft' | 'sources' | 'review' | null
+  activeModule: 'draft' | 'sources' | 'review' | 'export' | null
   projectName?: string | null
   workspaceActive?: boolean
   agentOpen?: boolean
@@ -76,7 +76,7 @@ defineProps<{
   modelOnline?: boolean
 }>()
 defineEmits<{
-  navigate: [module: 'draft' | 'sources' | 'review']
+  navigate: [module: 'draft' | 'sources' | 'review' | 'export']
   home: []
   settings: []
   agent: []
@@ -92,6 +92,7 @@ const navItems = computed(() => [
     icon: SquareCheckBig,
     requiresWorkspace: true,
   },
+  { key: 'export' as const, label: t('shell.export'), icon: Download, requiresWorkspace: true },
 ])
 </script>
 

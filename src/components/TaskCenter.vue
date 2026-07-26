@@ -39,6 +39,7 @@ function openTask(kind: WorkspaceTask['kind']) {
     if (currentProject.value) workspace.navigate('sources')
     else workspace.openStandaloneTranslation()
   } else if (kind === 'review') workspace.navigate('review')
+  else if (kind === 'export') workspace.navigate('export')
   else workspace.toggleAgentDock(true)
 }
 </script>

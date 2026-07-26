@@ -66,6 +66,13 @@ describe('useWorkspaceNavigation', () => {
     expect(workspace.rightDock.value).toBeNull()
   })
 
+  it('treats export as a project workspace section', () => {
+    const workspace = useWorkspaceNavigation()
+    workspace.enterWorkspace('D:/papers/demo')
+    workspace.navigate('export')
+    expect(workspace.location.value).toMatchObject({ kind: 'workspace', section: 'export' })
+  })
+
   it('clears transition state after the navigation motion', () => {
     vi.useFakeTimers()
     const workspace = useWorkspaceNavigation()

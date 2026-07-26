@@ -114,6 +114,10 @@
               key="argument"
               class="arg-mode"
             />
+            <ExportWorkspace
+              v-else-if="location.kind === 'workspace' && location.section === 'export'"
+              key="export"
+            />
           </KeepAlive>
         </div>
         <template #assistant>
@@ -234,6 +238,7 @@ import { useAppWindow } from './composables/useAppWindow'
 
 const TranslateView = defineAsyncComponent(() => import('./components/TranslateView.vue'))
 const SourceLibraryView = defineAsyncComponent(() => import('./components/SourceLibraryView.vue'))
+const ExportWorkspace = defineAsyncComponent(() => import('./components/ExportWorkspace.vue'))
 const ReviewerWorkspace = defineAsyncComponent(
   () => import('./components/argument/ReviewerWorkspace.vue'),
 )

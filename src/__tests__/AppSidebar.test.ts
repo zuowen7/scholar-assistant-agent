@@ -17,6 +17,7 @@ describe('AppSidebar Agent entry', () => {
     })
 
     expect(wrapper.find('.primary-nav [data-testid="workspace-agent"]').exists()).toBe(false)
+    expect(wrapper.find('.primary-nav').text()).toContain('shell.export')
     await wrapper.get('.sidebar-footer [data-testid="workspace-agent"]').trigger('click')
     expect(wrapper.emitted('agent')).toHaveLength(1)
   })
