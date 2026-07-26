@@ -143,7 +143,10 @@ export interface PendingApproval {
 const pendingApproval = ref<PendingApproval | null>(null)
 
 watch(activeRunSessionId, (newSid) => {
-  pendingApproval.value = newSid ? (_approvalBySession.get(newSid) ?? null) : null
+  // Only restore — never clear — when the run ID changes. The finally block
+  // intentionally clears activeRunSessionId after each run; that cleanup must
+  // not wipe a pending approval that was raised during the stream.
+  if (newSid) pendingApproval.value = _approvalBySession.get(newSid) ?? null
 })
 
 /** Reset all module-level singleton state — for use in tests only. */
@@ -548,15 +551,15 @@ export function useAgentChat() {
     } finally {
       sending.value = false
       abortController = null
-      if (isSelectionRun) {
-        // Ephemeral selection sessions must not leak into the main conversation.
-        // The persistent workflow ID was never touched; clear only the run ID.
-        activeRunSessionId.value = null
-      } else if (activeRunSessionId.value) {
+      if (!isSelectionRun && activeRunSessionId.value) {
         // Normal conversation: promote the run session to the persistent
         // workflow ID so subsequent messages continue the same conversation.
         conversationWorkflowId.value = activeRunSessionId.value
       }
+      // Always clear the run ID — it is only meaningful while an SSE stream
+      // is active. Leaving it set causes floating windows and abort calls to
+      // target a stale session.
+      activeRunSessionId.value = null
     }
   }
 
@@ -691,6 +694,7 @@ export function useAgentChat() {
     } finally {
       sending.value = false
       abortController = null
+      activeRunSessionId.value = null
     }
   }
 

@@ -107,6 +107,9 @@ class ConversationRuntime:
         self._tool_calls_this_turn = 0
         self._tool_errors_this_turn = 0
         self._tool_call_counts: dict[str, int] = {}
+        self._readonly_tool_names = frozenset(
+            name for name, perm in tool_registry.permission_specs() if perm == "read-only"
+        )
         self._tool_stop_reason: str | None = None
         self._tool_stop_code: str | None = None
         self._selection_edit_completed = False
@@ -562,9 +565,17 @@ class ConversationRuntime:
         # Checkpoint after file modifications: include new content for frontend
         if tb.name in ("write_file", "str_replace") and not is_error:
             # A successful write changes file-system state, so earlier identical
-            # reads are no longer "repeated" — reset fingerprints to avoid
-            # false circuit-breaker trips on legitimate read-edit-read cycles.
-            self._tool_call_counts.clear()
+            # reads are no longer "repeated" — reset only read-only fingerprints
+            # to avoid false circuit-breaker trips on legitimate read-edit-read
+            # cycles. Write-tool fingerprints are preserved so that repeated
+            # identical writes still trip the breaker.
+            readonly_prefixes = tuple(f"{rn}:" for rn in self._readonly_tool_names)
+            if readonly_prefixes:
+                self._tool_call_counts = {
+                    k: v
+                    for k, v in self._tool_call_counts.items()
+                    if not k.startswith(readonly_prefixes)
+                }
             if self.edit_scope is not None and tb.name == "str_replace":
                 self._selection_edit_completed = True
             new_content = ""
