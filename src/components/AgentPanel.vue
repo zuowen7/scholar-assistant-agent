@@ -620,8 +620,8 @@ async function openAgentWindow() {
   // Pass agent-only flag and optional session via URL params — sessionStorage is
   // window-isolated in Tauri so URL params are the only reliable cross-window channel.
   const params = new URLSearchParams({ 'agent-only': '1' })
-  const { sessionId } = useAgentChat()
-  if (sessionId.value) params.set('session', sessionId.value)
+  const { activeRunSessionId } = useAgentChat()
+  if (activeRunSessionId.value) params.set('session', activeRunSessionId.value)
   const url = `${window.location.origin}/?${params}`
 
   _agentWindow = new WebviewWindow('agent', {
@@ -781,7 +781,7 @@ const {
   abortSession,
   startNewWorkflow,
   loadWorkflowMessages,
-  sessionId,
+  activeRunSessionId,
   pendingCheckpoint,
   fetchSessions: _fetchSessions,
   fetchAgentSkills,
@@ -1100,7 +1100,7 @@ watch(pendingApproval, (p) => {
     setActiveEdit({
       editId: p.event_id,
       eventId: p.event_id,
-      sessionId: sessionId.value || '',
+      sessionId: activeRunSessionId.value || '',
       operation: (p.tool_name === 'write_file' ? 'write_file' : 'str_replace') as
         'str_replace' | 'write_file',
       filePath: (args?.file_path as string) || '',

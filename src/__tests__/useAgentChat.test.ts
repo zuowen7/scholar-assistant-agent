@@ -166,8 +166,9 @@ describe('useAgentChat', () => {
     })
 
     it('has no session id initially', () => {
-      const { sessionId } = useAgentChat()
-      expect(sessionId.value).toBeNull()
+      const { conversationWorkflowId, activeRunSessionId } = useAgentChat()
+      expect(conversationWorkflowId.value).toBeNull()
+      expect(activeRunSessionId.value).toBeNull()
     })
 
     it('has no pending approval initially', () => {
@@ -228,7 +229,7 @@ describe('useAgentChat', () => {
       expect(thoughts[0].content).toBe('先读取当前选区。')
     })
 
-    it('sets sessionId when session_started received', async () => {
+    it('promotes activeRunSessionId to conversationWorkflowId after a normal run', async () => {
       vi.stubGlobal(
         'fetch',
         vi
@@ -242,10 +243,11 @@ describe('useAgentChat', () => {
           ),
       )
 
-      const { sendMessage, sessionId } = useAgentChat()
+      const { sendMessage, conversationWorkflowId, activeRunSessionId } = useAgentChat()
       await sendMessage('Start session')
 
-      expect(sessionId.value).toBe('sess_abc')
+      expect(conversationWorkflowId.value).toBe('sess_abc')
+      expect(activeRunSessionId.value).toBe('sess_abc')
     })
 
     it('isolates an editor selection turn and sends its exact anchor', async () => {
@@ -316,10 +318,10 @@ describe('useAgentChat', () => {
         ),
       )
 
-      const { sendMessage, sessionId } = useAgentChat()
+      const { sendMessage, conversationWorkflowId } = useAgentChat()
       await sendMessage('Start compatible session')
 
-      expect(sessionId.value).toBe('sess_content')
+      expect(conversationWorkflowId.value).toBe('sess_content')
     })
 
     it('marks assistant streaming complete after done event', async () => {
@@ -575,11 +577,11 @@ describe('useAgentChat', () => {
         ),
       )
 
-      const { loadWorkflowMessages, messages, sessionId } = useAgentChat()
+      const { loadWorkflowMessages, messages, conversationWorkflowId } = useAgentChat()
       const loaded = await loadWorkflowMessages('sess_history')
 
       expect(loaded).toBe(true)
-      expect(sessionId.value).toBe('sess_history')
+      expect(conversationWorkflowId.value).toBe('sess_history')
       expect(messages.value).toHaveLength(3)
       expect(messages.value[1].events[0].metadata?.tool_name).toBe('read_file')
       expect(messages.value[2].content).toBe('Review complete')
@@ -649,7 +651,7 @@ describe('useAgentChat', () => {
 
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeSseResponse(chunks)))
 
-      const { sendMessage, pendingApproval, messages, sessionId } = useAgentChat()
+      const { sendMessage, pendingApproval, messages } = useAgentChat()
       await sendMessage('Write file outside workspace')
 
       // Flush pending microtasks
@@ -727,17 +729,24 @@ describe('useAgentChat', () => {
             makeSseResponse([makeSessionStartedChunk('sess_existing'), makeDoneChunk()]),
           ),
       )
-      const { sendMessage, startNewWorkflow, messages, sessionId } = useAgentChat()
+      const {
+        sendMessage,
+        startNewWorkflow,
+        messages,
+        conversationWorkflowId,
+        activeRunSessionId,
+      } = useAgentChat()
       await sendMessage('First task')
 
       startNewWorkflow()
 
       expect(messages.value).toHaveLength(0)
-      expect(sessionId.value).toBeNull()
+      expect(conversationWorkflowId.value).toBeNull()
+      expect(activeRunSessionId.value).toBeNull()
     })
 
     it('_resetForTesting clears all state', () => {
-      const { messages, sendMessage, sessionId } = useAgentChat()
+      const { messages, conversationWorkflowId, activeRunSessionId } = useAgentChat()
 
       vi.stubGlobal(
         'fetch',
@@ -753,7 +762,8 @@ describe('useAgentChat', () => {
       )
 
       // We can't await here directly but we can check reset works
-      sessionId.value = 'test_session'
+      conversationWorkflowId.value = 'test_session'
+      activeRunSessionId.value = 'test_session'
       messages.value.push({
         id: 'msg_1',
         role: 'user',
@@ -766,7 +776,68 @@ describe('useAgentChat', () => {
       _resetForTesting()
 
       expect(messages.value).toHaveLength(0)
-      expect(sessionId.value).toBeNull()
+      expect(conversationWorkflowId.value).toBeNull()
+      expect(activeRunSessionId.value).toBeNull()
+    })
+  })
+
+  // ── Selection session isolation (P0 regression) ──────────────────────
+
+  describe('selection session isolation', () => {
+    it('does not pollute conversationWorkflowId after a selection run', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          makeSseResponse([
+            makeSessionStartedChunk('sess_main'),
+            makeResponseChunk('main answer'),
+            makeDoneChunk(),
+          ]),
+        )
+        .mockResolvedValueOnce(
+          makeSseResponse([
+            makeSessionStartedChunk('sess_ephemeral'),
+            makeResponseChunk('selection answer'),
+            makeDoneChunk(),
+          ]),
+        )
+        .mockResolvedValueOnce(
+          makeSseResponse([
+            makeSessionStartedChunk('sess_main'),
+            makeResponseChunk('follow-up answer'),
+            makeDoneChunk(),
+          ]),
+        )
+      vi.stubGlobal('fetch', fetchMock)
+
+      const { sendMessage, conversationWorkflowId, activeRunSessionId } = useAgentChat()
+
+      // 1. Normal conversation establishes the workflow
+      await sendMessage('Hello')
+      expect(conversationWorkflowId.value).toBe('sess_main')
+
+      // 2. Selection edit creates an ephemeral session
+      await sendMessage('Polish this', 'selected text', '', 'D:/paper', 'D:/paper/main.md', [], {
+        selection: {
+          filePath: 'D:/paper/main.md',
+          startLine: 1,
+          startColumn: 1,
+          endLine: 1,
+          endColumn: 14,
+          text: 'selected text',
+        },
+      })
+
+      // Selection run must NOT overwrite the persistent workflow ID
+      expect(conversationWorkflowId.value).toBe('sess_main')
+      // The ephemeral run session is cleared after completion
+      expect(activeRunSessionId.value).toBeNull()
+
+      // 3. Next normal message must use the original workflow, not the ephemeral one
+      await sendMessage('Continue the conversation')
+      const lastBody = JSON.parse(String((fetchMock.mock.calls[2][1] as RequestInit).body))
+      expect(lastBody.workflow_id).toBe('sess_main')
+      expect(lastBody.selection).toBeUndefined()
     })
   })
 })

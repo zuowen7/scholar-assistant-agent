@@ -57,7 +57,7 @@ export function useTaskCenter() {
     }
     if (agent.sending.value) {
       items.push({
-        id: `agent-${agent.sessionId.value || 'current'}`,
+        id: `agent-${agent.activeRunSessionId.value || 'current'}`,
         kind: 'agent',
         label: agent.pipelineStage.value || 'Agent 正在执行任务',
         status: 'running',

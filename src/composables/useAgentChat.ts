@@ -70,10 +70,14 @@ const skillsLoading = ref(false)
 let abortController: AbortController | null = null
 
 // v2 state
-const sessionId = ref<string | null>(null)
-// workflowId is the persistent cross-message identity (Phase 2+).
-// It aliases sessionId for backward compatibility.
-const workflowId = sessionId
+// conversationWorkflowId: persistent cross-message identity for the main
+// conversation. Only updated by normal (non-selection) requests so that an
+// ephemeral selection session never overwrites the ongoing chat context.
+const conversationWorkflowId = ref<string | null>(null)
+// activeRunSessionId: session ID of the currently running SSE stream.
+// Used for approval, abort, and resume during a single run. Cleared when
+// the run ends so it never leaks into the next request's workflow_id.
+const activeRunSessionId = ref<string | null>(null)
 // Per-session approval state: keyed by sessionId so concurrent/switching sessions
 // cannot pollute each other's approval status (M11 fix).
 const _approvalBySession = new Map<string, PendingApproval | null>()
@@ -134,7 +138,7 @@ export interface PendingApproval {
 // the global Agent dock.
 const pendingApproval = ref<PendingApproval | null>(null)
 
-watch(sessionId, (newSid) => {
+watch(activeRunSessionId, (newSid) => {
   pendingApproval.value = newSid ? (_approvalBySession.get(newSid) ?? null) : null
 })
 
@@ -148,7 +152,8 @@ export function _resetForTesting(): void {
   ragLoading.value = false
   agentSkills.value = []
   skillsLoading.value = false
-  sessionId.value = null
+  conversationWorkflowId.value = null
+  activeRunSessionId.value = null
   pendingApproval.value = null
   _approvalBySession.clear()
   _messagesByWorkflow.clear()
@@ -160,7 +165,7 @@ export function _resetForTesting(): void {
 /** Agent chat composable (singleton). Manages ReAct loop SSE streaming, session lifecycle, per-session approval state, and RAG documents. */
 export function useAgentChat() {
   function _setApproval(value: PendingApproval | null) {
-    const sid = sessionId.value
+    const sid = activeRunSessionId.value
     if (sid) _approvalBySession.set(sid, value)
     pendingApproval.value = value
   }
@@ -270,8 +275,10 @@ export function useAgentChat() {
           msg.isStreaming = false
           break
         case 'session_started':
-          sessionId.value =
-            (agentEvent.metadata?.session_id as string) || agentEvent.content || sessionId.value
+          activeRunSessionId.value =
+            (agentEvent.metadata?.session_id as string) ||
+            agentEvent.content ||
+            activeRunSessionId.value
           break
         case 'await_approval':
           _setApproval({
@@ -373,6 +380,9 @@ export function useAgentChat() {
     abortController = new AbortController()
 
     const selection = options.selection ? normalizeAgentSelection(options.selection) : undefined
+    // True when this run is an ephemeral selection edit — its session must not
+    // overwrite the persistent conversation workflow ID.
+    const isSelectionRun = !!selection
     // A selection edit is an atomic editor operation, not a continuation of
     // earlier chat. Keeping it isolated prevents an older <editor_context>
     // block from becoming the model's edit target.
@@ -408,7 +418,7 @@ export function useAgentChat() {
           context_file: contextFile?.trim() || undefined,
           constraints: constraints?.trim() || undefined,
           workspace_root: workspaceRoot?.trim() || undefined,
-          workflow_id: selection ? undefined : workflowId.value || undefined,
+          workflow_id: selection ? undefined : conversationWorkflowId.value || undefined,
           skills: skills.slice(0, 8),
           selection: selection
             ? {
@@ -445,7 +455,7 @@ export function useAgentChat() {
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         if (attempt > 0) {
           // If session already started, use resume endpoint to avoid re-running the task
-          const sid = sessionId.value
+          const sid = activeRunSessionId.value
           if (sessionStarted && sid) {
             const msg = messages.value.find((m) => m.id === assistantMsg.id)
             if (msg) {
@@ -532,6 +542,15 @@ export function useAgentChat() {
     } finally {
       sending.value = false
       abortController = null
+      if (isSelectionRun) {
+        // Ephemeral selection sessions must not leak into the main conversation.
+        // The persistent workflow ID was never touched; clear only the run ID.
+        activeRunSessionId.value = null
+      } else if (activeRunSessionId.value) {
+        // Normal conversation: promote the run session to the persistent
+        // workflow ID so subsequent messages continue the same conversation.
+        conversationWorkflowId.value = activeRunSessionId.value
+      }
     }
   }
 
@@ -550,7 +569,7 @@ export function useAgentChat() {
     decision: 'allow_once' | 'allow_session' | 'deny',
     reason?: string,
   ): Promise<boolean> {
-    const sid = sessionId.value
+    const sid = activeRunSessionId.value
     if (!sid || !eventId) return false
 
     try {
@@ -570,7 +589,7 @@ export function useAgentChat() {
   }
 
   async function abortSession(): Promise<boolean> {
-    const sid = sessionId.value
+    const sid = activeRunSessionId.value
     if (!sid) {
       // 没有 session_id 时直接中止当前 SSE
       stopGenerating()
@@ -609,7 +628,8 @@ export function useAgentChat() {
     }
 
     _clearApproval()
-    sessionId.value = targetSessionId
+    conversationWorkflowId.value = targetSessionId
+    activeRunSessionId.value = targetSessionId
 
     const assistantMsg: AgentChatMessage = {
       id: crypto.randomUUID(),
@@ -743,7 +763,7 @@ export function useAgentChat() {
       }))
       cacheWorkflowMessages(wfId, loaded)
       _clearApproval()
-      workflowId.value = wfId
+      conversationWorkflowId.value = wfId
       messages.value = loaded
       pipelineStage.value = ''
       pipelineCompleted.value = []
@@ -756,11 +776,12 @@ export function useAgentChat() {
   }
 
   function startNewWorkflow() {
-    const previousWorkflowId = workflowId.value
+    const previousWorkflowId = conversationWorkflowId.value
     if (previousWorkflowId && messages.value.length) {
       cacheWorkflowMessages(previousWorkflowId, [...messages.value])
     }
-    workflowId.value = null
+    conversationWorkflowId.value = null
+    activeRunSessionId.value = null
     messages.value = []
     _clearApproval()
     pipelineStage.value = ''
@@ -825,8 +846,8 @@ export function useAgentChat() {
   return {
     messages,
     sending,
-    sessionId,
-    workflowId,
+    conversationWorkflowId,
+    activeRunSessionId,
     pendingApproval,
     pipelineStage,
     pipelineCompleted,
