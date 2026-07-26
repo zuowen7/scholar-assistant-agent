@@ -21,7 +21,9 @@ function matchCommand(cmd: VoiceCommandDef, text: string): VoiceCommandMatch | n
         }
       }
     } else {
-      const flags = pattern.flags.includes('i') ? pattern : new RegExp(pattern.source, pattern.flags + 'i')
+      const flags = pattern.flags.includes('i')
+        ? pattern
+        : new RegExp(pattern.source, pattern.flags + 'i')
       const m = text.match(flags)
       if (m) {
         const score = Math.min(m[0].length / text.length + 0.3, 1.0)
@@ -71,7 +73,8 @@ export function useVoiceRouter() {
         bestMatch = match
       } else if (match && match.score === bestScore) {
         // Tie-break: prefer higher priority
-        const currentPriority = commandRegistry.find(c => c.id === bestMatch!.commandId)?.priority ?? 0
+        const currentPriority =
+          commandRegistry.find((c) => c.id === bestMatch!.commandId)?.priority ?? 0
         const newPriority = cmd.priority ?? 0
         if (newPriority > currentPriority) {
           bestMatch = match
@@ -86,7 +89,7 @@ export function useVoiceRouter() {
     const match = classifyIntent(text)
 
     if (match) {
-      const cmd = commandRegistry.find(c => c.id === match.commandId)
+      const cmd = commandRegistry.find((c) => c.id === match.commandId)
       if (cmd?.handler) {
         const result: VoiceCommandResult = {
           type: 'command',

@@ -26,7 +26,7 @@ import { useAgentChat } from '../composables/useAgentChat'
 import { API_BASE } from '../utils/api'
 import { useArgumentCompanion } from '../composables/useArgumentCompanion'
 import { computeCompanionDecorations } from '../composables/companionGutter'
-import { fetchCompletion, buildContext } from '../utils/inlineCompletion'
+import { fetchCompletion, buildContext, type CompletionModel } from '../utils/inlineCompletion'
 
 // 配置 Monaco Web Worker（解决 Tauri 环境下 worker 无法创建的问题）
 self.MonacoEnvironment = {
@@ -42,10 +42,8 @@ const props = defineProps<{
 const presentation = computed(() => props.presentation || 'code')
 
 const editorContainer = ref<HTMLElement>()
-const {
-  setEditorInstance, setContent, content, updateSelection,
-  activeTabId, markDirty, aiEdit,
-} = useEditor()
+const { setEditorInstance, setContent, content, updateSelection, activeTabId, markDirty, aiEdit } =
+  useEditor()
 const { activeEdit, clearActiveEdit, activeTab } = useEditorState()
 const { sendApproval } = useAgentChat()
 
@@ -77,10 +75,15 @@ function revealAnchor(start: number, end: number) {
   const p2 = model.getPositionAt(end)
   const range = new monaco.Range(p1.lineNumber, p1.column, p2.lineNumber, p2.column)
   editor.revealRangeInCenter(range)
-  const flashDeco = editor.deltaDecorations([], [{
-    range,
-    options: { className: 'arg-flash', isWholeLine: false },
-  }])
+  const flashDeco = editor.deltaDecorations(
+    [],
+    [
+      {
+        range,
+        options: { className: 'arg-flash', isWholeLine: false },
+      },
+    ],
+  )
   setTimeout(() => editor?.deltaDecorations(flashDeco, []), 1200)
 }
 
@@ -157,17 +160,24 @@ onMounted(() => {
     provideInlineCompletions: async (_model, position, _context) => {
       if (showPalette.value) return { items: [] }
       if (!cachedCompletion || !cachedPosition) return { items: [] }
-      if (position.lineNumber !== cachedPosition.lineNumber || position.column !== cachedPosition.column) {
+      if (
+        position.lineNumber !== cachedPosition.lineNumber ||
+        position.column !== cachedPosition.column
+      ) {
         return { items: [] }
       }
       return {
-        items: [{
-          insertText: cachedCompletion,
-          range: new monaco.Range(
-            position.lineNumber, position.column,
-            position.lineNumber, position.column,
-          ),
-        }],
+        items: [
+          {
+            insertText: cachedCompletion,
+            range: new monaco.Range(
+              position.lineNumber,
+              position.column,
+              position.lineNumber,
+              position.column,
+            ),
+          },
+        ],
       }
     },
     disposeInlineCompletions: () => {},
@@ -184,8 +194,12 @@ onMounted(() => {
     if (!model) return
     if (companion.state.ledger) {
       for (const promise of companion.state.ledger.promises) {
-        const anchor = companion.state.ledger.anchors.find(a => a.id === promise.source_anchor_id)
-        if (anchor?.char_start !== null && anchor?.char_start !== undefined && anchor.status !== 'lost') {
+        const anchor = companion.state.ledger.anchors.find((a) => a.id === promise.source_anchor_id)
+        if (
+          anchor?.char_start !== null &&
+          anchor?.char_start !== undefined &&
+          anchor.status !== 'lost'
+        ) {
           const pos = model.getPositionAt(anchor.char_start)
           if (pos.lineNumber === lineNumber) {
             companion.focusFromGutter('promise', promise.id)
@@ -197,8 +211,12 @@ onMounted(() => {
     if (companion.state.review) {
       for (const point of companion.state.review.points) {
         if (!point.anchor_id) continue
-        const anchor = companion.state.review.anchors.find(a => a.id === point.anchor_id)
-        if (anchor?.char_start !== null && anchor?.char_start !== undefined && anchor.status !== 'lost') {
+        const anchor = companion.state.review.anchors.find((a) => a.id === point.anchor_id)
+        if (
+          anchor?.char_start !== null &&
+          anchor?.char_start !== undefined &&
+          anchor.status !== 'lost'
+        ) {
           const pos = model.getPositionAt(anchor.char_start)
           if (pos.lineNumber === lineNumber) {
             companion.focusFromGutter('point', point.id)
@@ -245,7 +263,9 @@ onMounted(() => {
     ghostAbort?.abort()
     if (ghostTimer) clearTimeout(ghostTimer)
     ghostTimer = setTimeout(() => triggerGhostCompletion(), 1500)
-    nextTick(() => { _monacoUpdating = false })
+    nextTick(() => {
+      _monacoUpdating = false
+    })
   })
 
   editor.onDidChangeCursorSelection(() => {
@@ -271,7 +291,9 @@ onMounted(() => {
     if (pos.lineNumber !== cachedPosition.lineNumber || pos.column !== cachedPosition.column) return
     try {
       editor.trigger('ghost', 'editor.action.inlineSuggest.trigger', undefined)
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   })
 
   // Ctrl+K → AI Edit
@@ -286,10 +308,14 @@ onMounted(() => {
       const text = editor.getModel()?.getValueInRange(sel) || ''
 
       if (!text) {
-        editor.setSelection(new monaco.Range(
-          sel.startLineNumber, 1,
-          sel.startLineNumber, editor.getModel()!.getLineMaxColumn(sel.startLineNumber),
-        ))
+        editor.setSelection(
+          new monaco.Range(
+            sel.startLineNumber,
+            1,
+            sel.startLineNumber,
+            editor.getModel()!.getLineMaxColumn(sel.startLineNumber),
+          ),
+        )
         const newSel = editor.getSelection()!
         selectedText.value = editor.getModel()?.getValueInRange(newSel) || ''
       } else {
@@ -325,7 +351,10 @@ async function triggerGhostCompletion() {
   const model = editor?.getModel()
   if (!pos || !model) return
 
-  const ctx = buildContext(model as any, { lineNumber: pos.lineNumber, column: pos.column })
+  const ctx = buildContext(model as CompletionModel, {
+    lineNumber: pos.lineNumber,
+    column: pos.column,
+  })
   if (!ctx) return
 
   ghostAbort?.abort()
@@ -349,10 +378,16 @@ async function triggerGhostCompletion() {
   cachedPosition = { lineNumber: pos.lineNumber, column: pos.column }
   try {
     editor.trigger('ghost', 'editor.action.inlineSuggest.trigger', undefined)
-  } catch { /* Monaco may cancel if content changed */ }
+  } catch {
+    /* Monaco may cancel if content changed */
+  }
 }
 
-async function handlePaletteSubmit(payload: { instruction: string; taskType: string; previous: string }) {
+async function handlePaletteSubmit(payload: {
+  instruction: string
+  taskType: string
+  previous: string
+}) {
   if (!editor || !selectedText.value) return
   const sel = editor.getSelection()!
 
@@ -369,13 +404,17 @@ async function handlePaletteSubmit(payload: { instruction: string; taskType: str
     await aiEdit(payload.instruction, selectedText.value, payload.taskType, previous)
     const { aiResult } = useEditor()
     if (aiResult.value) {
-      editor.executeEdits('ai-edit', [{
-        range: new monaco.Range(
-          sel.startLineNumber, sel.startColumn,
-          sel.endLineNumber, sel.endColumn,
-        ),
-        text: aiResult.value,
-      }])
+      editor.executeEdits('ai-edit', [
+        {
+          range: new monaco.Range(
+            sel.startLineNumber,
+            sel.startColumn,
+            sel.endLineNumber,
+            sel.endColumn,
+          ),
+          text: aiResult.value,
+        },
+      ])
       aiResult.value = ''
     }
   } catch (e) {
@@ -386,17 +425,26 @@ async function handlePaletteSubmit(payload: { instruction: string; taskType: str
   }
 }
 
-watch(() => props.theme, (t) => { if (t) monaco.editor.setTheme(t) })
-watch(() => props.presentation, () => applyPresentation())
-
 watch(
-  [() => companion.state.ledger, () => companion.state.review],
-  () => updateCompanionDecorations(),
+  () => props.theme,
+  (t) => {
+    if (t) monaco.editor.setTheme(t)
+  },
+)
+watch(
+  () => props.presentation,
+  () => applyPresentation(),
+)
+
+watch([() => companion.state.ledger, () => companion.state.review], () =>
+  updateCompanionDecorations(),
 )
 
 watch(
   () => companion.state.flashAnchor,
-  (v) => { if (v) revealAnchor(v.start, v.end) },
+  (v) => {
+    if (v) revealAnchor(v.start, v.end)
+  },
 )
 
 watch(activeTabId, () => {
@@ -409,7 +457,9 @@ watch(activeTabId, () => {
   const model = editor.getModel()
   if (model) monaco.editor.setModelLanguage(model, activeLanguage())
   applyPresentation()
-  nextTick(() => { _monacoUpdating = false })
+  nextTick(() => {
+    _monacoUpdating = false
+  })
 })
 
 watch(content, (v) => {
@@ -432,7 +482,11 @@ function _clearDiffDecorations() {
     _diffDecorations = []
   }
   if (_diffWidget && editor) {
-    try { editor.removeContentWidget(_diffWidget) } catch { /* already disposed */ }
+    try {
+      editor.removeContentWidget(_diffWidget)
+    } catch {
+      /* already disposed */
+    }
     _diffWidget = null
   }
 }
@@ -450,7 +504,7 @@ watch(activeEdit, (edit) => {
       edit.oldText,
       false,
       false,
-      true,  // exactMatch
+      true, // exactMatch
       null,
       true,
     )
@@ -462,14 +516,19 @@ watch(activeEdit, (edit) => {
     const matchRange = matches[0].range
 
     // Red decoration over old text
-    _diffDecorations = editor.deltaDecorations([], [{
-      range: matchRange,
-      options: {
-        className: 'ai-diff-deleted',
-        isWholeLine: false,
-        hoverMessage: { value: `**${t('agent.inlineDiff.old', 'Original')}**` },
-      },
-    }])
+    _diffDecorations = editor.deltaDecorations(
+      [],
+      [
+        {
+          range: matchRange,
+          options: {
+            className: 'ai-diff-deleted',
+            isWholeLine: false,
+            hoverMessage: { value: `**${t('agent.inlineDiff.old', 'Original')}**` },
+          },
+        },
+      ],
+    )
 
     // Content widget below deletion showing new text + Accept/Reject
     const widgetId = `inline-diff-${edit.editId}`
@@ -546,7 +605,7 @@ watch(activeEdit, (edit) => {
 function _dispatchInlineDecision(decision: 'allow_once' | 'deny') {
   const edit = activeEdit.value
   if (!edit) return
-  sendApproval(edit.eventId, decision).then(ok => {
+  sendApproval(edit.eventId, decision).then((ok) => {
     if (ok) clearActiveEdit()
     // On failure, widget stays visible for retry
   })
@@ -558,7 +617,10 @@ function _escapeHtml(str: string): string {
 
 onBeforeUnmount(() => {
   _clearDiffDecorations()
-  if (ghostTimer) { clearTimeout(ghostTimer); ghostTimer = null }
+  if (ghostTimer) {
+    clearTimeout(ghostTimer)
+    ghostTimer = null
+  }
   ghostAbort?.abort()
   _inlineCompletionsDisposable?.dispose()
   _inlineCompletionsDisposable = null
@@ -568,34 +630,97 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.monaco-wrapper { position: relative; width: 100%; height: 100%; min-height: 0; }
-.monaco-container { width: 100%; height: 100%; min-height: 0; }
-.presentation-document { background: #FBFAF7; }
-.presentation-document .monaco-container { max-width: 820px; margin: 0 auto; border-left: 1px solid var(--c-border); border-right: 1px solid var(--c-border); background: var(--c-panel); }
+.monaco-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+.monaco-container {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+.presentation-document {
+  background: #fbfaf7;
+}
+.presentation-document .monaco-container {
+  max-width: 820px;
+  margin: 0 auto;
+  border-left: 1px solid var(--c-border);
+  border-right: 1px solid var(--c-border);
+  background: var(--c-panel);
+}
 </style>
 
 <style>
 /* Argument companion gutter glyphs */
-.monaco-editor .arg-gutter-promise-unpaid { background: #f87171; border-radius: 50%; width: 10px !important; height: 10px !important; margin-top: 6px; }
-.monaco-editor .arg-gutter-promise-mismatch { background: #fb923c; border-radius: 50%; width: 10px !important; height: 10px !important; margin-top: 6px; }
-.monaco-editor .arg-gutter-promise-partial { background: #fbbf24; border-radius: 50%; width: 10px !important; height: 10px !important; margin-top: 6px; }
-.monaco-editor .arg-gutter-review-fatal { background: #f87171; clip-path: polygon(50% 0%, 0% 100%, 100% 100%); width: 10px !important; height: 10px !important; margin-top: 6px; }
-.monaco-editor .arg-gutter-review-major { background: #fb923c; clip-path: polygon(50% 0%, 0% 100%, 100% 100%); width: 10px !important; height: 10px !important; margin-top: 6px; }
-.monaco-editor .arg-gutter-review-minor { background: #6b7280; clip-path: polygon(50% 0%, 0% 100%, 100% 100%); width: 10px !important; height: 10px !important; margin-top: 6px; }
+.monaco-editor .arg-gutter-promise-unpaid {
+  background: #f87171;
+  border-radius: 50%;
+  width: 10px !important;
+  height: 10px !important;
+  margin-top: 6px;
+}
+.monaco-editor .arg-gutter-promise-mismatch {
+  background: #fb923c;
+  border-radius: 50%;
+  width: 10px !important;
+  height: 10px !important;
+  margin-top: 6px;
+}
+.monaco-editor .arg-gutter-promise-partial {
+  background: #fbbf24;
+  border-radius: 50%;
+  width: 10px !important;
+  height: 10px !important;
+  margin-top: 6px;
+}
+.monaco-editor .arg-gutter-review-fatal {
+  background: #f87171;
+  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+  width: 10px !important;
+  height: 10px !important;
+  margin-top: 6px;
+}
+.monaco-editor .arg-gutter-review-major {
+  background: #fb923c;
+  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+  width: 10px !important;
+  height: 10px !important;
+  margin-top: 6px;
+}
+.monaco-editor .arg-gutter-review-minor {
+  background: #6b7280;
+  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+  width: 10px !important;
+  height: 10px !important;
+  margin-top: 6px;
+}
 
 /* Flash highlight when jumping to anchor */
 .monaco-editor .arg-flash {
   background: var(--c-accent-soft) !important;
   border-radius: 3px;
-  animation: arg-flash-pulse 1.2s var(--ease-out, cubic-bezier(0.16,1,0.3,1)) 1;
+  animation: arg-flash-pulse 1.2s var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)) 1;
 }
 @keyframes arg-flash-pulse {
-  0%   { background: color-mix(in srgb, var(--c-accent) 45%, transparent) !important; box-shadow: 0 0 0 3px var(--c-accent-soft); }
-  30%  { background: color-mix(in srgb, var(--c-accent) 35%, transparent) !important; }
-  100% { background: transparent !important; box-shadow: 0 0 0 0 transparent; }
+  0% {
+    background: color-mix(in srgb, var(--c-accent) 45%, transparent) !important;
+    box-shadow: 0 0 0 3px var(--c-accent-soft);
+  }
+  30% {
+    background: color-mix(in srgb, var(--c-accent) 35%, transparent) !important;
+  }
+  100% {
+    background: transparent !important;
+    box-shadow: 0 0 0 0 transparent;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .monaco-editor .arg-flash { animation: none; }
+  .monaco-editor .arg-flash {
+    animation: none;
+  }
 }
 
 /* Inline diff approval */
@@ -607,7 +732,7 @@ onBeforeUnmount(() => {
   background: var(--c-surface-1);
   border: 1px solid var(--c-surface-3);
   border-radius: var(--radius-md, 8px);
-  box-shadow: var(--elevation-3, 0 8px 24px rgba(0,0,0,.18));
+  box-shadow: var(--elevation-3, 0 8px 24px rgba(0, 0, 0, 0.18));
   padding: 12px 16px;
   margin-top: 4px;
   max-width: 600px;
@@ -639,7 +764,8 @@ onBeforeUnmount(() => {
   gap: 8px;
   margin-top: 10px;
 }
-.ai-diff-accept, .ai-diff-reject {
+.ai-diff-accept,
+.ai-diff-reject {
   padding: 5px 14px;
   border: none;
   border-radius: var(--radius-sm, 4px);
@@ -652,10 +778,14 @@ onBeforeUnmount(() => {
   background: var(--c-success);
   color: #fff;
 }
-.ai-diff-accept:hover { background: color-mix(in srgb, var(--c-success) 85%, #000); }
+.ai-diff-accept:hover {
+  background: color-mix(in srgb, var(--c-success) 85%, #000);
+}
 .ai-diff-reject {
   background: var(--c-danger);
   color: #fff;
 }
-.ai-diff-reject:hover { background: color-mix(in srgb, var(--c-danger) 85%, #000); }
+.ai-diff-reject:hover {
+  background: color-mix(in srgb, var(--c-danger) 85%, #000);
+}
 </style>

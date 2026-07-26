@@ -24,21 +24,34 @@ defineProps<{
   border: 1px solid var(--c-surface-3);
   border-radius: var(--radius-lg);
   background: var(--c-surface-1);
-  transition: border-color var(--motion-fast) var(--ease-out),
-              box-shadow var(--motion-base) var(--ease-out),
-              transform var(--motion-base) var(--ease-out);
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-base) var(--ease-out),
+    transform var(--motion-base) var(--ease-out);
 }
-.ui-card.padded { padding: var(--space-4); }
-.ui-card.flat { background: var(--c-surface-1); }
-.ui-card.raised { background: var(--c-surface-1); box-shadow: var(--elevation-2); }
-.ui-card.sunken { background: var(--c-surface-2); border-color: transparent; }
+.ui-card.padded {
+  padding: var(--space-4);
+}
+.ui-card.flat {
+  background: var(--c-surface-1);
+}
+.ui-card.raised {
+  background: var(--c-surface-1);
+  box-shadow: var(--elevation-2);
+}
+.ui-card.sunken {
+  background: var(--c-surface-2);
+  border-color: transparent;
+}
 .ui-card.glass {
   background: var(--c-glass);
   border-color: var(--c-glass-border);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
 }
-.ui-card.interactive { cursor: pointer; }
+.ui-card.interactive {
+  cursor: pointer;
+}
 .ui-card.interactive:hover {
   border-color: var(--c-accent-soft);
   box-shadow: var(--elevation-2);

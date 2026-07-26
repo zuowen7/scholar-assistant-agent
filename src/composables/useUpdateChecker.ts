@@ -22,7 +22,9 @@ export function compareVersions(local: string, remote: string): number {
   return 0
 }
 
-export async function checkForUpdate(options: { notify?: boolean } = {}): Promise<UpdateCheckResult | undefined> {
+export async function checkForUpdate(
+  options: { notify?: boolean } = {},
+): Promise<UpdateCheckResult | undefined> {
   const notify = options.notify !== false
   let localVersion: string
   try {
@@ -36,9 +38,7 @@ export async function checkForUpdate(options: { notify?: boolean } = {}): Promis
   }
 
   try {
-    const res = await fetch(
-      `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`
-    )
+    const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`)
     if (!res.ok) return undefined
     const data = await res.json()
     const remoteVersion = data.tag_name?.replace(/^v/, '')

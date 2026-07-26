@@ -16,11 +16,10 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 logger = logging.getLogger(__name__)
-
-from dataclasses import dataclass
 
 if TYPE_CHECKING:
     from src.translator.glossary_store import GlossaryStore
@@ -30,9 +29,11 @@ if TYPE_CHECKING:
 # 数据结构
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class TranslationResult:
     """翻译结果数据结构。"""
+
     original: str = ""
     translated: str = ""
     model: str = ""
@@ -43,6 +44,7 @@ class TranslationResult:
 # ---------------------------------------------------------------------------
 # 术语提取（保留作为兜底学习，结果仅为建议）
 # ---------------------------------------------------------------------------
+
 
 def _extract_term_pairs(original: str, translated: str) -> list[tuple[str, str]]:
     """从原文-译文对中提取可能的术语翻译对。
@@ -73,8 +75,9 @@ def _extract_term_pairs(original: str, translated: str) -> list[tuple[str, str]]
 # 术语锚点 Prompt 构建
 # ---------------------------------------------------------------------------
 
+
 def build_glossary_prompt(
-    glossary_store: "GlossaryStore | None" = None,
+    glossary_store: GlossaryStore | None = None,
     learned_pairs: list[tuple[str, str]] | None = None,
     max_entries: int = 50,
 ) -> str:
@@ -107,6 +110,7 @@ def build_glossary_prompt(
 # ---------------------------------------------------------------------------
 # 后处理 — 文本清洗
 # ---------------------------------------------------------------------------
+
 
 def _strip_think_tags(text: str) -> str:
     """移除推理模型常见思考段，避免进入正文。"""
@@ -174,7 +178,7 @@ _CTX_MARKER_RE = re.compile(
     r"\[前文翻译参考[^\]]*\]"
     r"|\[请翻译以下内容[^\]]*\]"
     r"|\[文档背景[^\]]*\]"
-    r"|\[SECTION:\s*\w+\]"      # section-aware 指令头
+    r"|\[SECTION:\s*\w+\]"  # section-aware 指令头
     r"|\[LOGIC:\s*\w+\][^\n]*"  # logic-aware 指令行
     r"|\[DOMINANT\s+LOGIC\][^\n]*"
     r"|\[PROPOSITIONS\][^\n]*",
@@ -195,23 +199,25 @@ def _is_mostly_english(text: str) -> bool:
     if len(text) < 30:
         return False
     en_chars = sum(1 for c in text if c.isascii() and c.isalpha())
-    zh_chars = sum(1 for c in text if '一' <= c <= '鿿')
+    zh_chars = sum(1 for c in text if "一" <= c <= "鿿")
     # Must have zero CJK characters AND be overwhelmingly English
     return zh_chars == 0 and en_chars / max(len(text), 1) > 0.85
 
 
 def _sanitize_llm_output(raw: str, source_lang: str = "en") -> str:
     """Strip reasoning tags, prompt echoes, refusal messages, and leaked original text."""
-    raw = re.sub(r'<think\b[^>]*>[\s\S]*?</think\s*>', '', raw, flags=re.IGNORECASE)
-    raw = re.sub(r'<thinking>[\s\S]*?</thinking>', '', raw, flags=re.IGNORECASE)
+    raw = re.sub(r"<think\b[^>]*>[\s\S]*?</think\s*>", "", raw, flags=re.IGNORECASE)
+    raw = re.sub(r"<thinking>[\s\S]*?</thinking>", "", raw, flags=re.IGNORECASE)
     # Strip context markers that LLM echoed from the system/user prompt
-    raw = _CTX_MARKER_RE.sub('', raw)
-    raw = re.sub(r'^(Translation|译文|中文译文|Here is the translation)[:：]\s*', '', raw.strip(), count=1)
+    raw = _CTX_MARKER_RE.sub("", raw)
+    raw = re.sub(
+        r"^(Translation|译文|中文译文|Here is the translation)[:：]\s*", "", raw.strip(), count=1
+    )
     # Detect refusal/apology messages → return empty so block gets marked failed
     if _REFUSAL_RE.search(raw.strip()):
         return ""
     if source_lang == "en":
-        paras = raw.split('\n\n')
+        paras = raw.split("\n\n")
         # 注意：不要把未翻译段落替换成 ""。
         # _split_paragraphs 会过滤空字符串，导致 n_paras < n_blocks，
         # 触发不必要的 alignment fallback。保留原段落（仍为英文），
@@ -220,7 +226,7 @@ def _sanitize_llm_output(raw: str, source_lang: str = "en") -> str:
         # 只裁剪尾部空段
         while cleaned and not cleaned[-1].strip():
             cleaned.pop()
-        raw = '\n\n'.join(cleaned)
+        raw = "\n\n".join(cleaned)
     return raw.strip()
 
 
@@ -228,7 +234,8 @@ def _sanitize_llm_output(raw: str, source_lang: str = "en") -> str:
 # 后处理 — 质量校验与修复
 # ---------------------------------------------------------------------------
 
-def _validate_translation(result: "TranslationResult | Any") -> bool:
+
+def _validate_translation(result: TranslationResult | Any) -> bool:
     """校验翻译结果质量
 
     多层校验: 空值/截断/未翻译/语言检测/格式幻觉/重复检测
@@ -274,15 +281,20 @@ def _validate_translation(result: "TranslationResult | Any") -> bool:
             # 原文中已经有大量"非翻译" token（大写缩写、纯符号、URL、化学/数学符号），
             # 译文 ASCII 占比天然偏高，不应判失败
             non_translatable = sum(
-                1 for c in original
-                if c.isupper() or c in "\\{}$[]_^()<>|=+-*/%@#&"
+                1 for c in original if c.isupper() or c in "\\{}$[]_^()<>|=+-*/%@#&"
             ) / max(orig_len, 1)
             if non_translatable > 0.25:
                 pass  # 放行
             else:
-                ascii_ratio = sum(1 for c in translated if c.isascii() and c.isalpha()) / max(trans_len, 1)
+                ascii_ratio = sum(1 for c in translated if c.isascii() and c.isalpha()) / max(
+                    trans_len, 1
+                )
                 if ascii_ratio > 0.95:
-                    logger.warning("译文 ASCII 占比 %.0f%% 且无中文，疑似未翻译: %.50s...", ascii_ratio * 100, translated)
+                    logger.warning(
+                        "译文 ASCII 占比 %.0f%% 且无中文，疑似未翻译: %.50s...",
+                        ascii_ratio * 100,
+                        translated,
+                    )
                     return False
 
     stripped = translated.strip()
@@ -293,12 +305,18 @@ def _validate_translation(result: "TranslationResult | Any") -> bool:
     if trans_len > 400:
         half = trans_len // 2
         first_half = stripped[:half]
-        second_half = stripped[half:half * 2]
+        second_half = stripped[half : half * 2]
         if first_half and second_half and len(first_half) > 50:
             shorter_len = min(len(first_half), len(second_half), 100)
-            overlap = sum(1 for a, b in zip(first_half[:shorter_len], second_half[:shorter_len]) if a == b)
+            overlap = sum(
+                1
+                for a, b in zip(first_half[:shorter_len], second_half[:shorter_len], strict=False)
+                if a == b
+            )
             if overlap / shorter_len > 0.8:
-                logger.warning("译文前后半段高度重复 (%.0f%%)，疑似重复翻译", overlap / shorter_len * 100)
+                logger.warning(
+                    "译文前后半段高度重复 (%.0f%%)，疑似重复翻译", overlap / shorter_len * 100
+                )
                 return False
 
     # 循环重复检测 — 优化：早期退出，限制检测范围
@@ -311,7 +329,7 @@ def _validate_translation(result: "TranslationResult | Any") -> bool:
                 unit = sents[:unit_sz]
                 repeats = 0
                 for si in range(unit_sz, len(sents), unit_sz):
-                    chunk = sents[si:si + unit_sz]
+                    chunk = sents[si : si + unit_sz]
                     if not chunk:
                         continue
                     if _is_similar_sentences(unit, chunk):
@@ -319,7 +337,9 @@ def _validate_translation(result: "TranslationResult | Any") -> bool:
                     else:
                         break
                 if repeats >= 2:
-                    logger.warning("检测到循环重复 (单元=%d句, 重复%d次), 拒绝该翻译", unit_sz, repeats)
+                    logger.warning(
+                        "检测到循环重复 (单元=%d句, 重复%d次), 拒绝该翻译", unit_sz, repeats
+                    )
                     return False
 
     return True
@@ -343,13 +363,17 @@ def _repair_truncation(text: str) -> str:
     last_dot = text.rfind(".")
     if last_dot >= 0:
         before = text[:last_dot].rstrip()
-        if before and before[-1].isdigit():
-            last_dot = -1
-        elif before and before[-1] == ".":
-            last_dot = -1
-        elif before and re.search(
-            r"(?:Fig|Eq|Ref|Vol|No|Dr|Mr|Mrs|Prof|Sr|Jr|St|vs|etc|al|ed|e\.g|i\.e)$",
-            before, re.IGNORECASE
+        if (
+            before
+            and before[-1].isdigit()
+            or before
+            and before[-1] == "."
+            or before
+            and re.search(
+                r"(?:Fig|Eq|Ref|Vol|No|Dr|Mr|Mrs|Prof|Sr|Jr|St|vs|etc|al|ed|e\.g|i\.e)$",
+                before,
+                re.IGNORECASE,
+            )
         ):
             last_dot = -1
 
@@ -396,15 +420,15 @@ def _strip_trailing_summary(text: str) -> str:
     ]
     for pattern in summary_patterns:
         m = re.search(pattern, text, re.IGNORECASE)
-        if m:
-            if m.start() >= len(text) * 0.6:
-                return text[: m.start()].rstrip()
+        if m and m.start() >= len(text) * 0.6:
+            return text[: m.start()].rstrip()
     return text
 
 
 # ---------------------------------------------------------------------------
 # 后处理 — 去重
 # ---------------------------------------------------------------------------
+
 
 def _deduplicate_repetition(text: str) -> str:
     """检测并移除译文中的循环重复内容（行级 + 句级）。"""
@@ -439,7 +463,8 @@ def _deduplicate_repetition(text: str) -> str:
         if is_repetitive and repeat_count >= 2:
             logger.warning(
                 "检测到句级循环重复: 单元=%d句, 重复%d次, 保留第一份",
-                unit_size, repeat_count,
+                unit_size,
+                repeat_count,
             )
             return "".join(unit)
 
@@ -457,7 +482,7 @@ def _deduplicate_line_repetition(text: str) -> str:
             if start + pat_size * 4 > len(lines):
                 break
 
-            pattern = [l.strip() for l in lines[start : start + pat_size]]
+            pattern = [line.strip() for line in lines[start : start + pat_size]]
             if all(not p for p in pattern):
                 continue
             avg_len = sum(len(p) for p in pattern) / pat_size
@@ -467,7 +492,7 @@ def _deduplicate_line_repetition(text: str) -> str:
             repeat_count = 0
             pos = start + pat_size
             while pos + pat_size <= len(lines):
-                chunk = [l.strip() for l in lines[pos : pos + pat_size]]
+                chunk = [line.strip() for line in lines[pos : pos + pat_size]]
                 if _lines_match(pattern, chunk):
                     repeat_count += 1
                     pos += pat_size
@@ -478,7 +503,7 @@ def _deduplicate_line_repetition(text: str) -> str:
                 kept = lines[: start + pat_size]
                 remaining = lines[pos:]
                 if remaining:
-                    non_empty = sum(1 for l in remaining if l.strip())
+                    non_empty = sum(1 for line in remaining if line.strip())
                     if non_empty > 3:
                         kept.extend(remaining)
                 return "\n".join(kept)
@@ -490,18 +515,19 @@ def _deduplicate_line_repetition(text: str) -> str:
 # 工具函数
 # ---------------------------------------------------------------------------
 
+
 def _lines_match(a: list[str], b: list[str]) -> bool:
     """判断两组行是否高度相似（80% 字符相同）"""
     if len(a) != len(b):
         return False
-    for la, lb in zip(a, b):
+    for la, lb in zip(a, b, strict=False):
         if not la and not lb:
             continue
         if not la or not lb:
             return False
         shorter = min(len(la), len(lb))
         check_len = max(int(shorter * 0.8), 1)
-        match = sum(1 for ca, cb in zip(la[:check_len], lb[:check_len]) if ca == cb)
+        match = sum(1 for ca, cb in zip(la[:check_len], lb[:check_len], strict=False) if ca == cb)
         if match / check_len < 0.7:
             return False
     return True
@@ -511,7 +537,7 @@ def _is_similar_sentences(a: list[str], b: list[str]) -> bool:
     """判断两组句子是否高度相似（允许轻微差异）"""
     if len(a) != len(b):
         return False
-    for sa, sb in zip(a, b):
+    for sa, sb in zip(a, b, strict=False):
         if not sa or not sb:
             continue
         shorter = min(len(sa), len(sb))
@@ -521,7 +547,7 @@ def _is_similar_sentences(a: list[str], b: list[str]) -> bool:
         check_len = int(shorter * 0.8)
         if check_len == 0:
             continue
-        match = sum(1 for ca, cb in zip(sa[:check_len], sb[:check_len]) if ca == cb)
+        match = sum(1 for ca, cb in zip(sa[:check_len], sb[:check_len], strict=False) if ca == cb)
         if match / check_len < 0.7:
             return False
     return True
@@ -530,6 +556,7 @@ def _is_similar_sentences(a: list[str], b: list[str]) -> bool:
 # ---------------------------------------------------------------------------
 # 段落恢复
 # ---------------------------------------------------------------------------
+
 
 def _restore_paragraphs(original: str, translated: str) -> str:
     """译文缺少段落分隔时，按原文段落比例恢复 \\n\\n 分段。"""
@@ -557,7 +584,7 @@ def _restore_paragraphs(original: str, translated: str) -> str:
         result: list[str] = []
         acc = 0
         target_acc = 0
-        for i, orig_len in enumerate(orig_lens):
+        for _i, orig_len in enumerate(orig_lens):
             target_acc += orig_len / total_orig * total_trans
             boundary = int(target_acc)
             chunk = translated[acc:boundary]

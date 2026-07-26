@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 # ── App fixture ──────────────────────────────────────────────────────────
 
+
 @pytest.fixture(scope="module")
 def client():
     """Create a TestClient for the FastAPI app.
@@ -80,9 +81,12 @@ class TestConfigEndpoints:
 
     def test_config_update(self, client):
         """PUT /api/config with valid data returns 200 and persists changes."""
-        resp = client.put("/api/config", json={
-            "chunker": {"max_tokens": 3000},
-        })
+        resp = client.put(
+            "/api/config",
+            json={
+                "chunker": {"max_tokens": 3000},
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["chunker"]["max_tokens"] == 3000
@@ -95,14 +99,20 @@ class TestConfigEndpoints:
     def test_config_update_cloud_masking(self, client):
         """PUT /api/config with masked API key should not overwrite existing key."""
         # First set a real key
-        client.put("/api/config", json={
-            "cloud": {"api_key": "sk-real-test-key-12345678"},
-        })
+        client.put(
+            "/api/config",
+            json={
+                "cloud": {"api_key": "sk-real-test-key-12345678"},
+            },
+        )
 
         # Then try to update with masked key
-        resp = client.put("/api/config", json={
-            "cloud": {"api_key": "sk-r****5678"},
-        })
+        resp = client.put(
+            "/api/config",
+            json={
+                "cloud": {"api_key": "sk-r****5678"},
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         # The returned value should be masked

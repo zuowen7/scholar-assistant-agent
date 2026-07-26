@@ -1,10 +1,8 @@
 import { useMindMap, undo, redo } from './useMindMap'
 
 export function useMindMapKeyboard() {
-  const {
-    selectedNodeId, selectedNode, draftMindMap,
-    addChild, addSibling, selectNode,
-  } = useMindMap()
+  const { selectedNodeId, selectedNode, draftMindMap, addChild, addSibling, selectNode } =
+    useMindMap()
 
   function isEditing(e: KeyboardEvent): boolean {
     const t = e.target as HTMLElement
@@ -55,8 +53,12 @@ export function useMindMapKeyboard() {
       return
     }
 
-    if (e.key === 'ArrowUp' || e.key === 'ArrowDown' ||
-        e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    if (
+      e.key === 'ArrowUp' ||
+      e.key === 'ArrowDown' ||
+      e.key === 'ArrowLeft' ||
+      e.key === 'ArrowRight'
+    ) {
       e.preventDefault()
       moveSelection(e.key)
     }

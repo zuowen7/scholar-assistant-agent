@@ -13,13 +13,17 @@ import type * as monaco from 'monaco-editor'
 
 export const tabs = ref<EditorTab[]>([])
 export const activeTabId = ref<string | null>(null)
-export const selection = ref<EditorSelection>({ startLine: 0, endLine: 0, startCol: 0, endCol: 0, text: '' })
+export const selection = ref<EditorSelection>({
+  startLine: 0,
+  endLine: 0,
+  startCol: 0,
+  endCol: 0,
+  text: '',
+})
 export const monacoEditor = shallowRef<monaco.editor.IStandaloneCodeEditor | null>(null)
-export const contentVersion = ref(0)  // 递增以强制触发 preview 更新
+export const contentVersion = ref(0) // 递增以强制触发 preview 更新
 
-export const activeTab = computed(() =>
-  tabs.value.find(t => t.id === activeTabId.value) ?? null
-)
+export const activeTab = computed(() => tabs.value.find((t) => t.id === activeTabId.value) ?? null)
 export const content = computed(() => activeTab.value?.content ?? '')
 export const activeFile = computed(() => activeTab.value?.path ?? null)
 export const isModified = computed(() => activeTab.value?.isModified ?? false)
@@ -62,7 +66,7 @@ export function shouldShowInlineDiff(
   const filePath = args.file_path as string
   if (!filePath) return false
   const normalize = (path: string) => path.replace(/\\/g, '/').toLowerCase()
-  const tab = openTabs.find(candidate => {
+  const tab = openTabs.find((candidate) => {
     const path = typeof candidate === 'string' ? candidate : candidate.path
     return Boolean(path && normalize(path) === normalize(filePath))
   })
@@ -85,14 +89,27 @@ export function shouldShowInlineDiff(
 // Monaco-compatible Range fallback — uses the correct IRange property names
 // so executeEdits works even when the editor instance lacks a .monaco reference.
 class _MonacoRange {
-  startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number
+  startLineNumber: number
+  startColumn: number
+  endLineNumber: number
+  endColumn: number
   constructor(sl: number, sc: number, el: number, ec: number) {
-    this.startLineNumber = sl; this.startColumn = sc; this.endLineNumber = el; this.endColumn = ec
+    this.startLineNumber = sl
+    this.startColumn = sc
+    this.endLineNumber = el
+    this.endColumn = ec
   }
 }
 
-export function getRange(editor: any) {
-  return (editor as any).monaco?.Range ?? _MonacoRange
+type RangeCtor = typeof _MonacoRange
+
+/** Monaco editor instances sometimes expose the full `monaco` namespace as `.monaco`. */
+type EditorWithMonacoNs = monaco.editor.IStandaloneCodeEditor & {
+  monaco?: { Range: RangeCtor }
+}
+
+export function getRange(editor: EditorWithMonacoNs): RangeCtor {
+  return editor.monaco?.Range ?? _MonacoRange
 }
 
 // ── Text insertion helpers (依赖 Monaco editor 实例) ──────────────────

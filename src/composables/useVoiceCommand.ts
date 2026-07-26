@@ -14,11 +14,14 @@ function getVoiceLanguage(): string {
       const s = JSON.parse(raw)
       if (s.language) return s.language
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return 'zh-CN'
 }
 
-export type VoiceCommandState = 'idle' | 'activating' | 'listening' | 'submitting' | 'processing' | 'result' | 'error'
+export type VoiceCommandState =
+  'idle' | 'activating' | 'listening' | 'submitting' | 'processing' | 'result' | 'error'
 
 // ── Module-level singleton state ───────────────────────────────────────
 
@@ -33,9 +36,18 @@ let resultHandle: ReturnType<typeof setTimeout> | null = null
 let speechStarted = false
 
 function clearTimeout_() {
-  if (timeoutHandle !== null) { clearTimeout(timeoutHandle); timeoutHandle = null }
-  if (silenceHandle !== null) { clearTimeout(silenceHandle); silenceHandle = null }
-  if (resultHandle !== null) { clearTimeout(resultHandle); resultHandle = null }
+  if (timeoutHandle !== null) {
+    clearTimeout(timeoutHandle)
+    timeoutHandle = null
+  }
+  if (silenceHandle !== null) {
+    clearTimeout(silenceHandle)
+    silenceHandle = null
+  }
+  if (resultHandle !== null) {
+    clearTimeout(resultHandle)
+    resultHandle = null
+  }
 }
 
 function stopSpeech() {
@@ -47,13 +59,18 @@ function stopSpeech() {
 function submit() {
   clearTimeout_()
   const text = transcript.value.trim()
-  if (!text) { cancel(); return }
+  if (!text) {
+    cancel()
+    return
+  }
   stopSpeech()
   state.value = 'submitting'
   logger.debug('[voice] submitting:', text)
-  window.dispatchEvent(new CustomEvent('voice-command-submit', {
-    detail: { text },
-  }))
+  window.dispatchEvent(
+    new CustomEvent('voice-command-submit', {
+      detail: { text },
+    }),
+  )
 }
 
 function cancel() {
@@ -97,7 +114,8 @@ const speech = useSpeechRecognition({
 function describeSpeechError(message: string) {
   const normalized = message.trim().toLowerCase()
   if (normalized === 'no-speech') return i18n.global.t('voice.noSpeech')
-  if (normalized === 'not-allowed' || normalized === 'service-not-allowed') return i18n.global.t('voice.permissionDenied')
+  if (normalized === 'not-allowed' || normalized === 'service-not-allowed')
+    return i18n.global.t('voice.permissionDenied')
   if (normalized === 'audio-capture') return i18n.global.t('voice.microphoneUnavailable')
   if (normalized === 'network') return i18n.global.t('voice.networkError')
   return message || i18n.global.t('voice.startFailed')
@@ -110,7 +128,11 @@ function fail(message: string) {
   state.value = 'error'
   // Show a user-visible toast so the user knows why voice failed
   // (without this, the error is only in composable state — invisible to the user)
-  try { useToast().pushError(message) } catch { /* ignore if no toast context */ }
+  try {
+    useToast().pushError(message)
+  } catch {
+    /* ignore if no toast context */
+  }
 }
 
 export function useVoiceCommand() {
@@ -141,32 +163,36 @@ export function useVoiceCommand() {
           const win = getCurrentWindow()
           await win.unminimize()
           await win.setFocus()
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
     }
 
-    activateWindow().then(() => {
-      return new Promise<void>(resolve => {
-        timeoutHandle = setTimeout(resolve, 150)
+    activateWindow()
+      .then(() => {
+        return new Promise<void>((resolve) => {
+          timeoutHandle = setTimeout(resolve, 150)
+        })
       })
-    }).then(() => {
-      if (state.value !== 'activating') return
-      state.value = 'listening'
-      speechStarted = true
-      const lang = getVoiceLanguage()
-      if (!speech.start(lang)) {
-        speechStarted = false
-        fail(describeSpeechError(speech.error.value))
-        return
-      }
-
-      // 10s absolute timeout — no speech at all
-      timeoutHandle = setTimeout(() => {
-        if (state.value === 'listening') {
-          fail(i18n.global.t('voice.noSpeech'))
+      .then(() => {
+        if (state.value !== 'activating') return
+        state.value = 'listening'
+        speechStarted = true
+        const lang = getVoiceLanguage()
+        if (!speech.start(lang)) {
+          speechStarted = false
+          fail(describeSpeechError(speech.error.value))
+          return
         }
-      }, 10_000)
-    })
+
+        // 10s absolute timeout — no speech at all
+        timeoutHandle = setTimeout(() => {
+          if (state.value === 'listening') {
+            fail(i18n.global.t('voice.noSpeech'))
+          }
+        }, 10_000)
+      })
   }
 
   function setProcessing() {

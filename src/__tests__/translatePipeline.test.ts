@@ -71,11 +71,8 @@ describe('Translate Pipeline E2E', () => {
   // ── SSE Event Parsing ──────────────────────────────────────────────────
   describe('SSE event stream parsing', () => {
     it('records translation-memory hits and preserves glossary violations alongside QA flags', async () => {
-      const {
-        useTranslate,
-        _resetForTesting,
-        _handleSseEventForTesting,
-      } = await import('../composables/useTranslate')
+      const { useTranslate, _resetForTesting, _handleSseEventForTesting } =
+        await import('../composables/useTranslate')
 
       _resetForTesting()
       const translate = useTranslate()
@@ -90,32 +87,38 @@ describe('Translate Pipeline E2E', () => {
       })
 
       expect(translate.state.completedChunks).toBe(1)
-      expect(translate.state.translations).toContainEqual(expect.objectContaining({
-        index: 1,
-        translated_preview: '译文',
-        tokens: 0,
-      }))
+      expect(translate.state.translations).toContainEqual(
+        expect.objectContaining({
+          index: 1,
+          translated_preview: '译文',
+          tokens: 0,
+        }),
+      )
 
       _handleSseEventForTesting('translate.glossary_violation', {
         index: 1,
         total: 3,
-        violations: [{
-          source: 'agent',
-          expected: '智能体',
-          message: 'Expected glossary translation was not found',
-        }],
+        violations: [
+          {
+            source: 'agent',
+            expected: '智能体',
+            message: 'Expected glossary translation was not found',
+          },
+        ],
       })
       _handleSseEventForTesting('translate.qa_warnings', {
         index: 1,
         section_type: 'methods',
         score: 88,
-        flags: [{
-          type: 'overclaim',
-          severity: 'warning',
-          location: '',
-          message: 'Claim is too strong',
-          suggestion: 'Use more cautious language',
-        }],
+        flags: [
+          {
+            type: 'overclaim',
+            severity: 'warning',
+            location: '',
+            message: 'Claim is too strong',
+            suggestion: 'Use more cautious language',
+          },
+        ],
       })
 
       expect(translate.state.qaWarnings).toHaveLength(1)
@@ -124,7 +127,7 @@ describe('Translate Pipeline E2E', () => {
         sectionType: 'methods',
         score: 88,
       })
-      expect(translate.state.qaWarnings[0].flags.map(flag => flag.type)).toEqual([
+      expect(translate.state.qaWarnings[0].flags.map((flag) => flag.type)).toEqual([
         'glossary',
         'overclaim',
       ])
@@ -134,19 +137,25 @@ describe('Translate Pipeline E2E', () => {
     it('normalizes live QA payload field names for the UI contract', async () => {
       const { normalizeQaWarning } = await import('../composables/useTranslate')
 
-      expect(normalizeQaWarning({
-        index: 2,
-        section_type: 'results',
-        score: 85,
-        flags: [{ type: 'overclaim', severity: 'warning', location: '', message: 'm', suggestion: 's' }],
-      })).toMatchObject({ chunkIndex: 2, sectionType: 'results', score: 85 })
+      expect(
+        normalizeQaWarning({
+          index: 2,
+          section_type: 'results',
+          score: 85,
+          flags: [
+            { type: 'overclaim', severity: 'warning', location: '', message: 'm', suggestion: 's' },
+          ],
+        }),
+      ).toMatchObject({ chunkIndex: 2, sectionType: 'results', score: 85 })
 
-      expect(normalizeQaWarning({
-        chunk_index: 3,
-        section_type: 'discussion',
-        score: 92,
-        flags: [],
-      })).toEqual({ chunkIndex: 3, sectionType: 'discussion', score: 92, flags: [] })
+      expect(
+        normalizeQaWarning({
+          chunk_index: 3,
+          section_type: 'discussion',
+          score: 92,
+          flags: [],
+        }),
+      ).toEqual({ chunkIndex: 3, sectionType: 'discussion', score: 92, flags: [] })
     })
 
     it('parses progress events in correct order', async () => {
@@ -182,11 +191,53 @@ describe('Translate Pipeline E2E', () => {
         { event: 'progress', data: { step: 1, total: 5, message: '上传中...' } },
         { event: 'parsed', data: { pages: 10, chars: 5000, dual_column_pages: 0 } },
         { event: 'cleaned', data: { chars: 4800, has_references: true } },
-        { event: 'chunked', data: { total_chunks: 4, total_blocks: 12, block_types: { paragraph: 10, heading: 2 }, references_chars: 200, blocks: [], chunks: [] } },
+        {
+          event: 'chunked',
+          data: {
+            total_chunks: 4,
+            total_blocks: 12,
+            block_types: { paragraph: 10, heading: 2 },
+            references_chars: 200,
+            blocks: [],
+            chunks: [],
+          },
+        },
         { event: 'progress', data: { step: 4, total: 5, message: '翻译中...' } },
-        { event: 'block_translated', data: { chunk_index: 0, block_id: 'b1', type: 'paragraph', translatable: true, original: 'Hello', translated: '你好', aligned: true, status: 'ok' } },
-        { event: 'chunk_done', data: { index: 0, total: 4, original_preview: 'Hello...', translated_preview: '你好...', tokens: 50, section_type: 'introduction' } },
-        { event: 'complete', data: { task_id: 'task-1', output_path: '/out/test.md', content: '你好 world', blocks: [], chunks: [], misalign_count: 0 } },
+        {
+          event: 'block_translated',
+          data: {
+            chunk_index: 0,
+            block_id: 'b1',
+            type: 'paragraph',
+            translatable: true,
+            original: 'Hello',
+            translated: '你好',
+            aligned: true,
+            status: 'ok',
+          },
+        },
+        {
+          event: 'chunk_done',
+          data: {
+            index: 0,
+            total: 4,
+            original_preview: 'Hello...',
+            translated_preview: '你好...',
+            tokens: 50,
+            section_type: 'introduction',
+          },
+        },
+        {
+          event: 'complete',
+          data: {
+            task_id: 'task-1',
+            output_path: '/out/test.md',
+            content: '你好 world',
+            blocks: [],
+            chunks: [],
+            misalign_count: 0,
+          },
+        },
       ]
 
       mockFetch.mockResolvedValueOnce(createSSEResponse(events))
@@ -204,10 +255,16 @@ describe('Translate Pipeline E2E', () => {
         expect(captured).toHaveLength(8)
 
         // Verify event sequence
-        const types = captured.map(c => c[0])
+        const types = captured.map((c) => c[0])
         expect(types).toEqual([
-          'progress', 'parsed', 'cleaned', 'chunked',
-          'progress', 'block_translated', 'chunk_done', 'complete',
+          'progress',
+          'parsed',
+          'cleaned',
+          'chunked',
+          'progress',
+          'block_translated',
+          'chunk_done',
+          'complete',
         ])
 
         // Verify parsed event data
@@ -253,8 +310,34 @@ describe('Translate Pipeline E2E', () => {
 
     it('handles QA warnings events', async () => {
       const events = [
-        { event: 'chunk_done', data: { index: 0, total: 1, original_preview: 'We prove...', translated_preview: '', tokens: 30, section_type: 'results' } },
-        { event: 'qa_warnings', data: { chunk_index: 0, section_type: 'results', score: 85, flags: [{ type: 'overclaim', severity: 'warning', location: 'We prove...', message: 'Overclaim detected: prove', suggestion: 'Use show/demonstrate instead' }] } },
+        {
+          event: 'chunk_done',
+          data: {
+            index: 0,
+            total: 1,
+            original_preview: 'We prove...',
+            translated_preview: '',
+            tokens: 30,
+            section_type: 'results',
+          },
+        },
+        {
+          event: 'qa_warnings',
+          data: {
+            chunk_index: 0,
+            section_type: 'results',
+            score: 85,
+            flags: [
+              {
+                type: 'overclaim',
+                severity: 'warning',
+                location: 'We prove...',
+                message: 'Overclaim detected: prove',
+                suggestion: 'Use show/demonstrate instead',
+              },
+            ],
+          },
+        },
       ]
 
       mockFetch.mockResolvedValueOnce(createSSEResponse(events))
@@ -284,7 +367,10 @@ describe('Translate Pipeline E2E', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        blob: async () => new Blob(['fake-pptx'], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }),
+        blob: async () =>
+          new Blob(['fake-pptx'], {
+            type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          }),
       })
 
       const res = await fetch('/api/export/pptx', {
@@ -294,16 +380,20 @@ describe('Translate Pipeline E2E', () => {
       })
 
       expect(res.ok).toBe(true)
-      expect(mockFetch).toHaveBeenCalledWith('/api/export/pptx', expect.objectContaining({
-        method: 'POST',
-      }))
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/export/pptx',
+        expect.objectContaining({
+          method: 'POST',
+        }),
+      )
     })
 
     it('Data Availability export fetches with correct parameters', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        blob: async () => new Blob(['# Data Availability Statement\n\n...'], { type: 'text/markdown' }),
+        blob: async () =>
+          new Blob(['# Data Availability Statement\n\n...'], { type: 'text/markdown' }),
       })
 
       const res = await fetch('/api/export/data_availability', {
@@ -313,9 +403,12 @@ describe('Translate Pipeline E2E', () => {
       })
 
       expect(res.ok).toBe(true)
-      expect(mockFetch).toHaveBeenCalledWith('/api/export/data_availability', expect.objectContaining({
-        method: 'POST',
-      }))
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/export/data_availability',
+        expect.objectContaining({
+          method: 'POST',
+        }),
+      )
     })
   })
 
@@ -324,9 +417,9 @@ describe('Translate Pipeline E2E', () => {
     it('handles network failure gracefully', async () => {
       mockFetch.mockRejectedValueOnce(new Error('Connection refused'))
 
-      await expect(
-        fetch('/api/translate/start', { method: 'POST', body: '{}' }),
-      ).rejects.toThrow('Connection refused')
+      await expect(fetch('/api/translate/start', { method: 'POST', body: '{}' })).rejects.toThrow(
+        'Connection refused',
+      )
     })
 
     it('handles non-200 response', async () => {

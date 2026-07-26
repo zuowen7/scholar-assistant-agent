@@ -93,7 +93,17 @@
     "analyzeTask": "Analyze task",
     "executeTool": "Run tool",
     "understandContext": "Understand the context and research goal",
-    "tools": { "readFile": "Read document context", "writeFile": "Write document changes", "replace": "Prepare a local edit", "grep": "Search project content", "glob": "Locate related files", "command": "Run a project command", "rag": "Search research library", "webSearch": "Search external sources", "webFetch": "Read a reference source" }
+    "tools": {
+      "readFile": "Read document context",
+      "writeFile": "Write document changes",
+      "replace": "Prepare a local edit",
+      "grep": "Search project content",
+      "glob": "Locate related files",
+      "command": "Run a project command",
+      "rag": "Search research library",
+      "webSearch": "Search external sources",
+      "webFetch": "Read a reference source"
+    }
   },
   "reviewerWorkspace": {
     "title": "Adversarial Review · Reviewer-2",
@@ -136,7 +146,13 @@
     "subtitle": "Review · {title} · {count} critiques",
     "pendingTip": "Prioritize method and experiment critiques; they often have the greatest effect on acceptance.",
     "doneTip": "No responses remain. Check the Claim Ledger for promises that are still unfulfilled.",
-    "promise": { "paid": "Fulfilled", "partial": "Partial", "unpaid": "Unfulfilled", "mismatch": "Mismatch", "unknown": "Review" }
+    "promise": {
+      "paid": "Fulfilled",
+      "partial": "Partial",
+      "unpaid": "Unfulfilled",
+      "mismatch": "Mismatch",
+      "unknown": "Review"
+    }
   },
   "settingsCenter": {
     "title": "Settings",
@@ -900,6 +916,9 @@
     "unSaved": "Unsaved",
     "closeTab": "Close",
     "closeTabLabel": "Close Tab",
+    "closeCurrentDocument": "Close Current Document",
+    "closeDocumentDescription": "Close this document and return to the previous document or welcome screen?",
+    "closeDocumentDirtyDetail": "This document has unsaved changes. Closing it will discard those changes.",
     "newFile": "New File",
     "topicPlaceholder": "Enter research topic (optional)",
     "directToEditor": "Go directly to editor",
@@ -970,36 +989,36 @@
     "rightAiEdit": "AI Edit",
     "rightAgent": "Agent",
     "rightArgument": "Argument",
-    "rightClosePanel": "Close Panel"
-    ,"documentView": "Document view"
-    ,"lineWordCount": "{lines} lines · {words} words"
-    ,"unsavedChanges": "Unsaved changes"
-    ,"autoSaved": "Saved"
-    ,"writingView": "Writing"
-    ,"saveAction": "Save"
-    ,"polish": "Polish"
-    ,"aiPolish": "AI Polish"
-    ,"collapseRight": "Collapse assistant"
-    ,"expandRight": "Expand assistant"
-    ,"condense": "Condense"
-    ,"expand": "Expand"
-    ,"checkArgument": "Check argument"
-    ,"closeProjectDescription": "Return to the welcome page and close this workspace"
-    ,"closeProjectDirtyDetail": "Some tabs have unsaved changes. Continuing discards those in-memory edits but does not delete project files on disk."
-    ,"closeProjectDetail": "The project will close in this workspace and remain available under recent projects."
-    ,"notSaved": "Not saved"
-    ,"writingHeaderSubtitle": "Writing · Current section · {status}"
-    ,"latexHeaderSubtitle": "Writing · LaTeX editor · {status}"
-    ,"body": "Body"
-    ,"outline": "Outline"
-    ,"paperTitlePlaceholder": "Enter a paper title (optional)"
-    ,"newSection": "New section"
-    ,"selectedText": "selected text"
-    ,"documentTarget": "document"
-    ,"selectionTaskPrompt": "{action} the current {target}, preserve academic meaning and citations, and use the existing editing tools to propose a confirmable change."
-    ,"openRecentFailed": "Failed to open recent project"
-    ,"zoteroSearchDescription": "Search the connected Zotero library and insert the first matching citation at the cursor."
-    ,"zoteroSearchPlaceholder": "Title, author, DOI, or keyword"
+    "rightClosePanel": "Close Panel",
+    "documentView": "Document view",
+    "lineWordCount": "{lines} lines · {words} words",
+    "unsavedChanges": "Unsaved changes",
+    "autoSaved": "Saved",
+    "writingView": "Writing",
+    "saveAction": "Save",
+    "polish": "Polish",
+    "aiPolish": "AI Polish",
+    "collapseRight": "Collapse assistant",
+    "expandRight": "Expand assistant",
+    "condense": "Condense",
+    "expand": "Expand",
+    "checkArgument": "Check argument",
+    "closeProjectDescription": "Return to the welcome page and close this workspace",
+    "closeProjectDirtyDetail": "Some tabs have unsaved changes. Continuing discards those in-memory edits but does not delete project files on disk.",
+    "closeProjectDetail": "The project will close in this workspace and remain available under recent projects.",
+    "notSaved": "Not saved",
+    "writingHeaderSubtitle": "Writing · Current section · {status}",
+    "latexHeaderSubtitle": "Writing · LaTeX editor · {status}",
+    "body": "Body",
+    "outline": "Outline",
+    "paperTitlePlaceholder": "Enter a paper title (optional)",
+    "newSection": "New section",
+    "selectedText": "selected text",
+    "documentTarget": "document",
+    "selectionTaskPrompt": "{action} the current {target}, preserve academic meaning and citations, and use the existing editing tools to propose a confirmable change.",
+    "openRecentFailed": "Failed to open recent project",
+    "zoteroSearchDescription": "Search the connected Zotero library and insert the first matching citation at the cursor.",
+    "zoteroSearchPlaceholder": "Title, author, DOI, or keyword"
   },
   "toast": {
     "unknownError": "Unknown error. Check your network or backend status."

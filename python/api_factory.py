@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import asyncio
 import collections
+import contextlib
 import copy
 import logging
 import os
+import re as _re
 import shutil
-import time
 import threading
+import time
 import uuid
 from contextvars import ContextVar
 from pathlib import Path, PureWindowsPath
@@ -20,9 +21,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from src.translator.cloud_client import CloudClient
-
 from src.features import plugin as _PLUGIN_AVAILABLE
+from src.translator.cloud_client import CloudClient
+from src.utils.secrets import is_masked as _is_masked_impl, mask_config as _mask_api_key_impl
 
 if _PLUGIN_AVAILABLE:
     from src.plugin import PluginRegistry, register_builtin
@@ -35,8 +36,12 @@ def _is_frozen() -> bool:
     return getattr(__import__("sys"), "frozen", False) and hasattr(__import__("sys"), "_MEIPASS")
 
 
+# 在模块级迁移逻辑之前定义，避免下方 except 分支触发 NameError（F821）。
+logger = logging.getLogger(__name__)
+
 if _is_frozen():
     import sys as _sys
+
     BUNDLED_DIR = Path(_sys._MEIPASS)
     # Use %LOCALAPPDATA%\YanMo as the writable runtime dir so config/data
     # are not stored beside the exe (which may be in read-only Program Files).
@@ -61,7 +66,11 @@ else:
 
 BASE_DIR = RUNTIME_DIR
 DOCKER_MODE = os.environ.get("DOCKER_MODE", "").lower() in ("1", "true", "yes")
-CONFIG_PATH = (RUNTIME_DIR / "config" / "docker.yaml") if DOCKER_MODE else (RUNTIME_DIR / "config" / "default.yaml")
+CONFIG_PATH = (
+    (RUNTIME_DIR / "config" / "docker.yaml")
+    if DOCKER_MODE
+    else (RUNTIME_DIR / "config" / "default.yaml")
+)
 
 if _is_frozen() and not DOCKER_MODE:
     bundled_default = BUNDLED_DIR / "config" / "default.yaml"
@@ -73,6 +82,7 @@ if _is_frozen() and not DOCKER_MODE:
         # 升级兼容：修正已知的旧版错误默认值，不覆盖用户自定义设置
         try:
             import yaml as _yaml
+
             with open(CONFIG_PATH, encoding="utf-8") as _f:
                 _rt_cfg = _yaml.safe_load(_f) or {}
             _dirty = False
@@ -94,9 +104,14 @@ if _is_frozen() and not DOCKER_MODE:
     # offline. chromadb skips its S3 download when the onnx files already exist.
     try:
         import sys as _sys2
-        _bundled_model = Path(_sys2.executable).parent / "models" / "chroma-onnx" / "all-MiniLM-L6-v2"
+
+        _bundled_model = (
+            Path(_sys2.executable).parent / "models" / "chroma-onnx" / "all-MiniLM-L6-v2"
+        )
         _cache_model = Path.home() / ".cache" / "chroma" / "onnx_models" / "all-MiniLM-L6-v2"
-        if (_bundled_model / "onnx" / "model.onnx").exists() and not (_cache_model / "onnx" / "model.onnx").exists():
+        if (_bundled_model / "onnx" / "model.onnx").exists() and not (
+            _cache_model / "onnx" / "model.onnx"
+        ).exists():
             _cache_model.parent.mkdir(parents=True, exist_ok=True)
             shutil.copytree(_bundled_model, _cache_model, dirs_exist_ok=True)
     except Exception as e:
@@ -106,6 +121,7 @@ if _is_frozen() and not DOCKER_MODE:
     # used by pandoc_templates.compile (LOCALAPPDATA/YanMo/tectonic-cache).
     try:
         import sys as _sys3
+
         _bundled_tex_cache = Path(_sys3.executable).parent / "tectonic-cache"
         _run_tex_cache = RUNTIME_DIR / "tectonic-cache"
         if _bundled_tex_cache.is_dir() and not _run_tex_cache.exists():
@@ -118,18 +134,14 @@ else:
     if not glossary_dir.is_dir():
         glossary_dir.mkdir(parents=True, exist_ok=True)
 
-logger = logging.getLogger(__name__)
-
 # ── Per-request trace_id ─────────────────────────────────────────────────────
 _trace_id_ctx: ContextVar[str] = ContextVar("trace_id", default="-")
-
-import re as _re
 
 
 class _TraceIdFilter(logging.Filter):
     """Inject trace_id into every log record and mask Bearer tokens."""
 
-    _BEARER_RE = _re.compile(r'Bearer\s+\S+', _re.IGNORECASE)
+    _BEARER_RE = _re.compile(r"Bearer\s+\S+", _re.IGNORECASE)
 
     def filter(self, record: logging.LogRecord) -> bool:
         record.trace_id = _trace_id_ctx.get("-")
@@ -153,8 +165,9 @@ class _TraceIdFilter(logging.Filter):
         # Mask secrets that might appear in tracebacks / exc_info
         if record.exc_info:
             import traceback as _tb
+
             try:
-                formatted = ''.join(_tb.format_exception(*record.exc_info))
+                formatted = "".join(_tb.format_exception(*record.exc_info))
                 if self._BEARER_RE.search(formatted):
                     record.exc_text = self._BEARER_RE.sub("Bearer ***", formatted)
                     record.exc_info = None
@@ -221,20 +234,17 @@ def _validate_config(cfg: dict) -> None:
     # Temperature must be in [0, 2]
     trans = cfg.get("translator", {})
     temp = trans.get("temperature")
-    if temp is not None:
-        if not isinstance(temp, (int, float)) or temp < 0 or temp > 2:
-            raise ValueError(f"translator.temperature must be 0–2, got {temp!r}")
+    if temp is not None and (not isinstance(temp, (int, float)) or temp < 0 or temp > 2):
+        raise ValueError(f"translator.temperature must be 0–2, got {temp!r}")
     # Agent temperature
     agent = cfg.get("agent", {})
     a_temp = agent.get("temperature")
-    if a_temp is not None:
-        if not isinstance(a_temp, (int, float)) or a_temp < 0 or a_temp > 2:
-            raise ValueError(f"agent.temperature must be 0–2, got {a_temp!r}")
+    if a_temp is not None and (not isinstance(a_temp, (int, float)) or a_temp < 0 or a_temp > 2):
+        raise ValueError(f"agent.temperature must be 0–2, got {a_temp!r}")
     # max_steps must be positive int
     max_steps = agent.get("max_steps")
-    if max_steps is not None:
-        if not isinstance(max_steps, int) or max_steps < 1:
-            raise ValueError(f"agent.max_steps must be a positive integer, got {max_steps!r}")
+    if max_steps is not None and (not isinstance(max_steps, int) or max_steps < 1):
+        raise ValueError(f"agent.max_steps must be a positive integer, got {max_steps!r}")
 
     # translator.engine: if present, must be 'ollama' or 'cloud'
     engine = trans.get("engine")
@@ -243,9 +253,8 @@ def _validate_config(cfg: dict) -> None:
 
     # translator.timeout: if present, must be positive number
     timeout = trans.get("timeout")
-    if timeout is not None:
-        if not isinstance(timeout, (int, float)) or timeout <= 0:
-            raise ValueError(f"translator.timeout must be a positive number, got {timeout!r}")
+    if timeout is not None and (not isinstance(timeout, (int, float)) or timeout <= 0):
+        raise ValueError(f"translator.timeout must be a positive number, got {timeout!r}")
 
     # agent.model: if present, must be a string (empty = auto-detect)
     a_model = agent.get("model")
@@ -253,14 +262,13 @@ def _validate_config(cfg: dict) -> None:
         if not isinstance(a_model, str):
             raise ValueError(f"agent.model must be a string, got {type(a_model).__name__}")
         if a_model != a_model.strip():
-            raise ValueError(f"agent.model must not have leading/trailing whitespace")
+            raise ValueError("agent.model must not have leading/trailing whitespace")
 
     # chunker.max_tokens: if present, must be positive int
     chunker = cfg.get("chunker", {})
     max_tok = chunker.get("max_tokens")
-    if max_tok is not None:
-        if not isinstance(max_tok, int) or max_tok < 1:
-            raise ValueError(f"chunker.max_tokens must be a positive integer, got {max_tok!r}")
+    if max_tok is not None and (not isinstance(max_tok, int) or max_tok < 1):
+        raise ValueError(f"chunker.max_tokens must be a positive integer, got {max_tok!r}")
 
 
 def _load_config() -> dict:
@@ -367,6 +375,7 @@ def _save_config(config: dict) -> None:
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with _save_config_lock:
         import tempfile as _tempfile
+
         tmp_fd, tmp_name = _tempfile.mkstemp(dir=CONFIG_PATH.parent, suffix=".tmp")
         try:
             with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
@@ -376,10 +385,8 @@ def _save_config(config: dict) -> None:
             os.replace(tmp_name, CONFIG_PATH)
         except Exception as e:
             logger.warning("failed to save config: %s", e)
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp_name)
-            except OSError:
-                pass
             raise
         # Persist API keys to default.local.yaml so they survive config reloads.
         local_path = CONFIG_PATH.parent / "default.local.yaml"
@@ -434,9 +441,6 @@ def _build_cloud_client(trans_cfg: dict, cloud_cfg: dict) -> CloudClient:
     )
 
 
-from src.utils.secrets import mask_config as _mask_api_key_impl, is_masked as _is_masked_impl
-
-
 def _mask_api_key(config: dict) -> None:
     _mask_api_key_impl(config)
 
@@ -448,8 +452,15 @@ def _is_masked(value: str) -> bool:
 _DENIED_POSIX_PATH_PREFIXES = ("/etc", "/proc", "/sys", "/dev", "/root")
 _DENIED_WINDOWS_PATH_PREFIXES = ("c:/windows", "c:/program files")
 _DENIED_HOME_SUBPATHS = (
-    ".ssh", ".aws", ".gnupg", ".gitconfig", ".docker",
-    ".kube", ".netrc", ".npmrc", ".pypirc",
+    ".ssh",
+    ".aws",
+    ".gnupg",
+    ".gitconfig",
+    ".docker",
+    ".kube",
+    ".netrc",
+    ".npmrc",
+    ".pypirc",
 )
 _DENIED_EXTENSIONS = {".env", ".key", ".pem", ".p12", ".pfx", ".secret", ".credentials"}
 
@@ -510,6 +521,7 @@ def _validate_file_path(file_path: Path) -> None:
             resolved.relative_to(RUNTIME_DIR)
         except ValueError:
             import tempfile
+
             try:
                 resolved.relative_to(Path(tempfile.gettempdir()).resolve())
             except ValueError:
@@ -555,6 +567,7 @@ def _validate_file_path(file_path: Path) -> None:
         raise HTTPException(403, "禁止访问隐藏文件")
     # Block Windows reserved device names (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
     import re as _path_re
+
     if _path_re.match(r"(?i)^(CON|PRN|AUX|NUL|COM\d|LPT\d)(\.|$)", resolved.stem):
         raise HTTPException(403, f"禁止访问 Windows 保留设备名: {resolved.stem}")
 
@@ -564,6 +577,7 @@ def _validate_file_path(file_path: Path) -> None:
 
 def create_app(*, cloud_only: bool = False) -> FastAPI:
     from contextlib import asynccontextmanager
+
     from src._version import __version__
 
     _app_title = "研墨 API (cloud-only)" if cloud_only else "研墨 API"
@@ -610,7 +624,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         if shutdown_fn:
             try:
                 await shutdown_fn()
-            except Exception as e:
+            except Exception:
                 logger.exception("Agent shutdown failed")
         shutdown_editor = state_editor2.get("shutdown")
         if shutdown_editor:
@@ -640,7 +654,9 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         trace_id = _trace_id_ctx.get("-")
         logger.exception(
             "Unhandled exception on %s %s (trace=%s)",
-            request.method, request.url.path, trace_id,
+            request.method,
+            request.url.path,
+            trace_id,
         )
         return JSONResponse(
             status_code=500,
@@ -648,10 +664,16 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         )
 
     allowed_origins = [
-        "http://localhost", "http://localhost:5173", "http://127.0.0.1:5173",
-        "http://localhost:18088", "http://localhost:18089",
-        "http://127.0.0.1:18088", "http://127.0.0.1:18089",
-        "tauri://localhost", "https://tauri.localhost", "http://tauri.localhost",
+        "http://localhost",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:18088",
+        "http://localhost:18089",
+        "http://127.0.0.1:18088",
+        "http://127.0.0.1:18089",
+        "tauri://localhost",
+        "https://tauri.localhost",
+        "http://tauri.localhost",
     ]
     app.add_middleware(
         CORSMiddleware,
@@ -679,6 +701,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
 
     # Rotating file handler: RUNTIME_DIR/logs/app.log, 10 MB × 5 backups
     from logging.handlers import RotatingFileHandler as _RFH
+
     _log_dir = RUNTIME_DIR / "logs"
     _log_dir.mkdir(parents=True, exist_ok=True)
     _fh = _RFH(
@@ -704,7 +727,10 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         if not request.url.path.endswith("/stream"):
             logger.info(
                 "ACCESS %s %s → %d (%.3fs)",
-                request.method, request.url.path, response.status_code, elapsed,
+                request.method,
+                request.url.path,
+                response.status_code,
+                elapsed,
             )
         response.headers["X-Trace-Id"] = trace_id
         return response
@@ -712,7 +738,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
     @app.middleware("http")
     async def rate_limit_middleware(request: Request, call_next):
         if request.url.path.startswith(_RATE_LIMITED_PREFIXES):
-            ip = (request.client.host if request.client else "unknown")
+            ip = request.client.host if request.client else "unknown"
             if not _check_rate_limit(ip):
                 return JSONResponse(
                     status_code=429,
@@ -737,6 +763,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
     # ── Register router modules ─────────────────────────────────
 
     from routers.translate import register_translate
+
     state_translate = register_translate(
         app,
         cloud_only=cloud_only,
@@ -771,6 +798,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
     # RAG store (ChromaDB-backed)
     logger.info("Registering RAG routes")
     from routers.rag import register_rag_routes
+
     state_rag = register_rag_routes(app, runtime_dir=RUNTIME_DIR)
 
     # Wire rag_store from RAG module into agent and translate.
@@ -781,6 +809,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
     state_agent["ensure_rag_store"] = state_rag["ensure_rag_store"]
 
     from routers.editor import register_editor
+
     state_editor = register_editor(
         app,
         cloud_only=cloud_only,
@@ -792,8 +821,9 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
 
     # Toulmin v2 argument graph (sole implementation)
     try:
-        from src.argument.graph_store import ArgGraphStore
         from routers.argument import register_argument_v2
+        from src.argument.graph_store import ArgGraphStore
+
         _v2_flag = True  # v2 is now the only version; flag retained for graceful degradation
         _graph_store = ArgGraphStore(runtime_dir=RUNTIME_DIR)
         register_argument_v2(
@@ -806,12 +836,14 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         )
     except Exception as _e:
         import logging as _logging
+
         _logging.getLogger(__name__).warning("argument_map_v2 setup skipped: %s", _e)
 
     # Argument Companion v3 (账本 + Reviewer-2 + rebuttal + import + suggest)
     try:
-        from src.argument.companion_store import CompanionStore
         from routers.argument import register_companion
+        from src.argument.companion_store import CompanionStore
+
         _companion_flag = bool(_load_config().get("features", {}).get("argument_companion", False))
         _companion_store = CompanionStore(runtime_dir=RUNTIME_DIR)
         register_companion(
@@ -823,9 +855,11 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         )
     except Exception as _e:
         import logging as _logging
+
         _logging.getLogger(__name__).warning("argument_companion setup skipped: %s", _e)
 
     from routers.mindmap import register_mindmap
+
     register_mindmap(
         app,
         runtime_dir=RUNTIME_DIR,
@@ -834,6 +868,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
     )
 
     from routers.project import register_project
+
     register_project(
         app,
         cloud_only=cloud_only,

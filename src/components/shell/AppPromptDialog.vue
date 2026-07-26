@@ -21,7 +21,9 @@
     </form>
     <template #footer>
       <UiButton variant="secondary" :disabled="busy" @click="cancel">{{ cancelLabel }}</UiButton>
-      <UiButton variant="primary" :loading="busy" :disabled="!value.trim()" @click="submit">{{ confirmLabel }}</UiButton>
+      <UiButton variant="primary" :loading="busy" :disabled="!value.trim()" @click="submit">{{
+        confirmLabel
+      }}</UiButton>
     </template>
   </AppDialog>
 </template>
@@ -31,24 +33,27 @@ import { ref, watch } from 'vue'
 import AppDialog from './AppDialog.vue'
 import UiButton from '../ui/UiButton.vue'
 
-const props = withDefaults(defineProps<{
-  modelValue: boolean
-  title: string
-  description?: string
-  label: string
-  placeholder?: string
-  initialValue?: string
-  confirmLabel: string
-  cancelLabel: string
-  error?: string
-  busy?: boolean
-}>(), {
-  description: '',
-  placeholder: '',
-  initialValue: '',
-  error: '',
-  busy: false,
-})
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean
+    title: string
+    description?: string
+    label: string
+    placeholder?: string
+    initialValue?: string
+    confirmLabel: string
+    cancelLabel: string
+    error?: string
+    busy?: boolean
+  }>(),
+  {
+    description: '',
+    placeholder: '',
+    initialValue: '',
+    error: '',
+    busy: false,
+  },
+)
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
@@ -58,9 +63,12 @@ const emit = defineEmits<{
 const value = ref(props.initialValue)
 const inputId = `app-prompt-${Math.random().toString(36).slice(2)}`
 
-watch(() => props.modelValue, (open) => {
-  if (open) value.value = props.initialValue
-})
+watch(
+  () => props.modelValue,
+  (open) => {
+    if (open) value.value = props.initialValue
+  },
+)
 
 function onOpenChange(open: boolean) {
   if (!props.busy) emit('update:modelValue', open)
@@ -77,8 +85,16 @@ function submit() {
 </script>
 
 <style scoped>
-.prompt-form { display: grid; gap: 8px; padding: 22px; }
-label { color: var(--c-text-1); font-size: 12px; font-weight: 600; }
+.prompt-form {
+  display: grid;
+  gap: 8px;
+  padding: 22px;
+}
+label {
+  color: var(--c-text-1);
+  font-size: 12px;
+  font-weight: 600;
+}
 input {
   height: 38px;
   width: 100%;
@@ -91,7 +107,18 @@ input {
   outline: none;
   padding: 0 11px;
 }
-input:focus { border-color: var(--c-accent); box-shadow: var(--ring-focus); }
-input:disabled { cursor: wait; opacity: .65; }
-.prompt-error { margin: 0; color: var(--c-danger-fg); font-size: 12px; line-height: 1.5; }
+input:focus {
+  border-color: var(--c-accent);
+  box-shadow: var(--ring-focus);
+}
+input:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+.prompt-error {
+  margin: 0;
+  color: var(--c-danger-fg);
+  font-size: 12px;
+  line-height: 1.5;
+}
 </style>

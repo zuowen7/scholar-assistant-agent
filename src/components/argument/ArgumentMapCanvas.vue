@@ -39,7 +39,13 @@ import '@vue-flow/controls/dist/style.css'
 import type { Connection, NodeChange, NodeMouseEvent, EdgeMouseEvent } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
-import { useArgumentMap, inferRelationType, toFlowNodes, toFlowEdges, focusNode } from '../../composables/useArgumentMap'
+import {
+  useArgumentMap,
+  inferRelationType,
+  toFlowNodes,
+  toFlowEdges,
+  focusNode,
+} from '../../composables/useArgumentMap'
 import type { RelationType } from '../../composables/useArgumentMap'
 import { useToast } from '../../composables/useToast'
 import ArgNodeCard from './ArgNodeCard.vue'
@@ -54,8 +60,8 @@ const { fitView } = useVueFlow()
 const nodeTypes = { argNode: markRaw(ArgNodeCard) }
 const edgeTypes = { argEdge: markRaw(ArgEdge) }
 
-const flowNodes = computed(() => state.graph ? toFlowNodes(state.graph) : [])
-const flowEdges = computed(() => state.graph ? toFlowEdges(state.graph) : [])
+const flowNodes = computed(() => (state.graph ? toFlowNodes(state.graph) : []))
+const flowEdges = computed(() => (state.graph ? toFlowEdges(state.graph) : []))
 
 function fitCanvas() {
   fitView({ padding: 0.12, minZoom: 0.68, maxZoom: 1, duration: 250 })
@@ -84,8 +90,8 @@ function onEdgeClick(e: EdgeMouseEvent) {
 async function onConnect(conn: Connection) {
   if (!conn.source || !conn.target || !state.graph) return
 
-  const srcNode = state.graph.nodes.find(n => n.id === conn.source)
-  const tgtNode = state.graph.nodes.find(n => n.id === conn.target)
+  const srcNode = state.graph.nodes.find((n) => n.id === conn.source)
+  const tgtNode = state.graph.nodes.find((n) => n.id === conn.target)
   if (!srcNode || !tgtNode) return
 
   const relType = inferRelationType(srcNode.node_type, tgtNode.node_type)
@@ -109,7 +115,7 @@ function onNodesChange(changes: NodeChange[]) {
   const settledPositions: Record<string, { x: number; y: number }> = {}
   for (const change of changes) {
     if (change.type === 'position' && change.position && state.graph) {
-      const node = state.graph.nodes.find(n => n.id === change.id)
+      const node = state.graph.nodes.find((n) => n.id === change.id)
       if (node) node.position = change.position
       if (change.dragging === false) settledPositions[change.id] = change.position
     }
@@ -154,8 +160,14 @@ function onNodesChange(changes: NodeChange[]) {
   animation: pill-appear 0.25s var(--ease-out, cubic-bezier(0.4, 0, 0.2, 1));
 }
 @keyframes pill-appear {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .canvas-extracting-label {
@@ -164,16 +176,35 @@ function onNodesChange(changes: NodeChange[]) {
   white-space: nowrap;
 }
 
-.dot-wave { display: flex; gap: 4px; align-items: center; }
+.dot-wave {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
 .dot-wave i {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--c-accent); display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c-accent);
+  display: block;
   animation: wave-bounce 1.1s ease-in-out infinite;
 }
-.dot-wave i:nth-child(2) { animation-delay: 0.18s; }
-.dot-wave i:nth-child(3) { animation-delay: 0.36s; }
+.dot-wave i:nth-child(2) {
+  animation-delay: 0.18s;
+}
+.dot-wave i:nth-child(3) {
+  animation-delay: 0.36s;
+}
 @keyframes wave-bounce {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.25; }
-  30%            { transform: translateY(-5px); opacity: 1; }
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.25;
+  }
+  30% {
+    transform: translateY(-5px);
+    opacity: 1;
+  }
 }
 </style>

@@ -5,11 +5,7 @@
     :class="[size, { full, 'use-vermilion': vermilionIndicator }]"
     role="tablist"
   >
-    <span
-      v-if="indicatorReady"
-      class="seg-indicator"
-      :style="indicatorStyle"
-    />
+    <span v-if="indicatorReady" class="seg-indicator" :style="indicatorStyle" />
     <button
       v-for="opt in options"
       :key="String(opt.value)"
@@ -19,10 +15,20 @@
       :class="{ active: opt.value === modelValue, disabled: opt.disabled }"
       :disabled="opt.disabled"
       :aria-selected="opt.value === modelValue"
-      :ref="el => { if (opt.value === modelValue) activeRef = el as HTMLElement }"
+      :ref="
+        (el) => {
+          if (opt.value === modelValue) activeRef = el as HTMLElement
+        }
+      "
       @click="!opt.disabled && $emit('update:modelValue', opt.value)"
     >
-      <component :is="opt.icon" v-if="opt.icon" :size="iconSize" :stroke-width="1.6" class="seg-icon" />
+      <component
+        :is="opt.icon"
+        v-if="opt.icon"
+        :size="iconSize"
+        :stroke-width="1.6"
+        class="seg-icon"
+      />
       <span v-if="opt.label" class="seg-label">{{ opt.label }}</span>
     </button>
   </div>
@@ -31,10 +37,12 @@
 <script setup lang="ts" generic="T extends string | number">
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 
+import type { Component } from 'vue'
+
 interface SegmentedOption<V> {
   value: V
   label?: string
-  icon?: any
+  icon?: Component
   disabled?: boolean
 }
 
@@ -74,10 +82,14 @@ function recalc() {
 
 onMounted(recalc)
 watch(() => props.modelValue, recalc)
-watch(() => props.options, () => {
-  indicatorReady.value = false
-  nextTick(recalc)
-}, { deep: true })
+watch(
+  () => props.options,
+  () => {
+    indicatorReady.value = false
+    nextTick(recalc)
+  },
+  { deep: true },
+)
 </script>
 
 <style scoped>
@@ -90,7 +102,10 @@ watch(() => props.options, () => {
   border: 1px solid var(--c-surface-3);
   border-radius: var(--radius-md);
 }
-.ui-segmented.full { display: flex; width: 100%; }
+.ui-segmented.full {
+  display: flex;
+  width: 100%;
+}
 
 /* Sliding indicator */
 .seg-indicator {
@@ -100,8 +115,9 @@ watch(() => props.options, () => {
   background: var(--c-surface-1);
   border-radius: var(--radius-sm);
   box-shadow: var(--elevation-1);
-  transition: left var(--motion-base) var(--ease-emphasis),
-              width var(--motion-base) var(--ease-emphasis);
+  transition:
+    left var(--motion-base) var(--ease-emphasis),
+    width var(--motion-base) var(--ease-emphasis);
   pointer-events: none;
   z-index: 0;
 }
@@ -127,8 +143,16 @@ watch(() => props.options, () => {
   border-radius: var(--radius-sm);
   transition: color var(--motion-fast) var(--ease-out);
 }
-.ui-segmented.md .seg-item { height: 28px; padding: 0 12px; font-size: var(--text-sm); }
-.ui-segmented.sm .seg-item { height: 22px; padding: 0 10px; font-size: var(--text-xs); }
+.ui-segmented.md .seg-item {
+  height: 28px;
+  padding: 0 12px;
+  font-size: var(--text-sm);
+}
+.ui-segmented.sm .seg-item {
+  height: 22px;
+  padding: 0 10px;
+  font-size: var(--text-xs);
+}
 
 .seg-item:hover:not(.active):not(.disabled) {
   color: var(--c-text-2);
@@ -143,6 +167,10 @@ watch(() => props.options, () => {
   opacity: 0.4;
   cursor: not-allowed;
 }
-.seg-icon { flex-shrink: 0; }
-.seg-label { white-space: nowrap; }
+.seg-icon {
+  flex-shrink: 0;
+}
+.seg-label {
+  white-space: nowrap;
+}
 </style>

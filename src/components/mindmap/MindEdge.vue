@@ -1,17 +1,7 @@
 <template>
   <g class="mind-edge" @contextmenu.prevent="onContextMenu">
-    <BaseEdge
-      :id="id"
-      :path="path[0]"
-      :style="edgeStyle"
-    />
-    <path
-      :d="path[0]"
-      fill="none"
-      stroke="transparent"
-      stroke-width="14"
-      class="edge-hit-area"
-    />
+    <BaseEdge :id="id" :path="path[0]" :style="edgeStyle" />
+    <path :d="path[0]" fill="none" stroke="transparent" stroke-width="14" class="edge-hit-area" />
   </g>
   <Teleport to="body">
     <div
@@ -36,11 +26,16 @@ const props = defineProps<EdgeProps<{ kind: 'parent' | 'association'; childId?: 
 
 const hoveredEdgeId = inject<Ref<string>>('hoveredEdgeId', ref(''))
 
-const path = computed(() => getBezierPath({
-  sourceX: props.sourceX, sourceY: props.sourceY,
-  targetX: props.targetX, targetY: props.targetY,
-  sourcePosition: props.sourcePosition, targetPosition: props.targetPosition,
-}))
+const path = computed(() =>
+  getBezierPath({
+    sourceX: props.sourceX,
+    sourceY: props.sourceY,
+    targetX: props.targetX,
+    targetY: props.targetY,
+    sourcePosition: props.sourcePosition,
+    targetPosition: props.targetPosition,
+  }),
+)
 
 const isAssociation = computed(() => props.data?.kind === 'association')
 const hovered = computed(() => hoveredEdgeId.value === props.id)
@@ -49,13 +44,29 @@ const selected = computed(() => props.selected)
 const edgeStyle = computed(() => {
   const base = isAssociation.value
     ? { stroke: 'var(--c-accent)', strokeDasharray: '6 5', strokeWidth: 1.6, opacity: 0.5 }
-    : { stroke: 'color-mix(in srgb, var(--c-surface-4) 60%, transparent)', strokeWidth: 1.6, opacity: 0.85 }
+    : {
+        stroke: 'color-mix(in srgb, var(--c-surface-4) 60%, transparent)',
+        strokeWidth: 1.6,
+        opacity: 0.85,
+      }
 
   if (selected.value) {
-    return { ...base, stroke: 'var(--c-accent)', strokeWidth: 2.6, opacity: 1, strokeDasharray: isAssociation.value ? '8 4' : 'none' }
+    return {
+      ...base,
+      stroke: 'var(--c-accent)',
+      strokeWidth: 2.6,
+      opacity: 1,
+      strokeDasharray: isAssociation.value ? '8 4' : 'none',
+    }
   }
   if (hovered.value) {
-    return { ...base, stroke: 'var(--c-accent-hover)', strokeWidth: 2.6, opacity: 0.9, strokeDasharray: isAssociation.value ? '8 4' : 'none' }
+    return {
+      ...base,
+      stroke: 'var(--c-accent-hover)',
+      strokeWidth: 2.6,
+      opacity: 0.9,
+      strokeDasharray: isAssociation.value ? '8 4' : 'none',
+    }
   }
   return base
 })
@@ -94,10 +105,15 @@ function doDelete() {
   stroke-dasharray: 600;
   stroke-dashoffset: 600;
   animation: edge-draw 620ms var(--ease-brush) forwards;
-  transition: stroke 180ms var(--ease-out), stroke-width 180ms var(--ease-out), opacity 180ms var(--ease-out);
+  transition:
+    stroke 180ms var(--ease-out),
+    stroke-width 180ms var(--ease-out),
+    opacity 180ms var(--ease-out);
 }
 @keyframes edge-draw {
-  to { stroke-dashoffset: 0; }
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 .edge-hit-area {
   cursor: pointer;
@@ -138,6 +154,8 @@ function doDelete() {
     stroke-dasharray: none;
     stroke-dashoffset: 0;
   }
-  .edge-context-menu { animation: none; }
+  .edge-context-menu {
+    animation: none;
+  }
 }
 </style>

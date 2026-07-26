@@ -1,4 +1,5 @@
 """Plugin 测试 — 加载/注册/边缘/故障。"""
+
 from __future__ import annotations
 
 import json
@@ -7,9 +8,9 @@ from pathlib import Path
 import pytest
 import yaml
 
+from src.agent_v2.hooks import HookRunner
 from src.agent_v2.plugins import PluginManager, create_default_plugin_manager
 from src.agent_v2.skills import SkillRegistry
-from src.agent_v2.hooks import HookRunner
 from src.agent_v2.tools.registry import ToolRegistry
 
 
@@ -28,9 +29,11 @@ def _create_plugin(tmp_path: Path, name: str, **extra) -> Path:
 
 class TestLoadManifest:
     def test_load_valid_plugin(self, tmp_path: Path):
-        _create_plugin(tmp_path, "test_plugin", skills=[
-            {"name": "s1", "layer": "agents", "content": "skill content"}
-        ])
+        _create_plugin(
+            tmp_path,
+            "test_plugin",
+            skills=[{"name": "s1", "layer": "agents", "content": "skill content"}],
+        )
         mgr = PluginManager()
         n = mgr.load_dir(tmp_path)
         assert n == 1
@@ -76,10 +79,14 @@ class TestLoadManifest:
 
 class TestRegisterSkills:
     def test_register_skills_to_registry(self, tmp_path: Path):
-        _create_plugin(tmp_path, "p1", skills=[
-            {"name": "s1", "layer": "agents", "content": "Content A"},
-            {"name": "s2", "layer": "soul", "content": "Content B"},
-        ])
+        _create_plugin(
+            tmp_path,
+            "p1",
+            skills=[
+                {"name": "s1", "layer": "agents", "content": "Content A"},
+                {"name": "s2", "layer": "soul", "content": "Content B"},
+            ],
+        )
         mgr = PluginManager()
         mgr.load_dir(tmp_path)
         reg = SkillRegistry()
@@ -89,9 +96,13 @@ class TestRegisterSkills:
         assert reg.get("s2") is not None
 
     def test_disabled_plugin_skills_not_registered(self, tmp_path: Path):
-        _create_plugin(tmp_path, "p1", skills=[
-            {"name": "s1", "content": "c"},
-        ])
+        _create_plugin(
+            tmp_path,
+            "p1",
+            skills=[
+                {"name": "s1", "content": "c"},
+            ],
+        )
         mgr = PluginManager()
         mgr.load_dir(tmp_path)
         mgr.disable("p1")
@@ -102,9 +113,13 @@ class TestRegisterSkills:
 
 class TestRegisterHooks:
     def test_register_hooks(self, tmp_path: Path):
-        _create_plugin(tmp_path, "p1", hooks=[
-            {"name": "h1", "point": "PreToolUse", "command": "echo ok", "priority": 30},
-        ])
+        _create_plugin(
+            tmp_path,
+            "p1",
+            hooks=[
+                {"name": "h1", "point": "PreToolUse", "command": "echo ok", "priority": 30},
+            ],
+        )
         mgr = PluginManager()
         mgr.load_dir(tmp_path)
         runner = HookRunner()
@@ -113,9 +128,13 @@ class TestRegisterHooks:
         assert len(runner._hooks) == 1
 
     def test_invalid_hook_point_skipped(self, tmp_path: Path):
-        _create_plugin(tmp_path, "p1", hooks=[
-            {"name": "h1", "point": "InvalidPoint", "command": "echo ok"},
-        ])
+        _create_plugin(
+            tmp_path,
+            "p1",
+            hooks=[
+                {"name": "h1", "point": "InvalidPoint", "command": "echo ok"},
+            ],
+        )
         mgr = PluginManager()
         mgr.load_dir(tmp_path)
         runner = HookRunner()
@@ -125,11 +144,18 @@ class TestRegisterHooks:
 
 class TestRegisterTools:
     def test_register_plugin_tool(self, tmp_path: Path):
-        _create_plugin(tmp_path, "p1", tools=[
-            {"name": "hello", "description": "Say hello",
-             "input_schema": {"type": "object", "properties": {"name": {"type": "string"}}},
-             "command": "echo hello"},
-        ])
+        _create_plugin(
+            tmp_path,
+            "p1",
+            tools=[
+                {
+                    "name": "hello",
+                    "description": "Say hello",
+                    "input_schema": {"type": "object", "properties": {"name": {"type": "string"}}},
+                    "command": "echo hello",
+                },
+            ],
+        )
         mgr = PluginManager()
         mgr.load_dir(tmp_path)
         reg = ToolRegistry()
@@ -140,11 +166,19 @@ class TestRegisterTools:
     @pytest.mark.asyncio
     async def test_execute_plugin_tool(self, tmp_path: Path):
         import sys
-        _create_plugin(tmp_path, "p1", tools=[
-            {"name": "greet", "description": "Greet",
-             "input_schema": {},
-             "command": f"{sys.executable} -c \"print('hello from plugin')\""},
-        ])
+
+        _create_plugin(
+            tmp_path,
+            "p1",
+            tools=[
+                {
+                    "name": "greet",
+                    "description": "Greet",
+                    "input_schema": {},
+                    "command": f"{sys.executable} -c \"print('hello from plugin')\"",
+                },
+            ],
+        )
         mgr = PluginManager()
         mgr.load_dir(tmp_path)
         reg = ToolRegistry()
@@ -155,10 +189,13 @@ class TestRegisterTools:
 
 class TestPluginLifecycle:
     def test_apply_all(self, tmp_path: Path):
-        _create_plugin(tmp_path, "full_plugin",
-                       skills=[{"name": "sk", "content": "c"}],
-                       hooks=[{"name": "hk", "point": "PostToolUse", "command": "echo ok"}],
-                       tools=[{"name": "tk", "description": "d", "input_schema": {}, "command": "echo hi"}])
+        _create_plugin(
+            tmp_path,
+            "full_plugin",
+            skills=[{"name": "sk", "content": "c"}],
+            hooks=[{"name": "hk", "point": "PostToolUse", "command": "echo ok"}],
+            tools=[{"name": "tk", "description": "d", "input_schema": {}, "command": "echo hi"}],
+        )
         mgr = PluginManager()
         mgr.load_dir(tmp_path)
         reg_skill = SkillRegistry()
@@ -168,9 +205,13 @@ class TestPluginLifecycle:
         assert result == {"skills": 1, "hooks": 1, "tools": 1}
 
     def test_list_all(self, tmp_path: Path):
-        _create_plugin(tmp_path, "p1", skills=[{"name": "s", "content": "c"}],
-                       hooks=[{"name": "h", "point": "PreToolUse", "command": "echo"}],
-                       tools=[{"name": "t", "description": "d", "input_schema": {}, "command": "echo"}])
+        _create_plugin(
+            tmp_path,
+            "p1",
+            skills=[{"name": "s", "content": "c"}],
+            hooks=[{"name": "h", "point": "PreToolUse", "command": "echo"}],
+            tools=[{"name": "t", "description": "d", "input_schema": {}, "command": "echo"}],
+        )
         mgr = PluginManager()
         mgr.load_dir(tmp_path)
         items = mgr.list_all()

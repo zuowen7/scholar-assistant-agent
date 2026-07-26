@@ -23,7 +23,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
 
 import httpx
 
@@ -147,6 +146,7 @@ class ZoteroClient:
         """从配置文件加载 Zotero 设置"""
         try:
             import yaml
+
             config_path = Path(__file__).parent.parent.parent / "config" / "default.yaml"
             if config_path.exists():
                 with open(config_path, encoding="utf-8") as f:
@@ -168,9 +168,13 @@ class ZoteroClient:
     def _check_config(self) -> None:
         """检查配置是否完整"""
         if not self.api_key:
-            raise ValueError("未配置 Zotero API Key，请在 config/default.yaml 中设置 zotero.api_key")
+            raise ValueError(
+                "未配置 Zotero API Key，请在 config/default.yaml 中设置 zotero.api_key"
+            )
         if not self.user_id:
-            raise ValueError("未配置 Zotero User ID，请在 config/default.yaml 中设置 zotero.user_id")
+            raise ValueError(
+                "未配置 Zotero User ID，请在 config/default.yaml 中设置 zotero.user_id"
+            )
 
     def search(
         self,
@@ -348,6 +352,7 @@ class ZoteroClient:
         year = ""
         if date:
             import re
+
             year_match = re.search(r"\d{4}", date)
             if year_match:
                 year = year_match.group(0)

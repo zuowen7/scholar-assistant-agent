@@ -1,1 +1,31 @@
+# 行尾治理：跨平台统一为 LF，与 .prettierrc(endOfLine:"lf") / ruff 对齐。
+# .gitattributes 的 eol 设置优先级高于 core.autocrlf，可根治 Windows 下
+# autocrlf=true 把 LF 转成 CRLF 导致 prettier/ruff 误报的问题。
+
+# 默认：文本文件自动识别并按 LF 规范化（入库 LF，checkout 也 LF）
+* text=auto eol=lf
+
+# Windows 批处理脚本必须保留 CRLF，否则 cmd 无法正确解析
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Shell 脚本强制 LF（即使在 Windows checkout 也不能变 CRLF，否则 bash 报 \r 错误）
+*.sh text eol=lf
+
+# 二进制文件不做行尾处理
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.pdf binary
+*.zip binary
+*.gz binary
+
+# LFS 大文件
 *.exe filter=lfs diff=lfs merge=lfs

@@ -4,7 +4,11 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { API_BASE } from '../utils/api'
 import { logger } from '../utils/logger'
 import { readSseStream } from '../utils/streamReader'
-import { persistTranslation, loadLastTranslation, clearPersistedTranslation } from './useTranslatePersist'
+import {
+  persistTranslation,
+  loadLastTranslation,
+  clearPersistedTranslation,
+} from './useTranslatePersist'
 import { toastFromError } from './useToast'
 import { validateTranslateUpload, extractApiErrorMessage } from '../utils/validation'
 import { i18n } from '../i18n'
@@ -154,7 +158,9 @@ async function checkOllama(): Promise<boolean> {
   } catch {
     // 非 Tauri 环境回退到 fetch
     try {
-      const resp = await fetch(`${API_URL}/api/ollama/status`, { signal: AbortSignal.timeout(3000) })
+      const resp = await fetch(`${API_URL}/api/ollama/status`, {
+        signal: AbortSignal.timeout(3000),
+      })
       if (!resp.ok) return false
       const data = await resp.json()
       return data.reachable === true
@@ -168,7 +174,7 @@ async function startOllama(): Promise<string | null> {
   try {
     await invoke<string>('start_ollama')
     for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 1000))
+      await new Promise((r) => setTimeout(r, 1000))
       if (await checkOllama()) return null
     }
     return i18n.global.t('errors.ollamaTimeout')
@@ -199,7 +205,10 @@ async function uploadPdf(file: File): Promise<string> {
 
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({ detail: i18n.global.t('errors.uploadFailed') }))
-    throw new Error(extractApiErrorMessage(body) || i18n.global.t('errors.uploadFailedHttp', { status: resp.status }))
+    throw new Error(
+      extractApiErrorMessage(body) ||
+        i18n.global.t('errors.uploadFailedHttp', { status: resp.status }),
+    )
   }
 
   const data = validateTranslateUpload(await resp.json())
@@ -231,10 +240,10 @@ async function startStream(taskId: string, attempt: number = 0): Promise<void> {
       handleSseEvent(event, data)
     })
     if (
-      myStreamId === _currentStreamId
-      && state.status !== 'done'
-      && state.status !== 'error'
-      && state.status !== 'idle'
+      myStreamId === _currentStreamId &&
+      state.status !== 'done' &&
+      state.status !== 'error' &&
+      state.status !== 'idle'
     ) {
       throw new Error(i18n.global.t('errors.streamEnded'))
     }
@@ -245,13 +254,24 @@ async function startStream(taskId: string, attempt: number = 0): Promise<void> {
     // Stale stream — silently discard
     if (myStreamId !== _currentStreamId) return
 
-    if (state.status !== 'done' && state.status !== 'idle' && attempt < SSE_RECONNECT_MAX_ATTEMPTS) {
+    if (
+      state.status !== 'done' &&
+      state.status !== 'idle' &&
+      attempt < SSE_RECONNECT_MAX_ATTEMPTS
+    ) {
       if (_isReconnecting) return
       _isReconnecting = true
       try {
-        const delay = Math.min(SSE_RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt), SSE_RECONNECT_TOTAL_TIMEOUT_MS)
-        state.stepMessage = i18n.global.t('errors.reconnecting', { attempt: attempt + 1, max: SSE_RECONNECT_MAX_ATTEMPTS, delay: Math.round(delay / 1000) })
-        await new Promise(r => setTimeout(r, delay))
+        const delay = Math.min(
+          SSE_RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt),
+          SSE_RECONNECT_TOTAL_TIMEOUT_MS,
+        )
+        state.stepMessage = i18n.global.t('errors.reconnecting', {
+          attempt: attempt + 1,
+          max: SSE_RECONNECT_MAX_ATTEMPTS,
+          delay: Math.round(delay / 1000),
+        })
+        await new Promise((r) => setTimeout(r, delay))
         if (abortController === null || myStreamId !== _currentStreamId) return
 
         const stillAlive = await checkHealth()
@@ -292,20 +312,25 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       state.totalChunks = ev.total_chunks ?? 0
       state.totalBlocks = ev.total_blocks ?? 0
       // 用原文初始化 blocks 骨架；markRaw 防止 Vue 深度追踪大数组内部属性
-      state.blocks = (ev.blocks ?? []).map(b => markRaw({
-        id: b.id,
-        type: b.type,
-        level: b.level,
-        translatable: b.translatable,
-        original: b.original,
-        translated: '',
-      }))
-      state.stepMessage = i18n.global.t('errors.chunksAndBlocks', { chunks: state.totalChunks, blocks: state.totalBlocks })
+      state.blocks = (ev.blocks ?? []).map((b) =>
+        markRaw({
+          id: b.id,
+          type: b.type,
+          level: b.level,
+          translatable: b.translatable,
+          original: b.original,
+          translated: '',
+        }),
+      )
+      state.stepMessage = i18n.global.t('errors.chunksAndBlocks', {
+        chunks: state.totalChunks,
+        blocks: state.totalBlocks,
+      })
       break
     }
     case 'translate.block_translated': {
       const ev = data as unknown as BlockTranslatedEvent
-      const idx = state.blocks.findIndex(b => b.id === ev.block_id)
+      const idx = state.blocks.findIndex((b) => b.id === ev.block_id)
       if (idx >= 0) {
         const wasEmpty = !state.blocks[idx].translated
         const updated = markRaw({
@@ -381,7 +406,10 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       break
     }
     case 'translate.chunk_error':
-      logger.warn(`Translation chunk ${(data as Record<string, unknown>).index}/${(data as Record<string, unknown>).total} failed`, { error: (data as Record<string, unknown>).error })
+      logger.warn(
+        `Translation chunk ${(data as Record<string, unknown>).index}/${(data as Record<string, unknown>).total} failed`,
+        { error: (data as Record<string, unknown>).error },
+      )
       break
     case 'translate.complete':
       state.finalContent = (data.content as string) ?? ''
@@ -394,9 +422,13 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       setStatus('done')
       if (state.fallbackChunks > 0 || state.misalignedChunks > 0) {
         const parts: string[] = []
-        if (state.fallbackChunks > 0) parts.push(i18n.global.t('errors.failedChunks', { count: state.fallbackChunks }))
-        if (state.misalignedChunks > 0) parts.push(i18n.global.t('errors.misalignedChunks', { count: state.misalignedChunks }))
-        state.stepMessage = i18n.global.t('errors.translateCompleteWithWarn', { parts: parts.join(', ') })
+        if (state.fallbackChunks > 0)
+          parts.push(i18n.global.t('errors.failedChunks', { count: state.fallbackChunks }))
+        if (state.misalignedChunks > 0)
+          parts.push(i18n.global.t('errors.misalignedChunks', { count: state.misalignedChunks }))
+        state.stepMessage = i18n.global.t('errors.translateCompleteWithWarn', {
+          parts: parts.join(', '),
+        })
       } else {
         state.stepMessage = i18n.global.t('errors.translateComplete')
       }
@@ -421,7 +453,7 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
 }
 
 function upsertTranslation(chunk: ChunkDoneEvent): void {
-  const existingIdx = state.translations.findIndex(item => item.index === chunk.index)
+  const existingIdx = state.translations.findIndex((item) => item.index === chunk.index)
   if (existingIdx >= 0) {
     state.translations[existingIdx] = chunk
   } else {
@@ -436,21 +468,21 @@ export function normalizeQaWarning(data: Record<string, unknown>): QAWarning {
     chunkIndex: Number.isFinite(chunkIndex) ? chunkIndex : 0,
     sectionType: String(data.sectionType ?? data.section_type ?? 'unknown'),
     score: Number(data.score ?? 100),
-    flags: Array.isArray(data.flags) ? data.flags as QAWarning['flags'] : [],
+    flags: Array.isArray(data.flags) ? (data.flags as QAWarning['flags']) : [],
   }
 }
 
 function upsertQaWarning(warning: QAWarning): void {
-  const existing = state.qaWarnings.find(item => item.chunkIndex === warning.chunkIndex)
-  const hasIncomingGlossaryFlags = warning.flags.some(flag => flag.type === 'glossary')
+  const existing = state.qaWarnings.find((item) => item.chunkIndex === warning.chunkIndex)
+  const hasIncomingGlossaryFlags = warning.flags.some((flag) => flag.type === 'glossary')
   const preservedGlossaryFlags = hasIncomingGlossaryFlags
     ? []
-    : existing?.flags.filter(flag => flag.type === 'glossary') ?? []
+    : (existing?.flags.filter((flag) => flag.type === 'glossary') ?? [])
   const mergedWarning = {
     ...warning,
     flags: [...preservedGlossaryFlags, ...warning.flags],
   }
-  const remaining = state.qaWarnings.filter(item => item.chunkIndex !== warning.chunkIndex)
+  const remaining = state.qaWarnings.filter((item) => item.chunkIndex !== warning.chunkIndex)
   state.qaWarnings = mergedWarning.flags.length ? [...remaining, mergedWarning] : remaining
 }
 
@@ -478,7 +510,9 @@ async function translate(file: File): Promise<void> {
 
     const healthOk = await checkHealth()
     if (!healthOk) {
-      throw new Error('Cannot connect to translation service. Please make sure the backend is running.')
+      throw new Error(
+        'Cannot connect to translation service. Please make sure the backend is running.',
+      )
     }
 
     const taskId = await uploadPdf(file)
@@ -518,10 +552,30 @@ async function translateFromPath(filePath: string): Promise<void> {
   try {
     const healthOk = await checkHealth()
     if (!healthOk) {
-      throw new Error('Cannot connect to translation service. Please make sure the backend is running.')
+      throw new Error(
+        'Cannot connect to translation service. Please make sure the backend is running.',
+      )
     }
 
-    const supportedExts = ['.pdf','.docx','.doc','.txt','.md','.log','.html','.htm','.epub','.rtf','.tex','.csv','.pptx','.xlsx','.srt','.json','.xml']
+    const supportedExts = [
+      '.pdf',
+      '.docx',
+      '.doc',
+      '.txt',
+      '.md',
+      '.log',
+      '.html',
+      '.htm',
+      '.epub',
+      '.rtf',
+      '.tex',
+      '.csv',
+      '.pptx',
+      '.xlsx',
+      '.srt',
+      '.json',
+      '.xml',
+    ]
     const ext = '.' + filePath.split('.').pop()?.toLowerCase()
     if (!supportedExts.includes(ext)) {
       throw new Error(i18n.global.t('errors.unsupportedFormat', { ext }))
@@ -614,7 +668,11 @@ async function exportTranslationOnlyMarkdown(): Promise<void> {
     if (!b.translatable) {
       parts.push(b.original)
     } else if (b.translated) {
-      parts.push(b.type === 'heading' ? `${'#'.repeat(Math.min(Math.max(b.level || 2, 1), 6))} ${b.translated.replace(/^#+\s+/, '').trim()}` : b.translated)
+      parts.push(
+        b.type === 'heading'
+          ? `${'#'.repeat(Math.min(Math.max(b.level || 2, 1), 6))} ${b.translated.replace(/^#+\s+/, '').trim()}`
+          : b.translated,
+      )
     }
   }
   const content = parts.join('\n\n')
@@ -645,13 +703,17 @@ async function retryBlock(blockId: string): Promise<void> {
   })
   if (!response.ok) {
     const detail = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }))
-    throw new Error(detail.detail || i18n.global.t('translate.retryFailed', { status: response.status }))
+    throw new Error(
+      detail.detail || i18n.global.t('translate.retryFailed', { status: response.status }),
+    )
   }
 
-  const result = await response.json() as RetryBlockResponse
-  state.blocks = state.blocks.map(block => block.id === blockId
-    ? markRaw({ ...block, translated: result.translated, status: result.status })
-    : block)
+  const result = (await response.json()) as RetryBlockResponse
+  state.blocks = state.blocks.map((block) =>
+    block.id === blockId
+      ? markRaw({ ...block, translated: result.translated, status: result.status })
+      : block,
+  )
   if (Array.isArray(result.chunks)) state.chunks = result.chunks
   if (typeof result.content === 'string') state.finalContent = result.content
   if (typeof result.fallback_count === 'number') state.fallbackChunks = result.fallback_count
@@ -660,9 +722,11 @@ async function retryBlock(blockId: string): Promise<void> {
   const chunkIndex = Number(result.chunk_index)
   if (Number.isFinite(chunkIndex)) {
     const translatedPreview = state.chunks[chunkIndex]?.translated?.slice(0, 200) ?? ''
-    state.translations = state.translations.map(chunk => chunk.index === chunkIndex
-      ? { ...chunk, translated_preview: translatedPreview, fallback: false }
-      : chunk)
+    state.translations = state.translations.map((chunk) =>
+      chunk.index === chunkIndex
+        ? { ...chunk, translated_preview: translatedPreview, fallback: false }
+        : chunk,
+    )
   }
   persistTranslation({
     id: state.taskId,
@@ -690,9 +754,13 @@ async function exportPPTX(): Promise<void> {
     })
 
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ detail: i18n.global.t('errors.pptxExportFailed') }))
+      const err = await resp
+        .json()
+        .catch(() => ({ detail: i18n.global.t('errors.pptxExportFailed') }))
       const detail = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail)
-      throw new Error(detail || i18n.global.t('errors.pptxExportFailedHttp', { status: resp.status }))
+      throw new Error(
+        detail || i18n.global.t('errors.pptxExportFailedHttp', { status: resp.status }),
+      )
     }
 
     const blob = await resp.blob()
@@ -718,9 +786,13 @@ async function exportDataAvailability(): Promise<void> {
     })
 
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ detail: i18n.global.t('errors.dataAvailFailed') }))
+      const err = await resp
+        .json()
+        .catch(() => ({ detail: i18n.global.t('errors.dataAvailFailed') }))
       const detail = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail)
-      throw new Error(detail || i18n.global.t('errors.dataAvailFailedHttp', { status: resp.status }))
+      throw new Error(
+        detail || i18n.global.t('errors.dataAvailFailedHttp', { status: resp.status }),
+      )
     }
 
     const data = await resp.json()
@@ -739,7 +811,7 @@ async function restartBackend(): Promise<boolean> {
     await invoke<string>('restart_backend')
     // 等待后端就绪
     for (let i = 0; i < 20; i++) {
-      await new Promise(r => setTimeout(r, 500))
+      await new Promise((r) => setTimeout(r, 500))
       if (await checkHealth()) return true
     }
     return false
@@ -754,7 +826,11 @@ function listenBackendCrash(): void {
     if (state.status === 'idle' || state.status === 'error') {
       setBackendError(i18n.global.t('app.backendOffline'))
     }
-  }).then(fn => { crashListener = fn }).catch(() => {})
+  })
+    .then((fn) => {
+      crashListener = fn
+    })
+    .catch(() => {})
 }
 
 /** Translation pipeline composable (singleton). Manages the 5-step SSE pipeline (parse→clean→chunk→translate→format) with auto-reconnect, retry, and export. */
@@ -855,13 +931,17 @@ async function getConfig(): Promise<AppConfig | null> {
   try {
     const resp = await fetch(`${API_URL}/api/config`, { signal: AbortSignal.timeout(5000) })
     if (!resp.ok) return null
-    return await resp.json() as AppConfig
+    return (await resp.json()) as AppConfig
   } catch {
     return null
   }
 }
 
-async function updateConfig(config: { translator?: Record<string, unknown>; cloud?: CloudConfig; network?: Record<string, unknown> }): Promise<AppConfig | null> {
+async function updateConfig(config: {
+  translator?: Record<string, unknown>
+  cloud?: CloudConfig
+  network?: Record<string, unknown>
+}): Promise<AppConfig | null> {
   try {
     const payload: Record<string, unknown> = {}
     if (config.translator) payload.translator = config.translator
@@ -874,7 +954,7 @@ async function updateConfig(config: { translator?: Record<string, unknown>; clou
       body: JSON.stringify(payload),
     })
     if (!resp.ok) return null
-    return await resp.json() as AppConfig
+    return (await resp.json()) as AppConfig
   } catch {
     return null
   }
@@ -882,9 +962,11 @@ async function updateConfig(config: { translator?: Record<string, unknown>; clou
 
 async function getProviderPresets(): Promise<Record<string, ProviderPreset>> {
   try {
-    const resp = await fetch(`${API_URL}/api/cloud/providers`, { signal: AbortSignal.timeout(5000) })
+    const resp = await fetch(`${API_URL}/api/cloud/providers`, {
+      signal: AbortSignal.timeout(5000),
+    })
     if (!resp.ok) return {}
-    return await resp.json() as Record<string, ProviderPreset>
+    return (await resp.json()) as Record<string, ProviderPreset>
   } catch {
     return {}
   }

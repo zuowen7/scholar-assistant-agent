@@ -10,8 +10,8 @@ import json
 import logging
 import time
 import uuid
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Any, AsyncGenerator
 
 from .models_v2 import ArgGraph, ArgNode
 
@@ -19,14 +19,15 @@ logger = logging.getLogger(__name__)
 
 # ── Relation type constants ───────────────────────────────────────────────────
 
-_SUPPORTS  = "supports"
-_WARRANTS  = "warrants"
-_BACKS     = "backs"
+_SUPPORTS = "supports"
+_WARRANTS = "warrants"
+_BACKS = "backs"
 _QUALIFIES = "qualifies"
-_REBUTS    = "rebuts"
-_COUNTERS  = "counters"
+_REBUTS = "rebuts"
+_COUNTERS = "counters"
 
 # ── Section building ──────────────────────────────────────────────────────────
+
 
 def _node_map(graph: ArgGraph) -> dict[str, ArgNode]:
     return {n.id: n for n in graph.nodes}
@@ -116,11 +117,13 @@ def graph_to_sections(graph: ArgGraph) -> list[dict]:
                 node_ids.append(q.id)
                 used_ids.add(q.id)
 
-        sections.append({
-            "title": claim.text[:60] + ("…" if len(claim.text) > 60 else ""),
-            "body": "\n\n".join(parts),
-            "node_ids": node_ids,
-        })
+        sections.append(
+            {
+                "title": claim.text[:60] + ("…" if len(claim.text) > 60 else ""),
+                "body": "\n\n".join(parts),
+                "node_ids": node_ids,
+            }
+        )
 
         # --- Rebuttal sub-section for this claim ---
         rebuttals = _incoming(graph, claim.id, _REBUTS)
@@ -141,32 +144,37 @@ def graph_to_sections(graph: ArgGraph) -> list[dict]:
                     used_ids.add(c.id)
 
             if reb_parts:
-                sections.append({
-                    "title": "局限性与反驳",
-                    "body": "\n\n".join(reb_parts),
-                    "node_ids": reb_ids,
-                })
+                sections.append(
+                    {
+                        "title": "局限性与反驳",
+                        "body": "\n\n".join(reb_parts),
+                        "node_ids": reb_ids,
+                    }
+                )
 
     # Orphan nodes not yet covered
     orphans = [n for n in graph.nodes if n.id not in used_ids]
     if orphans:
         body = "\n\n".join(n.text for n in orphans)
-        sections.append({
-            "title": "其他论证元素",
-            "body": body,
-            "node_ids": [n.id for n in orphans],
-        })
+        sections.append(
+            {
+                "title": "其他论证元素",
+                "body": body,
+                "node_ids": [n.id for n in orphans],
+            }
+        )
 
     return sections
 
 
 # ── Format helpers ─────────────────────────────────────────────────────────────
 
+
 def _format_markdown(title: str, sections: list[dict]) -> str:
     parts: list[str] = []
     if title:
         parts.append(f"# {title}\n")
-    for i, sec in enumerate(sections):
+    for _i, sec in enumerate(sections):
         heading_level = "##"
         parts.append(f"{heading_level} {sec['title']}\n\n{sec['body']}")
     return "\n\n".join(parts)
@@ -175,9 +183,11 @@ def _format_markdown(title: str, sections: list[dict]) -> str:
 def _format_latex(title: str, sections: list[dict]) -> str:
     try:
         from pandoc_templates import convert_markdown
+
         md = _format_markdown(title, sections)
-        result = convert_markdown(md, template_id="generic_article", output_format="tex",
-                                  metadata={"title": title})
+        result = convert_markdown(
+            md, template_id="generic_article", output_format="tex", metadata={"title": title}
+        )
         if result.get("success") and result.get("tex"):
             return result["tex"]
     except Exception as exc:
@@ -195,6 +205,7 @@ def _format_latex(title: str, sections: list[dict]) -> str:
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
+
 
 def flatten_graph(
     graph: ArgGraph,
@@ -253,10 +264,12 @@ async def flatten_graph_stream(
 
     yield {
         "event": "complete",
-        "data": json.dumps({
-            "output_path": str(output_path),
-            "word_count": len(content),
-            "section_count": len(sections),
-            "template": template,
-        }),
+        "data": json.dumps(
+            {
+                "output_path": str(output_path),
+                "word_count": len(content),
+                "section_count": len(sections),
+                "template": template,
+            }
+        ),
     }

@@ -1,17 +1,20 @@
 <template>
   <TransitionGroup name="v-slide-up" tag="div" class="toast-container">
-    <div
-      v-for="t in toasts"
-      :key="t.id"
-      class="toast"
-      :class="t.level"
-      @click="dismiss(t.id)"
-    >
+    <div v-for="t in toasts" :key="t.id" class="toast" :class="t.level" @click="dismiss(t.id)">
       <span class="toast-dot" />
       <span class="toast-msg">{{ t.message }}</span>
       <button class="toast-close" @click.stop="dismiss(t.id)">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-          <line x1="3" y1="3" x2="9" y2="9" /><line x1="9" y1="3" x2="3" y2="9" />
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+        >
+          <line x1="3" y1="3" x2="9" y2="9" />
+          <line x1="9" y1="3" x2="3" y2="9" />
         </svg>
       </button>
     </div>
@@ -57,15 +60,31 @@ const { toasts, dismiss } = useToast()
   border-radius: 50%;
   flex-shrink: 0;
 }
-.toast.success .toast-dot { background: var(--c-success); }
-.toast.warn    .toast-dot { background: var(--c-warn); }
-.toast.danger  .toast-dot { background: var(--c-danger); }
-.toast.info    .toast-dot { background: var(--c-info); }
+.toast.success .toast-dot {
+  background: var(--c-success);
+}
+.toast.warn .toast-dot {
+  background: var(--c-warn);
+}
+.toast.danger .toast-dot {
+  background: var(--c-danger);
+}
+.toast.info .toast-dot {
+  background: var(--c-info);
+}
 
-.toast.success { border-left: 3px solid var(--c-success); }
-.toast.warn    { border-left: 3px solid var(--c-warn); }
-.toast.danger  { border-left: 3px solid var(--c-danger); }
-.toast.info    { border-left: 3px solid var(--c-info); }
+.toast.success {
+  border-left: 3px solid var(--c-success);
+}
+.toast.warn {
+  border-left: 3px solid var(--c-warn);
+}
+.toast.danger {
+  border-left: 3px solid var(--c-danger);
+}
+.toast.info {
+  border-left: 3px solid var(--c-info);
+}
 
 .toast-msg {
   flex: 1;
@@ -88,5 +107,8 @@ const { toasts, dismiss } = useToast()
   transition: background var(--motion-fast);
   flex-shrink: 0;
 }
-.toast-close:hover { background: var(--c-surface-3); color: var(--c-text-0); }
+.toast-close:hover {
+  background: var(--c-surface-3);
+  color: var(--c-text-0);
+}
 </style>

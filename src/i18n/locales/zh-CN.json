@@ -96,7 +96,17 @@
     "analyzeTask": "分析任务",
     "executeTool": "执行工具",
     "understandContext": "理解上下文与研究目标",
-    "tools": { "readFile": "读取文稿上下文", "writeFile": "写入文稿修改", "replace": "生成局部修改", "grep": "检索项目内容", "glob": "定位相关文件", "command": "运行项目命令", "rag": "检索研究资料", "webSearch": "搜索外部资料", "webFetch": "读取参考资料" }
+    "tools": {
+      "readFile": "读取文稿上下文",
+      "writeFile": "写入文稿修改",
+      "replace": "生成局部修改",
+      "grep": "检索项目内容",
+      "glob": "定位相关文件",
+      "command": "运行项目命令",
+      "rag": "检索研究资料",
+      "webSearch": "搜索外部资料",
+      "webFetch": "读取参考资料"
+    }
   },
   "reviewerWorkspace": {
     "title": "对抗式审稿 · Reviewer-2",
@@ -139,7 +149,13 @@
     "subtitle": "审稿 · {title} · {count} 条批评",
     "pendingTip": "优先回应方法与实验类批评，这类问题通常对最终接收影响更大。",
     "doneTip": "当前没有待回应意见。可以检查 Claim Ledger 中仍未兑现的主张。",
-    "promise": { "paid": "已兑现", "partial": "部分", "unpaid": "未兑现", "mismatch": "不匹配", "unknown": "待确认" }
+    "promise": {
+      "paid": "已兑现",
+      "partial": "部分",
+      "unpaid": "未兑现",
+      "mismatch": "不匹配",
+      "unknown": "待确认"
+    }
   },
   "settingsCenter": {
     "title": "设置",
@@ -903,6 +919,9 @@
     "unSaved": "未保存",
     "closeTab": "关闭",
     "closeTabLabel": "关闭标签",
+    "closeCurrentDocument": "关闭当前文档",
+    "closeDocumentDescription": "关闭当前文档并返回上一个文档或欢迎页？",
+    "closeDocumentDirtyDetail": "当前文档有未保存修改，关闭后这些修改将丢失。",
     "newFile": "新建文件",
     "topicPlaceholder": "输入研究主题（可选）",
     "directToEditor": "直接进入编辑器",
@@ -973,36 +992,36 @@
     "rightAiEdit": "AI 编辑",
     "rightAgent": "Agent 协作",
     "rightArgument": "论证陪练",
-    "rightClosePanel": "关闭面板"
-    ,"documentView": "文稿视图"
-    ,"lineWordCount": "{lines} 行 · {words} 字"
-    ,"unsavedChanges": "有未保存修改"
-    ,"autoSaved": "已自动保存"
-    ,"writingView": "写作视图"
-    ,"saveAction": "保存"
-    ,"polish": "润色"
-    ,"aiPolish": "AI 润色"
-    ,"collapseRight": "收起右栏"
-    ,"expandRight": "展开右栏"
-    ,"condense": "精简"
-    ,"expand": "扩写"
-    ,"checkArgument": "检查论证"
-    ,"closeProjectDescription": "返回欢迎页并关闭当前工作区"
-    ,"closeProjectDirtyDetail": "当前仍有未保存的标签页。继续将丢弃这些内存中的修改，但不会删除磁盘上的项目文件。"
-    ,"closeProjectDetail": "当前项目会从工作区关闭，稍后仍可从最近项目重新打开。"
-    ,"notSaved": "尚未保存"
-    ,"writingHeaderSubtitle": "写作 · 当前章节 · {status}"
-    ,"latexHeaderSubtitle": "写作 · LaTeX 编辑器 · {status}"
-    ,"body": "正文"
-    ,"outline": "大纲"
-    ,"paperTitlePlaceholder": "输入论文标题（可选）"
-    ,"newSection": "新章节"
-    ,"selectedText": "选中文本"
-    ,"documentTarget": "文稿"
-    ,"selectionTaskPrompt": "{action}当前{target}，保持学术含义与引用不变，并通过现有编辑工具给出可确认修改。"
-    ,"openRecentFailed": "打开最近项目失败"
-    ,"zoteroSearchDescription": "在已连接的 Zotero 文献库中搜索，并将首个匹配引用插入光标位置。"
-    ,"zoteroSearchPlaceholder": "标题、作者、DOI 或关键词"
+    "rightClosePanel": "关闭面板",
+    "documentView": "文稿视图",
+    "lineWordCount": "{lines} 行 · {words} 字",
+    "unsavedChanges": "有未保存修改",
+    "autoSaved": "已自动保存",
+    "writingView": "写作视图",
+    "saveAction": "保存",
+    "polish": "润色",
+    "aiPolish": "AI 润色",
+    "collapseRight": "收起右栏",
+    "expandRight": "展开右栏",
+    "condense": "精简",
+    "expand": "扩写",
+    "checkArgument": "检查论证",
+    "closeProjectDescription": "返回欢迎页并关闭当前工作区",
+    "closeProjectDirtyDetail": "当前仍有未保存的标签页。继续将丢弃这些内存中的修改，但不会删除磁盘上的项目文件。",
+    "closeProjectDetail": "当前项目会从工作区关闭，稍后仍可从最近项目重新打开。",
+    "notSaved": "尚未保存",
+    "writingHeaderSubtitle": "写作 · 当前章节 · {status}",
+    "latexHeaderSubtitle": "写作 · LaTeX 编辑器 · {status}",
+    "body": "正文",
+    "outline": "大纲",
+    "paperTitlePlaceholder": "输入论文标题（可选）",
+    "newSection": "新章节",
+    "selectedText": "选中文本",
+    "documentTarget": "文稿",
+    "selectionTaskPrompt": "{action}当前{target}，保持学术含义与引用不变，并通过现有编辑工具给出可确认修改。",
+    "openRecentFailed": "打开最近项目失败",
+    "zoteroSearchDescription": "在已连接的 Zotero 文献库中搜索，并将首个匹配引用插入光标位置。",
+    "zoteroSearchPlaceholder": "标题、作者、DOI 或关键词"
   },
   "toast": {
     "unknownError": "未知错误，请检查网络或后端状态"

@@ -5,18 +5,19 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from pathlib import Path
-
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
+
 def _build_app(tmp_path: Path, flag_enabled: bool = True) -> FastAPI:
     """构建带 v2 端点的 FastAPI 应用，注入临时目录作为 runtime_dir。"""
-    from src.argument.graph_store import ArgGraphStore
     from routers.argument import register_argument_v2
+    from src.argument.graph_store import ArgGraphStore
 
     app = FastAPI()
     store = ArgGraphStore(runtime_dir=tmp_path)
@@ -38,6 +39,7 @@ def client_disabled(tmp_path):
 
 # ── Feature flag 行为 ────────────────────────────────────────────────────────
 
+
 class TestFeatureFlag:
     def test_v2_endpoints_return_404_when_flag_disabled(self, client_disabled):
         r = client_disabled.get("/api/argument/graphs")
@@ -49,6 +51,7 @@ class TestFeatureFlag:
 
 
 # ── 图 CRUD 端点 ──────────────────────────────────────────────────────────────
+
 
 class TestGraphEndpoints:
     def test_list_graphs_empty(self, client):
@@ -95,14 +98,16 @@ class TestGraphEndpoints:
 
 # ── 节点端点 ──────────────────────────────────────────────────────────────────
 
+
 class TestNodeEndpoints:
     def _graph(self, client) -> str:
         return client.post("/api/argument/graph", json={"title": "G"}).json()["id"]
 
     def test_upsert_node_creates(self, client):
         gid = self._graph(client)
-        r = client.put(f"/api/argument/graph/{gid}/node",
-                       json={"node_type": "claim", "text": "A claim"})
+        r = client.put(
+            f"/api/argument/graph/{gid}/node", json={"node_type": "claim", "text": "A claim"}
+        )
         assert r.status_code == 200
         data = r.json()
         assert data["node_type"] == "claim"
@@ -110,11 +115,14 @@ class TestNodeEndpoints:
 
     def test_upsert_node_updates(self, client):
         gid = self._graph(client)
-        create_r = client.put(f"/api/argument/graph/{gid}/node",
-                              json={"node_type": "claim", "text": "Original"})
+        create_r = client.put(
+            f"/api/argument/graph/{gid}/node", json={"node_type": "claim", "text": "Original"}
+        )
         nid = create_r.json()["id"]
-        update_r = client.put(f"/api/argument/graph/{gid}/node",
-                              json={"id": nid, "node_type": "claim", "text": "Updated"})
+        update_r = client.put(
+            f"/api/argument/graph/{gid}/node",
+            json={"id": nid, "node_type": "claim", "text": "Updated"},
+        )
         assert update_r.status_code == 200
         assert update_r.json()["text"] == "Updated"
         graph_r = client.get(f"/api/argument/graph/{gid}")
@@ -123,14 +131,16 @@ class TestNodeEndpoints:
 
     def test_upsert_node_invalid_type_422(self, client):
         gid = self._graph(client)
-        r = client.put(f"/api/argument/graph/{gid}/node",
-                       json={"node_type": "bad_type", "text": "x"})
+        r = client.put(
+            f"/api/argument/graph/{gid}/node", json={"node_type": "bad_type", "text": "x"}
+        )
         assert r.status_code == 422
 
     def test_delete_node(self, client):
         gid = self._graph(client)
-        create_r = client.put(f"/api/argument/graph/{gid}/node",
-                              json={"node_type": "grounds", "text": "Evidence"})
+        create_r = client.put(
+            f"/api/argument/graph/{gid}/node", json={"node_type": "grounds", "text": "Evidence"}
+        )
         nid = create_r.json()["id"]
         r = client.delete(f"/api/argument/graph/{gid}/node/{nid}")
         assert r.status_code == 200
@@ -145,22 +155,28 @@ class TestNodeEndpoints:
 
 # ── 边端点 ────────────────────────────────────────────────────────────────────
 
+
 class TestEdgeEndpoints:
     def _setup(self, client):
         gid = client.post("/api/argument/graph", json={"title": "G"}).json()["id"]
-        claim = client.put(f"/api/argument/graph/{gid}/node",
-                           json={"node_type": "claim", "text": "C"}).json()
-        grounds = client.put(f"/api/argument/graph/{gid}/node",
-                             json={"node_type": "grounds", "text": "E"}).json()
+        claim = client.put(
+            f"/api/argument/graph/{gid}/node", json={"node_type": "claim", "text": "C"}
+        ).json()
+        grounds = client.put(
+            f"/api/argument/graph/{gid}/node", json={"node_type": "grounds", "text": "E"}
+        ).json()
         return gid, claim["id"], grounds["id"]
 
     def test_upsert_valid_edge(self, client):
         gid, claim_id, grounds_id = self._setup(client)
-        r = client.put(f"/api/argument/graph/{gid}/edge", json={
-            "source_id": grounds_id,
-            "target_id": claim_id,
-            "relation_type": "supports",
-        })
+        r = client.put(
+            f"/api/argument/graph/{gid}/edge",
+            json={
+                "source_id": grounds_id,
+                "target_id": claim_id,
+                "relation_type": "supports",
+            },
+        )
         assert r.status_code == 200
         data = r.json()
         assert data["relation_type"] == "supports"
@@ -169,21 +185,27 @@ class TestEdgeEndpoints:
     def test_upsert_invalid_edge_combo_400(self, client):
         gid, claim_id, grounds_id = self._setup(client)
         # grounds -> grounds with "warrants" is invalid
-        r = client.put(f"/api/argument/graph/{gid}/edge", json={
-            "source_id": grounds_id,
-            "target_id": grounds_id,
-            "relation_type": "warrants",
-        })
+        r = client.put(
+            f"/api/argument/graph/{gid}/edge",
+            json={
+                "source_id": grounds_id,
+                "target_id": grounds_id,
+                "relation_type": "warrants",
+            },
+        )
         assert r.status_code == 400
         assert r.json()["error"] == "invalid_edge"
 
     def test_self_loop_edge_400(self, client):
         gid, claim_id, _ = self._setup(client)
-        r = client.put(f"/api/argument/graph/{gid}/edge", json={
-            "source_id": claim_id,
-            "target_id": claim_id,
-            "relation_type": "supports",
-        })
+        r = client.put(
+            f"/api/argument/graph/{gid}/edge",
+            json={
+                "source_id": claim_id,
+                "target_id": claim_id,
+                "relation_type": "supports",
+            },
+        )
         assert r.status_code == 400
 
     def test_duplicate_edge_400(self, client):
@@ -199,11 +221,14 @@ class TestEdgeEndpoints:
 
     def test_delete_edge(self, client):
         gid, claim_id, grounds_id = self._setup(client)
-        edge_r = client.put(f"/api/argument/graph/{gid}/edge", json={
-            "source_id": grounds_id,
-            "target_id": claim_id,
-            "relation_type": "supports",
-        })
+        edge_r = client.put(
+            f"/api/argument/graph/{gid}/edge",
+            json={
+                "source_id": grounds_id,
+                "target_id": claim_id,
+                "relation_type": "supports",
+            },
+        )
         eid = edge_r.json()["id"]
         r = client.delete(f"/api/argument/graph/{gid}/edge/{eid}")
         assert r.status_code == 200
@@ -213,20 +238,25 @@ class TestEdgeEndpoints:
 
 # ── Span 端点 ─────────────────────────────────────────────────────────────────
 
+
 class TestSpanEndpoints:
     def _graph_with_node(self, client):
         gid = client.post("/api/argument/graph", json={"title": "G"}).json()["id"]
-        nid = client.put(f"/api/argument/graph/{gid}/node",
-                         json={"node_type": "claim", "text": "C"}).json()["id"]
+        nid = client.put(
+            f"/api/argument/graph/{gid}/node", json={"node_type": "claim", "text": "C"}
+        ).json()["id"]
         return gid, nid
 
     def test_add_span(self, client):
         gid, nid = self._graph_with_node(client)
-        r = client.put(f"/api/argument/graph/{gid}/span", json={
-            "node_id": nid,
-            "source_type": "block",
-            "quote": "relevant passage",
-        })
+        r = client.put(
+            f"/api/argument/graph/{gid}/span",
+            json={
+                "node_id": nid,
+                "source_type": "block",
+                "quote": "relevant passage",
+            },
+        )
         assert r.status_code == 200
         data = r.json()
         assert data["id"].startswith("sp_")
@@ -234,19 +264,25 @@ class TestSpanEndpoints:
 
     def test_add_span_missing_quote_422(self, client):
         gid, nid = self._graph_with_node(client)
-        r = client.put(f"/api/argument/graph/{gid}/span", json={
-            "node_id": nid,
-            "source_type": "block",
-        })
+        r = client.put(
+            f"/api/argument/graph/{gid}/span",
+            json={
+                "node_id": nid,
+                "source_type": "block",
+            },
+        )
         assert r.status_code == 422
 
     def test_delete_span(self, client):
         gid, nid = self._graph_with_node(client)
-        span_r = client.put(f"/api/argument/graph/{gid}/span", json={
-            "node_id": nid,
-            "source_type": "selection",
-            "quote": "text",
-        })
+        span_r = client.put(
+            f"/api/argument/graph/{gid}/span",
+            json={
+                "node_id": nid,
+                "source_type": "selection",
+                "quote": "text",
+            },
+        )
         sid = span_r.json()["id"]
         r = client.delete(f"/api/argument/graph/{gid}/span/{sid}")
         assert r.status_code == 200
@@ -255,15 +291,18 @@ class TestSpanEndpoints:
 
     def test_add_span_with_char_offsets(self, client):
         gid, nid = self._graph_with_node(client)
-        r = client.put(f"/api/argument/graph/{gid}/span", json={
-            "node_id": nid,
-            "source_type": "extracted",
-            "quote": "exact text",
-            "char_start": 10,
-            "char_end": 20,
-            "block_id": "blk_001",
-            "side": "orig",
-        })
+        r = client.put(
+            f"/api/argument/graph/{gid}/span",
+            json={
+                "node_id": nid,
+                "source_type": "extracted",
+                "quote": "exact text",
+                "char_start": 10,
+                "char_end": 20,
+                "block_id": "blk_001",
+                "side": "orig",
+            },
+        )
         assert r.status_code == 200
         data = r.json()
         assert data["char_start"] == 10

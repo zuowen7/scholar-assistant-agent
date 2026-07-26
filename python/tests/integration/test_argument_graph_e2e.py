@@ -41,6 +41,7 @@ features:
 @pytest.fixture(scope="module")
 def client():
     from fastapi.testclient import TestClient
+
     from api_factory import create_app
 
     test_dir = tempfile.mkdtemp()
@@ -125,9 +126,14 @@ class TestNodeCRUD:
             assert resp.status_code in (200, 201)
 
     def test_get_graph_includes_nodes(self, client, graph_id):
-        client.put(f"/api/argument/graph/{graph_id}/node", json={
-            "id": "n_visible", "node_type": "claim", "text": "Visible Node",
-        })
+        client.put(
+            f"/api/argument/graph/{graph_id}/node",
+            json={
+                "id": "n_visible",
+                "node_type": "claim",
+                "text": "Visible Node",
+            },
+        )
         g = client.get(f"/api/argument/graph/{graph_id}").json()
         nodes = g.get("nodes", {})
         if isinstance(nodes, dict):
@@ -136,20 +142,35 @@ class TestNodeCRUD:
             assert any(n.get("id") == "n_visible" for n in nodes)
 
     def test_delete_node(self, client, graph_id):
-        client.put(f"/api/argument/graph/{graph_id}/node", json={
-            "id": "n_to_delete", "node_type": "claim", "text": "Temp Node",
-        })
+        client.put(
+            f"/api/argument/graph/{graph_id}/node",
+            json={
+                "id": "n_to_delete",
+                "node_type": "claim",
+                "text": "Temp Node",
+            },
+        )
         resp = client.delete(f"/api/argument/graph/{graph_id}/node/n_to_delete")
         assert resp.status_code in (200, 204, 404)
 
     def test_update_existing_node(self, client, graph_id):
         node_id = "n_update"
-        client.put(f"/api/argument/graph/{graph_id}/node", json={
-            "id": node_id, "node_type": "claim", "text": "Original",
-        })
-        resp = client.put(f"/api/argument/graph/{graph_id}/node", json={
-            "id": node_id, "node_type": "claim", "text": "Updated Label",
-        })
+        client.put(
+            f"/api/argument/graph/{graph_id}/node",
+            json={
+                "id": node_id,
+                "node_type": "claim",
+                "text": "Original",
+            },
+        )
+        resp = client.put(
+            f"/api/argument/graph/{graph_id}/node",
+            json={
+                "id": node_id,
+                "node_type": "claim",
+                "text": "Updated Label",
+            },
+        )
         assert resp.status_code in (200, 201)
 
     def test_node_auto_id(self, client, graph_id):
@@ -195,16 +216,28 @@ class TestEdgeCRUD:
 
     def test_delete_edge(self, client, graph_with_nodes):
         edge_id = "e_to_delete"
-        client.put(f"/api/argument/graph/{graph_with_nodes}/edge", json={
-            "id": edge_id, "source_id": "n_ground", "target_id": "n_claim", "relation_type": "supports",
-        })
+        client.put(
+            f"/api/argument/graph/{graph_with_nodes}/edge",
+            json={
+                "id": edge_id,
+                "source_id": "n_ground",
+                "target_id": "n_claim",
+                "relation_type": "supports",
+            },
+        )
         resp = client.delete(f"/api/argument/graph/{graph_with_nodes}/edge/{edge_id}")
         assert resp.status_code in (200, 204, 404)
 
     def test_get_graph_includes_edges(self, client, graph_with_nodes):
-        client.put(f"/api/argument/graph/{graph_with_nodes}/edge", json={
-            "id": "e_visible", "source_id": "n_rebut", "target_id": "n_claim", "relation_type": "rebuts",
-        })
+        client.put(
+            f"/api/argument/graph/{graph_with_nodes}/edge",
+            json={
+                "id": "e_visible",
+                "source_id": "n_rebut",
+                "target_id": "n_claim",
+                "relation_type": "rebuts",
+            },
+        )
         g = client.get(f"/api/argument/graph/{graph_with_nodes}").json()
         edges = g.get("edges", {})
         if isinstance(edges, dict):
@@ -243,12 +276,15 @@ class TestSpanCRUD:
 
     def test_delete_span(self, client, graph_id):
         span_id = "s_to_delete"
-        client.put(f"/api/argument/graph/{graph_id}/span", json={
-            "id": span_id,
-            "node_id": "node_x",
-            "source_type": "selection",
-            "quote": "Text to be deleted span.",
-        })
+        client.put(
+            f"/api/argument/graph/{graph_id}/span",
+            json={
+                "id": span_id,
+                "node_id": "node_x",
+                "source_type": "selection",
+                "quote": "Text to be deleted span.",
+            },
+        )
         resp = client.delete(f"/api/argument/graph/{graph_id}/span/{span_id}")
         assert resp.status_code in (200, 204, 404)
 

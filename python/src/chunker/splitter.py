@@ -37,10 +37,10 @@ class ChunkResult:
 # 块类型枚举（字符串常量，避免引入 Enum 依赖）
 BLOCK_PARAGRAPH = "paragraph"
 BLOCK_HEADING = "heading"
-BLOCK_FORMULA = "formula"        # $$...$$ / \[...\] / \begin{equation}...
-BLOCK_CODE = "code"              # ``` ... ```
-BLOCK_TABLE = "table"            # markdown 表格
-BLOCK_LIST = "list"              # 项目符号列表（整体作为一个块）
+BLOCK_FORMULA = "formula"  # $$...$$ / \[...\] / \begin{equation}...
+BLOCK_CODE = "code"  # ``` ... ```
+BLOCK_TABLE = "table"  # markdown 表格
+BLOCK_LIST = "list"  # 项目符号列表（整体作为一个块）
 BLOCK_FIGURE_CAPTION = "figure_caption"  # Figure 1 / Fig. 1 / Table 1 起始
 
 
@@ -51,10 +51,11 @@ class Block:
     每个 Block 代表文档中的一个语义单元（段落、标题、公式、表格等）。
     翻译时按块对齐，前端按块渲染，避免猜测式句子拆分。
     """
+
     id: str
     type: str
     text: str
-    level: int = 0           # 标题级别 (1-6)，非标题为 0
+    level: int = 0  # 标题级别 (1-6)，非标题为 0
     translatable: bool = True  # 公式/表格/代码默认不翻译
 
 
@@ -65,6 +66,7 @@ class BlockChunk:
     与传统 Chunk 相比，BlockChunk 携带 block_ids，使翻译结果可以
     按块对齐回原文结构，而不是返回一坨黑盒文本。
     """
+
     index: int
     text: str
     char_count: int
@@ -75,6 +77,7 @@ class BlockChunk:
 @dataclass
 class BlockChunkResult:
     """块感知切块结果"""
+
     blocks: list[Block]
     chunks: list[BlockChunk]
     references_text: str
@@ -207,6 +210,7 @@ def _ensure_reference_patterns() -> list[str]:
     global _REFERENCE_PATTERNS
     if not _REFERENCE_PATTERNS:
         from src.constants import REFERENCE_SECTION_PATTERNS
+
         _REFERENCE_PATTERNS = [r"^" + p + r"\s*$" for p in REFERENCE_SECTION_PATTERNS]
     return _REFERENCE_PATTERNS
 
@@ -240,15 +244,68 @@ def _split_references(text: str) -> tuple[str, str]:
 
 # 常见学术缩写，这些缩写后的句号不代表句子结束
 _ACADEMIC_ABBREVS = [
-    "et al", "etc", "fig", "figs", "eq", "eqs", "ref", "refs",
-    "vol", "no", "pp", "cf", "e.g", "i.e", "vs",
-    "ed", "eds", "rev", "proc", "inst", "dept", "univ",
-    "sci", "tech", "phys", "chem", "biol", "med",
-    "hum", "evol", "anthrop", "soc", "pol", "econ", "psych",
-    "nat", "int", "inc", "ltd", "co", "st", "dr", "mr", "mrs",
-    "prof", "sr", "jr", "ph", "dc", "ba", "ma",
-    "approx", "max", "min", "avg", "std", "var",
-    "def", "thm", "lem", "cor", "prop",
+    "et al",
+    "etc",
+    "fig",
+    "figs",
+    "eq",
+    "eqs",
+    "ref",
+    "refs",
+    "vol",
+    "no",
+    "pp",
+    "cf",
+    "e.g",
+    "i.e",
+    "vs",
+    "ed",
+    "eds",
+    "rev",
+    "proc",
+    "inst",
+    "dept",
+    "univ",
+    "sci",
+    "tech",
+    "phys",
+    "chem",
+    "biol",
+    "med",
+    "hum",
+    "evol",
+    "anthrop",
+    "soc",
+    "pol",
+    "econ",
+    "psych",
+    "nat",
+    "int",
+    "inc",
+    "ltd",
+    "co",
+    "st",
+    "dr",
+    "mr",
+    "mrs",
+    "prof",
+    "sr",
+    "jr",
+    "ph",
+    "dc",
+    "ba",
+    "ma",
+    "approx",
+    "max",
+    "min",
+    "avg",
+    "std",
+    "var",
+    "def",
+    "thm",
+    "lem",
+    "cor",
+    "prop",
 ]
 
 
@@ -471,10 +528,9 @@ def _looks_like_pdf_heading(text: str) -> int:
     # 误判为非标题，导致作者行按 paragraph 渲染、位置错乱。现改为：含 "X." 缩写的词在 Title Case
     # 判据里也计作大写词，并降低阈值到 0.5，让作者行通过)
 
-    if s[-1] in _HEADING_PUNCT_END:
+    if s[-1] in _HEADING_PUNCT_END and not re.match(r"^\d+(\.\d+)*\.?\s+\S", s):
         # 允许 "1. Introduction" 这种以 "." 在编号后的形式
-        if not re.match(r"^\d+(\.\d+)*\.?\s+\S", s):
-            return 0
+        return 0
 
     # 编号式: "1. Introduction" / "2.1 Methods" / "II. Background"
     m = re.match(r"^(\d+(?:\.\d+)*)\.?\s+(.+)$", s)
@@ -486,9 +542,13 @@ def _looks_like_pdf_heading(text: str) -> int:
 
     # 全大写 ASCII（学术文档常见 H1）
     ascii_letters = sum(1 for c in s if c.isascii() and c.isalpha())
-    if ascii_letters >= 4 and ascii_letters / max(1, sum(1 for c in s if c.isalpha())) > 0.95:
-        if s.upper() == s and len(s.split()) <= 8:
-            return 1
+    if (
+        ascii_letters >= 4
+        and ascii_letters / max(1, sum(1 for c in s if c.isalpha())) > 0.95
+        and s.upper() == s
+        and len(s.split()) <= 8
+    ):
+        return 1
 
     # Title Case: 识别学术作者行（"Laurie S. Huning and Manuela I. Brunner"）和章节标题
     # 含 "X." 缩写的词（如 "S." "I." "Dr."）也计作大写词，让作者行能匹配
@@ -649,6 +709,7 @@ def pack_blocks_into_chunks(
 
     if overlap_tokens > 0:
         import logging
+
         logging.getLogger(__name__).warning(
             "overlap_tokens=%d 在 block-aware 模式下可能导致重复翻译，建议设置 overlap_tokens=0",
             overlap_tokens,
@@ -669,13 +730,15 @@ def pack_blocks_into_chunks(
         if not current:
             return
         text = "\n\n".join(b.text for b in current)
-        chunks.append(BlockChunk(
-            index=idx,
-            text=text,
-            char_count=len(text),
-            estimated_tokens=_estimate_tokens(text),
-            block_ids=[b.id for b in current],
-        ))
+        chunks.append(
+            BlockChunk(
+                index=idx,
+                text=text,
+                char_count=len(text),
+                estimated_tokens=_estimate_tokens(text),
+                block_ids=[b.id for b in current],
+            )
+        )
         idx += 1
         # 取末尾若干完整块作为下一 chunk 的 overlap
         if overlap_chars > 0:
@@ -700,13 +763,15 @@ def pack_blocks_into_chunks(
                 _flush_with_overlap()
                 current = []  # overlap 也清空，避免继续传播
                 current_chars = 0
-            chunks.append(BlockChunk(
-                index=idx,
-                text=block.text,
-                char_count=block_chars,
-                estimated_tokens=_estimate_tokens(block.text),
-                block_ids=[block.id],
-            ))
+            chunks.append(
+                BlockChunk(
+                    index=idx,
+                    text=block.text,
+                    char_count=block_chars,
+                    estimated_tokens=_estimate_tokens(block.text),
+                    block_ids=[block.id],
+                )
+            )
             idx += 1
             continue
 
@@ -720,13 +785,15 @@ def pack_blocks_into_chunks(
     if current:
         # 最后一段：避免重复 overlap 段
         text = "\n\n".join(b.text for b in current)
-        chunks.append(BlockChunk(
-            index=idx,
-            text=text,
-            char_count=len(text),
-            estimated_tokens=_estimate_tokens(text),
-            block_ids=[b.id for b in current],
-        ))
+        chunks.append(
+            BlockChunk(
+                index=idx,
+                text=text,
+                char_count=len(text),
+                estimated_tokens=_estimate_tokens(text),
+                block_ids=[b.id for b in current],
+            )
+        )
 
     return chunks
 

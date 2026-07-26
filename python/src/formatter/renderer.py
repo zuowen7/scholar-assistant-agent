@@ -95,9 +95,7 @@ def _is_heading_or_math(text: str) -> bool:
     if stripped.startswith("$$") and stripped.endswith("$$"):
         return True
     # LaTeX 环境
-    if re.match(r"^\\(?:begin|end)\{", stripped):
-        return True
-    return False
+    return bool(re.match(r"^\\(?:begin|end)\{", stripped))
 
 
 def _merge_chunks(

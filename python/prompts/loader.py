@@ -11,7 +11,6 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-from typing import Literal
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +29,8 @@ def _extract_system_prompt(text: str) -> str:
     """从 prompt 文件中提取 "System Prompt:" 之后的文本块（支持带编号的章节头）。"""
     m = re.search(
         r"(?i)^(?:\d+\.\s*)?System\s+Prompt:\s*\n(.*?)(?=^\d+\.\s*(?:User\s+Prompt|Task\s+Prompt|Few-)|^---)",
-        text, re.M | re.DOTALL,
+        text,
+        re.M | re.DOTALL,
     )
     return m.group(1).strip() if m else ""
 
@@ -39,7 +39,8 @@ def _extract_user_template(text: str) -> str:
     """从 prompt 文件中提取 "User Prompt Template:" 之后的文本块（支持带编号的章节头）。"""
     m = re.search(
         r"(?i)^(?:\d+\.\s*)?(?:User\s+Prompt\s+Template|Task\s+Prompt):\s*\n(.*)",
-        text, re.M | re.DOTALL,
+        text,
+        re.M | re.DOTALL,
     )
     return m.group(1).strip() if m else text
 
@@ -55,6 +56,7 @@ def _render_template(template: str, **kwargs) -> str:
 
 # ── 全局系统设定 ────────────────────────────────────────────────
 
+
 def get_system_prompt(
     field: str = "Computer Science",
     venue: str = "conference paper",
@@ -67,10 +69,13 @@ def get_system_prompt(
         return "You are a helpful academic writing assistant."
     # 系统设定只有系统 prompt 部分，不含用户模板
     sys_part = _extract_system_prompt(raw)
-    return _render_template(sys_part, field=field, venue=venue, terminology=terminology, context=context)
+    return _render_template(
+        sys_part, field=field, venue=venue, terminology=terminology, context=context
+    )
 
 
 # ── 润色 (polish) ────────────────────────────────────────────────
+
 
 def render_polish_prompt(
     text: str,
@@ -94,7 +99,8 @@ def render_polish_prompt(
     user_t = _extract_user_template(raw) if raw else "Polish: {text}"
 
     term_str = f"[{terminology}]" if terminology else "N/A"
-    user = _render_template(user_t,
+    user = _render_template(
+        user_t,
         field=field,
         venue=venue,
         terminology=term_str,
@@ -105,6 +111,7 @@ def render_polish_prompt(
 
 
 # ── 连贯性 (coherence) ──────────────────────────────────────────
+
 
 def render_coherence_prompt(
     current: str,
@@ -122,11 +129,14 @@ def render_coherence_prompt(
         terminology: 需保留的术语
     """
     raw = _load_raw("tasks_coherence/coherence_rewrite.md")
-    sys_p = _extract_system_prompt(raw) if raw else "Improve the coherence of the current paragraph."
+    sys_p = (
+        _extract_system_prompt(raw) if raw else "Improve the coherence of the current paragraph."
+    )
     user_t = _extract_user_template(raw) if raw else ""
 
     term_str = f"[{terminology}]" if terminology else "N/A"
-    user = _render_template(user_t,
+    user = _render_template(
+        user_t,
         section_goal=section_goal,
         previous_paragraph=previous,
         current_paragraph=current,
@@ -136,6 +146,7 @@ def render_coherence_prompt(
 
 
 # ── 受控扩写 (expand) ───────────────────────────────────────────
+
 
 def render_expand_prompt(
     draft: str,
@@ -155,11 +166,16 @@ def render_expand_prompt(
         length: 目标长度 (short / medium / long)
     """
     raw = _load_raw("tasks_expand/grounded_expand.md")
-    sys_p = _extract_system_prompt(raw) if raw else "Expand the draft into a complete academic paragraph."
+    sys_p = (
+        _extract_system_prompt(raw)
+        if raw
+        else "Expand the draft into a complete academic paragraph."
+    )
     user_t = _extract_user_template(raw) if raw else ""
 
     term_str = f"[{terminology}]" if terminology else "N/A"
-    user = _render_template(user_t,
+    user = _render_template(
+        user_t,
         section_type=section_type,
         context=context,
         terminology=term_str,
@@ -170,6 +186,7 @@ def render_expand_prompt(
 
 
 # ── Ghost Text 专用 ─────────────────────────────────────────────
+
 
 def render_ghost_text_prompt(
     context: str,
@@ -194,18 +211,25 @@ def render_ghost_text_prompt(
 
 # ── AI 编辑 (edit) ────────────────────────────────────────────────
 
+
 def render_edit_with_text_prompt(
     text: str,
     instruction: str,
 ) -> tuple[str, str]:
     """返回 (system_prompt, user_prompt)，用于 AI 编辑（有选中文本时）。"""
     raw = _load_raw("tasks_edit/edit_with_text.md")
-    sys_p = _extract_system_prompt(raw) if raw else (
-        "你是一个学术写作助手。用户会提供一段文本和一条指令，"
-        "请严格根据指令处理文本。直接输出处理后的结果，不要添加解释或前言。"
-        "如果指令不是对文本进行编辑操作（如问候、闲聊、提问），请正常回复。"
+    sys_p = (
+        _extract_system_prompt(raw)
+        if raw
+        else (
+            "你是一个学术写作助手。用户会提供一段文本和一条指令，"
+            "请严格根据指令处理文本。直接输出处理后的结果，不要添加解释或前言。"
+            "如果指令不是对文本进行编辑操作（如问候、闲聊、提问），请正常回复。"
+        )
     )
-    user_t = _extract_user_template(raw) if raw else "--- 文本 ---\n{text}\n--- 指令 ---\n{instruction}"
+    user_t = (
+        _extract_user_template(raw) if raw else "--- 文本 ---\n{text}\n--- 指令 ---\n{instruction}"
+    )
     user = _render_template(user_t, text=text, instruction=instruction)
     return sys_p, user
 
@@ -215,9 +239,13 @@ def render_edit_without_text_prompt(
 ) -> tuple[str, str]:
     """返回 (system_prompt, user_prompt)，用于 AI 对话（无选中文本时）。"""
     raw = _load_raw("tasks_edit/edit_without_text.md")
-    sys_p = _extract_system_prompt(raw) if raw else (
-        "你是一个学术研究助手，可以帮助用户进行学术写作、翻译、润色、"
-        "文献检索、论文大纲等任务。请用中文回复用户的问题。"
+    sys_p = (
+        _extract_system_prompt(raw)
+        if raw
+        else (
+            "你是一个学术研究助手，可以帮助用户进行学术写作、翻译、润色、"
+            "文献检索、论文大纲等任务。请用中文回复用户的问题。"
+        )
     )
     user_t = _extract_user_template(raw) if raw else "{instruction}"
     user = _render_template(user_t, instruction=instruction)
@@ -229,10 +257,14 @@ def render_auto_complete_prompt(
 ) -> str:
     """返回用于自动补全的完整 prompt（单条 user 消息）。"""
     raw = _load_raw("tasks_edit/auto_complete.md")
-    sys_p = _extract_system_prompt(raw) if raw else (
-        "You are an academic writing auto-complete assistant. "
-        "Continue the text naturally. Output ONLY the continuation, "
-        "no explanations, no markdown, no preamble."
+    sys_p = (
+        _extract_system_prompt(raw)
+        if raw
+        else (
+            "You are an academic writing auto-complete assistant. "
+            "Continue the text naturally. Output ONLY the continuation, "
+            "no explanations, no markdown, no preamble."
+        )
     )
     user_t = _extract_user_template(raw) if raw else "Context:\n{context}"
     user = _render_template(user_t, context=context)
@@ -240,6 +272,7 @@ def render_auto_complete_prompt(
 
 
 # ── 内容合规检查 ────────────────────────────────────────────────
+
 
 def render_compliance_prompt(
     text: str,
@@ -260,10 +293,12 @@ def render_compliance_prompt(
     sys_p = _extract_system_prompt(raw) if raw else "Analyze the paper and output JSON."
     user_t = _extract_user_template(raw) if raw else ""
 
-    user = _render_template(user_t,
+    user = _render_template(
+        user_t,
         title=title or "Untitled",
         venue=venue or "general academic paper",
-        required_sections=required_sections or "introduction, related_work, method, experiment, conclusion",
+        required_sections=required_sections
+        or "introduction, related_work, method, experiment, conclusion",
         text=text[:8000],  # 限制字数，避免 token 超限
     )
     return sys_p, user
@@ -288,6 +323,7 @@ def parse_compliance_json(raw: str) -> dict:
 
     # 尝试从 markdown 代码块中提取
     import re as _re
+
     m = _re.search(r"```json\s*(.*?)\s*```", raw, _re.DOTALL)
     if m:
         try:
@@ -313,6 +349,7 @@ def parse_compliance_json(raw: str) -> dict:
 
 # ── 统一解析 ───────────────────────────────────────────────────
 
+
 def parse_llm_output(raw: str) -> dict:
     """
     解析 LLM 返回的 markdown 格式输出。
@@ -334,20 +371,14 @@ def parse_llm_output(raw: str) -> dict:
 
     # 提取 [Main Text] / [Revised Paragraph] / [Expanded Paragraph]
     for label in ["Main Text", "Revised Paragraph", "Expanded Paragraph"]:
-        m = re.search(
-            rf"(?i)\[{label}\]\s*\n(.*?)(?=\n\[|$)",
-            raw, re.DOTALL
-        )
+        m = re.search(rf"(?i)\[{label}\]\s*\n(.*?)(?=\n\[|$)", raw, re.DOTALL)
         if m:
             result["main_text"] = m.group(1).strip()
             break
 
     # 提取第二个 section
     for label in ["Key Edits", "Supporting Notes", "Added Elements", "Coherence Strategy"]:
-        m = re.search(
-            rf"(?i)\[{label}\]\s*\n(.*?)(?=\n\[|$)",
-            raw, re.DOTALL
-        )
+        m = re.search(rf"(?i)\[{label}\]\s*\n(.*?)(?=\n\[|$)", raw, re.DOTALL)
         if m:
             result["secondary"] = m.group(1).strip()
             break
@@ -366,6 +397,7 @@ def parse_llm_output(raw: str) -> dict:
 
 # ── Schema validation utility (Phase B) ────────────────────────────────────
 
+
 def validate_prompt_schema(name: str, strict: bool = False) -> list[str]:
     """Validate a prompt file against the 6-layer PromptSpec schema.
 
@@ -376,10 +408,11 @@ def validate_prompt_schema(name: str, strict: bool = False) -> list[str]:
         list of warning strings (empty = fully valid)
     """
     import logging as _logging
+
     _log = _logging.getLogger(__name__)
 
     try:
-        from src.prompts.schema import PromptSpec, PromptSchemaError
+        from src.prompts.schema import PromptSchemaError, PromptSpec
     except ImportError:
         return ["schema module not available (src.prompts.schema)"]
 

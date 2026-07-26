@@ -10,6 +10,7 @@ vi.mock('vue-i18n', () => ({
 
 const mockRecentProjects = ref<any[]>([])
 const mockLoadRecentProjects = vi.fn()
+const mockRemoveRecentProject = vi.fn()
 
 vi.mock('../composables/useProject', () => ({
   useProject: () => ({
@@ -17,6 +18,7 @@ vi.mock('../composables/useProject', () => ({
     currentProject: { value: null },
     projectLoading: { value: false },
     loadRecentProjects: mockLoadRecentProjects,
+    removeRecentProject: mockRemoveRecentProject,
   }),
 }))
 
@@ -31,6 +33,7 @@ describe('EditorWelcome', () => {
   beforeEach(() => {
     mockRecentProjects.value = []
     mockLoadRecentProjects.mockReset()
+    mockRemoveRecentProject.mockReset()
   })
 
   it('renders the welcome screen', () => {
@@ -62,7 +65,12 @@ describe('EditorWelcome', () => {
 
   it('shows recent projects when list has entries', () => {
     mockRecentProjects.value = [
-      { path: '/tmp/A', name: 'Project A', template_id: 'research_paper', opened_at: '2026-01-01T00:00:00Z' },
+      {
+        path: '/tmp/A',
+        name: 'Project A',
+        template_id: 'research_paper',
+        opened_at: '2026-01-01T00:00:00Z',
+      },
     ]
     const wrapper = mount(EditorWelcome)
     expect(wrapper.find('[data-test="recent-projects"]').exists()).toBe(true)
@@ -71,7 +79,10 @@ describe('EditorWelcome', () => {
 
   it('displays max 5 recent projects', () => {
     mockRecentProjects.value = Array.from({ length: 8 }, (_, i) => ({
-      path: `/tmp/Project${i}`, name: `Project ${i}`, template_id: 'research_paper', opened_at: '2026-01-01T00:00:00Z',
+      path: `/tmp/Project${i}`,
+      name: `Project ${i}`,
+      template_id: 'research_paper',
+      opened_at: '2026-01-01T00:00:00Z',
     }))
     const wrapper = mount(EditorWelcome)
     expect(wrapper.findAll('[data-test="recent-item"]').length).toBe(5)
@@ -79,7 +90,12 @@ describe('EditorWelcome', () => {
 
   it('emits open-recent when a recent project is clicked', async () => {
     mockRecentProjects.value = [
-      { path: '/tmp/A', name: 'Project A', template_id: 'research_paper', opened_at: '2026-01-01T00:00:00Z' },
+      {
+        path: '/tmp/A',
+        name: 'Project A',
+        template_id: 'research_paper',
+        opened_at: '2026-01-01T00:00:00Z',
+      },
     ]
     const wrapper = mount(EditorWelcome)
     await wrapper.find('[data-test="recent-item"]').trigger('click')
@@ -87,9 +103,29 @@ describe('EditorWelcome', () => {
     expect(wrapper.emitted('open-recent')![0]).toEqual(['/tmp/A'])
   })
 
+  it('removes a recent project without opening it', async () => {
+    mockRecentProjects.value = [
+      {
+        path: '/tmp/A',
+        name: 'Project A',
+        template_id: 'research_paper',
+        opened_at: '2026-01-01T00:00:00Z',
+      },
+    ]
+    const wrapper = mount(EditorWelcome)
+    await wrapper.find('[data-test="recent-remove"]').trigger('click')
+    expect(mockRemoveRecentProject).toHaveBeenCalledWith('/tmp/A')
+    expect(wrapper.emitted('open-recent')).toBeUndefined()
+  })
+
   it('formats path to last 2 segments', () => {
     mockRecentProjects.value = [
-      { path: '/home/user/papers/MyPaper', name: 'MyPaper', template_id: 'research_paper', opened_at: '2026-01-01T00:00:00Z' },
+      {
+        path: '/home/user/papers/MyPaper',
+        name: 'MyPaper',
+        template_id: 'research_paper',
+        opened_at: '2026-01-01T00:00:00Z',
+      },
     ]
     const wrapper = mount(EditorWelcome)
     const pathEl = wrapper.find('.recent-path')

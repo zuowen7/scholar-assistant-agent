@@ -32,12 +32,36 @@ vi.mock('../composables/useProject', () => ({
 
 const mockFetch = vi.fn().mockResolvedValue({
   ok: true,
-  json: () => Promise.resolve([
-    { id: 'research_paper', name: 'Research Paper', folders: ['draft', 'revised', 'final', 'references', 'data', 'notes', 'scripts', 'ai'] },
-    { id: 'review_paper', name: 'Literature Review', folders: ['draft', 'revised', 'final', 'references', 'notes', 'ai'] },
-    { id: 'thesis', name: 'Thesis', folders: ['chapters', 'draft', 'revised', 'final', 'references', 'data', 'notes', 'scripts', 'ai', 'figures'] },
-    { id: 'blank', name: 'Blank', folders: ['draft', 'references', 'notes'] },
-  ]),
+  json: () =>
+    Promise.resolve([
+      {
+        id: 'research_paper',
+        name: 'Research Paper',
+        folders: ['draft', 'revised', 'final', 'references', 'data', 'notes', 'scripts', 'ai'],
+      },
+      {
+        id: 'review_paper',
+        name: 'Literature Review',
+        folders: ['draft', 'revised', 'final', 'references', 'notes', 'ai'],
+      },
+      {
+        id: 'thesis',
+        name: 'Thesis',
+        folders: [
+          'chapters',
+          'draft',
+          'revised',
+          'final',
+          'references',
+          'data',
+          'notes',
+          'scripts',
+          'ai',
+          'figures',
+        ],
+      },
+      { id: 'blank', name: 'Blank', folders: ['draft', 'references', 'notes'] },
+    ]),
 })
 globalThis.fetch = mockFetch
 
@@ -207,7 +231,11 @@ describe('EditorNewProject', () => {
     await wrapper.vm.$nextTick()
 
     // Form should be reset
-    expect((wrapper.find('input[data-test="project-name"]').element as HTMLInputElement).value).toBe('')
-    expect((wrapper.find('input[data-test="project-location"]').element as HTMLInputElement).value).toBe('')
+    expect(
+      (wrapper.find('input[data-test="project-name"]').element as HTMLInputElement).value,
+    ).toBe('')
+    expect(
+      (wrapper.find('input[data-test="project-location"]').element as HTMLInputElement).value,
+    ).toBe('')
   })
 })

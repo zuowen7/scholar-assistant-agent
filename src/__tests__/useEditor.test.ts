@@ -44,14 +44,28 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 // ---------------------------------------------------------------------------
 
 import {
-  tabs, activeTabId, activeTab, content, activeFile,
-  contentVersion, selection, monacoEditor,
-  aiResult, previousContent,
+  tabs,
+  activeTabId,
+  activeTab,
+  content,
+  activeFile,
+  contentVersion,
+  selection,
+  monacoEditor,
+  aiResult,
+  previousContent,
 } from '../composables/useEditorState'
 
 import {
-  openFile, openNewUntitled, closeTab, setActiveTab,
-  setContent, updateSelection, markClean, markDirty, saveFile,
+  openFile,
+  openNewUntitled,
+  closeTab,
+  setActiveTab,
+  setContent,
+  updateSelection,
+  markClean,
+  markDirty,
+  saveFile,
   applyExternalFileUpdate,
 } from '../composables/useEditorTabs'
 import { inlineEdit } from '../composables/useEditor'
@@ -60,7 +74,9 @@ describe('editor state composables (split)', () => {
   beforeEach(() => {
     // Close all existing tabs to reset singleton state
     const ids = tabs.value.map((t: { id: string }) => t.id)
-    for (const id of ids) { closeTab(id) }
+    for (const id of ids) {
+      closeTab(id)
+    }
     selection.value = { startLine: 0, endLine: 0, startCol: 0, endCol: 0, text: '' }
     monacoEditor.value = null
     mockReadSseStream.mockReset()
@@ -75,7 +91,10 @@ describe('editor state composables (split)', () => {
         executeEdits,
         deltaDecorations: vi.fn(() => []),
       } as any
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: { getReader: () => ({}) } }))
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({ ok: true, body: { getReader: () => ({}) } }),
+      )
       mockReadSseStream.mockImplementation(async (_reader, handler) => {
         handler('delta', { content: 'Revised' })
         handler('delta', { content: 'Revised sentence' })
@@ -95,7 +114,10 @@ describe('editor state composables (split)', () => {
         executeEdits: vi.fn(),
         deltaDecorations,
       } as any
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: { getReader: () => ({}) } }))
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({ ok: true, body: { getReader: () => ({}) } }),
+      )
       mockReadSseStream.mockImplementation(async (_reader, handler) => {
         handler('delta', { content: 'New' })
       })
@@ -103,8 +125,8 @@ describe('editor state composables (split)', () => {
       await inlineEdit('Polish', 'polish')
 
       const streamedDecoration = deltaDecorations.mock.calls
-        .map(call => call[1]?.[0]?.range)
-        .find(range => range?.endColumn === 4)
+        .map((call) => call[1]?.[0]?.range)
+        .find((range) => range?.endColumn === 4)
       expect(streamedDecoration).toMatchObject({
         startLineNumber: 1,
         startColumn: 1,
@@ -116,13 +138,27 @@ describe('editor state composables (split)', () => {
 
   // ── Initial state ──────────────────────────────────────────────────────
   describe('initial state', () => {
-    it('has no tabs', () => { expect(tabs.value).toEqual([]) })
-    it('has activeTabId as null', () => { expect(activeTabId.value).toBeNull() })
-    it('has empty content', () => { expect(content.value).toBe('') })
-    it('has activeTab as null', () => { expect(activeTab.value).toBeNull() })
-    it('has activeFile as null', () => { expect(activeFile.value).toBeNull() })
-    it('has contentVersion at 0', () => { expect(contentVersion.value).toBe(0) })
-    it('has empty selection text', () => { expect(selection.value.text).toBe('') })
+    it('has no tabs', () => {
+      expect(tabs.value).toEqual([])
+    })
+    it('has activeTabId as null', () => {
+      expect(activeTabId.value).toBeNull()
+    })
+    it('has empty content', () => {
+      expect(content.value).toBe('')
+    })
+    it('has activeTab as null', () => {
+      expect(activeTab.value).toBeNull()
+    })
+    it('has activeFile as null', () => {
+      expect(activeFile.value).toBeNull()
+    })
+    it('has contentVersion at 0', () => {
+      expect(contentVersion.value).toBe(0)
+    })
+    it('has empty selection text', () => {
+      expect(selection.value.text).toBe('')
+    })
   })
 
   describe('external file updates', () => {

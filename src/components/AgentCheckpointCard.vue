@@ -7,27 +7,22 @@
     </div>
 
     <div v-if="checkpoint.deliverables?.length" class="checkpoint-deliverables">
-      <div v-for="d in checkpoint.deliverables" :key="d" class="deliverable-item">
-        ✓ {{ d }}
-      </div>
+      <div v-for="d in checkpoint.deliverables" :key="d" class="deliverable-item">✓ {{ d }}</div>
     </div>
 
-    <div v-if="checkpoint.metrics && Object.keys(checkpoint.metrics).length" class="checkpoint-metrics">
+    <div
+      v-if="checkpoint.metrics && Object.keys(checkpoint.metrics).length"
+      class="checkpoint-metrics"
+    >
       <span v-for="(val, key) in checkpoint.metrics" :key="key" class="metric">
         {{ key }}: {{ val }}
       </span>
     </div>
 
     <div class="checkpoint-actions">
-      <button class="btn-continue" @click="$emit('decide', 'continue')">
-        Continue
-      </button>
-      <button v-if="!isMandatory" class="btn-pause" @click="$emit('decide', 'pause')">
-        Pause
-      </button>
-      <button class="btn-revise" @click="$emit('decide', 'revise')">
-        Revise
-      </button>
+      <button class="btn-continue" @click="$emit('decide', 'continue')">Continue</button>
+      <button v-if="!isMandatory" class="btn-pause" @click="$emit('decide', 'pause')">Pause</button>
+      <button class="btn-revise" @click="$emit('decide', 'revise')">Revise</button>
     </div>
   </div>
 </template>
@@ -44,7 +39,5 @@ defineEmits<{
   decide: [decision: string]
 }>()
 
-const isMandatory = computed(() =>
-  props.checkpoint?.checkpoint_type === 'MANDATORY'
-)
+const isMandatory = computed(() => props.checkpoint?.checkpoint_type === 'MANDATORY')
 </script>

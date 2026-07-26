@@ -260,7 +260,7 @@ describe('AgentEvent discriminated union', () => {
     ]
 
     expect(types).toHaveLength(5)
-    types.forEach(t => expect(t).toBeTypeOf('string'))
+    types.forEach((t) => expect(t).toBeTypeOf('string'))
   })
 })
 
@@ -375,7 +375,11 @@ describe('EditStreamEvent interface', () => {
   it('supports all event types', () => {
     const progress: EditStreamEvent = { type: 'progress', content: 'Starting...' }
     const delta: EditStreamEvent = { type: 'delta', content: 'Hello world' }
-    const complete: EditStreamEvent = { type: 'complete', content: 'Done', usage: { prompt_tokens: 10, completion_tokens: 20 } }
+    const complete: EditStreamEvent = {
+      type: 'complete',
+      content: 'Done',
+      usage: { prompt_tokens: 10, completion_tokens: 20 },
+    }
     const error: EditStreamEvent = { type: 'error', content: 'Failed' }
 
     expect(progress.type).toBe('progress')

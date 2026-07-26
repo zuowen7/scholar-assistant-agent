@@ -3,8 +3,8 @@
 from unittest.mock import MagicMock, patch
 
 from src.parser.extractor import (
-    PageContent,
     DocumentContent,
+    PageContent,
     _detect_columns,
     _filter_header_footer,
 )

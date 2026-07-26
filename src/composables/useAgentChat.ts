@@ -1,9 +1,22 @@
 import { ref, watch, onScopeDispose, getCurrentScope } from 'vue'
-import type { AgentChatMessage, AgentEvent, AgentSessionInfo, AgentSkill, RAGDocument } from '../types'
+import type {
+  AgentChatMessage,
+  AgentEvent,
+  AgentSessionInfo,
+  AgentSkill,
+  RAGDocument,
+} from '../types'
 import { API_BASE } from '../utils/api'
 import { i18n } from '../i18n'
 import { logger } from '../utils/logger'
 import { readSseStream } from '../utils/streamReader'
+
+/** Raw history message shape returned by the workflows messages endpoint. */
+interface RawHistoryMessage {
+  role?: string
+  content?: string
+  events?: AgentEvent[]
+}
 
 const API_URL = API_BASE
 
@@ -96,7 +109,6 @@ export function _resetForTesting(): void {
 
 /** Agent chat composable (singleton). Manages ReAct loop SSE streaming, session lifecycle, per-session approval state, and RAG documents. */
 export function useAgentChat() {
-
   // ── Per-session pendingApproval (M11 fix) ────────────────────────
   // A reactive ref that always reflects the approval state of the *current* session.
   // All reads/writes go through the helpers below so switching sessions never
@@ -122,7 +134,7 @@ export function useAgentChat() {
   // register a new watcher on the shared sessionId — stop it when this scope dies to
   // avoid watcher accumulation and stale closures across remounts.
   const stopSessionWatch = watch(sessionId, (newSid) => {
-    pendingApproval.value = (newSid ? (_approvalBySession.get(newSid) ?? null) : null)
+    pendingApproval.value = newSid ? (_approvalBySession.get(newSid) ?? null) : null
   })
   if (getCurrentScope()) onScopeDispose(() => stopSessionWatch())
 
@@ -137,7 +149,7 @@ export function useAgentChat() {
         metadata: data.metadata as AgentEvent['metadata'] | undefined,
       }
 
-      const msg = messages.value.find(m => m.id === assistantMsgId)
+      const msg = messages.value.find((m) => m.id === assistantMsgId)
       if (!msg) return
 
       switch (eventType) {
@@ -153,7 +165,9 @@ export function useAgentChat() {
             if (total) parts.push(`${total} tokens`)
           }
           if (!msg.content) {
-            msg.content = agentEvent.content || (parts.length ? parts.join(' · ') : i18n.global.t('errors.translateComplete'))
+            msg.content =
+              agentEvent.content ||
+              (parts.length ? parts.join(' · ') : i18n.global.t('errors.translateComplete'))
           }
           msg.isStreaming = false
           msg.events = [...msg.events, agentEvent]
@@ -165,9 +179,13 @@ export function useAgentChat() {
           msg.events = [...msg.events, agentEvent]
           break
         case 'aborted':
-          msg.content = agentEvent.content === 'File edit rejected; no changes were applied'
-            ? i18n.global.t('agent.fileEditRejected', 'File edit rejected; no changes were applied')
-            : agentEvent.content || i18n.global.t('agent.sessionAborted', 'Session aborted')
+          msg.content =
+            agentEvent.content === 'File edit rejected; no changes were applied'
+              ? i18n.global.t(
+                  'agent.fileEditRejected',
+                  'File edit rejected; no changes were applied',
+                )
+              : agentEvent.content || i18n.global.t('agent.sessionAborted', 'Session aborted')
           msg.isStreaming = false
           _clearApproval()
           msg.events = [...msg.events, agentEvent]
@@ -182,14 +200,19 @@ export function useAgentChat() {
           msg.isStreaming = false
           break
         case 'session_started':
-          sessionId.value = (agentEvent.metadata?.session_id as string) || agentEvent.content || sessionId.value
+          sessionId.value =
+            (agentEvent.metadata?.session_id as string) || agentEvent.content || sessionId.value
           break
         case 'await_approval':
           _setApproval({
             event_id: agentEvent.event_id || '',
-            tool_name: (agentEvent.metadata?.tool_name as string) || (agentEvent.metadata?.tool as string) || '',
-            args: agentEvent.metadata?.args as Record<string, unknown>
-              || agentEvent.metadata?.arguments as Record<string, unknown>,
+            tool_name:
+              (agentEvent.metadata?.tool_name as string) ||
+              (agentEvent.metadata?.tool as string) ||
+              '',
+            args:
+              (agentEvent.metadata?.args as Record<string, unknown>) ||
+              (agentEvent.metadata?.arguments as Record<string, unknown>),
             risk: agentEvent.metadata?.risk as string | undefined,
             reason: agentEvent.metadata?.reason as string | undefined,
             preview: agentEvent.metadata?.preview as Record<string, unknown> | undefined,
@@ -209,7 +232,8 @@ export function useAgentChat() {
         case 'checkpoint': {
           pendingCheckpoint.value = {
             stage: (agentEvent.metadata?.stage as string) || '',
-            checkpoint_type: (agentEvent.metadata?.checkpoint_type as 'MANDATORY' | 'SLIM') || 'SLIM',
+            checkpoint_type:
+              (agentEvent.metadata?.checkpoint_type as 'MANDATORY' | 'SLIM') || 'SLIM',
             title: agentEvent.content || '',
             deliverables: (agentEvent.metadata?.deliverables as string[]) || [],
             metrics: (agentEvent.metadata?.metrics as Record<string, number>) || {},
@@ -224,9 +248,12 @@ export function useAgentChat() {
           const checkpointFile = agentEvent.metadata?.file as string | undefined
           const deliverables = (agentEvent.metadata?.deliverables as string[]) || []
           const changedFiles = checkpointFile ? [checkpointFile, ...deliverables] : deliverables
-          if (changedFiles.length) window.dispatchEvent(new CustomEvent('agent-files-changed', {
-            detail: { files: [...new Set(changedFiles)] },
-          }))
+          if (changedFiles.length)
+            window.dispatchEvent(
+              new CustomEvent('agent-files-changed', {
+                detail: { files: [...new Set(changedFiles)] },
+              }),
+            )
           break
         }
         default:
@@ -275,9 +302,9 @@ export function useAgentChat() {
     abortController = new AbortController()
 
     const history = messages.value
-      .filter(m => m.id !== assistantMsg.id && m.id !== userMessage.id && !m.isStreaming)
+      .filter((m) => m.id !== assistantMsg.id && m.id !== userMessage.id && !m.isStreaming)
       .slice(-20)
-      .map(m => ({ role: m.role, content: m.content }))
+      .map((m) => ({ role: m.role, content: m.content }))
 
     const handleEvent = createEventHandler(assistantMsg.id)
 
@@ -288,7 +315,8 @@ export function useAgentChat() {
     // Wrap the handler to track session start and detect stream completion
     const trackingHandler = (eventType: string, data: Record<string, unknown>) => {
       if (eventType === 'session_started') sessionStarted = true
-      if (eventType === 'done' || eventType === 'error' || eventType === 'aborted') streamDone = true
+      if (eventType === 'done' || eventType === 'error' || eventType === 'aborted')
+        streamDone = true
       handleEvent(eventType, data)
     }
 
@@ -309,8 +337,12 @@ export function useAgentChat() {
         signal: abortController!.signal,
       })
       if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ detail: i18n.global.t('errors.requestFailed') }))
-        throw new Error(err.detail || i18n.global.t('errors.requestFailedHttp', { status: resp.status }))
+        const err = await resp
+          .json()
+          .catch(() => ({ detail: i18n.global.t('errors.requestFailed') }))
+        throw new Error(
+          err.detail || i18n.global.t('errors.requestFailedHttp', { status: resp.status }),
+        )
       }
       const reader = resp.body?.getReader()
       if (!reader) throw new Error(i18n.global.t('errors.streamFailed'))
@@ -324,8 +356,12 @@ export function useAgentChat() {
           // If session already started, use resume endpoint to avoid re-running the task
           const sid = sessionId.value
           if (sessionStarted && sid) {
-            const msg = messages.value.find(m => m.id === assistantMsg.id)
-            if (msg) msg.events.push({ type: 'warning', content: i18n.global.t('errors.recoveringSession', { attempt, max: MAX_RETRIES }) } as AgentEvent)
+            const msg = messages.value.find((m) => m.id === assistantMsg.id)
+            if (msg)
+              msg.events.push({
+                type: 'warning',
+                content: i18n.global.t('errors.recoveringSession', { attempt, max: MAX_RETRIES }),
+              } as AgentEvent)
             try {
               const resumeResp = await fetch(`${API_URL}/api/agent/v2/resume/${sid}`, {
                 method: 'POST',
@@ -335,7 +371,12 @@ export function useAgentChat() {
                 const reader = resumeResp.body?.getReader()
                 if (reader) {
                   try {
-                    await readSseStream(reader, trackingHandler, abortController?.signal, () => streamDone)
+                    await readSseStream(
+                      reader,
+                      trackingHandler,
+                      abortController?.signal,
+                      () => streamDone,
+                    )
                     lastErr = null
                     break
                   } catch (streamErr) {
@@ -347,13 +388,17 @@ export function useAgentChat() {
             } catch (_re) {
               if (_re instanceof DOMException && _re.name === 'AbortError') return
             }
-            await new Promise(r => setTimeout(r, attempt * 2000))
+            await new Promise((r) => setTimeout(r, attempt * 2000))
             continue
           }
           // Session not yet started: retry original request after delay
-          const msg = messages.value.find(m => m.id === assistantMsg.id)
-          if (msg) msg.events.push({ type: 'warning', content: i18n.global.t('errors.retryingNetwork', { attempt, max: MAX_RETRIES }) } as AgentEvent)
-          await new Promise(r => setTimeout(r, attempt * 2000))
+          const msg = messages.value.find((m) => m.id === assistantMsg.id)
+          if (msg)
+            msg.events.push({
+              type: 'warning',
+              content: i18n.global.t('errors.retryingNetwork', { attempt, max: MAX_RETRIES }),
+            } as AgentEvent)
+          await new Promise((r) => setTimeout(r, attempt * 2000))
         }
         try {
           await doFetch()
@@ -371,17 +416,18 @@ export function useAgentChat() {
       }
       if (lastErr) throw lastErr
 
-      const msg = messages.value.find(m => m.id === assistantMsg.id)
+      const msg = messages.value.find((m) => m.id === assistantMsg.id)
       if (msg?.isStreaming) {
         msg.isStreaming = false
         if (!msg.content) {
           const last = msg.events[msg.events.length - 1]
-          msg.content = (last as AgentEvent | undefined)?.content || i18n.global.t('errors.translateComplete')
+          msg.content =
+            (last as AgentEvent | undefined)?.content || i18n.global.t('errors.translateComplete')
         }
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
-      const msg = messages.value.find(m => m.id === assistantMsg.id)
+      const msg = messages.value.find((m) => m.id === assistantMsg.id)
       if (msg) {
         msg.content = `${i18n.global.t('errors.requestFailed')}: ${err instanceof Error ? err.message : String(err)}`
         msg.isStreaming = false
@@ -412,14 +458,11 @@ export function useAgentChat() {
     if (!sid || !eventId) return false
 
     try {
-      const resp = await fetch(
-        `${API_URL}/api/agent/v2/approve/${sid}/${eventId}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ decision, reason: reason || undefined }),
-        },
-      )
+      const resp = await fetch(`${API_URL}/api/agent/v2/approve/${sid}/${eventId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision, reason: reason || undefined }),
+      })
       if (resp.ok) {
         _clearApproval(eventId)
         return true
@@ -495,8 +538,12 @@ export function useAgentChat() {
       })
 
       if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ detail: i18n.global.t('errors.resumeFailed') }))
-        throw new Error(err.detail || i18n.global.t('errors.requestFailedHttp', { status: resp.status }))
+        const err = await resp
+          .json()
+          .catch(() => ({ detail: i18n.global.t('errors.resumeFailed') }))
+        throw new Error(
+          err.detail || i18n.global.t('errors.requestFailedHttp', { status: resp.status }),
+        )
       }
 
       const reader = resp.body?.getReader()
@@ -504,7 +551,7 @@ export function useAgentChat() {
 
       await readSseStream(reader, handleEvent, abortController?.signal)
 
-      const msg = messages.value.find(m => m.id === assistantMsg.id)
+      const msg = messages.value.find((m) => m.id === assistantMsg.id)
       if (msg?.isStreaming) {
         msg.isStreaming = false
         if (!msg.content) {
@@ -514,7 +561,7 @@ export function useAgentChat() {
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
-      const msg = messages.value.find(m => m.id === assistantMsg.id)
+      const msg = messages.value.find((m) => m.id === assistantMsg.id)
       if (msg) {
         msg.content = `${i18n.global.t('errors.requestFailed')}: ${err instanceof Error ? err.message : String(err)}`
         msg.isStreaming = false
@@ -546,8 +593,9 @@ export function useAgentChat() {
       if (resp.ok) {
         ragDocuments.value = await resp.json()
       }
-    } catch (e) { logger.warn('agentFetchDocs failed', { error: e }) }
-    finally {
+    } catch (e) {
+      logger.warn('agentFetchDocs failed', { error: e })
+    } finally {
       ragLoading.value = false
     }
   }
@@ -555,7 +603,7 @@ export function useAgentChat() {
   async function deleteRAGDocument(docId: string): Promise<void> {
     const resp = await fetch(`${API_URL}/api/rag/documents/${docId}`, { method: 'DELETE' })
     if (resp.ok) {
-      ragDocuments.value = ragDocuments.value.filter(d => d.id !== docId)
+      ragDocuments.value = ragDocuments.value.filter((d) => d.id !== docId)
     }
   }
 
@@ -565,13 +613,21 @@ export function useAgentChat() {
     try {
       const resp = await fetch(`${API_URL}/api/rag/upload`, { method: 'POST', body: form })
       if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ detail: i18n.global.t('errors.uploadFailed') }))
-        return { ok: false, error: err.detail || i18n.global.t('errors.uploadFailedHttp', { status: resp.status }) }
+        const err = await resp
+          .json()
+          .catch(() => ({ detail: i18n.global.t('errors.uploadFailed') }))
+        return {
+          ok: false,
+          error: err.detail || i18n.global.t('errors.uploadFailedHttp', { status: resp.status }),
+        }
       }
       await fetchRAGDocuments()
       return { ok: true }
     } catch (e: unknown) {
-      return { ok: false, error: e instanceof Error ? e.message : i18n.global.t('errors.networkError') }
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : i18n.global.t('errors.networkError'),
+      }
     }
   }
 
@@ -580,8 +636,8 @@ export function useAgentChat() {
     try {
       const resp = await fetch(`${API_URL}/api/agent/v2/workflows/${wfId}/messages`)
       if (!resp.ok) return false
-      const data = await resp.json()
-      const loaded: AgentChatMessage[] = (data.messages || []).map((m: any, i: number) => ({
+      const data = (await resp.json()) as { messages?: RawHistoryMessage[] }
+      const loaded: AgentChatMessage[] = (data.messages || []).map((m, i) => ({
         id: `hist_${i}`,
         role: m.role === 'user' ? 'user' : 'assistant',
         content: m.content || '',

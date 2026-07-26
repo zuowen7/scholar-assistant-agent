@@ -61,8 +61,12 @@ import type { Ledger, Promise as ArgPromise, PromiseStatus } from '../types'
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 function makePromise(id: string, status: PromiseStatus): ArgPromise {
-  const severity: ArgPromise['severity'] = status === 'unpaid' || status === 'mismatch' ? 'error'
-    : status === 'partial' ? 'warning' : 'info'
+  const severity: ArgPromise['severity'] =
+    status === 'unpaid' || status === 'mismatch'
+      ? 'error'
+      : status === 'partial'
+        ? 'warning'
+        : 'info'
 
   return {
     id,
@@ -84,7 +88,7 @@ function makeLedger(promises: ArgPromise[]): Ledger {
     doc_id: 'doc1',
     doc_title: 'Test Paper',
     promises,
-    anchors: promises.map(p => ({
+    anchors: promises.map((p) => ({
       id: `a_${p.id}`,
       doc_id: 'doc1',
       char_start: 10,

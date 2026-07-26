@@ -13,6 +13,17 @@ import pytest
 
 def _anchor():
     from src.argument.anchor import (
+        CONTEXT_CHARS,
+        FUZZY_THRESHOLD,
+        Anchor,
+        make_anchor,
+        make_anchor_from_quote,
+        relocate,
+        relocate_all,
+        section_path_at,
+    )
+
+    return (
         Anchor,
         CONTEXT_CHARS,
         FUZZY_THRESHOLD,
@@ -22,7 +33,6 @@ def _anchor():
         relocate_all,
         section_path_at,
     )
-    return Anchor, CONTEXT_CHARS, FUZZY_THRESHOLD, make_anchor, make_anchor_from_quote, relocate, relocate_all, section_path_at
 
 
 # ── 常量契约 ─────────────────────────────────────────────────────────────────
@@ -94,7 +104,7 @@ class TestMakeAnchor:
         start = 100
         end = 106
         a = make_anchor("d", text, start, end)
-        assert a.context_before == text[max(0, start - CONTEXT_CHARS):start]
+        assert a.context_before == text[max(0, start - CONTEXT_CHARS) : start]
 
     def test_context_after_captured(self):
         _, CONTEXT_CHARS, _, make_anchor, *_ = _anchor()
@@ -102,7 +112,7 @@ class TestMakeAnchor:
         start = 100
         end = 106
         a = make_anchor("d", text, start, end)
-        assert a.context_after == text[end:end + CONTEXT_CHARS]
+        assert a.context_after == text[end : end + CONTEXT_CHARS]
 
     def test_doc_id_stored(self):
         _, _, _, make_anchor, *_ = _anchor()
@@ -126,7 +136,7 @@ class TestMakeAnchorFromQuote:
         a = make_anchor_from_quote("d", self.TEXT, "method for parsing")
         assert a.status == "anchored"
         assert a.char_start is not None
-        assert self.TEXT[a.char_start:a.char_end] == "method for parsing"
+        assert self.TEXT[a.char_start : a.char_end] == "method for parsing"
 
     def test_quote_not_found_yields_lost(self):
         _, _, _, _, make_anchor_from_quote, *_ = _anchor()
@@ -161,7 +171,7 @@ class TestRelocate:
         new_text = "Prefix added. The model achieves state-of-the-art results on three benchmarks."
         a2 = relocate(a, new_text)
         assert a2.status == "anchored"
-        assert new_text[a2.char_start:a2.char_end] == "state-of-the-art results"
+        assert new_text[a2.char_start : a2.char_end] == "state-of-the-art results"
 
     def test_exact_match_updates_offsets(self):
         text = "Hello world foo bar."
@@ -234,7 +244,9 @@ class TestRelocate:
         new_text = "CCCCCC AAA TARGET BBB"
         a2 = relocate(a, new_text)
         if a2.status == "anchored":
-            assert a2.context_before == new_text[max(0, a2.char_start - CONTEXT_CHARS):a2.char_start]
+            assert (
+                a2.context_before == new_text[max(0, a2.char_start - CONTEXT_CHARS) : a2.char_start]
+            )
 
 
 # ── relocate_all ──────────────────────────────────────────────────────────────
@@ -310,8 +322,9 @@ class TestSectionPathAt:
 class TestPerformance:
     def test_relocate_long_text_completes(self):
         import time
+
         _, _, _, _, make_anchor_from_quote, relocate, *_ = _anchor()
-        long_text = ("This is a sentence about neural networks. " * 1500)  # ~60k chars
+        long_text = "This is a sentence about neural networks. " * 1500  # ~60k chars
         quote = "sentence about neural networks"
         a = make_anchor_from_quote("d", long_text, quote)
         new_text = "PREPENDED CONTENT. " + long_text

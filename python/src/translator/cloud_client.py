@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import re
 import sys
 import threading
 import time
@@ -15,21 +14,20 @@ import httpx
 import yaml
 
 from src.constants import ANTHROPIC_API_VERSION
+from src.translator._helpers import (
+    TranslationResult,
+    _deduplicate_repetition,
+    _repair_truncation,
+    _strip_code_block_wrapping,
+    _strip_context_leak,
+    _strip_empty_parentheses,
+    _strip_preamble,
+    _strip_think_tags,
+    _strip_trailing_summary,
+    _validate_translation,
+)
 from src.translator.ollama_client import (
     Glossary,
-)
-from src.translator._helpers import TranslationResult
-from src.translator._helpers import (
-    _extract_term_pairs,
-    _strip_think_tags,
-    _strip_code_block_wrapping,
-    _strip_preamble,
-    _strip_context_leak,
-    _repair_truncation,
-    _validate_translation,
-    _deduplicate_repetition,
-    _strip_trailing_summary,
-    _strip_empty_parentheses,
 )
 
 logger = logging.getLogger(__name__)
@@ -44,7 +42,7 @@ _RATE_LIMIT_INTERVAL = 1.0
 
 def _backoff_delay(attempt: int) -> float:
     """指数退避: base * 2^attempt, 上限 RETRY_DELAY_MAX"""
-    delay = RETRY_DELAY_BASE * (2 ** attempt)
+    delay = RETRY_DELAY_BASE * (2**attempt)
     return min(delay, RETRY_DELAY_MAX)
 
 
@@ -73,7 +71,9 @@ def _get_limiter(key: str) -> _ProviderRateLimiter:
             _rate_limiters[key] = _ProviderRateLimiter()
         return _rate_limiters[key]
 
+
 # ── 供应商预设（从 YAML 懒加载） ──
+
 
 def _resolve_providers_yaml() -> Path:
     """定位 providers.yaml：打包后在 _MEIPASS/config/，开发态在仓库根 config/。"""
@@ -90,7 +90,7 @@ _PROVIDERS_YAML = _resolve_providers_yaml()
 def _load_provider_presets() -> dict[str, dict]:
     """从 config/providers.yaml 加载供应商预设，找不到则返回空字典。"""
     try:
-        with open(_PROVIDERS_YAML, "r", encoding="utf-8") as f:
+        with open(_PROVIDERS_YAML, encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
     except FileNotFoundError:
         logger.warning("providers.yaml not found at %s, using empty presets", _PROVIDERS_YAML)
@@ -178,7 +178,9 @@ class CloudClient:
                 time.sleep(_RATE_LIMIT_INTERVAL - elapsed)
             limiter.last_time = time.monotonic()
 
-    def translate(self, text: str, prev_translation: str = "", section_prompt: str = "") -> TranslationResult:
+    def translate(
+        self, text: str, prev_translation: str = "", section_prompt: str = ""
+    ) -> TranslationResult:
         """翻译单段文本，失败自动重试（指数退避）+ 速率限制
 
         Args:
@@ -201,7 +203,9 @@ class CloudClient:
                 if not _validate_translation(result):
                     logger.warning(
                         "翻译结果过短 (attempt %d): original=%d chars, translated=%d chars",
-                        attempt + 1, len(result.original), len(result.translated),
+                        attempt + 1,
+                        len(result.original),
+                        len(result.translated),
                     )
                     if attempt < MAX_RETRIES:
                         time.sleep(_backoff_delay(attempt))
@@ -214,7 +218,12 @@ class CloudClient:
                 last_error = e
                 if attempt < MAX_RETRIES:
                     delay = _backoff_delay(attempt)
-                    logger.warning("翻译失败，%.1f 秒后重试 (attempt %d): %s", delay, attempt + 1, self._redact_key(str(e)))
+                    logger.warning(
+                        "翻译失败，%.1f 秒后重试 (attempt %d): %s",
+                        delay,
+                        attempt + 1,
+                        self._redact_key(str(e)),
+                    )
                     time.sleep(delay)
 
         raise last_error or ValueError("翻译失败")
@@ -224,15 +233,12 @@ class CloudClient:
         prompt_parts = []
 
         if self._document_context:
-            prompt_parts.append(
-                f"[文档背景（不要翻译此部分）]\n{self._document_context}\n\n"
-            )
+            prompt_parts.append(f"[文档背景（不要翻译此部分）]\n{self._document_context}\n\n")
 
         if prev_translation:
-            snippet = prev_translation[-self._CONTEXT_SNIPPET_LEN:]
+            snippet = prev_translation[-self._CONTEXT_SNIPPET_LEN :]
             prompt_parts.append(
-                f"[前文翻译参考（仅用于保持术语和风格一致，不要翻译此部分）]\n"
-                f"{snippet}\n\n"
+                f"[前文翻译参考（仅用于保持术语和风格一致，不要翻译此部分）]\n{snippet}\n\n"
             )
 
         # 计算段数并显式注明（P1-2：增强段落对齐）
@@ -244,11 +250,8 @@ class CloudClient:
         if len(prompt) > _PROMPT_MAX_CHARS:
             ctx_budget = _PROMPT_MAX_CHARS - len(text) - 200
             if ctx_budget > 0 and prev_translation:
-                snippet = prev_translation[-min(ctx_budget, self._CONTEXT_SNIPPET_LEN):]
-                prompt = (
-                    f"[前文翻译参考（不要翻译此部分）]\n{snippet}\n\n"
-                    f"[请翻译以下内容]\n{text}"
-                )
+                snippet = prev_translation[-min(ctx_budget, self._CONTEXT_SNIPPET_LEN) :]
+                prompt = f"[前文翻译参考（不要翻译此部分）]\n{snippet}\n\n[请翻译以下内容]\n{text}"
             elif self._document_context and ctx_budget > 0:
                 prompt = (
                     f"[文档背景（不要翻译此部分）]\n{self._document_context[:ctx_budget]}\n\n"
@@ -265,7 +268,9 @@ class CloudClient:
 
         # 默认翻译指令（如果用户未提供自定义system prompt）
         if not self.system_prompt:
-            parts.append("You are a professional academic translator. Translate the given text from English to Chinese.")
+            parts.append(
+                "You are a professional academic translator. Translate the given text from English to Chinese."
+            )
         else:
             parts.append(self.system_prompt)
 
@@ -288,9 +293,7 @@ CRITICAL: Preserve paragraph structure exactly.
 
         glossary_text = self._glossary.to_prompt_text()
         if glossary_text:
-            parts.append(
-                "\n\n## 已确定的术语翻译（请严格沿用以下译法）\n" + glossary_text
-            )
+            parts.append("\n\n## 已确定的术语翻译（请严格沿用以下译法）\n" + glossary_text)
 
         if self._chunk_index > 0:
             parts.append(
@@ -317,7 +320,9 @@ CRITICAL: Preserve paragraph structure exactly.
 
     # ── OpenAI 兼容 API ──
 
-    def _call_openai_compatible(self, text: str, prev_translation: str = "", section_prompt: str = "") -> TranslationResult:
+    def _call_openai_compatible(
+        self, text: str, prev_translation: str = "", section_prompt: str = ""
+    ) -> TranslationResult:
         """调用 OpenAI 兼容的 chat completions API"""
         prompt = self._build_prompt(text, prev_translation)
         system = self._build_system_prompt(section_prompt)
@@ -377,7 +382,9 @@ CRITICAL: Preserve paragraph structure exactly.
 
     # ── Anthropic API ──
 
-    def _call_anthropic(self, text: str, prev_translation: str = "", section_prompt: str = "") -> TranslationResult:
+    def _call_anthropic(
+        self, text: str, prev_translation: str = "", section_prompt: str = ""
+    ) -> TranslationResult:
         """调用 Anthropic Messages API"""
         prompt = self._build_prompt(text, prev_translation)
         system = self._build_system_prompt(section_prompt)
@@ -412,7 +419,9 @@ CRITICAL: Preserve paragraph structure exactly.
             except Exception as e:
                 logger.debug("Failed to parse Anthropic error response body: %s", e)
                 detail = e.response.text[:200]
-            raise ValueError(f"Anthropic API 请求失败 (HTTP {e.response.status_code}): {detail}") from e
+            raise ValueError(
+                f"Anthropic API 请求失败 (HTTP {e.response.status_code}): {detail}"
+            ) from e
         except httpx.TimeoutException as e:
             raise ConnectionError(f"Anthropic API 请求超时 ({self.timeout}s)") from e
 
@@ -479,7 +488,11 @@ CRITICAL: Preserve paragraph structure exactly.
         # fallback: 发最小 chat 请求
         url = f"{self.base_url}/chat/completions"
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"}
-        payload = {"model": self.model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1}
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 1,
+        }
         try:
             client = self._get_http_client()
             resp = client.post(url, json=payload, headers=headers, timeout=15.0)
@@ -507,7 +520,11 @@ CRITICAL: Preserve paragraph structure exactly.
             "x-api-key": self.api_key,
             "anthropic-version": ANTHROPIC_API_VERSION,
         }
-        payload = {"model": self.model, "max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]}
+        payload = {
+            "model": self.model,
+            "max_tokens": 1,
+            "messages": [{"role": "user", "content": "hi"}],
+        }
         try:
             client = self._get_http_client()
             resp = client.post(url, json=payload, headers=headers, timeout=15.0)

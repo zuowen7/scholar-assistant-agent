@@ -2,6 +2,7 @@
 
 提供翻译相关工具，Agent 通过 McpManager 发现和调用。
 """
+
 from __future__ import annotations
 
 import json
@@ -14,10 +15,25 @@ TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "file_path": {"type": "string", "description": "Path to the PDF file in the workspace"},
-                "source_lang": {"type": "string", "default": "en", "description": "Source language (e.g. en, zh, ja)"},
-                "target_lang": {"type": "string", "default": "zh-CN", "description": "Target language (e.g. zh-CN, en)"},
-                "engine": {"type": "string", "default": "cloud", "description": "Translation engine: cloud, ollama"},
+                "file_path": {
+                    "type": "string",
+                    "description": "Path to the PDF file in the workspace",
+                },
+                "source_lang": {
+                    "type": "string",
+                    "default": "en",
+                    "description": "Source language (e.g. en, zh, ja)",
+                },
+                "target_lang": {
+                    "type": "string",
+                    "default": "zh-CN",
+                    "description": "Target language (e.g. zh-CN, en)",
+                },
+                "engine": {
+                    "type": "string",
+                    "default": "cloud",
+                    "description": "Translation engine: cloud, ollama",
+                },
             },
             "required": ["file_path"],
         },
@@ -43,7 +59,8 @@ def handle_request(msg: dict) -> dict | None:
 
     if method == "initialize":
         return {
-            "jsonrpc": "2.0", "id": req_id,
+            "jsonrpc": "2.0",
+            "id": req_id,
             "result": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}},
@@ -66,9 +83,21 @@ def handle_request(msg: dict) -> dict | None:
             tid = args.get("task_id", "")
             text = f"[translate] Task {tid}: status=queued, progress=0%. Start translation with translate_pdf first."
         else:
-            return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"unknown tool: {tool_name}"}}
-        return {"jsonrpc": "2.0", "id": req_id, "result": {"content": [{"type": "text", "text": text}]}}
-    return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"unknown method: {method}"}}
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "error": {"code": -32601, "message": f"unknown tool: {tool_name}"},
+            }
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {"content": [{"type": "text", "text": text}]},
+        }
+    return {
+        "jsonrpc": "2.0",
+        "id": req_id,
+        "error": {"code": -32601, "message": f"unknown method: {method}"},
+    }
 
 
 def main():

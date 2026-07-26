@@ -12,8 +12,8 @@ Two detection strategies:
 
 from __future__ import annotations
 
-import re
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -86,17 +86,21 @@ def extract_articles(raw_text: str) -> list[str]:
         return [raw_text]
 
     articles = []
-    for start, end, title in boundaries:
+    for start, end, _title in boundaries:
         articles.append(raw_text[start:end])
 
-    logger.info("Split into %d articles: %s", len(articles),
-                [t[:50] if t else f"(article {i+1})" for i, (_, _, t) in enumerate(boundaries)])
+    logger.info(
+        "Split into %d articles: %s",
+        len(articles),
+        [t[:50] if t else f"(article {i + 1})" for i, (_, _, t) in enumerate(boundaries)],
+    )
     return articles
 
 
 # ---------------------------------------------------------------------------
 # Strategy A: title + author + journal pattern
 # ---------------------------------------------------------------------------
+
 
 def _detect_by_title_author(raw_text: str) -> list[tuple[int, int, str]]:
     boundaries: list[tuple[int, int, str]] = []
@@ -253,9 +257,13 @@ def _check_truncated_start(line: str) -> int | None:
 
     # Pattern 1: single lowercase letter + space + digit/uppercase word
     # e.g., "n 2023", "s As"
-    if len(first) == 1 and first.islower():
-        if len(words) >= 2 and (words[1][0].isdigit() or words[1][0].isupper()):
-            return 1
+    if (
+        len(first) == 1
+        and first.islower()
+        and len(words) >= 2
+        and (words[1][0].isdigit() or words[1][0].isupper())
+    ):
+        return 1
 
     # Pattern 2: known truncated words
     first_lower = first.lower().rstrip(".,;:!?")
@@ -266,7 +274,7 @@ def _check_truncated_start(line: str) -> int | None:
     # (3+ lowercase chars that are a known prefix of a common word)
     if len(first) >= 5 and first[0].islower() and first.isalpha():
         # Check if capitalizing the first letter gives a common English word
-        capitalized = first[0].upper() + first[1:]
+        first[0].upper() + first[1:]
         # Common academic words that get truncated
         _TRUNCATED_PREFIXES = {
             "nflam": "Inflam",

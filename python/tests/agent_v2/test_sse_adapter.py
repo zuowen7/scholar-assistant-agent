@@ -1,4 +1,5 @@
 """SSE adapter tests — verify frontend-compatible event format."""
+
 from __future__ import annotations
 
 import json
@@ -8,7 +9,6 @@ from src.agent_v2.types import AgentEvent, AgentEventType
 
 
 class TestAdapter:
-
     def test_token_uses_token_type(self):
         """token → token 类型，前端累加到 msg.content 实现流式显示"""
         event = AgentEvent(type=AgentEventType.TOKEN, data={"text": "hello"})
@@ -18,25 +18,40 @@ class TestAdapter:
 
     def test_tool_call_uses_tool_call_type(self):
         """tool_call → tool_call 类型，前端渲染为工具调用事件"""
-        event = AgentEvent(type=AgentEventType.TOOL_CALL, data={
-            "id": "t1", "tool_name": "read_file", "input": '{"file_path":"a.md"}',
-        })
+        event = AgentEvent(
+            type=AgentEventType.TOOL_CALL,
+            data={
+                "id": "t1",
+                "tool_name": "read_file",
+                "input": '{"file_path":"a.md"}',
+            },
+        )
         result = agent_event_to_sse(event)
         assert result["type"] == "tool_call"
         assert "read_file" in result["content"]
 
     def test_tool_result_uses_tool_result_type(self):
-        event = AgentEvent(type=AgentEventType.TOOL_RESULT, data={
-            "id": "t1", "tool_name": "read_file", "output": "file content",
-        })
+        event = AgentEvent(
+            type=AgentEventType.TOOL_RESULT,
+            data={
+                "id": "t1",
+                "tool_name": "read_file",
+                "output": "file content",
+            },
+        )
         result = agent_event_to_sse(event)
         assert result["type"] == "tool_result"
         assert "file content" in result["content"]
 
     def test_tool_error_uses_tool_error_type(self):
-        event = AgentEvent(type=AgentEventType.TOOL_ERROR, data={
-            "id": "t1", "tool_name": "read_file", "output": "not found",
-        })
+        event = AgentEvent(
+            type=AgentEventType.TOOL_ERROR,
+            data={
+                "id": "t1",
+                "tool_name": "read_file",
+                "output": "not found",
+            },
+        )
         result = agent_event_to_sse(event)
         assert result["type"] == "tool_error"
 
@@ -89,10 +104,15 @@ class TestAdapter:
         assert r1["event_id"] != r2["event_id"]
 
     def test_await_approval_preserves_metadata(self):
-        event = AgentEvent(type=AgentEventType.AWAIT_APPROVAL, data={
-            "id": "appr_1", "tool_name": "write_file", "reason": "modify draft",
-            "preview": {"file_path": "test.md", "old_text": "a", "new_text": "b"},
-        })
+        event = AgentEvent(
+            type=AgentEventType.AWAIT_APPROVAL,
+            data={
+                "id": "appr_1",
+                "tool_name": "write_file",
+                "reason": "modify draft",
+                "preview": {"file_path": "test.md", "old_text": "a", "new_text": "b"},
+            },
+        )
         result = agent_event_to_sse(event)
         assert result["type"] == "await_approval"
         assert result["metadata"]["tool_name"] == "write_file"

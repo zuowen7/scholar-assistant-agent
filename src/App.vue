@@ -20,7 +20,15 @@
     @drop.prevent="onDrop"
   >
     <div class="background-layer" :style="backgroundLayerStyle" aria-hidden="true">
-      <video v-if="bgSettings.type === 'video' && bgAssetUrl" class="bg-video" :src="bgAssetUrl" autoplay loop muted playsinline />
+      <video
+        v-if="bgSettings.type === 'video' && bgAssetUrl"
+        class="bg-video"
+        :src="bgAssetUrl"
+        autoplay
+        loop
+        muted
+        playsinline
+      />
     </div>
     <div class="content-overlay">
       <!-- 全局拖拽遮罩 -->
@@ -28,8 +36,15 @@
         <div v-if="globalDragging" class="drag-overlay">
           <div class="drag-card">
             <div class="drag-ring">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M12 16V8m0 0l-3 3m3-3l3 3"/>
+              <svg
+                width="28"
+                height="28"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <path d="M12 16V8m0 0l-3 3m3-3l3 3" />
               </svg>
             </div>
             <p class="drag-label">{{ t('app.dragToTranslate') }}</p>
@@ -43,8 +58,12 @@
         <div v-if="showRecoveryBanner" class="recovery-banner">
           <span class="recovery-text">{{ t('app.recoveryBanner') }}</span>
           <div class="recovery-actions">
-            <UiButton variant="primary" size="sm" @click="showRecoveryBanner = false; setMode('translate')">{{ t('app.recoveryView') }}</UiButton>
-            <UiButton variant="ghost" size="sm" @click="showRecoveryBanner = false; discardPersisted()">{{ t('app.recoveryDiscard') }}</UiButton>
+            <UiButton variant="primary" size="sm" @click="handleRecoveryView">{{
+              t('app.recoveryView')
+            }}</UiButton>
+            <UiButton variant="ghost" size="sm" @click="handleRecoveryDiscard">{{
+              t('app.recoveryDiscard')
+            }}</UiButton>
           </div>
         </div>
       </Transition>
@@ -55,7 +74,7 @@
         :provider="shellProvider"
         :model="shellModel"
         :model-online="shellModelOnline"
-        @navigate="handleShellNavigate"
+        @navigate="navigateTo"
         @open-recent="handleShellRecent"
         @settings="openLegacySettings"
         @agent="toggleAgentChat(true)"
@@ -135,7 +154,11 @@
       />
 
       <!-- Agent 聊天面板 -->
-      <AgentPanel :open="showAgentChat" @update:open="toggleAgentChat($event)" @switch-to-editor="setMode('editor')" />
+      <AgentPanel
+        :open="showAgentChat"
+        @update:open="toggleAgentChat($event)"
+        @switch-to-editor="navigateTo('write')"
+      />
 
       <!-- 语音助手 Siri 风格浮层 -->
       <VoiceAssistantView />
@@ -145,12 +168,7 @@
     </div>
 
     <Transition name="app-loading-fade">
-      <InkBrushLoader
-        v-if="appBootLoading"
-        overlay
-        size="large"
-        :text="t('app.thinking')"
-      />
+      <InkBrushLoader v-if="appBootLoading" overlay size="large" :text="t('app.thinking')" />
     </Transition>
   </div>
 </template>
@@ -194,35 +212,71 @@ import { useAppTheme } from './composables/useAppTheme'
 import { useAppWindow } from './composables/useAppWindow'
 
 const TranslateView = defineAsyncComponent(() => import('./components/TranslateView.vue'))
-const ReviewerWorkspace = defineAsyncComponent(() => import('./components/argument/ReviewerWorkspace.vue'))
+const ReviewerWorkspace = defineAsyncComponent(
+  () => import('./components/argument/ReviewerWorkspace.vue'),
+)
 
-const { state, translate, translateFromPath, cleanup, checkHealth, checkOllama, startOllama, checkCloudApi, getConfig, updateConfig, getProviderPresets, fetchOllamaModels, restartBackend, listenBackendCrash, setBackendError, clearBackendError, recoverTranslation, discardPersisted } = useTranslate()
+const {
+  state,
+  translate,
+  translateFromPath,
+  cleanup,
+  checkHealth,
+  checkOllama,
+  startOllama,
+  checkCloudApi,
+  getConfig,
+  updateConfig,
+  getProviderPresets,
+  fetchOllamaModels,
+  restartBackend,
+  listenBackendCrash,
+  setBackendError,
+  clearBackendError,
+  recoverTranslation,
+  discardPersisted,
+} = useTranslate()
 const { pushError, info, success } = useToast()
 
 // ── 应用模式 ──────────────────────────────────────────────────
-const { appMode, showAgentChat, modeTransition, setMode, toggleAgentChat } = useAppMode()
+const { appMode, showAgentChat, modeTransition, setMode, setEditorWorkspaceMode, toggleAgentChat } =
+  useAppMode()
 const shellSection = ref<'translate' | 'write' | 'mindmap' | 'review'>('write')
 const { recentProjects, loadRecentProjects, openProject } = useProject()
-const shellRecentFiles = computed(() => recentProjects.value.map(project => ({
-  name: project.name || project.path.split(/[\\/]/).filter(Boolean).pop() || project.path,
-  path: project.path,
-})))
+const shellRecentFiles = computed(() =>
+  recentProjects.value.map((project) => ({
+    name: project.name || project.path.split(/[\\/]/).filter(Boolean).pop() || project.path,
+    path: project.path,
+  })),
+)
 
-const shellProvider = computed(() => engineType.value === 'cloud'
-  ? (providerPresets.value[cloudConfig.value.provider]?.name || cloudConfig.value.provider)
-  : 'Ollama')
-const shellModel = computed(() => engineType.value === 'cloud' ? cloudConfig.value.model : ollamaModel.value)
-const shellModelOnline = computed(() => engineType.value === 'cloud' ? cloudOk.value : ollamaOk.value)
+const shellProvider = computed(() =>
+  engineType.value === 'cloud'
+    ? providerPresets.value[cloudConfig.value.provider]?.name || cloudConfig.value.provider
+    : 'Ollama',
+)
+const shellModel = computed(() =>
+  engineType.value === 'cloud' ? cloudConfig.value.model : ollamaModel.value,
+)
+const shellModelOnline = computed(() =>
+  engineType.value === 'cloud' ? cloudOk.value : ollamaOk.value,
+)
 
-function handleShellNavigate(section: 'translate' | 'write' | 'mindmap' | 'review') {
+type ShellSection = 'translate' | 'write' | 'mindmap' | 'review'
+
+function navigateTo(section: ShellSection) {
   shellSection.value = section
   if (section === 'translate') setMode('translate')
   else if (section === 'review') setMode('argument')
   else {
+    const workspaceMode = section === 'mindmap' ? 'mindmap' : 'editor'
+    setEditorWorkspaceMode(workspaceMode)
     setMode('editor')
-    window.dispatchEvent(new CustomEvent('shell-workspace-mode', {
-      detail: section === 'mindmap' ? 'mindmap' : 'editor',
-    }))
+    window.dispatchEvent(
+      new CustomEvent('shell-workspace-mode', {
+        detail: workspaceMode,
+      }),
+    )
   }
 }
 
@@ -231,13 +285,15 @@ function handleShellNavigate(section: 'translate' | 'write' | 'mindmap' | 'revie
 watch(appMode, (mode) => {
   if (mode === 'translate') shellSection.value = 'translate'
   else if (mode === 'argument') shellSection.value = 'review'
-  else if (shellSection.value === 'translate' || shellSection.value === 'review') shellSection.value = 'write'
+  else if (shellSection.value === 'translate' || shellSection.value === 'review')
+    shellSection.value = 'write'
 })
 
 async function handleShellRecent(path: string) {
-  shellSection.value = 'write'
-  setMode('editor')
-  await openProject(path).catch((error) => pushError(error instanceof Error ? error.message : '无法打开最近项目'))
+  navigateTo('write')
+  await openProject(path).catch((error) =>
+    pushError(error instanceof Error ? error.message : '无法打开最近项目'),
+  )
 }
 
 const showSettings = ref(false)
@@ -249,7 +305,12 @@ function openLegacySettings() {
 
 function handleShellSectionChange(event: Event) {
   const section = (event as CustomEvent).detail
-  if (section === 'translate' || section === 'write' || section === 'mindmap' || section === 'review') {
+  if (
+    section === 'translate' ||
+    section === 'write' ||
+    section === 'mindmap' ||
+    section === 'review'
+  ) {
     shellSection.value = section
   }
 }
@@ -285,46 +346,55 @@ function handleVoiceCommandSubmit(e: Event) {
 
   voiceCmd.setProcessing()
 
-  useVoiceRouter().routeCommand(text.trim()).then((result) => {
-    if (result.type === 'chat') {
-      // Fallback: send to agent chat (existing behavior)
-      // Ensure editor mode + agent panel open so user sees the response
-      setMode('editor')
-      toggleAgentChat(true)
-      const { sendMessage, sending } = useAgentChat()
-      const { rootDir } = useFileTree()
-      const { activeTab } = useEditor()
+  useVoiceRouter()
+    .routeCommand(text.trim())
+    .then((result) => {
+      if (result.type === 'chat') {
+        // Fallback: send to agent chat (existing behavior)
+        // Ensure editor mode + agent panel open so user sees the response
+        navigateTo('write')
+        toggleAgentChat(true)
+        const { sendMessage, sending } = useAgentChat()
+        const { rootDir } = useFileTree()
+        const { activeTab } = useEditor()
 
-      if (sending.value) {
-        logger.warn('[voice] Agent is busy; voice request was not submitted')
-        voiceCmd.fail(t('voice.agentBusy'))
-        return
+        if (sending.value) {
+          logger.warn('[voice] Agent is busy; voice request was not submitted')
+          voiceCmd.fail(t('voice.agentBusy'))
+          return
+        }
+
+        // Close voice overlay immediately — user sees response in AgentPanel
+        voiceCmd.done()
+
+        sendMessage(
+          text.trim(),
+          '',
+          '',
+          rootDir.value || undefined,
+          activeTab.value?.path || undefined,
+        )
+          .then(() => {
+            logger.debug('[voice] sendMessage resolved')
+          })
+          .catch((err) => {
+            logger.warn('[voice] sendMessage failed:', err)
+          })
+      } else {
+        // Command dispatched
+        logger.debug(
+          '[voice] command executed:',
+          result.commandId,
+          result.success ? 'ok' : result.error,
+        )
+        if (result.success) voiceCmd.finish()
+        else voiceCmd.fail(result.error || t('voice.commandFailed'))
       }
-
-      // Close voice overlay immediately — user sees response in AgentPanel
-      voiceCmd.done()
-
-      sendMessage(
-        text.trim(),
-        '',
-        '',
-        rootDir.value || undefined,
-        activeTab.value?.path || undefined,
-      ).then(() => {
-        logger.debug('[voice] sendMessage resolved')
-      }).catch((err) => {
-        logger.warn('[voice] sendMessage failed:', err)
-      })
-    } else {
-      // Command dispatched
-      logger.debug('[voice] command executed:', result.commandId, result.success ? 'ok' : result.error)
-      if (result.success) voiceCmd.finish()
-      else voiceCmd.fail(result.error || t('voice.commandFailed'))
-    }
-  }).catch((err) => {
-    logger.warn('[voice] routeCommand failed:', err)
-    voiceCmd.fail(err instanceof Error ? err.message : t('voice.commandFailed'))
-  })
+    })
+    .catch((err) => {
+      logger.warn('[voice] routeCommand failed:', err)
+      voiceCmd.fail(err instanceof Error ? err.message : t('voice.commandFailed'))
+    })
 }
 
 // Read voice settings from localStorage
@@ -340,20 +410,30 @@ function loadVoiceSettings(): VoiceSettings {
   try {
     const raw = localStorage.getItem('voice-settings')
     return raw ? JSON.parse(raw) : {}
-  } catch { return {} }
+  } catch {
+    return {}
+  }
 }
 
 const voiceSettings = loadVoiceSettings()
 // Alt+Space is a Windows system shortcut (window menu) — auto-migrate
 if (voiceSettings.hotkey === 'Alt+Space') {
   voiceSettings.hotkey = 'Alt+Shift+V'
-  try { localStorage.setItem('voice-settings', JSON.stringify({ ...voiceSettings, hotkey: 'Alt+Shift+V' })) } catch { /* ignore */ }
+  try {
+    localStorage.setItem(
+      'voice-settings',
+      JSON.stringify({ ...voiceSettings, hotkey: 'Alt+Shift+V' }),
+    )
+  } catch {
+    /* ignore */
+  }
 }
-const hotkey = useGlobalHotkey(
-  voiceSettings.hotkey || 'Alt+Shift+V',
-  () => { if (voiceSettings.enabled !== false) voiceCmd.triggerVoiceCommand() },
-)
-const wakeWord = useWakeWord(() => { if (voiceSettings.enabled !== false) voiceCmd.triggerVoiceCommand() })
+const hotkey = useGlobalHotkey(voiceSettings.hotkey || 'Alt+Shift+V', () => {
+  if (voiceSettings.enabled !== false) voiceCmd.triggerVoiceCommand()
+})
+const wakeWord = useWakeWord(() => {
+  if (voiceSettings.enabled !== false) voiceCmd.triggerVoiceCommand()
+})
 
 // Start wake word detection on initial mount
 if (voiceSettings.wakeWordEnabled !== false) {
@@ -366,7 +446,11 @@ async function applyVoiceSettings(settings: Required<VoiceSettings>) {
   if (settings.hotkey && settings.hotkey !== previousHotkey) {
     await hotkey.changeHotkey(settings.hotkey)
   }
-  if (settings.enabled !== false && settings.wakeWordEnabled !== false && voiceCmd.state.value === 'idle') {
+  if (
+    settings.enabled !== false &&
+    settings.wakeWordEnabled !== false &&
+    voiceCmd.state.value === 'idle'
+  ) {
     wakeWord.startWakeWord().catch(() => {})
   } else {
     wakeWord.stopWakeWord()
@@ -378,10 +462,13 @@ window.addEventListener('voice-command-submit', handleVoiceCommandSubmit)
 window.addEventListener('voice-toggle-theme', handleVoiceToggleTheme)
 
 // Pause wake word during active voice command, resume when idle
-watch(() => voiceCmd.state.value, (s) => {
-  if (s !== 'idle') wakeWord?.stopWakeWord()
-  else if (voiceSettings.wakeWordEnabled !== false) wakeWord?.startWakeWord().catch(() => {})
-})
+watch(
+  () => voiceCmd.state.value,
+  (s) => {
+    if (s !== 'idle') wakeWord?.stopWakeWord()
+    else if (voiceSettings.wakeWordEnabled !== false) wakeWord?.startWakeWord().catch(() => {})
+  },
+)
 
 const healthOk = ref(false)
 const backendRestarting = ref(false)
@@ -399,15 +486,30 @@ const globalDragging = ref(false)
 const mouseX = ref(0)
 const mouseY = ref(0)
 const { isDark, toggleTheme } = useAppTheme()
-watch(_openFullArgMapTick, () => { setMode('argument') })
+watch(_openFullArgMapTick, () => {
+  setMode('argument')
+})
 const appBootLoading = ref(true)
 const bootLoadingStartedAt = Date.now()
 const minBootLoadingMs = 1400
 let bootSafetyTimer: ReturnType<typeof setTimeout> | null = null
 const showRecoveryBanner = ref(false)
 
+function handleRecoveryView() {
+  showRecoveryBanner.value = false
+  navigateTo('translate')
+}
+
+function handleRecoveryDiscard() {
+  showRecoveryBanner.value = false
+  discardPersisted()
+}
+
 function finishBootLoading() {
-  if (bootSafetyTimer) { clearTimeout(bootSafetyTimer); bootSafetyTimer = null }
+  if (bootSafetyTimer) {
+    clearTimeout(bootSafetyTimer)
+    bootSafetyTimer = null
+  }
   const elapsed = Date.now() - bootLoadingStartedAt
   const delay = Math.max(0, minBootLoadingMs - elapsed)
   window.setTimeout(async () => {
@@ -429,7 +531,9 @@ const cloudConfig = ref({
   model: 'gpt-4o',
   max_tokens: 16384,
 })
-const providerPresets = ref<Record<string, { name: string; base_url: string; models: string[] }>>({})
+const providerPresets = ref<Record<string, { name: string; base_url: string; models: string[] }>>(
+  {},
+)
 
 const ollamaModel = ref('qwen3:8b')
 const ollamaModels = ref<string[]>([])
@@ -443,11 +547,31 @@ const { handleMinimize, handleToggleMaximize, handleClose } = useAppWindow()
 
 // --- 自定义背景 ---
 
-const { bgSettings, bgDataUrl, bgAssetUrl, backgroundLayerStyle, loadBgSettings, saveBgSettings, pickBackground, pathToDataUrl, clearBackground, onOpacityChange, initBackground } = useBackground()
+const {
+  bgSettings,
+  bgDataUrl,
+  bgAssetUrl,
+  backgroundLayerStyle,
+  loadBgSettings,
+  saveBgSettings,
+  pickBackground,
+  pathToDataUrl,
+  clearBackground,
+  onOpacityChange,
+  initBackground,
+} = useBackground()
 
 // --- 阅读设置 ---
 
-const { readSettings, loadReadSettings, saveReadSettings, onFontSizeChange, onLineHeightChange, onFontFamilyChange, onColorChange } = useReadSettings()
+const {
+  readSettings,
+  loadReadSettings,
+  saveReadSettings,
+  onFontSizeChange,
+  onLineHeightChange,
+  onFontFamilyChange,
+  onColorChange,
+} = useReadSettings()
 
 // ── 鼠标微视差：光晕/粒子跟随鼠标 ──
 function onMouseMove(e: MouseEvent) {
@@ -484,82 +608,105 @@ onMounted(async () => {
     }
   }, 5000)
   try {
-  // Load theme preference
-  try {
-    const saved = localStorage.getItem('theme')
-    isDark.value = saved === 'dark'
-  } catch (e) { logger.warn('loadTheme failed:', e) }
-
-  // Load background settings + pre-render data URL
-  initBackground()
-
-  // Load read settings
-  loadReadSettings()
-
-  // Mouse parallax for ambient orbs / particles
-  window.addEventListener('mousemove', onMouseMove, { passive: true })
-
-  // Listen for backend crash events (Tauri only)
-  listenBackendCrash()
-
-  // Load engine settings from backend config
-  await loadEngineSettings()
-
-  // Health checks
-  healthOk.value = await checkHealth()
-  ollamaOk.value = await checkOllama()
-  if (ollamaOk.value) refreshOllamaModels()
-  checkTectonic()
-  if (engineType.value === 'cloud') {
-    const r = await checkCloudApi()
-    cloudOk.value = r.ok
-    cloudError.value = r.error ?? null
-  }
-  timer = setInterval(async () => {
-    // Backend availability is a global shell concern. Keep polling even when
-    // a failed request has moved the feature state to `error`, otherwise the
-    // settings drawer can remain falsely "online" and hide its restart action.
-    const prev = healthOk.value
-    healthOk.value = await checkHealth()
-    if (prev && !healthOk.value) {
-      setBackendError(t('app.backendOffline'))
+    // Load theme preference
+    try {
+      const saved = localStorage.getItem('theme')
+      isDark.value = saved === 'dark'
+    } catch (e) {
+      logger.warn('loadTheme failed:', e)
     }
-    if (!healthOk.value || state.status !== 'idle') return
 
-    if (engineType.value === 'ollama') {
-      ollamaOk.value = await checkOllama()
-    } else {
+    // Load background settings + pre-render data URL
+    initBackground()
+
+    // Load read settings
+    loadReadSettings()
+
+    // Mouse parallax for ambient orbs / particles
+    window.addEventListener('mousemove', onMouseMove, { passive: true })
+
+    // Listen for backend crash events (Tauri only)
+    listenBackendCrash()
+
+    // Load engine settings from backend config
+    await loadEngineSettings()
+
+    // Health checks
+    healthOk.value = await checkHealth()
+    ollamaOk.value = await checkOllama()
+    if (ollamaOk.value) refreshOllamaModels()
+    checkTectonic()
+    if (engineType.value === 'cloud') {
       const r = await checkCloudApi()
       cloudOk.value = r.ok
       cloudError.value = r.error ?? null
     }
-  }, 8000)
-
-  // Check for updates (5s delay, silent on failure)
-  setTimeout(async () => {
-    const result = await checkForUpdate().catch(() => undefined)
-    if (result) updateResult.value = result
-  }, 5000)
-
-  // Tauri v2 native drag-drop events (WebView2 intercepts HTML5 drag)
-  try {
-    unlistenDragDrop = await getCurrentWindow().onDragDropEvent((event) => {
-      if (event.payload.type === 'enter') {
-        globalDragging.value = true
-      } else if (event.payload.type === 'drop') {
-        globalDragging.value = false
-        const paths = event.payload.paths
-        const supportedExts = ['.pdf','.docx','.doc','.txt','.md','.html','.htm','.epub','.rtf','.tex','.csv','.pptx','.xlsx','.srt','.json','.xml','.log']
-        if (paths.length > 0 && supportedExts.some(ext => paths[0].toLowerCase().endsWith(ext))) {
-          translateFromPath(paths[0])
-        }
-      } else if (event.payload.type === 'leave') {
-        globalDragging.value = false
+    timer = setInterval(async () => {
+      // Backend availability is a global shell concern. Keep polling even when
+      // a failed request has moved the feature state to `error`, otherwise the
+      // settings drawer can remain falsely "online" and hide its restart action.
+      const prev = healthOk.value
+      healthOk.value = await checkHealth()
+      if (prev && !healthOk.value) {
+        setBackendError(t('app.backendOffline'))
       }
-    })
-  } catch {
-    // Non-Tauri environment: HTML5 drag fallback
-  }
+      if (!healthOk.value || state.status !== 'idle') return
+
+      if (engineType.value === 'ollama') {
+        ollamaOk.value = await checkOllama()
+      } else {
+        const r = await checkCloudApi()
+        cloudOk.value = r.ok
+        cloudError.value = r.error ?? null
+      }
+    }, 8000)
+
+    // Check for updates (5s delay, silent on failure)
+    setTimeout(async () => {
+      const result = await checkForUpdate().catch(() => undefined)
+      if (result) updateResult.value = result
+    }, 5000)
+
+    // Tauri v2 native drag-drop events (WebView2 intercepts HTML5 drag)
+    try {
+      unlistenDragDrop = await getCurrentWindow().onDragDropEvent((event) => {
+        if (event.payload.type === 'enter') {
+          globalDragging.value = true
+        } else if (event.payload.type === 'drop') {
+          globalDragging.value = false
+          const paths = event.payload.paths
+          const supportedExts = [
+            '.pdf',
+            '.docx',
+            '.doc',
+            '.txt',
+            '.md',
+            '.html',
+            '.htm',
+            '.epub',
+            '.rtf',
+            '.tex',
+            '.csv',
+            '.pptx',
+            '.xlsx',
+            '.srt',
+            '.json',
+            '.xml',
+            '.log',
+          ]
+          if (
+            paths.length > 0 &&
+            supportedExts.some((ext) => paths[0].toLowerCase().endsWith(ext))
+          ) {
+            translateFromPath(paths[0])
+          }
+        } else if (event.payload.type === 'leave') {
+          globalDragging.value = false
+        }
+      })
+    } catch {
+      // Non-Tauri environment: HTML5 drag fallback
+    }
   } finally {
     finishBootLoading()
   }
@@ -577,7 +724,10 @@ onUnmounted(() => {
   voiceCmd.cleanup()
   if (timer) clearInterval(timer)
   if (unlistenDragDrop) unlistenDragDrop()
-  if (bootSafetyTimer) { clearTimeout(bootSafetyTimer); bootSafetyTimer = null }
+  if (bootSafetyTimer) {
+    clearTimeout(bootSafetyTimer)
+    bootSafetyTimer = null
+  }
   cleanup()
   editorCleanup()
 })
@@ -645,27 +795,34 @@ async function checkTectonic() {
       const data = await resp.json()
       tectonicOk.value = data.available === true
     }
-  } catch (e) { logger.warn('tectonic check failed:', e) }
-  finally { tectonicChecking.value = false }
+  } catch (e) {
+    logger.warn('tectonic check failed:', e)
+  } finally {
+    tectonicChecking.value = false
+  }
 }
 
 function handleTectonic() {
   if (tectonicOk.value) return
   tectonicChecking.value = true
   fetch(`${API_BASE}/api/tectonic/install`, { method: 'POST' })
-    .then(r => r.ok ? r.json() : r.json().then(d => Promise.reject(d.detail || t('app.installFailed'))))
-    .then(data => {
+    .then((r) =>
+      r.ok ? r.json() : r.json().then((d) => Promise.reject(d.detail || t('app.installFailed'))),
+    )
+    .then((data) => {
       tectonicOk.value = data.success !== false
       if (data.version) {
         // show brief success
       }
     })
-    .catch(e => {
+    .catch((e) => {
       console.error('Tectonic install failed:', e)
       // Fallback: open download page
       window.open('https://github.com/typst/tectonic/releases/latest', '_blank')
     })
-    .finally(() => { tectonicChecking.value = false })
+    .finally(() => {
+      tectonicChecking.value = false
+    })
 }
 
 // --- Engine settings ---
@@ -794,43 +951,84 @@ async function openReleasePage(url: string) {
 
 <style>
 /* Design tokens are in src/styles/tokens.css — imported by main.ts */
-*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
 
-html, body, #app { width: 100%; height: 100%; overflow: hidden; }
-html { background: var(--c-app-bg); opacity: 1 !important; }
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+html {
+  background: var(--c-app-bg);
+  opacity: 1 !important;
+}
 
 body {
   font-family: var(--font-sans), var(--font-zh);
-  background: var(--c-app-bg); color: var(--c-text-0);
+  background: var(--c-app-bg);
+  color: var(--c-text-0);
   -webkit-font-smoothing: antialiased;
 }
 
-[data-theme="light"],
-[data-theme="light"] body,
-[data-theme="light"] #app {
-  background: #FAF8F3;
+[data-theme='light'],
+[data-theme='light'] body,
+[data-theme='light'] #app {
+  background: #faf8f3;
 }
 
 /* ── Focus indicator — 键盘可访问 ── */
-:focus-visible {
+button:focus-visible,
+[role='button']:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.u-interactive:focus-visible,
+[tabindex]:not([tabindex='-1']):focus-visible {
   outline: none;
   box-shadow: var(--ring-focus);
-  border-radius: var(--radius-xs);
 }
 
 /* ── Typography scale: 标题衬线 / 正文无衬线 ── */
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   font-family: var(--font-serif-zh), var(--font-serif);
   font-weight: 600;
   color: var(--c-text-0);
   line-height: var(--leading-tight);
 }
-h1 { font-size: var(--text-display-lg); letter-spacing: var(--tracking-display); }
-h2 { font-size: var(--text-display); letter-spacing: var(--tracking-tight); }
-h3 { font-size: var(--text-2xl); }
-h4 { font-size: var(--text-xl); }
-h5 { font-size: var(--text-lg); }
-h6 { font-size: var(--text-base); }
+h1 {
+  font-size: var(--text-display-lg);
+  letter-spacing: var(--tracking-display);
+}
+h2 {
+  font-size: var(--text-display);
+  letter-spacing: var(--tracking-tight);
+}
+h3 {
+  font-size: var(--text-2xl);
+}
+h4 {
+  font-size: var(--text-xl);
+}
+h5 {
+  font-size: var(--text-lg);
+}
+h6 {
+  font-size: var(--text-base);
+}
 
 /* ── 版心容器：限制内容最大宽度，模拟古籍版面呼吸感 ── */
 .page-core {
@@ -861,7 +1059,10 @@ body::after,
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.008 0.22' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23f)'/%3E%3C/svg%3E"),
     /* Layer 1: Fine grain — 砚石微粒基底 */
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='5' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23g)'/%3E%3C/svg%3E");
-  background-size: 300px 300px, 400px 400px, 300px 300px;
+  background-size:
+    300px 300px,
+    400px 400px,
+    300px 300px;
   background-repeat: repeat;
 }
 
@@ -915,7 +1116,9 @@ body::after {
 }
 
 /* Light mode: reduce paper texture against lighter backgrounds */
-[data-theme="light"] .bg-paper-overlay { opacity: 0.055; }
+[data-theme='light'] .bg-paper-overlay {
+  opacity: 0.055;
+}
 
 /* ── Ambient light orb — 砚池流光，缓慢漂移 ── */
 .ambient-orb {
@@ -925,8 +1128,9 @@ body::after {
   width: 900px;
   height: 900px;
   border-radius: 50%;
-  background: radial-gradient(circle at center,
-    rgba(91, 108, 255, 0.10) 0%,
+  background: radial-gradient(
+    circle at center,
+    rgba(91, 108, 255, 0.1) 0%,
     rgba(91, 108, 255, 0.05) 30%,
     transparent 70%
   );
@@ -936,11 +1140,31 @@ body::after {
   transition: transform 1.2s var(--ease-out);
 }
 @keyframes orb-drift {
-  0%   { top: -300px; left: -200px; transform: scale(1); }
-  25%  { top: 20%; left: 70%; transform: scale(1.2); }
-  50%  { top: 60%; left: 40%; transform: scale(0.85); }
-  75%  { top: 10%; left: 10%; transform: scale(1.1); }
-  100% { top: -300px; left: -200px; transform: scale(1); }
+  0% {
+    top: -300px;
+    left: -200px;
+    transform: scale(1);
+  }
+  25% {
+    top: 20%;
+    left: 70%;
+    transform: scale(1.2);
+  }
+  50% {
+    top: 60%;
+    left: 40%;
+    transform: scale(0.85);
+  }
+  75% {
+    top: 10%;
+    left: 10%;
+    transform: scale(1.1);
+  }
+  100% {
+    top: -300px;
+    left: -200px;
+    transform: scale(1);
+  }
 }
 
 /* Second orb — 朱砂微光 */
@@ -950,7 +1174,8 @@ body::after {
   width: 700px;
   height: 700px;
   border-radius: 50%;
-  background: radial-gradient(circle at center,
+  background: radial-gradient(
+    circle at center,
     rgba(200, 80, 58, 0.06) 0%,
     rgba(200, 80, 58, 0.02) 40%,
     transparent 70%
@@ -959,10 +1184,26 @@ body::after {
   animation: orb-drift-2 34s ease-in-out infinite;
 }
 @keyframes orb-drift-2 {
-  0%   { top: 70%; left: 80%; transform: scale(1.1); }
-  33%  { top: 10%; left: 30%; transform: scale(0.8); }
-  66%  { top: 50%; left: -100px; transform: scale(1.15); }
-  100% { top: 70%; left: 80%; transform: scale(1.1); }
+  0% {
+    top: 70%;
+    left: 80%;
+    transform: scale(1.1);
+  }
+  33% {
+    top: 10%;
+    left: 30%;
+    transform: scale(0.8);
+  }
+  66% {
+    top: 50%;
+    left: -100px;
+    transform: scale(1.15);
+  }
+  100% {
+    top: 70%;
+    left: 80%;
+    transform: scale(1.1);
+  }
 }
 
 /* ── Ink particles — 墨粒子漂浮，如墨入水 ── */
@@ -977,7 +1218,8 @@ body::after {
 .ink-particle {
   position: absolute;
   border-radius: 50%;
-  background: radial-gradient(circle at 40% 40%,
+  background: radial-gradient(
+    circle at 40% 40%,
     rgba(91, 108, 255, 0.15) 0%,
     rgba(91, 108, 255, 0.06) 40%,
     transparent 70%
@@ -992,34 +1234,56 @@ body::after {
   opacity: 0;
 }
 @keyframes particle-float {
-  0%   { transform: translate(0, 0) scale(0.6); opacity: 0; }
-  10%  { opacity: 0.85; }
-  25%  { transform: translate(40px, -30px) scale(1.1); opacity: 0.6; }
-  50%  { transform: translate(-25px, -60px) scale(0.85); opacity: 0.35; }
-  75%  { transform: translate(-50px, -15px) scale(1.05); opacity: 0.6; }
-  90%  { opacity: 0; }
-  100% { transform: translate(10px, 10px) scale(0.6); opacity: 0; }
+  0% {
+    transform: translate(0, 0) scale(0.6);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.85;
+  }
+  25% {
+    transform: translate(40px, -30px) scale(1.1);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translate(-25px, -60px) scale(0.85);
+    opacity: 0.35;
+  }
+  75% {
+    transform: translate(-50px, -15px) scale(1.05);
+    opacity: 0.6;
+  }
+  90% {
+    opacity: 0;
+  }
+  100% {
+    transform: translate(10px, 10px) scale(0.6);
+    opacity: 0;
+  }
 }
 
 /* Light mode adjustments */
-[data-theme="light"] .ambient-orb {
-  background: radial-gradient(circle at center,
+[data-theme='light'] .ambient-orb {
+  background: radial-gradient(
+    circle at center,
     rgba(91, 108, 255, 0.06) 0%,
     rgba(91, 108, 255, 0.02) 30%,
     transparent 70%
   );
   opacity: 0.65;
 }
-[data-theme="light"] .ambient-orb::after {
-  background: radial-gradient(circle at center,
+[data-theme='light'] .ambient-orb::after {
+  background: radial-gradient(
+    circle at center,
     rgba(200, 80, 58, 0.035) 0%,
     rgba(200, 80, 58, 0.012) 40%,
     transparent 70%
   );
 }
-[data-theme="light"] .ink-particle {
-  background: radial-gradient(circle at 40% 40%,
-    rgba(91, 108, 255, 0.10) 0%,
+[data-theme='light'] .ink-particle {
+  background: radial-gradient(
+    circle at 40% 40%,
+    rgba(91, 108, 255, 0.1) 0%,
     rgba(91, 108, 255, 0.03) 40%,
     transparent 70%
   );
@@ -1083,17 +1347,35 @@ body::after {
 }
 /* Drag overlay transition */
 .drag-fade-enter-active,
-.drag-fade-leave-active { transition: opacity var(--motion-base) var(--ease-out); }
+.drag-fade-leave-active {
+  transition: opacity var(--motion-base) var(--ease-out);
+}
 .drag-fade-enter-from,
-.drag-fade-leave-to { opacity: 0; }
+.drag-fade-leave-to {
+  opacity: 0;
+}
 
-.app-loading-fade-enter-active { transition: opacity 320ms var(--ease-out); }
-.app-loading-fade-leave-active { transition: opacity 320ms var(--ease-out), transform 320ms var(--ease-out); }
-.app-loading-fade-enter-from { opacity: 0; }
-.app-loading-fade-leave-to { opacity: 0; transform: scale(0.96); }
+.app-loading-fade-enter-active {
+  transition: opacity 320ms var(--ease-out);
+}
+.app-loading-fade-leave-active {
+  transition:
+    opacity 320ms var(--ease-out),
+    transform 320ms var(--ease-out);
+}
+.app-loading-fade-enter-from {
+  opacity: 0;
+}
+.app-loading-fade-leave-to {
+  opacity: 0;
+  transform: scale(0.96);
+}
 
 /* ── Agent icon active state (kept here because it's part of topbar) ── */
-.editor-mode { flex: 1; min-height: 0; }
+.editor-mode {
+  flex: 1;
+  min-height: 0;
+}
 
 /* ── Mode container: KeepAlive + Transition ── */
 .mode-container {
@@ -1113,13 +1395,24 @@ body::after {
   animation: mode-cross 300ms var(--ease-out);
 }
 @keyframes mode-cross {
-  0%   { opacity: 0; transform: translateY(6px); }
-  100% { opacity: 1; transform: translateY(0); }
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ── Scrollbar — 研墨定制 ── */
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
 ::-webkit-scrollbar-thumb {
   background: var(--c-surface-5);
   border-radius: 3px;
@@ -1128,14 +1421,22 @@ body::after {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--c-accent);
 }
-::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
 
 /* ── Light mode overrides ── */
 
 /* Light mode global tweaks */
-[data-theme="light"] ::-webkit-scrollbar-thumb { background: var(--c-surface-4); }
-[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: var(--c-accent); }
-[data-theme="light"] body::after { opacity: 0.032; }
+[data-theme='light'] ::-webkit-scrollbar-thumb {
+  background: var(--c-surface-4);
+}
+[data-theme='light'] ::-webkit-scrollbar-thumb:hover {
+  background: var(--c-accent);
+}
+[data-theme='light'] body::after {
+  opacity: 0.032;
+}
 /* ── View Transition (theme switch) ── */
 ::view-transition-old(root) {
   animation: vt-old-out 220ms var(--ease-out);
@@ -1146,12 +1447,20 @@ body::after {
   mix-blend-mode: normal;
 }
 @keyframes vt-old-out {
-  from { opacity: 1; }
-  to { opacity: 0; }
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 @keyframes vt-new-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* ── Recovery Banner ── */
@@ -1172,12 +1481,27 @@ body::after {
   border-radius: 10px;
   box-shadow: var(--elevation-2);
 }
-.recovery-text { flex: 1; min-width: 0; font-size: var(--text-sm); color: var(--c-text-1); line-height: 1.45; }
-.recovery-actions { display: flex; gap: 4px; }
+.recovery-text {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--c-text-1);
+  line-height: 1.45;
+}
+.recovery-actions {
+  display: flex;
+  gap: 4px;
+}
 
 @media (max-width: 720px) {
-  .recovery-banner { align-items: flex-start; flex-direction: column; }
-  .recovery-actions { width: 100%; justify-content: flex-end; }
+  .recovery-banner {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .recovery-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
 }
 
 /* ── Wallpaper-aware semi-transparent backgrounds ── */
@@ -1188,21 +1512,21 @@ body::after {
   --editor-bg: rgba(19, 19, 21, 0.82);
   --sidebar-bg: rgba(19, 19, 21, 0.75);
   --toolbar-bg: rgba(19, 19, 21, 0.78);
-  --panel-bg: rgba(19, 19, 21, 0.80);
-  --border-color: rgba(46, 46, 52, 0.60);
-  --hover-bg: rgba(46, 46, 52, 0.70);
-  --active-bg: rgba(66, 66, 74, 0.70);
+  --panel-bg: rgba(19, 19, 21, 0.8);
+  --border-color: rgba(46, 46, 52, 0.6);
+  --hover-bg: rgba(46, 46, 52, 0.7);
+  --active-bg: rgba(66, 66, 74, 0.7);
   --code-bg: rgba(35, 35, 40, 0.75);
   --input-bg: rgba(35, 35, 40, 0.75);
 }
-[data-theme="light"] .app.has-wallpaper {
+[data-theme='light'] .app.has-wallpaper {
   --editor-bg: rgba(250, 250, 250, 0.88);
   --sidebar-bg: rgba(244, 244, 247, 0.85);
   --toolbar-bg: rgba(244, 244, 247, 0.88);
   --panel-bg: rgba(250, 250, 250, 0.88);
-  --border-color: rgba(204, 204, 210, 0.60);
-  --hover-bg: rgba(226, 226, 230, 0.80);
-  --active-bg: rgba(212, 212, 218, 0.80);
+  --border-color: rgba(204, 204, 210, 0.6);
+  --hover-bg: rgba(226, 226, 230, 0.8);
+  --active-bg: rgba(212, 212, 218, 0.8);
   --code-bg: rgba(240, 240, 243, 0.85);
   --input-bg: rgba(244, 244, 247, 0.85);
 }

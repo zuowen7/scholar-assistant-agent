@@ -11,7 +11,7 @@ import uuid
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import AsyncGenerator, Literal
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
@@ -40,22 +40,28 @@ def _safe_child_path(root: Path, filename: str) -> Path:
 
 # ── Lightweight pydantic schemas for LLM response parsing (H5) ──────────────
 
+
 class _CloudDelta(BaseModel):
     content: str = ""
+
 
 class _CloudChoice(BaseModel):
     delta: _CloudDelta = _CloudDelta()
     message: _CloudDelta = _CloudDelta()  # non-streaming path
 
+
 class _CloudResponse(BaseModel):
     choices: list[_CloudChoice] = []
+
 
 class _OllamaMessage(BaseModel):
     content: str = ""
 
+
 class _OllamaChunk(BaseModel):
     message: _OllamaMessage = _OllamaMessage()
     done: bool = False
+
 
 class _ComplianceReport(BaseModel):
     overall_score: float | int | None = None
@@ -171,18 +177,17 @@ def register_editor(
     async def edit_text(req: EditRequest):
         text = req.text or ""
         instruction = (req.instruction or "").strip()
-        task_type = (req.task_type or "").lower()
+        (req.task_type or "").lower()
 
         if not instruction:
-            return EventSourceResponse(
-                _edit_echo(text), media_type="text/event-stream"
-            )
+            return EventSourceResponse(_edit_echo(text), media_type="text/event-stream")
 
         config = load_config()
         trans_cfg = config.get("translator", {})
         engine = trans_cfg.get("engine", "ollama")
 
         from prompts.loader import render_edit_with_text_prompt, render_edit_without_text_prompt
+
         if text.strip():
             system_prompt, user_msg = render_edit_with_text_prompt(text, instruction)
         else:
@@ -199,7 +204,14 @@ def register_editor(
                     media_type="text/event-stream",
                 )
             return EventSourceResponse(
-                _stream_llm("cloud", f"{base_url}/chat/completions", model, system_prompt, user_msg, api_key=api_key),
+                _stream_llm(
+                    "cloud",
+                    f"{base_url}/chat/completions",
+                    model,
+                    system_prompt,
+                    user_msg,
+                    api_key=api_key,
+                ),
                 media_type="text/event-stream",
             )
         else:
@@ -227,12 +239,13 @@ def register_editor(
     ) -> AsyncGenerator[dict, None]:
         """Unified streaming generator for cloud (OpenAI-compatible) and Ollama backends."""
         import httpx
+
         full_content = ""
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
                 if backend == "cloud":
-                    request_kwargs = dict(
-                        json={
+                    request_kwargs = {
+                        "json": {
                             "model": model,
                             "messages": [
                                 {"role": "system", "content": system_prompt},
@@ -242,14 +255,14 @@ def register_editor(
                             "max_tokens": 8192,
                             "stream": True,
                         },
-                        headers={
+                        "headers": {
                             "Content-Type": "application/json",
                             "Authorization": f"Bearer {api_key}",
                         },
-                    )
+                    }
                 else:
-                    request_kwargs = dict(
-                        json={
+                    request_kwargs = {
+                        "json": {
                             "model": model,
                             "messages": [
                                 {"role": "system", "content": system_prompt},
@@ -258,7 +271,7 @@ def register_editor(
                             "stream": True,
                             "options": {"temperature": 0.3, "num_predict": 8192},
                         },
-                    )
+                    }
 
                 async with client.stream("POST", endpoint, **request_kwargs) as resp:
                     resp.raise_for_status()
@@ -286,20 +299,30 @@ def register_editor(
                                 continue
                         if token:
                             full_content += token
-                            yield {"event": "delta", "data": json.dumps({"content": full_content}, ensure_ascii=False)}
+                            yield {
+                                "event": "delta",
+                                "data": json.dumps({"content": full_content}, ensure_ascii=False),
+                            }
         except Exception as e:
             label = "云端 API" if backend == "cloud" else "Ollama（未启动？）"
             logger.exception("%s stream error", label)
-            yield {"event": "error", "data": json.dumps({"message": f"{label} 错误: {e}"}, ensure_ascii=False)}
+            yield {
+                "event": "error",
+                "data": json.dumps({"message": f"{label} 错误: {e}"}, ensure_ascii=False),
+            }
             return
 
         yield {"event": "delta", "data": json.dumps({"content": full_content}, ensure_ascii=False)}
 
     async def _call_cloud(
-        base_url: str, api_key: str, model: str,
-        system_prompt: str, user_msg: str,
+        base_url: str,
+        api_key: str,
+        model: str,
+        system_prompt: str,
+        user_msg: str,
     ) -> str:
         import httpx
+
         if not base_url or not api_key:
             raise RuntimeError("云端 API 未配置")
         async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
@@ -322,10 +345,13 @@ def register_editor(
             return parsed.choices[0].message.content if parsed.choices else ""
 
     async def _call_ollama(
-        ollama_url: str, model: str,
-        system_prompt: str, user_msg: str,
+        ollama_url: str,
+        model: str,
+        system_prompt: str,
+        user_msg: str,
     ) -> str:
         import httpx
+
         async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
             resp = await client.post(
                 f"{ollama_url}/api/chat",
@@ -354,6 +380,7 @@ def register_editor(
         engine = trans_cfg.get("engine", "ollama")
 
         from prompts.loader import render_auto_complete_prompt
+
         prompt = render_auto_complete_prompt(context[-2000:])
 
         try:
@@ -365,6 +392,7 @@ def register_editor(
                 if not base_url or not api_key:
                     return {"completion": "", "usage": {"prompt_tokens": 0, "completion_tokens": 0}}
                 import httpx
+
                 async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0)) as client:
                     resp = await client.post(
                         f"{base_url}/chat/completions",
@@ -375,7 +403,10 @@ def register_editor(
                             "max_tokens": req.max_tokens,
                             "stream": False,
                         },
-                        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+                        headers={
+                            "Content-Type": "application/json",
+                            "Authorization": f"Bearer {api_key}",
+                        },
                     )
                     resp.raise_for_status()
                     data = resp.json()
@@ -385,6 +416,7 @@ def register_editor(
                 ollama_url = trans_cfg.get("ollama_base_url", "http://localhost:11434").rstrip("/")
                 model = trans_cfg.get("model", "qwen3:8b")
                 import httpx
+
                 async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0)) as client:
                     resp = await client.post(
                         f"{ollama_url}/api/chat",
@@ -398,10 +430,13 @@ def register_editor(
                     resp.raise_for_status()
                     data = resp.json()
                     text = data.get("message", {}).get("content", "")
-                    usage = {"prompt_tokens": data.get("prompt_eval_count", 0), "completion_tokens": data.get("eval_count", 0)}
+                    usage = {
+                        "prompt_tokens": data.get("prompt_eval_count", 0),
+                        "completion_tokens": data.get("eval_count", 0),
+                    }
 
             text = re.sub(r"<think.*?>.*?</think.*?>", "", text, flags=re.DOTALL).strip()
-            text = text.lstrip("```").rstrip("```").strip()
+            text = text.removeprefix("```").removesuffix("```").strip()
 
             return {"completion": text, "usage": usage}
         except Exception as e:
@@ -411,6 +446,7 @@ def register_editor(
     @app.get("/api/export/templates")
     async def export_templates():
         from pandoc_templates import get_templates, tectonic_available
+
         return {
             "templates": get_templates(),
             "tectonic_available": tectonic_available(),
@@ -419,6 +455,7 @@ def register_editor(
     @app.post("/api/export")
     async def export_latex(req: MarkdownExportRequest):
         from pandoc_templates import convert_markdown
+
         result = convert_markdown(
             req.markdown,
             template_id=req.template_id,
@@ -432,6 +469,7 @@ def register_editor(
     @app.post("/api/export/pdf")
     async def export_pdf(req: MarkdownExportRequest):
         from pandoc_templates import convert_markdown
+
         result = convert_markdown(
             req.markdown,
             template_id=req.template_id,
@@ -441,16 +479,20 @@ def register_editor(
         if not result.get("success") or not result.get("pdf_path"):
             raise HTTPException(400, result.get("error") or "PDF export failed")
         pdf_path = Path(result["pdf_path"])
-        return FileResponse(str(pdf_path), media_type="application/pdf", filename=f"{req.title or 'paper'}.pdf")
+        return FileResponse(
+            str(pdf_path), media_type="application/pdf", filename=f"{req.title or 'paper'}.pdf"
+        )
 
     @app.get("/api/tectonic/status")
     async def tectonic_status():
         from pandoc_templates import tectonic_available, tectonic_version
+
         return {"available": tectonic_available(), "version": tectonic_version()}
 
     @app.post("/api/tectonic/install")
     async def tectonic_install():
         from pandoc_templates import install_tectonic
+
         result = install_tectonic()
         if not result.get("success"):
             raise HTTPException(400, result.get("error") or "Tectonic install failed")
@@ -459,6 +501,7 @@ def register_editor(
     @app.get("/api/paper-assets/templates")
     async def paper_asset_templates():
         from paper_assets import get_template_list
+
         icon_map = {
             "generic": "Doc",
             "generic_article": "Doc",
@@ -478,12 +521,14 @@ def register_editor(
     @app.post("/api/paper-assets/ingest")
     async def paper_assets_ingest():
         from paper_assets import ingest_paper_assets
+
         rag_store = rag_store_getter()
         return ingest_paper_assets(rag_store)
 
     @app.post("/api/paper-scaffold")
     async def paper_scaffold(req: PaperScaffoldRequest):
         from paper_assets import generate_scaffold
+
         return {
             "template_id": req.template_id,
             "markdown": generate_scaffold(req.template_id, req.title, req.sections),
@@ -492,6 +537,7 @@ def register_editor(
     @app.post("/api/paper-style-transfer")
     async def paper_style_transfer(req: PaperStyleTransferRequest):
         from paper_assets import get_style_examples
+
         return {
             "template_id": req.template_id,
             "section": req.section,
@@ -507,6 +553,7 @@ def register_editor(
             engine = trans_cfg.get("engine", "ollama")
 
             from prompts.loader import render_compliance_prompt
+
             system_prompt, user_msg = render_compliance_prompt(
                 text=req.markdown[:60000],
                 title=req.title,
@@ -521,13 +568,15 @@ def register_editor(
                     cloud_cfg.get("base_url", "").rstrip("/"),
                     (cloud_cfg.get("api_key") or "").strip(),
                     cloud_cfg.get("model", "gpt-4o"),
-                    system_prompt, user_msg,
+                    system_prompt,
+                    user_msg,
                 )
             else:
                 raw = await _call_ollama(
                     trans_cfg.get("ollama_base_url", "http://localhost:11434").rstrip("/"),
                     trans_cfg.get("model", "qwen3:8b"),
-                    system_prompt, user_msg,
+                    system_prompt,
+                    user_msg,
                 )
 
             raw = raw.strip()
@@ -542,13 +591,16 @@ def register_editor(
             start = raw.find("{")
             end = raw.rfind("}")
             if start != -1 and end > start:
-                raw = raw[start:end + 1]
+                raw = raw[start : end + 1]
 
             try:
                 report = json.loads(raw)
             except json.JSONDecodeError:
                 logger.warning("Compliance JSON parse failed, raw=%s", raw[:500])
-                return {"error": "Failed to parse compliance report from LLM response", "report": None}
+                return {
+                    "error": "Failed to parse compliance report from LLM response",
+                    "report": None,
+                }
 
             return {"report": report}
         except Exception as e:
@@ -558,6 +610,7 @@ def register_editor(
     @app.post("/api/export/word")
     async def export_word(req: WordExportRequest):
         from src.formatter.word_exporter import markdown_to_docx
+
         output_dir.mkdir(parents=True, exist_ok=True)
         docx_path = output_dir / f"export_{uuid.uuid4().hex[:8]}.docx"
         markdown_to_docx(req.content, docx_path, title=req.title)
@@ -646,6 +699,7 @@ def register_editor(
             f.write(content)
         try:
             from src.mcp.vision_client import VisionClient
+
             client = VisionClient()
             result = await client.analyze_image(temp_path, analysis_type=analysis_type)
             return result.to_dict()
@@ -677,6 +731,7 @@ def register_editor(
     @app.put("/api/citation/index")
     async def index_citations(req: CitationIndexRequest):
         from src.citation.indexer import CitationIndexer
+
         indexer = CitationIndexer()
         result = indexer.process(
             text=req.content,
@@ -689,6 +744,7 @@ def register_editor(
     @app.get("/api/citation/extract")
     async def extract_citations(content: str):
         from src.citation.indexer import CitationIndexer
+
         indexer = CitationIndexer()
         keys = indexer.extract_citations(content)
         index = indexer.build_index(content)
@@ -702,6 +758,7 @@ def register_editor(
     async def zotero_status():
         try:
             from src.zotero.client import ZoteroClient
+
             client = ZoteroClient()
             if not client.api_key or not client.user_id:
                 return {"connected": False, "message": "未配置 Zotero API Key 或 User ID"}
@@ -713,6 +770,7 @@ def register_editor(
     async def search_zotero(req: ZoteroSearchRequest):
         try:
             from src.zotero.client import ZoteroClient
+
             client = ZoteroClient()
             items = client.search(query=req.query, item_type=req.item_type, limit=req.limit)
             return {"count": len(items), "items": [item.to_dict() for item in items]}
@@ -726,6 +784,7 @@ def register_editor(
     async def get_zotero_item(item_key: str):
         try:
             from src.zotero.client import ZoteroClient
+
             client = ZoteroClient()
             item = client.get_item(item_key)
             if not item:
@@ -741,6 +800,7 @@ def register_editor(
     async def get_zotero_item_bibtex(item_key: str):
         try:
             from src.zotero.client import ZoteroClient
+
             client = ZoteroClient()
             item = client.get_item(item_key)
             if not item:
@@ -756,6 +816,7 @@ def register_editor(
     async def export_zotero_bibtex(item_keys: list[str] | None = None):
         try:
             from src.zotero.client import ZoteroClient
+
             client = ZoteroClient()
             bibtex = client.export_bibtex(item_keys)
             return {"bibtex": bibtex, "count": len(bibtex.split("\n\n")) if bibtex else 0}
@@ -767,6 +828,7 @@ def register_editor(
     async def get_zotero_citations(item_keys: list[str]):
         try:
             from src.zotero.client import ZoteroClient
+
             client = ZoteroClient()
             items = client.get_items_by_keys(item_keys)
             return {

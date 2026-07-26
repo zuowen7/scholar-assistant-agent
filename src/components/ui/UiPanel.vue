@@ -2,11 +2,7 @@
   <div class="ui-panel" :class="{ collapsed }">
     <div class="ui-panel-header">
       <span class="ui-panel-title">{{ title }}</span>
-      <button
-        v-if="collapsible"
-        class="ui-panel-toggle"
-        @click="collapsed = !collapsed"
-      >
+      <button v-if="collapsible" class="ui-panel-toggle" @click="collapsed = !collapsed">
         {{ collapsed ? '▸' : '▾' }}
       </button>
     </div>

@@ -59,7 +59,7 @@ describe('Tier 4: Translation commands', () => {
   it('translate:export-bilingual-docx dispatches voice-translate-export event with format', async () => {
     const spy = vi.spyOn(window, 'dispatchEvent')
     await router.routeCommand('导出双语Word')
-    const call = spy.mock.calls.find(c => (c[0] as CustomEvent).type === 'voice-translate-export')
+    const call = spy.mock.calls.find((c) => (c[0] as CustomEvent).type === 'voice-translate-export')
     expect(call).toBeDefined()
     expect((call![0] as CustomEvent).detail).toEqual({ format: 'bilingual-docx' })
     spy.mockRestore()
@@ -68,7 +68,7 @@ describe('Tier 4: Translation commands', () => {
   it('translate:export-pptx dispatches voice-translate-export event with format', async () => {
     const spy = vi.spyOn(window, 'dispatchEvent')
     await router.routeCommand('导出PPTX')
-    const call = spy.mock.calls.find(c => (c[0] as CustomEvent).type === 'voice-translate-export')
+    const call = spy.mock.calls.find((c) => (c[0] as CustomEvent).type === 'voice-translate-export')
     expect(call).toBeDefined()
     expect((call![0] as CustomEvent).detail).toEqual({ format: 'pptx' })
     spy.mockRestore()

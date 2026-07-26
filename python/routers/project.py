@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -10,7 +11,7 @@ import shutil
 import subprocess
 import tempfile
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -31,8 +32,12 @@ _FOLDER_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
 
 # Windows reserved names (case-insensitive, with or without dot suffix)
 _WINDOWS_RESERVED = frozenset(
-    x.lower() for x in [
-        "CON", "PRN", "AUX", "NUL",
+    x.lower()
+    for x in [
+        "CON",
+        "PRN",
+        "AUX",
+        "NUL",
         *[f"COM{i}" for i in range(1, 10)],
         *[f"LPT{i}" for i in range(1, 10)],
     ]
@@ -223,17 +228,20 @@ def _write_recent(data_root: Path, entries: list[dict[str, Any]]) -> None:
 
 def _add_recent(data_root: Path, project_path: str, name: str, template_id: str) -> None:
     entries = _read_recent(data_root)
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     nc_path = os.path.normcase(project_path)
     entries = [e for e in entries if os.path.normcase(e.get("path", "")) != nc_path]
 
-    entries.insert(0, {
-        "path": project_path,
-        "name": name,
-        "template_id": template_id,
-        "opened_at": now,
-    })
+    entries.insert(
+        0,
+        {
+            "path": project_path,
+            "name": name,
+            "template_id": template_id,
+            "opened_at": now,
+        },
+    )
     _write_recent(data_root, entries[:_MAX_RECENT])
 
 
@@ -263,7 +271,10 @@ def _git_init(project_dir: Path, project_name: str) -> list[str]:
     try:
         subprocess.run(
             ["git", "--version"],
-            capture_output=True, text=True, timeout=5, check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, subprocess.CalledProcessError):
         warnings.append("Git 未安装或不可用，已跳过版本管理初始化")
@@ -275,23 +286,34 @@ def _git_init(project_dir: Path, project_name: str) -> list[str]:
 
         subprocess.run(
             ["git", "init"],
-            cwd=str(project_dir), capture_output=True, timeout=10,
+            cwd=str(project_dir),
+            capture_output=True,
+            timeout=10,
         )
         subprocess.run(
             ["git", "config", "user.email", "yanmo@local"],
-            cwd=str(project_dir), capture_output=True, timeout=5,
+            cwd=str(project_dir),
+            capture_output=True,
+            timeout=5,
         )
         subprocess.run(
             ["git", "config", "user.name", "研墨"],
-            cwd=str(project_dir), capture_output=True, timeout=5,
+            cwd=str(project_dir),
+            capture_output=True,
+            timeout=5,
         )
         subprocess.run(
             ["git", "add", "."],
-            cwd=str(project_dir), capture_output=True, timeout=10,
+            cwd=str(project_dir),
+            capture_output=True,
+            timeout=10,
         )
         subprocess.run(
             ["git", "commit", "-m", f"Initialize {project_name}"],
-            cwd=str(project_dir), capture_output=True, text=True, timeout=30,
+            cwd=str(project_dir),
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError) as e:
         logger.warning("Git init failed for %s: %s", project_name, e)
@@ -311,12 +333,14 @@ def _generate_readme(name: str, author: str, template_id: str) -> str:
     if author:
         lines.append(f"Author: {author}")
         lines.append("")
-    lines.extend([
-        f"Template: {template_id}",
-        "",
-        "## Structure",
-        "",
-    ])
+    lines.extend(
+        [
+            f"Template: {template_id}",
+            "",
+            "## Structure",
+            "",
+        ]
+    )
     tpl = _get_template(template_id)
     if tpl:
         for folder in tpl.get("folders", []):
@@ -347,9 +371,12 @@ def _validate_template_folders(tpl: dict[str, Any]) -> None:
 
 
 def _create_project_metadata(
-    name: str, author: str, template_id: str, vcs_initialized: bool,
+    name: str,
+    author: str,
+    template_id: str,
+    vcs_initialized: bool,
 ) -> dict[str, Any]:
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     return {
         "version": 1,
         "name": name,
@@ -606,10 +633,8 @@ def _atomic_create_project(
         try:
             shutil.move(str(tmp_dir), str(final_path))
         except OSError as e:
-            try:
+            with contextlib.suppress(Exception):
                 shutil.rmtree(tmp_dir, ignore_errors=True)
-            except Exception:
-                pass
             # Check if target already exists (race condition)
             if final_path.exists():
                 raise HTTPException(409, f"项目路径已存在: {final_path}")
@@ -617,7 +642,7 @@ def _atomic_create_project(
 
         # Update status to "ready" atomically
         metadata["status"] = "ready"
-        metadata["updated_at"] = datetime.now(timezone.utc).isoformat()
+        metadata["updated_at"] = datetime.now(UTC).isoformat()
         try:
             ready_meta_path = final_path / ".yanmo" / "project.json"
             atomic_write_json(ready_meta_path, metadata)
@@ -637,22 +662,16 @@ def _atomic_create_project(
         }
 
     except HTTPException:
-        try:
+        with contextlib.suppress(Exception):
             shutil.rmtree(tmp_dir, ignore_errors=True)
-        except Exception:
-            pass
         raise
     except PermissionError:
-        try:
+        with contextlib.suppress(Exception):
             shutil.rmtree(tmp_dir, ignore_errors=True)
-        except Exception:
-            pass
         raise HTTPException(403, f"无权限创建项目: {name}")
     except Exception as e:
-        try:
+        with contextlib.suppress(Exception):
             shutil.rmtree(tmp_dir, ignore_errors=True)
-        except Exception:
-            pass
         raise HTTPException(500, f"创建项目失败: {e}")
 
 
@@ -735,10 +754,10 @@ def register_project(
         except (json.JSONDecodeError, OSError) as e:
             raise HTTPException(500, f"读取项目元数据失败: {e}")
         # Best-effort: update recent list
-        try:
-            _add_recent(data_root, str(resolved), metadata.get("name", ""), metadata.get("template_id", ""))
-        except Exception:
-            pass
+        with contextlib.suppress(Exception):
+            _add_recent(
+                data_root, str(resolved), metadata.get("name", ""), metadata.get("template_id", "")
+            )
         return metadata
 
     return {}

@@ -40,8 +40,9 @@ defineEmits<{
   background: transparent;
   color: var(--c-text-3);
   cursor: pointer;
-  transition: background var(--motion-fast) var(--ease-out),
-              color var(--motion-fast) var(--ease-out);
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
 }
 .ui-icon-btn:not(:disabled):hover {
   background: var(--c-surface-3);

@@ -2,20 +2,21 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import re
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any
 
 import yaml
+
+from src.utils.json_extract import extract_json_array
 
 from .companion_models import Ledger, ReviewPoint, ReviewSession
 from .companion_store import CompanionStore
 from .llm_client import call_llm_chat
 from .section_utils import find_section, has_contrast_marker, split_paragraphs
-from src.utils.json_extract import extract_json_array
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ _venue_profiles_cache: dict[str, str] | None = None
 
 
 # ── venue profiles ────────────────────────────────────────────────────────────
+
 
 def _load_venue_profile(venue: str | None) -> str:
     """Return the calibration text for *venue*, falling back to generic."""
@@ -53,37 +55,43 @@ def _load_venue_profile(venue: str | None) -> str:
 
 # ── deterministic checks ──────────────────────────────────────────────────────
 
-def ledger_cross_check(ledger: "Ledger | None") -> list[ReviewPoint]:
+
+def ledger_cross_check(ledger: Ledger | None) -> list[ReviewPoint]:
     """确定性：把账本里 unpaid/mismatch 承诺转成 ReviewPoint。"""
     if ledger is None:
         return []
     points: list[ReviewPoint] = []
     for p in ledger.promises:
         if p.status == "unpaid":
-            points.append(ReviewPoint(
-                severity="major",
-                category="claim_overreach",
-                source="ledger_check",
-                title="声称的贡献在正文中未得到验证",
-                detail=f"承诺「{p.text}」在全文未找到对应的实验/论证，审稿人可能将其视为未兑现的承诺。",
-                anchor_id=p.source_anchor_id,
-            ))
+            points.append(
+                ReviewPoint(
+                    severity="major",
+                    category="claim_overreach",
+                    source="ledger_check",
+                    title="声称的贡献在正文中未得到验证",
+                    detail=f"承诺「{p.text}」在全文未找到对应的实验/论证，审稿人可能将其视为未兑现的承诺。",
+                    anchor_id=p.source_anchor_id,
+                )
+            )
         elif p.status == "mismatch":
-            points.append(ReviewPoint(
-                severity="major",
-                category="claim_overreach",
-                source="ledger_check",
-                title="实验结果与声明不符",
-                detail=f"承诺「{p.text}」有相关实验，但结果与声称存在出入：{p.note or '（无额外说明）'}",
-                anchor_id=p.source_anchor_id,
-            ))
+            points.append(
+                ReviewPoint(
+                    severity="major",
+                    category="claim_overreach",
+                    source="ledger_check",
+                    title="实验结果与声明不符",
+                    detail=f"承诺「{p.text}」有相关实验，但结果与声称存在出入：{p.note or '（无额外说明）'}",
+                    anchor_id=p.source_anchor_id,
+                )
+            )
     return points
 
 
 # ── LLM-backed checks ─────────────────────────────────────────────────────────
 
+
 async def coherence_check(
-    ledger: "Ledger | None",
+    ledger: Ledger | None,
     text: str,
     cloud_client: Any = None,
     ollama_client: Any = None,
@@ -118,7 +126,9 @@ async def coherence_check(
     )
 
     try:
-        raw = await call_llm_chat(prompt, cloud_client, ollama_client, max_tokens=1024, temperature=0.3)
+        raw = await call_llm_chat(
+            prompt, cloud_client, ollama_client, max_tokens=1024, temperature=0.3
+        )
     except Exception as exc:
         logger.warning("coherence_check LLM call failed: %s", exc)
         return []
@@ -141,26 +151,30 @@ async def related_work_check(
     rw_text = find_section(text, ["related work", "related-work", "相关工作", "background"])
 
     if rw_text is None:
-        points.append(ReviewPoint(
-            severity="info" if _any_rw_elsewhere(text) else "major",
-            category="missing_related_work",
-            source="rw_check",
-            title="缺少独立的相关工作章节",
-            detail="论文中没有明确标注的「相关工作」章节，审稿人可能认为文献覆盖不足。",
-        ))
+        points.append(
+            ReviewPoint(
+                severity="info" if _any_rw_elsewhere(text) else "major",
+                category="missing_related_work",
+                source="rw_check",
+                title="缺少独立的相关工作章节",
+                detail="论文中没有明确标注的「相关工作」章节，审稿人可能认为文献覆盖不足。",
+            )
+        )
         return points
 
     # Deterministic: check paragraphs for contrast markers
     paras = split_paragraphs(rw_text)
     if paras and not any(has_contrast_marker(p) for p in paras):
-        points.append(ReviewPoint(
-            severity="major",
-            category="weak_positioning",
-            source="rw_check",
-            title="相关工作缺乏与已有工作的对比区分",
-            detail="相关工作章节的各段落均未包含对比性标记词（如 However、In contrast、然而等），"
-                   "读起来像罗列综述，而非将本文与已有工作进行明确对比。",
-        ))
+        points.append(
+            ReviewPoint(
+                severity="major",
+                category="weak_positioning",
+                source="rw_check",
+                title="相关工作缺乏与已有工作的对比区分",
+                detail="相关工作章节的各段落均未包含对比性标记词（如 However、In contrast、然而等），"
+                "读起来像罗列综述，而非将本文与已有工作进行明确对比。",
+            )
+        )
 
     # LLM check: deeper positioning critique
     prompt = (
@@ -174,7 +188,9 @@ async def related_work_check(
         "只输出 JSON 数组，不含其他文字。"
     )
     try:
-        raw = await call_llm_chat(prompt, cloud_client, ollama_client, max_tokens=1024, temperature=0.3)
+        raw = await call_llm_chat(
+            prompt, cloud_client, ollama_client, max_tokens=1024, temperature=0.3
+        )
     except Exception as exc:
         logger.warning("related_work_check LLM call failed: %s", exc)
         return points
@@ -189,6 +205,7 @@ def _any_rw_elsewhere(text: str) -> bool:
 
 
 # ── LLM output parser ─────────────────────────────────────────────────────────
+
 
 def _parse_llm_points(raw: str, *, source: str) -> list[ReviewPoint]:
     """Parse a JSON array of point dicts returned by the LLM."""
@@ -212,13 +229,15 @@ def _parse_llm_points(raw: str, *, source: str) -> list[ReviewPoint]:
             detail = item.get("detail", "")
             if not title or not detail:
                 continue  # discard malformed items
-            points.append(ReviewPoint(
-                severity=severity,  # type: ignore[arg-type]
-                category=category,  # type: ignore[arg-type]
-                source=source,
-                title=title,
-                detail=detail,
-            ))
+            points.append(
+                ReviewPoint(
+                    severity=severity,  # type: ignore[arg-type]
+                    category=category,  # type: ignore[arg-type]
+                    source=source,
+                    title=title,
+                    detail=detail,
+                )
+            )
         except Exception as e:
             logger.debug("discarding malformed review point: %s", e)
             continue
@@ -227,18 +246,19 @@ def _parse_llm_points(raw: str, *, source: str) -> list[ReviewPoint]:
 
 # ── main run_review SSE generator ────────────────────────────────────────────
 
+
 async def run_review(
     doc_id: str,
     text: str,
-    venue: "str | None" = None,
+    venue: str | None = None,
     persona: str = "reviewer2",
-    ledger: "Ledger | None" = None,
+    ledger: Ledger | None = None,
     store: CompanionStore = None,  # type: ignore[assignment]
     *,
     doc_title: str = "",
-    focus: "str | dict | None" = None,
-    checks: "list[str] | None" = None,
-    session_id: "str | None" = None,
+    focus: str | dict | None = None,
+    checks: list[str] | None = None,
+    session_id: str | None = None,
     cloud_client: Any = None,
     ollama_client: Any = None,
 ) -> AsyncIterator[dict]:
@@ -265,8 +285,9 @@ async def run_review(
             "只输出 JSON 数组，不含其他文字。"
         )
         try:
-            raw = await call_llm_chat(focus_prompt, cloud_client, ollama_client,
-                                      max_tokens=512, temperature=0.4)
+            raw = await call_llm_chat(
+                focus_prompt, cloud_client, ollama_client, max_tokens=512, temperature=0.4
+            )
         except Exception as exc:
             logger.warning("scoped review LLM failed: %s", exc)
             raw = ""
@@ -275,8 +296,9 @@ async def run_review(
             new_points.append(rp)
             yield {"event": "review_point", "data": rp.model_dump_json()}
 
-        yield _build_complete_event(new_points, session_id, doc_id, doc_title, venue,
-                                    persona, checks, store)
+        yield _build_complete_event(
+            new_points, session_id, doc_id, doc_title, venue, persona, checks, store
+        )
         return
 
     # ── full review ───────────────────────────────────────────────────────────
@@ -315,8 +337,9 @@ async def run_review(
             "只输出 JSON 数组，不含其他文字。"
         )
         try:
-            raw = await call_llm_chat(prompt, cloud_client, ollama_client,
-                                      max_tokens=2048, temperature=0.5)
+            raw = await call_llm_chat(
+                prompt, cloud_client, ollama_client, max_tokens=2048, temperature=0.5
+            )
         except Exception as exc:
             logger.warning("run_review LLM call failed: %s", exc)
             raw = ""
@@ -325,16 +348,17 @@ async def run_review(
             new_points.append(rp)
             yield {"event": "review_point", "data": rp.model_dump_json()}
 
-    yield _build_complete_event(new_points, session_id, doc_id, doc_title, venue,
-                                persona, checks, store)
+    yield _build_complete_event(
+        new_points, session_id, doc_id, doc_title, venue, persona, checks, store
+    )
 
 
 def _build_complete_event(
     new_points: list[ReviewPoint],
-    session_id: "str | None",
+    session_id: str | None,
     doc_id: str,
     doc_title: str,
-    venue: "str | None",
+    venue: str | None,
     persona: str,
     checks: list[str],
     store: CompanionStore,
@@ -352,11 +376,16 @@ def _build_complete_event(
                 if c not in existing.checks:
                     existing.checks.append(c)
             store.save_review(existing)
-            return {"event": "complete", "data": json.dumps({
-                "session_id": existing.id,
-                "by_category": by_category,
-                "warnings": [],
-            })}
+            return {
+                "event": "complete",
+                "data": json.dumps(
+                    {
+                        "session_id": existing.id,
+                        "by_category": by_category,
+                        "warnings": [],
+                    }
+                ),
+            }
 
     session = ReviewSession(
         doc_id=doc_id,
@@ -367,14 +396,20 @@ def _build_complete_event(
         points=new_points,
     )
     store.save_review(session)
-    return {"event": "complete", "data": json.dumps({
-        "session_id": session.id,
-        "by_category": by_category,
-        "warnings": [],
-    })}
+    return {
+        "event": "complete",
+        "data": json.dumps(
+            {
+                "session_id": session.id,
+                "by_category": by_category,
+                "warnings": [],
+            }
+        ),
+    }
 
 
 # ── rebuttal ──────────────────────────────────────────────────────────────────
+
 
 async def continue_rebuttal(
     session_id: str,
@@ -398,9 +433,7 @@ async def continue_rebuttal(
         yield {"event": "error", "data": json.dumps({"message": "Point not found"})}
         return
 
-    store.append_turns(session_id, point_id, [
-        RebuttalTurn(role="author", text=author_message)
-    ])
+    store.append_turns(session_id, point_id, [RebuttalTurn(role="author", text=author_message)])
 
     thread_text = "\n".join(f"[{t.role}] {t.text}" for t in point.thread)
     context_snippet = ""
@@ -421,23 +454,32 @@ async def continue_rebuttal(
     )
 
     try:
-        reply = await call_llm_chat(prompt, cloud_client, ollama_client, max_tokens=2048, temperature=0.5)
+        reply = await call_llm_chat(
+            prompt, cloud_client, ollama_client, max_tokens=2048, temperature=0.5
+        )
     except Exception as exc:
         reply = f"（LLM 不可用：{exc}）"
 
     new_status = point.status
     surrender_signals = [
-        "已 rebutted", "撤回这条", "可以认为已 rebutted", "被说服", "认可",
-        "conceded", "rebutted", "i am convinced", "point well taken",
-        "you've addressed this", "this point is resolved",
-        "this can be considered rebutted", "i accept this",
+        "已 rebutted",
+        "撤回这条",
+        "可以认为已 rebutted",
+        "被说服",
+        "认可",
+        "conceded",
+        "rebutted",
+        "i am convinced",
+        "point well taken",
+        "you've addressed this",
+        "this point is resolved",
+        "this can be considered rebutted",
+        "i accept this",
     ]
     if any(sig in reply for sig in surrender_signals):
         new_status = "rebutted"
 
-    store.append_turns(session_id, point_id, [
-        RebuttalTurn(role="reviewer", text=reply)
-    ])
+    store.append_turns(session_id, point_id, [RebuttalTurn(role="reviewer", text=reply)])
     if new_status != point.status:
         store.update_point(session_id, point_id, new_status)
 
@@ -447,6 +489,7 @@ async def continue_rebuttal(
 
 
 # ── Phase 5: import real reviews ─────────────────────────────────────────────
+
 
 async def import_real_reviews(
     doc_id: str,
@@ -463,7 +506,7 @@ async def import_real_reviews(
     Yields error (and saves nothing) if LLM is unavailable or JSON is malformed.
     """
     from .anchor import make_anchor_from_quote
-    from .companion_models import RebuttalTurn, ReviewPoint, ReviewSession
+    from .companion_models import ReviewPoint, ReviewSession
 
     prompt = (
         "以下是一篇论文收到的真实审稿意见（可能来自多位 reviewer）。\n"
@@ -477,7 +520,9 @@ async def import_real_reviews(
     )
 
     try:
-        raw = await call_llm_chat(prompt, cloud_client, ollama_client, max_tokens=2048, temperature=0.2)
+        raw = await call_llm_chat(
+            prompt, cloud_client, ollama_client, max_tokens=2048, temperature=0.2
+        )
     except Exception as exc:
         yield {"event": "error", "data": json.dumps({"message": f"LLM unavailable: {exc}"})}
         return
@@ -537,18 +582,19 @@ async def import_real_reviews(
 
 # ── parallel three-perspective review ─────────────────────────────────────────
 
+
 async def run_review_parallel(
     doc_id: str,
     text: str,
-    venue: "str | None" = None,
+    venue: str | None = None,
     persona: str = "reviewer2",
-    ledger: "Ledger | None" = None,
+    ledger: Ledger | None = None,
     store: CompanionStore = None,  # type: ignore[assignment]
     *,
     doc_title: str = "",
-    focus: "str | dict | None" = None,
-    checks: "list[str] | None" = None,
-    session_id: "str | None" = None,
+    focus: str | dict | None = None,
+    checks: list[str] | None = None,
+    session_id: str | None = None,
     cloud_client: Any = None,
     ollama_client: Any = None,
 ) -> AsyncIterator[dict]:
@@ -574,10 +620,18 @@ async def run_review_parallel(
     # Scoped / focused review: delegate to serial run_review
     if focus is not None:
         async for ev in run_review(
-            doc_id=doc_id, text=text, venue=venue, persona=persona,
-            ledger=ledger, store=store, doc_title=doc_title, focus=focus,
-            checks=checks, session_id=session_id,
-            cloud_client=cloud_client, ollama_client=ollama_client,
+            doc_id=doc_id,
+            text=text,
+            venue=venue,
+            persona=persona,
+            ledger=ledger,
+            store=store,
+            doc_title=doc_title,
+            focus=focus,
+            checks=checks,
+            session_id=session_id,
+            cloud_client=cloud_client,
+            ollama_client=ollama_client,
         ):
             yield ev
         return
@@ -613,15 +667,23 @@ async def run_review_parallel(
 
     logger.info(
         "parallel review: method=%d experiment=%d writing=%d da=%d",
-        len(method_pts), len(experiment_pts), len(writing_pts), len(da_pts),
+        len(method_pts),
+        len(experiment_pts),
+        len(writing_pts),
+        len(da_pts),
     )
 
     aggregated = aggregate_perspectives(method_pts, experiment_pts, writing_pts, da_pts)
 
     # Run editorial synthesis across all 4 perspectives
     synthesis = await synthesize_review(
-        method_pts, experiment_pts, writing_pts, da_pts,
-        venue_profile, cloud_client, ollama_client,
+        method_pts,
+        experiment_pts,
+        writing_pts,
+        da_pts,
+        venue_profile,
+        cloud_client,
+        ollama_client,
     )
     if synthesis:
         logger.info("review synthesis: %s", synthesis.get("overall_assessment", "?"))
@@ -632,6 +694,12 @@ async def run_review_parallel(
         yield {"event": "review_point", "data": rp.model_dump_json()}
 
     yield _build_complete_event(
-        new_points, session_id, doc_id, doc_title, venue, persona,
-        checks if checks else ["parallel"], store
+        new_points,
+        session_id,
+        doc_id,
+        doc_title,
+        venue,
+        persona,
+        checks if checks else ["parallel"],
+        store,
     )

@@ -37,21 +37,15 @@
     </div>
 
     <template v-else>
-      <div
-        v-for="group in groups"
-        :key="group.status"
-        class="ledger-group"
-      >
+      <div v-for="group in groups" :key="group.status" class="ledger-group">
         <div class="group-header">
-          <span class="group-badge" :class="`badge-${group.status}`">{{ statusLabel(group.status) }}</span>
+          <span class="group-badge" :class="`badge-${group.status}`">{{
+            statusLabel(group.status)
+          }}</span>
           <span class="group-count">{{ group.promises.length }}</span>
         </div>
 
-        <div
-          v-for="promise in group.promises"
-          :key="promise.id"
-          class="promise-row"
-        >
+        <div v-for="promise in group.promises" :key="promise.id" class="promise-row">
           <div class="promise-left">
             <span class="kind-chip">{{ kindLabel(promise.kind) }}</span>
           </div>
@@ -86,11 +80,9 @@
               </span>
               <span v-else>{{ t('argument.howToFill') }}</span>
             </button>
-            <span
-              v-if="isLost(promise)"
-              class="lost-badge"
-              :title="t('argument.anchorLost')"
-            >⚠</span>
+            <span v-if="isLost(promise)" class="lost-badge" :title="t('argument.anchorLost')"
+              >⚠</span
+            >
           </div>
         </div>
       </div>
@@ -121,7 +113,10 @@ defineEmits<{
 
 const STATUS_ORDER: PromiseStatus[] = ['unpaid', 'mismatch', 'partial', 'paid', 'unknown']
 
-interface Group { status: PromiseStatus; promises: ArgPromise[] }
+interface Group {
+  status: PromiseStatus
+  promises: ArgPromise[]
+}
 
 const groups = computed<Group[]>(() => {
   if (!props.ledger) return []
@@ -131,9 +126,7 @@ const groups = computed<Group[]>(() => {
     list.push(p)
     map.set(p.status, list)
   }
-  return STATUS_ORDER
-    .filter(s => map.has(s))
-    .map(s => ({ status: s, promises: map.get(s)! }))
+  return STATUS_ORDER.filter((s) => map.has(s)).map((s) => ({ status: s, promises: map.get(s)! }))
 })
 
 function statusLabel(s: PromiseStatus): string {
@@ -191,7 +184,10 @@ function isLost(promise: ArgPromise): boolean {
   background: var(--c-accent);
   color: #fff;
   cursor: pointer;
-  transition: background .15s var(--ease-out), opacity .15s ease, transform .1s ease;
+  transition:
+    background 0.15s var(--ease-out),
+    opacity 0.15s ease,
+    transform 0.1s ease;
 }
 
 .analyze-btn:disabled {
@@ -218,7 +214,9 @@ function isLost(promise: ArgPromise): boolean {
 }
 
 /* 构建中 */
-.ledger-scan { margin: 0; }
+.ledger-scan {
+  margin: 0;
+}
 
 .ledger-skeleton {
   display: flex;
@@ -245,18 +243,40 @@ function isLost(promise: ArgPromise): boolean {
 }
 
 /* analyze 按钮加载态 */
-.analyze-loading { display: inline-flex; align-items: center; gap: var(--space-2); }
-.al-dots { display: inline-flex; gap: 3px; }
+.analyze-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.al-dots {
+  display: inline-flex;
+  gap: 3px;
+}
 .al-dots i {
-  width: 4px; height: 4px; border-radius: 50%;
-  background: currentColor; opacity: 0.4;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.4;
   animation: al-breathe 1.2s ease-in-out infinite;
 }
-.al-dots i:nth-child(2) { animation-delay: 0.15s; }
-.al-dots i:nth-child(3) { animation-delay: 0.3s; }
+.al-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.al-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
 @keyframes al-breathe {
-  0%, 80%, 100% { opacity: 0.35; transform: scale(0.8); }
-  40% { opacity: 1; transform: scale(1.15); }
+  0%,
+  80%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
 }
 
 .ledger-group {
@@ -278,14 +298,29 @@ function isLost(promise: ArgPromise): boolean {
   border-radius: var(--radius-xs);
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: .02em;
+  letter-spacing: 0.02em;
 }
 
-.badge-unpaid { background: var(--c-danger-bg); color: var(--c-danger); }
-.badge-mismatch { background: var(--c-warn-bg); color: var(--c-warn); /* TODO: add token — orange #fb923c differs from --c-warn #f59e0b */ }
-.badge-partial { background: var(--c-warn-bg); color: var(--c-warn); }
-.badge-paid { background: var(--c-success-bg); color: var(--c-success); }
-.badge-unknown { background: var(--c-surface-3); color: var(--c-text-2); }
+.badge-unpaid {
+  background: var(--c-danger-bg);
+  color: var(--c-danger);
+}
+.badge-mismatch {
+  background: var(--c-warn-bg);
+  color: var(--c-warn); /* TODO: add token — orange #fb923c differs from --c-warn #f59e0b */
+}
+.badge-partial {
+  background: var(--c-warn-bg);
+  color: var(--c-warn);
+}
+.badge-paid {
+  background: var(--c-success-bg);
+  color: var(--c-success);
+}
+.badge-unknown {
+  background: var(--c-surface-3);
+  color: var(--c-text-2);
+}
 
 .group-count {
   color: var(--c-text-3);
@@ -298,14 +333,19 @@ function isLost(promise: ArgPromise): boolean {
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border-top: 1px solid var(--c-surface-3);
-  transition: background .12s ease;
-  animation: promise-in .22s var(--ease-out) both;
+  transition: background 0.12s ease;
+  animation: promise-in 0.22s var(--ease-out) both;
 }
-.promise-row:hover { background: var(--c-surface-2); }
 
 @keyframes promise-in {
-  from { opacity: 0; transform: translateY(3px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .promise-left {
@@ -338,7 +378,7 @@ function isLost(promise: ArgPromise): boolean {
   text-align: left;
   width: 100%;
   line-height: 1.5;
-  transition: color .12s ease;
+  transition: color 0.12s ease;
 }
 
 .promise-text:hover {
@@ -361,7 +401,8 @@ function isLost(promise: ArgPromise): boolean {
   gap: var(--space-1);
 }
 
-.jump-btn, .suggest-btn {
+.jump-btn,
+.suggest-btn {
   font-size: 10px;
   padding: 2px var(--space-2);
   border-radius: var(--radius-xs);
@@ -370,16 +411,21 @@ function isLost(promise: ArgPromise): boolean {
   color: var(--c-text-2);
   cursor: pointer;
   white-space: nowrap;
-  transition: color .12s ease, border-color .12s ease, background .12s ease;
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease,
+    background 0.12s ease;
 }
 
-.jump-btn:hover, .suggest-btn:hover {
+.jump-btn:hover,
+.suggest-btn:hover {
   color: var(--c-accent);
   border-color: var(--c-accent);
   background: var(--c-accent-soft);
 }
 
-.jump-btn:active, .suggest-btn:active:not(:disabled) {
+.jump-btn:active,
+.suggest-btn:active:not(:disabled) {
   transform: scale(0.94);
   background: color-mix(in srgb, var(--c-accent) 20%, var(--c-surface-1));
   transition-duration: 0.04s;
@@ -396,13 +442,27 @@ function isLost(promise: ArgPromise): boolean {
   opacity: 0.7;
   cursor: default;
 }
-.sg-loading { display: inline-flex; align-items: center; gap: 4px; }
-.sg-dots { display: inline-flex; gap: 2px; }
+.sg-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.sg-dots {
+  display: inline-flex;
+  gap: 2px;
+}
 .sg-dots i {
-  width: 3px; height: 3px; border-radius: 50%;
-  background: currentColor; opacity: 0.4;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.4;
   animation: al-breathe 1.2s ease-in-out infinite;
 }
-.sg-dots i:nth-child(2) { animation-delay: 0.15s; }
-.sg-dots i:nth-child(3) { animation-delay: 0.3s; }
+.sg-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.sg-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
 </style>

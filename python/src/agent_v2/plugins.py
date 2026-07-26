@@ -22,22 +22,21 @@ Plugin manifest 格式 (plugin.yaml):
       input_schema: {type: object, properties: {}}
       command: python scripts/custom_tool.py
 """
+
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from src.agent_v2.hooks import HookDecision, HookDefinition, HookEvent, HookPoint, HookRunner
+from src.agent_v2.hooks import HookDefinition, HookPoint, HookRunner
 from src.agent_v2.skills import Skill, SkillRegistry
 from src.agent_v2.tools.registry import ToolRegistry, ToolResult
-from src.agent_v2.types import ToolDefinition
 
 logger = logging.getLogger(__name__)
 
@@ -104,15 +103,18 @@ class PluginManager:
         return True
 
     def list_all(self) -> list[dict[str, Any]]:
-        return [{
-            "name": m.name,
-            "version": m.version,
-            "description": m.description,
-            "enabled": m.name in self._enabled,
-            "skills": len(m.skills),
-            "hooks": len(m.hooks),
-            "tools": len(m.tools),
-        } for m in self._plugins.values()]
+        return [
+            {
+                "name": m.name,
+                "version": m.version,
+                "description": m.description,
+                "enabled": m.name in self._enabled,
+                "skills": len(m.skills),
+                "hooks": len(m.hooks),
+                "tools": len(m.tools),
+            }
+            for m in self._plugins.values()
+        ]
 
     def register_skills(self, skill_registry: SkillRegistry) -> int:
         """将所有启用的插件的 skills 注册到 SkillRegistry。"""
@@ -150,10 +152,14 @@ class PluginManager:
                 hook_name = hook_data.get("name", f"{plugin.name}_hook_{count}")
                 command = hook_data.get("command", "")
                 priority = int(hook_data.get("priority", 50))
-                hook_runner.register(HookDefinition(
-                    name=hook_name, hook_point=point,
-                    command=command, priority=priority,
-                ))
+                hook_runner.register(
+                    HookDefinition(
+                        name=hook_name,
+                        hook_point=point,
+                        command=command,
+                        priority=priority,
+                    )
+                )
                 count += 1
         return count
 
@@ -180,24 +186,27 @@ class PluginManager:
                         )
                         input_json = json.dumps(args, ensure_ascii=False)
                         stdout, stderr = await asyncio.wait_for(
-                            proc.communicate(input_json.encode()), timeout=30.0,
+                            proc.communicate(input_json.encode()),
+                            timeout=30.0,
                         )
                         output = stdout.decode("utf-8", errors="replace")
                         if len(output) > 4000:
                             output = output[:4000] + "..."
                         return ToolResult(output or stderr.decode("utf-8", errors="replace")[:4000])
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         return ToolResult("error: plugin tool timed out", is_error=True)
                     except Exception as e:
                         return ToolResult(f"error: {e}", is_error=True)
 
-                tool_registry.register(tool_name, description, input_schema,
-                                       _plugin_tool, permission="workspace-write")
+                tool_registry.register(
+                    tool_name, description, input_schema, _plugin_tool, permission="workspace-write"
+                )
                 count += 1
         return count
 
-    def apply_all(self, skill_registry: SkillRegistry, hook_runner: HookRunner,
-                  tool_registry: ToolRegistry) -> dict[str, int]:
+    def apply_all(
+        self, skill_registry: SkillRegistry, hook_runner: HookRunner, tool_registry: ToolRegistry
+    ) -> dict[str, int]:
         """一键注册：skills + hooks + tools。"""
         return {
             "skills": self.register_skills(skill_registry),
@@ -221,7 +230,8 @@ def create_default_plugin_manager() -> PluginManager:
     if not any(plugins_dir.iterdir()):
         example = plugins_dir / "example_academic"
         example.mkdir(parents=True, exist_ok=True)
-        (example / "plugin.yaml").write_text("""\
+        (example / "plugin.yaml").write_text(
+            """\
 name: example_academic
 version: "1.0.0"
 description: "Example academic plugin with cite-check and format-check hooks"
@@ -246,7 +256,9 @@ hooks:
     point: PostToolUse
     command: "echo ok"
     priority: 90
-""", encoding="utf-8")
+""",
+            encoding="utf-8",
+        )
 
     mgr.load_dir(plugins_dir)
     return mgr

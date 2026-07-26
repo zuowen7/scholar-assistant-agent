@@ -42,12 +42,7 @@ function makeAnchor(id: string, charStart: number | null, status = 'anchored') {
   }
 }
 
-function makePromise(
-  id: string,
-  status: string,
-  sourceAnchorId: string,
-  note?: string,
-) {
+function makePromise(id: string, status: string, sourceAnchorId: string, note?: string) {
   return {
     id,
     text: `Promise text for ${id}`,
@@ -87,13 +82,9 @@ function makeMockModel(lineMap: Record<number, number>) {
   }
 }
 
-function hoverText(
-  message: { value: string } | { value: string }[] | null | undefined,
-): string {
+function hoverText(message: { value: string } | { value: string }[] | null | undefined): string {
   if (!message) return ''
-  return Array.isArray(message)
-    ? message.map(item => item.value).join('\n')
-    : message.value
+  return Array.isArray(message) ? message.map((item) => item.value).join('\n') : message.value
 }
 
 /** Mock monaco namespace with Range class. */
@@ -130,7 +121,12 @@ describe('computeCompanionDecorations', () => {
       last_built_at: 0,
     }
 
-    const result = computeCompanionDecorations(ledger as never, null, mockMonaco as never, model as never)
+    const result = computeCompanionDecorations(
+      ledger as never,
+      null,
+      mockMonaco as never,
+      model as never,
+    )
 
     expect(result).toHaveLength(1)
     const deco = result[0]
@@ -150,7 +146,12 @@ describe('computeCompanionDecorations', () => {
       last_built_at: 0,
     }
 
-    const result = computeCompanionDecorations(ledger as never, null, mockMonaco as never, model as never)
+    const result = computeCompanionDecorations(
+      ledger as never,
+      null,
+      mockMonaco as never,
+      model as never,
+    )
 
     expect(result).toHaveLength(1)
     expect(result[0].options.glyphMarginClassName).toContain('mismatch')
@@ -168,7 +169,12 @@ describe('computeCompanionDecorations', () => {
       last_built_at: 0,
     }
 
-    const result = computeCompanionDecorations(ledger as never, null, mockMonaco as never, model as never)
+    const result = computeCompanionDecorations(
+      ledger as never,
+      null,
+      mockMonaco as never,
+      model as never,
+    )
 
     expect(result).toHaveLength(1)
     expect(result[0].options.glyphMarginClassName).toContain('partial')
@@ -186,7 +192,12 @@ describe('computeCompanionDecorations', () => {
       last_built_at: 0,
     }
 
-    const result = computeCompanionDecorations(ledger as never, null, mockMonaco as never, model as never)
+    const result = computeCompanionDecorations(
+      ledger as never,
+      null,
+      mockMonaco as never,
+      model as never,
+    )
 
     expect(result).toHaveLength(0)
   })
@@ -203,7 +214,12 @@ describe('computeCompanionDecorations', () => {
       last_built_at: 0,
     }
 
-    const result = computeCompanionDecorations(ledger as never, null, mockMonaco as never, model as never)
+    const result = computeCompanionDecorations(
+      ledger as never,
+      null,
+      mockMonaco as never,
+      model as never,
+    )
 
     expect(result).toHaveLength(0)
   })
@@ -220,7 +236,12 @@ describe('computeCompanionDecorations', () => {
       last_built_at: 0,
     }
 
-    const result = computeCompanionDecorations(ledger as never, null, mockMonaco as never, model as never)
+    const result = computeCompanionDecorations(
+      ledger as never,
+      null,
+      mockMonaco as never,
+      model as never,
+    )
 
     expect(result).toHaveLength(0)
   })
@@ -240,7 +261,12 @@ describe('computeCompanionDecorations', () => {
       created_at: 0,
     }
 
-    const result = computeCompanionDecorations(null, session as never, mockMonaco as never, model as never)
+    const result = computeCompanionDecorations(
+      null,
+      session as never,
+      mockMonaco as never,
+      model as never,
+    )
 
     expect(result).toHaveLength(1)
     expect(result[0].options.glyphMarginClassName).toContain('review')
@@ -263,7 +289,12 @@ describe('computeCompanionDecorations', () => {
       created_at: 0,
     }
 
-    const result = computeCompanionDecorations(null, session as never, mockMonaco as never, model as never)
+    const result = computeCompanionDecorations(
+      null,
+      session as never,
+      mockMonaco as never,
+      model as never,
+    )
 
     expect(result).toHaveLength(0)
   })
@@ -283,7 +314,12 @@ describe('computeCompanionDecorations', () => {
       last_built_at: 0,
     }
 
-    const result = computeCompanionDecorations(ledger as never, null, mockMonaco as never, model as never)
+    const result = computeCompanionDecorations(
+      ledger as never,
+      null,
+      mockMonaco as never,
+      model as never,
+    )
 
     // Should be merged to 1 decoration, not 2
     expect(result).toHaveLength(1)

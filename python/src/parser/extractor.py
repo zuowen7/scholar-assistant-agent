@@ -5,9 +5,9 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 import pdfplumber
 
@@ -136,8 +136,11 @@ def extract_pages(pdf_path: str | Path) -> DocumentContent:
     full_text = "\n\n".join(p.text for p in pages if p.text.strip())
     if len(pages) > 0 and len(full_text) < 500:
         from src.parser.ocr import is_likely_scanned, ocr_pdf
+
         if is_likely_scanned(len(full_text), len(pages)):
-            logger.info("PDF 提取文字过少（%d 字符/%d 页），触发 OCR fallback", len(full_text), len(pages))
+            logger.info(
+                "PDF 提取文字过少（%d 字符/%d 页），触发 OCR fallback", len(full_text), len(pages)
+            )
             ocr_text = ocr_pdf(pdf_path)
             if ocr_text and len(ocr_text.strip()) > len(full_text):
                 logger.info("OCR 成功（%d 字符），替换提取结果", len(ocr_text))
@@ -173,6 +176,7 @@ def extract_text(pdf_path: str | Path) -> str:
 # ---------------------------------------------------------------------------
 # 内部函数
 # ---------------------------------------------------------------------------
+
 
 def _detect_columns(page: pdfplumber.page.Page) -> bool:
     """检测页面是否为双栏布局
@@ -230,17 +234,11 @@ def _extract_dual_column(page: pdfplumber.page.Page) -> str:
         return ""
 
     # 过滤页眉页脚范围外的词
-    body_words = [
-        w for w in words
-        if header_cutoff <= w["top"] <= footer_cutoff
-    ]
+    body_words = [w for w in words if header_cutoff <= w["top"] <= footer_cutoff]
 
     # 过滤竖排标注: x0 过小 或 字号过小
     min_x = page.width * 0.04
-    body_words = [
-        w for w in body_words
-        if w["x0"] >= min_x and w.get("size", 99) >= 6.0
-    ]
+    body_words = [w for w in body_words if w["x0"] >= min_x and w.get("size", 99) >= 6.0]
 
     # 检测正文主字体
     body_font = _detect_body_font(body_words, midpoint)
@@ -276,10 +274,7 @@ def _detect_body_font(words: list[dict], midpoint: float) -> str:
 
     # 只看左栏前 1/3 区域的词（最可能是纯正文区域）
     y_max = max(w["top"] for w in words) if words else 0
-    region_words = [
-        w for w in words
-        if w["x0"] < midpoint and w["top"] < y_max * 0.4
-    ]
+    region_words = [w for w in words if w["x0"] < midpoint and w["top"] < y_max * 0.4]
     if not region_words:
         region_words = [w for w in words if w["x0"] < midpoint][:50]
 
@@ -295,6 +290,7 @@ def _is_same_font_family(fontname: str, body_font: str) -> bool:
 
     策略: 比较字体名的前缀（去掉 foundry tag 如 NXJRQW+）
     """
+
     def _normalize(name: str) -> str:
         # 去掉 PDF 子集化前缀 (如 "NXJRQW+ BentonSansCon" → "BentonSansCon")
         if "+" in name:
@@ -348,9 +344,7 @@ def _filter_header_footer(text: str, page: pdfplumber.page.Page) -> str:
 
     # extract_words() 返回的 top/bottom 都是从页面顶部算起的，直接使用即可
     body_words = [
-        w for w in words
-        if w.get("top", 0) >= header_cutoff
-        and w.get("top", 0) <= footer_cutoff
+        w for w in words if w.get("top", 0) >= header_cutoff and w.get("top", 0) <= footer_cutoff
     ]
 
     if not body_words:
@@ -380,6 +374,7 @@ def _has_missing_spaces(text: str) -> bool:
 
     # 统计连续字母段的长度
     import re
+
     alpha_runs = re.findall(r"[a-zA-Z]{10,}", text)
     if not alpha_runs:
         return False
@@ -391,10 +386,7 @@ def _has_missing_spaces(text: str) -> bool:
 
     # 或者平均连续字母段长度异常
     avg_len = sum(len(r) for r in alpha_runs) / max(len(alpha_runs), 1)
-    if avg_len > 50:
-        return True
-
-    return False
+    return avg_len > 50
 
 
 def _extract_with_char_spaces(page: pdfplumber.page.Page) -> str:
@@ -414,10 +406,7 @@ def _extract_with_char_spaces(page: pdfplumber.page.Page) -> str:
     footer_cutoff = page.height * 0.95
 
     # 过滤页眉页脚字符
-    body_chars = [
-        c for c in chars
-        if header_cutoff <= c.get("top", 0) <= footer_cutoff
-    ]
+    body_chars = [c for c in chars if header_cutoff <= c.get("top", 0) <= footer_cutoff]
     if not body_chars:
         return ""
 
@@ -442,7 +431,7 @@ def _extract_with_char_spaces(page: pdfplumber.page.Page) -> str:
         # 计算该行的字号（取中位数）
         sizes = [c.get("size", 8) for c in line_chars]
         sizes.sort()
-        median_size = sizes[len(sizes) // 2] if sizes else 8
+        sizes[len(sizes) // 2] if sizes else 8
 
         # 空格阈值: 字号的 20%~30%
         # 通过分析行内所有相邻字符间距来自适应
@@ -452,12 +441,9 @@ def _extract_with_char_spaces(page: pdfplumber.page.Page) -> str:
             if gap > 0:
                 gaps.append(gap)
 
-        if gaps:
-            # 词内间隙通常 < 0.3pt，词间间隙通常 > 0.8pt
-            # 使用固定阈值 0.5pt，这对所有字号都安全
-            space_threshold = 0.5
-        else:
-            space_threshold = 0.5
+        # 词内间隙通常 < 0.3pt，词间间隙通常 > 0.8pt
+        # 使用固定阈值 0.5pt，这对所有字号都安全
+        space_threshold = 0.5
 
         # 重建行文本
         parts: list[str] = []
@@ -476,6 +462,7 @@ def _extract_with_char_spaces(page: pdfplumber.page.Page) -> str:
 # ---------------------------------------------------------------------------
 # Layout-aware extraction (for PDF overlay translation)
 # ---------------------------------------------------------------------------
+
 
 def _extract_blocks_from_fitz_page(page: fitz.Page) -> list[TextBlock]:
     """Extract TextBlock list from a single fitz Page using get_text("dict").
@@ -527,17 +514,19 @@ def _extract_blocks_from_fitz_page(page: fitz.Page) -> list[TextBlock]:
 
             block_id_seed += 1
             block_id = hashlib.md5(
-                f"{page.number}:{line_bbox}:{combined_text[:30]}".encode("utf-8")
+                f"{page.number}:{line_bbox}:{combined_text[:30]}".encode()
             ).hexdigest()[:12]
 
-            blocks.append(TextBlock(
-                page=page.number,
-                bbox=line_bbox,
-                text=combined_text,
-                font_size=font_size,
-                block_id=block_id,
-                font_name=font_name,
-            ))
+            blocks.append(
+                TextBlock(
+                    page=page.number,
+                    bbox=line_bbox,
+                    text=combined_text,
+                    font_size=font_size,
+                    block_id=block_id,
+                    font_name=font_name,
+                )
+            )
 
     return blocks
 
@@ -579,13 +568,15 @@ def extract_document_with_layout(
 
                 # Build plain text for each page (compatible with existing pipeline)
                 page_text = "\n".join(b.text for b in blocks)
-                pages_content.append(PageContent(
-                    page_num=page_num + 1,
-                    text=page_text,
-                    width=page.rect.width,
-                    height=page.rect.height,
-                    is_dual_column=False,
-                ))
+                pages_content.append(
+                    PageContent(
+                        page_num=page_num + 1,
+                        text=page_text,
+                        width=page.rect.width,
+                        height=page.rect.height,
+                        is_dual_column=False,
+                    )
+                )
 
     except Exception as e:
         raise ValueError(f"PDF layout 解析失败: {pdf_path} - {e}") from e

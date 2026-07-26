@@ -5,10 +5,10 @@ from __future__ import annotations
 import os
 import sys
 import textwrap
+from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
-from pathlib import Path
 
 _IS_WIN = sys.platform == "win32"
 
@@ -17,9 +17,9 @@ _IS_WIN = sys.platform == "win32"
 
 
 class TestMaskApiKey:
-
     def _mask(self, cfg: dict) -> None:
         from api_factory import _mask_api_key
+
         _mask_api_key(cfg)
 
     def test_long_key_masked(self) -> None:
@@ -71,17 +71,19 @@ class TestMaskApiKey:
 
 
 class TestIsMasked:
-
     def test_masked_value(self) -> None:
         from api_factory import _is_masked
+
         assert _is_masked("sk-1****cdef")
 
     def test_unmasked_value(self) -> None:
         from api_factory import _is_masked
+
         assert not _is_masked("sk-1234567890")
 
     def test_empty_string(self) -> None:
         from api_factory import _is_masked
+
         assert not _is_masked("")
 
 
@@ -89,9 +91,9 @@ class TestIsMasked:
 
 
 class TestDeepMerge:
-
     def _merge(self, base: dict, override: dict) -> dict:
         from api_factory import _deep_merge
+
         return _deep_merge(base, override)
 
     def test_shallow_override(self) -> None:
@@ -149,13 +151,15 @@ def test_create_app_preserves_agent_lifecycle_callbacks(tmp_path, monkeypatch):
 
 
 class TestStripEmptyStrings:
-
     def _strip(self, d: dict) -> dict:
         from api_factory import _strip_empty_strings
+
         return _strip_empty_strings(d)
 
     def test_removes_empty_string_values(self) -> None:
-        result = self._strip({"translator": {"cloud": {"api_key": "", "base_url": "https://api.openai.com"}}})
+        result = self._strip(
+            {"translator": {"cloud": {"api_key": "", "base_url": "https://api.openai.com"}}}
+        )
         assert result == {"translator": {"cloud": {"base_url": "https://api.openai.com"}}}
 
     def test_removes_empty_nested_dict(self) -> None:
@@ -211,9 +215,9 @@ def test_save_config_keeps_all_secrets_local_and_preserves_overrides(tmp_path, m
 
 
 class TestValidateFilePath:
-
     def _validate(self, p: Path) -> None:
         from api_factory import _validate_file_path
+
         _validate_file_path(p)
 
     def test_normal_path_passes(self, tmp_path: Path) -> None:
@@ -358,18 +362,19 @@ class TestValidateFilePath:
 
 
 class TestConfigCache:
-
     def test_loads_from_yaml(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         import api_factory
 
         config_file = tmp_path / "config" / "default.yaml"
         config_file.parent.mkdir(parents=True)
-        config_file.write_text(textwrap.dedent("""\
+        config_file.write_text(
+            textwrap.dedent("""\
             translator:
               temperature: 0.5
             agent:
               max_steps: 10
-        """))
+        """)
+        )
         monkeypatch.setattr(api_factory, "CONFIG_PATH", config_file)
         monkeypatch.setattr(api_factory, "_config_cache", None)
         monkeypatch.setattr(api_factory, "_config_cache_mtime", 0.0)
@@ -378,9 +383,12 @@ class TestConfigCache:
         assert cfg["translator"]["temperature"] == 0.5
         assert cfg["agent"]["max_steps"] == 10
 
-    def test_returns_cached_on_same_mtime(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        import api_factory
+    def test_returns_cached_on_same_mtime(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         import time as _time
+
+        import api_factory
 
         config_file = tmp_path / "config" / "default.yaml"
         config_file.parent.mkdir(parents=True)
@@ -411,7 +419,9 @@ class TestConfigCache:
         assert "old" not in cfg
         assert cfg["translator"]["temperature"] == 0.3
 
-    def test_missing_config_returns_empty(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_missing_config_returns_empty(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         import api_factory
 
         missing = tmp_path / "nonexistent" / "default.yaml"

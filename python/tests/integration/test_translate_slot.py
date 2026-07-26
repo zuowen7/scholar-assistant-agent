@@ -26,7 +26,6 @@ from fastapi.testclient import TestClient
 
 import api_factory as _api_factory_mod
 
-
 # ── Rate-limit bypass fixture ─────────────────────────────────────────────────
 
 
@@ -96,7 +95,6 @@ async def _empty_gen(*args, **kwargs):
 
 
 class TestTaskSlotLifecycle:
-
     def test_done_task_allows_new_upload(self, client):
         """完成的任务不阻塞下一次 upload。"""
         with patch(_PARALLEL_TARGET, _empty_gen):
@@ -129,6 +127,7 @@ class TestTaskSlotLifecycle:
 
     def test_error_task_can_be_restarted(self, client):
         """error 状态的任务可以重新发起 stream（error → running 允许）。"""
+
         # First: cause the translation to fail
         async def _fail_gen(*args, **kwargs):
             raise RuntimeError("Simulated LLM failure")

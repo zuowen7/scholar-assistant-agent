@@ -2,6 +2,7 @@
 
 TDD Red phase — tests exercise interfaces that do NOT exist yet.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -66,12 +67,14 @@ class TestAnswerVerification:
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def mock_verifier():
     """Create a mock verifier with verify() interface.
 
     Red phase: verify() logic will be implemented in agent.py during IMPL.
     """
+
     class _MockVerifier:
         def verify(self, query: str, answer: str, retry_count: int = 0):
             # Simple heuristic — will be replaced by LLM-based verification

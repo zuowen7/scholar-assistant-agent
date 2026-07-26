@@ -1,8 +1,5 @@
 <template>
-  <div
-    class="arg-node"
-    :class="[`type-${data.node_type}`, { selected, editing }]"
-  >
+  <div class="arg-node" :class="[`type-${data.node_type}`, { selected, editing }]">
     <div class="arg-node-header">
       <span class="arg-node-type-tag">{{ typeLabel }}</span>
       <div class="arg-node-badges">
@@ -41,13 +38,15 @@ import type { NodeProps } from '@vue-flow/core'
 import type { NodeType } from '../../composables/useArgumentMap'
 import { useArgumentMap } from '../../composables/useArgumentMap'
 
-const props = defineProps<NodeProps<{
-  node_type: NodeType
-  text: string
-  label: string | null
-  issueCount: number
-  created_by: 'user' | 'ai'
-}>>()
+const props = defineProps<
+  NodeProps<{
+    node_type: NodeType
+    text: string
+    label: string | null
+    issueCount: number
+    created_by: 'user' | 'ai'
+  }>
+>()
 
 const { state, upsertNode } = useArgumentMap()
 const selected = computed(() => state.selectedNodeId === props.id)
@@ -85,13 +84,17 @@ async function commit() {
       id: props.id,
       node_type: props.data.node_type,
       text: draftText.value.trim(),
-    } as any)
+    })
   }
 }
 
-function cancel() { editing.value = false }
+function cancel() {
+  editing.value = false
+}
 
-function autosize(e: Event) { autosizeEl(e.target as HTMLTextAreaElement) }
+function autosize(e: Event) {
+  autosizeEl(e.target as HTMLTextAreaElement)
+}
 function autosizeEl(ta: HTMLTextAreaElement) {
   if (!ta) return
   ta.style.height = 'auto'
@@ -113,22 +116,45 @@ function autosizeEl(ta: HTMLTextAreaElement) {
   box-shadow: var(--elevation-1);
   position: relative;
   cursor: grab;
-  transition: transform 200ms var(--ease-spring), box-shadow 200ms var(--ease-out), border-color 200ms var(--ease-out);
+  transition:
+    transform 200ms var(--ease-spring),
+    box-shadow 200ms var(--ease-out),
+    border-color 200ms var(--ease-out);
 }
-.arg-node:hover { transform: translateY(-1px); box-shadow: var(--elevation-2); }
+.arg-node:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--elevation-2);
+}
 .arg-node.selected {
   border-color: var(--c-accent);
-  box-shadow: 0 0 0 2px var(--c-accent-ring), var(--elevation-2);
+  box-shadow:
+    0 0 0 2px var(--c-accent-ring),
+    var(--elevation-2);
 }
-.arg-node.editing { border-color: var(--c-accent); }
+.arg-node.editing {
+  border-color: var(--c-accent);
+}
 
 /* Restrained semantic tones keep hierarchy without turning the canvas into badges. */
-.arg-node.type-claim { --arg-tone: var(--c-accent); background: color-mix(in srgb, var(--c-accent-soft) 42%, var(--c-panel)); }
-.arg-node.type-grounds { --arg-tone: #6f9276; }
-.arg-node.type-warrant { --arg-tone: #7182a6; }
-.arg-node.type-backing { --arg-tone: #94a3a5; }
-.arg-node.type-qualifier { --arg-tone: #aa8757; }
-.arg-node.type-rebuttal { --arg-tone: #a76f62; }
+.arg-node.type-claim {
+  --arg-tone: var(--c-accent);
+  background: color-mix(in srgb, var(--c-accent-soft) 42%, var(--c-panel));
+}
+.arg-node.type-grounds {
+  --arg-tone: #6f9276;
+}
+.arg-node.type-warrant {
+  --arg-tone: #7182a6;
+}
+.arg-node.type-backing {
+  --arg-tone: #94a3a5;
+}
+.arg-node.type-qualifier {
+  --arg-tone: #aa8757;
+}
+.arg-node.type-rebuttal {
+  --arg-tone: #a76f62;
+}
 
 /* Header */
 .arg-node-header {
@@ -146,9 +172,16 @@ function autosizeEl(ta: HTMLTextAreaElement) {
   color: var(--c-text-2);
   opacity: 0.8;
 }
-.arg-node .arg-node-type-tag { color: var(--arg-tone); opacity: 1; }
+.arg-node .arg-node-type-tag {
+  color: var(--arg-tone);
+  opacity: 1;
+}
 
-.arg-node-badges { display: flex; align-items: center; gap: 4px; }
+.arg-node-badges {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 
 .arg-node-issue-badge {
   font-size: 10px;
@@ -202,7 +235,9 @@ function autosizeEl(ta: HTMLTextAreaElement) {
   border: 2px solid var(--c-surface-1);
   border-radius: 50%;
   opacity: 0;
-  transition: opacity 140ms, transform 120ms var(--ease-spring);
+  transition:
+    opacity 140ms,
+    transform 120ms var(--ease-spring);
   transform: scale(0.6);
 }
 .arg-node:hover .arg-handle,
@@ -210,8 +245,16 @@ function autosizeEl(ta: HTMLTextAreaElement) {
   opacity: 1;
   transform: scale(1);
 }
-.arg-handle--top { top: -5px; }
-.arg-handle--bottom { bottom: -5px; }
-.arg-handle--left { left: -5px; }
-.arg-handle--right { right: -5px; }
+.arg-handle--top {
+  top: -5px;
+}
+.arg-handle--bottom {
+  bottom: -5px;
+}
+.arg-handle--left {
+  left: -5px;
+}
+.arg-handle--right {
+  right: -5px;
+}
 </style>

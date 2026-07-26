@@ -7,21 +7,22 @@
 from __future__ import annotations
 
 import asyncio
-import time
 import statistics
-from pathlib import Path
+import time
 from dataclasses import dataclass, field
+from pathlib import Path
 
-from src.parser import extract_document
-from src.cleaner import clean_text_full
 from src.chunker import chunk_text_full
-from src.translator.ollama_client import OllamaClient
+from src.cleaner import clean_text_full
+from src.parser import extract_document
 from src.translator.cloud_client import CloudClient
+from src.translator.ollama_client import OllamaClient
 
 
 @dataclass
 class BenchmarkResult:
     """单次测试结果"""
+
     stage: str
     duration_ms: float
     metadata: dict = field(default_factory=dict)
@@ -30,6 +31,7 @@ class BenchmarkResult:
 @dataclass
 class PipelineBenchmark:
     """翻译管道基准测试"""
+
     doc_path: str = ""
     engine: str = "ollama"
     results: list[BenchmarkResult] = field(default_factory=list)
@@ -63,7 +65,9 @@ class PipelineBenchmark:
             "total_ms": round(self.total_ms, 1),
             "total_s": round(self.total_ms / 1000, 2),
             "stage_count": len(self.results),
-            "stage_stats": {k: {kk: round(vv, 2) for kk, vv in v.items()} for k, v in stage_stats.items()},
+            "stage_stats": {
+                k: {kk: round(vv, 2) for kk, vv in v.items()} for k, v in stage_stats.items()
+            },
         }
 
 
@@ -146,16 +150,18 @@ async def benchmark_translation(
             result = await asyncio.to_thread(client.translate, text, prev_trans)
             dur = (time.perf_counter() - start) * 1000
 
-            results.append(BenchmarkResult(
-                stage=f"translate_{i}",
-                duration_ms=round(dur, 1),
-                metadata={
-                    "chars_in": len(text),
-                    "chars_out": len(result.translated),
-                    "prompt_tokens": result.prompt_tokens,
-                    "completion_tokens": result.completion_tokens,
-                },
-            ))
+            results.append(
+                BenchmarkResult(
+                    stage=f"translate_{i}",
+                    duration_ms=round(dur, 1),
+                    metadata={
+                        "chars_in": len(text),
+                        "chars_out": len(result.translated),
+                        "prompt_tokens": result.prompt_tokens,
+                        "completion_tokens": result.completion_tokens,
+                    },
+                )
+            )
             prev_trans = result.translated
     finally:
         if hasattr(client, "close"):
@@ -204,15 +210,17 @@ def run_full_benchmark(
 
     # 翻译（只测第一块，避免耗时过长）
     if chunk_texts:
-        translate_results = asyncio.run(benchmark_translation(
-            chunk_texts[:1],  # 只测第一块
-            engine=engine,
-            ollama_url=ollama_url,
-            model=model,
-            cloud_base_url=cloud_base_url,
-            cloud_api_key=cloud_api_key,
-            cloud_model=cloud_model,
-        ))
+        translate_results = asyncio.run(
+            benchmark_translation(
+                chunk_texts[:1],  # 只测第一块
+                engine=engine,
+                ollama_url=ollama_url,
+                model=model,
+                cloud_base_url=cloud_base_url,
+                cloud_api_key=cloud_api_key,
+                cloud_model=cloud_model,
+            )
+        )
         bench.results.extend(translate_results)
 
     return bench.summary()
@@ -220,6 +228,7 @@ def run_full_benchmark(
 
 if __name__ == "__main__":
     import sys
+
     if len(sys.argv) < 2:
         print("用法: python -m tests.unit.test_benchmark <文档路径>")
         print("示例: python -m tests.unit.test_benchmark ./data/input/paper.pdf")
@@ -235,4 +244,5 @@ if __name__ == "__main__":
 
     result = run_full_benchmark(file_path, engine="ollama")
     import json
+
     print(json.dumps(result, indent=2, ensure_ascii=False))

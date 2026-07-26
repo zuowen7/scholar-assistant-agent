@@ -10,8 +10,8 @@ import pytest
 
 from src.argument.models_v2 import ArgEdge, ArgGraph, ArgNode
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def make_node(node_type: str, nid: str, text: str) -> ArgNode:
     n = ArgNode(node_type=node_type, text=text)
@@ -25,11 +25,11 @@ def make_edge(source_id: str, target_id: str, relation_type: str) -> ArgEdge:
 
 def simple_toulmin_graph() -> ArgGraph:
     """claim ← supports ← grounds; claim ← warrants ← warrant; claim ← rebuts ← rebuttal; rebuttal ← counters ← claim2"""
-    c1 = make_node("claim",   "c1", "AI accelerates scientific discovery.")
+    c1 = make_node("claim", "c1", "AI accelerates scientific discovery.")
     g1 = make_node("grounds", "g1", "Papers are published 3x faster since 2020.")
     w1 = make_node("warrant", "w1", "Faster publication implies faster knowledge propagation.")
-    r1 = make_node("rebuttal","r1", "Not all AI-assisted papers are high quality.")
-    c2 = make_node("claim",   "c2", "Quality filters have improved alongside volume.")
+    r1 = make_node("rebuttal", "r1", "Not all AI-assisted papers are high quality.")
+    c2 = make_node("claim", "c2", "Quality filters have improved alongside volume.")
     return ArgGraph(
         nodes=[c1, g1, w1, r1, c2],
         edges=[
@@ -42,8 +42,8 @@ def simple_toulmin_graph() -> ArgGraph:
 
 
 def multi_claim_graph() -> ArgGraph:
-    c1 = make_node("claim",   "c1", "Claim one.")
-    c3 = make_node("claim",   "c3", "Claim two.")
+    c1 = make_node("claim", "c1", "Claim one.")
+    c3 = make_node("claim", "c3", "Claim two.")
     g1 = make_node("grounds", "g1", "Evidence for claim one.")
     g2 = make_node("grounds", "g2", "Evidence for claim two.")
     return ArgGraph(
@@ -57,33 +57,39 @@ def multi_claim_graph() -> ArgGraph:
 
 # ── flatten_graph basic structure ─────────────────────────────────────────────
 
+
 class TestFlattenGraphMarkdown:
     def test_output_contains_claim_text(self):
         from src.argument.flatten_graph import flatten_graph
+
         graph = simple_toulmin_graph()
         md = flatten_graph(graph, template="markdown")
         assert "AI accelerates scientific discovery" in md
 
     def test_output_contains_grounds_text(self):
         from src.argument.flatten_graph import flatten_graph
+
         graph = simple_toulmin_graph()
         md = flatten_graph(graph, template="markdown")
         assert "Papers are published 3x faster" in md
 
     def test_output_contains_rebuttal_section(self):
         from src.argument.flatten_graph import flatten_graph
+
         graph = simple_toulmin_graph()
         md = flatten_graph(graph, template="markdown")
         assert "Not all AI-assisted papers are high quality" in md
 
     def test_output_contains_counter_for_rebuttal(self):
         from src.argument.flatten_graph import flatten_graph
+
         graph = simple_toulmin_graph()
         md = flatten_graph(graph, template="markdown")
         assert "Quality filters have improved alongside volume" in md
 
     def test_output_is_string(self):
         from src.argument.flatten_graph import flatten_graph
+
         graph = simple_toulmin_graph()
         md = flatten_graph(graph, template="markdown")
         assert isinstance(md, str)
@@ -91,6 +97,7 @@ class TestFlattenGraphMarkdown:
 
     def test_multi_claim_graph_contains_both_claims(self):
         from src.argument.flatten_graph import flatten_graph
+
         graph = multi_claim_graph()
         md = flatten_graph(graph, template="markdown")
         assert "Claim one" in md
@@ -98,18 +105,21 @@ class TestFlattenGraphMarkdown:
 
     def test_empty_graph_returns_string(self):
         from src.argument.flatten_graph import flatten_graph
+
         graph = ArgGraph(nodes=[], edges=[])
         md = flatten_graph(graph, template="markdown")
         assert isinstance(md, str)
 
     def test_markdown_has_heading_markers(self):
         from src.argument.flatten_graph import flatten_graph
+
         graph = simple_toulmin_graph()
         md = flatten_graph(graph, template="markdown")
         assert "#" in md
 
     def test_rebuttal_section_heading_present(self):
         from src.argument.flatten_graph import flatten_graph
+
         graph = simple_toulmin_graph()
         md = flatten_graph(graph, template="markdown")
         # Should have a section for limitations/rebuttals
@@ -119,9 +129,11 @@ class TestFlattenGraphMarkdown:
 
 # ── format variants ───────────────────────────────────────────────────────────
 
+
 class TestFlattenGraphFormats:
     def test_latex_format_returns_latex_markers(self):
         from src.argument.flatten_graph import flatten_graph
+
         graph = simple_toulmin_graph()
         tex = flatten_graph(graph, template="latex")
         assert isinstance(tex, str)
@@ -130,6 +142,7 @@ class TestFlattenGraphFormats:
 
     def test_docx_format_returns_string(self):
         from src.argument.flatten_graph import flatten_graph
+
         graph = simple_toulmin_graph()
         result = flatten_graph(graph, template="docx")
         assert isinstance(result, str)
@@ -138,15 +151,18 @@ class TestFlattenGraphFormats:
 
 # ── graph_to_sections ─────────────────────────────────────────────────────────
 
+
 class TestGraphToSections:
     def test_returns_list(self):
         from src.argument.flatten_graph import graph_to_sections
+
         graph = simple_toulmin_graph()
         sections = graph_to_sections(graph)
         assert isinstance(sections, list)
 
     def test_each_section_has_title_and_body(self):
         from src.argument.flatten_graph import graph_to_sections
+
         graph = simple_toulmin_graph()
         sections = graph_to_sections(graph)
         for sec in sections:
@@ -157,6 +173,7 @@ class TestGraphToSections:
 
     def test_claim_section_body_contains_claim_text(self):
         from src.argument.flatten_graph import graph_to_sections
+
         graph = simple_toulmin_graph()
         sections = graph_to_sections(graph)
         claim_secs = [s for s in sections if "c1" in s.get("node_ids", [])]
@@ -164,6 +181,7 @@ class TestGraphToSections:
 
     def test_rebuttal_section_present_when_rebuttals_exist(self):
         from src.argument.flatten_graph import graph_to_sections
+
         graph = simple_toulmin_graph()
         sections = graph_to_sections(graph)
         # There should be at least one section containing rebuttal text
@@ -172,15 +190,18 @@ class TestGraphToSections:
 
 # ── flatten_graph with title ──────────────────────────────────────────────────
 
+
 class TestFlattenGraphTitle:
     def test_custom_title_in_output(self):
         from src.argument.flatten_graph import flatten_graph
+
         graph = simple_toulmin_graph()
         md = flatten_graph(graph, template="markdown", title="My Research Draft")
         assert "My Research Draft" in md
 
     def test_default_title_when_not_specified(self):
         from src.argument.flatten_graph import flatten_graph
+
         graph = simple_toulmin_graph()
         md = flatten_graph(graph, template="markdown")
         assert isinstance(md, str)  # just shouldn't crash

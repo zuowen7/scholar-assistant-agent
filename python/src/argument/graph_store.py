@@ -60,7 +60,9 @@ class ArgGraphStore:
 
     # ── 图 CRUD ───────────────────────────────────────────────────────────────
 
-    def create(self, title: str = "Untitled Argument Map", source_doc: str | None = None) -> ArgGraph:
+    def create(
+        self, title: str = "Untitled Argument Map", source_doc: str | None = None
+    ) -> ArgGraph:
         with self._lock:
             g = ArgGraph(title=title, source_doc=source_doc)
             self._cache[g.id] = g
@@ -172,7 +174,8 @@ class ArgGraphStore:
             # duplicate check (same source/target/type, different id)
             dup = next(
                 (
-                    e for e in g.edges
+                    e
+                    for e in g.edges
                     if e.source_id == edge.source_id
                     and e.target_id == edge.target_id
                     and e.relation_type == edge.relation_type

@@ -53,7 +53,7 @@ describe('Tier 5: MindMap commands', () => {
   it('mindmap:add-node dispatches voice-mindmap-command event', async () => {
     const spy = vi.spyOn(window, 'dispatchEvent')
     await router.routeCommand('添加节点')
-    const call = spy.mock.calls.find(c => (c[0] as CustomEvent).type === 'voice-mindmap-command')
+    const call = spy.mock.calls.find((c) => (c[0] as CustomEvent).type === 'voice-mindmap-command')
     expect(call).toBeDefined()
     expect((call![0] as CustomEvent).detail).toEqual({ action: 'add-child' })
     spy.mockRestore()
@@ -62,7 +62,7 @@ describe('Tier 5: MindMap commands', () => {
   it('mindmap:delete-node dispatches voice-mindmap-command event', async () => {
     const spy = vi.spyOn(window, 'dispatchEvent')
     await router.routeCommand('删除节点')
-    const call = spy.mock.calls.find(c => (c[0] as CustomEvent).type === 'voice-mindmap-command')
+    const call = spy.mock.calls.find((c) => (c[0] as CustomEvent).type === 'voice-mindmap-command')
     expect(call).toBeDefined()
     expect((call![0] as CustomEvent).detail).toEqual({ action: 'delete-node' })
     spy.mockRestore()
@@ -71,7 +71,7 @@ describe('Tier 5: MindMap commands', () => {
   it('mindmap:zoom-in dispatches voice-mindmap-command event', async () => {
     const spy = vi.spyOn(window, 'dispatchEvent')
     await router.routeCommand('放大')
-    const call = spy.mock.calls.find(c => (c[0] as CustomEvent).type === 'voice-mindmap-command')
+    const call = spy.mock.calls.find((c) => (c[0] as CustomEvent).type === 'voice-mindmap-command')
     expect(call).toBeDefined()
     expect((call![0] as CustomEvent).detail).toEqual({ action: 'zoom-in' })
     spy.mockRestore()

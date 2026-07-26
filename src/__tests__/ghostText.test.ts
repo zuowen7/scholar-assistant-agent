@@ -72,8 +72,15 @@ import type { CompletionModel } from '../utils/inlineCompletion'
 
 function mockModel(lines: string[]): CompletionModel {
   return {
-    getLineContent(n: number) { return lines[n - 1] ?? '' },
-    getValueInRange(range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number }) {
+    getLineContent(n: number) {
+      return lines[n - 1] ?? ''
+    },
+    getValueInRange(range: {
+      startLineNumber: number
+      startColumn: number
+      endLineNumber: number
+      endColumn: number
+    }) {
       const selected = lines.slice(range.startLineNumber - 1, range.endLineNumber)
       if (selected.length === 0) return ''
       const last = selected[selected.length - 1].slice(0, range.endColumn - 1)
@@ -81,7 +88,9 @@ function mockModel(lines: string[]): CompletionModel {
       selected[0] = selected[0].slice(range.startColumn - 1)
       return selected.join('\n')
     },
-    getLineMaxColumn(n: number) { return (lines[n - 1]?.length ?? 0) + 1 },
+    getLineMaxColumn(n: number) {
+      return (lines[n - 1]?.length ?? 0) + 1
+    },
   }
 }
 
@@ -123,18 +132,16 @@ describe('provideAICompletion', () => {
   })
 
   it('fetches /api/complete and returns completion item', async () => {
-    const model = mockModel(['This is a sentence that provides enough context for testing the completion feature.'])
+    const model = mockModel([
+      'This is a sentence that provides enough context for testing the completion feature.',
+    ])
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ completion: 'proposed continuation text' }),
     } as Response)
 
     const pos = { lineNumber: 1, column: model.getLineMaxColumn(1) }
-    const result = await provideAICompletion(
-      model,
-      pos,
-      { apiBase: API_BASE, paletteOpen: false },
-    )
+    const result = await provideAICompletion(model, pos, { apiBase: API_BASE, paletteOpen: false })
 
     expect(fetchSpy).toHaveBeenCalledTimes(1)
     expect(fetchSpy).toHaveBeenCalledWith(
@@ -160,7 +167,9 @@ describe('provideAICompletion', () => {
   })
 
   it('returns empty items on fetch failure', async () => {
-    const model = mockModel(['This is a sentence that provides enough context for testing the completion feature.'])
+    const model = mockModel([
+      'This is a sentence that provides enough context for testing the completion feature.',
+    ])
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network error'))
 
     const result = await provideAICompletion(
@@ -172,7 +181,9 @@ describe('provideAICompletion', () => {
   })
 
   it('returns empty items on non-ok response', async () => {
-    const model = mockModel(['This is a sentence that provides enough context for testing the completion feature.'])
+    const model = mockModel([
+      'This is a sentence that provides enough context for testing the completion feature.',
+    ])
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: false,
       status: 500,
@@ -208,7 +219,9 @@ describe('provideAICompletion', () => {
   })
 
   it('returns empty items when completion is empty', async () => {
-    const model = mockModel(['This is a sentence that provides enough context for testing the completion feature.'])
+    const model = mockModel([
+      'This is a sentence that provides enough context for testing the completion feature.',
+    ])
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ completion: '' }),
@@ -223,7 +236,9 @@ describe('provideAICompletion', () => {
   })
 
   it('trims whitespace from completion', async () => {
-    const model = mockModel(['This is a sentence that provides enough context for testing the completion feature.'])
+    const model = mockModel([
+      'This is a sentence that provides enough context for testing the completion feature.',
+    ])
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ completion: '  continuation  ' }),

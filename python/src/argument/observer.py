@@ -96,16 +96,18 @@ class ArgumentObserver:
             year = metadata.get("year")
             citation_key = metadata.get("citation_key", metadata.get("doc_id", ""))
 
-            recommendations.append(RecommendationItem(
-                doc_id=doc_id,
-                citation_key=citation_key,
-                title=title,
-                authors=authors,
-                year=int(year) if year else None,
-                relevance_score=round(similarity, 2),
-                excerpt=r.get("text", "")[:200],
-                match_type=match_type,
-            ))
+            recommendations.append(
+                RecommendationItem(
+                    doc_id=doc_id,
+                    citation_key=citation_key,
+                    title=title,
+                    authors=authors,
+                    year=int(year) if year else None,
+                    relevance_score=round(similarity, 2),
+                    excerpt=r.get("text", "")[:200],
+                    match_type=match_type,
+                )
+            )
 
         # 按相关性排序
         recommendations.sort(key=lambda x: x.relevance_score, reverse=True)

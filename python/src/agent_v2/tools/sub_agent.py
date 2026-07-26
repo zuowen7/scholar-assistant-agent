@@ -3,10 +3,8 @@
 主 Agent 可调用 run_sub_agent 委派子任务（审查/解释/实施/翻译），
 子 Agent 使用相同 Provider 但不同 system prompt，结果返回主 Agent。
 """
-from __future__ import annotations
 
-import json
-from typing import Any
+from __future__ import annotations
 
 from src.agent_v2.tools.registry import ToolRegistry, ToolResult
 
@@ -62,7 +60,9 @@ def register_sub_agent(registry: ToolRegistry) -> None:
         system_prompt = _PRESETS.get(preset_key)
         if system_prompt is None:
             available = ", ".join(_PRESETS.keys())
-            return ToolResult(f"error: unknown preset '{preset}'. Available: {available}", is_error=True)
+            return ToolResult(
+                f"error: unknown preset '{preset}'. Available: {available}", is_error=True
+            )
 
         # Build messages for sub-agent
         user_msg = content
@@ -93,15 +93,30 @@ def register_sub_agent(registry: ToolRegistry) -> None:
         except Exception as e:
             return ToolResult(f"sub-agent [{preset}] error: {e}", is_error=True)
 
-    registry.register("run_sub_agent", (
-        "Run a specialized sub-agent to audit, explain, implement, or translate content. "
-        "Use this for complex multi-step tasks. Available presets: audit, explain, implement, translate."
-    ), {
-        "type": "object",
-        "properties": {
-            "preset": {"type": "string", "description": "Sub-agent preset: audit, explain, implement, translate"},
-            "content": {"type": "string", "description": "Content for the sub-agent to process"},
-            "instruction": {"type": "string", "description": "Optional specific instruction for the sub-agent"},
+    registry.register(
+        "run_sub_agent",
+        (
+            "Run a specialized sub-agent to audit, explain, implement, or translate content. "
+            "Use this for complex multi-step tasks. Available presets: audit, explain, implement, translate."
+        ),
+        {
+            "type": "object",
+            "properties": {
+                "preset": {
+                    "type": "string",
+                    "description": "Sub-agent preset: audit, explain, implement, translate",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Content for the sub-agent to process",
+                },
+                "instruction": {
+                    "type": "string",
+                    "description": "Optional specific instruction for the sub-agent",
+                },
+            },
+            "required": ["preset", "content"],
         },
-        "required": ["preset", "content"],
-    }, run_sub_agent, permission="read-only")
+        run_sub_agent,
+        permission="read-only",
+    )

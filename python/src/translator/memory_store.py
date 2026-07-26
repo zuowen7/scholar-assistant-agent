@@ -14,7 +14,11 @@ import threading
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # 仅用于返回/参数类型注解；运行时在各方法内局部 import numpy。
+    import numpy
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +86,7 @@ class TranslationMemory:
                 return self._encoder
             try:
                 from sentence_transformers import SentenceTransformer
+
                 # Translation must not pause indefinitely while Hugging Face tries to
                 # download an optional fuzzy-match model. Use an existing local cache;
                 # exact TM matches remain available when the model is absent.
@@ -99,13 +104,15 @@ class TranslationMemory:
                 self._fuzzy_ok = False
             except Exception as exc:
                 logger.warning(
-                    "sentence-transformers 加载失败（TM 模糊匹配已禁用）: %s", exc,
+                    "sentence-transformers 加载失败（TM 模糊匹配已禁用）: %s",
+                    exc,
                 )
                 self._fuzzy_ok = False
         return self._encoder
 
-    def _embed(self, texts: str | list[str]) -> "numpy.ndarray":
+    def _embed(self, texts: str | list[str]) -> numpy.ndarray:
         import numpy as np
+
         encoder = self._get_encoder()
         if isinstance(texts, str):
             texts = [texts]
@@ -113,27 +120,35 @@ class TranslationMemory:
         return np.asarray(vectors, dtype=np.float32)
 
     @staticmethod
-    def _blob_to_vec(blob: bytes) -> "numpy.ndarray":
+    def _blob_to_vec(blob: bytes) -> numpy.ndarray:
         import numpy as np
+
         return np.frombuffer(blob, dtype=np.float32)
 
     @staticmethod
-    def _vec_to_blob(vec: "numpy.ndarray") -> bytes:
+    def _vec_to_blob(vec: numpy.ndarray) -> bytes:
         import numpy as np
+
         return np.asarray(vec, dtype=np.float32).tobytes()
 
     @staticmethod
-    def _cosine_similarity(a: "numpy.ndarray", b: "numpy.ndarray") -> float:
+    def _cosine_similarity(a: numpy.ndarray, b: numpy.ndarray) -> float:
         import numpy as np
+
         norm_a = np.linalg.norm(a)
         norm_b = np.linalg.norm(b)
         if norm_a == 0 or norm_b == 0:
             return 0.0
         return float(np.dot(a, b) / (norm_a * norm_b))
 
-    def lookup(self, source_text: str, *,
-               source_lang: str = "en", target_lang: str = "zh",
-               fuzzy: bool = True) -> TMHit:
+    def lookup(
+        self,
+        source_text: str,
+        *,
+        source_lang: str = "en",
+        target_lang: str = "zh",
+        fuzzy: bool = True,
+    ) -> TMHit:
         """Look up a source sentence in the TM.
 
         Returns the best match found, or a TMHit with match_type="none".
@@ -148,6 +163,7 @@ class TranslationMemory:
             ).fetchone()
         if row:
             import json
+
             return TMHit(
                 source=source_text,
                 target=row[0],
@@ -178,6 +194,7 @@ class TranslationMemory:
             if emb_blob is None:
                 continue
             import json
+
             stored_vec = self._blob_to_vec(emb_blob)
             sim = self._cosine_similarity(query_vec, stored_vec)
             if sim > best_score:
@@ -197,9 +214,15 @@ class TranslationMemory:
 
         return TMHit(source=source_text, target="", score=0.0, match_type="none")
 
-    def store(self, source_text: str, target_text: str, *,
-              source_lang: str = "en", target_lang: str = "zh",
-              metadata: dict | None = None) -> None:
+    def store(
+        self,
+        source_text: str,
+        target_text: str,
+        *,
+        source_lang: str = "en",
+        target_lang: str = "zh",
+        metadata: dict | None = None,
+    ) -> None:
         """Store a source→target pair in the TM."""
         import json
 
@@ -255,8 +278,9 @@ class TranslationMemory:
             src_tuv = None
             tgt_tuv = None
             for tuv in tuvs:
-                lang = (tuv.get("{http://www.w3.org/XML/1998/namespace}lang")
-                        or tuv.get("lang") or "")[:2].lower()
+                lang = (
+                    tuv.get("{http://www.w3.org/XML/1998/namespace}lang") or tuv.get("lang") or ""
+                )[:2].lower()
                 if lang == src_lang and src_tuv is None:
                     src_tuv = tuv
                 elif lang != src_lang and tgt_tuv is None:
@@ -275,8 +299,11 @@ class TranslationMemory:
 
             tgt_lang = "zh"
             if tgt_tuv is not None:
-                raw = (tgt_tuv.get("{http://www.w3.org/XML/1998/namespace}lang")
-                       or tgt_tuv.get("lang") or "zh")
+                raw = (
+                    tgt_tuv.get("{http://www.w3.org/XML/1998/namespace}lang")
+                    or tgt_tuv.get("lang")
+                    or "zh"
+                )
                 tgt_lang = raw[:2].lower()
 
             self.store(src_text, tgt_text, source_lang=src_lang, target_lang=tgt_lang)
@@ -285,8 +312,9 @@ class TranslationMemory:
         logger.info("TMX import: %d pairs from %s", count, tmx_path)
         return count
 
-    def export_tmx(self, tmx_path: str | Path, *,
-                   source_lang: str = "en", target_lang: str = "zh") -> int:
+    def export_tmx(
+        self, tmx_path: str | Path, *, source_lang: str = "en", target_lang: str = "zh"
+    ) -> int:
         """Export all pairs as a TMX 1.4 file compatible with OmegaT."""
         with self._db_lock:
             rows = self._conn.execute(
@@ -296,14 +324,17 @@ class TranslationMemory:
             ).fetchall()
 
         tmx = ET.Element("tmx", version="1.4")
-        header = ET.SubElement(tmx, "header",
-                               creationtool="研墨",
-                               creationtoolversion="0.4.2",
-                               datatype="plaintext",
-                               segtype="sentence",
-                               adminlang="en",
-                               srclang=source_lang,
-                               o_tmf="unknown")
+        header = ET.SubElement(
+            tmx,
+            "header",
+            creationtool="研墨",
+            creationtoolversion="0.4.2",
+            datatype="plaintext",
+            segtype="sentence",
+            adminlang="en",
+            srclang=source_lang,
+            o_tmf="unknown",
+        )
         ET.SubElement(header, "note").text = "Exported from 研墨 Translation Memory"
 
         body = ET.SubElement(tmx, "body")

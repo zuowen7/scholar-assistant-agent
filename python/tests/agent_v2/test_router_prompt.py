@@ -19,15 +19,32 @@ def test_persisted_session_messages_are_available_to_the_history_panel(tmp_path,
     import src.agent_v2.router as router
 
     session = Session(workspace="C:/paper", model="test-model", session_id="sess_history")
-    session.append(Message(role=MessageRole.USER, blocks=[TextBlock(
-        text="Review the draft\n\n<editor_context>private draft body</editor_context>",
-    )]))
-    session.append(Message(role=MessageRole.ASSISTANT, blocks=[
-        ToolUseBlock(id="call_1", name="read_file", input='{"file_path":"draft.md"}'),
-    ]))
-    session.append(Message(role=MessageRole.TOOL, blocks=[
-        ToolResultBlock(tool_use_id="call_1", tool_name="read_file", output="draft text"),
-    ]))
+    session.append(
+        Message(
+            role=MessageRole.USER,
+            blocks=[
+                TextBlock(
+                    text="Review the draft\n\n<editor_context>private draft body</editor_context>",
+                )
+            ],
+        )
+    )
+    session.append(
+        Message(
+            role=MessageRole.ASSISTANT,
+            blocks=[
+                ToolUseBlock(id="call_1", name="read_file", input='{"file_path":"draft.md"}'),
+            ],
+        )
+    )
+    session.append(
+        Message(
+            role=MessageRole.TOOL,
+            blocks=[
+                ToolResultBlock(tool_use_id="call_1", tool_name="read_file", output="draft text"),
+            ],
+        )
+    )
     session.append(Message(role=MessageRole.ASSISTANT, blocks=[TextBlock(text="Review complete")]))
     session.save(tmp_path / "sess_history.jsonl")
 

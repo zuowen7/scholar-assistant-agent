@@ -1,4 +1,5 @@
 """PermissionPolicy 测试 — PP-001 ~ PP-052。"""
+
 from __future__ import annotations
 
 import pytest
@@ -9,10 +10,10 @@ from src.agent_v2.runtime.permissions import (
     PermissionContext,
     PermissionDecision,
     PermissionMode,
+    PermissionOverride,
     PermissionPolicy,
     PermissionPrompter,
     PermissionRequest,
-    PermissionOverride,
     PromptResult,
     policy_from_registry,
 )
@@ -44,8 +45,8 @@ def _default_tool_reqs() -> dict[str, PermissionMode]:
 # 4.1 权限级别
 # ============================================================================
 
-class TestPermissionLevels:
 
+class TestPermissionLevels:
     def test_pp001_readonly_allows_read(self):
         policy = PermissionPolicy(PermissionMode.READ_ONLY, _default_tool_reqs())
         result = policy.authorize("read_file", "{}")
@@ -68,7 +69,9 @@ class TestPermissionLevels:
 
     def test_pp005_wswrite_allows_replace(self):
         policy = PermissionPolicy(PermissionMode.WORKSPACE_WRITE, _default_tool_reqs())
-        result = policy.authorize("str_replace", '{"file_path":"a.txt","old_string":"x","new_string":"y"}')
+        result = policy.authorize(
+            "str_replace", '{"file_path":"a.txt","old_string":"x","new_string":"y"}'
+        )
         assert isinstance(result, AllowResult)
 
     def test_pp006_wswrite_denies_bash(self):
@@ -98,11 +101,12 @@ class TestPermissionLevels:
 # 4.2 规则引擎
 # ============================================================================
 
-class TestRuleEngine:
 
+class TestRuleEngine:
     def test_pp010_deny_rule(self):
         policy = PermissionPolicy(
-            PermissionMode.READ_ONLY, _default_tool_reqs(),
+            PermissionMode.READ_ONLY,
+            _default_tool_reqs(),
             deny_rules=["bash(rm -rf:*)"],
         )
         result = policy.authorize("bash", '{"command":"rm -rf /tmp/x"}')
@@ -111,7 +115,8 @@ class TestRuleEngine:
 
     def test_pp011_allow_rule(self):
         policy = PermissionPolicy(
-            PermissionMode.READ_ONLY, _default_tool_reqs(),
+            PermissionMode.READ_ONLY,
+            _default_tool_reqs(),
             allow_rules=["bash(git:*)"],
         )
         result = policy.authorize("bash", '{"command":"git status"}')
@@ -119,7 +124,8 @@ class TestRuleEngine:
 
     def test_pp012_ask_rule(self):
         policy = PermissionPolicy(
-            PermissionMode.ALLOW, _default_tool_reqs(),
+            PermissionMode.ALLOW,
+            _default_tool_reqs(),
             ask_rules=["bash(git push:*)"],
         )
         prompter = RecordingPrompter(allow=True)
@@ -129,7 +135,8 @@ class TestRuleEngine:
 
     def test_pp013_denied_tools(self):
         policy = PermissionPolicy(
-            PermissionMode.DANGER_FULL_ACCESS, _default_tool_reqs(),
+            PermissionMode.DANGER_FULL_ACCESS,
+            _default_tool_reqs(),
             denied_tools=["bash"],
         )
         result = policy.authorize("bash", '{"command":"echo hi"}')
@@ -138,7 +145,8 @@ class TestRuleEngine:
 
     def test_pp014_deny_over_allow(self):
         policy = PermissionPolicy(
-            PermissionMode.ALLOW, _default_tool_reqs(),
+            PermissionMode.ALLOW,
+            _default_tool_reqs(),
             deny_rules=["bash(rm:*)"],
             allow_rules=["bash(rm:*)"],
         )
@@ -147,7 +155,8 @@ class TestRuleEngine:
 
     def test_pp015_ask_over_mode(self):
         policy = PermissionPolicy(
-            PermissionMode.ALLOW, _default_tool_reqs(),
+            PermissionMode.ALLOW,
+            _default_tool_reqs(),
             ask_rules=["read_file(*)"],
         )
         prompter = RecordingPrompter(allow=True)
@@ -156,7 +165,8 @@ class TestRuleEngine:
 
     def test_pp016_priority_order(self):
         policy = PermissionPolicy(
-            PermissionMode.DANGER_FULL_ACCESS, _default_tool_reqs(),
+            PermissionMode.DANGER_FULL_ACCESS,
+            _default_tool_reqs(),
             denied_tools=["bash"],
             deny_rules=["bash(git:*)"],
             allow_rules=["bash(echo:*)"],
@@ -171,12 +181,13 @@ class TestRuleEngine:
 # 4.3 规则匹配
 # ============================================================================
 
-class TestRuleMatching:
 
+class TestRuleMatching:
     def test_pp020_exact_match(self):
         policy = PermissionPolicy(
-            PermissionMode.READ_ONLY, _default_tool_reqs(),
-            deny_rules=[f'write_file(/etc/hosts)'],
+            PermissionMode.READ_ONLY,
+            _default_tool_reqs(),
+            deny_rules=[f"write_file(/etc/hosts)"],
         )
         result = policy.authorize("write_file", '{"file_path":"/etc/hosts","content":"x"}')
         assert isinstance(result, DenyResult)
@@ -186,7 +197,8 @@ class TestRuleMatching:
 
     def test_pp021_prefix_match(self):
         policy = PermissionPolicy(
-            PermissionMode.READ_ONLY, _default_tool_reqs(),
+            PermissionMode.READ_ONLY,
+            _default_tool_reqs(),
             allow_rules=["bash(git:*)"],
         )
         result = policy.authorize("bash", '{"command":"git status"}')
@@ -196,7 +208,8 @@ class TestRuleMatching:
 
     def test_pp022_wildcard_match(self):
         policy = PermissionPolicy(
-            PermissionMode.READ_ONLY, _default_tool_reqs(),
+            PermissionMode.READ_ONLY,
+            _default_tool_reqs(),
             allow_rules=["read_file(*)"],
         )
         result = policy.authorize("read_file", '{"file_path":"anything.txt"}')
@@ -204,7 +217,8 @@ class TestRuleMatching:
 
     def test_pp023_tool_name_no_match(self):
         policy = PermissionPolicy(
-            PermissionMode.READ_ONLY, _default_tool_reqs(),
+            PermissionMode.READ_ONLY,
+            _default_tool_reqs(),
             allow_rules=["bash(git:*)"],
         )
         result = policy.authorize("read_file", '{"command":"git status"}')
@@ -213,7 +227,8 @@ class TestRuleMatching:
 
     def test_pp024_empty_json_input(self):
         policy = PermissionPolicy(
-            PermissionMode.READ_ONLY, _default_tool_reqs(),
+            PermissionMode.READ_ONLY,
+            _default_tool_reqs(),
             deny_rules=["bash(*)"],
         )
         result = policy.authorize("bash", "{}")
@@ -221,7 +236,8 @@ class TestRuleMatching:
 
     def test_pp025_special_chars_in_path(self):
         policy = PermissionPolicy(
-            PermissionMode.READ_ONLY, _default_tool_reqs(),
+            PermissionMode.READ_ONLY,
+            _default_tool_reqs(),
             allow_rules=["read_file(*)"],
         )
         result = policy.authorize("read_file", '{"file_path":"/path/with spaces/中文 (1).txt"}')
@@ -232,11 +248,12 @@ class TestRuleMatching:
 # 4.4 Hook 覆盖
 # ============================================================================
 
-class TestHookOverrides:
 
+class TestHookOverrides:
     def test_pp030_hook_allow_with_ask_rule(self):
         policy = PermissionPolicy(
-            PermissionMode.ALLOW, _default_tool_reqs(),
+            PermissionMode.ALLOW,
+            _default_tool_reqs(),
             ask_rules=["bash(git:*)"],
         )
         prompter = RecordingPrompter(allow=True)
@@ -246,7 +263,8 @@ class TestHookOverrides:
 
     def test_pp031_hook_deny_short_circuit(self):
         policy = PermissionPolicy(
-            PermissionMode.DANGER_FULL_ACCESS, _default_tool_reqs(),
+            PermissionMode.DANGER_FULL_ACCESS,
+            _default_tool_reqs(),
         )
         ctx = PermissionContext(override=PermissionOverride.DENY, override_reason="blocked by hook")
         result = policy.authorize("bash", '{"command":"echo hi"}', context=ctx)
@@ -255,10 +273,13 @@ class TestHookOverrides:
 
     def test_pp032_hook_ask_forces_prompt(self):
         policy = PermissionPolicy(
-            PermissionMode.DANGER_FULL_ACCESS, _default_tool_reqs(),
+            PermissionMode.DANGER_FULL_ACCESS,
+            _default_tool_reqs(),
         )
         prompter = RecordingPrompter(allow=True)
-        ctx = PermissionContext(override=PermissionOverride.ASK, override_reason="hook wants confirmation")
+        ctx = PermissionContext(
+            override=PermissionOverride.ASK, override_reason="hook wants confirmation"
+        )
         result = policy.authorize("bash", '{"command":"echo hi"}', context=ctx, prompter=prompter)
         assert len(prompter.seen) == 1
         assert "hook wants confirmation" in prompter.seen[0].reason
@@ -268,8 +289,8 @@ class TestHookOverrides:
 # 4.5 边缘测试
 # ============================================================================
 
-class TestEdgeCases:
 
+class TestEdgeCases:
     def test_pp040_empty_policy(self):
         policy = PermissionPolicy(PermissionMode.READ_ONLY)
         result = policy.authorize("unknown_tool", "{}")
@@ -279,10 +300,12 @@ class TestEdgeCases:
     def test_pp041_many_rules_performance(self):
         rules = [f"tool_{i:03d}(pattern_{i}:*)" for i in range(100)]
         policy = PermissionPolicy(
-            PermissionMode.READ_ONLY, _default_tool_reqs(),
+            PermissionMode.READ_ONLY,
+            _default_tool_reqs(),
             allow_rules=rules,
         )
         import time
+
         start = time.monotonic()
         for _ in range(100):
             policy.authorize("tool_050", '{"command":"pattern_50 something"}')
@@ -291,7 +314,8 @@ class TestEdgeCases:
 
     def test_pp042_invalid_rule_ignored(self):
         policy = PermissionPolicy(
-            PermissionMode.DANGER_FULL_ACCESS, _default_tool_reqs(),
+            PermissionMode.DANGER_FULL_ACCESS,
+            _default_tool_reqs(),
             deny_rules=["not a valid rule !!! )("],
         )
         # Should not crash — just treated as tool name match
@@ -312,12 +336,13 @@ class TestEdgeCases:
 # 4.6 故障注入
 # ============================================================================
 
-class TestFaultInjection:
 
+class TestFaultInjection:
     def test_pp050_prompter_exception(self):
         class BrokenPrompter:
             def decide(self, request):
                 raise RuntimeError("prompter broken")
+
         policy = PermissionPolicy(PermissionMode.PROMPT, _default_tool_reqs())
         result = policy.authorize("bash", '{"command":"echo hi"}', prompter=BrokenPrompter())
         assert isinstance(result, DenyResult)
@@ -337,8 +362,8 @@ class TestFaultInjection:
 # Helper: policy_from_registry
 # ============================================================================
 
-class TestPolicyFromRegistry:
 
+class TestPolicyFromRegistry:
     def test_builds_correct_requirements(self):
         policy = policy_from_registry(
             PermissionMode.READ_ONLY,
