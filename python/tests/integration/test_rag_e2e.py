@@ -109,6 +109,72 @@ class TestRAGIngest:
         )
         assert resp.status_code in (200, 400, 500, 503)
 
+    def test_ingest_returns_chunks_and_project_metadata(self, client):
+        text = "\n\n".join(
+            [
+                "Project Alpha studies retrieval quality. " * 35,
+                "The evaluation uses grounded citations. " * 35,
+            ]
+        )
+        resp = client.post(
+            "/api/rag/ingest",
+            json={
+                "doc_id": "project-alpha-source",
+                "title": "Alpha Source",
+                "text": text,
+                "project_root": "C:/research/alpha",
+                "source_id": "src_alpha",
+            },
+        )
+        if resp.status_code == 503:
+            pytest.skip("ChromaDB is not available in this environment")
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["chunk_count"] >= 2
+        listed = client.get(
+            "/api/rag/documents",
+            params={"project_root": "C:/research/alpha"},
+        ).json()
+        assert any(
+            item["doc_id"] == "project-alpha-source"
+            and item["source_id"] == "src_alpha"
+            and item["chunk_count"] >= 2
+            for item in listed
+        )
+
+    def test_query_can_be_limited_to_one_project(self, client):
+        for project, doc_id, sentence in [
+            ("C:/research/alpha", "alpha-only", "oranges validate the alpha retrieval path"),
+            ("C:/research/beta", "beta-only", "oranges validate the beta retrieval path"),
+        ]:
+            response = client.post(
+                "/api/rag/ingest",
+                json={
+                    "doc_id": doc_id,
+                    "title": doc_id,
+                    "text": sentence,
+                    "project_root": project,
+                    "source_id": doc_id,
+                },
+            )
+            if response.status_code == 503:
+                pytest.skip("ChromaDB is not available in this environment")
+            assert response.status_code == 200
+
+        queried = client.post(
+            "/api/rag/query",
+            json={
+                "query": "oranges retrieval",
+                "top_k": 10,
+                "project_root": "C:/research/alpha",
+            },
+        )
+        assert queried.status_code == 200
+        assert queried.json()["hits"]
+        assert all(
+            hit["metadata"]["project_root"] == "C:/research/alpha" for hit in queried.json()["hits"]
+        )
+
 
 class TestRAGUpload:
     """POST /api/rag/upload — upload and ingest a file."""

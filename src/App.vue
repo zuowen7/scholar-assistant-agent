@@ -126,6 +126,7 @@
             embedded
             @update:open="workspace.toggleAgentDock($event)"
             @switch-to-editor="workspace.navigate('draft')"
+            @switch-to-sources="workspace.navigate('sources')"
           />
         </template>
         <template #tasks><TaskCenter /></template>

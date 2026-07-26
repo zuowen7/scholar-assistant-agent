@@ -332,4 +332,25 @@ const navItems = computed(() => [
     flex-direction: column;
   }
 }
+@media (max-height: 650px) {
+  .app-sidebar {
+    padding-top: 12px;
+    padding-bottom: 10px;
+    overflow-y: auto;
+  }
+  .brand-block {
+    padding-bottom: 12px;
+  }
+  .project-switcher {
+    margin-bottom: 8px;
+    padding-block: 7px;
+  }
+  .nav-item {
+    height: 38px;
+  }
+  .sidebar-footer {
+    margin-top: 14px;
+    gap: 7px;
+  }
+}
 </style>

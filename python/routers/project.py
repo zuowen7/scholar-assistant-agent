@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from src.utils.atomic_io import atomic_write_json
@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 _MAX_RECENT = 20
 _MAX_FOLDERS = 50
+_MAX_SOURCE_BYTES = 50 * 1024 * 1024
 _NAME_RE = re.compile(r"^[\w\-. ]+$")
 _ILLEGAL_CHARS_RE = re.compile(r'[<>\:"/\\|?*\x00]')
 _FOLDER_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
@@ -83,6 +84,13 @@ class ProjectSourceUpsert(BaseModel):
     reading_status: Literal["unread", "reading", "read"] = "unread"
     cited: bool = False
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProjectSourceTranslationAttach(BaseModel):
+    project_path: str = Field(min_length=1, max_length=1000)
+    output_path: str = Field(min_length=1, max_length=2000)
+    task_id: str = Field(min_length=1, max_length=128)
+    rag_status: Literal["unavailable", "queued", "ready", "failed"] = "unavailable"
 
 
 class ProjectExportRecordCreate(BaseModel):
@@ -319,6 +327,60 @@ def _upsert_source(req: ProjectSourceUpsert) -> dict[str, Any]:
         sources.insert(0, source)
     atomic_write_json(_source_manifest(project_path), {"version": 1, "sources": sources})
     return source
+
+
+def _find_source(project_path: Path, source_id: str) -> dict[str, Any]:
+    source = next(
+        (item for item in _read_sources(project_path) if item.get("id") == source_id),
+        None,
+    )
+    if source is None:
+        raise HTTPException(404, f"项目文献不存在: {source_id}")
+    return source
+
+
+def _resolve_source_attachment(
+    project_path: Path,
+    source: dict[str, Any],
+    *,
+    path_key: str = "original_path",
+) -> Path:
+    raw_path = source.get(path_key)
+    if not raw_path:
+        label = "译文" if path_key == "translated_path" else "文献"
+        raise HTTPException(409, f"该{label}尚未附加可读取的本地文件")
+    candidate = Path(str(raw_path))
+    if not candidate.is_absolute():
+        candidate = project_path / candidate
+    try:
+        resolved = candidate.resolve(strict=True)
+    except (OSError, RuntimeError):
+        raise HTTPException(404, "文献附件不存在")
+    try:
+        resolved.relative_to(project_path)
+    except ValueError:
+        raise HTTPException(403, "文献附件不在当前项目内，请重新导入")
+    if not resolved.is_file():
+        raise HTTPException(404, "文献附件不存在")
+    return resolved
+
+
+def _extract_source_content(path: Path) -> dict[str, Any]:
+    from src.parser import extract_document
+
+    try:
+        document = extract_document(path)
+    except Exception as exc:
+        logger.warning("Source extraction failed for %s: %s", path.name, exc)
+        raise HTTPException(422, f"无法解析文献内容: {exc}")
+    text = document.full_text.strip()
+    if not text:
+        raise HTTPException(422, "文献没有可提取文本；扫描版 PDF 请先启用 OCR")
+    return {
+        "text": text,
+        "pages": len(document.pages),
+        "chars": len(text),
+    }
 
 
 def _export_manifest(project_path: Path) -> Path:
@@ -876,6 +938,166 @@ def register_project(
     @app.post("/api/project/sources")
     def upsert_project_source(req: ProjectSourceUpsert):
         return _upsert_source(req)
+
+    @app.post("/api/project/sources/import")
+    async def import_project_source(
+        project_path: str = Form(...),
+        source_id: str | None = Form(default=None),
+        file: UploadFile = File(...),
+    ):
+        from src.parser import SUPPORTED_EXTENSIONS
+
+        project = _require_project(project_path)
+        original_name = Path(file.filename or "source").name
+        extension = Path(original_name).suffix.lower()
+        if extension not in SUPPORTED_EXTENSIONS:
+            raise HTTPException(415, f"不支持的文献格式: {extension or '未知'}")
+
+        content = await file.read(_MAX_SOURCE_BYTES + 1)
+        if len(content) > _MAX_SOURCE_BYTES:
+            raise HTTPException(413, "文献文件过大（最大 50 MB）")
+        if not content:
+            raise HTTPException(422, "文献文件为空")
+
+        references = project / "references"
+        references.mkdir(parents=True, exist_ok=True)
+        target = references / original_name
+        if target.exists():
+            target = references / f"{target.stem}-{uuid.uuid4().hex[:8]}{target.suffix}"
+        fd, temp_name = tempfile.mkstemp(
+            dir=references,
+            prefix=f".{target.stem}.",
+            suffix=target.suffix,
+        )
+        try:
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temp_name, target)
+        except Exception:
+            with contextlib.suppress(OSError):
+                os.unlink(temp_name)
+            raise
+
+        metadata: dict[str, Any] = {
+            "filename": original_name,
+            "extension": extension,
+            "size": len(content),
+        }
+        try:
+            metadata.update(_extract_source_content(target))
+            metadata.pop("text", None)
+        except HTTPException as exc:
+            metadata["parse_error"] = str(exc.detail)
+
+        try:
+            existing = _find_source(project, source_id) if source_id else None
+            return _upsert_source(
+                ProjectSourceUpsert(
+                    project_path=str(project),
+                    source_id=source_id,
+                    title=str(existing["title"]) if existing else Path(original_name).stem,
+                    original_path=str(target),
+                    translated_path=existing.get("translated_path") if existing else None,
+                    translation_task_id=(existing.get("translation_task_id") if existing else None),
+                    rag_status=existing.get("rag_status", "unavailable")
+                    if existing
+                    else "unavailable",
+                    reading_status=existing.get("reading_status", "unread")
+                    if existing
+                    else "unread",
+                    cited=bool(existing.get("cited", False)) if existing else False,
+                    metadata={
+                        **(dict(existing.get("metadata") or {}) if existing else {}),
+                        **metadata,
+                    },
+                )
+            )
+        except Exception:
+            with contextlib.suppress(OSError):
+                target.unlink()
+            raise
+
+    @app.post("/api/project/sources/{source_id}/translation")
+    def attach_project_source_translation(
+        source_id: str,
+        req: ProjectSourceTranslationAttach,
+    ):
+        project = _require_project(req.project_path)
+        source = _find_source(project, source_id)
+        try:
+            output = Path(req.output_path).resolve(strict=True)
+        except (OSError, RuntimeError):
+            raise HTTPException(404, "翻译输出文件不存在")
+        allowed_roots = [project.resolve(), runtime_dir.resolve()]
+        if not any(output == root or root in output.parents for root in allowed_roots):
+            raise HTTPException(403, "翻译输出不在项目或研墨运行目录内")
+        translations = project / "references" / "translations"
+        translations.mkdir(parents=True, exist_ok=True)
+        original_stem = Path(str(source.get("original_path") or source["title"])).stem
+        target = translations / f"{original_stem}.translated{output.suffix or '.md'}"
+        if output != target:
+            shutil.copy2(output, target)
+        return _upsert_source(
+            ProjectSourceUpsert(
+                project_path=str(project),
+                source_id=source_id,
+                title=str(source["title"]),
+                original_path=source.get("original_path"),
+                translated_path=str(target),
+                translation_task_id=req.task_id,
+                rag_status=req.rag_status,
+                reading_status=source.get("reading_status", "unread"),
+                cited=bool(source.get("cited", False)),
+                metadata=dict(source.get("metadata") or {}),
+            )
+        )
+
+    @app.get("/api/project/sources/{source_id}/content")
+    def read_project_source(
+        source_id: str,
+        project_path: str,
+        version: Literal["original", "translated"] = "original",
+    ):
+        project = _require_project(project_path)
+        source = _find_source(project, source_id)
+        path_key = "translated_path" if version == "translated" else "original_path"
+        payload = _extract_source_content(
+            _resolve_source_attachment(project, source, path_key=path_key)
+        )
+        return {
+            "source_id": source_id,
+            "title": source.get("title", source_id),
+            "version": version,
+            **payload,
+        }
+
+    @app.delete("/api/project/sources/{source_id}")
+    def delete_project_source(
+        source_id: str,
+        project_path: str,
+        delete_file: bool = False,
+    ):
+        project = _require_project(project_path)
+        sources = _read_sources(project)
+        source = next((item for item in sources if item.get("id") == source_id), None)
+        if source is None:
+            raise HTTPException(404, f"项目文献不存在: {source_id}")
+        if delete_file and source.get("original_path"):
+            attachment = _resolve_source_attachment(project, source)
+            managed_root = (project / "references").resolve()
+            try:
+                attachment.relative_to(managed_root)
+            except ValueError:
+                raise HTTPException(403, "只能删除项目 references 目录中的托管附件")
+            attachment.unlink()
+        remaining = [item for item in sources if item.get("id") != source_id]
+        atomic_write_json(
+            _source_manifest(project),
+            {"version": 1, "sources": remaining},
+        )
+        return {"status": "ok", "deleted": source_id}
 
     @app.get("/api/project/exports")
     def list_project_exports(project_path: str):
