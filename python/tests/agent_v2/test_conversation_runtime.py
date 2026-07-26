@@ -899,3 +899,157 @@ class TestMultiToolCircuitBreakerProtocol:
                     result_ids.add(block.tool_use_id)
 
         assert use_ids == result_ids, f"ToolUse {use_ids} != ToolResult {result_ids}"
+
+
+# ============================================================================
+# 6.8 读写读循环 & 重复写入 (F2 regression)
+# ============================================================================
+
+
+class TestReadEditReadCycle:
+    """A legitimate read-edit-read cycle must not trip the repeated-call
+    breaker after a successful write resets read-only fingerprints."""
+
+    @pytest.mark.asyncio
+    async def test_read_write_read_does_not_trip_repeat_breaker(self, workspace: Path):
+        provider = _ScriptedProvider(
+            [
+                ProviderResponse(blocks=[_read(tool_id="r1")], stop_reason="tool_use"),
+                ProviderResponse(blocks=[_read(tool_id="r2")], stop_reason="tool_use"),
+                ProviderResponse(
+                    blocks=[
+                        ToolUseBlock(
+                            id="w1",
+                            name="write_file",
+                            input=json.dumps({"file_path": "main.md", "content": "# Updated"}),
+                        ),
+                    ],
+                    stop_reason="tool_use",
+                ),
+                ProviderResponse(blocks=[_read(tool_id="r3")], stop_reason="tool_use"),
+                ProviderResponse(blocks=[_read(tool_id="r4")], stop_reason="tool_use"),
+                _text_response("done"),
+            ]
+        )
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        session = Session(workspace=str(workspace))
+        rt = ConversationRuntime(
+            provider=provider, tool_registry=registry, permission_policy=policy, session=session
+        )
+
+        events = await _collect_events(rt, "read edit read")
+        errors = [e for e in events if e.type == AgentEventType.ERROR]
+        assert not any("repeated" in e.data.get("message", "").lower() for e in errors), (
+            "read-edit-read should not trip the repeat breaker after a write"
+        )
+
+    @pytest.mark.asyncio
+    async def test_repeated_identical_writes_still_trip_breaker(self, workspace: Path):
+        """Write-tool fingerprints are NOT cleared by a successful write,
+        so three identical write_file calls in one batch still trip the breaker."""
+        provider = _ScriptedProvider(
+            [
+                ProviderResponse(
+                    blocks=[
+                        ToolUseBlock(
+                            id="w1",
+                            name="write_file",
+                            input=json.dumps({"file_path": "main.md", "content": "# Same"}),
+                        ),
+                        ToolUseBlock(
+                            id="w2",
+                            name="write_file",
+                            input=json.dumps({"file_path": "main.md", "content": "# Same"}),
+                        ),
+                        ToolUseBlock(
+                            id="w3",
+                            name="write_file",
+                            input=json.dumps({"file_path": "main.md", "content": "# Same"}),
+                        ),
+                    ],
+                    stop_reason="tool_use",
+                ),
+                _text_response("done"),
+            ]
+        )
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        session = Session(workspace=str(workspace))
+        rt = ConversationRuntime(
+            provider=provider, tool_registry=registry, permission_policy=policy, session=session
+        )
+
+        events = await _collect_events(rt, "write same content three times")
+        errors = [e for e in events if e.type == AgentEventType.ERROR]
+        assert any("repeated" in e.data.get("message", "").lower() for e in errors), (
+            "three identical writes should still trip the repeat breaker"
+        )
+
+
+# ============================================================================
+# 6.9 选区前后文注入 (F3 regression)
+# ============================================================================
+
+
+class TestSelectionContextInjection:
+    """before_context/after_context must appear in the composed model message
+    but must not alter the edit_scope write anchor."""
+
+    def test_before_after_context_appear_in_message(self):
+        from src.agent_v2.router import ChatRequestV2, SelectionContextV2, _compose_turn_message
+
+        req = ChatRequestV2(
+            message="polish this",
+            selection=SelectionContextV2(
+                file_path="draft/main.md",
+                start_line=10,
+                start_column=1,
+                end_line=12,
+                end_column=1,
+                text="selected paragraph",
+                before_context="previous paragraph here",
+                after_context="next paragraph here",
+            ),
+        )
+        msg = _compose_turn_message(req)
+        assert "<selection_before>" in msg
+        assert "previous paragraph here" in msg
+        assert "<selection_after>" in msg
+        assert "next paragraph here" in msg
+        assert "READ-ONLY" in msg
+
+    def test_edit_scope_ignores_context_fields(self, workspace: Path):
+        """_apply_edit_scope must not use before_context/after_context."""
+        provider = MockProvider()
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        session = Session(workspace=str(workspace))
+        rt = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy,
+            session=session,
+            edit_scope={
+                "file_path": "main.md",
+                "start_line": 1,
+                "start_column": 1,
+                "end_line": 1,
+                "end_column": 14,
+                "text": "# Hello World",
+                "before_context": "ignored by scope guard",
+                "after_context": "also ignored",
+            },
+        )
+        tb = ToolUseBlock(
+            id="tu_edit",
+            name="str_replace",
+            input=json.dumps(
+                {
+                    "file_path": "main.md",
+                    "old_string": "# Hello World",
+                    "new_string": "# Hello World!",
+                }
+            ),
+        )
+        assert rt._apply_edit_scope(tb, json.loads(tb.input)) is None

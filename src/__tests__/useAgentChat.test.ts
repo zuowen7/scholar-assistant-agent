@@ -247,7 +247,9 @@ describe('useAgentChat', () => {
       await sendMessage('Start session')
 
       expect(conversationWorkflowId.value).toBe('sess_abc')
-      expect(activeRunSessionId.value).toBe('sess_abc')
+      // activeRunSessionId is cleared after the run completes — only
+      // conversationWorkflowId persists.
+      expect(activeRunSessionId.value).toBeNull()
     })
 
     it('isolates an editor selection turn and sends its exact anchor', async () => {

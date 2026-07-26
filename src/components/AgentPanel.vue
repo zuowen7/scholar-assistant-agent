@@ -620,8 +620,9 @@ async function openAgentWindow() {
   // Pass agent-only flag and optional session via URL params — sessionStorage is
   // window-isolated in Tauri so URL params are the only reliable cross-window channel.
   const params = new URLSearchParams({ 'agent-only': '1' })
-  const { activeRunSessionId } = useAgentChat()
-  if (activeRunSessionId.value) params.set('session', activeRunSessionId.value)
+  const { activeRunSessionId, conversationWorkflowId } = useAgentChat()
+  const sessionToOpen = activeRunSessionId.value ?? conversationWorkflowId.value
+  if (sessionToOpen) params.set('session', sessionToOpen)
   const url = `${window.location.origin}/?${params}`
 
   _agentWindow = new WebviewWindow('agent', {
