@@ -322,6 +322,7 @@ class TestWordExport:
 
     def test_component_safe_path_rejects_sibling_prefix(self, tmp_path):
         from fastapi import HTTPException
+
         from routers.editor import _safe_child_path
 
         output = tmp_path / "output"
@@ -334,6 +335,7 @@ class TestWordExport:
 
     def test_component_safe_path_rejects_windows_absolute_path(self, tmp_path):
         from fastapi import HTTPException
+
         from routers.editor import _safe_child_path
 
         output = tmp_path / "output"
@@ -367,9 +369,12 @@ class TestImageUpload:
         assert "path" in data
 
     def test_upload_uses_content_type_extension(self, client):
-        resp = client.post("/api/upload/image", files={
-            "file": ("misleading.exe", io.BytesIO(b"image bytes"), "image/png"),
-        })
+        resp = client.post(
+            "/api/upload/image",
+            files={
+                "file": ("misleading.exe", io.BytesIO(b"image bytes"), "image/png"),
+            },
+        )
         assert resp.status_code == 200
         assert resp.json()["filename"].endswith(".png")
 
@@ -445,6 +450,30 @@ class TestZoteroEndpoints:
         assert resp.status_code == 200
         data = resp.json()
         assert "connected" in data
+
+    def test_status_verify_checks_the_remote_library(self, client, monkeypatch):
+        from src.zotero.client import ZoteroClient
+
+        def fake_init(self):
+            self.api_key = "test-key"
+            self.user_id = "123456"
+            self.style = "ieee"
+
+        verified = []
+
+        def fake_search(self, query="", item_type=None, limit=20):
+            verified.append((query, item_type, limit))
+            return []
+
+        monkeypatch.setattr(ZoteroClient, "__init__", fake_init)
+        monkeypatch.setattr(ZoteroClient, "search", fake_search)
+
+        resp = client.get("/api/zotero/status?verify=true")
+
+        assert resp.status_code == 200
+        assert resp.json()["connected"] is True
+        assert resp.json()["verified"] is True
+        assert verified == [("", None, 1)]
 
     def test_search_not_configured(self, client):
         resp = client.post("/api/zotero/search", json={"query": "machine learning"})

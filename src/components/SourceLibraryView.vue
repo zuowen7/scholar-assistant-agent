@@ -316,7 +316,11 @@ defineProps<{
   backendRestarting: boolean
   readSettings: { fontSize: number; lineHeight: number; fontFamily: string; transColor: string }
 }>()
-defineEmits<{ (event: 'restart-backend'): void; (event: 'open-agent-docs'): void }>()
+const emit = defineEmits<{
+  (event: 'restart-backend'): void
+  (event: 'open-agent-docs'): void
+  (event: 'open-settings', tab: 'integrations'): void
+}>()
 
 type LibraryFilter = 'all' | 'unread' | 'translated' | 'indexed' | 'cited'
 
@@ -598,6 +602,7 @@ async function openZotero() {
     if (!status?.connected) {
       const message = (status as (typeof status & { message?: string }) | null)?.message
       pushError(message || t('sources.zoteroNotConnected'))
+      emit('open-settings', 'integrations')
       return
     }
     zoteroOpen.value = true

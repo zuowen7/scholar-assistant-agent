@@ -2,6 +2,7 @@ interface InlineDiffZone {
   afterLineNumber: number
   heightInPx: number
   domNode: HTMLElement
+  suppressMouseDown?: boolean
 }
 
 interface InlineDiffZoneAccessor {
@@ -46,11 +47,16 @@ export function addInlineDiffViewZone(
 ): InlineDiffViewHandle {
   const zone = document.createElement('div')
   zone.className = 'ai-diff-zone'
-  zone.addEventListener('mousedown', (event) => event.stopPropagation())
+  zone.style.pointerEvents = 'auto'
+  const stopEditorInteraction = (event: Event) => event.stopPropagation()
+  zone.addEventListener('mousedown', stopEditorInteraction)
+  zone.addEventListener('pointerdown', stopEditorInteraction)
+  zone.addEventListener('click', stopEditorInteraction)
 
   const card = document.createElement('section')
   card.className = 'ai-diff-card'
   card.setAttribute('aria-label', options.title)
+  card.style.pointerEvents = 'auto'
 
   const header = document.createElement('header')
   header.className = 'ai-diff-header'
@@ -63,6 +69,14 @@ export function addInlineDiffViewZone(
   const content = document.createElement('div')
   content.className = 'ai-diff-new ai-diff-scroll'
   content.textContent = options.newText
+  content.tabIndex = 0
+  content.setAttribute('role', 'region')
+  content.setAttribute('aria-label', options.title)
+  content.style.touchAction = 'pan-y'
+  content.addEventListener('wheel', stopEditorInteraction, { passive: true })
+  content.addEventListener('touchstart', stopEditorInteraction, { passive: true })
+  content.addEventListener('touchmove', stopEditorInteraction, { passive: true })
+  content.addEventListener('keydown', stopEditorInteraction)
 
   const actions = document.createElement('footer')
   actions.className = 'ai-diff-actions'
@@ -80,6 +94,7 @@ export function addInlineDiffViewZone(
       afterLineNumber: options.afterLineNumber,
       heightInPx: VIEW_ZONE_HEIGHT,
       domNode: zone,
+      suppressMouseDown: true,
     })
   })
 

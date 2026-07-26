@@ -8,6 +8,7 @@ describe('addInlineDiffViewZone', () => {
       afterLineNumber: number
       heightInPx: number
       domNode: HTMLElement
+      suppressMouseDown?: boolean
     } | null = null
     const removeZone = vi.fn()
     const editor = {
@@ -47,12 +48,32 @@ describe('addInlineDiffViewZone', () => {
     expect(capturedZone!.afterLineNumber).toBe(12)
     expect(capturedZone!.heightInPx).toBeGreaterThanOrEqual(240)
     expect(capturedZone!.domNode.classList.contains('ai-diff-zone')).toBe(true)
+    expect(capturedZone!.suppressMouseDown).toBe(true)
+    expect(capturedZone!.domNode.style.pointerEvents).toBe('auto')
 
     const card = capturedZone!.domNode.querySelector('.ai-diff-card')
-    const content = capturedZone!.domNode.querySelector('.ai-diff-new')
+    const content = capturedZone!.domNode.querySelector<HTMLElement>('.ai-diff-new')
     expect(card).not.toBeNull()
     expect(content?.textContent).toBe(longText)
     expect(content?.classList.contains('ai-diff-scroll')).toBe(true)
+    expect(content?.tabIndex).toBe(0)
+    expect(content?.getAttribute('role')).toBe('region')
+
+    const editorMouseDown = vi.fn()
+    const editorWheel = vi.fn()
+    const editorPointerDown = vi.fn()
+    const editorSurface = document.createElement('div')
+    editorSurface.addEventListener('mousedown', editorMouseDown)
+    editorSurface.addEventListener('wheel', editorWheel)
+    editorSurface.addEventListener('pointerdown', editorPointerDown)
+    editorSurface.append(capturedZone!.domNode)
+
+    content!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    content!.dispatchEvent(new WheelEvent('wheel', { bubbles: true }))
+    content!.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    expect(editorMouseDown).not.toHaveBeenCalled()
+    expect(editorWheel).not.toHaveBeenCalled()
+    expect(editorPointerDown).not.toHaveBeenCalled()
 
     const buttons = capturedZone!.domNode.querySelectorAll<HTMLButtonElement>('button')
     expect(Array.from(buttons).map((button) => button.textContent)).toEqual(['接受', '拒绝'])
