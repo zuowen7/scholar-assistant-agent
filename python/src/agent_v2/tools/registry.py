@@ -62,6 +62,39 @@ _MAX_LIST_ENTRIES = 500
 _TOOL_RESULT_MAX = 4000
 
 
+def _python_index_for_monaco_column(line: str, column: int) -> int:
+    """Convert Monaco's 1-based UTF-16 column into a Python string index."""
+    target_units = column - 1
+    if target_units < 0:
+        raise ValueError("column must be at least 1")
+    used_units = 0
+    for index, char in enumerate(line):
+        if used_units == target_units:
+            return index
+        width = 2 if ord(char) > 0xFFFF else 1
+        if used_units + width > target_units:
+            raise ValueError("column points inside a UTF-16 surrogate pair")
+        used_units += width
+    if used_units == target_units:
+        return len(line)
+    raise ValueError("column is outside the line")
+
+
+def _offset_for_monaco_position(content: str, line_number: int, column: int) -> int:
+    lines = content.splitlines(keepends=True)
+    if not lines:
+        lines = [""]
+    elif content.endswith(("\n", "\r")):
+        lines.append("")
+    if line_number < 1 or line_number > len(lines):
+        raise ValueError("line is outside the document")
+    raw_line = lines[line_number - 1]
+    logical_line = raw_line.rstrip("\r\n")
+    return sum(len(line) for line in lines[: line_number - 1]) + _python_index_for_monaco_column(
+        logical_line, column
+    )
+
+
 @dataclass
 class ToolResult:
     output: str
@@ -316,6 +349,31 @@ def _create_file_ops(registry: ToolRegistry) -> None:
             if not full.is_file():
                 return ToolResult(f"error: file not found: {path_str}", is_error=True)
             content = full.read_text(encoding="utf-8")
+            anchor_keys = ("start_line", "start_column", "end_line", "end_column")
+            if all(key in args for key in anchor_keys):
+                try:
+                    start = _offset_for_monaco_position(
+                        content,
+                        int(args["start_line"]),
+                        int(args["start_column"]),
+                    )
+                    end = _offset_for_monaco_position(
+                        content,
+                        int(args["end_line"]),
+                        int(args["end_column"]),
+                    )
+                except (TypeError, ValueError) as exc:
+                    return ToolResult(f"error: invalid selection anchor: {exc}", is_error=True)
+                if end < start:
+                    return ToolResult("error: invalid selection anchor: end precedes start", True)
+                if content[start:end] != old_string:
+                    return ToolResult(
+                        "error: selected text changed on disk; save the document and select it again",
+                        is_error=True,
+                    )
+                full.write_text(content[:start] + new_string + content[end:], encoding="utf-8")
+                return ToolResult(f"ok: replaced selected range in {path_str}")
+
             count = content.count(old_string)
             if count == 0:
                 return ToolResult(f"error: old_string not found in {path_str}", is_error=True)
@@ -504,7 +562,11 @@ def _create_file_ops(registry: ToolRegistry) -> None:
             return ToolResult("error: command is required", is_error=True)
         cwd = str(args.get("cwd", "."))
         try:
-            root = registry._resolve_path(cwd) if cwd != "." else (registry._workspace_root or Path.cwd())
+            root = (
+                registry._resolve_path(cwd)
+                if cwd != "."
+                else (registry._workspace_root or Path.cwd())
+            )
         except ValueError as e:
             return ToolResult(f"error: {e}", is_error=True)
 
@@ -536,7 +598,7 @@ def _create_file_ops(registry: ToolRegistry) -> None:
             if validation.is_warn:
                 result = ToolResult(f"[WARNING: {validation.message}]\n{output or '(no output)'}")
             return result
-        except _aio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             await proc.wait()
             return ToolResult("error: command timed out (30s)", is_error=True)

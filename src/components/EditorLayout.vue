@@ -572,6 +572,19 @@ async function handleSelectionTask(action: string) {
     '',
     rootDir.value || undefined,
     activeFile.value || undefined,
+    [],
+    selection.value.text && activeFile.value
+      ? {
+          selection: {
+            filePath: activeFile.value,
+            startLine: selection.value.startLine,
+            startColumn: selection.value.startCol,
+            endLine: selection.value.endLine,
+            endColumn: selection.value.endCol,
+            text: selection.value.text,
+          },
+        }
+      : undefined,
   )
 }
 

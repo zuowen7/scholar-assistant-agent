@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextlib import suppress
 from pathlib import Path
 
 import pytest
@@ -35,10 +36,8 @@ async def _collect(runtime, msg, timeout=30):
         async for e in runtime.turn(msg):
             events.append(e)
 
-    try:
+    with suppress(TimeoutError):
         await asyncio.wait_for(_run(), timeout=timeout)
-    except TimeoutError:
-        pass
     return events
 
 
@@ -111,6 +110,51 @@ class TestApprovalAutoApprove:
         assert AgentEventType.AWAIT_APPROVAL not in types
         assert AgentEventType.TOOL_RESULT in types
 
+    @pytest.mark.asyncio
+    async def test_selection_scope_rejects_a_stale_paragraph_before_edit(self, workspace: Path):
+        target = workspace / "test.md"
+        target.write_text(
+            "older selected paragraph\ncurrent selected paragraph\n",
+            encoding="utf-8",
+        )
+        provider = MockProvider()
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        session = Session(workspace=str(workspace))
+        rt = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy,
+            session=session,
+            auto_approve=True,
+            edit_scope={
+                "file_path": "test.md",
+                "start_line": 2,
+                "start_column": 1,
+                "end_line": 2,
+                "end_column": 27,
+                "text": "current selected paragraph",
+            },
+        )
+        stale_call = _tool_response(
+            "str_replace",
+            {
+                "file_path": "test.md",
+                "old_string": "older selected paragraph",
+                "new_string": "incorrect replacement",
+            },
+        ).blocks[0]
+
+        events = [event async for event in rt._execute_tool(stale_call)]
+
+        assert target.read_text(encoding="utf-8") == (
+            "older selected paragraph\ncurrent selected paragraph\n"
+        )
+        result_events = [event for event in events if event.type == AgentEventType.TOOL_RESULT]
+        assert len(result_events) == 1
+        assert "current active selection" in result_events[0].data["output"]
+        assert result_events[0].data["is_error"] is True
+
 
 class TestApprovalPause:
     """auto_approve=False 时暂停等审批"""
@@ -163,24 +207,24 @@ class TestApprovalPause:
                 break
         assert found, "Expected AWAIT_APPROVAL event"
         # Wait for completion
-        try:
+        with suppress(TimeoutError):
             await asyncio.wait_for(task, timeout=5)
-        except TimeoutError:
-            pass
         types = [e.type for e in events]
         assert AgentEventType.TOOL_RESULT in types
 
     @pytest.mark.asyncio
     async def test_approval_is_registered_before_event_is_emitted(self, workspace: Path):
-        provider = MockProvider(scenarios=[
-            Scenario(
-                "w",
-                trigger_patterns=["write"],
-                response_factory=lambda m, t: _tool_response(
-                    "write_file", {"file_path": "new.txt", "content": "data"}
+        provider = MockProvider(
+            scenarios=[
+                Scenario(
+                    "w",
+                    trigger_patterns=["write"],
+                    response_factory=lambda m, t: _tool_response(
+                        "write_file", {"file_path": "new.txt", "content": "data"}
+                    ),
                 ),
-            ),
-        ])
+            ]
+        )
         registry = create_default_registry(workspace_root=workspace)
         policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
         rt = ConversationRuntime(
@@ -246,10 +290,8 @@ class TestApprovalPause:
             if e.type == AgentEventType.AWAIT_APPROVAL:
                 rt.approve(e.data.get("id", ""), "deny")
                 break
-        try:
+        with suppress(TimeoutError):
             await asyncio.wait_for(task, timeout=5)
-        except TimeoutError:
-            pass
         types = [e.type for e in events]
         # Denial produces TOOL_ERROR with the deny message
         denied = [
@@ -435,10 +477,8 @@ class TestApprovalRecovery:
         task = asyncio.create_task(_bg_collect())
         await asyncio.sleep(0.3)
         rt.abort()
-        try:
+        with suppress(TimeoutError):
             await asyncio.wait_for(task, timeout=5)
-        except TimeoutError:
-            pass
         types = [e.type for e in events]
         # Should have aborted or completed without hanging
         assert AgentEventType.ABORTED in types or AgentEventType.DONE in types
