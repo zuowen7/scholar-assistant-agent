@@ -414,7 +414,7 @@ class TestApprovalPause:
         assert (workspace / "test.md").read_text(encoding="utf-8") == "second content\n"
 
     @pytest.mark.asyncio
-    async def test_approval_timeout_denies_without_writing(
+    async def test_approval_timeout_expires_without_impersonating_user_denial(
         self,
         workspace: Path,
         monkeypatch: pytest.MonkeyPatch,
@@ -454,9 +454,12 @@ class TestApprovalPause:
             if event.type == AgentEventType.APPROVAL_RECEIVED
         ]
         assert types.count(AgentEventType.AWAIT_APPROVAL) == 1
-        assert decisions == ["deny"]
+        assert decisions == ["timeout"]
         assert AgentEventType.ABORTED in types
         assert AgentEventType.DONE in types
+        serialized_events = " ".join(str(event.data) for event in events).lower()
+        assert "approval timed out" in serialized_events
+        assert "user denied" not in serialized_events
         assert not (workspace / "timed-out.txt").exists()
 
 
@@ -514,3 +517,5 @@ class TestApprovalRecovery:
         types = [e.type for e in events]
         # Should have aborted or completed without hanging
         assert AgentEventType.ABORTED in types or AgentEventType.DONE in types
+        serialized_events = " ".join(str(event.data) for event in events).lower()
+        assert "user denied" not in serialized_events

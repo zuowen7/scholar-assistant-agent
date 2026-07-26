@@ -322,6 +322,9 @@
     "approvalRequest": "Agent 请求执行",
     "approvalEditReason": "Agent 将修改 {path}",
     "userDeniedChange": "用户已拒绝修改 {path}",
+    "approvalTimedOutChange": "修改审批已超时：{path}",
+    "approvalCancelledChange": "修改审批已取消：{path}",
+    "fileEditApprovalTimedOut": "修改审批已超时，未应用任何更改",
     "risk": {
       "safe": "安全",
       "moderate": "中等风险",

@@ -422,6 +422,29 @@ describe('useAgentChat', () => {
       expect(messages.value[1].isStreaming).toBe(false)
     })
 
+    it('shows approval timeout as expiry instead of user rejection', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          makeSseResponse([
+            makeSessionStartedChunk('sess_timeout'),
+            {
+              event: 'aborted',
+              data: { content: 'File edit approval timed out; no changes were applied' },
+            },
+            makeDoneChunk(),
+          ]),
+        ),
+      )
+
+      const { sendMessage, messages } = useAgentChat()
+      await sendMessage('Wait for approval')
+
+      expect(messages.value[1].content).toBe('agent.fileEditApprovalTimedOut')
+      expect(messages.value[1].content).not.toBe('agent.fileEditRejected')
+      expect(messages.value[1].isStreaming).toBe(false)
+    })
+
     it('does not send when already sending', async () => {
       // Simulate sending state
       const fetchMock = vi

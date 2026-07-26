@@ -319,6 +319,9 @@
     "approvalRequest": "Agent requests permission to run",
     "approvalEditReason": "Agent will edit {path}",
     "userDeniedChange": "The change to {path} was denied",
+    "approvalTimedOutChange": "Approval timed out for {path}",
+    "approvalCancelledChange": "Approval was cancelled for {path}",
+    "fileEditApprovalTimedOut": "Approval timed out; no changes were applied",
     "risk": {
       "safe": "Safe",
       "moderate": "Moderate risk",

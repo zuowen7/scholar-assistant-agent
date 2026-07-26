@@ -47,13 +47,27 @@ export interface PendingEdit {
 }
 
 export const activeEdit = ref<PendingEdit | null>(null)
+export const inlineDiffVisible = ref(false)
 
 export function setActiveEdit(edit: PendingEdit): void {
+  inlineDiffVisible.value = false
   activeEdit.value = edit
+}
+
+export function setInlineDiffVisible(visible: boolean): void {
+  inlineDiffVisible.value = visible
 }
 
 export function clearActiveEdit(): void {
   activeEdit.value = null
+  inlineDiffVisible.value = false
+}
+
+export function shouldShowApprovalFallback(
+  hasPendingApproval: boolean,
+  isInlineDiffVisible: boolean,
+): boolean {
+  return hasPendingApproval && !isInlineDiffVisible
 }
 
 export function shouldShowInlineDiff(
@@ -147,8 +161,11 @@ export function useEditorState() {
     aiResult,
     previousContent,
     activeEdit,
+    inlineDiffVisible,
     setActiveEdit,
+    setInlineDiffVisible,
     clearActiveEdit,
+    shouldShowApprovalFallback,
     shouldShowInlineDiff,
     insertTextAtCursor,
     insertImage,
