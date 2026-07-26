@@ -155,6 +155,38 @@ class TestApprovalAutoApprove:
         assert "current active selection" in result_events[0].data["output"]
         assert result_events[0].data["is_error"] is True
 
+    def test_selection_scope_accepts_equivalent_line_endings_and_preserves_boundary(
+        self, workspace: Path
+    ):
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        rt = ConversationRuntime(
+            provider=MockProvider(),
+            tool_registry=registry,
+            permission_policy=policy,
+            session=Session(workspace=str(workspace)),
+            edit_scope={
+                "file_path": "test.md",
+                "start_line": 1,
+                "start_column": 1,
+                "end_line": 3,
+                "end_column": 1,
+                "text": "first\r\nsecond\r\n",
+            },
+        )
+        args = {
+            "file_path": "test.md",
+            "old_string": "first\nsecond",
+            "new_string": "polished\nparagraph",
+        }
+        tool_call = _tool_response("str_replace", args).blocks[0]
+
+        error = rt._apply_edit_scope(tool_call, args)
+
+        assert error is None
+        assert args["old_string"] == "first\r\nsecond\r\n"
+        assert args["new_string"] == "polished\r\nparagraph\r\n"
+
 
 class TestApprovalPause:
     """auto_approve=False 时暂停等审批"""

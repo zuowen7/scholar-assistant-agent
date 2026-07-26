@@ -40,6 +40,19 @@ _APPROVAL_TIMEOUT = 120.0  # 2 分钟等用户审批
 _TOOL_RESULT_MAX_CHARS = 4000
 
 
+def _normalize_line_endings(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _preferred_line_ending(text: str) -> str:
+    for index, char in enumerate(text):
+        if char == "\r":
+            return "\r\n" if index + 1 < len(text) and text[index + 1] == "\n" else "\r"
+        if char == "\n":
+            return "\n"
+    return "\n"
+
+
 class ConversationRuntime:
     """统一 Agent 对话循环（真流式 + 审批暂停）。"""
 
@@ -253,6 +266,12 @@ class ConversationRuntime:
                     )
                     self._auto_save()
 
+                if tool_blocks and full_text:
+                    # Text emitted in a tool-use turn is provisional. Clear it
+                    # from the live answer so "completed" claims and recovery
+                    # narration are not presented as the final response.
+                    yield AgentEvent.warning("", code="tool_turn", reset_stream=True)
+
                 if not tool_blocks:
                     if full_text.strip():
                         yield AgentEvent.response(full_text)
@@ -461,11 +480,24 @@ class ConversationRuntime:
             )
 
         selected_text = str(scope.get("text", ""))
-        if str(args.get("old_string", "")) != selected_text:
+        requested_old_text = str(args.get("old_string", ""))
+        normalized_selection = _normalize_line_endings(selected_text)
+        normalized_requested = _normalize_line_endings(requested_old_text)
+        if normalized_requested.rstrip("\n") != normalized_selection.rstrip("\n"):
             return (
                 "Selection edit blocked: old_string does not equal the current active selection. "
                 "Ignore selections from earlier turns and retry with the exact current text."
             )
+
+        # Coordinates remain the authority. Canonicalize harmless CRLF/LF and
+        # terminal-newline differences so the model does not fall back to a
+        # whole-file write merely because Monaco selected the paragraph break.
+        trailing_newlines = normalized_selection[len(normalized_selection.rstrip("\n")) :]
+        normalized_new = _normalize_line_endings(str(args.get("new_string", ""))).rstrip("\n")
+        normalized_new += trailing_newlines
+        preferred_eol = _preferred_line_ending(selected_text)
+        args["old_string"] = selected_text
+        args["new_string"] = normalized_new.replace("\n", preferred_eol)
 
         requested_file = str(args.get("file_path", ""))
         selected_file = str(scope.get("file_path", ""))

@@ -31,6 +31,32 @@ export interface AgentTurnOptions {
   selection?: AgentSelectionContext
 }
 
+function normalizeAgentSelection(selection: AgentSelectionContext): AgentSelectionContext {
+  if (
+    selection.endColumn !== 1 ||
+    selection.endLine <= selection.startLine ||
+    !/(\r\n|\r|\n)$/.test(selection.text)
+  ) {
+    return selection
+  }
+
+  const terminalEol = selection.text.endsWith('\r\n')
+    ? '\r\n'
+    : selection.text.endsWith('\n')
+      ? '\n'
+      : '\r'
+  const text = selection.text.slice(0, -terminalEol.length)
+  const previousLineBreak = Math.max(text.lastIndexOf('\n'), text.lastIndexOf('\r'))
+  const finalLine = text.slice(previousLineBreak + 1)
+  return {
+    ...selection,
+    endLine: selection.endLine - 1,
+    // JavaScript string length is measured in UTF-16 code units, matching Monaco.
+    endColumn: finalLine.length + 1,
+    text,
+  }
+}
+
 const API_URL = API_BASE
 
 // ── Module-level singleton state — survives page switches ──────────
@@ -317,7 +343,7 @@ export function useAgentChat() {
     abortController?.abort()
     abortController = new AbortController()
 
-    const selection = options.selection
+    const selection = options.selection ? normalizeAgentSelection(options.selection) : undefined
     // A selection edit is an atomic editor operation, not a continuation of
     // earlier chat. Keeping it isolated prevents an older <editor_context>
     // block from becoming the model's edit target.

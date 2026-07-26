@@ -245,7 +245,7 @@ describe('useAgentChat', () => {
       await sendMessage('Earlier question')
       await sendMessage(
         'Polish the selected paragraph',
-        'Current selected paragraph.',
+        'First line\r\nSecond line\r\n',
         '',
         'D:\\paper',
         'D:\\paper\\draft\\main.md',
@@ -254,10 +254,10 @@ describe('useAgentChat', () => {
           selection: {
             filePath: 'D:\\paper\\draft\\main.md',
             startLine: 12,
-            startColumn: 3,
+            startColumn: 1,
             endLine: 14,
-            endColumn: 8,
-            text: 'Current selected paragraph.',
+            endColumn: 1,
+            text: 'First line\r\nSecond line\r\n',
           },
         },
       )
@@ -269,10 +269,10 @@ describe('useAgentChat', () => {
       expect(body.selection).toEqual({
         file_path: 'D:\\paper\\draft\\main.md',
         start_line: 12,
-        start_column: 3,
-        end_line: 14,
-        end_column: 8,
-        text: 'Current selected paragraph.',
+        start_column: 1,
+        end_line: 13,
+        end_column: 12,
+        text: 'First line\r\nSecond line',
       })
     })
 

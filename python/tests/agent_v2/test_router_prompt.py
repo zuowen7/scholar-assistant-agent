@@ -33,6 +33,7 @@ def test_persisted_session_messages_are_available_to_the_history_panel(tmp_path,
         Message(
             role=MessageRole.ASSISTANT,
             blocks=[
+                TextBlock(text="Review is already complete."),
                 ToolUseBlock(id="call_1", name="read_file", input='{"file_path":"draft.md"}'),
             ],
         )
@@ -59,6 +60,7 @@ def test_persisted_session_messages_are_available_to_the_history_panel(tmp_path,
     assert messages[0]["role"] == "user"
     assert messages[0]["content"] == "Review the draft"
     assert "private draft body" not in messages[0]["content"]
+    assert messages[1]["content"] == ""
     assert messages[1]["events"][0]["metadata"]["tool_name"] == "read_file"
     assert messages[2]["events"][0]["content"] == "draft text"
     assert messages[3]["content"] == "Review complete"
@@ -101,6 +103,7 @@ def test_generated_session_ids_are_unique(tmp_path, monkeypatch):
     from src.agent_v2.providers.mock_provider import MockProvider
 
     monkeypatch.setattr(router, "_SESSION_DIR", tmp_path)
+
     def provider():
         value = MockProvider()
         value.model = "test-model"

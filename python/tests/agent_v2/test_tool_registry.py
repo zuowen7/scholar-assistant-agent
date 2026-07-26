@@ -263,6 +263,29 @@ class TestEdgeCases:
         )
 
     @pytest.mark.asyncio
+    async def test_str_replace_anchor_preserves_crlf_bytes(
+        self, registry: ToolRegistry, temp_workspace: Path
+    ):
+        target = temp_workspace / "crlf.md"
+        target.write_bytes(b"first\r\nsecond\r\nthird\r\n")
+
+        result = await registry.execute(
+            "str_replace",
+            {
+                "file_path": "crlf.md",
+                "old_string": "first\r\nsecond",
+                "new_string": "polished\r\nparagraph",
+                "start_line": 1,
+                "start_column": 1,
+                "end_line": 2,
+                "end_column": 7,
+            },
+        )
+
+        assert not result.is_error
+        assert target.read_bytes() == b"polished\r\nparagraph\r\nthird\r\n"
+
+    @pytest.mark.asyncio
     async def test_tr027_read_large_file(self, registry: ToolRegistry, temp_workspace: Path):
         """TR-027: 读取超大文件不 OOM"""
         big = temp_workspace / "big.txt"
