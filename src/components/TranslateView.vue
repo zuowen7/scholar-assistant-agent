@@ -186,6 +186,10 @@
             <button v-if="state.ragIngested" type="button" @click="$emit('open-agent-docs')">
               {{ t('translate.addedToLibrary') }}
             </button>
+            <span v-else-if="state.ragStatus === 'queued'">{{ t('sources.rag.queued') }}</span>
+            <span v-else-if="state.ragStatus === 'failed'" class="warning-text">{{
+              t('sources.rag.failed')
+            }}</span>
             <span v-if="state.misalignedChunks > 0" class="warning-text">{{
               t('translate.misalignedChunks', { count: state.misalignedChunks })
             }}</span>

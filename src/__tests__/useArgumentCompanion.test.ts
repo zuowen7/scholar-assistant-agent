@@ -284,6 +284,32 @@ describe('useArgumentCompanion', () => {
       expect(companion.state.ledgerStale).toBe(false)
       vi.useRealTimers()
     })
+
+    it('marks a review stale after the reviewed document changes', async () => {
+      vi.useFakeTimers()
+      const companion = useArgumentCompanion()
+      companion.setDoc('doc1', 'Test Paper')
+      companion.state.review = {
+        id: 'review-1',
+        doc_id: 'doc1',
+        doc_title: 'Test Paper',
+        venue: null,
+        persona: 'reviewer2',
+        checks: ['llm'],
+        points: [],
+        anchors: [],
+        doc_hash: 'reviewed_hash',
+        created_at: Date.now() / 1000,
+      }
+      companion.state.reviewStale = false
+
+      companion.onEditorEdit('changed text')
+      vi.advanceTimersByTime(1600)
+      await Promise.resolve()
+
+      expect(companion.state.reviewStale).toBe(true)
+      vi.useRealTimers()
+    })
   })
 
   // ── setDoc ───────────────────────────────────────────────────────────────

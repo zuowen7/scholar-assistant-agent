@@ -125,6 +125,13 @@ describe('ReviewerThread', () => {
     expect(wrapper.find('[data-anchor-btn]').exists()).toBe(false)
   })
 
+  it('emits the concrete review point for Agent-assisted repair', async () => {
+    const point = makePoint({ title: 'Weak evidence' })
+    const wrapper = mount(ReviewerThread, { props: { point } })
+    await wrapper.find('[data-agent-fix]').trigger('click')
+    expect(wrapper.emitted('askAgent')?.[0]).toEqual([point])
+  })
+
   it('emits updatePointStatus when status dropdown changes', async () => {
     const wrapper = mount(ReviewerThread, {
       props: { point: makePoint({ status: 'open' }) },

@@ -83,8 +83,85 @@ class TestProjectTemplates:
             assert "name" in tpl
 
 
+class TestProjectSources:
+    @staticmethod
+    def _create_project(client, location: Path) -> Path:
+        response = client.post(
+            "/api/project/create",
+            json={
+                "name": "SourceProject",
+                "location": str(location),
+                "template_id": "research_paper",
+                "init_git": False,
+            },
+        )
+        assert response.status_code == 200
+        return Path(response.json()["project_path"])
+
+    def test_source_manifest_is_project_scoped_and_persisted(self, client, location: Path):
+        project_path = self._create_project(client, location)
+        response = client.post(
+            "/api/project/sources",
+            json={
+                "project_path": str(project_path),
+                "title": "A translated paper",
+                "original_path": "paper.pdf",
+                "translated_path": "paper.zh.md",
+                "translation_task_id": "task-1",
+                "rag_status": "queued",
+            },
+        )
+        assert response.status_code == 200
+        source = response.json()
+        assert source["id"].startswith("src_")
+        assert source["rag_status"] == "queued"
+
+        listed = client.get(
+            "/api/project/sources",
+            params={"project_path": str(project_path)},
+        )
+        assert listed.status_code == 200
+        assert listed.json()["sources"] == [source]
+        assert (project_path / ".yanmo" / "sources.json").is_file()
+
+    def test_source_upsert_preserves_identity_and_created_at(self, client, location: Path):
+        project_path = self._create_project(client, location)
+        created = client.post(
+            "/api/project/sources",
+            json={"project_path": str(project_path), "title": "Paper"},
+        ).json()
+        updated = client.post(
+            "/api/project/sources",
+            json={
+                "project_path": str(project_path),
+                "source_id": created["id"],
+                "title": "Paper",
+                "rag_status": "ready",
+                "reading_status": "read",
+                "cited": True,
+            },
+        )
+        assert updated.status_code == 200
+        payload = updated.json()
+        assert payload["id"] == created["id"]
+        assert payload["created_at"] == created["created_at"]
+        assert payload["rag_status"] == "ready"
+        assert payload["reading_status"] == "read"
+        assert payload["cited"] is True
+
+    def test_sources_require_a_real_project(self, client, location: Path):
+        non_project = location / "plain-folder"
+        non_project.mkdir()
+        response = client.get(
+            "/api/project/sources",
+            params={"project_path": str(non_project)},
+        )
+        assert response.status_code == 404
+
+
 def test_project_path_rejects_prefix_sibling(tmp_path: Path):
     from fastapi import HTTPException
+
     from routers.project import _validate_project_path
 
     allowed = tmp_path / "allowed"

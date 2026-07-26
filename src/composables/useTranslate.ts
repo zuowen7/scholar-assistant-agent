@@ -54,9 +54,13 @@ function createState(): TranslateState {
     chunks: [],
     errorMessage: null,
     taskId: null,
+    sourceName: '',
+    sourcePath: null,
+    outputPath: null,
     fallbackChunks: 0,
     misalignedChunks: 0,
     ragIngested: false,
+    ragStatus: 'unavailable',
     qaWarnings: [],
     sectionMap: {},
   }
@@ -68,6 +72,7 @@ let crashListener: UnlistenFn | null = null
 let backendAvailabilityError = false
 let _currentStreamId = 0
 let _isReconnecting = false
+let ragStatusTimer: ReturnType<typeof setTimeout> | null = null
 
 function reset(): void {
   if (abortController) {
@@ -77,7 +82,32 @@ function reset(): void {
   _currentStreamId++
   _isReconnecting = false
   backendAvailabilityError = false
+  if (ragStatusTimer) {
+    clearTimeout(ragStatusTimer)
+    ragStatusTimer = null
+  }
   Object.assign(state, createState())
+}
+
+async function refreshRagStatus(attempt = 0): Promise<void> {
+  if (!state.taskId || state.ragStatus !== 'queued') return
+  try {
+    const response = await fetch(
+      `${API_URL}/api/translate/${encodeURIComponent(state.taskId)}/rag-status`,
+    )
+    if (response.ok) {
+      const data = (await response.json()) as { status?: TranslateState['ragStatus'] }
+      if (data.status) {
+        state.ragStatus = data.status
+        state.ragIngested = data.status === 'ready'
+      }
+    }
+  } catch {
+    // Keep the queued state; the task center can retry without misreporting success.
+  }
+  if (state.ragStatus === 'queued' && attempt < 20) {
+    ragStatusTimer = setTimeout(() => void refreshRagStatus(attempt + 1), 1500)
+  }
 }
 
 function cleanup(): void {
@@ -412,13 +442,21 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
       )
       break
     case 'translate.complete':
+      state.taskId = (data.task_id as string) || state.taskId
+      state.sourceName = (data.source_name as string) || state.sourceName
+      state.sourcePath = (data.source_path as string) || state.sourcePath
       state.finalContent = (data.content as string) ?? ''
+      state.outputPath = (data.output_path as string) ?? null
       // complete 事件用最终的 blocks 覆盖（修正流式过程中可能的不一致）
       if (data.blocks) {
         state.blocks = data.blocks as BlockData[]
       }
       state.chunks = (data.chunks as { original: string; translated: string }[]) ?? []
       state.ragIngested = (data.rag_ingested as boolean) ?? false
+      state.ragStatus =
+        (data.rag_status as TranslateState['ragStatus']) ||
+        (state.ragIngested ? 'ready' : 'unavailable')
+      if (state.ragStatus === 'queued') void refreshRagStatus()
       setStatus('done')
       if (state.fallbackChunks > 0 || state.misalignedChunks > 0) {
         const parts: string[] = []
@@ -500,6 +538,7 @@ function stepToStatus(step: number): TranslateStatus {
 const MAX_UPLOAD_SIZE = 200 * 1024 * 1024 // 200 MB, 与后端保持一致
 async function translate(file: File): Promise<void> {
   reset()
+  state.sourceName = file.name
   setStatus('uploading')
   state.stepMessage = i18n.global.t('errors.uploading')
 
@@ -546,6 +585,8 @@ async function uploadPdfByPath(filePath: string): Promise<string> {
 
 async function translateFromPath(filePath: string): Promise<void> {
   reset()
+  state.sourcePath = filePath
+  state.sourceName = filePath.split(/[\\/]/).pop() || filePath
   setStatus('uploading')
   state.stepMessage = i18n.global.t('errors.uploading')
 

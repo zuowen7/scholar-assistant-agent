@@ -119,6 +119,9 @@
     "ledgerSubtitle": "Verify that claims from the abstract and introduction are fulfilled by evidence, methods, or experiments",
     "experimentSuggestion": "Suggested experiment",
     "generalReview": "General review",
+    "reviewVersion": "Review target: {title} · based on {time}",
+    "reviewStale": "The draft changed after this review",
+    "reviewAgain": "Review again",
     "importReview": "Import real review",
     "argumentMap": "Argument Map",
     "reviewing": "Reviewing…",
@@ -259,7 +262,7 @@
     "translationComplete": "Translation Complete",
     "blocksAndParagraphs": "{blocks} blocks · {paragraphs} paragraphs",
     "misalignedChunks": "{count} chunks alignment fallback",
-    "addedToLibrary": "Added to Library",
+    "addedToLibrary": "RAG ready",
     "export": "Export",
     "newTranslate": "New Translation",
     "retryFailed": "Retry failed (HTTP {status})",
@@ -1183,6 +1186,8 @@
   "reviewerThread": {
     "anchorSource": "Anchored source",
     "locate": "Locate",
+    "askAgentFix": "Ask Agent to fix",
+    "markHandled": "Mark handled",
     "collapse": "Collapse",
     "expandFull": "Expand Full Text",
     "locateText": "Locate in Source",
@@ -1223,6 +1228,38 @@
     "low": "Low",
     "medium": "Medium",
     "high": "High"
+  },
+  "sources": {
+    "title": "Project Sources",
+    "subtitle": "{count} sources in this project",
+    "addOnly": "Add only",
+    "translateAndAdd": "Translate and add",
+    "unread": "Unread",
+    "translated": "Translated",
+    "cited": "Cited",
+    "originalOnly": "Original only",
+    "markRead": "Mark read",
+    "markUnread": "Mark unread",
+    "markCited": "Mark cited",
+    "emptyTitle": "No project sources yet",
+    "emptyDescription": "Import a paper or attach a bilingual translation and its RAG status to this project.",
+    "backToLibrary": "Back to library",
+    "backgroundHint": "Translation continues as a background task when you leave this view.",
+    "addCurrentTranslation": "Add to current project",
+    "added": "Added to project sources",
+    "addFailed": "Could not add source",
+    "rag": {
+      "unavailable": "Not in RAG",
+      "queued": "RAG ingestion queued",
+      "ready": "RAG ready",
+      "failed": "RAG ingestion failed"
+    }
+  },
+  "tasks": {
+    "title": "Background tasks",
+    "running": "Running",
+    "queued": "Queued",
+    "failed": "Failed"
   },
   "project": {
     "removeRecent": "Remove from recent",

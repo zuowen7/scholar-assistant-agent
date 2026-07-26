@@ -20,8 +20,13 @@
       @settings="$emit('settings')"
       @agent="$emit('agent')"
     />
-    <main class="app-shell-main"><slot /></main>
-    <slot name="assistant" />
+    <div class="shell-workspace">
+      <div class="shell-content">
+        <main class="app-shell-main"><slot /></main>
+        <slot name="assistant" />
+      </div>
+      <slot name="tasks" />
+    </div>
     <div class="shell-window-controls" :aria-label="t('shell.windowControls')">
       <button
         type="button"
@@ -144,6 +149,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleZoomShortcut))
   min-width: 0;
   display: flex;
   background: var(--c-app-bg);
+}
+.shell-workspace {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.shell-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
 }
 .app-shell-main {
   flex: 1;

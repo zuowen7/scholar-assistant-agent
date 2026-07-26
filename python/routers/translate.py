@@ -107,7 +107,8 @@ def register_translate(
     def _cleanup_tasks() -> None:
         max_tasks, _, _ = _get_limits()
         done_ids = [
-            tid for tid, t in tasks.items()
+            tid
+            for tid, t in tasks.items()
             if t["status"] in ("done", "done_with_warnings", "error")
         ]
         if len(done_ids) <= max_tasks:
@@ -157,9 +158,7 @@ def register_translate(
                 tasks[tid]["status"] = "error"
                 tasks[tid]["error"] = "任务超时未启动"
             has_running = any(
-                t["status"] in ("running", "pending")
-                for tid, t in tasks.items()
-                if tid != task_id
+                t["status"] in ("running", "pending") for tid, t in tasks.items() if tid != task_id
             )
             if has_running:
                 raise HTTPException(409, "已有翻译任务在运行，请等待完成")
@@ -267,6 +266,8 @@ def register_translate(
                     "content": None,
                     "error": None,
                     "filename": file.filename or "unknown",
+                    "source_path": None,
+                    "rag_status": "unavailable",
                     "blocks": None,
                     "layout_doc": None,
                 }
@@ -310,6 +311,9 @@ def register_translate(
                     "output_path": None,
                     "content": None,
                     "error": None,
+                    "filename": file_path.name,
+                    "source_path": str(file_path),
+                    "rag_status": "unavailable",
                     "blocks": None,
                     "layout_doc": None,
                 }
@@ -818,7 +822,7 @@ def register_translate(
                 for c in block_result.chunks
             ]
 
-            rag_ingested = False
+            rag_status = "unavailable"
             try:
                 _ensure_fn = _state.get("ensure_rag_store")
                 rs = (
@@ -827,6 +831,8 @@ def register_translate(
                     else _state.get("rag_store_getter", lambda: None)()
                 )
                 if rs is not None:
+                    task["rag_status"] = "queued"
+                    rag_status = "queued"
                     src_lang = config.get("translator", {}).get("source_lang", "en")
                     src_label = "英文" if src_lang == "en" else src_lang
                     original_text = "\n\n".join(b.text for b in all_blocks if b.translatable)
@@ -859,12 +865,15 @@ def register_translate(
                                         documents=[dual_text],
                                         metadatas=[_metadata],
                                     )
+                                task["rag_status"] = "ready"
                                 logger.info("翻译结果已自动入库 RAG: trans_%s", _task_id_str)
                             except Exception as exc:
+                                task["rag_status"] = "failed"
                                 logger.warning("翻译结果入库 RAG 失败: %s", exc)
 
                     _bg_task = asyncio.create_task(_bg_ingest())
                     _background_tasks.add(_bg_task)
+
                     def _log_bg_exc(t: asyncio.Task) -> None:
                         _background_tasks.discard(t)
                         if not t.cancelled() and t.exception():
@@ -873,8 +882,9 @@ def register_translate(
                             )
 
                     _bg_task.add_done_callback(_log_bg_exc)
-                    rag_ingested = True
             except Exception as rag_err:
+                task["rag_status"] = "failed"
+                rag_status = "failed"
                 logger.warning("翻译结果入库 RAG 准备失败（不影响翻译）: %s", rag_err)
 
             yield {
@@ -882,9 +892,13 @@ def register_translate(
                 "data": json.dumps(
                     {
                         "task_id": task_id,
+                        "source_name": task.get("filename", "unknown"),
+                        "source_path": task.get("source_path"),
                         "output_path": str(out_path),
                         "content": content,
-                        "rag_ingested": rag_ingested,
+                        # Deprecated boolean stays truthful: queueing is not ingestion.
+                        "rag_ingested": task.get("rag_status") == "ready",
+                        "rag_status": task.get("rag_status", rag_status),
                         "block_ids": [b.block_id for b in task.get("blocks", []) or []]
                         if task.get("blocks")
                         else None,
@@ -946,6 +960,12 @@ def register_translate(
             _wrapped(),
             media_type="text/event-stream",
         )
+
+    @app.get("/api/translate/{task_id}/rag-status")
+    def translation_rag_status(task_id: str):
+        if task_id not in tasks:
+            raise HTTPException(404, "任务不存在")
+        return {"task_id": task_id, "status": tasks[task_id].get("rag_status", "unavailable")}
 
     @app.get("/api/config")
     def get_config():
