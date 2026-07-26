@@ -76,7 +76,7 @@
         :provider="shellProvider"
         :model="shellModel"
         :model-online="shellModelOnline"
-        @navigate="workspace.navigate"
+        @navigate="handleWorkspaceNavigate"
         @home="workspace.goHome"
         @settings="openLegacySettings"
         @agent="workspace.toggleAgentDock()"
@@ -86,11 +86,17 @@
           <KeepAlive>
             <HomeView v-if="location.kind === 'home'" key="home" :is-dark="isDark" />
             <TranslateView
-              v-else-if="
-                location.kind === 'standalone-translation' ||
-                (location.kind === 'workspace' && location.section === 'sources')
-              "
+              v-else-if="location.kind === 'standalone-translation'"
               key="translate"
+              :health-ok="healthOk"
+              :backend-restarting="backendRestarting"
+              :read-settings="readSettings"
+              @restart-backend="handleRestartBackend"
+              @open-agent-docs="openAgentDocs"
+            />
+            <SourceLibraryView
+              v-else-if="location.kind === 'workspace' && location.section === 'sources'"
+              key="sources"
               :health-ok="healthOk"
               :backend-restarting="backendRestarting"
               :read-settings="readSettings"
@@ -118,6 +124,7 @@
             @switch-to-editor="workspace.navigate('draft')"
           />
         </template>
+        <template #tasks><TaskCenter /></template>
       </AppShell>
 
       <SettingsCenter
@@ -205,6 +212,7 @@ import EditorLayout from './components/EditorLayout.vue'
 import HomeView from './components/HomeView.vue'
 import AgentPanel from './components/AgentPanel.vue'
 import AppShell from './components/shell/AppShell.vue'
+import TaskCenter from './components/TaskCenter.vue'
 import SettingsCenter from './components/settings/SettingsCenter.vue'
 import InkBrushLoader from './components/InkBrushLoader.vue'
 import UiButton from './components/ui/UiButton.vue'
@@ -225,6 +233,7 @@ import { useAppTheme } from './composables/useAppTheme'
 import { useAppWindow } from './composables/useAppWindow'
 
 const TranslateView = defineAsyncComponent(() => import('./components/TranslateView.vue'))
+const SourceLibraryView = defineAsyncComponent(() => import('./components/SourceLibraryView.vue'))
 const ReviewerWorkspace = defineAsyncComponent(
   () => import('./components/argument/ReviewerWorkspace.vue'),
 )
@@ -265,6 +274,14 @@ const shellProjectName = computed(
   () =>
     currentProject.value?.name || workspaceRoot.value?.split(/[\\/]/).filter(Boolean).pop() || null,
 )
+
+function handleWorkspaceNavigate(section: WorkspaceSection) {
+  if (section === 'sources' && !currentProject.value) {
+    workspace.openStandaloneTranslation()
+    return
+  }
+  workspace.navigate(section)
+}
 
 const shellProvider = computed(() =>
   engineType.value === 'cloud'

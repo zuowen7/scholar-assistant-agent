@@ -31,6 +31,7 @@ interface CompanionState {
   building: boolean
   ledgerStale: boolean
   review: ReviewSession | null
+  reviewStale: boolean
   reviewList: ReviewSummary[]
   reviewing: boolean
   rebuttalSending: string // point_id or ''
@@ -44,6 +45,7 @@ const state = reactive<CompanionState>({
   building: false,
   ledgerStale: false,
   review: null,
+  reviewStale: false,
   reviewList: [],
   reviewing: false,
   rebuttalSending: '',
@@ -255,6 +257,7 @@ async function runReview(
     state.docTitle = 'Untitled'
   }
   state.reviewing = true
+  state.reviewStale = false
   // Initialize review immediately so points appear live as they stream in
   state.review = {
     id: '',
@@ -510,10 +513,12 @@ function focusFromGutter(kind: 'promise' | 'point', id: string): void {
 function onEditorEdit(text: string): void {
   if (_debounceTimer !== null) clearTimeout(_debounceTimer)
   _debounceTimer = setTimeout(() => {
-    if (!state.ledger) return
     const currentHash = simpleHash(text)
-    if (state.ledger.doc_hash !== currentHash) {
+    if (state.ledger && state.ledger.doc_hash !== currentHash) {
       state.ledgerStale = true
+    }
+    if (state.review && state.review.doc_hash !== currentHash) {
+      state.reviewStale = true
     }
   }, 1500)
 }
@@ -527,6 +532,7 @@ function setDoc(docId: string, docTitle: string): void {
   state.ledger = null
   state.ledgerStale = false
   state.review = null
+  state.reviewStale = false
   state.reviewList = []
   // Fetch existing ledger/reviews in background
   getLedger()
@@ -542,6 +548,7 @@ export function _resetForTesting(): void {
   state.building = false
   state.ledgerStale = false
   state.review = null
+  state.reviewStale = false
   state.reviewList = []
   state.reviewing = false
   state.rebuttalSending = ''

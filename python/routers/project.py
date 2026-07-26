@@ -13,7 +13,7 @@ import tempfile
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -70,6 +70,19 @@ class RecentProjectEntry(BaseModel):
 class DetectResponse(BaseModel):
     is_project: bool
     metadata: dict[str, Any] | None = None
+
+
+class ProjectSourceUpsert(BaseModel):
+    project_path: str = Field(min_length=1, max_length=1000)
+    source_id: str | None = Field(default=None, max_length=64)
+    title: str = Field(min_length=1, max_length=500)
+    original_path: str | None = Field(default=None, max_length=2000)
+    translated_path: str | None = Field(default=None, max_length=2000)
+    translation_task_id: str | None = Field(default=None, max_length=128)
+    rag_status: Literal["unavailable", "queued", "ready", "failed"] = "unavailable"
+    reading_status: Literal["unread", "reading", "read"] = "unread"
+    cited: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 # ── Template loader ──────────────────────────────────────────────────────
@@ -243,6 +256,60 @@ def _add_recent(data_root: Path, project_path: str, name: str, template_id: str)
         },
     )
     _write_recent(data_root, entries[:_MAX_RECENT])
+
+
+# ── Project sources ──────────────────────────────────────────────────────
+
+
+def _source_manifest(project_path: Path) -> Path:
+    return project_path / ".yanmo" / "sources.json"
+
+
+def _require_project(project_path: str) -> Path:
+    resolved = _validate_project_path(project_path)
+    if not (resolved / ".yanmo" / "project.json").is_file():
+        raise HTTPException(404, f"项目元数据不存在: {project_path}")
+    return resolved
+
+
+def _read_sources(project_path: Path) -> list[dict[str, Any]]:
+    manifest = _source_manifest(project_path)
+    if not manifest.exists():
+        return []
+    try:
+        payload = json.loads(manifest.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise HTTPException(500, f"读取项目文献清单失败: {exc}")
+    sources = payload.get("sources", []) if isinstance(payload, dict) else []
+    return [item for item in sources if isinstance(item, dict)]
+
+
+def _upsert_source(req: ProjectSourceUpsert) -> dict[str, Any]:
+    project_path = _require_project(req.project_path)
+    sources = _read_sources(project_path)
+    now = datetime.now(UTC).isoformat()
+    source_id = req.source_id or f"src_{uuid.uuid4().hex[:16]}"
+    existing = next((item for item in sources if item.get("id") == source_id), None)
+    created_at = existing.get("created_at", now) if existing else now
+    source = {
+        "id": source_id,
+        "title": req.title.strip(),
+        "original_path": req.original_path,
+        "translated_path": req.translated_path,
+        "translation_task_id": req.translation_task_id,
+        "rag_status": req.rag_status,
+        "reading_status": req.reading_status,
+        "cited": req.cited,
+        "metadata": req.metadata,
+        "created_at": created_at,
+        "updated_at": now,
+    }
+    if existing:
+        sources[sources.index(existing)] = source
+    else:
+        sources.insert(0, source)
+    atomic_write_json(_source_manifest(project_path), {"version": 1, "sources": sources})
+    return source
 
 
 # ── Git ──────────────────────────────────────────────────────────────────
@@ -759,5 +826,13 @@ def register_project(
                 data_root, str(resolved), metadata.get("name", ""), metadata.get("template_id", "")
             )
         return metadata
+
+    @app.get("/api/project/sources")
+    def list_project_sources(project_path: str):
+        return {"sources": _read_sources(_require_project(project_path))}
+
+    @app.post("/api/project/sources")
+    def upsert_project_source(req: ProjectSourceUpsert):
+        return _upsert_source(req)
 
     return {}

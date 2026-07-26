@@ -105,12 +105,17 @@ export interface TranslateState {
   chunks: { original: string; translated: string }[]
   errorMessage: string | null
   taskId: string | null
+  sourceName: string
+  sourcePath: string | null
+  outputPath: string | null
   /** Number of chunks that fell back to original text due to translation failure */
   fallbackChunks: number
   /** Number of chunks where LLM output paragraph count != input block count */
   misalignedChunks: number
   /** Whether translation was successfully ingested into RAG knowledge base */
   ragIngested: boolean
+  /** Truthful background ingestion lifecycle; queued is not equivalent to ready. */
+  ragStatus: 'unavailable' | 'queued' | 'ready' | 'failed'
   /** QA warnings from post-translation checks (P0) */
   qaWarnings: QAWarning[]
   /** Section type tracking per chunk (P0) */

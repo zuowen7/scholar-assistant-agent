@@ -308,8 +308,8 @@ class TestTranslateSSEPipeline:
             for field in ("block_id", "type", "translatable", "original", "translated"):
                 assert field in data, f"Missing field '{field}' in block_translated event"
 
-    def test_rag_ingested_true_in_complete_event(self, client):
-        """translate.complete 事件中 rag_ingested 为 True（知识库自动入库）。"""
+    def test_rag_status_in_complete_event_is_truthful(self, client):
+        """translate.complete 区分排队与真正完成，不能把后台排队报告成已入库。"""
         from src.translator.block_translator import BlockTranslation, ChunkBlockResult
 
         mock_cr = ChunkBlockResult(
@@ -338,8 +338,12 @@ class TestTranslateSSEPipeline:
 
         data = json.loads(complete_events[0]["data"])
         assert "rag_ingested" in data, "rag_ingested field missing from translate.complete"
-        # rag_ingested depends on chromadb being available; both True and False are acceptable
+        assert data["rag_status"] in {"unavailable", "queued", "ready", "failed"}
         assert isinstance(data["rag_ingested"], bool)
+        assert data["rag_ingested"] is (data["rag_status"] == "ready")
+        status_response = client.get(f"/api/translate/{task_id}/rag-status")
+        assert status_response.status_code == 200
+        assert status_response.json()["status"] in {"unavailable", "queued", "ready", "failed"}
 
     def test_rag_documents_list_includes_translated_file(self, client):
         """翻译完成后 /api/rag/documents 包含刚入库的文档（知识库 UI 列表）。"""

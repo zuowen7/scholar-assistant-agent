@@ -70,9 +70,13 @@ describe('TranslateState default shape', () => {
     chunks: [],
     errorMessage: null,
     taskId: null,
+    sourceName: '',
+    sourcePath: null,
+    outputPath: null,
     fallbackChunks: 0,
     misalignedChunks: 0,
     ragIngested: false,
+    ragStatus: 'unavailable',
     qaWarnings: [],
     sectionMap: {},
   }

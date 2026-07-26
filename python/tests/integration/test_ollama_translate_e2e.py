@@ -241,7 +241,8 @@ class TestOllamaTranslationPipeline:
         assert complete_events
 
         data = json.loads(complete_events[0]["data"])
-        assert data.get("rag_ingested") is True
+        assert data.get("rag_status") in {"queued", "ready"}
+        assert data.get("rag_ingested") is (data.get("rag_status") == "ready")
 
     def test_download_after_real_translation(self, client):
         """After real translation completes, download should return the file."""

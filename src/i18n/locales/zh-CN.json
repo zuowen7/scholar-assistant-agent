@@ -122,6 +122,9 @@
     "ledgerSubtitle": "核对摘要与引言中的主张是否在正文中得到证据、方法或实验兑现",
     "experimentSuggestion": "补齐实验建议",
     "generalReview": "通用审稿",
+    "reviewVersion": "审阅对象：{title} · 基于 {time}",
+    "reviewStale": "正文已修改，此审阅可能过期",
+    "reviewAgain": "重新审阅",
     "importReview": "导入真实评审",
     "argumentMap": "论证图谱",
     "reviewing": "审稿中…",
@@ -262,7 +265,7 @@
     "translationComplete": "翻译完成",
     "blocksAndParagraphs": "{blocks} 块 · {paragraphs} 段",
     "misalignedChunks": "{count} 块对齐回退",
-    "addedToLibrary": "已加入文献库",
+    "addedToLibrary": "RAG 已就绪",
     "export": "导出",
     "newTranslate": "新翻译",
     "retryFailed": "重试失败 (HTTP {status})",
@@ -1186,6 +1189,8 @@
   "reviewerThread": {
     "anchorSource": "锚定原文",
     "locate": "定位",
+    "askAgentFix": "交给 Agent 修改",
+    "markHandled": "标记为已处理",
     "collapse": "收起",
     "expandFull": "展开全文",
     "locateText": "定位原文",
@@ -1226,6 +1231,38 @@
     "low": "低",
     "medium": "中",
     "high": "高"
+  },
+  "sources": {
+    "title": "项目文献",
+    "subtitle": "当前项目共 {count} 篇文献",
+    "addOnly": "仅入库",
+    "translateAndAdd": "翻译后入库",
+    "unread": "待读",
+    "translated": "已翻译",
+    "cited": "已引用",
+    "originalOnly": "原始文献",
+    "markRead": "标为已读",
+    "markUnread": "标为待读",
+    "markCited": "标记引用",
+    "emptyTitle": "项目文献库为空",
+    "emptyDescription": "导入论文，或翻译后将双语结果与 RAG 状态归入当前项目。",
+    "backToLibrary": "返回文献库",
+    "backgroundHint": "翻译会作为后台任务继续运行，离开本页不会中断。",
+    "addCurrentTranslation": "加入当前项目",
+    "added": "已加入项目文献库",
+    "addFailed": "加入项目文献库失败",
+    "rag": {
+      "unavailable": "未入库 RAG",
+      "queued": "RAG 入库排队中",
+      "ready": "RAG 已就绪",
+      "failed": "RAG 入库失败"
+    }
+  },
+  "tasks": {
+    "title": "后台任务",
+    "running": "执行中",
+    "queued": "排队中",
+    "failed": "失败"
   },
   "project": {
     "removeRecent": "从最近移除",

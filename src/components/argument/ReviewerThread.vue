@@ -52,6 +52,22 @@
       {{ detailExpanded ? t('reviewerThread.collapse') : t('reviewerThread.expandFull') }}
     </button>
 
+    <div class="point-actions">
+      <button v-if="point.anchor_id" type="button" @click="$emit('focusAnchor', point.anchor_id!)">
+        {{ t('reviewerThread.locate') }}
+      </button>
+      <button type="button" class="primary" data-agent-fix @click="$emit('askAgent', point)">
+        {{ t('reviewerThread.askAgentFix') }}
+      </button>
+      <button
+        v-if="point.status === 'open'"
+        type="button"
+        @click="$emit('updatePointStatus', 'accepted')"
+      >
+        {{ t('reviewerThread.markHandled') }}
+      </button>
+    </div>
+
     <!-- Anchor -->
     <button
       v-if="point.anchor_id"
@@ -152,6 +168,7 @@ const emit = defineEmits<{
   focusAnchor: [anchorId: string]
   updatePointStatus: [status: PointStatus]
   rebut: [pointId: string, message: string]
+  askAgent: [point: ReviewPoint]
 }>()
 
 const chatExpanded = ref(false)
@@ -455,6 +472,29 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
 }
 .anchor-jump {
   color: var(--c-accent);
+}
+.point-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+}
+.point-actions button {
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--c-border);
+  border-radius: 6px;
+  background: var(--c-surface-1);
+  color: var(--c-text-2);
+  cursor: pointer;
+}
+.point-actions button:hover {
+  color: var(--c-accent);
+  border-color: var(--c-accent-ring);
+}
+.point-actions button.primary {
+  color: var(--c-accent);
+  background: var(--c-accent-soft);
 }
 
 /* ── Thread ── */

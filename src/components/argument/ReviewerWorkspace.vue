@@ -61,6 +61,26 @@
         </button>
       </AppHeader>
 
+      <div v-if="companion.state.review" class="review-version-strip">
+        <span>
+          {{
+            t('reviewerWorkspace.reviewVersion', {
+              title: activeTab?.name || t('reviewerWorkspace.currentDocument'),
+              time: reviewCreatedAt,
+            })
+          }}
+        </span>
+        <strong v-if="companion.state.reviewStale">{{ t('reviewerWorkspace.reviewStale') }}</strong>
+        <button
+          v-if="companion.state.reviewStale"
+          type="button"
+          :disabled="companion.state.reviewing"
+          @click="runReview"
+        >
+          {{ t('reviewerWorkspace.reviewAgain') }}
+        </button>
+      </div>
+
       <div v-if="showImport" class="import-strip">
         <textarea
           v-model="importText"
@@ -91,7 +111,7 @@
               :aria-label="t('reviewerWorkspace.targetVenue')"
             >
               <option value="">{{ t('reviewerWorkspace.generalReview') }}</option>
-              <option>NeurIPS 2024</option>
+              <option>NeurIPS</option>
               <option>ICML</option>
               <option>ICLR</option>
               <option>ACL</option>
@@ -123,9 +143,10 @@
               :key="point.id"
               :point="point"
               :rebuttal-sending="companion.state.rebuttalSending"
-              @focus-anchor="companion.focusAnchor"
+              @focus-anchor="locateAnchor"
               @update-point-status="(status) => companion.updatePointStatus(point.id, status)"
               @rebut="(pointId, message) => companion.rebut(pointId, message, content)"
+              @ask-agent="askAgentToFix"
             />
           </div>
 
@@ -268,7 +289,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { ListChecks, Network, Sparkles, SquareCheckBig } from 'lucide-vue-next'
 import { useArgumentCompanion } from '../../composables/useArgumentCompanion'
 import { useEditorState } from '../../composables/useEditorState'
@@ -282,14 +303,21 @@ import SegmentedControl from '../shell/SegmentedControl.vue'
 import StatusBadge from '../shell/StatusBadge.vue'
 import EmptyState from '../shell/EmptyState.vue'
 import { useI18n } from 'vue-i18n'
+import { useAgentChat } from '../../composables/useAgentChat'
+import { useFileTree } from '../../composables/useFileTree'
+import { useWorkspaceNavigation } from '../../composables/useWorkspaceNavigation'
+import type { ReviewPoint } from '../../types'
 
 const { t } = useI18n()
 
 const companion = useArgumentCompanion()
+const agent = useAgentChat()
+const workspace = useWorkspaceNavigation()
+const { rootDir } = useFileTree()
 const { content, activeFile, activeTab } = useEditorState()
 const surface = ref<'reviewer' | 'ledger' | 'map'>('reviewer')
 const filter = ref('all')
-const venue = ref('NeurIPS 2024')
+const venue = ref(localStorage.getItem('yanmo:last-review-venue') || '')
 const persona = ref('reviewer2')
 const reviewMode = ref<'serial' | 'parallel'>('parallel')
 const showImport = ref(false)
@@ -333,10 +361,35 @@ const reviewSubtitle = computed(() => {
 const reviewTip = computed(() =>
   pendingCount.value ? t('reviewerWorkspace.pendingTip') : t('reviewerWorkspace.doneTip'),
 )
+const reviewCreatedAt = computed(() =>
+  companion.state.review?.created_at
+    ? new Date(companion.state.review.created_at * 1000).toLocaleString()
+    : '—',
+)
 
 async function runReview() {
   if (!content.value.trim()) return
+  localStorage.setItem('yanmo:last-review-venue', venue.value)
   await companion.runReview(content.value, venue.value || null, persona.value, reviewMode.value)
+}
+
+async function locateAnchor(anchorId: string) {
+  workspace.navigate('draft')
+  await nextTick()
+  companion.focusAnchor(anchorId)
+}
+
+async function askAgentToFix(point: ReviewPoint) {
+  const anchor = companion.state.review?.anchors.find((item) => item.id === point.anchor_id)
+  workspace.toggleAgentDock(true)
+  await agent.sendMessage(
+    `请根据这条审稿意见修改当前文稿，并先给出可审批的差异：${point.title}\n\n${point.detail}`,
+    anchor?.quote || content.value,
+    '保持论文原意和引用准确；不要静默覆盖未保存内容；修改前必须展示 diff 并等待审批。',
+    rootDir.value || undefined,
+    activeFile.value || undefined,
+    [],
+  )
 }
 
 async function importReviews() {
@@ -419,6 +472,30 @@ function promiseStatus(status: string) {
   color: var(--c-text-3);
   font-size: 10px;
   text-align: center;
+}
+.review-version-strip {
+  min-height: 38px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 20px;
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-surface-1);
+  color: var(--c-text-3);
+  font-size: 11px;
+}
+.review-version-strip strong {
+  color: var(--c-warn);
+}
+.review-version-strip button {
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--c-warn-border);
+  border-radius: 6px;
+  background: var(--c-warn-bg);
+  color: var(--c-warn);
+  cursor: pointer;
 }
 .header-button,
 .empty-action {
