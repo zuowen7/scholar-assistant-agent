@@ -593,6 +593,8 @@ const particleParallaxStyle = computed(() => {
 let dragCounter = 0
 let timer: ReturnType<typeof setInterval> | null = null
 let unlistenDragDrop: (() => void) | null = null
+let lastCloudHealthCheck = 0
+const CLOUD_HEALTH_CHECK_INTERVAL_MS = 60_000
 
 onMounted(async () => {
   window.addEventListener('keydown', handleUiZoomShortcut)
@@ -637,8 +639,10 @@ onMounted(async () => {
       const r = await checkCloudApi()
       cloudOk.value = r.ok
       cloudError.value = r.error ?? null
+      lastCloudHealthCheck = Date.now()
     }
     timer = setInterval(async () => {
+      if (document.hidden) return
       // Backend availability is a global shell concern. Keep polling even when
       // a failed request has moved the feature state to `error`, otherwise the
       // settings drawer can remain falsely "online" and hide its restart action.
@@ -652,6 +656,8 @@ onMounted(async () => {
       if (engineType.value === 'ollama') {
         ollamaOk.value = await checkOllama()
       } else {
+        if (Date.now() - lastCloudHealthCheck < CLOUD_HEALTH_CHECK_INTERVAL_MS) return
+        lastCloudHealthCheck = Date.now()
         const r = await checkCloudApi()
         cloudOk.value = r.ok
         cloudError.value = r.error ?? null

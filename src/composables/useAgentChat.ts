@@ -208,7 +208,14 @@ export function useAgentChat() {
           break
         }
         case 'error':
-          if (!msg.content) msg.content = agentEvent.content || i18n.global.t('errors.unknownError')
+          if (!msg.content) {
+            const errorCode = agentEvent.metadata?.code
+            const translationKey = errorCode ? `agent.runtimeErrors.${errorCode}` : ''
+            msg.content =
+              translationKey && i18n.global.te(translationKey)
+                ? i18n.global.t(translationKey)
+                : agentEvent.content || i18n.global.t('errors.unknownError')
+          }
           msg.isStreaming = false
           msg.events = [...msg.events, agentEvent]
           break

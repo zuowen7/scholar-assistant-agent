@@ -1,11 +1,7 @@
 """SSE 适配层 — 将 AgentEvent 转换为前端可见的 SSE 格式。
 
-前端 useAgentChat.ts 只对 `response` 事件更新 msg.content:
-  case 'response':
-    msg.content = msg.content + data.content
-
-所以把 token/tool_call/tool_result/thought 都映射为 `response` 类型，
-让用户能实时看到 Agent 在做什么。
+保留 token、thought、tool_call、tool_result 等事件类型，并把稳定的工具
+调用 ID、参数和错误状态同步给前端，以支持流式正文、折叠执行摘要和审批。
 """
 
 from __future__ import annotations
@@ -37,15 +33,27 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
     elif t == AgentEventType.TOOL_CALL:
         tool_name = data.get("tool_name", "unknown")
         inp = data.get("input", "")
+        try:
+            args = json.loads(inp) if isinstance(inp, str) and inp else {}
+        except json.JSONDecodeError:
+            args = {}
+        if not isinstance(args, dict):
+            args = {}
         inp_short = inp[:120] + "..." if len(inp) > 120 else inp
         content = f"{tool_name}: {inp_short}"
         evt_type = "tool_call"
         metadata = {
             "tool_name": tool_name,
+            "args": args,
             "input": inp,
             "input_short": inp_short,
         }
-        return {"type": evt_type, "content": content, "event_id": _event_id(), "metadata": metadata}
+        return {
+            "type": evt_type,
+            "content": content,
+            "event_id": data.get("id") or _event_id(),
+            "metadata": metadata,
+        }
     elif t == AgentEventType.TOOL_RESULT:
         out = data.get("output", "")
         out_short = out[:200] + "..." if len(out) > 200 else out
@@ -54,8 +62,14 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
         metadata = {
             "tool_name": data.get("tool_name", ""),
             "is_error": data.get("is_error", False),
+            "error": data.get("is_error", False),
         }
-        return {"type": evt_type, "content": content, "event_id": _event_id(), "metadata": metadata}
+        return {
+            "type": evt_type,
+            "content": content,
+            "event_id": data.get("id") or _event_id(),
+            "metadata": metadata,
+        }
     elif t == AgentEventType.TOOL_DENIED:
         content = data.get("reason", "")
         evt_type = "tool_denied"
@@ -144,6 +158,13 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
     elif t == AgentEventType.ERROR:
         content = data.get("message", "")
         evt_type = "error"
+        metadata = {key: value for key, value in data.items() if key != "message"}
+        return {
+            "type": evt_type,
+            "content": content,
+            "event_id": _event_id(),
+            "metadata": metadata,
+        }
     elif t == AgentEventType.DONE:
         content = ""
         evt_type = "done"

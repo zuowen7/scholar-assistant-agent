@@ -213,8 +213,11 @@ class AgentEvent:
         return AgentEvent(type=AgentEventType.RESPONSE, data={"text": text})
 
     @staticmethod
-    def error(message: str) -> AgentEvent:
-        return AgentEvent(type=AgentEventType.ERROR, data={"message": message})
+    def error(message: str, **metadata: Any) -> AgentEvent:
+        return AgentEvent(
+            type=AgentEventType.ERROR,
+            data={"message": message, **metadata},
+        )
 
     @staticmethod
     def warning(message: str, **metadata: Any) -> AgentEvent:

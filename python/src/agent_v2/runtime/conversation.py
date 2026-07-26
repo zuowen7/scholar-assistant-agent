@@ -38,6 +38,23 @@ logger = logging.getLogger(__name__)
 _DEFAULT_MAX_STEPS = 48
 _APPROVAL_TIMEOUT = 600.0  # 10 分钟等用户审批；超时必须与用户拒绝分开
 _TOOL_RESULT_MAX_CHARS = 4000
+_DEFAULT_MAX_TOOL_CALLS = 32
+_SELECTION_MAX_TOOL_CALLS = 4
+_DEFAULT_MAX_TOOL_ERRORS = 5
+_SELECTION_MAX_TOOL_ERRORS = 2
+_MAX_IDENTICAL_TOOL_CALLS = 2
+_SELECTION_SAFE_TOOLS = frozenset(
+    {
+        "str_replace",
+        "rag_search",
+        "arxiv_search",
+        "web_search",
+        "web_fetch",
+        "read_argument_graph",
+        "read_argument_ledger",
+        "read_reviewer_state",
+    }
+)
 
 
 class _EmptyModelResponse(RuntimeError):
@@ -87,6 +104,12 @@ class ConversationRuntime:
         self._approval_denied = False
         self._approval_stop_reason: str | None = None
         self._aborted = False
+        self._tool_calls_this_turn = 0
+        self._tool_errors_this_turn = 0
+        self._tool_call_counts: dict[str, int] = {}
+        self._tool_stop_reason: str | None = None
+        self._tool_stop_code: str | None = None
+        self._selection_edit_completed = False
         # Lifecycle tracking — used by router._cleanup_pool to evict stale
         # sessions safely (never evict a streaming session).
         self.last_active_monotonic: float = time.monotonic()
@@ -104,6 +127,12 @@ class ConversationRuntime:
 
         self._approval_denied = False
         self._approval_stop_reason = None
+        self._tool_calls_this_turn = 0
+        self._tool_errors_this_turn = 0
+        self._tool_call_counts.clear()
+        self._tool_stop_reason = None
+        self._tool_stop_code = None
+        self._selection_edit_completed = False
         self._is_streaming = True
         self.last_active_monotonic = time.monotonic()
         try:
@@ -120,7 +149,7 @@ class ConversationRuntime:
                     yield AgentEvent.done()
                     return
 
-                recovery_instruction: str | None = None
+                recovery_instruction = self._step_instruction()
                 for retry in range(3):
                     try:
                         async for event in self._llm_turn(
@@ -151,6 +180,14 @@ class ConversationRuntime:
                             )
                             yield AgentEvent.done()
                             return
+                        if self._tool_stop_reason:
+                            self._auto_save()
+                            yield AgentEvent.error(
+                                self._tool_stop_reason,
+                                code=self._tool_stop_code or "tool_loop_stopped",
+                            )
+                            yield AgentEvent.done()
+                            return
                         break
                     except _EmptyModelResponse:
                         if retry < 2:
@@ -161,11 +198,16 @@ class ConversationRuntime:
                                 max_attempts=3,
                                 reset_stream=True,
                             )
-                            recovery_instruction = (
-                                "The previous completion contained reasoning but no final "
-                                "answer or tool call. Continue the same task now. Return a "
-                                "user-facing final answer or invoke the required tool(s). "
-                                "Do not return reasoning alone."
+                            recovery_instruction = "\n\n".join(
+                                part
+                                for part in (
+                                    self._step_instruction(),
+                                    "The previous completion contained reasoning but no final "
+                                    "answer or tool call. Continue the same task now. Return a "
+                                    "user-facing final answer or invoke the required tool(s). "
+                                    "Do not return reasoning alone.",
+                                )
+                                if part
                             )
                             continue
                         yield AgentEvent.error(
@@ -238,11 +280,14 @@ class ConversationRuntime:
         import os
 
         messages = self.session.messages
-        system_prompt = self.system_prompt
+        system_prompt = "\n\n".join(
+            part for part in (self.system_prompt, self._selection_instruction()) if part
+        )
         if recovery_instruction:
             system_prompt = "\n\n".join(
-                part for part in (self.system_prompt, recovery_instruction) if part
+                part for part in (system_prompt, recovery_instruction) if part
             )
+        tool_definitions = self._tool_definitions_for_turn()
 
         use_stream = os.environ.get("SCHOLAR_AGENT_STREAM", "1").strip() == "1"
         provider_stream = None
@@ -250,13 +295,13 @@ class ConversationRuntime:
         if use_stream and hasattr(self.provider, "chat_stream"):
             provider_stream = self.provider.chat_stream(
                 messages=messages,
-                tools=self.tool_registry.definitions(),
+                tools=tool_definitions,
                 system_prompt=system_prompt,
             )
         if provider_stream is None:
             resp = await self.provider.chat(
                 messages=messages,
-                tools=self.tool_registry.definitions(),
+                tools=tool_definitions,
                 system_prompt=system_prompt,
             )
             provider_stream = _fallback_stream(resp)
@@ -323,7 +368,7 @@ class ConversationRuntime:
                 for tb in tool_blocks:
                     async for evt in self._execute_tool(tb):
                         yield evt
-                    if self._approval_denied or self._aborted:
+                    if self._approval_denied or self._aborted or self._tool_stop_reason:
                         return
                 return
 
@@ -335,22 +380,17 @@ class ConversationRuntime:
         except json.JSONDecodeError:
             args = {}
 
+        loop_error = self._check_tool_loop(tb, args)
+        if loop_error:
+            self._append_tool_error(tb, loop_error)
+            self._tool_stop_reason = loop_error
+            yield AgentEvent.tool_result(tb.id, tb.name, loop_error, is_error=True)
+            return
+
         scope_error = self._apply_edit_scope(tb, args)
         if scope_error:
-            self.session.append(
-                Message(
-                    role=MessageRole.TOOL,
-                    blocks=[
-                        ToolResultBlock(
-                            tool_use_id=tb.id,
-                            tool_name=tb.name,
-                            output=scope_error,
-                            is_error=True,
-                        ),
-                    ],
-                )
-            )
-            self._auto_save()
+            self._append_tool_error(tb, scope_error)
+            self._record_tool_error()
             yield AgentEvent.tool_result(tb.id, tb.name, scope_error, is_error=True)
             return
 
@@ -490,9 +530,13 @@ class ConversationRuntime:
         )
         self._auto_save()
         yield AgentEvent.tool_result(tb.id, tb.name, tool_output, is_error=is_error)
+        if is_error:
+            self._record_tool_error()
 
         # Checkpoint after file modifications: include new content for frontend
         if tb.name in ("write_file", "str_replace") and not is_error:
+            if self.edit_scope is not None and tb.name == "str_replace":
+                self._selection_edit_completed = True
             new_content = ""
             if resolved_path:
                 try:
@@ -510,6 +554,92 @@ class ConversationRuntime:
                     "content_truncated": len(new_content) > 10000,
                 }
             )
+
+    def _tool_definitions_for_turn(self) -> list:
+        definitions = self.tool_registry.definitions()
+        if self.edit_scope is None:
+            return definitions
+        if self._selection_edit_completed:
+            return []
+        return [
+            definition for definition in definitions if definition.name in _SELECTION_SAFE_TOOLS
+        ]
+
+    def _selection_instruction(self) -> str | None:
+        if self.edit_scope is None:
+            return None
+        if self._selection_edit_completed:
+            return (
+                "# Active selection status\n"
+                "The active selection has already been modified successfully. "
+                "Do not call any more tools. Return a concise user-facing summary now."
+            )
+        return (
+            "# Active selection rules\n"
+            "The exact selected text in the current user message is authoritative and sufficient. "
+            "Do not read, search, or rewrite the active file. If a modification is requested, make "
+            "one anchored str_replace call using the complete selection as old_string. Never use "
+            "write_file or run_command to edit selected text."
+        )
+
+    def _step_instruction(self) -> str | None:
+        if self.edit_scope is not None and self._selection_edit_completed:
+            return (
+                "The selection edit is complete. Do not call any more tools; provide the final "
+                "concise response."
+            )
+        return None
+
+    def _check_tool_loop(self, tb: ToolUseBlock, args: dict[str, Any]) -> str | None:
+        self._tool_calls_this_turn += 1
+        max_calls = (
+            _SELECTION_MAX_TOOL_CALLS if self.edit_scope is not None else _DEFAULT_MAX_TOOL_CALLS
+        )
+        if self._tool_calls_this_turn > max_calls:
+            self._tool_stop_code = "tool_call_limit"
+            return (
+                f"Agent tool-call limit reached ({max_calls}) before completion. "
+                "The task was stopped to prevent an uncontrolled tool loop."
+            )
+
+        fingerprint = f"{tb.name}:{json.dumps(args, ensure_ascii=False, sort_keys=True)}"
+        count = self._tool_call_counts.get(fingerprint, 0) + 1
+        self._tool_call_counts[fingerprint] = count
+        if count > _MAX_IDENTICAL_TOOL_CALLS:
+            self._tool_stop_code = "repeated_tool_call"
+            return (
+                f"Agent repeated the same tool call more than {_MAX_IDENTICAL_TOOL_CALLS} times. "
+                "The task was stopped instead of retrying indefinitely."
+            )
+        return None
+
+    def _record_tool_error(self) -> None:
+        self._tool_errors_this_turn += 1
+        max_errors = (
+            _SELECTION_MAX_TOOL_ERRORS if self.edit_scope is not None else _DEFAULT_MAX_TOOL_ERRORS
+        )
+        if self._tool_errors_this_turn >= max_errors and self._tool_stop_reason is None:
+            self._tool_stop_code = "tool_error_limit"
+            self._tool_stop_reason = (
+                f"Agent encountered {max_errors} tool errors in this turn. "
+                "The task was stopped so the same failing strategy is not repeated."
+            )
+
+    def _append_tool_error(self, tb: ToolUseBlock, output: str) -> None:
+        self.session.append(
+            Message(
+                role=MessageRole.TOOL,
+                blocks=[
+                    ToolResultBlock(
+                        tool_use_id=tb.id,
+                        tool_name=tb.name,
+                        output=output,
+                        is_error=True,
+                    ),
+                ],
+            )
+        )
+        self._auto_save()
 
     def _apply_edit_scope(self, tb: ToolUseBlock, args: dict[str, Any]) -> str | None:
         """Restrict a selection turn to the exact active Monaco range.
