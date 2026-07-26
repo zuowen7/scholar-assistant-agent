@@ -131,6 +131,16 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
     elif t == AgentEventType.RESPONSE:
         content = data.get("text", "")
         evt_type = "response"
+    elif t == AgentEventType.WARNING:
+        content = data.get("message", "")
+        evt_type = "warning"
+        metadata = {key: value for key, value in data.items() if key != "message"}
+        return {
+            "type": evt_type,
+            "content": content,
+            "event_id": _event_id(),
+            "metadata": metadata,
+        }
     elif t == AgentEventType.ERROR:
         content = data.get("message", "")
         evt_type = "error"

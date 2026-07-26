@@ -78,6 +78,24 @@ class TestAdapter:
         result = agent_event_to_sse(event)
         assert result["type"] == "error"
 
+    def test_retry_warning_preserves_stream_reset_metadata(self):
+        event = AgentEvent.warning(
+            "Connection interrupted; retrying",
+            code="stream_interrupted",
+            attempt=1,
+            max_attempts=3,
+            reset_stream=True,
+        )
+        result = agent_event_to_sse(event)
+        assert result["type"] == "warning"
+        assert result["content"] == "Connection interrupted; retrying"
+        assert result["metadata"] == {
+            "code": "stream_interrupted",
+            "attempt": 1,
+            "max_attempts": 3,
+            "reset_stream": True,
+        }
+
     def test_done_stays_done(self):
         event = AgentEvent(type=AgentEventType.DONE)
         result = agent_event_to_sse(event)
@@ -137,10 +155,15 @@ class TestAdapter:
         assert result["metadata"]["force_approval"] is True
 
     def test_checkpoint_preserves_metadata(self):
-        event = AgentEvent(type=AgentEventType.CHECKPOINT, data={
-            "action": "write_file", "file": "test.md", "content": "updated",
-            "content_truncated": True,
-        })
+        event = AgentEvent(
+            type=AgentEventType.CHECKPOINT,
+            data={
+                "action": "write_file",
+                "file": "test.md",
+                "content": "updated",
+                "content_truncated": True,
+            },
+        )
         result = agent_event_to_sse(event)
         assert result["type"] == "checkpoint"
         assert result["metadata"]["file"] == "test.md"

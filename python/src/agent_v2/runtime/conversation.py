@@ -4,23 +4,21 @@
   - runtime/conversation.rs: ConversationRuntime + stream_message
   - claw-analog/src/lib.rs: dispatch_tool + turn loop + session persist
 """
+
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
 import time
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Any, AsyncGenerator
+from typing import Any
 
-from src.agent_v2.runtime.permissions import (
-    PermissionMode,
-    PermissionPolicy,
-    policy_from_registry,
-)
+from src.agent_v2.runtime.permissions import PermissionPolicy
 from src.agent_v2.runtime.session import Session
-from src.agent_v2.runtime.usage import UsageTracker, pricing_for_model
-from src.agent_v2.tools.registry import ToolRegistry, ToolResult
+from src.agent_v2.runtime.usage import UsageTracker
+from src.agent_v2.tools.registry import ToolRegistry
 from src.agent_v2.types import (
     AgentEvent,
     AgentEventType,
@@ -90,10 +88,12 @@ class ConversationRuntime:
         try:
             yield AgentEvent.session_started(self.session.session_id)
             if not resume:
-                self.session.append(Message(role=MessageRole.USER, blocks=[TextBlock(text=user_message)]))
+                self.session.append(
+                    Message(role=MessageRole.USER, blocks=[TextBlock(text=user_message)])
+                )
                 self._auto_save()
 
-            for step in range(self.max_steps):
+            for _step in range(self.max_steps):
                 if self._aborted:
                     yield AgentEvent.aborted("Session aborted by user")
                     yield AgentEvent.done()
@@ -105,10 +105,12 @@ class ConversationRuntime:
                             yield event
                             if event.type in (AgentEventType.RESPONSE, AgentEventType.ERROR):
                                 self._auto_save()
-                                yield AgentEvent.usage(TokenUsage(
-                                    input_tokens=self.usage.total_input,
-                                    output_tokens=self.usage.total_output,
-                                ))
+                                yield AgentEvent.usage(
+                                    TokenUsage(
+                                        input_tokens=self.usage.total_input,
+                                        output_tokens=self.usage.total_output,
+                                    )
+                                )
                                 yield AgentEvent.done()
                                 return
                             if event.type == AgentEventType.DONE:
@@ -125,22 +127,30 @@ class ConversationRuntime:
                         break
                     except ApiError as e:
                         if e.status_code == 429 and retry < 2:
-                            wait = e.retry_after or (2 ** retry)
-                            yield AgentEvent.token(f"\n[Rate limited, retrying in {wait:.0f}s...]\n")
+                            wait = e.retry_after or (2**retry)
+                            yield AgentEvent.warning(
+                                f"Rate limited; retrying in {wait:.0f}s",
+                                code="rate_limited",
+                                attempt=retry + 1,
+                                max_attempts=3,
+                                reset_stream=True,
+                            )
                             await asyncio.sleep(wait)
                             continue
                         if e.status_code == 0 and retry < 2:
-                            yield AgentEvent.token(f"\n[Connection failed, retrying ({retry+1}/3)...]\n")
+                            yield AgentEvent.warning(
+                                f"Connection interrupted; retrying ({retry + 1}/3)",
+                                code="stream_interrupted",
+                                attempt=retry + 1,
+                                max_attempts=3,
+                                reset_stream=True,
+                            )
                             await asyncio.sleep(2.0)
                             continue
                         yield AgentEvent.error(f"API error: {e}")
                         yield AgentEvent.done()
                         return
                     except Exception as e:
-                        if retry < 2:
-                            yield AgentEvent.token(f"\n[Error, retrying ({retry+1}/3)...]\n")
-                            await asyncio.sleep(1.0)
-                            continue
                         logger.exception("unexpected error in turn")
                         yield AgentEvent.error(f"unexpected error: {e}")
                         yield AgentEvent.done()
@@ -176,6 +186,7 @@ class ConversationRuntime:
 
     async def _llm_turn(self) -> AsyncGenerator[AgentEvent, None]:
         import os
+
         messages = self.session.messages
 
         use_stream = os.environ.get("SCHOLAR_AGENT_STREAM", "1").strip() == "1"
@@ -183,12 +194,14 @@ class ConversationRuntime:
 
         if use_stream and hasattr(self.provider, "chat_stream"):
             provider_stream = self.provider.chat_stream(
-                messages=messages, tools=self.tool_registry.definitions(),
+                messages=messages,
+                tools=self.tool_registry.definitions(),
                 system_prompt=self.system_prompt,
             )
         if provider_stream is None:
             resp = await self.provider.chat(
-                messages=messages, tools=self.tool_registry.definitions(),
+                messages=messages,
+                tools=self.tool_registry.definitions(),
                 system_prompt=self.system_prompt,
             )
             provider_stream = _fallback_stream(resp)
@@ -231,7 +244,11 @@ class ConversationRuntime:
                 if text_blocks:
                     assistant_blocks.append(TextBlock(text=full_text))
                 if assistant_blocks:
-                    self.session.append(Message(role=MessageRole.ASSISTANT, blocks=assistant_blocks, usage=chunk.usage))
+                    self.session.append(
+                        Message(
+                            role=MessageRole.ASSISTANT, blocks=assistant_blocks, usage=chunk.usage
+                        )
+                    )
                     self._auto_save()
 
                 if not tool_blocks:
@@ -302,7 +319,9 @@ class ConversationRuntime:
                         f"{args.get('command', '')}"
                     )
                 elif tb.name == "export_document":
-                    approval_reason = f"Agent wants to export {file_path} as {args.get('format', 'latex')}"
+                    approval_reason = (
+                        f"Agent wants to export {file_path} as {args.get('format', 'latex')}"
+                    )
                 else:
                     approval_reason = f"Agent wants to edit {file_path}"
                 # Register before yielding. The frontend may POST its decision as
@@ -310,7 +329,9 @@ class ConversationRuntime:
                 evt = asyncio.Event()
                 self._approval_events[tb.id] = evt
                 yield AgentEvent.await_approval(
-                    tb.id, tb.name, approval_reason,
+                    tb.id,
+                    tb.name,
+                    approval_reason,
                     preview={
                         "old_text": old_text,
                         "new_text": new_text,
@@ -322,7 +343,7 @@ class ConversationRuntime:
                 # Wait for approval
                 try:
                     await asyncio.wait_for(evt.wait(), timeout=_APPROVAL_TIMEOUT)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     self._approval_decisions[tb.id] = "deny"
                 finally:
                     self._approval_events.pop(tb.id, None)
@@ -333,9 +354,19 @@ class ConversationRuntime:
                 if decision != "allow_once" and decision != "allow_session":
                     tool_output = f"User denied the change to {file_path}"
                     is_error = True
-                    self.session.append(Message(role=MessageRole.TOOL, blocks=[
-                        ToolResultBlock(tool_use_id=tb.id, tool_name=tb.name, output=tool_output, is_error=True),
-                    ]))
+                    self.session.append(
+                        Message(
+                            role=MessageRole.TOOL,
+                            blocks=[
+                                ToolResultBlock(
+                                    tool_use_id=tb.id,
+                                    tool_name=tb.name,
+                                    output=tool_output,
+                                    is_error=True,
+                                ),
+                            ],
+                        )
+                    )
                     self._auto_save()
                     yield AgentEvent.tool_result(tb.id, tb.name, tool_output, is_error=True)
                     if not self._aborted:
@@ -349,9 +380,19 @@ class ConversationRuntime:
             tool_output = result.output
             is_error = result.is_error
 
-        self.session.append(Message(role=MessageRole.TOOL, blocks=[
-            ToolResultBlock(tool_use_id=tb.id, tool_name=tb.name, output=tool_output[:_TOOL_RESULT_MAX_CHARS], is_error=is_error),
-        ]))
+        self.session.append(
+            Message(
+                role=MessageRole.TOOL,
+                blocks=[
+                    ToolResultBlock(
+                        tool_use_id=tb.id,
+                        tool_name=tb.name,
+                        output=tool_output[:_TOOL_RESULT_MAX_CHARS],
+                        is_error=is_error,
+                    ),
+                ],
+            )
+        )
         self._auto_save()
         yield AgentEvent.tool_result(tb.id, tb.name, tool_output, is_error=is_error)
 
@@ -365,16 +406,18 @@ class ConversationRuntime:
                         new_content = fp.read_text(encoding="utf-8", errors="replace")
                 except Exception:
                     pass
-            yield AgentEvent.checkpoint({
-                "action": tb.name,
-                "file": resolved_path,
-                "workspace": self.session.meta.workspace,
-                "content": new_content[:10000] if new_content else tool_output,
-                "content_truncated": len(new_content) > 10000,
-            })
+            yield AgentEvent.checkpoint(
+                {
+                    "action": tb.name,
+                    "file": resolved_path,
+                    "workspace": self.session.meta.workspace,
+                    "content": new_content[:10000] if new_content else tool_output,
+                    "content_truncated": len(new_content) > 10000,
+                }
+            )
 
     def _auto_save(self) -> None:
-        sp = getattr(self.session, '_save_path', '')
+        sp = getattr(self.session, "_save_path", "")
         if sp and sp.strip():
             try:
                 self.session.save_with_rotate(sp)

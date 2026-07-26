@@ -173,6 +173,13 @@ export function useAgentChat() {
           msg.isStreaming = false
           msg.events = [...msg.events, agentEvent]
           break
+        case 'warning':
+          if (agentEvent.metadata?.reset_stream) {
+            msg.content = ''
+            msg.isStreaming = true
+          }
+          msg.events = [...msg.events, agentEvent]
+          break
         case 'aborted':
           msg.content =
             agentEvent.content === 'File edit rejected; no changes were applied'
@@ -342,6 +349,9 @@ export function useAgentChat() {
       const reader = resp.body?.getReader()
       if (!reader) throw new Error(i18n.global.t('errors.streamFailed'))
       await readSseStream(reader, trackingHandler, abortController?.signal, () => streamDone)
+      if (!streamDone && !abortController?.signal.aborted) {
+        throw new TypeError(i18n.global.t('errors.agentStreamEnded'))
+      }
     }
 
     try {
@@ -352,11 +362,14 @@ export function useAgentChat() {
           const sid = sessionId.value
           if (sessionStarted && sid) {
             const msg = messages.value.find((m) => m.id === assistantMsg.id)
-            if (msg)
+            if (msg) {
+              msg.content = ''
+              msg.isStreaming = true
               msg.events.push({
                 type: 'warning',
                 content: i18n.global.t('errors.recoveringSession', { attempt, max: MAX_RETRIES }),
               } as AgentEvent)
+            }
             try {
               const resumeResp = await fetch(`${API_URL}/api/agent/v2/resume/${sid}`, {
                 method: 'POST',
@@ -372,6 +385,9 @@ export function useAgentChat() {
                       abortController?.signal,
                       () => streamDone,
                     )
+                    if (!streamDone && !abortController?.signal.aborted) {
+                      throw new TypeError(i18n.global.t('errors.agentStreamEnded'))
+                    }
                     lastErr = null
                     break
                   } catch (streamErr) {

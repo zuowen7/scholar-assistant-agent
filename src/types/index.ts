@@ -219,6 +219,9 @@ export interface AgentEvent {
     token_usage?: Record<string, number>
     // v2 warning
     code?: string
+    attempt?: number
+    max_attempts?: number
+    reset_stream?: boolean
     // v2 task_done
     status?: string
     // pipeline_stage

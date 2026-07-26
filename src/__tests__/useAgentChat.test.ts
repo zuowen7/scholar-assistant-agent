@@ -73,7 +73,10 @@ function makeOpenSseResponse(chunks: { event: string; data: Record<string, unkno
       status: 200,
       headers: { 'Content-Type': 'text/event-stream' },
     }),
-    close: () => streamController?.close(),
+    close: () => {
+      streamController?.enqueue(encoder.encode('event:done\ndata:{}\n\n'))
+      streamController?.close()
+    },
   }
 }
 
@@ -98,6 +101,14 @@ function makeToolResultChunk(name: string, result: string) {
 
 function makeTaskDoneChunk(content: string) {
   return { event: 'task_done', data: { content } }
+}
+
+function makeTokenChunk(content: string) {
+  return { event: 'token', data: { content } }
+}
+
+function makeResponseChunk(content: string) {
+  return { event: 'response', data: { content } }
 }
 
 function makeDoneChunk() {
@@ -249,6 +260,64 @@ describe('useAgentChat', () => {
       await sendMessage('Do something')
 
       expect(messages.value[1].isStreaming).toBe(false)
+    })
+
+    it('resumes a started session when SSE closes without a terminal event', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          makeSseResponse([makeSessionStartedChunk('sess_interrupted'), makeTokenChunk('partial')]),
+        )
+        .mockResolvedValueOnce(
+          makeSseResponse([
+            makeTokenChunk('replayed'),
+            makeResponseChunk('complete answer'),
+            makeDoneChunk(),
+          ]),
+        )
+      vi.stubGlobal('fetch', fetchMock)
+
+      const { sendMessage, messages } = useAgentChat()
+      await sendMessage('Recover this stream')
+
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(String(fetchMock.mock.calls[1][0])).toContain('/api/agent/v2/resume/sess_interrupted')
+      expect(messages.value[1].content).toBe('complete answer')
+      expect(messages.value[1].isStreaming).toBe(false)
+    })
+
+    it('replaces partial tokens after a backend stream retry warning', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          makeSseResponse([
+            makeSessionStartedChunk('sess_backend_retry'),
+            makeTokenChunk('partial response'),
+            {
+              event: 'warning',
+              data: {
+                content: 'Connection interrupted; retrying',
+                metadata: { code: 'stream_interrupted', reset_stream: true },
+              },
+            },
+            makeTokenChunk('fresh response'),
+            makeResponseChunk('fresh response'),
+            makeDoneChunk(),
+          ]),
+        ),
+      )
+
+      const { sendMessage, messages } = useAgentChat()
+      await sendMessage('Retry safely')
+
+      expect(messages.value[1].content).toBe('fresh response')
+      expect(messages.value[1].content).not.toContain('partial response')
+      expect(messages.value[1].events).toContainEqual(
+        expect.objectContaining({
+          type: 'warning',
+          metadata: expect.objectContaining({ reset_stream: true }),
+        }),
+      )
     })
 
     it('localizes the deterministic file-edit rejection state', async () => {

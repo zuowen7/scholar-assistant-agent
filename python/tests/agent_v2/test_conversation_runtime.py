@@ -147,21 +147,40 @@ class TestBasicFlow:
 
     @pytest.mark.asyncio
     async def test_file_checkpoints_cover_every_file_with_resolved_paths(self, workspace: Path):
-        provider = MockProvider(scenarios=[
-            Scenario("multi-write", trigger_patterns=["update both"], turn_index=0,
-                     response_factory=lambda m, t: ProviderResponse(
-                         blocks=[
-                             ToolUseBlock(id="write_a", name="write_file", input=json.dumps({"file_path": "a.md", "content": "A"})),
-                             ToolUseBlock(id="write_b", name="write_file", input=json.dumps({"file_path": "b.md", "content": "B"})),
-                         ],
-                         stop_reason="tool_use",
-                     )),
-        ])
+        provider = MockProvider(
+            scenarios=[
+                Scenario(
+                    "multi-write",
+                    trigger_patterns=["update both"],
+                    turn_index=0,
+                    response_factory=lambda m, t: ProviderResponse(
+                        blocks=[
+                            ToolUseBlock(
+                                id="write_a",
+                                name="write_file",
+                                input=json.dumps({"file_path": "a.md", "content": "A"}),
+                            ),
+                            ToolUseBlock(
+                                id="write_b",
+                                name="write_file",
+                                input=json.dumps({"file_path": "b.md", "content": "B"}),
+                            ),
+                        ],
+                        stop_reason="tool_use",
+                    ),
+                ),
+            ]
+        )
         registry = create_default_registry(workspace_root=workspace)
         policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
         session = Session(workspace=str(workspace))
-        rt = ConversationRuntime(provider=provider, tool_registry=registry, permission_policy=policy,
-                                 session=session, auto_approve=True)
+        rt = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy,
+            session=session,
+            auto_approve=True,
+        )
 
         events = await _collect_events(rt, "update both")
         checkpoints = [event for event in events if event.type == AgentEventType.CHECKPOINT]
@@ -315,6 +334,49 @@ class TestEdgeCases:
 
 class TestFaultInjection:
     @pytest.mark.asyncio
+    async def test_unexpected_stream_exception_is_not_blindly_retried(
+        self, workspace: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Programming/schema errors must fail once instead of replaying the whole turn."""
+
+        class BrokenStreamingProvider:
+            model = "mock"
+
+            def __init__(self):
+                self.calls = 0
+
+            async def chat_stream(self, **_kwargs):
+                self.calls += 1
+                if False:
+                    yield None
+                raise RuntimeError("stream parser bug")
+
+        async def no_sleep(_delay: float):
+            return None
+
+        monkeypatch.setattr("src.agent_v2.runtime.conversation.asyncio.sleep", no_sleep)
+        provider = BrokenStreamingProvider()
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(
+            PermissionMode.WORKSPACE_WRITE,
+            registry.permission_specs(),
+        )
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy,
+            session=Session(workspace=str(workspace), model="mock"),
+        )
+
+        events = await _collect_events(runtime, "hello")
+
+        assert provider.calls == 1
+        assert not [event for event in events if event.type == AgentEventType.TOKEN]
+        errors = [event for event in events if event.type == AgentEventType.ERROR]
+        assert len(errors) == 1
+        assert "stream parser bug" in errors[0].data["message"]
+
+    @pytest.mark.asyncio
     async def test_cr040_llm_call_fails(self, workspace: Path):
         """CR-040: LLM 调用失败"""
         provider = MockProvider(error_on_turn={0: ApiError("LLM down", status_code=500)})
@@ -358,7 +420,8 @@ class TestFaultInjection:
         events = await _collect_events(rt, "boom boom")
         # Tool returns error result (is_error=True), runtime continues
         tool_results = [
-            e for e in events
+            e
+            for e in events
             if e.type == AgentEventType.TOOL_RESULT and e.data.get("is_error") is True
         ]
         assert len(tool_results) >= 1
@@ -382,7 +445,7 @@ class TestFaultInjection:
             return msg_id, events
 
         results = await asyncio.gather(*[single_turn(i) for i in range(5)])
-        for msg_id, events in results:
+        for _msg_id, events in results:
             assert any(e.type == AgentEventType.RESPONSE for e in events)
 
 
