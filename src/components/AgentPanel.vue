@@ -152,6 +152,11 @@
           <p class="hint warn" v-else>{{ t('agent.noWorkspaceLabel') }}</p>
         </div>
         <div v-for="msg in messages" :key="msg.id" class="agent-msg" :class="msg.role">
+          <AgentThoughtGroup
+            v-if="msg.role === 'assistant'"
+            :events="msg.events"
+            :streaming="msg.isStreaming"
+          />
           <template v-for="(evt, i) in msg.events" :key="i">
             <div v-if="evt.type === 'task_started'" class="agent-event task-lifecycle">
               <span class="evt-lifecycle-icon">&#x25B6;</span>
@@ -165,16 +170,6 @@
               <span class="evt-lifecycle-icon">&#x2714;</span>
               <span class="evt-label">{{ t('agent.labelTaskDone') }}</span>
               <span class="evt-task-id">{{ evt.metadata?.task_id }}</span>
-            </div>
-            <div
-              v-else-if="evt.type === 'thought' || evt.type === 'thinking'"
-              class="agent-event thinking"
-            >
-              <span class="evt-thinking-dot"></span>
-              <span class="evt-label">{{
-                evt.type === 'thought' ? t('agent.labelThought') : t('agent.labelReasoning')
-              }}</span>
-              <span class="evt-content-text">{{ evt.content }}</span>
             </div>
             <div v-else-if="evt.type === 'tool_call'" class="agent-event tool-call">
               <div class="evt-tool-header">
@@ -226,7 +221,7 @@
               </div>
               <div class="evt-result-preview">{{ formatToolResult(evt.content) }}</div>
             </div>
-            <div v-else-if="evt.type === 'warning'" class="agent-event warning">
+            <div v-else-if="evt.type === 'warning' && evt.content" class="agent-event warning">
               <span class="evt-warning-icon">&#x26A0;</span>
               <span class="evt-content-text">{{ evt.content }}</span>
             </div>
@@ -580,6 +575,7 @@ import { useEditorState } from '../composables/useEditorState'
 import { useFileTree } from '../composables/useFileTree'
 import { useSourceLibrary } from '../composables/useSourceLibrary'
 import AgentApprovalInline from './AgentApprovalInline.vue'
+import AgentThoughtGroup from './AgentThoughtGroup.vue'
 import AgentSlashMenu from './AgentSlashMenu.vue'
 import AgentSessionList from './AgentSessionList.vue'
 import { Pin, PinOff, Mic, Plus } from './ui/icons'
@@ -1152,11 +1148,7 @@ const currentStatus = computed(() => {
     return t('agent.awaitingApproval', { tool: pendingApproval.value.tool_name })
   for (let i = streaming.events.length - 1; i >= 0; i--) {
     const evt = streaming.events[i]
-    if (evt.type === 'thinking' || evt.type === 'thought')
-      return (
-        'Thinking... ' +
-        (evt.content.length > 100 ? evt.content.slice(0, 100) + '...' : evt.content)
-      )
+    if (evt.type === 'thinking' || evt.type === 'thought') return t('agent.thinkingCompact')
     if (evt.type === 'tool_call')
       return 'Calling ' + ((evt.metadata?.tool_name || evt.metadata?.tool || evt.content) as string)
     if (evt.type === 'tool_result')
@@ -1755,43 +1747,6 @@ onUnmounted(() => {
     transform: translateY(0);
   }
 }
-/* @property enables smooth mask-image gradient interpolation */
-@property --ink-stop {
-  syntax: '<percentage>';
-  inherits: false;
-  initial-value: 0%;
-}
-
-.agent-event.thinking {
-  --ink-stop: 100%;
-  color: var(--c-text-2);
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  font-style: normal;
-  border-left: 2px solid var(--accent-0);
-  mask-image: linear-gradient(
-    to bottom,
-    #000 var(--ink-stop),
-    transparent calc(var(--ink-stop) + 16px)
-  );
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    #000 var(--ink-stop),
-    transparent calc(var(--ink-stop) + 16px)
-  );
-  animation: evt-ink-bleed 400ms var(--ease-out) both;
-}
-@keyframes evt-ink-bleed {
-  from {
-    --ink-stop: 0%;
-    opacity: 0.3;
-  }
-  to {
-    --ink-stop: 100%;
-    opacity: 1;
-  }
-}
 .agent-event.tool-call {
   border-left: 2px solid #3b82f6;
   background: color-mix(in srgb, #3b82f6 6%, var(--c-surface-1));
@@ -1849,25 +1804,6 @@ onUnmounted(() => {
   text-transform: uppercase;
   color: var(--c-text-2);
   flex-shrink: 0;
-}
-.evt-thinking-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: var(--accent-0);
-  animation: dot-breathe 1.6s ease-in-out infinite;
-}
-@keyframes dot-breathe {
-  0%,
-  100% {
-    opacity: 0.3;
-    transform: scale(0.85);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1);
-  }
 }
 .evt-content-text {
   color: var(--c-text-2);
@@ -2863,11 +2799,6 @@ onUnmounted(() => {
   background: var(--c-panel);
   box-shadow: none;
   backdrop-filter: none;
-}
-.agent-event.thinking {
-  border-left-color: var(--c-accent);
-  mask-image: none;
-  -webkit-mask-image: none;
 }
 .agent-event.tool-call,
 .agent-event.tool-result,
