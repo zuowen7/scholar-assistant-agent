@@ -57,12 +57,14 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
     elif t == AgentEventType.TOOL_RESULT:
         out = data.get("output", "")
         out_short = out[:200] + "..." if len(out) > 200 else out
+        out_detail = out[:4000]
         content = out_short
         evt_type = "tool_result"
         metadata = {
             "tool_name": data.get("tool_name", ""),
             "is_error": data.get("is_error", False),
             "error": data.get("is_error", False),
+            "result_detail": out_detail,
         }
         return {
             "type": evt_type,

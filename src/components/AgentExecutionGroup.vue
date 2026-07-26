@@ -30,7 +30,9 @@
           </div>
           <div v-if="step.result" class="detail-section">
             <span>{{ t('agent.execution.result') }}</span>
-            <pre :class="{ error: step.status === 'error' }">{{ truncate(step.result) }}</pre>
+            <pre :class="{ error: step.status === 'error' }">{{
+              truncate(step.resultDetail || step.result)
+            }}</pre>
           </div>
         </div>
       </details>
@@ -46,6 +48,7 @@ import type { AgentEvent } from '../types'
 import {
   buildExecutionSteps,
   executionSummary,
+  hasPendingApproval,
   type AgentExecutionStep,
 } from '../utils/agentExecution'
 
@@ -58,9 +61,7 @@ const { t } = useI18n()
 const expanded = ref(false)
 const steps = computed(() => buildExecutionSteps(props.events))
 const summary = computed(() => executionSummary(steps.value))
-const hasAttention = computed(
-  () => summary.value.failed > 0 || props.events.some((event) => event.type === 'await_approval'),
-)
+const hasAttention = computed(() => summary.value.failed > 0 || hasPendingApproval(props.events))
 
 watch(
   hasAttention,

@@ -17,7 +17,7 @@ vi.mock('vue-i18n', () => ({
 
 import AgentExecutionGroup from '../components/AgentExecutionGroup.vue'
 import type { AgentEvent } from '../types'
-import { buildExecutionSteps, executionSummary } from '../utils/agentExecution'
+import { buildExecutionSteps, executionSummary, hasPendingApproval } from '../utils/agentExecution'
 
 describe('agent execution presentation', () => {
   const events: AgentEvent[] = [
@@ -85,5 +85,49 @@ describe('agent execution presentation', () => {
 
     expect(wrapper.find('.execution-group').attributes('open')).toBeDefined()
     expect(wrapper.find('.execution-group > summary').text()).toContain('1 步失败')
+  })
+
+  it('carries the fuller result_detail for the expanded view', () => {
+    const longResult = 'x'.repeat(500)
+    const resultEvents: AgentEvent[] = [
+      {
+        type: 'tool_call',
+        content: 'read_file',
+        event_id: 'r1',
+        metadata: { tool_name: 'read_file' },
+      },
+      {
+        type: 'tool_result',
+        content: longResult.slice(0, 200),
+        event_id: 'r1',
+        metadata: { tool_name: 'read_file', result_detail: longResult },
+      },
+    ]
+    const steps = buildExecutionSteps(resultEvents)
+    expect(steps[0].result).toBe(longResult.slice(0, 200))
+    expect(steps[0].resultDetail).toBe(longResult)
+  })
+
+  it('only treats unmatched approvals as pending attention', () => {
+    const settled: AgentEvent[] = [
+      {
+        type: 'await_approval',
+        content: '',
+        event_id: 'ap-1',
+        metadata: { tool_name: 'write_file' },
+      },
+      { type: 'approval_received', content: '', event_id: 'ap-1' },
+    ]
+    const pending: AgentEvent[] = [
+      {
+        type: 'await_approval',
+        content: '',
+        event_id: 'ap-2',
+        metadata: { tool_name: 'write_file' },
+      },
+    ]
+    expect(hasPendingApproval(settled)).toBe(false)
+    expect(hasPendingApproval(pending)).toBe(true)
+    expect(hasPendingApproval([...settled, ...pending])).toBe(true)
   })
 })

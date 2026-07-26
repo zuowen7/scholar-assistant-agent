@@ -25,6 +25,10 @@ export interface AgentSelectionContext {
   endLine: number
   endColumn: number
   text: string
+  /** Read-only context from the lines immediately before the selection. */
+  beforeContext?: string
+  /** Read-only context from the lines immediately after the selection. */
+  afterContext?: string
 }
 
 export interface AgentTurnOptions {
@@ -429,6 +433,8 @@ export function useAgentChat() {
                 end_column: selection.endColumn,
                 // Preserve whitespace exactly: it is part of the edit anchor.
                 text: selection.text,
+                before_context: selection.beforeContext?.trim() || undefined,
+                after_context: selection.afterContext?.trim() || undefined,
               }
             : undefined,
         }),
