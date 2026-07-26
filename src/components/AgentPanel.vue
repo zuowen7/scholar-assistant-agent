@@ -410,35 +410,23 @@
         <span class="docs-title">{{ t('agent.docsTitle') }}</span>
         <span class="docs-subtitle">{{ t('agent.docsSubtitle') }}</span>
         <div class="docs-toolbar-actions">
-          <button
-            class="btn primary u-interactive"
-            :disabled="ragUploading"
-            @click="ragFileInput?.click()"
-          >
-            <UiSpinner v-if="ragUploading" size="sm" />
-            <span>{{ ragUploading ? t('agent.uploading') : t('agent.uploadFile') }}</span>
+          <button class="btn primary u-interactive" @click="emit('switch-to-sources')">
+            <span>{{ t('agent.openProjectLibrary') }}</span>
           </button>
           <button
             class="btn ghost u-interactive"
-            :class="{ refreshing: ragLoading }"
+            :class="{ refreshing: sourceLibrary.loading.value }"
             @click="fetchDocs"
-            :disabled="ragLoading"
+            :disabled="sourceLibrary.loading.value"
           >
             {{ t('agent.refresh') }}
           </button>
         </div>
-        <input
-          ref="ragFileInput"
-          type="file"
-          style="display: none"
-          accept=".pdf,.docx,.doc,.txt,.md,.log,.html,.htm,.epub,.rtf,.tex,.csv,.pptx,.xlsx,.srt,.json,.xml"
-          @change="handleRagUpload"
-        />
       </div>
-      <Transition name="v-slide-up">
-        <div v-if="ragUploadError" class="docs-error">{{ ragUploadError }}</div>
-      </Transition>
-      <div v-if="ragLoading && ragDocuments.length === 0" class="docs-list">
+      <div
+        v-if="sourceLibrary.loading.value && sourceLibrary.sources.value.length === 0"
+        class="docs-list"
+      >
         <div v-for="i in 4" :key="i" class="doc-card skel" :style="{ '--stagger-i': i - 1 }">
           <div class="doc-info" style="flex: 1">
             <UiSkeleton shape="line" height="13" width="70%" />
@@ -446,40 +434,27 @@
           </div>
         </div>
       </div>
-      <div v-else-if="ragDocuments.length === 0" class="docs-empty anim-fade-in-up">
+      <div v-else-if="sourceLibrary.sources.value.length === 0" class="docs-empty anim-fade-in-up">
         <span class="empty-glyph">▤</span>
         <p>{{ t('agent.noDocs') }}</p>
       </div>
       <TransitionGroup v-else name="v-list-stagger" tag="div" class="docs-list">
         <div
-          v-for="(doc, idx) in ragDocuments"
+          v-for="(doc, idx) in sourceLibrary.sources.value"
           :key="doc.id"
           class="doc-card u-interactive"
           :style="{ '--stagger-i': idx }"
         >
           <div class="doc-info">
             <span class="doc-title">{{ doc.title || doc.id }}</span>
-            <span class="doc-meta">{{ doc.chunk_count }} {{ t('agent.chunks') }}</span>
+            <span class="doc-meta">
+              {{
+                doc.rag_status === 'ready'
+                  ? t('agent.projectSourceReady')
+                  : t('agent.projectSourceNotIndexed')
+              }}
+            </span>
           </div>
-          <button
-            class="doc-del-btn u-interactive"
-            @click="deleteDoc(doc.id)"
-            :title="t('agent.delete')"
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <polyline points="3 6 5 6 21 6" />
-              <path
-                d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
-              />
-            </svg>
-          </button>
         </div>
       </TransitionGroup>
     </div>
@@ -603,6 +578,7 @@ import { useAgentChat } from '../composables/useAgentChat'
 import { useEditor } from '../composables/useEditor'
 import { useEditorState } from '../composables/useEditorState'
 import { useFileTree } from '../composables/useFileTree'
+import { useSourceLibrary } from '../composables/useSourceLibrary'
 import AgentApprovalInline from './AgentApprovalInline.vue'
 import AgentSlashMenu from './AgentSlashMenu.vue'
 import AgentSessionList from './AgentSessionList.vue'
@@ -610,7 +586,6 @@ import { Pin, PinOff, Mic, Plus } from './ui/icons'
 import { API_BASE } from '../utils/api'
 import type { AgentSessionInfo, AgentSkill } from '../types'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
-import UiSpinner from './ui/UiSpinner.vue'
 import UiSkeleton from './ui/UiSkeleton.vue'
 import { useToast } from '../composables/useToast'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -659,6 +634,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:open', value: boolean): void
   (e: 'switch-to-editor'): void
+  (e: 'switch-to-sources'): void
 }>()
 
 // ── Floating panel: native OS window (Tauri) or in-app overlay (web) ─────────
@@ -846,8 +822,6 @@ const {
   messages,
   sending,
   pendingApproval,
-  ragDocuments,
-  ragLoading,
   agentSkills,
   skillsLoading,
   sendMessage: agentSendMessage,
@@ -858,9 +832,6 @@ const {
   sessionId,
   pendingCheckpoint,
   fetchSessions: _fetchSessions,
-  fetchRAGDocuments: _fetchRAGDocs,
-  deleteRAGDocument,
-  uploadRAGFile,
   fetchAgentSkills,
 } = useAgentChat()
 
@@ -875,6 +846,7 @@ const {
 const { tabs: editorTabs, setActiveEdit, clearActiveEdit, shouldShowInlineDiff } = useEditorState()
 
 const { rootDir, refresh: refreshFileTree } = useFileTree()
+const sourceLibrary = useSourceLibrary()
 
 const workspaceName = computed(() => {
   if (!rootDir.value) return null
@@ -927,9 +899,6 @@ function _onMessagesScroll() {
 }
 const sessions = ref<AgentSessionInfo[]>([])
 const files = ref<{ name: string; path: string }[]>([])
-const ragFileInput = ref<HTMLInputElement | null>(null)
-const ragUploading = ref(false)
-const ragUploadError = ref('')
 const selectedSkillNames = ref<string[]>([])
 const slashActiveIndex = ref(0)
 const slashDismissed = ref(false)
@@ -1128,23 +1097,6 @@ const contextText = computed(() => {
   if (!editorActiveTab.value) return ''
   return editorSelection.value.text || editorContent.value
 })
-
-async function handleRagUpload() {
-  const fileInput = ragFileInput.value
-  if (!fileInput?.files?.length) return
-  const file = fileInput.files[0]
-  ragUploading.value = true
-  ragUploadError.value = ''
-  const result = await uploadRAGFile(file)
-  ragUploading.value = false
-  if (!result.ok) {
-    ragUploadError.value = result.error || t('agent.uploadFailed')
-    setTimeout(() => {
-      ragUploadError.value = ''
-    }, 4000)
-  }
-  fileInput.value = ''
-}
 
 // ── Tool descriptions ──
 const TOOL_DESCRIPTIONS: Record<string, string> = {
@@ -1385,11 +1337,8 @@ function removeFile(name: string) {
 }
 
 async function fetchDocs() {
-  await _fetchRAGDocs()
-}
-
-async function deleteDoc(id: string) {
-  await deleteRAGDocument(id)
+  if (!rootDir.value) return
+  await sourceLibrary.loadSources().catch(() => undefined)
 }
 
 // ── Paper templates ──
@@ -2983,6 +2932,37 @@ onUnmounted(() => {
   }
   .agent-tab {
     font-size: 10px;
+  }
+}
+@media (max-width: 1280px) {
+  .agent-panel.embedded {
+    position: absolute;
+    z-index: 700;
+    top: 0;
+    right: 0;
+    width: min(420px, calc(100% - 16px));
+    height: 100%;
+    transform: translateX(102%);
+    border-left: 1px solid var(--c-border);
+    box-shadow: -18px 0 46px var(--c-shadow);
+    visibility: hidden;
+    transition:
+      transform var(--motion-page) var(--ease-out),
+      visibility 0s linear var(--motion-page);
+  }
+  .agent-panel.embedded.open {
+    width: min(420px, calc(100% - 16px));
+    transform: translateX(0);
+    visibility: visible;
+    transition:
+      transform var(--motion-page) var(--ease-out),
+      visibility 0s;
+  }
+}
+@media (max-width: 640px) {
+  .agent-panel.embedded,
+  .agent-panel.embedded.open {
+    width: 100%;
   }
 }
 </style>

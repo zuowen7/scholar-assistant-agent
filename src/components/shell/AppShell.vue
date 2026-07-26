@@ -158,6 +158,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleZoomShortcut))
   flex-direction: column;
 }
 .shell-content {
+  position: relative;
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -218,6 +219,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleZoomShortcut))
 @media (max-width: 1040px) {
   .shell-drag-rail {
     left: 76px;
+  }
+}
+@media (max-width: 640px) {
+  .shell-window-controls {
+    top: 3px;
+    right: 3px;
+  }
+  .shell-window-controls button {
+    width: 26px;
   }
 }
 </style>

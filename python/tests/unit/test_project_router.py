@@ -158,6 +158,126 @@ class TestProjectSources:
         )
         assert response.status_code == 404
 
+    def test_import_source_copies_file_and_extracts_readable_content(self, client, location: Path):
+        project_path = self._create_project(client, location)
+        response = client.post(
+            "/api/project/sources/import",
+            data={"project_path": str(project_path)},
+            files={
+                "file": (
+                    "attention-notes.txt",
+                    b"Attention lets a model retrieve relevant context.",
+                    "text/plain",
+                ),
+            },
+        )
+        assert response.status_code == 200
+        source = response.json()
+        stored_path = Path(source["original_path"])
+        assert stored_path.is_file()
+        assert stored_path.parent == project_path / "references"
+        assert source["metadata"]["chars"] == 49
+
+        content = client.get(
+            f"/api/project/sources/{source['id']}/content",
+            params={"project_path": str(project_path)},
+        )
+        assert content.status_code == 200
+        assert content.json()["text"] == "Attention lets a model retrieve relevant context."
+        assert content.json()["source_id"] == source["id"]
+
+    def test_delete_source_removes_managed_attachment_and_manifest_entry(
+        self, client, location: Path
+    ):
+        project_path = self._create_project(client, location)
+        source = client.post(
+            "/api/project/sources/import",
+            data={"project_path": str(project_path)},
+            files={"file": ("paper.md", b"# Evidence\n\nProject-scoped source.", "text/markdown")},
+        ).json()
+        stored_path = Path(source["original_path"])
+
+        deleted = client.delete(
+            f"/api/project/sources/{source['id']}",
+            params={"project_path": str(project_path), "delete_file": True},
+        )
+        assert deleted.status_code == 200
+        assert not stored_path.exists()
+        listed = client.get(
+            "/api/project/sources",
+            params={"project_path": str(project_path)},
+        ).json()
+        assert listed["sources"] == []
+
+    def test_translation_output_is_copied_back_into_the_project(self, client, location: Path):
+        project_path = self._create_project(client, location)
+        source = client.post(
+            "/api/project/sources/import",
+            data={"project_path": str(project_path)},
+            files={"file": ("paper.md", b"# Original\n\nEvidence.", "text/markdown")},
+        ).json()
+        runtime_output = location.parent / "task-output.md"
+        runtime_output.write_text("# 译文\n\n可追溯证据。", encoding="utf-8")
+
+        attached = client.post(
+            f"/api/project/sources/{source['id']}/translation",
+            json={
+                "project_path": str(project_path),
+                "output_path": str(runtime_output),
+                "task_id": "task-translation-1",
+                "rag_status": "ready",
+            },
+        )
+        assert attached.status_code == 200
+        translated_path = Path(attached.json()["translated_path"])
+        assert translated_path.is_file()
+        assert translated_path.parent == project_path / "references" / "translations"
+        assert attached.json()["translation_task_id"] == "task-translation-1"
+
+        content = client.get(
+            f"/api/project/sources/{source['id']}/content",
+            params={"project_path": str(project_path), "version": "translated"},
+        )
+        assert content.status_code == 200
+        assert "可追溯证据" in content.json()["text"]
+
+    def test_import_can_attach_full_text_to_a_metadata_only_source(self, client, location: Path):
+        project_path = self._create_project(client, location)
+        metadata_only = client.post(
+            "/api/project/sources",
+            json={
+                "project_path": str(project_path),
+                "title": "Zotero Metadata",
+                "metadata": {
+                    "zotero_key": "ABC123",
+                    "authors": ["Ada Researcher"],
+                    "tags": ["methods"],
+                },
+            },
+        ).json()
+
+        attached = client.post(
+            "/api/project/sources/import",
+            data={
+                "project_path": str(project_path),
+                "source_id": metadata_only["id"],
+            },
+            files={
+                "file": (
+                    "zotero-full-text.md",
+                    b"# Full text\n\nAttached evidence.",
+                    "text/markdown",
+                )
+            },
+        )
+        assert attached.status_code == 200
+        payload = attached.json()
+        assert payload["id"] == metadata_only["id"]
+        assert payload["title"] == "Zotero Metadata"
+        assert payload["metadata"]["zotero_key"] == "ABC123"
+        assert payload["metadata"]["authors"] == ["Ada Researcher"]
+        assert Path(payload["original_path"]).is_file()
+
 
 class TestProjectExportHistory:
     def test_export_records_are_project_scoped_and_bounded(self, client, location: Path):
