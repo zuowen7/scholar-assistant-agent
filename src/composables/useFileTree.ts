@@ -141,7 +141,7 @@ export function useFileTree() {
 }
 
 async function resolveUniqueName(destPath: string): Promise<string> {
-  if (!(await exists(destPath))) return destPath
+  if (!await exists(destPath)) return destPath
   const dotIdx = destPath.lastIndexOf('.')
   const base = dotIdx > 0 ? destPath.substring(0, dotIdx) : destPath
   const ext = dotIdx > 0 ? destPath.substring(dotIdx) : ''

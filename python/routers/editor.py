@@ -8,9 +8,8 @@ import logging
 import re
 import time
 import uuid
-from collections.abc import AsyncGenerator
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Literal
+from typing import AsyncGenerator, Literal
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -38,7 +37,6 @@ def _safe_child_path(root: Path, filename: str) -> Path:
     except ValueError:
         raise HTTPException(403, "禁止访问该文件")
     return resolved
-
 
 # ── Lightweight pydantic schemas for LLM response parsing (H5) ──────────────
 

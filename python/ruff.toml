@@ -65,25 +65,11 @@ fixable = ["ALL"]
 unfixable = ["B", "UP"]  # bugbear 和 pyupgrade 的修复需要人工确认
 
 [lint.per-file-ignores]
-# 测试文件放宽规则 — 测试代码有其自身的合理模式
+# 测试文件放宽规则
 "tests/**/*.py" = [
     "E402",  # import 顺序可乱（conftest 常需先 import）
     "F401",  # 未使用 import（fixture 注入模式）
-    "F811",  # 重定义（测试中局部 re-import 是常见模式）
     "F841",  # 未使用变量（有时用于断言副作用）
-    "B007",  # 未使用循环变量（压力测试 for i in range(N)）
-    "B011",  # assert False（测试错误路径的惯用写法）
-    "B017",  # pytest.raises(Exception)（校验模型抛异常的测试）
-    "E741",  # 歧义变量名 l（推导式中常见）
-    "SIM101",  # 合并 isinstance（测试中分开写更清晰）
-    "SIM102",  # 合并 if（测试中嵌套更易读）
-    "SIM105",  # contextlib.suppress（测试中 try-except 更明确）
-    "SIM115",  # 上下文管理器打开文件（测试故意触发异常）
-    "B905",  # zip 无 strict（测试数据保证等长）
-    "UP012",  # 不必要的 encode（测试中显式更清晰）
-    "C408",  # dict() 调用（测试中更明确）
-    "F541",  # f-string 无占位符（测试中偶尔有意为之）
-    "W292",  # 文件末尾无换行（format 会处理）
 ]
 # 脚本和工具文件
 "scripts/**/*.py" = [

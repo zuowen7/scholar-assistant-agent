@@ -107,8 +107,7 @@ def register_translate(
     def _cleanup_tasks() -> None:
         max_tasks, _, _ = _get_limits()
         done_ids = [
-            tid
-            for tid, t in tasks.items()
+            tid for tid, t in tasks.items()
             if t["status"] in ("done", "done_with_warnings", "error")
         ]
         if len(done_ids) <= max_tasks:
@@ -158,7 +157,9 @@ def register_translate(
                 tasks[tid]["status"] = "error"
                 tasks[tid]["error"] = "任务超时未启动"
             has_running = any(
-                t["status"] in ("running", "pending") for tid, t in tasks.items() if tid != task_id
+                t["status"] in ("running", "pending")
+                for tid, t in tasks.items()
+                if tid != task_id
             )
             if has_running:
                 raise HTTPException(409, "已有翻译任务在运行，请等待完成")
@@ -864,7 +865,6 @@ def register_translate(
 
                     _bg_task = asyncio.create_task(_bg_ingest())
                     _background_tasks.add(_bg_task)
-
                     def _log_bg_exc(t: asyncio.Task) -> None:
                         _background_tasks.discard(t)
                         if not t.cancelled() and t.exception():

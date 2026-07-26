@@ -31,17 +31,13 @@ export function useReadSettings() {
           readSettings.value = { ...readSettings.value, ...parsed }
         }
       }
-    } catch (e) {
-      logger.warn('loadReadSettings failed:', e)
-    }
+    } catch (e) { logger.warn('loadReadSettings failed:', e) }
   }
 
   function saveReadSettings() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(readSettings.value))
-    } catch (e) {
-      logger.warn('saveReadSettings failed:', e)
-    }
+    } catch (e) { logger.warn('saveReadSettings failed:', e) }
   }
 
   function onFontSizeChange(value: number) {

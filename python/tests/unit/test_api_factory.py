@@ -180,7 +180,6 @@ class TestStripEmptyStrings:
 
 def test_save_config_keeps_all_secrets_local_and_preserves_overrides(tmp_path, monkeypatch):
     import yaml
-
     import api_factory
 
     config_path = tmp_path / "config" / "default.yaml"
@@ -192,14 +191,12 @@ def test_save_config_keeps_all_secrets_local_and_preserves_overrides(tmp_path, m
     monkeypatch.setattr(api_factory, "_config_cache", None)
     monkeypatch.setattr(api_factory, "_config_cache_mtime", 0.0)
 
-    api_factory._save_config(
-        {
-            "translator": {"cloud": {"api_key": "cloud-secret"}},
-            "agent": {"api_key": "agent-secret"},
-            "zotero": {"api_key": "zotero-secret"},
-            "vision": {"api_key": "vision-secret"},
-        }
-    )
+    api_factory._save_config({
+        "translator": {"cloud": {"api_key": "cloud-secret"}},
+        "agent": {"api_key": "agent-secret"},
+        "zotero": {"api_key": "zotero-secret"},
+        "vision": {"api_key": "vision-secret"},
+    })
 
     public = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     private = yaml.safe_load(local_path.read_text(encoding="utf-8"))

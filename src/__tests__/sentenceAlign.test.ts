@@ -41,11 +41,8 @@ describe('splitSentences', () => {
     })
 
     it('keeps an unpunctuated trailing sentence instead of dropping it', () => {
-      const result = splitSentences(
-        'A complete sentence. A trailing sentence without punctuation',
-        'en',
-      )
-      expect(result.map((sentence) => sentence.text)).toEqual([
+      const result = splitSentences('A complete sentence. A trailing sentence without punctuation', 'en')
+      expect(result.map(sentence => sentence.text)).toEqual([
         'A complete sentence.',
         'A trailing sentence without punctuation',
       ])
@@ -74,10 +71,7 @@ describe('splitSentences', () => {
     })
 
     it('does not split on "e.g." abbreviation', () => {
-      const result = splitSentences(
-        'Use a metric, e.g. F1 score, for evaluation. It is standard.',
-        'en',
-      )
+      const result = splitSentences('Use a metric, e.g. F1 score, for evaluation. It is standard.', 'en')
       expect(result).toHaveLength(2)
       expect(result[0].text).toBe('Use a metric, e.g. F1 score, for evaluation.')
     })
@@ -131,10 +125,7 @@ describe('splitSentences', () => {
 
     it('keeps an unpunctuated Chinese tail instead of dropping it', () => {
       const result = splitSentences('这是完整句子。这里是没有句号的尾句', 'zh')
-      expect(result.map((sentence) => sentence.text)).toEqual([
-        '这是完整句子。',
-        '这里是没有句号的尾句',
-      ])
+      expect(result.map(sentence => sentence.text)).toEqual(['这是完整句子。', '这里是没有句号的尾句'])
     })
 
     it('returns single sentence for undelimited text', () => {
@@ -182,10 +173,7 @@ describe('findCorrespondingSentenceIdx', () => {
   })
 
   it('maps by sentence order when translated sentence lengths differ greatly', () => {
-    const orig = splitSentences(
-      'First. Second sentence is extremely long compared with the others. Third.',
-      'en',
-    )
+    const orig = splitSentences('First. Second sentence is extremely long compared with the others. Third.', 'en')
     const trans = splitSentences('一。二。三。', 'zh')
     expect(findCorrespondingSentenceIdx(orig, 73, trans, 6, 1)).toBe(1)
   })

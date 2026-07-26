@@ -41,7 +41,9 @@ def register_academic_tools(registry: ToolRegistry) -> None:
 
             api_base = os.environ.get("SCHOLAR_API_BASE", "http://localhost:18088")
             async with httpx.AsyncClient(timeout=300.0) as client:
-                resp = await client.post(f"{api_base}/api/translate/path", json={"path": str(full)})
+                resp = await client.post(
+                    f"{api_base}/api/translate/path", json={"path": str(full)}
+                )
                 if resp.status_code != 200:
                     return ToolResult(
                         f"error: translation API returned {resp.status_code}", is_error=True
@@ -100,9 +102,7 @@ def register_academic_tools(registry: ToolRegistry) -> None:
                         json={"markdown": markdown, "title": full.stem},
                     )
                 if resp.status_code != 200:
-                    return ToolResult(
-                        f"error: export API returned {resp.status_code}", is_error=True
-                    )
+                    return ToolResult(f"error: export API returned {resp.status_code}", is_error=True)
                 if normalized == "pdf":
                     out_path = full.with_suffix(".pdf")
                     await asyncio.to_thread(out_path.write_bytes, resp.content)
@@ -111,9 +111,7 @@ def register_academic_tools(registry: ToolRegistry) -> None:
                 if normalized in ("word", "docx"):
                     generated_path = data.get("path")
                     if not generated_path or not Path(generated_path).is_file():
-                        return ToolResult(
-                            "error: Word export did not produce a file", is_error=True
-                        )
+                        return ToolResult("error: Word export did not produce a file", is_error=True)
                     out_path = full.with_suffix(".docx")
                     await asyncio.to_thread(shutil.copy2, generated_path, out_path)
                 else:

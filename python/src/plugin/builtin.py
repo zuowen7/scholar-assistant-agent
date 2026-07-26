@@ -70,9 +70,7 @@ def _resolve_workspace_file(file_path: str, workspace_root: str) -> Path:
         raise ValueError("workspace_root is required")
     workspace = Path(workspace_root).resolve(strict=True)
     candidate = Path(file_path)
-    resolved = (workspace / candidate if not candidate.is_absolute() else candidate).resolve(
-        strict=True
-    )
+    resolved = (workspace / candidate if not candidate.is_absolute() else candidate).resolve(strict=True)
     resolved.relative_to(workspace)
     if not resolved.is_file():
         raise ValueError("path is not a file")
@@ -261,7 +259,6 @@ def _tool_get_citation_context(text: str, citation_key: str) -> str:
 def _tool_analyze_image_with_vision(image_path: str, workspace_root: str = "") -> str:
     """使用 Vision API 分析图片内容。"""
     from src.agent_v2.special_elements import analyze_image_with_vision
-
     resolved = _resolve_workspace_file(image_path, workspace_root)
     return analyze_image_with_vision(str(resolved))
 
@@ -269,7 +266,6 @@ def _tool_analyze_image_with_vision(image_path: str, workspace_root: str = "") -
 def _tool_analyze_chart_image(image_path: str, workspace_root: str = "") -> str:
     """使用 Vision API 分析图表图片。"""
     from src.agent_v2.special_elements import analyze_chart_image
-
     resolved = _resolve_workspace_file(image_path, workspace_root)
     return analyze_chart_image(str(resolved))
 
@@ -382,9 +378,7 @@ def create_builtin_server() -> PluginServer:
                     },
                     "required": ["file_path", "workspace_root"],
                 },
-                handler=_make_handler(
-                    "file_path", _tool_parse_document, ["file_path", "workspace_root"]
-                ),
+                handler=_make_handler("file_path", _tool_parse_document, ["file_path", "workspace_root"]),
             ),
             ToolSpec(
                 name="search_documents",
@@ -611,17 +605,12 @@ def create_builtin_server() -> PluginServer:
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "image_path": {
-                            "type": "string",
-                            "description": "图片文件的绝对路径（不支持远程 URL）",
-                        },
+                        "image_path": {"type": "string", "description": "图片文件的绝对路径（不支持远程 URL）"},
                         "workspace_root": {"type": "string", "description": "已选择的工作区根目录"},
                     },
                     "required": ["image_path", "workspace_root"],
                 },
-                handler=_make_handler(
-                    "image_path", _tool_analyze_image_with_vision, ["image_path", "workspace_root"]
-                ),
+                handler=_make_handler("image_path", _tool_analyze_image_with_vision, ["image_path", "workspace_root"]),
             ),
             ToolSpec(
                 name="analyze_chart_image",
@@ -634,9 +623,7 @@ def create_builtin_server() -> PluginServer:
                     },
                     "required": ["image_path", "workspace_root"],
                 },
-                handler=_make_handler(
-                    "image_path", _tool_analyze_chart_image, ["image_path", "workspace_root"]
-                ),
+                handler=_make_handler("image_path", _tool_analyze_chart_image, ["image_path", "workspace_root"]),
             ),
         ],
     )

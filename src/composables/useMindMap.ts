@@ -308,9 +308,7 @@ export function useMindMap() {
     const workspaceRoot = useFileTree().rootDir.value
     if (!workspaceRoot) return false
     try {
-      const res = await fetch(
-        `${API_BASE}/api/mindmap/load?workspace_root=${encodeURIComponent(workspaceRoot)}`,
-      )
+      const res = await fetch(`${API_BASE}/api/mindmap/load?workspace_root=${encodeURIComponent(workspaceRoot)}`)
       if (!res.ok) return false
       const data: MindMapData = await res.json()
       savedMindMap.value = data

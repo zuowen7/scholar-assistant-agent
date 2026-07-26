@@ -15,12 +15,8 @@ const STORAGE_KEY = 'bg-settings'
 
 const VIDEO_EXTS = ['mp4', 'webm', 'mkv', 'avi', 'mov']
 const MIME_MAP: Record<string, string> = {
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  png: 'image/png',
-  gif: 'image/gif',
-  bmp: 'image/bmp',
-  webp: 'image/webp',
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+  gif: 'image/gif', bmp: 'image/bmp', webp: 'image/webp',
   svg: 'image/svg+xml',
 }
 
@@ -121,18 +117,8 @@ export function useBackground() {
           {
             name: t('app.imageAndVideo'),
             extensions: [
-              'jpg',
-              'jpeg',
-              'png',
-              'gif',
-              'bmp',
-              'webp',
-              'svg',
-              'mp4',
-              'webm',
-              'mkv',
-              'avi',
-              'mov',
+              'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg',
+              'mp4', 'webm', 'mkv', 'avi', 'mov',
             ],
           },
           { name: t('app.image'), extensions: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'] },
@@ -184,9 +170,7 @@ export function useBackground() {
   function initBackground() {
     loadBgSettings()
     if (bgSettings.value.path && bgSettings.value.type === 'image') {
-      pathToDataUrl(bgSettings.value.path).then((url) => {
-        if (url) bgDataUrl.value = url
-      })
+      pathToDataUrl(bgSettings.value.path).then(url => { if (url) bgDataUrl.value = url })
     }
   }
 

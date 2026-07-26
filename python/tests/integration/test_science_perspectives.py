@@ -129,7 +129,9 @@ class TestAuthorHeading:
     def test_author_is_h2(self):
         from src.chunker.splitter import _looks_like_pdf_heading
 
-        assert _looks_like_pdf_heading("Laurie S. Huning and Manuela I. Brunner") >= 2
+        assert (
+            _looks_like_pdf_heading("Laurie S. Huning and Manuela I. Brunner") >= 2
+        )
 
 
 # ── Round 2 fixes ──────────────────────────────────────────────────────────

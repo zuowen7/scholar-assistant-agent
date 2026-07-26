@@ -116,16 +116,7 @@ describe('useProject', () => {
 
     it('clears clean editor tabs after a successful project switch', async () => {
       const { openProject } = await import('../composables/useProject')
-      tabs.value = [
-        {
-          id: 'old.md',
-          path: '/old/old.md',
-          name: 'old.md',
-          content: 'old',
-          isModified: false,
-          docId: 'old.md',
-        },
-      ]
+      tabs.value = [{ id: 'old.md', path: '/old/old.md', name: 'old.md', content: 'old', isModified: false, docId: 'old.md' }]
       activeTabId.value = 'old.md'
       mockRootDir.value = '/old'
       currentProject.value = meta('Old')
@@ -140,14 +131,7 @@ describe('useProject', () => {
 
     it('refuses to switch projects while an editor tab is dirty', async () => {
       const { openProject } = await import('../composables/useProject')
-      const dirtyTab = {
-        id: 'draft.md',
-        path: '/old/draft.md',
-        name: 'draft.md',
-        content: 'unsaved',
-        isModified: true,
-        docId: 'draft.md',
-      }
+      const dirtyTab = { id: 'draft.md', path: '/old/draft.md', name: 'draft.md', content: 'unsaved', isModified: true, docId: 'draft.md' }
       tabs.value = [dirtyTab]
       activeTabId.value = dirtyTab.id
       mockRootDir.value = '/old'
@@ -193,16 +177,7 @@ describe('useProject', () => {
       mockFetch.mockResolvedValueOnce(rst(200, meta('X')))
       await openProject('/tmp/X')
       expect(currentProject.value).not.toBeNull()
-      tabs.value = [
-        {
-          id: 'open-tab',
-          name: 'draft.md',
-          path: '/tmp/X/draft.md',
-          content: 'draft',
-          isModified: false,
-          docId: 'draft.md',
-        },
-      ]
+      tabs.value = [{ id: 'open-tab', name: 'draft.md', path: '/tmp/X/draft.md', content: 'draft', isModified: false, docId: 'draft.md' }]
       activeTabId.value = 'open-tab'
       await closeProject()
       expect(currentProject.value).toBeNull()

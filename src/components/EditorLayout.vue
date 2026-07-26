@@ -29,60 +29,13 @@
               t('editor.lineWordCount', { lines: lineCount, words: wordCount.toLocaleString() })
             }}</span>
           </template>
-          <StatusBadge tone="success" dot>{{
-            activeTab.isModified ? t('editor.unsavedChanges') : t('editor.autoSaved')
-          }}</StatusBadge>
-          <button type="button" class="header-action mode-toggle" @click="toggleEditorMode">
-            {{ isLatexMode ? t('editor.writingView') : 'LaTeX' }}
-          </button>
-          <button type="button" class="header-action" @click="handleSaveFile">
-            <Save :size="16" /> {{ t('editor.saveAction') }}
-          </button>
-          <button
-            type="button"
-            class="header-action primary"
-            @click="
-              isLatexMode
-                ? aiPanelRef?.sendPreset('polish')
-                : handleSelectionTask(t('editor.polish'))
-            "
-          >
-            <Sparkles :size="16" /> {{ t('editor.aiPolish') }}
-          </button>
-          <button
-            type="button"
-            class="header-icon"
-            :title="sidebarCollapsed ? t('editor.fileTree') : t('editor.collapseSidebar')"
-            @click="sidebarCollapsed = !sidebarCollapsed"
-          >
-            <PanelLeftOpen v-if="sidebarCollapsed" :size="18" /><PanelLeftClose v-else :size="18" />
-          </button>
-          <button
-            type="button"
-            class="header-icon"
-            :title="rightPanelVisible ? t('editor.collapseRight') : t('editor.expandRight')"
-            @click="toggleHeaderRightPanel"
-          >
-            <PanelRightClose :size="18" />
-          </button>
-          <button
-            type="button"
-            class="header-icon"
-            :title="t('editor.closeCurrentDocument')"
-            :aria-label="t('editor.closeCurrentDocument')"
-            @click="requestCloseCurrentDocument"
-          >
-            <X :size="17" />
-          </button>
-          <button
-            v-if="currentProject"
-            type="button"
-            class="header-icon"
-            :title="t('project.closeProject')"
-            @click="requestCloseProject"
-          >
-            <FolderX :size="17" />
-          </button>
+          <StatusBadge tone="success" dot>{{ activeTab.isModified ? t('editor.unsavedChanges') : t('editor.autoSaved') }}</StatusBadge>
+          <button type="button" class="header-action mode-toggle" @click="toggleEditorMode">{{ isLatexMode ? t('editor.writingView') : 'LaTeX' }}</button>
+          <button type="button" class="header-action" @click="handleSaveFile"><Save :size="16" /> {{ t('editor.saveAction') }}</button>
+          <button type="button" class="header-action primary" @click="isLatexMode ? aiPanelRef?.sendPreset('polish') : handleSelectionTask(t('editor.polish'))"><Sparkles :size="16" /> {{ t('editor.aiPolish') }}</button>
+          <button type="button" class="header-icon" :title="sidebarCollapsed ? t('editor.fileTree') : t('editor.collapseSidebar')" @click="sidebarCollapsed = !sidebarCollapsed"><PanelLeftOpen v-if="sidebarCollapsed" :size="18" /><PanelLeftClose v-else :size="18" /></button>
+          <button type="button" class="header-icon" :title="rightPanelVisible ? t('editor.collapseRight') : t('editor.expandRight')" @click="toggleHeaderRightPanel"><PanelRightClose :size="18" /></button>
+          <button v-if="currentProject" type="button" class="header-icon" :title="t('project.closeProject')" @click="requestCloseProject"><FolderX :size="17" /></button>
         </AppHeader>
 
         <div
@@ -101,33 +54,11 @@
             <FileTree v-if="isLatexMode" @collapse="sidebarCollapsed = true" />
             <template v-else>
               <div class="sidebar-tabs">
-                <button
-                  type="button"
-                  class="sidebar-tab"
-                  :class="{ active: writingSidebarTab === 'files' }"
-                  :aria-pressed="writingSidebarTab === 'files'"
-                  @click="writingSidebarTab = 'files'"
-                >
-                  {{ t('editor.files') }}
-                </button>
-                <button
-                  type="button"
-                  class="sidebar-tab"
-                  :class="{ active: writingSidebarTab === 'outline' }"
-                  :aria-pressed="writingSidebarTab === 'outline'"
-                  @click="writingSidebarTab = 'outline'"
-                >
-                  {{ t('editor.outline') }}
-                </button>
+                <button type="button" class="sidebar-tab" :class="{ active: writingSidebarTab === 'files' }" @click="writingSidebarTab = 'files'">{{ t('editor.files') }}</button>
+                <button type="button" class="sidebar-tab" :class="{ active: writingSidebarTab === 'outline' }" @click="writingSidebarTab = 'outline'">{{ t('editor.outline') }}</button>
               </div>
               <FileTree v-if="writingSidebarTab === 'files'" @collapse="sidebarCollapsed = true" />
-              <DocumentOutline
-                v-else
-                :content="content"
-                :active-line="selection.startLine"
-                @navigate="navigateToLine"
-                @add="addSection"
-              />
+              <DocumentOutline v-else :content="content" :active-line="selection.startLine" @navigate="navigateToLine" @add="addSection" />
             </template>
           </div>
 
@@ -201,47 +132,17 @@
             </div>
           </main>
 
-          <aside
-            v-if="rightPanelVisible"
-            class="workbench-right"
-            :style="{ width: (isLatexMode ? 340 : 356) + 'px' }"
-          >
+          <aside v-if="rightPanelVisible" class="workbench-right" :style="{ width: (isLatexMode ? 340 : 356) + 'px' }">
             <EditorRightTabBar
               :model-value="rightPanelTab"
               :agent-mode="!isLatexMode"
               @update:model-value="setRightPanelTab"
             />
-            <MarkdownPreview
-              v-if="rightPanelTab === 'preview'"
-              :content="content"
-              :version="contentVersion"
-              class="rp-content rp-preview"
-            />
-            <CompanionPanel
-              v-else-if="rightPanelTab === 'argument'"
-              :content="content"
-              class="rp-content"
-            />
+            <MarkdownPreview v-if="rightPanelTab === 'preview'" :content="content" :version="contentVersion" class="rp-content rp-preview" />
+            <CompanionPanel v-else-if="rightPanelTab === 'argument'" :content="content" class="rp-content" />
             <template v-else>
-              <AiPanel
-                v-if="isLatexMode"
-                ref="aiPanelRef"
-                workspace-variant
-                :editor-context="selection.text || content"
-                :active-file="activeFile"
-                :can-undo="!!previousContent"
-                :workspace-files="workspaceFiles"
-                class="rp-content"
-                @insert="handleInsert"
-                @undo="handleUndo"
-                @close="rightPanelVisible = false"
-              />
-              <TaskAgentPanel
-                v-else
-                :context="content"
-                :selection="selection.text"
-                :active-file="activeFile"
-              />
+              <AiPanel v-if="isLatexMode" ref="aiPanelRef" workspace-variant :editor-context="selection.text || content" :active-file="activeFile" :can-undo="!!previousContent" :workspace-files="workspaceFiles" class="rp-content" @insert="handleInsert" @undo="handleUndo" @close="rightPanelVisible = false" />
+              <TaskAgentPanel v-else :context="content" :selection="selection.text" :active-file="activeFile" />
             </template>
           </aside>
         </div>
@@ -309,15 +210,7 @@
 </template>
 
 <script setup lang="ts">
-import {
-  ref,
-  computed,
-  defineAsyncComponent,
-  watch,
-  onMounted,
-  onBeforeUnmount,
-  nextTick,
-} from 'vue'
+import { ref, computed, defineAsyncComponent, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ComplianceReport } from '../types'
 
@@ -400,15 +293,7 @@ const { applyAiResult, undoEdit } = useEditor()
 const { analyzeVision, insertImageFile } = useEditorVision()
 const { processCitations, previewCitations, getZoteroStatus, searchZotero } = useEditorCitation()
 const { exportToWord, exportLatex, exportPdf, loadExportTemplates, saveBlob } = useEditorIO()
-const {
-  resetMindMap,
-  loadSavedMindMap,
-  saveMindMap,
-  addChild,
-  updateNodeText,
-  updateNodeBody,
-  skipNextBackendLoad,
-} = useMindMap()
+const { resetMindMap, loadSavedMindMap, saveMindMap, addChild, updateNodeText, updateNodeBody, skipNextBackendLoad } = useMindMap()
 const { readFileContent, refresh: refreshFileTree, rootDir } = useFileTree()
 const { sendMessage: sendAgentMessage } = useAgentChat()
 
@@ -599,7 +484,8 @@ function handleShellWorkspaceMode(event: Event) {
       return
     }
     openMindMapFromEditor()
-  } else if (mode === 'editor') workspaceMode.value = 'editor'
+  }
+  else if (mode === 'editor') workspaceMode.value = 'editor'
 }
 
 async function openWorkspaceFolder() {
@@ -759,14 +645,8 @@ async function handleExportWord() {
 
 async function handleExportLatex() {
   if (exportLoading.value) return
-  if (!selectedTemplate.value) {
-    showExportToast(t('editor.selectTemplate'))
-    return
-  }
-  if (!content.value.trim()) {
-    showExportToast(t('editor.pleaseInputContent'))
-    return
-  }
+  if (!selectedTemplate.value) { showExportToast(t('editor.selectTemplate')); return }
+  if (!content.value.trim()) { showExportToast(t('editor.pleaseInputContent')); return }
   exportLoading.value = true
   try {
     const { tex, error } = await exportLatex(content.value, selectedTemplate.value)
@@ -793,14 +673,8 @@ async function handleExportLatex() {
 
 async function handleExportPdf() {
   if (exportLoading.value) return
-  if (!selectedTemplate.value) {
-    showExportToast(t('editor.selectTemplate'))
-    return
-  }
-  if (!content.value.trim()) {
-    showExportToast(t('editor.pleaseInputContent'))
-    return
-  }
+  if (!selectedTemplate.value) { showExportToast(t('editor.selectTemplate')); return }
+  if (!content.value.trim()) { showExportToast(t('editor.pleaseInputContent')); return }
   if (!tectonicAvailable.value) {
     const { tectonic_available } = await loadExportTemplates()
     tectonicAvailable.value = tectonic_available
@@ -1410,22 +1284,10 @@ async function handleAgentFileChange() {
   font-weight: 500;
   color: var(--c-text-3);
   cursor: pointer;
-  transition:
-    color 0.15s ease,
-    background 0.15s ease;
+  transition: color 0.15s ease, background 0.15s ease;
 }
-.sidebar-tab:hover {
-  color: var(--c-text-1);
-  background: var(--c-surface-2);
-}
-.sidebar-tab.active {
-  color: var(--c-accent);
-  background: var(--c-accent-soft);
-}
-.sidebar-tab:focus-visible {
-  outline: none;
-  box-shadow: var(--ring-focus);
-}
+.sidebar-tab:hover { color: var(--c-text-1); background: var(--c-surface-2); }
+.sidebar-tab.active { color: var(--c-accent); background: var(--c-accent-soft); }
 .workbench-center {
   flex: 1;
   min-width: 0;
@@ -1561,38 +1423,14 @@ async function handleAgentFileChange() {
 }
 
 @media (max-width: 1180px) {
-  .workbench-left {
-    width: 208px !important;
-  }
-  .workbench-right {
-    width: 332px !important;
-    min-width: 300px;
-  }
+  .workbench-left { width: 208px !important; }
+  .workbench-right { width: 332px !important; min-width: 300px; }
 }
 @media (max-width: 980px) {
-  .workbench-left {
-    width: 190px !important;
-  }
-  .header-action {
-    height: 34px;
-    padding-inline: 9px;
-  }
-  .header-icon {
-    width: 34px;
-    height: 34px;
-  }
-  .editor-workbench {
-    position: relative;
-  }
-  .workbench-right {
-    position: absolute;
-    z-index: 35;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: min(356px, calc(100% - 56px)) !important;
-    box-shadow: var(--elevation-3);
-  }
+  .workbench-left { width: 190px !important; }
+  .header-action:not(.primary) { display: none; }
+  .editor-workbench { position: relative; }
+  .workbench-right { position: absolute; z-index: 35; top: 0; right: 0; bottom: 0; width: min(356px, calc(100% - 56px)) !important; box-shadow: var(--elevation-3); }
 }
 @media (max-width: 760px) {
   .workbench-left {

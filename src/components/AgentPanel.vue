@@ -14,54 +14,10 @@
       @mousedown="_headerMouseDown"
     >
       <div class="agent-tabs" role="tablist" :aria-label="t('agent.title')" @keydown="onTabKeydown">
-        <button
-          id="agent-tab-chat"
-          role="tab"
-          aria-controls="agent-panel-chat"
-          :aria-selected="tab === 'chat'"
-          :tabindex="tab === 'chat' ? 0 : -1"
-          class="agent-tab u-interactive"
-          :class="{ active: tab === 'chat' }"
-          @click="selectTab('chat')"
-        >
-          {{ t('agent.tabChat') }}
-        </button>
-        <button
-          id="agent-tab-docs"
-          role="tab"
-          aria-controls="agent-panel-docs"
-          :aria-selected="tab === 'docs'"
-          :tabindex="tab === 'docs' ? 0 : -1"
-          class="agent-tab u-interactive"
-          :class="{ active: tab === 'docs' }"
-          @click="selectTab('docs')"
-        >
-          {{ t('agent.tabDocs') }}
-        </button>
-        <button
-          id="agent-tab-templates"
-          role="tab"
-          aria-controls="agent-panel-templates"
-          :aria-selected="tab === 'templates'"
-          :tabindex="tab === 'templates' ? 0 : -1"
-          class="agent-tab u-interactive"
-          :class="{ active: tab === 'templates' }"
-          @click="selectTab('templates')"
-        >
-          {{ t('agent.tabSkills') }}
-        </button>
-        <button
-          id="agent-tab-sessions"
-          role="tab"
-          aria-controls="agent-panel-sessions"
-          :aria-selected="tab === 'sessions'"
-          :tabindex="tab === 'sessions' ? 0 : -1"
-          class="agent-tab u-interactive"
-          :class="{ active: tab === 'sessions' }"
-          @click="selectTab('sessions')"
-        >
-          {{ t('agent.tabSessions') }}
-        </button>
+        <button id="agent-tab-chat" role="tab" aria-controls="agent-panel-chat" :aria-selected="tab === 'chat'" :tabindex="tab === 'chat' ? 0 : -1" class="agent-tab u-interactive" :class="{ active: tab === 'chat' }" @click="selectTab('chat')">{{ t('agent.tabChat') }}</button>
+        <button id="agent-tab-docs" role="tab" aria-controls="agent-panel-docs" :aria-selected="tab === 'docs'" :tabindex="tab === 'docs' ? 0 : -1" class="agent-tab u-interactive" :class="{ active: tab === 'docs' }" @click="selectTab('docs')">{{ t('agent.tabDocs') }}</button>
+        <button id="agent-tab-templates" role="tab" aria-controls="agent-panel-templates" :aria-selected="tab === 'templates'" :tabindex="tab === 'templates' ? 0 : -1" class="agent-tab u-interactive" :class="{ active: tab === 'templates' }" @click="selectTab('templates')">{{ t('agent.tabSkills') }}</button>
+        <button id="agent-tab-sessions" role="tab" aria-controls="agent-panel-sessions" :aria-selected="tab === 'sessions'" :tabindex="tab === 'sessions' ? 0 : -1" class="agent-tab u-interactive" :class="{ active: tab === 'sessions' }" @click="selectTab('sessions')">{{ t('agent.tabSessions') }}</button>
       </div>
       <div class="agent-header-actions">
         <button
@@ -115,24 +71,12 @@
     </div>
 
     <!-- Sessions Tab -->
-    <div
-      id="agent-panel-sessions"
-      v-show="tab === 'sessions'"
-      role="tabpanel"
-      aria-labelledby="agent-tab-sessions"
-      class="agent-sessions"
-    >
+    <div id="agent-panel-sessions" v-show="tab === 'sessions'" role="tabpanel" aria-labelledby="agent-tab-sessions" class="agent-sessions">
       <AgentSessionList ref="sessionListRef" @open="handleSessionOpen" />
     </div>
 
     <!-- Chat Tab -->
-    <div
-      id="agent-panel-chat"
-      v-show="tab === 'chat'"
-      role="tabpanel"
-      aria-labelledby="agent-tab-chat"
-      class="agent-chat"
-    >
+    <div id="agent-panel-chat" v-show="tab === 'chat'" role="tabpanel" aria-labelledby="agent-tab-chat" class="agent-chat">
       <div v-if="sending && !pendingApproval" class="agent-thinking-bar"></div>
       <div class="agent-messages" ref="messagesRef" @scroll="_onMessagesScroll">
         <div v-if="currentStatus && sending && !pendingApproval" class="agent-status-bar">
@@ -373,13 +317,7 @@
     </div>
 
     <!-- Docs Tab -->
-    <div
-      id="agent-panel-docs"
-      v-show="tab === 'docs'"
-      role="tabpanel"
-      aria-labelledby="agent-tab-docs"
-      class="agent-docs"
-    >
+    <div id="agent-panel-docs" v-show="tab === 'docs'" role="tabpanel" aria-labelledby="agent-tab-docs" class="agent-docs">
       <div class="docs-toolbar">
         <span class="docs-title">{{ t('agent.docsTitle') }}</span>
         <span class="docs-subtitle">{{ t('agent.docsSubtitle') }}</span>
@@ -459,13 +397,7 @@
     </div>
 
     <!-- Skills and paper templates -->
-    <div
-      id="agent-panel-templates"
-      v-show="tab === 'templates'"
-      role="tabpanel"
-      aria-labelledby="agent-tab-templates"
-      class="agent-templates"
-    >
+    <div id="agent-panel-templates" v-show="tab === 'templates'" role="tabpanel" aria-labelledby="agent-tab-templates" class="agent-templates">
       <div class="docs-toolbar">
         <div class="skills-heading">
           <span class="docs-title">{{ t('agent.skillsTitle') }}</span>
@@ -647,12 +579,7 @@ async function openAgentWindow() {
   const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow')
 
   // Close any existing agent window first
-  try {
-    const old = await WebviewWindow.getByLabel('agent')
-    if (old) await old.close()
-  } catch {
-    /* Window may already be gone. */
-  }
+  try { const old = await WebviewWindow.getByLabel('agent'); if (old) await old.close() } catch { /* Window may already be gone. */ }
 
   // Pass agent-only flag and optional session via URL params — sessionStorage is
   // window-isolated in Tauri so URL params are the only reliable cross-window channel.
@@ -702,9 +629,7 @@ async function closeAgentWindow() {
     const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow')
     const w = await WebviewWindow.getByLabel('agent')
     if (w) await w.close()
-  } catch {
-    /* Non-Tauri/browser preview. */
-  }
+  } catch { /* Non-Tauri/browser preview. */ }
   _agentWindow = null
   emit('update:open', true)
 }
@@ -866,13 +791,11 @@ function onTabKeydown(event: KeyboardEvent) {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
   event.preventDefault()
   const currentIndex = AGENT_TABS.indexOf(tab.value)
-  const nextIndex =
-    event.key === 'Home'
-      ? 0
-      : event.key === 'End'
-        ? AGENT_TABS.length - 1
-        : (currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + AGENT_TABS.length) %
-          AGENT_TABS.length
+  const nextIndex = event.key === 'Home'
+    ? 0
+    : event.key === 'End'
+      ? AGENT_TABS.length - 1
+      : (currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + AGENT_TABS.length) % AGENT_TABS.length
   selectTab(AGENT_TABS[nextIndex])
   nextTick(() => document.getElementById(`agent-tab-${AGENT_TABS[nextIndex]}`)?.focus())
 }
@@ -1074,8 +997,8 @@ watch(pendingApproval, (p) => {
 watch(pendingCheckpoint, () => {
   const cp = pendingCheckpoint.value
   if (cp) {
-    const filePath = cp.file
-    const content = cp.content
+    const filePath = cp.file as string | undefined
+    const content = cp.content as string | undefined
     if (filePath && content && !cp.content_truncated) {
       const result = applyExternalFileUpdate(filePath, content)
       if (result === 'conflict') {
@@ -1259,20 +1182,17 @@ function createFromTemplate(t: PaperTemplate) {
 }
 
 // ── Watchers ──
-watch(
-  () => props.open,
-  async (isOpen) => {
-    if (isOpen) {
-      if (!_focusBeforeOpen) _focusBeforeOpen = document.activeElement as HTMLElement | null
-      await Promise.all([fetchDocs(), fetchAgentSkills()])
-      await nextTick()
-      if (tab.value === 'chat') agentInputEl.value?.focus()
-    } else if (!isFloating.value && !isStandalone.value) {
-      _focusBeforeOpen?.focus()
-      _focusBeforeOpen = null
-    }
-  },
-)
+watch(() => props.open, async (isOpen) => {
+  if (isOpen) {
+    if (!_focusBeforeOpen) _focusBeforeOpen = document.activeElement as HTMLElement | null
+    await Promise.all([fetchDocs(), fetchAgentSkills()])
+    await nextTick()
+    if (tab.value === 'chat') agentInputEl.value?.focus()
+  } else if (!isFloating.value && !isStandalone.value) {
+    _focusBeforeOpen?.focus()
+    _focusBeforeOpen = null
+  }
+})
 
 watch(tab, (t) => {
   if (t === 'templates') {
@@ -1290,11 +1210,14 @@ const messageRenderSignal = computed(() => {
 })
 
 // 流式输出自动跟底：若用户没有手动上滚则自动滚底
-watch(messageRenderSignal, async () => {
-  if (_userScrolledUp.value) return
-  await nextTick()
-  _scrollToBottom()
-})
+watch(
+  messageRenderSignal,
+  async () => {
+    if (_userScrolledUp.value) return
+    await nextTick()
+    _scrollToBottom()
+  },
+)
 
 // 发送新消息时强制重置到底部（无论用户之前是否上滚）
 watch(sending, (nowSending) => {
@@ -2072,13 +1995,8 @@ onUnmounted(() => {
   animation: voice-pulse 1.5s ease-in-out infinite;
 }
 @keyframes voice-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgba(var(--c-accent-rgb), 0.4);
-  }
-  50% {
-    box-shadow: 0 0 0 6px rgba(var(--c-accent-rgb), 0);
-  }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--c-accent-rgb), 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(var(--c-accent-rgb), 0); }
 }
 .agent-send-btn {
   width: 36px;
@@ -2292,6 +2210,12 @@ onUnmounted(() => {
   font-size: 11px;
   line-height: 1.45;
 }
+.skill-row.selected { border-radius: 8px; border-bottom-color: transparent; background: var(--c-accent-bg); }
+.skill-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+.skill-name-row { display: flex; align-items: center; gap: 7px; }
+.skill-name { color: var(--c-text-0); font-size: 13px; font-weight: 650; }
+.skill-family { color: var(--brand-red); font-family: var(--font-serif); font-size: 10px; letter-spacing: .03em; }
+.skill-description { color: var(--c-text-3); font-size: 11px; line-height: 1.45; }
 .skill-use-btn {
   flex-shrink: 0;
   padding: 5px 8px;
@@ -2451,17 +2375,9 @@ onUnmounted(() => {
   background: var(--c-text-3);
   flex-shrink: 0;
 }
-.agent-workspace-bar.active .ws-dot {
-  background: #4ade80;
-}
-.ws-name {
-  color: var(--c-text-2);
-  font-family: var(--font-mono, monospace);
-}
-.ws-name.muted {
-  color: var(--c-text-3);
-  font-style: italic;
-}
+.agent-workspace-bar.active .ws-dot { background: #4ade80; }
+.ws-name { color: var(--c-text-2); font-family: var(--font-mono, monospace); }
+.ws-name.muted { color: var(--c-text-3); font-style: italic; }
 .docs-subtitle {
   font-size: 11px;
   color: var(--c-text-3);

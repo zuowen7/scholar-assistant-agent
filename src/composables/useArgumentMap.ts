@@ -353,30 +353,26 @@ async function upsertNode(
   return updated
 }
 
-async function persistNodePositions(
-  positions: Record<string, { x: number; y: number }>,
-): Promise<void> {
+async function persistNodePositions(positions: Record<string, { x: number; y: number }>): Promise<void> {
   const graph = _state.graph
   if (!graph) return
   const updates = Object.entries(positions).flatMap(([nodeId, position]) => {
-    const node = graph.nodes.find((candidate) => candidate.id === nodeId)
+    const node = graph.nodes.find(candidate => candidate.id === nodeId)
     if (!node) return []
     node.position = { ...position }
     return [{ node, position }]
   })
   if (!updates.length) return
 
-  const responses = await Promise.all(
-    updates.map(({ node, position }) =>
-      fetch(`${API_BASE}/api/argument/graph/${graph.id}/node`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...node, position }),
-      }),
-    ),
-  )
-  if (responses.some((response) => !response.ok))
-    throw new Error('Failed to persist argument-map positions')
+  const responses = await Promise.all(updates.map(({ node, position }) => fetch(
+    `${API_BASE}/api/argument/graph/${graph.id}/node`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...node, position }),
+    },
+  )))
+  if (responses.some(response => !response.ok)) throw new Error('Failed to persist argument-map positions')
 }
 
 async function deleteNode(nid: string): Promise<void> {
@@ -543,9 +539,9 @@ async function extractArgument(
     if (_state.graph && _state.graph.nodes.length) {
       const { useArgumentLayout } = await import('./useArgumentLayout')
       const { autoLayout } = useArgumentLayout()
-      const pos = autoLayout(_state.graph.nodes, _state.graph.edges, 'LR')
+      const pos = autoLayout(_state.graph.nodes as any[], _state.graph.edges as any[], 'LR')
       try {
-        await persistNodePositions(Object.fromEntries(pos.map((item) => [item.id, item.position])))
+        await persistNodePositions(Object.fromEntries(pos.map(item => [item.id, item.position])))
       } catch {
         pushError(i18n.global.t('argument.positionSaveFailed'))
       }

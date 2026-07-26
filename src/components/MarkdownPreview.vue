@@ -191,10 +191,7 @@ const renderedHtml = computed(() => {
   })
 
   // Restore KaTeX blocks, then sanitize once more to catch any XSS in KaTeX output
-  protectedHtml = protectedHtml.replace(
-    /\uE000KX(\d+)\uE001/g,
-    (_, idx) => katexBlocks[parseInt(idx)] ?? '',
-  )
+  protectedHtml = protectedHtml.replace(/\uE000KX(\d+)\uE001/g, (_, idx) => katexBlocks[parseInt(idx)] ?? '')
   return DOMPurify.sanitize(protectedHtml, {
     ADD_TAGS: [
       'math',

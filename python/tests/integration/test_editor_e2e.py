@@ -322,7 +322,6 @@ class TestWordExport:
 
     def test_component_safe_path_rejects_sibling_prefix(self, tmp_path):
         from fastapi import HTTPException
-
         from routers.editor import _safe_child_path
 
         output = tmp_path / "output"
@@ -335,7 +334,6 @@ class TestWordExport:
 
     def test_component_safe_path_rejects_windows_absolute_path(self, tmp_path):
         from fastapi import HTTPException
-
         from routers.editor import _safe_child_path
 
         output = tmp_path / "output"
@@ -369,12 +367,9 @@ class TestImageUpload:
         assert "path" in data
 
     def test_upload_uses_content_type_extension(self, client):
-        resp = client.post(
-            "/api/upload/image",
-            files={
-                "file": ("misleading.exe", io.BytesIO(b"image bytes"), "image/png"),
-            },
-        )
+        resp = client.post("/api/upload/image", files={
+            "file": ("misleading.exe", io.BytesIO(b"image bytes"), "image/png"),
+        })
         assert resp.status_code == 200
         assert resp.json()["filename"].endswith(".png")
 

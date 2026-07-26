@@ -31,23 +31,17 @@ export function useAppTheme() {
     }
     // View Transition API: cinematic circle-clip dissolve
     if ('startViewTransition' in document) {
-      ;(
-        document as Document & { startViewTransition: (cb: () => void) => void }
-      ).startViewTransition(() => {
+      ;(document as Document & { startViewTransition: (cb: () => void) => void }).startViewTransition(() => {
         isDark.value = !isDark.value
         try {
           localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
-        } catch (err) {
-          logger.warn('saveTheme failed:', err)
-        }
+        } catch (err) { logger.warn('saveTheme failed:', err) }
       })
     } else {
       isDark.value = !isDark.value
       try {
         localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
-      } catch (err) {
-        logger.warn('saveTheme failed:', err)
-      }
+      } catch (err) { logger.warn('saveTheme failed:', err) }
     }
   }
 

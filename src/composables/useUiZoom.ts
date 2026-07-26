@@ -9,9 +9,7 @@ function loadUiZoom(): number {
   try {
     const saved = Number(localStorage.getItem('ui-zoom') || '1')
     return Number.isFinite(saved) ? Math.min(UI_ZOOM_MAX, Math.max(UI_ZOOM_MIN, saved)) : 1
-  } catch {
-    return 1
-  }
+  } catch { return 1 }
 }
 
 /**
@@ -25,11 +23,7 @@ export function useUiZoom() {
   async function applyUiZoom(value: number) {
     const normalized = Math.round(Math.min(UI_ZOOM_MAX, Math.max(UI_ZOOM_MIN, value)) * 10) / 10
     uiZoom.value = normalized
-    try {
-      localStorage.setItem('ui-zoom', String(normalized))
-    } catch {
-      /* storage can be unavailable */
-    }
+    try { localStorage.setItem('ui-zoom', String(normalized)) } catch { /* storage can be unavailable */ }
     try {
       await getCurrentWebview().setZoom(normalized)
     } catch {
