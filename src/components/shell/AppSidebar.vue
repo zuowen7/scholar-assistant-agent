@@ -1,9 +1,14 @@
 <template>
   <aside class="app-sidebar">
-    <div class="brand-block">
+    <button type="button" class="brand-block" :title="t('shell.home')" @click="$emit('home')">
       <span class="brand-mark" aria-hidden="true">研</span>
       <div class="brand-copy"><strong>研墨</strong><span>Scholar Assistant</span></div>
-    </div>
+    </button>
+
+    <button type="button" class="project-switcher" @click="$emit('home')">
+      <span class="project-kicker">{{ t('shell.projectWorkspace') }}</span>
+      <strong>{{ projectName || t('shell.noProject') }}</strong>
+    </button>
 
     <nav class="primary-nav" :aria-label="t('shell.primaryNav')">
       <button
@@ -14,26 +19,26 @@
         :class="{ active: activeModule === item.key }"
         :aria-current="activeModule === item.key ? 'page' : undefined"
         :title="item.label"
+        :disabled="item.requiresWorkspace && !workspaceActive"
         @click="$emit('navigate', item.key)"
       >
         <component :is="item.icon" :size="20" stroke-width="1.8" aria-hidden="true" />
         <span>{{ item.label }}</span>
       </button>
-      <button
-        type="button"
-        class="nav-item nav-agent"
-        data-testid="workspace-agent"
-        @click="$emit('agent')"
-      >
-        <Bot :size="20" stroke-width="1.8" aria-hidden="true" />
-        <span>{{ t('topbar.agentAssistant') }}</span>
-      </button>
     </nav>
-
-    <RecentFiles class="sidebar-recents" :items="recentFiles" @open="$emit('openRecent', $event)" />
 
     <div class="sidebar-footer">
       <ModelStatus :provider="provider" :model="model" :online="modelOnline" />
+      <button
+        type="button"
+        class="agent-dock-button"
+        :class="{ active: agentOpen }"
+        data-testid="workspace-agent"
+        @click="$emit('agent')"
+      >
+        <Bot :size="18" stroke-width="1.8" aria-hidden="true" />
+        <span>{{ t('topbar.agentAssistant') }}</span>
+      </button>
       <div class="user-row">
         <span class="user-avatar">研</span>
         <div class="user-copy">
@@ -58,30 +63,35 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Bot, Languages, PenLine, Share2, SquareCheckBig, Settings } from 'lucide-vue-next'
-import RecentFiles from './RecentFiles.vue'
+import { Bot, Files, Library, SquareCheckBig, Settings } from 'lucide-vue-next'
 import ModelStatus from './ModelStatus.vue'
 
 defineProps<{
-  activeModule: 'translate' | 'write' | 'mindmap' | 'review'
-  recentFiles: Array<{ name: string; path: string }>
+  activeModule: 'draft' | 'sources' | 'review' | null
+  projectName?: string | null
+  workspaceActive?: boolean
+  agentOpen?: boolean
   provider: string
   model: string
   modelOnline?: boolean
 }>()
 defineEmits<{
-  navigate: [module: 'translate' | 'write' | 'mindmap' | 'review']
-  openRecent: [path: string]
+  navigate: [module: 'draft' | 'sources' | 'review']
+  home: []
   settings: []
   agent: []
 }>()
 
 const { t } = useI18n()
 const navItems = computed(() => [
-  { key: 'translate' as const, label: t('shell.translate'), icon: Languages },
-  { key: 'write' as const, label: t('shell.write'), icon: PenLine },
-  { key: 'mindmap' as const, label: t('shell.think'), icon: Share2 },
-  { key: 'review' as const, label: t('shell.review'), icon: SquareCheckBig },
+  { key: 'draft' as const, label: t('shell.draft'), icon: Files, requiresWorkspace: true },
+  { key: 'sources' as const, label: t('shell.sources'), icon: Library, requiresWorkspace: false },
+  {
+    key: 'review' as const,
+    label: t('shell.review'),
+    icon: SquareCheckBig,
+    requiresWorkspace: true,
+  },
 ])
 </script>
 
@@ -98,10 +108,15 @@ const navItems = computed(() => [
   overflow: hidden;
 }
 .brand-block {
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 11px;
   padding: 0 8px 24px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
 }
 .brand-mark {
   width: 40px;
@@ -138,6 +153,33 @@ const navItems = computed(() => [
   flex-direction: column;
   gap: 5px;
 }
+.project-switcher {
+  width: 100%;
+  display: grid;
+  gap: 3px;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: 9px;
+  background: var(--c-surface-1);
+  color: var(--c-text-0);
+  text-align: left;
+  cursor: pointer;
+}
+.project-switcher:hover {
+  border-color: var(--c-accent-ring);
+  background: var(--c-surface-2);
+}
+.project-switcher strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.project-kicker {
+  color: var(--c-text-3);
+  font-size: 10px;
+}
 .nav-item {
   width: 100%;
   height: 44px;
@@ -163,18 +205,33 @@ const navItems = computed(() => [
   background: var(--c-accent-soft);
   font-weight: 650;
 }
-.nav-agent {
-  margin-top: 7px;
-  border-top: 1px solid var(--c-border);
-  border-radius: 0 0 8px 8px;
-}
-.sidebar-recents {
-  margin-top: 20px;
+.nav-item:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 .sidebar-footer {
   margin-top: auto;
   display: grid;
   gap: 12px;
+}
+.agent-dock-button {
+  width: 100%;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 11px;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  background: var(--c-surface-1);
+  color: var(--c-text-1);
+  cursor: pointer;
+}
+.agent-dock-button:hover,
+.agent-dock-button.active {
+  border-color: var(--c-accent-ring);
+  color: var(--c-accent);
+  background: var(--c-accent-soft);
 }
 .user-row {
   display: flex;
@@ -244,8 +301,9 @@ const navItems = computed(() => [
     padding-inline: 0;
   }
   .brand-copy,
+  .project-switcher,
   .nav-item span,
-  .sidebar-recents,
+  .agent-dock-button span,
   .user-copy,
   .model-status {
     display: none;

@@ -9,16 +9,19 @@
     />
     <AppSidebar
       :active-module="activeModule"
-      :recent-files="recentFiles"
+      :project-name="projectName"
+      :workspace-active="workspaceActive"
+      :agent-open="agentOpen"
       :provider="provider"
       :model="model"
       :model-online="modelOnline"
       @navigate="$emit('navigate', $event)"
-      @open-recent="$emit('openRecent', $event)"
+      @home="$emit('home')"
       @settings="$emit('settings')"
       @agent="$emit('agent')"
     />
     <main class="app-shell-main"><slot /></main>
+    <slot name="assistant" />
     <div class="shell-window-controls" :aria-label="t('shell.windowControls')">
       <button
         type="button"
@@ -58,15 +61,17 @@ import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 defineProps<{
-  activeModule: 'translate' | 'write' | 'mindmap' | 'review'
-  recentFiles: Array<{ name: string; path: string }>
+  activeModule: 'draft' | 'sources' | 'review' | null
+  projectName?: string | null
+  workspaceActive?: boolean
+  agentOpen?: boolean
   provider: string
   model: string
   modelOnline?: boolean
 }>()
 defineEmits<{
-  navigate: [module: 'translate' | 'write' | 'mindmap' | 'review']
-  openRecent: [path: string]
+  navigate: [module: 'draft' | 'sources' | 'review']
+  home: []
   settings: []
   agent: []
 }>()

@@ -1,7 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { useVoiceRouter } from '../../composables/useVoiceRouter'
 import { registerTier1Commands } from '../../composables/voiceCommands/tier1-navigation'
-import { useAppMode } from '../../composables/useAppMode'
+import {
+  _resetWorkspaceNavigationForTesting,
+  useWorkspaceNavigation,
+} from '../../composables/useWorkspaceNavigation'
 
 describe('Tier 1: Navigation commands', () => {
   let router: ReturnType<typeof useVoiceRouter>
@@ -9,9 +12,10 @@ describe('Tier 1: Navigation commands', () => {
   beforeEach(() => {
     router = useVoiceRouter()
     router.clearCommands()
-    const { setMode, toggleAgentChat } = useAppMode()
-    setMode('editor')
-    toggleAgentChat(false)
+    _resetWorkspaceNavigationForTesting()
+    const navigation = useWorkspaceNavigation()
+    navigation.enterWorkspace('D:/paper', { draftView: 'editor' })
+    navigation.toggleAgentDock(false)
     registerTier1Commands(router.registerCommands)
   })
 
@@ -54,36 +58,36 @@ describe('Tier 1: Navigation commands', () => {
     })
   }
 
-  it('nav:translate dispatches setMode("translate")', async () => {
-    const { appMode } = useAppMode()
+  it('nav:translate opens standalone translation', async () => {
+    const { location } = useWorkspaceNavigation()
     await router.routeCommand('翻译模式')
-    expect(appMode.value).toBe('translate')
+    expect(location.value).toEqual({ kind: 'standalone-translation' })
   })
 
-  it('nav:editor dispatches setMode("editor")', async () => {
-    const { appMode, setMode } = useAppMode()
-    setMode('translate')
+  it('nav:editor returns to the draft workspace', async () => {
+    const navigation = useWorkspaceNavigation()
+    navigation.openStandaloneTranslation()
     await router.routeCommand('编辑模式')
-    expect(appMode.value).toBe('editor')
+    expect(navigation.location.value).toMatchObject({ kind: 'workspace', section: 'draft' })
   })
 
-  it('nav:argument dispatches setMode("argument")', async () => {
-    const { appMode } = useAppMode()
+  it('nav:argument opens the review workspace', async () => {
+    const { location } = useWorkspaceNavigation()
     await router.routeCommand('论证模式')
-    expect(appMode.value).toBe('argument')
+    expect(location.value).toMatchObject({ kind: 'workspace', section: 'review' })
   })
 
   it('nav:agent-chat opens agent panel', async () => {
-    const { showAgentChat } = useAppMode()
+    const { rightDock } = useWorkspaceNavigation()
     await router.routeCommand('打开助手')
-    expect(showAgentChat.value).toBe(true)
+    expect(rightDock.value).toBe('agent')
   })
 
   it('nav:close-agent closes agent panel', async () => {
-    const { showAgentChat, toggleAgentChat } = useAppMode()
-    toggleAgentChat(true)
+    const { rightDock, toggleAgentDock } = useWorkspaceNavigation()
+    toggleAgentDock(true)
     await router.routeCommand('关闭助手')
-    expect(showAgentChat.value).toBe(false)
+    expect(rightDock.value).toBeNull()
   })
 
   it('no false positive: "翻译一下这段话" is not nav:translate', () => {

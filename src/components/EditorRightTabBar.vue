@@ -11,8 +11,8 @@
     <button
       data-testid="right-tab-agent"
       class="rp-tab"
-      :class="{ active: modelValue === 'ai' }"
-      @click="emit('update:modelValue', 'ai')"
+      :class="{ active: agentMode ? agentOpen : modelValue === 'ai' }"
+      @click="agentMode ? emit('openAgent') : emit('update:modelValue', 'ai')"
     >
       <Bot :size="13" :stroke-width="1.7" />
       {{ t(agentMode ? 'editor.rightAgent' : 'editor.rightAiEdit') }}
@@ -43,9 +43,10 @@ const { t } = useI18n()
 
 type RightTab = 'preview' | 'ai' | 'argument'
 
-defineProps<{ modelValue: RightTab | null; agentMode?: boolean }>()
+defineProps<{ modelValue: RightTab | null; agentMode?: boolean; agentOpen?: boolean }>()
 const emit = defineEmits<{
   (e: 'update:modelValue', value: RightTab | null): void
+  (e: 'openAgent'): void
 }>()
 </script>
 

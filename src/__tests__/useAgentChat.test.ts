@@ -443,6 +443,31 @@ describe('useAgentChat', () => {
   // ── Approval state ──────────────────────────────────────────────────
 
   describe('pendingApproval', () => {
+    it('shares an approval raised by one consumer with every Agent surface', async () => {
+      const sender = useAgentChat()
+      const dock = useAgentChat()
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(
+            makeSseResponse([
+              makeSessionStartedChunk('sess_shared'),
+              makeAwaitApprovalChunk('write_file', 'Confirm the edit', 'evt_shared'),
+              makeDoneChunk(),
+            ]),
+          ),
+      )
+
+      await sender.sendMessage('Update the draft')
+
+      expect(sender.pendingApproval).toBe(dock.pendingApproval)
+      expect(dock.pendingApproval.value).toMatchObject({
+        event_id: 'evt_shared',
+        tool_name: 'write_file',
+      })
+    })
+
     it('sets pendingApproval on await_approval event', async () => {
       const chunks = [
         makeSessionStartedChunk('sess_001'),

@@ -1,6 +1,6 @@
 ﻿<template>
   <div class="editor-layout">
-    <MindMapView v-if="workspaceMode === 'mindmap'" @enter-editor="enterEditorFromMindMap" />
+    <MindMapView v-if="draftView === 'mindmap'" @enter-editor="enterEditorFromMindMap" />
 
     <template v-else>
       <EditorWelcome
@@ -38,17 +38,13 @@
           <button type="button" class="header-action" @click="handleSaveFile">
             <Save :size="16" /> {{ t('editor.saveAction') }}
           </button>
-          <button
-            type="button"
-            class="header-action primary"
-            @click="
-              isLatexMode
-                ? aiPanelRef?.sendPreset('polish')
-                : handleSelectionTask(t('editor.polish'))
-            "
-          >
-            <Sparkles :size="16" /> {{ t('editor.aiPolish') }}
-          </button>
+          <UiDropdown :items="headerExportItems" :width="210" align="end">
+            <template #trigger>
+              <UiButton variant="primary" size="sm" :loading="exportLoading">
+                {{ t('editor.exportLabel') }}
+              </UiButton>
+            </template>
+          </UiDropdown>
           <button
             type="button"
             class="header-icon"
@@ -64,16 +60,6 @@
             @click="toggleHeaderRightPanel"
           >
             <PanelRightClose :size="18" />
-          </button>
-          <button
-            type="button"
-            class="header-icon"
-            :title="t('editor.closeCurrentDocument')"
-            :aria-label="t('editor.closeCurrentDocument')"
-            data-testid="close-current-document"
-            @click="requestCloseCurrentDocument"
-          >
-            <X :size="17" />
           </button>
           <button
             v-if="currentProject"
@@ -131,7 +117,7 @@
           </div>
 
           <main class="workbench-center">
-            <EditorTabs v-if="isLatexMode" />
+            <EditorTabs @request-close="requestCloseTab" />
             <EditorToolbar
               ref="toolbarRef"
               :active-right-tab="rightPanelTab"
@@ -139,9 +125,6 @@
               :selected-template="selectedTemplate"
               :export-loading="exportLoading"
               :message="exportMessage"
-              @new-paper="showTemplatePicker = true"
-              @save="handleSaveFile"
-              @open-mindmap="openMindMapFromEditor"
               @toggle-right="toggleRightPanel"
               @select-template="selectedTemplate = $event"
               @image-selected="handleImageSelected"
@@ -152,9 +135,6 @@
               @run-compliance="runComplianceCheck"
               @process-citations="handleProcessCitations"
               @zotero-insert="handleZoteroInsert"
-              @export-word="handleExportWord"
-              @export-latex="handleExportLatex"
-              @export-pdf="handleExportPdf"
               @voice-start="handleVoiceStart"
               @voice-update="handleVoiceUpdate"
               @voice-stop="handleVoiceStop"
@@ -208,7 +188,9 @@
             <EditorRightTabBar
               :model-value="rightPanelTab"
               :agent-mode="!isLatexMode"
+              :agent-open="rightDock === 'agent'"
               @update:model-value="setRightPanelTab"
+              @open-agent="toggleAgentDock(true)"
             />
             <MarkdownPreview
               v-if="rightPanelTab === 'preview'"
@@ -221,27 +203,19 @@
               :content="content"
               class="rp-content"
             />
-            <template v-else>
-              <AiPanel
-                v-if="isLatexMode"
-                ref="aiPanelRef"
-                workspace-variant
-                :editor-context="selection.text || content"
-                :active-file="activeFile"
-                :can-undo="!!previousContent"
-                :workspace-files="workspaceFiles"
-                class="rp-content"
-                @insert="handleInsert"
-                @undo="handleUndo"
-                @close="rightPanelVisible = false"
-              />
-              <TaskAgentPanel
-                v-else
-                :context="content"
-                :selection="selection.text"
-                :active-file="activeFile"
-              />
-            </template>
+            <AiPanel
+              v-else
+              ref="aiPanelRef"
+              workspace-variant
+              :editor-context="selection.text || content"
+              :active-file="activeFile"
+              :can-undo="!!previousContent"
+              :workspace-files="workspaceFiles"
+              class="rp-content"
+              @insert="handleInsert"
+              @undo="handleUndo"
+              @close="rightPanelVisible = false"
+            />
           </aside>
         </div>
       </template>
@@ -259,7 +233,7 @@
 
     <TemplatePicker
       :visible="showTemplatePicker"
-      :isDark="isDark"
+      :is-dark="isDark"
       @close="showTemplatePicker = false"
       @create="handleScaffoldCreate"
     />
@@ -332,12 +306,14 @@ import EditorRightTabBar from './EditorRightTabBar.vue'
 import FileTree from './FileTree.vue'
 import TemplatePicker from './TemplatePicker.vue'
 import DocumentOutline from './DocumentOutline.vue'
-import TaskAgentPanel from './TaskAgentPanel.vue'
 import AppHeader from './shell/AppHeader.vue'
 import AppConfirmDialog from './shell/AppConfirmDialog.vue'
 import AppPromptDialog from './shell/AppPromptDialog.vue'
 import SegmentedControl from './shell/SegmentedControl.vue'
 import StatusBadge from './shell/StatusBadge.vue'
+import UiButton from './ui/UiButton.vue'
+import UiDropdown from './ui/UiDropdown.vue'
+import type { DropdownItem } from './ui/UiDropdown.vue'
 import {
   FileCode2,
   FileText,
@@ -347,7 +323,6 @@ import {
   PanelRightClose,
   Save,
   Sparkles,
-  X,
 } from 'lucide-vue-next'
 
 // -- State composables ---------------------------------------------------
@@ -361,7 +336,8 @@ import { useMindMap, markdownToMindMapNodes } from '../composables/useMindMap'
 import { useFileTree } from '../composables/useFileTree'
 import { useArgumentCompanion } from '../composables/useArgumentCompanion'
 import { useAgentChat } from '../composables/useAgentChat'
-import { useAppMode } from '../composables/useAppMode'
+import { useWorkspaceNavigation } from '../composables/useWorkspaceNavigation'
+import { useProjectWorkspace } from '../composables/useProjectWorkspace'
 import { API_BASE } from '../utils/api'
 import { closeProject, currentProject, useProject } from '../composables/useProject'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
@@ -390,8 +366,7 @@ const {
 } = useEditorState()
 
 // -- Tab / file operations ------------------------------------------------
-const { openNewUntitled, openFile, closeTab, setContent, markDirty, saveFile, reloadOpenTabs } =
-  useEditor()
+const { openNewUntitled, closeTab, setContent, markDirty, saveFile, reloadOpenTabs } = useEditor()
 
 // -- AI edit actions (from useEditor, called once) -----------------------
 const { applyAiResult, undoEdit } = useEditor()
@@ -402,34 +377,46 @@ const { processCitations, previewCitations, getZoteroStatus, searchZotero } = us
 const { exportToWord, exportLatex, exportPdf, loadExportTemplates, saveBlob } = useEditorIO()
 const {
   resetMindMap,
+  hasSavedMindMap,
   loadSavedMindMap,
+  loadFromBackend,
   saveMindMap,
   addChild,
   updateNodeText,
   updateNodeBody,
   skipNextBackendLoad,
 } = useMindMap()
-const { readFileContent, refresh: refreshFileTree, rootDir } = useFileTree()
+const { refresh: refreshFileTree, rootDir } = useFileTree()
 const { sendMessage: sendAgentMessage } = useAgentChat()
-const { requestedEditorWorkspaceMode, setEditorWorkspaceMode } = useAppMode()
+const { draftView, rightDock, setDraftView, toggleAgentDock } = useWorkspaceNavigation()
+const { openProjectWorkspace } = useProjectWorkspace()
 
 // -- Workspace mode -------------------------------------------------------
-const workspaceMode = ref<'editor' | 'mindmap'>('editor')
 const showZoteroPrompt = ref(false)
 const zoteroSearching = ref(false)
 const zoteroPromptError = ref('')
 let _contentBeforeMindMap = ''
 const sidebarCollapsed = ref(false)
 const writingSidebarTab = ref<'files' | 'outline'>('files')
-const documentView = ref<'body' | 'outline' | 'preview'>('body')
-const rightPanelVisible = ref(true)
-const editorModeOverride = ref<'auto' | 'writing' | 'latex'>('auto')
-const isLatexMode = computed(
-  () =>
-    editorModeOverride.value === 'latex' ||
-    (editorModeOverride.value === 'auto' &&
-      /\.tex$/i.test(activeTab.value?.name || activeTab.value?.path || '')),
-)
+const documentView = computed<'body' | 'outline' | 'preview' | 'mindmap'>({
+  get: () =>
+    draftView.value === 'mindmap'
+      ? 'mindmap'
+      : draftView.value === 'preview'
+        ? 'preview'
+        : draftView.value === 'outline'
+          ? 'outline'
+          : 'body',
+  set: (view) => {
+    if (view === 'mindmap') {
+      void openMindMapFromEditor()
+      return
+    }
+    setDraftView(view === 'body' ? 'editor' : view)
+  },
+})
+const rightPanelVisible = ref(false)
+const isLatexMode = computed(() => draftView.value === 'latex')
 const lineCount = computed(() => (content.value ? content.value.split(/\r?\n/).length : 0))
 const wordCount = computed(() => {
   const latin = content.value.match(/[A-Za-z0-9]+/g)?.length || 0
@@ -443,24 +430,28 @@ const headerSubtitle = computed(() =>
 )
 const documentViewOptions = computed(() => [
   { value: 'body', label: t('editor.body') },
-  { value: 'outline', label: t('editor.outline') },
   { value: 'preview', label: t('editor.preview') },
+  { value: 'mindmap', label: t('editor.mindMap') },
 ])
-watch(workspaceMode, (mode) => {
-  setEditorWorkspaceMode(mode)
-  window.dispatchEvent(
-    new CustomEvent('shell-section-change', { detail: mode === 'mindmap' ? 'mindmap' : 'write' }),
-  )
-})
-watch(isLatexMode, () => {
-  documentView.value = 'body'
-})
+watch(
+  () => activeTab.value?.path || activeTab.value?.name || '',
+  (path) => {
+    if (/\.tex$/i.test(path)) setDraftView('latex')
+    else if (draftView.value === 'latex') setDraftView('editor')
+  },
+  { immediate: true },
+)
 
 // -- Right panel ----------------------------------------------------------
 type RightTab = 'preview' | 'ai' | 'argument'
 const rightPanelTab = ref<RightTab | null>('ai')
 const aiPanelRef = ref<InstanceType<typeof AiPanel> | null>(null)
 const toggleRightPanel = (tab: RightTab) => {
+  if (tab === 'ai' && !isLatexMode.value) {
+    toggleAgentDock(true)
+    rightPanelVisible.value = false
+    return
+  }
   rightPanelTab.value = tab
   rightPanelVisible.value = true
 }
@@ -473,6 +464,10 @@ const setRightPanelTab = (tab: RightTab | null) => {
   toggleRightPanel(tab)
 }
 const toggleHeaderRightPanel = () => {
+  if (!isLatexMode.value) {
+    toggleAgentDock()
+    return
+  }
   if (rightPanelVisible.value) {
     rightPanelVisible.value = false
     return
@@ -489,6 +484,11 @@ const exportMessage = ref('')
 const toolbarRef = ref<InstanceType<typeof EditorToolbar> | null>(null)
 let exportToastTimer: ReturnType<typeof setTimeout> | null = null
 const tectonicAvailable = ref(false)
+const headerExportItems = computed<DropdownItem[]>(() => [
+  { text: 'Word (.docx)', onClick: handleExportWord },
+  { text: 'LaTeX (.tex)', onClick: handleExportLatex },
+  { text: 'PDF', onClick: handleExportPdf },
+])
 
 // -- Compliance ------------------------------------------------------------
 const showCompliance = ref(false)
@@ -501,19 +501,23 @@ const showTemplatePicker = ref(false)
 const showProjectStart = ref(false)
 const showCloseProjectConfirm = ref(false)
 const showCloseDocumentConfirm = ref(false)
+const pendingCloseTabId = ref<string | null>(null)
 const hasDirtyTabs = computed(() => tabs.value.some((tab) => tab.isModified))
 
-function requestCloseCurrentDocument() {
-  if (!activeTab.value) return
-  if (activeTab.value.isModified) {
+function requestCloseTab(tabId: string) {
+  const tab = tabs.value.find((candidate) => candidate.id === tabId)
+  if (!tab) return
+  if (tab.isModified) {
+    pendingCloseTabId.value = tabId
     showCloseDocumentConfirm.value = true
     return
   }
-  closeTab(activeTab.value.id)
+  closeTab(tabId)
 }
 
 function performCloseCurrentDocument() {
-  if (activeTab.value) closeTab(activeTab.value.id)
+  if (pendingCloseTabId.value) closeTab(pendingCloseTabId.value)
+  pendingCloseTabId.value = null
   showCloseDocumentConfirm.value = false
 }
 
@@ -525,7 +529,7 @@ async function performCloseProject() {
   await closeProject()
   tabs.value = []
   activeTabId.value = null
-  workspaceMode.value = 'editor'
+  setDraftView('editor')
   showCloseProjectConfirm.value = false
 }
 
@@ -553,7 +557,7 @@ const workspaceFiles = computed(() =>
 // -- Event handlers ------------------------------------------------------
 
 function navigateToLine(line: number) {
-  documentView.value = 'body'
+  setDraftView('editor')
   nextTick(() => {
     monacoEditor.value?.revealLineInCenter(line)
     monacoEditor.value?.setPosition({ lineNumber: line, column: 1 })
@@ -562,8 +566,7 @@ function navigateToLine(line: number) {
 }
 
 function toggleEditorMode() {
-  editorModeOverride.value = isLatexMode.value ? 'writing' : 'latex'
-  documentView.value = 'body'
+  setDraftView(isLatexMode.value ? 'editor' : 'latex')
 }
 
 function addSection() {
@@ -577,8 +580,7 @@ async function handleSelectionTask(action: string) {
   if (!target.trim()) return
   // Auto-open the right panel so the user sees the agent working (writing mode)
   if (!isLatexMode.value) {
-    rightPanelTab.value = 'ai'
-    rightPanelVisible.value = true
+    toggleAgentDock(true)
   }
   await sendAgentMessage(
     t('editor.selectionTaskPrompt', {
@@ -590,20 +592,6 @@ async function handleSelectionTask(action: string) {
     rootDir.value || undefined,
     activeFile.value || undefined,
   )
-}
-
-function handleShellWorkspaceMode(event: Event) {
-  const mode = (event as CustomEvent).detail
-  if (mode === 'mindmap' || mode === 'editor') {
-    setEditorWorkspaceMode(mode)
-  }
-  if (mode === 'mindmap') {
-    if (workspaceMode.value === 'mindmap') {
-      sidebarCollapsed.value = true
-      return
-    }
-    openMindMapFromEditor()
-  } else if (mode === 'editor') workspaceMode.value = 'editor'
 }
 
 async function openWorkspaceFolder() {
@@ -638,29 +626,10 @@ function handleScaffoldCreate(markdown: string, templateId: string) {
 
 const { danger } = useToast()
 
-function _mainMdPath(projectPath: string): string {
-  // Normalize backslashes from Python backend (Windows) to forward slashes,
-  // matching Tauri plugin-fs output format, so readFileContent resolves correctly.
-  return projectPath.replace(/\\/g, '/') + '/draft/main.md'
-}
-
-async function _openProjectAndMainMd(path: string) {
-  await useProject().openProject(path)
-  const mainMd = _mainMdPath(path)
-  try {
-    const text = await readFileContent(mainMd)
-    openFile(mainMd, text)
-    nextTick(() => openMindMapFromEditor())
-  } catch (e) {
-    console.error('[EditorLayout] Failed to open main.md:', e)
-    openNewUntitled()
-  }
-}
-
 async function handleProjectCreated(path: string) {
   showProjectStart.value = false
   try {
-    await _openProjectAndMainMd(path)
+    await openProjectWorkspace(path, { draftView: 'editor' })
   } catch (e) {
     danger(e instanceof Error ? e.message : t('project.openFailed'))
   }
@@ -668,7 +637,7 @@ async function handleProjectCreated(path: string) {
 
 async function handleOpenRecentProject(path: string) {
   try {
-    await _openProjectAndMainMd(path)
+    await openProjectWorkspace(path, { restoreView: true })
   } catch (e) {
     danger(e instanceof Error ? e.message : t('editor.openRecentFailed'))
   }
@@ -676,7 +645,7 @@ async function handleOpenRecentProject(path: string) {
 
 function enterEditorFromMindMap(outline: string) {
   saveMindMap()
-  workspaceMode.value = 'editor'
+  setDraftView('editor')
   if (!activeTab.value) openNewUntitled()
   nextTick(() => {
     if (!activeTab.value) return
@@ -705,8 +674,17 @@ function buildTreeNode(
 
 async function openMindMapFromEditor() {
   sidebarCollapsed.value = true
-  skipNextBackendLoad()
   _contentBeforeMindMap = content.value
+  if (hasSavedMindMap.value) {
+    loadSavedMindMap()
+    setDraftView('mindmap')
+    return
+  }
+  if (await loadFromBackend()) {
+    setDraftView('mindmap')
+    return
+  }
+  skipNextBackendLoad()
   const md = content.value
   if (md.trim()) {
     const tree = markdownToMindMapNodes(md)
@@ -733,7 +711,7 @@ async function openMindMapFromEditor() {
     const { useMindMapLayout } = await import('../composables/useMindMapLayout')
     useMindMapLayout().autoLayout('radial')
   }
-  workspaceMode.value = 'mindmap'
+  setDraftView('mindmap')
 }
 
 async function handleSaveFile() {
@@ -1097,7 +1075,6 @@ function onKeyDown(e: KeyboardEvent) {
 // -- Lifecycle -------------------------------------------------------------
 onMounted(() => {
   window.addEventListener('keydown', onKeyDown)
-  window.addEventListener('shell-workspace-mode', handleShellWorkspaceMode)
   loadExportTemplates().then(({ templates, tectonic_available }) => {
     exportTemplates.value = templates
     tectonicAvailable.value = tectonic_available
@@ -1115,14 +1092,13 @@ onMounted(() => {
   window.addEventListener('voice-open-folder', handleVoiceOpenFolder)
   window.addEventListener('voice-new-file', handleVoiceNewFile)
   window.addEventListener('voice-save', handleVoiceSave)
-  if (requestedEditorWorkspaceMode.value === 'mindmap') {
+  if (draftView.value === 'mindmap') {
     void openMindMapFromEditor()
   }
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
-  window.removeEventListener('shell-workspace-mode', handleShellWorkspaceMode)
   window.removeEventListener('paper-scaffold', handlePaperScaffold as EventListener)
   window.removeEventListener('agent-files-changed', handleAgentFileChange as EventListener)
   window.removeEventListener('voice-set-mindmap', handleVoiceSetMindmap)

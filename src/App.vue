@@ -69,21 +69,27 @@
       </Transition>
 
       <AppShell
-        :active-module="shellSection"
-        :recent-files="shellRecentFiles"
+        :active-module="activeWorkspaceSection"
+        :project-name="shellProjectName"
+        :workspace-active="workspaceActive"
+        :agent-open="rightDock === 'agent'"
         :provider="shellProvider"
         :model="shellModel"
         :model-online="shellModelOnline"
-        @navigate="navigateTo"
-        @open-recent="handleShellRecent"
+        @navigate="workspace.navigate"
+        @home="workspace.goHome"
         @settings="openLegacySettings"
-        @agent="toggleAgentChat(true)"
+        @agent="workspace.toggleAgentDock()"
       >
         <!-- 主内容区：KeepAlive 保留各模式状态 -->
         <div class="mode-container" :class="{ 'mode-enter': modeTransition }">
           <KeepAlive>
+            <HomeView v-if="location.kind === 'home'" key="home" :is-dark="isDark" />
             <TranslateView
-              v-if="appMode === 'translate'"
+              v-else-if="
+                location.kind === 'standalone-translation' ||
+                (location.kind === 'workspace' && location.section === 'sources')
+              "
               key="translate"
               :health-ok="healthOk"
               :backend-restarting="backendRestarting"
@@ -92,14 +98,26 @@
               @open-agent-docs="openAgentDocs"
             />
             <EditorLayout
-              v-else-if="appMode === 'editor'"
+              v-else-if="location.kind === 'workspace' && location.section === 'draft'"
               key="editor"
-              :isDark="isDark"
+              :is-dark="isDark"
               class="editor-mode"
             />
-            <ReviewerWorkspace v-else-if="appMode === 'argument'" key="argument" class="arg-mode" />
+            <ReviewerWorkspace
+              v-else-if="location.kind === 'workspace' && location.section === 'review'"
+              key="argument"
+              class="arg-mode"
+            />
           </KeepAlive>
         </div>
+        <template #assistant>
+          <AgentPanel
+            :open="rightDock === 'agent'"
+            embedded
+            @update:open="workspace.toggleAgentDock($event)"
+            @switch-to-editor="workspace.navigate('draft')"
+          />
+        </template>
       </AppShell>
 
       <SettingsCenter
@@ -153,13 +171,6 @@
         @open-release="openReleasePage"
       />
 
-      <!-- Agent 聊天面板 -->
-      <AgentPanel
-        :open="showAgentChat"
-        @update:open="toggleAgentChat($event)"
-        @switch-to-editor="navigateTo('write')"
-      />
-
       <!-- 语音助手 Siri 风格浮层 -->
       <VoiceAssistantView />
 
@@ -175,7 +186,8 @@
 
 <script setup lang="ts">
 import { ref, computed, defineAsyncComponent, onMounted, onUnmounted, watch } from 'vue'
-import { useAppMode } from './composables/useAppMode'
+import { useWorkspaceNavigation } from './composables/useWorkspaceNavigation'
+import type { WorkspaceSection } from './composables/useWorkspaceNavigation'
 import { useVoiceRouter } from './composables/useVoiceRouter'
 import { registerAllVoiceCommands } from './composables/voiceCommands'
 import { checkArgumentMapV2Flag, _openFullArgMapTick } from './composables/useArgumentMap'
@@ -190,6 +202,7 @@ import { checkForUpdate } from './composables/useUpdateChecker'
 import type { UpdateCheckResult } from './composables/useUpdateChecker'
 import { useEditor } from './composables/useEditor'
 import EditorLayout from './components/EditorLayout.vue'
+import HomeView from './components/HomeView.vue'
 import AgentPanel from './components/AgentPanel.vue'
 import AppShell from './components/shell/AppShell.vue'
 import SettingsCenter from './components/settings/SettingsCenter.vue'
@@ -238,16 +251,19 @@ const {
 } = useTranslate()
 const { pushError, info, success } = useToast()
 
-// ── 应用模式 ──────────────────────────────────────────────────
-const { appMode, showAgentChat, modeTransition, setMode, setEditorWorkspaceMode, toggleAgentChat } =
-  useAppMode()
-const shellSection = ref<'translate' | 'write' | 'mindmap' | 'review'>('write')
-const { recentProjects, loadRecentProjects, openProject } = useProject()
-const shellRecentFiles = computed(() =>
-  recentProjects.value.map((project) => ({
-    name: project.name || project.path.split(/[\\/]/).filter(Boolean).pop() || project.path,
-    path: project.path,
-  })),
+// ── 应用位置：唯一导航真相 ─────────────────────────────────────
+const workspace = useWorkspaceNavigation()
+const { location, rightDock, modeTransition } = workspace
+const { currentProject } = useProject()
+const { rootDir: workspaceRoot } = useFileTree()
+const activeWorkspaceSection = computed<WorkspaceSection | null>(() => {
+  if (location.value.kind === 'standalone-translation') return 'sources'
+  return location.value.kind === 'workspace' ? location.value.section : null
+})
+const workspaceActive = computed(() => location.value.kind === 'workspace')
+const shellProjectName = computed(
+  () =>
+    currentProject.value?.name || workspaceRoot.value?.split(/[\\/]/).filter(Boolean).pop() || null,
 )
 
 const shellProvider = computed(() =>
@@ -262,57 +278,11 @@ const shellModelOnline = computed(() =>
   engineType.value === 'cloud' ? cloudOk.value : ollamaOk.value,
 )
 
-type ShellSection = 'translate' | 'write' | 'mindmap' | 'review'
-
-function navigateTo(section: ShellSection) {
-  shellSection.value = section
-  if (section === 'translate') setMode('translate')
-  else if (section === 'review') setMode('argument')
-  else {
-    const workspaceMode = section === 'mindmap' ? 'mindmap' : 'editor'
-    setEditorWorkspaceMode(workspaceMode)
-    setMode('editor')
-    window.dispatchEvent(
-      new CustomEvent('shell-workspace-mode', {
-        detail: workspaceMode,
-      }),
-    )
-  }
-}
-
-// Keep the shell highlight aligned when a non-shell action changes the app
-// mode (recovery banner, Agent navigation, argument-map shortcut, etc.).
-watch(appMode, (mode) => {
-  if (mode === 'translate') shellSection.value = 'translate'
-  else if (mode === 'argument') shellSection.value = 'review'
-  else if (shellSection.value === 'translate' || shellSection.value === 'review')
-    shellSection.value = 'write'
-})
-
-async function handleShellRecent(path: string) {
-  navigateTo('write')
-  await openProject(path).catch((error) =>
-    pushError(error instanceof Error ? error.message : '无法打开最近项目'),
-  )
-}
-
 const showSettings = ref(false)
 const { uiZoom, applyUiZoom, handleUiZoomShortcut } = useUiZoom()
 
 function openLegacySettings() {
   showSettings.value = true
-}
-
-function handleShellSectionChange(event: Event) {
-  const section = (event as CustomEvent).detail
-  if (
-    section === 'translate' ||
-    section === 'write' ||
-    section === 'mindmap' ||
-    section === 'review'
-  ) {
-    shellSection.value = section
-  }
 }
 
 // Register voice commands
@@ -322,7 +292,7 @@ registerAllVoiceCommands()
 const { isAgentOnly, onAgentWindowClose } = useAppWindow()
 
 function openAgentDocs() {
-  toggleAgentChat(true)
+  workspace.toggleAgentDock(true)
 }
 const { cleanup: editorCleanup } = useEditor()
 
@@ -352,10 +322,9 @@ function handleVoiceCommandSubmit(e: Event) {
       if (result.type === 'chat') {
         // Fallback: send to agent chat (existing behavior)
         // Ensure editor mode + agent panel open so user sees the response
-        navigateTo('write')
-        toggleAgentChat(true)
+        if (location.value.kind === 'workspace') workspace.navigate('draft')
+        workspace.toggleAgentDock(true)
         const { sendMessage, sending } = useAgentChat()
-        const { rootDir } = useFileTree()
         const { activeTab } = useEditor()
 
         if (sending.value) {
@@ -371,7 +340,7 @@ function handleVoiceCommandSubmit(e: Event) {
           text.trim(),
           '',
           '',
-          rootDir.value || undefined,
+          workspaceRoot.value || undefined,
           activeTab.value?.path || undefined,
         )
           .then(() => {
@@ -487,7 +456,7 @@ const mouseX = ref(0)
 const mouseY = ref(0)
 const { isDark, toggleTheme } = useAppTheme()
 watch(_openFullArgMapTick, () => {
-  setMode('argument')
+  if (location.value.kind === 'workspace') workspace.navigate('review')
 })
 const appBootLoading = ref(true)
 const bootLoadingStartedAt = Date.now()
@@ -497,7 +466,7 @@ const showRecoveryBanner = ref(false)
 
 function handleRecoveryView() {
   showRecoveryBanner.value = false
-  navigateTo('translate')
+  workspace.openStandaloneTranslation()
 }
 
 function handleRecoveryDiscard() {
@@ -599,8 +568,6 @@ onMounted(async () => {
   window.addEventListener('keydown', handleUiZoomShortcut)
   await applyUiZoom(uiZoom.value)
   checkArgumentMapV2Flag().catch(() => {})
-  window.addEventListener('shell-section-change', handleShellSectionChange)
-  loadRecentProjects().catch(() => {})
   // 安全兜底：最多 5 秒后强制隐藏加载画面
   bootSafetyTimer = setTimeout(() => {
     if (appBootLoading.value) {
@@ -698,6 +665,7 @@ onMounted(async () => {
             paths.length > 0 &&
             supportedExts.some((ext) => paths[0].toLowerCase().endsWith(ext))
           ) {
+            workspace.openStandaloneTranslation()
             translateFromPath(paths[0])
           }
         } else if (event.payload.type === 'leave') {
@@ -714,7 +682,6 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleUiZoomShortcut)
-  window.removeEventListener('shell-section-change', handleShellSectionChange)
   window.removeEventListener('mousemove', onMouseMove)
   window.removeEventListener('voice-command-trigger', handleVoiceCommandTrigger)
   window.removeEventListener('voice-command-submit', handleVoiceCommandSubmit)
@@ -753,6 +720,7 @@ function onDrop(e: DragEvent) {
   globalDragging.value = false
   const file = e.dataTransfer?.files?.[0]
   if (file) {
+    workspace.openStandaloneTranslation()
     translate(file)
   }
 }

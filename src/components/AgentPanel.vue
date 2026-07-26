@@ -1,7 +1,12 @@
 <template>
   <div
     class="agent-panel"
-    :class="{ open: open && !isFloating, standalone: isStandalone, floating: isFloating }"
+    :class="{
+      open: open && !isFloating,
+      standalone: isStandalone,
+      floating: isFloating,
+      embedded: isEmbedded,
+    }"
     :style="isFloating ? { left: floatX + 'px', top: floatY + 'px' } : {}"
     role="complementary"
     :aria-label="t('agent.title')"
@@ -85,7 +90,7 @@
         </button>
         <!-- Main window: float / dock toggle -->
         <button
-          v-if="!isStandalone"
+          v-if="!isStandalone && !isEmbedded"
           class="agent-hdr-btn"
           :title="isFloating ? t('agent.dockSide') : t('agent.popFloat')"
           @click="toggleFloat"
@@ -620,6 +625,7 @@ const _isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in windo
 const props = defineProps<{
   open: boolean
   standalone?: boolean
+  embedded?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -630,6 +636,7 @@ const emit = defineEmits<{
 // ── Floating panel: native OS window (Tauri) or in-app overlay (web) ─────────
 
 const isStandalone = computed(() => props.standalone === true)
+const isEmbedded = computed(() => props.embedded === true)
 const panelInactive = computed(() => !props.open && !isFloating.value && !isStandalone.value)
 
 // In-app float fallback (web mode only)
@@ -1372,6 +1379,34 @@ onUnmounted(() => {
     0 0 0 1px rgba(255, 255, 255, 0.06);
   overflow: hidden;
   z-index: 500;
+}
+.agent-panel.embedded {
+  position: relative;
+  top: auto;
+  right: auto;
+  width: 0;
+  height: 100%;
+  margin-top: 0;
+  flex: 0 0 auto;
+  transform: none;
+  border-left: 0;
+  box-shadow: none;
+  overflow: hidden;
+  visibility: hidden;
+  transition:
+    width var(--motion-page) var(--ease-out),
+    visibility 0s linear var(--motion-page);
+}
+.agent-panel.embedded.open {
+  width: min(420px, 38vw);
+  border-left: 1px solid var(--c-border);
+  visibility: visible;
+  transition:
+    width var(--motion-page) var(--ease-out),
+    visibility 0s;
+}
+.agent-panel.embedded .agent-header {
+  padding-right: 16px;
 }
 .agent-header.draggable {
   cursor: grab;
