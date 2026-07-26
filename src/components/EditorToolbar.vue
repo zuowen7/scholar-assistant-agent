@@ -16,23 +16,6 @@
     />
 
     <div class="tb-left">
-      <button
-        class="tb-btn u-interactive"
-        :title="t('editor.newPaper')"
-        :aria-label="t('editor.newPaper')"
-        @click="$emit('new-paper')"
-      >
-        <FilePlus :size="15" :stroke-width="1.7" />
-      </button>
-      <button
-        class="tb-btn u-interactive"
-        :title="t('editor.save')"
-        :aria-label="t('editor.save')"
-        @click="$emit('save')"
-      >
-        <Save :size="15" :stroke-width="1.7" />
-      </button>
-      <div class="tb-divider" />
       <kbd class="tb-kbd">Ctrl+K · AI</kbd>
       <button
         v-if="speech.isSupported"
@@ -56,14 +39,6 @@
         <div v-else-if="message" class="export-toast">{{ message }}</div>
       </Transition>
 
-      <button
-        class="tb-btn u-interactive"
-        :title="t('editor.mindMap')"
-        :aria-label="t('editor.mindMap')"
-        @click="$emit('open-mindmap')"
-      >
-        <Workflow :size="15" :stroke-width="1.7" />
-      </button>
       <button
         class="tb-btn u-interactive"
         :class="{ active: activeRightTab === 'preview' }"
@@ -126,8 +101,8 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
-import { FilePlus, Save, Eye, Bot, GitBranch, Workflow, MoreHorizontal } from './ui/icons'
-import { Image, Table, Sigma, Quote, Library, Code2, CheckCircle, Download } from './ui/icons'
+import { Eye, Bot, GitBranch, MoreHorizontal } from './ui/icons'
+import { Image, Table, Sigma, Quote, Library, CheckCircle } from './ui/icons'
 import { Mic } from './ui/icons'
 import UiDropdown from './ui/UiDropdown.vue'
 import UiSpinner from './ui/UiSpinner.vue'
@@ -163,9 +138,6 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  'new-paper': []
-  save: []
-  'open-mindmap': []
   'toggle-right': [tab: 'preview' | 'ai' | 'argument']
   'select-template': [id: string]
   'open-image-picker': []
@@ -176,9 +148,6 @@ const emit = defineEmits<{
   'run-compliance': []
   'process-citations': []
   'zotero-insert': []
-  'export-word': []
-  'export-latex': []
-  'export-pdf': []
   'vision-selected': [file: File]
   'image-selected': [file: File]
   'voice-text': [text: string]
@@ -225,11 +194,6 @@ const moreItems = computed<DropdownItem[]>(() => [
   { label: t('editor.cite') },
   { text: t('editor.citeNumber'), icon: Quote, onClick: () => emit('process-citations') },
   { text: t('editor.zoteroSearch'), icon: Library, onClick: () => emit('zotero-insert') },
-  { divider: true },
-  { label: t('editor.exportLabel') },
-  { text: 'Word (.docx)', icon: Download, onClick: () => emit('export-word') },
-  { text: 'LaTeX (.tex)', icon: Code2, onClick: () => emit('export-latex') },
-  { text: 'PDF', icon: Download, onClick: () => emit('export-pdf') },
 ])
 </script>
 

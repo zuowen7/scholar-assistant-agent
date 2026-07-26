@@ -1,5 +1,5 @@
 import type { VoiceCommandDef } from '../../types/voice'
-import { useAppMode } from '../useAppMode'
+import { useWorkspaceNavigation } from '../useWorkspaceNavigation'
 import { activateVoiceWorkspace } from './workspace'
 
 export function registerTier1Commands(register: (defs: VoiceCommandDef[]) => void) {
@@ -41,7 +41,7 @@ export function registerTier1Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['open assistant', 'open agent', 'show assistant', 'show panel', 'open chat'],
       priority: 9,
       handler: async () => {
-        useAppMode().toggleAgentChat(true)
+        useWorkspaceNavigation().toggleAgentDock(true)
       },
     },
     {
@@ -51,7 +51,7 @@ export function registerTier1Commands(register: (defs: VoiceCommandDef[]) => voi
       patternsEn: ['close assistant', 'close agent', 'close panel', 'hide assistant'],
       priority: 9,
       handler: async () => {
-        useAppMode().toggleAgentChat(false)
+        useWorkspaceNavigation().toggleAgentDock(false)
       },
     },
     {

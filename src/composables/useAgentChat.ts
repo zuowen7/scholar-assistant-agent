@@ -1,4 +1,4 @@
-import { ref, watch, onScopeDispose, getCurrentScope } from 'vue'
+import { ref, watch } from 'vue'
 import type {
   AgentChatMessage,
   AgentEvent,
@@ -89,6 +89,16 @@ export interface PendingApproval {
   force_approval?: boolean
 }
 
+// One reactive approval source for every Agent surface and programmatic sender.
+// The per-session map preserves isolation when switching workflows, while the
+// shared ref guarantees that an approval raised by EditorLayout is visible in
+// the global Agent dock.
+const pendingApproval = ref<PendingApproval | null>(null)
+
+watch(sessionId, (newSid) => {
+  pendingApproval.value = newSid ? (_approvalBySession.get(newSid) ?? null) : null
+})
+
 /** Reset all module-level singleton state — for use in tests only. */
 export function _resetForTesting(): void {
   abortController?.abort()
@@ -100,6 +110,7 @@ export function _resetForTesting(): void {
   agentSkills.value = []
   skillsLoading.value = false
   sessionId.value = null
+  pendingApproval.value = null
   _approvalBySession.clear()
   _messagesByWorkflow.clear()
   pipelineStage.value = ''
@@ -109,12 +120,6 @@ export function _resetForTesting(): void {
 
 /** Agent chat composable (singleton). Manages ReAct loop SSE streaming, session lifecycle, per-session approval state, and RAG documents. */
 export function useAgentChat() {
-  // ── Per-session pendingApproval (M11 fix) ────────────────────────
-  // A reactive ref that always reflects the approval state of the *current* session.
-  // All reads/writes go through the helpers below so switching sessions never
-  // leaks an approval from a previous session.
-  const pendingApproval = ref<PendingApproval | null>(null)
-
   function _setApproval(value: PendingApproval | null) {
     const sid = sessionId.value
     if (sid) _approvalBySession.set(sid, value)
@@ -127,16 +132,6 @@ export function useAgentChat() {
     if (eventId && pendingApproval.value?.event_id !== eventId) return
     _setApproval(null)
   }
-
-  // When sessionId changes (e.g. user switches to a different session via resumeSession
-  // or a new session starts), sync pendingApproval to whatever was stored for that session.
-  // useAgentChat() is a singleton called from multiple components, so each call would
-  // register a new watcher on the shared sessionId — stop it when this scope dies to
-  // avoid watcher accumulation and stale closures across remounts.
-  const stopSessionWatch = watch(sessionId, (newSid) => {
-    pendingApproval.value = newSid ? (_approvalBySession.get(newSid) ?? null) : null
-  })
-  if (getCurrentScope()) onScopeDispose(() => stopSessionWatch())
 
   // ── Shared SSE event handler ──────────────────────────────────────
 
@@ -435,7 +430,6 @@ export function useAgentChat() {
     } finally {
       sending.value = false
       abortController = null
-      _clearApproval()
     }
   }
 

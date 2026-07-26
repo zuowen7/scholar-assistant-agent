@@ -1,5 +1,5 @@
 import { nextTick } from 'vue'
-import { useAppMode } from '../useAppMode'
+import { useWorkspaceNavigation } from '../useWorkspaceNavigation'
 
 export type VoiceWorkspace = 'translate' | 'write' | 'mindmap' | 'review'
 
@@ -9,12 +9,10 @@ export type VoiceWorkspace = 'translate' | 'write' | 'mindmap' | 'review'
  * that has never been opened has no listener yet.
  */
 export async function activateVoiceWorkspace(workspace: VoiceWorkspace) {
-  const { setMode } = useAppMode()
-  if (workspace === 'translate') setMode('translate')
-  else if (workspace === 'review') setMode('argument')
-  else setMode('editor')
-
-  window.dispatchEvent(new CustomEvent('shell-section-change', { detail: workspace }))
+  const navigation = useWorkspaceNavigation()
+  if (workspace === 'translate') navigation.openStandaloneTranslation()
+  else if (workspace === 'review') navigation.navigate('review')
+  else navigation.navigate('draft')
   await nextTick()
 
   if (workspace === 'mindmap') {

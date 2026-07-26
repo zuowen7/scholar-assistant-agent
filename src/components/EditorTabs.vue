@@ -25,7 +25,7 @@
             tabindex="-1"
             :title="t('editor.tabClose')"
             :aria-label="t('editor.tabCloseLabel')"
-            @click.stop="closeTab(tab.id)"
+            @click.stop="emit('requestClose', tab.id)"
           >
             <X :size="11" :stroke-width="2.2" />
           </span>
@@ -49,7 +49,8 @@ import { FileText, X, Plus } from './ui/icons'
 import { useEditor } from '../composables/useEditor'
 
 const { t } = useI18n()
-const { tabs, activeTabId, setActiveTab, closeTab, openNewUntitled } = useEditor()
+const emit = defineEmits<{ requestClose: [tabId: string] }>()
+const { tabs, activeTabId, setActiveTab, openNewUntitled } = useEditor()
 </script>
 
 <style scoped>

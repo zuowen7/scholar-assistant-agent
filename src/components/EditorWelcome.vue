@@ -76,6 +76,22 @@
             </div>
           </div>
         </button>
+
+        <button
+          class="wc-card wc-card--translate anim-fade-in-up anim-stagger"
+          :style="{ '--stagger-i': 4 }"
+          data-test="card-quick-translate"
+          @click="$emit('quick-translate')"
+        >
+          <div class="wc-card-line" />
+          <div class="wc-card-inner">
+            <span class="wc-icon"><Languages :size="18" /></span>
+            <div class="wc-text">
+              <strong>{{ t('editor.quickTranslateStrong') }}</strong>
+              <span>{{ t('editor.quickTranslateSubStrong') }}</span>
+            </div>
+          </div>
+        </button>
       </div>
 
       <!-- Recent projects -->
@@ -137,7 +153,7 @@
 </template>
 
 <script setup lang="ts">
-import { FileText, FolderOpen, FilePlus, FolderPlus, X } from './ui/icons'
+import { FileText, FolderOpen, FilePlus, FolderPlus, Languages, X } from './ui/icons'
 import { useI18n } from 'vue-i18n'
 import { onMounted } from 'vue'
 import { useProject } from '../composables/useProject'
@@ -158,6 +174,7 @@ defineEmits<{
   'open-template': []
   'open-folder': []
   'new-document': []
+  'quick-translate': []
   'open-recent': [path: string]
 }>()
 
