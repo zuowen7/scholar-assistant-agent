@@ -11,7 +11,7 @@
 
 PDF 翻译与精读作为辅助入口，帮你快速把论文沉淀进工作流。语音助手支持唤醒词和全局热键。本地可离线运行，也可接入 21 家云端大模型。支持中/英双语界面切换。
 
-v0.4.2 · 最新：Agent V2 稳定性加固（会话池清理、审批作用域、脏编辑器保护、流式 token 累积）、Reference-Driven UI 重构（App.vue 拆分 5 个 composable、统一设计令牌）、全量代码质量基线（ruff 622→0、TS any 35→0、prettier 格式基线、blocking CI 门禁、Vitest 4）、安全加固（secret-scan CI、跨平台路径校验、LLM 日志泄漏修复）。MIT 协议。
+v0.5.0 · 最新：Agent 执行界面重构（AgentExecutionGroup、inline diff overlay 脱离 Monaco DOM）、会话生命周期加固（暂停/恢复/中止、scope breaker 重置）、选区编辑交互改造、构建链路修复（PyInstaller PIL 纳入、pylatexenc 依赖补齐、外部工具缺失阻断构建）。MIT 协议。
 
 ## 功能演示
 

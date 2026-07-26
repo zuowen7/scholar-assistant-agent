@@ -77,7 +77,7 @@
 | F7a | AGENTS.md SSE 事件清单补入 `tool_denied`、`usage` | `AGENTS.md` | — |
 | F7b | `GAP_ANALYSIS.md` 顶部加 ⚠️ STALE 通告，指向 AGENTS.md | `python/src/agent_v2/GAP_ANALYSIS.md` | — |
 | F7c | audit-report.md 更正 F2（plugin 误报）、F9（main.py 缺失） | `docs/audit-report.md` | — |
-| F9 | Dockerfile：移除 `COPY python/main.py .`、LABEL 版本 `0.3.6→0.4.2`；docker-compose：entrypoint `main.py→api.py` + `command: ["--port","18088"]`、更新用法注释 | `Dockerfile`、`docker-compose.yml` | main.py 不存在问题消除；入口与 Dockerfile/healthcheck 一致 |
+| F9 | Dockerfile：移除 `COPY python/main.py .`、LABEL 版本 `0.3.6→0.5.0`；docker-compose：entrypoint `main.py→api.py` + `command: ["--port","18088"]`、更新用法注释 | `Dockerfile`、`docker-compose.yml` | main.py 不存在问题消除；入口与 Dockerfile/healthcheck 一致 |
 
 ### ✅ 已提交
 
