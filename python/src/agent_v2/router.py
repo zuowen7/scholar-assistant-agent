@@ -140,12 +140,14 @@ def _session_messages_for_frontend(session: Session) -> list[dict]:
             continue
         events: list[dict] = []
         text_parts: list[str] = []
+        has_tool_call = False
         for block in message.blocks:
             if isinstance(block, TextBlock):
                 text_parts.append(block.text)
             elif isinstance(block, ThinkingBlock):
                 events.append({"type": "thought", "content": block.thinking})
             elif isinstance(block, ToolUseBlock):
+                has_tool_call = True
                 try:
                     arguments = json.loads(block.input)
                 except (TypeError, json.JSONDecodeError):
@@ -173,6 +175,8 @@ def _session_messages_for_frontend(session: Session) -> list[dict]:
                     }
                 )
         content = "".join(text_parts)
+        if message.role == MessageRole.ASSISTANT and has_tool_call:
+            content = ""
         if message.role == MessageRole.USER:
             content = _visible_user_text(content)
         if not content and not events:

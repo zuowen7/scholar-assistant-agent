@@ -348,9 +348,11 @@ def _create_file_ops(registry: ToolRegistry) -> None:
         try:
             if not full.is_file():
                 return ToolResult(f"error: file not found: {path_str}", is_error=True)
-            content = full.read_text(encoding="utf-8")
             anchor_keys = ("start_line", "start_column", "end_line", "end_column")
-            if all(key in args for key in anchor_keys):
+            has_anchor = all(key in args for key in anchor_keys)
+            if has_anchor:
+                with full.open("r", encoding="utf-8", newline="") as stream:
+                    content = stream.read()
                 try:
                     start = _offset_for_monaco_position(
                         content,
@@ -371,9 +373,11 @@ def _create_file_ops(registry: ToolRegistry) -> None:
                         "error: selected text changed on disk; save the document and select it again",
                         is_error=True,
                     )
-                full.write_text(content[:start] + new_string + content[end:], encoding="utf-8")
+                with full.open("w", encoding="utf-8", newline="") as stream:
+                    stream.write(content[:start] + new_string + content[end:])
                 return ToolResult(f"ok: replaced selected range in {path_str}")
 
+            content = full.read_text(encoding="utf-8")
             count = content.count(old_string)
             if count == 0:
                 return ToolResult(f"error: old_string not found in {path_str}", is_error=True)

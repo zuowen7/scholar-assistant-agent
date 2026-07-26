@@ -119,6 +119,57 @@ class TestBasicFlow:
         assert any("Hello" in e.data.get("output", "") for e in tool_results)
 
     @pytest.mark.asyncio
+    async def test_tool_turn_resets_premature_completion_text(self, workspace: Path):
+        provider = MockProvider(
+            scenarios=[
+                Scenario(
+                    "tool_with_text",
+                    trigger_patterns=["inspect"],
+                    turn_index=0,
+                    response_factory=lambda m, t: ProviderResponse(
+                        blocks=[
+                            TextBlock(text="The task is complete."),
+                            ToolUseBlock(
+                                id="read_1",
+                                name="read_file",
+                                input=json.dumps({"file_path": "main.md"}),
+                            ),
+                        ],
+                        stop_reason="tool_use",
+                    ),
+                ),
+                Scenario(
+                    "final",
+                    trigger_patterns=["inspect"],
+                    turn_index=1,
+                    response_factory=lambda m, t: _text_response("Confirmed final response."),
+                ),
+            ]
+        )
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        rt = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy,
+            session=Session(workspace=str(workspace)),
+        )
+
+        events = await _collect_events(rt, "inspect")
+        resets = [
+            event
+            for event in events
+            if event.type == AgentEventType.WARNING and event.data.get("reset_stream")
+        ]
+
+        assert len(resets) == 1
+        assert any(
+            event.type == AgentEventType.RESPONSE
+            and event.data.get("text") == "Confirmed final response."
+            for event in events
+        )
+
+    @pytest.mark.asyncio
     async def test_cr004_event_sequence(self, runtime: ConversationRuntime):
         """CR-004: 事件序列正确"""
         events = await _collect_events(runtime, "hello")
