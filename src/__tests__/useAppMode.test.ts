@@ -4,8 +4,9 @@ import { useAppMode } from '../composables/useAppMode'
 // useAppMode is a module-level singleton — reset state between tests
 describe('useAppMode', () => {
   beforeEach(() => {
-    const { setMode, toggleAgentChat } = useAppMode()
+    const { setMode, setEditorWorkspaceMode, toggleAgentChat } = useAppMode()
     setMode('editor')
+    setEditorWorkspaceMode('editor')
     toggleAgentChat(false)
     // Reset modeTransition without waiting for timer
     useAppMode().modeTransition.value = false
@@ -54,6 +55,19 @@ describe('useAppMode', () => {
     expect(showAgentChat.value).toBe(false)
     toggleAgentChat(false)
     expect(showAgentChat.value).toBe(false)
+  })
+
+  it('persists the requested editor workspace across late component mounts', () => {
+    const { requestedEditorWorkspaceMode, setEditorWorkspaceMode } = useAppMode()
+
+    setEditorWorkspaceMode('mindmap')
+    expect(requestedEditorWorkspaceMode.value).toBe('mindmap')
+
+    const laterConsumer = useAppMode()
+    expect(laterConsumer.requestedEditorWorkspaceMode.value).toBe('mindmap')
+
+    laterConsumer.setEditorWorkspaceMode('editor')
+    expect(requestedEditorWorkspaceMode.value).toBe('editor')
   })
 
   it('modeTransition flashes true then resets after setMode', async () => {

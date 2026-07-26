@@ -239,7 +239,8 @@ const {
 const { pushError, info, success } = useToast()
 
 // ── 应用模式 ──────────────────────────────────────────────────
-const { appMode, showAgentChat, modeTransition, setMode, toggleAgentChat } = useAppMode()
+const { appMode, showAgentChat, modeTransition, setMode, setEditorWorkspaceMode, toggleAgentChat } =
+  useAppMode()
 const shellSection = ref<'translate' | 'write' | 'mindmap' | 'review'>('write')
 const { recentProjects, loadRecentProjects, openProject } = useProject()
 const shellRecentFiles = computed(() =>
@@ -268,10 +269,12 @@ function navigateTo(section: ShellSection) {
   if (section === 'translate') setMode('translate')
   else if (section === 'review') setMode('argument')
   else {
+    const workspaceMode = section === 'mindmap' ? 'mindmap' : 'editor'
+    setEditorWorkspaceMode(workspaceMode)
     setMode('editor')
     window.dispatchEvent(
       new CustomEvent('shell-workspace-mode', {
-        detail: section === 'mindmap' ? 'mindmap' : 'editor',
+        detail: workspaceMode,
       }),
     )
   }

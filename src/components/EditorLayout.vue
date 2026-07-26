@@ -29,7 +29,7 @@
               t('editor.lineWordCount', { lines: lineCount, words: wordCount.toLocaleString() })
             }}</span>
           </template>
-          <StatusBadge tone="success" dot>{{
+          <StatusBadge :tone="activeTab.isModified ? 'warning' : 'success'" dot>{{
             activeTab.isModified ? t('editor.unsavedChanges') : t('editor.autoSaved')
           }}</StatusBadge>
           <button type="button" class="header-action mode-toggle" @click="toggleEditorMode">
@@ -64,6 +64,16 @@
             @click="toggleHeaderRightPanel"
           >
             <PanelRightClose :size="18" />
+          </button>
+          <button
+            type="button"
+            class="header-icon"
+            :title="t('editor.closeCurrentDocument')"
+            :aria-label="t('editor.closeCurrentDocument')"
+            data-testid="close-current-document"
+            @click="requestCloseCurrentDocument"
+          >
+            <X :size="17" />
           </button>
           <button
             v-if="currentProject"
@@ -351,6 +361,7 @@ import { useMindMap, markdownToMindMapNodes } from '../composables/useMindMap'
 import { useFileTree } from '../composables/useFileTree'
 import { useArgumentCompanion } from '../composables/useArgumentCompanion'
 import { useAgentChat } from '../composables/useAgentChat'
+import { useAppMode } from '../composables/useAppMode'
 import { API_BASE } from '../utils/api'
 import { closeProject, currentProject, useProject } from '../composables/useProject'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
@@ -400,6 +411,7 @@ const {
 } = useMindMap()
 const { readFileContent, refresh: refreshFileTree, rootDir } = useFileTree()
 const { sendMessage: sendAgentMessage } = useAgentChat()
+const { requestedEditorWorkspaceMode, setEditorWorkspaceMode } = useAppMode()
 
 // -- Workspace mode -------------------------------------------------------
 const workspaceMode = ref<'editor' | 'mindmap'>('editor')
@@ -409,7 +421,6 @@ const zoteroPromptError = ref('')
 let _contentBeforeMindMap = ''
 const sidebarCollapsed = ref(false)
 const writingSidebarTab = ref<'files' | 'outline'>('files')
-const collapsedSidebarWidth = 44
 const documentView = ref<'body' | 'outline' | 'preview'>('body')
 const rightPanelVisible = ref(true)
 const editorModeOverride = ref<'auto' | 'writing' | 'latex'>('auto')
@@ -436,6 +447,7 @@ const documentViewOptions = computed(() => [
   { value: 'preview', label: t('editor.preview') },
 ])
 watch(workspaceMode, (mode) => {
+  setEditorWorkspaceMode(mode)
   window.dispatchEvent(
     new CustomEvent('shell-section-change', { detail: mode === 'mindmap' ? 'mindmap' : 'write' }),
   )
@@ -582,6 +594,9 @@ async function handleSelectionTask(action: string) {
 
 function handleShellWorkspaceMode(event: Event) {
   const mode = (event as CustomEvent).detail
+  if (mode === 'mindmap' || mode === 'editor') {
+    setEditorWorkspaceMode(mode)
+  }
   if (mode === 'mindmap') {
     if (workspaceMode.value === 'mindmap') {
       sidebarCollapsed.value = true
@@ -1067,38 +1082,6 @@ function showExportToast(msg: string) {
   }, 3000)
 }
 
-// -- Resize ---------------------------------------------------------------
-const sidebarWidth = ref(296)
-const panelWidth = ref(300)
-
-let _resizeAbortController: AbortController | null = null
-
-function startResize(e: MouseEvent, target: 'sidebar' | 'panel') {
-  e.preventDefault()
-  // 取消上一次未完成的 resize，防止快速多次点击导致监听器堆积
-  if (_resizeAbortController) {
-    _resizeAbortController.abort()
-  }
-  _resizeAbortController = new AbortController()
-  const signal = _resizeAbortController.signal
-  const startX = e.clientX
-  const startWidth = target === 'sidebar' ? sidebarWidth.value : panelWidth.value
-  function onMouseMove(e: MouseEvent) {
-    if (target === 'sidebar') {
-      sidebarWidth.value = Math.max(150, Math.min(400, startWidth + e.clientX - startX))
-    } else {
-      panelWidth.value = Math.max(260, Math.min(760, startWidth - (e.clientX - startX)))
-    }
-  }
-  function onMouseUp() {
-    document.removeEventListener('mousemove', onMouseMove)
-    document.removeEventListener('mouseup', onMouseUp)
-    _resizeAbortController = null
-  }
-  document.addEventListener('mousemove', onMouseMove, { signal })
-  document.addEventListener('mouseup', onMouseUp, { signal })
-}
-
 // -- Keyboard -------------------------------------------------------------
 function onKeyDown(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -1132,6 +1115,9 @@ onMounted(() => {
   window.addEventListener('voice-open-folder', handleVoiceOpenFolder)
   window.addEventListener('voice-new-file', handleVoiceNewFile)
   window.addEventListener('voice-save', handleVoiceSave)
+  if (requestedEditorWorkspaceMode.value === 'mindmap') {
+    void openMindMapFromEditor()
+  }
 })
 
 onBeforeUnmount(() => {
@@ -1147,10 +1133,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('voice-open-folder', handleVoiceOpenFolder)
   window.removeEventListener('voice-new-file', handleVoiceNewFile)
   window.removeEventListener('voice-save', handleVoiceSave)
-  if (_resizeAbortController) {
-    _resizeAbortController.abort()
-    _resizeAbortController = null
-  }
 })
 
 function handlePaperScaffold(e: Event) {
@@ -1292,37 +1274,6 @@ async function handleAgentFileChange() {
   flex: 1;
   min-height: 0;
   overflow: auto;
-}
-
-/* -- Resize handle ------------------------------------------ */
-.resize-handle {
-  width: 8px;
-  margin-left: -4px;
-  margin-right: -4px;
-  cursor: col-resize;
-  background: transparent;
-  position: relative;
-  z-index: 10;
-  flex-shrink: 0;
-}
-.resize-handle::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  width: 1px;
-  background: var(--border-color);
-  transition: all var(--motion-base) var(--ease-out);
-  opacity: 0.3;
-}
-.resize-handle:hover::after,
-.resize-handle:active::after {
-  width: 2px;
-  transform: translateX(-50%);
-  background: var(--c-accent);
-  opacity: 1;
-  box-shadow: 0 0 8px var(--c-accent);
 }
 
 /* -- Responsive --------------------------------------------- */
