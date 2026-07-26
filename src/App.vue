@@ -102,6 +102,7 @@
               :read-settings="readSettings"
               @restart-backend="handleRestartBackend"
               @open-agent-docs="openAgentDocs"
+              @open-settings="openLegacySettings"
             />
             <EditorLayout
               v-else-if="location.kind === 'workspace' && location.section === 'draft'"
@@ -134,6 +135,7 @@
 
       <SettingsCenter
         v-model="showSettings"
+        :initial-tab="settingsInitialTab"
         :is-dark="isDark"
         :engine-type="engineType"
         :cloud-config="cloudConfig"
@@ -301,10 +303,15 @@ const shellModelOnline = computed(() =>
   engineType.value === 'cloud' ? cloudOk.value : ollamaOk.value,
 )
 
+type SettingsTab =
+  'engine' | 'display' | 'network' | 'integrations' | 'background' | 'voice' | 'system'
+
 const showSettings = ref(false)
+const settingsInitialTab = ref<SettingsTab>('engine')
 const { uiZoom, applyUiZoom, handleUiZoomShortcut } = useUiZoom()
 
-function openLegacySettings() {
+function openLegacySettings(tab: SettingsTab = 'engine') {
+  settingsInitialTab.value = tab
   showSettings.value = true
 }
 

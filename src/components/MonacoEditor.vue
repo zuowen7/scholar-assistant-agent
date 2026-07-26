@@ -833,6 +833,7 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
   padding: 8px 20px;
   overflow: hidden;
+  pointer-events: auto !important;
   background: color-mix(in srgb, var(--c-success) 3%, var(--c-panel));
 }
 .ai-diff-card {
@@ -844,6 +845,7 @@ onBeforeUnmount(() => {
   flex-direction: column;
   margin: 0 auto;
   overflow: hidden;
+  pointer-events: auto;
   background: var(--c-surface-1);
   border: 1px solid var(--c-surface-3);
   border-left: 3px solid var(--c-success);
@@ -879,7 +881,14 @@ onBeforeUnmount(() => {
 }
 .ai-diff-scroll {
   overflow: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  cursor: text;
   scrollbar-gutter: stable;
+}
+.ai-diff-scroll:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: -2px;
 }
 .ai-diff-actions {
   display: flex;

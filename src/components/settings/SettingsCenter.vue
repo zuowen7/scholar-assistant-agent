@@ -346,6 +346,14 @@
           </div>
         </section>
 
+        <section v-else-if="tab === 'integrations'" class="settings-page">
+          <SettingsHeading
+            :title="t('settings.integrations')"
+            :description="t('settingsCenter.integrationsDescription')"
+          />
+          <ZoteroSettings />
+        </section>
+
         <section v-else-if="tab === 'background'" class="settings-page">
           <SettingsHeading
             :title="t('settings.customBackground')"
@@ -565,7 +573,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, ref } from 'vue'
+import { computed, h, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { SupportedLocale } from '../../i18n'
 import { useLocale } from '../../composables/useLocale'
@@ -573,6 +581,7 @@ import AppDialog from '../shell/AppDialog.vue'
 import UiButton from '../ui/UiButton.vue'
 import SettingsHeading from './SettingsHeading.vue'
 import DebugPanel from '../DebugPanel.vue'
+import ZoteroSettings from './ZoteroSettings.vue'
 import type { UpdateCheckResult } from '../../composables/useUpdateChecker'
 
 interface CloudConfig {
@@ -590,6 +599,9 @@ interface VoiceSettings {
   sensitivity: 'low' | 'medium' | 'high'
   language: string
 }
+
+type SettingsTab =
+  'engine' | 'display' | 'network' | 'integrations' | 'background' | 'voice' | 'system'
 
 const props = defineProps<{
   modelValue: boolean
@@ -616,6 +628,7 @@ const props = defineProps<{
   proxyUrl: string
   updateChecking: boolean
   updateResult: UpdateCheckResult | null
+  initialTab?: SettingsTab
 }>()
 
 const emit = defineEmits<{
@@ -648,7 +661,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const { currentLocale, setLocale } = useLocale()
-const tab = ref<'engine' | 'display' | 'network' | 'background' | 'voice' | 'system'>('engine')
+const tab = ref<SettingsTab>('engine')
 const speechSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition)
 
 function icon(paths: string[]) {
@@ -677,6 +690,11 @@ const tabs = computed(() => [
     icon: icon(['M5 12a7 7 0 0 1 14 0M8 15a4 4 0 0 1 8 0M11 18a1 1 0 0 1 2 0']),
   },
   {
+    value: 'integrations' as const,
+    label: t('settings.integrations'),
+    icon: icon(['M8 3v4M16 3v4M6 7h12v3a6 6 0 0 1-12 0z', 'M12 16v5M9 21h6']),
+  },
+  {
     value: 'background' as const,
     label: t('settings.background'),
     icon: icon(['M4 5h16v14H4zM7 15l3-3 3 3 2-2 3 3M16 9h.01']),
@@ -695,6 +713,14 @@ const tabs = computed(() => [
     ]),
   },
 ])
+
+watch(
+  [() => props.modelValue, () => props.initialTab],
+  ([open, initialTab]) => {
+    if (open && initialTab) tab.value = initialTab
+  },
+  { immediate: true },
+)
 
 const activePreset = computed(() => props.providerPresets[props.cloudConfig.provider])
 const previewStyle = computed(() => ({

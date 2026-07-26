@@ -8,8 +8,9 @@ import logging
 import re
 import time
 import uuid
+from collections.abc import AsyncGenerator
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import AsyncGenerator, Literal
+from typing import Literal
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -37,6 +38,7 @@ def _safe_child_path(root: Path, filename: str) -> Path:
     except ValueError:
         raise HTTPException(403, "禁止访问该文件")
     return resolved
+
 
 # ── Lightweight pydantic schemas for LLM response parsing (H5) ──────────────
 
@@ -755,16 +757,27 @@ def register_editor(
         }
 
     @app.get("/api/zotero/status")
-    async def zotero_status():
+    async def zotero_status(verify: bool = False):
         try:
             from src.zotero.client import ZoteroClient
 
             client = ZoteroClient()
             if not client.api_key or not client.user_id:
-                return {"connected": False, "message": "未配置 Zotero API Key 或 User ID"}
-            return {"connected": True, "user_id": client.user_id, "style": client.style}
+                return {
+                    "connected": False,
+                    "verified": False,
+                    "message": "未配置 Zotero API Key 或 User ID",
+                }
+            if verify:
+                await asyncio.to_thread(client.search, query="", limit=1)
+            return {
+                "connected": True,
+                "verified": verify,
+                "user_id": client.user_id,
+                "style": client.style,
+            }
         except Exception as e:
-            return {"connected": False, "message": str(e)}
+            return {"connected": False, "verified": False, "message": str(e)}
 
     @app.post("/api/zotero/search")
     async def search_zotero(req: ZoteroSearchRequest):
