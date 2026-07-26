@@ -33,10 +33,7 @@
 
     <div class="tb-right">
       <Transition name="v-slide-up">
-        <div v-if="exportLoading" class="export-status">
-          <UiSpinner size="sm" :label="t('editor.exporting')" />
-        </div>
-        <div v-else-if="message" class="export-toast">{{ message }}</div>
+        <div v-if="message" class="export-toast">{{ message }}</div>
       </Transition>
 
       <button
@@ -78,19 +75,6 @@
             <MoreHorizontal :size="15" :stroke-width="1.7" />
           </button>
         </template>
-        <template v-if="templates.length" #default>
-          <div class="dd-template-row">
-            <span class="dd-template-label">{{ t('editor.latexTemplate') }}</span>
-            <select
-              class="dd-template-select"
-              :value="selectedTemplate"
-              :disabled="exportLoading"
-              @change="$emit('select-template', ($event.target as HTMLSelectElement).value)"
-            >
-              <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>
-            </select>
-          </div>
-        </template>
       </UiDropdown>
     </div>
   </div>
@@ -105,7 +89,6 @@ import { Eye, Bot, GitBranch, MoreHorizontal } from './ui/icons'
 import { Image, Table, Sigma, Quote, Library, CheckCircle } from './ui/icons'
 import { Mic } from './ui/icons'
 import UiDropdown from './ui/UiDropdown.vue'
-import UiSpinner from './ui/UiSpinner.vue'
 import type { DropdownItem } from './ui/UiDropdown.vue'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
 
@@ -131,15 +114,11 @@ function toggleSpeech() {
 
 defineProps<{
   activeRightTab: string | null
-  templates: { id: string; name: string }[]
-  selectedTemplate: string
-  exportLoading: boolean
   message: string
 }>()
 
 const emit = defineEmits<{
   'toggle-right': [tab: 'preview' | 'ai' | 'argument']
-  'select-template': [id: string]
   'open-image-picker': []
   'insert-table': []
   'insert-inline-formula': []
@@ -275,16 +254,6 @@ const moreItems = computed<DropdownItem[]>(() => [
   flex-shrink: 0;
 }
 
-.export-status {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 8px;
-  border-radius: var(--radius-sm);
-  background: var(--c-accent-soft);
-  border: 1px solid var(--c-accent-soft);
-  white-space: nowrap;
-}
-
 .export-toast {
   font-size: 11px;
   color: var(--c-success);
@@ -300,42 +269,5 @@ const moreItems = computed<DropdownItem[]>(() => [
 
 .hidden-file-input {
   display: none;
-}
-
-.dd-template-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px 8px;
-  border-top: 1px solid var(--c-surface-3);
-  margin-top: 4px;
-}
-.dd-template-label {
-  font-size: var(--text-xs);
-  color: var(--c-text-3);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.dd-template-select {
-  flex: 1;
-  min-width: 0;
-  background: var(--c-surface-2);
-  border: 1px solid var(--c-surface-3);
-  border-radius: var(--radius-sm);
-  color: var(--c-text-1);
-  font-size: var(--text-sm);
-  padding: 4px 6px;
-  cursor: pointer;
-  outline: none;
-}
-.dd-template-select:hover {
-  border-color: var(--c-accent);
-}
-.dd-template-select:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.dd-template-select option {
-  background: var(--c-surface-2);
 }
 </style>

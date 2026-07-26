@@ -2,10 +2,11 @@ import { computed } from 'vue'
 import { useAgentChat } from './useAgentChat'
 import { useArgumentCompanion } from './useArgumentCompanion'
 import { useTranslate } from './useTranslate'
+import { useExportWorkspace } from './useExportWorkspace'
 
 export interface WorkspaceTask {
   id: string
-  kind: 'translation' | 'rag' | 'review' | 'agent'
+  kind: 'translation' | 'rag' | 'review' | 'agent' | 'export'
   label: string
   status: 'running' | 'queued' | 'failed'
   progress: number | null
@@ -15,6 +16,7 @@ export function useTaskCenter() {
   const translation = useTranslate()
   const agent = useAgentChat()
   const companion = useArgumentCompanion()
+  const exportWorkspace = useExportWorkspace()
 
   const tasks = computed<WorkspaceTask[]>(() => {
     const items: WorkspaceTask[] = []
@@ -58,6 +60,15 @@ export function useTaskCenter() {
         id: `agent-${agent.sessionId.value || 'current'}`,
         kind: 'agent',
         label: agent.pipelineStage.value || 'Agent 正在执行任务',
+        status: 'running',
+        progress: null,
+      })
+    }
+    if (exportWorkspace.loading.value) {
+      items.push({
+        id: 'export-current',
+        kind: 'export',
+        label: '正在生成导出文件',
         status: 'running',
         progress: null,
       })

@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 
-export type WorkspaceSection = 'draft' | 'sources' | 'review'
+export type WorkspaceSection = 'draft' | 'sources' | 'review' | 'export'
 export type DraftView = 'editor' | 'preview' | 'outline' | 'mindmap' | 'latex'
 export type RightDock = 'agent' | null
 

@@ -85,6 +85,15 @@ class ProjectSourceUpsert(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class ProjectExportRecordCreate(BaseModel):
+    project_path: str = Field(min_length=1, max_length=1000)
+    title: str = Field(min_length=1, max_length=500)
+    format: Literal["word", "latex", "pdf"]
+    template_id: str | None = Field(default=None, max_length=128)
+    status: Literal["success", "failed", "cancelled"]
+    message: str = Field(default="", max_length=2000)
+
+
 # ── Template loader ──────────────────────────────────────────────────────
 
 _templates_cache: list[dict[str, Any]] | None = None
@@ -310,6 +319,39 @@ def _upsert_source(req: ProjectSourceUpsert) -> dict[str, Any]:
         sources.insert(0, source)
     atomic_write_json(_source_manifest(project_path), {"version": 1, "sources": sources})
     return source
+
+
+def _export_manifest(project_path: Path) -> Path:
+    return project_path / ".yanmo" / "exports.json"
+
+
+def _read_export_history(project_path: Path) -> list[dict[str, Any]]:
+    manifest = _export_manifest(project_path)
+    if not manifest.exists():
+        return []
+    try:
+        payload = json.loads(manifest.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise HTTPException(500, f"读取项目导出历史失败: {exc}")
+    records = payload.get("records", []) if isinstance(payload, dict) else []
+    return [item for item in records if isinstance(item, dict)]
+
+
+def _append_export_record(req: ProjectExportRecordCreate) -> dict[str, Any]:
+    project_path = _require_project(req.project_path)
+    records = _read_export_history(project_path)
+    record = {
+        "id": f"export_{uuid.uuid4().hex[:16]}",
+        "title": req.title.strip(),
+        "format": req.format,
+        "template_id": req.template_id,
+        "status": req.status,
+        "message": req.message,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    records.insert(0, record)
+    atomic_write_json(_export_manifest(project_path), {"version": 1, "records": records[:100]})
+    return record
 
 
 # ── Git ──────────────────────────────────────────────────────────────────
@@ -834,5 +876,13 @@ def register_project(
     @app.post("/api/project/sources")
     def upsert_project_source(req: ProjectSourceUpsert):
         return _upsert_source(req)
+
+    @app.get("/api/project/exports")
+    def list_project_exports(project_path: str):
+        return {"records": _read_export_history(_require_project(project_path))}
+
+    @app.post("/api/project/exports")
+    def create_project_export_record(req: ProjectExportRecordCreate):
+        return _append_export_record(req)
 
     return {}

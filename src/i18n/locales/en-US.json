@@ -61,6 +61,7 @@
     "home": "Project Home",
     "draft": "Draft",
     "sources": "Sources",
+    "export": "Export",
     "noProject": "No project open",
     "projectWorkspace": "Project workspace",
     "translate": "Translate",
@@ -1260,6 +1261,35 @@
     "running": "Running",
     "queued": "Queued",
     "failed": "Failed"
+  },
+  "exports": {
+    "title": "Export and Submission",
+    "subtitle": "Current document: {document}",
+    "noDocument": "No document open",
+    "noDocumentDescription": "Open the Markdown or LaTeX document you want to export first.",
+    "backToDraft": "Back to draft",
+    "generatePreview": "Generate preview",
+    "exportAction": "Export file",
+    "exportSuccess": "Export complete",
+    "outputFormat": "Output format",
+    "targetTemplate": "Submission template",
+    "wordTemplateHint": "Word uses the paper title and current Markdown structure.",
+    "compilerUnavailable": "Tectonic is unavailable, so PDF export is blocked.",
+    "documentContext": "Document context",
+    "characterCount": "{count} characters",
+    "preflight": "Export preflight",
+    "preflightTitle": "Pre-submission structure checks",
+    "blockingCount": "{count} blocking issues",
+    "ready": "Ready to export",
+    "askAgentFix": "Ask Agent to fix",
+    "preview": "Compilation preview",
+    "history": "Export history",
+    "noHistory": "No export records for this project.",
+    "status": {
+      "success": "Success",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    }
   },
   "project": {
     "removeRecent": "Remove from recent",

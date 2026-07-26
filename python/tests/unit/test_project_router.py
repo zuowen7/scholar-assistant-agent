@@ -159,6 +159,43 @@ class TestProjectSources:
         assert response.status_code == 404
 
 
+class TestProjectExportHistory:
+    def test_export_records_are_project_scoped_and_bounded(self, client, location: Path):
+        created = client.post(
+            "/api/project/create",
+            json={
+                "name": "ExportProject",
+                "location": str(location),
+                "template_id": "research_paper",
+                "init_git": False,
+            },
+        )
+        project_path = Path(created.json()["project_path"])
+        record_response = client.post(
+            "/api/project/exports",
+            json={
+                "project_path": str(project_path),
+                "title": "main",
+                "format": "pdf",
+                "template_id": "ieee",
+                "status": "failed",
+                "message": "figure_3.png not found",
+            },
+        )
+        assert record_response.status_code == 200
+        record = record_response.json()
+        assert record["id"].startswith("export_")
+        assert record["status"] == "failed"
+
+        history = client.get(
+            "/api/project/exports",
+            params={"project_path": str(project_path)},
+        )
+        assert history.status_code == 200
+        assert history.json()["records"] == [record]
+        assert (project_path / ".yanmo" / "exports.json").is_file()
+
+
 def test_project_path_rejects_prefix_sibling(tmp_path: Path):
     from fastapi import HTTPException
 

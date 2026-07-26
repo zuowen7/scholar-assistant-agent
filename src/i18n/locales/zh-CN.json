@@ -61,6 +61,7 @@
     "home": "项目首页",
     "draft": "文稿",
     "sources": "文献",
+    "export": "导出",
     "noProject": "尚未打开项目",
     "projectWorkspace": "项目工作区",
     "translate": "翻译",
@@ -1263,6 +1264,35 @@
     "running": "执行中",
     "queued": "排队中",
     "failed": "失败"
+  },
+  "exports": {
+    "title": "导出与投稿",
+    "subtitle": "当前文稿：{document}",
+    "noDocument": "未打开文稿",
+    "noDocumentDescription": "请先在文稿工作区打开要导出的 Markdown 或 LaTeX 文件。",
+    "backToDraft": "返回文稿",
+    "generatePreview": "生成预览",
+    "exportAction": "导出文件",
+    "exportSuccess": "导出完成",
+    "outputFormat": "输出格式",
+    "targetTemplate": "投稿模板",
+    "wordTemplateHint": "Word 使用论文标题与当前 Markdown 结构生成。",
+    "compilerUnavailable": "Tectonic 不可用，PDF 导出会被阻止。",
+    "documentContext": "文稿上下文",
+    "characterCount": "{count} 字符",
+    "preflight": "导出预检",
+    "preflightTitle": "投稿前结构检查",
+    "blockingCount": "{count} 项阻止导出",
+    "ready": "可以导出",
+    "askAgentFix": "让 Agent 修复",
+    "preview": "编译预览",
+    "history": "导出历史",
+    "noHistory": "当前项目暂无导出记录。",
+    "status": {
+      "success": "成功",
+      "failed": "失败",
+      "cancelled": "已取消"
+    }
   },
   "project": {
     "removeRecent": "从最近移除",
