@@ -40,6 +40,10 @@ _APPROVAL_TIMEOUT = 600.0  # 10 分钟等用户审批；超时必须与用户拒
 _TOOL_RESULT_MAX_CHARS = 4000
 
 
+class _EmptyModelResponse(RuntimeError):
+    """Provider completed without a user-visible answer or tool call."""
+
+
 def _normalize_line_endings(text: str) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
@@ -116,9 +120,12 @@ class ConversationRuntime:
                     yield AgentEvent.done()
                     return
 
+                recovery_instruction: str | None = None
                 for retry in range(3):
                     try:
-                        async for event in self._llm_turn():
+                        async for event in self._llm_turn(
+                            recovery_instruction=recovery_instruction
+                        ):
                             yield event
                             if event.type in (AgentEventType.RESPONSE, AgentEventType.ERROR):
                                 self._auto_save()
@@ -145,6 +152,27 @@ class ConversationRuntime:
                             yield AgentEvent.done()
                             return
                         break
+                    except _EmptyModelResponse:
+                        if retry < 2:
+                            yield AgentEvent.warning(
+                                f"模型未返回最终答复，正在继续生成（{retry + 1}/3）",
+                                code="empty_model_response",
+                                attempt=retry + 1,
+                                max_attempts=3,
+                                reset_stream=True,
+                            )
+                            recovery_instruction = (
+                                "The previous completion contained reasoning but no final "
+                                "answer or tool call. Continue the same task now. Return a "
+                                "user-facing final answer or invoke the required tool(s). "
+                                "Do not return reasoning alone."
+                            )
+                            continue
+                        yield AgentEvent.error(
+                            "模型连续 3 次未返回最终答复或工具调用。请重试，或切换模型后继续。"
+                        )
+                        yield AgentEvent.done()
+                        return
                     except ApiError as e:
                         if e.status_code == 429 and retry < 2:
                             wait = e.retry_after or (2**retry)
@@ -204,10 +232,17 @@ class ConversationRuntime:
 
     # ---- Internal ----
 
-    async def _llm_turn(self) -> AsyncGenerator[AgentEvent, None]:
+    async def _llm_turn(
+        self, *, recovery_instruction: str | None = None
+    ) -> AsyncGenerator[AgentEvent, None]:
         import os
 
         messages = self.session.messages
+        system_prompt = self.system_prompt
+        if recovery_instruction:
+            system_prompt = "\n\n".join(
+                part for part in (self.system_prompt, recovery_instruction) if part
+            )
 
         use_stream = os.environ.get("SCHOLAR_AGENT_STREAM", "1").strip() == "1"
         provider_stream = None
@@ -216,13 +251,13 @@ class ConversationRuntime:
             provider_stream = self.provider.chat_stream(
                 messages=messages,
                 tools=self.tool_registry.definitions(),
-                system_prompt=self.system_prompt,
+                system_prompt=system_prompt,
             )
         if provider_stream is None:
             resp = await self.provider.chat(
                 messages=messages,
                 tools=self.tool_registry.definitions(),
-                system_prompt=self.system_prompt,
+                system_prompt=system_prompt,
             )
             provider_stream = _fallback_stream(resp)
 
@@ -281,7 +316,7 @@ class ConversationRuntime:
                     if full_text.strip():
                         yield AgentEvent.response(full_text)
                     else:
-                        yield AgentEvent.error("empty response from LLM")
+                        raise _EmptyModelResponse
                     return
 
                 # Execute tool calls
