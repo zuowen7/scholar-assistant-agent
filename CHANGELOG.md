@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.4.2] — Stability, quality baseline & security hardening
+
+### Agent V2 Stability
+
+- **Session pool memory leak** — `_SESSION_POOL` cleanup was a no-op stub; implemented real TTL-based eviction with a background sweep task.
+- **Approval scope** — file-edit approvals now honor the user's accept/reject decision per-file instead of applying blanket scope; rejected edits are properly rolled back.
+- **Dirty editor protection** — agent writes no longer silently overwrite unsaved Monaco tabs; editor state is checked before checkpoint refresh.
+- **Streaming token accumulation** — SSE tokens now append correctly in the UI instead of overwriting the previous chunk.
+- **Inline diff approval** — str_replace/write_file diffs render inline for review; checkpoint SSE handler added to AiPanel.
+- **History restore** — session history reload works reliably across resume/abort cycles.
+- **max_steps** — agent loop limit raised 24 → 48 (configurable from `default.yaml`).
+- **Sub-agent reliability** — prefer `write_file` over `str_replace` for large edits to reduce partial-write failures.
+
+### Frontend Refactor
+
+- **App.vue decomposition** — extracted 5 composables from the 1200-line god component (`useAppInit`, `useAppShortcuts`, `useAppTheme`, `useAppVoice`, `useAppProject`).
+- **Reference-driven UI** — Markdown and translation blocks rewritten as focused components with consistent rendering.
+- **Design token unification** — replaced ad-hoc alias bridges with canonical CSS custom properties; resolved 15 post-refactor visual regressions.
+- **Workspace navigation** — hardened browser startup and cross-platform file-tree navigation.
+- **Voice assistant** — restored reliable wake-word and command routing after refactor regressions.
+
+### Code Quality Baseline
+
+- **Python lint** — Ruff 622 violations → 0; established format baseline (`ruff format`).
+- **TypeScript** — production code `any` count 35 → 0; all replaced with concrete types.
+- **Prettier** — full format pass establishing the frontend formatting baseline.
+- **CI gates** — quality checks upgraded from advisory to blocking; added `.gitattributes` for cross-platform line-ending consistency.
+- **Vitest 4** — test runner upgraded to 4.1.10.
+- **Git hooks** — pre-commit hook via `.githooks/pre-commit` (enabled with `npm run setup`).
+
+### Security
+
+- **Secret scanning** — CI gate rejects commits containing API keys or tokens; purged historical runtime data from tracking.
+- **Cross-platform path validation** — sensitive-path checks now work correctly on Windows (drive letters, UNC paths).
+- **LLM log leak** — agent debug logging no longer prints full API keys or conversation payloads.
+- **Shadow backend removed** — eliminated a vestigial duplicate backend entry that bypassed permission checks.
+
+### Build & Packaging
+
+- **PyInstaller** — excluded unused ML/CV/DL packages; kept OCR dependencies.
+- **Console window** — Python backend no longer spawns a visible console on Windows.
+- **PDF/LaTeX export** — fixed export pipeline errors and editor live-reload after export.
+
+---
+
 ## [0.4.1] — Agent connection fix
 
 ### Bug Fixes
