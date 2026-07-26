@@ -184,7 +184,10 @@ function isLost(promise: ArgPromise): boolean {
   background: var(--c-accent);
   color: #fff;
   cursor: pointer;
-  transition: background .15s var(--ease-out), opacity .15s ease, transform .1s ease;
+  transition:
+    background 0.15s var(--ease-out),
+    opacity 0.15s ease,
+    transform 0.1s ease;
 }
 
 .analyze-btn:disabled {
@@ -330,8 +333,8 @@ function isLost(promise: ArgPromise): boolean {
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border-top: 1px solid var(--c-surface-3);
-  transition: background .12s ease;
-  animation: promise-in .22s var(--ease-out) both;
+  transition: background 0.12s ease;
+  animation: promise-in 0.22s var(--ease-out) both;
 }
 
 @keyframes promise-in {

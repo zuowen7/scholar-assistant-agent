@@ -8,11 +8,15 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('../utils/markdown', () => ({ renderBlock: mocks.renderBlock }))
-vi.mock('../utils/sentenceAlign', () => ({ renderSentenceMarkedHtml: mocks.renderSentenceMarkedHtml }))
+vi.mock('../utils/sentenceAlign', () => ({
+  renderSentenceMarkedHtml: mocks.renderSentenceMarkedHtml,
+}))
 
 describe('TranslationBlockHtml', () => {
   it('caches block rendering until its text changes', async () => {
-    const wrapper = mount(TranslationBlockHtml, { props: { text: 'source', blockType: 'paragraph' } })
+    const wrapper = mount(TranslationBlockHtml, {
+      props: { text: 'source', blockType: 'paragraph' },
+    })
     expect(wrapper.html()).toContain('<p>source</p>')
     expect(mocks.renderBlock).toHaveBeenCalledTimes(1)
 
