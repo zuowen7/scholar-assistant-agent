@@ -212,6 +212,7 @@ export interface AgentEvent {
     input?: string
     is_error?: boolean
     risk?: string
+    result_detail?: string
     // v2 await_approval
     reason?: string
     force_approval?: boolean

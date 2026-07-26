@@ -548,6 +548,19 @@ async function handleSelectionTask(action: string) {
   if (!isLatexMode.value) {
     toggleAgentDock(true)
   }
+  // Capture read-only surrounding lines so the agent can keep transitions,
+  // terminology and style coherent. The editable range stays the selection.
+  let beforeContext: string | undefined
+  let afterContext: string | undefined
+  if (selection.value.text) {
+    const lines = content.value.split('\n')
+    // startLine/endLine are 1-based (Monaco convention).
+    const beforeEnd = selection.value.startLine - 1 // exclusive end → last line before selection
+    const before = lines.slice(Math.max(0, beforeEnd - 5), beforeEnd)
+    const after = lines.slice(selection.value.endLine, selection.value.endLine + 5)
+    beforeContext = before.join('\n') || undefined
+    afterContext = after.join('\n') || undefined
+  }
   await sendAgentMessage(
     t('editor.selectionTaskPrompt', {
       action,
@@ -567,6 +580,8 @@ async function handleSelectionTask(action: string) {
             endLine: selection.value.endLine,
             endColumn: selection.value.endCol,
             text: selection.value.text,
+            beforeContext,
+            afterContext,
           },
         }
       : undefined,

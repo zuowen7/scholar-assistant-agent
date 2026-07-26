@@ -96,6 +96,8 @@ class SelectionContextV2(BaseModel):
     end_line: int = Field(ge=1)
     end_column: int = Field(ge=1)
     text: str = Field(min_length=1, max_length=500_000)
+    before_context: str | None = Field(default=None, max_length=8_000)
+    after_context: str | None = Field(default=None, max_length=8_000)
 
 
 class ChatRequestV2(BaseModel):
@@ -475,6 +477,24 @@ def _compose_turn_message(req: ChatRequestV2) -> str:
             + selection.text
             + "\n</active_selection>"
         )
+        # Surrounding lines are read-only reference so the model can keep
+        # transitions, terminology and style consistent. The editable range
+        # stays exactly the selection above.
+        surroundings: list[str] = []
+        if selection.before_context and selection.before_context.strip():
+            surroundings.append(
+                "<selection_before>\n" + selection.before_context.strip() + "\n</selection_before>"
+            )
+        if selection.after_context and selection.after_context.strip():
+            surroundings.append(
+                "<selection_after>\n" + selection.after_context.strip() + "\n</selection_after>"
+            )
+        if surroundings:
+            parts.append(
+                "The following surrounding lines are READ-ONLY reference for coherence "
+                "(transitions, terminology, style). Do not edit them; only the active "
+                "selection range is editable.\n" + "\n".join(surroundings)
+            )
     if req.context_text and req.context_text.strip():
         parts.append(
             "<editor_context>\n"

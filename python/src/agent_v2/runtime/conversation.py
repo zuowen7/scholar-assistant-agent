@@ -561,6 +561,10 @@ class ConversationRuntime:
 
         # Checkpoint after file modifications: include new content for frontend
         if tb.name in ("write_file", "str_replace") and not is_error:
+            # A successful write changes file-system state, so earlier identical
+            # reads are no longer "repeated" — reset fingerprints to avoid
+            # false circuit-breaker trips on legitimate read-edit-read cycles.
+            self._tool_call_counts.clear()
             if self.edit_scope is not None and tb.name == "str_replace":
                 self._selection_edit_completed = True
             new_content = ""
