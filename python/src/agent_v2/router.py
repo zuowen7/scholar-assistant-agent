@@ -22,9 +22,10 @@ import os
 import re
 import time
 import uuid
-from datetime import date, datetime, timezone
+from collections.abc import AsyncGenerator, Callable
+from contextlib import suppress
+from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import AsyncGenerator, Callable
 
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -94,7 +95,9 @@ class ChatRequestV2(BaseModel):
     context_file: str | None = Field(default=None, max_length=4_000)
     constraints: str | None = Field(default=None, max_length=10_000)
     workspace_root: str | None = None
-    workflow_id: str | None = Field(default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+    workflow_id: str | None = Field(
+        default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$"
+    )
     skills: list[str] = Field(default_factory=list, max_length=8)
 
 
@@ -209,6 +212,7 @@ def _session_summary(session: Session, *, state: str, source: str) -> dict:
 # ---------------------------------------------------------------------------
 # Provider / Runtime factory
 # ---------------------------------------------------------------------------
+
 
 def _load_root_config() -> dict:
     """Standalone fallback config loader for direct Agent V2 use and tests."""
@@ -537,8 +541,9 @@ async def _cleanup_pool() -> int:
                 _SESSION_POOL.pop(sid, None)
 
     if stale_sids:
-        logger.info("Agent V2: cleaned up %d stale session(s) from pool: %s",
-                    len(stale_sids), stale_sids)
+        logger.info(
+            "Agent V2: cleaned up %d stale session(s) from pool: %s", len(stale_sids), stale_sids
+        )
     return len(stale_sids)
 
 
@@ -564,6 +569,7 @@ async def _background_cleanup_loop() -> None:
 # Route registration
 # ---------------------------------------------------------------------------
 
+
 def register_agent_v2_routes(
     app: FastAPI,
     prefix: str = "/api/agent/v2",
@@ -582,16 +588,17 @@ def register_agent_v2_routes(
         nonlocal _cleanup_task
         if _cleanup_task is None or _cleanup_task.done():
             _cleanup_task = asyncio.create_task(_background_cleanup_loop())
-            logger.info("Agent V2: background session cleanup loop started (interval=600s, TTL=%ss)", _SESSION_TTL)
+            logger.info(
+                "Agent V2: background session cleanup loop started (interval=600s, TTL=%ss)",
+                _SESSION_TTL,
+            )
 
     async def _stop_cleanup_loop() -> None:
         nonlocal _cleanup_task
         if _cleanup_task is not None and not _cleanup_task.done():
             _cleanup_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await _cleanup_task
-            except asyncio.CancelledError:
-                pass
             logger.info("Agent V2: background session cleanup loop stopped")
 
     # Register with app.state so api_factory._lifespan can drive the lifecycle.
@@ -808,8 +815,9 @@ def register_agent_v2_routes(
                         evicted_disk += 1
                 except OSError:
                     logger.warning("Failed to stat/remove stale session file %s", f, exc_info=True)
-        logger.info("workflow cleanup: evicted %d memory + %d disk sessions",
-                    evicted_memory, evicted_disk)
+        logger.info(
+            "workflow cleanup: evicted %d memory + %d disk sessions", evicted_memory, evicted_disk
+        )
         return {
             "status": "ok",
             "evicted_memory": evicted_memory,
@@ -833,7 +841,9 @@ def register_agent_v2_routes(
         async with _SESSION_LOCK:
             rt = _SESSION_POOL.get(workflow_id)
             if rt is not None and getattr(rt, "_is_streaming", False):
-                raise HTTPException(409, f"Session {workflow_id} is currently streaming; abort it first")
+                raise HTTPException(
+                    409, f"Session {workflow_id} is currently streaming; abort it first"
+                )
             _SESSION_POOL.pop(workflow_id, None)
 
         deleted_disk = False
@@ -912,7 +922,13 @@ def register_agent_v2_routes(
         async with _SESSION_LOCK:
             active = len(_SESSION_POOL)
         from src._version import __version__
-        return {"status": "ok", "version": __version__, "runtime": "ConversationRuntime", "active_sessions": active}
+
+        return {
+            "status": "ok",
+            "version": __version__,
+            "runtime": "ConversationRuntime",
+            "active_sessions": active,
+        }
 
     @app.get("/api/agent/stats")
     async def agent_stats():

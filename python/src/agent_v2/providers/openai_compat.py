@@ -9,6 +9,7 @@ import json
 import logging
 import uuid
 from collections.abc import AsyncGenerator
+from contextlib import suppress
 from typing import Any
 
 import httpx
@@ -27,6 +28,36 @@ from src.agent_v2.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _response_error_detail(response: httpx.Response) -> str:
+    """Extract a concise provider error without leaking request headers."""
+    raw = response.text.strip()
+    if not raw:
+        return response.reason_phrase or "unknown provider error"
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return raw[:500]
+    error = payload.get("error", payload)
+    if isinstance(error, dict):
+        message = error.get("message") or error.get("detail") or error.get("code")
+        if message:
+            return str(message)[:500]
+    return raw[:500]
+
+
+def _api_error_from_response(response: httpx.Response) -> ApiError:
+    retry_after = None
+    raw_retry_after = response.headers.get("retry-after")
+    if raw_retry_after:
+        with suppress(ValueError):
+            retry_after = float(raw_retry_after)
+    return ApiError(
+        f"API error {response.status_code}: {_response_error_detail(response)}",
+        status_code=response.status_code,
+        retry_after=retry_after,
+    )
 
 
 def _max_tokens_for_model(model: str) -> int:
@@ -189,11 +220,7 @@ class OpenAiCompatProvider(BaseProvider):
                 logger.debug("connect failed with %s, trying next client", client_fn.__name__)
                 continue
             except httpx.HTTPStatusError as e:
-                body_text = e.response.text[:500] if e.response else ""
-                raise ApiError(
-                    f"API error {e.response.status_code} from {url}: {body_text}",
-                    status_code=e.response.status_code,
-                ) from e
+                raise _api_error_from_response(e.response) from e
             data = resp.json()
             finish = data.get("choices", [{}])[0].get("finish_reason", "?")
             tc_count = len(data.get("choices", [{}])[0].get("message", {}).get("tool_calls") or [])
@@ -247,22 +274,25 @@ class OpenAiCompatProvider(BaseProvider):
 
         for client_fn in (self._get_client, self._get_direct_client):
             client = await client_fn()
+            emitted = False
             try:
                 async for chunk in self._stream_body(client, url, body):
+                    emitted = True
                     yield chunk
                 return
-            except httpx.ConnectError as e:
+            except httpx.TransportError as e:
                 last_err = e
+                if emitted:
+                    raise ApiError(
+                        f"Streaming connection interrupted: {e}",
+                        status_code=0,
+                    ) from e
                 logger.debug(
                     "stream connect failed with %s, trying next client", client_fn.__name__
                 )
                 continue
             except httpx.HTTPStatusError as e:
-                body_text = e.response.text[:500] if e.response else ""
-                raise ApiError(
-                    f"API error {e.response.status_code} from {url}: {body_text}",
-                    status_code=e.response.status_code,
-                ) from e
+                raise _api_error_from_response(e.response) from e
 
         raise ApiError(
             f"Cannot connect to {url}: {last_err}. Check network or firewall.",
@@ -279,19 +309,41 @@ class OpenAiCompatProvider(BaseProvider):
         blocks: list = []
         tc_map: dict[int, dict] = {}
         text_buf = ""
+        stream_finished = False
 
         async with client.stream("POST", url, json=body) as resp:
+            if resp.is_error:
+                # Streaming responses are not buffered by httpx. Read the body
+                # before raising so callers receive the provider's real error
+                # instead of httpx.ResponseNotRead.
+                await resp.aread()
             resp.raise_for_status()
             async for line in resp.aiter_lines():
                 if not line.startswith("data: "):
                     continue
                 payload = line[6:]
                 if payload == "[DONE]":
+                    stream_finished = True
                     break
                 try:
                     chunk = json.loads(payload)
                 except json.JSONDecodeError:
                     continue
+
+                upstream_error = chunk.get("error")
+                if upstream_error:
+                    if isinstance(upstream_error, dict):
+                        detail = (
+                            upstream_error.get("message")
+                            or upstream_error.get("detail")
+                            or upstream_error.get("code")
+                        )
+                    else:
+                        detail = upstream_error
+                    raise ApiError(
+                        f"API stream error: {detail or 'unknown provider error'}",
+                        status_code=502,
+                    )
 
                 choices = chunk.get("choices") or []
                 if not choices:
@@ -303,6 +355,8 @@ class OpenAiCompatProvider(BaseProvider):
                         )
                     continue
                 choice = choices[0]
+                if choice.get("finish_reason") is not None:
+                    stream_finished = True
                 delta = choice.get("delta", {})
 
                 content = delta.get("content")
@@ -333,6 +387,12 @@ class OpenAiCompatProvider(BaseProvider):
                         input_tokens=usage_data.get("prompt_tokens", 0),
                         output_tokens=usage_data.get("completion_tokens", 0),
                     )
+
+        if not stream_finished:
+            raise ApiError(
+                "Streaming connection ended before the provider sent a completion marker",
+                status_code=0,
+            )
 
         for idx in sorted(tc_map.keys()):
             tc = tc_map[idx]

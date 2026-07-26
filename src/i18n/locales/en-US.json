@@ -608,6 +608,7 @@
     "resumeFailed": "Resume failed",
     "networkError": "Network error",
     "requestFailedHttp": "Request failed ({status})",
+    "agentStreamEnded": "The Agent stream ended before completion",
     "recoveringSession": "Connection lost, recovering session... ({attempt}/{max})",
     "retryingNetwork": "Network error, retrying... ({attempt}/{max})"
   },

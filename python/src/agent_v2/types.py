@@ -140,6 +140,7 @@ class AgentEventType(Enum):
     APPROVAL_RECEIVED = "approval_received"
     USAGE = "usage"
     RESPONSE = "response"
+    WARNING = "warning"
     ERROR = "error"
     DONE = "done"
     ABORTED = "aborted"
@@ -214,6 +215,13 @@ class AgentEvent:
     @staticmethod
     def error(message: str) -> AgentEvent:
         return AgentEvent(type=AgentEventType.ERROR, data={"message": message})
+
+    @staticmethod
+    def warning(message: str, **metadata: Any) -> AgentEvent:
+        return AgentEvent(
+            type=AgentEventType.WARNING,
+            data={"message": message, **metadata},
+        )
 
     @staticmethod
     def approval_received(id: str, decision: str) -> AgentEvent:
