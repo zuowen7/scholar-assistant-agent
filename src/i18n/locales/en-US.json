@@ -1064,6 +1064,7 @@
     "condense": "Condense",
     "expand": "Expand",
     "checkArgument": "Check argument",
+    "selectionActions": "Selected text actions",
     "closeProjectDescription": "Return to the welcome page and close this workspace",
     "closeProjectDirtyDetail": "Some tabs have unsaved changes. Continuing discards those in-memory edits but does not delete project files on disk.",
     "closeProjectDetail": "The project will close in this workspace and remain available under recent projects.",

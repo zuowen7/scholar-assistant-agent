@@ -137,8 +137,9 @@
                 v-if="documentView === 'body' || isLatexMode"
                 :theme="isDark ? 'vs-dark' : 'vs'"
                 :presentation="isLatexMode ? 'code' : 'document'"
-                @contentChange="onContentChange"
-                @selectionChange="onSelectionChange"
+                @content-change="onContentChange"
+                @selection-change="onSelectionChange"
+                @selection-action="handleSelectionTask"
               />
               <MarkdownPreview
                 v-else-if="documentView === 'preview'"
@@ -154,21 +155,6 @@
                 @navigate="navigateToLine"
                 @add="addSection"
               />
-
-              <div v-if="selection.text && !isLatexMode" class="selection-toolbar">
-                <button type="button" @click="handleSelectionTask(t('editor.polish'))">
-                  <Sparkles :size="14" /> {{ t('editor.polish') }}
-                </button>
-                <button type="button" @click="handleSelectionTask(t('editor.condense'))">
-                  {{ t('editor.condense') }}
-                </button>
-                <button type="button" @click="handleSelectionTask(t('editor.expand'))">
-                  {{ t('editor.expand') }}
-                </button>
-                <button type="button" @click="handleSelectionTask(t('editor.checkArgument'))">
-                  {{ t('editor.checkArgument') }}
-                </button>
-              </div>
             </div>
           </main>
 
@@ -312,7 +298,6 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   Save,
-  Sparkles,
 } from 'lucide-vue-next'
 
 // -- State composables ---------------------------------------------------
@@ -1321,42 +1306,6 @@ async function handleAgentFileChange() {
 }
 .header-action:focus-visible,
 .header-icon:focus-visible {
-  outline: none;
-  box-shadow: var(--ring-focus);
-}
-.selection-toolbar {
-  position: absolute;
-  z-index: 20;
-  top: 18px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 5px;
-  border: 1px solid var(--c-border);
-  border-radius: 9px;
-  background: var(--c-panel);
-  box-shadow: 0 7px 22px rgba(50, 43, 31, 0.12);
-}
-.selection-toolbar button {
-  height: 29px;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0 9px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--c-text-1);
-  font-size: 11px;
-  cursor: pointer;
-}
-.selection-toolbar button:hover {
-  color: var(--c-accent);
-  background: var(--c-accent-soft);
-}
-.selection-toolbar button:focus-visible {
   outline: none;
   box-shadow: var(--ring-focus);
 }

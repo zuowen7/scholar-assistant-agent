@@ -1067,6 +1067,7 @@
     "condense": "精简",
     "expand": "扩写",
     "checkArgument": "检查论证",
+    "selectionActions": "选中文本操作",
     "closeProjectDescription": "返回欢迎页并关闭当前工作区",
     "closeProjectDirtyDetail": "当前仍有未保存的标签页。继续将丢弃这些内存中的修改，但不会删除磁盘上的项目文件。",
     "closeProjectDetail": "当前项目会从工作区关闭，稍后仍可从最近项目重新打开。",
