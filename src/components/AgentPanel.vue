@@ -307,72 +307,93 @@
             </button>
           </div>
         </div>
-        <div class="agent-input-row">
-          <button
-            class="agent-attach-btn"
-            @click="attachFile"
-            :title="t('agent.addAttachment')"
-            :disabled="sending"
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
+        <div class="agent-composer">
+          <AgentSlashMenu
+            v-if="slashMenuOpen"
+            :items="slashItems"
+            :active-index="slashActiveIndex"
+            :loading="skillsLoading"
+            :menu-label="t('agent.slash.menuLabel')"
+            :loading-label="t('agent.slash.loading')"
+            :empty-label="t('agent.slash.empty')"
+            :preset-label="t('agent.slash.presetGroup')"
+            :skill-label="t('agent.slash.skillGroup')"
+            :selected-label="t('agent.slash.selected')"
+            @hover="slashActiveIndex = $event"
+            @select="applySlashCommand"
+          />
+          <div class="agent-input-row">
+            <button
+              class="agent-attach-btn"
+              @click="attachFile"
+              :title="t('agent.addAttachment')"
+              :disabled="sending"
             >
-              <path
-                d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
-              />
-            </svg>
-          </button>
-          <textarea
-            ref="agentInputEl"
-            v-model="input"
-            rows="2"
-            @keydown.enter.exact.prevent="sendMessage"
-            :disabled="sending"
-            :placeholder="t('agent.inputPlaceholder')"
-            class="agent-input"
-          ></textarea>
-          <button
-            v-if="agentSpeech.isSupported"
-            class="agent-attach-btn"
-            :class="{ 'voice-active': agentSpeech.status.value === 'listening' }"
-            :title="
-              agentSpeech.status.value === 'listening'
-                ? t('agent.voiceStop')
-                : t('agent.voiceStart')
-            "
-            :disabled="sending"
-            @click="toggleAgentSpeech"
-          >
-            <Mic :size="14" :stroke-width="2" />
-          </button>
-          <button
-            class="agent-send-btn"
-            :class="{ stopping: sending }"
-            @click="sending ? abortSession() : sendMessage()"
-            :disabled="!sending && !input.trim()"
-            :title="sending ? t('agent.stopGenerate') : t('agent.send')"
-          >
-            <svg v-if="sending" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="3" y="3" width="18" height="18" rx="3" />
-            </svg>
-            <svg
-              v-else
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
+                />
+              </svg>
+            </button>
+            <textarea
+              ref="agentInputEl"
+              v-model="input"
+              rows="2"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-controls="agent-slash-menu"
+              :aria-expanded="slashMenuOpen"
+              :aria-activedescendant="slashActiveDescendant"
+              @keydown="handleInputKeydown"
+              :disabled="sending"
+              :placeholder="t('agent.inputPlaceholder')"
+              class="agent-input"
+            ></textarea>
+            <button
+              v-if="agentSpeech.isSupported"
+              class="agent-attach-btn"
+              :class="{ 'voice-active': agentSpeech.status.value === 'listening' }"
+              :title="
+                agentSpeech.status.value === 'listening'
+                  ? t('agent.voiceStop')
+                  : t('agent.voiceStart')
+              "
+              :disabled="sending"
+              @click="toggleAgentSpeech"
             >
-              <line x1="22" y1="2" x2="11" y2="13" />
-              <polygon points="22 2 15 22 11 13 2 9 22 2" />
-            </svg>
-          </button>
+              <Mic :size="14" :stroke-width="2" />
+            </button>
+            <button
+              class="agent-send-btn"
+              :class="{ stopping: sending }"
+              @click="sending ? abortSession() : handleComposerSubmit()"
+              :disabled="!sending && !input.trim()"
+              :title="sending ? t('agent.stopGenerate') : t('agent.send')"
+            >
+              <svg v-if="sending" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="3" y="3" width="18" height="18" rx="3" />
+              </svg>
+              <svg
+                v-else
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -583,6 +604,7 @@ import { useEditor } from '../composables/useEditor'
 import { useEditorState } from '../composables/useEditorState'
 import { useFileTree } from '../composables/useFileTree'
 import AgentApprovalInline from './AgentApprovalInline.vue'
+import AgentSlashMenu from './AgentSlashMenu.vue'
 import AgentSessionList from './AgentSessionList.vue'
 import { Pin, PinOff, Mic, Plus } from './ui/icons'
 import { API_BASE } from '../utils/api'
@@ -593,6 +615,12 @@ import UiSkeleton from './ui/UiSkeleton.vue'
 import { useToast } from '../composables/useToast'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
+import {
+  filterAgentSlashCommands,
+  parseAgentSlashInvocation,
+  skillSlashCommand,
+  type AgentSlashCommand,
+} from '../composables/useAgentSlashCommands'
 
 // Keep the Markdown parser/sanitizer and KaTeX outside the initial Agent shell.
 // Each block recomputes only when its own message content changes.
@@ -903,6 +931,8 @@ const ragFileInput = ref<HTMLInputElement | null>(null)
 const ragUploading = ref(false)
 const ragUploadError = ref('')
 const selectedSkillNames = ref<string[]>([])
+const slashActiveIndex = ref(0)
+const slashDismissed = ref(false)
 const { warn: showWarning } = useToast()
 
 const visibleAgentSkills = computed(() =>
@@ -928,17 +958,98 @@ function skillDisplayDescription(skill: AgentSkill): string {
   return te(key) ? t(key) : skill.description
 }
 
+function skillPromptText(skill: AgentSkill): string {
+  const promptKey = `agent.skills.${skill.name}.prompt`
+  return te(promptKey)
+    ? t(promptKey)
+    : t('agent.skillPromptFallback', { skill: skillDisplayName(skill) })
+}
+
+const slashPresetItems = computed<AgentSlashCommand[]>(() => [
+  {
+    id: 'preset-polish',
+    command: '/polish',
+    kind: 'preset',
+    label: t('agent.slash.presets.polish.label'),
+    description: t('agent.slash.presets.polish.description'),
+    prompt: t('agent.slash.presets.polish.prompt'),
+  },
+  {
+    id: 'preset-review',
+    command: '/review',
+    kind: 'preset',
+    label: t('agent.slash.presets.review.label'),
+    description: t('agent.slash.presets.review.description'),
+    prompt: t('agent.slash.presets.review.prompt'),
+  },
+  {
+    id: 'preset-outline',
+    command: '/outline',
+    kind: 'preset',
+    label: t('agent.slash.presets.outline.label'),
+    description: t('agent.slash.presets.outline.description'),
+    prompt: t('agent.slash.presets.outline.prompt'),
+  },
+  {
+    id: 'preset-cite',
+    command: '/cite',
+    kind: 'preset',
+    label: t('agent.slash.presets.cite.label'),
+    description: t('agent.slash.presets.cite.description'),
+    prompt: t('agent.slash.presets.cite.prompt'),
+  },
+  {
+    id: 'preset-research',
+    command: '/research',
+    kind: 'preset',
+    label: t('agent.slash.presets.research.label'),
+    description: t('agent.slash.presets.research.description'),
+    prompt: t('agent.slash.presets.research.prompt'),
+  },
+  {
+    id: 'preset-translate',
+    command: '/translate',
+    kind: 'preset',
+    label: t('agent.slash.presets.translate.label'),
+    description: t('agent.slash.presets.translate.description'),
+    prompt: t('agent.slash.presets.translate.prompt'),
+  },
+])
+
+const slashSkillItems = computed<AgentSlashCommand[]>(() =>
+  visibleAgentSkills.value.map((skill) => ({
+    id: `skill-${skill.name.replaceAll(/[^a-zA-Z0-9_-]/g, '-')}`,
+    command: skillSlashCommand(skill),
+    kind: 'skill',
+    label: skillDisplayName(skill),
+    description: skillDisplayDescription(skill),
+    prompt: skillPromptText(skill),
+    skillName: skill.name,
+    selected: isSkillSelected(skill.name),
+  })),
+)
+
+const slashCommands = computed(() => [...slashPresetItems.value, ...slashSkillItems.value])
+const slashMatch = computed(() => input.value.match(/^\/([^\s]*)$/))
+const slashMenuOpen = computed(
+  () => Boolean(slashMatch.value) && !sending.value && !slashDismissed.value,
+)
+const slashQuery = computed(() => slashMatch.value?.[1] || '')
+const slashItems = computed(() =>
+  filterAgentSlashCommands(slashCommands.value, slashQuery.value, 10),
+)
+const slashActiveDescendant = computed(() => {
+  const active = slashItems.value[slashActiveIndex.value]
+  return slashMenuOpen.value && active ? `agent-slash-${active.id}` : undefined
+})
+
 function isSkillSelected(name: string): boolean {
   return selectedSkillNames.value.includes(name)
 }
 
 async function useSkill(skill: AgentSkill) {
   selectedSkillNames.value = [skill.name]
-  const promptKey = `agent.skills.${skill.name}.prompt`
-  if (!input.value.trim())
-    input.value = te(promptKey)
-      ? t(promptKey)
-      : t('agent.skillPromptFallback', { skill: skillDisplayName(skill) })
+  if (!input.value.trim()) input.value = skillPromptText(skill)
   tab.value = 'chat'
   await nextTick()
   agentInputEl.value?.focus()
@@ -946,6 +1057,71 @@ async function useSkill(skill: AgentSkill) {
 
 function removeSkill(name: string) {
   selectedSkillNames.value = selectedSkillNames.value.filter((skillName) => skillName !== name)
+}
+
+async function applySlashCommand(item: AgentSlashCommand, argument = '') {
+  selectedSkillNames.value = item.skillName ? [item.skillName] : []
+  input.value = [item.prompt, argument].filter(Boolean).join('\n\n')
+  slashActiveIndex.value = 0
+  await nextTick()
+  agentInputEl.value?.focus()
+}
+
+function moveSlashSelection(offset: number) {
+  const count = slashItems.value.length
+  if (!count) return
+  slashActiveIndex.value = (slashActiveIndex.value + offset + count) % count
+}
+
+function handleInputKeydown(event: KeyboardEvent) {
+  if (event.isComposing) return
+  if (slashMenuOpen.value) {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      moveSlashSelection(event.key === 'ArrowDown' ? 1 : -1)
+      return
+    }
+    if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault()
+      slashActiveIndex.value = event.key === 'Home' ? 0 : Math.max(0, slashItems.value.length - 1)
+      return
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      slashDismissed.value = true
+      return
+    }
+    if (
+      (event.key === 'Enter' || event.key === 'Tab') &&
+      !event.shiftKey &&
+      !event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      slashItems.value.length
+    ) {
+      event.preventDefault()
+      void applySlashCommand(slashItems.value[slashActiveIndex.value])
+      return
+    }
+  }
+  if (
+    event.key === 'Enter' &&
+    !event.shiftKey &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey
+  ) {
+    event.preventDefault()
+    void sendMessage()
+  }
+}
+
+function handleComposerSubmit() {
+  if (slashMenuOpen.value && slashItems.value.length) {
+    void applySlashCommand(slashItems.value[slashActiveIndex.value])
+    return
+  }
+  void sendMessage()
 }
 
 const contextText = computed(() => {
@@ -1131,8 +1307,16 @@ function handleNewSession() {
 
 // ── Send message ──
 async function sendMessage() {
-  const text = input.value.trim()
+  let text = input.value.trim()
   if (!text || sending.value) return
+  const invocation = parseAgentSlashInvocation(text)
+  if (invocation) {
+    const item = slashCommands.value.find((candidate) => candidate.command === invocation.command)
+    if (item) {
+      selectedSkillNames.value = item.skillName ? [item.skillName] : []
+      text = [item.prompt, invocation.argument].filter(Boolean).join('\n\n')
+    }
+  }
   input.value = ''
 
   // Pass file paths to agent — let it read with read_file tool
@@ -1280,6 +1464,23 @@ watch(
     }
   },
 )
+
+watch(input, () => {
+  slashDismissed.value = false
+  slashActiveIndex.value = 0
+})
+
+watch(slashActiveDescendant, async (id) => {
+  if (!id) return
+  await nextTick()
+  document.getElementById(id)?.scrollIntoView({ block: 'nearest' })
+})
+
+watch(slashMenuOpen, (isOpen) => {
+  if (isOpen && agentSkills.value.length === 0 && !skillsLoading.value) {
+    void fetchAgentSkills()
+  }
+})
 
 watch(tab, (t) => {
   if (t === 'templates') {
@@ -2037,6 +2238,10 @@ onUnmounted(() => {
 .selected-skill-chip:focus-visible {
   outline: 2px solid var(--c-accent);
   outline-offset: 2px;
+}
+.agent-composer {
+  position: relative;
+  width: 100%;
 }
 .agent-input-row {
   width: 100%;

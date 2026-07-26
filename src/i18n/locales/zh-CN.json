@@ -357,7 +357,47 @@
     "contextDocument": "文档",
     "removeAttachment": "移除附件",
     "addAttachment": "添加附件",
-    "inputPlaceholder": "描述下一项任务...",
+    "inputPlaceholder": "描述下一项任务，输入 / 查看能力和预设...",
+    "slash": {
+      "menuLabel": "命令与能力",
+      "loading": "正在加载 Agent 能力...",
+      "empty": "没有匹配的命令或能力",
+      "presetGroup": "预设指令",
+      "skillGroup": "Agent Skills",
+      "selected": "已启用",
+      "presets": {
+        "polish": {
+          "label": "学术润色",
+          "description": "保持事实、数据和引用不变，改进表达",
+          "prompt": "请润色当前选区或文稿，保持事实、数据、引用、术语和不确定性不变，并简要说明关键修改。"
+        },
+        "review": {
+          "label": "投稿前审阅",
+          "description": "按严重程度检查论证、方法和证据缺口",
+          "prompt": "请审阅当前文稿，重点检查贡献是否清晰、方法是否可复现、证据能否支撑结论以及引用是否充分。按严重程度列出问题，并定位到原文。"
+        },
+        "outline": {
+          "label": "梳理章节结构",
+          "description": "提取当前结构并指出缺失或重复章节",
+          "prompt": "请梳理当前文稿的章节结构和论证路径，输出精简大纲，并指出结构断点、内容重复和缺失章节。"
+        },
+        "cite": {
+          "label": "检查引用支持",
+          "description": "识别需要文献支持的主张，不编造引用",
+          "prompt": "请识别当前选区或文稿中需要引用支持的主张，区分已有支持、支持不足和缺少来源；只提供可核验的候选文献，不要编造引用。"
+        },
+        "research": {
+          "label": "调研一个问题",
+          "description": "基于当前项目和可核验来源形成研究笔记",
+          "prompt": "请围绕我接下来指定的问题开展调研。优先使用项目文献与可核验来源，区分事实、推断和待确认信息，并保留来源线索。"
+        },
+        "translate": {
+          "label": "学术翻译",
+          "description": "中英互译并保持术语、引用和格式",
+          "prompt": "请翻译当前选区或文稿：中文内容译为学术英文，英文内容译为规范中文。保持术语、数据、引用、公式和 Markdown/LaTeX 格式不变。"
+        }
+      }
+    },
     "stopGenerate": "停止生成",
     "send": "发送",
     "voiceStart": "语音输入",
