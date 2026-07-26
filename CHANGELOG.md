@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.5.0] — Agent execution redesign & build chain hardening
+
+### Agent Execution UI
+
+- **AgentExecutionGroup** — unified execution display component replacing fragmented tool-call cards; groups related tool calls with status, duration, and result previews.
+- **Inline diff overlay** — approval diff card now renders as a Vue overlay outside Monaco's DOM, completely bypassing Monaco's internal event interception that blocked clicks and scroll.
+- **Selection editing interaction** — inline diff accept/reject flows directly through the overlay with proper event handling.
+
+### Session Lifecycle
+
+- **Pause / Resume / Abort** — `SessionControl` + `SessionStore` provide workspace-namespaced session persistence with full lifecycle management.
+- **Scope breaker reset** — consecutive tool errors now trigger proper session reset instead of silent retry loops.
+- **Isolated selection sessions** — selection-scoped agent runs no longer leak context between sessions.
+
+### Build Chain
+
+- **PyInstaller PIL inclusion** — removed `PIL` from excludes to fix PPTX import/export in packaged builds.
+- **pylatexenc dependency** — added and locked to requirements for LaTeX `.tex` file support.
+- **External tool build gating** — missing Pandoc / Tectonic / ONNX model now fails the build instead of silently producing incomplete packages.
+- **Release workflow** — switched `npm install` to `npm ci` for reproducible release builds.
+
+### arxiv_search Fix
+
+- Fixed URL encoding: switched from raw f-string to `httpx` params dict so queries containing spaces, quotes, and operators are properly encoded.
+
 ## [0.4.2] — Stability, quality baseline & security hardening
 
 ### Agent V2 Stability

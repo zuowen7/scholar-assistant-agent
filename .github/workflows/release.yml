@@ -72,7 +72,7 @@ jobs:
           cache: 'npm'
 
       - name: Install frontend dependencies
-        run: npm install
+        run: npm ci
 
       - name: Run vitest
         run: npx vitest run
@@ -132,7 +132,7 @@ jobs:
           pip install pyinstaller
 
       - name: Install frontend dependencies
-        run: npm install
+        run: npm ci
 
       - name: Ensure build directories exist
         shell: bash

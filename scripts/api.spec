@@ -148,7 +148,6 @@ a = Analysis(
         "tornado",
         "zmq",
         "psutil",
-        "PIL",
         "sqlalchemy",
         "bokeh",
         "plotly",

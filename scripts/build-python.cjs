@@ -403,13 +403,35 @@ if (!fs.existsSync(dataDir)) {
 
   // Bundle external export toolchain (Tectonic for PDF, Pandoc for Markdown->LaTeX/PDF).
   const apiDir = path.dirname(apiExePath);
-  try {
-    await downloadTectonic(apiDir);
-    await downloadPandoc(apiDir);
-    await downloadEmbeddingModel(apiDir);
-    await prewarmTectonic(apiDir);
-    console.log('[OK] All external tools bundled.');
-  } catch (e) {
-    console.warn(`[WARN] Bundling extra assets incomplete: ${e.message}`);
+  await downloadTectonic(apiDir);
+  await downloadPandoc(apiDir);
+  await downloadEmbeddingModel(apiDir);
+  await prewarmTectonic(apiDir);
+
+  // ── Release asset gate ──────────────────────────────────────────
+  // Fail the build if any required external tool is missing. A release
+  // package that silently lacks Pandoc/Tectonic/embedding model breaks
+  // the offline-first promise in README.
+  const requiredReleaseFiles = [
+    { path: path.join(apiDir, 'tools', 'tectonic.exe'), label: 'Tectonic' },
+    { path: path.join(apiDir, 'tools', 'pandoc.exe'), label: 'Pandoc' },
+    {
+      path: path.join(
+        apiDir, 'models', 'chroma-onnx', 'all-MiniLM-L6-v2', 'onnx', 'model.onnx',
+      ),
+      label: 'Embedding model (all-MiniLM-L6-v2)',
+    },
+  ];
+
+  const missing = requiredReleaseFiles.filter((f) => !fs.existsSync(f.path));
+  if (missing.length > 0) {
+    console.error('[ERROR] Required release assets are missing:');
+    missing.forEach((f) => console.error(`  - ${f.label}: ${f.path}`));
+    console.error(
+      'To provide them offline, place the files in scripts/.tools-cache/ and rebuild.',
+    );
+    process.exit(1);
   }
+
+  console.log('[OK] All required external tools bundled.');
 })();
