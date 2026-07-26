@@ -453,7 +453,7 @@ function handleSseEvent(event: string, data: Record<string, unknown>): void {
 }
 
 function upsertTranslation(chunk: ChunkDoneEvent): void {
-  const existingIdx = state.translations.findIndex(item => item.index === chunk.index)
+  const existingIdx = state.translations.findIndex((item) => item.index === chunk.index)
   if (existingIdx >= 0) {
     state.translations[existingIdx] = chunk
   } else {
@@ -473,16 +473,16 @@ export function normalizeQaWarning(data: Record<string, unknown>): QAWarning {
 }
 
 function upsertQaWarning(warning: QAWarning): void {
-  const existing = state.qaWarnings.find(item => item.chunkIndex === warning.chunkIndex)
-  const hasIncomingGlossaryFlags = warning.flags.some(flag => flag.type === 'glossary')
+  const existing = state.qaWarnings.find((item) => item.chunkIndex === warning.chunkIndex)
+  const hasIncomingGlossaryFlags = warning.flags.some((flag) => flag.type === 'glossary')
   const preservedGlossaryFlags = hasIncomingGlossaryFlags
     ? []
-    : existing?.flags.filter(flag => flag.type === 'glossary') ?? []
+    : (existing?.flags.filter((flag) => flag.type === 'glossary') ?? [])
   const mergedWarning = {
     ...warning,
     flags: [...preservedGlossaryFlags, ...warning.flags],
   }
-  const remaining = state.qaWarnings.filter(item => item.chunkIndex !== warning.chunkIndex)
+  const remaining = state.qaWarnings.filter((item) => item.chunkIndex !== warning.chunkIndex)
   state.qaWarnings = mergedWarning.flags.length ? [...remaining, mergedWarning] : remaining
 }
 

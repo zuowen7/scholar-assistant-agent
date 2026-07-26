@@ -74,7 +74,7 @@
         :provider="shellProvider"
         :model="shellModel"
         :model-online="shellModelOnline"
-        @navigate="handleShellNavigate"
+        @navigate="navigateTo"
         @open-recent="handleShellRecent"
         @settings="openLegacySettings"
         @agent="toggleAgentChat(true)"
@@ -212,9 +212,6 @@ import { useAppTheme } from './composables/useAppTheme'
 import { useAppWindow } from './composables/useAppWindow'
 
 const TranslateView = defineAsyncComponent(() => import('./components/TranslateView.vue'))
-const ReviewerWorkspace = defineAsyncComponent(() => import('./components/argument/ReviewerWorkspace.vue'))
-
-const TranslateView = defineAsyncComponent(() => import('./components/TranslateView.vue'))
 const ReviewerWorkspace = defineAsyncComponent(
   () => import('./components/argument/ReviewerWorkspace.vue'),
 )
@@ -285,7 +282,8 @@ function navigateTo(section: ShellSection) {
 watch(appMode, (mode) => {
   if (mode === 'translate') shellSection.value = 'translate'
   else if (mode === 'argument') shellSection.value = 'review'
-  else if (shellSection.value === 'translate' || shellSection.value === 'review') shellSection.value = 'write'
+  else if (shellSection.value === 'translate' || shellSection.value === 'review')
+    shellSection.value = 'write'
 })
 
 async function handleShellRecent(path: string) {
@@ -485,7 +483,9 @@ const globalDragging = ref(false)
 const mouseX = ref(0)
 const mouseY = ref(0)
 const { isDark, toggleTheme } = useAppTheme()
-watch(_openFullArgMapTick, () => { setMode('argument') })
+watch(_openFullArgMapTick, () => {
+  setMode('argument')
+})
 const appBootLoading = ref(true)
 const bootLoadingStartedAt = Date.now()
 const minBootLoadingMs = 1400
@@ -544,11 +544,31 @@ const { handleMinimize, handleToggleMaximize, handleClose } = useAppWindow()
 
 // --- 自定义背景 ---
 
-const { bgSettings, bgDataUrl, bgAssetUrl, backgroundLayerStyle, loadBgSettings, saveBgSettings, pickBackground, pathToDataUrl, clearBackground, onOpacityChange, initBackground } = useBackground()
+const {
+  bgSettings,
+  bgDataUrl,
+  bgAssetUrl,
+  backgroundLayerStyle,
+  loadBgSettings,
+  saveBgSettings,
+  pickBackground,
+  pathToDataUrl,
+  clearBackground,
+  onOpacityChange,
+  initBackground,
+} = useBackground()
 
 // --- 阅读设置 ---
 
-const { readSettings, loadReadSettings, saveReadSettings, onFontSizeChange, onLineHeightChange, onFontFamilyChange, onColorChange } = useReadSettings()
+const {
+  readSettings,
+  loadReadSettings,
+  saveReadSettings,
+  onFontSizeChange,
+  onLineHeightChange,
+  onFontFamilyChange,
+  onColorChange,
+} = useReadSettings()
 
 // ── 鼠标微视差：光晕/粒子跟随鼠标 ──
 function onMouseMove(e: MouseEvent) {
@@ -585,45 +605,12 @@ onMounted(async () => {
     }
   }, 5000)
   try {
-  // Load theme preference
-  try {
-    const saved = localStorage.getItem('theme')
-    isDark.value = saved === 'dark'
-  } catch (e) { logger.warn('loadTheme failed:', e) }
-
-  // Load background settings + pre-render data URL
-  initBackground()
-
-  // Load read settings
-  loadReadSettings()
-
-  // Mouse parallax for ambient orbs / particles
-  window.addEventListener('mousemove', onMouseMove, { passive: true })
-
-  // Listen for backend crash events (Tauri only)
-  listenBackendCrash()
-
-  // Load engine settings from backend config
-  await loadEngineSettings()
-
-  // Health checks
-  healthOk.value = await checkHealth()
-  ollamaOk.value = await checkOllama()
-  if (ollamaOk.value) refreshOllamaModels()
-  checkTectonic()
-  if (engineType.value === 'cloud') {
-    const r = await checkCloudApi()
-    cloudOk.value = r.ok
-    cloudError.value = r.error ?? null
-  }
-  timer = setInterval(async () => {
-    // Backend availability is a global shell concern. Keep polling even when
-    // a failed request has moved the feature state to `error`, otherwise the
-    // settings drawer can remain falsely "online" and hide its restart action.
-    const prev = healthOk.value
-    healthOk.value = await checkHealth()
-    if (prev && !healthOk.value) {
-      setBackendError(t('app.backendOffline'))
+    // Load theme preference
+    try {
+      const saved = localStorage.getItem('theme')
+      isDark.value = saved === 'dark'
+    } catch (e) {
+      logger.warn('loadTheme failed:', e)
     }
 
     // Load background settings + pre-render data URL

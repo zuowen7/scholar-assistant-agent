@@ -21,7 +21,11 @@ vi.mock('../utils/api', () => ({
 
 // ── Imports ─────────────────────────────────────────────────────────────
 
-import { useAgentChat, _getWorkflowCacheKeysForTesting, _resetForTesting } from '../composables/useAgentChat'
+import {
+  useAgentChat,
+  _getWorkflowCacheKeysForTesting,
+  _resetForTesting,
+} from '../composables/useAgentChat'
 import { ref } from 'vue'
 
 // ── SSE helper ──────────────────────────────────────────────────────────
@@ -314,12 +318,19 @@ describe('useAgentChat', () => {
     })
 
     it('notifies the editor for every file in a multi-file checkpoint stream', async () => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeSseResponse([
-        makeSessionStartedChunk('sess_multi'),
-        makeCheckpointChunk('D:/paper/a.md', 'A'),
-        makeCheckpointChunk('D:/paper/b.md', 'B'),
-        makeDoneChunk(),
-      ])))
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(
+            makeSseResponse([
+              makeSessionStartedChunk('sess_multi'),
+              makeCheckpointChunk('D:/paper/a.md', 'A'),
+              makeCheckpointChunk('D:/paper/b.md', 'B'),
+              makeDoneChunk(),
+            ]),
+          ),
+      )
       const changed: string[][] = []
       const onChanged = (event: Event) => changed.push((event as CustomEvent).detail.files)
       window.addEventListener('agent-files-changed', onChanged)
@@ -403,9 +414,19 @@ describe('useAgentChat', () => {
     })
 
     it('bounds the in-memory workflow message cache', async () => {
-      vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({
-        messages: [{ role: 'user', content: 'cached', events: [] }],
-      }), { status: 200 }))))
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockImplementation(() =>
+          Promise.resolve(
+            new Response(
+              JSON.stringify({
+                messages: [{ role: 'user', content: 'cached', events: [] }],
+              }),
+              { status: 200 },
+            ),
+          ),
+        ),
+      )
       const { loadWorkflowMessages } = useAgentChat()
 
       for (let index = 0; index < 21; index++) {
@@ -462,7 +483,8 @@ describe('useAgentChat', () => {
         makeAwaitApprovalChunk('write_file', 'create second file', 'edit_2'),
         { event: 'approval_received', data: { event_id: 'edit_1', content: 'allow_once' } },
       ])
-      const fetchMock = vi.fn()
+      const fetchMock = vi
+        .fn()
         .mockResolvedValueOnce(openStream.response)
         .mockResolvedValueOnce(new Response('{}', { status: 200 }))
       vi.stubGlobal('fetch', fetchMock)

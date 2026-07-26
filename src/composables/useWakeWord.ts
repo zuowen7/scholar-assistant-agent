@@ -221,14 +221,25 @@ export function useWakeWord(onWakeWord: () => void) {
   // Only one SpeechRecognition can be active at a time on most platforms.
   // Use flush:'sync' so the wake word SR is stopped BEFORE the dictation SR starts.
   let pausedByDictation = false
-  const stopSpeechBusyWatch = watch(speechBusyCount, (count) => {
-    if (count > 0 && active.value && !pausedByDictation) {
-      pausedByDictation = true
-      try { sr?.stop() } catch { /* ignore */ }
-    } else if (count === 0 && pausedByDictation) {
-      pausedByDictation = false
-      if (active.value) {
-        try { sr?.start() } catch { /* ignore */ }
+  const stopSpeechBusyWatch = watch(
+    speechBusyCount,
+    (count) => {
+      if (count > 0 && active.value && !pausedByDictation) {
+        pausedByDictation = true
+        try {
+          sr?.stop()
+        } catch {
+          /* ignore */
+        }
+      } else if (count === 0 && pausedByDictation) {
+        pausedByDictation = false
+        if (active.value) {
+          try {
+            sr?.start()
+          } catch {
+            /* ignore */
+          }
+        }
       }
     },
     { flush: 'sync' },

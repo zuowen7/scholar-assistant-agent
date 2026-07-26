@@ -141,7 +141,7 @@ async function reloadOpenTabs(): Promise<void> {
     if (tab.isModified) continue
     try {
       const fresh = await readTextFile(tab.path)
-      if (fresh === tab.content) continue  // no change — skip expensive Monaco update
+      if (fresh === tab.content) continue // no change — skip expensive Monaco update
       tab.content = fresh
       contentVersion.value++
       // If this is the active tab, push the new content into Monaco immediately.
@@ -171,7 +171,7 @@ async function saveFile(): Promise<string | null> {
         defaultPath: `${tab.name || 'untitled'}.md`,
         filters: [{ name: 'Markdown', extensions: ['md'] }],
       })
-      if (!chosen) return null  // user cancelled
+      if (!chosen) return null // user cancelled
       await writeTextFile(chosen, tab.content)
       tab.path = chosen
       tab.id = chosen
