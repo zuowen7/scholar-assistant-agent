@@ -27,6 +27,7 @@ import { API_BASE } from '../utils/api'
 import { useArgumentCompanion } from '../composables/useArgumentCompanion'
 import { computeCompanionDecorations } from '../composables/companionGutter'
 import { fetchCompletion, buildContext, type CompletionModel } from '../utils/inlineCompletion'
+import { addInlineDiffViewZone, type InlineDiffViewHandle } from '../utils/inlineDiffViewZone'
 
 // 配置 Monaco Web Worker（解决 Tauri 环境下 worker 无法创建的问题）
 self.MonacoEnvironment = {
@@ -474,7 +475,7 @@ watch(content, (v) => {
 
 // ── Inline Diff Approval ────────────────────────────────────────────────
 let _diffDecorations: string[] = []
-let _diffWidget: monaco.editor.IContentWidget | null = null
+let _diffView: InlineDiffViewHandle | null = null
 
 function _clearDiffDecorations() {
   setInlineDiffVisible(false)
@@ -482,14 +483,28 @@ function _clearDiffDecorations() {
     editor.deltaDecorations(_diffDecorations, [])
     _diffDecorations = []
   }
-  if (_diffWidget && editor) {
+  if (_diffView) {
     try {
-      editor.removeContentWidget(_diffWidget)
+      _diffView.remove()
     } catch {
       /* already disposed */
     }
-    _diffWidget = null
+    _diffView = null
   }
+}
+
+function _showInlineDiff(afterLineNumber: number, newText: string) {
+  if (!editor) return
+  _diffView = addInlineDiffViewZone(editor, {
+    afterLineNumber,
+    newText,
+    title: t('agent.inlineDiff.new', 'Suggested change'),
+    acceptLabel: t('agent.inlineDiff.accept', 'Accept'),
+    rejectLabel: t('agent.inlineDiff.reject', 'Reject'),
+    onAccept: () => _dispatchInlineDecision('allow_once'),
+    onReject: () => _dispatchInlineDecision('deny'),
+  })
+  setInlineDiffVisible(true)
 }
 
 watch(activeEdit, (edit) => {
@@ -531,76 +546,11 @@ watch(activeEdit, (edit) => {
       ],
     )
 
-    // Content widget below deletion showing new text + Accept/Reject
-    const widgetId = `inline-diff-${edit.editId}`
-    const widgetEl = document.createElement('div')
-    widgetEl.className = 'ai-diff-widget'
-    const newLines = edit.newText.split('\n')
-    const previewLines = newLines.slice(0, 15)
-    const truncated = newLines.length > 15
-    widgetEl.innerHTML = `
-      <div class="ai-diff-new">
-        ${previewLines.map((l: string) => `<div class="ai-diff-new-line">${_escapeHtml(l)}</div>`).join('')}
-        ${truncated ? `<div class="ai-diff-truncated">... ${newLines.length - 15} ${t('agent.inlineDiff.moreLines', 'more lines')}</div>` : ''}
-      </div>
-      <div class="ai-diff-actions">
-        <button class="ai-diff-accept" data-action="accept">${t('agent.inlineDiff.accept', 'Accept')}</button>
-        <button class="ai-diff-reject" data-action="reject">${t('agent.inlineDiff.reject', 'Reject')}</button>
-      </div>
-    `
-    widgetEl.querySelector('.ai-diff-accept')!.addEventListener('click', () => {
-      _dispatchInlineDecision('allow_once')
-    })
-    widgetEl.querySelector('.ai-diff-reject')!.addEventListener('click', () => {
-      _dispatchInlineDecision('deny')
-    })
-
-    _diffWidget = {
-      getId: () => widgetId,
-      getDomNode: () => widgetEl,
-      getPosition: () => ({
-        position: { lineNumber: matchRange.endLineNumber, column: matchRange.endColumn },
-        preference: [monaco.editor.ContentWidgetPositionPreference.BELOW],
-      }),
-    }
-    editor.addContentWidget(_diffWidget)
-    setInlineDiffVisible(true)
+    _showInlineDiff(matchRange.endLineNumber, edit.newText)
     editor.revealRangeInCenter(matchRange)
   } else if (edit.operation === 'write_file' && edit.newText) {
-    // write_file: show new content preview at top of file
-    const widgetId = `inline-diff-${edit.editId}`
-    const widgetEl = document.createElement('div')
-    widgetEl.className = 'ai-diff-widget'
-    const newLines = edit.newText.split('\n')
-    const previewLines = newLines.slice(0, 15)
-    const truncated = newLines.length > 15
-    widgetEl.innerHTML = `
-      <div class="ai-diff-new">
-        ${previewLines.map((l: string) => `<div class="ai-diff-new-line">${_escapeHtml(l)}</div>`).join('')}
-        ${truncated ? `<div class="ai-diff-truncated">... ${newLines.length - 15} ${t('agent.inlineDiff.moreLines', 'more lines')}</div>` : ''}
-      </div>
-      <div class="ai-diff-actions">
-        <button class="ai-diff-accept" data-action="accept">${t('agent.inlineDiff.accept', 'Accept')}</button>
-        <button class="ai-diff-reject" data-action="reject">${t('agent.inlineDiff.reject', 'Reject')}</button>
-      </div>
-    `
-    widgetEl.querySelector('.ai-diff-accept')!.addEventListener('click', () => {
-      _dispatchInlineDecision('allow_once')
-    })
-    widgetEl.querySelector('.ai-diff-reject')!.addEventListener('click', () => {
-      _dispatchInlineDecision('deny')
-    })
-
-    _diffWidget = {
-      getId: () => widgetId,
-      getDomNode: () => widgetEl,
-      getPosition: () => ({
-        position: { lineNumber: 1, column: 1 },
-        preference: [monaco.editor.ContentWidgetPositionPreference.BELOW],
-      }),
-    }
-    editor.addContentWidget(_diffWidget)
-    setInlineDiffVisible(true)
+    // Whole-file previews reserve space before the first line.
+    _showInlineDiff(0, edit.newText)
     editor.revealLineInCenter(1)
   }
 })
@@ -612,10 +562,6 @@ function _dispatchInlineDecision(decision: 'allow_once' | 'deny') {
     if (ok) clearActiveEdit()
     // On failure, widget stays visible for retry
   })
-}
-
-function _escapeHtml(str: string): string {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 onBeforeUnmount(() => {
@@ -731,64 +677,95 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--c-danger) 25%, transparent) !important;
   border-bottom: 2px wavy var(--c-danger) !important;
 }
-:global(.ai-diff-widget) {
+.ai-diff-zone {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 8px 20px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--c-success) 3%, var(--c-panel));
+}
+.ai-diff-card {
+  display: flex;
+  width: min(720px, calc(100% - 24px));
+  height: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  flex-direction: column;
+  margin: 0 auto;
+  overflow: hidden;
   background: var(--c-surface-1);
   border: 1px solid var(--c-surface-3);
+  border-left: 3px solid var(--c-success);
   border-radius: var(--radius-md, 8px);
   box-shadow: var(--elevation-3, 0 8px 24px rgba(0, 0, 0, 0.18));
-  padding: 12px 16px;
-  margin-top: 4px;
-  max-width: 600px;
-  max-height: 320px;
-  overflow-y: auto;
   font-family: var(--font-mono, monospace);
   font-size: 13px;
-  z-index: 100;
 }
-:global(.ai-diff-new) {
+.ai-diff-header {
+  display: flex;
+  min-height: 36px;
+  box-sizing: border-box;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--c-surface-3);
+  background: color-mix(in srgb, var(--c-success) 8%, var(--c-surface-1));
+}
+.ai-diff-title {
+  color: var(--c-text-1);
+  font-size: 12px;
+  font-weight: 650;
+}
+.ai-diff-new {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
   background: color-mix(in srgb, var(--c-success) 12%, transparent);
-  border-radius: 4px;
-  padding: 6px 8px;
-}
-:global(.ai-diff-new-line) {
+  padding: 10px 12px;
   color: var(--c-text-0);
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
   line-height: 1.5;
 }
-:global(.ai-diff-truncated) {
-  color: var(--c-text-2);
-  font-style: italic;
-  font-size: 12px;
-  margin-top: 4px;
+.ai-diff-scroll {
+  overflow: auto;
+  scrollbar-gutter: stable;
 }
-:global(.ai-diff-actions) {
+.ai-diff-actions {
   display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
   gap: 8px;
-  margin-top: 10px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--c-surface-3);
+  background: var(--c-surface-1);
 }
-:global(.ai-diff-accept),
-:global(.ai-diff-reject) {
+.ai-diff-accept,
+.ai-diff-reject {
+  min-width: 72px;
   padding: 5px 14px;
-  border: none;
   border-radius: var(--radius-sm, 4px);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
 }
-:global(.ai-diff-accept) {
+.ai-diff-accept {
+  border: 1px solid var(--c-success);
   background: var(--c-success);
   color: #fff;
 }
-:global(.ai-diff-accept:hover) {
+.ai-diff-accept:hover {
   background: color-mix(in srgb, var(--c-success) 85%, #000);
 }
-:global(.ai-diff-reject) {
-  background: var(--c-danger);
-  color: #fff;
+.ai-diff-reject {
+  border: 1px solid var(--c-border);
+  background: var(--c-panel);
+  color: var(--c-text-1);
 }
-:global(.ai-diff-reject:hover) {
-  background: color-mix(in srgb, var(--c-danger) 85%, #000);
+.ai-diff-reject:hover {
+  border-color: var(--c-danger);
+  color: var(--c-danger);
+  background: var(--c-danger-bg);
 }
 </style>
