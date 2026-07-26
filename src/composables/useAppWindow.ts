@@ -22,22 +22,26 @@ export function useAppWindow() {
     }
   }
 
-  const appWindow = getCurrentWindow()
+  // `npm run dev` is also a supported frontend workflow. Tauri's window API
+  // throws during setup when the page runs in a regular browser, which would
+  // otherwise prevent Vue from mounting at all.
+  const appWindow =
+    typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window ? getCurrentWindow() : null
 
   async function handleMinimize() {
-    await appWindow.minimize()
+    await appWindow?.minimize()
   }
 
   async function handleToggleMaximize() {
-    await appWindow.toggleMaximize()
+    await appWindow?.toggleMaximize()
   }
 
   async function handleClose() {
-    await appWindow.close()
+    await appWindow?.close()
   }
 
   async function onAgentWindowClose() {
-    if (isAgentOnly.value) {
+    if (isAgentOnly.value && appWindow) {
       await appWindow.close()
     }
   }
