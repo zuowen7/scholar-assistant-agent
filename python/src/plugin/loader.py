@@ -31,9 +31,12 @@ from __future__ import annotations
 
 import importlib.util
 import logging
-import os
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    # 仅供类型检查器解析注解；运行时 isinstance 用函数内局部导入。
+    from src.plugin.registry import PluginRegistry, PluginServer
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +51,10 @@ def _load_plugin_from_file(file_path: Path) -> PluginServer | None:
     1. get_server() -> PluginServer 函数
     2. PLUGIN_SERVER: PluginServer 变量
     """
+    # 局部导入：isinstance 需要真实类对象（future-annotations 只延迟注解求值，
+    # 不影响 isinstance）。放函数内也规避了潜在的 loader<->registry 循环依赖。
+    from src.plugin.registry import PluginServer
+
     try:
         spec = importlib.util.spec_from_file_location(file_path.stem, file_path)
         if spec is None or spec.loader is None:
@@ -156,6 +163,7 @@ def load_from_config(config_path: Path) -> list[dict[str, Any]]:
 
     try:
         import yaml
+
         with open(config_path, encoding="utf-8") as f:
             config = yaml.safe_load(f) or {}
         plugins = config.get("plugins", [])
@@ -181,6 +189,7 @@ def load_plugins(registry: PluginRegistry, plugin_dir: Path | None = None) -> No
         # 尝试使用 RUNTIME_DIR
         try:
             from api_factory import RUNTIME_DIR
+
             plugin_dir = RUNTIME_DIR / DEFAULT_PLUGIN_DIR
         except ImportError:
             logger.warning("无法导入 RUNTIME_DIR，插件目录扫描跳过")

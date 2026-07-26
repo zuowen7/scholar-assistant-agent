@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -46,8 +47,6 @@ def atomic_write_json(path: Path, data: Any) -> None:
             os.replace(tmp_name, path)
         except Exception as e:
             logger.debug("atomic_write_json failed, cleaning up temp file: %s", e)
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp_name)
-            except OSError:
-                pass
             raise

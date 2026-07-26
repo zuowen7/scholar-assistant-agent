@@ -46,12 +46,16 @@ export interface PositionedNode extends LayoutNode {
 }
 
 export function useArgumentLayout() {
-  function autoLayout(nodes: LayoutNode[], edges: LayoutEdge[], direction: 'TB' | 'LR' = 'TB'): PositionedNode[] {
+  function autoLayout(
+    nodes: LayoutNode[],
+    edges: LayoutEdge[],
+    direction: 'TB' | 'LR' = 'TB',
+  ): PositionedNode[] {
     if (!nodes.length) return []
 
-    const connectedIds = new Set(edges.flatMap(edge => [edge.source_id, edge.target_id]))
-    const connectedNodes = nodes.filter(node => connectedIds.has(node.id))
-    const isolatedNodes = nodes.filter(node => !connectedIds.has(node.id))
+    const connectedIds = new Set(edges.flatMap((edge) => [edge.source_id, edge.target_id]))
+    const connectedNodes = nodes.filter((node) => connectedIds.has(node.id))
+    const isolatedNodes = nodes.filter((node) => !connectedIds.has(node.id))
 
     if (!connectedNodes.length) {
       return nodes.map((node, index) => ({
@@ -83,19 +87,17 @@ export function useArgumentLayout() {
 
     dagre.layout(g)
 
-    const connectedLayout = connectedNodes.map(n => {
+    const connectedLayout = connectedNodes.map((n) => {
       const pos = g.node(n.id)
       const size = nodeSize(n.text as string | undefined)
       return {
         ...n,
-        position: pos
-          ? { x: pos.x - size.width / 2, y: pos.y - size.height / 2 }
-          : { x: 0, y: 0 },
+        position: pos ? { x: pos.x - size.width / 2, y: pos.y - size.height / 2 } : { x: 0, y: 0 },
       }
     })
 
-    const xs = connectedLayout.map(node => node.position.x)
-    const ys = connectedLayout.map(node => node.position.y)
+    const xs = connectedLayout.map((node) => node.position.x)
+    const ys = connectedLayout.map((node) => node.position.y)
     const minX = Math.min(...xs)
     const maxY = Math.max(...ys)
     const isolatedLayout = isolatedNodes.map((node, index) => ({
@@ -106,8 +108,8 @@ export function useArgumentLayout() {
       },
     }))
 
-    const byId = new Map([...connectedLayout, ...isolatedLayout].map(node => [node.id, node]))
-    return nodes.map(node => byId.get(node.id)!)
+    const byId = new Map([...connectedLayout, ...isolatedLayout].map((node) => [node.id, node]))
+    return nodes.map((node) => byId.get(node.id)!)
   }
 
   return { autoLayout }

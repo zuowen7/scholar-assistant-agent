@@ -2,6 +2,7 @@
 
 使用 Python 子进程模拟 MCP server（JSON-RPC over stdio）。
 """
+
 from __future__ import annotations
 
 import json
@@ -20,12 +21,11 @@ from src.agent_v2.mcp.manager import (
 )
 from src.agent_v2.types import ToolDefinition
 
-
 # ---------------------------------------------------------------------------
 # Helper: write a mock MCP server script
 # ---------------------------------------------------------------------------
 
-_MOCK_SERVER_SCRIPT = '''
+_MOCK_SERVER_SCRIPT = """
 import json
 import sys
 
@@ -68,21 +68,21 @@ for line in sys.stdin:
     if resp is not None:
         sys.stdout.write(json.dumps(resp) + "\\n")
         sys.stdout.flush()
-'''
+"""
 
-_CRASH_SERVER_SCRIPT = '''
+_CRASH_SERVER_SCRIPT = """
 import sys
 sys.exit(1)
-'''
+"""
 
-_GARBAGE_SERVER_SCRIPT = '''
+_GARBAGE_SERVER_SCRIPT = """
 import sys
 for line in sys.stdin:
     sys.stdout.write("NOT JSON!!!\\n")
     sys.stdout.flush()
-'''
+"""
 
-_EMPTY_SERVER_SCRIPT = '''
+_EMPTY_SERVER_SCRIPT = """
 import json
 import sys
 
@@ -107,7 +107,7 @@ for line in sys.stdin:
     if resp is not None:
         sys.stdout.write(json.dumps(resp) + "\\n")
         sys.stdout.flush()
-'''
+"""
 
 
 @pytest.fixture
@@ -119,22 +119,24 @@ def mock_server_script(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def manager(mock_server_script: Path) -> McpManager:
-    return McpManager(configs=[
-        McpServerConfig(
-            name="mock",
-            command=sys.executable,
-            args=[str(mock_server_script)],
-            timeout_seconds=5.0,
-        ),
-    ])
+    return McpManager(
+        configs=[
+            McpServerConfig(
+                name="mock",
+                command=sys.executable,
+                args=[str(mock_server_script)],
+                timeout_seconds=5.0,
+            ),
+        ]
+    )
 
 
 # ============================================================================
 # 7.1 生命周期
 # ============================================================================
 
-class TestLifecycle:
 
+class TestLifecycle:
     @pytest.mark.asyncio
     async def test_mc001_start_server(self, manager: McpManager):
         """MC-001: 启动 MCP server，握手成功"""
@@ -178,10 +180,16 @@ class TestLifecycle:
         script1.write_text(_MOCK_SERVER_SCRIPT, encoding="utf-8")
         script2 = tmp_path / "s2.py"
         script2.write_text(_EMPTY_SERVER_SCRIPT, encoding="utf-8")
-        mgr = McpManager(configs=[
-            McpServerConfig(name="s1", command=sys.executable, args=[str(script1)], timeout_seconds=5.0),
-            McpServerConfig(name="s2", command=sys.executable, args=[str(script2)], timeout_seconds=5.0),
-        ])
+        mgr = McpManager(
+            configs=[
+                McpServerConfig(
+                    name="s1", command=sys.executable, args=[str(script1)], timeout_seconds=5.0
+                ),
+                McpServerConfig(
+                    name="s2", command=sys.executable, args=[str(script2)], timeout_seconds=5.0
+                ),
+            ]
+        )
         failures = await mgr.startup_all()
         assert failures == []
         assert len(mgr.get_all_tools()) == 2  # greet + add from s1
@@ -192,16 +200,20 @@ class TestLifecycle:
 # 7.2 边缘测试
 # ============================================================================
 
-class TestEdgeCases:
 
+class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_mc010_server_crashes(self, tmp_path: Path):
         """MC-010: server 立即退出"""
         script = tmp_path / "crash.py"
         script.write_text(_CRASH_SERVER_SCRIPT, encoding="utf-8")
-        mgr = McpManager(configs=[
-            McpServerConfig(name="crash", command=sys.executable, args=[str(script)], timeout_seconds=3.0),
-        ])
+        mgr = McpManager(
+            configs=[
+                McpServerConfig(
+                    name="crash", command=sys.executable, args=[str(script)], timeout_seconds=3.0
+                ),
+            ]
+        )
         failures = await mgr.startup_all()
         state = mgr.get_state("crash")
         assert state.lifecycle == McpLifecycleState.FAILED
@@ -211,9 +223,13 @@ class TestEdgeCases:
         """MC-011: server 输出垃圾"""
         script = tmp_path / "garbage.py"
         script.write_text(_GARBAGE_SERVER_SCRIPT, encoding="utf-8")
-        mgr = McpManager(configs=[
-            McpServerConfig(name="garbage", command=sys.executable, args=[str(script)], timeout_seconds=3.0),
-        ])
+        mgr = McpManager(
+            configs=[
+                McpServerConfig(
+                    name="garbage", command=sys.executable, args=[str(script)], timeout_seconds=3.0
+                ),
+            ]
+        )
         failures = await mgr.startup_all()
         state = mgr.get_state("garbage")
         assert state.lifecycle == McpLifecycleState.FAILED
@@ -223,9 +239,13 @@ class TestEdgeCases:
         """MC-014: 空工具列表"""
         script = tmp_path / "empty.py"
         script.write_text(_EMPTY_SERVER_SCRIPT, encoding="utf-8")
-        mgr = McpManager(configs=[
-            McpServerConfig(name="empty", command=sys.executable, args=[str(script)], timeout_seconds=5.0),
-        ])
+        mgr = McpManager(
+            configs=[
+                McpServerConfig(
+                    name="empty", command=sys.executable, args=[str(script)], timeout_seconds=5.0
+                ),
+            ]
+        )
         await mgr.startup_all()
         tools = mgr.get_all_tools()
         assert tools == []
@@ -234,9 +254,13 @@ class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_mc025_command_not_exists(self):
         """MC-025: 启动命令不存在"""
-        mgr = McpManager(configs=[
-            McpServerConfig(name="bad", command="/nonexistent/command_xyz_123", timeout_seconds=3.0),
-        ])
+        mgr = McpManager(
+            configs=[
+                McpServerConfig(
+                    name="bad", command="/nonexistent/command_xyz_123", timeout_seconds=3.0
+                ),
+            ]
+        )
         failures = await mgr.startup_all()
         state = mgr.get_state("bad")
         assert state.lifecycle == McpLifecycleState.FAILED
@@ -246,16 +270,20 @@ class TestEdgeCases:
 # 7.3 故障注入
 # ============================================================================
 
-class TestFaultInjection:
 
+class TestFaultInjection:
     @pytest.mark.asyncio
     async def test_mc021_server_crash_mid_call(self, tmp_path: Path):
         """MC-021: server 中途崩溃 — 验证 call_tool 报错而非静默失败"""
         script = tmp_path / "crashy.py"
         script.write_text(_MOCK_SERVER_SCRIPT, encoding="utf-8")
-        mgr = McpManager(configs=[
-            McpServerConfig(name="crashy", command=sys.executable, args=[str(script)], timeout_seconds=5.0),
-        ])
+        mgr = McpManager(
+            configs=[
+                McpServerConfig(
+                    name="crashy", command=sys.executable, args=[str(script)], timeout_seconds=5.0
+                ),
+            ]
+        )
         await mgr.startup_all()
         state = mgr.get_state("crashy")
         assert state.lifecycle == McpLifecycleState.READY
@@ -276,10 +304,17 @@ class TestFaultInjection:
         """MC-026: 必需 server 失败"""
         script = tmp_path / "crash.py"
         script.write_text(_CRASH_SERVER_SCRIPT, encoding="utf-8")
-        mgr = McpManager(configs=[
-            McpServerConfig(name="required_crash", command=sys.executable, args=[str(script)],
-                           required=True, timeout_seconds=3.0),
-        ])
+        mgr = McpManager(
+            configs=[
+                McpServerConfig(
+                    name="required_crash",
+                    command=sys.executable,
+                    args=[str(script)],
+                    required=True,
+                    timeout_seconds=3.0,
+                ),
+            ]
+        )
         failures = await mgr.startup_all()
         assert "required_crash" in failures
 
@@ -288,9 +323,16 @@ class TestFaultInjection:
         """MC-026b: 可选 server 失败不阻止"""
         script = tmp_path / "crash.py"
         script.write_text(_CRASH_SERVER_SCRIPT, encoding="utf-8")
-        mgr = McpManager(configs=[
-            McpServerConfig(name="optional_crash", command=sys.executable, args=[str(script)],
-                           required=False, timeout_seconds=3.0),
-        ])
+        mgr = McpManager(
+            configs=[
+                McpServerConfig(
+                    name="optional_crash",
+                    command=sys.executable,
+                    args=[str(script)],
+                    required=False,
+                    timeout_seconds=3.0,
+                ),
+            ]
+        )
         failures = await mgr.startup_all()
         assert failures == []  # optional failures not included

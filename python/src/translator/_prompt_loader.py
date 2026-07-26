@@ -55,6 +55,8 @@ def load_translate_prompt(section: str = "unknown", glossary_text: str = "") -> 
 
     # Step 3: Append glossary block if provided
     if glossary_text:
-        content = content.rstrip() + "\n\n## 已确定的术语翻译（请严格沿用以下译法）\n" + glossary_text
+        content = (
+            content.rstrip() + "\n\n## 已确定的术语翻译（请严格沿用以下译法）\n" + glossary_text
+        )
 
     return content

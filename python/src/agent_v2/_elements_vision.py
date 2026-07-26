@@ -12,6 +12,7 @@ def _get_vision_client():
     """获取 Vision 客户端实例"""
     try:
         from src.mcp.vision_client import VisionClient
+
         return VisionClient()
     except ImportError:
         return None

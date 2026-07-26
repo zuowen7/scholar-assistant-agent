@@ -46,7 +46,16 @@ defineEmits<{ 'update:modelValue': [value: string] }>()
   font-size: 13px;
   cursor: pointer;
 }
-.segment-button:hover { color: var(--c-text-0); background: var(--c-surface-2); }
-.segment-button.active { color: #fff; background: var(--c-accent); }
-.segment-count { margin-left: 5px; opacity: .72; }
+.segment-button:hover {
+  color: var(--c-text-0);
+  background: var(--c-surface-2);
+}
+.segment-button.active {
+  color: #fff;
+  background: var(--c-accent);
+}
+.segment-count {
+  margin-left: 5px;
+  opacity: 0.72;
+}
 </style>

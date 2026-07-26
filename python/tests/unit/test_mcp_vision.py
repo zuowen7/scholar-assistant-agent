@@ -1,8 +1,9 @@
 """MCP Vision 和 Citation 索引单元测试"""
 
 import pytest
+
+from src.citation.indexer import CitationEntry, CitationIndexer
 from src.mcp.vision_client import VisionClient, VisionResult
-from src.citation.indexer import CitationIndexer, CitationEntry
 
 
 class TestVisionClient:
@@ -73,9 +74,16 @@ class TestCitationIndexer:
 
     def test_render_bibliography_ieee(self):
         indexer = CitationIndexer()
-        indexer.set_bibliography([
-            {"key": "smith2020", "author": "Smith, J.", "title": "Deep Learning", "year": "2020"},
-        ])
+        indexer.set_bibliography(
+            [
+                {
+                    "key": "smith2020",
+                    "author": "Smith, J.",
+                    "title": "Deep Learning",
+                    "year": "2020",
+                },
+            ]
+        )
         index = {"smith2020": 1}
         bib = indexer.render_bibliography(index, style="ieee")
         assert "[1]" in bib
@@ -84,9 +92,16 @@ class TestCitationIndexer:
 
     def test_render_bibliography_apa(self):
         indexer = CitationIndexer()
-        indexer.set_bibliography([
-            {"key": "smith2020", "author": "Smith, J.", "title": "Deep Learning", "year": "2020"},
-        ])
+        indexer.set_bibliography(
+            [
+                {
+                    "key": "smith2020",
+                    "author": "Smith, J.",
+                    "title": "Deep Learning",
+                    "year": "2020",
+                },
+            ]
+        )
         index = {"smith2020": 1}
         bib = indexer.render_bibliography(index, style="apa")
         assert "[1]" in bib
@@ -94,9 +109,17 @@ class TestCitationIndexer:
 
     def test_render_bibliography_gbt7714(self):
         indexer = CitationIndexer()
-        indexer.set_bibliography([
-            {"key": "smith2020", "author": "Smith, J.", "title": "Deep Learning", "journal": "AI Journal", "year": "2020"},
-        ])
+        indexer.set_bibliography(
+            [
+                {
+                    "key": "smith2020",
+                    "author": "Smith, J.",
+                    "title": "Deep Learning",
+                    "journal": "AI Journal",
+                    "year": "2020",
+                },
+            ]
+        )
         index = {"smith2020": 1}
         bib = indexer.render_bibliography(index, style="gbt7714")
         assert "[1]" in bib
@@ -104,10 +127,17 @@ class TestCitationIndexer:
 
     def test_process_full_workflow(self):
         indexer = CitationIndexer()
-        indexer.set_bibliography([
-            {"key": "smith2020", "author": "Smith, J.", "title": "Deep Learning", "year": "2020"},
-            {"key": "jones2021", "author": "Jones, A.", "title": "AI Advances", "year": "2021"},
-        ])
+        indexer.set_bibliography(
+            [
+                {
+                    "key": "smith2020",
+                    "author": "Smith, J.",
+                    "title": "Deep Learning",
+                    "year": "2020",
+                },
+                {"key": "jones2021", "author": "Jones, A.", "title": "AI Advances", "year": "2021"},
+            ]
+        )
 
         text = "[@jones2021] 指出 [@smith2020] 的方法有效"
         result = indexer.process(text)

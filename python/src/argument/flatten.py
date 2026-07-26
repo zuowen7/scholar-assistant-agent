@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Any, AsyncGenerator
+from typing import Any
 
 from src.argument.models import _now_iso
 
@@ -21,30 +22,69 @@ logger = logging.getLogger(__name__)
 
 # ── 链路关键词（与 logic_checker 保持同步）─────────────────────────────────
 _CLASSIC_CHAIN_KEYWORDS: dict[str, list[str]] = {
-    "problem":      ["问题", "背景", "挑战", "problem", "challenge", "background", "issue", "现状", "需求"],
-    "modeling":     ["建模", "模型", "model", "modeling", "框架", "framework", "体系", "结构设计", "数学模型"],
-    "analysis":     ["分析", "analysis", "评估", "evaluation", "研究", "study", "稳定性", "性能", "方法"],
-    "verification": ["验证", "实验", "仿真", "simulation", "experiment", "verification", "测试", "对比"],
-    "conclusion":   ["结论", "总结", "conclusion", "summary", "展望", "future", "讨论"],
+    "problem": [
+        "问题",
+        "背景",
+        "挑战",
+        "problem",
+        "challenge",
+        "background",
+        "issue",
+        "现状",
+        "需求",
+    ],
+    "modeling": [
+        "建模",
+        "模型",
+        "model",
+        "modeling",
+        "框架",
+        "framework",
+        "体系",
+        "结构设计",
+        "数学模型",
+    ],
+    "analysis": [
+        "分析",
+        "analysis",
+        "评估",
+        "evaluation",
+        "研究",
+        "study",
+        "稳定性",
+        "性能",
+        "方法",
+    ],
+    "verification": [
+        "验证",
+        "实验",
+        "仿真",
+        "simulation",
+        "experiment",
+        "verification",
+        "测试",
+        "对比",
+    ],
+    "conclusion": ["结论", "总结", "conclusion", "summary", "展望", "future", "讨论"],
 }
 
 # ── 链路类型 → 标准学术章节名（中/英双语）─────────────────────────────────
 _CHAIN_TO_SECTION: dict[str, dict[str, str]] = {
-    "problem":      {"zh": "引言",          "en": "Introduction"},
-    "modeling":     {"zh": "方法",          "en": "Methods"},
-    "analysis":     {"zh": "分析",          "en": "Analysis"},
-    "verification": {"zh": "实验与结果",    "en": "Experiments and Results"},
-    "conclusion":   {"zh": "结论",          "en": "Conclusion"},
+    "problem": {"zh": "引言", "en": "Introduction"},
+    "modeling": {"zh": "方法", "en": "Methods"},
+    "analysis": {"zh": "分析", "en": "Analysis"},
+    "verification": {"zh": "实验与结果", "en": "Experiments and Results"},
+    "conclusion": {"zh": "结论", "en": "Conclusion"},
 }
 
 # ── 每种章节类型的写作提示 ───────────────────────────────────────────────
 _SECTION_TYPE_HINTS: dict[str, str] = {
-    "problem":      "阐述研究背景、现有问题与本文动机，引出研究目标",
-    "modeling":     "描述所提方法、系统架构或数学建模，突出创新点",
-    "analysis":     "展开理论分析或对比研究，推导核心结论",
+    "problem": "阐述研究背景、现有问题与本文动机，引出研究目标",
+    "modeling": "描述所提方法、系统架构或数学建模，突出创新点",
+    "analysis": "展开理论分析或对比研究，推导核心结论",
     "verification": "呈现实验设计、数据结果与对比分析，支撑所提方法的有效性",
-    "conclusion":   "总结全文贡献、局限性与未来工作方向",
-    "unknown":      "围绕节点主题展开学术论述，逻辑清晰，论据充分",
+    "conclusion": "总结全文贡献、局限性与未来工作方向",
+    "unknown": "围绕节点主题展开学术论述，逻辑清晰，论据充分",
 }
 
 # ── Prompt 模板 ──────────────────────────────────────────────────────────────
@@ -140,11 +180,16 @@ class ArgumentFlattener:
 
         for nid in dfs_order:
             ndata = nodes.get(nid, {})
-            yield {"event": "node_processing", "data": json.dumps({"node_id": nid, "status": "processing"})}
+            yield {
+                "event": "node_processing",
+                "data": json.dumps({"node_id": nid, "status": "processing"}),
+            }
 
             depth = ndata.get("depth", 0)
             chain_type = self._classify_chain_type(ndata.get("topic", ""), ndata.get("content", ""))
-            section_title = self._get_section_title(ndata.get("topic", ""), chain_type, depth, style)
+            section_title = self._get_section_title(
+                ndata.get("topic", ""), chain_type, depth, style
+            )
 
             # 从 RAG 拉取文献片段，收集丰富的文献信息
             rag_context_str, enriched_refs = await self._fetch_ref_context(
@@ -168,28 +213,37 @@ class ArgumentFlattener:
                 ollama_client=ollama_client,
             )
 
-            expanded_sections.append({
-                "node_id": nid,
-                "topic": ndata.get("topic", ""),
-                "section_title": section_title,
-                "chain_type": chain_type,
-                "depth": depth,
-                "text": section_text,
-            })
+            expanded_sections.append(
+                {
+                    "node_id": nid,
+                    "topic": ndata.get("topic", ""),
+                    "section_title": section_title,
+                    "chain_type": chain_type,
+                    "depth": depth,
+                    "text": section_text,
+                }
+            )
 
             # 滚动摘要：保留最近 4 节的前 150 字
             rolling_summaries.append(f"[{section_title}] {section_text[:150].strip()}…")
             if len(rolling_summaries) > 4:
                 rolling_summaries.pop(0)
 
-            yield {"event": "node_complete", "data": json.dumps({"node_id": nid, "word_count": len(section_text)})}
+            yield {
+                "event": "node_complete",
+                "data": json.dumps({"node_id": nid, "word_count": len(section_text)}),
+            }
 
         # ── 阶段 3: 二轮 polish — Abstract + 过渡句 ───────────────────
         yield {"event": "polish_start", "data": json.dumps({"status": "generating_abstract"})}
 
-        abstract = await self._generate_abstract(expanded_sections, root_topic, cloud_client, ollama_client)
+        abstract = await self._generate_abstract(
+            expanded_sections, root_topic, cloud_client, ollama_client
+        )
 
-        transitions = await self._generate_transitions(expanded_sections, cloud_client, ollama_client)
+        transitions = await self._generate_transitions(
+            expanded_sections, cloud_client, ollama_client
+        )
 
         # 将过渡句注入到对应章节的段落开头
         if transitions:
@@ -210,15 +264,24 @@ class ArgumentFlattener:
         # ── 阶段 4: 格式化输出 ────────────────────────────────────────
         if template == "latex":
             full_text = self._format_latex(
-                abstract, expanded_sections, root_topic, enriched_bib,
-                include_references, latex_template, style,
+                abstract,
+                expanded_sections,
+                root_topic,
+                enriched_bib,
+                include_references,
+                latex_template,
+                style,
             )
             ext = "tex"
         elif template == "docx":
-            full_text = self._format_markdown(abstract, expanded_sections, enriched_bib, include_references)
+            full_text = self._format_markdown(
+                abstract, expanded_sections, enriched_bib, include_references
+            )
             ext = "md"
         else:
-            full_text = self._format_markdown(abstract, expanded_sections, enriched_bib, include_references)
+            full_text = self._format_markdown(
+                abstract, expanded_sections, enriched_bib, include_references
+            )
             ext = "md"
 
         timestamp = _now_iso().replace(":", "-").replace("T", "_")[:19]
@@ -233,12 +296,14 @@ class ArgumentFlattener:
 
         yield {
             "event": "complete",
-            "data": json.dumps({
-                "output_path": str(output_path),
-                "word_count": len(full_text),
-                "reference_count": len(enriched_bib),
-                "section_count": len(expanded_sections),
-            }),
+            "data": json.dumps(
+                {
+                    "output_path": str(output_path),
+                    "word_count": len(full_text),
+                    "reference_count": len(enriched_bib),
+                    "section_count": len(expanded_sections),
+                }
+            ),
         }
 
     # ── 树结构分析 ──────────────────────────────────────────────────────
@@ -328,7 +393,12 @@ class ArgumentFlattener:
         for ref in refs:
             doc_id = ref.get("doc_id", "")
             citation_key = ref.get("citation_key", doc_id)
-            entry: dict = {"doc_id": doc_id, "citation_key": citation_key, "title": "", "metadata": {}}
+            entry: dict = {
+                "doc_id": doc_id,
+                "citation_key": citation_key,
+                "title": "",
+                "metadata": {},
+            }
             enriched.append(entry)
 
             if rag_store is None or not doc_id:
@@ -379,7 +449,12 @@ class ArgumentFlattener:
             issues_text = "无"
 
         # 节点已有详细内容（>200字）且无文献绑定 → 保留原内容但仍通过 LLM 做衔接润色
-        if content and len(content) > 200 and not ndata.get("references") and chain_type == "unknown":
+        if (
+            content
+            and len(content) > 200
+            and not ndata.get("references")
+            and chain_type == "unknown"
+        ):
             return content
 
         prompt = _EXPAND_PROMPT.format(
@@ -422,7 +497,9 @@ class ArgumentFlattener:
             title=title,
             sections_summary="\n".join(summary_parts),
         )
-        result = await self._call_llm(prompt, cloud_client, ollama_client, max_tokens=512, temperature=0.6)
+        result = await self._call_llm(
+            prompt, cloud_client, ollama_client, max_tokens=512, temperature=0.6
+        )
         return result.strip() if result else ""
 
     async def _generate_transitions(
@@ -446,7 +523,9 @@ class ArgumentFlattener:
             sections_preview="\n".join(preview_lines),
             n_pairs=n_pairs,
         )
-        result = await self._call_llm(prompt, cloud_client, ollama_client, max_tokens=400, temperature=0.5)
+        result = await self._call_llm(
+            prompt, cloud_client, ollama_client, max_tokens=400, temperature=0.5
+        )
         if not result:
             return []
 
@@ -555,7 +634,10 @@ class ArgumentFlattener:
 
         try:
             from pandoc_templates import convert_markdown
-            result = convert_markdown(md_body, template_id=latex_template, output_format="tex", metadata=metadata)
+
+            result = convert_markdown(
+                md_body, template_id=latex_template, output_format="tex", metadata=metadata
+            )
             if result.get("success") and result.get("tex"):
                 tex = result["tex"]
                 if bibtex_entries:
@@ -565,7 +647,9 @@ class ArgumentFlattener:
         except Exception as e:
             logger.warning("pandoc_templates convert failed (%s), using fallback", e)
 
-        return self._fallback_latex(abstract, sections, title, references, include_references, bibtex_entries)
+        return self._fallback_latex(
+            abstract, sections, title, references, include_references, bibtex_entries
+        )
 
     def _build_bibtex_entries(self, references: list[dict]) -> list[str]:
         entries: list[str] = []
@@ -608,7 +692,10 @@ class ArgumentFlattener:
 
         try:
             from pandoc_templates import markdown_to_latex
-            result = markdown_to_latex(md_body, {"title": title, "abstract": abstract, "author": ""})
+
+            result = markdown_to_latex(
+                md_body, {"title": title, "abstract": abstract, "author": ""}
+            )
             tex = result.get("tex", "")
         except Exception as e:
             logger.warning("pandoc LaTeX conversion failed, using minimal fallback: %s", e)
@@ -643,19 +730,34 @@ class ArgumentFlattener:
 
     def _minimal_latex(self, title: str, abstract: str, sections: list[dict]) -> str:
         """绝对兜底：不依赖任何外部模块的最小 LaTeX 文档。"""
+
         def _esc(s: str) -> str:
-            for old, new in [("\\", "\\textbackslash{}"), ("{", "\\{"), ("}", "\\}"),
-                              ("#", "\\#"), ("$", "\\$"), ("%", "\\%"), ("&", "\\&"),
-                              ("_", "\\_"), ("^", "\\textasciicircum{}"), ("~", "\\textasciitilde{}")]:
+            for old, new in [
+                ("\\", "\\textbackslash{}"),
+                ("{", "\\{"),
+                ("}", "\\}"),
+                ("#", "\\#"),
+                ("$", "\\$"),
+                ("%", "\\%"),
+                ("&", "\\&"),
+                ("_", "\\_"),
+                ("^", "\\textasciicircum{}"),
+                ("~", "\\textasciitilde{}"),
+            ]:
                 s = s.replace(old, new)
             return s
 
         lines = [
             "\\documentclass[12pt]{article}",
-            "\\usepackage[utf8]{inputenc}", "\\usepackage{amsmath}",
-            "\\usepackage{hyperref}", "\\usepackage{cite}",
-            f"\\title{{{_esc(title)}}}", "\\author{}", "\\date{}",
-            "\\begin{document}", "\\maketitle",
+            "\\usepackage[utf8]{inputenc}",
+            "\\usepackage{amsmath}",
+            "\\usepackage{hyperref}",
+            "\\usepackage{cite}",
+            f"\\title{{{_esc(title)}}}",
+            "\\author{}",
+            "\\date{}",
+            "\\begin{document}",
+            "\\maketitle",
         ]
         if abstract:
             lines += ["\\begin{abstract}", abstract, "\\end{abstract}"]
@@ -670,13 +772,18 @@ class ArgumentFlattener:
         lines.append("\\end{document}")
         return "\n".join(lines)
 
-    async def _convert_to_docx(self, markdown_text: str, md_path: Path, output_dir: Path) -> Path | None:
+    async def _convert_to_docx(
+        self, markdown_text: str, md_path: Path, output_dir: Path
+    ) -> Path | None:
         try:
             import subprocess
+
             docx_path = md_path.with_suffix(".docx")
             result = subprocess.run(
                 ["pandoc", str(md_path), "-o", str(docx_path), "--from=markdown", "--to=docx"],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             if result.returncode == 0 and docx_path.exists():
                 return docx_path
@@ -693,7 +800,11 @@ class ArgumentFlattener:
         temperature: float = 0.7,
     ) -> str:
         from src.argument.llm_client import call_llm_chat
+
         return await call_llm_chat(
-            prompt, cloud_client, ollama_client,
-            max_tokens=max_tokens, temperature=temperature,
+            prompt,
+            cloud_client,
+            ollama_client,
+            max_tokens=max_tokens,
+            temperature=temperature,
         )

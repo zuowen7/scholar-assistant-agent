@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 # Minimal in-memory PDF builder (no external dependency)
 # ---------------------------------------------------------------------------
 
+
 def _build_minimal_pdf(page_count: int) -> bytes:
     """Build a syntactically valid PDF with `page_count` blank pages.
 
@@ -56,8 +57,10 @@ def _build_minimal_pdf(page_count: int) -> bytes:
     # Page objects
     for obj_id in page_obj_ids:
         offsets.append(sum(len(l) for l in lines))
-        w(f"{obj_id} 0 obj\n<< /Type /Page /Parent 2 0 R /Resources 3 0 R "
-          f"/MediaBox [0 0 612 792] >>\nendobj\n".encode())
+        w(
+            f"{obj_id} 0 obj\n<< /Type /Page /Parent 2 0 R /Resources 3 0 R "
+            f"/MediaBox [0 0 612 792] >>\nendobj\n".encode()
+        )
 
     # Cross-reference table
     xref_offset = sum(len(l) for l in lines)
@@ -79,8 +82,9 @@ def _build_minimal_pdf(page_count: int) -> bytes:
 
 @pytest.fixture(scope="module")
 def client(tmp_path_factory):
-    from api_factory import create_app
     from fastapi.testclient import TestClient
+
+    from api_factory import create_app
 
     test_dir = tmp_path_factory.mktemp("pdf_limits")
     config_dir = test_dir / "config"
@@ -119,7 +123,9 @@ class TestPdfPageLimit:
             files={"file": ("small.pdf", io.BytesIO(pdf_bytes), "application/pdf")},
         )
         # 200 = accepted (pipeline may error later due to no Ollama in CI — that's OK)
-        assert resp.status_code in (200, 409), f"Expected 200/409, got {resp.status_code}: {resp.text}"
+        assert resp.status_code in (200, 409), (
+            f"Expected 200/409, got {resp.status_code}: {resp.text}"
+        )
 
     def test_pdf_exceeds_page_limit_rejected(self, client):
         """A PDF with 10 pages (> limit of 5) must be rejected during pipeline."""

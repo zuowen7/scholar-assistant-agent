@@ -14,11 +14,11 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
-from enum import Enum
+from dataclasses import dataclass
+from enum import StrEnum
 
 
-class SectionType(str, Enum):
+class SectionType(StrEnum):
     INTRODUCTION = "introduction"
     RESULTS = "results"
     DISCUSSION = "discussion"
@@ -32,38 +32,54 @@ class SectionType(str, Enum):
 # ── 章节检测关键词 ──────────────────────────────────────────────────────────
 
 _SECTION_PATTERNS: list[tuple[SectionType, re.Pattern]] = [
-    (SectionType.ABSTRACT, re.compile(
-        r"^(?:abstract|摘要|概要)\s*$", re.IGNORECASE
-    )),
-    (SectionType.INTRODUCTION, re.compile(
-        r"^(?:(?:\d+[\.\s]+)?(?:introduction|引言|绪论|前言|背景|研究背景|问题提出)"
-        r"|(?:\d+[\.\s]+)?(?:background|related\s*work|文献综述))",
-        re.IGNORECASE,
-    )),
-    (SectionType.METHODS, re.compile(
-        r"^(?:(?:\d+[\.\s]+)?(?:methods?|materials?\s*(?:and|&)\s*methods?|实验方法|方法|材料与方法|实验部分|研究方法)"
-        r"|(?:\d+[\.\s]+)?(?:experimental|implementation|实验设计|技术路线|数据来源))",
-        re.IGNORECASE,
-    )),
-    (SectionType.RESULTS, re.compile(
-        r"^(?:(?:\d+[\.\s]+)?(?:results?|findings?|实验结果|结果与分析|结果|研究结果)"
-        r"|(?:\d+[\.\s]+)?(?:evaluation|实验评估|性能评估))",
-        re.IGNORECASE,
-    )),
-    (SectionType.DISCUSSION, re.compile(
-        r"^(?:(?:\d+[\.\s]+)?(?:discussion|讨论|分析与讨论|综合讨论|结果讨论)"
-        r"|(?:\d+[\.\s]+)?(?:interpretation|implications?))",
-        re.IGNORECASE,
-    )),
-    (SectionType.CONCLUSION, re.compile(
-        r"^(?:(?:\d+[\.\s]+)?(?:conclusion|总结|结论|结语|小结|展望)"
-        r"|(?:\d+[\.\s]+)?(?:summary|future\s*work|concluding\s*remarks))",
-        re.IGNORECASE,
-    )),
-    (SectionType.REFERENCES, re.compile(
-        r"^(?:(?:\d+[\.\s]+)?(?:references?|bibliography|参考文献|引用文献))",
-        re.IGNORECASE,
-    )),
+    (SectionType.ABSTRACT, re.compile(r"^(?:abstract|摘要|概要)\s*$", re.IGNORECASE)),
+    (
+        SectionType.INTRODUCTION,
+        re.compile(
+            r"^(?:(?:\d+[\.\s]+)?(?:introduction|引言|绪论|前言|背景|研究背景|问题提出)"
+            r"|(?:\d+[\.\s]+)?(?:background|related\s*work|文献综述))",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        SectionType.METHODS,
+        re.compile(
+            r"^(?:(?:\d+[\.\s]+)?(?:methods?|materials?\s*(?:and|&)\s*methods?|实验方法|方法|材料与方法|实验部分|研究方法)"
+            r"|(?:\d+[\.\s]+)?(?:experimental|implementation|实验设计|技术路线|数据来源))",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        SectionType.RESULTS,
+        re.compile(
+            r"^(?:(?:\d+[\.\s]+)?(?:results?|findings?|实验结果|结果与分析|结果|研究结果)"
+            r"|(?:\d+[\.\s]+)?(?:evaluation|实验评估|性能评估))",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        SectionType.DISCUSSION,
+        re.compile(
+            r"^(?:(?:\d+[\.\s]+)?(?:discussion|讨论|分析与讨论|综合讨论|结果讨论)"
+            r"|(?:\d+[\.\s]+)?(?:interpretation|implications?))",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        SectionType.CONCLUSION,
+        re.compile(
+            r"^(?:(?:\d+[\.\s]+)?(?:conclusion|总结|结论|结语|小结|展望)"
+            r"|(?:\d+[\.\s]+)?(?:summary|future\s*work|concluding\s*remarks))",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        SectionType.REFERENCES,
+        re.compile(
+            r"^(?:(?:\d+[\.\s]+)?(?:references?|bibliography|参考文献|引用文献))",
+            re.IGNORECASE,
+        ),
+    ),
 ]
 
 # ── 各章节翻译策略指令 ──────────────────────────────────────────────────────
@@ -79,7 +95,6 @@ This is an INTRODUCTION section. The translation should:
 - Hedge appropriately: use "remains poorly understood" rather than "is completely unknown"
 - Preserve citation markers and author-year references exactly as in the original
 """,
-
     SectionType.RESULTS: """
 [SECTION: RESULTS]
 This is a RESULTS section. The translation should:
@@ -90,7 +105,6 @@ This is a RESULTS section. The translation should:
 - Do NOT use hedging verbs like "may reflect" or "could indicate" unless the original does
 - Reference figures and tables exactly as in the original (Fig. X, Table Y)
 """,
-
     SectionType.DISCUSSION: """
 [SECTION: DISCUSSION]
 This is a DISCUSSION section. The translation should:
@@ -101,7 +115,6 @@ This is a DISCUSSION section. The translation should:
 - Maintain the boundary between association and causation
 - Keep the author's own degree of certainty — do not weaken or strengthen claims
 """,
-
     SectionType.METHODS: """
 [SECTION: METHODS]
 This is a METHODS section. The translation should:
@@ -112,7 +125,6 @@ This is a METHODS section. The translation should:
 - Keep statistical tests and software versions exactly as in the original
 - Preserve ethical approval statements verbatim if present
 """,
-
     SectionType.CONCLUSION: """
 [SECTION: CONCLUSION]
 This is a CONCLUSION section. The translation should:
@@ -122,7 +134,6 @@ This is a CONCLUSION section. The translation should:
 - Run implicit overclaim check: avoid "prove", "conclusively", "unprecedented", unqualified "first"
 - End with a forward-looking statement if the original does
 """,
-
     SectionType.ABSTRACT: """
 [SECTION: ABSTRACT]
 This is an ABSTRACT. The translation should:
@@ -132,12 +143,10 @@ This is an ABSTRACT. The translation should:
 - Avoid vague language — prefer specific findings
 - Maintain the original's word budget (abstracts are often length-limited)
 """,
-
     SectionType.REFERENCES: """
 [SECTION: REFERENCES]
 This is a REFERENCES section. Do NOT translate reference entries. Preserve them exactly as-is.
 """,
-
     SectionType.UNKNOWN: "",
 }
 
@@ -145,6 +154,7 @@ This is a REFERENCES section. Do NOT translate reference entries. Preserve them 
 @dataclass
 class SectionContext:
     """当前翻译上下文所属的章节信息"""
+
     section_type: SectionType = SectionType.UNKNOWN
     confidence: float = 0.0
     matched_heading: str = ""
@@ -216,17 +226,32 @@ def classify_document_type(text: str) -> str:
 
     # Methods paper signals
     methods_signals = [
-        "novel method", "new algorithm", "we propose", "benchmark",
-        "outperforms", "state-of-the-art", "相比于", "我们的方法",
-        "提出.*方法", "新.*算法", "框架.*模型",
+        "novel method",
+        "new algorithm",
+        "we propose",
+        "benchmark",
+        "outperforms",
+        "state-of-the-art",
+        "相比于",
+        "我们的方法",
+        "提出.*方法",
+        "新.*算法",
+        "框架.*模型",
     ]
     methods_score = sum(1 for s in methods_signals if s in head)
 
     # Review paper signals
     review_signals = [
-        "this review", "we review", "literature review", "综述",
-        "survey", "systematic review", "meta-analysis", "荟萃分析",
-        "we survey", "this survey",
+        "this review",
+        "we review",
+        "literature review",
+        "综述",
+        "survey",
+        "systematic review",
+        "meta-analysis",
+        "荟萃分析",
+        "we survey",
+        "this survey",
     ]
     review_score = sum(1 for s in review_signals if s in head)
 

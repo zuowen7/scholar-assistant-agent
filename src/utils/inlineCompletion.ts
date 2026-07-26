@@ -5,7 +5,12 @@
 
 export interface CompletionModel {
   getLineContent(lineNumber: number): string
-  getValueInRange(range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number }): string
+  getValueInRange(range: {
+    startLineNumber: number
+    startColumn: number
+    endLineNumber: number
+    endColumn: number
+  }): string
   getLineMaxColumn(lineNumber: number): number
 }
 
@@ -65,7 +70,7 @@ export async function fetchCompletion(
     })
     clearTimeout(timeout)
     if (!resp.ok) return null
-    const data = await resp.json() as { completion?: string }
+    const data = (await resp.json()) as { completion?: string }
     const completion = (data.completion || '').trim()
     if (!completion) return null
 
@@ -100,14 +105,16 @@ export async function provideAICompletion(
   if (!result) return { items: [] }
 
   return {
-    items: [{
-      insertText: result.completion,
-      range: {
-        startLineNumber: position.lineNumber,
-        startColumn: position.column,
-        endLineNumber: position.lineNumber,
-        endColumn: position.column,
+    items: [
+      {
+        insertText: result.completion,
+        range: {
+          startLineNumber: position.lineNumber,
+          startColumn: position.column,
+          endLineNumber: position.lineNumber,
+          endColumn: position.column,
+        },
       },
-    }],
+    ],
   }
 }

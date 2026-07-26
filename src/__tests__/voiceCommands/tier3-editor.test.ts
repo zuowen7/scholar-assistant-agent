@@ -64,7 +64,7 @@ describe('Tier 3: Editor commands', () => {
   it('editor:export-pdf dispatches voice-export event with format', async () => {
     const spy = vi.spyOn(window, 'dispatchEvent')
     await router.routeCommand('导出PDF')
-    const call = spy.mock.calls.find(c => (c[0] as CustomEvent).type === 'voice-export')
+    const call = spy.mock.calls.find((c) => (c[0] as CustomEvent).type === 'voice-export')
     expect(call).toBeDefined()
     const evt = call![0] as CustomEvent
     expect(evt.detail).toEqual({ format: 'pdf' })
@@ -74,7 +74,7 @@ describe('Tier 3: Editor commands', () => {
   it('editor:polish dispatches voice-ai-preset event', async () => {
     const spy = vi.spyOn(window, 'dispatchEvent')
     await router.routeCommand('润色')
-    const call = spy.mock.calls.find(c => (c[0] as CustomEvent).type === 'voice-ai-preset')
+    const call = spy.mock.calls.find((c) => (c[0] as CustomEvent).type === 'voice-ai-preset')
     expect(call).toBeDefined()
     const evt = call![0] as CustomEvent
     expect(evt.detail).toEqual({ action: 'polish' })

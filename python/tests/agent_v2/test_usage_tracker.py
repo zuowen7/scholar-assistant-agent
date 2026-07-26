@@ -1,13 +1,14 @@
 """UsageTracker 测试 — 边缘 + 精度 + 零值 + 大数。"""
+
 from __future__ import annotations
 
 import pytest
 
 from src.agent_v2.runtime.usage import (
-    UsageTracker,
-    pricing_for_model,
-    format_usd,
     _MODEL_PRICING,
+    UsageTracker,
+    format_usd,
+    pricing_for_model,
 )
 from src.agent_v2.types import TokenUsage
 
@@ -96,7 +97,11 @@ class TestUsageTracker:
 
     def test_cache_tokens_tracked(self):
         t = UsageTracker()
-        t.record(TokenUsage(input_tokens=100, output_tokens=50, cache_read_tokens=200, cache_creation_tokens=10))
+        t.record(
+            TokenUsage(
+                input_tokens=100, output_tokens=50, cache_read_tokens=200, cache_creation_tokens=10
+            )
+        )
         assert t.total_cache_read == 200
         assert t.total_cache_creation == 10
         # Cache tokens NOT counted in total

@@ -11,13 +11,11 @@ instance). Writes (import/add) are not concurrent in normal usage.
 from __future__ import annotations
 
 import csv
-import io
 import logging
 import re
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
 
 import yaml
 
@@ -26,11 +24,11 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class GlossaryEntry:
-    source: str          # e.g. "attention mechanism"
-    target: str          # e.g. "注意力机制"; "" means "do not translate"
+    source: str  # e.g. "attention mechanism"
+    target: str  # e.g. "注意力机制"; "" means "do not translate"
     locked: bool = False  # locked → must appear exactly; unlocked → suggestion
-    category: str = ""    # optional grouping (e.g. "ML", "NLP")
-    note: str = ""        # optional usage note
+    category: str = ""  # optional grouping (e.g. "ML", "NLP")
+    note: str = ""  # optional usage note
 
     @property
     def is_passthrough(self) -> bool:
@@ -40,7 +38,7 @@ class GlossaryEntry:
     @property
     def display_target(self) -> str:
         """Target for prompt display; passthrough entries show '(do not translate)'."""
-        return self.target if self.target else f"（不翻译，保留原文）"
+        return self.target if self.target else "（不翻译，保留原文）"
 
 
 class GlossaryStore:
@@ -168,25 +166,31 @@ class GlossaryStore:
             if entry.is_passthrough:
                 # Source term must appear as-is in the translation
                 if not self._source_present(translated, entry.source):
-                    violations.append({
-                        "source": entry.source,
-                        "expected": entry.source,
-                        "rule": "passthrough",
-                        "message": f"未保留原文术语 '{entry.source}'",
-                    })
+                    violations.append(
+                        {
+                            "source": entry.source,
+                            "expected": entry.source,
+                            "rule": "passthrough",
+                            "message": f"未保留原文术语 '{entry.source}'",
+                        }
+                    )
             else:
                 # If original is provided, only enforce when source appears in original
-                source_in_original = self._source_present(original, entry.source) if original else True
+                source_in_original = (
+                    self._source_present(original, entry.source) if original else True
+                )
                 if not source_in_original:
                     continue
                 # Target term must be present in the translation
                 if not self._target_present(translated, entry.target):
-                    violations.append({
-                        "source": entry.source,
-                        "expected": entry.target,
-                        "rule": "locked",
-                        "message": f"术语 '{entry.source}' 应译为 '{entry.target}'",
-                    })
+                    violations.append(
+                        {
+                            "source": entry.source,
+                            "expected": entry.target,
+                            "rule": "locked",
+                            "message": f"术语 '{entry.source}' 应译为 '{entry.target}'",
+                        }
+                    )
         return violations
 
     @staticmethod
@@ -222,11 +226,15 @@ class GlossaryStore:
 
     # ── Import ─────────────────────────────────────────────────────────
 
-    def import_csv(self, csv_path: str | Path, *,
-                   locked: bool = False,
-                   source_col: int = 0,
-                   target_col: int = 1,
-                   category: str = "") -> int:
+    def import_csv(
+        self,
+        csv_path: str | Path,
+        *,
+        locked: bool = False,
+        source_col: int = 0,
+        target_col: int = 1,
+        category: str = "",
+    ) -> int:
         """Import entries from CSV. Returns count of imported entries.
 
         Expected format: source,target[,category] per row. First row treated as header
@@ -259,10 +267,14 @@ class GlossaryStore:
         logger.info("CSV import: %d entries from %s", count, path)
         return count
 
-    def import_tbx(self, tbx_path: str | Path, *,
-                    locked: bool = False,
-                    source_lang: str = "en",
-                    target_lang: str = "zh") -> int:
+    def import_tbx(
+        self,
+        tbx_path: str | Path,
+        *,
+        locked: bool = False,
+        source_lang: str = "en",
+        target_lang: str = "zh",
+    ) -> int:
         """Import entries from TBX (TermBase eXchange) file. Returns count."""
         path = Path(tbx_path)
         if not path.exists():
@@ -273,7 +285,6 @@ class GlossaryStore:
         root = tree.getroot()
 
         # TBX namespace handling
-        ns = {"tbx": "urn:iso:std:iso:30042:ed-2"}
 
         # Try with and without namespace
         for termEntry in root.iter("termEntry"):
@@ -284,15 +295,16 @@ class GlossaryStore:
         logger.info("TBX import: %d entries from %s", count, path)
         return count
 
-    def _parse_tbx_entry(self, termEntry, locked: bool,
-                         source_lang: str, target_lang: str) -> int:
+    def _parse_tbx_entry(self, termEntry, locked: bool, source_lang: str, target_lang: str) -> int:
         """Parse a single termEntry element."""
         src_term = ""
         tgt_term = ""
         for langSet in termEntry.iter("langSet"):
-            lang = (langSet.get("xml:lang", "")
-                    or langSet.get("{http://www.w3.org/XML/1998/namespace}lang", "")
-                    or langSet.get("lang", ""))
+            lang = (
+                langSet.get("xml:lang", "")
+                or langSet.get("{http://www.w3.org/XML/1998/namespace}lang", "")
+                or langSet.get("lang", "")
+            )
             lang = lang[:2].lower()
             for tg in langSet.iter("termGroup"):
                 for term_el in tg.iter("term"):
@@ -338,8 +350,9 @@ class GlossaryStore:
         logger.info("CSV export: %d entries to %s", len(entries), path)
         return len(entries)
 
-    def export_tbx(self, path: str | Path, *,
-                   source_lang: str = "en", target_lang: str = "zh") -> int:
+    def export_tbx(
+        self, path: str | Path, *, source_lang: str = "en", target_lang: str = "zh"
+    ) -> int:
         """Export all entries to TBX format. Returns count."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)

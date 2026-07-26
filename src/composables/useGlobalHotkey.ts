@@ -3,10 +3,7 @@ import { logger } from '../utils/logger'
 
 const isTauri = '__TAURI_INTERNALS__' in window
 
-export function useGlobalHotkey(
-  defaultKey: string,
-  callback: () => void,
-) {
+export function useGlobalHotkey(defaultKey: string, callback: () => void) {
   const currentKey = ref(defaultKey)
   const isRegistered = ref(false)
   const ready = ref(false)
@@ -36,7 +33,9 @@ export function useGlobalHotkey(
     try {
       const { unregister } = await import('@tauri-apps/plugin-global-shortcut')
       await unregister(key)
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   async function changeHotkey(newKey: string) {
@@ -52,7 +51,11 @@ export function useGlobalHotkey(
     isRegistered.value = false
   }
 
-  try { onUnmounted(() => cleanup()) } catch { /* not in Vue setup */ }
+  try {
+    onUnmounted(() => cleanup())
+  } catch {
+    /* not in Vue setup */
+  }
 
   return { currentKey, isRegistered, ready, changeHotkey, cleanup }
 }

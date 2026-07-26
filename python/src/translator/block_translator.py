@@ -23,22 +23,22 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
-from typing import AsyncGenerator
 
 from src.chunker import Block, BlockChunk
-from src.translator._helpers import TranslationResult, _sanitize_llm_output
 from src.cleaner.pipeline import protect_citations, restore_citations
+from src.translator._helpers import TranslationResult, _sanitize_llm_output
+from src.translator.proposition_extractor import (
+    ExtractedLogic,
+    extract_propositions,
+)
 from src.translator.section_aware import (
-    SectionType,
     SectionContext,
+    SectionType,
     detect_section,
     detect_section_from_heading,
     get_section_prompt,
-)
-from src.translator.proposition_extractor import (
-    extract_propositions,
-    ExtractedLogic,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,26 +47,28 @@ logger = logging.getLogger(__name__)
 @dataclass
 class BlockTranslation:
     """单块翻译结果，按块 id 对齐回原结构"""
+
     block_id: str
     type: str
     original: str
     translated: str
     translatable: bool = True
-    status: str = 'ok'  # 'ok' | 'failed' | 'partial'
+    status: str = "ok"  # 'ok' | 'failed' | 'partial'
 
 
 @dataclass
 class ChunkBlockResult:
     """一个 BlockChunk 的完整翻译结果"""
+
     chunk_index: int
     block_translations: list[BlockTranslation]
-    aligned: bool                    # True = LLM 输出段落数与可翻译块数一致
-    is_fallback: bool = False        # True = 整个 chunk 翻译失败，原文直通
+    aligned: bool  # True = LLM 输出段落数与可翻译块数一致
+    is_fallback: bool = False  # True = 整个 chunk 翻译失败，原文直通
     error: str | None = None
     prompt_tokens: int = 0
     completion_tokens: int = 0
     model: str = ""
-    section_type: str = "unknown"    # 章节感知：当前 chunk 所属章节类型
+    section_type: str = "unknown"  # 章节感知：当前 chunk 所属章节类型
 
     @property
     def chunk_text_original(self) -> str:
@@ -97,7 +99,7 @@ def _distribute_by_char_ratio(originals: list[str], translation: str) -> list[st
     existing_paras = _split_paragraphs(translation)
     if len(existing_paras) >= n:
         # 已有足够多的段落，不应走到这里（_align_translation_to_blocks 会先处理）
-        return existing_paras[:n - 1] + ["\n\n".join(existing_paras[n - 1:])]
+        return existing_paras[: n - 1] + ["\n\n".join(existing_paras[n - 1 :])]
 
     total_orig = sum(len(o) for o in originals)
     if total_orig == 0:
@@ -118,7 +120,7 @@ def _distribute_by_char_ratio(originals: list[str], translation: str) -> list[st
     para_breaks = set()
     pos = 0
     while True:
-        idx = translation.find('\n\n', pos)
+        idx = translation.find("\n\n", pos)
         if idx < 0:
             break
         para_breaks.add(idx)
@@ -169,7 +171,7 @@ def _merge_excess_paras(paras: list[str], target_count: int) -> list[str]:
     while len(result) > target_count:
         # 找最短相邻对合并；用 <= 使同长时优先合并靠近末尾的对，
         # 对应 LLM 在末尾多生成总结句的最常见情况
-        min_len = float('inf')
+        min_len = float("inf")
         merge_idx = len(result) - 2
         for i in range(len(result) - 1):
             pair_len = len(result[i]) + len(result[i + 1])
@@ -274,7 +276,6 @@ def _detect_chunk_section(blocks: list[Block]) -> SectionContext:
     return SectionContext()
 
 
-
 def _build_logic_instruction(extracted: ExtractedLogic) -> str:
     """从 ExtractedLogic 构建逻辑感知翻译指令（仅用于 CN→EN）。"""
     parts: list[str] = []
@@ -351,8 +352,7 @@ async def translate_block_chunk(
         return ChunkBlockResult(
             chunk_index=chunk.index,
             block_translations=[
-                BlockTranslation(b.id, b.type, b.text, b.text, b.translatable, 'ok')
-                for b in blocks
+                BlockTranslation(b.id, b.type, b.text, b.text, b.translatable, "ok") for b in blocks
             ],
             aligned=True,
             section_type=section_ctx.section_type.value,
@@ -367,8 +367,7 @@ async def translate_block_chunk(
         return ChunkBlockResult(
             chunk_index=chunk.index,
             block_translations=[
-                BlockTranslation(b.id, b.type, b.text, "", b.translatable, 'failed')
-                for b in blocks
+                BlockTranslation(b.id, b.type, b.text, "", b.translatable, "failed") for b in blocks
             ],
             aligned=False,
             is_fallback=True,
@@ -391,8 +390,12 @@ async def translate_block_chunk(
         paras = _split_paragraphs(sanitized)
         ratio = abs(len(paras) - len(translatable_blocks)) / max(len(translatable_blocks), 1)
         if ratio > 0.3:
-            logger.warning("Chunk %d severely misaligned (%d paras vs %d blocks), retrying per-block",
-                           chunk.index, len(paras), len(translatable_blocks))
+            logger.warning(
+                "Chunk %d severely misaligned (%d paras vs %d blocks), retrying per-block",
+                chunk.index,
+                len(paras),
+                len(translatable_blocks),
+            )
 
             # Bounded concurrent per-block retries (cap at 4 to avoid overloading model)
             sem = asyncio.Semaphore(4)
@@ -400,7 +403,9 @@ async def translate_block_chunk(
             async def _retry_one(b: Block) -> str:
                 async with sem:
                     try:
-                        single = await asyncio.to_thread(client.translate, b.text, "", extra_system_prompt)
+                        single = await asyncio.to_thread(
+                            client.translate, b.text, "", extra_system_prompt
+                        )
                         return _sanitize_llm_output(single.translated, source_lang=source_lang)
                     except Exception as e:
                         logger.warning("Per-block retry failed for %s: %s", b.id, e)
@@ -419,16 +424,16 @@ async def translate_block_chunk(
                     # Treat same-as-original as failed
                     if text and text.strip() == b.text.strip():
                         text = ""
-                    st = 'ok' if text else 'failed'
+                    st = "ok" if text else "failed"
                     out.append(BlockTranslation(b.id, b.type, b.text, text, True, st))
                     ri += 1
                 else:
-                    out.append(BlockTranslation(b.id, b.type, b.text, b.text, False, 'ok'))
+                    out.append(BlockTranslation(b.id, b.type, b.text, b.text, False, "ok"))
             return ChunkBlockResult(
                 chunk_index=chunk.index,
                 block_translations=out,
                 aligned=True,
-                is_fallback=any(bt.status == 'failed' for bt in out),
+                is_fallback=any(bt.status == "failed" for bt in out),
                 prompt_tokens=result.prompt_tokens,
                 completion_tokens=result.completion_tokens,
                 model=result.model,
@@ -439,7 +444,7 @@ async def translate_block_chunk(
     # Mark blocks as failed when translation is empty or identical to original
     for bt in block_trans:
         if bt.translatable and (not bt.translated or bt.translated.strip() == bt.original.strip()):
-            bt.status = 'failed'
+            bt.status = "failed"
             bt.translated = ""
     return ChunkBlockResult(
         chunk_index=chunk.index,
@@ -475,8 +480,14 @@ async def translate_block_chunks_parallel(
         prev_trans = ""
         prev_section = SectionType.UNKNOWN
         for chunk in chunks:
-            cr = await translate_block_chunk(client, chunk, blocks_by_id, prev_trans,
-                                             source_lang=source_lang, prev_section=prev_section)
+            cr = await translate_block_chunk(
+                client,
+                chunk,
+                blocks_by_id,
+                prev_trans,
+                source_lang=source_lang,
+                prev_section=prev_section,
+            )
             yield cr
             prev_trans = cr.chunk_text_translated
             if cr.section_type != "unknown":
@@ -491,8 +502,14 @@ async def translate_block_chunks_parallel(
 
     async def _run(idx: int) -> None:
         async with sem:
-            cr = await translate_block_chunk(client, chunks[idx], blocks_by_id, "",
-                                             source_lang=source_lang, prev_section=SectionType.UNKNOWN)
+            cr = await translate_block_chunk(
+                client,
+                chunks[idx],
+                blocks_by_id,
+                "",
+                source_lang=source_lang,
+                prev_section=SectionType.UNKNOWN,
+            )
         completed[chunks[idx].index] = cr
 
     tasks = [asyncio.create_task(_run(i)) for i in range(total)]
@@ -505,7 +522,9 @@ async def translate_block_chunks_parallel(
                     logger.error("Block chunk task raised: %s", t.exception())
             # chunk.index 升序产出
             chunk_indices = sorted({c.index for c in chunks})
-            while next_yield_idx < len(chunk_indices) and chunk_indices[next_yield_idx] in completed:
+            while (
+                next_yield_idx < len(chunk_indices) and chunk_indices[next_yield_idx] in completed
+            ):
                 yield completed[chunk_indices[next_yield_idx]]
                 next_yield_idx += 1
     finally:

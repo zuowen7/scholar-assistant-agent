@@ -17,26 +17,26 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.parser.dispatcher import extract_document, SUPPORTED_EXTENSIONS, get_supported_extensions
+from src.chunker.splitter import Chunk, ChunkResult, chunk_text, chunk_text_full
 from src.cleaner.pipeline import clean_text, clean_text_full
-from src.chunker.splitter import chunk_text, chunk_text_full, Chunk, ChunkResult
 from src.formatter.renderer import format_output
-from src.translator.ollama_client import (
-    TranslationResult,
-    _strip_think_tags,
-    _strip_code_block_wrapping,
-    _strip_preamble,
-    _strip_context_leak,
-    _deduplicate_repetition,
-)
+from src.parser.dispatcher import SUPPORTED_EXTENSIONS, extract_document, get_supported_extensions
 from src.translator._helpers import (
     TranslationResult as HelpersTranslationResult,
 )
-
+from src.translator.ollama_client import (
+    TranslationResult,
+    _deduplicate_repetition,
+    _strip_code_block_wrapping,
+    _strip_context_leak,
+    _strip_preamble,
+    _strip_think_tags,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_result(original: str, translated: str) -> TranslationResult:
     """Create a TranslationResult for formatter tests."""
@@ -50,6 +50,7 @@ def _make_result(original: str, translated: str) -> TranslationResult:
 # ---------------------------------------------------------------------------
 # 1. Full pipeline with sample text
 # ---------------------------------------------------------------------------
+
 
 class TestFullPipelineWithSampleText:
     """Parse -> Clean -> Chunk -> Format pipeline."""
@@ -98,8 +99,7 @@ class TestFullPipelineWithSampleText:
 
             # Stage 4: Format (mock translation — use original text as "translated")
             mock_results = [
-                _make_result(chunk.text, f"[MOCK] {chunk.text}")
-                for chunk in chunk_result.chunks
+                _make_result(chunk.text, f"[MOCK] {chunk.text}") for chunk in chunk_result.chunks
             ]
             output = format_output(mock_results, output_format="bilingual")
             assert output.strip()
@@ -111,6 +111,7 @@ class TestFullPipelineWithSampleText:
 # ---------------------------------------------------------------------------
 # 2. Pipeline handles empty input
 # ---------------------------------------------------------------------------
+
 
 class TestPipelineHandlesEmptyInput:
     """Verify graceful handling of empty files."""
@@ -161,6 +162,7 @@ class TestPipelineHandlesEmptyInput:
 # 3. Pipeline chunk consistency
 # ---------------------------------------------------------------------------
 
+
 class TestPipelineChunkConsistency:
     """Verify chunks have sequential indices and no unexpected overlap."""
 
@@ -168,9 +170,7 @@ class TestPipelineChunkConsistency:
         # Create enough text to generate multiple chunks
         paragraphs = []
         for i in range(20):
-            paragraphs.append(
-                f"Paragraph {i + 1}. " + "This is a sentence about testing. " * 15
-            )
+            paragraphs.append(f"Paragraph {i + 1}. " + "This is a sentence about testing. " * 15)
         text = "\n\n".join(paragraphs)
 
         with tempfile.NamedTemporaryFile(
@@ -189,18 +189,14 @@ class TestPipelineChunkConsistency:
 
             # Sequential indices starting from 0
             for i, chunk in enumerate(chunks):
-                assert chunk.index == i, (
-                    f"Chunk index mismatch: expected {i}, got {chunk.index}"
-                )
+                assert chunk.index == i, f"Chunk index mismatch: expected {i}, got {chunk.index}"
 
             # No unexpected text duplication across non-overlapping parts
             # (overlap is expected between consecutive chunks; verify the core
             # content of each chunk is not identical)
             for i in range(len(chunks) - 1):
                 # Each chunk should have unique core content beyond overlap region
-                assert chunks[i].text != chunks[i + 1].text, (
-                    f"Chunks {i} and {i + 1} are identical"
-                )
+                assert chunks[i].text != chunks[i + 1].text, f"Chunks {i} and {i + 1} are identical"
         finally:
             Path(temp_path).unlink(missing_ok=True)
 
@@ -208,6 +204,7 @@ class TestPipelineChunkConsistency:
 # ---------------------------------------------------------------------------
 # 4. Postprocessing chain (ollama_client helpers)
 # ---------------------------------------------------------------------------
+
 
 class TestPostprocessingChain:
     """Test the post-processing chain in ollama_client / _helpers."""
@@ -261,7 +258,7 @@ class TestPostprocessingChain:
         # Dedup requires >= 300 chars and >= 6 sentences (split by 。！？)
         # Each repetition is ~26 chars; 15 reps gives ~390 chars, 15 sentences
         repeated_sentence = "这是一句重复的翻译内容，需要足够长才能触发去重检测。"
-        raw = (repeated_sentence * 15)
+        raw = repeated_sentence * 15
         assert len(raw) >= 300, "Test text must be >= 300 chars to trigger dedup"
         result = _deduplicate_repetition(raw)
         # Should have deduplicated — result should be shorter
@@ -296,15 +293,12 @@ class TestPostprocessingChain:
 # 5. Cleaner fixes common issues
 # ---------------------------------------------------------------------------
 
+
 class TestCleanerFixesCommonIssues:
     """Feed text with broken hyphens, extra whitespace, watermark patterns."""
 
     def test_fixes_broken_hyphens(self) -> None:
-        text = (
-            "We need to eval-\n"
-            "uate the perfor-\n"
-            "mance of the system."
-        )
+        text = "We need to eval-\nuate the perfor-\nmance of the system."
         result = clean_text(text)
         assert "evaluate" in result
         assert "performance" in result
@@ -348,6 +342,7 @@ class TestCleanerFixesCommonIssues:
 # 6. Formatter bilingual output
 # ---------------------------------------------------------------------------
 
+
 class TestFormatterBilingualOutput:
     """Format chunks as bilingual, verify output contains both original and translated."""
 
@@ -370,18 +365,14 @@ class TestFormatterBilingualOutput:
 
     def test_bilingual_markdown_format(self) -> None:
         results = [_make_result("Hello world.", "你好世界。")]
-        output = format_output(
-            results, output_format="bilingual", file_format="markdown"
-        )
+        output = format_output(results, output_format="bilingual", file_format="markdown")
         # Markdown bilingual uses blockquote for original
         assert "> " in output or "Hello world." in output
         assert "你好世界。" in output
 
     def test_bilingual_plain_format(self) -> None:
         results = [_make_result("Hello world.", "你好世界。")]
-        output = format_output(
-            results, output_format="bilingual", file_format="txt"
-        )
+        output = format_output(results, output_format="bilingual", file_format="txt")
         assert "[原文]" in output
         assert "[译文]" in output
         assert "Hello world." in output
@@ -389,9 +380,7 @@ class TestFormatterBilingualOutput:
 
     def test_parallel_table_format(self) -> None:
         results = [_make_result("Source text.", "译文文本。")]
-        output = format_output(
-            results, output_format="parallel", file_format="markdown"
-        )
+        output = format_output(results, output_format="parallel", file_format="markdown")
         assert "原文" in output
         assert "译文" in output
         assert "Source text." in output
@@ -399,9 +388,7 @@ class TestFormatterBilingualOutput:
 
     def test_translated_only_format(self) -> None:
         results = [_make_result("Source text.", "Only the translation.")]
-        output = format_output(
-            results, output_format="translated_only", file_format="markdown"
-        )
+        output = format_output(results, output_format="translated_only", file_format="markdown")
         assert "Only the translation." in output
         # Original should not appear as a standalone section
         assert "[原文]" not in output
@@ -414,6 +401,7 @@ class TestFormatterBilingualOutput:
 # ---------------------------------------------------------------------------
 # 7. Parser supported extensions
 # ---------------------------------------------------------------------------
+
 
 class TestParserSupportedExtensions:
     """Verify SUPPORTED_EXTENSIONS list from parser module."""

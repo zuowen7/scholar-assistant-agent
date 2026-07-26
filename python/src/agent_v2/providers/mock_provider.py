@@ -4,17 +4,15 @@
   预设场景 → 根据 messages 内容匹配 → 返回固定的 ProviderResponse。
 不依赖任何网络，毫秒级响应，100% 可复现。
 """
+
 from __future__ import annotations
 
 import json
-import re
 import uuid
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from src.agent_v2.types import (
-    ApiError,
-    ContentBlock,
-    InputMessage,
     Message,
     MessageRole,
     ProviderResponse,
@@ -22,7 +20,6 @@ from src.agent_v2.types import (
     ThinkingBlock,
     TokenUsage,
     ToolDefinition,
-    ToolResultBlock,
     ToolUseBlock,
 )
 
@@ -63,9 +60,15 @@ def _text_response(text: str, usage: TokenUsage | None = None) -> ProviderRespon
     )
 
 
-def _tool_response(tool_name: str, tool_input: dict[str, Any], usage: TokenUsage | None = None) -> ProviderResponse:
+def _tool_response(
+    tool_name: str, tool_input: dict[str, Any], usage: TokenUsage | None = None
+) -> ProviderResponse:
     return ProviderResponse(
-        blocks=[ToolUseBlock(id=f"tu_{uuid.uuid4().hex[:8]}", name=tool_name, input=json.dumps(tool_input))],
+        blocks=[
+            ToolUseBlock(
+                id=f"tu_{uuid.uuid4().hex[:8]}", name=tool_name, input=json.dumps(tool_input)
+            )
+        ],
         usage=usage or TokenUsage(input_tokens=50, output_tokens=30),
         stop_reason="tool_use",
     )
@@ -82,11 +85,15 @@ def _thinking_then_text(thinking: str, text: str) -> ProviderResponse:
     )
 
 
-def _thinking_then_tool(thinking: str, tool_name: str, tool_input: dict[str, Any]) -> ProviderResponse:
+def _thinking_then_tool(
+    thinking: str, tool_name: str, tool_input: dict[str, Any]
+) -> ProviderResponse:
     return ProviderResponse(
         blocks=[
             ThinkingBlock(thinking=thinking),
-            ToolUseBlock(id=f"tu_{uuid.uuid4().hex[:8]}", name=tool_name, input=json.dumps(tool_input)),
+            ToolUseBlock(
+                id=f"tu_{uuid.uuid4().hex[:8]}", name=tool_name, input=json.dumps(tool_input)
+            ),
         ],
         usage=TokenUsage(input_tokens=50, output_tokens=30),
         stop_reason="tool_use",
@@ -99,69 +106,112 @@ def _thinking_then_tool(thinking: str, tool_name: str, tool_input: dict[str, Any
 
 BUILTIN_SCENARIOS: list[Scenario] = [
     # ---- MP-001: 纯文本回复 ----
-    Scenario(name="greeting", trigger_patterns=["hello", "你好", "hi"],
-             response_factory=lambda msgs, turn: _text_response("Hello! How can I help you today?")),
-
-    Scenario(name="summarize", trigger_patterns=["summarize", "总结", "摘要"],
-             response_factory=lambda msgs, turn: _text_response("Here is a summary of the content.")),
-
+    Scenario(
+        name="greeting",
+        trigger_patterns=["hello", "你好", "hi"],
+        response_factory=lambda msgs, turn: _text_response("Hello! How can I help you today?"),
+    ),
+    Scenario(
+        name="summarize",
+        trigger_patterns=["summarize", "总结", "摘要"],
+        response_factory=lambda msgs, turn: _text_response("Here is a summary of the content."),
+    ),
     # ---- MP-002: 单工具调用 ----
-    Scenario(name="read_request", trigger_patterns=["read", "读取", "查看"],
-             response_factory=lambda msgs, turn: _tool_response("read_file", {"file_path": "main.md"})),
-
-    Scenario(name="write_request", trigger_patterns=["write", "写入", "创建"],
-             response_factory=lambda msgs, turn: _tool_response("write_file", {"file_path": "output.txt", "content": "hello"})),
-
+    Scenario(
+        name="read_request",
+        trigger_patterns=["read", "读取", "查看"],
+        response_factory=lambda msgs, turn: _tool_response("read_file", {"file_path": "main.md"}),
+    ),
+    Scenario(
+        name="write_request",
+        trigger_patterns=["write", "写入", "创建"],
+        response_factory=lambda msgs, turn: _tool_response(
+            "write_file", {"file_path": "output.txt", "content": "hello"}
+        ),
+    ),
     # ---- MP-003: 多工具并行调用 ----
-    Scenario(name="multi_read", trigger_patterns=["read both", "读取两个", "compare"],
-             response_factory=lambda msgs, turn: ProviderResponse(
-                 blocks=[
-                     ToolUseBlock(id=f"tu_{uuid.uuid4().hex[:8]}", name="read_file", input=json.dumps({"file_path": "a.md"})),
-                     ToolUseBlock(id=f"tu_{uuid.uuid4().hex[:8]}", name="read_file", input=json.dumps({"file_path": "b.md"})),
-                 ],
-                 usage=TokenUsage(input_tokens=50, output_tokens=50),
-                 stop_reason="tool_use",
-             )),
-
+    Scenario(
+        name="multi_read",
+        trigger_patterns=["read both", "读取两个", "compare"],
+        response_factory=lambda msgs, turn: ProviderResponse(
+            blocks=[
+                ToolUseBlock(
+                    id=f"tu_{uuid.uuid4().hex[:8]}",
+                    name="read_file",
+                    input=json.dumps({"file_path": "a.md"}),
+                ),
+                ToolUseBlock(
+                    id=f"tu_{uuid.uuid4().hex[:8]}",
+                    name="read_file",
+                    input=json.dumps({"file_path": "b.md"}),
+                ),
+            ],
+            usage=TokenUsage(input_tokens=50, output_tokens=50),
+            stop_reason="tool_use",
+        ),
+    ),
     # ---- MP-004: 思考 + 文本 ----
-    Scenario(name="think_then_text", trigger_patterns=["explain", "解释", "why"],
-             response_factory=lambda msgs, turn: _thinking_then_text(
-                 "Let me think about this carefully...",
-                 "The reason is that the implementation follows the standard pattern.",
-             )),
-
+    Scenario(
+        name="think_then_text",
+        trigger_patterns=["explain", "解释", "why"],
+        response_factory=lambda msgs, turn: _thinking_then_text(
+            "Let me think about this carefully...",
+            "The reason is that the implementation follows the standard pattern.",
+        ),
+    ),
     # ---- MP-005: 思考 + 工具调用 ----
-    Scenario(name="think_then_read", trigger_patterns=["analyze", "分析"],
-             response_factory=lambda msgs, turn: _thinking_then_tool(
-                 "I need to read the file first to understand the context.",
-                 "read_file", {"file_path": "main.md"},
-             )),
-
+    Scenario(
+        name="think_then_read",
+        trigger_patterns=["analyze", "分析"],
+        response_factory=lambda msgs, turn: _thinking_then_tool(
+            "I need to read the file first to understand the context.",
+            "read_file",
+            {"file_path": "main.md"},
+        ),
+    ),
     # ---- 多轮场景 (turn_index 匹配) ----
-    Scenario(name="read_then_summarize_turn0", turn_index=0,
-             trigger_patterns=["read and summarize", "读取并总结"],
-             response_factory=lambda msgs, turn: _tool_response("read_file", {"file_path": "main.md"})),
-
-    Scenario(name="read_then_summarize_turn1", turn_index=1,
-             trigger_patterns=["read and summarize", "读取并总结"],
-             response_factory=lambda msgs, turn: _text_response(
-                 "Based on the file content, here is the summary: The document discusses the architecture of the system.",
-             )),
-
+    Scenario(
+        name="read_then_summarize_turn0",
+        turn_index=0,
+        trigger_patterns=["read and summarize", "读取并总结"],
+        response_factory=lambda msgs, turn: _tool_response("read_file", {"file_path": "main.md"}),
+    ),
+    Scenario(
+        name="read_then_summarize_turn1",
+        turn_index=1,
+        trigger_patterns=["read and summarize", "读取并总结"],
+        response_factory=lambda msgs, turn: _text_response(
+            "Based on the file content, here is the summary: The document discusses the architecture of the system.",
+        ),
+    ),
     # 3 轮工具链
-    Scenario(name="chain_turn0", turn_index=0,
-             trigger_patterns=["find and fix", "查找并修复"],
-             response_factory=lambda msgs, turn: _tool_response("read_file", {"file_path": "main.py"})),
-
-    Scenario(name="chain_turn1", turn_index=1,
-             trigger_patterns=["find and fix", "查找并修复"],
-             response_factory=lambda msgs, turn: _tool_response("grep_files", {"pattern": "TODO", "path": "."})),
-
-    Scenario(name="chain_turn2", turn_index=2,
-             trigger_patterns=["find and fix", "查找并修复"],
-             response_factory=lambda msgs, turn: _tool_response("str_replace", {
-                 "file_path": "main.py", "old_string": "TODO: fix", "new_string": "# fixed",
-             })),
+    Scenario(
+        name="chain_turn0",
+        turn_index=0,
+        trigger_patterns=["find and fix", "查找并修复"],
+        response_factory=lambda msgs, turn: _tool_response("read_file", {"file_path": "main.py"}),
+    ),
+    Scenario(
+        name="chain_turn1",
+        turn_index=1,
+        trigger_patterns=["find and fix", "查找并修复"],
+        response_factory=lambda msgs, turn: _tool_response(
+            "grep_files", {"pattern": "TODO", "path": "."}
+        ),
+    ),
+    Scenario(
+        name="chain_turn2",
+        turn_index=2,
+        trigger_patterns=["find and fix", "查找并修复"],
+        response_factory=lambda msgs, turn: _tool_response(
+            "str_replace",
+            {
+                "file_path": "main.py",
+                "old_string": "TODO: fix",
+                "new_string": "# fixed",
+            },
+        ),
+    ),
 ]
 
 
@@ -197,6 +247,7 @@ class MockProvider:
             has_turn = 1 if s.turn_index is not None else 0
             max_pat = max((len(p) for p in s.trigger_patterns), default=0)
             return (has_turn, max_pat)
+
         ranked = sorted(self.scenarios, key=specificity, reverse=True)
         for scenario in ranked:
             if scenario.matches(messages, turn_index):
@@ -242,7 +293,9 @@ class MockProvider:
     ) -> AsyncGenerator:
         """模拟流式 — 逐 token 产出。"""
         import asyncio
+
         from src.agent_v2.types import TextBlock as _TB, ThinkingBlock as _THB, ToolUseBlock as _TUB
+
         if self.delay_seconds > 0:
             await asyncio.sleep(self.delay_seconds)
 
@@ -254,7 +307,11 @@ class MockProvider:
         turn = self._turn_counter
         self._turn_counter += 1
 
-        response = scenario.response_factory(messages, turn) if scenario is not None else _text_response(self.default_response)
+        response = (
+            scenario.response_factory(messages, turn)
+            if scenario is not None
+            else _text_response(self.default_response)
+        )
 
         # Emit each content block as a stream event
         for block in response.blocks:
@@ -265,9 +322,7 @@ class MockProvider:
                     token = w + (" " if i < len(words) - 1 else "")
                     yield _TB(text=token)
                     await asyncio.sleep(0.001)
-            elif isinstance(block, _THB):
-                yield block
-            elif isinstance(block, _TUB):
+            elif isinstance(block, (_THB, _TUB)):
                 yield block
 
         if response.usage.total() > 0:

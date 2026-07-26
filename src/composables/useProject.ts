@@ -29,13 +29,13 @@ function apiUrl(path: string): string {
   return `${API_BASE}${path}`
 }
 
-async function parseResponse(resp: Response): Promise<any> {
+async function parseResponse<T = unknown>(resp: Response): Promise<T> {
   const contentType = resp.headers.get('content-type') || ''
   if (!contentType.includes('application/json')) {
     const text = await resp.text().catch(() => '')
     throw new Error(text.slice(0, 200) || `服务器返回非 JSON 响应 (${resp.status})`)
   }
-  return resp.json()
+  return resp.json() as Promise<T>
 }
 
 export async function createProject(req: CreateProjectRequest): Promise<CreateProjectResponse> {
@@ -53,10 +53,12 @@ export async function createProject(req: CreateProjectRequest): Promise<CreatePr
       }),
     })
     if (!resp.ok) {
-      const err = await parseResponse(resp).catch(() => ({ detail: resp.statusText }))
+      const err = await parseResponse<{ detail?: string }>(resp).catch(() => ({
+        detail: resp.statusText,
+      }))
       throw new Error(err.detail || `创建项目失败 (${resp.status})`)
     }
-    const data: CreateProjectResponse = await parseResponse(resp)
+    const data = await parseResponse<CreateProjectResponse>(resp)
     currentProject.value = data.metadata
     return data
   } finally {
@@ -76,18 +78,24 @@ export async function openProject(path: string): Promise<void> {
     // A project switch must never discard unsaved Monaco content. Clean tabs
     // are cleared after the new project has loaded successfully; dirty tabs
     // require the user to save or explicitly close the current project first.
-    if (tabs.value.some(tab => tab.isModified)) {
+    if (tabs.value.some((tab) => tab.isModified)) {
       throw new Error('当前项目有未保存的编辑内容，请先保存或关闭当前项目后再切换。')
     }
 
     const resp = await fetch(apiUrl(`/api/project/load?path=${encodeURIComponent(path)}`))
     if (!resp.ok) {
-      const err = await parseResponse(resp).catch(() => ({ detail: resp.statusText }))
+      const err = await parseResponse<{ detail?: string }>(resp).catch(() => ({
+        detail: resp.statusText,
+      }))
       throw new Error(err.detail || `打开项目失败 (${resp.status})`)
     }
-    const meta = await parseResponse(resp) as ProjectMetadata
+    const meta = (await parseResponse(resp)) as ProjectMetadata
     if (thisOp !== _operationId) return
-    try { await fileTree.openFolder(path) } catch { /* Non-Tauri */ }
+    try {
+      await fileTree.openFolder(path)
+    } catch {
+      /* Non-Tauri */
+    }
     if (thisOp !== _operationId) return
     currentProject.value = meta
     tabs.value = []
@@ -97,7 +105,11 @@ export async function openProject(path: string): Promise<void> {
     if (thisOp === _operationId) {
       currentProject.value = prevProject
       if (prevRootDir) {
-        try { await useFileTree().openFolder(prevRootDir) } catch { /* */ }
+        try {
+          await useFileTree().openFolder(prevRootDir)
+        } catch {
+          /* */
+        }
       }
     }
     throw err
@@ -108,19 +120,25 @@ export async function openProject(path: string): Promise<void> {
 
 export async function removeRecentProject(path: string): Promise<void> {
   try {
-    await fetch(apiUrl(`/api/project/recent?path=${encodeURIComponent(path)}`), { method: 'DELETE' })
-    recentProjects.value = recentProjects.value.filter(p => p.path !== path)
-  } catch { /* */ }
+    await fetch(apiUrl(`/api/project/recent?path=${encodeURIComponent(path)}`), {
+      method: 'DELETE',
+    })
+    recentProjects.value = recentProjects.value.filter((p) => p.path !== path)
+  } catch {
+    /* */
+  }
 }
 
 export async function loadRecentProjects(): Promise<void> {
   try {
     const resp = await fetch(apiUrl('/api/project/recent'))
     if (resp.ok) {
-      const data = await parseResponse(resp).catch(() => null)
+      const data = await parseResponse<RecentProject[] | null>(resp).catch(() => null)
       if (Array.isArray(data)) recentProjects.value = data
     }
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
 }
 
 export async function closeProject(): Promise<void> {
@@ -138,7 +156,9 @@ export async function detectProject(path: string): Promise<boolean> {
       method: 'POST',
     })
     if (!resp.ok) return false
-    const data = await parseResponse(resp).catch(() => ({ is_project: false }))
+    const data = await parseResponse<{ is_project: boolean }>(resp).catch(() => ({
+      is_project: false,
+    }))
     return data.is_project === true
   } catch {
     return false

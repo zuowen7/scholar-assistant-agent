@@ -1,13 +1,15 @@
 """翻译后 QA — 单元测试"""
+
 from __future__ import annotations
 
 import pytest
+
 from src.translator.post_qa import (
     QAFlag,
     QAResult,
     check_overclaim,
-    check_sentence_length,
     check_results_discussion_mixing,
+    check_sentence_length,
     check_verb_strength,
     get_hedging_tier_for_section,
     run_post_translation_qa,

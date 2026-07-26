@@ -13,30 +13,120 @@
       />
 
       <template v-else>
-        <AppHeader :title="activeTab.name" :subtitle="headerSubtitle" :icon="isLatexMode ? FileCode2 : FileText">
+        <AppHeader
+          :title="activeTab.name"
+          :subtitle="headerSubtitle"
+          :icon="isLatexMode ? FileCode2 : FileText"
+        >
           <template #center>
-            <SegmentedControl v-if="!isLatexMode" v-model="documentView" :options="documentViewOptions" :label="t('editor.documentView')" />
-            <span v-else class="header-chapter">{{ t('editor.lineWordCount', { lines: lineCount, words: wordCount.toLocaleString() }) }}</span>
+            <SegmentedControl
+              v-if="!isLatexMode"
+              v-model="documentView"
+              :options="documentViewOptions"
+              :label="t('editor.documentView')"
+            />
+            <span v-else class="header-chapter">{{
+              t('editor.lineWordCount', { lines: lineCount, words: wordCount.toLocaleString() })
+            }}</span>
           </template>
-          <StatusBadge tone="success" dot>{{ activeTab.isModified ? t('editor.unsavedChanges') : t('editor.autoSaved') }}</StatusBadge>
-          <button type="button" class="header-action mode-toggle" @click="toggleEditorMode">{{ isLatexMode ? t('editor.writingView') : 'LaTeX' }}</button>
-          <button type="button" class="header-action" @click="handleSaveFile"><Save :size="16" /> {{ t('editor.saveAction') }}</button>
-          <button type="button" class="header-action primary" @click="isLatexMode ? aiPanelRef?.sendPreset('polish') : handleSelectionTask(t('editor.polish'))"><Sparkles :size="16" /> {{ t('editor.aiPolish') }}</button>
-          <button type="button" class="header-icon" :title="sidebarCollapsed ? t('editor.fileTree') : t('editor.collapseSidebar')" @click="sidebarCollapsed = !sidebarCollapsed"><PanelLeftOpen v-if="sidebarCollapsed" :size="18" /><PanelLeftClose v-else :size="18" /></button>
-          <button type="button" class="header-icon" :title="rightPanelVisible ? t('editor.collapseRight') : t('editor.expandRight')" @click="toggleHeaderRightPanel"><PanelRightClose :size="18" /></button>
-          <button v-if="currentProject" type="button" class="header-icon" :title="t('project.closeProject')" @click="requestCloseProject"><FolderX :size="17" /></button>
+          <StatusBadge :tone="activeTab.isModified ? 'warning' : 'success'" dot>{{
+            activeTab.isModified ? t('editor.unsavedChanges') : t('editor.autoSaved')
+          }}</StatusBadge>
+          <button type="button" class="header-action mode-toggle" @click="toggleEditorMode">
+            {{ isLatexMode ? t('editor.writingView') : 'LaTeX' }}
+          </button>
+          <button type="button" class="header-action" @click="handleSaveFile">
+            <Save :size="16" /> {{ t('editor.saveAction') }}
+          </button>
+          <button
+            type="button"
+            class="header-action primary"
+            @click="
+              isLatexMode
+                ? aiPanelRef?.sendPreset('polish')
+                : handleSelectionTask(t('editor.polish'))
+            "
+          >
+            <Sparkles :size="16" /> {{ t('editor.aiPolish') }}
+          </button>
+          <button
+            type="button"
+            class="header-icon"
+            :title="sidebarCollapsed ? t('editor.fileTree') : t('editor.collapseSidebar')"
+            @click="sidebarCollapsed = !sidebarCollapsed"
+          >
+            <PanelLeftOpen v-if="sidebarCollapsed" :size="18" /><PanelLeftClose v-else :size="18" />
+          </button>
+          <button
+            type="button"
+            class="header-icon"
+            :title="rightPanelVisible ? t('editor.collapseRight') : t('editor.expandRight')"
+            @click="toggleHeaderRightPanel"
+          >
+            <PanelRightClose :size="18" />
+          </button>
+          <button
+            type="button"
+            class="header-icon"
+            :title="t('editor.closeCurrentDocument')"
+            :aria-label="t('editor.closeCurrentDocument')"
+            data-testid="close-current-document"
+            @click="requestCloseCurrentDocument"
+          >
+            <X :size="17" />
+          </button>
+          <button
+            v-if="currentProject"
+            type="button"
+            class="header-icon"
+            :title="t('project.closeProject')"
+            @click="requestCloseProject"
+          >
+            <FolderX :size="17" />
+          </button>
         </AppHeader>
 
-        <div class="editor-workbench" :class="{ 'latex-mode': isLatexMode, 'writing-mode': !isLatexMode, 'right-collapsed': !rightPanelVisible }">
-          <div v-if="!sidebarCollapsed" class="workbench-left" :style="{ width: (isLatexMode ? 250 : 226) + 'px' }">
+        <div
+          class="editor-workbench"
+          :class="{
+            'latex-mode': isLatexMode,
+            'writing-mode': !isLatexMode,
+            'right-collapsed': !rightPanelVisible,
+          }"
+        >
+          <div
+            v-if="!sidebarCollapsed"
+            class="workbench-left"
+            :style="{ width: (isLatexMode ? 250 : 226) + 'px' }"
+          >
             <FileTree v-if="isLatexMode" @collapse="sidebarCollapsed = true" />
             <template v-else>
               <div class="sidebar-tabs">
-                <button type="button" class="sidebar-tab" :class="{ active: writingSidebarTab === 'files' }" @click="writingSidebarTab = 'files'">{{ t('editor.files') }}</button>
-                <button type="button" class="sidebar-tab" :class="{ active: writingSidebarTab === 'outline' }" @click="writingSidebarTab = 'outline'">{{ t('editor.outline') }}</button>
+                <button
+                  type="button"
+                  class="sidebar-tab"
+                  :class="{ active: writingSidebarTab === 'files' }"
+                  @click="writingSidebarTab = 'files'"
+                >
+                  {{ t('editor.files') }}
+                </button>
+                <button
+                  type="button"
+                  class="sidebar-tab"
+                  :class="{ active: writingSidebarTab === 'outline' }"
+                  @click="writingSidebarTab = 'outline'"
+                >
+                  {{ t('editor.outline') }}
+                </button>
               </div>
               <FileTree v-if="writingSidebarTab === 'files'" @collapse="sidebarCollapsed = true" />
-              <DocumentOutline v-else :content="content" :active-line="selection.startLine" @navigate="navigateToLine" @add="addSection" />
+              <DocumentOutline
+                v-else
+                :content="content"
+                :active-line="selection.startLine"
+                @navigate="navigateToLine"
+                @add="addSection"
+              />
             </template>
           </div>
 
@@ -71,30 +161,86 @@
             />
 
             <div class="editor-surface">
-              <MonacoEditor v-if="documentView === 'body' || isLatexMode" :theme="isDark ? 'vs-dark' : 'vs'" :presentation="isLatexMode ? 'code' : 'document'" @contentChange="onContentChange" @selectionChange="onSelectionChange" />
-              <MarkdownPreview v-else-if="documentView === 'preview'" :content="content" :version="contentVersion" class="document-preview" />
-              <DocumentOutline v-else class="central-outline" :content="content" :active-line="selection.startLine" @navigate="navigateToLine" @add="addSection" />
+              <MonacoEditor
+                v-if="documentView === 'body' || isLatexMode"
+                :theme="isDark ? 'vs-dark' : 'vs'"
+                :presentation="isLatexMode ? 'code' : 'document'"
+                @contentChange="onContentChange"
+                @selectionChange="onSelectionChange"
+              />
+              <MarkdownPreview
+                v-else-if="documentView === 'preview'"
+                :content="content"
+                :version="contentVersion"
+                class="document-preview"
+              />
+              <DocumentOutline
+                v-else
+                class="central-outline"
+                :content="content"
+                :active-line="selection.startLine"
+                @navigate="navigateToLine"
+                @add="addSection"
+              />
 
               <div v-if="selection.text && !isLatexMode" class="selection-toolbar">
-                <button type="button" @click="handleSelectionTask(t('editor.polish'))"><Sparkles :size="14" /> {{ t('editor.polish') }}</button>
-                <button type="button" @click="handleSelectionTask(t('editor.condense'))">{{ t('editor.condense') }}</button>
-                <button type="button" @click="handleSelectionTask(t('editor.expand'))">{{ t('editor.expand') }}</button>
-                <button type="button" @click="handleSelectionTask(t('editor.checkArgument'))">{{ t('editor.checkArgument') }}</button>
+                <button type="button" @click="handleSelectionTask(t('editor.polish'))">
+                  <Sparkles :size="14" /> {{ t('editor.polish') }}
+                </button>
+                <button type="button" @click="handleSelectionTask(t('editor.condense'))">
+                  {{ t('editor.condense') }}
+                </button>
+                <button type="button" @click="handleSelectionTask(t('editor.expand'))">
+                  {{ t('editor.expand') }}
+                </button>
+                <button type="button" @click="handleSelectionTask(t('editor.checkArgument'))">
+                  {{ t('editor.checkArgument') }}
+                </button>
               </div>
             </div>
           </main>
 
-          <aside v-if="rightPanelVisible" class="workbench-right" :style="{ width: (isLatexMode ? 340 : 356) + 'px' }">
+          <aside
+            v-if="rightPanelVisible"
+            class="workbench-right"
+            :style="{ width: (isLatexMode ? 340 : 356) + 'px' }"
+          >
             <EditorRightTabBar
               :model-value="rightPanelTab"
               :agent-mode="!isLatexMode"
               @update:model-value="setRightPanelTab"
             />
-            <MarkdownPreview v-if="rightPanelTab === 'preview'" :content="content" :version="contentVersion" class="rp-content rp-preview" />
-            <CompanionPanel v-else-if="rightPanelTab === 'argument'" :content="content" class="rp-content" />
+            <MarkdownPreview
+              v-if="rightPanelTab === 'preview'"
+              :content="content"
+              :version="contentVersion"
+              class="rp-content rp-preview"
+            />
+            <CompanionPanel
+              v-else-if="rightPanelTab === 'argument'"
+              :content="content"
+              class="rp-content"
+            />
             <template v-else>
-              <AiPanel v-if="isLatexMode" ref="aiPanelRef" workspace-variant :editor-context="selection.text || content" :active-file="activeFile" :can-undo="!!previousContent" :workspace-files="workspaceFiles" class="rp-content" @insert="handleInsert" @undo="handleUndo" @close="rightPanelVisible = false" />
-              <TaskAgentPanel v-else :context="content" :selection="selection.text" :active-file="activeFile" />
+              <AiPanel
+                v-if="isLatexMode"
+                ref="aiPanelRef"
+                workspace-variant
+                :editor-context="selection.text || content"
+                :active-file="activeFile"
+                :can-undo="!!previousContent"
+                :workspace-files="workspaceFiles"
+                class="rp-content"
+                @insert="handleInsert"
+                @undo="handleUndo"
+                @close="rightPanelVisible = false"
+              />
+              <TaskAgentPanel
+                v-else
+                :context="content"
+                :selection="selection.text"
+                :active-file="activeFile"
+              />
             </template>
           </aside>
         </div>
@@ -135,6 +281,17 @@
       @confirm="performCloseProject"
     />
 
+    <AppConfirmDialog
+      v-model="showCloseDocumentConfirm"
+      :title="t('editor.closeCurrentDocument')"
+      :description="t('editor.closeDocumentDescription')"
+      :detail="t('editor.closeDocumentDirtyDetail')"
+      :confirm-label="t('editor.closeCurrentDocument')"
+      :cancel-label="t('general.cancel')"
+      tone="danger"
+      @confirm="performCloseCurrentDocument"
+    />
+
     <AppPromptDialog
       v-model="showZoteroPrompt"
       :title="t('editor.searchZotero')"
@@ -151,8 +308,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, defineAsyncComponent, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import {
+  ref,
+  computed,
+  defineAsyncComponent,
+  watch,
+  onMounted,
+  onBeforeUnmount,
+  nextTick,
+} from 'vue'
 import { useI18n } from 'vue-i18n'
+import type { ComplianceReport } from '../types'
 
 const { t } = useI18n()
 
@@ -172,7 +338,17 @@ import AppConfirmDialog from './shell/AppConfirmDialog.vue'
 import AppPromptDialog from './shell/AppPromptDialog.vue'
 import SegmentedControl from './shell/SegmentedControl.vue'
 import StatusBadge from './shell/StatusBadge.vue'
-import { FileCode2, FileText, FolderX, PanelLeftClose, PanelLeftOpen, PanelRightClose, Save, Sparkles } from 'lucide-vue-next'
+import {
+  FileCode2,
+  FileText,
+  FolderX,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  Save,
+  Sparkles,
+  X,
+} from 'lucide-vue-next'
 
 // -- State composables ---------------------------------------------------
 import { useEditorState, getRange } from '../composables/useEditorState'
@@ -185,6 +361,7 @@ import { useMindMap, markdownToMindMapNodes } from '../composables/useMindMap'
 import { useFileTree } from '../composables/useFileTree'
 import { useArgumentCompanion } from '../composables/useArgumentCompanion'
 import { useAgentChat } from '../composables/useAgentChat'
+import { useAppMode } from '../composables/useAppMode'
 import { API_BASE } from '../utils/api'
 import { closeProject, currentProject, useProject } from '../composables/useProject'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
@@ -198,13 +375,23 @@ const CompanionPanel = defineAsyncComponent(() => import('./argument/CompanionPa
 defineProps<{ isDark: boolean }>()
 
 // -- Shared singleton state (single source of truth) ---------------------
-const { activeTab, activeTabId, content, contentVersion, selection, previousContent, tabs, aiResult, insertTextAtCursor, activeFile, monacoEditor } = useEditorState()
+const {
+  activeTab,
+  activeTabId,
+  content,
+  contentVersion,
+  selection,
+  previousContent,
+  tabs,
+  aiResult,
+  insertTextAtCursor,
+  activeFile,
+  monacoEditor,
+} = useEditorState()
 
 // -- Tab / file operations ------------------------------------------------
-const {
-  openNewUntitled, openFile, setContent, markDirty,
-  saveFile, reloadOpenTabs,
-} = useEditor()
+const { openNewUntitled, openFile, closeTab, setContent, markDirty, saveFile, reloadOpenTabs } =
+  useEditor()
 
 // -- AI edit actions (from useEditor, called once) -----------------------
 const { applyAiResult, undoEdit } = useEditor()
@@ -213,9 +400,18 @@ const { applyAiResult, undoEdit } = useEditor()
 const { analyzeVision, insertImageFile } = useEditorVision()
 const { processCitations, previewCitations, getZoteroStatus, searchZotero } = useEditorCitation()
 const { exportToWord, exportLatex, exportPdf, loadExportTemplates, saveBlob } = useEditorIO()
-const { resetMindMap, loadSavedMindMap, saveMindMap, addChild, updateNodeText, updateNodeBody, skipNextBackendLoad } = useMindMap()
+const {
+  resetMindMap,
+  loadSavedMindMap,
+  saveMindMap,
+  addChild,
+  updateNodeText,
+  updateNodeBody,
+  skipNextBackendLoad,
+} = useMindMap()
 const { readFileContent, refresh: refreshFileTree, rootDir } = useFileTree()
 const { sendMessage: sendAgentMessage } = useAgentChat()
+const { requestedEditorWorkspaceMode, setEditorWorkspaceMode } = useAppMode()
 
 // -- Workspace mode -------------------------------------------------------
 const workspaceMode = ref<'editor' | 'mindmap'>('editor')
@@ -225,30 +421,40 @@ const zoteroPromptError = ref('')
 let _contentBeforeMindMap = ''
 const sidebarCollapsed = ref(false)
 const writingSidebarTab = ref<'files' | 'outline'>('files')
-const collapsedSidebarWidth = 44
 const documentView = ref<'body' | 'outline' | 'preview'>('body')
 const rightPanelVisible = ref(true)
 const editorModeOverride = ref<'auto' | 'writing' | 'latex'>('auto')
-const isLatexMode = computed(() => editorModeOverride.value === 'latex'
-  || (editorModeOverride.value === 'auto' && /\.tex$/i.test(activeTab.value?.name || activeTab.value?.path || '')))
-const lineCount = computed(() => content.value ? content.value.split(/\r?\n/).length : 0)
+const isLatexMode = computed(
+  () =>
+    editorModeOverride.value === 'latex' ||
+    (editorModeOverride.value === 'auto' &&
+      /\.tex$/i.test(activeTab.value?.name || activeTab.value?.path || '')),
+)
+const lineCount = computed(() => (content.value ? content.value.split(/\r?\n/).length : 0))
 const wordCount = computed(() => {
   const latin = content.value.match(/[A-Za-z0-9]+/g)?.length || 0
   const chinese = content.value.match(/[\u3400-\u9fff]/g)?.length || 0
   return latin + chinese
 })
-const headerSubtitle = computed(() => t(isLatexMode.value ? 'editor.latexHeaderSubtitle' : 'editor.writingHeaderSubtitle', {
-  status: activeTab.value?.isModified ? t('editor.notSaved') : t('editor.saved'),
-}))
+const headerSubtitle = computed(() =>
+  t(isLatexMode.value ? 'editor.latexHeaderSubtitle' : 'editor.writingHeaderSubtitle', {
+    status: activeTab.value?.isModified ? t('editor.notSaved') : t('editor.saved'),
+  }),
+)
 const documentViewOptions = computed(() => [
   { value: 'body', label: t('editor.body') },
   { value: 'outline', label: t('editor.outline') },
   { value: 'preview', label: t('editor.preview') },
 ])
-watch(workspaceMode, mode => {
-  window.dispatchEvent(new CustomEvent('shell-section-change', { detail: mode === 'mindmap' ? 'mindmap' : 'write' }))
+watch(workspaceMode, (mode) => {
+  setEditorWorkspaceMode(mode)
+  window.dispatchEvent(
+    new CustomEvent('shell-section-change', { detail: mode === 'mindmap' ? 'mindmap' : 'write' }),
+  )
 })
-watch(isLatexMode, () => { documentView.value = 'body' })
+watch(isLatexMode, () => {
+  documentView.value = 'body'
+})
 
 // -- Right panel ----------------------------------------------------------
 type RightTab = 'preview' | 'ai' | 'argument'
@@ -288,13 +494,28 @@ const tectonicAvailable = ref(false)
 const showCompliance = ref(false)
 const complianceLoading = ref(false)
 const complianceError = ref('')
-const complianceReport = ref<Record<string, unknown> | null>(null)
+const complianceReport = ref<ComplianceReport | null>(null)
 
 // -- Template picker / project start -------------------------------------
 const showTemplatePicker = ref(false)
 const showProjectStart = ref(false)
 const showCloseProjectConfirm = ref(false)
-const hasDirtyTabs = computed(() => tabs.value.some(tab => tab.isModified))
+const showCloseDocumentConfirm = ref(false)
+const hasDirtyTabs = computed(() => tabs.value.some((tab) => tab.isModified))
+
+function requestCloseCurrentDocument() {
+  if (!activeTab.value) return
+  if (activeTab.value.isModified) {
+    showCloseDocumentConfirm.value = true
+    return
+  }
+  closeTab(activeTab.value.id)
+}
+
+function performCloseCurrentDocument() {
+  if (activeTab.value) closeTab(activeTab.value.id)
+  showCloseDocumentConfirm.value = false
+}
 
 function requestCloseProject() {
   showCloseProjectConfirm.value = true
@@ -313,18 +534,20 @@ async function performCloseProject() {
 // only when the user actually selects a file via @-mention; it accesses it through
 // the `content` field which we populate lazily via a getter below.
 const workspaceFiles = computed(() =>
-  tabs.value.map(t => {
+  tabs.value.map((t) => {
     const name = t.name || t.path?.split(/[\\/]/).pop() || 'untitled'
     // Expose content as a lazy getter so Vue's reactivity system does not track
     // it as a dependency of this computed — content is large and changes on every
     // edit, but only matters when a user explicitly @-mentions the file.
     const tab = t
     return Object.defineProperty({ name }, 'content', {
-      get() { return tab.content },
+      get() {
+        return tab.content
+      },
       enumerable: true,
       configurable: true,
     }) as { name: string; content?: string }
-  })
+  }),
 )
 
 // -- Event handlers ------------------------------------------------------
@@ -344,7 +567,9 @@ function toggleEditorMode() {
 }
 
 function addSection() {
-  insertTextAtCursor(`${content.value.endsWith('\n') ? '' : '\n'}\n## ${t('editor.newSection')}\n\n`)
+  insertTextAtCursor(
+    `${content.value.endsWith('\n') ? '' : '\n'}\n## ${t('editor.newSection')}\n\n`,
+  )
 }
 
 async function handleSelectionTask(action: string) {
@@ -356,7 +581,10 @@ async function handleSelectionTask(action: string) {
     rightPanelVisible.value = true
   }
   await sendAgentMessage(
-    t('editor.selectionTaskPrompt', { action, target: selection.value.text ? t('editor.selectedText') : t('editor.documentTarget') }),
+    t('editor.selectionTaskPrompt', {
+      action,
+      target: selection.value.text ? t('editor.selectedText') : t('editor.documentTarget'),
+    }),
     target,
     '',
     rootDir.value || undefined,
@@ -366,14 +594,16 @@ async function handleSelectionTask(action: string) {
 
 function handleShellWorkspaceMode(event: Event) {
   const mode = (event as CustomEvent).detail
+  if (mode === 'mindmap' || mode === 'editor') {
+    setEditorWorkspaceMode(mode)
+  }
   if (mode === 'mindmap') {
     if (workspaceMode.value === 'mindmap') {
       sidebarCollapsed.value = true
       return
     }
     openMindMapFromEditor()
-  }
-  else if (mode === 'editor') workspaceMode.value = 'editor'
+  } else if (mode === 'editor') workspaceMode.value = 'editor'
 }
 
 async function openWorkspaceFolder() {
@@ -384,10 +614,16 @@ async function openWorkspaceFolder() {
       // Auto-detect and load project metadata if available
       const isProject = await useProject().detectProject(selected as string)
       if (isProject) {
-        try { await useProject().openProject(selected as string) } catch { /* */ }
+        try {
+          await useProject().openProject(selected as string)
+        } catch {
+          /* */
+        }
       }
     }
-  } catch { /* cancelled */ }
+  } catch {
+    /* cancelled */
+  }
 }
 
 function handleScaffoldCreate(markdown: string, templateId: string) {
@@ -425,16 +661,16 @@ async function handleProjectCreated(path: string) {
   showProjectStart.value = false
   try {
     await _openProjectAndMainMd(path)
-  } catch (e: any) {
-    danger(e.message || t('project.openFailed'))
+  } catch (e) {
+    danger(e instanceof Error ? e.message : t('project.openFailed'))
   }
 }
 
 async function handleOpenRecentProject(path: string) {
   try {
     await _openProjectAndMainMd(path)
-  } catch (e: any) {
-    danger(e.message || t('editor.openRecentFailed'))
+  } catch (e) {
+    danger(e instanceof Error ? e.message : t('editor.openRecentFailed'))
   }
 }
 
@@ -453,7 +689,10 @@ function enterEditorFromMindMap(outline: string) {
   _contentBeforeMindMap = ''
 }
 
-function buildTreeNode(parentId: string, node: import('../composables/useMindMap').MindMapTreeNode) {
+function buildTreeNode(
+  parentId: string,
+  node: import('../composables/useMindMap').MindMapTreeNode,
+) {
   const mm = useMindMap()
   addChild(parentId)
   const nodeId = mm.selectedNodeId.value
@@ -515,58 +754,103 @@ async function handleExportWord() {
     const title = _extractTitle()
     const err = await exportToWord(content.value, title)
     showExportToast(err || t('editor.wordExportStarted'))
-  } catch (e) { showExportToast(t('editor.wordExportFailed', { msg: String(e) }))
-  } finally { exportLoading.value = false }
+  } catch (e) {
+    showExportToast(t('editor.wordExportFailed', { msg: String(e) }))
+  } finally {
+    exportLoading.value = false
+  }
 }
 
 async function handleExportLatex() {
   if (exportLoading.value) return
-  if (!selectedTemplate.value) { showExportToast(t('editor.selectTemplate')); return }
-  if (!content.value.trim()) { showExportToast(t('editor.pleaseInputContent')); return }
+  if (!selectedTemplate.value) {
+    showExportToast(t('editor.selectTemplate'))
+    return
+  }
+  if (!content.value.trim()) {
+    showExportToast(t('editor.pleaseInputContent'))
+    return
+  }
   exportLoading.value = true
   try {
     const { tex, error } = await exportLatex(content.value, selectedTemplate.value)
-    if (error) { showExportToast(error); return }
+    if (error) {
+      showExportToast(error)
+      return
+    }
     if (tex) {
       const title = _extractTitle()
       const blob = new Blob([tex], { type: 'text/x-tex;charset=utf-8' })
       const saveErr = await saveBlob(blob, `${title}.tex`)
-      if (saveErr === 'Cancelled') { showExportToast(t('editor.cancelled')); return }
+      if (saveErr === 'Cancelled') {
+        showExportToast(t('editor.cancelled'))
+        return
+      }
       showExportToast(saveErr || t('editor.latexSaved', 'LaTeX saved'))
-    }
-    else showExportToast(t('editor.conversionEmpty'))
-  } catch (e) { showExportToast(t('editor.exportFailed', { msg: String(e) }))
-  } finally { exportLoading.value = false }
+    } else showExportToast(t('editor.conversionEmpty'))
+  } catch (e) {
+    showExportToast(t('editor.exportFailed', { msg: String(e) }))
+  } finally {
+    exportLoading.value = false
+  }
 }
 
 async function handleExportPdf() {
   if (exportLoading.value) return
-  if (!selectedTemplate.value) { showExportToast(t('editor.selectTemplate')); return }
-  if (!content.value.trim()) { showExportToast(t('editor.pleaseInputContent')); return }
+  if (!selectedTemplate.value) {
+    showExportToast(t('editor.selectTemplate'))
+    return
+  }
+  if (!content.value.trim()) {
+    showExportToast(t('editor.pleaseInputContent'))
+    return
+  }
   if (!tectonicAvailable.value) {
     const { tectonic_available } = await loadExportTemplates()
     tectonicAvailable.value = tectonic_available
-    if (!tectonic_available) { showExportToast(t('editor.installTectonic')); return }
+    if (!tectonic_available) {
+      showExportToast(t('editor.installTectonic'))
+      return
+    }
   }
   exportLoading.value = true
   try {
     const title = _extractTitle()
     const err = await exportPdf(content.value, selectedTemplate.value, title)
-    if (err === 'Cancelled') { showExportToast(t('editor.cancelled')); return }
+    if (err === 'Cancelled') {
+      showExportToast(t('editor.cancelled'))
+      return
+    }
     showExportToast(err || t('editor.pdfSaved'))
-  } catch (e) { showExportToast(t('editor.pdfExportFailed', { msg: String(e) }))
-  } finally { exportLoading.value = false }
+  } catch (e) {
+    showExportToast(t('editor.pdfExportFailed', { msg: String(e) }))
+  } finally {
+    exportLoading.value = false
+  }
 }
 
 async function handleProcessCitations() {
-  if (!content.value.trim()) { showExportToast(t('editor.pleaseInputContent')); return }
+  if (!content.value.trim()) {
+    showExportToast(t('editor.pleaseInputContent'))
+    return
+  }
   try {
     const preview = await previewCitations(content.value)
     const data = await processCitations(content.value, [], 'ieee')
-    if (!data?.text) { showExportToast(t('editor.citationFailed')); return }
-    if (activeTab.value) { setContent(`${data.text}${data.bibliography || ''}`); markDirty() }
-    showExportToast(t('editor.citationCount', { count: preview?.unique_count ?? data.citations?.length ?? 0 }))
-  } catch (e) { showExportToast(t('editor.citationFailedMsg', { msg: String(e) })) }
+    if (!data?.text) {
+      showExportToast(t('editor.citationFailed'))
+      return
+    }
+    if (activeTab.value) {
+      setContent(`${data.text}${data.bibliography || ''}`)
+      markDirty()
+    }
+    showExportToast(
+      t('editor.citationCount', { count: preview?.unique_count ?? data.citations?.length ?? 0 }),
+    )
+  } catch (e) {
+    showExportToast(t('editor.citationFailedMsg', { msg: String(e) }))
+  }
 }
 
 async function handleZoteroInsert() {
@@ -604,25 +888,42 @@ async function handleImageSelected(file: File) {
   try {
     const data = await insertImageFile(file)
     showExportToast(data ? t('editor.imageInserted') : t('editor.imageUploadFailed'))
-  } catch { showExportToast(t('editor.imageUploadFailed')) }
+  } catch {
+    showExportToast(t('editor.imageUploadFailed'))
+  }
 }
 
 async function handleVisionSelected(file: File) {
   try {
     const data = await analyzeVision(file, 'general')
-    if (!data) { showExportToast(t('editor.visionFailed')); return }
-    const findings = data.key_findings?.length ? `\n${t('editor.visionFindings', { findings: data.key_findings.join('; ') })}` : ''
-    const chart = data.chart_type ? `\n${t('editor.visionChartType', { type: data.chart_type })}` : ''
+    if (!data) {
+      showExportToast(t('editor.visionFailed'))
+      return
+    }
+    const findings = data.key_findings?.length
+      ? `\n${t('editor.visionFindings', { findings: data.key_findings.join('; ') })}`
+      : ''
+    const chart = data.chart_type
+      ? `\n${t('editor.visionChartType', { type: data.chart_type })}`
+      : ''
     const table = data.table_data?.length
       ? `\n\n${data.table_data.map((row: string[]) => `| ${row.join(' | ')} |`).join('\n')}`
       : ''
-    insertTextAtCursor(`\n\n> Vision：${data.text || data.raw_description || t('editor.visionNoText')}${chart}${findings}${table}\n`)
+    insertTextAtCursor(
+      `\n\n> Vision：${data.text || data.raw_description || t('editor.visionNoText')}${chart}${findings}${table}\n`,
+    )
     showExportToast(t('editor.visionInserted'))
-  } catch (e) { showExportToast(t('editor.visionFailedMsg', { msg: String(e) })) }
+  } catch (e) {
+    showExportToast(t('editor.visionFailedMsg', { msg: String(e) }))
+  }
 }
 
 async function runComplianceCheck() {
-  if (!content.value.trim()) { complianceError.value = t('editor.editorEmpty'); showCompliance.value = true; return }
+  if (!content.value.trim()) {
+    complianceError.value = t('editor.editorEmpty')
+    showCompliance.value = true
+    return
+  }
   complianceLoading.value = true
   complianceError.value = ''
   complianceReport.value = null
@@ -646,19 +947,31 @@ async function runComplianceCheck() {
     } else {
       complianceError.value = t('editor.llmFormatError')
     }
-  } catch (e) { complianceError.value = t('editor.requestFailed', { msg: String(e) })
-  } finally { complianceLoading.value = false }
+  } catch (e) {
+    complianceError.value = t('editor.requestFailed', { msg: String(e) })
+  } finally {
+    complianceLoading.value = false
+  }
 }
 
-function handleInsert(text: string) { aiResult.value = text; applyAiResult() }
-function handleUndo() { undoEdit() }
+function handleInsert(text: string) {
+  aiResult.value = text
+  applyAiResult()
+}
+function handleUndo() {
+  undoEdit()
+}
 
 const companion = useArgumentCompanion()
 
 // Wire argument companion: setDoc on tab switch, onEditorEdit on content change
-watch(activeTab, (tab) => {
-  if (tab?.docId) companion.setDoc(tab.docId, tab.name)
-}, { immediate: true })
+watch(
+  activeTab,
+  (tab) => {
+    if (tab?.docId) companion.setDoc(tab.docId, tab.name)
+  },
+  { immediate: true },
+)
 
 function onContentChange(value: string) {
   companion.onEditorEdit(value)
@@ -666,14 +979,22 @@ function onContentChange(value: string) {
 function onSelectionChange(_sel: unknown) {}
 
 function insertTable() {
-  const sr = 3, sc = 3
+  const sr = 3,
+    sc = 3
   const header = `| ${Array.from({ length: sc }, (_, i) => `Column ${i + 1}`).join(' | ')} |`
   const sep = `| ${Array.from({ length: sc }, () => '---').join(' | ')} |`
-  const body = Array.from({ length: sr - 1 }, () => `| ${Array.from({ length: sc }, () => '').join(' | ')} |`)
+  const body = Array.from(
+    { length: sr - 1 },
+    () => `| ${Array.from({ length: sc }, () => '').join(' | ')} |`,
+  )
   insertTextAtCursor(`\n${[header, sep, ...body].join('\n')}\n`)
 }
-function insertInlineFormula() { insertTextAtCursor('$ $') }
-function insertBlockFormula() { insertTextAtCursor('\n$$\n\n$$\n') }
+function insertInlineFormula() {
+  insertTextAtCursor('$ $')
+}
+function insertBlockFormula() {
+  insertTextAtCursor('\n$$\n\n$$\n')
+}
 // -- Voice input: in-place replacement, deduplicated by composable --
 let voiceRange: { line: number; col: number; len: number } | null = null
 let lastVoiceText = ''
@@ -698,9 +1019,11 @@ function handleVoiceUpdate(text: string) {
   // text and start a fresh anchor. Only insert the NEW portion so the composable's
   // accumulated text doesn't duplicate what's already in the editor.
   const pos = ed.getPosition()
-  const cursorMoved = pos && (pos.lineNumber !== voiceRange.line ||
-    pos.column < voiceRange.col ||
-    pos.column > voiceRange.col + voiceRange.len + 1)
+  const cursorMoved =
+    pos &&
+    (pos.lineNumber !== voiceRange.line ||
+      pos.column < voiceRange.col ||
+      pos.column > voiceRange.col + voiceRange.len + 1)
 
   if (cursorMoved) {
     const prefix = lastVoiceText.trimEnd()
@@ -715,19 +1038,33 @@ function handleVoiceUpdate(text: string) {
     voiceRange = { line: pos.lineNumber, col: pos.column, len: 0 }
     lastVoiceText = ''
     if (newText) {
-      ed.executeEdits('voice', [{
-        range: new Range(voiceRange.line, voiceRange.col, voiceRange.line, voiceRange.col + voiceRange.len),
-        text: newText,
-      }])
+      ed.executeEdits('voice', [
+        {
+          range: new Range(
+            voiceRange.line,
+            voiceRange.col,
+            voiceRange.line,
+            voiceRange.col + voiceRange.len,
+          ),
+          text: newText,
+        },
+      ])
       voiceRange.len = newText.length
     }
     return
   }
 
-  ed.executeEdits('voice', [{
-    range: new Range(voiceRange.line, voiceRange.col, voiceRange.line, voiceRange.col + voiceRange.len),
-    text,
-  }])
+  ed.executeEdits('voice', [
+    {
+      range: new Range(
+        voiceRange.line,
+        voiceRange.col,
+        voiceRange.line,
+        voiceRange.col + voiceRange.len,
+      ),
+      text,
+    },
+  ])
   voiceRange.len = text.length
   lastVoiceText = text
 }
@@ -740,44 +1077,17 @@ function handleVoiceStop(_text: string) {
 function showExportToast(msg: string) {
   if (exportToastTimer) clearTimeout(exportToastTimer)
   exportMessage.value = msg
-  exportToastTimer = setTimeout(() => { exportMessage.value = '' }, 3000)
-}
-
-// -- Resize ---------------------------------------------------------------
-const sidebarWidth = ref(296)
-const panelWidth = ref(300)
-
-let _resizeAbortController: AbortController | null = null
-
-function startResize(e: MouseEvent, target: 'sidebar' | 'panel') {
-  e.preventDefault()
-  // 取消上一次未完成的 resize，防止快速多次点击导致监听器堆积
-  if (_resizeAbortController) {
-    _resizeAbortController.abort()
-  }
-  _resizeAbortController = new AbortController()
-  const signal = _resizeAbortController.signal
-  const startX = e.clientX
-  const startWidth = target === 'sidebar' ? sidebarWidth.value : panelWidth.value
-  function onMouseMove(e: MouseEvent) {
-    if (target === 'sidebar') {
-      sidebarWidth.value = Math.max(150, Math.min(400, startWidth + e.clientX - startX))
-    } else {
-      panelWidth.value = Math.max(260, Math.min(760, startWidth - (e.clientX - startX)))
-    }
-  }
-  function onMouseUp() {
-    document.removeEventListener('mousemove', onMouseMove)
-    document.removeEventListener('mouseup', onMouseUp)
-    _resizeAbortController = null
-  }
-  document.addEventListener('mousemove', onMouseMove, { signal })
-  document.addEventListener('mouseup', onMouseUp, { signal })
+  exportToastTimer = setTimeout(() => {
+    exportMessage.value = ''
+  }, 3000)
 }
 
 // -- Keyboard -------------------------------------------------------------
 function onKeyDown(e: KeyboardEvent) {
-  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSaveFile() }
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault()
+    handleSaveFile()
+  }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
     e.preventDefault()
     sidebarCollapsed.value = !sidebarCollapsed.value
@@ -805,6 +1115,9 @@ onMounted(() => {
   window.addEventListener('voice-open-folder', handleVoiceOpenFolder)
   window.addEventListener('voice-new-file', handleVoiceNewFile)
   window.addEventListener('voice-save', handleVoiceSave)
+  if (requestedEditorWorkspaceMode.value === 'mindmap') {
+    void openMindMapFromEditor()
+  }
 })
 
 onBeforeUnmount(() => {
@@ -820,7 +1133,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('voice-open-folder', handleVoiceOpenFolder)
   window.removeEventListener('voice-new-file', handleVoiceNewFile)
   window.removeEventListener('voice-save', handleVoiceSave)
-  if (_resizeAbortController) { _resizeAbortController.abort(); _resizeAbortController = null }
 })
 
 function handlePaperScaffold(e: Event) {
@@ -909,7 +1221,7 @@ async function handleAgentFileChange() {
   transform: translateX(-50%) rotate(-90deg);
   transform-origin: center;
   padding: 6px 18px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
   border-radius: 100px;
   background: var(--c-glass);
   backdrop-filter: blur(12px);
@@ -931,8 +1243,8 @@ async function handleAgentFileChange() {
 .sidebar-rail-button:hover {
   color: var(--c-accent);
   background: var(--c-accent-soft);
-  border-color: rgba(91, 108, 255, 0.2);
-  box-shadow: 0 8px 24px rgba(91, 108, 255, 0.15);
+  border-color: rgba(var(--c-accent-rgb), 0.2);
+  box-shadow: 0 8px 24px rgba(var(--c-accent-rgb), 0.15);
   transform: translateX(-50%) rotate(-90deg) translateY(-2px);
 }
 
@@ -958,49 +1270,38 @@ async function handleAgentFileChange() {
   flex-direction: column;
   overflow: hidden;
 }
-.rp-content { flex: 1; min-height: 0; overflow: auto; }
-
-/* -- Resize handle ------------------------------------------ */
-.resize-handle {
-  width: 8px;
-  margin-left: -4px;
-  margin-right: -4px;
-  cursor: col-resize;
-  background: transparent;
-  position: relative;
-  z-index: 10;
-  flex-shrink: 0;
-}
-.resize-handle::after {
-  content: '';
-  position: absolute;
-  top: 0; bottom: 0; left: 50%;
-  width: 1px;
-  background: var(--border-color);
-  transition: all var(--motion-base) var(--ease-out);
-  opacity: 0.3;
-}
-.resize-handle:hover::after,
-.resize-handle:active::after {
-  width: 2px;
-  transform: translateX(-50%);
-  background: var(--c-accent);
-  opacity: 1;
-  box-shadow: 0 0 8px var(--c-accent);
+.rp-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
 /* -- Responsive --------------------------------------------- */
 @media (max-width: 1180px) {
-  .layout-sidebar { width: 220px !important; }
-  .layout-sidebar.collapsed { width: 44px !important; }
-  .layout-panel { max-width: 42vw; }
+  .layout-sidebar {
+    width: 220px !important;
+  }
+  .layout-sidebar.collapsed {
+    width: 44px !important;
+  }
+  .layout-panel {
+    max-width: 42vw;
+  }
 }
 @media (max-width: 980px) {
-  .layout-sidebar, .sidebar-resize { display: none; }
-  .layout-panel { width: min(420px, 46vw) !important; min-width: 320px; }
+  .layout-sidebar,
+  .sidebar-resize {
+    display: none;
+  }
+  .layout-panel {
+    width: min(420px, 46vw) !important;
+    min-width: 320px;
+  }
 }
 @media (max-width: 820px) {
-  .layout-panel-wrapper { display: none; }
+  .layout-panel-wrapper {
+    display: none;
+  }
 }
 
 /* Reference-driven workbench overrides */
@@ -1009,7 +1310,10 @@ async function handleAgentFileChange() {
   background: var(--c-app-bg);
 }
 .editor-layout > :deep(.mindmap-view),
-.editor-layout > :deep(.editor-welcome) { flex: 1; min-height: 0; }
+.editor-layout > :deep(.editor-welcome) {
+  flex: 1;
+  min-height: 0;
+}
 .editor-workbench {
   flex: 1;
   min-height: 0;
@@ -1046,10 +1350,18 @@ async function handleAgentFileChange() {
   font-weight: 500;
   color: var(--c-text-3);
   cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
 }
-.sidebar-tab:hover { color: var(--c-text-1); background: var(--c-surface-2); }
-.sidebar-tab.active { color: var(--c-accent); background: var(--c-accent-soft); }
+.sidebar-tab:hover {
+  color: var(--c-text-1);
+  background: var(--c-surface-2);
+}
+.sidebar-tab.active {
+  color: var(--c-accent);
+  background: var(--c-accent-soft);
+}
 .workbench-center {
   flex: 1;
   min-width: 0;
@@ -1078,11 +1390,27 @@ async function handleAgentFileChange() {
 }
 .editor-surface > :deep(.monaco-wrapper),
 .editor-surface > :deep(.document-preview),
-.editor-surface > :deep(.central-outline) { height: 100%; }
-.document-preview { max-width: none; padding: 42px clamp(28px, 5vw, 80px); overflow: auto; }
-.central-outline { max-width: 760px; margin: 24px auto; border: 1px solid var(--c-border); border-radius: 10px; overflow: hidden; }
-.header-chapter { color: var(--c-text-2); font-size: 12px; }
-.header-action, .header-icon {
+.editor-surface > :deep(.central-outline) {
+  height: 100%;
+}
+.document-preview {
+  max-width: none;
+  padding: 42px clamp(28px, 5vw, 80px);
+  overflow: auto;
+}
+.central-outline {
+  max-width: 760px;
+  margin: 24px auto;
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.header-chapter {
+  color: var(--c-text-2);
+  font-size: 12px;
+}
+.header-action,
+.header-icon {
   height: 36px;
   display: inline-flex;
   align-items: center;
@@ -1093,12 +1421,30 @@ async function handleAgentFileChange() {
   border-radius: 8px;
   background: var(--c-panel);
   color: var(--c-text-1);
-  font: 500 12px/1 var(--font-sans), var(--font-zh);
+  font:
+    500 12px/1 var(--font-sans),
+    var(--font-zh);
   cursor: pointer;
 }
-.header-icon { width: 36px; padding: 0; }
-.header-action:hover, .header-icon:hover { background: var(--c-surface-2); color: var(--c-text-0); }
-.header-action.primary { border-color: var(--c-accent); background: var(--c-accent); color: #fff; }
+.header-icon {
+  width: 36px;
+  padding: 0;
+}
+.header-action:hover,
+.header-icon:hover {
+  background: var(--c-surface-2);
+  color: var(--c-text-0);
+}
+.header-action.primary {
+  border-color: var(--c-accent);
+  background: var(--c-accent);
+  color: #fff;
+}
+.header-action:focus-visible,
+.header-icon:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
 .selection-toolbar {
   position: absolute;
   z-index: 20;
@@ -1112,27 +1458,83 @@ async function handleAgentFileChange() {
   border: 1px solid var(--c-border);
   border-radius: 9px;
   background: var(--c-panel);
-  box-shadow: 0 7px 22px rgba(50, 43, 31, .12);
+  box-shadow: 0 7px 22px rgba(50, 43, 31, 0.12);
 }
-.selection-toolbar button { height: 29px; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; border: 0; border-radius: 6px; background: transparent; color: var(--c-text-1); font-size: 11px; cursor: pointer; }
-.selection-toolbar button:hover { color: var(--c-accent); background: var(--c-accent-soft); }
-.writing-mode :deep(.editor-toolbar), .latex-mode :deep(.editor-toolbar) { flex: 0 0 auto; border-color: var(--c-border); background: var(--c-panel); box-shadow: none; }
-.writing-mode :deep(.editor-tabs) { display: none; }
-.latex-mode :deep(.editor-tabs) { border-color: var(--c-border); background: var(--c-panel); }
+.selection-toolbar button {
+  height: 29px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--c-text-1);
+  font-size: 11px;
+  cursor: pointer;
+}
+.selection-toolbar button:hover {
+  color: var(--c-accent);
+  background: var(--c-accent-soft);
+}
+.selection-toolbar button:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+.writing-mode :deep(.editor-toolbar),
+.latex-mode :deep(.editor-toolbar) {
+  flex: 0 0 auto;
+  border-color: var(--c-border);
+  background: var(--c-panel);
+  box-shadow: none;
+}
+.writing-mode :deep(.editor-tabs) {
+  display: none;
+}
+.latex-mode :deep(.editor-tabs) {
+  border-color: var(--c-border);
+  background: var(--c-panel);
+}
 
 @media (max-width: 1180px) {
-  .workbench-left { width: 208px !important; }
-  .workbench-right { width: 332px !important; min-width: 300px; }
+  .workbench-left {
+    width: 208px !important;
+  }
+  .workbench-right {
+    width: 332px !important;
+    min-width: 300px;
+  }
 }
 @media (max-width: 980px) {
-  .workbench-left { width: 190px !important; }
-  .header-action:not(.primary) { display: none; }
-  .editor-workbench { position: relative; }
-  .workbench-right { position: absolute; z-index: 35; top: 0; right: 0; bottom: 0; width: min(356px, calc(100% - 56px)) !important; box-shadow: var(--elevation-3); }
+  .workbench-left {
+    width: 190px !important;
+  }
+  .header-action:not(.primary) {
+    display: none;
+  }
+  .editor-workbench {
+    position: relative;
+  }
+  .workbench-right {
+    position: absolute;
+    z-index: 35;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(356px, calc(100% - 56px)) !important;
+    box-shadow: var(--elevation-3);
+  }
 }
 @media (max-width: 760px) {
-  .workbench-left { display: none; }
-  .header-action.primary { display: none; }
-  .header-icon { display: none; }
+  .workbench-left {
+    display: none;
+  }
+  .header-action,
+  .header-icon {
+    height: 32px;
+  }
+  .header-icon {
+    width: 32px;
+  }
 }
 </style>

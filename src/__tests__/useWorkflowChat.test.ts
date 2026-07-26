@@ -32,8 +32,26 @@ describe('useAgentChat — workflow isolation', () => {
 
   it('switching workflow changes active messages', () => {
     const messagesByWorkflow = new Map<string, any[]>()
-    messagesByWorkflow.set('wf_x', [{ id: '1', role: 'user', content: 'msg from X', events: [], isStreaming: false, timestamp: 1 }])
-    messagesByWorkflow.set('wf_y', [{ id: '2', role: 'user', content: 'msg from Y', events: [], isStreaming: false, timestamp: 2 }])
+    messagesByWorkflow.set('wf_x', [
+      {
+        id: '1',
+        role: 'user',
+        content: 'msg from X',
+        events: [],
+        isStreaming: false,
+        timestamp: 1,
+      },
+    ])
+    messagesByWorkflow.set('wf_y', [
+      {
+        id: '2',
+        role: 'user',
+        content: 'msg from Y',
+        events: [],
+        isStreaming: false,
+        timestamp: 2,
+      },
+    ])
 
     let activeId = 'wf_x'
     let messages = messagesByWorkflow.get(activeId)!
@@ -70,8 +88,12 @@ describe('useAgentChat — workflow isolation', () => {
 
   it('clear current workflow only removes that one', () => {
     const messagesByWorkflow = new Map<string, any[]>()
-    messagesByWorkflow.set('wf_a', [{ id: '1', role: 'user', content: 'a', events: [], isStreaming: false, timestamp: 1 }])
-    messagesByWorkflow.set('wf_b', [{ id: '2', role: 'user', content: 'b', events: [], isStreaming: false, timestamp: 2 }])
+    messagesByWorkflow.set('wf_a', [
+      { id: '1', role: 'user', content: 'a', events: [], isStreaming: false, timestamp: 1 },
+    ])
+    messagesByWorkflow.set('wf_b', [
+      { id: '2', role: 'user', content: 'b', events: [], isStreaming: false, timestamp: 2 },
+    ])
 
     // Delete only wf_a
     messagesByWorkflow.delete('wf_a')
@@ -104,7 +126,14 @@ describe('useAgentChat — shared between panels', () => {
 
     // AiPanel adds a message
     const msgs = messagesByWorkflow.get(activeId)!
-    msgs.push({ id: '1', role: 'user', content: 'from AiPanel', events: [], isStreaming: false, timestamp: Date.now() })
+    msgs.push({
+      id: '1',
+      role: 'user',
+      content: 'from AiPanel',
+      events: [],
+      isStreaming: false,
+      timestamp: Date.now(),
+    })
 
     expect(messagesByWorkflow.get(activeId)).toHaveLength(1)
     expect(messagesByWorkflow.get(activeId)![0].content).toBe('from AiPanel')

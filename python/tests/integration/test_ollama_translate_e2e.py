@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 def _ollama_reachable() -> bool:
     try:
         import urllib.request
+
         req = urllib.request.Request("http://localhost:11434/api/tags")
         resp = urllib.request.urlopen(req, timeout=5)
         data = json.loads(resp.read())
@@ -48,6 +49,7 @@ needs_ollama = pytest.mark.skipif(
 @pytest.fixture(autouse=True)
 def clear_rate_limit():
     import api_factory as _mod
+
     with _mod._rl_lock:
         _mod._rl_windows.clear()
     yield
@@ -61,6 +63,7 @@ def clear_rate_limit():
 @pytest.fixture(scope="module")
 def client(tmp_path_factory):
     from fastapi.testclient import TestClient
+
     from api_factory import create_app
 
     tmp = tmp_path_factory.mktemp("ollama_e2e")
@@ -180,9 +183,7 @@ class TestOllamaTranslationPipeline:
             "translate.chunked",
         ]
         for r in required:
-            assert r in event_types, (
-                f"Missing required step '{r}' in events: {event_types}"
-            )
+            assert r in event_types, f"Missing required step '{r}' in events: {event_types}"
         assert "translate.complete" in event_types
 
     def test_short_sentence_translation(self, client):

@@ -11,6 +11,7 @@ New features under test:
   6. Pre-tool-use deny short-circuits pipeline
   7. Hook payload structure matches claw-code format
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -25,30 +26,32 @@ from src.agent_v2.hooks import (
     HookEvent,
     HookPoint,
     HookResult,
-    HookRunResult,
     HookRunner,
+    HookRunResult,
 )
-
 
 # ============================================================================
 # 1. HookAbortSignal
 # ============================================================================
 
-class TestHookAbortSignal:
 
+class TestHookAbortSignal:
     def test_initial_state_not_aborted(self):
         from src.agent_v2.hooks import HookAbortSignal
+
         signal = HookAbortSignal()
         assert not signal.is_aborted()
 
     def test_abort_sets_flag(self):
         from src.agent_v2.hooks import HookAbortSignal
+
         signal = HookAbortSignal()
         signal.abort()
         assert signal.is_aborted()
 
     def test_abort_is_idempotent(self):
         from src.agent_v2.hooks import HookAbortSignal
+
         signal = HookAbortSignal()
         signal.abort()
         signal.abort()
@@ -56,6 +59,7 @@ class TestHookAbortSignal:
 
     def test_multiple_signals_independent(self):
         from src.agent_v2.hooks import HookAbortSignal
+
         s1 = HookAbortSignal()
         s2 = HookAbortSignal()
         s1.abort()
@@ -89,7 +93,9 @@ class TestHookAbortSignal:
             await asyncio.sleep(0.05)
             return HookResult(decision=HookDecision.ALLOW)
 
-        runner.register_callable("cancellable", HookPoint.PRE_TOOL_USE, cancellable_hook, priority=10)
+        runner.register_callable(
+            "cancellable", HookPoint.PRE_TOOL_USE, cancellable_hook, priority=10
+        )
 
         async def run_and_abort():
             await asyncio.sleep(0.01)
@@ -109,8 +115,8 @@ class TestHookAbortSignal:
 # 2. HookProgressReporter
 # ============================================================================
 
-class TestHookProgressReporter:
 
+class TestHookProgressReporter:
     @pytest.mark.asyncio
     async def test_reports_started_and_completed(self):
         events_log = []
@@ -120,9 +126,12 @@ class TestHookProgressReporter:
                 events_log.append(event)
 
         runner = HookRunner()
-        runner.register_callable("h1", HookPoint.PRE_TOOL_USE,
-                                  lambda e: HookResult(decision=HookDecision.ALLOW),
-                                  priority=10)
+        runner.register_callable(
+            "h1",
+            HookPoint.PRE_TOOL_USE,
+            lambda e: HookResult(decision=HookDecision.ALLOW),
+            priority=10,
+        )
         event = HookEvent(hook=HookPoint.PRE_TOOL_USE, tool_name="test")
         reporter = MyReporter()
         result = await runner.run(HookPoint.PRE_TOOL_USE, event, reporter=reporter)
@@ -141,12 +150,16 @@ class TestHookProgressReporter:
         runner = HookRunner()
         signal = runner.create_abort_signal()
         signal.abort()
-        runner.register_callable("h1", HookPoint.PRE_TOOL_USE,
-                                  lambda e: HookResult(decision=HookDecision.ALLOW),
-                                  priority=10)
+        runner.register_callable(
+            "h1",
+            HookPoint.PRE_TOOL_USE,
+            lambda e: HookResult(decision=HookDecision.ALLOW),
+            priority=10,
+        )
         event = HookEvent(hook=HookPoint.PRE_TOOL_USE, tool_name="test")
-        result = await runner.run(HookPoint.PRE_TOOL_USE, event,
-                                   abort_signal=signal, reporter=MyReporter())
+        result = await runner.run(
+            HookPoint.PRE_TOOL_USE, event, abort_signal=signal, reporter=MyReporter()
+        )
         # Cancelled event should be reported
         cancel_events = [e for e in events_log if e.get("type") == "cancelled"]
         assert len(cancel_events) >= 1
@@ -156,8 +169,8 @@ class TestHookProgressReporter:
 # 3. HookRunResult — updated_input, permission_override
 # ============================================================================
 
-class TestHookRunResult:
 
+class TestHookRunResult:
     def test_basic_result(self):
         result = HookRunResult(decision=HookDecision.ALLOW)
         assert result.is_allowed
@@ -189,8 +202,8 @@ class TestHookRunResult:
 # 4. Callable hook returns updated_input
 # ============================================================================
 
-class TestHookUpdatedInput:
 
+class TestHookUpdatedInput:
     @pytest.mark.asyncio
     async def test_hook_can_modify_tool_input(self):
         runner = HookRunner()
@@ -206,8 +219,11 @@ class TestHookUpdatedInput:
             return HookResult(decision=HookDecision.ALLOW)
 
         runner.register_callable("rewrite", HookPoint.PRE_TOOL_USE, rewrite_path, priority=10)
-        event = HookEvent(hook=HookPoint.PRE_TOOL_USE, tool_name="write_file",
-                          tool_input='{"file_path": "../../../etc/passwd"}')
+        event = HookEvent(
+            hook=HookPoint.PRE_TOOL_USE,
+            tool_name="write_file",
+            tool_input='{"file_path": "../../../etc/passwd"}',
+        )
         result = await runner.run(HookPoint.PRE_TOOL_USE, event)
         assert result.updated_input is not None
         modified = json.loads(result.updated_input)
@@ -231,8 +247,8 @@ class TestHookUpdatedInput:
 # 5. Callable hook returns permission_override
 # ============================================================================
 
-class TestHookPermissionOverride:
 
+class TestHookPermissionOverride:
     @pytest.mark.asyncio
     async def test_hook_can_override_to_ask(self):
         runner = HookRunner()
@@ -271,6 +287,7 @@ class TestHookPermissionOverride:
 # 6. Shell hook JSON stdout parsing
 # ============================================================================
 
+
 class TestShellHookJsonParsing:
     """Test that shell hooks can return JSON to control behavior."""
 
@@ -278,9 +295,12 @@ class TestShellHookJsonParsing:
     async def test_shell_hook_json_deny(self):
         """Shell hook returns exit code 2 or JSON with decision=block → deny."""
         runner = HookRunner()
-        script = f'echo {json.dumps({"decision": "block", "reason": "forbidden"})}'
-        runner.register(HookDefinition(name="block", hook_point=HookPoint.PRE_TOOL_USE,
-                                        command=script, priority=10))
+        script = f"echo {json.dumps({'decision': 'block', 'reason': 'forbidden'})}"
+        runner.register(
+            HookDefinition(
+                name="block", hook_point=HookPoint.PRE_TOOL_USE, command=script, priority=10
+            )
+        )
         event = HookEvent(hook=HookPoint.PRE_TOOL_USE, tool_name="test")
         result = await runner.run(HookPoint.PRE_TOOL_USE, event)
         # Shell hook executed, parsed JSON
@@ -289,16 +309,27 @@ class TestShellHookJsonParsing:
     @pytest.mark.asyncio
     async def test_shell_hook_json_updated_input(self):
         runner = HookRunner()
-        output = json.dumps({
-            "hookSpecificOutput": {
-                "updatedInput": {"file_path": "safe.md"},
+        output = json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "updatedInput": {"file_path": "safe.md"},
+                }
             }
-        })
-        script = f'echo {json.dumps(output)}'
-        runner.register(HookDefinition(name="rewrite", hook_point=HookPoint.PRE_TOOL_USE,
-                                        command=f'echo {output}', priority=10))
-        event = HookEvent(hook=HookPoint.PRE_TOOL_USE, tool_name="write_file",
-                          tool_input='{"file_path": "../evil.md"}')
+        )
+        script = f"echo {json.dumps(output)}"
+        runner.register(
+            HookDefinition(
+                name="rewrite",
+                hook_point=HookPoint.PRE_TOOL_USE,
+                command=f"echo {output}",
+                priority=10,
+            )
+        )
+        event = HookEvent(
+            hook=HookPoint.PRE_TOOL_USE,
+            tool_name="write_file",
+            tool_input='{"file_path": "../evil.md"}',
+        )
         result = await runner.run(HookPoint.PRE_TOOL_USE, event)
         assert result.updated_input is not None
 
@@ -306,8 +337,11 @@ class TestShellHookJsonParsing:
     async def test_shell_hook_exit_code_2_denies(self):
         """Exit code 2 means deny (claw-code convention)."""
         runner = HookRunner()
-        runner.register(HookDefinition(name="deny2", hook_point=HookPoint.PRE_TOOL_USE,
-                                        command="exit 2", priority=10))
+        runner.register(
+            HookDefinition(
+                name="deny2", hook_point=HookPoint.PRE_TOOL_USE, command="exit 2", priority=10
+            )
+        )
         event = HookEvent(hook=HookPoint.PRE_TOOL_USE, tool_name="test")
         result = await runner.run(HookPoint.PRE_TOOL_USE, event)
         assert result.decision == HookDecision.DENY
@@ -316,8 +350,11 @@ class TestShellHookJsonParsing:
     async def test_shell_hook_exit_code_3_ask(self):
         """Exit code 3 means ask (claw-code convention)."""
         runner = HookRunner()
-        runner.register(HookDefinition(name="ask3", hook_point=HookPoint.PRE_TOOL_USE,
-                                        command="exit 3", priority=10))
+        runner.register(
+            HookDefinition(
+                name="ask3", hook_point=HookPoint.PRE_TOOL_USE, command="exit 3", priority=10
+            )
+        )
         event = HookEvent(hook=HookPoint.PRE_TOOL_USE, tool_name="test")
         result = await runner.run(HookPoint.PRE_TOOL_USE, event)
         assert result.decision == HookDecision.ASK
@@ -325,14 +362,22 @@ class TestShellHookJsonParsing:
     @pytest.mark.asyncio
     async def test_shell_hook_json_permission_decision(self):
         runner = HookRunner()
-        output = json.dumps({
-            "hookSpecificOutput": {
-                "permissionDecision": "ask",
-                "permissionDecisionReason": "confirm before deletion",
+        output = json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "permissionDecision": "ask",
+                    "permissionDecisionReason": "confirm before deletion",
+                }
             }
-        })
-        runner.register(HookDefinition(name="perm", hook_point=HookPoint.PRE_TOOL_USE,
-                                        command=f'echo {output}', priority=10))
+        )
+        runner.register(
+            HookDefinition(
+                name="perm",
+                hook_point=HookPoint.PRE_TOOL_USE,
+                command=f"echo {output}",
+                priority=10,
+            )
+        )
         event = HookEvent(hook=HookPoint.PRE_TOOL_USE, tool_name="run_command")
         result = await runner.run(HookPoint.PRE_TOOL_USE, event)
         assert result.permission_override == "ask"
@@ -342,8 +387,14 @@ class TestShellHookJsonParsing:
         """Exit code 0 + JSON with continue:false → deny."""
         runner = HookRunner()
         output = json.dumps({"continue": False, "reason": "policy violation"})
-        runner.register(HookDefinition(name="block_json", hook_point=HookPoint.PRE_TOOL_USE,
-                                        command=f'echo {output}', priority=10))
+        runner.register(
+            HookDefinition(
+                name="block_json",
+                hook_point=HookPoint.PRE_TOOL_USE,
+                command=f"echo {output}",
+                priority=10,
+            )
+        )
         event = HookEvent(hook=HookPoint.PRE_TOOL_USE, tool_name="test")
         result = await runner.run(HookPoint.PRE_TOOL_USE, event)
         assert result.decision == HookDecision.DENY
@@ -352,8 +403,14 @@ class TestShellHookJsonParsing:
     async def test_shell_hook_non_json_stdout_just_message(self):
         """Non-JSON stdout is treated as a plain message."""
         runner = HookRunner()
-        runner.register(HookDefinition(name="msg", hook_point=HookPoint.POST_TOOL_USE,
-                                        command="echo 'operation logged'", priority=10))
+        runner.register(
+            HookDefinition(
+                name="msg",
+                hook_point=HookPoint.POST_TOOL_USE,
+                command="echo 'operation logged'",
+                priority=10,
+            )
+        )
         event = HookEvent(hook=HookPoint.POST_TOOL_USE, tool_name="test")
         result = await runner.run(HookPoint.POST_TOOL_USE, event)
         assert result.decision == HookDecision.ALLOW
@@ -364,8 +421,8 @@ class TestShellHookJsonParsing:
 # 7. Hook payload structure
 # ============================================================================
 
-class TestHookPayload:
 
+class TestHookPayload:
     @pytest.mark.asyncio
     async def test_payload_contains_expected_fields(self):
         """Callable hook receives event with correct fields."""
@@ -381,8 +438,13 @@ class TestHookPayload:
 
         runner = HookRunner()
         runner.register_callable("cap", HookPoint.POST_TOOL_USE, capture, priority=10)
-        event = HookEvent(hook=HookPoint.POST_TOOL_USE, tool_name="read_file",
-                          tool_input='{"file_path": "a.md"}', tool_result="content", is_error=False)
+        event = HookEvent(
+            hook=HookPoint.POST_TOOL_USE,
+            tool_name="read_file",
+            tool_input='{"file_path": "a.md"}',
+            tool_result="content",
+            is_error=False,
+        )
         await runner.run(HookPoint.POST_TOOL_USE, event)
         assert received["tool_name"] == "read_file"
         assert received["tool_input"] == '{"file_path": "a.md"}'

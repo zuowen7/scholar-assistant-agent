@@ -8,7 +8,9 @@
         @click="fetchSessions"
         :disabled="loading"
         :title="t('agent.refreshSessions')"
-      >↻</button>
+      >
+        ↻
+      </button>
     </div>
 
     <!-- Loading skeleton -->
@@ -44,11 +46,15 @@
           <span class="session-badge" :class="stateClass(s.state)">{{ stateLabel(s.state) }}</span>
         </div>
         <div class="session-meta">
-          <span v-if="s.tasks_total > 0">{{ t('agent.taskCount', { done: s.tasks_done, total: s.tasks_total }) }}</span>
+          <span v-if="s.tasks_total > 0">{{
+            t('agent.taskCount', { done: s.tasks_done, total: s.tasks_total })
+          }}</span>
           <span v-else>{{ t('agent.messageCount', { count: s.messages || 0 }) }}</span>
           <span v-if="s.updated_at" class="session-time">{{ formatTime(s.updated_at) }}</span>
         </div>
-        <span class="session-resume-hint">{{ isResumable(s) ? t('agent.resume') : t('agent.viewSession') }}</span>
+        <span class="session-resume-hint">{{
+          isResumable(s) ? t('agent.resume') : t('agent.viewSession')
+        }}</span>
       </div>
     </TransitionGroup>
   </div>
@@ -155,24 +161,48 @@ defineExpose({ fetchSessions })
   background: var(--c-panel);
   z-index: 2;
 }
-.header-title { font-size: var(--text-sm); letter-spacing: 0.02em; }
+.header-title {
+  font-size: var(--text-sm);
+  letter-spacing: 0.02em;
+}
 .refresh-btn {
   background: transparent;
   border: 1px solid transparent;
   cursor: pointer;
   font-size: 16px;
-  width: 28px; height: 28px;
-  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: var(--radius-sm);
   color: var(--c-text-2);
 }
-.refresh-btn:hover:not(:disabled) { color: var(--c-accent); background: var(--c-accent-soft); }
-.refresh-btn:focus-visible { outline: none; box-shadow: var(--ring-focus); }
-.refresh-btn:disabled { cursor: default; color: var(--c-text-3); }
-.refresh-btn.spinning { animation: refresh-spin 0.8s linear infinite; }
-@keyframes refresh-spin { to { transform: rotate(360deg); } }
+.refresh-btn:hover:not(:disabled) {
+  color: var(--c-accent);
+  background: var(--c-accent-soft);
+}
+.refresh-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+.refresh-btn:disabled {
+  cursor: default;
+  color: var(--c-text-3);
+}
+.refresh-btn.spinning {
+  animation: refresh-spin 0.8s linear infinite;
+}
+@keyframes refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 
-.session-items { display: flex; flex-direction: column; }
+.session-items {
+  display: flex;
+  flex-direction: column;
+}
 
 .session-item {
   position: relative;
@@ -182,14 +212,23 @@ defineExpose({ fetchSessions })
   color: var(--c-text-1);
   border-left: 2px solid transparent;
 }
-.session-item.openable { cursor: pointer; }
+.session-item.openable {
+  cursor: pointer;
+}
 .session-item.openable:hover {
   background: var(--c-surface-2);
   border-left-color: var(--c-accent);
 }
 .session-item.openable:hover .session-resume-hint,
-.session-item.openable:focus-visible .session-resume-hint { opacity: 1; transform: translateX(0); }
-.session-item:focus-visible { outline: none; box-shadow: var(--ring-focus); border-radius: var(--radius-sm); }
+.session-item.openable:focus-visible .session-resume-hint {
+  opacity: 1;
+  transform: translateX(0);
+}
+.session-item:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+  border-radius: var(--radius-sm);
+}
 
 .session-main {
   display: flex;
@@ -212,18 +251,36 @@ defineExpose({ fetchSessions })
   white-space: nowrap;
   font-weight: 600;
 }
-.session-badge.done { background: var(--c-success-bg); color: var(--c-success); }
-.session-badge.aborted { background: var(--c-danger-bg); color: var(--c-danger); }
-.session-badge.persisted { background: var(--c-surface-2); color: var(--c-text-2); }
+.session-badge.done {
+  background: var(--c-success-bg);
+  color: var(--c-success);
+}
+.session-badge.aborted {
+  background: var(--c-danger-bg);
+  color: var(--c-danger);
+}
+.session-badge.persisted {
+  background: var(--c-surface-2);
+  color: var(--c-text-2);
+}
 .session-badge.executing {
-  background: var(--c-info-bg); color: var(--c-info);
+  background: var(--c-info-bg);
+  color: var(--c-info);
   animation: badge-pulse 1.6s ease-in-out infinite;
 }
 @keyframes badge-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.55; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
 }
-.session-badge.idle { background: var(--c-warn-bg); color: var(--c-warn); }
+.session-badge.idle {
+  background: var(--c-warn-bg);
+  color: var(--c-warn);
+}
 .session-meta {
   display: flex;
   justify-content: space-between;
@@ -241,33 +298,57 @@ defineExpose({ fetchSessions })
   font-weight: 600;
   opacity: 0;
   transform: translateX(-4px);
-  transition: opacity var(--motion-base) var(--ease-out), transform var(--motion-base) var(--ease-out);
+  transition:
+    opacity var(--motion-base) var(--ease-out),
+    transform var(--motion-base) var(--ease-out);
   pointer-events: none;
 }
 
 /* Skeletons */
-.session-skeletons { display: flex; flex-direction: column; }
+.session-skeletons {
+  display: flex;
+  flex-direction: column;
+}
 .session-skel-item {
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--c-glass-border);
-  display: flex; flex-direction: column; gap: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   animation: anim-fade-in-up var(--motion-slow) var(--ease-out) both;
   animation-delay: calc(var(--stagger-i, 0) * var(--motion-stagger));
 }
-.skel-row { display: flex; justify-content: space-between; gap: var(--space-2); }
+.skel-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
 
 /* Empty */
 .session-empty {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: var(--space-2);
   padding: var(--space-7) var(--space-4);
   color: var(--c-text-3);
   text-align: center;
 }
-.empty-glyph { font-size: 28px; opacity: 0.6; }
-.session-empty p { font-size: var(--text-sm); margin: 0; }
+.empty-glyph {
+  font-size: 28px;
+  opacity: 0.6;
+}
+.session-empty p {
+  font-size: var(--text-sm);
+  margin: 0;
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .refresh-btn.spinning, .session-badge.executing, .session-skel-item { animation: none; }
+  .refresh-btn.spinning,
+  .session-badge.executing,
+  .session-skel-item {
+    animation: none;
+  }
 }
 </style>

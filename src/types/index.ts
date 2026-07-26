@@ -168,10 +168,23 @@ export interface ProviderPreset {
 // ── Agent / RAG 类型 ────────────────────────────────────────────
 
 export interface AgentEvent {
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'response' | 'error'
-    | 'session_started' | 'task_started' | 'thought' | 'await_approval'
-    | 'approval_received' | 'task_done' | 'warning' | 'done' | 'aborted'
-    | 'pipeline_stage' | 'checkpoint'
+  type:
+    | 'thinking'
+    | 'tool_call'
+    | 'tool_result'
+    | 'response'
+    | 'error'
+    | 'session_started'
+    | 'task_started'
+    | 'thought'
+    | 'await_approval'
+    | 'approval_received'
+    | 'task_done'
+    | 'warning'
+    | 'done'
+    | 'aborted'
+    | 'pipeline_stage'
+    | 'checkpoint'
   content: string
   event_id?: string
   metadata?: {
@@ -300,12 +313,24 @@ export interface Ledger {
 
 export type PointSeverity = 'minor' | 'major' | 'fatal'
 export type PointCategory =
-  | 'motivation' | 'novelty' | 'baseline' | 'ablation' | 'soundness'
-  | 'claim_overreach' | 'missing_related_work' | 'reproducibility'
-  | 'experiment_design' | 'writing_clarity'
-  | 'inconsistency' | 'gap_mismatch' | 'weak_positioning' | 'term_drift' | 'other'
+  | 'motivation'
+  | 'novelty'
+  | 'baseline'
+  | 'ablation'
+  | 'soundness'
+  | 'claim_overreach'
+  | 'missing_related_work'
+  | 'reproducibility'
+  | 'experiment_design'
+  | 'writing_clarity'
+  | 'inconsistency'
+  | 'gap_mismatch'
+  | 'weak_positioning'
+  | 'term_drift'
+  | 'other'
 export type PointStatus = 'open' | 'rebutted' | 'accepted' | 'dismissed'
-export type PointSource = 'llm' | 'ledger_check' | 'coherence_check' | 'rw_check' | 'scoped' | 'imported'
+export type PointSource =
+  'llm' | 'ledger_check' | 'coherence_check' | 'rw_check' | 'scoped' | 'imported'
 
 export interface RebuttalTurn {
   id: string
@@ -355,12 +380,12 @@ export interface ReviewSummary {
 // ── 编辑器 / Scholar Cursor 类型 ─────────────────────────────────
 
 export interface EditorTab {
-  id: string        // unique per open file (path as id)
-  path: string | null  // null = untitled
+  id: string // unique per open file (path as id)
+  path: string | null // null = untitled
   name: string
   content: string
   isModified: boolean
-  docId: string     // stable id for argument companion keying
+  docId: string // stable id for argument companion keying
 }
 
 export interface FileEntry {
@@ -417,4 +442,57 @@ export interface ProjectTemplate {
   id: string
   name: string
   folders: string[]
+}
+
+// ── Compliance report (editor compliance check) ───────────────
+// LLM 返回的合规检查报告。后端字段为 snake_case，与 python/routers/editor.py
+// 的 /api/compliance 响应保持一致。issue/flag/term 可能是纯字符串或带
+// detail/text 的对象，因此用联合类型兜底。
+
+/** 合规报告中可能出现的问题条目：字符串或结构化对象 */
+export type ComplianceIssue = string | { detail?: string; text?: string }
+
+export interface ComplianceSummary {
+  compliance_score: number
+  overall_status: 'pass' | 'warning' | 'fail' | 'unknown'
+  total_words: number
+  total_characters: number
+}
+
+export interface ComplianceStructure {
+  required_sections?: Record<string, ComplianceIssue> | null
+  issues?: ComplianceIssue[]
+}
+
+export interface ComplianceTerminology {
+  consistent_terms?: string[]
+  inconsistent_terms?: (string | { term?: string })[]
+  issues?: ComplianceIssue[]
+}
+
+export interface ComplianceCitation {
+  total_citations?: number
+  format_issues?: ComplianceIssue[]
+  issues?: ComplianceIssue[]
+}
+
+export interface ComplianceHallucinationRisk {
+  risk_level?: 'low' | 'medium' | 'high' | 'unknown'
+  flags?: ComplianceIssue[]
+  issues?: ComplianceIssue[]
+}
+
+export interface ComplianceReadability {
+  avg_sentence_length?: number
+  long_sentences?: (string | { text?: string })[]
+  issues?: ComplianceIssue[]
+}
+
+export interface ComplianceReport {
+  summary?: ComplianceSummary
+  structure?: ComplianceStructure
+  terminology?: ComplianceTerminology
+  citation?: ComplianceCitation
+  hallucination_risk?: ComplianceHallucinationRisk
+  readability?: ComplianceReadability
 }

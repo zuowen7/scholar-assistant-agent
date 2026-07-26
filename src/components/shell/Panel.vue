@@ -19,6 +19,10 @@ withDefaults(defineProps<{ padded?: boolean; scrollable?: boolean }>(), {
   border-radius: var(--radius-lg);
   background: var(--c-panel);
 }
-.padded { padding: 16px; }
-.scrollable { overflow: auto; }
+.padded {
+  padding: 16px;
+}
+.scrollable {
+  overflow: auto;
+}
 </style>

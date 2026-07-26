@@ -8,18 +8,19 @@
   - lifecycle phases: NotStarted → Initializing → Ready → Failed/Shutdown
   - required vs optional servers
 """
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum, auto
-from pathlib import Path
+from enum import Enum
 from typing import Any
 
-from src.agent_v2.types import ToolDefinition, ToolError
+from src.agent_v2.types import ToolDefinition
 
 logger = logging.getLogger(__name__)
 
@@ -96,18 +97,25 @@ class McpManager:
             )
             state.process = process
             # Initialize handshake
-            await self._send_jsonrpc(state, "initialize", {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "scholar-assistant", "version": "0.3.6"},
-            })
+            await self._send_jsonrpc(
+                state,
+                "initialize",
+                {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "scholar-assistant", "version": "0.3.6"},
+                },
+            )
             # Send initialized notification
             await self._send_notification(state, "notifications/initialized")
             # Discover tools
             tools_result = await self._send_jsonrpc(state, "tools/list", {})
             state.tools = [
-                ToolDefinition(name=t["name"], description=t.get("description", ""),
-                               input_schema=t.get("inputSchema", {}))
+                ToolDefinition(
+                    name=t["name"],
+                    description=t.get("description", ""),
+                    input_schema=t.get("inputSchema", {}),
+                )
                 for t in tools_result.get("tools", [])
             ]
             state.lifecycle = McpLifecycleState.READY
@@ -153,8 +161,10 @@ class McpManager:
         await state.process.stdin.drain()
         # Read response
         try:
-            line = await asyncio.wait_for(state.process.stdout.readline(), timeout=state.config.timeout_seconds)
-        except asyncio.TimeoutError:
+            line = await asyncio.wait_for(
+                state.process.stdout.readline(), timeout=state.config.timeout_seconds
+            )
+        except TimeoutError:
             raise McpError(f"timeout waiting for response from '{state.config.name}'")
         if not line:
             raise McpError(f"server '{state.config.name}' closed stdout")
@@ -185,10 +195,14 @@ class McpManager:
                 continue
             if any(t.name == tool_name for t in state.tools):
                 try:
-                    result = await self._send_jsonrpc(state, "tools/call", {
-                        "name": tool_name,
-                        "arguments": arguments,
-                    })
+                    result = await self._send_jsonrpc(
+                        state,
+                        "tools/call",
+                        {
+                            "name": tool_name,
+                            "arguments": arguments,
+                        },
+                    )
                     contents = result.get("content", [])
                     texts = [c.get("text", "") for c in contents if c.get("type") == "text"]
                     return "\n".join(texts) if texts else json.dumps(result)

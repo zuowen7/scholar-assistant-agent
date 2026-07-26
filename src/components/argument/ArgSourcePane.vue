@@ -8,29 +8,51 @@
           class="source-btn"
           :class="{ active: state.source.mode === 'translation' }"
           @click="doLoadTranslation"
-        >{{ t('argument.fromTranslation') }}</button>
+        >
+          {{ t('argument.fromTranslation') }}
+        </button>
         <button
           class="source-btn"
           :class="{ active: state.source.mode === 'editor' }"
           @click="doLoadEditor"
-        >{{ t('argument.fromEditor') }}</button>
+        >
+          {{ t('argument.fromEditor') }}
+        </button>
         <button
           class="source-btn"
           :class="{ active: state.source.mode === 'paste' && state.source.text }"
           @click="showPaste = !showPaste"
-        >{{ t('argument.pasteText') }}</button>
+        >
+          {{ t('argument.pasteText') }}
+        </button>
       </div>
       <button
         v-if="state.source.mode === 'translation'"
         class="source-side-toggle"
-        :title="state.source.side === 'trans' ? t('argument.switchDisplay') : t('argument.switchDisplayTrans')"
+        :title="
+          state.source.side === 'trans'
+            ? t('argument.switchDisplay')
+            : t('argument.switchDisplayTrans')
+        "
         @click="toggleSide"
-      >{{ state.source.side === 'trans' ? t('argument.translation') + ' ⇄' : t('argument.original') + ' ⇄' }}</button>
+      >
+        {{
+          state.source.side === 'trans'
+            ? t('argument.translation') + ' ⇄'
+            : t('argument.original') + ' ⇄'
+        }}
+      </button>
       <button
         class="extract-btn"
         :class="{ 'is-extracting': state.extracting }"
         :disabled="!hasContent || !state.graph || state.extracting"
-        :title="!state.graph ? t('argument.extractHint') : !hasContent ? t('argument.extractHintNoContent') : t('argument.extractTooltipFull')"
+        :title="
+          !state.graph
+            ? t('argument.extractHint')
+            : !hasContent
+              ? t('argument.extractHintNoContent')
+              : t('argument.extractTooltipFull')
+        "
         @click="doExtract"
       >
         <span v-if="state.extracting" class="extract-spinner"></span>
@@ -48,8 +70,12 @@
         @keydown.enter.ctrl.prevent="confirmPaste"
       />
       <div class="paste-actions">
-        <button class="paste-btn paste-btn--primary" @click="confirmPaste">{{ t('argument.confirm') }}</button>
-        <button class="paste-btn" @click="showPaste = false">{{ t('argument.cancelPaste') }}</button>
+        <button class="paste-btn paste-btn--primary" @click="confirmPaste">
+          {{ t('argument.confirm') }}
+        </button>
+        <button class="paste-btn" @click="showPaste = false">
+          {{ t('argument.cancelPaste') }}
+        </button>
       </div>
     </div>
 
@@ -62,11 +88,7 @@
         {{ t('argument.sourceHint2') }}
       </div>
 
-      <div
-        v-for="block in renderedBlocks"
-        :key="block.id"
-        class="source-block"
-      >
+      <div v-for="block in renderedBlocks" :key="block.id" class="source-block">
         <span
           v-for="sent in block.sentences"
           :key="`${sent.blockId}:${sent.sentIdx}`"
@@ -79,7 +101,8 @@
           :data-sent-idx="sent.sentIdx"
           :data-side="state.source.side"
           @click.stop="onSentenceClick(sent, $event)"
-        >{{ sent.text }}</span>
+          >{{ sent.text }}</span
+        >
       </div>
     </div>
 
@@ -91,13 +114,18 @@
         :style="{ left: bindPopup.x + 'px', top: bindPopup.y + 'px' }"
         @click.stop
       >
-        <div class="bind-quote">「{{ bindPopup.sentence?.text?.slice(0, 50) }}{{ (bindPopup.sentence?.text?.length ?? 0) > 50 ? '…' : '' }}」</div>
+        <div class="bind-quote">
+          「{{ bindPopup.sentence?.text?.slice(0, 50)
+          }}{{ (bindPopup.sentence?.text?.length ?? 0) > 50 ? '…' : '' }}」
+        </div>
         <div class="bind-actions">
           <button
             v-if="state.selectedNodeId"
             class="bind-btn bind-btn--primary"
             @click="bindToCurrentNode"
-          >{{ t('argument.bindToCurrent') }}</button>
+          >
+            {{ t('argument.bindToCurrent') }}
+          </button>
           <div class="bind-sep">{{ t('argument.orCreateNew') }}</div>
           <div class="bind-new-btns">
             <button
@@ -106,9 +134,13 @@
               class="bind-btn"
               :class="`type-${nt.value}`"
               @click="bindAndCreate(nt.value)"
-            >{{ nt.label }}</button>
+            >
+              {{ nt.label }}
+            </button>
           </div>
-          <button class="bind-btn bind-btn--cancel" @click="bindPopup.visible = false">{{ t('argument.cancelPaste') }}</button>
+          <button class="bind-btn bind-btn--cancel" @click="bindPopup.visible = false">
+            {{ t('argument.cancelPaste') }}
+          </button>
         </div>
       </div>
     </Teleport>
@@ -141,8 +173,12 @@ async function doExtract() {
 const showPaste = ref(false)
 const pasteText = ref('')
 
-function doLoadTranslation() { loadSourceFromTranslation() }
-function doLoadEditor() { loadSourceFromEditor() }
+function doLoadTranslation() {
+  loadSourceFromTranslation()
+}
+function doLoadEditor() {
+  loadSourceFromEditor()
+}
 
 function confirmPaste() {
   if (pasteText.value.trim()) setPastedSource(pasteText.value.trim())
@@ -178,37 +214,56 @@ const renderedBlocks = computed<RenderedBlock[]>(() => {
   const src = state.source
   if (src.mode === 'translation' && src.blocks.length) {
     return src.blocks
-      .filter(b => b.translatable)
-      .map(block => {
-        const text = src.side === 'trans' ? (block.translated || block.original) : (block.original || block.translated)
+      .filter((b) => b.translatable)
+      .map((block) => {
+        const text =
+          src.side === 'trans'
+            ? block.translated || block.original
+            : block.original || block.translated
         const sentences = splitSentences(text || '', detectLang(text || ''))
         return {
           id: block.id,
           sentences: sentences.map((s, idx) => ({
-            text: s.text, blockId: block.id, sentIdx: idx, charStart: s.start, charEnd: s.end,
+            text: s.text,
+            blockId: block.id,
+            sentIdx: idx,
+            charStart: s.start,
+            charEnd: s.end,
           })),
         }
       })
   }
   if ((src.mode === 'paste' || src.mode === 'editor') && src.text) {
     const sentences = splitSentences(src.text, detectLang(src.text))
-    return [{
-      id: '_virtual_',
-      sentences: sentences.map((s, idx) => ({
-        text: s.text, blockId: '_virtual_', sentIdx: idx, charStart: s.start, charEnd: s.end,
-      })),
-    }]
+    return [
+      {
+        id: '_virtual_',
+        sentences: sentences.map((s, idx) => ({
+          text: s.text,
+          blockId: '_virtual_',
+          sentIdx: idx,
+          charStart: s.start,
+          charEnd: s.end,
+        })),
+      },
+    ]
   }
   return []
 })
 
-const hasContent = computed(() => renderedBlocks.value.some(b => b.sentences.length > 0))
+const hasContent = computed(() => renderedBlocks.value.some((b) => b.sentences.length > 0))
 
 // ── Span ↔ sentence mapping ────────────────────────────────────────────────────
 
 function _matchSpanToSentences(
   map: Map<string, { nodeId: string; spanId: string }>,
-  span: { node_id: string; id: string; char_start?: number | null; char_end?: number | null; quote?: string },
+  span: {
+    node_id: string
+    id: string
+    char_start?: number | null
+    char_end?: number | null
+    quote?: string
+  },
   text: string,
   blockId: string,
 ) {
@@ -236,17 +291,16 @@ const spanSentenceMap = computed(() => {
 
   // Determine the default block ID for spans without block_id (from extraction)
   const defaultBlockId =
-    state.source.mode === 'paste' || state.source.mode === 'editor'
-      ? '_virtual_'
-      : null
+    state.source.mode === 'paste' || state.source.mode === 'editor' ? '_virtual_' : null
 
   for (const span of state.graph.spans) {
     if (span.block_id) {
-      const block = state.source.blocks.find(b => b.id === span.block_id)
+      const block = state.source.blocks.find((b) => b.id === span.block_id)
       if (!block) continue
-      const text = state.source.side === 'trans'
-        ? (block.translated || block.original)
-        : (block.original || block.translated)
+      const text =
+        state.source.side === 'trans'
+          ? block.translated || block.original
+          : block.original || block.translated
       if (!text) continue
       _matchSpanToSentences(map, span, text, span.block_id)
     } else if (defaultBlockId && state.source.text) {
@@ -345,7 +399,9 @@ async function bindAndCreate(nodeType: NodeType) {
 }
 
 // Close popup on outside click
-function onDocClick() { bindPopup.visible = false }
+function onDocClick() {
+  bindPopup.visible = false
+}
 onMounted(() => document.addEventListener('click', onDocClick))
 onUnmounted(() => document.removeEventListener('click', onDocClick))
 </script>
@@ -383,7 +439,11 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   flex-shrink: 0;
 }
 
-.source-load-btns { display: flex; gap: 3px; flex-wrap: wrap; }
+.source-load-btns {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
 
 .source-btn {
   padding: 2px 7px;
@@ -394,10 +454,14 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   font: inherit;
   font-size: 11px;
   cursor: pointer;
-  transition: background 100ms, border-color 100ms;
+  transition:
+    background 100ms,
+    border-color 100ms;
   white-space: nowrap;
 }
-.source-btn:hover { background: var(--c-surface-2); }
+.source-btn:hover {
+  background: var(--c-surface-2);
+}
 .source-btn.active {
   border-color: var(--c-accent);
   color: var(--c-accent);
@@ -414,7 +478,9 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   font-size: 11px;
   cursor: pointer;
 }
-.source-side-toggle:hover { background: var(--c-surface-2); }
+.source-side-toggle:hover {
+  background: var(--c-surface-2);
+}
 
 .extract-scanning-bar {
   height: 2px;
@@ -431,8 +497,12 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   animation: extract-scan 1.4s ease-in-out infinite;
 }
 @keyframes extract-scan {
-  0%   { background-position: -40% 0; }
-  100% { background-position: 140% 0; }
+  0% {
+    background-position: -40% 0;
+  }
+  100% {
+    background-position: 140% 0;
+  }
 }
 
 .source-content.extracting {
@@ -457,12 +527,20 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   align-items: center;
   gap: 5px;
 }
-.extract-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.extract-btn.is-extracting { cursor: wait; }
-.extract-btn:not(:disabled):not(.is-extracting):hover { opacity: 0.85; }
+.extract-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.extract-btn.is-extracting {
+  cursor: wait;
+}
+.extract-btn:not(:disabled):not(.is-extracting):hover {
+  opacity: 0.85;
+}
 
 .extract-spinner {
-  width: 10px; height: 10px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   border: 1.5px solid rgba(255, 255, 255, 0.35);
   border-top-color: #fff;
@@ -470,7 +548,9 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   flex-shrink: 0;
 }
 @keyframes spinner-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Paste area */
@@ -495,9 +575,15 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   outline: none;
   transition: border-color 120ms;
 }
-.source-paste-input:focus { border-color: var(--c-accent); }
+.source-paste-input:focus {
+  border-color: var(--c-accent);
+}
 
-.paste-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.paste-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
 
 .paste-btn {
   padding: 3px 10px;
@@ -509,7 +595,11 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   font-size: 12px;
   cursor: pointer;
 }
-.paste-btn--primary { background: var(--c-accent); color: #fff; border-color: var(--c-accent); }
+.paste-btn--primary {
+  background: var(--c-accent);
+  color: #fff;
+  border-color: var(--c-accent);
+}
 
 /* Content */
 .source-content {
@@ -541,7 +631,9 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   padding: 1px 1px;
   transition: background 100ms;
 }
-.sent:hover { background: var(--c-surface-2); }
+.sent:hover {
+  background: var(--c-surface-2);
+}
 
 .sent.arg-mapped {
   text-decoration: underline;
@@ -581,7 +673,11 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   word-break: break-all;
 }
 
-.bind-actions { display: flex; flex-direction: column; gap: 5px; }
+.bind-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
 
 .bind-sep {
   font-size: 10px;
@@ -591,7 +687,11 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   margin-top: 2px;
 }
 
-.bind-new-btns { display: flex; flex-wrap: wrap; gap: 4px; }
+.bind-new-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
 
 .bind-btn {
   padding: 3px 8px;
@@ -604,14 +704,42 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   cursor: pointer;
   transition: background 100ms;
 }
-.bind-btn:hover { background: var(--c-surface-3); }
-.bind-btn--primary { background: var(--c-accent); color: #fff; border-color: var(--c-accent); font-size: 12px; }
-.bind-btn--cancel { color: var(--c-text-2); margin-top: 2px; }
+.bind-btn:hover {
+  background: var(--c-surface-3);
+}
+.bind-btn--primary {
+  background: var(--c-accent);
+  color: #fff;
+  border-color: var(--c-accent);
+  font-size: 12px;
+}
+.bind-btn--cancel {
+  color: var(--c-text-2);
+  margin-top: 2px;
+}
 
-.bind-btn.type-claim { color: var(--c-accent); border-color: var(--c-accent); }
-.bind-btn.type-grounds { color: #10b981; border-color: #10b981; }
-.bind-btn.type-warrant { color: #3b82f6; border-color: #3b82f6; }
-.bind-btn.type-backing { color: #93c5fd; border-color: #93c5fd; }
-.bind-btn.type-qualifier { color: #f59e0b; border-color: #f59e0b; }
-.bind-btn.type-rebuttal { color: var(--c-danger); border-color: var(--c-danger); }
+.bind-btn.type-claim {
+  color: var(--c-accent);
+  border-color: var(--c-accent);
+}
+.bind-btn.type-grounds {
+  color: #10b981;
+  border-color: #10b981;
+}
+.bind-btn.type-warrant {
+  color: #3b82f6;
+  border-color: #3b82f6;
+}
+.bind-btn.type-backing {
+  color: #93c5fd;
+  border-color: #93c5fd;
+}
+.bind-btn.type-qualifier {
+  color: #f59e0b;
+  border-color: #f59e0b;
+}
+.bind-btn.type-rebuttal {
+  color: var(--c-danger);
+  border-color: var(--c-danger);
+}
 </style>

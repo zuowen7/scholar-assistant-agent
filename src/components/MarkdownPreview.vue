@@ -41,13 +41,22 @@ const props = defineProps<{
 const debouncedContent = ref('')
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
-watch(() => [props.content, props.version], (v) => {
-  if (debounceTimer) clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(() => { debouncedContent.value = v[0] as string }, 80)
-}, { immediate: true })
+watch(
+  () => [props.content, props.version],
+  (v) => {
+    if (debounceTimer) clearTimeout(debounceTimer)
+    debounceTimer = setTimeout(() => {
+      debouncedContent.value = v[0] as string
+    }, 80)
+  },
+  { immediate: true },
+)
 
 onUnmounted(() => {
-  if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
+  if (debounceTimer) {
+    clearTimeout(debounceTimer)
+    debounceTimer = null
+  }
 })
 
 // Extract math blocks before Markdown parsing, replace with placeholders
@@ -120,23 +129,149 @@ const renderedHtml = computed(() => {
   })
 
   protectedHtml = DOMPurify.sanitize(protectedHtml, {
-    ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'munder', 'mover', 'munderover', 'mtext', 'mspace', 'mstyle', 'mpadded', 'mphantom', 'mfenced', 'menclose', 'msqrt', 'mroot', 'mtable', 'mtr', 'mtd', 'annotation', 'mglyph', 'ms', 'msgroup', 'msline', 'mscarry', 'mscarries', 'mscolumn', 'msrow', 'mstack', 'mlongdiv', 'msgap', 'mlabeledtr', 'maction', 'merror'],
-    ADD_ATTR: ['display', 'mathvariant', 'linethickness', 'notation', 'lspace', 'rspace', 'width', 'height', 'depth', 'voffset', 'align', 'columnalign', 'rowspacing', 'columnspacing', 'class', 'xmlns'],
+    ADD_TAGS: [
+      'math',
+      'semantics',
+      'mrow',
+      'mi',
+      'mo',
+      'mn',
+      'msup',
+      'msub',
+      'mfrac',
+      'munder',
+      'mover',
+      'munderover',
+      'mtext',
+      'mspace',
+      'mstyle',
+      'mpadded',
+      'mphantom',
+      'mfenced',
+      'menclose',
+      'msqrt',
+      'mroot',
+      'mtable',
+      'mtr',
+      'mtd',
+      'annotation',
+      'mglyph',
+      'ms',
+      'msgroup',
+      'msline',
+      'mscarry',
+      'mscarries',
+      'mscolumn',
+      'msrow',
+      'mstack',
+      'mlongdiv',
+      'msgap',
+      'mlabeledtr',
+      'maction',
+      'merror',
+    ],
+    ADD_ATTR: [
+      'display',
+      'mathvariant',
+      'linethickness',
+      'notation',
+      'lspace',
+      'rspace',
+      'width',
+      'height',
+      'depth',
+      'voffset',
+      'align',
+      'columnalign',
+      'rowspacing',
+      'columnspacing',
+      'class',
+      'xmlns',
+    ],
   })
 
   // Restore KaTeX blocks, then sanitize once more to catch any XSS in KaTeX output
-  protectedHtml = protectedHtml.replace(/\uE000KX(\d+)\uE001/g, (_, idx) => katexBlocks[parseInt(idx)] ?? '')
+  protectedHtml = protectedHtml.replace(
+    /\uE000KX(\d+)\uE001/g,
+    (_, idx) => katexBlocks[parseInt(idx)] ?? '',
+  )
   return DOMPurify.sanitize(protectedHtml, {
-    ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac',
-               'munder', 'mover', 'munderover', 'mtext', 'mspace', 'mstyle', 'mpadded',
-               'mphantom', 'mfenced', 'menclose', 'msqrt', 'mroot', 'mtable', 'mtr', 'mtd',
-               'annotation', 'mglyph', 'ms', 'merror', 'mlabeledtr', 'maction',
-               'span', 'svg', 'path', 'line', 'rect', 'circle', 'use', 'defs', 'g'],
-    ADD_ATTR: ['display', 'mathvariant', 'linethickness', 'notation', 'lspace', 'rspace',
-               'width', 'height', 'depth', 'voffset', 'align', 'columnalign', 'rowspacing',
-               'columnspacing', 'class', 'xmlns', 'viewBox', 'preserveAspectRatio',
-               'aria-hidden', 'focusable', 'd', 'stroke', 'fill', 'stroke-width',
-               'x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r'],
+    ADD_TAGS: [
+      'math',
+      'semantics',
+      'mrow',
+      'mi',
+      'mo',
+      'mn',
+      'msup',
+      'msub',
+      'mfrac',
+      'munder',
+      'mover',
+      'munderover',
+      'mtext',
+      'mspace',
+      'mstyle',
+      'mpadded',
+      'mphantom',
+      'mfenced',
+      'menclose',
+      'msqrt',
+      'mroot',
+      'mtable',
+      'mtr',
+      'mtd',
+      'annotation',
+      'mglyph',
+      'ms',
+      'merror',
+      'mlabeledtr',
+      'maction',
+      'span',
+      'svg',
+      'path',
+      'line',
+      'rect',
+      'circle',
+      'use',
+      'defs',
+      'g',
+    ],
+    ADD_ATTR: [
+      'display',
+      'mathvariant',
+      'linethickness',
+      'notation',
+      'lspace',
+      'rspace',
+      'width',
+      'height',
+      'depth',
+      'voffset',
+      'align',
+      'columnalign',
+      'rowspacing',
+      'columnspacing',
+      'class',
+      'xmlns',
+      'viewBox',
+      'preserveAspectRatio',
+      'aria-hidden',
+      'focusable',
+      'd',
+      'stroke',
+      'fill',
+      'stroke-width',
+      'x',
+      'y',
+      'x1',
+      'y1',
+      'x2',
+      'y2',
+      'cx',
+      'cy',
+      'r',
+    ],
   })
 })
 </script>
@@ -181,42 +316,101 @@ const renderedHtml = computed(() => {
 
 .preview-body :deep(h1) {
   font-family: var(--font-serif-zh), var(--font-serif);
-  font-size: 1.8em; font-weight: 600;
+  font-size: 1.8em;
+  font-weight: 600;
   margin: 1em 0 0.5em;
-  border-bottom: 1px solid var(--border-color); padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0.3em;
   letter-spacing: var(--tracking-display);
 }
 .preview-body :deep(h2) {
   font-family: var(--font-serif-zh), var(--font-serif);
-  font-size: 1.4em; font-weight: 600;
+  font-size: 1.4em;
+  font-weight: 600;
   margin: 0.9em 0 0.4em;
-  border-bottom: 1px solid var(--border-color); padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0.3em;
   letter-spacing: var(--tracking-tight);
 }
 .preview-body :deep(h3) {
   font-family: var(--font-serif-zh), var(--font-serif);
-  font-size: 1.2em; font-weight: 600;
+  font-size: 1.2em;
+  font-weight: 600;
   margin: 0.7em 0 0.3em;
 }
 .preview-body :deep(h4) {
   font-family: var(--font-serif-zh), var(--font-serif);
-  font-size: 1.1em; font-weight: 600;
+  font-size: 1.1em;
+  font-weight: 600;
   margin: 0.5em 0 0.2em;
 }
-.preview-body :deep(p) { margin: 0.6em 0; }
-.preview-body :deep(ul), .preview-body :deep(ol) { padding-left: 2em; margin: 0.5em 0; }
-.preview-body :deep(blockquote) { border-left: 3px solid var(--c-accent); padding-left: 1em; margin: 0.8em 0; color: var(--text-secondary); }
-.preview-body :deep(code) { background: var(--code-bg); padding: 0.15em 0.4em; border-radius: 3px; font-size: 0.9em; }
-.preview-body :deep(pre) { background: var(--code-bg); padding: 1em; border-radius: 6px; overflow-x: auto; margin: 0.8em 0; }
-.preview-body :deep(pre code) { background: none; padding: 0; }
-.preview-body :deep(table) { border-collapse: collapse; width: 100%; margin: 0.8em 0; }
-.preview-body :deep(th), .preview-body :deep(td) { border: 1px solid var(--border-color); padding: 0.5em 0.8em; text-align: left; }
-.preview-body :deep(th) { background: var(--code-bg); font-weight: 600; }
-.preview-body :deep(img) { max-width: 100%; border-radius: 4px; }
-.preview-body :deep(a) { color: var(--c-accent); text-decoration: none; }
-.preview-body :deep(a:hover) { text-decoration: underline; }
-.preview-body :deep(.empty-hint) { color: var(--text-secondary); font-style: italic; }
-.preview-body :deep(.math-error) { color: var(--c-danger); background: var(--c-danger-bg); padding: 2px 6px; border-radius: 3px; }
+.preview-body :deep(p) {
+  margin: 0.6em 0;
+}
+.preview-body :deep(ul),
+.preview-body :deep(ol) {
+  padding-left: 2em;
+  margin: 0.5em 0;
+}
+.preview-body :deep(blockquote) {
+  border-left: 3px solid var(--c-accent);
+  padding-left: 1em;
+  margin: 0.8em 0;
+  color: var(--text-secondary);
+}
+.preview-body :deep(code) {
+  background: var(--code-bg);
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+.preview-body :deep(pre) {
+  background: var(--code-bg);
+  padding: 1em;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 0.8em 0;
+}
+.preview-body :deep(pre code) {
+  background: none;
+  padding: 0;
+}
+.preview-body :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.8em 0;
+}
+.preview-body :deep(th),
+.preview-body :deep(td) {
+  border: 1px solid var(--border-color);
+  padding: 0.5em 0.8em;
+  text-align: left;
+}
+.preview-body :deep(th) {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+.preview-body :deep(img) {
+  max-width: 100%;
+  border-radius: 4px;
+}
+.preview-body :deep(a) {
+  color: var(--c-accent);
+  text-decoration: none;
+}
+.preview-body :deep(a:hover) {
+  text-decoration: underline;
+}
+.preview-body :deep(.empty-hint) {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+.preview-body :deep(.math-error) {
+  color: var(--c-danger);
+  background: var(--c-danger-bg);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
 
 /* KaTeX display math centering */
 .preview-body :deep(.katex-display) {

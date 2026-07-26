@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import threading
@@ -83,8 +84,8 @@ class TestArgGraphStoreConcurrency:
 
     def test_concurrent_companion_save_ledger(self, tmp_path):
         """10 个线程并发保存不同 doc_id 的 Ledger，全部应持久化"""
-        from src.argument.companion_store import CompanionStore
         from src.argument.companion_models import Ledger
+        from src.argument.companion_store import CompanionStore
 
         store = CompanionStore(runtime_dir=tmp_path)
         errors = []
@@ -113,9 +114,9 @@ class TestArgGraphStoreConcurrency:
 
     def test_concurrent_upsert_promise(self, tmp_path):
         """多线程向同一 ledger 并发 upsert_promise，不丢失"""
-        from src.argument.companion_store import CompanionStore
-        from src.argument.companion_models import Ledger, Promise
         from src.argument.anchor import Anchor
+        from src.argument.companion_models import Ledger, Promise
+        from src.argument.companion_store import CompanionStore
 
         store = CompanionStore(runtime_dir=tmp_path)
         # 先为 shared_doc 建好一个 anchor 供 Promise 引用

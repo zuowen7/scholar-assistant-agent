@@ -30,61 +30,73 @@ class MarkdownElements:
         for match in IMAGE_PATTERN.finditer(text):
             alt = match.group(1) or ""
             if alt:
-                self.elements.append(ElementInfo(
-                    element_type="image",
-                    raw=match.group(0),
-                    index=match.start(),
-                    content=match.group(2),
-                    metadata={"alt": alt},
-                ))
+                self.elements.append(
+                    ElementInfo(
+                        element_type="image",
+                        raw=match.group(0),
+                        index=match.start(),
+                        content=match.group(2),
+                        metadata={"alt": alt},
+                    )
+                )
 
         existing_image_indices = {e.index for e in self.elements}
         for match in IMAGE_PATTERN_FALLBACK.finditer(text):
             if match.start() not in existing_image_indices:
-                self.elements.append(ElementInfo(
-                    element_type="image",
-                    raw=match.group(0),
-                    index=match.start(),
-                    content=match.group(2) if len(match.groups()) > 1 else match.group(1),
-                    metadata={"alt": match.group(1) if len(match.groups()) > 1 else ""},
-                ))
+                self.elements.append(
+                    ElementInfo(
+                        element_type="image",
+                        raw=match.group(0),
+                        index=match.start(),
+                        content=match.group(2) if len(match.groups()) > 1 else match.group(1),
+                        metadata={"alt": match.group(1) if len(match.groups()) > 1 else ""},
+                    )
+                )
 
         # 行内公式
         for match in INLINE_MATH_PATTERN.finditer(text):
-            self.elements.append(ElementInfo(
-                element_type="inline_math",
-                raw=match.group(0),
-                index=match.start(),
-                content=match.group(1),
-            ))
+            self.elements.append(
+                ElementInfo(
+                    element_type="inline_math",
+                    raw=match.group(0),
+                    index=match.start(),
+                    content=match.group(1),
+                )
+            )
 
         # 块级公式
         for match in DISPLAY_MATH_PATTERN.finditer(text):
-            self.elements.append(ElementInfo(
-                element_type="display_math",
-                raw=match.group(0),
-                index=match.start(),
-                content=match.group(1),
-            ))
+            self.elements.append(
+                ElementInfo(
+                    element_type="display_math",
+                    raw=match.group(0),
+                    index=match.start(),
+                    content=match.group(1),
+                )
+            )
 
         # 表格
         for match in TABLE_PATTERN.finditer(text):
-            self.elements.append(ElementInfo(
-                element_type="table",
-                raw=match.group(0),
-                index=match.start(),
-                content=match.group(0),
-                metadata=self._parse_table_metadata(match.group(0)),
-            ))
+            self.elements.append(
+                ElementInfo(
+                    element_type="table",
+                    raw=match.group(0),
+                    index=match.start(),
+                    content=match.group(0),
+                    metadata=self._parse_table_metadata(match.group(0)),
+                )
+            )
 
         # 文献引用
         for match in CITATION_PATTERN.finditer(text):
-            self.elements.append(ElementInfo(
-                element_type="citation",
-                raw=match.group(0),
-                index=match.start(),
-                content=match.group(1),
-            ))
+            self.elements.append(
+                ElementInfo(
+                    element_type="citation",
+                    raw=match.group(0),
+                    index=match.start(),
+                    content=match.group(1),
+                )
+            )
 
         # 处理分号分隔的多引用 [@key1; @key2]
         existing_citation_raws = {e.raw for e in self.elements}
@@ -97,12 +109,14 @@ class MarkdownElements:
                     if key.startswith("@"):
                         key = key[1:]
                     if key and key not in existing_citation_raws:
-                        self.elements.append(ElementInfo(
-                            element_type="citation",
-                            raw=f"[@{key}]",
-                            index=match.start(),
-                            content=key,
-                        ))
+                        self.elements.append(
+                            ElementInfo(
+                                element_type="citation",
+                                raw=f"[@{key}]",
+                                index=match.start(),
+                                content=key,
+                            )
+                        )
                         existing_citation_raws.add(f"[@{key}]")
 
         self.elements.sort(key=lambda e: e.index)
@@ -116,7 +130,9 @@ class MarkdownElements:
 
         header_cells = [c.strip() for c in lines[0].split("|") if c.strip()]
         col_count = len(header_cells)
-        data_rows = sum(1 for line in lines if line.strip() and not re.match(r"^\|[-: ]+\|$", line.strip()))
+        data_rows = sum(
+            1 for line in lines if line.strip() and not re.match(r"^\|[-: ]+\|$", line.strip())
+        )
 
         return {
             "rows": data_rows,

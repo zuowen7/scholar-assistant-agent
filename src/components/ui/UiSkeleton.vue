@@ -10,15 +10,18 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-const props = withDefaults(defineProps<{
-  shape?: 'line' | 'card' | 'circle' | 'text'
-  width?: string | number
-  height?: string | number
-  lines?: number
-}>(), {
-  shape: 'line',
-  lines: 1,
-})
+const props = withDefaults(
+  defineProps<{
+    shape?: 'line' | 'card' | 'circle' | 'text'
+    width?: string | number
+    height?: string | number
+    lines?: number
+  }>(),
+  {
+    shape: 'line',
+    lines: 1,
+  },
+)
 
 const skeletonStyle = computed(() => {
   const w = typeof props.width === 'number' ? `${props.width}px` : props.width
@@ -84,10 +87,10 @@ const skeletonStyle = computed(() => {
 }
 
 /* Light mode shimmer */
-:global([data-theme="light"]) .ui-skeleton {
+:global([data-theme='light']) .ui-skeleton {
   background: var(--c-surface-3);
 }
-:global([data-theme="light"]) .ui-skeleton::after {
+:global([data-theme='light']) .ui-skeleton::after {
   background: linear-gradient(
     90deg,
     transparent 0%,
@@ -99,11 +102,17 @@ const skeletonStyle = computed(() => {
 }
 
 @keyframes skeleton-shimmer {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ui-skeleton::after { animation: none; }
+  .ui-skeleton::after {
+    animation: none;
+  }
 }
 </style>

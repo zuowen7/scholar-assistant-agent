@@ -7,6 +7,7 @@
 所以把 token/tool_call/tool_result/thought 都映射为 `response` 类型，
 让用户能实时看到 Agent 在做什么。
 """
+
 from __future__ import annotations
 
 import json
@@ -98,7 +99,12 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
                 "file_path": file_path,
             },
         }
-        return {"type": evt_type, "content": content, "event_id": data.get("id", _event_id()), "metadata": metadata}
+        return {
+            "type": evt_type,
+            "content": content,
+            "event_id": data.get("id", _event_id()),
+            "metadata": metadata,
+        }
 
     # ---- 以下保留原始类型 ----
     elif t == AgentEventType.CHECKPOINT:

@@ -48,7 +48,7 @@ export function useEditorIO() {
       const err = await resp.json().catch(() => ({ detail: 'Word export failed' }))
       return err.detail || err.error || 'Word export failed'
     }
-    const data = await resp.json() as WordExportResponse
+    const data = (await resp.json()) as WordExportResponse
     if (!data.filename) return 'Word export did not return a filename'
     const downloadResp = await fetch(`${API}/api/export/word/${encodeURIComponent(data.filename)}`)
     if (!downloadResp.ok) return 'Failed to download Word file'
@@ -56,7 +56,10 @@ export function useEditorIO() {
     return await saveBlob(blob, data.filename || 'export.docx')
   }
 
-  async function exportLatex(markdown: string, templateId: string): Promise<{ tex: string; error?: string }> {
+  async function exportLatex(
+    markdown: string,
+    templateId: string,
+  ): Promise<{ tex: string; error?: string }> {
     const resp = await fetch(`${API}/api/export`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

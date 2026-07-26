@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass, field
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 
 from src.translator.ollama_client import TranslationResult
 

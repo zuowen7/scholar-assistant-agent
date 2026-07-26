@@ -27,10 +27,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.argument.flatten import ArgumentFlattener, _CHAIN_TO_SECTION, _CLASSIC_CHAIN_KEYWORDS
-
+from src.argument.flatten import _CHAIN_TO_SECTION, _CLASSIC_CHAIN_KEYWORDS, ArgumentFlattener
 
 # ── 测试辅助工厂 ─────────────────────────────────────────────────────────────
+
 
 def _make_flattener() -> ArgumentFlattener:
     return ArgumentFlattener()
@@ -86,7 +86,12 @@ def _minimal_tree() -> dict:
 
 
 def _ref(doc_id: str, key: str) -> dict:
-    return {"doc_id": doc_id, "citation_key": key, "relevance_score": 0.8, "binding_type": "user_manual"}
+    return {
+        "doc_id": doc_id,
+        "citation_key": key,
+        "relevance_score": 0.8,
+        "binding_type": "user_manual",
+    }
 
 
 def _mock_rag(chunks: list[dict] | None = None, docs: list | None = None) -> MagicMock:
@@ -102,8 +107,8 @@ def _mock_rag(chunks: list[dict] | None = None, docs: list | None = None) -> Mag
 
 # ── DFS 遍历顺序 ─────────────────────────────────────────────────────────────
 
-class TestDfsOrder:
 
+class TestDfsOrder:
     def test_single_root_no_children(self):
         f = _make_flattener()
         nodes = {"root": {"children": []}}
@@ -133,10 +138,10 @@ class TestDfsOrder:
         f = _make_flattener()
         nodes = {
             "root": {"children": ["a", "b"]},
-            "a":    {"children": ["a1", "a2"]},
-            "a1":   {"children": []},
-            "a2":   {"children": []},
-            "b":    {"children": []},
+            "a": {"children": ["a1", "a2"]},
+            "a1": {"children": []},
+            "a2": {"children": []},
+            "b": {"children": []},
         }
         order = f._build_dfs_order(nodes, "root")
         # root → a → a1 → a2 → b
@@ -159,8 +164,8 @@ class TestDfsOrder:
 
 # ── 链类型分类 ───────────────────────────────────────────────────────────────
 
-class TestClassifyChainType:
 
+class TestClassifyChainType:
     def setup_method(self):
         self.f = _make_flattener()
 
@@ -201,8 +206,8 @@ class TestClassifyChainType:
 
 # ── 章节标题映射 ─────────────────────────────────────────────────────────────
 
-class TestGetSectionTitle:
 
+class TestGetSectionTitle:
     def setup_method(self):
         self.f = _make_flattener()
 
@@ -245,8 +250,8 @@ class TestGetSectionTitle:
 
 # ── 树概要文本生成 ────────────────────────────────────────────────────────────
 
-class TestBuildTreeOutline:
 
+class TestBuildTreeOutline:
     def setup_method(self):
         self.f = _make_flattener()
 
@@ -259,24 +264,26 @@ class TestBuildTreeOutline:
     def test_child_nodes_shown(self):
         nodes = {
             "root": {"topic": "论文", "depth": 0, "content": "", "children": ["c1"]},
-            "c1":   {"topic": "背景", "depth": 1, "content": "", "children": []},
+            "c1": {"topic": "背景", "depth": 1, "content": "", "children": []},
         }
         outline = self.f._build_tree_outline(nodes, "root", "IEEE")
-        assert "引言" in outline   # 分类后标准章节名
-        assert "背景" in outline    # 原始 topic 也出现
+        assert "引言" in outline  # 分类后标准章节名
+        assert "背景" in outline  # 原始 topic 也出现
 
     def test_indentation_reflects_depth(self):
         nodes = {
             "root": {"topic": "Root", "depth": 0, "content": "", "children": ["c1"]},
-            "c1":   {"topic": "Child", "depth": 1, "content": "", "children": ["gc1"]},
-            "gc1":  {"topic": "Grandchild", "depth": 2, "content": "", "children": []},
+            "c1": {"topic": "Child", "depth": 1, "content": "", "children": ["gc1"]},
+            "gc1": {"topic": "Grandchild", "depth": 2, "content": "", "children": []},
         }
         outline = self.f._build_tree_outline(nodes, "root", "IEEE")
         lines = outline.split("\n")
         # 孙节点行比子节点行有更多前导空格
         child_line = next(l for l in lines if "Child" in l)
         grand_line = next(l for l in lines if "Grandchild" in l)
-        assert len(grand_line) - len(grand_line.lstrip()) > len(child_line) - len(child_line.lstrip())
+        assert len(grand_line) - len(grand_line.lstrip()) > len(child_line) - len(
+            child_line.lstrip()
+        )
 
     def test_missing_root_returns_placeholder(self):
         outline = self.f._build_tree_outline({}, "nonexistent", "IEEE")
@@ -285,8 +292,8 @@ class TestBuildTreeOutline:
 
 # ── 滚动摘要构造 ─────────────────────────────────────────────────────────────
 
-class TestContextSummary:
 
+class TestContextSummary:
     def setup_method(self):
         self.f = _make_flattener()
 
@@ -313,8 +320,8 @@ class TestContextSummary:
 
 # ── RAG 文献片段获取 ──────────────────────────────────────────────────────────
 
-class TestFetchRefContext:
 
+class TestFetchRefContext:
     def setup_method(self):
         self.f = _make_flattener()
 
@@ -362,8 +369,8 @@ class TestFetchRefContext:
 
 # ── 文献元数据丰富 ────────────────────────────────────────────────────────────
 
-class TestEnrichReferences:
 
+class TestEnrichReferences:
     def setup_method(self):
         self.f = _make_flattener()
 
@@ -408,8 +415,8 @@ class TestEnrichReferences:
 
 # ── Markdown 格式化 ───────────────────────────────────────────────────────────
 
-class TestFormatMarkdown:
 
+class TestFormatMarkdown:
     def setup_method(self):
         self.f = _make_flattener()
 
@@ -417,7 +424,7 @@ class TestFormatMarkdown:
         return [
             {"depth": 0, "section_title": "Paper Title", "text": "root text"},
             {"depth": 1, "section_title": "Introduction", "text": "intro text"},
-            {"depth": 1, "section_title": "Methods",      "text": "methods text"},
+            {"depth": 1, "section_title": "Methods", "text": "methods text"},
         ]
 
     def test_abstract_included_when_present(self):
@@ -435,8 +442,14 @@ class TestFormatMarkdown:
         assert "## Introduction" in out
 
     def test_references_included_when_flag_true(self):
-        refs = [{"doc_id": "d1", "citation_key": "Wang2023", "title": "A Paper",
-                 "metadata": {"authors": "Wang", "year": "2023", "journal": "Nature"}}]
+        refs = [
+            {
+                "doc_id": "d1",
+                "citation_key": "Wang2023",
+                "title": "A Paper",
+                "metadata": {"authors": "Wang", "year": "2023", "journal": "Nature"},
+            }
+        ]
         out = self.f._format_markdown("", self._sections(), refs, True)
         assert "References" in out
         assert "Wang2023" in out
@@ -447,8 +460,14 @@ class TestFormatMarkdown:
         assert "References" not in out
 
     def test_reference_shows_authors_year(self):
-        refs = [{"doc_id": "d1", "citation_key": "Li2021", "title": "Control Study",
-                 "metadata": {"authors": "Li Ming", "year": "2021", "journal": "IEEE"}}]
+        refs = [
+            {
+                "doc_id": "d1",
+                "citation_key": "Li2021",
+                "title": "Control Study",
+                "metadata": {"authors": "Li Ming", "year": "2021", "journal": "IEEE"},
+            }
+        ]
         out = self.f._format_markdown("", self._sections(), refs, True)
         assert "Li Ming" in out
         assert "2021" in out
@@ -465,28 +484,41 @@ class TestFormatMarkdown:
 
 # ── BibTeX 条目生成 ───────────────────────────────────────────────────────────
 
-class TestBibtexEntries:
 
+class TestBibtexEntries:
     def setup_method(self):
         self.f = _make_flattener()
 
     def test_article_type_when_journal_present(self):
-        refs = [{"citation_key": "Test2023", "doc_id": "d1", "title": "My Paper",
-                 "metadata": {"authors": "A B", "year": "2023", "journal": "IEEE TAC"}}]
+        refs = [
+            {
+                "citation_key": "Test2023",
+                "doc_id": "d1",
+                "title": "My Paper",
+                "metadata": {"authors": "A B", "year": "2023", "journal": "IEEE TAC"},
+            }
+        ]
         entries = self.f._build_bibtex_entries(refs)
         assert len(entries) == 1
         assert "@article{Test2023" in entries[0]
         assert "IEEE TAC" in entries[0]
 
     def test_misc_type_when_no_journal(self):
-        refs = [{"citation_key": "Tech2022", "doc_id": "d1", "title": "Report",
-                 "metadata": {"authors": "C D", "year": "2022"}}]
+        refs = [
+            {
+                "citation_key": "Tech2022",
+                "doc_id": "d1",
+                "title": "Report",
+                "metadata": {"authors": "C D", "year": "2022"},
+            }
+        ]
         entries = self.f._build_bibtex_entries(refs)
         assert "@misc{Tech2022" in entries[0]
 
     def test_year_truncated_to_4_digits(self):
-        refs = [{"citation_key": "K", "doc_id": "d1", "title": "T",
-                 "metadata": {"year": "2023-05-01"}}]
+        refs = [
+            {"citation_key": "K", "doc_id": "d1", "title": "T", "metadata": {"year": "2023-05-01"}}
+        ]
         entries = self.f._build_bibtex_entries(refs)
         assert "year    = {2023}" in entries[0]
 
@@ -506,8 +538,8 @@ class TestBibtexEntries:
 
 # ── 兜底 LaTeX 生成 ───────────────────────────────────────────────────────────
 
-class TestMinimalLatex:
 
+class TestMinimalLatex:
     def setup_method(self):
         self.f = _make_flattener()
 
@@ -556,8 +588,8 @@ class TestMinimalLatex:
 
 # ── 节点 LLM 扩写 ─────────────────────────────────────────────────────────────
 
-class TestExpandNode:
 
+class TestExpandNode:
     def setup_method(self):
         self.f = _make_flattener()
         self.mock_llm_return = "这是一段扩写后的学术段落。研究表明相关方法具有显著优势。"
@@ -573,72 +605,134 @@ class TestExpandNode:
             ollama_client=None,
         )
         defaults.update(kwargs)
-        with patch("src.argument.llm_client.call_llm_chat",
-                   new=AsyncMock(return_value=self.mock_llm_return)):
+        with patch(
+            "src.argument.llm_client.call_llm_chat",
+            new=AsyncMock(return_value=self.mock_llm_return),
+        ):
             return asyncio.run(self.f._expand_node_with_context(ndata, **defaults))
 
     def test_llm_result_returned(self):
-        ndata = {"topic": "研究背景", "content": "简短备注", "depth": 1,
-                 "references": [], "rule_issues": [], "agent_feedback": None}
+        ndata = {
+            "topic": "研究背景",
+            "content": "简短备注",
+            "depth": 1,
+            "references": [],
+            "rule_issues": [],
+            "agent_feedback": None,
+        }
         result = self._run(ndata)
         assert result == self.mock_llm_return
 
     def test_llm_failure_falls_back_to_content(self):
-        ndata = {"topic": "节点A", "content": "已有内容", "depth": 1,
-                 "references": [], "rule_issues": [], "agent_feedback": None}
-        with patch("src.argument.llm_client.call_llm_chat",
-                   new=AsyncMock(return_value="")):
-            result = asyncio.run(self.f._expand_node_with_context(
-                ndata, section_title="S", chain_type="unknown",
-                context_so_far="", tree_outline="", rag_context_str="",
-                cloud_client=None, ollama_client=None,
-            ))
+        ndata = {
+            "topic": "节点A",
+            "content": "已有内容",
+            "depth": 1,
+            "references": [],
+            "rule_issues": [],
+            "agent_feedback": None,
+        }
+        with patch("src.argument.llm_client.call_llm_chat", new=AsyncMock(return_value="")):
+            result = asyncio.run(
+                self.f._expand_node_with_context(
+                    ndata,
+                    section_title="S",
+                    chain_type="unknown",
+                    context_so_far="",
+                    tree_outline="",
+                    rag_context_str="",
+                    cloud_client=None,
+                    ollama_client=None,
+                )
+            )
         assert "已有内容" in result
 
     def test_llm_failure_topic_fallback(self):
-        ndata = {"topic": "节点A", "content": "", "depth": 1,
-                 "references": [], "rule_issues": [], "agent_feedback": None}
-        with patch("src.argument.llm_client.call_llm_chat",
-                   new=AsyncMock(return_value="")):
-            result = asyncio.run(self.f._expand_node_with_context(
-                ndata, section_title="S", chain_type="unknown",
-                context_so_far="", tree_outline="", rag_context_str="",
-                cloud_client=None, ollama_client=None,
-            ))
+        ndata = {
+            "topic": "节点A",
+            "content": "",
+            "depth": 1,
+            "references": [],
+            "rule_issues": [],
+            "agent_feedback": None,
+        }
+        with patch("src.argument.llm_client.call_llm_chat", new=AsyncMock(return_value="")):
+            result = asyncio.run(
+                self.f._expand_node_with_context(
+                    ndata,
+                    section_title="S",
+                    chain_type="unknown",
+                    context_so_far="",
+                    tree_outline="",
+                    rag_context_str="",
+                    cloud_client=None,
+                    ollama_client=None,
+                )
+            )
         assert "节点A" in result
 
     def test_rich_content_unknown_skips_llm(self):
         # 超过 200 字、无 references、unknown 类型 → 不调用 LLM
         long_content = "已有详细内容。" * 30  # > 200 字
-        ndata = {"topic": "T", "content": long_content, "depth": 1,
-                 "references": [], "rule_issues": [], "agent_feedback": None}
+        ndata = {
+            "topic": "T",
+            "content": long_content,
+            "depth": 1,
+            "references": [],
+            "rule_issues": [],
+            "agent_feedback": None,
+        }
         called = []
+
         async def fake_llm(*a, **kw):
             called.append(1)
             return "LLM output"
+
         with patch("src.argument.llm_client.call_llm_chat", new=fake_llm):
-            result = asyncio.run(self.f._expand_node_with_context(
-                ndata, section_title="S", chain_type="unknown",
-                context_so_far="", tree_outline="", rag_context_str="",
-                cloud_client=None, ollama_client=None,
-            ))
+            result = asyncio.run(
+                self.f._expand_node_with_context(
+                    ndata,
+                    section_title="S",
+                    chain_type="unknown",
+                    context_so_far="",
+                    tree_outline="",
+                    rag_context_str="",
+                    cloud_client=None,
+                    ollama_client=None,
+                )
+            )
         assert called == []
         assert result == long_content
 
     def test_logic_issues_included_in_prompt(self):
         """rule_issues 和 agent_feedback 应出现在 prompt 中（通过验证 LLM 被调用即可）。"""
-        ndata = {"topic": "节点", "content": "", "depth": 1,
-                 "references": [], "rule_issues": ["缺少定义"], "agent_feedback": "需要补充实验"}
+        ndata = {
+            "topic": "节点",
+            "content": "",
+            "depth": 1,
+            "references": [],
+            "rule_issues": ["缺少定义"],
+            "agent_feedback": "需要补充实验",
+        }
         captured_prompts = []
+
         async def capture_prompt(prompt, *a, **kw):
             captured_prompts.append(prompt)
             return "result"
+
         with patch("src.argument.llm_client.call_llm_chat", new=capture_prompt):
-            asyncio.run(self.f._expand_node_with_context(
-                ndata, section_title="S", chain_type="problem",
-                context_so_far="", tree_outline="", rag_context_str="",
-                cloud_client=None, ollama_client=None,
-            ))
+            asyncio.run(
+                self.f._expand_node_with_context(
+                    ndata,
+                    section_title="S",
+                    chain_type="problem",
+                    context_so_far="",
+                    tree_outline="",
+                    rag_context_str="",
+                    cloud_client=None,
+                    ollama_client=None,
+                )
+            )
         assert captured_prompts
         combined = captured_prompts[0]
         assert "缺少定义" in combined
@@ -647,14 +741,13 @@ class TestExpandNode:
 
 # ── Abstract 生成 ────────────────────────────────────────────────────────────
 
-class TestGenerateAbstract:
 
+class TestGenerateAbstract:
     def setup_method(self):
         self.f = _make_flattener()
 
     def _run(self, sections, title="Paper", llm_return="摘要内容"):
-        with patch("src.argument.llm_client.call_llm_chat",
-                   new=AsyncMock(return_value=llm_return)):
+        with patch("src.argument.llm_client.call_llm_chat", new=AsyncMock(return_value=llm_return)):
             return asyncio.run(self.f._generate_abstract(sections, title, None, None))
 
     def test_returns_llm_result(self):
@@ -681,9 +774,11 @@ class TestGenerateAbstract:
         """超过 6 节时，只截取前 6 节传给 LLM prompt。"""
         sections = [{"depth": 1, "section_title": f"S{i}", "text": f"text{i}"} for i in range(10)]
         captured = []
+
         async def capture(prompt, *a, **kw):
             captured.append(prompt)
             return "ok"
+
         with patch("src.argument.llm_client.call_llm_chat", new=capture):
             asyncio.run(self.f._generate_abstract(sections, "T", None, None))
         # S6 ~ S9 不应出现在 prompt 中
@@ -693,8 +788,8 @@ class TestGenerateAbstract:
 
 # ── 过渡句生成 ───────────────────────────────────────────────────────────────
 
-class TestGenerateTransitions:
 
+class TestGenerateTransitions:
     def setup_method(self):
         self.f = _make_flattener()
 
@@ -705,8 +800,7 @@ class TestGenerateTransitions:
         ]
 
     def _run(self, sections, llm_return):
-        with patch("src.argument.llm_client.call_llm_chat",
-                   new=AsyncMock(return_value=llm_return)):
+        with patch("src.argument.llm_client.call_llm_chat", new=AsyncMock(return_value=llm_return)):
             return asyncio.run(self.f._generate_transitions(sections, None, None))
 
     def test_valid_json_returns_transitions(self):
@@ -747,6 +841,7 @@ class TestGenerateTransitions:
 
 # ── 完整管道事件流 ────────────────────────────────────────────────────────────
 
+
 class TestFlattenStream:
     """验证 flatten_stream 在 mock 环境下产生正确的 SSE 事件序列。"""
 
@@ -782,6 +877,7 @@ class TestFlattenStream:
         }
 
         call_count = [0]
+
         async def fake_llm(prompt, *a, **kw):
             call_count[0] += 1
             # 根据 prompt 内容判断调用类型
@@ -856,8 +952,7 @@ class TestFlattenStream:
                         assert len(content) > 0
                         return
 
-        with patch("src.argument.llm_client.call_llm_chat",
-                   new=AsyncMock(return_value="扩写内容")):
+        with patch("src.argument.llm_client.call_llm_chat", new=AsyncMock(return_value="扩写内容")):
             asyncio.run(collect())
 
     def test_latex_template_produces_tex_file(self):
@@ -881,8 +976,7 @@ class TestFlattenStream:
                         assert path.suffix == ".tex"
                         return
 
-        with patch("src.argument.llm_client.call_llm_chat",
-                   new=AsyncMock(return_value="content")):
+        with patch("src.argument.llm_client.call_llm_chat", new=AsyncMock(return_value="content")):
             asyncio.run(collect())
 
     def test_node_with_references_gets_rag_called(self):
@@ -907,8 +1001,7 @@ class TestFlattenStream:
                 ):
                     pass
 
-        with patch("src.argument.llm_client.call_llm_chat",
-                   new=AsyncMock(return_value="content")):
+        with patch("src.argument.llm_client.call_llm_chat", new=AsyncMock(return_value="content")):
             asyncio.run(collect())
 
         rag.retrieve_context.assert_called()
@@ -965,18 +1058,22 @@ class TestFlattenStream:
 
 # ── 新增字段：models.py 的 FlattenRequest ──────────────────────────────────────
 
+
 class TestFlattenRequestModel:
     def test_latex_template_default(self):
         from src.argument.models import FlattenRequest
+
         req = FlattenRequest()
         assert req.latex_template == "generic_article"
 
     def test_latex_template_custom(self):
         from src.argument.models import FlattenRequest
+
         req = FlattenRequest(latex_template="ieee_conference")
         assert req.latex_template == "ieee_conference"
 
     def test_style_default(self):
         from src.argument.models import FlattenRequest
+
         req = FlattenRequest()
         assert req.style == "IEEE"

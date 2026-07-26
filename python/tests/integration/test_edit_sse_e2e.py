@@ -43,6 +43,7 @@ agent:
 
 # ── Mock SSE line generators ──────────────────────────────────────────────
 
+
 def _make_cloud_sse_lines(tokens: list[str]) -> list[str]:
     """Build cloud-format SSE lines from token list."""
     lines = []
@@ -87,14 +88,15 @@ class _MockStreamResponse:
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 
+
 def _parse_sse(text: str) -> list[dict]:
     events = []
     current = {}
     for line in text.splitlines():
         if line.startswith("event:"):
-            current["event"] = line[len("event:"):].strip()
+            current["event"] = line[len("event:") :].strip()
         elif line.startswith("data:"):
-            current["data"] = line[len("data:"):].strip()
+            current["data"] = line[len("data:") :].strip()
             events.append({**current})
             current = {}
     return events
@@ -106,6 +108,7 @@ def _parse_sse(text: str) -> list[dict]:
 @pytest.fixture(scope="module")
 def client():
     from fastapi.testclient import TestClient
+
     from api_factory import create_app
 
     test_dir = tempfile.mkdtemp()
@@ -144,10 +147,13 @@ class TestEditCloudSSE:
             yield
 
     def test_edit_cloud_stream_returns_delta_events(self, client):
-        resp = client.post("/api/edit", json={
-            "text": "The quick brown fox",
-            "instruction": "polish",
-        })
+        resp = client.post(
+            "/api/edit",
+            json={
+                "text": "The quick brown fox",
+                "instruction": "polish",
+            },
+        )
         assert resp.status_code == 200
         events = _parse_sse(resp.text)
         assert len(events) > 0
@@ -160,10 +166,13 @@ class TestEditCloudSSE:
         assert "The" in full
 
     def test_edit_cloud_stream_content_accumulates(self, client):
-        resp = client.post("/api/edit", json={
-            "text": "Test text",
-            "instruction": "translate to zh",
-        })
+        resp = client.post(
+            "/api/edit",
+            json={
+                "text": "Test text",
+                "instruction": "translate to zh",
+            },
+        )
         events = _parse_sse(resp.text)
         deltas = [e for e in events if e.get("event") == "delta"]
         # Last delta has full accumulated content
@@ -180,10 +189,13 @@ class TestEditCloudSSE:
 
 class TestEditEchoSSE:
     def test_edit_no_instruction_echoes_input(self, client):
-        resp = client.post("/api/edit", json={
-            "text": "Hello world from test.",
-            "instruction": "",
-        })
+        resp = client.post(
+            "/api/edit",
+            json={
+                "text": "Hello world from test.",
+                "instruction": "",
+            },
+        )
         events = _parse_sse(resp.text)
         deltas = [e for e in events if e.get("event") == "delta"]
         assert len(deltas) >= 1
@@ -210,10 +222,13 @@ class TestEditOllamaSSE:
 
     def test_edit_ollama_stream_returns_delta_events(self, client):
         """Uses cloud config, so reverts to stream-based response."""
-        resp = client.post("/api/edit", json={
-            "text": "some text to edit",
-            "instruction": "summarize",
-        })
+        resp = client.post(
+            "/api/edit",
+            json={
+                "text": "some text to edit",
+                "instruction": "summarize",
+            },
+        )
         assert resp.status_code == 200
 
 
@@ -234,9 +249,12 @@ class TestEditSSEErrors:
             yield
 
     def test_edit_with_task_type_translate(self, client):
-        resp = client.post("/api/edit", json={
-            "text": "Hello world",
-            "instruction": "translate to zh",
-            "task_type": "translate",
-        })
+        resp = client.post(
+            "/api/edit",
+            json={
+                "text": "Hello world",
+                "instruction": "translate to zh",
+                "task_type": "translate",
+            },
+        )
         assert resp.status_code == 200

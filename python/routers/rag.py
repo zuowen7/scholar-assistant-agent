@@ -7,6 +7,7 @@ Endpoints:
   DELETE /api/rag/documents/{doc_id}     — delete a doc
   POST   /api/rag/query                  — semantic search
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -18,7 +19,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request, UploadFile
+from fastapi import FastAPI, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)

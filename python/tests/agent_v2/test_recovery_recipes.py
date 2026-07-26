@@ -19,20 +19,21 @@ Tests cover:
   5. Ledger entry lifecycle (Queued→Running→Succeeded/Failed/Exhausted)
   6. StatusReport projection
 """
+
 from __future__ import annotations
 
 import pytest
-
 
 # ============================================================================
 # 1. FailureScenario enum
 # ============================================================================
 
-class TestFailureScenario:
 
+class TestFailureScenario:
     @pytest.fixture(autouse=True)
     def _import(self):
         from src.agent_v2.runtime.recovery import FailureScenario
+
         self.FS = FailureScenario
 
     def test_all_scenarios_defined(self):
@@ -45,6 +46,7 @@ class TestFailureScenario:
 
     def test_from_worker_failure_kind(self):
         from src.agent_v2.runtime.recovery import FailureScenario as FS
+
         assert FS.from_worker_failure("trust_gate") == FS.TRUST_PROMPT_UNRESOLVED
         assert FS.from_worker_failure("tool_permission_gate") == FS.TRUST_PROMPT_UNRESOLVED
         assert FS.from_worker_failure("prompt_delivery") == FS.PROMPT_MISDELIVERY
@@ -58,11 +60,12 @@ class TestFailureScenario:
 # 2. recipe_for
 # ============================================================================
 
-class TestRecipeFor:
 
+class TestRecipeFor:
     @pytest.fixture(autouse=True)
     def _import(self):
-        from src.agent_v2.runtime.recovery import recipe_for, FailureScenario, RecoveryRecipe
+        from src.agent_v2.runtime.recovery import FailureScenario, RecoveryRecipe, recipe_for
+
         self.recipe_for = recipe_for
         self.FS = FailureScenario
 
@@ -80,7 +83,10 @@ class TestRecipeFor:
 
     def test_mcp_handshake_recipe(self):
         recipe = self.recipe_for(self.FS.MCP_HANDSHAKE_FAILURE)
-        assert any("mcp" in s.lower() or "restart" in s.lower() or "retry" in s.lower() for s in recipe.steps)
+        assert any(
+            "mcp" in s.lower() or "restart" in s.lower() or "retry" in s.lower()
+            for s in recipe.steps
+        )
 
     def test_escalation_policy_defined(self):
         for scenario in self.FS.all():
@@ -92,11 +98,12 @@ class TestRecipeFor:
 # 3. RecoveryContext
 # ============================================================================
 
-class TestRecoveryContext:
 
+class TestRecoveryContext:
     @pytest.fixture(autouse=True)
     def _import(self):
-        from src.agent_v2.runtime.recovery import RecoveryContext, FailureScenario
+        from src.agent_v2.runtime.recovery import FailureScenario, RecoveryContext
+
         self.Ctx = RecoveryContext
         self.FS = FailureScenario
 
@@ -109,12 +116,14 @@ class TestRecoveryContext:
     def test_attempt_count_increments(self):
         ctx = self.Ctx()
         from src.agent_v2.runtime.recovery import attempt_recovery
+
         attempt_recovery(self.FS.TRUST_PROMPT_UNRESOLVED, ctx)
         assert ctx.attempt_count(self.FS.TRUST_PROMPT_UNRESOLVED) == 1
 
     def test_ledger_entry_created(self):
         ctx = self.Ctx()
         from src.agent_v2.runtime.recovery import attempt_recovery
+
         attempt_recovery(self.FS.PROVIDER_FAILURE, ctx)
         entry = ctx.ledger_entry(self.FS.PROVIDER_FAILURE)
         assert entry is not None
@@ -123,6 +132,7 @@ class TestRecoveryContext:
     def test_events_populated(self):
         ctx = self.Ctx()
         from src.agent_v2.runtime.recovery import attempt_recovery
+
         attempt_recovery(self.FS.TRUST_PROMPT_UNRESOLVED, ctx)
         assert len(ctx.events()) >= 2
 
@@ -135,6 +145,7 @@ class TestRecoveryContext:
     def test_status_report_after_attempt(self):
         ctx = self.Ctx()
         from src.agent_v2.runtime.recovery import attempt_recovery
+
         attempt_recovery(self.FS.PROVIDER_FAILURE, ctx)
         report = ctx.status_report(self.FS.PROVIDER_FAILURE)
         assert report.attempted
@@ -146,6 +157,7 @@ class TestRecoveryContext:
     def test_ledger_entries_returns_all(self):
         ctx = self.Ctx()
         from src.agent_v2.runtime.recovery import attempt_recovery
+
         attempt_recovery(self.FS.PROVIDER_FAILURE, ctx)
         attempt_recovery(self.FS.MCP_HANDSHAKE_FAILURE, ctx)
         entries = ctx.ledger_entries()
@@ -156,14 +168,17 @@ class TestRecoveryContext:
 # 4. attempt_recovery — outcomes
 # ============================================================================
 
-class TestAttemptRecovery:
 
+class TestAttemptRecovery:
     @pytest.fixture(autouse=True)
     def _import(self):
         from src.agent_v2.runtime.recovery import (
-            RecoveryContext, FailureScenario, attempt_recovery,
+            FailureScenario,
+            RecoveryContext,
             RecoveryResult,
+            attempt_recovery,
         )
+
         self.Ctx = RecoveryContext
         self.FS = FailureScenario
         self.attempt = attempt_recovery
@@ -239,10 +254,11 @@ class TestAttemptRecovery:
 # 5. RecoveryResult types
 # ============================================================================
 
-class TestRecoveryResult:
 
+class TestRecoveryResult:
     def test_recovered(self):
         from src.agent_v2.runtime.recovery import RecoveryResult
+
         r = RecoveryResult.recovered(steps_taken=3)
         assert r.is_recovered
         assert not r.is_partial_recovery
@@ -251,9 +267,8 @@ class TestRecoveryResult:
 
     def test_partial_recovery(self):
         from src.agent_v2.runtime.recovery import RecoveryResult
-        r = RecoveryResult.partial_recovery(
-            recovered=["step1"], remaining=["step2"]
-        )
+
+        r = RecoveryResult.partial_recovery(recovered=["step1"], remaining=["step2"])
         assert r.is_partial_recovery
         assert not r.is_recovered
         assert len(r.recovered) == 1
@@ -261,12 +276,14 @@ class TestRecoveryResult:
 
     def test_escalation_required(self):
         from src.agent_v2.runtime.recovery import RecoveryResult
+
         r = RecoveryResult.escalation_required(reason="too many attempts")
         assert r.is_escalation_required
         assert "too many" in r.reason
 
     def test_to_dict(self):
         from src.agent_v2.runtime.recovery import RecoveryResult
+
         r = RecoveryResult.recovered(steps_taken=2)
         d = r.to_dict()
         assert d["type"] == "recovered"

@@ -5,15 +5,30 @@ Tests: Anchor, Promise, Ledger, ReviewPoint, RebuttalTurn, ReviewSession
 
 from __future__ import annotations
 
-import pytest
 import time
 
+import pytest
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 
 def _models():
     from src.argument.companion_models import (
+        Anchor,
+        Ledger,
+        NodeKind,
+        PointCategory,
+        PointSeverity,
+        PointSource,
+        PointStatus,
+        Promise,
+        PromiseStatus,
+        RebuttalTurn,
+        ReviewPoint,
+        ReviewSession,
+    )
+
+    return (
         Anchor,
         Promise,
         Ledger,
@@ -26,10 +41,6 @@ def _models():
         PointCategory,
         PointStatus,
         PointSource,
-    )
-    return (
-        Anchor, Promise, Ledger, ReviewPoint, RebuttalTurn, ReviewSession,
-        NodeKind, PromiseStatus, PointSeverity, PointCategory, PointStatus, PointSource,
     )
 
 
@@ -146,7 +157,11 @@ class TestLedger:
 
 class TestRebuttalTurn:
     def test_id_prefix(self):
-        *_, RebuttalTurn, _, = _models()[:6]
+        (
+            *_,
+            RebuttalTurn,
+            _,
+        ) = _models()[:6]
         _, _, _, _, RebuttalTurn, _ = _models()[:6]
         rt = RebuttalTurn(role="author", text="My rebuttal here.")
         assert rt.id.startswith("rt_")
@@ -186,8 +201,7 @@ class TestReviewPoint:
 
     def test_default_status_open(self):
         _, _, _, ReviewPoint, *_ = _models()[:6]
-        rp = ReviewPoint(severity="minor", category="writing_clarity",
-                         title="t", detail="d")
+        rp = ReviewPoint(severity="minor", category="writing_clarity", title="t", detail="d")
         assert rp.status == "open"
 
     def test_default_source_llm(self):
@@ -299,8 +313,12 @@ class TestReviewSession:
 
     def test_serialise_roundtrip(self):
         _, _, _, ReviewPoint, _, ReviewSession = _models()[:6]
-        rp = ReviewPoint(severity="major", category="baseline",
-                         title="Missing baselines", detail="No comparison to X.")
+        rp = ReviewPoint(
+            severity="major",
+            category="baseline",
+            title="Missing baselines",
+            detail="No comparison to X.",
+        )
         s = ReviewSession(doc_id="d1", venue="NeurIPS", points=[rp])
         data = s.model_dump()
         s2 = ReviewSession.model_validate(data)

@@ -1,14 +1,14 @@
 """输出格式化模块"""
 
-from src.formatter.renderer import format_blocks, format_output
-from src.formatter.pptx_exporter import build_paper_pptx, export_translated_paper_to_pptx, HAS_PPTX
 from src.formatter.data_availability import (
-    generate_statement,
-    format_data_availability_section,
-    DatasetInfo,
     AccessRoute,
     DataAvailabilityResult,
+    DatasetInfo,
+    format_data_availability_section,
+    generate_statement,
 )
+from src.formatter.pptx_exporter import HAS_PPTX, build_paper_pptx, export_translated_paper_to_pptx
+from src.formatter.renderer import format_blocks, format_output
 
 
 def markdown_to_docx(*args, **kwargs):
@@ -26,6 +26,7 @@ def markdown_to_docx(*args, **kwargs):
             "Install python requirements-lock.txt before exporting .docx files."
         ) from e
     return _markdown_to_docx(*args, **kwargs)
+
 
 __all__ = [
     "format_blocks",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import copy
 import json
 import logging
@@ -10,32 +11,32 @@ import os
 import shutil
 import time
 import uuid
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import AsyncGenerator, Literal
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-from src.parser import extract_document, SUPPORTED_EXTENSIONS
-from src.parser.extractor import extract_document_with_layout
-from src.cleaner import clean_text_full
 from src.chunker import chunk_text_with_blocks
-from src.formatter import format_blocks, format_output, HAS_PPTX
-from src.translator.ollama_client import OllamaClient, TranslationResult
-from src.translator.cloud_client import CloudClient, PROVIDER_PRESETS
-from src.translator.context import extract_document_context
+from src.cleaner import clean_text_full
+from src.formatter import HAS_PPTX, format_blocks
+from src.parser import SUPPORTED_EXTENSIONS, extract_document
+from src.parser.extractor import extract_document_with_layout
+from src.translator._helpers import _extract_term_pairs
 from src.translator.block_translator import (
     BlockTranslation,
     translate_block_chunks_parallel,
 )
-from src.translator.memory_store import TranslationMemory
+from src.translator.cloud_client import PROVIDER_PRESETS
+from src.translator.context import extract_document_context
 from src.translator.glossary_store import GlossaryStore
-from src.translator._helpers import restore_paragraphs_if_needed, _extract_term_pairs
+from src.translator.memory_store import TranslationMemory
+from src.translator.ollama_client import OllamaClient
 from src.translator.post_qa import (
-    run_post_translation_qa,
     get_hedging_tier_for_section,
+    run_post_translation_qa,
 )
 
 logger = logging.getLogger(__name__)
@@ -123,10 +124,8 @@ def register_translate(
         for key in ("input_path", "output_path"):
             p = t.get(key)
             if p:
-                try:
+                with contextlib.suppress(OSError):
                     Path(p).unlink(missing_ok=True)
-                except OSError:
-                    pass
 
     async def _acquire_task_slot(task_id: str) -> None:
         """Reserve a translation slot. Only one running task at a time."""
@@ -134,7 +133,8 @@ def register_translate(
             # Expire stale tasks BEFORE checking has_running, so a stuck task
             # doesn't permanently block the slot.
             stale_running = [
-                tid for tid, t in tasks.items()
+                tid
+                for tid, t in tasks.items()
                 if t["status"] == "running"
                 and tid != task_id
                 and (time.monotonic() - t.get("_created_at", 0)) > 1800
@@ -146,7 +146,8 @@ def register_translate(
             # Stale pending cleanup: if a pending task has no stream connected
             # within 30s, mark it as expired so the next task can proceed.
             stale_ids = [
-                tid for tid, t in tasks.items()
+                tid
+                for tid, t in tasks.items()
                 if t["status"] == "pending"
                 and tid != task_id
                 and (time.monotonic() - t.get("_created_at", 0)) > 30
@@ -170,6 +171,7 @@ def register_translate(
     @app.get("/api/health")
     def health():
         from src._version import __version__
+
         payload = {"status": "ok", "version": __version__}
         if cloud_only:
             payload["mode"] = "cloud_only"
@@ -275,6 +277,7 @@ def register_translate(
             if task_id in tasks:
                 tasks[task_id]["status"] = "error"
             raise
+
     @app.post("/api/translate/path")
     async def start_translate_path(payload: FilePathPayload):
         file_path = Path(payload.path).resolve()
@@ -336,7 +339,9 @@ def register_translate(
 
             # Use layout-aware extraction for PDFs to enable bilingual overlay export
             if ext == ".pdf":
-                layout_doc, blocks = await asyncio.to_thread(extract_document_with_layout, input_path)
+                layout_doc, blocks = await asyncio.to_thread(
+                    extract_document_with_layout, input_path
+                )
                 doc = layout_doc
                 _, _, max_pdf_pages = _get_limits()
                 if doc.page_count > max_pdf_pages:
@@ -346,7 +351,7 @@ def register_translate(
                     )
                 task["blocks"] = blocks
                 task["layout_doc"] = layout_doc
-                block_ids_in_page = len(blocks)
+                len(blocks)
             else:
                 doc = await asyncio.to_thread(extract_document, input_path)
                 blocks = []
@@ -358,18 +363,21 @@ def register_translate(
 
             # Article splitting: detect multi-article PDFs before cleaning
             from src.parser.article_detector import extract_articles
+
             raw_articles = await asyncio.to_thread(extract_articles, raw_text)
             num_articles = len(raw_articles)
 
             yield {
                 "event": "translate.parsed",
-                "data": json.dumps({
-                    "pages": doc.page_count,
-                    "chars": len(raw_text),
-                    "dual_column_pages": dual_pages,
-                    "block_count": len(blocks),
-                    "articles": num_articles,
-                }),
+                "data": json.dumps(
+                    {
+                        "pages": doc.page_count,
+                        "chars": len(raw_text),
+                        "dual_column_pages": dual_pages,
+                        "block_count": len(blocks),
+                        "articles": num_articles,
+                    }
+                ),
             }
 
             yield {
@@ -419,6 +427,7 @@ def register_translate(
 
             # Build a unified BlockChunkResult
             from src.chunker.splitter import BlockChunkResult as BCR
+
             block_result = BCR(
                 blocks=all_blocks,
                 chunks=all_chunks,
@@ -427,11 +436,13 @@ def register_translate(
 
             yield {
                 "event": "translate.cleaned",
-                "data": json.dumps({
-                    "chars": total_clean_chars,
-                    "has_references": has_any_refs,
-                    "articles": num_articles,
-                }),
+                "data": json.dumps(
+                    {
+                        "chars": total_clean_chars,
+                        "has_references": has_any_refs,
+                        "articles": num_articles,
+                    }
+                ),
             }
 
             yield {
@@ -442,8 +453,7 @@ def register_translate(
             blocks_by_id = {b.id: b for b in block_result.blocks}
             total_chunks = len(block_result.chunks)
             task["chunk_blocks"] = {
-                str(chunk.index): list(chunk.block_ids)
-                for chunk in block_result.chunks
+                str(chunk.index): list(chunk.block_ids) for chunk in block_result.chunks
             }
             task["block_chunk_map"] = {
                 block_id: chunk.index
@@ -459,32 +469,34 @@ def register_translate(
 
             yield {
                 "event": "translate.chunked",
-                "data": json.dumps({
-                    "total_chunks": total_chunks,
-                    "total_blocks": len(block_result.blocks),
-                    "block_types": type_counts,
-                    "references_chars": len(block_result.references_text),
-                    # 完整块清单——前端可以预先渲染原文骨架
-                    "blocks": [
-                        {
-                            "id": b.id,
-                            "type": b.type,
-                            "level": b.level,
-                            "translatable": b.translatable,
-                            "original": b.text,
-                        }
-                        for b in block_result.blocks
-                    ],
-                    "chunks": [
-                        {
-                            "index": c.index,
-                            "block_ids": c.block_ids,
-                            "char_count": c.char_count,
-                            "estimated_tokens": c.estimated_tokens,
-                        }
-                        for c in block_result.chunks
-                    ],
-                }),
+                "data": json.dumps(
+                    {
+                        "total_chunks": total_chunks,
+                        "total_blocks": len(block_result.blocks),
+                        "block_types": type_counts,
+                        "references_chars": len(block_result.references_text),
+                        # 完整块清单——前端可以预先渲染原文骨架
+                        "blocks": [
+                            {
+                                "id": b.id,
+                                "type": b.type,
+                                "level": b.level,
+                                "translatable": b.translatable,
+                                "original": b.text,
+                            }
+                            for b in block_result.blocks
+                        ],
+                        "chunks": [
+                            {
+                                "index": c.index,
+                                "block_ids": c.block_ids,
+                                "char_count": c.char_count,
+                                "estimated_tokens": c.estimated_tokens,
+                            }
+                            for c in block_result.chunks
+                        ],
+                    }
+                ),
             }
 
             yield {
@@ -527,7 +539,9 @@ def register_translate(
                 glossary_prompt = glossary_store.build_prompt_text()
                 if glossary_prompt:
                     existing_sp = trans_cfg.get("system_prompt", "")
-                    enhanced_sp = existing_sp + "\n\n" + glossary_prompt if existing_sp else glossary_prompt
+                    enhanced_sp = (
+                        existing_sp + "\n\n" + glossary_prompt if existing_sp else glossary_prompt
+                    )
                     if hasattr(client, "system_prompt"):
                         client.system_prompt = enhanced_sp
 
@@ -549,27 +563,32 @@ def register_translate(
             llm_chunks: list = []
             for chunk in block_result.chunks:
                 hit = await asyncio.to_thread(
-                    tm_store.lookup, chunk.text,
-                    source_lang=src_lang, target_lang=tgt_lang,
+                    tm_store.lookup,
+                    chunk.text,
+                    source_lang=src_lang,
+                    target_lang=tgt_lang,
                 )
                 if hit.match_type in ("exact", "fuzzy"):
                     tm_hit_chunks[chunk.index] = hit.target
                     yield {
                         "event": "translate.chunk_tm_hit",
-                        "data": json.dumps({
-                            "index": chunk.index,
-                            "total": total_chunks,
-                            "match_type": hit.match_type,
-                            "score": round(hit.score, 3),
-                            "original_preview": chunk.text[:200],
-                            "translated_preview": hit.target[:200],
-                        }),
+                        "data": json.dumps(
+                            {
+                                "index": chunk.index,
+                                "total": total_chunks,
+                                "match_type": hit.match_type,
+                                "score": round(hit.score, 3),
+                                "original_preview": chunk.text[:200],
+                                "translated_preview": hit.target[:200],
+                            }
+                        ),
                     }
                 else:
                     llm_chunks.append(chunk)
 
             # TM 命中的 chunk：按块比例分配 hit.target
             from src.translator.block_translator import _align_translation_to_blocks
+
             for cidx, hit_target in tm_hit_chunks.items():
                 chunk = next(c for c in block_result.chunks if c.index == cidx)
                 blocks = [blocks_by_id[bid] for bid in chunk.block_ids]
@@ -578,16 +597,18 @@ def register_translate(
                     block_trans_by_id[bt.block_id] = bt
                     yield {
                         "event": "translate.block_translated",
-                        "data": json.dumps({
-                            "chunk_index": cidx,
-                            "block_id": bt.block_id,
-                            "type": bt.type,
-                            "translatable": bt.translatable,
-                            "original": bt.original,
-                            "translated": bt.translated,
-                            "source": "tm",
-                            "status": bt.status,
-                        }),
+                        "data": json.dumps(
+                            {
+                                "chunk_index": cidx,
+                                "block_id": bt.block_id,
+                                "type": bt.type,
+                                "translatable": bt.translatable,
+                                "original": bt.original,
+                                "translated": bt.translated,
+                                "source": "tm",
+                                "status": bt.status,
+                            }
+                        ),
                     }
 
             # 翻译剩余 chunk
@@ -604,11 +625,13 @@ def register_translate(
                         if cr.error:
                             yield {
                                 "event": "translate.chunk_error",
-                                "data": json.dumps({
-                                    "index": cr.chunk_index,
-                                    "total": total_chunks,
-                                    "error": cr.error,
-                                }),
+                                "data": json.dumps(
+                                    {
+                                        "index": cr.chunk_index,
+                                        "total": total_chunks,
+                                        "error": cr.error,
+                                    }
+                                ),
                             }
                         if cr.is_fallback:
                             fallback_count += 1
@@ -620,31 +643,39 @@ def register_translate(
                             block_trans_by_id[bt.block_id] = bt
                             yield {
                                 "event": "translate.block_translated",
-                                "data": json.dumps({
-                                    "chunk_index": cr.chunk_index,
-                                    "block_id": bt.block_id,
-                                    "type": bt.type,
-                                    "translatable": bt.translatable,
-                                    "original": bt.original,
-                                    "translated": bt.translated,
-                                    "aligned": cr.aligned,
-                                    "status": bt.status,
-                                }),
+                                "data": json.dumps(
+                                    {
+                                        "chunk_index": cr.chunk_index,
+                                        "block_id": bt.block_id,
+                                        "type": bt.type,
+                                        "translatable": bt.translatable,
+                                        "original": bt.original,
+                                        "translated": bt.translated,
+                                        "aligned": cr.aligned,
+                                        "status": bt.status,
+                                    }
+                                ),
                             }
 
                         # Glossary 校验在 chunk 级（合并所有块的译文）
                         if glossary_store:
-                            chunk_orig = "\n\n".join(bt.original for bt in cr.block_translations if bt.translatable)
-                            chunk_trans = "\n\n".join(bt.translated for bt in cr.block_translations if bt.translatable)
+                            chunk_orig = "\n\n".join(
+                                bt.original for bt in cr.block_translations if bt.translatable
+                            )
+                            chunk_trans = "\n\n".join(
+                                bt.translated for bt in cr.block_translations if bt.translatable
+                            )
                             violations = glossary_store.enforce(chunk_trans, original=chunk_orig)
                             if violations:
                                 yield {
                                     "event": "translate.glossary_violation",
-                                    "data": json.dumps({
-                                        "index": cr.chunk_index,
-                                        "total": total_chunks,
-                                        "violations": violations,
-                                    }),
+                                    "data": json.dumps(
+                                        {
+                                            "index": cr.chunk_index,
+                                            "total": total_chunks,
+                                            "violations": violations,
+                                        }
+                                    ),
                                 }
                             learned = _extract_term_pairs(chunk_orig, chunk_trans)
                             if learned:
@@ -665,23 +696,25 @@ def register_translate(
                             if qa_result.has_warnings:
                                 yield {
                                     "event": "translate.qa_warnings",
-                                    "data": json.dumps({
-                                        "chunk_index": cr.chunk_index,
-                                        "index": cr.chunk_index,
-                                        "total": total_chunks,
-                                        "section_type": cr.section_type,
-                                        "score": qa_result.score,
-                                        "flags": [
-                                            {
-                                                "type": f.type,
-                                                "severity": f.severity,
-                                                "location": f.location,
-                                                "message": f.message,
-                                                "suggestion": f.suggestion,
-                                            }
-                                            for f in qa_result.flags
-                                        ],
-                                    }),
+                                    "data": json.dumps(
+                                        {
+                                            "chunk_index": cr.chunk_index,
+                                            "index": cr.chunk_index,
+                                            "total": total_chunks,
+                                            "section_type": cr.section_type,
+                                            "score": qa_result.score,
+                                            "flags": [
+                                                {
+                                                    "type": f.type,
+                                                    "severity": f.severity,
+                                                    "location": f.location,
+                                                    "message": f.message,
+                                                    "suggestion": f.suggestion,
+                                                }
+                                                for f in qa_result.flags
+                                            ],
+                                        }
+                                    ),
                                 }
 
                         # 兼容：发送 chunk_done 事件供旧前端 fallback
@@ -689,16 +722,18 @@ def register_translate(
                         chunk_trans = "\n\n".join(bt.translated for bt in cr.block_translations)
                         yield {
                             "event": "translate.chunk_done",
-                            "data": json.dumps({
-                                "index": cr.chunk_index,
-                                "total": total_chunks,
-                                "original_preview": chunk_orig[:200],
-                                "translated_preview": chunk_trans[:200],
-                                "tokens": cr.completion_tokens,
-                                "fallback": cr.is_fallback,
-                                "aligned": cr.aligned,
-                                "section_type": cr.section_type,
-                            }),
+                            "data": json.dumps(
+                                {
+                                    "index": cr.chunk_index,
+                                    "total": total_chunks,
+                                    "original_preview": chunk_orig[:200],
+                                    "translated_preview": chunk_trans[:200],
+                                    "tokens": cr.completion_tokens,
+                                    "fallback": cr.is_fallback,
+                                    "aligned": cr.aligned,
+                                    "section_type": cr.section_type,
+                                }
+                            ),
                         }
             finally:
                 if hasattr(client, "close"):
@@ -717,7 +752,7 @@ def register_translate(
                         original=b.text,
                         translated=b.text,
                         translatable=b.translatable,
-                        status='ok',
+                        status="ok",
                     )
                 ordered_block_translations.append(bt)
 
@@ -726,16 +761,18 @@ def register_translate(
                 blocks = [blocks_by_id[bid] for bid in chunk.block_ids]
                 chunk_orig = "\n\n".join(b.text for b in blocks)
                 chunk_trans = "\n\n".join(
-                    block_trans_by_id[b.id].translated for b in blocks
-                    if b.id in block_trans_by_id
+                    block_trans_by_id[b.id].translated for b in blocks if b.id in block_trans_by_id
                 )
                 if chunk_orig and chunk_trans:
                     try:
                         await asyncio.to_thread(
-                            tm_store.store, chunk_orig, chunk_trans,
-                            source_lang=src_lang, target_lang=tgt_lang,
+                            tm_store.store,
+                            chunk_orig,
+                            chunk_trans,
+                            source_lang=src_lang,
+                            target_lang=tgt_lang,
                         )
-                    except Exception as e:
+                    except Exception:
                         logger.debug("TM store failed for chunk %d (non-fatal)", chunk.index)
 
             yield {
@@ -769,7 +806,9 @@ def register_translate(
             # 兼容字段：保留旧 chunks 结构供未升级的前端使用
             task["chunks"] = [
                 {
-                    "original": "\n\n".join(b.text for b in (blocks_by_id[bid] for bid in c.block_ids)),
+                    "original": "\n\n".join(
+                        b.text for b in (blocks_by_id[bid] for bid in c.block_ids)
+                    ),
                     "translated": "\n\n".join(
                         block_trans_by_id[bid].translated
                         for bid in c.block_ids
@@ -782,7 +821,11 @@ def register_translate(
             rag_ingested = False
             try:
                 _ensure_fn = _state.get("ensure_rag_store")
-                rs = await _ensure_fn() if _ensure_fn else _state.get("rag_store_getter", lambda: None)()
+                rs = (
+                    await _ensure_fn()
+                    if _ensure_fn
+                    else _state.get("rag_store_getter", lambda: None)()
+                )
                 if rs is not None:
                     src_lang = config.get("translator", {}).get("source_lang", "en")
                     src_label = "英文" if src_lang == "en" else src_lang
@@ -790,17 +833,32 @@ def register_translate(
                     dual_text = f"[原文]\n{original_text}\n\n[译文]\n{content}"
                     _task_id_str = task_id
                     _filename = task["filename"]
-                    logger.info("RAG ingest queued for trans_%s, text length=%d", _task_id_str, len(dual_text))
+                    logger.info(
+                        "RAG ingest queued for trans_%s, text length=%d",
+                        _task_id_str,
+                        len(dual_text),
+                    )
 
                     async def _bg_ingest():
                         async with _RAG_INGEST_SEMAPHORE:
                             try:
                                 _doc_id = f"trans_{_task_id_str}"
-                                _metadata = {"title": f"[翻译] {_filename}", "source": "translation", "source_lang": src_label}
+                                _metadata = {
+                                    "title": f"[翻译] {_filename}",
+                                    "source": "translation",
+                                    "source_lang": src_label,
+                                }
                                 if hasattr(rs, "ingest_document"):
-                                    await asyncio.to_thread(rs.ingest_document, _doc_id, dual_text, _metadata)
+                                    await asyncio.to_thread(
+                                        rs.ingest_document, _doc_id, dual_text, _metadata
+                                    )
                                 elif hasattr(rs, "add"):
-                                    await asyncio.to_thread(rs.add, ids=[_doc_id], documents=[dual_text], metadatas=[_metadata])
+                                    await asyncio.to_thread(
+                                        rs.add,
+                                        ids=[_doc_id],
+                                        documents=[dual_text],
+                                        metadatas=[_metadata],
+                                    )
                                 logger.info("翻译结果已自动入库 RAG: trans_%s", _task_id_str)
                             except Exception as exc:
                                 logger.warning("翻译结果入库 RAG 失败: %s", exc)
@@ -810,7 +868,10 @@ def register_translate(
                     def _log_bg_exc(t: asyncio.Task) -> None:
                         _background_tasks.discard(t)
                         if not t.cancelled() and t.exception():
-                            logger.error("RAG 后台入库失败: %s", t.exception(), exc_info=t.exception())
+                            logger.error(
+                                "RAG 后台入库失败: %s", t.exception(), exc_info=t.exception()
+                            )
+
                     _bg_task.add_done_callback(_log_bg_exc)
                     rag_ingested = True
             except Exception as rag_err:
@@ -818,18 +879,22 @@ def register_translate(
 
             yield {
                 "event": "translate.complete",
-                "data": json.dumps({
-                    "task_id": task_id,
-                    "output_path": str(out_path),
-                    "content": content,
-                    "rag_ingested": rag_ingested,
-                    "block_ids": [b.block_id for b in task.get("blocks", []) or []] if task.get("blocks") else None,
-                    # 结构化 blocks——前端按块渲染的核心数据
-                    "blocks": task["block_translations"],
-                    # 向后兼容的扁平 chunks
-                    "chunks": task["chunks"],
-                    "misalign_count": misalign_count,
-                }),
+                "data": json.dumps(
+                    {
+                        "task_id": task_id,
+                        "output_path": str(out_path),
+                        "content": content,
+                        "rag_ingested": rag_ingested,
+                        "block_ids": [b.block_id for b in task.get("blocks", []) or []]
+                        if task.get("blocks")
+                        else None,
+                        # 结构化 blocks——前端按块渲染的核心数据
+                        "blocks": task["block_translations"],
+                        # 向后兼容的扁平 chunks
+                        "chunks": task["chunks"],
+                        "misalign_count": misalign_count,
+                    }
+                ),
             }
 
         except Exception as e:
@@ -913,7 +978,9 @@ def register_translate(
             if new_api_key and is_masked(new_api_key):
                 cfg.cloud["api_key"] = existing_cloud.get("api_key", "")
             elif new_api_key and new_api_key != existing_cloud.get("api_key", ""):
-                logger.info("[AUDIT] API key updated for provider=%s", cfg.cloud.get("provider", "unknown"))
+                logger.info(
+                    "[AUDIT] API key updated for provider=%s", cfg.cloud.get("provider", "unknown")
+                )
             trans["cloud"] = {**existing_cloud, **cfg.cloud}
         if cfg.agent:
             existing_agent = current.get("agent", {})
@@ -921,7 +988,10 @@ def register_translate(
             if new_agent_key and is_masked(new_agent_key):
                 cfg.agent["api_key"] = existing_agent.get("api_key", "")
             elif new_agent_key and new_agent_key != existing_agent.get("api_key", ""):
-                logger.info("[AUDIT] Agent API key updated for provider=%s", cfg.agent.get("provider", "unknown"))
+                logger.info(
+                    "[AUDIT] Agent API key updated for provider=%s",
+                    cfg.agent.get("provider", "unknown"),
+                )
             current["agent"] = {**existing_agent, **cfg.agent}
         if cloud_only:
             current.setdefault("translator", {})["engine"] = "cloud"
@@ -970,6 +1040,7 @@ def register_translate(
         if not file.filename.lower().endswith(".tmx"):
             raise HTTPException(400, "仅支持 TMX 格式文件")
         import tempfile
+
         with tempfile.NamedTemporaryFile(suffix=".tmx", delete=False) as tmp:
             while chunk := file.file.read(1024 * 1024):
                 tmp.write(chunk)
@@ -985,14 +1056,18 @@ def register_translate(
     @app.get("/api/tm/export")
     async def tm_export(source_lang: str = "en", target_lang: str = "zh"):
         import tempfile
+
         from starlette.background import BackgroundTask
-        tmp = tempfile.NamedTemporaryFile(suffix=".tmx", delete=False)
-        tmp_path = tmp.name
-        tmp.close()
+
+        tmp_path: str
+        with tempfile.NamedTemporaryFile(suffix=".tmx", delete=False) as tmp:
+            tmp_path = tmp.name
         try:
             await asyncio.to_thread(
-                tm_store.export_tmx, tmp_path,
-                source_lang=source_lang, target_lang=target_lang,
+                tm_store.export_tmx,
+                tmp_path,
+                source_lang=source_lang,
+                target_lang=target_lang,
             )
             return FileResponse(
                 tmp_path,
@@ -1030,6 +1105,7 @@ def register_translate(
             raise HTTPException(400, "仅支持 CSV 和 TBX 格式文件")
 
         import tempfile
+
         suffix = ext
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             while chunk := file.file.read(1024 * 1024):
@@ -1062,13 +1138,16 @@ def register_translate(
             raise HTTPException(400, "未找到翻译结果")
 
         from src.translator._helpers import TranslationResult
+
         results = [TranslationResult(**c) if isinstance(c, dict) else c for c in raw_chunks]
 
         from src.formatter import format_output
+
         fmt_cfg = {}
         content = format_output(results, output_format=fmt_cfg.get("output_format", "bilingual"))
 
         from src.formatter.word_exporter import markdown_to_docx
+
         out_docx = output_dir / f"{payload.task_id}_bilingual.docx"
         markdown_to_docx(content, str(out_docx), title="研墨双语对照导出")
         return FileResponse(
@@ -1095,6 +1174,7 @@ def register_translate(
 
         # 构建纯译文内容
         from src.formatter.word_exporter import markdown_to_docx
+
         parts = []
         for bt in block_translations:
             if bt.get("status") == "failed":
@@ -1170,6 +1250,7 @@ def register_translate(
             raise HTTPException(400, "无可导出的内容")
 
         from src.formatter.pptx_exporter import export_translated_paper_to_pptx
+
         out_pptx = output_dir / f"{payload.task_id}_presentation.pptx"
         export_translated_paper_to_pptx(
             out_pptx,
@@ -1192,8 +1273,8 @@ def register_translate(
             raise HTTPException(400, "翻译尚未完成")
 
         from src.formatter.data_availability import (
-            DatasetInfo,
             AccessRoute,
+            DatasetInfo,
             format_data_availability_section,
         )
 
@@ -1202,10 +1283,19 @@ def register_translate(
         data_sections: list[str] = []
         for bt in block_translations:
             text = (bt.get("translated") or bt.get("original", "")).lower()
-            if any(kw in text for kw in [
-                "data", "dataset", "数据", "repository", "available",
-                "accession", "source data", "supplementary",
-            ]):
+            if any(
+                kw in text
+                for kw in [
+                    "data",
+                    "dataset",
+                    "数据",
+                    "repository",
+                    "available",
+                    "accession",
+                    "source data",
+                    "supplementary",
+                ]
+            ):
                 data_sections.append(bt.get("translated") or bt.get("original", ""))
 
         # 生成声明框架
@@ -1269,7 +1359,9 @@ def register_translate(
             cloud_cfg = trans_cfg.get("cloud", {})
             key = (cloud_cfg.get("api_key") or "").strip()
             if not key:
-                raise HTTPException(400, "未配置云端 API Key，请在配置中设置 translator.cloud.api_key")
+                raise HTTPException(
+                    400, "未配置云端 API Key，请在配置中设置 translator.cloud.api_key"
+                )
             client = build_cloud_client(trans_cfg, cloud_cfg)
         else:
             ollama_url = os.environ.get("OLLAMA_HOST") or trans_cfg.get(
@@ -1309,7 +1401,11 @@ def register_translate(
             sanitized = _sanitize_llm_output(result.translated, source_lang=src_lang)
             result.translated = sanitized
 
-            ok = bool(sanitized) and sanitized.strip() != original_text.strip() and _validate_translation(result)
+            ok = (
+                bool(sanitized)
+                and sanitized.strip() != original_text.strip()
+                and _validate_translation(result)
+            )
 
             if not ok:
                 # Persist failed status so retry button stays visible
@@ -1328,16 +1424,14 @@ def register_translate(
             chunk_block_ids = t.get("chunk_blocks", {}).get(str(chunk_index), [block_id])
             translations_by_id = {bt.get("id"): bt for bt in block_translations}
             chunk_items = [
-                translations_by_id[bid]
-                for bid in chunk_block_ids
-                if bid in translations_by_id
+                translations_by_id[bid] for bid in chunk_block_ids if bid in translations_by_id
             ]
             chunk_original = "\n\n".join(
-                item.get("original", "") for item in chunk_items
-                if item.get("translatable")
+                item.get("original", "") for item in chunk_items if item.get("translatable")
             )
             chunk_translated = "\n\n".join(
-                item.get("translated", "") for item in chunk_items
+                item.get("translated", "")
+                for item in chunk_items
                 if item.get("translatable") and item.get("translated")
             )
 
@@ -1390,9 +1484,12 @@ def register_translate(
             if output_path:
                 Path(output_path).write_text(content, encoding="utf-8")
 
-            if was_failed and not any(item.get("status") == "failed" for item in chunk_items):
-                if t.get("fallback_count", 0) > 0:
-                    t["fallback_count"] -= 1
+            if (
+                was_failed
+                and not any(item.get("status") == "failed" for item in chunk_items)
+                and t.get("fallback_count", 0) > 0
+            ):
+                t["fallback_count"] -= 1
             if not t.get("fallback_count", 0) and not t.get("misalign_count", 0):
                 t["status"] = "done"
 
@@ -1409,7 +1506,7 @@ def register_translate(
             }
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
             logger.exception("重试块翻译异常 block_id=%s", block_id)
             block_translations[target_index]["status"] = "failed"
             raise HTTPException(500, "块重试失败，请稍后重试")

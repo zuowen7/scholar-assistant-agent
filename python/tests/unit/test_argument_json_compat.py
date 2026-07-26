@@ -3,11 +3,12 @@
 验证 ai_ops / ledger / reviewer / critique 中的 JSON 提取
 在 LLM 添加前后缀文字、markdown fence 时能正确工作。
 """
+
 import json
+
 import pytest
 
-from src.utils.json_extract import extract_json_object, extract_json_array
-
+from src.utils.json_extract import extract_json_array, extract_json_object
 
 # ── ai_ops 模拟：extractArgument 场景 ───────────────────────────────
 
@@ -112,9 +113,9 @@ class TestReviewerJsonCompat:
 
     def test_t7_import_reviews_pure_json(self):
         """import_real_reviews: 纯 JSON 回归。"""
-        raw = json.dumps([
-            {"quote_from_paper": "test quote", "point": "test point", "severity": "major"}
-        ])
+        raw = json.dumps(
+            [{"quote_from_paper": "test quote", "point": "test point", "severity": "major"}]
+        )
         result = extract_json_array(raw)
         assert result is not None
         assert len(result) == 1

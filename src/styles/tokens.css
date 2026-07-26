@@ -69,7 +69,7 @@
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-emphasis: cubic-bezier(0.2, 0, 0, 1);
-  --ease-brush: cubic-bezier(0.25, 0.1, 0.1, 1);   /* 落笔：快起慢收，模拟笔触顿挫 */
+  --ease-brush: cubic-bezier(0.25, 0.1, 0.1, 1); /* 落笔：快起慢收，模拟笔触顿挫 */
   --motion-fast: 120ms;
   --motion-base: 180ms;
   --motion-slow: 280ms;
@@ -80,13 +80,13 @@
   --ring-focus: 0 0 0 3px var(--c-accent-ring);
 
   /* Page layout — 版心 */
-  --page-width: 880px;          /* 正文版心最大宽度 */
-  --page-width-wide: 1200px;    /* 对照视图版心宽度 */
-  --page-gutter: 48px;          /* 版心两侧留白 */
+  --page-width: 880px; /* 正文版心最大宽度 */
+  --page-width-wide: 1200px; /* 对照视图版心宽度 */
+  --page-gutter: 48px; /* 版心两侧留白 */
 
   /* Reference-driven application shell */
   --shell-sidebar-width: 236px;
-  --brand-red: #C8503A;
+  --brand-red: #c8503a;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -109,11 +109,11 @@
   --accent-0: #5b6cff;
   --accent-1: #7a89ff;
   --accent-2: #3b48d9;
-  --accent-glow: rgba(91, 108, 255, 0.30);
+  --accent-glow: rgba(91, 108, 255, 0.3);
 
   /* Vermilion */
-  --vermilion-0: #C8503A;
-  --vermilion-1: #E0664E;
+  --vermilion-0: #c8503a;
+  --vermilion-1: #e0664e;
 
   /* Paper */
   --paper-0: #f5f1e8;
@@ -138,17 +138,17 @@
   --c-accent-hover: #7a89ff;
   --c-accent-soft: rgba(91, 108, 255, 0.12);
   --c-accent-strong: #4f46e5;
-  --c-accent-ring: rgba(91, 108, 255, 0.40);
+  --c-accent-ring: rgba(91, 108, 255, 0.4);
   --c-accent-gradient: linear-gradient(135deg, #5b6cff 0%, #8b74e6 100%);
 
   /* Semantic colors */
   --c-success: #4ade80;
-  --c-success-bg: rgba(74, 222, 128, 0.10);
+  --c-success-bg: rgba(74, 222, 128, 0.1);
   --c-success-border: rgba(74, 222, 128, 0.25);
   --c-success-fg: #4ade80;
 
   --c-warn: #f59e0b;
-  --c-warn-bg: rgba(245, 158, 11, 0.10);
+  --c-warn-bg: rgba(245, 158, 11, 0.1);
   --c-warn-border: rgba(245, 158, 11, 0.25);
   --c-warn-fg: #f59e0b;
 
@@ -159,7 +159,7 @@
 
   --c-info: #5b6cff;
   --c-info-bg: rgba(91, 108, 255, 0.08);
-  --c-info-border: rgba(91, 108, 255, 0.20);
+  --c-info-border: rgba(91, 108, 255, 0.2);
   --c-info-fg: #7a89ff;
 
   /* Cross-component derived semantics. Keep these as first-class tokens: each
@@ -171,14 +171,14 @@
   /* Derived composites */
   --c-accent-bg: rgba(91, 108, 255, 0.08);
   --c-accent-bg2: rgba(91, 108, 255, 0.05);
-  --c-overlay: rgba(13, 13, 15, 0.40);
+  --c-overlay: rgba(13, 13, 15, 0.4);
   --c-shadow: rgba(0, 0, 0, 0.55);
   --c-sent-border: rgba(35, 35, 40, 0.25);
 
   /* Glass — 半透墨石 */
-  --c-glass: rgba(19, 19, 21, 0.60);
-  --c-glass2: rgba(25, 25, 29, 0.50);
-  --c-glass-border: rgba(46, 46, 52, 0.50);
+  --c-glass: rgba(19, 19, 21, 0.6);
+  --c-glass2: rgba(25, 25, 29, 0.5);
+  --c-glass-border: rgba(46, 46, 52, 0.5);
 
   /* Layer tokens */
   --layer-1: #19191d;
@@ -188,10 +188,10 @@
 
   /* Elevation — 墨色阴影 */
   --elevation-0: none;
-  --elevation-1: 0 1px 2px rgba(0, 0, 0, 0.20), 0 1px 3px rgba(0, 0, 0, 0.14);
-  --elevation-2: 0 2px 6px rgba(0, 0, 0, 0.24), 0 4px 12px rgba(0, 0, 0, 0.20);
-  --elevation-3: 0 6px 16px rgba(0, 0, 0, 0.30), 0 12px 32px rgba(0, 0, 0, 0.24);
-  --elevation-4: 0 12px 32px rgba(0, 0, 0, 0.34), 0 24px 56px rgba(0, 0, 0, 0.30);
+  --elevation-1: 0 1px 2px rgba(0, 0, 0, 0.2), 0 1px 3px rgba(0, 0, 0, 0.14);
+  --elevation-2: 0 2px 6px rgba(0, 0, 0, 0.24), 0 4px 12px rgba(0, 0, 0, 0.2);
+  --elevation-3: 0 6px 16px rgba(0, 0, 0, 0.3), 0 12px 32px rgba(0, 0, 0, 0.24);
+  --elevation-4: 0 12px 32px rgba(0, 0, 0, 0.34), 0 24px 56px rgba(0, 0, 0, 0.3);
 
   /* Semantic aliases (editor UI) */
   --editor-bg: #19191d;
@@ -220,11 +220,11 @@
 /* ══════════════════════════════════════════════════════════════
    LIGHT THEME
    ══════════════════════════════════════════════════════════════ */
-[data-theme="light"] {
-  --c-app-bg: #FAF8F3;
-  --c-nav: #F2EEE5;
-  --c-panel: #FFFFFF;
-  --c-border: #E8E1D3;
+[data-theme='light'] {
+  --c-app-bg: #faf8f3;
+  --c-nav: #f2eee5;
+  --c-panel: #ffffff;
+  --c-border: #e8e1d3;
   /* Ink palette — 素纸色系：微暖中性白 */
   --ink-0: #f0f0f3;
   --ink-1: #fafafa;
@@ -237,29 +237,29 @@
   --accent-0: #5b6cff;
   --accent-1: #4a56e5;
   --accent-2: #3b48d9;
-  --accent-glow: rgba(91, 108, 255, 0.10);
+  --accent-glow: rgba(91, 108, 255, 0.1);
 
   /* Vermilion */
-  --vermilion-0: #C8503A;
-  --vermilion-1: #B84030;
+  --vermilion-0: #c8503a;
+  --vermilion-1: #b84030;
 
   /* Paper — 素纸 */
-  --paper-0: #FAF8F3;
-  --paper-1: #F2EEE5;
+  --paper-0: #faf8f3;
+  --paper-1: #f2eee5;
 
   /* Surface — 纸页层级：底→浮→顶逐层提亮 */
-  --c-surface-0: #FAF8F3;
-  --c-surface-1: #FFFFFF;
-  --c-surface-2: #F7F4ED;
-  --c-surface-3: #E8E1D3;
-  --c-surface-4: #DED6C7;
-  --c-surface-5: #CEC5B4;
+  --c-surface-0: #faf8f3;
+  --c-surface-1: #ffffff;
+  --c-surface-2: #f7f4ed;
+  --c-surface-3: #e8e1d3;
+  --c-surface-4: #ded6c7;
+  --c-surface-5: #cec5b4;
 
   /* Text — 中性墨色 */
-  --c-text-0: #1C1A14;
-  --c-text-1: #4E4A40;
-  --c-text-2: #6F695C;
-  --c-text-3: #8A8474;
+  --c-text-0: #1c1a14;
+  --c-text-1: #4e4a40;
+  --c-text-2: #6f695c;
+  --c-text-3: #8a8474;
 
   /* Accent (semantic) */
   --c-accent: #5b6cff;
@@ -270,15 +270,15 @@
   --c-accent-gradient: linear-gradient(135deg, #5b6cff 0%, #8b74e6 100%);
 
   /* Semantic colors */
-  --c-success: #31945A;
-  --c-success-bg: #EDF7F0;
-  --c-success-border: #CFE9D7;
-  --c-success-fg: #277A49;
+  --c-success: #31945a;
+  --c-success-bg: #edf7f0;
+  --c-success-border: #cfe9d7;
+  --c-success-fg: #277a49;
 
-  --c-warn: #C47A1B;
-  --c-warn-bg: #FBF3E7;
-  --c-warn-border: #EDD7B8;
-  --c-warn-fg: #9B5F15;
+  --c-warn: #c47a1b;
+  --c-warn-bg: #fbf3e7;
+  --c-warn-border: #edd7b8;
+  --c-warn-fg: #9b5f15;
 
   --c-danger: #c53030;
   --c-danger-bg: rgba(197, 48, 48, 0.08);
@@ -294,7 +294,7 @@
   --c-accent-bg: rgba(91, 108, 255, 0.06);
   --c-accent-bg2: rgba(91, 108, 255, 0.04);
   --c-overlay: rgba(28, 26, 20, 0.32);
-  --c-shadow: rgba(30, 30, 38, 0.10);
+  --c-shadow: rgba(30, 30, 38, 0.1);
   --c-sent-border: rgba(30, 30, 38, 0.06);
 
   /* Glass — 半透素纸 */
@@ -306,27 +306,27 @@
   --layer-1: #e2e2e6;
   --layer-2: #f4f4f7;
   --layer-3: #fafafa;
-  --layer-4: rgba(240, 240, 243, 0.80);
+  --layer-4: rgba(240, 240, 243, 0.8);
 
   /* Elevation — 中性投影 */
   --elevation-0: none;
   --elevation-1: 0 1px 2px rgba(30, 30, 38, 0.06);
   --elevation-2: 0 2px 6px rgba(30, 30, 38, 0.08);
-  --elevation-3: 0 6px 18px rgba(30, 30, 38, 0.10);
+  --elevation-3: 0 6px 18px rgba(30, 30, 38, 0.1);
   --elevation-4: 0 12px 36px rgba(30, 30, 38, 0.14);
 
   /* Semantic aliases (editor UI) */
-  --editor-bg: #FFFFFF;
-  --sidebar-bg: #F7F4ED;
-  --panel-bg: #FFFFFF;
-  --toolbar-bg: #FFFFFF;
-  --border-color: #E8E1D3;
-  --text-primary: #4E4A40;
-  --text-secondary: #8A8474;
-  --hover-bg: #F7F4ED;
-  --active-bg: #EEF0FF;
-  --code-bg: #F7F4ED;
-  --input-bg: #FFFFFF;
+  --editor-bg: #ffffff;
+  --sidebar-bg: #f7f4ed;
+  --panel-bg: #ffffff;
+  --toolbar-bg: #ffffff;
+  --border-color: #e8e1d3;
+  --text-primary: #4e4a40;
+  --text-secondary: #8a8474;
+  --hover-bg: #f7f4ed;
+  --active-bg: #eef0ff;
+  --code-bg: #f7f4ed;
+  --input-bg: #ffffff;
 
   /* Legacy short aliases */
   --accent: #5b6cff;
@@ -343,7 +343,9 @@
    Reduced Motion — a11y
    ══════════════════════════════════════════════════════════════ */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;

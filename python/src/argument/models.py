@@ -2,47 +2,49 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any
+from datetime import UTC, datetime
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _gen_id(prefix: str = "node") -> str:
     import secrets
+
     return f"{prefix}_{secrets.token_hex(2)}"
 
 
 # ── Enums ──────────────────────────────────────────────────────────────
 
-class LogicStatus(str, Enum):
+
+class LogicStatus(StrEnum):
     pass_ = "pass"
     warning = "warning"
     error = "error"
 
 
-class NodeStatus(str, Enum):
+class NodeStatus(StrEnum):
     draft = "draft"
     expanded = "expanded"
     final = "final"
 
 
-class BindingType(str, Enum):
+class BindingType(StrEnum):
     auto_suggested = "auto_suggested"
     user_manual = "user_manual"
 
 
-class IssueSeverity(str, Enum):
+class IssueSeverity(StrEnum):
     warning = "warning"
     error = "error"
 
 
 # ── Data Models ────────────────────────────────────────────────────────
+
 
 class Reference(BaseModel):
     doc_id: str
@@ -88,6 +90,7 @@ class RuleIssue(BaseModel):
 
 
 # ── API Request/Response schemas ───────────────────────────────────────
+
 
 class CreateTreeRequest(BaseModel):
     topic: str

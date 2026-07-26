@@ -2,6 +2,7 @@
 
 参考 claw-code: retrieve_context_tool (RAG), dispatch_tool (file ops).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -9,7 +10,6 @@ import json
 import os
 import shutil
 from pathlib import Path
-from typing import Any
 
 from src.agent_v2.tools.registry import ToolRegistry, ToolResult
 
@@ -23,7 +23,7 @@ def register_academic_tools(registry: ToolRegistry) -> None:
         file_path = str(args.get("file_path", ""))
         source_lang = str(args.get("source_lang", "en"))
         target_lang = str(args.get("target_lang", "zh-CN"))
-        engine = str(args.get("engine", "cloud"))
+        str(args.get("engine", "cloud"))
 
         if not file_path:
             return ToolResult("error: file_path is required", is_error=True)
@@ -38,20 +38,30 @@ def register_academic_tools(registry: ToolRegistry) -> None:
         # Use the existing translation pipeline via HTTP call to local API
         try:
             import httpx
+
             api_base = os.environ.get("SCHOLAR_API_BASE", "http://localhost:18088")
             async with httpx.AsyncClient(timeout=300.0) as client:
                 resp = await client.post(
                     f"{api_base}/api/translate/path", json={"path": str(full)}
                 )
                 if resp.status_code != 200:
-                    return ToolResult(f"error: translation API returned {resp.status_code}", is_error=True)
+                    return ToolResult(
+                        f"error: translation API returned {resp.status_code}", is_error=True
+                    )
                 data = resp.json()
                 task_id = data.get("task_id", "")
                 if not task_id:
-                    return ToolResult(f"Translation queued for {file_path} ({source_lang} → {target_lang})")
-                return ToolResult(f"Translation started: {file_path} ({source_lang} → {target_lang}), task_id={task_id}")
+                    return ToolResult(
+                        f"Translation queued for {file_path} ({source_lang} → {target_lang})"
+                    )
+                return ToolResult(
+                    f"Translation started: {file_path} ({source_lang} → {target_lang}), task_id={task_id}"
+                )
         except Exception as e:
-            return ToolResult(f"error connecting to translation API: {e}. Is the API running on port 18088?", is_error=True)
+            return ToolResult(
+                f"error connecting to translation API: {e}. Is the API running on port 18088?",
+                is_error=True,
+            )
 
     # ---- export_document ----
     async def export_document(args: dict) -> ToolResult:
@@ -71,6 +81,7 @@ def register_academic_tools(registry: ToolRegistry) -> None:
 
         try:
             import httpx
+
             api_base = os.environ.get("SCHOLAR_API_BASE", "http://localhost:18088")
             async with httpx.AsyncClient(timeout=120.0) as client:
                 markdown = await asyncio.to_thread(full.read_text, encoding="utf-8")
@@ -124,6 +135,7 @@ def register_academic_tools(registry: ToolRegistry) -> None:
 
         try:
             import httpx
+
             url = f"http://export.arxiv.org/api/query?search_query=all:{query}&max_results={max_results}"
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.get(url)
@@ -135,34 +147,56 @@ def register_academic_tools(registry: ToolRegistry) -> None:
             return ToolResult(f"arXiv search failed: {e}", is_error=True)
 
     # Register tools
-    registry.register("translate_document", "Translate a PDF or Markdown document", {
-        "type": "object",
-        "properties": {
-            "file_path": {"type": "string", "description": "Path to the document"},
-            "source_lang": {"type": "string", "default": "en"},
-            "target_lang": {"type": "string", "default": "zh-CN"},
-            "engine": {"type": "string", "default": "cloud"},
+    registry.register(
+        "translate_document",
+        "Translate a PDF or Markdown document",
+        {
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string", "description": "Path to the document"},
+                "source_lang": {"type": "string", "default": "en"},
+                "target_lang": {"type": "string", "default": "zh-CN"},
+                "engine": {"type": "string", "default": "cloud"},
+            },
+            "required": ["file_path"],
         },
-        "required": ["file_path"],
-    }, translate_document, permission="read-only")
+        translate_document,
+        permission="read-only",
+    )
 
-    registry.register("export_document", "Export document to LaTeX, Word, or PDF", {
-        "type": "object",
-        "properties": {
-            "file_path": {"type": "string", "description": "Path to the document"},
-            "format": {"type": "string", "default": "latex", "description": "latex, docx, or pdf"},
+    registry.register(
+        "export_document",
+        "Export document to LaTeX, Word, or PDF",
+        {
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string", "description": "Path to the document"},
+                "format": {
+                    "type": "string",
+                    "default": "latex",
+                    "description": "latex, docx, or pdf",
+                },
+            },
+            "required": ["file_path"],
         },
-        "required": ["file_path"],
-    }, export_document, permission="workspace-write")
+        export_document,
+        permission="workspace-write",
+    )
 
-    registry.register("arxiv_search", "Search arXiv for papers", {
-        "type": "object",
-        "properties": {
-            "query": {"type": "string", "description": "Search query"},
-            "max_results": {"type": "integer", "default": 5},
+    registry.register(
+        "arxiv_search",
+        "Search arXiv for papers",
+        {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+                "max_results": {"type": "integer", "default": 5},
+            },
+            "required": ["query"],
         },
-        "required": ["query"],
-    }, arxiv_search, permission="read-only")
+        arxiv_search,
+        permission="read-only",
+    )
 
     # ---- rag_search — 参考 claw-code retrieve_context_tool ----
     async def rag_search(args: dict) -> ToolResult:
@@ -175,14 +209,20 @@ def register_academic_tools(registry: ToolRegistry) -> None:
 
         try:
             import httpx
+
             api_base = os.environ.get("SCHOLAR_API_BASE", "http://localhost:18088")
             async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.post(f"{api_base}/api/rag/query", json={
-                    "query": query,
-                    "top_k": min(top_k, 10),
-                })
+                resp = await client.post(
+                    f"{api_base}/api/rag/query",
+                    json={
+                        "query": query,
+                        "top_k": min(top_k, 10),
+                    },
+                )
                 if resp.status_code == 404:
-                    return ToolResult("RAG not configured. Ingest documents first via the Docs panel.")
+                    return ToolResult(
+                        "RAG not configured. Ingest documents first via the Docs panel."
+                    )
                 if resp.status_code != 200:
                     return ToolResult(f"RAG query returned {resp.status_code}", is_error=True)
                 data = resp.json()
@@ -193,22 +233,28 @@ def register_academic_tools(registry: ToolRegistry) -> None:
                 for i, hit in enumerate(hits[:top_k]):
                     src = hit.get("source", hit.get("path", hit.get("doc_id", f"doc_{i}")))
                     snippet = hit.get("snippet", hit.get("text", hit.get("content", "")))
-                    lines.append(f"[{i+1}] {src}\n{snippet[:300]}")
+                    lines.append(f"[{i + 1}] {src}\n{snippet[:300]}")
                 return ToolResult("\n\n".join(lines))
         except Exception as e:
             return ToolResult(f"RAG query failed: {e}", is_error=True)
 
-    registry.register("rag_search", (
-        "Search the document library (RAG) for relevant papers, notes, and references. "
-        "Use this when the user asks about topics that may be in their document collection."
-    ), {
-        "type": "object",
-        "properties": {
-            "query": {"type": "string", "description": "Search query"},
-            "top_k": {"type": "integer", "default": 5, "description": "Number of results"},
+    registry.register(
+        "rag_search",
+        (
+            "Search the document library (RAG) for relevant papers, notes, and references. "
+            "Use this when the user asks about topics that may be in their document collection."
+        ),
+        {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+                "top_k": {"type": "integer", "default": 5, "description": "Number of results"},
+            },
+            "required": ["query"],
         },
-        "required": ["query"],
-    }, rag_search, permission="read-only")
+        rag_search,
+        permission="read-only",
+    )
 
     # ---- Argument Companion / Reviewer read tools -----------------------
     # These tools expose the existing production stores through their public
@@ -220,6 +266,7 @@ def register_academic_tools(registry: ToolRegistry) -> None:
         source_doc = str(args.get("source_doc", "")).strip()
         try:
             import httpx
+
             api_base = os.environ.get("SCHOLAR_API_BASE", "http://localhost:18088")
             async with httpx.AsyncClient(timeout=20.0) as client:
                 if graph_id:
@@ -235,7 +282,8 @@ def register_academic_tools(registry: ToolRegistry) -> None:
                 if source_doc:
                     normalized = source_doc.replace("\\", "/").lower()
                     graphs = [
-                        graph for graph in graphs
+                        graph
+                        for graph in graphs
                         if str(graph.get("source_doc", "")).replace("\\", "/").lower() == normalized
                     ]
                 if not graphs:
@@ -244,16 +292,22 @@ def register_academic_tools(registry: ToolRegistry) -> None:
         except Exception as e:
             return ToolResult(f"Argument graph lookup failed: {e}", is_error=True)
 
-    registry.register("read_argument_graph", (
-        "Read the real Toulmin argument map. Provide graph_id for one full graph, "
-        "or source_doc to find graphs linked to a manuscript."
-    ), {
-        "type": "object",
-        "properties": {
-            "graph_id": {"type": "string", "description": "Argument graph ID"},
-            "source_doc": {"type": "string", "description": "Workspace document path"},
+    registry.register(
+        "read_argument_graph",
+        (
+            "Read the real Toulmin argument map. Provide graph_id for one full graph, "
+            "or source_doc to find graphs linked to a manuscript."
+        ),
+        {
+            "type": "object",
+            "properties": {
+                "graph_id": {"type": "string", "description": "Argument graph ID"},
+                "source_doc": {"type": "string", "description": "Workspace document path"},
+            },
         },
-    }, read_argument_graph, permission="read-only")
+        read_argument_graph,
+        permission="read-only",
+    )
 
     async def read_argument_ledger(args: dict) -> ToolResult:
         doc_id = str(args.get("doc_id", "")).strip()
@@ -261,10 +315,13 @@ def register_academic_tools(registry: ToolRegistry) -> None:
             return ToolResult("error: doc_id is required", is_error=True)
         try:
             import httpx
+
             api_base = os.environ.get("SCHOLAR_API_BASE", "http://localhost:18088")
             async with httpx.AsyncClient(timeout=20.0) as client:
                 # doc_id remains a query parameter because it may be a full path.
-                resp = await client.get(f"{api_base}/api/companion/ledger", params={"doc_id": doc_id})
+                resp = await client.get(
+                    f"{api_base}/api/companion/ledger", params={"doc_id": doc_id}
+                )
                 if resp.status_code == 404:
                     return ToolResult(f"Claim Ledger not found for: {doc_id}", is_error=True)
                 resp.raise_for_status()
@@ -272,16 +329,25 @@ def register_academic_tools(registry: ToolRegistry) -> None:
         except Exception as e:
             return ToolResult(f"Claim Ledger lookup failed: {e}", is_error=True)
 
-    registry.register("read_argument_ledger", (
-        "Read the real Claim Ledger for a manuscript, including promises, "
-        "source anchors, discharge anchors, and fulfillment status."
-    ), {
-        "type": "object",
-        "properties": {
-            "doc_id": {"type": "string", "description": "Document ID or full workspace file path"},
+    registry.register(
+        "read_argument_ledger",
+        (
+            "Read the real Claim Ledger for a manuscript, including promises, "
+            "source anchors, discharge anchors, and fulfillment status."
+        ),
+        {
+            "type": "object",
+            "properties": {
+                "doc_id": {
+                    "type": "string",
+                    "description": "Document ID or full workspace file path",
+                },
+            },
+            "required": ["doc_id"],
         },
-        "required": ["doc_id"],
-    }, read_argument_ledger, permission="read-only")
+        read_argument_ledger,
+        permission="read-only",
+    )
 
     async def read_reviewer_state(args: dict) -> ToolResult:
         session_id = str(args.get("session_id", "")).strip()
@@ -290,12 +356,15 @@ def register_academic_tools(registry: ToolRegistry) -> None:
             return ToolResult("error: session_id or doc_id is required", is_error=True)
         try:
             import httpx
+
             api_base = os.environ.get("SCHOLAR_API_BASE", "http://localhost:18088")
             async with httpx.AsyncClient(timeout=20.0) as client:
                 if session_id:
                     resp = await client.get(f"{api_base}/api/companion/review/{session_id}")
                 else:
-                    resp = await client.get(f"{api_base}/api/companion/reviews", params={"doc_id": doc_id})
+                    resp = await client.get(
+                        f"{api_base}/api/companion/reviews", params={"doc_id": doc_id}
+                    )
                 if resp.status_code == 404:
                     return ToolResult("Reviewer-2 state not found.", is_error=True)
                 resp.raise_for_status()
@@ -303,16 +372,25 @@ def register_academic_tools(registry: ToolRegistry) -> None:
         except Exception as e:
             return ToolResult(f"Reviewer-2 lookup failed: {e}", is_error=True)
 
-    registry.register("read_reviewer_state", (
-        "Read persisted Reviewer-2 criticism, response status, rebuttal data, "
-        "and anchored manuscript evidence."
-    ), {
-        "type": "object",
-        "properties": {
-            "session_id": {"type": "string", "description": "Reviewer session ID"},
-            "doc_id": {"type": "string", "description": "Document ID or full workspace file path"},
+    registry.register(
+        "read_reviewer_state",
+        (
+            "Read persisted Reviewer-2 criticism, response status, rebuttal data, "
+            "and anchored manuscript evidence."
+        ),
+        {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string", "description": "Reviewer session ID"},
+                "doc_id": {
+                    "type": "string",
+                    "description": "Document ID or full workspace file path",
+                },
+            },
         },
-    }, read_reviewer_state, permission="read-only")
+        read_reviewer_state,
+        permission="read-only",
+    )
 
     # ---- web_search (参考 claw-code WebSearch) ----
     async def web_search(args: dict) -> ToolResult:
@@ -324,8 +402,10 @@ def register_academic_tools(registry: ToolRegistry) -> None:
             return ToolResult("error: query is required", is_error=True)
 
         try:
-            import httpx
             from urllib.parse import quote
+
+            import httpx
+
             url = f"https://html.duckduckgo.com/html/?q={quote(query)}"
             headers = {"User-Agent": "ScholarAssistant/0.4"}
             async with httpx.AsyncClient(timeout=15.0, headers=headers) as client:
@@ -335,26 +415,33 @@ def register_academic_tools(registry: ToolRegistry) -> None:
                 text = resp.text
                 # Simple extraction of result snippets
                 import re
+
                 snippets = re.findall(r'class="result__snippet"[^>]*>(.*?)</a>', text, re.DOTALL)
                 results = []
                 for s in snippets[:max_results]:
-                    cleaned = re.sub(r'<[^>]+>', '', s).strip()
+                    cleaned = re.sub(r"<[^>]+>", "", s).strip()
                     if cleaned and len(cleaned) > 10:
                         results.append(cleaned[:300])
                 if not results:
                     return ToolResult("No results found.")
-                return ToolResult("\n\n".join(f"[{i+1}] {r}" for i, r in enumerate(results)))
+                return ToolResult("\n\n".join(f"[{i + 1}] {r}" for i, r in enumerate(results)))
         except Exception as e:
             return ToolResult(f"Search failed: {e}", is_error=True)
 
-    registry.register("web_search", "Search the web for information", {
-        "type": "object",
-        "properties": {
-            "query": {"type": "string", "description": "Search query"},
-            "max_results": {"type": "integer", "default": 5},
+    registry.register(
+        "web_search",
+        "Search the web for information",
+        {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+                "max_results": {"type": "integer", "default": 5},
+            },
+            "required": ["query"],
         },
-        "required": ["query"],
-    }, web_search, permission="read-only")
+        web_search,
+        permission="read-only",
+    )
 
     # ---- web_fetch (参考 claw-code WebFetch) ----
     async def web_fetch(args: dict) -> ToolResult:
@@ -366,28 +453,45 @@ def register_academic_tools(registry: ToolRegistry) -> None:
             return ToolResult("error: url must start with http:// or https://", is_error=True)
         try:
             import httpx
+
             headers = {"User-Agent": "ScholarAssistant/0.4"}
-            async with httpx.AsyncClient(timeout=15.0, headers=headers, follow_redirects=True) as client:
+            async with httpx.AsyncClient(
+                timeout=15.0, headers=headers, follow_redirects=True
+            ) as client:
                 resp = await client.get(url)
                 if resp.status_code != 200:
                     return ToolResult(f"Fetch returned {resp.status_code}", is_error=True)
                 text = resp.text
                 import re
+
                 # Strip HTML tags for plain text
-                cleaned = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.DOTALL | re.IGNORECASE)
-                cleaned = re.sub(r'<style[^>]*>.*?</style>', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
-                cleaned = re.sub(r'<[^>]+>', ' ', cleaned)
-                cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+                cleaned = re.sub(
+                    r"<script[^>]*>.*?</script>", "", text, flags=re.DOTALL | re.IGNORECASE
+                )
+                cleaned = re.sub(
+                    r"<style[^>]*>.*?</style>", "", cleaned, flags=re.DOTALL | re.IGNORECASE
+                )
+                cleaned = re.sub(r"<[^>]+>", " ", cleaned)
+                cleaned = re.sub(r"\s+", " ", cleaned).strip()
                 if len(cleaned) > 5000:
                     cleaned = cleaned[:5000] + "... [truncated]"
                 return ToolResult(cleaned or "(empty page)")
         except Exception as e:
             return ToolResult(f"Fetch failed: {e}", is_error=True)
 
-    registry.register("web_fetch", "Fetch and read the content of a web page", {
-        "type": "object",
-        "properties": {
-            "url": {"type": "string", "description": "URL to fetch (must start with http:// or https://)"},
+    registry.register(
+        "web_fetch",
+        "Fetch and read the content of a web page",
+        {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "URL to fetch (must start with http:// or https://)",
+                },
+            },
+            "required": ["url"],
         },
-        "required": ["url"],
-    }, web_fetch, permission="read-only")
+        web_fetch,
+        permission="read-only",
+    )

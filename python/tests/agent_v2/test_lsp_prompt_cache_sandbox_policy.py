@@ -2,20 +2,21 @@
 
 Combined test file for 4 smaller modules (Tasks #7-10).
 """
+
 from __future__ import annotations
 
 import pytest
-
 
 # ============================================================================
 # Task #7: LSP Client Registry
 # ============================================================================
 
-class TestLspClientRegistry:
 
+class TestLspClientRegistry:
     @pytest.fixture(autouse=True)
     def _import(self):
-        from src.agent_v2.runtime.lsp_client import LspRegistry, LspAction, LspClientState
+        from src.agent_v2.runtime.lsp_client import LspAction, LspClientState, LspRegistry
+
         self.Registry = LspRegistry
         self.Action = LspAction
         self.State = LspClientState
@@ -78,11 +79,12 @@ class TestLspClientRegistry:
 # Task #8: PromptCache Event
 # ============================================================================
 
-class TestPromptCacheEvent:
 
+class TestPromptCacheEvent:
     @pytest.fixture(autouse=True)
     def _import(self):
-        from src.agent_v2.runtime.prompt_cache import PromptCacheTracker, CacheEvent
+        from src.agent_v2.runtime.prompt_cache import CacheEvent, PromptCacheTracker
+
         self.Tracker = PromptCacheTracker
         self.CacheEvent = CacheEvent
 
@@ -137,11 +139,12 @@ class TestPromptCacheEvent:
 # Task #9: Sandbox (Windows-adapted)
 # ============================================================================
 
-class TestSandboxWindows:
 
+class TestSandboxWindows:
     @pytest.fixture(autouse=True)
     def _import(self):
         from src.agent_v2.runtime.sandbox import SandboxConfig, SandboxResult
+
         self.Config = SandboxConfig
         self.Result = SandboxResult
 
@@ -182,11 +185,17 @@ class TestSandboxWindows:
 # Task #10: Policy Engine
 # ============================================================================
 
-class TestPolicyEngine:
 
+class TestPolicyEngine:
     @pytest.fixture(autouse=True)
     def _import(self):
-        from src.agent_v2.runtime.policy_engine import PolicyEngine, PolicyRule, PolicyCondition, PolicyAction
+        from src.agent_v2.runtime.policy_engine import (
+            PolicyAction,
+            PolicyCondition,
+            PolicyEngine,
+            PolicyRule,
+        )
+
         self.Engine = PolicyEngine
         self.Rule = PolicyRule
         self.Condition = PolicyCondition
@@ -199,45 +208,59 @@ class TestPolicyEngine:
 
     def test_simple_rule_match(self):
         engine = self.Engine()
-        engine.add_rule(self.Rule(
-            name="retry_on_timeout",
-            condition=self.Condition(key="retry_available", value=True),
-            action=self.Action.RETRY,
-        ))
+        engine.add_rule(
+            self.Rule(
+                name="retry_on_timeout",
+                condition=self.Condition(key="retry_available", value=True),
+                action=self.Action.RETRY,
+            )
+        )
         actions = engine.evaluate({"retry_available": True})
         assert len(actions) == 1
         assert actions[0].action == self.Action.RETRY
 
     def test_rule_no_match(self):
         engine = self.Engine()
-        engine.add_rule(self.Rule(
-            name="retry_on_timeout",
-            condition=self.Condition(key="retry_available", value=True),
-            action=self.Action.RETRY,
-        ))
+        engine.add_rule(
+            self.Rule(
+                name="retry_on_timeout",
+                condition=self.Condition(key="retry_available", value=True),
+                action=self.Action.RETRY,
+            )
+        )
         actions = engine.evaluate({"retry_available": False})
         assert actions == []
 
     def test_multiple_rules_priority(self):
         engine = self.Engine()
-        engine.add_rule(self.Rule(
-            name="low_prio", condition=self.Condition(key="x", value=True),
-            action=self.Action.LOG, priority=100,
-        ))
-        engine.add_rule(self.Rule(
-            name="high_prio", condition=self.Condition(key="x", value=True),
-            action=self.Action.ESCALATE, priority=10,
-        ))
+        engine.add_rule(
+            self.Rule(
+                name="low_prio",
+                condition=self.Condition(key="x", value=True),
+                action=self.Action.LOG,
+                priority=100,
+            )
+        )
+        engine.add_rule(
+            self.Rule(
+                name="high_prio",
+                condition=self.Condition(key="x", value=True),
+                action=self.Action.ESCALATE,
+                priority=10,
+            )
+        )
         actions = engine.evaluate({"x": True})
         assert actions[0].action == self.Action.ESCALATE  # lower number = higher priority
 
     def test_condition_with_threshold(self):
         engine = self.Engine()
-        engine.add_rule(self.Rule(
-            name="timeout",
-            condition=self.Condition(key="elapsed_seconds", threshold=60),
-            action=self.Action.ESCALATE,
-        ))
+        engine.add_rule(
+            self.Rule(
+                name="timeout",
+                condition=self.Condition(key="elapsed_seconds", threshold=60),
+                action=self.Action.ESCALATE,
+            )
+        )
         actions = engine.evaluate({"elapsed_seconds": 120})
         assert len(actions) == 1
         actions2 = engine.evaluate({"elapsed_seconds": 30})
@@ -251,8 +274,10 @@ class TestPolicyEngine:
 
     def test_rule_to_dict(self):
         rule = self.Rule(
-            name="test", condition=self.Condition(key="x", value=True),
-            action=self.Action.LOG, priority=50,
+            name="test",
+            condition=self.Condition(key="x", value=True),
+            action=self.Action.LOG,
+            priority=50,
         )
         d = rule.to_dict()
         assert d["name"] == "test"

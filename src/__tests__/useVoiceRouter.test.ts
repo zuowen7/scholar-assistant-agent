@@ -44,9 +44,7 @@ describe('useVoiceRouter', () => {
     })
 
     it('matches mixed Chinese patterns for polish', () => {
-      router.registerCommands([
-        makeCmd({ id: 'editor:polish', patternsZh: ['润色', '优化文字'] }),
-      ])
+      router.registerCommands([makeCmd({ id: 'editor:polish', patternsZh: ['润色', '优化文字'] })])
       const match = router.classifyIntent('帮我润色这段文字')
       expect(match).not.toBeNull()
       expect(match!.commandId).toBe('editor:polish')
@@ -62,9 +60,7 @@ describe('useVoiceRouter', () => {
     })
 
     it('returns null for empty input', () => {
-      router.registerCommands([
-        makeCmd({ id: 'nav:translate', patternsZh: ['翻译模式'] }),
-      ])
+      router.registerCommands([makeCmd({ id: 'nav:translate', patternsZh: ['翻译模式'] })])
       expect(router.classifyIntent('')).toBeNull()
       expect(router.classifyIntent('   ')).toBeNull()
     })
@@ -113,9 +109,7 @@ describe('useVoiceRouter', () => {
     })
 
     it('case insensitive matching', () => {
-      router.registerCommands([
-        makeCmd({ id: 'x', patternsEn: ['Export PDF'] }),
-      ])
+      router.registerCommands([makeCmd({ id: 'x', patternsEn: ['Export PDF'] })])
       const match = router.classifyIntent('export pdf')
       expect(match).not.toBeNull()
       expect(match!.commandId).toBe('x')
@@ -141,9 +135,7 @@ describe('useVoiceRouter', () => {
   describe('routeCommand', () => {
     it('dispatches handler when command matched', async () => {
       const handler = vi.fn(async () => {})
-      router.registerCommands([
-        makeCmd({ id: 'nav:translate', patternsZh: ['打开翻译'], handler }),
-      ])
+      router.registerCommands([makeCmd({ id: 'nav:translate', patternsZh: ['打开翻译'], handler })])
       const result = await router.routeCommand('打开翻译')
       expect(result.type).toBe('command')
       expect(result.commandId).toBe('nav:translate')
@@ -152,9 +144,7 @@ describe('useVoiceRouter', () => {
     })
 
     it('returns chat fallback when no command matches', async () => {
-      router.registerCommands([
-        makeCmd({ id: 'nav:translate', patternsZh: ['打开翻译'] }),
-      ])
+      router.registerCommands([makeCmd({ id: 'nav:translate', patternsZh: ['打开翻译'] })])
       const result = await router.routeCommand('随便聊聊')
       expect(result.type).toBe('chat')
       expect(result.text).toBe('随便聊聊')
@@ -166,7 +156,9 @@ describe('useVoiceRouter', () => {
         makeCmd({
           id: 'fail:cmd',
           patternsZh: ['触发错误'],
-          handler: async () => { throw new Error('boom') },
+          handler: async () => {
+            throw new Error('boom')
+          },
         }),
       ])
       const result = await router.routeCommand('触发错误')
@@ -176,9 +168,7 @@ describe('useVoiceRouter', () => {
     })
 
     it('updates lastCommandResult ref', async () => {
-      router.registerCommands([
-        makeCmd({ id: 'nav:editor', patternsZh: ['编辑模式'] }),
-      ])
+      router.registerCommands([makeCmd({ id: 'nav:editor', patternsZh: ['编辑模式'] })])
       await router.routeCommand('编辑模式')
       expect(router.lastCommandResult.value).not.toBeNull()
       expect(router.lastCommandResult.value!.type).toBe('command')
@@ -187,9 +177,7 @@ describe('useVoiceRouter', () => {
 
     it('passes raw text to handler', async () => {
       const handler = vi.fn(async () => {})
-      router.registerCommands([
-        makeCmd({ id: 'x', patternsZh: ['测试'], handler }),
-      ])
+      router.registerCommands([makeCmd({ id: 'x', patternsZh: ['测试'], handler })])
       await router.routeCommand('测试一下')
       expect(handler).toHaveBeenCalledWith({}, '测试一下')
     })

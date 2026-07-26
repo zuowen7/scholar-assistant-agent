@@ -17,7 +17,13 @@
             @click="!item.disabled && (close(), nextTick(() => item.onClick?.()))"
             role="menuitem"
           >
-            <component :is="item.icon" v-if="item.icon" :size="14" :stroke-width="1.6" class="dd-icon" />
+            <component
+              :is="item.icon"
+              v-if="item.icon"
+              :size="14"
+              :stroke-width="1.6"
+              class="dd-icon"
+            />
             <span class="dd-label">{{ item.text }}</span>
             <span v-if="item.shortcut" class="dd-shortcut">{{ item.shortcut }}</span>
           </button>
@@ -35,15 +41,18 @@ import type { DropdownItem } from './UiDropdown.types'
 
 export type { DropdownItem }
 
-withDefaults(defineProps<{
-  items?: DropdownItem[]
-  width?: number
-  align?: 'start' | 'end' | 'center'
-}>(), {
-  items: () => [],
-  width: 200,
-  align: 'start',
-})
+withDefaults(
+  defineProps<{
+    items?: DropdownItem[]
+    width?: number
+    align?: 'start' | 'end' | 'center'
+  }>(),
+  {
+    items: () => [],
+    width: 200,
+    align: 'start',
+  },
+)
 </script>
 
 <style scoped>
@@ -68,19 +77,32 @@ withDefaults(defineProps<{
   font-size: var(--text-sm);
   text-align: left;
   cursor: pointer;
-  transition: background var(--motion-fast) var(--ease-out),
-              color var(--motion-fast) var(--ease-out);
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
 }
 .dd-item:hover:not(.disabled) {
   background: var(--c-surface-2);
   color: var(--c-text-0);
   box-shadow: inset 2px 0 0 var(--c-accent);
 }
-.dd-item.disabled { opacity: 0.45; cursor: not-allowed; }
-.dd-item.danger { color: var(--c-danger); }
-.dd-item.danger:hover:not(.disabled) { background: var(--c-danger-bg); }
-.dd-icon { flex-shrink: 0; opacity: 0.85; }
-.dd-label { flex: 1; }
+.dd-item.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.dd-item.danger {
+  color: var(--c-danger);
+}
+.dd-item.danger:hover:not(.disabled) {
+  background: var(--c-danger-bg);
+}
+.dd-icon {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+.dd-label {
+  flex: 1;
+}
 .dd-shortcut {
   font-size: var(--text-xs);
   color: var(--c-text-3);

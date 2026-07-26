@@ -68,14 +68,24 @@ async def _direct_cloud_chat(
             "anthropic-version": ANTHROPIC_API_VERSION,
             "content-type": "application/json",
         }
-        payload = {"model": model, "max_tokens": max_tokens, "temperature": temperature, "messages": messages}
+        payload = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "messages": messages,
+        }
         url = f"{base_url}/v1/messages"
     else:
         headers = {
             "Authorization": f"Bearer {api_key}",
             "content-type": "application/json",
         }
-        payload = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens}
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
         url = f"{base_url}/chat/completions"
 
     async def _do_request(tokens: int) -> tuple[str, str, str]:
@@ -86,8 +96,7 @@ async def _direct_cloud_chat(
             data = resp.json()
         if api_format == "anthropic":
             text = "".join(
-                b.get("text", "") for b in data.get("content", [])
-                if b.get("type") == "text"
+                b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"
             )
             return text, "", ""
         msg = data.get("choices", [{}])[0].get("message", {})
@@ -102,7 +111,9 @@ async def _direct_cloud_chat(
         retry_tokens = max(max_tokens * 2, 32768)
         logger.warning(
             "Model %s exhausted %d tokens on reasoning, retrying with %d",
-            model, max_tokens, retry_tokens,
+            model,
+            max_tokens,
+            retry_tokens,
         )
         content, _, _ = await _do_request(retry_tokens)
 

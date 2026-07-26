@@ -97,11 +97,7 @@ class TestExtractArticles:
         assert articles[0] == text
 
     def test_splits_into_parts(self):
-        text = (
-            "Article one content.\n\n"
-            "n 2023, something happened.\n"
-            "Article two content."
-        )
+        text = "Article one content.\n\nn 2023, something happened.\nArticle two content."
         articles = extract_articles(text)
         assert len(articles) == 2
         assert "Article one" in articles[0]

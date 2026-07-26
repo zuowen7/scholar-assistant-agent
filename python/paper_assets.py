@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 TEMPLATES: list[dict[str, Any]] = [
     {
         "id": "generic",
@@ -44,14 +43,23 @@ TEMPLATES: list[dict[str, Any]] = [
     },
 ]
 
-DEFAULT_SECTIONS = ["abstract", "introduction", "related_work", "method", "experiment", "conclusion"]
+DEFAULT_SECTIONS = [
+    "abstract",
+    "introduction",
+    "related_work",
+    "method",
+    "experiment",
+    "conclusion",
+]
 
 
 def get_template_list() -> list[dict[str, Any]]:
     return TEMPLATES
 
 
-def generate_scaffold(template_id: str = "generic", title: str = "", sections: list[str] | None = None) -> str:
+def generate_scaffold(
+    template_id: str = "generic", title: str = "", sections: list[str] | None = None
+) -> str:
     selected = next((item for item in TEMPLATES if item["id"] == template_id), TEMPLATES[0])
     title = title.strip() or "Untitled Paper"
     sections = sections or DEFAULT_SECTIONS
@@ -87,7 +95,11 @@ def ingest_paper_assets(rag_store: Any) -> dict[str, Any]:
         count += rag_store.ingest_document(
             doc_id=f"template-{template['id']}",
             text=text,
-            metadata={"title": template["name"], "template_name": template["id"], "category": "template"},
+            metadata={
+                "title": template["name"],
+                "template_name": template["id"],
+                "category": "template",
+            },
         )
     return {"ingested_chunks": count, "templates": len(TEMPLATES)}
 

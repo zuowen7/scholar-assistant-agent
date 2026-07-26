@@ -37,6 +37,7 @@ agent:
 @pytest.fixture(scope="module")
 def client():
     from fastapi.testclient import TestClient
+
     from api_factory import create_app
 
     test_dir = tempfile.mkdtemp()
@@ -188,10 +189,13 @@ class TestMindMapExpand:
     """POST /api/mindmap/expand — falls back to hardcoded suggestions without LLM."""
 
     def test_expand_returns_children_list(self, client):
-        resp = client.post("/api/mindmap/expand", json={
-            "node_text": "研究方法",
-            "max_children": 3,
-        })
+        resp = client.post(
+            "/api/mindmap/expand",
+            json={
+                "node_text": "研究方法",
+                "max_children": 3,
+            },
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data.get("children"), list)
@@ -205,24 +209,33 @@ class TestMindMapExpand:
             assert len(child["text"]) > 0
 
     def test_expand_max_children_respected(self, client):
-        resp = client.post("/api/mindmap/expand", json={
-            "node_text": "test",
-            "max_children": 2,
-        })
+        resp = client.post(
+            "/api/mindmap/expand",
+            json={
+                "node_text": "test",
+                "max_children": 2,
+            },
+        )
         assert len(resp.json()["children"]) <= 2
 
     def test_expand_control_topic(self, client):
-        resp = client.post("/api/mindmap/expand", json={
-            "node_text": "控制系统稳定性",
-        })
+        resp = client.post(
+            "/api/mindmap/expand",
+            json={
+                "node_text": "控制系统稳定性",
+            },
+        )
         texts = [c["text"] for c in resp.json()["children"]]
         assert any("建模" in t or "稳定性" in t or "控制" in t for t in texts)
 
     def test_expand_with_context(self, client):
-        resp = client.post("/api/mindmap/expand", json={
-            "node_text": "实验设计",
-            "context": "本文研究深度学习模型在医学影像分析中的应用",
-            "max_children": 2,
-        })
+        resp = client.post(
+            "/api/mindmap/expand",
+            json={
+                "node_text": "实验设计",
+                "context": "本文研究深度学习模型在医学影像分析中的应用",
+                "max_children": 2,
+            },
+        )
         assert resp.status_code == 200
         assert len(resp.json()["children"]) == 2

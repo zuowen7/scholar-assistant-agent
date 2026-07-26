@@ -39,6 +39,7 @@ agent:
 @pytest.fixture(scope="module")
 def client():
     from fastapi.testclient import TestClient
+
     from api_factory import create_app
 
     test_dir = tempfile.mkdtemp()
@@ -70,33 +71,42 @@ class TestRAGIngest:
     """POST /api/rag/ingest — ingest a text document."""
 
     def test_ingest_text_document(self, client):
-        resp = client.post("/api/rag/ingest", json={
-            "doc_id": "test-doc-001",
-            "title": "Test Document",
-            "text": "This is a test document about machine learning and neural networks.",
-        })
+        resp = client.post(
+            "/api/rag/ingest",
+            json={
+                "doc_id": "test-doc-001",
+                "title": "Test Document",
+                "text": "This is a test document about machine learning and neural networks.",
+            },
+        )
         assert resp.status_code in (200, 400, 500, 503)
 
     def test_ingest_then_list(self, client):
         # Ingest
-        resp = client.post("/api/rag/ingest", json={
-            "doc_id": "test-doc-002",
-            "title": "Integration Test Doc",
-            "text": "Integration testing ensures components work together.",
-        })
+        resp = client.post(
+            "/api/rag/ingest",
+            json={
+                "doc_id": "test-doc-002",
+                "title": "Integration Test Doc",
+                "text": "Integration testing ensures components work together.",
+            },
+        )
         if resp.status_code == 200:
             # Should appear in list
             lst = client.get("/api/rag/documents").json()
-            doc_ids = [d.get("doc_id") or d.get("id") for d in (
-                lst if isinstance(lst, list) else []
-            )]
+            doc_ids = [
+                d.get("doc_id") or d.get("id") for d in (lst if isinstance(lst, list) else [])
+            ]
             assert "test-doc-002" in doc_ids
 
     def test_ingest_minimal_payload(self, client):
-        resp = client.post("/api/rag/ingest", json={
-            "doc_id": "minimal-doc",
-            "text": "minimal content",
-        })
+        resp = client.post(
+            "/api/rag/ingest",
+            json={
+                "doc_id": "minimal-doc",
+                "text": "minimal content",
+            },
+        )
         assert resp.status_code in (200, 400, 500, 503)
 
 
@@ -105,23 +115,34 @@ class TestRAGUpload:
 
     def test_upload_text_file(self, client):
         content = "This is a research paper about attention mechanisms in transformers."
-        resp = client.post("/api/rag/upload", files={
-            "file": ("paper.txt", io.BytesIO(content.encode()), "text/plain"),
-        })
+        resp = client.post(
+            "/api/rag/upload",
+            files={
+                "file": ("paper.txt", io.BytesIO(content.encode()), "text/plain"),
+            },
+        )
         assert resp.status_code in (200, 400, 500, 503)
 
     def test_upload_markdown_file(self, client):
-        content = "# Abstract\n\nWe propose a novel approach to few-shot learning.\n\n## Introduction"
-        resp = client.post("/api/rag/upload", files={
-            "file": ("paper.md", io.BytesIO(content.encode()), "text/markdown"),
-        })
+        content = (
+            "# Abstract\n\nWe propose a novel approach to few-shot learning.\n\n## Introduction"
+        )
+        resp = client.post(
+            "/api/rag/upload",
+            files={
+                "file": ("paper.md", io.BytesIO(content.encode()), "text/markdown"),
+            },
+        )
         assert resp.status_code in (200, 400, 500, 503)
 
     def test_upload_then_list(self, client):
         content = "This document covers vector databases and semantic search."
-        upload = client.post("/api/rag/upload", files={
-            "file": ("search.txt", io.BytesIO(content.encode()), "text/plain"),
-        })
+        upload = client.post(
+            "/api/rag/upload",
+            files={
+                "file": ("search.txt", io.BytesIO(content.encode()), "text/plain"),
+            },
+        )
         if upload.status_code == 200:
             data = upload.json()
             doc_id = data.get("doc_id") or data.get("id") or data.get("filename")
@@ -139,11 +160,14 @@ class TestRAGDelete:
 
     def test_delete_ingested_document(self, client):
         # Ingest first
-        client.post("/api/rag/ingest", json={
-            "doc_id": "to-delete-001",
-            "title": "To Be Deleted",
-            "text": "This document will be deleted.",
-        })
+        client.post(
+            "/api/rag/ingest",
+            json={
+                "doc_id": "to-delete-001",
+                "title": "To Be Deleted",
+                "text": "This document will be deleted.",
+            },
+        )
         resp = client.delete("/api/rag/documents/to-delete-001")
         assert resp.status_code in (200, 404, 503)
 
@@ -152,11 +176,14 @@ class TestRAGDelete:
         assert resp.status_code in (200, 404, 503)
 
     def test_delete_then_list_does_not_contain(self, client):
-        client.post("/api/rag/ingest", json={
-            "doc_id": "delete-verify-002",
-            "title": "Delete Verify",
-            "text": "This doc will be deleted and verified gone.",
-        })
+        client.post(
+            "/api/rag/ingest",
+            json={
+                "doc_id": "delete-verify-002",
+                "title": "Delete Verify",
+                "text": "This doc will be deleted and verified gone.",
+            },
+        )
         del_resp = client.delete("/api/rag/documents/delete-verify-002")
         if del_resp.status_code == 200:
             lst = client.get("/api/rag/documents").json()

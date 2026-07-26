@@ -144,9 +144,7 @@ class TestTranslateBlockChunk:
             block_ids=["b1", "b2"],
         )
         client = MagicMock()
-        result = asyncio.run(
-            translate_block_chunk(client, chunk, {b.id: b for b in blocks})
-        )
+        result = asyncio.run(translate_block_chunk(client, chunk, {b.id: b for b in blocks}))
         # LLM 未被调用
         client.translate.assert_not_called()
         assert result.aligned is True

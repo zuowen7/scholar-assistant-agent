@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.argument.section_utils import find_section, split_paragraphs, has_contrast_marker
-
+from src.argument.section_utils import find_section, has_contrast_marker, split_paragraphs
 
 # ── find_section ─────────────────────────────────────────────────────────────
 
@@ -136,6 +135,7 @@ class TestFindSection:
 
 # ── split_paragraphs ──────────────────────────────────────────────────────────
 
+
 class TestSplitParagraphs:
     def test_splits_by_blank_lines(self):
         text = "Paragraph one.\n\nParagraph two.\n\nParagraph three."
@@ -159,27 +159,34 @@ class TestSplitParagraphs:
 
 # ── has_contrast_marker ───────────────────────────────────────────────────────
 
+
 class TestHasContrastMarker:
-    @pytest.mark.parametrize("text", [
-        "However, our method is different.",
-        "In contrast to previous work, we propose...",
-        "Unlike Smith (2022), our approach...",
-        "Whereas existing methods fail, ours succeeds.",
-        "But existing approaches lack X.",
-        "然而，我们的方法不同。",
-        "与此不同，我们提出...",
-        "相比之下，本文方法...",
-        "前人工作主要关注A，而本文聚焦B。",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "However, our method is different.",
+            "In contrast to previous work, we propose...",
+            "Unlike Smith (2022), our approach...",
+            "Whereas existing methods fail, ours succeeds.",
+            "But existing approaches lack X.",
+            "然而，我们的方法不同。",
+            "与此不同，我们提出...",
+            "相比之下，本文方法...",
+            "前人工作主要关注A，而本文聚焦B。",
+        ],
+    )
     def test_detects_contrast_markers(self, text: str):
         assert has_contrast_marker(text) is True
 
-    @pytest.mark.parametrize("text", [
-        "Smith (2022) proposed method A for task B.",
-        "Jones (2023) achieved 90% accuracy on dataset D.",
-        "Liu (2021) extended the framework to handle multi-modal inputs.",
-        "Previous methods use attention mechanisms.",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Smith (2022) proposed method A for task B.",
+            "Jones (2023) achieved 90% accuracy on dataset D.",
+            "Liu (2021) extended the framework to handle multi-modal inputs.",
+            "Previous methods use attention mechanisms.",
+        ],
+    )
     def test_no_false_positives_on_plain_summaries(self, text: str):
         assert has_contrast_marker(text) is False
 

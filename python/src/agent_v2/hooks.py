@@ -10,6 +10,7 @@ Advanced features over original:
   - Shell hook JSON stdout parsing (decision, reason, updatedInput, permissionDecision)
   - Shell hook exit code conventions: 0=allow, 2=deny, 3=ask
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -79,6 +80,7 @@ class HookResult:
 # HookAbortSignal
 # ---------------------------------------------------------------------------
 
+
 class HookAbortSignal:
     """Thread-safe abort signal for cancelling hook execution.
 
@@ -98,6 +100,7 @@ class HookAbortSignal:
 # ---------------------------------------------------------------------------
 # HookRunResult — enriched result with updated_input + permission_override
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class HookRunResult:
@@ -122,6 +125,7 @@ class HookRunResult:
 # HookDefinition
 # ---------------------------------------------------------------------------
 
+
 class HookDefinition:
     def __init__(self, name: str, hook_point: HookPoint, command: str, priority: int = 50):
         self.name = name
@@ -142,6 +146,7 @@ class HookDefinition:
 # Progress reporter protocol
 # ---------------------------------------------------------------------------
 
+
 class HookProgressReporter(Protocol):
     def on_event(self, event: dict[str, Any]) -> None: ...
 
@@ -149,6 +154,7 @@ class HookProgressReporter(Protocol):
 # ---------------------------------------------------------------------------
 # HookRunner
 # ---------------------------------------------------------------------------
+
 
 class HookRunner:
     """Hook executor with abort signal, progress reporting, and JSON parsing.
@@ -164,11 +170,13 @@ class HookRunner:
         self._hooks.append(hook)
         self._hooks.sort(key=lambda h: h.priority)
 
-    def register_callable(self, name: str, hook_point: HookPoint,
-                          func, priority: int = 50) -> None:
+    def register_callable(self, name: str, hook_point: HookPoint, func, priority: int = 50) -> None:
         self._callables[f"{hook_point.value}:{name}"] = func
-        self.register(HookDefinition(name=name, hook_point=hook_point,
-                                      command=f"callable:{name}", priority=priority))
+        self.register(
+            HookDefinition(
+                name=name, hook_point=hook_point, command=f"callable:{name}", priority=priority
+            )
+        )
 
     def add_builtin_hooks(self) -> None:
         def _log_tool_call(event: HookEvent) -> HookResult:
@@ -179,10 +187,12 @@ class HookRunner:
             logger.warning("tool_failure: %s error=%s", event.tool_name, event.tool_result[:200])
             return HookResult(decision=HookDecision.ALLOW)
 
-        self.register_callable("builtin:log_tool", HookPoint.POST_TOOL_USE,
-                               _log_tool_call, priority=100)
-        self.register_callable("builtin:log_failure", HookPoint.POST_TOOL_USE_FAILURE,
-                               _log_tool_failure, priority=100)
+        self.register_callable(
+            "builtin:log_tool", HookPoint.POST_TOOL_USE, _log_tool_call, priority=100
+        )
+        self.register_callable(
+            "builtin:log_failure", HookPoint.POST_TOOL_USE_FAILURE, _log_tool_failure, priority=100
+        )
 
     def create_abort_signal(self) -> HookAbortSignal:
         return HookAbortSignal()
@@ -204,8 +214,9 @@ class HookRunner:
         # Check abort before starting
         if abort_signal and abort_signal.is_aborted():
             if reporter:
-                reporter.on_event({"type": "cancelled", "hook": hook_point.value,
-                                    "tool_name": event.tool_name})
+                reporter.on_event(
+                    {"type": "cancelled", "hook": hook_point.value, "tool_name": event.tool_name}
+                )
             return HookRunResult(cancelled=True, messages=["hook cancelled before execution"])
 
         event.hook = hook_point
@@ -218,22 +229,42 @@ class HookRunner:
             # Check abort between hooks
             if abort_signal and abort_signal.is_aborted():
                 if reporter:
-                    reporter.on_event({"type": "cancelled", "hook": hook_point.value,
-                                        "tool_name": event.tool_name, "command": hook.command})
+                    reporter.on_event(
+                        {
+                            "type": "cancelled",
+                            "hook": hook_point.value,
+                            "tool_name": event.tool_name,
+                            "command": hook.command,
+                        }
+                    )
                 final.cancelled = True
                 final.messages.append(f"{hook_point.value} hook cancelled")
                 return final
 
             if reporter:
-                reporter.on_event({"type": "started", "hook": hook_point.value,
-                                    "tool_name": event.tool_name, "command": hook.command})
+                reporter.on_event(
+                    {
+                        "type": "started",
+                        "hook": hook_point.value,
+                        "tool_name": event.tool_name,
+                        "command": hook.command,
+                    }
+                )
 
             result = await self._execute_hook(hook, event)
 
             if reporter:
-                evt_type = "completed" if not (abort_signal and abort_signal.is_aborted()) else "cancelled"
-                reporter.on_event({"type": evt_type, "hook": hook_point.value,
-                                    "tool_name": event.tool_name, "command": hook.command})
+                evt_type = (
+                    "completed" if not (abort_signal and abort_signal.is_aborted()) else "cancelled"
+                )
+                reporter.on_event(
+                    {
+                        "type": evt_type,
+                        "hook": hook_point.value,
+                        "tool_name": event.tool_name,
+                        "command": hook.command,
+                    }
+                )
 
             # Merge result fields
             final.messages.extend(result.messages)
@@ -278,7 +309,9 @@ class HookRunner:
             try:
                 proc = await _create_subprocess(hook.command)
                 input_json = json.dumps(event.to_dict(), ensure_ascii=False)
-                stdout, _ = await asyncio.wait_for(proc.communicate(input_json.encode()), timeout=10.0)
+                stdout, _ = await asyncio.wait_for(
+                    proc.communicate(input_json.encode()), timeout=10.0
+                )
                 stdout_text = stdout.decode("utf-8", errors="replace").strip()
 
                 return _parse_shell_hook_output(proc.returncode, stdout_text)
@@ -291,6 +324,7 @@ class HookRunner:
 # ---------------------------------------------------------------------------
 # Shell hook JSON output parsing (claw-code convention)
 # ---------------------------------------------------------------------------
+
 
 def _parse_shell_hook_output(return_code: int | None, stdout: str) -> HookResult:
     """Parse shell hook stdout following claw-code conventions.
@@ -343,23 +377,39 @@ def _parse_shell_hook_output(return_code: int | None, stdout: str) -> HookResult
 
     # Exit code takes precedence for deny/ask
     if return_code == 2:
-        return HookResult(decision=HookDecision.DENY, reason=messages[0] if messages else "hook denied",
-                          messages=messages)
+        return HookResult(
+            decision=HookDecision.DENY,
+            reason=messages[0] if messages else "hook denied",
+            messages=messages,
+        )
     if return_code == 3:
-        return HookResult(decision=HookDecision.ASK, reason=messages[0] if messages else "hook asks for approval",
-                          messages=messages)
+        return HookResult(
+            decision=HookDecision.ASK,
+            reason=messages[0] if messages else "hook asks for approval",
+            messages=messages,
+        )
     if deny:
-        return HookResult(decision=HookDecision.DENY, reason=messages[0] if messages else "hook denied",
-                          updated_input=updated_input, permission_override=permission_override,
-                          permission_reason=permission_reason, messages=messages)
+        return HookResult(
+            decision=HookDecision.DENY,
+            reason=messages[0] if messages else "hook denied",
+            updated_input=updated_input,
+            permission_override=permission_override,
+            permission_reason=permission_reason,
+            messages=messages,
+        )
 
-    return HookResult(decision=HookDecision.ALLOW, updated_input=updated_input,
-                      permission_override=permission_override, permission_reason=permission_reason,
-                      messages=messages)
+    return HookResult(
+        decision=HookDecision.ALLOW,
+        updated_input=updated_input,
+        permission_override=permission_override,
+        permission_reason=permission_reason,
+        messages=messages,
+    )
 
 
 async def _create_subprocess(command: str):
     import asyncio
+
     return await asyncio.create_subprocess_shell(
         command,
         stdin=asyncio.subprocess.PIPE,

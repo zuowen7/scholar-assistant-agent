@@ -22,7 +22,7 @@ interface LineEntry {
 }
 
 function findAnchor(anchors: Anchor[], id: string): Anchor | undefined {
-  return anchors.find(a => a.id === id)
+  return anchors.find((a) => a.id === id)
 }
 
 /**
@@ -44,9 +44,11 @@ export function computeCompanionDecorations(
       entry.hovers.push(hover)
       // keep the "most severe" class: error > warning > info
       const rank = (cls: string) =>
-        cls.includes('unpaid') || cls.includes('mismatch') || cls.includes('fatal') ? 2
-          : cls.includes('partial') || cls.includes('major') ? 1
-          : 0
+        cls.includes('unpaid') || cls.includes('mismatch') || cls.includes('fatal')
+          ? 2
+          : cls.includes('partial') || cls.includes('major')
+            ? 1
+            : 0
       if (rank(glyphClass) > rank(entry.glyphClass)) {
         entry.glyphClass = glyphClass
       }

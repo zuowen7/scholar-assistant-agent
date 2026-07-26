@@ -1,4 +1,5 @@
 """ToolRegistry 测试 — TR-001 ~ TR-053。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -24,8 +25,8 @@ def registry(temp_workspace: Path) -> ToolRegistry:
 # 3.1 注册与发现
 # ============================================================================
 
-class TestRegistrationAndDiscovery:
 
+class TestRegistrationAndDiscovery:
     def test_tr001_register_builtin_tools(self, registry: ToolRegistry):
         """TR-001: 内置工具已注册"""
         assert registry.get("read_file") is not None
@@ -38,7 +39,15 @@ class TestRegistrationAndDiscovery:
         """TR-002: definitions() 返回完整列表"""
         defs = registry.definitions()
         names = {d.name for d in defs}
-        expected = {"read_file", "write_file", "str_replace", "grep_files", "glob_files", "list_dir", "run_command"}
+        expected = {
+            "read_file",
+            "write_file",
+            "str_replace",
+            "grep_files",
+            "glob_files",
+            "list_dir",
+            "run_command",
+        }
         assert expected.issubset(names), f"Missing: {expected - names}"
 
     def test_tr003_find_by_name(self, registry: ToolRegistry):
@@ -68,8 +77,8 @@ class TestRegistrationAndDiscovery:
 # 3.2 工具执行
 # ============================================================================
 
-class TestToolExecution:
 
+class TestToolExecution:
     @pytest.mark.asyncio
     async def test_tr010_read_file(self, registry: ToolRegistry, temp_workspace: Path):
         """TR-010: 正确读取文件"""
@@ -80,7 +89,9 @@ class TestToolExecution:
     @pytest.mark.asyncio
     async def test_tr011_write_file(self, registry: ToolRegistry, temp_workspace: Path):
         """TR-011: 正确写入文件"""
-        result = await registry.execute("write_file", {"file_path": "new.txt", "content": "hello world"})
+        result = await registry.execute(
+            "write_file", {"file_path": "new.txt", "content": "hello world"}
+        )
         assert not result.is_error
         assert (temp_workspace / "new.txt").read_text() == "hello world"
 
@@ -130,11 +141,14 @@ class TestToolExecution:
     @pytest.mark.asyncio
     async def test_tr014_str_replace(self, registry: ToolRegistry, temp_workspace: Path):
         """TR-014: str_replace 替换文件内容"""
-        result = await registry.execute("str_replace", {
-            "file_path": "main.py",
-            "old_string": "# TODO: fix",
-            "new_string": "# fixed",
-        })
+        result = await registry.execute(
+            "str_replace",
+            {
+                "file_path": "main.py",
+                "old_string": "# TODO: fix",
+                "new_string": "# fixed",
+            },
+        )
         assert not result.is_error
         content = (temp_workspace / "main.py").read_text()
         assert "# fixed" in content
@@ -160,8 +174,8 @@ class TestToolExecution:
 # 3.3 边缘测试
 # ============================================================================
 
-class TestEdgeCases:
 
+class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_tr020_read_nonexistent(self, registry: ToolRegistry):
         """TR-020: 读取不存在的文件"""
@@ -196,24 +210,32 @@ class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_tr025_str_replace_no_match(self, registry: ToolRegistry):
         """TR-025: old_string 不存在"""
-        result = await registry.execute("str_replace", {
-            "file_path": "main.py",
-            "old_string": "NONEXISTENT_STRING_XYZ",
-            "new_string": "replaced",
-        })
+        result = await registry.execute(
+            "str_replace",
+            {
+                "file_path": "main.py",
+                "old_string": "NONEXISTENT_STRING_XYZ",
+                "new_string": "replaced",
+            },
+        )
         assert result.is_error
         assert "not found" in result.output
 
     @pytest.mark.asyncio
-    async def test_tr026_str_replace_multiple_match(self, registry: ToolRegistry, temp_workspace: Path):
+    async def test_tr026_str_replace_multiple_match(
+        self, registry: ToolRegistry, temp_workspace: Path
+    ):
         """TR-026: old_string 有多个匹配"""
         multi = temp_workspace / "multi.txt"
         multi.write_text("aaa\nbbb\naaa\n", encoding="utf-8")
-        result = await registry.execute("str_replace", {
-            "file_path": "multi.txt",
-            "old_string": "aaa",
-            "new_string": "ccc",
-        })
+        result = await registry.execute(
+            "str_replace",
+            {
+                "file_path": "multi.txt",
+                "old_string": "aaa",
+                "new_string": "ccc",
+            },
+        )
         assert result.is_error
         assert "2 times" in result.output
 
@@ -251,8 +273,8 @@ class TestEdgeCases:
 # 3.4 极限测试
 # ============================================================================
 
-class TestStress:
 
+class TestStress:
     @pytest.mark.asyncio
     async def test_tr040_many_tools(self):
         """TR-040: 100 个工具同时注册"""
@@ -265,10 +287,9 @@ class TestStress:
     @pytest.mark.asyncio
     async def test_tr041_concurrent_execution(self, registry: ToolRegistry):
         """TR-041: 并发工具执行"""
-        results = await asyncio.gather(*[
-            registry.execute("read_file", {"file_path": "main.md"})
-            for _ in range(10)
-        ])
+        results = await asyncio.gather(
+            *[registry.execute("read_file", {"file_path": "main.md"}) for _ in range(10)]
+        )
         for r in results:
             assert not r.is_error
 
@@ -277,7 +298,9 @@ class TestStress:
         """TR-042: grep 返回截断"""
         big = temp_workspace / "many_lines.txt"
         big.write_text("\n".join(f"match_line_{i}" for i in range(300)), encoding="utf-8")
-        result = await registry.execute("grep_files", {"pattern": "match", "path": "many_lines.txt"})
+        result = await registry.execute(
+            "grep_files", {"pattern": "match", "path": "many_lines.txt"}
+        )
         assert not result.is_error
         assert "truncated" in result.output
 
@@ -296,8 +319,8 @@ class TestStress:
 # 3.5 故障注入
 # ============================================================================
 
-class TestFaultInjection:
 
+class TestFaultInjection:
     @pytest.mark.asyncio
     async def test_tr050_file_deleted_mid_op(self, registry: ToolRegistry, temp_workspace: Path):
         """TR-050: 文件读取中途被删 — 不崩溃"""
@@ -310,8 +333,10 @@ class TestFaultInjection:
     async def test_tr053_tool_throws_unexpected(self):
         """TR-053: 工具抛出未预期异常"""
         reg = ToolRegistry()
+
         async def boom(args):
             raise RuntimeError("unexpected boom")
+
         reg.register("boom", "Explodes", {}, func=boom)
         result = await reg.execute("boom", {})
         assert result.is_error

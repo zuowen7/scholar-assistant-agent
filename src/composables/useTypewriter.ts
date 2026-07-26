@@ -24,7 +24,10 @@ export function useTypewriter(speed = 30) {
   }
 
   function reset() {
-    if (timer) { clearTimeout(timer); timer = null }
+    if (timer) {
+      clearTimeout(timer)
+      timer = null
+    }
     cursor = 0
     display.value = ''
     typing.value = false
@@ -59,7 +62,10 @@ export function useTypewriter(speed = 30) {
 
   /** Skip to end immediately */
   function finish() {
-    if (timer) { clearTimeout(timer); timer = null }
+    if (timer) {
+      clearTimeout(timer)
+      timer = null
+    }
     cursor = source.value.length
     display.value = source.value
     typing.value = false

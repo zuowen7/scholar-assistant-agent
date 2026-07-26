@@ -8,10 +8,9 @@ from __future__ import annotations
 
 import asyncio
 import json
-from unittest.mock import AsyncMock, patch, call
+from unittest.mock import AsyncMock, call, patch
 
 import pytest
-
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -22,42 +21,47 @@ def _run(coro):
 
 def _make_store(tmp_path):
     from src.argument.companion_store import CompanionStore
+
     return CompanionStore(runtime_dir=tmp_path)
 
 
 # Realistic LLM response: Phase 1 extraction
-EXTRACT_LLM_RESP = json.dumps({
-    "promises": [
-        {
-            "local_id": "p1",
-            "kind": "contribution",
-            "text": "Our method scales to N=1e6.",
-            "verbatim_quote": "our method scales to N=1e6",
-        },
-        {
-            "local_id": "p2",
-            "kind": "claim",
-            "text": "The approach outperforms all baselines.",
-            "verbatim_quote": "outperforms all baselines",
-        },
-    ]
-})
+EXTRACT_LLM_RESP = json.dumps(
+    {
+        "promises": [
+            {
+                "local_id": "p1",
+                "kind": "contribution",
+                "text": "Our method scales to N=1e6.",
+                "verbatim_quote": "our method scales to N=1e6",
+            },
+            {
+                "local_id": "p2",
+                "kind": "claim",
+                "text": "The approach outperforms all baselines.",
+                "verbatim_quote": "outperforms all baselines",
+            },
+        ]
+    }
+)
 
 # Phase 2: discharge resolution
-DISCHARGE_LLM_RESP = json.dumps([
-    {
-        "promise_local_id": "p1",
-        "status": "partial",
-        "discharge_quotes": ["We evaluate on N=1e5 samples"],
-        "note": "§5 uses N=1e5, not 1e6 as promised",
-    },
-    {
-        "promise_local_id": "p2",
-        "status": "paid",
-        "discharge_quotes": ["Table 2 shows our method achieves the best results"],
-        "note": "",
-    },
-])
+DISCHARGE_LLM_RESP = json.dumps(
+    [
+        {
+            "promise_local_id": "p1",
+            "status": "partial",
+            "discharge_quotes": ["We evaluate on N=1e5 samples"],
+            "note": "§5 uses N=1e5, not 1e6 as promised",
+        },
+        {
+            "promise_local_id": "p2",
+            "status": "paid",
+            "discharge_quotes": ["Table 2 shows our method achieves the best results"],
+            "note": "",
+        },
+    ]
+)
 
 PAPER_TEXT = (
     "# Abstract\n\n"
@@ -216,8 +220,7 @@ class TestBuildLedgerFailure:
 
     def test_no_dirty_write_on_error(self, tmp_path):
         store = _make_store(tmp_path)
-        events = _run(_collect_build(store, ["bad json", "bad json again"],
-                                     doc_id="doc_fail"))
+        events = _run(_collect_build(store, ["bad json", "bad json again"], doc_id="doc_fail"))
         event_types = [e["event"] for e in events]
         if "error" in event_types:
             # Store must NOT have saved the ledger
@@ -265,7 +268,8 @@ class TestRebuildLedger:
         return events
 
     def test_user_overridden_promise_preserved(self, tmp_path):
-        from src.argument.companion_models import Promise, Ledger
+        from src.argument.companion_models import Ledger, Promise
+
         store = _make_store(tmp_path)
 
         # Pre-seed ledger with one user-overridden promise
@@ -290,7 +294,8 @@ class TestRebuildLedger:
         assert match.user_overridden is True
 
     def test_non_overridden_promise_replaced_by_ai(self, tmp_path):
-        from src.argument.companion_models import Promise, Ledger
+        from src.argument.companion_models import Ledger, Promise
+
         store = _make_store(tmp_path)
 
         p_ai = Promise(
@@ -305,6 +310,7 @@ class TestRebuildLedger:
 
         async def run():
             from src.argument.ledger import rebuild_ledger
+
             resp_iter = iter([EXTRACT_LLM_RESP, DISCHARGE_LLM_RESP])
 
             async def mock_llm(prompt, *a, **kw):
@@ -316,8 +322,10 @@ class TestRebuildLedger:
             events = []
             with patch("src.argument.ledger.call_llm_chat", new=mock_llm):
                 async for ev in rebuild_ledger(
-                    doc_id="doc_rb2", doc_title="Test",
-                    text=PAPER_TEXT, store=store,
+                    doc_id="doc_rb2",
+                    doc_title="Test",
+                    text=PAPER_TEXT,
+                    store=store,
                 ):
                     events.append(ev)
             return events
@@ -334,7 +342,8 @@ class TestRebuildLedger:
         assert any(e["event"] == "complete" for e in events)
 
     def test_anchors_relocated_on_rebuild(self, tmp_path):
-        from src.argument.companion_models import Promise, Anchor, Ledger
+        from src.argument.companion_models import Anchor, Ledger, Promise
+
         store = _make_store(tmp_path)
 
         # Anchor pointing to old text position
@@ -357,6 +366,7 @@ class TestRebuildLedger:
 
         async def run():
             from src.argument.ledger import rebuild_ledger
+
             resp_iter = iter([EXTRACT_LLM_RESP, DISCHARGE_LLM_RESP])
 
             async def mock_llm(prompt, *a, **kw):
@@ -368,8 +378,10 @@ class TestRebuildLedger:
             events = []
             with patch("src.argument.ledger.call_llm_chat", new=mock_llm):
                 async for ev in rebuild_ledger(
-                    doc_id="doc_rb3", doc_title="Test",
-                    text=PAPER_TEXT, store=store,
+                    doc_id="doc_rb3",
+                    doc_title="Test",
+                    text=PAPER_TEXT,
+                    store=store,
                 ):
                     events.append(ev)
             return events
@@ -382,7 +394,11 @@ class TestRebuildLedger:
             relocated = next((a for a in new_ledger.anchors if a.id == anchor.id), None)
             if relocated:
                 # Re-located anchor should have updated char_start to match new_text
-                assert relocated.char_start != 50 or relocated.status in ("anchored", "drifted", "lost")
+                assert relocated.char_start != 50 or relocated.status in (
+                    "anchored",
+                    "drifted",
+                    "lost",
+                )
 
 
 # ── Phase 5: suggest_experiment_for_promise ───────────────────────────────────
@@ -391,12 +407,12 @@ class TestRebuildLedger:
 class TestSuggestExperiment:
     @pytest.mark.asyncio
     async def test_returns_suggestion_text_for_partial_promise(self, tmp_path):
-        from src.argument.ledger import suggest_experiment_for_promise
         from unittest.mock import AsyncMock, patch
 
+        from src.argument.ledger import suggest_experiment_for_promise
+
         suggestion = "You need to run N=1e6 scale experiments."
-        with patch("src.argument.ledger.call_llm_chat",
-                   new=AsyncMock(return_value=suggestion)):
+        with patch("src.argument.ledger.call_llm_chat", new=AsyncMock(return_value=suggestion)):
             result = await suggest_experiment_for_promise(
                 promise_text="Our method scales to N=1e6.",
                 promise_note="Only tested at N=1e5.",
@@ -406,12 +422,12 @@ class TestSuggestExperiment:
 
     @pytest.mark.asyncio
     async def test_returns_suggestion_for_unpaid_promise(self, tmp_path):
-        from src.argument.ledger import suggest_experiment_for_promise
         from unittest.mock import AsyncMock, patch
 
+        from src.argument.ledger import suggest_experiment_for_promise
+
         suggestion = "Design ablation on scaling factor."
-        with patch("src.argument.ledger.call_llm_chat",
-                   new=AsyncMock(return_value=suggestion)):
+        with patch("src.argument.ledger.call_llm_chat", new=AsyncMock(return_value=suggestion)):
             result = await suggest_experiment_for_promise(
                 promise_text="We show convergence guarantees.",
                 promise_note=None,
@@ -421,11 +437,13 @@ class TestSuggestExperiment:
 
     @pytest.mark.asyncio
     async def test_llm_unavailable_returns_fallback_string(self, tmp_path):
-        from src.argument.ledger import suggest_experiment_for_promise
         from unittest.mock import AsyncMock, patch
 
-        with patch("src.argument.ledger.call_llm_chat",
-                   new=AsyncMock(side_effect=Exception("LLM down"))):
+        from src.argument.ledger import suggest_experiment_for_promise
+
+        with patch(
+            "src.argument.ledger.call_llm_chat", new=AsyncMock(side_effect=Exception("LLM down"))
+        ):
             result = await suggest_experiment_for_promise(
                 promise_text="some promise",
                 promise_note=None,

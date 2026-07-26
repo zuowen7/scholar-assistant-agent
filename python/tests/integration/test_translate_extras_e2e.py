@@ -39,6 +39,7 @@ agent:
 @pytest.fixture(scope="module")
 def client():
     from fastapi.testclient import TestClient
+
     from api_factory import create_app
 
     test_dir = tempfile.mkdtemp()
@@ -80,9 +81,12 @@ class TestTranslationMemory:
 </tu>
 </body>
 </tmx>"""
-        resp = client.post("/api/tm/import", files={
-            "file": ("test.tmx", io.BytesIO(tmx.encode()), "application/xml"),
-        })
+        resp = client.post(
+            "/api/tm/import",
+            files={
+                "file": ("test.tmx", io.BytesIO(tmx.encode()), "application/xml"),
+            },
+        )
         assert resp.status_code in (200, 400)
 
     def test_export_returns_tmx(self, client):
@@ -108,14 +112,21 @@ class TestGlossary:
             assert isinstance(data, list) or isinstance(data, dict)
 
     def test_put_glossary(self, client):
-        resp = client.put("/api/glossary", json={"entries": [
-            {"source": "machine learning", "target": "机器学习"},
-            {"source": "deep learning", "target": "深度学习"},
-        ]})
+        resp = client.put(
+            "/api/glossary",
+            json={
+                "entries": [
+                    {"source": "machine learning", "target": "机器学习"},
+                    {"source": "deep learning", "target": "深度学习"},
+                ]
+            },
+        )
         assert resp.status_code in (200, 400)
 
     def test_put_then_get_glossary(self, client):
-        put_resp = client.put("/api/glossary", json={"entries": [{"source": "neural network", "target": "神经网络"}]})
+        put_resp = client.put(
+            "/api/glossary", json={"entries": [{"source": "neural network", "target": "神经网络"}]}
+        )
         if put_resp.status_code == 200:
             get_resp = client.get("/api/glossary")
             if get_resp.status_code == 200:
@@ -125,9 +136,12 @@ class TestGlossary:
 
     def test_import_csv_glossary(self, client):
         csv = "source,target\nartificial intelligence,人工智能\ngradient descent,梯度下降\n"
-        resp = client.post("/api/glossary/import", files={
-            "file": ("glossary.csv", io.BytesIO(csv.encode()), "text/csv"),
-        })
+        resp = client.post(
+            "/api/glossary/import",
+            files={
+                "file": ("glossary.csv", io.BytesIO(csv.encode()), "text/csv"),
+            },
+        )
         assert resp.status_code in (200, 400)
 
 
@@ -136,27 +150,39 @@ class TestGlossary:
 
 class TestExportFormats:
     def test_export_bilingual_docx_nonexistent_task(self, client):
-        resp = client.post("/api/export/bilingual_docx", json={
-            "task_id": "nonexistent-task-for-export",
-        })
+        resp = client.post(
+            "/api/export/bilingual_docx",
+            json={
+                "task_id": "nonexistent-task-for-export",
+            },
+        )
         assert resp.status_code in (200, 400, 404)
 
     def test_export_translation_only_docx_nonexistent_task(self, client):
-        resp = client.post("/api/export/translation_only_docx", json={
-            "task_id": "nonexistent-task-for-export",
-        })
+        resp = client.post(
+            "/api/export/translation_only_docx",
+            json={
+                "task_id": "nonexistent-task-for-export",
+            },
+        )
         assert resp.status_code in (200, 400, 404)
 
     def test_export_pptx_nonexistent_task(self, client):
-        resp = client.post("/api/export/pptx", json={
-            "task_id": "nonexistent-task-for-pptx",
-        })
+        resp = client.post(
+            "/api/export/pptx",
+            json={
+                "task_id": "nonexistent-task-for-pptx",
+            },
+        )
         assert resp.status_code in (200, 400, 404)
 
     def test_export_data_availability_nonexistent_task(self, client):
-        resp = client.post("/api/export/data_availability", json={
-            "task_id": "nonexistent-task-for-da",
-        })
+        resp = client.post(
+            "/api/export/data_availability",
+            json={
+                "task_id": "nonexistent-task-for-da",
+            },
+        )
         assert resp.status_code in (200, 400, 404)
 
     def test_export_missing_task_id_rejected(self, client):

@@ -22,13 +22,13 @@
 
 from __future__ import annotations
 
+from src.plugin.builtin import create_builtin_server, register_builtin
+from src.plugin.loader import discover_plugins, load_from_config, load_plugins
 from src.plugin.registry import (
     PluginRegistry,
     PluginServer,
     ToolSpec,
 )
-from src.plugin.builtin import register_builtin, create_builtin_server
-from src.plugin.loader import discover_plugins, load_from_config, load_plugins
 
 __all__ = [
     "PluginRegistry",

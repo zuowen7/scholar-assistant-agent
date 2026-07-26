@@ -51,10 +51,13 @@ describe('mindMapToMarkdown with body', () => {
 
   it('outputs body text after heading', () => {
     const rootId = 'r'
-    const map = makeMap({
-      r: { id: 'r', text: 'Paper', body: 'An abstract here.', parentId: null, children: ['c1'] },
-      c1: { id: 'c1', text: 'Method', body: 'We used X.', parentId: 'r', children: [] },
-    }, rootId)
+    const map = makeMap(
+      {
+        r: { id: 'r', text: 'Paper', body: 'An abstract here.', parentId: null, children: ['c1'] },
+        c1: { id: 'c1', text: 'Method', body: 'We used X.', parentId: 'r', children: [] },
+      },
+      rootId,
+    )
 
     const md = mindMapToMarkdown(map)
     expect(md).toContain('# Paper')
@@ -65,9 +68,12 @@ describe('mindMapToMarkdown with body', () => {
 
   it('only outputs heading when body is empty', () => {
     const rootId = 'r'
-    const map = makeMap({
-      r: { id: 'r', text: 'Title', body: '', parentId: null, children: [] },
-    }, rootId)
+    const map = makeMap(
+      {
+        r: { id: 'r', text: 'Title', body: '', parentId: null, children: [] },
+      },
+      rootId,
+    )
 
     const lines = mindMapToMarkdown(map).trim().split('\n')
     expect(lines[0]).toBe('# Title')
@@ -77,9 +83,18 @@ describe('mindMapToMarkdown with body', () => {
 
   it('preserves multi-line body', () => {
     const rootId = 'r'
-    const map = makeMap({
-      r: { id: 'r', text: 'Intro', body: 'Line one.\nLine two.\nLine three.', parentId: null, children: [] },
-    }, rootId)
+    const map = makeMap(
+      {
+        r: {
+          id: 'r',
+          text: 'Intro',
+          body: 'Line one.\nLine two.\nLine three.',
+          parentId: null,
+          children: [],
+        },
+      },
+      rootId,
+    )
 
     const md = mindMapToMarkdown(map)
     expect(md).toContain('Line one.\nLine two.\nLine three.')
@@ -87,11 +102,14 @@ describe('mindMapToMarkdown with body', () => {
 
   it('handles mixed: some nodes with body, some without', () => {
     const rootId = 'r'
-    const map = makeMap({
-      r: { id: 'r', text: 'Root', body: 'Root body', parentId: null, children: ['a', 'b'] },
-      a: { id: 'a', text: 'A', body: '', parentId: 'r', children: [] },
-      b: { id: 'b', text: 'B', body: 'B body', parentId: 'r', children: [] },
-    }, rootId)
+    const map = makeMap(
+      {
+        r: { id: 'r', text: 'Root', body: 'Root body', parentId: null, children: ['a', 'b'] },
+        a: { id: 'a', text: 'A', body: '', parentId: 'r', children: [] },
+        b: { id: 'b', text: 'B', body: 'B body', parentId: 'r', children: [] },
+      },
+      rootId,
+    )
 
     const md = mindMapToMarkdown(map)
     expect(md).toContain('Root body')
@@ -102,10 +120,13 @@ describe('mindMapToMarkdown with body', () => {
 
   it('round-trip: markdown with body → mind map → markdown preserves content', () => {
     const rootId = 'r'
-    const original = makeMap({
-      r: { id: 'r', text: 'Thesis', body: 'Main argument.', parentId: null, children: ['c1'] },
-      c1: { id: 'c1', text: 'Evidence', body: 'Data shows X.', parentId: 'r', children: [] },
-    }, rootId)
+    const original = makeMap(
+      {
+        r: { id: 'r', text: 'Thesis', body: 'Main argument.', parentId: null, children: ['c1'] },
+        c1: { id: 'c1', text: 'Evidence', body: 'Data shows X.', parentId: 'r', children: [] },
+      },
+      rootId,
+    )
 
     const md = mindMapToMarkdown(original)
     const tree = markdownToMindMapNodes(md)

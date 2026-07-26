@@ -11,14 +11,15 @@ Reference: claw-code rust/crates/runtime/src/bash_validation.rs
   6. commandSemantics — classify command intent
   7. validate_command — full pipeline (integration)
 """
+
 from __future__ import annotations
 
 import pytest
 
-
 # ============================================================================
 # 1. readOnlyValidation
 # ============================================================================
+
 
 class TestReadOnlyValidation:
     """Port of claw-code bash_validation.rs readOnlyValidation tests."""
@@ -95,8 +96,13 @@ class TestReadOnlyValidation:
         from src.agent_v2.runtime.bash_validation import validate_read_only
         from src.agent_v2.runtime.permissions import PermissionMode
 
-        for cmd in ("git log --oneline", "git diff HEAD~1", "git show abc123",
-                     "git branch -a", "git blame file.py"):
+        for cmd in (
+            "git log --oneline",
+            "git diff HEAD~1",
+            "git show abc123",
+            "git branch -a",
+            "git blame file.py",
+        ):
             result = validate_read_only(cmd, PermissionMode.READ_ONLY)
             assert result.is_allowed, f"'{cmd}' should be allowed"
 
@@ -154,8 +160,12 @@ class TestReadOnlyValidation:
         from src.agent_v2.runtime.bash_validation import validate_read_only
         from src.agent_v2.runtime.permissions import PermissionMode
 
-        for mode in (PermissionMode.WORKSPACE_WRITE, PermissionMode.DANGER_FULL_ACCESS,
-                     PermissionMode.ALLOW, PermissionMode.PROMPT):
+        for mode in (
+            PermissionMode.WORKSPACE_WRITE,
+            PermissionMode.DANGER_FULL_ACCESS,
+            PermissionMode.ALLOW,
+            PermissionMode.PROMPT,
+        ):
             result = validate_read_only("rm -rf /tmp/x", mode)
             assert result.is_allowed, f"Should be allowed in {mode.value}"
 
@@ -163,6 +173,7 @@ class TestReadOnlyValidation:
 # ============================================================================
 # 2. destructiveCommandWarning
 # ============================================================================
+
 
 class TestDestructiveCommandWarning:
     """Port of claw-code bash_validation.rs destructiveCommandWarning tests."""
@@ -243,6 +254,7 @@ class TestDestructiveCommandWarning:
 # 3. modeValidation
 # ============================================================================
 
+
 class TestModeValidation:
     """Port of claw-code bash_validation.rs modeValidation tests."""
 
@@ -288,6 +300,7 @@ class TestModeValidation:
 # 4. sedValidation
 # ============================================================================
 
+
 class TestSedValidation:
     """Port of claw-code bash_validation.rs sedValidation tests."""
 
@@ -325,35 +338,40 @@ class TestSedValidation:
 # 5. pathValidation
 # ============================================================================
 
+
 class TestPathValidation:
     """Port of claw-code bash_validation.rs pathValidation tests."""
 
     def test_warns_directory_traversal(self):
-        from src.agent_v2.runtime.bash_validation import validate_paths
         from pathlib import Path
+
+        from src.agent_v2.runtime.bash_validation import validate_paths
 
         result = validate_paths("cat ../../../etc/passwd", Path("/workspace/project"))
         assert result.is_warn
         assert "traversal" in result.message.lower()
 
     def test_warns_home_directory_reference(self):
-        from src.agent_v2.runtime.bash_validation import validate_paths
         from pathlib import Path
+
+        from src.agent_v2.runtime.bash_validation import validate_paths
 
         result = validate_paths("cat ~/.ssh/id_rsa", Path("/workspace/project"))
         assert result.is_warn
         assert "home" in result.message.lower()
 
     def test_warns_dollar_home(self):
-        from src.agent_v2.runtime.bash_validation import validate_paths
         from pathlib import Path
+
+        from src.agent_v2.runtime.bash_validation import validate_paths
 
         result = validate_paths("cat $HOME/.bashrc", Path("/workspace/project"))
         assert result.is_warn
 
     def test_allows_normal_paths(self):
-        from src.agent_v2.runtime.bash_validation import validate_paths
         from pathlib import Path
+
+        from src.agent_v2.runtime.bash_validation import validate_paths
 
         result = validate_paths("cat src/main.py", Path("/workspace/project"))
         assert result.is_allowed
@@ -363,18 +381,26 @@ class TestPathValidation:
 # 6. commandSemantics
 # ============================================================================
 
+
 class TestCommandSemantics:
     """Port of claw-code bash_validation.rs commandSemantics tests."""
 
     @pytest.fixture(autouse=True)
     def _import(self):
-        from src.agent_v2.runtime.bash_validation import classify_command, CommandIntent
+        from src.agent_v2.runtime.bash_validation import CommandIntent, classify_command
+
         self.classify = classify_command
         self.Intent = CommandIntent
 
     def test_classifies_read_only_commands(self):
-        for cmd in ("ls -la", "cat file.txt", "grep -r pattern .",
-                     "find . -name '*.rs'", "head -20 file", "wc -l file"):
+        for cmd in (
+            "ls -la",
+            "cat file.txt",
+            "grep -r pattern .",
+            "find . -name '*.rs'",
+            "head -20 file",
+            "wc -l file",
+        ):
             assert self.classify(cmd) == self.Intent.READ_ONLY, f"'{cmd}' should be READ_ONLY"
 
     def test_classifies_write_commands(self):
@@ -395,7 +421,9 @@ class TestCommandSemantics:
 
     def test_classifies_package_commands(self):
         for cmd in ("npm install", "pip install requests", "cargo build"):
-            assert self.classify(cmd) == self.Intent.PACKAGE_MANAGEMENT, f"'{cmd}' should be PACKAGE"
+            assert self.classify(cmd) == self.Intent.PACKAGE_MANAGEMENT, (
+                f"'{cmd}' should be PACKAGE"
+            )
 
     def test_classifies_system_admin_commands(self):
         for cmd in ("sudo ls", "mount /dev/sda /mnt", "systemctl restart nginx"):
@@ -432,46 +460,55 @@ class TestCommandSemantics:
 # 7. validate_command — full pipeline
 # ============================================================================
 
+
 class TestValidateCommandPipeline:
     """Integration: full validation pipeline runs all 6 checks in order."""
 
     @pytest.fixture(autouse=True)
     def _import(self):
         from src.agent_v2.runtime.bash_validation import validate_command
+
         self.validate = validate_command
 
     def test_pipeline_blocks_write_in_read_only(self):
-        from src.agent_v2.runtime.permissions import PermissionMode
         from pathlib import Path
+
+        from src.agent_v2.runtime.permissions import PermissionMode
 
         result = self.validate("rm -rf /tmp/x", PermissionMode.READ_ONLY, Path("/workspace"))
         assert result.is_blocked
 
     def test_pipeline_warns_destructive_in_write_mode(self):
-        from src.agent_v2.runtime.permissions import PermissionMode
         from pathlib import Path
+
+        from src.agent_v2.runtime.permissions import PermissionMode
 
         result = self.validate("rm -rf /", PermissionMode.WORKSPACE_WRITE, Path("/workspace"))
         assert result.is_warn
 
     def test_pipeline_allows_safe_read_in_read_only(self):
-        from src.agent_v2.runtime.permissions import PermissionMode
         from pathlib import Path
+
+        from src.agent_v2.runtime.permissions import PermissionMode
 
         result = self.validate("ls -la", PermissionMode.READ_ONLY, Path("/workspace"))
         assert result.is_allowed
 
     def test_pipeline_warns_traversal_in_write_mode(self):
-        from src.agent_v2.runtime.permissions import PermissionMode
         from pathlib import Path
 
-        result = self.validate("cat ../../../etc/passwd", PermissionMode.WORKSPACE_WRITE, Path("/workspace"))
+        from src.agent_v2.runtime.permissions import PermissionMode
+
+        result = self.validate(
+            "cat ../../../etc/passwd", PermissionMode.WORKSPACE_WRITE, Path("/workspace")
+        )
         assert result.is_warn
 
     def test_pipeline_first_non_allow_wins(self):
         """First validation that returns non-Allow should stop the pipeline."""
-        from src.agent_v2.runtime.permissions import PermissionMode
         from pathlib import Path
+
+        from src.agent_v2.runtime.permissions import PermissionMode
 
         # read-only blocks rm before we even check for destructiveness
         result = self.validate("rm -rf /", PermissionMode.READ_ONLY, Path("/workspace"))
@@ -482,12 +519,14 @@ class TestValidateCommandPipeline:
 # 8. Shell metacharacter hardening (anti-bypass)
 # ============================================================================
 
+
 class TestShellMetacharHardening:
     """Anti-bypass: ensure read-only commands can't launder destructive ones."""
 
     @pytest.fixture(autouse=True)
     def _import(self):
         from src.agent_v2.runtime.bash_validation import is_read_only_command
+
         self.is_ro = is_read_only_command
 
     def test_rejects_command_chaining_semicolon(self):
@@ -520,7 +559,7 @@ class TestShellMetacharHardening:
     def test_rejects_interpreters(self):
         """python/node/ruby execute arbitrary code — not read-only."""
         for cmd in (
-            'python3 -c "import os; os.system(\'rm -rf .\')"',
+            "python3 -c \"import os; os.system('rm -rf .')\"",
             "python script.py",
             "node app.js",
             "ruby x.rb",
@@ -543,8 +582,7 @@ class TestShellMetacharHardening:
             assert self.is_ro(cmd), f"'{cmd}' should be read-only"
 
     def test_rejects_git_mutating_subcommands(self):
-        for cmd in ("git commit -m x", "git push origin main",
-                     "git reset --hard", "git clean -fd"):
+        for cmd in ("git commit -m x", "git push origin main", "git reset --hard", "git clean -fd"):
             assert not self.is_ro(cmd), f"'{cmd}' should not be read-only"
 
     def test_empty_command_not_read_only(self):
@@ -568,12 +606,14 @@ class TestShellMetacharHardening:
 # 9. Helper: extract_first_command
 # ============================================================================
 
+
 class TestExtractFirstCommand:
     """Test the internal command extraction helper."""
 
     @pytest.fixture(autouse=True)
     def _import(self):
         from src.agent_v2.runtime.bash_validation import extract_first_command
+
         self.extract = extract_first_command
 
     def test_extracts_plain_command(self):
@@ -587,11 +627,13 @@ class TestExtractFirstCommand:
 
     def test_extracts_sudo_inner(self):
         from src.agent_v2.runtime.bash_validation import extract_sudo_inner
+
         result = extract_sudo_inner("sudo rm -rf /tmp/x")
         assert "rm" in result
 
     def test_extracts_sudo_with_flags(self):
         from src.agent_v2.runtime.bash_validation import extract_sudo_inner
+
         result = extract_sudo_inner("sudo -u root chmod 777 file")
         assert "chmod" in result
 
@@ -619,11 +661,13 @@ class TestExtractFirstCommand:
 # 10. ValidationResult / CommandIntent types
 # ============================================================================
 
+
 class TestTypes:
     """Smoke tests for the result and enum types."""
 
     def test_validation_result_allow(self):
         from src.agent_v2.runtime.bash_validation import ValidationResult
+
         r = ValidationResult.allow()
         assert r.is_allowed
         assert not r.is_blocked
@@ -631,6 +675,7 @@ class TestTypes:
 
     def test_validation_result_block(self):
         from src.agent_v2.runtime.bash_validation import ValidationResult
+
         r = ValidationResult.block("bad command")
         assert r.is_blocked
         assert not r.is_allowed
@@ -638,6 +683,7 @@ class TestTypes:
 
     def test_validation_result_warn(self):
         from src.agent_v2.runtime.bash_validation import ValidationResult
+
         r = ValidationResult.warn("careful")
         assert r.is_warn
         assert not r.is_allowed
@@ -645,8 +691,16 @@ class TestTypes:
 
     def test_command_intent_values(self):
         from src.agent_v2.runtime.bash_validation import CommandIntent
-        expected = {"READ_ONLY", "WRITE", "DESTRUCTIVE", "NETWORK",
-                     "PROCESS_MANAGEMENT", "PACKAGE_MANAGEMENT",
-                     "SYSTEM_ADMIN", "UNKNOWN"}
+
+        expected = {
+            "READ_ONLY",
+            "WRITE",
+            "DESTRUCTIVE",
+            "NETWORK",
+            "PROCESS_MANAGEMENT",
+            "PACKAGE_MANAGEMENT",
+            "SYSTEM_ADMIN",
+            "UNKNOWN",
+        }
         actual = {e.name for e in CommandIntent}
         assert actual == expected

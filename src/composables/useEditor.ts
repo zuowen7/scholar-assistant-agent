@@ -9,15 +9,38 @@
 import { API_BASE } from '../utils/api'
 import { readSseStream } from '../utils/streamReader'
 import {
-  tabs, activeTabId, monacoEditor, contentVersion, activeTab, content, activeFile, isModified,
-  selection, showAiPanel, aiLoading, aiResult, previousContent,
-  insertTextAtCursor, insertImage, getRange,
+  tabs,
+  activeTabId,
+  monacoEditor,
+  contentVersion,
+  activeTab,
+  content,
+  activeFile,
+  isModified,
+  selection,
+  showAiPanel,
+  aiLoading,
+  aiResult,
+  previousContent,
+  insertTextAtCursor,
+  insertImage,
+  getRange,
 } from './useEditorState'
 import { i18n } from '../i18n'
 import {
-  setEditorInstance, setContent, updateSelection, markClean, markDirty,
-  openFile, openNewUntitled, closeTab, setActiveTab, renameTabPath, saveFile,
-  reloadOpenTabs, applyExternalFileUpdate,
+  setEditorInstance,
+  setContent,
+  updateSelection,
+  markClean,
+  markDirty,
+  openFile,
+  openNewUntitled,
+  closeTab,
+  setActiveTab,
+  renameTabPath,
+  saveFile,
+  reloadOpenTabs,
+  applyExternalFileUpdate,
 } from './useEditorTabs'
 
 // ── AI Edit ──────────────────────────────────────────────────────────────
@@ -62,9 +85,13 @@ export async function aiEdit(
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
     if (!resp.body) throw new Error('No response body')
     const reader = resp.body.getReader()
-    await readSseStream(reader, (_type, evt) => {
-      if (evt.content) aiResult.value = evt.content as string
-    }, signal)
+    await readSseStream(
+      reader,
+      (_type, evt) => {
+        if (evt.content) aiResult.value = evt.content as string
+      },
+      signal,
+    )
     if (!aiResult.value) aiResult.value = i18n.global.t('editor.aiNoResult')
   } catch (e: unknown) {
     if ((e as Error).name === 'AbortError') return
@@ -80,16 +107,23 @@ export async function aiEdit(
 let inlineDecoration: string[] = []
 
 function applyInlineDecoration(
-  startLine: number, startCol: number,
-  endLine: number, endCol: number,
+  startLine: number,
+  startCol: number,
+  endLine: number,
+  endCol: number,
 ) {
   const editor = monacoEditor.value
   if (!editor) return
   const Range = getRange(editor)
-  inlineDecoration = editor.deltaDecorations([], [{
-    range: new Range(startLine, startCol, endLine, endCol),
-    options: { className: 'ai-inline-edit', inlineClassName: 'ai-inline-edit-char' },
-  }])
+  inlineDecoration = editor.deltaDecorations(
+    [],
+    [
+      {
+        range: new Range(startLine, startCol, endLine, endCol),
+        options: { className: 'ai-inline-edit', inlineClassName: 'ai-inline-edit-char' },
+      },
+    ],
+  )
 }
 
 function clearInlineDecoration() {
@@ -125,14 +159,17 @@ export async function inlineEdit(instruction: string, taskType?: string): Promis
         // /api/edit sends the complete accumulated output in every delta.
         // Appending it duplicates all earlier tokens and corrupts replacements.
         aiResult.value = evt.content as string
-        editor.executeEdits('ai-inline', [{
-          range: new Range(sel.startLine, sel.startCol, sel.endLine, sel.endCol),
-          text: aiResult.value,
-        }])
+        editor.executeEdits('ai-inline', [
+          {
+            range: new Range(sel.startLine, sel.startCol, sel.endLine, sel.endCol),
+            text: aiResult.value,
+          },
+        ])
         const newEndLine = sel.startLine + (aiResult.value.match(/\n/g) || []).length
-        const newEndCol = newEndLine === sel.startLine
-          ? sel.startCol + aiResult.value.length
-          : aiResult.value.length - aiResult.value.lastIndexOf('\n') - 1
+        const newEndCol =
+          newEndLine === sel.startLine
+            ? sel.startCol + aiResult.value.length
+            : aiResult.value.length - aiResult.value.lastIndexOf('\n') - 1
         clearInlineDecoration()
         // Monaco ranges are end-exclusive. newEndCol already points one column
         // past the replacement, so adding another column highlights unrelated text.
@@ -142,16 +179,26 @@ export async function inlineEdit(instruction: string, taskType?: string): Promis
     clearInlineDecoration()
     if (!aiResult.value) {
       aiResult.value = sel.text
-      editor.executeEdits('ai-inline', [{
-        range: new Range(sel.startLine, sel.startCol, sel.endLine, sel.endCol),
-        text: sel.text,
-      }])
+      editor.executeEdits('ai-inline', [
+        {
+          range: new Range(sel.startLine, sel.startCol, sel.endLine, sel.endCol),
+          text: sel.text,
+        },
+      ])
     }
     return aiResult.value
-  } catch { return null } finally { aiLoading.value = false; _abortMap.delete('inlineEdit') }
+  } catch {
+    return null
+  } finally {
+    aiLoading.value = false
+    _abortMap.delete('inlineEdit')
+  }
 }
 
-export function cancelAiEdit() { _abortOp('aiEdit'); aiLoading.value = false }
+export function cancelAiEdit() {
+  _abortOp('aiEdit')
+  aiLoading.value = false
+}
 
 export function applyAiResult() {
   const editor = monacoEditor.value
@@ -159,23 +206,29 @@ export function applyAiResult() {
   const sel = selection.value
   const Range = getRange(editor)
   if (sel.text) {
-    editor.executeEdits('ai-edit', [{
-      range: new Range(sel.startLine, sel.startCol, sel.endLine, sel.endCol),
-      text: aiResult.value,
-    }])
+    editor.executeEdits('ai-edit', [
+      {
+        range: new Range(sel.startLine, sel.startCol, sel.endLine, sel.endCol),
+        text: aiResult.value,
+      },
+    ])
   } else {
     const pos = editor.getPosition()
     if (pos) {
-      editor.executeEdits('ai-edit', [{
-        range: new Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
-        text: aiResult.value,
-      }])
+      editor.executeEdits('ai-edit', [
+        {
+          range: new Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
+          text: aiResult.value,
+        },
+      ])
     }
   }
   aiResult.value = ''
 }
 
-export function rejectAiResult() { aiResult.value = '' }
+export function rejectAiResult() {
+  aiResult.value = ''
+}
 
 export function undoEdit() {
   if (!previousContent.value) return
@@ -190,7 +243,14 @@ export function undoEdit() {
 export function cleanup() {
   const editor = monacoEditor.value
   if (editor) {
-    if (inlineDecoration.length) { try { editor.deltaDecorations(inlineDecoration, []) } catch { /* disposed */ } inlineDecoration = [] }
+    if (inlineDecoration.length) {
+      try {
+        editor.deltaDecorations(inlineDecoration, [])
+      } catch {
+        /* disposed */
+      }
+      inlineDecoration = []
+    }
   }
   for (const ctrl of _abortMap.values()) ctrl.abort()
   _abortMap.clear()
@@ -198,13 +258,40 @@ export function cleanup() {
 // ── Facade function (returns module-level singletons) ─────────────────────
 export function useEditor() {
   return {
-    tabs, activeTabId, activeFile, isModified,
-    showAiPanel, aiLoading, aiResult, previousContent,
-    insertTextAtCursor, insertImage,
-    monacoEditor, contentVersion, activeTab, content, selection,
-    setEditorInstance, setContent, updateSelection, markClean, markDirty,
-    openFile, openNewUntitled, closeTab, setActiveTab, renameTabPath, saveFile,
-    aiEdit, inlineEdit, cancelAiEdit, applyAiResult, rejectAiResult, undoEdit,
-    cleanup, reloadOpenTabs, applyExternalFileUpdate,
+    tabs,
+    activeTabId,
+    activeFile,
+    isModified,
+    showAiPanel,
+    aiLoading,
+    aiResult,
+    previousContent,
+    insertTextAtCursor,
+    insertImage,
+    monacoEditor,
+    contentVersion,
+    activeTab,
+    content,
+    selection,
+    setEditorInstance,
+    setContent,
+    updateSelection,
+    markClean,
+    markDirty,
+    openFile,
+    openNewUntitled,
+    closeTab,
+    setActiveTab,
+    renameTabPath,
+    saveFile,
+    aiEdit,
+    inlineEdit,
+    cancelAiEdit,
+    applyAiResult,
+    rejectAiResult,
+    undoEdit,
+    cleanup,
+    reloadOpenTabs,
+    applyExternalFileUpdate,
   }
 }

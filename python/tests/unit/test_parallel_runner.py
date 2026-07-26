@@ -66,6 +66,7 @@ class _AlwaysFailClient:
 # 1. Order: parallel mode must yield chunk_done in index order
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.anyio
 async def test_parallel_yields_in_index_order():
     client = _MockClient(delay=0.05)
@@ -81,6 +82,7 @@ async def test_parallel_yields_in_index_order():
 # ---------------------------------------------------------------------------
 # 2. Speed: 10 chunks @ concurrency=4 with 100ms mock must complete < 350ms
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.anyio
 async def test_parallel_faster_than_sequential():
@@ -104,6 +106,7 @@ async def test_parallel_faster_than_sequential():
 # 3. Sequential (max_concurrency=1) chains prev_trans identically to old loop
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.anyio
 async def test_sequential_prev_trans_chain():
     client = _MockClient(delay=0.01)
@@ -125,6 +128,7 @@ async def test_sequential_prev_trans_chain():
 # 4. Single failure → fallback to original text (client handles retries)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.anyio
 async def test_single_failure_fallback():
     client = _FlakyClient(fail_on=2, delay=0.01)
@@ -145,6 +149,7 @@ async def test_single_failure_fallback():
 # 5. Fallback: permanent failure → chunk_error + fallback
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.anyio
 async def test_permanent_failure_fallback():
     client = _AlwaysFailClient()
@@ -164,6 +169,7 @@ async def test_permanent_failure_fallback():
 # 6. Empty input
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.anyio
 async def test_empty_chunks():
     client = _MockClient()
@@ -176,6 +182,7 @@ async def test_empty_chunks():
 # ---------------------------------------------------------------------------
 # 7. Parallel does NOT chain prev_trans (each chunk gets "")
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.anyio
 async def test_parallel_no_prev_trans():

@@ -203,7 +203,7 @@ describe('ReviewerThread', () => {
     if (rebutBtn.exists()) await rebutBtn.trigger('click')
 
     const input = wrapper.find('[data-rebut-input]')
-    if (!input.exists()) return  // component handles it differently
+    if (!input.exists()) return // component handles it differently
 
     await input.setValue('My rebuttal message')
     const sendBtn = wrapper.find('[data-rebut-send]')
@@ -212,7 +212,7 @@ describe('ReviewerThread', () => {
 
     expect(wrapper.emitted('rebut')).toBeTruthy()
     const payload = wrapper.emitted('rebut')![0] as unknown[]
-    expect(payload[0]).toBe('rp_001')  // point id
+    expect(payload[0]).toBe('rp_001') // point id
     expect(payload[1]).toBe('My rebuttal message')
   })
 

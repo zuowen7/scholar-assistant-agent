@@ -1,6 +1,8 @@
+import type { Component } from 'vue'
+
 export interface DropdownItem {
   text?: string
-  icon?: any
+  icon?: Component
   shortcut?: string
   danger?: boolean
   disabled?: boolean

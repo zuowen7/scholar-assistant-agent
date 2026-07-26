@@ -22,9 +22,10 @@ logger = logging.getLogger(__name__)
 
 class ErrorCategory(Enum):
     """异常分类"""
-    TRANSIENT = "transient"      # 临时性，可重试
-    PERMANENT = "permanent"       # 持久性，跳过
-    FATAL = "fatal"              # 致命，终止管道
+
+    TRANSIENT = "transient"  # 临时性，可重试
+    PERMANENT = "permanent"  # 持久性，跳过
+    FATAL = "fatal"  # 致命，终止管道
 
 
 # Ollama 临时错误状态码/关键词
@@ -131,11 +132,13 @@ def get_fallback_strategy(
 
     if category == ErrorCategory.TRANSIENT:
         # 网络/Ollama 临时错误：先重试本地，再考虑云端降级
-        if has_cloud_fallback and ("ollama" in msg.lower() or "connection" in msg.lower() or "gpu" in msg.lower()):
+        if has_cloud_fallback and (
+            "ollama" in msg.lower() or "connection" in msg.lower() or "gpu" in msg.lower()
+        ):
             return {
                 "action": "retry_cloud",
                 "delay": 1.0,
-                "message": f"Ollama 临时故障，切换云端 API 继续翻译",
+                "message": "Ollama 临时故障，切换云端 API 继续翻译",
                 "recoverable": True,
             }
 
@@ -144,7 +147,7 @@ def get_fallback_strategy(
             return {
                 "action": "skip",
                 "delay": 0,
-                "message": f"最后一块翻译失败，保留原文继续",
+                "message": "最后一块翻译失败，保留原文继续",
                 "recoverable": True,
             }
 

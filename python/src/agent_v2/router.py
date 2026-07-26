@@ -11,6 +11,7 @@
   POST /api/agent/v2/workflows/cleanup        — 清理工作流 (stub)
   DELETE /api/agent/v2/workflows/{id}          — 删除工作流 (stub)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -28,19 +29,18 @@ from typing import AsyncGenerator, Callable
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from src.agent_v2.hooks import HookRunner
+from src.agent_v2.plugins import create_default_plugin_manager
 from src.agent_v2.runtime.conversation import ConversationRuntime
 from src.agent_v2.runtime.permissions import PermissionMode, policy_from_registry
 from src.agent_v2.runtime.session import Session
 from src.agent_v2.runtime.usage import UsageTracker
+from src.agent_v2.skills import _BUILTIN_SKILLS, SkillRegistry
 from src.agent_v2.sse_adapter import agent_event_to_sse_stream
-from src.agent_v2.tools.registry import create_default_registry
 from src.agent_v2.tools.academic_tools import register_academic_tools
+from src.agent_v2.tools.registry import create_default_registry
 from src.agent_v2.tools.sub_agent import register_sub_agent
-from src.agent_v2.skills import SkillRegistry, _BUILTIN_SKILLS
-from src.agent_v2.hooks import HookRunner, HookEvent, HookPoint
-from src.agent_v2.plugins import PluginManager, create_default_plugin_manager
 from src.agent_v2.types import (
-    AgentEvent,
     Message,
     MessageRole,
     TextBlock,
@@ -51,13 +51,16 @@ from src.agent_v2.types import (
 
 logger = logging.getLogger(__name__)
 
+
 # 使用 api_factory.RUNTIME_DIR 以兼容 PyInstaller 打包路径（_MEIPASS vs 安装目录）
 def _get_runtime_dir() -> Path:
     try:
         from api_factory import RUNTIME_DIR
+
         return RUNTIME_DIR
     except ImportError:
         return Path(__file__).resolve().parent.parent.parent
+
 
 _RUNTIME_DIR = _get_runtime_dir()
 
@@ -128,43 +131,64 @@ def _session_messages_for_frontend(session: Session) -> list[dict]:
                     arguments = json.loads(block.input)
                 except (TypeError, json.JSONDecodeError):
                     arguments = {"raw": block.input}
-                events.append({
-                    "type": "tool_call",
-                    "content": block.name,
-                    "metadata": {
-                        "tool_name": block.name,
-                        "arguments": arguments,
-                        "args": arguments,
-                    },
-                })
+                events.append(
+                    {
+                        "type": "tool_call",
+                        "content": block.name,
+                        "metadata": {
+                            "tool_name": block.name,
+                            "arguments": arguments,
+                            "args": arguments,
+                        },
+                    }
+                )
             elif isinstance(block, ToolResultBlock):
-                events.append({
-                    "type": "tool_result",
-                    "content": block.output,
-                    "metadata": {
-                        "tool_name": block.tool_name,
-                        "error": block.is_error,
-                    },
-                })
+                events.append(
+                    {
+                        "type": "tool_result",
+                        "content": block.output,
+                        "metadata": {
+                            "tool_name": block.tool_name,
+                            "error": block.is_error,
+                        },
+                    }
+                )
         content = "".join(text_parts)
         if message.role == MessageRole.USER:
             content = _visible_user_text(content)
         if not content and not events:
             continue
-        result.append({
-            "role": "user" if message.role == MessageRole.USER else "assistant",
-            "content": content,
-            "events": events,
-        })
+        result.append(
+            {
+                "role": "user" if message.role == MessageRole.USER else "assistant",
+                "content": content,
+                "events": events,
+            }
+        )
     return result
 
 
 def _session_summary(session: Session, *, state: str, source: str) -> dict:
     messages = session.messages
-    raw_query = next((msg.text_content() for msg in messages if msg.role == MessageRole.USER and msg.text_content()), "")
+    raw_query = next(
+        (
+            msg.text_content()
+            for msg in messages
+            if msg.role == MessageRole.USER and msg.text_content()
+        ),
+        "",
+    )
     query = _visible_user_text(raw_query)[:500]
-    created_at = datetime.fromtimestamp(session.meta.created_ms / 1000, tz=timezone.utc).isoformat() if session.meta.created_ms else None
-    updated_at = datetime.fromtimestamp(session.meta.updated_ms / 1000, tz=timezone.utc).isoformat() if session.meta.updated_ms else None
+    created_at = (
+        datetime.fromtimestamp(session.meta.created_ms / 1000, tz=UTC).isoformat()
+        if session.meta.created_ms
+        else None
+    )
+    updated_at = (
+        datetime.fromtimestamp(session.meta.updated_ms / 1000, tz=UTC).isoformat()
+        if session.meta.updated_ms
+        else None
+    )
     return {
         "id": session.session_id,
         "state": state,
@@ -189,6 +213,7 @@ def _session_summary(session: Session, *, state: str, source: str) -> dict:
 def _load_root_config() -> dict:
     """Standalone fallback config loader for direct Agent V2 use and tests."""
     import yaml
+
     merged = {}
 
     for cfg_name in ("config/default.yaml", "config/default.local.yaml"):
@@ -279,14 +304,23 @@ def _create_provider(root_config: dict | None = None):
         logger.info("Agent V2: config[agent].provider=anthropic — %s", model or "claude-sonnet-4-6")
         return AnthropicProvider(
             base_url=base_url or "https://api.anthropic.com",
-            api_key=api_key, model=model or "claude-sonnet-4-6", proxy=proxy)
+            api_key=api_key,
+            model=model or "claude-sonnet-4-6",
+            proxy=proxy,
+        )
 
     if provider == "openai" and (api_key or base_url):
-        logger.info("Agent V2: config[agent].provider=openai — %s @ %s",
-                     model or "gpt-4o", base_url or "https://api.openai.com/v1")
+        logger.info(
+            "Agent V2: config[agent].provider=openai — %s @ %s",
+            model or "gpt-4o",
+            base_url or "https://api.openai.com/v1",
+        )
         return OpenAiCompatProvider(
             base_url=base_url or "https://api.openai.com/v1",
-            api_key=api_key, model=model or "gpt-4o", proxy=proxy)
+            api_key=api_key,
+            model=model or "gpt-4o",
+            proxy=proxy,
+        )
 
     # 2. API key without explicit provider — detect from key prefix
     if api_key:
@@ -294,11 +328,17 @@ def _create_provider(root_config: dict | None = None):
             logger.info("Agent V2: Anthropic key detected — %s", model or "claude-sonnet-4-6")
             return AnthropicProvider(
                 base_url=base_url or "https://api.anthropic.com",
-                api_key=api_key, model=model or "claude-sonnet-4-6", proxy=proxy)
+                api_key=api_key,
+                model=model or "claude-sonnet-4-6",
+                proxy=proxy,
+            )
         logger.info("Agent V2: OpenAI-compatible key — %s", model or "gpt-4o")
         return OpenAiCompatProvider(
             base_url=base_url or "https://api.openai.com/v1",
-            api_key=api_key, model=model or "gpt-4o", proxy=proxy)
+            api_key=api_key,
+            model=model or "gpt-4o",
+            proxy=proxy,
+        )
 
     # 3. Fallback: translator cloud config (DeepSeek etc.)
     if translator_cloud:
@@ -458,10 +498,15 @@ def _create_runtime(
     agent_cfg = _agent_config_from(root_config) if root_config is not None else _load_agent_config()
     max_steps = int(agent_cfg.get("max_steps", 48) or 48)
 
-    return ConversationRuntime(provider=provider, tool_registry=registry,
-                                permission_policy=policy, session=session,
-                                system_prompt=sp, auto_approve=False,
-                                max_steps=max_steps)
+    return ConversationRuntime(
+        provider=provider,
+        tool_registry=registry,
+        permission_policy=policy,
+        session=session,
+        system_prompt=sp,
+        auto_approve=False,
+        max_steps=max_steps,
+    )
 
 
 async def _cleanup_pool() -> int:
@@ -585,8 +630,13 @@ def register_agent_v2_routes(
                     yield agent_event_to_sse_stream(event)
             except Exception as e:
                 logger.exception("V2 chat error")
-                yield {"event": "error",
-                       "data": json.dumps({"type": "error", "content": f"Agent error: {e}", "event_id": "err_0001"}, ensure_ascii=False)}
+                yield {
+                    "event": "error",
+                    "data": json.dumps(
+                        {"type": "error", "content": f"Agent error: {e}", "event_id": "err_0001"},
+                        ensure_ascii=False,
+                    ),
+                }
             finally:
                 async with _SESSION_LOCK:
                     _SESSION_POOL.pop(rt.session.session_id, None)
@@ -595,6 +645,7 @@ def register_agent_v2_routes(
                     await close()
 
         from sse_starlette.sse import EventSourceResponse
+
         return EventSourceResponse(_stream(), media_type="text/event-stream")
 
     @app.post(f"{prefix}/approve/{{session_id}}/{{event_id}}")
@@ -604,10 +655,16 @@ def register_agent_v2_routes(
             rt = _SESSION_POOL.get(session_id)
         if rt is None:
             raise HTTPException(404, f"Session {session_id} not found or expired")
-        decision = req.decision if isinstance(req.decision, str) else getattr(req.decision, 'value', 'deny')
+        decision = (
+            req.decision
+            if isinstance(req.decision, str)
+            else getattr(req.decision, "value", "deny")
+        )
         ok = rt.approve(event_id, decision)
         if not ok:
-            raise HTTPException(400, f"Approval event {event_id} not found (already processed or timed out)")
+            raise HTTPException(
+                400, f"Approval event {event_id} not found (already processed or timed out)"
+            )
         logger.info("approve: session=%s event=%s decision=%s", session_id, event_id, decision)
         return {"status": "ok", "session_id": session_id, "decision": decision}
 
@@ -625,8 +682,10 @@ def register_agent_v2_routes(
     async def v2_list_sessions(request: Request):
         """List active and persisted sessions with real display metadata."""
         async with _SESSION_LOCK:
-            result = [_session_summary(rt.session, state="active", source="memory")
-                      for rt in _SESSION_POOL.values()]
+            result = [
+                _session_summary(rt.session, state="active", source="memory")
+                for rt in _SESSION_POOL.values()
+            ]
         # Also list persisted sessions
         if _SESSION_DIR.exists():
             for f in sorted(_SESSION_DIR.glob("*.jsonl"), reverse=True)[:20]:
@@ -636,7 +695,9 @@ def register_agent_v2_routes(
                         loaded = Session.load(f)
                         result.append(_session_summary(loaded, state="persisted", source="store"))
                     except (OSError, ValueError, json.JSONDecodeError):
-                        logger.warning("Could not read persisted Agent session %s", fid, exc_info=True)
+                        logger.warning(
+                            "Could not read persisted Agent session %s", fid, exc_info=True
+                        )
         return result
 
     @app.post(f"{prefix}/resume/{{session_id}}")
@@ -668,7 +729,17 @@ def register_agent_v2_routes(
                     yield agent_event_to_sse_stream(event)
             except Exception as e:
                 logger.exception("V2 resume error")
-                yield {"event": "error", "data": json.dumps({"type": "error", "content": f"Resume error: {e}", "event_id": "err_resume"}, ensure_ascii=False)}
+                yield {
+                    "event": "error",
+                    "data": json.dumps(
+                        {
+                            "type": "error",
+                            "content": f"Resume error: {e}",
+                            "event_id": "err_resume",
+                        },
+                        ensure_ascii=False,
+                    ),
+                }
             finally:
                 if rt:
                     async with _SESSION_LOCK:
@@ -678,6 +749,7 @@ def register_agent_v2_routes(
                         await close()
 
         from sse_starlette.sse import EventSourceResponse
+
         return EventSourceResponse(_stream(), media_type="text/event-stream")
 
     @app.get(f"{prefix}/tools")
@@ -687,8 +759,10 @@ def register_agent_v2_routes(
         registry = create_default_registry(workspace_root=ws)
         register_academic_tools(registry)
         register_sub_agent(registry)
-        return [{"name": d.name, "description": d.description, "input_schema": d.input_schema}
-                for d in registry.definitions()]
+        return [
+            {"name": d.name, "description": d.description, "input_schema": d.input_schema}
+            for d in registry.definitions()
+        ]
 
     @app.get(f"{prefix}/workflows/{{workflow_id}}/messages")
     async def v2_workflow_messages(workflow_id: str):
@@ -888,7 +962,9 @@ def register_agent_v2_routes(
         return {
             "sessions": {
                 "active": len(_SESSION_POOL),
-                "persisted": len(list(_SESSION_DIR.glob("*.jsonl"))) if _SESSION_DIR.exists() else 0,
+                "persisted": len(list(_SESSION_DIR.glob("*.jsonl")))
+                if _SESSION_DIR.exists()
+                else 0,
             },
             "config": {
                 "model": _load_agent_config().get("model", ""),

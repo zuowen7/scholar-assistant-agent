@@ -3,21 +3,25 @@
 from __future__ import annotations
 
 import json
-import pytest
 from pathlib import Path
+
+import pytest
 
 
 def _make_store(tmp_path: Path):
     from src.argument.graph_store import ArgGraphStore
+
     return ArgGraphStore(runtime_dir=tmp_path)
 
 
 def _models():
-    from src.argument.models_v2 import ArgNode, ArgEdge, SpanMapping, ArgIssue
+    from src.argument.models_v2 import ArgEdge, ArgIssue, ArgNode, SpanMapping
+
     return ArgNode, ArgEdge, SpanMapping, ArgIssue
 
 
 # ── 图 CRUD ──────────────────────────────────────────────────────────────────
+
 
 class TestGraphCrud:
     def test_create_and_get(self, tmp_path):
@@ -68,6 +72,7 @@ class TestGraphCrud:
 
 
 # ── 节点 CRUD ────────────────────────────────────────────────────────────────
+
 
 class TestNodeCrud:
     def test_upsert_node_creates_new(self, tmp_path):
@@ -130,6 +135,7 @@ class TestNodeCrud:
 
 
 # ── 边 CRUD + 校验 ───────────────────────────────────────────────────────────
+
 
 class TestEdgeCrud:
     def test_upsert_valid_edge(self, tmp_path):
@@ -232,6 +238,7 @@ class TestEdgeCrud:
 
 # ── Span CRUD ────────────────────────────────────────────────────────────────
 
+
 class TestSpanCrud:
     def test_add_and_retrieve_span(self, tmp_path):
         ArgNode, _, SpanMapping, _ = _models()
@@ -258,6 +265,7 @@ class TestSpanCrud:
 
 
 # ── JSON 持久化 round-trip ────────────────────────────────────────────────────
+
 
 class TestPersistence:
     def test_graph_survives_reload(self, tmp_path):
@@ -315,6 +323,7 @@ class TestPersistence:
 
 # ── replace_graph ─────────────────────────────────────────────────────────────
 
+
 class TestReplaceGraph:
     def test_replace_graph_bulk_write(self, tmp_path):
         ArgNode, ArgEdge, _, _ = _models()
@@ -349,6 +358,7 @@ class TestReplaceGraph:
 
 # ── set_issues ────────────────────────────────────────────────────────────────
 
+
 class TestSetIssues:
     def test_set_issues_replaces_all(self, tmp_path):
         ArgNode, _, _, ArgIssue = _models()
@@ -358,8 +368,12 @@ class TestSetIssues:
         store.upsert_node(g.id, node)
 
         issues = [
-            ArgIssue(node_id=node.id, severity="warning",
-                     category="missing_grounds", message="no grounds"),
+            ArgIssue(
+                node_id=node.id,
+                severity="warning",
+                category="missing_grounds",
+                message="no grounds",
+            ),
         ]
         store.set_issues(g.id, issues)
         graph = store.get(g.id)
@@ -373,8 +387,9 @@ class TestSetIssues:
         node = ArgNode(node_type="claim", text="C")
         store.upsert_node(g.id, node)
 
-        issue = ArgIssue(node_id=node.id, severity="error",
-                         category="orphan", message="orphan node")
+        issue = ArgIssue(
+            node_id=node.id, severity="error", category="orphan", message="orphan node"
+        )
         store.set_issues(g.id, [issue])
         graph = store.get(g.id)
         stored_node = next(n for n in graph.nodes if n.id == node.id)

@@ -3,12 +3,7 @@ import type { MindMapData } from './useMindMap'
 import { i18n } from '../i18n'
 
 export type MindMapIssueType =
-  | 'isolated'
-  | 'duplicate'
-  | 'logic_gap'
-  | 'shallow_branch'
-  | 'weak_link'
-  | 'missing_support'
+  'isolated' | 'duplicate' | 'logic_gap' | 'shallow_branch' | 'weak_link' | 'missing_support'
 
 export type MindMapIssueSeverity = 'info' | 'warning' | 'critical'
 
@@ -21,10 +16,20 @@ export interface MindMapAnalysisIssue {
   nodeIds: string[]
 }
 
+/** Raw issue shape returned by the backend / structural fallback. */
+interface RawAnalysisIssue {
+  id?: string
+  type?: string
+  severity?: string
+  title?: string
+  message?: string
+  node_texts?: string[]
+}
+
 export function useMindMapAnalysis() {
   async function analyzeMindMap(map: MindMapData): Promise<MindMapAnalysisIssue[]> {
     const raw = await callBackendAnalysis(map)
-    return raw.map(iss => ({
+    return raw.map((iss) => ({
       id: iss.id ?? `issue-${Math.random().toString(16).slice(2, 8)}`,
       type: (iss.type as MindMapIssueType) ?? 'logic_gap',
       severity: (iss.severity as MindMapIssueSeverity) ?? 'info',
@@ -37,9 +42,7 @@ export function useMindMapAnalysis() {
   return { analyzeMindMap }
 }
 
-async function callBackendAnalysis(
-  map: MindMapData,
-): Promise<Array<Record<string, any>>> {
+async function callBackendAnalysis(map: MindMapData): Promise<RawAnalysisIssue[]> {
   try {
     const res = await fetch(`${API_BASE}/api/mindmap/analyze`, {
       method: 'POST',
@@ -54,8 +57,7 @@ async function callBackendAnalysis(
     const data = await res.json()
     if (Array.isArray(data.issues) && data.issues.length > 0) return data.issues
     return runStructuralFallback(map)
-  }
-  catch {
+  } catch {
     return runStructuralFallback(map)
   }
 }
@@ -75,11 +77,15 @@ function resolveNodeIds(texts: string[], map: MindMapData): string[] {
 }
 
 function getGenericNames(): Set<string> {
-  return new Set([i18n.global.t('mindmap.centralTopic'), i18n.global.t('mindmap.newNode'), i18n.global.t('mindmap.unnamedNode')])
+  return new Set([
+    i18n.global.t('mindmap.centralTopic'),
+    i18n.global.t('mindmap.newNode'),
+    i18n.global.t('mindmap.unnamedNode'),
+  ])
 }
 
-function runStructuralFallback(map: MindMapData): Array<Record<string, any>> {
-  const issues: Array<Record<string, any>> = []
+function runStructuralFallback(map: MindMapData): RawAnalysisIssue[] {
+  const issues: RawAnalysisIssue[] = []
   const root = map.nodes[map.rootId]
 
   if (root && root.children.length === 0) {
@@ -107,7 +113,7 @@ function runStructuralFallback(map: MindMapData): Array<Record<string, any>> {
         severity: 'warning',
         title: i18n.global.t('mindmap.analysis.similarExpression'),
         message: i18n.global.t('mindmap.analysis.similarHint', { count: ids.length }),
-        node_texts: ids.map(id => map.nodes[id]?.text ?? text),
+        node_texts: ids.map((id) => map.nodes[id]?.text ?? text),
       })
     }
   }
@@ -124,7 +130,10 @@ function runStructuralFallback(map: MindMapData): Array<Record<string, any>> {
         node_texts: [node.text],
       })
     }
-    if (!node.children.length && (node.text.trim().length < 6 || getGenericNames().has(node.text.trim()))) {
+    if (
+      !node.children.length &&
+      (node.text.trim().length < 6 || getGenericNames().has(node.text.trim()))
+    ) {
       issues.push({
         id: `issue-${issues.length + 1}`,
         type: 'missing_support',

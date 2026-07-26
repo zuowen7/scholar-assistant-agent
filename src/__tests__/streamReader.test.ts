@@ -18,7 +18,10 @@ function makeReader(chunks: string[]): ReadableStreamDefaultReader<Uint8Array> {
   return reader
 }
 
-function makeAbortingReader(chunks: string[], abortAfter: number): ReadableStreamDefaultReader<Uint8Array> {
+function makeAbortingReader(
+  chunks: string[],
+  abortAfter: number,
+): ReadableStreamDefaultReader<Uint8Array> {
   const encoder = new TextEncoder()
   let idx = 0
   const reader = {
@@ -37,12 +40,9 @@ function makeAbortingReader(chunks: string[], abortAfter: number): ReadableStrea
 // ---------------------------------------------------------------------------
 
 describe('readSseStream – event parsing', () => {
-
   it('parses a single event+data pair', async () => {
     const events: Array<[string, Record<string, unknown>]> = []
-    const reader = makeReader([
-      'event: progress\ndata: {"step":1}\n\n',
-    ])
+    const reader = makeReader(['event: progress\ndata: {"step":1}\n\n'])
     await readSseStream(reader, (type, data) => events.push([type, data]))
 
     expect(events).toHaveLength(1)
@@ -52,9 +52,7 @@ describe('readSseStream – event parsing', () => {
 
   it('parses multiple events in one chunk', async () => {
     const events: Array<[string, Record<string, unknown>]> = []
-    const reader = makeReader([
-      'event: a\ndata: {"x":1}\n\nevent: b\ndata: {"x":2}\n\n',
-    ])
+    const reader = makeReader(['event: a\ndata: {"x":1}\n\nevent: b\ndata: {"x":2}\n\n'])
     await readSseStream(reader, (type, data) => events.push([type, data]))
 
     expect(events).toHaveLength(2)
@@ -64,9 +62,7 @@ describe('readSseStream – event parsing', () => {
 
   it('flushes a CRLF-delimited event immediately when the stream pauses', async () => {
     const events: Array<[string, Record<string, unknown>]> = []
-    const reader = makeReader([
-      'event: await_approval\r\ndata: {"event_id":"tool_1"}\r\n\r\n',
-    ])
+    const reader = makeReader(['event: await_approval\r\ndata: {"event_id":"tool_1"}\r\n\r\n'])
     await readSseStream(reader, (type, data) => events.push([type, data]))
 
     expect(events).toEqual([['await_approval', { event_id: 'tool_1' }]])
@@ -74,10 +70,7 @@ describe('readSseStream – event parsing', () => {
 
   it('handles events split across multiple chunks', async () => {
     const events: Array<[string, Record<string, unknown>]> = []
-    const reader = makeReader([
-      'event: progress\n',
-      'data: {"step":2}\n\n',
-    ])
+    const reader = makeReader(['event: progress\n', 'data: {"step":2}\n\n'])
     await readSseStream(reader, (type, data) => events.push([type, data]))
 
     expect(events).toHaveLength(1)
@@ -86,9 +79,7 @@ describe('readSseStream – event parsing', () => {
 
   it('defaults event type to "data" when no event line', async () => {
     const events: Array<[string, Record<string, unknown>]> = []
-    const reader = makeReader([
-      'data: {"msg":"hello"}\n\n',
-    ])
+    const reader = makeReader(['data: {"msg":"hello"}\n\n'])
     await readSseStream(reader, (type, data) => events.push([type, data]))
 
     expect(events[0][0]).toBe('data')
@@ -96,9 +87,7 @@ describe('readSseStream – event parsing', () => {
 
   it('skips comment lines starting with colon', async () => {
     const events: Array<[string, Record<string, unknown>]> = []
-    const reader = makeReader([
-      ': keepalive\nevent: done\ndata: {"ok":true}\n\n',
-    ])
+    const reader = makeReader([': keepalive\nevent: done\ndata: {"ok":true}\n\n'])
     await readSseStream(reader, (type, data) => events.push([type, data]))
 
     expect(events).toHaveLength(1)
@@ -107,14 +96,11 @@ describe('readSseStream – event parsing', () => {
 
   it('silently drops malformed JSON in data field', async () => {
     const events: Array<[string, Record<string, unknown>]> = []
-    const reader = makeReader([
-      'event: test\ndata: NOT_JSON\n\n',
-    ])
+    const reader = makeReader(['event: test\ndata: NOT_JSON\n\n'])
     await readSseStream(reader, (type, data) => events.push([type, data]))
 
     expect(events).toHaveLength(0)
   })
-
 })
 
 // ---------------------------------------------------------------------------
@@ -122,7 +108,6 @@ describe('readSseStream – event parsing', () => {
 // ---------------------------------------------------------------------------
 
 describe('readSseStream – cleanup', () => {
-
   it('calls reader.cancel() after normal completion', async () => {
     const reader = makeReader(['event: done\ndata: {}\n\n'])
     await readSseStream(reader, () => {})
@@ -131,10 +116,7 @@ describe('readSseStream – cleanup', () => {
   })
 
   it('calls reader.cancel() even when read() throws (abort scenario)', async () => {
-    const reader = makeAbortingReader(
-      ['event: a\ndata: {}\n\n', 'event: b\ndata: {}\n\n'],
-      1,
-    )
+    const reader = makeAbortingReader(['event: a\ndata: {}\n\n', 'event: b\ndata: {}\n\n'], 1)
     try {
       await readSseStream(reader, () => {})
     } catch {
@@ -142,5 +124,4 @@ describe('readSseStream – cleanup', () => {
     }
     expect(reader.cancel).toHaveBeenCalledOnce()
   })
-
 })

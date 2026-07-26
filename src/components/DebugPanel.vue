@@ -18,7 +18,9 @@
         <span class="dp-title">{{ t('editor.debugTitle') }}</span>
         <div class="dp-header-actions">
           <UiSegmented v-model="tab" :options="tabOptions" size="sm" />
-          <button class="dp-clear-btn" :title="t('settings.clear')" @click="clearCurrentTab">{{ t('settings.clear') }}</button>
+          <button class="dp-clear-btn" :title="t('settings.clear')" @click="clearCurrentTab">
+            {{ t('settings.clear') }}
+          </button>
         </div>
       </div>
 
@@ -27,7 +29,9 @@
         <div v-if="errorLog.length === 0" class="dp-empty">{{ t('editor.debugNoErrors') }}</div>
         <div v-for="entry in errorLog" :key="entry.id" class="dp-entry" :class="entry.level">
           <span class="dp-ts">{{ entry.ts }}</span>
-          <span class="dp-level" :class="entry.level">{{ entry.level === 'danger' ? 'ERR' : 'WARN' }}</span>
+          <span class="dp-level" :class="entry.level">{{
+            entry.level === 'danger' ? 'ERR' : 'WARN'
+          }}</span>
           <span class="dp-msg">{{ entry.message }}</span>
         </div>
       </div>
@@ -40,7 +44,9 @@
           <div class="dp-path-row" :title="logPath">
             <span class="dp-path-label">{{ t('editor.debugLogFile') }}</span>
             <span class="dp-path-value">{{ logPath }}</span>
-            <button class="dp-open-btn" @click="openLogFolder">{{ t('editor.debugOpenDir') }}</button>
+            <button class="dp-open-btn" @click="openLogFolder">
+              {{ t('editor.debugOpenDir') }}
+            </button>
           </div>
           <div v-if="logLines.length === 0" class="dp-empty">{{ t('editor.debugNoLogs') }}</div>
           <div v-for="(line, i) in logLines" :key="i" class="dp-line">{{ line }}</div>
@@ -55,7 +61,13 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
-import { errorLog, unreadErrorCount, clearErrorLog, markErrorsRead, useToast } from '../composables/useToast'
+import {
+  errorLog,
+  unreadErrorCount,
+  clearErrorLog,
+  markErrorsRead,
+  useToast,
+} from '../composables/useToast'
 import { Terminal } from './ui/icons'
 import UiPopover from './ui/UiPopover.vue'
 import UiSegmented from './ui/UiSegmented.vue'
@@ -148,13 +160,22 @@ async function openLogFolder() {
   color: var(--c-text-3);
   cursor: pointer;
   position: relative;
-  transition: background var(--motion-fast) var(--ease-brush),
-              color var(--motion-fast) var(--ease-brush);
+  transition:
+    background var(--motion-fast) var(--ease-brush),
+    color var(--motion-fast) var(--ease-brush);
   flex-shrink: 0;
 }
-.dp-trigger:hover  { background: var(--c-surface-2); color: var(--c-text-0); }
-.dp-trigger.active { color: var(--c-accent-hover); background: var(--c-accent-bg); }
-.dp-trigger.has-errors { color: var(--c-danger); }
+.dp-trigger:hover {
+  background: var(--c-surface-2);
+  color: var(--c-text-0);
+}
+.dp-trigger.active {
+  color: var(--c-accent-hover);
+  background: var(--c-accent-bg);
+}
+.dp-trigger.has-errors {
+  color: var(--c-danger);
+}
 
 /* Unread count badge */
 .dp-badge-count {
@@ -175,7 +196,11 @@ async function openLogFolder() {
 }
 
 /* ── Panel layout ─────────────────────────────────────────── */
-.dp-panel { display: flex; flex-direction: column; gap: 0; }
+.dp-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
 
 .dp-header {
   display: flex;
@@ -185,8 +210,16 @@ async function openLogFolder() {
   margin-bottom: var(--space-2);
   border-bottom: 1px solid var(--c-surface-3);
 }
-.dp-title { font-size: var(--text-sm); font-weight: 600; color: var(--c-text-0); }
-.dp-header-actions { display: flex; gap: 6px; align-items: center; }
+.dp-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--c-text-0);
+}
+.dp-header-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
 
 .dp-clear-btn {
   border: 1px solid var(--c-surface-3);
@@ -197,7 +230,10 @@ async function openLogFolder() {
   border-radius: var(--radius-control);
   cursor: pointer;
 }
-.dp-clear-btn:hover { background: var(--c-surface-2); color: var(--c-text-1); }
+.dp-clear-btn:hover {
+  background: var(--c-surface-2);
+  color: var(--c-text-1);
+}
 
 /* ── Log list ─────────────────────────────────────────────── */
 .dp-list {
@@ -216,7 +252,9 @@ async function openLogFolder() {
   font-size: var(--text-xs);
   color: var(--c-text-3);
 }
-.dp-fetch-error { color: var(--c-danger); }
+.dp-fetch-error {
+  color: var(--c-danger);
+}
 
 /* Frontend error entries */
 .dp-entry {
@@ -228,9 +266,15 @@ async function openLogFolder() {
   font-size: 11px;
   line-height: 1.5;
 }
-.dp-entry:hover { background: var(--c-surface-2); }
-.dp-entry.danger { border-left: 2px solid var(--c-danger); }
-.dp-entry.warn   { border-left: 2px solid var(--c-warn); }
+.dp-entry:hover {
+  background: var(--c-surface-2);
+}
+.dp-entry.danger {
+  border-left: 2px solid var(--c-danger);
+}
+.dp-entry.warn {
+  border-left: 2px solid var(--c-warn);
+}
 
 .dp-ts {
   color: var(--c-text-3);
@@ -247,10 +291,20 @@ async function openLogFolder() {
   white-space: nowrap;
   flex-shrink: 0;
 }
-.dp-level.danger { background: color-mix(in srgb, var(--c-danger) 15%, transparent); color: var(--c-danger); }
-.dp-level.warn   { background: color-mix(in srgb, var(--c-warn) 15%, transparent);   color: var(--c-warn); }
+.dp-level.danger {
+  background: color-mix(in srgb, var(--c-danger) 15%, transparent);
+  color: var(--c-danger);
+}
+.dp-level.warn {
+  background: color-mix(in srgb, var(--c-warn) 15%, transparent);
+  color: var(--c-warn);
+}
 
-.dp-msg { color: var(--c-text-1); word-break: break-all; flex: 1; }
+.dp-msg {
+  color: var(--c-text-1);
+  word-break: break-all;
+  flex: 1;
+}
 
 /* Backend log path row */
 .dp-path-row {
@@ -264,7 +318,9 @@ async function openLogFolder() {
   margin-bottom: 4px;
   flex-wrap: wrap;
 }
-.dp-path-label { flex-shrink: 0; }
+.dp-path-label {
+  flex-shrink: 0;
+}
 .dp-path-value {
   flex: 1;
   overflow: hidden;
@@ -284,7 +340,10 @@ async function openLogFolder() {
   cursor: pointer;
   flex-shrink: 0;
 }
-.dp-open-btn:hover { background: var(--c-surface-2); color: var(--c-text-1); }
+.dp-open-btn:hover {
+  background: var(--c-surface-2);
+  color: var(--c-text-1);
+}
 
 /* Backend log lines */
 .dp-line {
@@ -296,5 +355,7 @@ async function openLogFolder() {
   word-break: break-all;
   line-height: 1.6;
 }
-.dp-line:hover { background: var(--c-surface-2); }
+.dp-line:hover {
+  background: var(--c-surface-2);
+}
 </style>

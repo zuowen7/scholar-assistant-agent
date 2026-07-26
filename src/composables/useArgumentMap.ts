@@ -134,7 +134,7 @@ export function inferRelationType(srcType: string, tgtType: string): RelationTyp
 // ── Pure adapter functions ────────────────────────────────────────────────────
 
 export function toFlowNodes(graph: ArgGraph): FlowNode[] {
-  return graph.nodes.map(n => ({
+  return graph.nodes.map((n) => ({
     id: n.id,
     type: 'argNode' as const,
     position: n.position ?? { x: 0, y: 0 },
@@ -149,7 +149,7 @@ export function toFlowNodes(graph: ArgGraph): FlowNode[] {
 }
 
 export function toFlowEdges(graph: ArgGraph): FlowEdge[] {
-  return graph.edges.map(e => ({
+  return graph.edges.map((e) => ({
     id: e.id,
     source: e.source_id,
     target: e.target_id,
@@ -229,7 +229,9 @@ function _pushHistory() {
 // ── Open-full signal (lets ArgumentMapMini tell App.vue to switch mode) ──────
 
 export const _openFullArgMapTick = ref(0)
-export function requestOpenFullArgMap() { _openFullArgMapTick.value++ }
+export function requestOpenFullArgMap() {
+  _openFullArgMapTick.value++
+}
 
 // ── Feature flag ──────────────────────────────────────────────────────────────
 
@@ -277,7 +279,10 @@ function redo() {
 
 // ── Graph CRUD ────────────────────────────────────────────────────────────────
 
-async function createGraph(title = i18n.global.t('argument.unnamedGraph'), source_doc?: string): Promise<ArgGraph> {
+async function createGraph(
+  title = i18n.global.t('argument.unnamedGraph'),
+  source_doc?: string,
+): Promise<ArgGraph> {
   const res = await fetch(`${API_BASE}/api/argument/graph`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -317,7 +322,7 @@ async function upsertNode(
 
   // Optimistic local update
   const tempId = node.id ?? `n_local_${Date.now()}`
-  const existing = _state.graph.nodes.find(n => n.id === node.id)
+  const existing = _state.graph.nodes.find((n) => n.id === node.id)
   if (existing) {
     Object.assign(existing, node)
   } else {
@@ -342,40 +347,44 @@ async function upsertNode(
   const updated: ArgNode = await res.json()
 
   // Sync server-assigned id back into local state
-  const idx = _state.graph.nodes.findIndex(n => n.id === tempId || n.id === updated.id)
+  const idx = _state.graph.nodes.findIndex((n) => n.id === tempId || n.id === updated.id)
   if (idx !== -1) _state.graph.nodes[idx] = updated
 
   return updated
 }
 
-async function persistNodePositions(positions: Record<string, { x: number; y: number }>): Promise<void> {
+async function persistNodePositions(
+  positions: Record<string, { x: number; y: number }>,
+): Promise<void> {
   const graph = _state.graph
   if (!graph) return
   const updates = Object.entries(positions).flatMap(([nodeId, position]) => {
-    const node = graph.nodes.find(candidate => candidate.id === nodeId)
+    const node = graph.nodes.find((candidate) => candidate.id === nodeId)
     if (!node) return []
     node.position = { ...position }
     return [{ node, position }]
   })
   if (!updates.length) return
 
-  const responses = await Promise.all(updates.map(({ node, position }) => fetch(
-    `${API_BASE}/api/argument/graph/${graph.id}/node`,
-    {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...node, position }),
-    },
-  )))
-  if (responses.some(response => !response.ok)) throw new Error('Failed to persist argument-map positions')
+  const responses = await Promise.all(
+    updates.map(({ node, position }) =>
+      fetch(`${API_BASE}/api/argument/graph/${graph.id}/node`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...node, position }),
+      }),
+    ),
+  )
+  if (responses.some((response) => !response.ok))
+    throw new Error('Failed to persist argument-map positions')
 }
 
 async function deleteNode(nid: string): Promise<void> {
   if (!_state.graph) return
   _pushHistory()
-  _state.graph.nodes = _state.graph.nodes.filter(n => n.id !== nid)
-  _state.graph.edges = _state.graph.edges.filter(e => e.source_id !== nid && e.target_id !== nid)
-  _state.graph.spans = _state.graph.spans.filter(s => s.node_id !== nid)
+  _state.graph.nodes = _state.graph.nodes.filter((n) => n.id !== nid)
+  _state.graph.edges = _state.graph.edges.filter((e) => e.source_id !== nid && e.target_id !== nid)
+  _state.graph.spans = _state.graph.spans.filter((s) => s.node_id !== nid)
   await fetch(`${API_BASE}/api/argument/graph/${_state.graph.id}/node/${nid}`, { method: 'DELETE' })
 }
 
@@ -397,7 +406,7 @@ async function upsertEdge(
     throw new Error(await res.text())
   }
   const updated: ArgEdge = await res.json()
-  const idx = _state.graph.edges.findIndex(e => e.id === updated.id)
+  const idx = _state.graph.edges.findIndex((e) => e.id === updated.id)
   if (idx !== -1) {
     _state.graph.edges[idx] = updated
   } else {
@@ -409,7 +418,7 @@ async function upsertEdge(
 async function deleteEdge(eid: string): Promise<void> {
   if (!_state.graph) return
   _pushHistory()
-  _state.graph.edges = _state.graph.edges.filter(e => e.id !== eid)
+  _state.graph.edges = _state.graph.edges.filter((e) => e.id !== eid)
   await fetch(`${API_BASE}/api/argument/graph/${_state.graph.id}/edge/${eid}`, { method: 'DELETE' })
 }
 
@@ -429,7 +438,7 @@ async function addSpan(span: Omit<SpanMapping, 'id'>): Promise<SpanMapping> {
 
 async function deleteSpan(sid: string): Promise<void> {
   if (!_state.graph) return
-  _state.graph.spans = _state.graph.spans.filter(s => s.id !== sid)
+  _state.graph.spans = _state.graph.spans.filter((s) => s.id !== sid)
   await fetch(`${API_BASE}/api/argument/graph/${_state.graph.id}/span/${sid}`, { method: 'DELETE' })
 }
 
@@ -442,7 +451,7 @@ export function focusNode(nodeId: string): void {
 
 /** Highlight the node that owns this span. */
 export function focusSpan(spanId: string): void {
-  const span = _state.graph?.spans.find(s => s.id === spanId)
+  const span = _state.graph?.spans.find((s) => s.id === spanId)
   if (span) _state.highlightNodeIds = [span.node_id]
 }
 
@@ -462,7 +471,10 @@ export function loadSourceFromTranslation(): void {
   _state.source.blocks = blocks
   _state.source.side = 'trans'
   _state.source.label = i18n.global.t('argument.lastTranslation')
-  _state.source.text = blocks.map(b => b.translated || b.original).filter(Boolean).join('\n\n')
+  _state.source.text = blocks
+    .map((b) => b.translated || b.original)
+    .filter(Boolean)
+    .join('\n\n')
 }
 
 /** Load source from the currently active editor tab. */
@@ -506,18 +518,23 @@ async function extractArgument(
     if (!res.body) return
 
     let streamDone = false
-    await readSseStream(res.body.getReader(), (eventType, data) => {
-      if (!_state.graph) return
-      if (eventType === 'node') {
-        _state.graph.nodes.push(data as unknown as ArgNode)
-      } else if (eventType === 'edge') {
-        _state.graph.edges.push(data as unknown as ArgEdge)
-      } else if (eventType === 'span') {
-        _state.graph.spans.push(data as unknown as SpanMapping)
-      } else if (eventType === 'complete' || eventType === 'error') {
-        streamDone = true
-      }
-    }, abort.signal, () => streamDone)
+    await readSseStream(
+      res.body.getReader(),
+      (eventType, data) => {
+        if (!_state.graph) return
+        if (eventType === 'node') {
+          _state.graph.nodes.push(data as unknown as ArgNode)
+        } else if (eventType === 'edge') {
+          _state.graph.edges.push(data as unknown as ArgEdge)
+        } else if (eventType === 'span') {
+          _state.graph.spans.push(data as unknown as SpanMapping)
+        } else if (eventType === 'complete' || eventType === 'error') {
+          streamDone = true
+        }
+      },
+      abort.signal,
+      () => streamDone,
+    )
 
     // Reload from server to confirm persisted state
     await loadGraph(gid)
@@ -528,14 +545,18 @@ async function extractArgument(
       const { autoLayout } = useArgumentLayout()
       const pos = autoLayout(_state.graph.nodes as any[], _state.graph.edges as any[], 'LR')
       try {
-        await persistNodePositions(Object.fromEntries(pos.map(item => [item.id, item.position])))
+        await persistNodePositions(Object.fromEntries(pos.map((item) => [item.id, item.position])))
       } catch {
         pushError(i18n.global.t('argument.positionSaveFailed'))
       }
     }
   } catch (err: unknown) {
     if (err instanceof DOMException && err.name === 'AbortError') return
-    pushError(i18n.global.t('argument.extractFailed', { msg: err instanceof Error ? err.message : String(err) }))
+    pushError(
+      i18n.global.t('argument.extractFailed', {
+        msg: err instanceof Error ? err.message : String(err),
+      }),
+    )
   } finally {
     abort.abort()
     _state.extracting = false
@@ -550,18 +571,18 @@ async function critiqueGraph(): Promise<ArgIssue[]> {
   if (!_state.graph) return []
   _state.critiquing = true
   try {
-    const res = await fetch(
-      `${API_BASE}/api/argument/graph/${_state.graph.id}/critique`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' } },
-    )
+    const res = await fetch(`${API_BASE}/api/argument/graph/${_state.graph.id}/critique`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    })
     if (!res.ok) return []
-    const body = await res.json() as { issues: ArgIssue[] }
+    const body = (await res.json()) as { issues: ArgIssue[] }
     // Update issue_ids on local nodes
     if (_state.graph) {
       for (const node of _state.graph.nodes) node.issue_ids = []
       for (const issue of body.issues) {
         if (issue.node_id) {
-          const node = _state.graph.nodes.find(n => n.id === issue.node_id)
+          const node = _state.graph.nodes.find((n) => n.id === issue.node_id)
           if (node && !node.issue_ids.includes(issue.id)) node.issue_ids.push(issue.id)
         }
       }
@@ -579,14 +600,11 @@ async function critiqueGraph(): Promise<ArgIssue[]> {
  */
 async function suggestElement(nodeId: string): Promise<SuggestResult> {
   if (!_state.graph) return { candidates: [], suggested_edges: [] }
-  const res = await fetch(
-    `${API_BASE}/api/argument/graph/${_state.graph.id}/suggest`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ node_id: nodeId }),
-    },
-  )
+  const res = await fetch(`${API_BASE}/api/argument/graph/${_state.graph.id}/suggest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ node_id: nodeId }),
+  })
   if (!res.ok) return { candidates: [], suggested_edges: [] }
   return res.json() as Promise<SuggestResult>
 }

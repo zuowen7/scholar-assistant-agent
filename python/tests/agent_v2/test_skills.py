@@ -1,4 +1,5 @@
 """Skills 测试 — 加载/解析/注入/边缘/并发。"""
+
 from __future__ import annotations
 
 import tempfile
@@ -6,13 +7,16 @@ from pathlib import Path
 
 import pytest
 
-from src.agent_v2.skills import Skill, SkillRegistry, _BUILTIN_SKILLS
+from src.agent_v2.skills import _BUILTIN_SKILLS, Skill, SkillRegistry
 
 
 class TestSkillParsing:
     def test_parse_frontmatter(self, tmp_path: Path):
         f = tmp_path / "test.md"
-        f.write_text("---\nname: my_skill\ndescription: test desc\nlayer: soul\n---\n# Content\n\nActual content here.", encoding="utf-8")
+        f.write_text(
+            "---\nname: my_skill\ndescription: test desc\nlayer: soul\n---\n# Content\n\nActual content here.",
+            encoding="utf-8",
+        )
         reg = SkillRegistry()
         reg.load_dir(tmp_path)
         skill = reg.get("my_skill")

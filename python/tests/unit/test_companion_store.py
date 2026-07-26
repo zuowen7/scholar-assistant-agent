@@ -8,26 +8,33 @@ from pathlib import Path
 
 import pytest
 
-
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 
 def _make_store(tmp_path: Path):
     from src.argument.companion_store import CompanionStore
+
     return CompanionStore(runtime_dir=tmp_path)
 
 
 def _models():
     from src.argument.companion_models import (
-        Anchor, Promise, Ledger, ReviewPoint, RebuttalTurn, ReviewSession,
+        Anchor,
+        Ledger,
+        Promise,
+        RebuttalTurn,
+        ReviewPoint,
+        ReviewSession,
     )
+
     return Anchor, Promise, Ledger, ReviewPoint, RebuttalTurn, ReviewSession
 
 
 def _make_promise(source_anchor_id="a_001"):
     _, Promise, *_ = _models()
-    return Promise(text="We scale to N=1e6.", kind="contribution",
-                   source_anchor_id=source_anchor_id)
+    return Promise(
+        text="We scale to N=1e6.", kind="contribution", source_anchor_id=source_anchor_id
+    )
 
 
 def _make_ledger(doc_id="doc_abc"):
@@ -112,8 +119,9 @@ class TestLedgerCrud:
         _, _, Ledger, *_ = _models()
         ledger = Ledger(doc_id="doc_ov", doc_title="Version 1")
         store.save_ledger(ledger)
-        ledger2 = Ledger(doc_id="doc_ov", doc_title="Version 2",
-                         id=ledger.id)  # same doc_id, updated title
+        ledger2 = Ledger(
+            doc_id="doc_ov", doc_title="Version 2", id=ledger.id
+        )  # same doc_id, updated title
         store.save_ledger(ledger2)
         got = store.get_ledger("doc_ov")
         assert got.doc_title == "Version 2"
@@ -143,7 +151,7 @@ class TestDocIdSafeFilename:
         doc_id = "untitled-abc123.md"
         ledger = _make_ledger(doc_id)
         store.save_ledger(ledger)
-        expected_stem = re.sub(r'[^\w.-]', '_', doc_id)
+        expected_stem = re.sub(r"[^\w.-]", "_", doc_id)
         ledger_dir = tmp_path / "companion" / "ledgers"
         files = list(ledger_dir.glob("*.json"))
         assert any(expected_stem in f.name for f in files)
@@ -182,8 +190,7 @@ class TestPromiseCrud:
         p = _make_promise()
         store.upsert_promise("doc_p2", p)
         _, Promise, *_ = _models()
-        p_updated = Promise(id=p.id, text="Updated text.", kind="claim",
-                            source_anchor_id="a_002")
+        p_updated = Promise(id=p.id, text="Updated text.", kind="claim", source_anchor_id="a_002")
         store.upsert_promise("doc_p2", p_updated)
         ledger = store.get_ledger("doc_p2")
         match = next(x for x in ledger.promises if x.id == p.id)
@@ -275,8 +282,9 @@ class TestPointAndTurnUpdates:
     def _session_with_point(self, tmp_path):
         store = _make_store(tmp_path)
         _, _, _, ReviewPoint, _, ReviewSession = _models()
-        rp = ReviewPoint(severity="major", category="baseline",
-                         title="Missing", detail="No baselines.")
+        rp = ReviewPoint(
+            severity="major", category="baseline", title="Missing", detail="No baselines."
+        )
         s = ReviewSession(doc_id="doc_t", points=[rp])
         store.save_review(s)
         return store, s, rp

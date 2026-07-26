@@ -17,7 +17,7 @@ import { logger } from '../utils/logger'
 function simpleHash(text: string): string {
   let h = 0
   for (let i = 0; i < text.length; i++) {
-    h = Math.imul(31, h) + text.charCodeAt(i) | 0
+    h = (Math.imul(31, h) + text.charCodeAt(i)) | 0
   }
   return (h >>> 0).toString(16).padStart(8, '0')
 }
@@ -33,7 +33,7 @@ interface CompanionState {
   review: ReviewSession | null
   reviewList: ReviewSummary[]
   reviewing: boolean
-  rebuttalSending: string  // point_id or ''
+  rebuttalSending: string // point_id or ''
   flashAnchor: { start: number; end: number } | null
 }
 
@@ -57,13 +57,18 @@ let _debounceTimer: ReturnType<typeof setTimeout> | null = null
 // ── Internal helpers ──────────────────────────────────────────────────────
 
 function findAnchor(anchors: Anchor[], id: string): Anchor | undefined {
-  return anchors.find(a => a.id === id)
+  return anchors.find((a) => a.id === id)
 }
 
 // ── API calls ─────────────────────────────────────────────────────────────
 
 async function buildOrRebuildLedger(text: string): Promise<void> {
-  logger.debug('[companion] buildOrRebuildLedger called, docId:', state.docId, 'textLen:', text?.length ?? 0)
+  logger.debug(
+    '[companion] buildOrRebuildLedger called, docId:',
+    state.docId,
+    'textLen:',
+    text?.length ?? 0,
+  )
   if (!state.docId) {
     state.docId = `untitled-${crypto.randomUUID()}`
     state.docTitle = 'Untitled'
@@ -108,7 +113,9 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
     await readSseStream(resp.body.getReader(), (eventType, data) => {
       eventCount++
       if (eventType === 'error') {
-        const msg = (data as Record<string, unknown>)['message'] as string || i18n.global.t('errors.unknownError')
+        const msg =
+          ((data as Record<string, unknown>)['message'] as string) ||
+          i18n.global.t('errors.unknownError')
         logger.warn('[companion] build ledger error:', msg)
         pushError(i18n.global.t('argument.buildLedgerFailedMsg', { msg }))
         state.building = false
@@ -127,7 +134,12 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
         if (d['ledger_id']) ledger.id = d['ledger_id'] as string
       }
     })
-    logger.debug('[companion] readSseStream done, events received:', eventCount, 'promises:', ledger.promises.length)
+    logger.debug(
+      '[companion] readSseStream done, events received:',
+      eventCount,
+      'promises:',
+      ledger.promises.length,
+    )
 
     if (ledger.promises.length === 0 && eventCount > 0) {
       logger.warn('[companion] LLM returned 0 promises — LLM may be unavailable or text too short')
@@ -145,12 +157,14 @@ async function getLedger(): Promise<void> {
   // Skip untitled docs — no file path yet, ledger always 404s
   if (state.docId.startsWith('untitled-')) return
   try {
-    const resp = await fetch(`${API_BASE}/api/companion/ledger?doc_id=${encodeURIComponent(state.docId)}`)
+    const resp = await fetch(
+      `${API_BASE}/api/companion/ledger?doc_id=${encodeURIComponent(state.docId)}`,
+    )
     if (!resp.ok) {
       state.ledger = null
       return
     }
-    state.ledger = await resp.json() as Ledger
+    state.ledger = (await resp.json()) as Ledger
   } catch {
     state.ledger = null
   }
@@ -167,12 +181,18 @@ async function upsertPromise(promise: Partial<ArgPromise>): Promise<void> {
         body: JSON.stringify(promise),
       },
     )
-    if (!resp.ok) { pushError(i18n.global.t('argument.savePromiseFailed', { status: resp.status })); return }
-    const updated = await resp.json() as ArgPromise
-    const idx = state.ledger.promises.findIndex(p => p.id === updated.id)
+    if (!resp.ok) {
+      pushError(i18n.global.t('argument.savePromiseFailed', { status: resp.status }))
+      return
+    }
+    const updated = (await resp.json()) as ArgPromise
+    const idx = state.ledger.promises.findIndex((p) => p.id === updated.id)
     if (idx >= 0) state.ledger.promises[idx] = updated
     else state.ledger.promises.push(updated)
-  } catch (e) { pushError(i18n.global.t('argument.savePromiseRetry')); logger.warn('[companion] upsertPromise error:', e) }
+  } catch (e) {
+    pushError(i18n.global.t('argument.savePromiseRetry'))
+    logger.warn('[companion] upsertPromise error:', e)
+  }
 }
 
 async function deletePromise(pid: string): Promise<void> {
@@ -182,8 +202,11 @@ async function deletePromise(pid: string): Promise<void> {
       `${API_BASE}/api/companion/ledger/promise/${pid}?doc_id=${encodeURIComponent(state.docId)}`,
       { method: 'DELETE' },
     )
-    state.ledger.promises = state.ledger.promises.filter(p => p.id !== pid)
-  } catch (e) { pushError(i18n.global.t('argument.deletePromiseRetry')); logger.warn('[companion] deletePromise error:', e) }
+    state.ledger.promises = state.ledger.promises.filter((p) => p.id !== pid)
+  } catch (e) {
+    pushError(i18n.global.t('argument.deletePromiseRetry'))
+    logger.warn('[companion] deletePromise error:', e)
+  }
 }
 
 async function relocate(text: string): Promise<void> {
@@ -198,19 +221,27 @@ async function relocate(text: string): Promise<void> {
       },
     )
     if (!resp.ok) return
-    const updated = await resp.json() as Ledger
+    const updated = (await resp.json()) as Ledger
     state.ledger = updated
-  } catch (e) { pushError(i18n.global.t('argument.anchorRelocateFailed')); logger.warn('[companion] relocate error:', e) }
+  } catch (e) {
+    pushError(i18n.global.t('argument.anchorRelocateFailed'))
+    logger.warn('[companion] relocate error:', e)
+  }
 }
 
 async function listReviews(): Promise<void> {
   if (!state.docId) return
   if (state.docId.startsWith('untitled-')) return
   try {
-    const resp = await fetch(`${API_BASE}/api/companion/reviews?doc_id=${encodeURIComponent(state.docId)}`)
+    const resp = await fetch(
+      `${API_BASE}/api/companion/reviews?doc_id=${encodeURIComponent(state.docId)}`,
+    )
     if (!resp.ok) return
-    state.reviewList = await resp.json() as ReviewSummary[]
-  } catch (e) { pushError(i18n.global.t('argument.loadReviewsFailed')); logger.warn('[companion] listReviews error:', e) }
+    state.reviewList = (await resp.json()) as ReviewSummary[]
+  } catch (e) {
+    pushError(i18n.global.t('argument.loadReviewsFailed'))
+    logger.warn('[companion] listReviews error:', e)
+  }
 }
 
 async function runReview(
@@ -250,7 +281,10 @@ async function runReview(
         mode,
       }),
     })
-    if (!resp.ok || !resp.body) { state.reviewing = false; return }
+    if (!resp.ok || !resp.body) {
+      state.reviewing = false
+      return
+    }
 
     await readSseStream(resp.body.getReader(), (eventType, data) => {
       if (eventType === 'review_point') {
@@ -276,7 +310,10 @@ async function runReview(
   }
 }
 
-async function scopedReview(focus: string | { quote: string; char_start: number; char_end: number }, text: string): Promise<void> {
+async function scopedReview(
+  focus: string | { quote: string; char_start: number; char_end: number },
+  text: string,
+): Promise<void> {
   if (!state.docId) return
   state.reviewing = true
   try {
@@ -292,7 +329,10 @@ async function scopedReview(focus: string | { quote: string; char_start: number;
         session_id: sessionId,
       }),
     })
-    if (!resp.ok || !resp.body) { state.reviewing = false; return }
+    if (!resp.ok || !resp.body) {
+      state.reviewing = false
+      return
+    }
 
     if (!state.review) {
       state.review = {
@@ -328,20 +368,23 @@ async function scopedReview(focus: string | { quote: string; char_start: number;
   }
 }
 
-async function updatePointStatus(pointId: string, status: import('../types').PointStatus): Promise<void> {
+async function updatePointStatus(
+  pointId: string,
+  status: import('../types').PointStatus,
+): Promise<void> {
   if (!state.review) return
   try {
-    await fetch(
-      `${API_BASE}/api/companion/review/${state.review.id}/point/${pointId}`,
-      {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      },
-    )
-    const point = state.review.points.find(p => p.id === pointId)
+    await fetch(`${API_BASE}/api/companion/review/${state.review.id}/point/${pointId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    })
+    const point = state.review.points.find((p) => p.id === pointId)
     if (point) point.status = status
-  } catch (e) { pushError(i18n.global.t('argument.updatePointFailed')); logger.warn('[companion] updatePointStatus error:', e) }
+  } catch (e) {
+    pushError(i18n.global.t('argument.updatePointFailed'))
+    logger.warn('[companion] updatePointStatus error:', e)
+  }
 }
 
 async function rebut(pointId: string, message: string, text: string): Promise<void> {
@@ -356,16 +399,19 @@ async function rebut(pointId: string, message: string, text: string): Promise<vo
         body: JSON.stringify({ message, text }),
       },
     )
-    if (!resp.ok || !resp.body) { state.rebuttalSending = ''; return }
+    if (!resp.ok || !resp.body) {
+      state.rebuttalSending = ''
+      return
+    }
 
-    const point = state.review.points.find(p => p.id === pointId)
+    const point = state.review.points.find((p) => p.id === pointId)
 
     await readSseStream(resp.body.getReader(), (eventType, data) => {
       if (eventType === 'reviewer_reply' && point) {
         point.thread.push({
           id: `rt_${crypto.randomUUID()}`,
           role: 'reviewer',
-          text: (data as Record<string, unknown>)['text'] as string ?? '',
+          text: ((data as Record<string, unknown>)['text'] as string) ?? '',
           created_at: Date.now() / 1000,
         })
       } else if (eventType === 'status' && point) {
@@ -416,7 +462,10 @@ async function importReviews(reviewsRaw: string, text: string): Promise<void> {
         reviews_raw: reviewsRaw,
       }),
     })
-    if (!resp.ok || !resp.body) { state.reviewing = false; return }
+    if (!resp.ok || !resp.body) {
+      state.reviewing = false
+      return
+    }
 
     await readSseStream(resp.body.getReader(), (eventType, data) => {
       if (eventType === 'review_point') {
@@ -438,10 +487,7 @@ async function importReviews(reviewsRaw: string, text: string): Promise<void> {
 // ── Editor bridge ─────────────────────────────────────────────────────────
 
 function focusAnchor(anchorId: string): void {
-  const allAnchors: Anchor[] = [
-    ...(state.ledger?.anchors ?? []),
-    ...(state.review?.anchors ?? []),
-  ]
+  const allAnchors: Anchor[] = [...(state.ledger?.anchors ?? []), ...(state.review?.anchors ?? [])]
   const anchor = findAnchor(allAnchors, anchorId)
   if (!anchor || anchor.char_start === null || anchor.char_end === null) {
     if (anchor) pushWarning(i18n.global.t('argument.anchorLost'))
@@ -453,10 +499,10 @@ function focusAnchor(anchorId: string): void {
 function focusFromGutter(kind: 'promise' | 'point', id: string): void {
   // Notify CompanionPanel to scroll to the item (via focusAnchor too)
   if (kind === 'promise' && state.ledger) {
-    const p = state.ledger.promises.find(x => x.id === id)
+    const p = state.ledger.promises.find((x) => x.id === id)
     if (p) focusAnchor(p.source_anchor_id)
   } else if (kind === 'point' && state.review) {
-    const pt = state.review.points.find(x => x.id === id)
+    const pt = state.review.points.find((x) => x.id === id)
     if (pt?.anchor_id) focusAnchor(pt.anchor_id)
   }
 }
@@ -500,7 +546,10 @@ export function _resetForTesting(): void {
   state.reviewing = false
   state.rebuttalSending = ''
   state.flashAnchor = null
-  if (_debounceTimer !== null) { clearTimeout(_debounceTimer); _debounceTimer = null }
+  if (_debounceTimer !== null) {
+    clearTimeout(_debounceTimer)
+    _debounceTimer = null
+  }
 }
 
 // ── Public API ────────────────────────────────────────────────────────────

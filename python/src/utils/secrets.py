@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-_BEARER_RE = re.compile(r'Bearer\s+\S+', re.IGNORECASE)
+_BEARER_RE = re.compile(r"Bearer\s+\S+", re.IGNORECASE)
 
 
 def mask_key(key: str) -> str:

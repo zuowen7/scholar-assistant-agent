@@ -67,7 +67,16 @@ export function registerTier1Commands(register: (defs: VoiceCommandDef[]) => voi
     {
       id: 'nav:theme',
       label: { zh: '切换主题', en: 'Toggle theme' },
-      patternsZh: ['切换主题', '换主题', '深色模式', '浅色模式', '暗色模式', '亮色模式', '夜间模式', '日间模式'],
+      patternsZh: [
+        '切换主题',
+        '换主题',
+        '深色模式',
+        '浅色模式',
+        '暗色模式',
+        '亮色模式',
+        '夜间模式',
+        '日间模式',
+      ],
       patternsEn: ['toggle theme', 'switch theme', 'dark mode', 'light mode', 'night mode'],
       priority: 8,
       handler: async () => {
