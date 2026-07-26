@@ -238,9 +238,9 @@
           </div>
         </div>
       </div>
-      <!-- Approval bar: hidden when file-edit approval is routed to inline diff in editor -->
+      <!-- Keep a reliable fallback until Monaco confirms that the inline diff is visible. -->
       <AgentApprovalInline
-        v-if="pendingApproval && !showInlineDiff"
+        v-if="showApprovalFallback"
         :pending="pendingApproval"
         @decide="handleApprovalDecision"
       />
@@ -839,7 +839,14 @@ const {
   applyExternalFileUpdate,
 } = useEditor()
 
-const { tabs: editorTabs, setActiveEdit, clearActiveEdit, shouldShowInlineDiff } = useEditorState()
+const {
+  tabs: editorTabs,
+  inlineDiffVisible,
+  setActiveEdit,
+  clearActiveEdit,
+  shouldShowApprovalFallback,
+  shouldShowInlineDiff,
+} = useEditorState()
 
 const { rootDir, refresh: refreshFileTree } = useFileTree()
 const sourceLibrary = useSourceLibrary()
@@ -1167,6 +1174,10 @@ const showInlineDiff = computed(() => {
   return shouldShowInlineDiff(p.tool_name, p.args || {}, editorTabs.value, p.preview)
 })
 
+const showApprovalFallback = computed(() =>
+  shouldShowApprovalFallback(Boolean(pendingApproval.value), inlineDiffVisible.value),
+)
+
 async function handleApprovalDecision(decision: 'allow_once' | 'allow_session' | 'deny') {
   const pending = pendingApproval.value
   if (!pending) return
@@ -1236,6 +1247,10 @@ async function handleSessionOpen(session: AgentSessionInfo) {
 function formatToolResult(content: string): string {
   const denied = content.match(/^User denied the change to (.+)$/)
   if (denied) return t('agent.userDeniedChange', { path: denied[1] })
+  const timedOut = content.match(/^Approval timed out for the change to (.+)$/)
+  if (timedOut) return t('agent.approvalTimedOutChange', { path: timedOut[1] })
+  const cancelled = content.match(/^Approval cancelled for the change to (.+)$/)
+  if (cancelled) return t('agent.approvalCancelledChange', { path: cancelled[1] })
   return truncateResult(content)
 }
 

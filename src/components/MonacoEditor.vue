@@ -44,7 +44,7 @@ const presentation = computed(() => props.presentation || 'code')
 const editorContainer = ref<HTMLElement>()
 const { setEditorInstance, setContent, content, updateSelection, activeTabId, markDirty, aiEdit } =
   useEditor()
-const { activeEdit, clearActiveEdit, activeTab } = useEditorState()
+const { activeEdit, clearActiveEdit, setInlineDiffVisible, activeTab } = useEditorState()
 const { sendApproval } = useAgentChat()
 
 let editor: monaco.editor.IStandaloneCodeEditor | null = null
@@ -477,6 +477,7 @@ let _diffDecorations: string[] = []
 let _diffWidget: monaco.editor.IContentWidget | null = null
 
 function _clearDiffDecorations() {
+  setInlineDiffVisible(false)
   if (editor && _diffDecorations.length) {
     editor.deltaDecorations(_diffDecorations, [])
     _diffDecorations = []
@@ -563,6 +564,7 @@ watch(activeEdit, (edit) => {
       }),
     }
     editor.addContentWidget(_diffWidget)
+    setInlineDiffVisible(true)
     editor.revealRangeInCenter(matchRange)
   } else if (edit.operation === 'write_file' && edit.newText) {
     // write_file: show new content preview at top of file
@@ -598,6 +600,7 @@ watch(activeEdit, (edit) => {
       }),
     }
     editor.addContentWidget(_diffWidget)
+    setInlineDiffVisible(true)
     editor.revealLineInCenter(1)
   }
 })
@@ -728,7 +731,7 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--c-danger) 25%, transparent) !important;
   border-bottom: 2px wavy var(--c-danger) !important;
 }
-.ai-diff-widget {
+:global(.ai-diff-widget) {
   background: var(--c-surface-1);
   border: 1px solid var(--c-surface-3);
   border-radius: var(--radius-md, 8px);
@@ -742,30 +745,30 @@ onBeforeUnmount(() => {
   font-size: 13px;
   z-index: 100;
 }
-.ai-diff-new {
+:global(.ai-diff-new) {
   background: color-mix(in srgb, var(--c-success) 12%, transparent);
   border-radius: 4px;
   padding: 6px 8px;
 }
-.ai-diff-new-line {
+:global(.ai-diff-new-line) {
   color: var(--c-text-0);
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.5;
 }
-.ai-diff-truncated {
+:global(.ai-diff-truncated) {
   color: var(--c-text-2);
   font-style: italic;
   font-size: 12px;
   margin-top: 4px;
 }
-.ai-diff-actions {
+:global(.ai-diff-actions) {
   display: flex;
   gap: 8px;
   margin-top: 10px;
 }
-.ai-diff-accept,
-.ai-diff-reject {
+:global(.ai-diff-accept),
+:global(.ai-diff-reject) {
   padding: 5px 14px;
   border: none;
   border-radius: var(--radius-sm, 4px);
@@ -774,18 +777,18 @@ onBeforeUnmount(() => {
   cursor: pointer;
   font-family: inherit;
 }
-.ai-diff-accept {
+:global(.ai-diff-accept) {
   background: var(--c-success);
   color: #fff;
 }
-.ai-diff-accept:hover {
+:global(.ai-diff-accept:hover) {
   background: color-mix(in srgb, var(--c-success) 85%, #000);
 }
-.ai-diff-reject {
+:global(.ai-diff-reject) {
   background: var(--c-danger);
   color: #fff;
 }
-.ai-diff-reject:hover {
+:global(.ai-diff-reject:hover) {
   background: color-mix(in srgb, var(--c-danger) 85%, #000);
 }
 </style>

@@ -36,7 +36,7 @@ from src.agent_v2.types import (
 logger = logging.getLogger(__name__)
 
 _DEFAULT_MAX_STEPS = 48
-_APPROVAL_TIMEOUT = 120.0  # 2 分钟等用户审批
+_APPROVAL_TIMEOUT = 600.0  # 10 分钟等用户审批；超时必须与用户拒绝分开
 _TOOL_RESULT_MAX_CHARS = 4000
 
 
@@ -81,6 +81,7 @@ class ConversationRuntime:
         self._approval_decisions: dict[str, str] = {}
         self._session_approved_tools: set[str] = set()
         self._approval_denied = False
+        self._approval_stop_reason: str | None = None
         self._aborted = False
         # Lifecycle tracking — used by router._cleanup_pool to evict stale
         # sessions safely (never evict a streaming session).
@@ -98,6 +99,7 @@ class ConversationRuntime:
             return
 
         self._approval_denied = False
+        self._approval_stop_reason = None
         self._is_streaming = True
         self.last_active_monotonic = time.monotonic()
         try:
@@ -136,7 +138,10 @@ class ConversationRuntime:
                             return
                         if self._approval_denied:
                             self._auto_save()
-                            yield AgentEvent.aborted("File edit rejected; no changes were applied")
+                            yield AgentEvent.aborted(
+                                self._approval_stop_reason
+                                or "File edit rejected; no changes were applied"
+                            )
                             yield AgentEvent.done()
                             return
                         break
@@ -388,15 +393,25 @@ class ConversationRuntime:
                 try:
                     await asyncio.wait_for(evt.wait(), timeout=_APPROVAL_TIMEOUT)
                 except TimeoutError:
-                    self._approval_decisions[tb.id] = "deny"
+                    self._approval_decisions[tb.id] = "timeout"
                 finally:
                     self._approval_events.pop(tb.id, None)
 
-                decision = self._approval_decisions.pop(tb.id, "deny")
+                decision = self._approval_decisions.pop(
+                    tb.id, "aborted" if self._aborted else "cancelled"
+                )
                 yield AgentEvent.approval_received(tb.id, decision)
 
                 if decision != "allow_once" and decision != "allow_session":
-                    tool_output = f"User denied the change to {file_path}"
+                    if decision == "timeout":
+                        tool_output = f"Approval timed out for the change to {file_path}"
+                        stop_reason = "File edit approval timed out; no changes were applied"
+                    elif decision == "aborted":
+                        tool_output = f"Approval cancelled for the change to {file_path}"
+                        stop_reason = "Session aborted by user"
+                    else:
+                        tool_output = f"User denied the change to {file_path}"
+                        stop_reason = "File edit rejected; no changes were applied"
                     is_error = True
                     self.session.append(
                         Message(
@@ -415,6 +430,7 @@ class ConversationRuntime:
                     yield AgentEvent.tool_result(tb.id, tb.name, tool_output, is_error=True)
                     if not self._aborted:
                         self._approval_denied = True
+                        self._approval_stop_reason = stop_reason
                     return
                 if decision == "allow_session":
                     self._session_approved_tools.add(tb.name)
