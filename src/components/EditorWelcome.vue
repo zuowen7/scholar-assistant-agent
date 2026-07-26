@@ -188,10 +188,15 @@ function formatPath(p: string | undefined | null): string {
 <style scoped>
 .editor-welcome {
   flex: 1;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: var(--space-7) var(--space-6);
+  padding: clamp(24px, 5vh, 64px) clamp(24px, 5vw, 80px);
   background: var(--editor-bg);
   overflow-y: auto;
   position: relative;
@@ -215,10 +220,10 @@ function formatPath(p: string | undefined | null): string {
 
 .welcome-content {
   position: relative;
-  width: min(580px, 100%);
+  width: min(100%, clamp(620px, 54vw, 880px));
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: clamp(var(--space-5), 2.5vh, var(--space-7));
   margin-block: auto;
 }
 
@@ -313,14 +318,14 @@ function formatPath(p: string | undefined | null): string {
 
 .wc-card--hero .wc-card-inner {
   gap: var(--space-5);
-  padding: var(--space-5);
+  padding: clamp(var(--space-5), 2vw, var(--space-6));
 }
 
 .wc-card-inner {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-4);
+  padding: clamp(var(--space-4), 1.5vw, var(--space-5));
 }
 
 .wc-icon {
@@ -509,6 +514,29 @@ function formatPath(p: string | undefined | null): string {
 }
 :global([data-theme='light']) .shortcut-chip {
   background: var(--c-surface-2);
+}
+
+@media (max-width: 700px) {
+  .editor-welcome {
+    padding: var(--space-5) var(--space-4);
+  }
+
+  .welcome-content {
+    width: 100%;
+    gap: var(--space-5);
+  }
+
+  .magazine-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .wc-card--hero {
+    grid-column: auto;
+  }
+
+  .welcome-shortcuts {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

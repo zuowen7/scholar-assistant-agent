@@ -26,6 +26,7 @@ from src.agent_v2.types import (
     MessageRole,
     ProviderResponse,
     TextBlock,
+    ThinkingBlock,
     TokenUsage,
     ToolResultBlock,
     ToolUseBlock,
@@ -384,6 +385,98 @@ class TestEdgeCases:
 
 
 class TestFaultInjection:
+    @pytest.mark.asyncio
+    async def test_reasoning_only_completion_is_recovered_once(self, workspace: Path):
+        """A reasoning-only provider turn must continue instead of ending the task."""
+
+        class ReasoningThenAnswerProvider:
+            model = "mock"
+
+            def __init__(self):
+                self.calls = 0
+                self.system_prompts: list[str] = []
+
+            async def chat_stream(self, **kwargs):
+                self.calls += 1
+                self.system_prompts.append(kwargs["system_prompt"])
+                if self.calls == 1:
+                    yield ThinkingBlock(thinking="I should create the figure now.")
+                    yield ProviderResponse(blocks=[], stop_reason="stop")
+                    return
+                yield TextBlock(text="Figure generation has started.")
+                yield ProviderResponse(
+                    blocks=[TextBlock(text="Figure generation has started.")],
+                    stop_reason="stop",
+                )
+
+        provider = ReasoningThenAnswerProvider()
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(
+            PermissionMode.WORKSPACE_WRITE,
+            registry.permission_specs(),
+        )
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy,
+            session=Session(workspace=str(workspace), model="mock"),
+        )
+
+        events = await _collect_events(runtime, "确认")
+
+        assert provider.calls == 2
+        assert provider.system_prompts[0] != provider.system_prompts[1]
+        assert any(
+            event.type == AgentEventType.WARNING
+            and event.data.get("code") == "empty_model_response"
+            and event.data.get("reset_stream") is True
+            for event in events
+        )
+        assert any(
+            event.type == AgentEventType.RESPONSE
+            and event.data.get("text") == "Figure generation has started."
+            for event in events
+        )
+        assert not [event for event in events if event.type == AgentEventType.ERROR]
+
+    @pytest.mark.asyncio
+    async def test_repeated_reasoning_only_completion_stops_after_three_attempts(
+        self, workspace: Path
+    ):
+        """Semantic empty responses are retried finitely and end with actionable text."""
+
+        class ReasoningOnlyProvider:
+            model = "mock"
+
+            def __init__(self):
+                self.calls = 0
+
+            async def chat_stream(self, **_kwargs):
+                self.calls += 1
+                yield ThinkingBlock(thinking="Still reasoning.")
+                yield ProviderResponse(blocks=[], stop_reason="stop")
+
+        provider = ReasoningOnlyProvider()
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(
+            PermissionMode.WORKSPACE_WRITE,
+            registry.permission_specs(),
+        )
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy,
+            session=Session(workspace=str(workspace), model="mock"),
+        )
+
+        events = await _collect_events(runtime, "确认")
+        errors = [event for event in events if event.type == AgentEventType.ERROR]
+
+        assert provider.calls == 3
+        assert len(errors) == 1
+        assert "最终答复或工具调用" in errors[0].data["message"]
+        assert "切换模型" in errors[0].data["message"]
+
     @pytest.mark.asyncio
     async def test_unexpected_stream_exception_is_not_blindly_retried(
         self, workspace: Path, monkeypatch: pytest.MonkeyPatch
