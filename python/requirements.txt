@@ -35,6 +35,9 @@ mcp==1.27.0
 # lock file installable on Linux CI runners as well.
 pywin32==311; sys_platform == "win32"
 
+# LaTeX parser for .tex file support
+pylatexenc==2.10
+
 # Agent workspace tools: diff preview generation
 unidiff==0.7.5
 

@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 import sys
 
+from src._version import __version__
+
 TOOLS = [
     {
         "name": "translate_pdf",
@@ -64,7 +66,7 @@ def handle_request(msg: dict) -> dict | None:
             "result": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "scholar-translate", "version": "0.4.1"},
+                "serverInfo": {"name": "scholar-translate", "version": __version__},
             },
         }
     if method == "notifications/initialized":
