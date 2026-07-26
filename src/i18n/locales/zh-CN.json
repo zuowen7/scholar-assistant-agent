@@ -362,6 +362,28 @@
     "labelParams": "参数",
     "labelExecFailed": "执行失败",
     "labelExecDone": "执行完成",
+    "execution": {
+      "title": "执行过程",
+      "running": "正在执行 · {count} 步",
+      "completed": "已完成 · {count} 步",
+      "failed": "共 {count} 步 · {failed} 步失败",
+      "params": "执行参数",
+      "result": "执行结果",
+      "currentFile": "当前文件",
+      "readFile": "读取 {target}",
+      "editFile": "修改 {target}",
+      "searchFiles": "检索项目文件",
+      "searchLibrary": "检索项目文献",
+      "searchWeb": "检索外部文献",
+      "runCommand": "运行项目命令",
+      "useTool": "使用 {tool}"
+    },
+    "runtimeErrors": {
+      "repeated_tool_call": "Agent 重复调用了同一工具，已停止本次任务以避免无限重试。请调整指令后继续。",
+      "tool_call_limit": "本次任务的工具调用过多，已安全停止。请缩小任务范围或分步继续。",
+      "tool_error_limit": "本次任务连续遇到多次工具错误，已停止重复尝试。请展开“执行过程”查看失败原因。",
+      "tool_loop_stopped": "检测到异常工具循环，本次任务已安全停止。"
+    },
     "noProject": "未打开项目",
     "contextEditor": "已使用编辑器{type}作为上下文（{count} 字符）",
     "contextSelection": "选区",

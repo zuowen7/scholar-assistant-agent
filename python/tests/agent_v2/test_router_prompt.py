@@ -60,10 +60,12 @@ def test_persisted_session_messages_are_available_to_the_history_panel(tmp_path,
     assert messages[0]["role"] == "user"
     assert messages[0]["content"] == "Review the draft"
     assert "private draft body" not in messages[0]["content"]
-    assert messages[1]["content"] == ""
+    assert len(messages) == 2
+    assert messages[1]["content"] == "Review complete"
     assert messages[1]["events"][0]["metadata"]["tool_name"] == "read_file"
-    assert messages[2]["events"][0]["content"] == "draft text"
-    assert messages[3]["content"] == "Review complete"
+    assert messages[1]["events"][0]["event_id"] == "call_1"
+    assert messages[1]["events"][1]["content"] == "draft text"
+    assert messages[1]["events"][1]["event_id"] == "call_1"
 
     listing = client.get("/api/agent/v2/sessions")
     assert listing.status_code == 200

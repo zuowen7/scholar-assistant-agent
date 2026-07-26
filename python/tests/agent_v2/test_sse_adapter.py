@@ -29,6 +29,9 @@ class TestAdapter:
         result = agent_event_to_sse(event)
         assert result["type"] == "tool_call"
         assert "read_file" in result["content"]
+        assert result["event_id"] == "t1"
+        assert result["metadata"]["tool_name"] == "read_file"
+        assert result["metadata"]["args"] == {"file_path": "a.md"}
 
     def test_tool_result_uses_tool_result_type(self):
         event = AgentEvent(
@@ -37,11 +40,14 @@ class TestAdapter:
                 "id": "t1",
                 "tool_name": "read_file",
                 "output": "file content",
+                "is_error": True,
             },
         )
         result = agent_event_to_sse(event)
         assert result["type"] == "tool_result"
         assert "file content" in result["content"]
+        assert result["event_id"] == "t1"
+        assert result["metadata"]["error"] is True
 
     def test_tool_error_uses_tool_error_type(self):
         event = AgentEvent(
@@ -74,9 +80,10 @@ class TestAdapter:
         assert result["metadata"]["session_id"] == "sess_123"
 
     def test_error_stays_error(self):
-        event = AgentEvent(type=AgentEventType.ERROR, data={"message": "fail"})
+        event = AgentEvent.error("fail", code="tool_loop_stopped")
         result = agent_event_to_sse(event)
         assert result["type"] == "error"
+        assert result["metadata"]["code"] == "tool_loop_stopped"
 
     def test_retry_warning_preserves_stream_reset_metadata(self):
         event = AgentEvent.warning(

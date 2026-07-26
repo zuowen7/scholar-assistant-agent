@@ -133,29 +133,45 @@ def _visible_user_text(text: str) -> str:
 
 
 def _session_messages_for_frontend(session: Session) -> list[dict]:
-    """Convert persisted Agent V2 blocks into the existing panel message model."""
+    """Convert persisted blocks into user turns and compact assistant executions."""
     result: list[dict] = []
+    assistant_content: list[str] = []
+    assistant_events: list[dict] = []
+
+    def flush_assistant() -> None:
+        content = "".join(assistant_content)
+        if content or assistant_events:
+            result.append(
+                {
+                    "role": "assistant",
+                    "content": content,
+                    "events": list(assistant_events),
+                }
+            )
+        assistant_content.clear()
+        assistant_events.clear()
+
     for message in session.messages:
         if message.role == MessageRole.SYSTEM:
             continue
-        events: list[dict] = []
         text_parts: list[str] = []
         has_tool_call = False
         for block in message.blocks:
             if isinstance(block, TextBlock):
                 text_parts.append(block.text)
             elif isinstance(block, ThinkingBlock):
-                events.append({"type": "thought", "content": block.thinking})
+                assistant_events.append({"type": "thought", "content": block.thinking})
             elif isinstance(block, ToolUseBlock):
                 has_tool_call = True
                 try:
                     arguments = json.loads(block.input)
                 except (TypeError, json.JSONDecodeError):
                     arguments = {"raw": block.input}
-                events.append(
+                assistant_events.append(
                     {
                         "type": "tool_call",
                         "content": block.name,
+                        "event_id": block.id,
                         "metadata": {
                             "tool_name": block.name,
                             "arguments": arguments,
@@ -164,30 +180,31 @@ def _session_messages_for_frontend(session: Session) -> list[dict]:
                     }
                 )
             elif isinstance(block, ToolResultBlock):
-                events.append(
+                assistant_events.append(
                     {
                         "type": "tool_result",
                         "content": block.output,
+                        "event_id": block.tool_use_id,
                         "metadata": {
                             "tool_name": block.tool_name,
                             "error": block.is_error,
                         },
                     }
                 )
-        content = "".join(text_parts)
-        if message.role == MessageRole.ASSISTANT and has_tool_call:
-            content = ""
         if message.role == MessageRole.USER:
-            content = _visible_user_text(content)
-        if not content and not events:
+            flush_assistant()
+            content = _visible_user_text("".join(text_parts))
+            if content:
+                result.append({"role": "user", "content": content, "events": []})
             continue
-        result.append(
-            {
-                "role": "user" if message.role == MessageRole.USER else "assistant",
-                "content": content,
-                "events": events,
-            }
-        )
+
+        if message.role == MessageRole.ASSISTANT and not has_tool_call:
+            content = "".join(text_parts)
+            if content:
+                assistant_content.append(content)
+                flush_assistant()
+
+    flush_assistant()
     return result
 
 
@@ -399,12 +416,11 @@ def _build_system_prompt(workspace_root: str, tools: list) -> str:
         f"When you need to search, use grep_files or glob_files. "
         f"Each tool result will be shown to you so you can decide the next step.\n\n"
         f"# CRITICAL: How to edit files\n"
-        f"PREFER write_file for ALL multi-section edits, reviews, and large changes. "
-        f"Read the file first, compose the full updated content, then write_file ONCE. "
-        f"This is the most reliable approach.\n\n"
-        f"ONLY use str_replace for trivial single-line edits where you are 100% "
-        f"certain of the EXACT existing text. If str_replace fails even ONCE, "
-        f"immediately switch to write_file — do NOT retry str_replace.\n\n"
+        f"Use str_replace for targeted edits to existing text whenever the exact old text is known. "
+        f"Use write_file only to create a new file or for a deliberate whole-file rewrite after "
+        f"reading and preserving the complete current file. Never use run_command to edit document "
+        f"text. Do not repeat an unchanged tool call after it fails; inspect the error and choose "
+        f"one safer strategy.\n\n"
         f"After each change, the file tree and editor will refresh automatically.\n\n"
         f"# Communication\n"
         f"Respond in the same language as the user. "

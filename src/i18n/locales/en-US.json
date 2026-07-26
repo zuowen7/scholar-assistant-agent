@@ -359,6 +359,28 @@
     "labelParams": "Parameters",
     "labelExecFailed": "Execution Failed",
     "labelExecDone": "Execution Done",
+    "execution": {
+      "title": "Execution",
+      "running": "Running · {count} steps",
+      "completed": "Completed · {count} steps",
+      "failed": "{count} steps · {failed} failed",
+      "params": "Parameters",
+      "result": "Result",
+      "currentFile": "current file",
+      "readFile": "Read {target}",
+      "editFile": "Edit {target}",
+      "searchFiles": "Search project files",
+      "searchLibrary": "Search project sources",
+      "searchWeb": "Search external sources",
+      "runCommand": "Run project command",
+      "useTool": "Use {tool}"
+    },
+    "runtimeErrors": {
+      "repeated_tool_call": "The Agent repeated the same tool call, so this task was stopped to prevent an infinite retry loop. Adjust the instruction and continue.",
+      "tool_call_limit": "This task made too many tool calls and was stopped safely. Narrow the scope or continue in smaller steps.",
+      "tool_error_limit": "This task encountered several tool errors and stopped retrying. Expand Execution to inspect the failures.",
+      "tool_loop_stopped": "An abnormal tool loop was detected and the task was stopped safely."
+    },
     "noProject": "No project open",
     "contextEditor": "Using editor {type} as context ({count} chars)",
     "contextSelection": "selection",

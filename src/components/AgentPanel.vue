@@ -157,6 +157,11 @@
             :events="msg.events"
             :streaming="msg.isStreaming"
           />
+          <AgentExecutionGroup
+            v-if="msg.role === 'assistant'"
+            :events="msg.events"
+            :streaming="msg.isStreaming"
+          />
           <template v-for="(evt, i) in msg.events" :key="i">
             <div v-if="evt.type === 'task_started'" class="agent-event task-lifecycle">
               <span class="evt-lifecycle-icon">&#x25B6;</span>
@@ -170,56 +175,6 @@
               <span class="evt-lifecycle-icon">&#x2714;</span>
               <span class="evt-label">{{ t('agent.labelTaskDone') }}</span>
               <span class="evt-task-id">{{ evt.metadata?.task_id }}</span>
-            </div>
-            <div v-else-if="evt.type === 'tool_call'" class="agent-event tool-call">
-              <div class="evt-tool-header">
-                <span class="evt-tool-icon">&#x26A1;</span>
-                <span class="evt-label">{{ t('agent.labelToolCall') }}</span>
-                <span class="evt-tool-name">{{
-                  evt.metadata?.tool_name || evt.metadata?.tool || evt.content
-                }}</span>
-                <span
-                  v-if="evt.metadata?.risk"
-                  class="evt-risk-badge"
-                  :class="'risk-' + evt.metadata.risk"
-                  >{{ evt.metadata.risk }}</span
-                >
-              </div>
-              <div class="evt-tool-desc">
-                {{ getToolDescription(evt.metadata?.tool_name || evt.metadata?.tool) }}
-              </div>
-              <div
-                v-if="
-                  (evt.metadata?.arguments || evt.metadata?.args) &&
-                  Object.keys((evt.metadata?.arguments || evt.metadata?.args) ?? {}).length
-                "
-                class="evt-tool-args"
-              >
-                <span class="evt-args-label">{{ t('agent.labelParams') }}</span>
-                <code class="evt-args-code">{{
-                  formatToolArgs((evt.metadata?.arguments || evt.metadata?.args) ?? {})
-                }}</code>
-              </div>
-            </div>
-            <div
-              v-else-if="evt.type === 'tool_result'"
-              class="agent-event tool-result"
-              :class="{ 'evt-error': evt.metadata?.error }"
-            >
-              <div class="evt-result-header">
-                <span v-if="evt.metadata?.error" class="evt-tool-icon error">&#x2717;</span>
-                <span v-else class="evt-tool-icon success">&#x2713;</span>
-                <span class="evt-label">{{
-                  evt.metadata?.error ? t('agent.labelExecFailed') : t('agent.labelExecDone')
-                }}</span>
-                <span class="evt-result-tool">{{
-                  evt.metadata?.tool_name || evt.metadata?.tool
-                }}</span>
-                <span v-if="evt.metadata?.duration_ms" class="evt-duration"
-                  >{{ evt.metadata.duration_ms }}ms</span
-                >
-              </div>
-              <div class="evt-result-preview">{{ formatToolResult(evt.content) }}</div>
             </div>
             <div v-else-if="evt.type === 'warning' && evt.content" class="agent-event warning">
               <span class="evt-warning-icon">&#x26A0;</span>
@@ -575,6 +530,7 @@ import { useEditorState } from '../composables/useEditorState'
 import { useFileTree } from '../composables/useFileTree'
 import { useSourceLibrary } from '../composables/useSourceLibrary'
 import AgentApprovalInline from './AgentApprovalInline.vue'
+import AgentExecutionGroup from './AgentExecutionGroup.vue'
 import AgentThoughtGroup from './AgentThoughtGroup.vue'
 import AgentSlashMenu from './AgentSlashMenu.vue'
 import AgentSessionList from './AgentSessionList.vue'
@@ -1101,52 +1057,6 @@ const contextText = computed(() => {
   return editorSelection.value.text || editorContent.value
 })
 
-// ── Tool descriptions ──
-const TOOL_DESCRIPTIONS: Record<string, string> = {
-  translate_text: t('agent.tool.translate_text'),
-  parse_document: t('agent.tool.parse_document'),
-  search_documents: t('agent.tool.search_documents'),
-  read_argument_graph: t('agent.tool.read_argument_graph'),
-  read_argument_ledger: t('agent.tool.read_argument_ledger'),
-  read_reviewer_state: t('agent.tool.read_reviewer_state'),
-  arxiv_search: t('agent.tool.crawl_arxiv'),
-  read_file: t('agent.tool.read_file'),
-  write_file: t('agent.tool.write_file'),
-  str_replace: t('agent.tool.str_replace'),
-  grep_files: t('agent.tool.grep_files'),
-  glob_files: t('agent.tool.glob_files'),
-  list_directory: t('agent.tool.list_directory'),
-  run_command: t('agent.tool.run_command'),
-  git_op: t('agent.tool.git_op'),
-  undo_last_change: t('agent.tool.undo_last_change'),
-  export_pdf: t('agent.tool.export_pdf'),
-  web_fetch: t('agent.tool.web_fetch'),
-  web_search: t('agent.tool.web_search'),
-}
-
-function getToolDescription(toolName?: string): string {
-  if (!toolName) return ''
-  return TOOL_DESCRIPTIONS[toolName] || ''
-}
-
-function formatToolArgs(args: Record<string, unknown>): string {
-  const entries = Object.entries(args)
-  if (!entries.length) return ''
-  return entries
-    .map(([k, v]) => {
-      const val =
-        typeof v === 'string' ? `"${v.length > 40 ? v.slice(0, 40) + '…' : v}"` : JSON.stringify(v)
-      return `${k}: ${val}`
-    })
-    .join('\n')
-}
-
-function truncateResult(content: string): string {
-  if (!content) return ''
-  if (content.length <= 300) return content
-  return content.slice(0, 300) + '…'
-}
-
 // ── Current status from streaming events ──
 const currentStatus = computed(() => {
   const streaming = messages.value.find((m) => m.isStreaming)
@@ -1156,13 +1066,11 @@ const currentStatus = computed(() => {
   for (let i = streaming.events.length - 1; i >= 0; i--) {
     const evt = streaming.events[i]
     if (evt.type === 'thinking' || evt.type === 'thought') return t('agent.thinkingCompact')
-    if (evt.type === 'tool_call')
-      return 'Calling ' + ((evt.metadata?.tool_name || evt.metadata?.tool || evt.content) as string)
-    if (evt.type === 'tool_result')
-      return 'Done: ' + ((evt.metadata?.tool_name || evt.metadata?.tool || 'tool') as string)
-    if (evt.type === 'task_started') return 'Starting task: ' + (evt.metadata?.title || '')
-    if (evt.type === 'task_done') return 'Task completed'
-    if (evt.type === 'warning') return 'Warning: ' + evt.content
+    if (evt.type === 'tool_call') return t('agent.execution.running', { count: 1 })
+    if (evt.type === 'tool_result') return t('agent.execution.completed', { count: 1 })
+    if (evt.type === 'task_started') return t('agent.labelTask')
+    if (evt.type === 'task_done') return t('agent.labelTaskDone')
+    if (evt.type === 'warning') return evt.content
   }
   return ''
 })
@@ -1242,16 +1150,6 @@ async function handleSessionOpen(session: AgentSessionInfo) {
   _userScrolledUp.value = false
   await nextTick()
   _scrollToBottom()
-}
-
-function formatToolResult(content: string): string {
-  const denied = content.match(/^User denied the change to (.+)$/)
-  if (denied) return t('agent.userDeniedChange', { path: denied[1] })
-  const timedOut = content.match(/^Approval timed out for the change to (.+)$/)
-  if (timedOut) return t('agent.approvalTimedOutChange', { path: timedOut[1] })
-  const cancelled = content.match(/^Approval cancelled for the change to (.+)$/)
-  if (cancelled) return t('agent.approvalCancelledChange', { path: cancelled[1] })
-  return truncateResult(content)
 }
 
 function handleNewSession() {

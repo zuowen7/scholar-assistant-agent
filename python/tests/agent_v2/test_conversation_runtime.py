@@ -183,6 +183,129 @@ class TestBasicFlow:
             assert types.index(AgentEventType.RESPONSE) < types.index(AgentEventType.DONE)
 
     @pytest.mark.asyncio
+    async def test_selection_turn_exposes_only_selection_safe_tools(self, workspace: Path):
+        class CapturingProvider:
+            model = "capture"
+
+            def __init__(self):
+                self.tool_names: list[str] = []
+
+            async def chat(self, *, messages, tools, system_prompt=None):
+                self.tool_names = [tool.name for tool in tools]
+                return _text_response("Reviewed the active selection.")
+
+        provider = CapturingProvider()
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy,
+            session=Session(workspace=str(workspace)),
+            edit_scope={
+                "file_path": "main.md",
+                "start_line": 1,
+                "start_column": 1,
+                "end_line": 1,
+                "end_column": 14,
+                "text": "# Hello World",
+            },
+        )
+
+        events = await _collect_events(runtime, "polish the active selection")
+
+        assert AgentEventType.RESPONSE in _event_types(events)
+        assert "str_replace" in provider.tool_names
+        assert "read_file" not in provider.tool_names
+        assert "grep_files" not in provider.tool_names
+        assert "run_command" not in provider.tool_names
+        assert "write_file" not in provider.tool_names
+
+    @pytest.mark.asyncio
+    async def test_selection_edit_finalizes_without_exposing_more_tools(self, workspace: Path):
+        class SelectionEditProvider:
+            model = "selection-edit"
+
+            def __init__(self):
+                self.turn_index = 0
+                self.tool_names_by_turn: list[list[str]] = []
+                self.system_prompts: list[str] = []
+
+            async def chat(self, *, messages, tools, system_prompt=None):
+                self.tool_names_by_turn.append([tool.name for tool in tools])
+                self.system_prompts.append(system_prompt or "")
+                if self.turn_index == 0:
+                    self.turn_index += 1
+                    return _tool_response(
+                        "str_replace",
+                        {
+                            "file_path": "main.md",
+                            "old_string": "# Hello World",
+                            "new_string": "# Polished World",
+                        },
+                    )
+                return _text_response("已生成并应用选区修改。")
+
+        provider = SelectionEditProvider()
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy,
+            session=Session(workspace=str(workspace)),
+            auto_approve=True,
+            edit_scope={
+                "file_path": "main.md",
+                "start_line": 1,
+                "start_column": 1,
+                "end_line": 1,
+                "end_column": 14,
+                "text": "# Hello World",
+            },
+        )
+
+        events = await _collect_events(runtime, "polish the active selection")
+
+        assert workspace.joinpath("main.md").read_text(encoding="utf-8") == "# Polished World"
+        assert provider.tool_names_by_turn[0] == ["str_replace"]
+        assert provider.tool_names_by_turn[1] == []
+        assert "Do not call any more tools" in provider.system_prompts[1]
+        assert AgentEventType.RESPONSE in _event_types(events)
+
+    @pytest.mark.asyncio
+    async def test_repeated_identical_tool_loop_stops_before_max_steps(self, workspace: Path):
+        provider = MockProvider(
+            scenarios=[
+                Scenario(
+                    "loop",
+                    trigger_patterns=[],
+                    response_factory=lambda m, t: _tool_response(
+                        "read_file", {"file_path": "main.md"}
+                    ),
+                ),
+            ]
+        )
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy,
+            session=Session(workspace=str(workspace)),
+            max_steps=20,
+        )
+
+        events = await _collect_events(runtime, "keep reading")
+        tool_calls = [event for event in events if event.type == AgentEventType.TOOL_CALL]
+        errors = [
+            event.data.get("message", "") for event in events if event.type == AgentEventType.ERROR
+        ]
+
+        assert len(tool_calls) == 3
+        assert any("repeated the same tool call" in message for message in errors)
+
+    @pytest.mark.asyncio
     async def test_cr005_empty_tool_calls(self, workspace: Path):
         """CR-005: LLM 返回无 tool_call（纯文本），直接结束"""
         provider = MockProvider()
@@ -608,7 +731,7 @@ class TestStress:
                     "loop",
                     trigger_patterns=[],
                     response_factory=lambda m, t: _tool_response(
-                        "read_file", {"file_path": "main.md"}
+                        "read_file", {"file_path": "main.md", "attempt": t}
                     ),
                 ),
             ]

@@ -209,6 +209,8 @@ export interface AgentEvent {
     // v2 tool_call
     tool?: string
     args?: Record<string, unknown>
+    input?: string
+    is_error?: boolean
     risk?: string
     // v2 await_approval
     reason?: string
