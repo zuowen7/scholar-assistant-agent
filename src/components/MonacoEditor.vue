@@ -1,6 +1,29 @@
 <template>
-  <div class="monaco-wrapper" :class="`presentation-${presentation}`">
+  <div ref="editorWrapper" class="monaco-wrapper" :class="`presentation-${presentation}`">
     <div ref="editorContainer" class="monaco-container"></div>
+    <div
+      v-if="selectedText.trim() && presentation === 'document'"
+      ref="selectionToolbar"
+      class="selection-toolbar"
+      :class="`placement-${selectionToolbarPosition.placement}`"
+      :style="selectionToolbarStyle"
+      role="toolbar"
+      :aria-label="t('editor.selectionActions')"
+      @mousedown.prevent
+    >
+      <button type="button" @click.stop="emitSelectionAction(t('editor.polish'))">
+        <Sparkles :size="14" /> {{ t('editor.polish') }}
+      </button>
+      <button type="button" @click.stop="emitSelectionAction(t('editor.condense'))">
+        {{ t('editor.condense') }}
+      </button>
+      <button type="button" @click.stop="emitSelectionAction(t('editor.expand'))">
+        {{ t('editor.expand') }}
+      </button>
+      <button type="button" @click.stop="emitSelectionAction(t('editor.checkArgument'))">
+        {{ t('editor.checkArgument') }}
+      </button>
+    </div>
     <CommandPalette
       v-if="showPalette"
       :position="palettePos"
@@ -14,7 +37,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import type { CSSProperties } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Sparkles } from 'lucide-vue-next'
 
 const { t } = useI18n()
 import * as monaco from 'monaco-editor'
@@ -28,6 +53,10 @@ import { useArgumentCompanion } from '../composables/useArgumentCompanion'
 import { computeCompanionDecorations } from '../composables/companionGutter'
 import { fetchCompletion, buildContext, type CompletionModel } from '../utils/inlineCompletion'
 import { addInlineDiffViewZone, type InlineDiffViewHandle } from '../utils/inlineDiffViewZone'
+import {
+  computeSelectionToolbarPosition,
+  type SelectionToolbarPosition,
+} from '../utils/selectionToolbarPosition'
 
 // 配置 Monaco Web Worker（解决 Tauri 环境下 worker 无法创建的问题）
 self.MonacoEnvironment = {
@@ -40,9 +69,14 @@ const props = defineProps<{
   theme?: 'vs-dark' | 'vs'
   presentation?: 'code' | 'document'
 }>()
+const emit = defineEmits<{
+  selectionAction: [action: string]
+}>()
 const presentation = computed(() => props.presentation || 'code')
 
+const editorWrapper = ref<HTMLElement>()
 const editorContainer = ref<HTMLElement>()
+const selectionToolbar = ref<HTMLElement>()
 const { setEditorInstance, setContent, content, updateSelection, activeTabId, markDirty, aiEdit } =
   useEditor()
 const { activeEdit, clearActiveEdit, setInlineDiffVisible, activeTab } = useEditorState()
@@ -93,6 +127,70 @@ const showPalette = ref(false)
 const palettePos = ref({ x: 200, y: 200 })
 const selectedText = ref('')
 const editLoading = ref(false)
+const selectionToolbarPosition = ref<SelectionToolbarPosition>({
+  visible: false,
+  left: 8,
+  top: 8,
+  placement: 'above',
+})
+const selectionToolbarStyle = computed<CSSProperties>(() => ({
+  visibility: selectionToolbarPosition.value.visible ? 'visible' : 'hidden',
+  left: `${selectionToolbarPosition.value.left}px`,
+  top: `${selectionToolbarPosition.value.top}px`,
+}))
+let selectionToolbarFrame: number | null = null
+
+function emitSelectionAction(action: string) {
+  emit('selectionAction', action)
+}
+
+function scheduleSelectionToolbarUpdate() {
+  if (selectionToolbarFrame !== null) cancelAnimationFrame(selectionToolbarFrame)
+  nextTick(() => {
+    selectionToolbarFrame = requestAnimationFrame(() => {
+      selectionToolbarFrame = null
+      updateSelectionToolbarPosition()
+    })
+  })
+}
+
+function updateSelectionToolbarPosition() {
+  const wrapper = editorWrapper.value
+  const container = editorContainer.value
+  const toolbar = selectionToolbar.value
+  const selection = editor?.getSelection()
+  if (
+    !editor ||
+    !wrapper ||
+    !container ||
+    !toolbar ||
+    !selection ||
+    !selectedText.value.trim() ||
+    presentation.value !== 'document'
+  ) {
+    selectionToolbarPosition.value = {
+      ...selectionToolbarPosition.value,
+      visible: false,
+    }
+    return
+  }
+
+  const activePosition =
+    selection.getDirection() === monaco.SelectionDirection.RTL
+      ? selection.getStartPosition()
+      : selection.getEndPosition()
+  const anchor = editor.getScrolledVisiblePosition(activePosition)
+  const wrapperRect = wrapper.getBoundingClientRect()
+  const containerRect = container.getBoundingClientRect()
+  selectionToolbarPosition.value = computeSelectionToolbarPosition(anchor, {
+    viewportWidth: wrapper.clientWidth,
+    viewportHeight: wrapper.clientHeight,
+    toolbarWidth: toolbar.offsetWidth,
+    toolbarHeight: toolbar.offsetHeight,
+    containerLeft: containerRect.left - wrapperRect.left,
+    containerTop: containerRect.top - wrapperRect.top,
+  })
+}
 
 // Ghost text: cached completion + debounced trigger
 let _inlineCompletionsDisposable: { dispose(): void } | null = null
@@ -282,7 +380,11 @@ onMounted(() => {
       endCol: sel.endColumn,
       text,
     })
+    scheduleSelectionToolbarUpdate()
   })
+
+  editor.onDidScrollChange(() => scheduleSelectionToolbarUpdate())
+  editor.onDidLayoutChange(() => scheduleSelectionToolbarUpdate())
 
   // 重新聚焦时恢复缓存的 ghost text
   editor.onDidFocusEditorWidget(() => {
@@ -434,7 +536,10 @@ watch(
 )
 watch(
   () => props.presentation,
-  () => applyPresentation(),
+  () => {
+    applyPresentation()
+    scheduleSelectionToolbarUpdate()
+  },
 )
 
 watch([() => companion.state.ledger, () => companion.state.review], () =>
@@ -566,6 +671,10 @@ function _dispatchInlineDecision(decision: 'allow_once' | 'deny') {
 
 onBeforeUnmount(() => {
   _clearDiffDecorations()
+  if (selectionToolbarFrame !== null) {
+    cancelAnimationFrame(selectionToolbarFrame)
+    selectionToolbarFrame = null
+  }
   if (ghostTimer) {
     clearTimeout(ghostTimer)
     ghostTimer = null
@@ -599,6 +708,47 @@ onBeforeUnmount(() => {
   border-left: 1px solid var(--c-border);
   border-right: 1px solid var(--c-border);
   background: var(--c-panel);
+}
+.selection-toolbar {
+  position: absolute;
+  z-index: 30;
+  display: flex;
+  max-width: calc(100% - 16px);
+  align-items: center;
+  gap: 2px;
+  padding: 5px;
+  overflow-x: auto;
+  border: 1px solid var(--c-border);
+  border-radius: 9px;
+  background: var(--c-panel);
+  box-shadow: 0 7px 22px rgba(50, 43, 31, 0.16);
+  scrollbar-width: none;
+}
+.selection-toolbar::-webkit-scrollbar {
+  display: none;
+}
+.selection-toolbar button {
+  flex: 0 0 auto;
+  height: 29px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--c-text-1);
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.selection-toolbar button:hover {
+  color: var(--c-accent);
+  background: var(--c-accent-soft);
+}
+.selection-toolbar button:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
 }
 </style>
 
