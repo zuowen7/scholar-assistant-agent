@@ -354,7 +354,47 @@
     "contextDocument": "document",
     "removeAttachment": "Remove attachment",
     "addAttachment": "Add attachment",
-    "inputPlaceholder": "Describe the next task...",
+    "inputPlaceholder": "Describe the next task, or type / for skills and presets...",
+    "slash": {
+      "menuLabel": "Commands and skills",
+      "loading": "Loading Agent skills...",
+      "empty": "No matching command or skill",
+      "presetGroup": "Preset instructions",
+      "skillGroup": "Agent Skills",
+      "selected": "Active",
+      "presets": {
+        "polish": {
+          "label": "Academic polish",
+          "description": "Improve the prose without changing facts, data, or citations",
+          "prompt": "Polish the current selection or manuscript while preserving facts, data, citations, terminology, and uncertainty. Briefly summarize the material changes."
+        },
+        "review": {
+          "label": "Pre-submission review",
+          "description": "Find argument, method, and evidence gaps by severity",
+          "prompt": "Review the current manuscript for contribution clarity, reproducible methods, claim-evidence alignment, and citation coverage. Rank concerns by severity and anchor each one to the source text."
+        },
+        "outline": {
+          "label": "Structure the manuscript",
+          "description": "Extract the outline and find missing or repeated sections",
+          "prompt": "Map the current manuscript's section structure and argument flow. Return a concise outline and identify structural breaks, duplicated content, and missing sections."
+        },
+        "cite": {
+          "label": "Check citation support",
+          "description": "Find claims that need sources without fabricating citations",
+          "prompt": "Identify claims in the current selection or manuscript that require citation support. Separate supported, weakly supported, and unsupported claims; suggest only verifiable literature and never invent citations."
+        },
+        "research": {
+          "label": "Research a question",
+          "description": "Build a sourced research note from the project and verified sources",
+          "prompt": "Research the question I provide next. Prioritize project sources and verifiable literature, distinguish facts from inference and open questions, and preserve source leads."
+        },
+        "translate": {
+          "label": "Academic translation",
+          "description": "Translate Chinese and English while preserving scholarly notation",
+          "prompt": "Translate the current selection or manuscript: Chinese into academic English and English into clear Chinese. Preserve terminology, data, citations, equations, and Markdown/LaTeX formatting."
+        }
+      }
+    },
     "stopGenerate": "Stop Generating",
     "send": "Send",
     "voiceStart": "Voice Input",
