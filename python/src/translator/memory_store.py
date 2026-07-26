@@ -242,7 +242,15 @@ class TranslationMemory:
                 """INSERT OR REPLACE INTO tm_entries
                    (source_hash, source_text, target_text, source_lang, target_lang, metadata, embedding)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (source_hash, source_text, target_text, source_lang, target_lang, meta_str, emb_blob),
+                (
+                    source_hash,
+                    source_text,
+                    target_text,
+                    source_lang,
+                    target_lang,
+                    meta_str,
+                    emb_blob,
+                ),
             )
             self._conn.commit()
 
@@ -328,7 +336,7 @@ class TranslationMemory:
             tmx,
             "header",
             creationtool="研墨",
-            creationtoolversion="0.4.2",
+            creationtoolversion="0.5.0",
             datatype="plaintext",
             segtype="sentence",
             adminlang="en",
