@@ -202,6 +202,32 @@ describe('useAgentChat', () => {
       expect(messages.value[1].role).toBe('assistant')
     })
 
+    it('coalesces consecutive thought stream fragments into one event', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(
+            makeSseResponse([
+              makeSessionStartedChunk('sess_thoughts'),
+              makeThoughtChunk('先读取'),
+              makeThoughtChunk('当前选区。'),
+              makeResponseChunk('完成'),
+              makeDoneChunk(),
+            ]),
+          ),
+      )
+
+      const { sendMessage, messages } = useAgentChat()
+      await sendMessage('Polish')
+
+      const thoughts = messages.value[1].events.filter(
+        (event) => event.type === 'thought' || event.type === 'thinking',
+      )
+      expect(thoughts).toHaveLength(1)
+      expect(thoughts[0].content).toBe('先读取当前选区。')
+    })
+
     it('sets sessionId when session_started received', async () => {
       vi.stubGlobal(
         'fetch',

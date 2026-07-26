@@ -235,6 +235,19 @@ export function useAgentChat() {
           // Accumulate streaming tokens into msg.content for real-time display
           msg.content = (msg.content || '') + agentEvent.content
           break
+        case 'thought':
+        case 'thinking': {
+          const last = msg.events[msg.events.length - 1]
+          if (last && (last.type === 'thought' || last.type === 'thinking')) {
+            msg.events = [
+              ...msg.events.slice(0, -1),
+              { ...last, content: last.content + agentEvent.content },
+            ]
+          } else {
+            msg.events = [...msg.events, agentEvent]
+          }
+          break
+        }
         case 'response':
           // Final response text replaces accumulated tokens (handles non-streaming too)
           msg.content = agentEvent.content
