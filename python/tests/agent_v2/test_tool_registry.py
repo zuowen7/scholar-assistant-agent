@@ -108,7 +108,9 @@ class TestToolExecution:
     ):
         outside = temp_workspace.parent / "outside.txt"
         outside.write_text("outside sentinel", encoding="utf-8")
-        result = await registry.execute("grep_files", {"pattern": "sentinel", "path": str(outside)})
+        result = await registry.execute(
+            "grep_files", {"pattern": "sentinel", "path": str(outside)}
+        )
         assert result.is_error
         assert "outside workspace" in result.output
 

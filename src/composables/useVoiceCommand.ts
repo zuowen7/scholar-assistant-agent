@@ -128,11 +128,7 @@ function fail(message: string) {
   state.value = 'error'
   // Show a user-visible toast so the user knows why voice failed
   // (without this, the error is only in composable state — invisible to the user)
-  try {
-    useToast().pushError(message)
-  } catch {
-    /* ignore if no toast context */
-  }
+  try { useToast().pushError(message) } catch { /* ignore if no toast context */ }
 }
 
 export function useVoiceCommand() {

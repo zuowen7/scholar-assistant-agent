@@ -14,8 +14,7 @@
       :class="{ active: modelValue === 'ai' }"
       @click="emit('update:modelValue', 'ai')"
     >
-      <Bot :size="13" :stroke-width="1.7" />
-      {{ t(agentMode ? 'editor.rightAgent' : 'editor.rightAiEdit') }}
+      <Bot :size="13" :stroke-width="1.7" /> {{ t(agentMode ? 'editor.rightAgent' : 'editor.rightAiEdit') }}
     </button>
     <button
       data-testid="right-tab-argument"
@@ -25,12 +24,7 @@
     >
       <GitBranch :size="13" :stroke-width="1.7" /> {{ t('editor.rightArgument') }}
     </button>
-    <button
-      data-testid="right-tab-close"
-      class="rp-close"
-      :title="t('editor.rightClosePanel')"
-      @click="emit('update:modelValue', null)"
-    >
+    <button data-testid="right-tab-close" class="rp-close" :title="t('editor.rightClosePanel')" @click="emit('update:modelValue', null)">
       <X :size="13" :stroke-width="2" />
     </button>
   </div>

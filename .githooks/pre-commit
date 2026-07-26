@@ -57,52 +57,31 @@ fi
 
 # ── 前端：Prettier 格式检查暂存文件 ─────────────────
 if [ -n "$TS_FILES" ]; then
-  # Prettier 全仓基线已建立（commit 6d94540），与 CI 一致：格式不合规即阻断。
   echo -e "${BLUE}[pre-commit]${NC} Prettier 格式检查..."
   if ! npx --no-install prettier --check $TS_FILES 2>&1; then
-    echo -e "${RED}[pre-commit]${NC} Prettier 格式检查失败。运行 ${YELLOW}npm run format${NC} 修复"
+    echo -e "${RED}[pre-commit]${NC} 格式检查失败，请运行 ${YELLOW}npm run format${NC} 修复"
     HAS_ERROR=1
   fi
 fi
 
 # ── 后端：Ruff 检查暂存的 .py 文件 ──────────────────
 if [ -n "$PY_FILES" ]; then
-  # 探测一个带 ruff 的 Python 解释器。
-  # 不同开发者的 `python` 可能指向不同环境（venv / anaconda / 系统），
-  # 裸 `python -m ruff` 在未装 ruff 的环境会报莫名其妙的 "No module named ruff"。
-  # 这里依次尝试常见候选，找到第一个可用的就用它。
-  RUFF_PY=""
-  for cand in python python3 "D:/env/anaconda/python.exe"; do
-    if command -v "$cand" >/dev/null 2>&1 || [ -x "$cand" ]; then
-      if "$cand" -m ruff --version >/dev/null 2>&1; then
-        RUFF_PY="$cand"
-        break
-      fi
+  echo -e "${BLUE}[pre-commit]${NC} Ruff 检查 ${YELLOW}$(echo "$PY_FILES" | wc -l)${NC} 个 Python 文件..."
+  # ruff check 支持多文件参数，且只检查这些文件
+  # 注意：PY_FILES 路径以项目根为基准，ruff 在 python/ 子目录运行，需要处理路径
+  # 简化处理：切到 python/ 目录，把路径前缀去掉
+  PY_FILES_REL=$(echo "$PY_FILES" | sed 's|^python/||' || true)
+  if [ -n "$PY_FILES_REL" ]; then
+    if ! (cd python && python -m ruff check $PY_FILES_REL) 2>&1; then
+      echo -e "${RED}[pre-commit]${NC} Ruff 检查失败，请运行 ${YELLOW}npm run py:lint:fix${NC} 修复"
+      HAS_ERROR=1
     fi
-  done
 
-  if [ -z "$RUFF_PY" ]; then
-    echo -e "${YELLOW}[pre-commit]${NC} 未找到带 ruff 的 Python，跳过后端 lint。"
-    echo -e "${YELLOW}            ${NC} 请运行 ${BLUE}pip install -r python/requirements-dev.txt${NC} 安装 ruff"
-  else
-    echo -e "${BLUE}[pre-commit]${NC} Ruff 检查 ${YELLOW}$(echo "$PY_FILES" | wc -l)${NC} 个 Python 文件 (via $RUFF_PY)..."
-    # ruff check 支持多文件参数，且只检查这些文件
-    # 注意：PY_FILES 路径以项目根为基准，ruff 在 python/ 子目录运行，需要处理路径
-    # 简化处理：切到 python/ 目录，把路径前缀去掉
-    PY_FILES_REL=$(echo "$PY_FILES" | sed 's|^python/||' || true)
-    if [ -n "$PY_FILES_REL" ]; then
-      # Ruff 全仓 lint/format 基线已建立（commit 359d3c3），与 CI 一致：不合规即阻断。
-      if ! (cd python && "$RUFF_PY" -m ruff check $PY_FILES_REL) 2>&1; then
-        echo -e "${RED}[pre-commit]${NC} Ruff lint 检查失败。运行 ${YELLOW}npm run py:lint:fix${NC} 修复"
-        HAS_ERROR=1
-      fi
-
-      # Ruff format --check（只检查不修改）
-      echo -e "${BLUE}[pre-commit]${NC} Ruff format 检查..."
-      if ! (cd python && "$RUFF_PY" -m ruff format --check $PY_FILES_REL) 2>&1; then
-        echo -e "${RED}[pre-commit]${NC} Ruff format 检查失败。运行 ${YELLOW}npm run py:format${NC} 修复"
-        HAS_ERROR=1
-      fi
+    # Ruff format --check（只检查不修改）
+    echo -e "${BLUE}[pre-commit]${NC} Ruff format 检查..."
+    if ! (cd python && python -m ruff format --check $PY_FILES_REL) 2>&1; then
+      echo -e "${RED}[pre-commit]${NC} 格式检查失败，请运行 ${YELLOW}npm run py:format${NC} 修复"
+      HAS_ERROR=1
     fi
   fi
 fi

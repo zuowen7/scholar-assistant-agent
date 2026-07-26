@@ -1,11 +1,5 @@
 import { ref, watch, onScopeDispose, getCurrentScope } from 'vue'
-import type {
-  AgentChatMessage,
-  AgentEvent,
-  AgentSessionInfo,
-  AgentSkill,
-  RAGDocument,
-} from '../types'
+import type { AgentChatMessage, AgentEvent, AgentSessionInfo, AgentSkill, RAGDocument } from '../types'
 import { API_BASE } from '../utils/api'
 import { i18n } from '../i18n'
 import { logger } from '../utils/logger'
@@ -134,7 +128,7 @@ export function useAgentChat() {
   // register a new watcher on the shared sessionId — stop it when this scope dies to
   // avoid watcher accumulation and stale closures across remounts.
   const stopSessionWatch = watch(sessionId, (newSid) => {
-    pendingApproval.value = newSid ? (_approvalBySession.get(newSid) ?? null) : null
+    pendingApproval.value = (newSid ? (_approvalBySession.get(newSid) ?? null) : null)
   })
   if (getCurrentScope()) onScopeDispose(() => stopSessionWatch())
 
@@ -248,12 +242,9 @@ export function useAgentChat() {
           const checkpointFile = agentEvent.metadata?.file as string | undefined
           const deliverables = (agentEvent.metadata?.deliverables as string[]) || []
           const changedFiles = checkpointFile ? [checkpointFile, ...deliverables] : deliverables
-          if (changedFiles.length)
-            window.dispatchEvent(
-              new CustomEvent('agent-files-changed', {
-                detail: { files: [...new Set(changedFiles)] },
-              }),
-            )
+          if (changedFiles.length) window.dispatchEvent(new CustomEvent('agent-files-changed', {
+            detail: { files: [...new Set(changedFiles)] },
+          }))
           break
         }
         default:
@@ -371,12 +362,7 @@ export function useAgentChat() {
                 const reader = resumeResp.body?.getReader()
                 if (reader) {
                   try {
-                    await readSseStream(
-                      reader,
-                      trackingHandler,
-                      abortController?.signal,
-                      () => streamDone,
-                    )
+                    await readSseStream(reader, trackingHandler, abortController?.signal, () => streamDone)
                     lastErr = null
                     break
                   } catch (streamErr) {

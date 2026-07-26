@@ -108,23 +108,20 @@ function onKeydown(event: KeyboardEvent) {
   }
 }
 
-watch(
-  () => props.modelValue,
-  async (open) => {
-    if (open) {
-      previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
-      document.body.classList.add('app-dialog-open')
-      await nextTick()
-      const firstFocusable = focusableElements()[0]
-      if (firstFocusable) firstFocusable.focus()
-      else dialog.value?.focus()
-    } else {
-      document.body.classList.remove('app-dialog-open')
-      previousFocus?.focus()
-      previousFocus = null
-    }
-  },
-)
+watch(() => props.modelValue, async (open) => {
+  if (open) {
+    previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    document.body.classList.add('app-dialog-open')
+    await nextTick()
+    const firstFocusable = focusableElements()[0]
+    if (firstFocusable) firstFocusable.focus()
+    else dialog.value?.focus()
+  } else {
+    document.body.classList.remove('app-dialog-open')
+    previousFocus?.focus()
+    previousFocus = null
+  }
+})
 
 onBeforeUnmount(() => document.body.classList.remove('app-dialog-open'))
 </script>

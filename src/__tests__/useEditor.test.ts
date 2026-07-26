@@ -114,10 +114,7 @@ describe('editor state composables (split)', () => {
         executeEdits: vi.fn(),
         deltaDecorations,
       } as any
-      vi.stubGlobal(
-        'fetch',
-        vi.fn().mockResolvedValue({ ok: true, body: { getReader: () => ({}) } }),
-      )
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: { getReader: () => ({}) } }))
       mockReadSseStream.mockImplementation(async (_reader, handler) => {
         handler('delta', { content: 'New' })
       })
@@ -125,8 +122,8 @@ describe('editor state composables (split)', () => {
       await inlineEdit('Polish', 'polish')
 
       const streamedDecoration = deltaDecorations.mock.calls
-        .map((call) => call[1]?.[0]?.range)
-        .find((range) => range?.endColumn === 4)
+        .map(call => call[1]?.[0]?.range)
+        .find(range => range?.endColumn === 4)
       expect(streamedDecoration).toMatchObject({
         startLineNumber: 1,
         startColumn: 1,

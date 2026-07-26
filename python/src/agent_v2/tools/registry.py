@@ -504,11 +504,7 @@ def _create_file_ops(registry: ToolRegistry) -> None:
             return ToolResult("error: command is required", is_error=True)
         cwd = str(args.get("cwd", "."))
         try:
-            root = (
-                registry._resolve_path(cwd)
-                if cwd != "."
-                else (registry._workspace_root or Path.cwd())
-            )
+            root = registry._resolve_path(cwd) if cwd != "." else (registry._workspace_root or Path.cwd())
         except ValueError as e:
             return ToolResult(f"error: {e}", is_error=True)
 
@@ -540,7 +536,7 @@ def _create_file_ops(registry: ToolRegistry) -> None:
             if validation.is_warn:
                 result = ToolResult(f"[WARNING: {validation.message}]\n{output or '(no output)'}")
             return result
-        except TimeoutError:
+        except _aio.TimeoutError:
             proc.kill()
             await proc.wait()
             return ToolResult("error: command timed out (30s)", is_error=True)

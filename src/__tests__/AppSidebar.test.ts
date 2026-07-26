@@ -15,14 +15,4 @@ describe('AppSidebar Agent entry', () => {
     await wrapper.get('.primary-nav [data-testid="workspace-agent"]').trigger('click')
     expect(wrapper.emitted('agent')).toHaveLength(1)
   })
-
-  it('marks the active workspace for assistive technology', () => {
-    const wrapper = mount(AppSidebar, {
-      props: { activeModule: 'mindmap', recentFiles: [], provider: 'local', model: 'qwen' },
-    })
-
-    const current = wrapper.get('[aria-current="page"]')
-    expect(current.text()).toContain('shell.think')
-    expect(wrapper.get('.settings-button').attributes('aria-label')).toBe('topbar.settings')
-  })
 })

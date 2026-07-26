@@ -101,7 +101,6 @@ def test_generated_session_ids_are_unique(tmp_path, monkeypatch):
     from src.agent_v2.providers.mock_provider import MockProvider
 
     monkeypatch.setattr(router, "_SESSION_DIR", tmp_path)
-
     def provider():
         value = MockProvider()
         value.model = "test-model"

@@ -11,7 +11,6 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import logging
 import os
@@ -70,8 +69,10 @@ def register_rag_routes(
                 os.fsync(f.fileno())
             os.replace(tmp_name, _docs_path)
         except Exception:
-            with contextlib.suppress(OSError):
+            try:
                 os.unlink(tmp_name)
+            except OSError:
+                pass
             raise
 
     def _get_store():
@@ -199,15 +200,13 @@ def register_rag_routes(
             hits = []
             for index, doc_id in enumerate(ids):
                 metadata = metadatas[index] if index < len(metadatas) and metadatas[index] else {}
-                hits.append(
-                    {
-                        "doc_id": doc_id,
-                        "source": metadata.get("title", doc_id),
-                        "text": documents[index] if index < len(documents) else "",
-                        "distance": distances[index] if index < len(distances) else None,
-                        "metadata": metadata,
-                    }
-                )
+                hits.append({
+                    "doc_id": doc_id,
+                    "source": metadata.get("title", doc_id),
+                    "text": documents[index] if index < len(documents) else "",
+                    "distance": distances[index] if index < len(distances) else None,
+                    "metadata": metadata,
+                })
             return {"hits": hits}
         except Exception as e:
             raise HTTPException(500, f"Query failed: {e}")

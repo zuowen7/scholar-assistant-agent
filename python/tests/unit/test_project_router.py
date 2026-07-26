@@ -85,7 +85,6 @@ class TestProjectTemplates:
 
 def test_project_path_rejects_prefix_sibling(tmp_path: Path):
     from fastapi import HTTPException
-
     from routers.project import _validate_project_path
 
     allowed = tmp_path / "allowed"

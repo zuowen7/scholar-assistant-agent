@@ -119,7 +119,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, reactive, computed, onBeforeUnmount, type CSSProperties } from 'vue'
+import { ref, nextTick, reactive, computed, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()

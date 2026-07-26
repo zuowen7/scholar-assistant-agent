@@ -41,7 +41,9 @@ async def test_export_latex_writes_result_inside_workspace(tmp_path, monkeypatch
     registry = ToolRegistry(tmp_path)
     register_academic_tools(registry)
 
-    result = await registry.execute("export_document", {"file_path": "paper.md", "format": "latex"})
+    result = await registry.execute(
+        "export_document", {"file_path": "paper.md", "format": "latex"}
+    )
 
     assert not result.is_error
     assert (tmp_path / "paper.tex").read_text(encoding="utf-8") == "\\section{Paper}"
@@ -62,7 +64,9 @@ async def test_export_word_copies_generated_file_into_workspace(tmp_path, monkey
     registry = ToolRegistry(workspace)
     register_academic_tools(registry)
 
-    result = await registry.execute("export_document", {"file_path": "paper.md", "format": "docx"})
+    result = await registry.execute(
+        "export_document", {"file_path": "paper.md", "format": "docx"}
+    )
 
     assert not result.is_error
     assert (workspace / "paper.docx").read_bytes() == b"docx"

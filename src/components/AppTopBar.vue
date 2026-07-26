@@ -1,11 +1,6 @@
 <template>
   <div class="topbar-wrapper">
-    <header class="topbar" data-tauri-drag-region @mousedown="onTopbarMouseDown">
-      <!-- ── Left: Brand ──────────────────────────────────────── -->
-      <div class="brand" data-tauri-drag-region>
-        <div class="logo" aria-hidden="true">研</div>
-        <span class="brand-name">研墨</span>
-      </div>
+  <header class="topbar" data-tauri-drag-region @mousedown="onTopbarMouseDown">
 
       <!-- ── Project indicator ────────────────────────────────── -->
       <div v-if="currentProject" class="project-chip" :title="currentProject.name">
@@ -157,7 +152,150 @@
                 :model-value="currentLocale"
                 @update:model-value="setLocale($event as SupportedLocale)"
               >
-                <option value="zh-CN">简体中文</option>
+                <option value="system-ui">{{ t('settings.systemDefault') }}</option>
+                <option value="'Noto Sans SC', sans-serif">思源黑体</option>
+                <option value="'Noto Serif SC', serif">思源宋体</option>
+                <option value="'LXGW WenKai', serif">霞鹜文楷</option>
+                <option value="'Microsoft YaHei', sans-serif">微软雅黑</option>
+                <option value="SimSun, serif">宋体</option>
+              </UiSelect>
+            </div>
+            <div class="sp-field">
+              <label class="sp-label">{{ t('settings.transColor') }}</label>
+              <div class="sp-color-row">
+                <input type="color" :value="readSettings.transColor" class="sp-color" @input="$emit('color-change', ($event.target as HTMLInputElement).value)" />
+                <span class="sp-color-hex">{{ readSettings.transColor }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Network tab -->
+          <div v-show="settingsTab === 'network'" class="sp-body">
+            <div class="sp-section-label">{{ t('settings.httpProxy') }}</div>
+            <div class="sp-field">
+              <label class="sp-label">{{ t('settings.proxyAddress') }}</label>
+              <UiInput
+                :model-value="proxyUrl"
+                :placeholder="t('settings.proxyPlaceholder')"
+                @update:model-value="$emit('update:proxyUrl', $event)"
+              />
+            </div>
+            <div class="sp-actions">
+              <UiButton variant="primary" size="sm" @click="$emit('save-proxy')">{{ t('settings.saveProxy') }}</UiButton>
+            </div>
+            <p class="sp-hint">{{ t('settings.proxyHint') }}</p>
+
+            <!-- Zotero API config -->
+            <div class="sp-section-label" style="margin-top: 14px;">{{ t('settings.zoteroApi') }}</div>
+            <div class="sp-field">
+              <label class="sp-label">{{ t('settings.apiKey') }}</label>
+              <UiInput
+                :model-value="zoteroApiKey"
+                :placeholder="zoteroHasStoredKey ? t('settings.zoteroKeyStored') : t('settings.zoteroKeyPlaceholder')"
+                type="password"
+                @update:model-value="zoteroApiKey = $event"
+              />
+            </div>
+            <div class="sp-field">
+              <label class="sp-label">{{ t('settings.zoteroUserId') }}</label>
+              <UiInput
+                :model-value="zoteroUserId"
+                :placeholder="t('settings.zoteroUserIdPlaceholder')"
+                @update:model-value="zoteroUserId = $event"
+              />
+            </div>
+            <div class="sp-actions">
+              <UiButton variant="primary" size="sm" :loading="zoteroSaving" @click="saveZoteroConfig">{{ t('settings.zoteroSave') }}</UiButton>
+              <UiButton variant="ghost" size="sm" :loading="zoteroChecking" @click="checkZoteroStatus">{{ t('settings.zoteroCheck') }}</UiButton>
+            </div>
+            <p v-if="zoteroStatus" class="sp-hint" :class="{ 'sp-hint-ok': zoteroStatus === 'ok', 'sp-hint-err': zoteroStatus === 'error' }">
+              {{ zoteroStatus === 'ok' ? `✓ ${zoteroStatusMsg}` : `✕ ${zoteroStatusMsg}` }}
+            </p>
+            <p v-else class="sp-hint">{{ t('settings.zoteroHint') }}</p>
+          </div>
+
+          <!-- Background tab -->
+          <div v-show="settingsTab === 'background'" class="sp-body">
+            <div class="sp-section-label">{{ t('settings.customBackground') }}</div>
+            <div class="sp-actions">
+              <UiButton variant="secondary" size="sm" @click="$emit('pick-background')">
+                <template #icon-left><Upload :size="13" :stroke-width="1.8" /></template>
+                {{ t('settings.chooseFile') }}
+              </UiButton>
+              <UiButton variant="danger" size="sm" :disabled="!bgSettings.path" @click="$emit('clear-background')">
+                <template #icon-left><Trash2 :size="13" :stroke-width="1.8" /></template>
+                {{ t('settings.clear') }}
+              </UiButton>
+            </div>
+            <div v-if="bgSettings.path" class="sp-bg-path">{{ bgSettings.path.split(/[\\/]/).pop() }}</div>
+            <UiSlider
+              :label="t('settings.opacity')"
+              :model-value="bgSettings.opacity"
+              :min="5"
+              :max="100"
+              suffix="%"
+              @update:model-value="$emit('opacity-change', $event)"
+            />
+          </div>
+
+          <!-- Voice tab -->
+          <div v-show="settingsTab === 'voice'" class="sp-body">
+            <div class="sp-section-label">{{ t('voice.title') }}</div>
+
+            <div class="sp-field">
+              <label class="sp-label">{{ t('voice.enabled') }}</label>
+              <label class="sp-toggle">
+                <input type="checkbox" :checked="voiceSettings.enabled" @change="onVoiceSettingChange('enabled', ($event.target as HTMLInputElement).checked)" />
+                <span class="sp-toggle-slider" />
+              </label>
+            </div>
+
+            <div class="sp-field">
+              <label class="sp-label">{{ t('voice.hotkey') }}</label>
+              <UiInput
+                :model-value="voiceSettings.hotkey"
+                placeholder="Alt+Space"
+                @update:model-value="onVoiceSettingChange('hotkey', $event)"
+              />
+            </div>
+
+            <div class="sp-section-label" style="margin-top: 8px;">{{ t('voice.wakeWord') }}</div>
+
+            <div class="sp-field">
+              <label class="sp-label">{{ t('voice.wakeWordEnabled') }}</label>
+              <label class="sp-toggle">
+                <input type="checkbox" :checked="voiceSettings.wakeWordEnabled" @change="onVoiceSettingChange('wakeWordEnabled', ($event.target as HTMLInputElement).checked)" />
+              </label>
+            </div>
+
+            <div v-if="voiceSettings.wakeWordEnabled" class="sp-field">
+              <label class="sp-label">{{ t('voice.wakeWord') }}</label>
+              <UiInput
+                :model-value="voiceSettings.wakeWordPhrase"
+                placeholder="小研"
+                @update:model-value="onVoiceSettingChange('wakeWordPhrase', $event)"
+              />
+            </div>
+
+            <div class="sp-field">
+              <label class="sp-label">{{ t('voice.sensitivity') }}</label>
+              <UiSelect
+                :model-value="voiceSettings.sensitivity"
+                @update:model-value="onVoiceSettingChange('sensitivity', $event as any)"
+              >
+                <option value="low">{{ t('voice.low') }}</option>
+                <option value="medium">{{ t('voice.medium') }}</option>
+                <option value="high">{{ t('voice.high') }}</option>
+              </UiSelect>
+            </div>
+
+            <div class="sp-field">
+              <label class="sp-label">{{ t('voice.language') }}</label>
+              <UiSelect
+                :model-value="voiceSettings.language"
+                @update:model-value="onVoiceSettingChange('language', $event)"
+              >
+                <option value="zh-CN">中文</option>
                 <option value="en-US">English</option>
               </UiSelect>
             </div>
@@ -638,7 +776,6 @@ import UiSelect from './ui/UiSelect.vue'
 import UiSlider from './ui/UiSlider.vue'
 import DebugPanel from './DebugPanel.vue'
 import type { AppMode } from '../types'
-import type { SupportedLocale } from '../i18n'
 import { API_BASE } from '../utils/api'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
@@ -656,17 +793,8 @@ function onTopbarMouseDown(e: MouseEvent) {
   if (e.button !== 0) return
   const target = e.target as HTMLElement
   // Skip interactive controls so clicks still work
-  if (
-    target.closest(
-      'button, a, input, select, textarea, [role="button"], .status-trigger, .topbar-right, .project-chip',
-    )
-  )
-    return
-  getCurrentWindow()
-    .startDragging()
-    .catch(() => {
-      /* Non-Tauri env */
-    })
+  if (target.closest('button, a, input, select, textarea, [role="button"], .status-trigger, .topbar-right, .project-chip')) return
+  getCurrentWindow().startDragging().catch(() => { /* Non-Tauri env */ })
 }
 
 const props = defineProps<{
@@ -749,11 +877,9 @@ async function loadZoteroConfig() {
     const cfg = await resp.json()
     const z = cfg.zotero || {}
     zoteroHasStoredKey.value = typeof z.api_key === 'string' && z.api_key.includes('****')
-    zoteroApiKey.value = zoteroHasStoredKey.value ? '' : z.api_key || ''
+    zoteroApiKey.value = zoteroHasStoredKey.value ? '' : (z.api_key || '')
     zoteroUserId.value = z.user_id || ''
-  } catch {
-    /* ignore */
-  }
+  } catch { /* ignore */ }
 }
 
 async function saveZoteroConfig() {
@@ -1281,30 +1407,12 @@ function onVoiceSettingChange<K extends keyof VoiceSettings>(key: K, value: Voic
   padding: 5px 8px;
   border-radius: var(--radius-sm);
 }
-.sp-status.ok {
-  color: var(--c-success);
-  background: var(--c-success-bg);
-}
-.sp-status.off {
-  color: var(--c-danger);
-  background: var(--c-danger-bg);
-}
-.sp-error {
-  font-size: var(--text-xs);
-  color: var(--c-text-2);
-  text-align: center;
-}
-.sp-hint {
-  font-size: var(--text-xs);
-  color: var(--c-text-3);
-  line-height: var(--leading-normal);
-}
-.sp-hint-ok {
-  color: var(--c-success, #16a34a);
-}
-.sp-hint-err {
-  color: var(--c-danger, #dc2626);
-}
+.sp-status.ok { color: var(--c-success); background: var(--c-success-bg); }
+.sp-status.off { color: var(--c-danger); background: var(--c-danger-bg); }
+.sp-error { font-size: var(--text-xs); color: var(--c-text-2); text-align: center; }
+.sp-hint { font-size: var(--text-xs); color: var(--c-text-3); line-height: var(--leading-normal); }
+.sp-hint-ok { color: var(--c-success, #16a34a); }
+.sp-hint-err { color: var(--c-danger, #dc2626); }
 
 /* Toggle switch */
 .sp-toggle {

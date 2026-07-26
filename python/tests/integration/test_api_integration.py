@@ -119,23 +119,17 @@ class TestConfigEndpoints:
         assert "****" in data["translator"]["cloud"]["api_key"]
 
     def test_config_masks_and_preserves_zotero_key(self, client):
-        client.put(
-            "/api/config",
-            json={
-                "zotero": {"api_key": "zotero-real-test-key", "user_id": "123"},
-            },
-        )
+        client.put("/api/config", json={
+            "zotero": {"api_key": "zotero-real-test-key", "user_id": "123"},
+        })
 
         first = client.get("/api/config").json()["zotero"]
         assert first["api_key"] != "zotero-real-test-key"
         assert "****" in first["api_key"]
 
-        updated = client.put(
-            "/api/config",
-            json={
-                "zotero": {"api_key": first["api_key"], "user_id": "456"},
-            },
-        ).json()["zotero"]
+        updated = client.put("/api/config", json={
+            "zotero": {"api_key": first["api_key"], "user_id": "456"},
+        }).json()["zotero"]
         assert updated["api_key"] == first["api_key"]
         assert updated["user_id"] == "456"
 
@@ -243,16 +237,13 @@ class TestChatEndpoint:
 
         def _make_request():
             try:
-                resp = client.post(
-                    "/api/agent/v2/chat",
-                    json={
-                        "message": "test query",
-                        "history": [
-                            {"role": "user", "content": "previous question"},
-                            {"role": "assistant", "content": "previous answer"},
-                        ],
-                    },
-                )
+                resp = client.post("/api/agent/v2/chat", json={
+                    "message": "test query",
+                    "history": [
+                        {"role": "user", "content": "previous question"},
+                        {"role": "assistant", "content": "previous answer"},
+                    ],
+                })
                 result["status"] = resp.status_code
             except Exception as e:
                 result["error"] = str(e)

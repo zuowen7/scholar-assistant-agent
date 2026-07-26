@@ -19,76 +19,20 @@ export interface Sentence {
 // 学术常见缩写——这些缩写后的句号不代表句子结束。
 // 与后端 splitter.py::_ACADEMIC_ABBREVS 保持一致。
 const ACADEMIC_ABBREVS = [
-  'et al',
-  'etc',
-  'fig',
-  'figs',
-  'eq',
-  'eqs',
-  'ref',
-  'refs',
-  'vol',
-  'no',
-  'pp',
-  'cf',
-  'e.g',
-  'i.e',
-  'vs',
-  'ed',
-  'eds',
-  'rev',
-  'proc',
-  'inst',
-  'dept',
-  'univ',
-  'sci',
-  'tech',
-  'phys',
-  'chem',
-  'biol',
-  'med',
-  'hum',
-  'evol',
-  'anthrop',
-  'soc',
-  'pol',
-  'econ',
-  'psych',
-  'nat',
-  'int',
-  'inc',
-  'ltd',
-  'co',
-  'st',
-  'dr',
-  'mr',
-  'mrs',
-  'prof',
-  'sr',
-  'jr',
-  'ph',
-  'dc',
-  'ba',
-  'ma',
-  'approx',
-  'max',
-  'min',
-  'avg',
-  'std',
-  'var',
-  'def',
-  'thm',
-  'lem',
-  'cor',
-  'prop',
+  'et al', 'etc', 'fig', 'figs', 'eq', 'eqs', 'ref', 'refs',
+  'vol', 'no', 'pp', 'cf', 'e.g', 'i.e', 'vs',
+  'ed', 'eds', 'rev', 'proc', 'inst', 'dept', 'univ',
+  'sci', 'tech', 'phys', 'chem', 'biol', 'med',
+  'hum', 'evol', 'anthrop', 'soc', 'pol', 'econ', 'psych',
+  'nat', 'int', 'inc', 'ltd', 'co', 'st', 'dr', 'mr', 'mrs',
+  'prof', 'sr', 'jr', 'ph', 'dc', 'ba', 'ma',
+  'approx', 'max', 'min', 'avg', 'std', 'var',
+  'def', 'thm', 'lem', 'cor', 'prop',
 ]
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 // 预编译缩写正则（\b 边界 + 缩写 + 句点 + 空白）
-const ABBREV_RE = new RegExp(
-  '\\b(?:' + ACADEMIC_ABBREVS.map(escapeRegExp).join('|') + ')\\.\\s',
-  'gi',
-)
+const ABBREV_RE = new RegExp('\\b(?:' + ACADEMIC_ABBREVS.map(escapeRegExp).join('|') + ')\\.\\s', 'gi')
 // 小数正则：数字.数字
 const DECIMAL_RE = /(\d)\.(\d)/g
 // 用单字符私有区码位保护非句末句点。替换前后长度一致，因此 match.index
@@ -121,7 +65,7 @@ export function splitSentences(text: string, lang: 'en' | 'zh'): Sentence[] {
     // 1. 保护缩写 + 小数，仅替换句点以保持原文字符位置不变
     let protectedText = text
     ABBREV_RE.lastIndex = 0
-    protectedText = protectedText.replace(ABBREV_RE, (m) => m.replaceAll('.', PROTECTED_DOT))
+    protectedText = protectedText.replace(ABBREV_RE, m => m.replaceAll('.', PROTECTED_DOT))
     protectedText = protectedText.replace(DECIMAL_RE, `$1${PROTECTED_DOT}$2`)
 
     // 2. 只在真正的句末标点处切分，并保留最后一个无标点尾句。
@@ -186,10 +130,10 @@ export function findCorrespondingSentenceIdx(
   void transLen
   const indices = findCorrespondingSentenceIndices(origSentences, transSentences, hoveredOrigIdx)
   if (indices.length === 0) return -1
-  const sourceMid = (hoveredOrigIdx + 0.5) / origSentences.length
+  const sourceMid = (hoveredOrigIdx + .5) / origSentences.length
   return indices.reduce((best, current) => {
-    const bestDistance = Math.abs((best + 0.5) / transSentences.length - sourceMid)
-    const currentDistance = Math.abs((current + 0.5) / transSentences.length - sourceMid)
+    const bestDistance = Math.abs((best + .5) / transSentences.length - sourceMid)
+    const currentDistance = Math.abs((current + .5) / transSentences.length - sourceMid)
     return currentDistance < bestDistance ? current : best
   })
 }
@@ -201,8 +145,7 @@ export function findCorrespondingSentenceIndices(
   targetSentences: Sentence[],
   sourceIndex: number,
 ): number[] {
-  if (sourceIndex < 0 || sourceIndex >= sourceSentences.length || targetSentences.length === 0)
-    return []
+  if (sourceIndex < 0 || sourceIndex >= sourceSentences.length || targetSentences.length === 0) return []
   if (sourceSentences.length === targetSentences.length) return [sourceIndex]
   const sourceStart = sourceIndex / sourceSentences.length
   const sourceEnd = (sourceIndex + 1) / sourceSentences.length
@@ -210,8 +153,7 @@ export function findCorrespondingSentenceIndices(
   for (let index = 0; index < targetSentences.length; index++) {
     const targetStart = index / targetSentences.length
     const targetEnd = (index + 1) / targetSentences.length
-    if (Math.min(sourceEnd, targetEnd) - Math.max(sourceStart, targetStart) > 1e-9)
-      matches.push(index)
+    if (Math.min(sourceEnd, targetEnd) - Math.max(sourceStart, targetStart) > 1e-9) matches.push(index)
   }
   return matches
 }

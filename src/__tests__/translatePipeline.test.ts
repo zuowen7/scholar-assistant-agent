@@ -71,8 +71,11 @@ describe('Translate Pipeline E2E', () => {
   // ── SSE Event Parsing ──────────────────────────────────────────────────
   describe('SSE event stream parsing', () => {
     it('records translation-memory hits and preserves glossary violations alongside QA flags', async () => {
-      const { useTranslate, _resetForTesting, _handleSseEventForTesting } =
-        await import('../composables/useTranslate')
+      const {
+        useTranslate,
+        _resetForTesting,
+        _handleSseEventForTesting,
+      } = await import('../composables/useTranslate')
 
       _resetForTesting()
       const translate = useTranslate()
@@ -87,38 +90,32 @@ describe('Translate Pipeline E2E', () => {
       })
 
       expect(translate.state.completedChunks).toBe(1)
-      expect(translate.state.translations).toContainEqual(
-        expect.objectContaining({
-          index: 1,
-          translated_preview: '译文',
-          tokens: 0,
-        }),
-      )
+      expect(translate.state.translations).toContainEqual(expect.objectContaining({
+        index: 1,
+        translated_preview: '译文',
+        tokens: 0,
+      }))
 
       _handleSseEventForTesting('translate.glossary_violation', {
         index: 1,
         total: 3,
-        violations: [
-          {
-            source: 'agent',
-            expected: '智能体',
-            message: 'Expected glossary translation was not found',
-          },
-        ],
+        violations: [{
+          source: 'agent',
+          expected: '智能体',
+          message: 'Expected glossary translation was not found',
+        }],
       })
       _handleSseEventForTesting('translate.qa_warnings', {
         index: 1,
         section_type: 'methods',
         score: 88,
-        flags: [
-          {
-            type: 'overclaim',
-            severity: 'warning',
-            location: '',
-            message: 'Claim is too strong',
-            suggestion: 'Use more cautious language',
-          },
-        ],
+        flags: [{
+          type: 'overclaim',
+          severity: 'warning',
+          location: '',
+          message: 'Claim is too strong',
+          suggestion: 'Use more cautious language',
+        }],
       })
 
       expect(translate.state.qaWarnings).toHaveLength(1)
@@ -127,7 +124,7 @@ describe('Translate Pipeline E2E', () => {
         sectionType: 'methods',
         score: 88,
       })
-      expect(translate.state.qaWarnings[0].flags.map((flag) => flag.type)).toEqual([
+      expect(translate.state.qaWarnings[0].flags.map(flag => flag.type)).toEqual([
         'glossary',
         'overclaim',
       ])

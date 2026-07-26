@@ -172,17 +172,15 @@ class TestApprovalPause:
 
     @pytest.mark.asyncio
     async def test_approval_is_registered_before_event_is_emitted(self, workspace: Path):
-        provider = MockProvider(
-            scenarios=[
-                Scenario(
-                    "w",
-                    trigger_patterns=["write"],
-                    response_factory=lambda m, t: _tool_response(
-                        "write_file", {"file_path": "new.txt", "content": "data"}
-                    ),
+        provider = MockProvider(scenarios=[
+            Scenario(
+                "w",
+                trigger_patterns=["write"],
+                response_factory=lambda m, t: _tool_response(
+                    "write_file", {"file_path": "new.txt", "content": "data"}
                 ),
-            ]
-        )
+            ),
+        ])
         registry = create_default_registry(workspace_root=workspace)
         policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
         rt = ConversationRuntime(

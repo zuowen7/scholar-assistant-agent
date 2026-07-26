@@ -403,7 +403,9 @@ def _save_config(config: dict) -> None:
                     _pop_nested(local_data, path)
             local_data = _strip_empty_strings(local_data)
             if local_data:
-                local_fd, local_tmp = _tempfile.mkstemp(dir=CONFIG_PATH.parent, suffix=".local.tmp")
+                local_fd, local_tmp = _tempfile.mkstemp(
+                    dir=CONFIG_PATH.parent, suffix=".local.tmp"
+                )
                 try:
                     with os.fdopen(local_fd, "w", encoding="utf-8") as f:
                         yaml.dump(local_data, f, allow_unicode=True, default_flow_style=False)
@@ -411,8 +413,10 @@ def _save_config(config: dict) -> None:
                         os.fsync(f.fileno())
                     os.replace(local_tmp, local_path)
                 except Exception:
-                    with contextlib.suppress(OSError):
+                    try:
                         os.unlink(local_tmp)
+                    except OSError:
+                        pass
                     raise
             else:
                 local_path.unlink(missing_ok=True)
@@ -543,7 +547,11 @@ def _validate_file_path(file_path: Path) -> None:
         home_parts = ()
     if len(home_parts) >= 2 and home_parts[0] == "appdata":
         appdata_area = home_parts[1]
-        is_local_temp = appdata_area == "local" and len(home_parts) >= 3 and home_parts[2] == "temp"
+        is_local_temp = (
+            appdata_area == "local"
+            and len(home_parts) >= 3
+            and home_parts[2] == "temp"
+        )
         try:
             resolved.relative_to(RUNTIME_DIR.resolve())
             is_runtime_path = True
@@ -585,9 +593,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
 
         # startup
         state_editor = app.state._state_editor if hasattr(app.state, "_state_editor") else {}
-        state_translate = (
-            app.state._state_translate if hasattr(app.state, "_state_translate") else {}
-        )
+        state_translate = app.state._state_translate if hasattr(app.state, "_state_translate") else {}
         startup_editor = state_editor.get("startup")
         if startup_editor:
             await _run_lifecycle(startup_editor)
@@ -596,7 +602,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         if state_agent_startup:
             try:
                 await state_agent_startup()
-            except Exception:
+            except Exception as e:
                 logger.exception("Agent startup failed")
         try:
             cfg = _load_config()
@@ -624,7 +630,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         if shutdown_editor:
             try:
                 await _run_lifecycle(shutdown_editor)
-            except Exception:
+            except Exception as e:
                 logger.exception("Editor shutdown failed")
         shutdown_translate = state_translate.get("shutdown")
         if shutdown_translate:
@@ -781,16 +787,13 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
     # Agent V2 — claw-code-inspired ConversationRuntime (replaces old ReAct agent)
     logger.info("Registering Agent V2 routes")
     from src.agent_v2.router import register_agent_v2_routes
-
     register_agent_v2_routes(app, load_config=_load_config)
     state_agent = getattr(app.state, "_state_agent", {})
-    state_agent.update(
-        {
-            "rag_store": None,
-            "get_rag_store": lambda: None,
-            "ensure_rag_store": lambda: None,
-        }
-    )
+    state_agent.update({
+        "rag_store": None,
+        "get_rag_store": lambda: None,
+        "ensure_rag_store": lambda: None,
+    })
 
     # RAG store (ChromaDB-backed)
     logger.info("Registering RAG routes")

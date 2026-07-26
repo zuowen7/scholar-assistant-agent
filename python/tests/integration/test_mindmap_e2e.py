@@ -73,9 +73,7 @@ class TestMindMapPersistence:
     """save → load → delete round-trip."""
 
     def test_load_404_when_empty(self, client):
-        resp = client.get(
-            "/api/mindmap/load", params={"workspace_root": str(client.app.state.test_workspace)}
-        )
+        resp = client.get("/api/mindmap/load", params={"workspace_root": str(client.app.state.test_workspace)})
         assert resp.status_code == 404
 
     def test_save_and_load_roundtrip(self, client):
@@ -107,9 +105,7 @@ class TestMindMapPersistence:
         assert client.get("/api/mindmap/load", params=params).status_code == 404
 
     def test_delete_idempotent(self, client):
-        resp = client.delete(
-            "/api/mindmap", params={"workspace_root": str(client.app.state.test_workspace)}
-        )
+        resp = client.delete("/api/mindmap", params={"workspace_root": str(client.app.state.test_workspace)})
         assert resp.status_code == 200
         assert resp.json()["ok"] is True
 
