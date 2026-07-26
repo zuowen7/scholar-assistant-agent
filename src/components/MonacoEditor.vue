@@ -32,11 +32,36 @@
       @submit="handlePaletteSubmit"
       @cancel="showPalette = false"
     />
+    <!-- Inline diff overlay: rendered outside Monaco's DOM to avoid event interference -->
+    <div
+      v-if="diffOverlay.visible"
+      class="ai-diff-overlay"
+      :style="{
+        top: diffOverlay.top + 'px',
+        left: diffOverlay.left + 'px',
+        width: diffOverlay.width + 'px',
+      }"
+    >
+      <section class="ai-diff-card">
+        <header class="ai-diff-header">
+          <span class="ai-diff-title">{{ diffOverlay.title }}</span>
+        </header>
+        <div class="ai-diff-new ai-diff-scroll" ref="diffContentRef">{{ diffOverlay.text }}</div>
+        <footer class="ai-diff-actions">
+          <button class="ai-diff-accept" @click.stop="diffOverlay.onAccept()">
+            {{ diffOverlay.acceptLabel }}
+          </button>
+          <button class="ai-diff-reject" @click.stop="diffOverlay.onReject()">
+            {{ diffOverlay.rejectLabel }}
+          </button>
+        </footer>
+      </section>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import type { CSSProperties } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Sparkles } from 'lucide-vue-next'
@@ -52,7 +77,6 @@ import { API_BASE } from '../utils/api'
 import { useArgumentCompanion } from '../composables/useArgumentCompanion'
 import { computeCompanionDecorations } from '../composables/companionGutter'
 import { fetchCompletion, buildContext, type CompletionModel } from '../utils/inlineCompletion'
-import { addInlineDiffViewZone, type InlineDiffViewHandle } from '../utils/inlineDiffViewZone'
 import {
   computeSelectionToolbarPosition,
   type SelectionToolbarPosition,
@@ -578,37 +602,78 @@ watch(content, (v) => {
   }
 })
 
-// ── Inline Diff Approval ────────────────────────────────────────────────
+// ── Inline Diff Approval (overlay, outside Monaco DOM) ──────────────────
 let _diffDecorations: string[] = []
-let _diffView: InlineDiffViewHandle | null = null
+let _diffAfterLine = 0
+let _scrollDisposable: monaco.IDisposable | null = null
+
+const diffContentRef = ref<HTMLElement>()
+
+const diffOverlay = reactive({
+  visible: false,
+  top: 0,
+  left: 0,
+  width: 640, // safe default, updated by _updateDiffOverlayPosition
+  title: '',
+  text: '',
+  acceptLabel: '',
+  rejectLabel: '',
+  onAccept: () => {},
+  onReject: () => {},
+})
+
+function _updateDiffOverlayPosition() {
+  if (!editor || !diffOverlay.visible) return
+  const wrapper = editorWrapper.value
+  if (!wrapper) return
+
+  const rect = wrapper.getBoundingClientRect()
+  if (rect.width < 100) return // wrapper not yet laid out
+
+  const model = editor.getModel()
+  const lineCount = model?.getLineCount() ?? 0
+  const targetLine = Math.min(_diffAfterLine + 1, Math.max(1, lineCount))
+  const lineTop = editor.getTopForLineNumber(targetLine)
+  const scrollTop = editor.getScrollTop()
+  const overlayTop = lineTop - scrollTop
+
+  diffOverlay.top = Math.max(0, overlayTop)
+  diffOverlay.left = Math.max(0, (rect.width - 720) / 2)
+  diffOverlay.width = Math.max(280, Math.min(720, rect.width - 48))
+}
 
 function _clearDiffDecorations() {
   setInlineDiffVisible(false)
+  diffOverlay.visible = false
+  if (_scrollDisposable) {
+    _scrollDisposable.dispose()
+    _scrollDisposable = null
+  }
   if (editor && _diffDecorations.length) {
     editor.deltaDecorations(_diffDecorations, [])
     _diffDecorations = []
-  }
-  if (_diffView) {
-    try {
-      _diffView.remove()
-    } catch {
-      /* already disposed */
-    }
-    _diffView = null
   }
 }
 
 function _showInlineDiff(afterLineNumber: number, newText: string) {
   if (!editor) return
-  _diffView = addInlineDiffViewZone(editor, {
-    afterLineNumber,
-    newText,
-    title: t('agent.inlineDiff.new', 'Suggested change'),
-    acceptLabel: t('agent.inlineDiff.accept', 'Accept'),
-    rejectLabel: t('agent.inlineDiff.reject', 'Reject'),
-    onAccept: () => _dispatchInlineDecision('allow_once'),
-    onReject: () => _dispatchInlineDecision('deny'),
+  _diffAfterLine = afterLineNumber
+
+  diffOverlay.title = t('agent.inlineDiff.new', 'Suggested change')
+  diffOverlay.text = newText
+  diffOverlay.acceptLabel = t('agent.inlineDiff.accept', 'Accept')
+  diffOverlay.rejectLabel = t('agent.inlineDiff.reject', 'Reject')
+  diffOverlay.onAccept = () => _dispatchInlineDecision('allow_once')
+  diffOverlay.onReject = () => _dispatchInlineDecision('deny')
+  diffOverlay.visible = true
+
+  // Update position now + track editor scroll
+  nextTick(() => _updateDiffOverlayPosition())
+  _scrollDisposable?.dispose()
+  _scrollDisposable = editor.onDidScrollChange(() => {
+    _updateDiffOverlayPosition()
   })
+
   setInlineDiffVisible(true)
 }
 
@@ -653,10 +718,13 @@ watch(activeEdit, (edit) => {
 
     _showInlineDiff(matchRange.endLineNumber, edit.newText)
     editor.revealRangeInCenter(matchRange)
+    // Re-position after reveal animation completes
+    setTimeout(() => _updateDiffOverlayPosition(), 150)
   } else if (edit.operation === 'write_file' && edit.newText) {
     // Whole-file previews reserve space before the first line.
     _showInlineDiff(0, edit.newText)
     editor.revealLineInCenter(1)
+    setTimeout(() => _updateDiffOverlayPosition(), 150)
   }
 })
 
@@ -693,6 +761,7 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   min-height: 0;
+  overflow: hidden; /* clip diff overlay */
 }
 .monaco-container {
   width: 100%;
@@ -822,40 +891,39 @@ onBeforeUnmount(() => {
   }
 }
 
-/* Inline diff approval */
+/* Inline diff approval — overlay outside Monaco DOM */
 .monaco-editor .ai-diff-deleted {
   background: color-mix(in srgb, var(--c-danger) 25%, transparent) !important;
   border-bottom: 2px wavy var(--c-danger) !important;
 }
-.ai-diff-zone {
-  width: 100%;
-  height: 100%;
+.ai-diff-overlay {
+  position: absolute;
+  z-index: 50;
+  pointer-events: auto;
+  /* Reserve breathing room so the card doesn't cover line numbers */
+  padding: 0 16px;
   box-sizing: border-box;
-  padding: 8px 20px;
-  overflow: hidden;
-  pointer-events: auto !important;
-  background: color-mix(in srgb, var(--c-success) 3%, var(--c-panel));
 }
 .ai-diff-card {
   display: flex;
-  width: min(720px, calc(100% - 24px));
-  height: 100%;
-  min-width: 0;
+  width: 100%;
+  max-height: 360px;
+  min-height: 140px;
   box-sizing: border-box;
   flex-direction: column;
-  margin: 0 auto;
   overflow: hidden;
   pointer-events: auto;
   background: var(--c-surface-1);
   border: 1px solid var(--c-surface-3);
   border-left: 3px solid var(--c-success);
   border-radius: var(--radius-md, 8px);
-  box-shadow: var(--elevation-3, 0 8px 24px rgba(0, 0, 0, 0.18));
+  box-shadow: var(--elevation-4, 0 12px 40px rgba(0, 0, 0, 0.35));
   font-family: var(--font-mono, monospace);
   font-size: 13px;
 }
 .ai-diff-header {
   display: flex;
+  flex: 0 0 auto;
   min-height: 36px;
   box-sizing: border-box;
   align-items: center;
