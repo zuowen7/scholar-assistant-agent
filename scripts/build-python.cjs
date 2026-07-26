@@ -412,15 +412,21 @@ if (!fs.existsSync(dataDir)) {
   // Fail the build if any required external tool is missing. A release
   // package that silently lacks Pandoc/Tectonic/embedding model breaks
   // the offline-first promise in README.
+  const embeddingModelDir = path.join(
+    apiDir, 'models', 'chroma-onnx', 'all-MiniLM-L6-v2', 'onnx',
+  );
   const requiredReleaseFiles = [
     { path: path.join(apiDir, 'tools', 'tectonic.exe'), label: 'Tectonic' },
     { path: path.join(apiDir, 'tools', 'pandoc.exe'), label: 'Pandoc' },
-    {
-      path: path.join(
-        apiDir, 'models', 'chroma-onnx', 'all-MiniLM-L6-v2', 'onnx', 'model.onnx',
-      ),
-      label: 'Embedding model (all-MiniLM-L6-v2)',
-    },
+    // Chroma's DefaultEmbeddingFunction requires all six files to load the
+    // ONNX model without hitting the network. Checking only model.onnx could
+    // greenlight a partial extraction.
+    { path: path.join(embeddingModelDir, 'config.json'), label: 'Embedding model (config.json)' },
+    { path: path.join(embeddingModelDir, 'model.onnx'), label: 'Embedding model (model.onnx)' },
+    { path: path.join(embeddingModelDir, 'special_tokens_map.json'), label: 'Embedding model (special_tokens_map.json)' },
+    { path: path.join(embeddingModelDir, 'tokenizer_config.json'), label: 'Embedding model (tokenizer_config.json)' },
+    { path: path.join(embeddingModelDir, 'tokenizer.json'), label: 'Embedding model (tokenizer.json)' },
+    { path: path.join(embeddingModelDir, 'vocab.txt'), label: 'Embedding model (vocab.txt)' },
   ];
 
   const missing = requiredReleaseFiles.filter((f) => !fs.existsSync(f.path));
