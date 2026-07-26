@@ -108,9 +108,7 @@ class TestToolExecution:
     ):
         outside = temp_workspace.parent / "outside.txt"
         outside.write_text("outside sentinel", encoding="utf-8")
-        result = await registry.execute(
-            "grep_files", {"pattern": "sentinel", "path": str(outside)}
-        )
+        result = await registry.execute("grep_files", {"pattern": "sentinel", "path": str(outside)})
         assert result.is_error
         assert "outside workspace" in result.output
 
@@ -238,6 +236,31 @@ class TestEdgeCases:
         )
         assert result.is_error
         assert "2 times" in result.output
+
+    @pytest.mark.asyncio
+    async def test_str_replace_anchor_targets_only_the_selected_duplicate(
+        self, registry: ToolRegistry, temp_workspace: Path
+    ):
+        duplicate = temp_workspace / "duplicate.md"
+        duplicate.write_text("same paragraph\nmiddle\nsame paragraph\n", encoding="utf-8")
+
+        result = await registry.execute(
+            "str_replace",
+            {
+                "file_path": "duplicate.md",
+                "old_string": "same paragraph",
+                "new_string": "polished paragraph",
+                "start_line": 3,
+                "start_column": 1,
+                "end_line": 3,
+                "end_column": 15,
+            },
+        )
+
+        assert not result.is_error
+        assert duplicate.read_text(encoding="utf-8") == (
+            "same paragraph\nmiddle\npolished paragraph\n"
+        )
 
     @pytest.mark.asyncio
     async def test_tr027_read_large_file(self, registry: ToolRegistry, temp_workspace: Path):

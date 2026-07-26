@@ -222,6 +222,60 @@ describe('useAgentChat', () => {
       expect(sessionId.value).toBe('sess_abc')
     })
 
+    it('isolates an editor selection turn and sends its exact anchor', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          makeSseResponse([
+            makeSessionStartedChunk('sess_old'),
+            makeResponseChunk('old answer'),
+            makeDoneChunk(),
+          ]),
+        )
+        .mockResolvedValueOnce(
+          makeSseResponse([
+            makeSessionStartedChunk('sess_selection'),
+            makeResponseChunk('selection answer'),
+            makeDoneChunk(),
+          ]),
+        )
+      vi.stubGlobal('fetch', fetchMock)
+
+      const { sendMessage } = useAgentChat()
+      await sendMessage('Earlier question')
+      await sendMessage(
+        'Polish the selected paragraph',
+        'Current selected paragraph.',
+        '',
+        'D:\\paper',
+        'D:\\paper\\draft\\main.md',
+        [],
+        {
+          selection: {
+            filePath: 'D:\\paper\\draft\\main.md',
+            startLine: 12,
+            startColumn: 3,
+            endLine: 14,
+            endColumn: 8,
+            text: 'Current selected paragraph.',
+          },
+        },
+      )
+
+      const request = fetchMock.mock.calls[1][1] as RequestInit
+      const body = JSON.parse(String(request.body))
+      expect(body.history).toEqual([])
+      expect(body.workflow_id).toBeUndefined()
+      expect(body.selection).toEqual({
+        file_path: 'D:\\paper\\draft\\main.md',
+        start_line: 12,
+        start_column: 3,
+        end_line: 14,
+        end_column: 8,
+        text: 'Current selected paragraph.',
+      })
+    })
+
     it('accepts sessionId from session_started content for older live backends', async () => {
       vi.stubGlobal(
         'fetch',

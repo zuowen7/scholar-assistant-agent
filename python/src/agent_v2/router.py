@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import html
 import json
 import logging
 import os
@@ -88,6 +89,15 @@ def _session_path(session_id: str) -> Path:
     return path
 
 
+class SelectionContextV2(BaseModel):
+    file_path: str = Field(min_length=1, max_length=4_000)
+    start_line: int = Field(ge=1)
+    start_column: int = Field(ge=1)
+    end_line: int = Field(ge=1)
+    end_column: int = Field(ge=1)
+    text: str = Field(min_length=1, max_length=500_000)
+
+
 class ChatRequestV2(BaseModel):
     message: str = Field(min_length=1, max_length=100_000)
     history: list[dict] | None = Field(default=None, max_length=50)
@@ -99,6 +109,7 @@ class ChatRequestV2(BaseModel):
         default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$"
     )
     skills: list[str] = Field(default_factory=list, max_length=8)
+    selection: SelectionContextV2 | None = None
 
 
 class ApproveRequest(BaseModel):
@@ -109,7 +120,12 @@ class ApproveRequest(BaseModel):
 def _visible_user_text(text: str) -> str:
     """Hide editor/context envelopes that the frontend appended to a user task."""
     cut_at = len(text)
-    for marker in ("\n\n<task_constraints>", "\n\n<active_file>", "\n\n<editor_context>"):
+    for marker in (
+        "\n\n<task_constraints>",
+        "\n\n<active_file>",
+        "\n\n<active_selection",
+        "\n\n<editor_context>",
+    ):
         position = text.find(marker)
         if position >= 0:
             cut_at = min(cut_at, position)
@@ -425,6 +441,20 @@ def _compose_turn_message(req: ChatRequestV2) -> str:
         parts.append("<task_constraints>\n" + req.constraints.strip() + "\n</task_constraints>")
     if req.context_file and req.context_file.strip():
         parts.append("<active_file>" + req.context_file.strip() + "</active_file>")
+    if req.selection is not None:
+        selection = req.selection
+        parts.append(
+            '<active_selection file_path="'
+            + html.escape(selection.file_path, quote=True)
+            + f'" start_line="{selection.start_line}"'
+            + f' start_column="{selection.start_column}"'
+            + f' end_line="{selection.end_line}"'
+            + f' end_column="{selection.end_column}">\n'
+            + "This is the CURRENT selection for this turn. Ignore selection context from earlier "
+            "turns. If editing, change only this exact range and use its full text as old_string.\n"
+            + selection.text
+            + "\n</active_selection>"
+        )
     if req.context_text and req.context_text.strip():
         parts.append(
             "<editor_context>\n"
@@ -435,6 +465,13 @@ def _compose_turn_message(req: ChatRequestV2) -> str:
     return "\n\n".join(parts)
 
 
+def _runtime_session_inputs(req: ChatRequestV2) -> tuple[str, list[dict] | None]:
+    """Selection turns are atomic and must never inherit an older editor selection."""
+    if req.selection is not None:
+        return "", None
+    return req.workflow_id or "", req.history
+
+
 def _create_runtime(
     workspace_root: str,
     session_id: str = "",
@@ -443,6 +480,7 @@ def _create_runtime(
     current_message: str = "",
     selected_skills: list[str] | None = None,
     root_config: dict | None = None,
+    edit_scope: dict | None = None,
 ) -> ConversationRuntime:
     sid = _validate_session_id(session_id) if session_id else f"sess_{uuid.uuid4().hex}"
     _SESSION_DIR.mkdir(parents=True, exist_ok=True)
@@ -510,6 +548,7 @@ def _create_runtime(
         system_prompt=sp,
         auto_approve=False,
         max_steps=max_steps,
+        edit_scope=edit_scope,
     )
 
 
@@ -613,15 +652,17 @@ def register_agent_v2_routes(
     async def v2_chat(req: ChatRequestV2, request: Request):
         """主对话端点 — SSE 流式。"""
         workspace = req.workspace_root or ""
+        runtime_session_id, runtime_history = _runtime_session_inputs(req)
 
         try:
             rt = _create_runtime(
                 workspace,
-                session_id=req.workflow_id or "",
-                history=req.history,
+                session_id=runtime_session_id,
+                history=runtime_history,
                 current_message=req.message,
                 selected_skills=req.skills,
                 root_config=_current_root_config(),
+                edit_scope=req.selection.model_dump() if req.selection is not None else None,
             )
         except ValueError as e:
             raise HTTPException(400, str(e))

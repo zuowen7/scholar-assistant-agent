@@ -18,6 +18,19 @@ interface RawHistoryMessage {
   events?: AgentEvent[]
 }
 
+export interface AgentSelectionContext {
+  filePath: string
+  startLine: number
+  startColumn: number
+  endLine: number
+  endColumn: number
+  text: string
+}
+
+export interface AgentTurnOptions {
+  selection?: AgentSelectionContext
+}
+
 const API_URL = API_BASE
 
 // ── Module-level singleton state — survives page switches ──────────
@@ -274,6 +287,7 @@ export function useAgentChat() {
     workspaceRoot?: string,
     contextFile?: string,
     skills: string[] = [],
+    options: AgentTurnOptions = {},
   ): Promise<void> {
     if (!text.trim() || sending.value) return
 
@@ -303,10 +317,16 @@ export function useAgentChat() {
     abortController?.abort()
     abortController = new AbortController()
 
-    const history = messages.value
-      .filter((m) => m.id !== assistantMsg.id && m.id !== userMessage.id && !m.isStreaming)
-      .slice(-20)
-      .map((m) => ({ role: m.role, content: m.content }))
+    const selection = options.selection
+    // A selection edit is an atomic editor operation, not a continuation of
+    // earlier chat. Keeping it isolated prevents an older <editor_context>
+    // block from becoming the model's edit target.
+    const history = selection
+      ? []
+      : messages.value
+          .filter((m) => m.id !== assistantMsg.id && m.id !== userMessage.id && !m.isStreaming)
+          .slice(-20)
+          .map((m) => ({ role: m.role, content: m.content }))
 
     const handleEvent = createEventHandler(assistantMsg.id)
 
@@ -333,8 +353,19 @@ export function useAgentChat() {
           context_file: contextFile?.trim() || undefined,
           constraints: constraints?.trim() || undefined,
           workspace_root: workspaceRoot?.trim() || undefined,
-          workflow_id: workflowId.value || undefined,
+          workflow_id: selection ? undefined : workflowId.value || undefined,
           skills: skills.slice(0, 8),
+          selection: selection
+            ? {
+                file_path: selection.filePath,
+                start_line: selection.startLine,
+                start_column: selection.startColumn,
+                end_line: selection.endLine,
+                end_column: selection.endColumn,
+                // Preserve whitespace exactly: it is part of the edit anchor.
+                text: selection.text,
+              }
+            : undefined,
         }),
         signal: abortController!.signal,
       })

@@ -1286,6 +1286,18 @@ async function sendMessage() {
     rootDir.value || undefined,
     editorActiveTab.value?.path || undefined,
     selectedSkillNames.value,
+    editorSelection.value.text && editorActiveTab.value?.path
+      ? {
+          selection: {
+            filePath: editorActiveTab.value.path,
+            startLine: editorSelection.value.startLine,
+            startColumn: editorSelection.value.startCol,
+            endLine: editorSelection.value.endLine,
+            endColumn: editorSelection.value.endCol,
+            text: editorSelection.value.text,
+          },
+        }
+      : undefined,
   )
   refreshFileTree()
   reloadOpenTabs()

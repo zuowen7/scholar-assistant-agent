@@ -52,6 +52,7 @@ class ConversationRuntime:
         max_steps: int = _DEFAULT_MAX_STEPS,
         system_prompt: str | None = None,
         auto_approve: bool = True,
+        edit_scope: dict[str, Any] | None = None,
     ):
         self.provider = provider
         self.tool_registry = tool_registry
@@ -60,6 +61,7 @@ class ConversationRuntime:
         self.max_steps = max_steps
         self.system_prompt = system_prompt
         self.auto_approve = auto_approve
+        self.edit_scope = dict(edit_scope) if edit_scope else None
         self.usage = UsageTracker(model=session.meta.model)
         # Approval state
         self._approval_events: dict[str, asyncio.Event] = {}
@@ -274,7 +276,30 @@ class ConversationRuntime:
         except json.JSONDecodeError:
             args = {}
 
-        perm_result = self.permission_policy.authorize(tb.name, tb.input)
+        scope_error = self._apply_edit_scope(tb, args)
+        if scope_error:
+            self.session.append(
+                Message(
+                    role=MessageRole.TOOL,
+                    blocks=[
+                        ToolResultBlock(
+                            tool_use_id=tb.id,
+                            tool_name=tb.name,
+                            output=scope_error,
+                            is_error=True,
+                        ),
+                    ],
+                )
+            )
+            self._auto_save()
+            yield AgentEvent.tool_result(tb.id, tb.name, scope_error, is_error=True)
+            return
+
+        # The scope guard may inject trusted line/column anchors. Use the
+        # normalized arguments for authorization without mutating the provider's
+        # immutable ToolUseBlock.
+        normalized_input = json.dumps(args, ensure_ascii=False)
+        perm_result = self.permission_policy.authorize(tb.name, normalized_input)
 
         # Capture old content for diff
         old_text = ""
@@ -415,6 +440,64 @@ class ConversationRuntime:
                     "content_truncated": len(new_content) > 10000,
                 }
             )
+
+    def _apply_edit_scope(self, tb: ToolUseBlock, args: dict[str, Any]) -> str | None:
+        """Restrict a selection turn to the exact active Monaco range.
+
+        Read-only tools remain available for reasoning. Any side-effecting tool
+        other than anchored str_replace is rejected before approval or execution.
+        """
+        scope = self.edit_scope
+        if scope is None:
+            return None
+
+        spec = self.tool_registry.get(tb.name)
+        if spec is None or spec.permission == "read-only":
+            return None
+        if tb.name != "str_replace":
+            return (
+                f"Selection edit blocked: {tb.name} cannot modify files during an active "
+                "selection turn; use str_replace on the current active selection."
+            )
+
+        selected_text = str(scope.get("text", ""))
+        if str(args.get("old_string", "")) != selected_text:
+            return (
+                "Selection edit blocked: old_string does not equal the current active selection. "
+                "Ignore selections from earlier turns and retry with the exact current text."
+            )
+
+        requested_file = str(args.get("file_path", ""))
+        selected_file = str(scope.get("file_path", ""))
+        if not requested_file or not selected_file:
+            return "Selection edit blocked: the current active selection has no valid file anchor."
+
+        workspace = self.tool_registry._workspace_root
+
+        def _resolve(path_value: str) -> Path:
+            path = Path(path_value)
+            if not path.is_absolute() and workspace is not None:
+                path = workspace / path
+            return path.resolve()
+
+        try:
+            if _resolve(requested_file) != _resolve(selected_file):
+                return (
+                    "Selection edit blocked: the requested file is not the file containing "
+                    "the current active selection."
+                )
+        except (OSError, ValueError):
+            return "Selection edit blocked: the current active selection file is invalid."
+
+        args.update(
+            {
+                "start_line": int(scope["start_line"]),
+                "start_column": int(scope["start_column"]),
+                "end_line": int(scope["end_line"]),
+                "end_column": int(scope["end_column"]),
+            }
+        )
+        return None
 
     def _auto_save(self) -> None:
         sp = getattr(self.session, "_save_path", "")
