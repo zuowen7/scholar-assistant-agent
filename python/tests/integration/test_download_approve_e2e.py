@@ -85,7 +85,12 @@ def _inject_task(tasks_dict: dict, task_id: str, output_path: str) -> None:
     }
 
 
-def _inject_session(session_pool: dict, sid: str, approve_returns: bool = True) -> Any:
+def _inject_session(
+    session_pool: dict,
+    sid: str,
+    approve_returns: bool = True,
+    workspace: str = "",
+) -> Any:
     """Create and inject a mock AgentSession into the pool."""
     mock = MagicMock()
     mock.session_id = sid
@@ -96,6 +101,7 @@ def _inject_session(session_pool: dict, sid: str, approve_returns: bool = True) 
     mock.task_queue = None
     mock.context = []
     mock.metadata = {"workspace_root": "/tmp/test_workspace"}
+    mock.session.meta.workspace = workspace
     session_pool[sid] = mock
     return mock
 
@@ -273,7 +279,10 @@ def agent_app_with_session():
 
         session_id = "test_session_approve_001"
         event_id = "evt_workspace_escape_001"
-        _inject_session(session_pool, session_id)
+        workspace = str(Path(test_dir).resolve())
+        _inject_session(session_pool, session_id, workspace=workspace)
+        grant = app.state.agent_workspace_grants.issue(workspace)
+        tc.headers.update({"X-Workspace-Grant": grant})
 
         yield session_id, event_id, tc
 

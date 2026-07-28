@@ -6,12 +6,174 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import os
-import shutil
+import re
+import socket
+from contextlib import suppress
 from pathlib import Path
+from urllib.parse import urljoin, urlsplit
 
+from src.agent_v2.runtime.file_mutations import atomic_write_bytes, atomic_write_text
 from src.agent_v2.tools.registry import ToolRegistry, ToolResult
+
+_MARKDOWN_IMAGE_RE = re.compile(r"!\[[^\]]*]\(([^)\s]+)(?:\s+[^)]*)?\)")
+_LATEX_IMAGE_RE = re.compile(r"\\includegraphics(?:\[[^\]]*])?\{([^}]+)}")
+_LATEX_BIB_RE = re.compile(r"\\bibliography\{([^}]+)}|\\addbibresource\{([^}]+)}")
+_YAML_BIB_RE = re.compile(r"(?im)^\s*bibliography\s*:\s*[\"']?([^\"'\r\n]+\.bib)[\"']?\s*$")
+_YAML_TEMPLATE_RE = re.compile(r"(?im)^\s*template\s*:\s*[\"']?([^\"'\r\n#]+?)[\"']?\s*(?:#.*)?$")
+_LATEX_CITE_RE = re.compile(r"\\cite\w*\{([^}]+)}")
+_PANDOC_CITE_RE = re.compile(r"(?<![\w.])@([A-Za-z0-9_:.+\-/]+)")
+_BIB_KEY_RE = re.compile(r"@\w+\s*\{\s*([^,\s]+)", re.IGNORECASE)
+
+
+def _local_resource_path(source: Path, raw_path: str) -> Path | None:
+    cleaned = raw_path.strip().strip("\"'")
+    if not cleaned or cleaned.startswith(("#", "data:")):
+        return None
+    parsed = urlsplit(cleaned)
+    if parsed.scheme or parsed.netloc:
+        return None
+    return (source.parent / parsed.path).resolve()
+
+
+def _resource_is_in_workspace(resource: Path, workspace_root: Path) -> bool:
+    try:
+        resource.relative_to(workspace_root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _preflight_document_resources(
+    source: Path,
+    content: str,
+    workspace_root: Path,
+) -> list[str]:
+    """Return deterministic missing-resource diagnostics before export."""
+
+    issues: list[str] = []
+    image_refs = [match.group(1) for match in _MARKDOWN_IMAGE_RE.finditer(content)]
+    image_refs.extend(match.group(1) for match in _LATEX_IMAGE_RE.finditer(content))
+    for raw_path in image_refs:
+        resource = _local_resource_path(source, raw_path)
+        if resource is not None and not _resource_is_in_workspace(resource, workspace_root):
+            issues.append(f"image escapes workspace: {raw_path}")
+        elif resource is not None and not resource.is_file():
+            issues.append(f"missing image: {raw_path}")
+
+    template_refs = [match.group(1).strip() for match in _YAML_TEMPLATE_RE.finditer(content)]
+    for raw_path in template_refs:
+        resource = _local_resource_path(source, raw_path)
+        if resource is not None and not _resource_is_in_workspace(resource, workspace_root):
+            issues.append(f"template escapes workspace: {raw_path}")
+        elif resource is not None and not resource.is_file():
+            issues.append(f"missing template: {raw_path}")
+
+    bib_refs: list[str] = []
+    for match in _LATEX_BIB_RE.finditer(content):
+        raw_group = match.group(1) or match.group(2) or ""
+        for item in raw_group.split(","):
+            value = item.strip()
+            if value and not value.lower().endswith(".bib"):
+                value += ".bib"
+            if value:
+                bib_refs.append(value)
+    bib_refs.extend(match.group(1).strip() for match in _YAML_BIB_RE.finditer(content))
+
+    bib_paths: list[Path] = []
+    for raw_path in bib_refs:
+        resource = _local_resource_path(source, raw_path)
+        if resource is None:
+            continue
+        if not _resource_is_in_workspace(resource, workspace_root):
+            issues.append(f"bibliography escapes workspace: {raw_path}")
+        elif not resource.is_file():
+            issues.append(f"missing bibliography: {raw_path}")
+        else:
+            bib_paths.append(resource)
+
+    cited_keys: set[str] = set()
+    for match in _LATEX_CITE_RE.finditer(content):
+        cited_keys.update(key.strip() for key in match.group(1).split(",") if key.strip())
+    cited_keys.update(_PANDOC_CITE_RE.findall(content))
+    if cited_keys:
+        if not bib_paths:
+            if not bib_refs:
+                issues.append("citations found but no bibliography resource is declared")
+        else:
+            known_keys: set[str] = set()
+            for path in bib_paths:
+                try:
+                    known_keys.update(_BIB_KEY_RE.findall(path.read_text(encoding="utf-8")))
+                except OSError as exc:
+                    issues.append(f"cannot read bibliography {path.name}: {exc}")
+            for key in sorted(cited_keys - known_keys):
+                issues.append(f"missing bibliography key: {key}")
+    return issues
+
+
+def _validate_public_http_url(
+    url: str,
+    *,
+    resolved_ips: list[str] | None,
+) -> tuple[bool, str]:
+    """Reject URLs that can address local, private, or otherwise non-public hosts."""
+    try:
+        parsed = urlsplit(url)
+    except ValueError as exc:
+        return False, f"invalid URL: {exc}"
+    if parsed.scheme not in {"http", "https"}:
+        return False, "URL scheme must be http or https"
+    if not parsed.hostname:
+        return False, "URL hostname is required"
+    if parsed.username or parsed.password:
+        return False, "URL credentials are not allowed"
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        return False, f"invalid URL port: {exc}"
+    expected_port = 443 if parsed.scheme == "https" else 80
+    if port is not None and port != expected_port:
+        return False, f"URL port {port} is not allowed for {parsed.scheme}"
+    hostname = parsed.hostname.rstrip(".").lower()
+    if hostname == "localhost" or hostname.endswith(".localhost"):
+        return False, "localhost targets are not allowed"
+
+    addresses = list(resolved_ips or [])
+    with suppress(ValueError):
+        addresses.append(str(ipaddress.ip_address(hostname)))
+    for address in addresses:
+        try:
+            ip = ipaddress.ip_address(address)
+        except ValueError:
+            return False, f"invalid resolved IP address: {address}"
+        if not ip.is_global:
+            return False, f"non-public network target is not allowed: {ip}"
+    return True, ""
+
+
+async def _resolve_public_http_url(url: str) -> tuple[bool, str]:
+    allowed, reason = _validate_public_http_url(url, resolved_ips=None)
+    if not allowed:
+        return allowed, reason
+    hostname = urlsplit(url).hostname
+    if hostname is None:
+        return False, "URL hostname is required"
+    try:
+        infos = await asyncio.to_thread(
+            socket.getaddrinfo,
+            hostname,
+            None,
+            type=socket.SOCK_STREAM,
+        )
+    except OSError as exc:
+        return False, f"hostname resolution failed: {exc}"
+    addresses = sorted({str(info[4][0]) for info in infos})
+    if not addresses:
+        return False, "hostname did not resolve to an address"
+    return _validate_public_http_url(url, resolved_ips=addresses)
 
 
 def register_academic_tools(registry: ToolRegistry) -> None:
@@ -83,6 +245,18 @@ def register_academic_tools(registry: ToolRegistry) -> None:
             api_base = os.environ.get("SCHOLAR_API_BASE", "http://localhost:18088")
             async with httpx.AsyncClient(timeout=120.0) as client:
                 markdown = await asyncio.to_thread(full.read_text, encoding="utf-8")
+                preflight_issues = _preflight_document_resources(
+                    full,
+                    markdown,
+                    registry._workspace_root or full.parent,
+                )
+                allow_missing = bool(args.get("allow_missing_resources", False))
+                if preflight_issues and not allow_missing:
+                    details = "\n".join(f"- {issue}" for issue in preflight_issues)
+                    return ToolResult(
+                        f"error: document resource preflight failed:\n{details}",
+                        is_error=True,
+                    )
                 normalized = fmt.lower()
                 if normalized in ("word", "docx"):
                     resp = await client.post(
@@ -105,8 +279,11 @@ def register_academic_tools(registry: ToolRegistry) -> None:
                     )
                 if normalized == "pdf":
                     out_path = full.with_suffix(".pdf")
-                    await asyncio.to_thread(out_path.write_bytes, resp.content)
-                    return ToolResult(f"Export successful: {out_path}")
+                    await asyncio.to_thread(atomic_write_bytes, out_path, resp.content)
+                    message = f"Export successful: {out_path}"
+                    if preflight_issues:
+                        message += "\nwarning: missing resources were explicitly allowed"
+                    return ToolResult(message)
                 data = resp.json()
                 if normalized in ("word", "docx"):
                     generated_path = data.get("path")
@@ -115,14 +292,18 @@ def register_academic_tools(registry: ToolRegistry) -> None:
                             "error: Word export did not produce a file", is_error=True
                         )
                     out_path = full.with_suffix(".docx")
-                    await asyncio.to_thread(shutil.copy2, generated_path, out_path)
+                    generated_bytes = await asyncio.to_thread(Path(generated_path).read_bytes)
+                    await asyncio.to_thread(atomic_write_bytes, out_path, generated_bytes)
                 else:
                     tex = data.get("tex")
                     if not isinstance(tex, str) or not tex:
                         return ToolResult("error: LaTeX export returned no content", is_error=True)
                     out_path = full.with_suffix(".tex")
-                    await asyncio.to_thread(out_path.write_text, tex, encoding="utf-8")
-                return ToolResult(f"Export successful: {out_path}")
+                    await asyncio.to_thread(atomic_write_text, out_path, tex)
+                message = f"Export successful: {out_path}"
+                if preflight_issues:
+                    message += "\nwarning: missing resources were explicitly allowed"
+                return ToolResult(message)
         except Exception as e:
             return ToolResult(f"error connecting to export API: {e}", is_error=True)
 
@@ -168,6 +349,9 @@ def register_academic_tools(registry: ToolRegistry) -> None:
         },
         translate_document,
         permission="read-only",
+        effects={"external_side_effect", "cost"},
+        approval_scope="exact-input",
+        network_scope={"local-translation-api"},
     )
 
     registry.register(
@@ -182,11 +366,20 @@ def register_academic_tools(registry: ToolRegistry) -> None:
                     "default": "latex",
                     "description": "latex, docx, or pdf",
                 },
+                "allow_missing_resources": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Explicitly allow export despite missing local resources",
+                },
             },
             "required": ["file_path"],
         },
         export_document,
         permission="workspace-write",
+        effects={"filesystem_write", "network"},
+        approval_scope="path",
+        network_scope={"local-export-api"},
+        rollback_capability="journaled",
     )
 
     registry.register(
@@ -202,6 +395,9 @@ def register_academic_tools(registry: ToolRegistry) -> None:
         },
         arxiv_search,
         permission="read-only",
+        effects={"network"},
+        approval_scope="domain",
+        network_scope={"export.arxiv.org"},
     )
 
     # ---- rag_search — 参考 claw-code retrieve_context_tool ----
@@ -447,6 +643,9 @@ def register_academic_tools(registry: ToolRegistry) -> None:
         },
         web_search,
         permission="read-only",
+        effects={"network"},
+        approval_scope="domain",
+        network_scope={"html.duckduckgo.com"},
     )
 
     # ---- web_fetch (参考 claw-code WebFetch) ----
@@ -455,16 +654,39 @@ def register_academic_tools(registry: ToolRegistry) -> None:
         url = str(args.get("url", ""))
         if not url:
             return ToolResult("error: url is required", is_error=True)
-        if not url.startswith(("http://", "https://")):
-            return ToolResult("error: url must start with http:// or https://", is_error=True)
+        allowed, reason = await _resolve_public_http_url(url)
+        if not allowed:
+            return ToolResult(f"Fetch blocked: {reason}", is_error=True)
         try:
             import httpx
 
             headers = {"User-Agent": "ScholarAssistant/0.4"}
             async with httpx.AsyncClient(
-                timeout=15.0, headers=headers, follow_redirects=True
+                timeout=15.0, headers=headers, follow_redirects=False
             ) as client:
-                resp = await client.get(url)
+                current_url = url
+                resp = None
+                for _hop in range(6):
+                    allowed, reason = await _resolve_public_http_url(current_url)
+                    if not allowed:
+                        return ToolResult(f"Fetch blocked: {reason}", is_error=True)
+                    resp = await client.get(current_url)
+                    # Re-resolve after the request as a second rebinding guard.
+                    # The configured egress policy must still block private
+                    # destinations at connection time in hardened deployments.
+                    allowed, reason = await _resolve_public_http_url(current_url)
+                    if not allowed:
+                        return ToolResult(f"Fetch blocked: {reason}", is_error=True)
+                    if resp.status_code not in {301, 302, 303, 307, 308}:
+                        break
+                    location = resp.headers.get("location", "")
+                    if not location:
+                        return ToolResult("Fetch redirect missing Location header", is_error=True)
+                    current_url = urljoin(current_url, location)
+                else:
+                    return ToolResult("Fetch blocked: too many redirects", is_error=True)
+                if resp is None:
+                    return ToolResult("Fetch failed: no response", is_error=True)
                 if resp.status_code != 200:
                     return ToolResult(f"Fetch returned {resp.status_code}", is_error=True)
                 text = resp.text
@@ -500,4 +722,7 @@ def register_academic_tools(registry: ToolRegistry) -> None:
         },
         web_fetch,
         permission="read-only",
+        effects={"network"},
+        approval_scope="domain",
+        network_scope={"user-approved-domain"},
     )

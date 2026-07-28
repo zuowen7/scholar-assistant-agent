@@ -5,6 +5,7 @@ import { activeTabId, tabs } from './useEditorState'
 import { useFileTree } from './useFileTree'
 
 export const currentProject = ref<ProjectMetadata | null>(null)
+export const currentWorkspaceGrant = ref<string | null>(null)
 export const recentProjects = ref<RecentProject[]>([])
 export const projectLoading = ref(false)
 
@@ -23,6 +24,7 @@ export interface CreateProjectResponse {
   project_path: string
   metadata: ProjectMetadata
   warnings: string[]
+  workspace_grant: string
 }
 
 function apiUrl(path: string): string {
@@ -60,6 +62,7 @@ export async function createProject(req: CreateProjectRequest): Promise<CreatePr
     }
     const data = await parseResponse<CreateProjectResponse>(resp)
     currentProject.value = data.metadata
+    currentWorkspaceGrant.value = data.workspace_grant
     return data
   } finally {
     projectLoading.value = false
@@ -70,6 +73,7 @@ export async function openProject(path: string): Promise<void> {
   const thisOp = ++_operationId
   projectLoading.value = true
   const prevProject = currentProject.value
+  const prevWorkspaceGrant = currentWorkspaceGrant.value
   let prevRootDir: string | null = null
   try {
     const fileTree = useFileTree()
@@ -89,7 +93,7 @@ export async function openProject(path: string): Promise<void> {
       }))
       throw new Error(err.detail || `打开项目失败 (${resp.status})`)
     }
-    const meta = (await parseResponse(resp)) as ProjectMetadata
+    const meta = (await parseResponse(resp)) as ProjectMetadata & { workspace_grant?: string }
     if (thisOp !== _operationId) return
     try {
       await fileTree.openFolder(path)
@@ -98,12 +102,14 @@ export async function openProject(path: string): Promise<void> {
     }
     if (thisOp !== _operationId) return
     currentProject.value = meta
+    currentWorkspaceGrant.value = meta.workspace_grant || null
     tabs.value = []
     activeTabId.value = null
   } catch (err) {
     // Only roll back if no newer operation has started
     if (thisOp === _operationId) {
       currentProject.value = prevProject
+      currentWorkspaceGrant.value = prevWorkspaceGrant
       if (prevRootDir) {
         try {
           await useFileTree().openFolder(prevRootDir)
@@ -143,6 +149,7 @@ export async function loadRecentProjects(): Promise<void> {
 
 export async function closeProject(): Promise<void> {
   currentProject.value = null
+  currentWorkspaceGrant.value = null
   const { rootDir, files } = useFileTree()
   rootDir.value = null
   files.value = []
@@ -168,6 +175,7 @@ export async function detectProject(path: string): Promise<boolean> {
 export function useProject() {
   return {
     currentProject,
+    currentWorkspaceGrant,
     recentProjects,
     projectLoading,
     createProject,

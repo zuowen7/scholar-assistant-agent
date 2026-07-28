@@ -64,8 +64,15 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
             "tool_name": data.get("tool_name", ""),
             "is_error": data.get("is_error", False),
             "error": data.get("is_error", False),
+            "status": data.get("status", "error" if data.get("is_error", False) else "success"),
+            "truncated": data.get("truncated", False),
+            "original_chars": data.get("original_chars", 0),
+            "returned_chars": data.get("returned_chars", 0),
             "result_detail": out_detail,
         }
+        extra_metadata = data.get("metadata", {})
+        if isinstance(extra_metadata, dict):
+            metadata.update(extra_metadata)
         return {
             "type": evt_type,
             "content": content,

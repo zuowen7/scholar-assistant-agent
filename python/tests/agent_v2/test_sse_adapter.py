@@ -49,6 +49,23 @@ class TestAdapter:
         assert result["event_id"] == "t1"
         assert result["metadata"]["error"] is True
 
+    def test_tool_result_preserves_structured_status_and_truncation_metadata(self):
+        event = AgentEvent.tool_result(
+            "t2",
+            "read_file",
+            "partial",
+            status="skipped",
+            truncated=True,
+            original_chars=12000,
+            returned_chars=4000,
+        )
+        result = agent_event_to_sse(event)
+        assert result["metadata"]["status"] == "skipped"
+        assert result["metadata"]["is_error"] is False
+        assert result["metadata"]["truncated"] is True
+        assert result["metadata"]["original_chars"] == 12000
+        assert result["metadata"]["returned_chars"] == 4000
+
     def test_tool_error_uses_tool_error_type(self):
         event = AgentEvent(
             type=AgentEventType.TOOL_ERROR,

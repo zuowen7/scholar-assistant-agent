@@ -56,6 +56,32 @@ translator:
     2. Keep the original paragraph structure.
     3. Use natural, fluent Chinese suitable for academic contexts.
 
+# Agent V2
+agent:
+  provider: auto
+  base_url: ""
+  api_key: ""
+  model: ""
+  proxy: ""
+  max_steps: 48
+  # Per-turn tool budget reserves a final model call with tools disabled.
+  max_tool_calls: 32
+  soft_tool_calls: 28
+  # Generic processes have no cross-platform OS filesystem sandbox.
+  # Enable only after accepting that explicit risk.
+  enable_run_command: false
+  # Plugins are discovered but disabled until explicitly listed here.
+  enabled_plugins: []
+  model_aliases:
+    4o: gpt-4o
+    4o-mini: gpt-4o-mini
+    deepseek: deepseek-chat
+    ds: deepseek-chat
+    ds-r1: deepseek-reasoner
+    haiku: claude-haiku-4-5
+    opus: claude-opus-4-6
+    sonnet: claude-sonnet-4-6
+
 # 输出格式
 formatter:
   # 输出格式: bilingual | translated_only

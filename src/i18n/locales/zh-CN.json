@@ -381,7 +381,9 @@
     "runtimeErrors": {
       "repeated_tool_call": "Agent 重复调用了同一工具，已停止本次任务以避免无限重试。请调整指令后继续。",
       "tool_call_limit": "本次任务的工具调用过多，已安全停止。请缩小任务范围或分步继续。",
+      "tool_budget_exhausted": "本次任务已用完工具预算；已有结果已保存并完成收尾，可从未完成项继续。",
       "tool_error_limit": "本次任务连续遇到多次工具错误，已停止重复尝试。请展开“执行过程”查看失败原因。",
+      "max_steps_exhausted": "本次任务已达到最大推理步数；已有结果已保存并完成收尾，可从未完成项继续。",
       "tool_loop_stopped": "检测到异常工具循环，本次任务已安全停止。"
     },
     "noProject": "未打开项目",
