@@ -342,14 +342,49 @@ class TestSedValidation:
 class TestPathValidation:
     """Port of claw-code bash_validation.rs pathValidation tests."""
 
-    def test_warns_directory_traversal(self):
+    def test_blocks_directory_traversal(self):
         from pathlib import Path
 
         from src.agent_v2.runtime.bash_validation import validate_paths
 
         result = validate_paths("cat ../../../etc/passwd", Path("/workspace/project"))
-        assert result.is_warn
-        assert "traversal" in result.message.lower()
+        assert result.is_blocked
+        assert "traversal" in result.reason.lower()
+
+    def test_blocks_windows_directory_traversal(self):
+        from pathlib import Path
+
+        from src.agent_v2.runtime.bash_validation import validate_paths
+
+        result = validate_paths(
+            r"cmd /c type ..\..\secret.txt",
+            Path(r"D:\workspace\project"),
+        )
+        assert result.is_blocked
+        assert "traversal" in result.reason.lower()
+
+    def test_blocks_windows_absolute_path_outside_workspace(self):
+        from pathlib import Path
+
+        from src.agent_v2.runtime.bash_validation import validate_paths
+
+        result = validate_paths(
+            r"powershell -Command Get-Content C:\Windows\win.ini",
+            Path(r"D:\workspace\project"),
+        )
+        assert result.is_blocked
+        assert "outside workspace" in result.reason.lower()
+
+    def test_allows_windows_absolute_path_inside_workspace(self):
+        from pathlib import Path
+
+        from src.agent_v2.runtime.bash_validation import validate_paths
+
+        result = validate_paths(
+            r"powershell -Command Get-Content D:\workspace\project\README.md",
+            Path(r"D:\workspace\project"),
+        )
+        assert result.is_allowed
 
     def test_warns_home_directory_reference(self):
         from pathlib import Path
@@ -357,8 +392,8 @@ class TestPathValidation:
         from src.agent_v2.runtime.bash_validation import validate_paths
 
         result = validate_paths("cat ~/.ssh/id_rsa", Path("/workspace/project"))
-        assert result.is_warn
-        assert "home" in result.message.lower()
+        assert result.is_blocked
+        assert "home" in result.reason.lower()
 
     def test_warns_dollar_home(self):
         from pathlib import Path
@@ -366,7 +401,7 @@ class TestPathValidation:
         from src.agent_v2.runtime.bash_validation import validate_paths
 
         result = validate_paths("cat $HOME/.bashrc", Path("/workspace/project"))
-        assert result.is_warn
+        assert result.is_blocked
 
     def test_allows_normal_paths(self):
         from pathlib import Path
@@ -478,13 +513,13 @@ class TestValidateCommandPipeline:
         result = self.validate("rm -rf /tmp/x", PermissionMode.READ_ONLY, Path("/workspace"))
         assert result.is_blocked
 
-    def test_pipeline_warns_destructive_in_write_mode(self):
+    def test_pipeline_blocks_destructive_outside_workspace_in_write_mode(self):
         from pathlib import Path
 
         from src.agent_v2.runtime.permissions import PermissionMode
 
         result = self.validate("rm -rf /", PermissionMode.WORKSPACE_WRITE, Path("/workspace"))
-        assert result.is_warn
+        assert result.is_blocked
 
     def test_pipeline_allows_safe_read_in_read_only(self):
         from pathlib import Path
@@ -494,7 +529,7 @@ class TestValidateCommandPipeline:
         result = self.validate("ls -la", PermissionMode.READ_ONLY, Path("/workspace"))
         assert result.is_allowed
 
-    def test_pipeline_warns_traversal_in_write_mode(self):
+    def test_pipeline_blocks_traversal_in_write_mode(self):
         from pathlib import Path
 
         from src.agent_v2.runtime.permissions import PermissionMode
@@ -502,7 +537,7 @@ class TestValidateCommandPipeline:
         result = self.validate(
             "cat ../../../etc/passwd", PermissionMode.WORKSPACE_WRITE, Path("/workspace")
         )
-        assert result.is_warn
+        assert result.is_blocked
 
     def test_pipeline_first_non_allow_wins(self):
         """First validation that returns non-Allow should stop the pipeline."""

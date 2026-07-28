@@ -96,6 +96,29 @@ class TestToolExecution:
         assert (temp_workspace / "new.txt").read_text() == "hello world"
 
     @pytest.mark.asyncio
+    async def test_read_file_pages_cover_content_without_overlap(
+        self, registry: ToolRegistry, temp_workspace: Path
+    ):
+        content = "".join(str(index % 10) for index in range(9100))
+        (temp_workspace / "long.txt").write_text(content, encoding="utf-8")
+        offset = 0
+        pages: list[str] = []
+
+        while offset < len(content):
+            result = await registry.execute(
+                "read_file",
+                {"file_path": "long.txt", "offset": offset, "limit": 2000},
+            )
+            assert result.is_error is False
+            pages.append(result.output[: result.returned_chars])
+            offset += result.returned_chars
+            if offset < len(content):
+                assert result.truncated is True
+                assert f"continue with offset={offset}" in result.output
+
+        assert "".join(pages) == content
+
+    @pytest.mark.asyncio
     async def test_tr012_grep(self, registry: ToolRegistry, temp_workspace: Path):
         """TR-012: grep 返回匹配行"""
         result = await registry.execute("grep_files", {"pattern": "hello", "path": "main.py"})
@@ -123,11 +146,33 @@ class TestToolExecution:
         assert "outside workspace" in result.output
 
     @pytest.mark.asyncio
+    async def test_run_command_rejects_windows_traversal_in_command(self, registry: ToolRegistry):
+        result = await registry.execute(
+            "run_command",
+            {"command": r"cmd /c type ..\..\secret.txt"},
+        )
+        assert result.is_error
+        assert "traversal" in result.output.lower()
+
+    @pytest.mark.asyncio
     async def test_run_command_nonzero_exit_is_error(self, registry: ToolRegistry):
-        command = "cmd /c exit 7" if os.name == "nt" else "sh -c 'exit 7'"
+        command = "where definitely_missing_agent_executable" if os.name == "nt" else "false"
         result = await registry.execute("run_command", {"command": command})
         assert result.is_error
-        assert "exit code: 7" in result.output
+        assert "exit code:" in result.output
+
+    @pytest.mark.asyncio
+    async def test_run_command_rejects_shell_indirection_and_redirection(
+        self, registry: ToolRegistry
+    ):
+        for command in (
+            "cmd /c type main.py",
+            "powershell -Command Get-Content main.py",
+            "python -c \"print('x')\"",
+            "echo secret > result.txt",
+        ):
+            result = await registry.execute("run_command", {"command": command})
+            assert result.is_error, command
 
     @pytest.mark.asyncio
     async def test_tr013_glob(self, registry: ToolRegistry, temp_workspace: Path):
@@ -151,6 +196,25 @@ class TestToolExecution:
         content = (temp_workspace / "main.py").read_text()
         assert "# fixed" in content
         assert "# TODO: fix" not in content
+
+    @pytest.mark.asyncio
+    async def test_str_replace_identical_text_is_no_change(
+        self, registry: ToolRegistry, temp_workspace: Path
+    ):
+        """RUN-02: a no-op is not a successful mutation."""
+        target = temp_workspace / "main.py"
+        before = target.read_bytes()
+        result = await registry.execute(
+            "str_replace",
+            {
+                "file_path": "main.py",
+                "old_string": "# TODO: fix",
+                "new_string": "# TODO: fix",
+            },
+        )
+        assert result.is_error is False
+        assert result.status == "no_change"
+        assert target.read_bytes() == before
 
     @pytest.mark.asyncio
     async def test_tr015_missing_params(self, registry: ToolRegistry):

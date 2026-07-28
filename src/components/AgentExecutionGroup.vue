@@ -17,7 +17,19 @@
       <details v-for="step in steps" :key="step.id" class="execution-step">
         <summary>
           <span class="step-status" :class="step.status" aria-hidden="true">
-            {{ step.status === 'success' ? '✓' : step.status === 'error' ? '!' : '•' }}
+            {{
+              step.status === 'success'
+                ? '✓'
+                : step.status === 'error'
+                  ? '!'
+                  : step.status === 'denied'
+                    ? '×'
+                    : step.status === 'skipped'
+                      ? '↷'
+                      : step.status === 'no_change'
+                        ? '–'
+                        : '•'
+            }}
           </span>
           <span class="step-label">{{ actionLabel(step) }}</span>
           <span class="step-tool">{{ step.toolName }}</span>
@@ -61,7 +73,9 @@ const { t } = useI18n()
 const expanded = ref(false)
 const steps = computed(() => buildExecutionSteps(props.events))
 const summary = computed(() => executionSummary(steps.value))
-const hasAttention = computed(() => summary.value.failed > 0 || hasPendingApproval(props.events))
+const hasAttention = computed(
+  () => summary.value.failed > 0 || summary.value.denied > 0 || hasPendingApproval(props.events),
+)
 
 watch(
   hasAttention,
@@ -230,6 +244,15 @@ summary::-webkit-details-marker {
 .step-status.error {
   color: var(--c-danger);
   background: color-mix(in srgb, var(--c-danger) 12%, transparent);
+}
+
+.step-status.denied {
+  color: var(--c-warn);
+}
+
+.step-status.skipped,
+.step-status.no_change {
+  color: var(--c-text-2);
 }
 
 .step-label {

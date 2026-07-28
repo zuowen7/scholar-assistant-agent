@@ -13,11 +13,15 @@ import fnmatch
 import logging
 import os
 import re
-from collections.abc import Awaitable, Callable
+import shlex
+import shutil
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from src.agent_v2.runtime.file_mutations import atomic_write_text, read_text_exact
+from src.agent_v2.runtime.process_control import process_group_kwargs, terminate_process_tree
 from src.agent_v2.types import ToolDefinition, ToolError
 
 if TYPE_CHECKING:
@@ -55,7 +59,8 @@ _WINDOWS_RESERVED = frozenset(
     }
 )
 
-_MAX_READ_BYTES = 256 * 1024
+_MAX_READ_BYTES = 8 * 1024 * 1024
+_READ_PAGE_CHARS = 3500
 _MAX_GREP_LINES = 200
 _MAX_GLOB_RESULTS = 2000
 _MAX_LIST_ENTRIES = 500
@@ -99,12 +104,33 @@ def _offset_for_monaco_position(content: str, line_number: int, column: int) -> 
 class ToolResult:
     output: str
     is_error: bool = False
+    status: str = ""
+    truncated: bool = False
+    original_chars: int = 0
+    returned_chars: int = 0
+    metadata: dict[str, Any] | None = None
 
-    def truncated(self, max_chars: int = _TOOL_RESULT_MAX) -> ToolResult:
+    def __post_init__(self) -> None:
+        if not self.status:
+            self.status = "error" if self.is_error else "success"
+        if self.status in {"error", "denied"}:
+            self.is_error = True
+        if self.original_chars <= 0:
+            self.original_chars = len(self.output)
+        if self.returned_chars <= 0:
+            self.returned_chars = len(self.output)
+
+    def limit_output(self, max_chars: int = _TOOL_RESULT_MAX) -> ToolResult:
         if len(self.output) <= max_chars:
             return self
         return ToolResult(
-            output=self.output[:max_chars] + "\n... [truncated]", is_error=self.is_error
+            output=self.output[:max_chars] + "\n... [truncated]",
+            is_error=self.is_error,
+            status=self.status,
+            truncated=True,
+            original_chars=len(self.output),
+            returned_chars=max_chars,
+            metadata=dict(self.metadata or {}),
         )
 
 
@@ -135,10 +161,36 @@ ToolFunc = Callable[[dict[str, Any]], Awaitable[ToolResult]]
 class ToolSpec:
     """A registered tool with its definition, execution function, and permission level."""
 
-    def __init__(self, definition: ToolDefinition, func: ToolFunc, permission: str = "read-only"):
+    def __init__(
+        self,
+        definition: ToolDefinition,
+        func: ToolFunc,
+        permission: str = "read-only",
+        effects: Iterable[str] | None = None,
+        approval_scope: str = "exact-input",
+        network_scope: Iterable[str] | None = None,
+        rollback_capability: str = "none",
+    ):
         self.definition = definition
         self.func = func
         self.permission = permission
+        self.effects = frozenset(effects or ())
+        self.approval_scope = approval_scope
+        self.network_scope = frozenset(network_scope or ())
+        self.rollback_capability = rollback_capability
+
+    @property
+    def requires_approval(self) -> bool:
+        return bool(
+            self.effects
+            & {
+                "filesystem_write",
+                "process",
+                "network",
+                "external_side_effect",
+                "cost",
+            }
+        )
 
 
 class ToolRegistry:
@@ -157,6 +209,7 @@ class ToolRegistry:
         # (e.g., sub_agent). Set via set_provider() — do NOT assign _provider
         # directly from outside the class.
         self._provider: Any = None
+        self._runtime_context: dict[str, Any] = {}
 
     def set_provider(self, provider: Any) -> None:
         """Inject the LLM provider for tools that need it (e.g., sub_agent).
@@ -171,6 +224,12 @@ class ToolRegistry:
         """Return the injected provider, or None if not set."""
         return self._provider
 
+    def set_runtime_context(self, **context: Any) -> None:
+        self._runtime_context = dict(context)
+
+    def get_runtime_context(self) -> dict[str, Any]:
+        return dict(self._runtime_context)
+
     def register(
         self,
         name: str,
@@ -178,6 +237,10 @@ class ToolRegistry:
         input_schema: dict[str, Any],
         func: ToolFunc,
         permission: str = "read-only",
+        effects: Iterable[str] | None = None,
+        approval_scope: str = "exact-input",
+        network_scope: Iterable[str] | None = None,
+        rollback_capability: str = "none",
     ) -> None:
         key = name.lower()
         if key in self._tools:
@@ -189,6 +252,10 @@ class ToolRegistry:
             ),
             func=func,
             permission=permission,
+            effects=effects,
+            approval_scope=approval_scope,
+            network_scope=network_scope,
+            rollback_capability=rollback_capability,
         )
 
     def get(self, name: str) -> ToolSpec | None:
@@ -206,7 +273,7 @@ class ToolRegistry:
             return ToolResult(output=f"tool '{name}' not found", is_error=True)
         try:
             result = await spec.func(args)
-            return result.truncated()
+            return result.limit_output()
         except Exception as e:
             return ToolResult(output=f"tool '{name}' error: {e}", is_error=True)
 
@@ -289,8 +356,6 @@ class ToolRegistry:
 
 
 def _create_file_ops(registry: ToolRegistry) -> None:
-    ws = registry._workspace_root
-
     async def read_file(args: dict) -> ToolResult:
         path_str = str(args.get("file_path", ""))
         if not path_str:
@@ -308,12 +373,46 @@ def _create_file_ops(registry: ToolRegistry) -> None:
             if b"\x00" in raw[:8192]:
                 return ToolResult(f"error: file is binary: {path_str}", is_error=True)
             size = len(raw)
-            text = raw.decode("utf-8", errors="replace")
             if size > _MAX_READ_BYTES:
                 return ToolResult(
-                    f"{text[:_MAX_READ_BYTES]}\n... [truncated at {_MAX_READ_BYTES} bytes]"
+                    f"error: file exceeds the {_MAX_READ_BYTES}-byte Agent read limit: {path_str}",
+                    is_error=True,
                 )
-            return ToolResult(text)
+            text = raw.decode("utf-8", errors="replace")
+            try:
+                offset = int(args.get("offset", 0))
+                requested_limit = int(args.get("limit", _READ_PAGE_CHARS))
+            except (TypeError, ValueError):
+                return ToolResult("error: offset and limit must be integers", is_error=True)
+            if offset < 0 or requested_limit <= 0:
+                return ToolResult(
+                    "error: offset must be non-negative and limit must be positive",
+                    is_error=True,
+                )
+            limit = min(requested_limit, _READ_PAGE_CHARS)
+            end = min(len(text), offset + limit)
+            if offset > len(text):
+                return ToolResult(
+                    f"error: offset {offset} is beyond end of file ({len(text)} chars)",
+                    is_error=True,
+                )
+            page = text[offset:end]
+            if end < len(text):
+                marker = (
+                    f"\n... [truncated; chars {offset}:{end} of {len(text)}; "
+                    f"continue with offset={end}]"
+                )
+                return ToolResult(
+                    page + marker,
+                    truncated=True,
+                    original_chars=len(text),
+                    returned_chars=len(page),
+                )
+            return ToolResult(
+                page,
+                original_chars=len(text),
+                returned_chars=len(page),
+            )
         except Exception as e:
             return ToolResult(f"error reading file: {e}", is_error=True)
 
@@ -326,11 +425,9 @@ def _create_file_ops(registry: ToolRegistry) -> None:
             return ToolResult(f"error: path '{path_str}' is outside workspace", is_error=True)
         if registry.check_windows_reserved(path_str):
             return ToolResult(f"error: '{path_str}' is a reserved name on Windows", is_error=True)
-        p = Path(path_str)
-        full = p if p.is_absolute() else (ws / p) if ws else p
         try:
-            full.parent.mkdir(parents=True, exist_ok=True)
-            full.write_text(content, encoding="utf-8")
+            full = registry._resolve_path(path_str)
+            atomic_write_text(full, content)
             return ToolResult(f"ok: wrote {len(content)} chars to {path_str}")
         except Exception as e:
             return ToolResult(f"error writing file: {e}", is_error=True)
@@ -343,16 +440,14 @@ def _create_file_ops(registry: ToolRegistry) -> None:
             return ToolResult("error: file_path and old_string are required", is_error=True)
         if registry.check_workspace_escape(path_str):
             return ToolResult(f"error: path '{path_str}' is outside workspace", is_error=True)
-        p = Path(path_str)
-        full = p if p.is_absolute() else (ws / p) if ws else p
         try:
+            full = registry._resolve_path(path_str)
             if not full.is_file():
                 return ToolResult(f"error: file not found: {path_str}", is_error=True)
             anchor_keys = ("start_line", "start_column", "end_line", "end_column")
             has_anchor = all(key in args for key in anchor_keys)
             if has_anchor:
-                with full.open("r", encoding="utf-8", newline="") as stream:
-                    content = stream.read()
+                content = read_text_exact(full)
                 try:
                     start = _offset_for_monaco_position(
                         content,
@@ -373,8 +468,12 @@ def _create_file_ops(registry: ToolRegistry) -> None:
                         "error: selected text changed on disk; save the document and select it again",
                         is_error=True,
                     )
-                with full.open("w", encoding="utf-8", newline="") as stream:
-                    stream.write(content[:start] + new_string + content[end:])
+                if old_string == new_string:
+                    return ToolResult(
+                        f"no change: selected text is already identical in {path_str}",
+                        status="no_change",
+                    )
+                atomic_write_text(full, content[:start] + new_string + content[end:])
                 return ToolResult(f"ok: replaced selected range in {path_str}")
 
             content = full.read_text(encoding="utf-8")
@@ -386,8 +485,13 @@ def _create_file_ops(registry: ToolRegistry) -> None:
                     f"error: old_string found {count} times in {path_str}, expected exactly 1",
                     is_error=True,
                 )
+            if old_string == new_string:
+                return ToolResult(
+                    f"no change: old_string and new_string are identical in {path_str}",
+                    status="no_change",
+                )
             new_content = content.replace(old_string, new_string, 1)
-            full.write_text(new_content, encoding="utf-8")
+            atomic_write_text(full, new_content)
             return ToolResult(f"ok: replaced in {path_str}")
         except Exception as e:
             return ToolResult(f"error in str_replace: {e}", is_error=True)
@@ -510,7 +614,22 @@ def _create_file_ops(registry: ToolRegistry) -> None:
         "Read file contents",
         {
             "type": "object",
-            "properties": {"file_path": {"type": "string", "description": "Path to file"}},
+            "properties": {
+                "file_path": {"type": "string", "description": "Path to file"},
+                "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 0,
+                    "description": "Character offset for paginated reads",
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": _READ_PAGE_CHARS,
+                    "default": _READ_PAGE_CHARS,
+                    "description": "Maximum characters to return",
+                },
+            },
             "required": ["file_path"],
         },
         read_file,
@@ -530,6 +649,9 @@ def _create_file_ops(registry: ToolRegistry) -> None:
         },
         write_file,
         permission="workspace-write",
+        effects={"filesystem_write"},
+        approval_scope="path",
+        rollback_capability="journaled",
     )
 
     registry.register(
@@ -546,6 +668,9 @@ def _create_file_ops(registry: ToolRegistry) -> None:
         },
         str_replace,
         permission="workspace-write",
+        effects={"filesystem_write"},
+        approval_scope="path",
+        rollback_capability="journaled",
     )
 
     registry.register(
@@ -581,16 +706,36 @@ def _create_file_ops(registry: ToolRegistry) -> None:
         if validation.is_blocked:
             return ToolResult(f"error: {validation.reason}", is_error=True)
         if validation.is_warn:
-            pass  # warnings are informational; execution proceeds
+            return ToolResult(f"error: {validation.message}", is_error=True)
 
         try:
             import asyncio as _aio
 
-            proc = await _aio.create_subprocess_shell(
-                command,
+            argv = shlex.split(command, posix=os.name != "nt")
+            if os.name == "nt":
+                argv = [
+                    token[1:-1]
+                    if len(token) >= 2 and token[0] == token[-1] and token[0] in "\"'"
+                    else token
+                    for token in argv
+                ]
+            if not argv:
+                return ToolResult("error: command is empty after parsing", is_error=True)
+            if argv[0].lower() == "echo":
+                # ``echo`` is a shell builtin on Windows. Implement the harmless
+                # form directly so the command runner never needs to re-enable a
+                # shell merely for cross-platform output.
+                return ToolResult(" ".join(argv[1:]) + "\n")
+            executable = shutil.which(argv[0])
+            if executable is None:
+                return ToolResult(f"error: executable not found: {argv[0]}", is_error=True)
+            proc = await _aio.create_subprocess_exec(
+                executable,
+                *argv[1:],
                 cwd=str(root),
                 stdout=_aio.subprocess.PIPE,
                 stderr=_aio.subprocess.STDOUT,
+                **process_group_kwargs(),
             )
             stdout, _ = await _aio.wait_for(proc.communicate(), timeout=30.0)
             output = stdout.decode("utf-8", errors="replace")
@@ -603,25 +748,29 @@ def _create_file_ops(registry: ToolRegistry) -> None:
                 result = ToolResult(f"[WARNING: {validation.message}]\n{output or '(no output)'}")
             return result
         except TimeoutError:
-            proc.kill()
-            await proc.wait()
+            await terminate_process_tree(proc)
             return ToolResult("error: command timed out (30s)", is_error=True)
         except Exception as e:
             return ToolResult(f"error running command: {e}", is_error=True)
 
     registry.register(
         "run_command",
-        "Execute a shell command in the workspace",
+        "Execute a direct command in the workspace (no shell)",
         {
             "type": "object",
             "properties": {
-                "command": {"type": "string", "description": "Shell command to run"},
+                "command": {
+                    "type": "string",
+                    "description": "Direct command to run without a shell",
+                },
                 "cwd": {"type": "string", "default": ".", "description": "Working directory"},
             },
             "required": ["command"],
         },
         run_command,
         permission="workspace-write",
+        effects={"process"},
+        approval_scope="exact-input",
     )
 
     registry.register(
@@ -654,8 +803,14 @@ def _create_file_ops(registry: ToolRegistry) -> None:
     )
 
 
-def create_default_registry(workspace_root: str | Path | None = None) -> ToolRegistry:
+def create_default_registry(
+    workspace_root: str | Path | None = None,
+    *,
+    include_run_command: bool = True,
+) -> ToolRegistry:
     """Create a registry with all builtin tools."""
     registry = ToolRegistry(workspace_root=workspace_root)
     _create_file_ops(registry)
+    if not include_run_command:
+        registry._tools.pop("run_command", None)
     return registry

@@ -35,6 +35,7 @@
     <!-- Inline diff overlay: rendered outside Monaco's DOM to avoid event interference -->
     <div
       v-if="diffOverlay.visible"
+      ref="diffOverlayRef"
       class="ai-diff-overlay"
       :style="{
         top: diffOverlay.top + 'px',
@@ -42,11 +43,17 @@
         width: diffOverlay.width + 'px',
       }"
     >
-      <section class="ai-diff-card">
+      <section
+        class="ai-diff-card"
+        :style="{
+          maxHeight: diffOverlay.maxHeight + 'px',
+          minHeight: Math.min(140, diffOverlay.maxHeight) + 'px',
+        }"
+      >
         <header class="ai-diff-header">
           <span class="ai-diff-title">{{ diffOverlay.title }}</span>
         </header>
-        <div class="ai-diff-new ai-diff-scroll" ref="diffContentRef">{{ diffOverlay.text }}</div>
+        <div ref="diffContentRef" class="ai-diff-new ai-diff-scroll">{{ diffOverlay.text }}</div>
         <footer class="ai-diff-actions">
           <button class="ai-diff-accept" @click.stop="diffOverlay.onAccept()">
             {{ diffOverlay.acceptLabel }}
@@ -81,6 +88,7 @@ import {
   computeSelectionToolbarPosition,
   type SelectionToolbarPosition,
 } from '../utils/selectionToolbarPosition'
+import { computeInlineDiffOverlayPosition } from '../utils/inlineDiffOverlayPosition'
 
 // 配置 Monaco Web Worker（解决 Tauri 环境下 worker 无法创建的问题）
 self.MonacoEnvironment = {
@@ -408,7 +416,10 @@ onMounted(() => {
   })
 
   editor.onDidScrollChange(() => scheduleSelectionToolbarUpdate())
-  editor.onDidLayoutChange(() => scheduleSelectionToolbarUpdate())
+  editor.onDidLayoutChange(() => {
+    scheduleSelectionToolbarUpdate()
+    _updateDiffOverlayPosition(true)
+  })
 
   // 重新聚焦时恢复缓存的 ghost text
   editor.onDidFocusEditorWidget(() => {
@@ -608,12 +619,14 @@ let _diffAfterLine = 0
 let _scrollDisposable: monaco.IDisposable | null = null
 
 const diffContentRef = ref<HTMLElement>()
+const diffOverlayRef = ref<HTMLElement>()
 
 const diffOverlay = reactive({
   visible: false,
   top: 0,
   left: 0,
   width: 640, // safe default, updated by _updateDiffOverlayPosition
+  maxHeight: 360,
   title: '',
   text: '',
   acceptLabel: '',
@@ -622,7 +635,7 @@ const diffOverlay = reactive({
   onReject: () => {},
 })
 
-function _updateDiffOverlayPosition() {
+function _updateDiffOverlayPosition(remeasureAfterLayout = false) {
   if (!editor || !diffOverlay.visible) return
   const wrapper = editorWrapper.value
   if (!wrapper) return
@@ -637,9 +650,20 @@ function _updateDiffOverlayPosition() {
   const scrollTop = editor.getScrollTop()
   const overlayTop = lineTop - scrollTop
 
-  diffOverlay.top = Math.max(0, overlayTop)
+  const position = computeInlineDiffOverlayPosition({
+    anchorTop: overlayTop,
+    viewportHeight: rect.height,
+    overlayHeight: diffOverlayRef.value?.getBoundingClientRect().height ?? 360,
+  })
+
+  diffOverlay.top = position.top
+  diffOverlay.maxHeight = position.maxHeight
   diffOverlay.left = Math.max(0, (rect.width - 720) / 2)
   diffOverlay.width = Math.max(280, Math.min(720, rect.width - 48))
+
+  if (remeasureAfterLayout) {
+    nextTick(() => _updateDiffOverlayPosition())
+  }
 }
 
 function _clearDiffDecorations() {
@@ -668,7 +692,7 @@ function _showInlineDiff(afterLineNumber: number, newText: string) {
   diffOverlay.visible = true
 
   // Update position now + track editor scroll
-  nextTick(() => _updateDiffOverlayPosition())
+  nextTick(() => _updateDiffOverlayPosition(true))
   _scrollDisposable?.dispose()
   _scrollDisposable = editor.onDidScrollChange(() => {
     _updateDiffOverlayPosition()
@@ -719,12 +743,12 @@ watch(activeEdit, (edit) => {
     _showInlineDiff(matchRange.endLineNumber, edit.newText)
     editor.revealRangeInCenter(matchRange)
     // Re-position after reveal animation completes
-    setTimeout(() => _updateDiffOverlayPosition(), 150)
+    setTimeout(() => _updateDiffOverlayPosition(true), 150)
   } else if (edit.operation === 'write_file' && edit.newText) {
     // Whole-file previews reserve space before the first line.
     _showInlineDiff(0, edit.newText)
     editor.revealLineInCenter(1)
-    setTimeout(() => _updateDiffOverlayPosition(), 150)
+    setTimeout(() => _updateDiffOverlayPosition(true), 150)
   }
 })
 

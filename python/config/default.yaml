@@ -1,6 +1,11 @@
 agent:
   api_key: ''
   base_url: ''
+  enable_run_command: false
+  enabled_plugins: []
+  max_steps: 48
+  max_tool_calls: 32
+  soft_tool_calls: 28
   model: ''
   model_aliases:
     4o: gpt-4o

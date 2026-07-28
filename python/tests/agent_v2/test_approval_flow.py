@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from src.agent_v2.hooks import HookDecision, HookPoint, HookResult, HookRunner
 from src.agent_v2.providers.mock_provider import (
     MockProvider,
     Scenario,
@@ -18,7 +19,7 @@ from src.agent_v2.providers.mock_provider import (
 from src.agent_v2.runtime.conversation import ConversationRuntime
 from src.agent_v2.runtime.permissions import PermissionMode, policy_from_registry
 from src.agent_v2.runtime.session import Session
-from src.agent_v2.tools.registry import create_default_registry
+from src.agent_v2.tools.registry import ToolRegistry, ToolResult, create_default_registry
 from src.agent_v2.types import AgentEventType
 
 
@@ -243,6 +244,187 @@ class TestApprovalPause:
             await asyncio.wait_for(task, timeout=5)
         types = [e.type for e in events]
         assert AgentEventType.TOOL_RESULT in types
+
+    @pytest.mark.asyncio
+    async def test_arbitrary_process_tool_requires_approval(self, workspace: Path):
+        """SEC-02: approval is derived from effects, not a hard-coded tool name."""
+        registry = ToolRegistry(workspace_root=workspace)
+        executed = False
+
+        async def custom_process(_args):
+            nonlocal executed
+            executed = True
+            return ToolResult("ok")
+
+        registry.register(
+            "custom_process",
+            "custom plugin-like process",
+            {"type": "object", "properties": {}},
+            custom_process,
+            permission="workspace-write",
+            effects={"process"},
+        )
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        runtime = ConversationRuntime(
+            provider=MockProvider(),
+            tool_registry=registry,
+            permission_policy=policy,
+            session=Session(workspace=str(workspace)),
+            auto_approve=False,
+        )
+        call = _tool_response("custom_process", {}).blocks[0]
+        events = []
+
+        async def collect():
+            async for event in runtime._execute_tool(call):
+                events.append(event)
+
+        task = asyncio.create_task(collect())
+        await asyncio.sleep(0.05)
+        approval = next(event for event in events if event.type == AgentEventType.AWAIT_APPROVAL)
+        assert executed is False
+        assert runtime.approve(approval.data["id"], "deny")
+        await task
+        assert executed is False
+
+    @pytest.mark.asyncio
+    async def test_allow_session_is_scoped_to_exact_tool_arguments(self, workspace: Path):
+        """SEC-01: approving one command must not approve a different command."""
+        registry = ToolRegistry(workspace_root=workspace)
+
+        async def custom_process(args):
+            return ToolResult(str(args["command"]))
+
+        registry.register(
+            "custom_process",
+            "custom plugin-like process",
+            {
+                "type": "object",
+                "properties": {"command": {"type": "string"}},
+                "required": ["command"],
+            },
+            custom_process,
+            permission="workspace-write",
+            effects={"process"},
+        )
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        runtime = ConversationRuntime(
+            provider=MockProvider(),
+            tool_registry=registry,
+            permission_policy=policy,
+            session=Session(workspace=str(workspace)),
+            auto_approve=False,
+        )
+
+        async def execute_and_decide(command: str, decision: str):
+            call = _tool_response("custom_process", {"command": command}).blocks[0]
+            events = []
+
+            async def collect():
+                async for event in runtime._execute_tool(call):
+                    events.append(event)
+
+            task = asyncio.create_task(collect())
+            await asyncio.sleep(0.05)
+            approval = next(
+                event for event in events if event.type == AgentEventType.AWAIT_APPROVAL
+            )
+            assert runtime.approve(approval.data["id"], decision)
+            await task
+            return events
+
+        await execute_and_decide("first", "allow_session")
+        second_events = await execute_and_decide("second", "allow_once")
+        assert any(event.type == AgentEventType.AWAIT_APPROVAL for event in second_events)
+
+    @pytest.mark.asyncio
+    async def test_pre_tool_hook_deny_blocks_execution(self, workspace: Path):
+        """SEC-02: production Runtime must enforce PreToolUse DENY."""
+        registry = ToolRegistry(workspace_root=workspace)
+        executed = False
+
+        async def custom_tool(_args):
+            nonlocal executed
+            executed = True
+            return ToolResult("ok")
+
+        registry.register(
+            "custom_tool",
+            "custom tool",
+            {"type": "object", "properties": {}},
+            custom_tool,
+            effects={"process"},
+        )
+        hooks = HookRunner()
+        hooks.register_callable(
+            "deny-custom",
+            HookPoint.PRE_TOOL_USE,
+            lambda _event: HookResult(decision=HookDecision.DENY, reason="blocked by test"),
+        )
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        runtime = ConversationRuntime(
+            provider=MockProvider(),
+            tool_registry=registry,
+            permission_policy=policy,
+            session=Session(workspace=str(workspace)),
+            auto_approve=True,
+            hook_runner=hooks,
+        )
+        call = _tool_response("custom_tool", {}).blocks[0]
+        events = [event async for event in runtime._execute_tool(call)]
+        assert executed is False
+        denied = next(event for event in events if event.type == AgentEventType.TOOL_DENIED)
+        assert "blocked by test" in denied.data["reason"]
+
+    @pytest.mark.asyncio
+    async def test_no_change_does_not_emit_checkpoint(self, workspace: Path):
+        """RUN-02: a no-op remains a tool attempt but is not a mutation."""
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        runtime = ConversationRuntime(
+            provider=MockProvider(),
+            tool_registry=registry,
+            permission_policy=policy,
+            session=Session(workspace=str(workspace)),
+            auto_approve=True,
+        )
+        call = _tool_response(
+            "str_replace",
+            {
+                "file_path": "test.md",
+                "old_string": "original content",
+                "new_string": "original content",
+            },
+        ).blocks[0]
+        events = [event async for event in runtime._execute_tool(call)]
+        result = next(event for event in events if event.type == AgentEventType.TOOL_RESULT)
+        assert result.data["status"] == "no_change"
+        assert all(event.type != AgentEventType.CHECKPOINT for event in events)
+
+    @pytest.mark.asyncio
+    async def test_long_tool_result_keeps_truncation_marker_and_metadata(self, workspace: Path):
+        """IO-01: Runtime and Session must not silently remove truncation evidence."""
+        (workspace / "long.txt").write_text("x" * 12000, encoding="utf-8")
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        session = Session(workspace=str(workspace))
+        runtime = ConversationRuntime(
+            provider=MockProvider(),
+            tool_registry=registry,
+            permission_policy=policy,
+            session=session,
+            auto_approve=True,
+        )
+        call = _tool_response("read_file", {"file_path": "long.txt"}).blocks[0]
+        events = [event async for event in runtime._execute_tool(call)]
+        result = next(event for event in events if event.type == AgentEventType.TOOL_RESULT)
+        assert result.data["truncated"] is True
+        assert result.data["original_chars"] == 12000
+        assert "[truncated;" in result.data["output"]
+        assert "continue with offset=3500" in result.data["output"]
+        persisted = session.messages[-1].blocks[0]
+        assert "[truncated;" in persisted.output
+        assert persisted.truncated is True
 
     @pytest.mark.asyncio
     async def test_approval_is_registered_before_event_is_emitted(self, workspace: Path):
