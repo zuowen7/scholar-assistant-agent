@@ -28,6 +28,7 @@ from collections.abc import AsyncGenerator, Callable
 from contextlib import suppress
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -170,7 +171,7 @@ class ChatRequestV2(BaseModel):
 
 
 class ApproveRequest(BaseModel):
-    decision: str = "allow_once"  # allow_once, allow_session, deny
+    decision: Literal["allow_once", "allow_session", "deny"] = "allow_once"
     reason: str | None = None
 
 

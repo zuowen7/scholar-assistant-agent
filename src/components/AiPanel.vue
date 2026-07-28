@@ -407,8 +407,9 @@ import {
 } from '../composables/useAiPanelState'
 import { API_BASE } from '../utils/api'
 import AgentApprovalInline from './AgentApprovalInline.vue'
-import type { PendingApproval } from '../composables/useAgentChat'
+import { useAgentChat, type PendingApproval } from '../composables/useAgentChat'
 import { useFileTree } from '../composables/useFileTree'
+import { currentWorkspaceGrant } from '../composables/useProject'
 import { useEditorState } from '../composables/useEditorState'
 import { useEditor } from '../composables/useEditor'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
@@ -474,6 +475,7 @@ const copiedId = ref<string | null>(null)
 let copiedTimer: ReturnType<typeof setTimeout> | null = null
 const acSessionId = ref<string | null>(null)
 const pendingApproval = ref<PendingApproval | null>(null)
+const { sendApproval: sendAgentApproval } = useAgentChat()
 const { rootDir, refresh: refreshFileTree } = useFileTree()
 const { tabs: editorTabs, setActiveEdit, clearActiveEdit } = useEditorState()
 const { reloadOpenTabs, applyExternalFileUpdate } = useEditor()
@@ -817,6 +819,7 @@ async function doSend(text: string) {
         context_text: props.editorContext?.trim() || undefined,
         context_file: props.activeFile?.trim() || undefined,
         workspace_root: rootDir.value?.trim() || undefined,
+        workspace_grant: currentWorkspaceGrant.value || undefined,
       }),
       signal: aiAbortCtrl.value.signal,
     })
@@ -866,6 +869,7 @@ async function doSend(text: string) {
       } else if (evtType === 'await_approval') {
         pendingApproval.value = {
           event_id: (d.event_id as string) || '',
+          session_id: acSessionId.value || '',
           tool_name: (meta?.tool_name as string) || (meta?.tool as string) || '',
           args: (meta?.args ?? meta?.arguments) as Record<string, unknown> | undefined,
           risk: meta?.risk as string | undefined,
@@ -960,19 +964,19 @@ function stopStream() {
 }
 
 async function handleApprovalDecision(decision: 'allow_once' | 'allow_session' | 'deny') {
-  const sid = acSessionId.value
-  const eventId = pendingApproval.value?.event_id
-  if (!sid || !eventId) return
-  pendingApproval.value = null
-  clearActiveEdit()
-  try {
-    await fetch(`${API}/api/agent/v2/approve/${sid}/${eventId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ decision }),
-    })
-  } catch {
-    /* non-fatal */
+  const pending = pendingApproval.value
+  if (!pending) return
+  const accepted = await sendAgentApproval(
+    pending.event_id,
+    decision,
+    undefined,
+    pending.session_id,
+  )
+  if (accepted) {
+    pendingApproval.value = null
+    clearActiveEdit()
+  } else {
+    showWarning(t('agent.approvalSubmitFailed'), 8000)
   }
 }
 
