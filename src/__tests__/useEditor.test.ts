@@ -103,7 +103,9 @@ describe('editor state composables (split)', () => {
       const result = await inlineEdit('Polish', 'polish')
 
       expect(result).toBe('Revised sentence')
-      expect(executeEdits.mock.calls.at(-1)?.[1]?.[0]?.text).toBe('Revised sentence')
+      const editCalls = executeEdits.mock.calls as unknown[][]
+      const lastEditCall = editCalls[editCalls.length - 1] as any[]
+      expect(lastEditCall?.[1]?.[0]?.text).toBe('Revised sentence')
     })
 
     it('decorates exactly the streamed replacement range', async () => {
@@ -124,8 +126,9 @@ describe('editor state composables (split)', () => {
 
       await inlineEdit('Polish', 'polish')
 
-      const streamedDecoration = deltaDecorations.mock.calls
-        .map((call) => call[1]?.[0]?.range)
+      const decorationCalls = deltaDecorations.mock.calls as unknown[][]
+      const streamedDecoration = decorationCalls
+        .map((call) => (call[1] as any[])?.[0]?.range)
         .find((range) => range?.endColumn === 4)
       expect(streamedDecoration).toMatchObject({
         startLineNumber: 1,

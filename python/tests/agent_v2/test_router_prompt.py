@@ -99,6 +99,9 @@ def test_agent_stats_reports_runtime_budget_config(monkeypatch):
             "max_steps": 41,
             "max_tool_calls": 17,
             "soft_tool_calls": 13,
+            "max_model_calls": 9,
+            "max_mutation_attempts": 7,
+            "max_active_seconds": 123,
         },
     )
     app = FastAPI()
@@ -110,6 +113,9 @@ def test_agent_stats_reports_runtime_budget_config(monkeypatch):
     assert stats.json()["max_steps"] == 41
     assert stats.json()["max_tool_calls"] == 17
     assert stats.json()["soft_tool_calls"] == 13
+    assert stats.json()["max_model_calls"] == 9
+    assert stats.json()["max_mutation_attempts"] == 7
+    assert stats.json()["max_active_seconds"] == 123
 
 
 def test_session_path_rejects_traversal(tmp_path, monkeypatch):

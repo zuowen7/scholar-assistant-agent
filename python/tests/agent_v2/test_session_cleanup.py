@@ -7,6 +7,7 @@ Covers the P0/P1 fixes from the 2026-07-20 architecture review:
   - workflow delete endpoint removes memory + disk with path-traversal guard
   - background cleanup loop runs and tolerates errors
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -19,11 +20,11 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from src.agent_v2.router import (
-    _cleanup_pool,
-    _background_cleanup_loop,
-    _SESSION_POOL,
     _SESSION_LOCK,
+    _SESSION_POOL,
     _SESSION_TTL,
+    _background_cleanup_loop,
+    _cleanup_pool,
     register_agent_v2_routes,
 )
 
@@ -166,6 +167,7 @@ class TestWorkflowCleanupEndpoint:
         """Endpoint should report evicted_memory and evicted_disk counts."""
         # Point _SESSION_DIR at a temp dir
         from src.agent_v2 import router as router_mod
+
         monkeypatch.setattr(router_mod, "_SESSION_DIR", tmp_path)
 
         # Add a stale session to memory pool
@@ -178,6 +180,7 @@ class TestWorkflowCleanupEndpoint:
         # Backdate mtime to beyond TTL
         old_time = time.time() - (_SESSION_TTL + 100)
         import os
+
         os.utime(stale_file, (old_time, old_time))
 
         client = TestClient(app)
@@ -192,6 +195,7 @@ class TestWorkflowCleanupEndpoint:
     def test_cleanup_preserves_streaming_session_files(self, app, tmp_path, monkeypatch):
         """Disk file for a streaming session (not evicted from pool) should NOT be deleted."""
         from src.agent_v2 import router as router_mod
+
         monkeypatch.setattr(router_mod, "_SESSION_DIR", tmp_path)
 
         # Streaming session stays in memory pool (not evicted by _cleanup_pool)
@@ -201,6 +205,7 @@ class TestWorkflowCleanupEndpoint:
         protected_file.write_text("{}", encoding="utf-8")
         old_time = time.time() - (_SESSION_TTL + 100)
         import os
+
         os.utime(protected_file, (old_time, old_time))
 
         client = TestClient(app)
@@ -209,6 +214,34 @@ class TestWorkflowCleanupEndpoint:
         # File should still exist because session was in pool (streaming, not evicted)
         assert protected_file.exists()
 
+    def test_cleanup_removes_rotations_and_subagent_sessions(self, app, tmp_path, monkeypatch):
+        """TTL cleanup must remove every artifact that can retain workspace content."""
+        from src.agent_v2 import router as router_mod
+        from src.agent_v2.runtime.session import Session
+
+        monkeypatch.setattr(router_mod, "_SESSION_DIR", tmp_path)
+        session_id = "sess_stale_tree"
+        session_file = tmp_path / f"{session_id}.jsonl"
+        Session(workspace=str(tmp_path), session_id=session_id).save(session_file)
+        rotated = Path(str(session_file) + ".1")
+        rotated.write_bytes(session_file.read_bytes())
+        child_dir = tmp_path / "subagents" / session_id
+        child_dir.mkdir(parents=True)
+        child = child_dir / "sub_child.jsonl"
+        Session(workspace=str(tmp_path), session_id="sub_child").save(child)
+        old_time = time.time() - (_SESSION_TTL + 100)
+        import os
+
+        for artifact in (session_file, rotated, child):
+            os.utime(artifact, (old_time, old_time))
+
+        resp = TestClient(app).post("/api/agent/v2/workflows/cleanup")
+
+        assert resp.status_code == 200
+        assert not session_file.exists()
+        assert not rotated.exists()
+        assert not child_dir.exists()
+
 
 class TestWorkflowDeleteEndpoint:
     """P1 fix: workflow delete must remove memory + disk with path traversal guard."""
@@ -216,6 +249,7 @@ class TestWorkflowDeleteEndpoint:
     def test_delete_removes_memory_and_disk(self, app, tmp_path, monkeypatch):
         """Delete should remove session from pool and delete JSONL file."""
         from src.agent_v2 import router as router_mod
+
         monkeypatch.setattr(router_mod, "_SESSION_DIR", tmp_path)
 
         rt = _make_runtime(streaming=False, idle_for=10.0)
@@ -232,6 +266,30 @@ class TestWorkflowDeleteEndpoint:
         assert "sess_delete_me" not in _SESSION_POOL
         assert not session_file.exists()
 
+    def test_delete_removes_rotations_and_subagent_sessions(self, app, tmp_path, monkeypatch):
+        """Explicit deletion must not leave recoverable mutation history behind."""
+        from src.agent_v2 import router as router_mod
+
+        monkeypatch.setattr(router_mod, "_SESSION_DIR", tmp_path)
+        rt = _make_runtime(streaming=False, idle_for=10.0)
+        _SESSION_POOL["sess_private"] = rt
+        session_file = tmp_path / "sess_private.jsonl"
+        session_file.write_text("{}", encoding="utf-8")
+        rotations = [Path(str(session_file) + f".{index}") for index in (1, 2, 3)]
+        for rotated in rotations:
+            rotated.write_text("sensitive pre-image", encoding="utf-8")
+        child_dir = tmp_path / "subagents" / "sess_private"
+        child_dir.mkdir(parents=True)
+        (child_dir / "sub_secret.jsonl").write_text("private draft", encoding="utf-8")
+
+        resp = TestClient(app).delete("/api/agent/v2/workflows/sess_private")
+
+        assert resp.status_code == 200
+        assert resp.json()["disk_removed"] is True
+        assert not session_file.exists()
+        assert all(not rotated.exists() for rotated in rotations)
+        assert not child_dir.exists()
+
     def test_delete_rejects_invalid_id_regex(self):
         """workflow_id not matching _SESSION_ID_RE should be rejected.
 
@@ -241,6 +299,7 @@ class TestWorkflowDeleteEndpoint:
         are rejected by the regex check inside the handler.
         """
         from src.agent_v2.router import _SESSION_ID_RE
+
         # Regex rejects dots, slashes, backslashes, parent-dir traversal
         assert not _SESSION_ID_RE.fullmatch("../etc/passwd")
         assert not _SESSION_ID_RE.fullmatch("sess/../../etc")
@@ -261,6 +320,7 @@ class TestWorkflowDeleteEndpoint:
         be triggered through the HTTP layer (routing blocks it first).
         """
         import re
+
         # Simulate a future regex regression that allows path chars
         loose_re = re.compile(r"^[A-Za-z0-9_./\\-]{1,128}$")
         # The defense-in-depth check should catch what the loosened regex misses
@@ -273,6 +333,7 @@ class TestWorkflowDeleteEndpoint:
     def test_delete_rejects_streaming_session(self, app, tmp_path, monkeypatch):
         """A streaming session should return 409 (abort first)."""
         from src.agent_v2 import router as router_mod
+
         monkeypatch.setattr(router_mod, "_SESSION_DIR", tmp_path)
 
         rt = _make_runtime(streaming=True, idle_for=1.0)
@@ -287,6 +348,7 @@ class TestWorkflowDeleteEndpoint:
     def test_delete_nonexistent_returns_ok(self, app, tmp_path, monkeypatch):
         """Deleting a non-existent session should succeed (idempotent)."""
         from src.agent_v2 import router as router_mod
+
         monkeypatch.setattr(router_mod, "_SESSION_DIR", tmp_path)
 
         client = TestClient(app)
@@ -301,6 +363,7 @@ class TestToolRegistrySetProvider:
 
     def test_set_provider_and_get_provider(self):
         from src.agent_v2.tools.registry import ToolRegistry
+
         registry = ToolRegistry()
         assert registry.get_provider() is None
         provider = MagicMock()

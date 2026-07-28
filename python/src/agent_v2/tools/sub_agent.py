@@ -229,8 +229,9 @@ def register_sub_agent(registry: ToolRegistry) -> None:
     registry.register(
         "run_sub_agent",
         (
-            "Run a specialized sub-agent to audit, explain, implement, or translate content. "
-            "Use this for complex multi-step tasks. Available presets: audit, explain, implement, translate."
+            "Run a one-shot specialist model call to audit, explain, implement, or translate "
+            "provided content. It has no tools and cannot delegate or perform multi-step "
+            "workspace work. Available presets: audit, explain, implement, translate."
         ),
         {
             "type": "object",

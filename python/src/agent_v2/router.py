@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import time
 import uuid
 from collections.abc import AsyncGenerator, Callable
@@ -88,6 +89,58 @@ def _session_path(session_id: str) -> Path:
     path = (root / f"{sid}.jsonl").resolve()
     path.relative_to(root)
     return path
+
+
+def _session_artifact_files(session_id: str) -> list[Path]:
+    """Return every persisted file that may retain content for one parent session."""
+    sid = _validate_session_id(session_id)
+    main = _session_path(sid)
+    artifacts = [main, *(Path(f"{main}.{index}") for index in range(1, 4))]
+    child_root = (_SESSION_DIR / "subagents" / sid).resolve()
+    child_root.relative_to((_SESSION_DIR / "subagents").resolve())
+    if child_root.is_dir():
+        artifacts.extend(path for path in child_root.rglob("*") if path.is_file())
+    return artifacts
+
+
+def _session_representative_path(session_id: str) -> Path | None:
+    """Find a loadable artifact, including rotations and orphaned child sessions."""
+    return next((path for path in _session_artifact_files(session_id) if path.is_file()), None)
+
+
+def _persisted_session_ids() -> set[str]:
+    """Discover parent session IDs even when only rotations or child sessions remain."""
+    result: set[str] = set()
+    if not _SESSION_DIR.is_dir():
+        return result
+    for path in _SESSION_DIR.glob("*.jsonl*"):
+        candidate = path.name.split(".jsonl", 1)[0]
+        if _SESSION_ID_RE.fullmatch(candidate):
+            result.add(candidate)
+    child_root = _SESSION_DIR / "subagents"
+    if child_root.is_dir():
+        for path in child_root.iterdir():
+            if path.is_dir() and _SESSION_ID_RE.fullmatch(path.name):
+                result.add(path.name)
+    return result
+
+
+def _delete_session_artifacts(session_id: str) -> int:
+    """Delete the main JSONL, rotations, and all child-session artifacts."""
+    sid = _validate_session_id(session_id)
+    removed = 0
+    for path in _session_artifact_files(sid):
+        if path.is_file() or path.is_symlink():
+            path.unlink()
+            removed += 1
+    child_root = (_SESSION_DIR / "subagents" / sid).resolve()
+    child_root.relative_to((_SESSION_DIR / "subagents").resolve())
+    if child_root.is_dir():
+        shutil.rmtree(child_root)
+    subagents_root = _SESSION_DIR / "subagents"
+    with suppress(OSError):
+        subagents_root.rmdir()
+    return removed
 
 
 class SelectionContextV2(BaseModel):
@@ -627,6 +680,9 @@ def _create_runtime(
     max_steps = int(agent_cfg.get("max_steps", 48) or 48)
     max_tool_calls = int(agent_cfg.get("max_tool_calls", 32) or 32)
     soft_tool_calls = int(agent_cfg.get("soft_tool_calls", 28) or 28)
+    max_model_calls = int(agent_cfg.get("max_model_calls", 16) or 16)
+    max_mutation_attempts = int(agent_cfg.get("max_mutation_attempts", 12) or 12)
+    max_active_seconds = float(agent_cfg.get("max_active_seconds", 300) or 300)
 
     return ConversationRuntime(
         provider=provider,
@@ -638,6 +694,9 @@ def _create_runtime(
         max_steps=max_steps,
         max_tool_calls=max_tool_calls,
         soft_tool_calls=soft_tool_calls,
+        max_model_calls=max_model_calls,
+        max_mutation_attempts=max_mutation_attempts,
+        max_active_seconds=max_active_seconds,
         edit_scope=edit_scope,
         hook_runner=hook_runner,
     )
@@ -960,21 +1019,33 @@ def register_agent_v2_routes(
         evicted_disk = 0
         now_ts = time.time()
         if _SESSION_DIR.exists():
-            for f in _SESSION_DIR.glob("*.jsonl"):
+            for session_id in sorted(_persisted_session_ids()):
                 try:
-                    mtime = f.stat().st_mtime
-                    if now_ts - mtime > _SESSION_TTL:
-                        loaded = Session.load(f)
-                        if not _session_matches_workspace(loaded, authorized_workspace):
-                            continue
-                        # Don't delete a file whose session is still in memory
-                        # (e.g., long-running stream that hasn't updated mtime).
-                        if f.stem in _SESSION_POOL:
-                            continue
-                        f.unlink()
-                        evicted_disk += 1
-                except OSError:
-                    logger.warning("Failed to stat/remove stale session file %s", f, exc_info=True)
+                    # Don't delete artifacts whose parent session is still in memory
+                    # (e.g., a long-running stream with an old on-disk mtime).
+                    if session_id in _SESSION_POOL:
+                        continue
+                    artifacts = _session_artifact_files(session_id)
+                    existing = [path for path in artifacts if path.is_file()]
+                    if (
+                        not existing
+                        or now_ts - max(path.stat().st_mtime for path in existing) <= _SESSION_TTL
+                    ):
+                        continue
+                    representative = _session_representative_path(session_id)
+                    if representative is None:
+                        continue
+                    loaded = Session.load(representative)
+                    if not _session_matches_workspace(loaded, authorized_workspace):
+                        continue
+                    _delete_session_artifacts(session_id)
+                    evicted_disk += 1
+                except (OSError, ValueError):
+                    logger.warning(
+                        "Failed to inspect/remove stale session artifacts for %s",
+                        session_id,
+                        exc_info=True,
+                    )
         logger.info(
             "workflow cleanup: evicted %d memory + %d disk sessions", evicted_memory, evicted_disk
         )
@@ -1000,7 +1071,6 @@ def register_agent_v2_routes(
         # preserving the endpoint's established idempotent-delete contract.
         _authorized_workspace_from_header(request)
 
-        session_path = _session_path(workflow_id)
         # Don't allow deleting a session that is currently streaming.
         async with _SESSION_LOCK:
             rt = _SESSION_POOL.get(workflow_id)
@@ -1010,9 +1080,10 @@ def register_agent_v2_routes(
                 )
             if rt is not None:
                 session = rt.session
-            elif session_path.is_file():
-                session = Session.load(session_path)
             else:
+                representative = _session_representative_path(workflow_id)
+                session = Session.load(representative) if representative is not None else None
+            if session is None:
                 return {
                     "status": "ok",
                     "deleted": workflow_id,
@@ -1021,14 +1092,11 @@ def register_agent_v2_routes(
             _authorize_workspace_header(request, session.meta.workspace)
             _SESSION_POOL.pop(workflow_id, None)
 
-        deleted_disk = False
-        if session_path.is_file():
-            try:
-                session_path.unlink()
-                deleted_disk = True
-            except OSError as e:
-                logger.warning("Failed to delete session file %s: %s", session_path, e)
-                raise HTTPException(500, f"Failed to delete session file: {e}")
+        try:
+            deleted_disk = _delete_session_artifacts(workflow_id) > 0
+        except OSError as e:
+            logger.warning("Failed to delete session artifacts for %s: %s", workflow_id, e)
+            raise HTTPException(500, f"Failed to delete session artifacts: {e}") from e
 
         logger.info("workflow delete: %s (memory=yes, disk=%s)", workflow_id, deleted_disk)
         return {
@@ -1116,6 +1184,9 @@ def register_agent_v2_routes(
             "max_steps": cfg.get("max_steps", 48),
             "max_tool_calls": cfg.get("max_tool_calls", 32),
             "soft_tool_calls": cfg.get("soft_tool_calls", 28),
+            "max_model_calls": cfg.get("max_model_calls", 16),
+            "max_mutation_attempts": cfg.get("max_mutation_attempts", 12),
+            "max_active_seconds": cfg.get("max_active_seconds", 300),
             "enable_run_command": bool(cfg.get("enable_run_command", False)),
         }
 

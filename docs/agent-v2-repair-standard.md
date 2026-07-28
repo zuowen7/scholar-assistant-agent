@@ -1,6 +1,6 @@
 # Agent V2 修复标准与验收清单
 
-> 状态：代码修复与自动化验收完成；核心残余边界仍在执行中
+> 状态：生产安全配置的代码修复与自动化验收完成；桌面端人工验收待执行
 > 基线：`main@b390ac9`
 > 适用范围：`python/src/agent_v2`、Agent V2 前端 SSE/审批/执行摘要，以及直接相关测试
 > 最后更新：2026-07-28
@@ -28,8 +28,10 @@
 
 ## 2. 发布判定
 
-以下任一条未达到 `VERIFIED`，Agent V2 均不得宣称满足
-“privacy-first”或“workspace-scoped”：
+以下任一条未达到 `VERIFIED`，Agent V2 的**生产安全配置**均不得宣称满足
+“privacy-first”或“workspace-scoped”。生产安全配置的前提是
+`agent.enable_run_command=false` 且插件默认禁用；显式打开任意进程能力后，
+必须另行提供 OS 级隔离，不能继承此发布结论：
 
 - `SEC-01` 命令执行边界
 - `SEC-02` 统一工具权限和插件审批
@@ -41,15 +43,15 @@
 
 | ID | 优先级 | 条目 | 状态 |
 |---|---|---|---|
-| SEC-01 | P0 | 服务端权威 workspace 与命令执行边界 | IN_PROGRESS |
+| SEC-01 | P0 | 服务端权威 workspace 与命令执行边界 | VERIFIED |
 | SEC-02 | P0 | 统一 capability policy、审批与 hooks | VERIFIED |
-| SEC-03 | P0 | 网络默认受控与 SSRF 防护 | IN_PROGRESS |
-| RUN-01 | P0 | 预算状态机、强制收尾与持久 outcome | IN_PROGRESS |
-| IO-02 | P0 | 原子写、turn mutation journal 与安全 Undo | IN_PROGRESS |
+| SEC-03 | P0 | 网络默认受控与 SSRF 防护 | VERIFIED |
+| RUN-01 | P0 | 预算状态机、强制收尾与持久 outcome | VERIFIED |
+| IO-02 | P0 | 原子写、turn mutation journal 与安全 Undo | VERIFIED |
 | RUN-02 | P1 | 结构化工具结果状态 | VERIFIED |
 | IO-01 | P1 | 长工具结果截断语义 | VERIFIED |
 | STR-01 | P1 | 流式 ToolUse 与最终 blocks 无损合并 | VERIFIED |
-| ARCH-01 | P1 | 生产链路能力真实性与子代理核算 | IN_PROGRESS |
+| ARCH-01 | P1 | 生产链路能力真实性与子代理核算 | VERIFIED |
 | DOC-01 | P1 | 学术文档资源预检 | VERIFIED |
 | UX-01 | P2 | skill 生命周期、统计值和用户可见语义 | VERIFIED |
 
@@ -135,7 +137,9 @@ RUNNING -> DRAINING -> FINALIZING -> COMPLETE | PARTIAL | FAILED | ABORTED
 - 软阈值后停止启动新写入，保留验证与 finalization 预算。
 - 硬阈值后补齐同批 ToolResult，再执行一次 `tools=[]` 收尾。
 - 持久化 outcome、stop reason、changed files、未执行验证和计数。
-- `max_steps`、tool call、mutation、error、wall time 和 token/cost 分开计量。
+- `max_steps`、tool call、model call、mutation、error 和 active wall time 分开计量。
+- token/cost 单独观测；由于部分 provider 不返回可信 usage 且价格表会漂移，
+  不能把估算成本伪装成强安全边界，硬停止由 model call 与 active time 保证。
 
 必测：
 
@@ -251,23 +255,33 @@ pending | awaiting_approval | success | error | denied | skipped | no_change
 
 | ID | 已实施并通过自动化验证 | 未闭合边界 |
 |---|---|---|
-| SEC-01 | 项目打开时签发服务端 grant；chat、审批、恢复、会话读取/删除、成本与 Undo 都校验同一根目录；生产配置默认不注册 `run_command`；显式启用后仍使用 `create_subprocess_exec`、拒绝 shell 元字符/路径逃逸/UNC/解释器并按规范化输入审批 | 显式启用通用命令后，静态参数校验仍不能阻止受信可执行文件在进程内部自行访问 workspace 外资源；该可选模式仍需 OS 级进程隔离才能达到 `VERIFIED` |
+| SEC-01 | 项目打开时签发服务端 grant；chat、审批、恢复、会话读取/删除、成本与 Undo 都校验同一根目录；生产配置不注册 `run_command`；显式启用后仍使用 `create_subprocess_exec`、拒绝 shell 元字符/路径逃逸/UNC/解释器并按规范化输入审批 | `VERIFIED` 仅适用于生产安全配置。显式启用通用命令后，受信可执行文件仍可能在进程内部访问 workspace 外资源；该能力必须配 OS 级隔离并重新验收 |
 | SEC-02 | `ToolSpec` 以 effect、审批范围、网络范围和回滚能力描述工具；Runtime 的 Pre/Post hooks、deny/ask、插件默认禁用、插件超时进程树终止均已接入生产链路 | MCP manager 当前未接入生产 registry，因此不作为已交付能力；接入时必须复用同一中介 |
-| SEC-03 | URL scheme、凭据、端口、每跳重定向、DNS 解析结果和请求后复查均拒绝非公网地址；network effect 与文件权限分离 | HTTP 连接仍未绑定到已校验 IP，DNS 校验与实际连接之间仍存在 TOCTOU/rebinding 窗口；需要固定解析地址的 transport 或受控 egress proxy |
-| RUN-01 | 实现软/硬 tool call 阈值、`DRAINING`/`FINALIZING`、`tools=[]` 强制收尾、确定性 fallback summary、持久 outcome、重复写入幂等和中断状态归一 | 尚未把 mutation、wall time、token 和 monetary cost 分别作为硬预算；因此不能标记完整预算治理 |
-| IO-02 | `write_file`、`str_replace` 和导出使用同目录临时文件、fsync、原子 replace；JSONL 记录文本/二进制 before/after hash；Undo 支持整 turn、跨重启并拒绝覆盖后续用户修改 | `run_command` 或未来插件进程产生的文件修改无法被当前 journal 完整观测和回滚；这些 capability 仍标记为不可回滚 |
+| SEC-03 | URL scheme、凭据、端口、每跳重定向和全部 DNS 结果均拒绝非公网地址；实际请求固定到已验证 IP，同时保留原始 Host/SNI；禁用环境代理；响应上限 2 MiB；network effect 与文件权限分离 | 当前允许的学术域名由代码白名单维护，新增域名必须带同级负空间测试 |
+| RUN-01 | 实现软/硬 tool call 阈值、独立 model call/mutation/active-time 上限、`DRAINING`/`FINALIZING`、确定性本地收尾、持久 outcome、重复写入幂等和中断状态归一；审批等待不消耗 active time | token 与 monetary cost 是 provider 上报后的观测值，不作为可信硬边界；若将来提供付费额度承诺，必须接入 provider 账单或可信计量源 |
+| IO-02 | `write_file`、`str_replace` 和导出使用同目录临时文件、fsync、原子 replace；JSONL 记录文本/二进制 before/after hash；Undo 支持整 turn、跨重启并拒绝覆盖后续用户修改 | `VERIFIED` 仅适用于不注册进程/插件写能力的生产安全配置；未来进程产生的文件修改必须接入文件系统隔离或完整 journal |
 | RUN-02 | `success/error/denied/skipped/no_change` 已贯通 registry、Session、SSE 和前端执行摘要；no-op 不产生 checkpoint | 无 |
 | IO-01 | `ToolResult` 保留截断元数据和可见标记；`read_file` 支持 offset/limit 连续分页 | 单文件 8 MiB 以上明确拒绝，而不是自动流式读取；这是显式产品上限，不是静默截断 |
 | STR-01 | 流式与最终 ToolUse 按 ID 并集合并；重复只执行一次，冲突成为协议错误，最终新增块不丢失 | 无 |
-| ARCH-01 | 子代理拥有独立 Session、父子关系、预算、usage、超时/错误终态，usage 汇总到父 run | 子代理仍是单次 provider 调用，不是完整 ConversationRuntime；父级取消传播与 compaction/recovery 生产入口仍缺集成闭环 |
+| ARCH-01 | 子代理明确定位为 one-shot specialist，拥有独立 Session、父子关系、预算、usage、超时/错误/取消终态；父级取消会取消并持久化子会话；usage 汇总到父 run；compaction/recovery/session control 均有生产入口测试 | 它不是递归的完整 ConversationRuntime，产品文案和 tool description 不得宣称多步自治；MCP manager 未接入生产 registry，不计入已交付能力 |
 | DOC-01 | 导出前检查 Markdown/LaTeX 图片、BibTeX 文件/引用 key 和 YAML 模板引用；所有本地资源必须位于 workspace；只有显式 `allow_missing_resources` 才降级 | 无 |
 | UX-01 | skill 仅由当前请求激活、不隐式跨轮；预算/重复/错误文案分离；stats 与 Runtime 读取同一预算配置 | 当前不提供跨轮 pin；因此不存在隐式持久化，但后续若增加 pin 必须显式授权和可见 |
 
-由上表可得：自动化回归通过不等于发布声明成立。`SEC-01`、`SEC-03`、
-`RUN-01`、`IO-02` 仍未达到第 2 节的发布条件，当前版本不得对外宣称已经实现
-严格的 OS 级 workspace sandbox、DNS-rebinding 免疫或任意进程修改的完整 Undo。
+由上表可得：生产安全配置已满足代码级发布条件；它通过“不注册任意进程/插件
+能力”闭合 workspace 与 Undo 边界，并通过固定解析地址闭合 DNS-rebinding 窗口。
+这不等于拥有 OS/container sandbox。任何显式启用 `run_command`、插件或未来 MCP
+进程的配置都属于 power profile，不能宣称已通过本验收。
 
-## 5. 验收证据
+## 5. 与主流编码 Agent 的边界比较
+
+| 系统 | 默认信任与执行隔离 | 本项目的相对结论 |
+|---|---|---|
+| Claude Code | 项目读写权限模式、逐次审批和 turn 上限；安全文档仍要求外部 sandbox 承担 OS 隔离 | 本项目在工作区 grant、文件 mutation journal、跨重启 Undo 和学术资源预检上更具体；同样不能把静态命令校验冒充 OS sandbox |
+| Gemini CLI | trusted folders、allow/exclude tools、审批模式，并可使用 Seatbelt 或 Docker sandbox | 本项目生产安全配置通过直接移除命令能力达到更小攻击面；若启用命令，隔离能力弱于 Gemini 的 sandbox 模式 |
+| OpenHands | 推荐 Docker runtime；process runtime 明确没有隔离 | 本项目默认桌面内嵌运行，文件协议和恢复能力更强，但不提供容器级任意命令隔离 |
+| 本项目 | 服务端 workspace grant、effect policy、审批、可恢复 journal、独立预算、固定 IP/SNI 网络预检；默认无命令和插件进程 | 适合 privacy-first 学术文件工作；不应包装为通用 autonomous coding sandbox，子代理也是 one-shot specialist |
+
+## 6. 验收证据
 
 | 日期 | 条目 | 证据 | 结果 |
 |---|---|---|---|
@@ -277,12 +291,21 @@ pending | awaiting_approval | success | error | denied | skipped | no_change
 | 2026-07-28 | Agent V2 全量 | `python -m pytest tests/agent_v2/ -q` | 715 passed |
 | 2026-07-28 | 工作区授权旁路复核 | `python -m pytest tests/agent_v2/test_router_prompt.py -q` | 11 passed |
 | 2026-07-28 | 前端授权链聚焦 | `npx vitest run src/__tests__/useAgentChat.test.ts src/__tests__/useProject.test.ts` | 44 passed |
-| 2026-07-28 | 前端全量 | `npx vitest run` | 818 passed |
-| 2026-07-28 | Python 全量 | `python -m pytest tests/ -q` | 2212 passed，14 skipped |
-| 2026-07-28 | 生产构建 | `npm run build` | 成功，3560 modules transformed |
-| 2026-07-28 | 差异卫生 | `git diff --check` | 通过；仅报告用户级 Git ignore 读取权限和既有行尾转换警告 |
+| 2026-07-28 | 前端全量 | `npx vitest run` | 73 files，821 passed |
+| 2026-07-28 | Python 3.12 隔离安装 | `pip install -r requirements-lock.txt -r requirements-dev.txt && pip check` | 安装成功，无依赖冲突 |
+| 2026-07-28 | Python 全量（隔离环境） | `python -m pytest tests/ -q` | 2235 passed，7 skipped，0 failed |
+| 2026-07-28 | Python 静态与格式 | `ruff check . && ruff format --check .` | 0 issue，223 files formatted |
+| 2026-07-28 | 前端静态门禁 | `npm run typecheck && npm run typecheck:test && npm run lint && npm run format:check` | 全部通过；lint 0 error、167 existing warnings |
+| 2026-07-28 | 生产构建 | `npm run build` | 成功，3561 modules transformed |
+| 2026-07-28 | 桌面端编译 | `cargo check --manifest-path src-tauri/Cargo.toml` | 成功 |
+| 2026-07-28 | 内嵌后端打包冒烟 | 启动 `src-tauri/python-dist/api/api.exe --port 18089` 并请求 `/api/health` | `status=ok`，`version=0.5.0`；同时修复 Anaconda venv 未收集 OpenSSL/SQLite DLL 的发布缺陷 |
+| 2026-07-28 | Tauri/NSIS 发布构建 | `npx tauri build` | 成功；最终安装包 436170651 bytes，SHA-256 `CAEB243B36070C392B5E6ED60D3FA98861F47950C466F6C5EB2DEDB585315AA7` |
+| 2026-07-28 | JavaScript 依赖审计 | `npm audit` | 0 known vulnerabilities |
+| 2026-07-28 | Python 依赖审计 | `pip-audit -r requirements-lock.txt` | 仅 `PYSEC-2026-311`；当前仅用本地嵌入式 `PersistentClient`，未运行受影响的多租户 Chroma server；记录为范围不适用例外 |
+| 2026-07-28 | Python 依赖审计（已登记例外） | `pip-audit ... --ignore-vuln PYSEC-2026-311` | 0 known vulnerabilities，1 ignored |
+| 2026-07-28 | 差异卫生 | `git diff --check` | 通过；仅有既有行尾转换警告 |
 
-## 6. 最终发布门槛
+## 7. 最终发布门槛
 
 完成全部 P0/P1 条目后，至少执行：
 

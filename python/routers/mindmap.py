@@ -89,9 +89,7 @@ def register_mindmap(
     async def save_mindmap(data: dict, workspace_root: str) -> dict:
         mindmap_path = _mindmap_path(workspace_root)
         mindmap_path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp_name = tempfile.mkstemp(
-            dir=mindmap_path.parent, prefix=".mindmap.", suffix=".tmp"
-        )
+        fd, tmp_name = tempfile.mkstemp(dir=mindmap_path.parent, prefix=".mindmap.", suffix=".tmp")
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -99,10 +97,8 @@ def register_mindmap(
                 os.fsync(f.fileno())
             os.replace(tmp_name, mindmap_path)
         except Exception:
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp_name)
-            except OSError:
-                pass
             raise
         return {"ok": True}
 

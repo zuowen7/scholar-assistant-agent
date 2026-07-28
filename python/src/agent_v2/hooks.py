@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Protocol
 
+from src.agent_v2.runtime.process_control import process_group_kwargs, terminate_process_tree
+
 logger = logging.getLogger(__name__)
 
 
@@ -276,6 +278,22 @@ class HookRunner:
                 final.permission_reason = result.permission_reason
 
             if hook_point == HookPoint.PRE_TOOL_USE:
+                if result.permission_override == "deny":
+                    final.decision = HookDecision.DENY
+                    final.reason = (
+                        result.permission_reason
+                        or result.reason
+                        or f"hook {hook.name} denied the tool"
+                    )
+                    return final
+                if result.permission_override == "ask":
+                    final.decision = HookDecision.ASK
+                    final.reason = (
+                        result.permission_reason
+                        or result.reason
+                        or f"hook {hook.name} requires approval"
+                    )
+                    return final
                 if result.decision == HookDecision.DENY:
                     final.decision = HookDecision.DENY
                     final.reason = result.reason
@@ -302,10 +320,16 @@ class HookRunner:
                 return HookResult(decision=HookDecision.ALLOW)
             except Exception as e:
                 logger.warning("hook '%s' failed: %s", hook.name, e)
+                if hook.hook_point == HookPoint.PRE_TOOL_USE:
+                    return HookResult(
+                        decision=HookDecision.DENY,
+                        reason=f"PreToolUse hook failed closed: {hook.name}",
+                    )
                 return HookResult(decision=HookDecision.ALLOW)
 
         # Shell command hook
         if hook.command and not hook.command.startswith("callable:"):
+            proc = None
             try:
                 proc = await _create_subprocess(hook.command)
                 input_json = json.dumps(event.to_dict(), ensure_ascii=False)
@@ -315,8 +339,26 @@ class HookRunner:
                 stdout_text = stdout.decode("utf-8", errors="replace").strip()
 
                 return _parse_shell_hook_output(proc.returncode, stdout_text)
+            except asyncio.CancelledError:
+                if proc is not None and proc.returncode is None:
+                    await terminate_process_tree(proc)
+                raise
+            except TimeoutError:
+                if proc is not None and proc.returncode is None:
+                    await terminate_process_tree(proc)
+                logger.warning("shell hook '%s' timed out", hook.name)
+                if hook.hook_point == HookPoint.PRE_TOOL_USE:
+                    return HookResult(
+                        decision=HookDecision.DENY,
+                        reason=f"PreToolUse hook timed out: {hook.name}",
+                    )
             except Exception as e:
                 logger.warning("shell hook '%s' failed: %s", hook.name, e)
+                if hook.hook_point == HookPoint.PRE_TOOL_USE:
+                    return HookResult(
+                        decision=HookDecision.DENY,
+                        reason=f"PreToolUse hook failed closed: {hook.name}",
+                    )
 
         return HookResult(decision=HookDecision.ALLOW)
 
@@ -415,4 +457,5 @@ async def _create_subprocess(command: str):
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        **process_group_kwargs(),
     )

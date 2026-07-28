@@ -16,7 +16,8 @@ def test_config_load_missing_file():
 
     missing = Path("/nonexistent/path/default.yaml")
     with pytest.raises(FileNotFoundError):
-        open(missing)
+        with missing.open():
+            pass
 
 
 def test_session_save_to_nonexistent_dir():
@@ -35,7 +36,7 @@ def test_translate_corrupted_config():
     import yaml
 
     bad_yaml = "{{invalid yaml::"
-    with pytest.raises(Exception):
+    with pytest.raises(yaml.YAMLError):
         yaml.safe_load(bad_yaml)
 
 

@@ -296,7 +296,8 @@ describe('toFlowNodes carries body', () => {
 
     const nodes = toFlowNodes(draftMindMap.value)
     const rootNode = nodes.find((n: any) => n.id === rootId)
-    expect(rootNode.data.body).toBe('Flow body text')
+    expect(rootNode).toBeDefined()
+    expect(rootNode!.data!.body).toBe('Flow body text')
   })
 })
 

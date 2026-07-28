@@ -109,7 +109,7 @@ class TestGlossary:
         assert resp.status_code in (200, 404)
         if resp.status_code == 200:
             data = resp.json()
-            assert isinstance(data, list) or isinstance(data, dict)
+            assert isinstance(data, (list, dict))
 
     def test_put_glossary(self, client):
         resp = client.put(

@@ -192,6 +192,60 @@ class TestRegisterTools:
         result = await reg.execute("greet", {})
         assert "hello from plugin" in result.output
 
+    @pytest.mark.asyncio
+    async def test_cancelled_plugin_tool_terminates_process_tree(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        import asyncio
+
+        import src.agent_v2.plugins as plugins
+
+        started = asyncio.Event()
+        terminated = []
+
+        class BlockingProcess:
+            returncode = None
+
+            async def communicate(self, _input):
+                started.set()
+                await asyncio.Event().wait()
+
+        process = BlockingProcess()
+
+        async def create(*_args, **_kwargs):
+            return process
+
+        async def terminate(proc):
+            terminated.append(proc)
+
+        monkeypatch.setattr(plugins.asyncio, "create_subprocess_shell", create)
+        monkeypatch.setattr(plugins, "terminate_process_tree", terminate)
+        _create_plugin(
+            tmp_path,
+            "p1",
+            tools=[
+                {
+                    "name": "blocking",
+                    "description": "Block",
+                    "input_schema": {},
+                    "command": "blocking",
+                },
+            ],
+        )
+        manager = PluginManager()
+        manager.load_dir(tmp_path)
+        manager.enable("p1")
+        registry = ToolRegistry()
+        manager.register_tools(registry)
+
+        execution = asyncio.create_task(registry.execute("blocking", {}))
+        await asyncio.wait_for(started.wait(), timeout=1)
+        execution.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await execution
+
+        assert terminated == [process]
+
 
 class TestPluginLifecycle:
     def test_apply_all(self, tmp_path: Path):

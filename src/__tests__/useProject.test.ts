@@ -37,11 +37,13 @@ vi.mock('../composables/useFileTree', () => ({
 
 import { currentProject, recentProjects, projectLoading } from '../composables/useProject'
 import { activeTabId, tabs } from '../composables/useEditorState'
+import type { ProjectMetadata } from '../types'
 
-function meta(name: string) {
+function meta(name: string): ProjectMetadata {
   return {
     version: 1,
     name,
+    author: '',
     status: 'ready',
     template_id: 'research_paper',
     tags: [],

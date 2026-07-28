@@ -168,7 +168,7 @@ describe('useArgumentCompanion', () => {
     })
 
     it('sets building=true during SSE and false after', async () => {
-      let buildingDuringStream = false
+      let buildingDuringStream: boolean
       const stream = makeSseStream([
         { event: 'promise', data: makePromise() },
         { event: 'complete', data: { promise_count: 1, by_status: {}, warnings: [] } },
@@ -525,6 +525,7 @@ describe('useArgumentCompanion', () => {
         status: 'open' as const,
         source: 'llm' as const,
         reviewer_label: null,
+        perspective: null,
         thread: [] as RebuttalTurn[],
       }
       const review: ReviewSession = {
@@ -799,6 +800,7 @@ describe('Error toast notifications', () => {
         status: 'open' as const,
         source: 'llm' as const,
         reviewer_label: null,
+        perspective: null,
         thread: [] as import('../types').RebuttalTurn[],
       }
       const r: import('../types').ReviewSession = {
@@ -813,7 +815,7 @@ describe('Error toast notifications', () => {
         doc_hash: null,
         created_at: Date.now() / 1000,
       }
-      return { review: r, point }
+      return { review: r }
     })()
 
     const companion = useArgumentCompanion()

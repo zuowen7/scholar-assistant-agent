@@ -12,10 +12,10 @@ python-dotenv==1.2.2
 rich==15.0.0
 
 # API server
-fastapi==0.135.2
+fastapi==0.140.7
 uvicorn[standard]==0.42.0
 sse-starlette==3.3.4
-python-multipart==0.0.22
+python-multipart==0.0.32
 
 # Dev/packaging deps: see requirements-dev.txt
 
@@ -30,7 +30,7 @@ striprtf==0.0.29
 # OCR fallback optional, see requirements-ocr.txt
 
 # MCP Server support (stdio transport for Claude Code / Cursor IDE integration)
-mcp==1.27.0
+mcp==1.28.1
 # MCP uses this only on Windows; keeping the marker explicit makes the shared
 # lock file installable on Linux CI runners as well.
 pywin32==311; sys_platform == "win32"
@@ -45,5 +45,5 @@ unidiff==0.7.5
 # Pulls onnxruntime + tokenizers + numpy transitively; the default embedding
 # function uses all-MiniLM-L6-v2 (CPU). Required for the RAG feature to ship in
 # PyInstaller builds — without it, the packaged app silently loses 文献库.
-chromadb==1.5.5
+chromadb==1.5.9
 numpy>=1.26   # chromadb transitive dep + tests/unit/test_translation_memory.py

@@ -119,7 +119,7 @@ class McpManager:
                 for t in tools_result.get("tools", [])
             ]
             state.lifecycle = McpLifecycleState.READY
-        except Exception as e:
+        except Exception:
             if state.process:
                 await self._dispose_process(state.process)
             raise
@@ -133,18 +133,14 @@ class McpManager:
         exceptions during an unrelated test or application shutdown.
         """
         if process.returncode is None:
-            try:
+            with contextlib.suppress(ProcessLookupError):
                 process.terminate()
-            except ProcessLookupError:
-                pass
         try:
             await asyncio.wait_for(process.communicate(), timeout=5.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             if process.returncode is None:
-                try:
+                with contextlib.suppress(ProcessLookupError):
                     process.kill()
-                except ProcessLookupError:
-                    pass
             await process.communicate()
         except (BrokenPipeError, ConnectionResetError):
             await process.wait()

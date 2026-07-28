@@ -117,7 +117,7 @@ class TestFuzzyMatch:
         tm._encoder = True  # bypass _get_encoder check
 
         # Insert stored pair directly with known embedding
-        source_hash = hashlib.sha256("Hello world".encode()).hexdigest()
+        source_hash = hashlib.sha256(b"Hello world").hexdigest()
         blob = tm._vec_to_blob(vec_stored)
         tm._conn.execute(
             "INSERT OR REPLACE INTO tm_entries "
@@ -144,7 +144,7 @@ class TestFuzzyMatch:
         tm._embed = mock_embed
         tm._fuzzy_ok = True
         tm._encoder = True
-        source_hash = hashlib.sha256("stored text".encode()).hexdigest()
+        source_hash = hashlib.sha256(b"stored text").hexdigest()
         blob = tm._vec_to_blob(vec_a)
         tm._conn.execute(
             "INSERT OR REPLACE INTO tm_entries "

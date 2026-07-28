@@ -55,7 +55,7 @@ class TestPolicyStress:
                 "write_file": PermissionMode.WORKSPACE_WRITE,
             },
         )
-        for i in range(10000):
+        for _i in range(10000):
             result = policy.authorize("read_file", '{"file_path":"test.txt"}')
             assert result.is_allowed
 

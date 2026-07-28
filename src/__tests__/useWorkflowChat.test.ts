@@ -81,6 +81,7 @@ describe('useAgentChat — workflow isolation', () => {
 
   it('start new workflow sets workflowId to null', () => {
     let workflowId: string | null = 'wf_old'
+    expect(workflowId).toBe('wf_old')
     // New chat button sets to null → triggers new workflow creation
     workflowId = null
     expect(workflowId).toBeNull()
@@ -223,14 +224,12 @@ describe('useAgentChat — pipeline state', () => {
   })
 
   it('MANDATORY checkpoint cannot be skipped', () => {
-    const checkpoint = { checkpoint_type: 'MANDATORY' } as const
-    const canSkip = checkpoint.checkpoint_type === 'SLIM'
-    expect(canSkip).toBe(false)
+    const canSkip = (checkpointType: 'MANDATORY' | 'SLIM') => checkpointType === 'SLIM'
+    expect(canSkip('MANDATORY')).toBe(false)
   })
 
   it('SLIM checkpoint can be skipped', () => {
-    const checkpoint = { checkpoint_type: 'SLIM' } as const
-    const canSkip = checkpoint.checkpoint_type === 'SLIM'
-    expect(canSkip).toBe(true)
+    const canSkip = (checkpointType: 'MANDATORY' | 'SLIM') => checkpointType === 'SLIM'
+    expect(canSkip('SLIM')).toBe(true)
   })
 })

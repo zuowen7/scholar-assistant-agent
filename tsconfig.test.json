@@ -8,7 +8,8 @@
     "noUnusedParameters": false,
     // 测试里允许 any（mock 场景多）
     "strict": true,
-    "noImplicitAny": false
+    "noImplicitAny": false,
+    "types": ["vite/client", "vitest/globals"]
   },
   "include": [
     "src/**/*.ts",
