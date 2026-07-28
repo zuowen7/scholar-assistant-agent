@@ -378,7 +378,9 @@
     "runtimeErrors": {
       "repeated_tool_call": "The Agent repeated the same tool call, so this task was stopped to prevent an infinite retry loop. Adjust the instruction and continue.",
       "tool_call_limit": "This task made too many tool calls and was stopped safely. Narrow the scope or continue in smaller steps.",
+      "tool_budget_exhausted": "This task exhausted its tool budget. Existing results were saved and finalized, and unfinished work can be resumed.",
       "tool_error_limit": "This task encountered several tool errors and stopped retrying. Expand Execution to inspect the failures.",
+      "max_steps_exhausted": "This task reached its maximum reasoning steps. Existing results were saved and finalized, and unfinished work can be resumed.",
       "tool_loop_stopped": "An abnormal tool loop was detected and the task was stopped safely."
     },
     "noProject": "No project open",

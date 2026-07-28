@@ -35,6 +35,7 @@ from typing import Any
 import yaml
 
 from src.agent_v2.hooks import HookDefinition, HookPoint, HookRunner
+from src.agent_v2.runtime.process_control import process_group_kwargs, terminate_process_tree
 from src.agent_v2.skills import Skill, SkillRegistry
 from src.agent_v2.tools.registry import ToolRegistry, ToolResult
 
@@ -73,7 +74,6 @@ class PluginManager:
                 try:
                     manifest = self._load_manifest(manifest_path)
                     self._plugins[manifest.name] = manifest
-                    self._enabled.add(manifest.name)
                     count += 1
                 except Exception as e:
                     logger.warning("Failed to load plugin from %s: %s", plugin_dir, e)
@@ -176,13 +176,20 @@ class PluginManager:
                 input_schema = tool_data.get("input_schema", {})
                 command = tool_data.get("command", "")
 
-                async def _plugin_tool(args: dict, cmd=command) -> ToolResult:
+                async def _plugin_tool(
+                    args: dict,
+                    cmd=command,
+                    workspace=tool_registry._workspace_root,
+                ) -> ToolResult:
+                    proc = None
                     try:
                         proc = await asyncio.create_subprocess_shell(
                             cmd,
+                            cwd=str(workspace) if workspace is not None else None,
                             stdin=asyncio.subprocess.PIPE,
                             stdout=asyncio.subprocess.PIPE,
                             stderr=asyncio.subprocess.PIPE,
+                            **process_group_kwargs(),
                         )
                         input_json = json.dumps(args, ensure_ascii=False)
                         stdout, stderr = await asyncio.wait_for(
@@ -194,12 +201,20 @@ class PluginManager:
                             output = output[:4000] + "..."
                         return ToolResult(output or stderr.decode("utf-8", errors="replace")[:4000])
                     except TimeoutError:
+                        if proc is not None and proc.returncode is None:
+                            await terminate_process_tree(proc)
                         return ToolResult("error: plugin tool timed out", is_error=True)
                     except Exception as e:
                         return ToolResult(f"error: {e}", is_error=True)
 
                 tool_registry.register(
-                    tool_name, description, input_schema, _plugin_tool, permission="workspace-write"
+                    tool_name,
+                    description,
+                    input_schema,
+                    _plugin_tool,
+                    permission="workspace-write",
+                    effects={"process"},
+                    approval_scope="exact-input",
                 )
                 count += 1
         return count
@@ -222,7 +237,9 @@ def _ensure_plugins_dir() -> Path:
     return d
 
 
-def create_default_plugin_manager() -> PluginManager:
+def create_default_plugin_manager(
+    enabled_names: list[str] | tuple[str, ...] | None = None,
+) -> PluginManager:
     mgr = PluginManager()
     plugins_dir = _ensure_plugins_dir()
 
@@ -261,4 +278,7 @@ hooks:
         )
 
     mgr.load_dir(plugins_dir)
+    for name in enabled_names or ():
+        if not mgr.enable(str(name)):
+            logger.warning("Configured Agent V2 plugin '%s' was not found", name)
     return mgr

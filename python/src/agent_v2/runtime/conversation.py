@@ -8,13 +8,18 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import time
+import uuid
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
+from src.agent_v2.hooks import HookDecision, HookEvent, HookPoint, HookRunner
+from src.agent_v2.runtime.file_mutations import read_text_exact
 from src.agent_v2.runtime.permissions import PermissionPolicy
 from src.agent_v2.runtime.session import Session
 from src.agent_v2.runtime.usage import UsageTracker
@@ -39,6 +44,7 @@ _DEFAULT_MAX_STEPS = 48
 _APPROVAL_TIMEOUT = 600.0  # 10 分钟等用户审批；超时必须与用户拒绝分开
 _TOOL_RESULT_MAX_CHARS = 4000
 _DEFAULT_MAX_TOOL_CALLS = 32
+_DEFAULT_SOFT_TOOL_CALLS = 28
 _SELECTION_MAX_TOOL_CALLS = 4
 _DEFAULT_MAX_TOOL_ERRORS = 5
 _SELECTION_MAX_TOOL_ERRORS = 2
@@ -87,6 +93,9 @@ class ConversationRuntime:
         system_prompt: str | None = None,
         auto_approve: bool = True,
         edit_scope: dict[str, Any] | None = None,
+        hook_runner: HookRunner | None = None,
+        max_tool_calls: int = _DEFAULT_MAX_TOOL_CALLS,
+        soft_tool_calls: int | None = None,
     ):
         self.provider = provider
         self.tool_registry = tool_registry
@@ -96,11 +105,24 @@ class ConversationRuntime:
         self.system_prompt = system_prompt
         self.auto_approve = auto_approve
         self.edit_scope = dict(edit_scope) if edit_scope else None
+        self.hook_runner = hook_runner
+        self.max_tool_calls = max(1, int(max_tool_calls))
+        configured_soft_limit = (
+            int(soft_tool_calls)
+            if soft_tool_calls is not None
+            else min(_DEFAULT_SOFT_TOOL_CALLS, self.max_tool_calls - 1)
+        )
+        self.soft_tool_calls = max(0, min(configured_soft_limit, self.max_tool_calls - 1))
         self.usage = UsageTracker(model=session.meta.model)
+        self.tool_registry.set_runtime_context(
+            parent_session_id=session.session_id,
+            parent_session_path=getattr(session, "_save_path", ""),
+            workspace=session.meta.workspace,
+        )
         # Approval state
         self._approval_events: dict[str, asyncio.Event] = {}
         self._approval_decisions: dict[str, str] = {}
-        self._session_approved_tools: set[str] = set()
+        self._session_approved_actions: set[str] = set()
         self._approval_denied = False
         self._approval_stop_reason: str | None = None
         self._aborted = False
@@ -113,6 +135,9 @@ class ConversationRuntime:
         self._tool_stop_reason: str | None = None
         self._tool_stop_code: str | None = None
         self._selection_edit_completed = False
+        self._changed_files_this_turn: set[str] = set()
+        self._turn_message_start = 0
+        self._turn_id = ""
         # Lifecycle tracking — used by router._cleanup_pool to evict stale
         # sessions safely (never evict a streaming session).
         self.last_active_monotonic: float = time.monotonic()
@@ -136,6 +161,10 @@ class ConversationRuntime:
         self._tool_stop_reason = None
         self._tool_stop_code = None
         self._selection_edit_completed = False
+        self._changed_files_this_turn.clear()
+        self._turn_message_start = len(self.session.messages)
+        self._turn_id = uuid.uuid4().hex
+        self.session.set_outcome("RUNNING", {})
         self._is_streaming = True
         self.last_active_monotonic = time.monotonic()
         try:
@@ -148,6 +177,7 @@ class ConversationRuntime:
 
             for _step in range(self.max_steps):
                 if self._aborted:
+                    self._persist_turn_outcome("ABORTED", "user_aborted", "Session aborted by user")
                     yield AgentEvent.aborted("Session aborted by user")
                     yield AgentEvent.done()
                     return
@@ -160,6 +190,14 @@ class ConversationRuntime:
                         ):
                             yield event
                             if event.type in (AgentEventType.RESPONSE, AgentEventType.ERROR):
+                                if event.type == AgentEventType.RESPONSE:
+                                    self._persist_turn_outcome("COMPLETE", "", "")
+                                else:
+                                    self._persist_turn_outcome(
+                                        "FAILED",
+                                        str(event.data.get("code", "runtime_error")),
+                                        str(event.data.get("message", "")),
+                                    )
                                 self._auto_save()
                                 yield AgentEvent.usage(
                                     TokenUsage(
@@ -172,10 +210,19 @@ class ConversationRuntime:
                             if event.type == AgentEventType.DONE:
                                 return
                         if self._aborted:
+                            self._persist_turn_outcome(
+                                "ABORTED", "user_aborted", "Session aborted by user"
+                            )
                             yield AgentEvent.aborted("Session aborted by user")
                             yield AgentEvent.done()
                             return
                         if self._approval_denied:
+                            state = "PARTIAL" if self._changed_files_this_turn else "ABORTED"
+                            self._persist_turn_outcome(
+                                state,
+                                "approval_denied",
+                                self._approval_stop_reason or "Tool approval denied",
+                            )
                             self._auto_save()
                             yield AgentEvent.aborted(
                                 self._approval_stop_reason
@@ -184,10 +231,14 @@ class ConversationRuntime:
                             yield AgentEvent.done()
                             return
                         if self._tool_stop_reason:
+                            async for final_event in self._finalize_stopped_turn():
+                                yield final_event
                             self._auto_save()
-                            yield AgentEvent.error(
-                                self._tool_stop_reason,
-                                code=self._tool_stop_code or "tool_loop_stopped",
+                            yield AgentEvent.usage(
+                                TokenUsage(
+                                    input_tokens=self.usage.total_input,
+                                    output_tokens=self.usage.total_output,
+                                )
                             )
                             yield AgentEvent.done()
                             return
@@ -216,6 +267,9 @@ class ConversationRuntime:
                         yield AgentEvent.error(
                             "模型连续 3 次未返回最终答复或工具调用。请重试，或切换模型后继续。"
                         )
+                        self._persist_turn_outcome(
+                            "FAILED", "empty_model_response", "Model returned no final response"
+                        )
                         yield AgentEvent.done()
                         return
                     except ApiError as e:
@@ -241,16 +295,21 @@ class ConversationRuntime:
                             await asyncio.sleep(2.0)
                             continue
                         yield AgentEvent.error(f"API error: {e}")
+                        self._persist_turn_outcome("FAILED", "api_error", str(e))
                         yield AgentEvent.done()
                         return
                     except Exception as e:
                         logger.exception("unexpected error in turn")
                         yield AgentEvent.error(f"unexpected error: {e}")
+                        self._persist_turn_outcome("FAILED", "unexpected_error", str(e))
                         yield AgentEvent.done()
                         return
                 self.last_active_monotonic = time.monotonic()
             else:
-                yield AgentEvent.error(f"max steps ({self.max_steps}) reached")
+                self._tool_stop_reason = f"max steps ({self.max_steps}) reached before completion"
+                self._tool_stop_code = "max_steps_exhausted"
+                async for final_event in self._finalize_stopped_turn():
+                    yield final_event
                 yield AgentEvent.done()
         finally:
             # Guaranteed cleanup on any exit path (normal return, exception,
@@ -277,8 +336,101 @@ class ConversationRuntime:
 
     # ---- Internal ----
 
+    def _build_turn_outcome(
+        self,
+        *,
+        stop_code: str,
+        stop_reason: str,
+    ) -> dict[str, Any]:
+        counts = {
+            "success": 0,
+            "error": 0,
+            "denied": 0,
+            "skipped": 0,
+            "no_change": 0,
+        }
+        unexecuted: list[dict[str, str]] = []
+        for message in self.session.messages[self._turn_message_start :]:
+            for block in message.blocks:
+                if not isinstance(block, ToolResultBlock):
+                    continue
+                status = (
+                    block.status
+                    if block.status in counts
+                    else ("error" if block.is_error else "success")
+                )
+                counts[status] += 1
+                if status in {"skipped", "denied"}:
+                    unexecuted.append(
+                        {
+                            "tool_use_id": block.tool_use_id,
+                            "tool_name": block.tool_name,
+                            "status": status,
+                        }
+                    )
+        return {
+            "stop_code": stop_code,
+            "stop_reason": stop_reason,
+            "tool_counts": counts,
+            "changed_files": sorted(self._changed_files_this_turn),
+            "unexecuted": unexecuted,
+        }
+
+    def _persist_turn_outcome(self, state: str, stop_code: str, stop_reason: str) -> None:
+        self.session.set_outcome(
+            state,
+            self._build_turn_outcome(stop_code=stop_code, stop_reason=stop_reason),
+        )
+        self._auto_save()
+
+    async def _finalize_stopped_turn(self) -> AsyncGenerator[AgentEvent, None]:
+        stop_code = self._tool_stop_code or "tool_loop_stopped"
+        stop_reason = self._tool_stop_reason or "Tool execution stopped before completion"
+        outcome = self._build_turn_outcome(
+            stop_code=stop_code,
+            stop_reason=stop_reason,
+        )
+        self.session.set_outcome("FINALIZING", outcome)
+        self._auto_save()
+        instruction = (
+            "Tool execution has stopped and no more tools are available. "
+            "Return a concise user-facing PARTIAL completion report. State what succeeded, "
+            "what failed or was skipped, which files changed, and what remains unverified. "
+            "Do not claim rollback or full completion.\n\n"
+            f"Execution outcome:\n{json.dumps(outcome, ensure_ascii=False, sort_keys=True)}"
+        )
+        emitted_response = False
+        try:
+            try:
+                async for event in self._llm_turn(
+                    recovery_instruction=instruction,
+                    force_no_tools=True,
+                ):
+                    if event.type == AgentEventType.RESPONSE:
+                        emitted_response = True
+                    yield event
+            except Exception as exc:
+                logger.warning("Agent finalization failed: %s", exc)
+            if not emitted_response:
+                counts = outcome["tool_counts"]
+                changed = outcome["changed_files"]
+                changed_text = ", ".join(changed) if changed else "none"
+                yield AgentEvent.response(
+                    "Task partially completed. "
+                    f"Successful tools: {counts['success']}; errors: {counts['error']}; "
+                    f"skipped: {counts['skipped']}; no change: {counts['no_change']}. "
+                    f"Changed files: {changed_text}. "
+                    f"Stop reason: {stop_reason}"
+                )
+        finally:
+            self.session.set_outcome("PARTIAL", outcome)
+            self._auto_save()
+
     async def _llm_turn(
-        self, *, recovery_instruction: str | None = None
+        self,
+        *,
+        recovery_instruction: str | None = None,
+        force_no_tools: bool = False,
     ) -> AsyncGenerator[AgentEvent, None]:
         import os
 
@@ -290,7 +442,7 @@ class ConversationRuntime:
             system_prompt = "\n\n".join(
                 part for part in (system_prompt, recovery_instruction) if part
             )
-        tool_definitions = self._tool_definitions_for_turn()
+        tool_definitions = [] if force_no_tools else self._tool_definitions_for_turn()
 
         use_stream = os.environ.get("SCHOLAR_AGENT_STREAM", "1").strip() == "1"
         provider_stream = None
@@ -311,6 +463,20 @@ class ConversationRuntime:
 
         tool_blocks = []
         text_blocks = []
+        recorded_usage: set[tuple[int, int, int, int]] = set()
+
+        def record_usage_once(usage: TokenUsage) -> bool:
+            signature = (
+                usage.input_tokens,
+                usage.output_tokens,
+                usage.cache_read_tokens,
+                usage.cache_creation_tokens,
+            )
+            if usage.total() <= 0 or signature in recorded_usage:
+                return False
+            recorded_usage.add(signature)
+            self.usage.record(usage)
+            return True
 
         async for chunk in provider_stream:
             if isinstance(chunk, TextBlock):
@@ -319,24 +485,32 @@ class ConversationRuntime:
             elif isinstance(chunk, ThinkingBlock):
                 yield AgentEvent.thought(chunk.thinking)
             elif isinstance(chunk, ToolUseBlock):
-                tool_blocks.append(chunk)
-                yield AgentEvent.tool_call(chunk.id, chunk.name, chunk.input)
+                if not force_no_tools:
+                    tool_blocks.append(chunk)
+                    yield AgentEvent.tool_call(chunk.id, chunk.name, chunk.input)
             elif isinstance(chunk, TokenUsage):
-                if chunk.total() > 0:
-                    self.usage.record(chunk)
+                if record_usage_once(chunk):
                     yield AgentEvent.usage(chunk)
             elif isinstance(chunk, ProviderResponse):
-                if chunk.usage.total() > 0:
-                    self.usage.record(chunk.usage)
+                if record_usage_once(chunk.usage):
                     yield AgentEvent.usage(chunk.usage)
 
-                # Merge ProviderResponse blocks: streaming doesn't yield ToolUseBlock
-                # individually, so we must extract them from the final response
-                if not tool_blocks:
+                # A provider may stream only some tool blocks and return the rest
+                # in the final response. Merge by id and reject conflicting reuse.
+                tool_blocks_by_id = {block.id: block for block in tool_blocks}
+                if not force_no_tools:
                     for b in chunk.blocks:
-                        if isinstance(b, ToolUseBlock):
+                        if not isinstance(b, ToolUseBlock):
+                            continue
+                        streamed = tool_blocks_by_id.get(b.id)
+                        if streamed is None:
                             tool_blocks.append(b)
+                            tool_blocks_by_id[b.id] = b
                             yield AgentEvent.tool_call(b.id, b.name, b.input)
+                        elif streamed.name != b.name or streamed.input != b.input:
+                            raise RuntimeError(
+                                f"Provider reused tool-use id {b.id!r} with conflicting payload"
+                            )
                 if not text_blocks:
                     for b in chunk.blocks:
                         if isinstance(b, TextBlock):
@@ -389,13 +563,17 @@ class ConversationRuntime:
                                             tool_use_id=remaining.id,
                                             tool_name=remaining.name,
                                             output=skip_output,
-                                            is_error=True,
+                                            is_error=False,
+                                            status="skipped",
                                         ),
                                     ],
                                 )
                             )
                             yield AgentEvent.tool_result(
-                                remaining.id, remaining.name, skip_output, is_error=True
+                                remaining.id,
+                                remaining.name,
+                                skip_output,
+                                status="skipped",
                             )
                         self._auto_save()
                         return
@@ -415,6 +593,85 @@ class ConversationRuntime:
             self._tool_stop_reason = loop_error
             yield AgentEvent.tool_result(tb.id, tb.name, loop_error, is_error=True)
             return
+        if self._should_skip_in_draining(tb):
+            output = (
+                "Tool execution skipped because the soft budget is exhausted; "
+                "only read-only verification is allowed while draining."
+            )
+            self.session.append(
+                Message(
+                    role=MessageRole.TOOL,
+                    blocks=[
+                        ToolResultBlock(
+                            tool_use_id=tb.id,
+                            tool_name=tb.name,
+                            output=output,
+                            status="skipped",
+                        )
+                    ],
+                )
+            )
+            self.session.set_outcome(
+                "DRAINING",
+                {
+                    "tool_calls": self._tool_calls_this_turn,
+                    "tool_calls_remaining": max(
+                        0, self.max_tool_calls - self._tool_calls_this_turn
+                    ),
+                },
+            )
+            self._auto_save()
+            yield AgentEvent.tool_result(
+                tb.id,
+                tb.name,
+                output,
+                status="skipped",
+            )
+            return
+
+        hook_asks_for_approval = False
+        if self.hook_runner is not None:
+            hook_result = await self.hook_runner.run(
+                HookPoint.PRE_TOOL_USE,
+                HookEvent(
+                    hook=HookPoint.PRE_TOOL_USE,
+                    tool_name=tb.name,
+                    tool_input=json.dumps(args, ensure_ascii=False, sort_keys=True),
+                ),
+            )
+            if hook_result.updated_input is not None:
+                try:
+                    updated_args = json.loads(hook_result.updated_input)
+                except (json.JSONDecodeError, TypeError):
+                    updated_args = None
+                if not isinstance(updated_args, dict):
+                    reason = "PreToolUse hook returned invalid updated input"
+                    self._append_tool_error(tb, reason)
+                    yield AgentEvent.tool_result(tb.id, tb.name, reason, is_error=True)
+                    return
+                args = updated_args
+            if hook_result.decision == HookDecision.DENY:
+                reason = hook_result.reason or "Tool denied by PreToolUse hook"
+                self.session.append(
+                    Message(
+                        role=MessageRole.TOOL,
+                        blocks=[
+                            ToolResultBlock(
+                                tool_use_id=tb.id,
+                                tool_name=tb.name,
+                                output=reason,
+                                is_error=True,
+                                status="denied",
+                            )
+                        ],
+                    )
+                )
+                self._auto_save()
+                yield AgentEvent.tool_denied(tb.id, tb.name, reason)
+                yield AgentEvent.tool_result(tb.id, tb.name, reason, is_error=True, status="denied")
+                self._record_tool_error()
+                return
+            hook_asks_for_approval = hook_result.decision == HookDecision.ASK
 
         scope_error = self._apply_edit_scope(tb, args)
         if scope_error:
@@ -427,7 +684,40 @@ class ConversationRuntime:
         # normalized arguments for authorization without mutating the provider's
         # immutable ToolUseBlock.
         normalized_input = json.dumps(args, ensure_ascii=False)
+        operation_key = ""
+        if tb.name in {"write_file", "str_replace"}:
+            operation_key = hashlib.sha256(
+                f"{tb.name}:{json.dumps(args, ensure_ascii=False, sort_keys=True)}".encode()
+            ).hexdigest()
+            applied = self.session.applied_mutation(operation_key)
+            if applied is not None:
+                output = (
+                    f"no change: identical Agent mutation {applied.mutation_id} is already applied"
+                )
+                self.session.append(
+                    Message(
+                        role=MessageRole.TOOL,
+                        blocks=[
+                            ToolResultBlock(
+                                tool_use_id=tb.id,
+                                tool_name=tb.name,
+                                output=output,
+                                status="no_change",
+                            )
+                        ],
+                    )
+                )
+                self._tool_errors_this_turn = 0
+                self._auto_save()
+                yield AgentEvent.tool_result(
+                    tb.id,
+                    tb.name,
+                    output,
+                    status="no_change",
+                )
+                return
         perm_result = self.permission_policy.authorize(tb.name, normalized_input)
+        spec = self.tool_registry.get(tb.name)
 
         # Capture old content for diff
         old_text = ""
@@ -454,18 +744,23 @@ class ConversationRuntime:
                         old_text = full.read_text(encoding="utf-8", errors="replace")[:4000]
                 except Exception:
                     pass
+        result_metadata: dict[str, Any] = {}
 
         if perm_result.is_denied:
             yield AgentEvent.tool_denied(tb.id, tb.name, perm_result.reason)
             tool_output = f"Permission denied: {perm_result.reason}"
             is_error = True
+            result_status = "denied"
+            result_truncated = False
+            result_original_chars = len(tool_output)
+            result_returned_chars = len(tool_output)
         else:
-            # ── 有副作用的工具：暂停等用户审批 ──
+            approval_key = self._approval_key(tb.name, args, resolved_path)
+            requires_approval = bool(spec and spec.requires_approval)
+            # All side-effecting tools use the same capability-based approval path.
             if (
-                tb.name in ("write_file", "str_replace", "run_command", "export_document")
-                and not self.auto_approve
-                and tb.name not in self._session_approved_tools
-            ):
+                hook_asks_for_approval or (requires_approval and not self.auto_approve)
+            ) and approval_key not in self._session_approved_actions:
                 if tb.name == "run_command":
                     approval_reason = (
                         f"Agent wants to run a command in {args.get('cwd', '.')}: "
@@ -492,6 +787,7 @@ class ConversationRuntime:
                         "command": args.get("command", ""),
                         "cwd": args.get("cwd", "."),
                     },
+                    force_approval=hook_asks_for_approval,
                 )
                 # Wait for approval
                 try:
@@ -526,23 +822,123 @@ class ConversationRuntime:
                                     tool_name=tb.name,
                                     output=tool_output,
                                     is_error=True,
+                                    status="denied",
                                 ),
                             ],
                         )
                     )
                     self._auto_save()
-                    yield AgentEvent.tool_result(tb.id, tb.name, tool_output, is_error=True)
+                    yield AgentEvent.tool_result(
+                        tb.id, tb.name, tool_output, is_error=True, status="denied"
+                    )
                     if not self._aborted:
                         self._approval_denied = True
                         self._approval_stop_reason = stop_reason
                     return
                 if decision == "allow_session":
-                    self._session_approved_tools.add(tb.name)
+                    self._session_approved_actions.add(approval_key)
+
+            # Capture an exact pre-image immediately before execution. Preview
+            # text is intentionally truncated and cannot support reliable Undo.
+            mutation_before_exists = False
+            mutation_before_content = ""
+            mutation_before_bytes = b""
+            mutation_is_binary = tb.name == "export_document"
+            mutation_target_path = resolved_path
+            if tb.name == "export_document" and resolved_path:
+                normalized_format = str(args.get("format", "latex")).lower()
+                suffix = (
+                    ".docx"
+                    if normalized_format in {"word", "docx"}
+                    else ".pdf"
+                    if normalized_format == "pdf"
+                    else ".tex"
+                )
+                mutation_target_path = str(Path(resolved_path).with_suffix(suffix))
+            if tb.name in ("write_file", "str_replace", "export_document") and mutation_target_path:
+                try:
+                    mutation_path = Path(mutation_target_path)
+                    mutation_before_exists = mutation_path.is_file()
+                    if mutation_before_exists:
+                        if mutation_is_binary:
+                            mutation_before_bytes = mutation_path.read_bytes()
+                        else:
+                            mutation_before_content = read_text_exact(mutation_path)
+                except Exception:
+                    mutation_before_exists = False
+                    mutation_before_content = ""
+                    mutation_before_bytes = b""
 
             # Execute
             result = await self.tool_registry.execute(tb.name, args)
             tool_output = result.output
             is_error = result.is_error
+            result_status = result.status
+            result_truncated = result.truncated
+            result_original_chars = result.original_chars
+            result_returned_chars = result.returned_chars
+            result_metadata = dict(result.metadata or {})
+            sub_agent_usage = result_metadata.get("sub_agent_usage")
+            if isinstance(sub_agent_usage, dict):
+                self.usage.record(
+                    TokenUsage(
+                        input_tokens=int(sub_agent_usage.get("input_tokens", 0) or 0),
+                        output_tokens=int(sub_agent_usage.get("output_tokens", 0) or 0),
+                    )
+                )
+
+            if (
+                tb.name in ("write_file", "str_replace", "export_document")
+                and result_status == "success"
+                and mutation_target_path
+            ):
+                try:
+                    if mutation_is_binary:
+                        after_bytes = Path(mutation_target_path).read_bytes()
+                        self.session.record_binary_mutation(
+                            turn_id=self._turn_id,
+                            tool_use_id=tb.id,
+                            path=mutation_target_path,
+                            before_exists=mutation_before_exists,
+                            before_content=mutation_before_bytes,
+                            after_content=after_bytes,
+                            operation_key=operation_key,
+                        )
+                    else:
+                        after_content = read_text_exact(Path(mutation_target_path))
+                        self.session.record_mutation(
+                            turn_id=self._turn_id,
+                            tool_use_id=tb.id,
+                            path=mutation_target_path,
+                            before_exists=mutation_before_exists,
+                            before_content=mutation_before_content,
+                            after_content=after_content,
+                            operation_key=operation_key,
+                        )
+                except Exception as exc:
+                    logger.error(
+                        "File changed but its mutation journal could not be persisted: %s",
+                        exc,
+                    )
+                    tool_output = (
+                        f"{tool_output}\nwarning: mutation journal failed; Undo is unavailable "
+                        "for this edit"
+                    )
+
+            if self.hook_runner is not None:
+                post_point = (
+                    HookPoint.POST_TOOL_USE_FAILURE if is_error else HookPoint.POST_TOOL_USE
+                )
+                await self.hook_runner.run(
+                    post_point,
+                    HookEvent(
+                        hook=post_point,
+                        tool_name=tb.name,
+                        tool_input=json.dumps(args, ensure_ascii=False, sort_keys=True),
+                        tool_result=tool_output,
+                        is_error=is_error,
+                    ),
+                )
 
         self.session.append(
             Message(
@@ -551,19 +947,41 @@ class ConversationRuntime:
                     ToolResultBlock(
                         tool_use_id=tb.id,
                         tool_name=tb.name,
-                        output=tool_output[:_TOOL_RESULT_MAX_CHARS],
+                        output=tool_output,
                         is_error=is_error,
+                        status=result_status,
+                        truncated=result_truncated,
+                        original_chars=result_original_chars,
+                        returned_chars=result_returned_chars,
+                        metadata=result_metadata,
                     ),
                 ],
             )
         )
         self._auto_save()
-        yield AgentEvent.tool_result(tb.id, tb.name, tool_output, is_error=is_error)
+        yield AgentEvent.tool_result(
+            tb.id,
+            tb.name,
+            tool_output,
+            is_error=is_error,
+            status=result_status,
+            truncated=result_truncated,
+            original_chars=result_original_chars,
+            returned_chars=result_returned_chars,
+            metadata=result_metadata,
+        )
         if is_error:
             self._record_tool_error()
+        else:
+            # The limit is deliberately consecutive: a successful or no-op
+            # result proves the execution path recovered.
+            self._tool_errors_this_turn = 0
 
         # Checkpoint after file modifications: include new content for frontend
-        if tb.name in ("write_file", "str_replace") and not is_error:
+        if (
+            tb.name in ("write_file", "str_replace", "export_document")
+            and result_status == "success"
+        ):
             # A successful write changes file-system state, so earlier identical
             # reads are no longer "repeated" — reset only read-only fingerprints
             # to avoid false circuit-breaker trips on legitimate read-edit-read
@@ -578,10 +996,13 @@ class ConversationRuntime:
                 }
             if self.edit_scope is not None and tb.name == "str_replace":
                 self._selection_edit_completed = True
+            checkpoint_path = mutation_target_path or resolved_path
+            if checkpoint_path:
+                self._changed_files_this_turn.add(checkpoint_path)
             new_content = ""
-            if resolved_path:
+            if checkpoint_path and not mutation_is_binary:
                 try:
-                    fp = Path(resolved_path)
+                    fp = Path(checkpoint_path)
                     if fp.is_file():
                         new_content = fp.read_text(encoding="utf-8", errors="replace")
                 except Exception:
@@ -589,12 +1010,24 @@ class ConversationRuntime:
             yield AgentEvent.checkpoint(
                 {
                     "action": tb.name,
-                    "file": resolved_path,
+                    "file": checkpoint_path,
                     "workspace": self.session.meta.workspace,
                     "content": new_content[:10000] if new_content else tool_output,
                     "content_truncated": len(new_content) > 10000,
                 }
             )
+
+    def _approval_key(self, tool_name: str, args: dict[str, Any], resolved_path: str) -> str:
+        spec = self.tool_registry.get(tool_name)
+        scope = spec.approval_scope if spec is not None else "exact-input"
+        if scope == "path":
+            subject: Any = resolved_path
+        elif scope == "domain":
+            url = str(args.get("url", ""))
+            subject = urlsplit(url).hostname if url else tool_name
+        else:
+            subject = args
+        return f"{tool_name}:{json.dumps(subject, ensure_ascii=False, sort_keys=True)}"
 
     def _tool_definitions_for_turn(self) -> list:
         definitions = self.tool_registry.definitions()
@@ -629,18 +1062,33 @@ class ConversationRuntime:
                 "The selection edit is complete. Do not call any more tools; provide the final "
                 "concise response."
             )
+        if self.edit_scope is None and self._tool_calls_this_turn >= self.soft_tool_calls > 0:
+            remaining = max(0, self.max_tool_calls - self._tool_calls_this_turn)
+            self.session.set_outcome(
+                "DRAINING",
+                {
+                    "tool_calls": self._tool_calls_this_turn,
+                    "tool_calls_remaining": remaining,
+                },
+            )
+            self._auto_save()
+            return (
+                f"Tool budget is low ({remaining} calls remain). Do not start new mutation, "
+                "process, network, or costly work. Verify the current result with read-only "
+                "tools if essential, then provide the final user-facing answer."
+            )
         return None
 
     def _check_tool_loop(self, tb: ToolUseBlock, args: dict[str, Any]) -> str | None:
         self._tool_calls_this_turn += 1
         max_calls = (
-            _SELECTION_MAX_TOOL_CALLS if self.edit_scope is not None else _DEFAULT_MAX_TOOL_CALLS
+            _SELECTION_MAX_TOOL_CALLS if self.edit_scope is not None else self.max_tool_calls
         )
         if self._tool_calls_this_turn > max_calls:
-            self._tool_stop_code = "tool_call_limit"
+            self._tool_stop_code = "tool_budget_exhausted"
             return (
                 f"Agent tool-call limit reached ({max_calls}) before completion. "
-                "The task was stopped to prevent an uncontrolled tool loop."
+                "The task was stopped because it exhausted its tool budget."
             )
 
         fingerprint = f"{tb.name}:{json.dumps(args, ensure_ascii=False, sort_keys=True)}"
@@ -653,6 +1101,27 @@ class ConversationRuntime:
                 "The task was stopped instead of retrying indefinitely."
             )
         return None
+
+    def _should_skip_in_draining(self, tb: ToolUseBlock) -> bool:
+        if (
+            self.edit_scope is not None
+            or self.soft_tool_calls <= 0
+            or self._tool_calls_this_turn <= self.soft_tool_calls
+        ):
+            return False
+        spec = self.tool_registry.get(tb.name)
+        if spec is None:
+            return False
+        return bool(
+            spec.effects
+            & {
+                "filesystem_write",
+                "process",
+                "network",
+                "external_side_effect",
+                "cost",
+            }
+        )
 
     def _record_tool_error(self) -> None:
         self._tool_errors_this_turn += 1

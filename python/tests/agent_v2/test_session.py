@@ -7,9 +7,11 @@ from pathlib import Path
 
 import pytest
 
+from src.agent_v2.runtime.file_mutations import atomic_write_text
 from src.agent_v2.runtime.session import (
     _MAX_FIELD_CHARS,
     _ROTATE_AFTER_BYTES,
+    MutationConflictError,
     Session,
     _truncate,
 )
@@ -62,6 +64,21 @@ class TestBasics:
         msg = session.messages[0]
         assert len(msg.blocks) == 2
         assert isinstance(msg.blocks[1], ToolUseBlock)
+
+    def test_outcome_state_round_trips(self, session: Session, session_path: Path):
+        session.set_outcome(
+            "PARTIAL",
+            {
+                "stop_code": "tool_budget_exhausted",
+                "changed_files": ["draft/main.md"],
+            },
+        )
+        session.save(session_path)
+
+        loaded = Session.load(session_path)
+        assert loaded.meta.state == "PARTIAL"
+        assert loaded.meta.outcome["stop_code"] == "tool_budget_exhausted"
+        assert loaded.meta.outcome["changed_files"] == ["draft/main.md"]
 
     def test_se004_append_tool_result(self, session: Session):
         session.append(
@@ -145,7 +162,7 @@ class TestPersistence:
     def test_se013_rotate(self, session: Session, session_path: Path):
         session.meta.model = "rotate-test"
         # Force file to be large enough
-        for i in range(1000):
+        for _i in range(1000):
             session.append(Message(role=MessageRole.USER, blocks=[TextBlock(text="x" * 300)]))
         session.save(session_path)
         assert session_path.stat().st_size >= _ROTATE_AFTER_BYTES
@@ -155,7 +172,7 @@ class TestPersistence:
         assert not session_path.is_file()
 
     def test_se014_rotate_keeps_latest(self, session: Session, session_path: Path):
-        for i in range(1000):
+        for _i in range(1000):
             session.append(Message(role=MessageRole.USER, blocks=[TextBlock(text="x" * 300)]))
         session.save(session_path)
         session.rotate(session_path)
@@ -282,7 +299,7 @@ class TestStress:
         assert len(truncated) <= _MAX_FIELD_CHARS + 50
 
     def test_se042_rotate_max_files(self, session: Session, session_path: Path):
-        for i in range(1000):
+        for _i in range(1000):
             session.append(Message(role=MessageRole.USER, blocks=[TextBlock(text="x" * 300)]))
         session.save(session_path)
         # Rotate multiple times
@@ -290,3 +307,123 @@ class TestStress:
             session.rotate(session_path)
         rotated_files = list(session_path.parent.glob(str(session_path.name) + ".*"))
         assert len(rotated_files) <= 3
+
+
+class TestMutationJournal:
+    def test_atomic_write_failure_preserves_original(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        target = tmp_path / "draft.md"
+        target.write_text("original", encoding="utf-8")
+
+        def fail_replace(_source, _target):
+            raise OSError("simulated replace failure")
+
+        monkeypatch.setattr("src.agent_v2.runtime.file_mutations.os.replace", fail_replace)
+
+        with pytest.raises(OSError, match="simulated"):
+            atomic_write_text(target, "changed")
+
+        assert target.read_text(encoding="utf-8") == "original"
+        assert not list(tmp_path.glob("*.agent-tmp"))
+
+    def test_persisted_journal_undoes_last_turn_after_restart(
+        self, tmp_path: Path, session_path: Path
+    ):
+        target = tmp_path / "draft.md"
+        target.write_text("before", encoding="utf-8")
+        atomic_write_text(target, "after")
+        session = Session(workspace=str(tmp_path))
+        session.record_mutation(
+            turn_id="turn-1",
+            tool_use_id="write-1",
+            path=target,
+            before_exists=True,
+            before_content="before",
+            after_content="after",
+        )
+        session.save(session_path)
+
+        loaded = Session.load(session_path)
+        restored = loaded.undo_last_turn()
+        loaded.save(session_path)
+
+        assert restored == [str(target.resolve())]
+        assert target.read_text(encoding="utf-8") == "before"
+        reloaded = Session.load(session_path)
+        assert reloaded.mutation_journal[0].undone is True
+
+    def test_undo_refuses_to_overwrite_later_user_edit(self, tmp_path: Path, session_path: Path):
+        target = tmp_path / "draft.md"
+        target.write_text("agent version", encoding="utf-8")
+        session = Session(workspace=str(tmp_path))
+        session.record_mutation(
+            turn_id="turn-1",
+            tool_use_id="write-1",
+            path=target,
+            before_exists=True,
+            before_content="before",
+            after_content="agent version",
+        )
+        session.save(session_path)
+        target.write_text("user version", encoding="utf-8")
+
+        loaded = Session.load(session_path)
+        with pytest.raises(MutationConflictError, match="changed after"):
+            loaded.undo_last_turn()
+
+        assert target.read_text(encoding="utf-8") == "user version"
+
+    def test_undo_removes_file_created_by_agent(self, tmp_path: Path):
+        target = tmp_path / "new.md"
+        target.write_text("created", encoding="utf-8")
+        session = Session(workspace=str(tmp_path))
+        session.record_mutation(
+            turn_id="turn-1",
+            tool_use_id="write-1",
+            path=target,
+            before_exists=False,
+            before_content="",
+            after_content="created",
+        )
+
+        session.undo_last_turn()
+
+        assert not target.exists()
+
+    def test_binary_export_journal_round_trips_and_undoes(self, tmp_path: Path, session_path: Path):
+        target = tmp_path / "paper.pdf"
+        target.write_bytes(b"%PDF-agent")
+        session = Session(workspace=str(tmp_path))
+        session.record_binary_mutation(
+            turn_id="turn-1",
+            tool_use_id="export-1",
+            path=target,
+            before_exists=True,
+            before_content=b"%PDF-before",
+            after_content=b"%PDF-agent",
+        )
+        session.save(session_path)
+
+        loaded = Session.load(session_path)
+        loaded.undo_last_turn()
+
+        assert target.read_bytes() == b"%PDF-before"
+
+    @pytest.mark.parametrize("interrupted_state", ["RUNNING", "DRAINING", "FINALIZING"])
+    def test_load_normalizes_interrupted_runtime_state(
+        self, session_path: Path, interrupted_state: str
+    ):
+        session = Session(workspace="/tmp/workspace")
+        session.set_outcome(interrupted_state, {"tool_calls": 3})
+        session.save(session_path)
+
+        loaded = Session.load(session_path)
+
+        assert loaded.meta.state == "PARTIAL"
+        assert loaded.meta.outcome == {
+            "tool_calls": 3,
+            "stop_code": "process_interrupted",
+            "stop_reason": "Runtime stopped before a terminal state was persisted",
+            "interrupted_state": interrupted_state,
+        }

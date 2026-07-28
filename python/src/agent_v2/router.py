@@ -35,8 +35,9 @@ from src.agent_v2.hooks import HookRunner
 from src.agent_v2.plugins import create_default_plugin_manager
 from src.agent_v2.runtime.conversation import ConversationRuntime
 from src.agent_v2.runtime.permissions import PermissionMode, policy_from_registry
-from src.agent_v2.runtime.session import Session
+from src.agent_v2.runtime.session import MutationConflictError, Session
 from src.agent_v2.runtime.usage import UsageTracker
+from src.agent_v2.runtime.workspace_grants import get_workspace_grants
 from src.agent_v2.skills import _BUILTIN_SKILLS, SkillRegistry
 from src.agent_v2.sse_adapter import agent_event_to_sse_stream
 from src.agent_v2.tools.academic_tools import register_academic_tools
@@ -107,6 +108,7 @@ class ChatRequestV2(BaseModel):
     context_file: str | None = Field(default=None, max_length=4_000)
     constraints: str | None = Field(default=None, max_length=10_000)
     workspace_root: str | None = None
+    workspace_grant: str | None = Field(default=None, max_length=256)
     workflow_id: str | None = Field(
         default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$"
     )
@@ -233,7 +235,8 @@ def _session_summary(session: Session, *, state: str, source: str) -> dict:
     )
     return {
         "id": session.session_id,
-        "state": state,
+        "state": session.meta.state if session.meta.state != "IDLE" else state.upper(),
+        "outcome": session.meta.outcome,
         "global_step": session.message_count,
         "tasks_total": 0,
         "tasks_done": 0,
@@ -268,6 +271,38 @@ def _load_root_config() -> dict:
             except Exception as e:
                 logger.warning("Failed to load %s: %s", cfg_path, e)
     return merged
+
+
+def _authorize_workspace_header(request: Request, workspace: str) -> None:
+    grant_store = get_workspace_grants(request.app)
+    if grant_store is None:
+        return
+    token = request.headers.get("X-Workspace-Grant", "")
+    try:
+        grant_store.resolve(token, workspace)
+    except ValueError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
+def _authorized_workspace_from_header(request: Request) -> Path | None:
+    """Resolve the caller's server-issued workspace, when grants are installed."""
+    grant_store = get_workspace_grants(request.app)
+    if grant_store is None:
+        return None
+    token = request.headers.get("X-Workspace-Grant", "")
+    try:
+        return grant_store.root_for_token(token)
+    except ValueError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
+def _session_matches_workspace(session: Session, workspace: Path | None) -> bool:
+    if workspace is None:
+        return True
+    try:
+        return Path(session.meta.workspace).resolve() == workspace
+    except (OSError, RuntimeError, ValueError):
+        return False
 
 
 def _cloud_config_from(root_config: dict) -> dict:
@@ -404,6 +439,10 @@ def _create_provider(root_config: dict | None = None):
 
 def _build_system_prompt(workspace_root: str, tools: list) -> str:
     tool_list = ", ".join(t.name for t in tools)
+    tool_names = {t.name for t in tools}
+    command_edit_rule = (
+        " Never use run_command to edit document text." if "run_command" in tool_names else ""
+    )
     return (
         f"You are Scholar Assistant, an academic AI writing assistant. "
         f"You help users with academic writing, translation, editing, and research tasks.\n\n"
@@ -420,8 +459,8 @@ def _build_system_prompt(workspace_root: str, tools: list) -> str:
         f"# CRITICAL: How to edit files\n"
         f"Use str_replace for targeted edits to existing text whenever the exact old text is known. "
         f"Use write_file only to create a new file or for a deliberate whole-file rewrite after "
-        f"reading and preserving the complete current file. Never use run_command to edit document "
-        f"text. Do not repeat an unchanged tool call after it fails; inspect the error and choose "
+        f"reading and preserving the complete current file.{command_edit_rule} "
+        f"Do not repeat an unchanged tool call after it fails; inspect the error and choose "
         f"one safer strategy.\n\n"
         f"After each change, the file tree and editor will refresh automatically.\n\n"
         f"# Communication\n"
@@ -539,8 +578,14 @@ def _create_runtime(
 
     provider = _create_provider(root_config) if root_config is not None else _create_provider()
 
-    # Tool registry
-    registry = create_default_registry(workspace_root=ws)
+    agent_cfg = _agent_config_from(root_config) if root_config is not None else _load_agent_config()
+
+    # Tool registry. Generic process execution is opt-in because static
+    # command parsing cannot provide an OS-enforced filesystem sandbox.
+    registry = create_default_registry(
+        workspace_root=ws,
+        include_run_command=bool(agent_cfg.get("enable_run_command", False)),
+    )
     register_academic_tools(registry)
     register_sub_agent(registry)
     registry.set_provider(provider)
@@ -560,7 +605,9 @@ def _create_runtime(
     hook_runner.add_builtin_hooks()
 
     # Plugins
-    plugin_mgr = create_default_plugin_manager()
+    plugin_mgr = create_default_plugin_manager(
+        enabled_names=agent_cfg.get("enabled_plugins", []),
+    )
     plugin_mgr.apply_all(skill_registry, hook_runner, registry)
 
     # Policy
@@ -577,8 +624,9 @@ def _create_runtime(
     sp = base_prompt + "\n" + skill_prompt if skill_prompt else base_prompt
 
     # Read max_steps from config
-    agent_cfg = _agent_config_from(root_config) if root_config is not None else _load_agent_config()
     max_steps = int(agent_cfg.get("max_steps", 48) or 48)
+    max_tool_calls = int(agent_cfg.get("max_tool_calls", 32) or 32)
+    soft_tool_calls = int(agent_cfg.get("soft_tool_calls", 28) or 28)
 
     return ConversationRuntime(
         provider=provider,
@@ -588,11 +636,14 @@ def _create_runtime(
         system_prompt=sp,
         auto_approve=False,
         max_steps=max_steps,
+        max_tool_calls=max_tool_calls,
+        soft_tool_calls=soft_tool_calls,
         edit_scope=edit_scope,
+        hook_runner=hook_runner,
     )
 
 
-async def _cleanup_pool() -> int:
+async def _cleanup_pool(workspace: Path | None = None) -> int:
     """Remove stale sessions from the in-memory pool.
 
     A session is evicted when:
@@ -610,6 +661,8 @@ async def _cleanup_pool() -> int:
     # race where a session starts streaming right after we evict it.
     async with _SESSION_LOCK:
         for sid, rt in list(_SESSION_POOL.items()):
+            if not _session_matches_workspace(rt.session, workspace):
+                continue
             # Skip any session currently streaming — evicting mid-turn would
             # break approve()/abort() and orphan approval events.
             if getattr(rt, "_is_streaming", False):
@@ -692,6 +745,14 @@ def register_agent_v2_routes(
     async def v2_chat(req: ChatRequestV2, request: Request):
         """主对话端点 — SSE 流式。"""
         workspace = req.workspace_root or ""
+        grant_store = get_workspace_grants(request.app)
+        if grant_store is not None:
+            if not workspace or not req.workspace_grant:
+                raise HTTPException(403, "Open a project to grant Agent workspace access")
+            try:
+                workspace = str(grant_store.resolve(req.workspace_grant, workspace))
+            except ValueError as exc:
+                raise HTTPException(403, str(exc)) from exc
         runtime_session_id, runtime_history = _runtime_session_inputs(req)
 
         try:
@@ -743,6 +804,7 @@ def register_agent_v2_routes(
             rt = _SESSION_POOL.get(session_id)
         if rt is None:
             raise HTTPException(404, f"Session {session_id} not found or expired")
+        _authorize_workspace_header(request, rt.session.meta.workspace)
         decision = (
             req.decision
             if isinstance(req.decision, str)
@@ -760,19 +822,24 @@ def register_agent_v2_routes(
     async def v2_abort(session_id: str, request: Request):
         """中止会话 — 释放所有等待中的审批。"""
         async with _SESSION_LOCK:
-            rt = _SESSION_POOL.pop(session_id, None)
+            rt = _SESSION_POOL.get(session_id)
         if rt is None:
             raise HTTPException(404, f"Session {session_id} not found")
+        _authorize_workspace_header(request, rt.session.meta.workspace)
+        async with _SESSION_LOCK:
+            _SESSION_POOL.pop(session_id, None)
         rt.abort()
         return {"status": "ok", "aborted": session_id}
 
     @app.get(f"{prefix}/sessions")
     async def v2_list_sessions(request: Request):
         """List active and persisted sessions with real display metadata."""
+        authorized_workspace = _authorized_workspace_from_header(request)
         async with _SESSION_LOCK:
             result = [
                 _session_summary(rt.session, state="active", source="memory")
                 for rt in _SESSION_POOL.values()
+                if _session_matches_workspace(rt.session, authorized_workspace)
             ]
         # Also list persisted sessions
         if _SESSION_DIR.exists():
@@ -781,7 +848,10 @@ def register_agent_v2_routes(
                 if not any(s["id"] == fid for s in result):
                     try:
                         loaded = Session.load(f)
-                        result.append(_session_summary(loaded, state="persisted", source="store"))
+                        if _session_matches_workspace(loaded, authorized_workspace):
+                            result.append(
+                                _session_summary(loaded, state="persisted", source="store")
+                            )
                     except (OSError, ValueError, json.JSONDecodeError):
                         logger.warning(
                             "Could not read persisted Agent session %s", fid, exc_info=True
@@ -800,6 +870,7 @@ def register_agent_v2_routes(
 
         loaded = Session.load(session_path)
         workspace = loaded.meta.workspace or ""
+        _authorize_workspace_header(request, workspace)
 
         async def _stream() -> AsyncGenerator[dict, None]:
             rt = None
@@ -844,7 +915,10 @@ def register_agent_v2_routes(
     async def v2_list_tools(request: Request):
         """列出可用工具。"""
         ws = request.query_params.get("workspace_root", "")
-        registry = create_default_registry(workspace_root=ws)
+        registry = create_default_registry(
+            workspace_root=ws,
+            include_run_command=bool(_load_agent_config().get("enable_run_command", False)),
+        )
         register_academic_tools(registry)
         register_sub_agent(registry)
         return [
@@ -853,7 +927,7 @@ def register_agent_v2_routes(
         ]
 
     @app.get(f"{prefix}/workflows/{{workflow_id}}/messages")
-    async def v2_workflow_messages(workflow_id: str):
+    async def v2_workflow_messages(workflow_id: str, request: Request):
         """Return real persisted messages for the session-history panel."""
         if not _SESSION_ID_RE.fullmatch(workflow_id):
             raise HTTPException(400, "Invalid workflow id")
@@ -866,6 +940,7 @@ def register_agent_v2_routes(
             if not session_path.is_file():
                 raise HTTPException(404, f"Session {workflow_id} not found")
             session = Session.load(session_path)
+        _authorize_workspace_header(request, session.meta.workspace)
         return {
             "session_id": session.session_id,
             "messages": _session_messages_for_frontend(session),
@@ -880,7 +955,8 @@ def register_agent_v2_routes(
               （保守起见，磁盘 TTL 用文件 mtime 而非 session 内部时间戳，
                避免误删仍在恢复中的会话）。
         """
-        evicted_memory = await _cleanup_pool()
+        authorized_workspace = _authorized_workspace_from_header(request)
+        evicted_memory = await _cleanup_pool(authorized_workspace)
         evicted_disk = 0
         now_ts = time.time()
         if _SESSION_DIR.exists():
@@ -888,6 +964,9 @@ def register_agent_v2_routes(
                 try:
                     mtime = f.stat().st_mtime
                     if now_ts - mtime > _SESSION_TTL:
+                        loaded = Session.load(f)
+                        if not _session_matches_workspace(loaded, authorized_workspace):
+                            continue
                         # Don't delete a file whose session is still in memory
                         # (e.g., long-running stream that hasn't updated mtime).
                         if f.stem in _SESSION_POOL:
@@ -906,7 +985,7 @@ def register_agent_v2_routes(
         }
 
     @app.delete(f"{prefix}/workflows/{{workflow_id}}")
-    async def v2_workflow_delete(workflow_id: str):
+    async def v2_workflow_delete(workflow_id: str, request: Request):
         """删除指定 workflow — 内存池 + 磁盘 JSONL 文件。
 
         路径穿越防护：workflow_id 必须匹配 _SESSION_ID_RE（^[A-Za-z0-9_-]{1,128}$），
@@ -917,7 +996,11 @@ def register_agent_v2_routes(
         # Defense in depth — never allow path separators even if regex changes.
         if "/" in workflow_id or "\\" in workflow_id or ".." in workflow_id:
             raise HTTPException(400, "Invalid workflow_id")
+        # Validate the caller even when the target is already absent, while
+        # preserving the endpoint's established idempotent-delete contract.
+        _authorized_workspace_from_header(request)
 
+        session_path = _session_path(workflow_id)
         # Don't allow deleting a session that is currently streaming.
         async with _SESSION_LOCK:
             rt = _SESSION_POOL.get(workflow_id)
@@ -925,10 +1008,20 @@ def register_agent_v2_routes(
                 raise HTTPException(
                     409, f"Session {workflow_id} is currently streaming; abort it first"
                 )
+            if rt is not None:
+                session = rt.session
+            elif session_path.is_file():
+                session = Session.load(session_path)
+            else:
+                return {
+                    "status": "ok",
+                    "deleted": workflow_id,
+                    "disk_removed": False,
+                }
+            _authorize_workspace_header(request, session.meta.workspace)
             _SESSION_POOL.pop(workflow_id, None)
 
         deleted_disk = False
-        session_path = _session_path(workflow_id)
         if session_path.is_file():
             try:
                 session_path.unlink()
@@ -954,10 +1047,12 @@ def register_agent_v2_routes(
         async with _SESSION_LOCK:
             rt = _SESSION_POOL.get(session_id)
         if rt is not None:
+            _authorize_workspace_header(request, rt.session.meta.workspace)
             return rt.usage.to_dict()
         # Try persisted session
         if session_path.is_file():
             loaded = Session.load(session_path)
+            _authorize_workspace_header(request, loaded.meta.workspace)
             usage = UsageTracker(model=loaded.meta.model)
             for msg in loaded.messages:
                 if msg.usage:
@@ -1018,7 +1113,10 @@ def register_agent_v2_routes(
             "available": True,
             "model": cfg.get("model", ""),
             "provider": cfg.get("provider", "auto"),
-            "max_steps": cfg.get("max_steps", 30),
+            "max_steps": cfg.get("max_steps", 48),
+            "max_tool_calls": cfg.get("max_tool_calls", 32),
+            "soft_tool_calls": cfg.get("soft_tool_calls", 28),
+            "enable_run_command": bool(cfg.get("enable_run_command", False)),
         }
 
     @app.get(f"{prefix}/guide")
@@ -1039,7 +1137,10 @@ def register_agent_v2_routes(
         if not tool_name:
             raise HTTPException(400, "tool_name is required")
         ws = body.get("workspace_root", "")
-        registry = create_default_registry(workspace_root=ws)
+        registry = create_default_registry(
+            workspace_root=ws,
+            include_run_command=bool(_load_agent_config().get("enable_run_command", False)),
+        )
         tool_def = registry.get(tool_name)
         if not tool_def:
             raise HTTPException(400, f"Unknown tool: {tool_name}")
@@ -1047,12 +1148,27 @@ def register_agent_v2_routes(
 
     @app.post(f"{prefix}/undo/{{session_id}}")
     async def v2_undo(session_id: str, request: Request):
+        sid = _validate_session_id(session_id)
         async with _SESSION_LOCK:
-            rt = _SESSION_POOL.get(session_id)
-        if rt is None:
-            raise HTTPException(404, f"Session {session_id} not found")
-        rt.undo_last()
-        return {"status": "ok", "session_id": session_id}
+            if sid in _SESSION_POOL:
+                raise HTTPException(409, "Cannot undo while the session is active")
+        path = _session_path(sid)
+        if not path.is_file():
+            raise HTTPException(404, f"Session {sid} not found")
+        session = Session.load(path)
+        _authorize_workspace_header(request, session.meta.workspace)
+        try:
+            restored_files = session.undo_last_turn()
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        except MutationConflictError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        session.save_with_rotate(path)
+        return {
+            "status": "ok",
+            "session_id": sid,
+            "restored_files": restored_files,
+        }
 
     @app.get("/api/debug/state")
     async def debug_state(request: Request):
