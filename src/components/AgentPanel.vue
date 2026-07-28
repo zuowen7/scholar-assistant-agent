@@ -782,7 +782,6 @@ const {
   abortSession,
   startNewWorkflow,
   loadWorkflowMessages,
-  activeRunSessionId,
   pendingCheckpoint,
   fetchSessions: _fetchSessions,
   fetchAgentSkills,
@@ -1090,7 +1089,10 @@ const showApprovalFallback = computed(() =>
 async function handleApprovalDecision(decision: 'allow_once' | 'allow_session' | 'deny') {
   const pending = pendingApproval.value
   if (!pending) return
-  await sendApproval(pending.event_id, decision)
+  const accepted = await sendApproval(pending.event_id, decision)
+  if (!accepted) {
+    showWarning(t('agent.approvalSubmitFailed'), 8000)
+  }
 }
 
 // Route file-edit approvals to inline diff editor overlay
@@ -1101,7 +1103,7 @@ watch(pendingApproval, (p) => {
     setActiveEdit({
       editId: p.event_id,
       eventId: p.event_id,
-      sessionId: activeRunSessionId.value || '',
+      sessionId: p.session_id,
       operation: (p.tool_name === 'write_file' ? 'write_file' : 'str_replace') as
         'str_replace' | 'write_file',
       filePath: (args?.file_path as string) || '',

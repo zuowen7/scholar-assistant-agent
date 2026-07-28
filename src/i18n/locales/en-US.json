@@ -322,6 +322,7 @@
   },
   "agent": {
     "approvalRequest": "Agent requests permission to run",
+    "approvalSubmitFailed": "The approval was not delivered because the task may be disconnected or expired. Retry, or stop and resend the task.",
     "approvalEditReason": "Agent will edit {path}",
     "userDeniedChange": "The change to {path} was denied",
     "approvalTimedOutChange": "Approval timed out for {path}",

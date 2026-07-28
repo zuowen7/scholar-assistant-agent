@@ -33,11 +33,17 @@ vi.mock('vue-i18n', () => ({
 }))
 
 import AiPanel from '../components/AiPanel.vue'
+import { currentWorkspaceGrant } from '../composables/useProject'
+import { useFileTree } from '../composables/useFileTree'
+import { _resetForTesting } from '../composables/useAgentChat'
 
 describe('AiPanel workflow routing', () => {
   const fetchMock = vi.fn()
 
   beforeEach(() => {
+    _resetForTesting()
+    currentWorkspaceGrant.value = 'grant-ai-panel'
+    useFileTree().rootDir.value = 'D:\\paper'
     fetchMock.mockReset()
     fetchMock.mockResolvedValue({
       ok: true,
@@ -80,5 +86,51 @@ describe('AiPanel workflow routing', () => {
     await flushPromises()
 
     expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/api\/agent\/v2\/chat$/)
+    const payload = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(payload).toMatchObject({
+      workspace_root: 'D:\\paper',
+      workspace_grant: 'grant-ai-panel',
+    })
+  })
+
+  it('submits a rendered approval with its owner session and workspace grant', async () => {
+    readSseStream.mockImplementationOnce(
+      async (_reader: unknown, handler: (type: string, data: Record<string, unknown>) => void) => {
+        handler('session_started', { metadata: { session_id: 'sess_ai_panel' } })
+        handler('await_approval', {
+          event_id: 'evt_ai_panel',
+          metadata: {
+            tool_name: 'write_file',
+            args: { file_path: 'draft.md' },
+            reason: 'Confirm the edit',
+          },
+        })
+      },
+    )
+
+    const wrapper = mount(AiPanel, {
+      props: { editorContext: 'Editor context', workspaceFiles: [] },
+    })
+    await wrapper.find('textarea').setValue('Update the project')
+    await wrapper.find('.ac-send-btn').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.approval-bar').exists()).toBe(true)
+    await wrapper.find('.allow-once').trigger('click')
+    await flushPromises()
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls[1]).toEqual([
+      '/api/agent/v2/approve/sess_ai_panel/evt_ai_panel',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+          'X-Workspace-Grant': 'grant-ai-panel',
+        }),
+        body: JSON.stringify({ decision: 'allow_once' }),
+      }),
+    ])
+    expect(wrapper.find('.approval-bar').exists()).toBe(false)
   })
 })
