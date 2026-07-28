@@ -232,13 +232,12 @@ class TestOllamaClientErrors:
         def post_side_effect(url, **kwargs):
             nonlocal call_count
             call_count += 1
-            if "/api/chat" in url:
+            if "/api/chat" in url and call_count <= 1:
                 # Return a 500 response first, then raise on generate
-                if call_count <= 1:
-                    resp = MagicMock()
-                    resp.status_code = 500
-                    resp.raise_for_status = MagicMock()
-                    return resp
+                resp = MagicMock()
+                resp.status_code = 500
+                resp.raise_for_status = MagicMock()
+                return resp
             raise http_err
 
         with patch.object(client, "_get_http_client") as mock_get:

@@ -13,7 +13,7 @@ import re
 import socket
 from contextlib import suppress
 from pathlib import Path
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from src.agent_v2.runtime.file_mutations import atomic_write_bytes, atomic_write_text
 from src.agent_v2.tools.registry import ToolRegistry, ToolResult
@@ -26,6 +26,7 @@ _YAML_TEMPLATE_RE = re.compile(r"(?im)^\s*template\s*:\s*[\"']?([^\"'\r\n#]+?)[\
 _LATEX_CITE_RE = re.compile(r"\\cite\w*\{([^}]+)}")
 _PANDOC_CITE_RE = re.compile(r"(?<![\w.])@([A-Za-z0-9_:.+\-/]+)")
 _BIB_KEY_RE = re.compile(r"@\w+\s*\{\s*([^,\s]+)", re.IGNORECASE)
+_WEB_FETCH_MAX_BYTES = 2 * 1024 * 1024
 
 
 def _local_resource_path(source: Path, raw_path: str) -> Path | None:
@@ -154,13 +155,13 @@ def _validate_public_http_url(
     return True, ""
 
 
-async def _resolve_public_http_url(url: str) -> tuple[bool, str]:
+async def _resolve_public_http_target(url: str) -> tuple[bool, str, str | None]:
     allowed, reason = _validate_public_http_url(url, resolved_ips=None)
     if not allowed:
-        return allowed, reason
+        return allowed, reason, None
     hostname = urlsplit(url).hostname
     if hostname is None:
-        return False, "URL hostname is required"
+        return False, "URL hostname is required", None
     try:
         infos = await asyncio.to_thread(
             socket.getaddrinfo,
@@ -169,11 +170,83 @@ async def _resolve_public_http_url(url: str) -> tuple[bool, str]:
             type=socket.SOCK_STREAM,
         )
     except OSError as exc:
-        return False, f"hostname resolution failed: {exc}"
-    addresses = sorted({str(info[4][0]) for info in infos})
+        return False, f"hostname resolution failed: {exc}", None
+    addresses = sorted(
+        {str(info[4][0]) for info in infos},
+        key=lambda value: (
+            ipaddress.ip_address(value).version,
+            int(ipaddress.ip_address(value)),
+        ),
+    )
     if not addresses:
-        return False, "hostname did not resolve to an address"
-    return _validate_public_http_url(url, resolved_ips=addresses)
+        return False, "hostname did not resolve to an address", None
+    allowed, reason = _validate_public_http_url(url, resolved_ips=addresses)
+    return allowed, reason, addresses[0] if allowed else None
+
+
+async def _resolve_public_http_url(url: str) -> tuple[bool, str]:
+    """Compatibility wrapper used by validation tests and callers."""
+    allowed, reason, _address = await _resolve_public_http_target(url)
+    return allowed, reason
+
+
+def _pinned_http_request_parts(url: str, address: str) -> tuple[str, str, str]:
+    """Build an IP-pinned URL while preserving the HTTP and TLS host identity."""
+    parsed = urlsplit(url)
+    hostname = parsed.hostname
+    if hostname is None:
+        raise ValueError("URL hostname is required")
+    pinned_host = f"[{address}]" if ipaddress.ip_address(address).version == 6 else address
+    pinned_url = urlunsplit((parsed.scheme, pinned_host, parsed.path or "/", parsed.query, ""))
+    return pinned_url, parsed.netloc, hostname
+
+
+async def _fetch_pinned_public_url(url: str) -> tuple[int, dict[str, str], str] | ToolResult:
+    """Fetch one URL by connecting only to a DNS address validated as public."""
+    allowed, reason, address = await _resolve_public_http_target(url)
+    if not allowed or address is None:
+        return ToolResult(f"Fetch blocked: {reason}", is_error=True)
+
+    import httpx
+
+    pinned_url, host_header, sni_hostname = _pinned_http_request_parts(url, address)
+    async with httpx.AsyncClient(
+        timeout=15.0,
+        follow_redirects=False,
+        trust_env=False,
+    ) as client:
+        request = client.build_request(
+            "GET",
+            pinned_url,
+            headers={
+                "Host": host_header,
+                "User-Agent": "ScholarAssistant/0.4",
+            },
+        )
+        request.extensions["sni_hostname"] = sni_hostname
+        response = await client.send(request, stream=True)
+        try:
+            content_length = response.headers.get("content-length")
+            if content_length is not None:
+                try:
+                    if int(content_length) > _WEB_FETCH_MAX_BYTES:
+                        return ToolResult(
+                            "Fetch blocked: response body is too large", is_error=True
+                        )
+                except ValueError:
+                    pass
+
+            chunks: list[bytes] = []
+            received = 0
+            async for chunk in response.aiter_bytes():
+                received += len(chunk)
+                if received > _WEB_FETCH_MAX_BYTES:
+                    return ToolResult("Fetch blocked: response body is too large", is_error=True)
+                chunks.append(chunk)
+            text = b"".join(chunks).decode(response.encoding or "utf-8", errors="replace")
+            return response.status_code, dict(response.headers), text
+        finally:
+            await response.aclose()
 
 
 def register_academic_tools(registry: ToolRegistry) -> None:
@@ -654,56 +727,41 @@ def register_academic_tools(registry: ToolRegistry) -> None:
         url = str(args.get("url", ""))
         if not url:
             return ToolResult("error: url is required", is_error=True)
-        allowed, reason = await _resolve_public_http_url(url)
-        if not allowed:
-            return ToolResult(f"Fetch blocked: {reason}", is_error=True)
         try:
-            import httpx
+            current_url = url
+            response: tuple[int, dict[str, str], str] | None = None
+            for _hop in range(6):
+                fetched = await _fetch_pinned_public_url(current_url)
+                if isinstance(fetched, ToolResult):
+                    return fetched
+                response = fetched
+                status_code, headers, _text = response
+                if status_code not in {301, 302, 303, 307, 308}:
+                    break
+                location = headers.get("location", "")
+                if not location:
+                    return ToolResult("Fetch redirect missing Location header", is_error=True)
+                current_url = urljoin(current_url, location)
+            else:
+                return ToolResult("Fetch blocked: too many redirects", is_error=True)
+            if response is None:
+                return ToolResult("Fetch failed: no response", is_error=True)
+            status_code, _headers, text = response
+            if status_code != 200:
+                return ToolResult(f"Fetch returned {status_code}", is_error=True)
 
-            headers = {"User-Agent": "ScholarAssistant/0.4"}
-            async with httpx.AsyncClient(
-                timeout=15.0, headers=headers, follow_redirects=False
-            ) as client:
-                current_url = url
-                resp = None
-                for _hop in range(6):
-                    allowed, reason = await _resolve_public_http_url(current_url)
-                    if not allowed:
-                        return ToolResult(f"Fetch blocked: {reason}", is_error=True)
-                    resp = await client.get(current_url)
-                    # Re-resolve after the request as a second rebinding guard.
-                    # The configured egress policy must still block private
-                    # destinations at connection time in hardened deployments.
-                    allowed, reason = await _resolve_public_http_url(current_url)
-                    if not allowed:
-                        return ToolResult(f"Fetch blocked: {reason}", is_error=True)
-                    if resp.status_code not in {301, 302, 303, 307, 308}:
-                        break
-                    location = resp.headers.get("location", "")
-                    if not location:
-                        return ToolResult("Fetch redirect missing Location header", is_error=True)
-                    current_url = urljoin(current_url, location)
-                else:
-                    return ToolResult("Fetch blocked: too many redirects", is_error=True)
-                if resp is None:
-                    return ToolResult("Fetch failed: no response", is_error=True)
-                if resp.status_code != 200:
-                    return ToolResult(f"Fetch returned {resp.status_code}", is_error=True)
-                text = resp.text
-                import re
-
-                # Strip HTML tags for plain text
-                cleaned = re.sub(
-                    r"<script[^>]*>.*?</script>", "", text, flags=re.DOTALL | re.IGNORECASE
-                )
-                cleaned = re.sub(
-                    r"<style[^>]*>.*?</style>", "", cleaned, flags=re.DOTALL | re.IGNORECASE
-                )
-                cleaned = re.sub(r"<[^>]+>", " ", cleaned)
-                cleaned = re.sub(r"\s+", " ", cleaned).strip()
-                if len(cleaned) > 5000:
-                    cleaned = cleaned[:5000] + "... [truncated]"
-                return ToolResult(cleaned or "(empty page)")
+            # Strip HTML tags for plain text
+            cleaned = re.sub(
+                r"<script[^>]*>.*?</script>", "", text, flags=re.DOTALL | re.IGNORECASE
+            )
+            cleaned = re.sub(
+                r"<style[^>]*>.*?</style>", "", cleaned, flags=re.DOTALL | re.IGNORECASE
+            )
+            cleaned = re.sub(r"<[^>]+>", " ", cleaned)
+            cleaned = re.sub(r"\s+", " ", cleaned).strip()
+            if len(cleaned) > 5000:
+                cleaned = cleaned[:5000] + "... [truncated]"
+            return ToolResult(cleaned or "(empty page)")
         except Exception as e:
             return ToolResult(f"Fetch failed: {e}", is_error=True)
 

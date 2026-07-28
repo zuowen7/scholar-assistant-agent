@@ -8,6 +8,7 @@ from __future__ import annotations
 import time
 
 import pytest
+from pydantic import ValidationError
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -86,7 +87,7 @@ class TestPromise:
 
     def test_invalid_kind_raises(self):
         _, Promise, *_ = _models()
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             Promise(text="text", kind="invalid_kind", source_anchor_id="a_001")
 
     def test_all_valid_statuses(self):
@@ -97,7 +98,7 @@ class TestPromise:
 
     def test_invalid_status_raises(self):
         _, Promise, *_ = _models()
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             Promise(text="t", kind="contribution", source_anchor_id="a_001", status="broken")
 
     def test_note_optional(self):
@@ -174,7 +175,7 @@ class TestRebuttalTurn:
 
     def test_invalid_role_raises(self):
         _, _, _, _, RebuttalTurn, _ = _models()[:6]
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             RebuttalTurn(role="editor", text="text")
 
     def test_created_at_is_float(self):
@@ -232,7 +233,7 @@ class TestReviewPoint:
 
     def test_invalid_severity_raises(self):
         _, _, _, ReviewPoint, *_ = _models()[:6]
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             ReviewPoint(severity="critical", category="other", title="t", detail="d")
 
     def test_new_categories_present(self):
@@ -276,7 +277,7 @@ class TestReviewSession:
 
     def test_invalid_persona_raises(self):
         _, _, _, _, _, ReviewSession = _models()[:6]
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             ReviewSession(doc_id="d1", persona="chatgpt")
 
     def test_checks_default_llm(self):

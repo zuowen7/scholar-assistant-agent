@@ -655,7 +655,7 @@ class TestContinueRebuttal:
             "src.argument.reviewer.call_llm_chat",
             new=AsyncMock(return_value="Still not convinced."),
         ):
-            async for ev in continue_rebuttal(
+            async for _ev in continue_rebuttal(
                 session_id=session.id,
                 point_id=rp.id,
                 author_message="We addressed this.",

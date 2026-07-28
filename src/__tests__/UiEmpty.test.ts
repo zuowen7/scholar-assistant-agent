@@ -6,6 +6,7 @@ vi.mock('vue-i18n', () => ({
 }))
 
 import { mount } from '@vue/test-utils'
+import { defineComponent } from 'vue'
 import UiEmpty from '../components/ui/UiEmpty.vue'
 
 describe('UiEmpty', () => {
@@ -67,9 +68,9 @@ describe('UiEmpty', () => {
   })
 
   it('renders icon element when icon prop provided', () => {
+    const FolderIcon = defineComponent({ template: '<svg data-testid="folder-icon" />' })
     const wrapper = mount(UiEmpty, {
-      props: { title: 'No data', icon: 'FolderIcon' },
-      global: { stubs: { FolderIcon: true } },
+      props: { title: 'No data', icon: FolderIcon },
     })
 
     const iconContainer = wrapper.find('.ui-empty-icon')

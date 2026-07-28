@@ -36,7 +36,7 @@ def test_session_many_messages():
 
     tmp = tempfile.mkdtemp()
     session = Session(workspace=tmp, model="test")
-    for i in range(1000):
+    for _i in range(1000):
         msg = Message(role=MessageRole.USER, blocks=[])
         session.append(msg)
     assert session.message_count == 1000

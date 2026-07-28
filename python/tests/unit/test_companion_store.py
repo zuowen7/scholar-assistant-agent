@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 from pathlib import Path
@@ -200,10 +201,8 @@ class TestPromiseCrud:
         store = _make_store(tmp_path)
         p = _make_promise()
         # Should either raise KeyError/ValueError or silently do nothing — not crash with AttributeError
-        try:
+        with contextlib.suppress(KeyError, ValueError):
             store.upsert_promise("nonexistent_doc", p)
-        except (KeyError, ValueError):
-            pass  # acceptable
 
     def test_delete_promise(self, tmp_path):
         store = _make_store(tmp_path)
@@ -298,10 +297,8 @@ class TestPointAndTurnUpdates:
 
     def test_update_invalid_point_noop_or_raises(self, tmp_path):
         store, s, _ = self._session_with_point(tmp_path)
-        try:
+        with contextlib.suppress(KeyError, ValueError):
             store.update_point(s.id, "nonexistent_point_id", "dismissed")
-        except (KeyError, ValueError):
-            pass  # acceptable
 
     def test_append_turns(self, tmp_path):
         store, s, rp = self._session_with_point(tmp_path)

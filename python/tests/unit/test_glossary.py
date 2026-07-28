@@ -236,7 +236,7 @@ class TestConsistencyAcrossChunks:
             "全局注意力机制处理长序列依赖。",
         ]
 
-        for orig, t in zip(originals, translations):
+        for orig, t in zip(originals, translations, strict=True):
             violations = store.enforce(t, original=orig)
             attention_violations = [v for v in violations if "attention" in v["source"].lower()]
             assert len(attention_violations) == 0, (
