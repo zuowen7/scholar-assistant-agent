@@ -45,7 +45,7 @@ class TestLoadManifest:
         mgr = PluginManager()
         n = mgr.load_dir(tmp_path)
         assert n == 2
-        assert len(mgr._enabled) == 2
+        assert len(mgr._enabled) == 0
 
     def test_load_empty_dir(self, tmp_path: Path):
         mgr = PluginManager()
@@ -71,7 +71,8 @@ class TestLoadManifest:
         _create_plugin(tmp_path, "p1")
         mgr = PluginManager()
         mgr.load_dir(tmp_path)
-        assert mgr.enable("p1")  # already enabled
+        assert "p1" not in mgr._enabled
+        assert mgr.enable("p1")
         assert mgr.disable("p1")
         assert "p1" not in mgr._enabled
         assert not mgr.enable("nonexistent")
@@ -89,6 +90,7 @@ class TestRegisterSkills:
         )
         mgr = PluginManager()
         mgr.load_dir(tmp_path)
+        mgr.enable("p1")
         reg = SkillRegistry()
         n = mgr.register_skills(reg)
         assert n == 2
@@ -122,6 +124,7 @@ class TestRegisterHooks:
         )
         mgr = PluginManager()
         mgr.load_dir(tmp_path)
+        mgr.enable("p1")
         runner = HookRunner()
         n = mgr.register_hooks(runner)
         assert n == 1
@@ -137,6 +140,7 @@ class TestRegisterHooks:
         )
         mgr = PluginManager()
         mgr.load_dir(tmp_path)
+        mgr.enable("p1")
         runner = HookRunner()
         n = mgr.register_hooks(runner)
         assert n == 0
@@ -158,6 +162,7 @@ class TestRegisterTools:
         )
         mgr = PluginManager()
         mgr.load_dir(tmp_path)
+        mgr.enable("p1")
         reg = ToolRegistry()
         n = mgr.register_tools(reg)
         assert n == 1
@@ -181,6 +186,7 @@ class TestRegisterTools:
         )
         mgr = PluginManager()
         mgr.load_dir(tmp_path)
+        mgr.enable("p1")
         reg = ToolRegistry()
         mgr.register_tools(reg)
         result = await reg.execute("greet", {})
@@ -198,6 +204,7 @@ class TestPluginLifecycle:
         )
         mgr = PluginManager()
         mgr.load_dir(tmp_path)
+        mgr.enable("full_plugin")
         reg_skill = SkillRegistry()
         reg_tool = ToolRegistry()
         runner = HookRunner()
@@ -232,6 +239,7 @@ class TestDefaultPluginManager:
         assert len(items) >= 1
         names = {i["name"] for i in items}
         assert "example_academic" in names
+        assert not any(i["enabled"] for i in items)
 
 
 class TestPluginEdge:
@@ -239,6 +247,7 @@ class TestPluginEdge:
         _create_plugin(tmp_path, "minimal")
         mgr = PluginManager()
         mgr.load_dir(tmp_path)
+        mgr.enable("minimal")
         reg_s = SkillRegistry()
         reg_t = ToolRegistry()
         runner = HookRunner()

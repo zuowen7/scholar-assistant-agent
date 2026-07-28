@@ -5,9 +5,9 @@
       <button
         class="refresh-btn u-interactive"
         :class="{ spinning: loading }"
-        @click="fetchSessions"
         :disabled="loading"
         :title="t('agent.refreshSessions')"
+        @click="fetchSessions"
       >
         ↻
       </button>
@@ -37,8 +37,8 @@
         :key="s.id"
         class="session-item openable u-interactive"
         :style="{ '--stagger-i': idx }"
-        @click="openSession(s)"
         tabindex="0"
+        @click="openSession(s)"
         @keydown.enter="openSession(s)"
       >
         <div class="session-main">
@@ -67,6 +67,7 @@ import { useI18n } from 'vue-i18n'
 const { t, locale } = useI18n()
 import type { AgentSessionInfo } from '../types'
 import { API_BASE } from '../utils/api'
+import { currentWorkspaceGrant } from '../composables/useProject'
 import UiSkeleton from './ui/UiSkeleton.vue'
 
 const emit = defineEmits<{
@@ -79,7 +80,11 @@ const loading = ref(false)
 async function fetchSessions() {
   loading.value = true
   try {
-    const res = await fetch(`${API_BASE}/api/agent/v2/sessions`)
+    const res = await fetch(`${API_BASE}/api/agent/v2/sessions`, {
+      headers: currentWorkspaceGrant.value
+        ? { 'X-Workspace-Grant': currentWorkspaceGrant.value }
+        : undefined,
+    })
     if (res.ok) {
       sessions.value = await res.json()
     }

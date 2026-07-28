@@ -858,6 +858,9 @@ def register_project(
     data_root: Path,
 ) -> dict[str, Any]:
     """Register project management routes."""
+    from src.agent_v2.runtime.workspace_grants import install_workspace_grants
+
+    workspace_grants = install_workspace_grants(app)
 
     @app.get("/api/project/templates")
     def list_templates():
@@ -865,7 +868,7 @@ def register_project(
 
     @app.post("/api/project/create")
     def create_project(req: CreateProjectRequest):
-        return _atomic_create_project(
+        result = _atomic_create_project(
             name=req.name,
             location=Path(req.location),
             author=req.author,
@@ -873,6 +876,8 @@ def register_project(
             init_git=req.init_git,
             data_root=data_root,
         )
+        result["workspace_grant"] = workspace_grants.issue(result["project_path"])
+        return result
 
     @app.post("/api/project/detect")
     def detect_project(path: str):
@@ -929,6 +934,7 @@ def register_project(
             _add_recent(
                 data_root, str(resolved), metadata.get("name", ""), metadata.get("template_id", "")
             )
+        metadata["workspace_grant"] = workspace_grants.issue(resolved)
         return metadata
 
     @app.get("/api/project/sources")

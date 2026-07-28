@@ -10,6 +10,13 @@ import { API_BASE } from '../utils/api'
 import { i18n } from '../i18n'
 import { logger } from '../utils/logger'
 import { readSseStream } from '../utils/streamReader'
+import { currentWorkspaceGrant } from './useProject'
+
+function workspaceGrantHeaders(): Record<string, string> | undefined {
+  return currentWorkspaceGrant.value
+    ? { 'X-Workspace-Grant': currentWorkspaceGrant.value }
+    : undefined
+}
 
 /** Raw history message shape returned by the workflows messages endpoint. */
 interface RawHistoryMessage {
@@ -425,6 +432,7 @@ export function useAgentChat() {
           context_file: contextFile?.trim() || undefined,
           constraints: constraints?.trim() || undefined,
           workspace_root: workspaceRoot?.trim() || undefined,
+          workspace_grant: currentWorkspaceGrant.value || undefined,
           workflow_id: selection ? undefined : conversationWorkflowId.value || undefined,
           skills: skills.slice(0, 8),
           selection: selection
@@ -478,6 +486,9 @@ export function useAgentChat() {
             try {
               const resumeResp = await fetch(`${API_URL}/api/agent/v2/resume/${sid}`, {
                 method: 'POST',
+                headers: currentWorkspaceGrant.value
+                  ? { 'X-Workspace-Grant': currentWorkspaceGrant.value }
+                  : undefined,
                 signal: abortController!.signal,
               })
               if (resumeResp.ok) {
@@ -584,7 +595,12 @@ export function useAgentChat() {
     try {
       const resp = await fetch(`${API_URL}/api/agent/v2/approve/${sid}/${eventId}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(currentWorkspaceGrant.value
+            ? { 'X-Workspace-Grant': currentWorkspaceGrant.value }
+            : {}),
+        },
         body: JSON.stringify({ decision, reason: reason || undefined }),
       })
       if (resp.ok) {
@@ -606,7 +622,12 @@ export function useAgentChat() {
     }
 
     try {
-      const resp = await fetch(`${API_URL}/api/agent/v2/abort/${sid}`, { method: 'POST' })
+      const resp = await fetch(`${API_URL}/api/agent/v2/abort/${sid}`, {
+        method: 'POST',
+        headers: currentWorkspaceGrant.value
+          ? { 'X-Workspace-Grant': currentWorkspaceGrant.value }
+          : undefined,
+      })
       if (resp.ok) {
         _clearApproval()
         stopGenerating()
@@ -629,7 +650,10 @@ export function useAgentChat() {
     try {
       const sessions = await fetchSessions()
       const existing = sessions.find((s: AgentSessionInfo) => s.id === targetSessionId)
-      if (existing && (existing.state === 'DONE' || existing.state === 'ABORTED')) {
+      if (
+        existing &&
+        ['COMPLETE', 'FAILED', 'ABORTED'].includes(String(existing.state).toUpperCase())
+      ) {
         return // Session already completed, no need to resume
       }
     } catch {
@@ -659,6 +683,9 @@ export function useAgentChat() {
     try {
       const resp = await fetch(`${API_URL}/api/agent/v2/resume/${targetSessionId}`, {
         method: 'POST',
+        headers: currentWorkspaceGrant.value
+          ? { 'X-Workspace-Grant': currentWorkspaceGrant.value }
+          : undefined,
         signal: abortController.signal,
       })
 
@@ -702,7 +729,9 @@ export function useAgentChat() {
 
   async function fetchSessions(): Promise<AgentSessionInfo[]> {
     try {
-      const resp = await fetch(`${API_URL}/api/agent/v2/sessions`)
+      const resp = await fetch(`${API_URL}/api/agent/v2/sessions`, {
+        headers: workspaceGrantHeaders(),
+      })
       if (resp.ok) return await resp.json()
     } catch (e) {
       logger.warn('fetchSessions failed', { error: e })
@@ -760,7 +789,9 @@ export function useAgentChat() {
   // Per-workflow message loading (Phase 3)
   async function loadWorkflowMessages(wfId: string): Promise<boolean> {
     try {
-      const resp = await fetch(`${API_URL}/api/agent/v2/workflows/${wfId}/messages`)
+      const resp = await fetch(`${API_URL}/api/agent/v2/workflows/${wfId}/messages`, {
+        headers: workspaceGrantHeaders(),
+      })
       if (!resp.ok) return false
       const data = (await resp.json()) as { messages?: RawHistoryMessage[] }
       const loaded: AgentChatMessage[] = (data.messages || []).map((m, i) => ({
@@ -833,7 +864,10 @@ export function useAgentChat() {
 
   async function cleanupWorkflows() {
     try {
-      const resp = await fetch(`${API_URL}/api/agent/v2/workflows/cleanup`, { method: 'POST' })
+      const resp = await fetch(`${API_URL}/api/agent/v2/workflows/cleanup`, {
+        method: 'POST',
+        headers: workspaceGrantHeaders(),
+      })
       if (!resp.ok) throw new Error('cleanup failed')
       return await resp.json()
     } catch {
@@ -843,7 +877,10 @@ export function useAgentChat() {
 
   async function deleteWorkflow(wfId: string) {
     try {
-      const resp = await fetch(`${API_URL}/api/agent/v2/workflows/${wfId}`, { method: 'DELETE' })
+      const resp = await fetch(`${API_URL}/api/agent/v2/workflows/${wfId}`, {
+        method: 'DELETE',
+        headers: workspaceGrantHeaders(),
+      })
       if (!resp.ok) return false
       _messagesByWorkflow.delete(wfId)
       _approvalBySession.delete(wfId)

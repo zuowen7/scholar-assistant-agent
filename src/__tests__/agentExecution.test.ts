@@ -69,6 +69,41 @@ describe('agent execution presentation', () => {
       total: 2,
       completed: 1,
       failed: 1,
+      denied: 0,
+      skipped: 0,
+      noChange: 0,
+      running: 0,
+    })
+  })
+
+  it('keeps skipped, denied, and no-change distinct from failures', () => {
+    const statusEvents: AgentEvent[] = [
+      ['skip', 'skipped'],
+      ['deny', 'denied'],
+      ['noop', 'no_change'],
+    ].flatMap(([id, status]) => [
+      {
+        type: 'tool_call',
+        content: 'str_replace',
+        event_id: id,
+        metadata: { tool_name: 'str_replace' },
+      } as AgentEvent,
+      {
+        type: 'tool_result',
+        content: status,
+        event_id: id,
+        metadata: { tool_name: 'str_replace', status },
+      } as AgentEvent,
+    ])
+    const steps = buildExecutionSteps(statusEvents)
+    expect(steps.map((step) => step.status)).toEqual(['skipped', 'denied', 'no_change'])
+    expect(executionSummary(steps)).toEqual({
+      total: 3,
+      completed: 0,
+      failed: 0,
+      denied: 1,
+      skipped: 1,
+      noChange: 1,
       running: 0,
     })
   })

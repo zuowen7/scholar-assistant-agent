@@ -53,6 +53,15 @@ class ToolResultBlock:
     tool_name: str
     output: str
     is_error: bool = False
+    status: str = ""
+    truncated: bool = False
+    original_chars: int = 0
+    returned_chars: int = 0
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.status:
+            object.__setattr__(self, "status", "error" if self.is_error else "success")
 
 
 ContentBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock
@@ -174,10 +183,32 @@ class AgentEvent:
         )
 
     @staticmethod
-    def tool_result(id: str, name: str, output: str, is_error: bool = False) -> AgentEvent:
+    def tool_result(
+        id: str,
+        name: str,
+        output: str,
+        is_error: bool = False,
+        *,
+        status: str = "",
+        truncated: bool = False,
+        original_chars: int = 0,
+        returned_chars: int = 0,
+        metadata: dict[str, Any] | None = None,
+    ) -> AgentEvent:
+        effective_status = status or ("error" if is_error else "success")
         return AgentEvent(
             type=AgentEventType.TOOL_RESULT,
-            data={"id": id, "tool_name": name, "output": output, "is_error": is_error},
+            data={
+                "id": id,
+                "tool_name": name,
+                "output": output,
+                "is_error": is_error,
+                "status": effective_status,
+                "truncated": truncated,
+                "original_chars": original_chars,
+                "returned_chars": returned_chars,
+                "metadata": dict(metadata or {}),
+            },
         )
 
     @staticmethod

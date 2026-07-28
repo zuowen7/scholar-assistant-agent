@@ -1,6 +1,7 @@
 import type { AgentEvent } from '../types'
 
-export type AgentExecutionStatus = 'running' | 'success' | 'error'
+export type AgentExecutionStatus =
+  'running' | 'success' | 'error' | 'denied' | 'skipped' | 'no_change'
 
 export interface AgentExecutionStep {
   id: string
@@ -27,6 +28,20 @@ function eventArgs(event: AgentEvent): Record<string, unknown> {
   } catch {
     return {}
   }
+}
+
+function eventStatus(event: AgentEvent): AgentExecutionStatus {
+  const status = event.metadata?.status
+  if (
+    status === 'success' ||
+    status === 'error' ||
+    status === 'denied' ||
+    status === 'skipped' ||
+    status === 'no_change'
+  ) {
+    return status
+  }
+  return event.metadata?.error || event.metadata?.is_error ? 'error' : 'success'
 }
 
 export function buildExecutionSteps(events: AgentEvent[]): AgentExecutionStep[] {
@@ -59,7 +74,7 @@ export function buildExecutionSteps(events: AgentEvent[]): AgentExecutionStep[] 
     if (!step) continue
     step.result = event.content
     step.resultDetail = (event.metadata?.result_detail as string | undefined) || event.content
-    step.status = event.metadata?.error || event.metadata?.is_error ? 'error' : 'success'
+    step.status = eventStatus(event)
   }
 
   return steps
@@ -70,6 +85,9 @@ export function executionSummary(steps: AgentExecutionStep[]) {
     total: steps.length,
     completed: steps.filter((step) => step.status === 'success').length,
     failed: steps.filter((step) => step.status === 'error').length,
+    denied: steps.filter((step) => step.status === 'denied').length,
+    skipped: steps.filter((step) => step.status === 'skipped').length,
+    noChange: steps.filter((step) => step.status === 'no_change').length,
     running: steps.filter((step) => step.status === 'running').length,
   }
 }

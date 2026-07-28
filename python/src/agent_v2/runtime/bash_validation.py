@@ -11,18 +11,20 @@ Submodules:
   6. commandSemantics — classify command intent
   7. validate_command — full pipeline
 """
+
 from __future__ import annotations
 
+import ntpath
 import re
 from enum import Enum
 from pathlib import Path
 
 from src.agent_v2.runtime.permissions import PermissionMode
 
-
 # ---------------------------------------------------------------------------
 # Types
 # ---------------------------------------------------------------------------
+
 
 class CommandIntent(Enum):
     READ_ONLY = "read-only"
@@ -82,27 +84,93 @@ class ValidationResult:
 # Command classification tables
 # ---------------------------------------------------------------------------
 
-WRITE_COMMANDS = frozenset({
-    "cp", "mv", "rm", "mkdir", "rmdir", "touch", "chmod", "chown", "chgrp",
-    "ln", "install", "tee", "truncate", "shred", "mkfifo", "mknod", "dd",
-})
+WRITE_COMMANDS = frozenset(
+    {
+        "cp",
+        "mv",
+        "rm",
+        "mkdir",
+        "rmdir",
+        "touch",
+        "chmod",
+        "chown",
+        "chgrp",
+        "ln",
+        "install",
+        "tee",
+        "truncate",
+        "shred",
+        "mkfifo",
+        "mknod",
+        "dd",
+    }
+)
 
-STATE_MODIFYING_COMMANDS = frozenset({
-    "apt", "apt-get", "yum", "dnf", "pacman", "brew", "pip", "pip3",
-    "npm", "yarn", "pnpm", "bun", "cargo", "gem", "go", "rustup",
-    "docker", "systemctl", "service", "mount", "umount",
-    "kill", "pkill", "killall", "reboot", "shutdown", "halt", "poweroff",
-    "useradd", "userdel", "usermod", "groupadd", "groupdel",
-    "crontab", "at",
-})
+STATE_MODIFYING_COMMANDS = frozenset(
+    {
+        "apt",
+        "apt-get",
+        "yum",
+        "dnf",
+        "pacman",
+        "brew",
+        "pip",
+        "pip3",
+        "npm",
+        "yarn",
+        "pnpm",
+        "bun",
+        "cargo",
+        "gem",
+        "go",
+        "rustup",
+        "docker",
+        "systemctl",
+        "service",
+        "mount",
+        "umount",
+        "kill",
+        "pkill",
+        "killall",
+        "reboot",
+        "shutdown",
+        "halt",
+        "poweroff",
+        "useradd",
+        "userdel",
+        "usermod",
+        "groupadd",
+        "groupdel",
+        "crontab",
+        "at",
+    }
+)
 
 WRITE_REDIRECTIONS = (">", ">>", ">&")
 
-GIT_READ_ONLY_SUBCOMMANDS = frozenset({
-    "status", "log", "diff", "show", "branch", "tag", "stash", "remote",
-    "fetch", "ls-files", "ls-tree", "cat-file", "rev-parse", "describe",
-    "shortlog", "blame", "bisect", "reflog", "config",
-})
+GIT_READ_ONLY_SUBCOMMANDS = frozenset(
+    {
+        "status",
+        "log",
+        "diff",
+        "show",
+        "branch",
+        "tag",
+        "stash",
+        "remote",
+        "fetch",
+        "ls-files",
+        "ls-tree",
+        "cat-file",
+        "rev-parse",
+        "describe",
+        "shortlog",
+        "blame",
+        "bisect",
+        "reflog",
+        "config",
+    }
+)
 
 DESTRUCTIVE_PATTERNS: list[tuple[str, str]] = [
     ("rm -rf /", "Recursive forced deletion at root — this will destroy the system"),
@@ -119,53 +187,222 @@ DESTRUCTIVE_PATTERNS: list[tuple[str, str]] = [
 
 ALWAYS_DESTRUCTIVE_COMMANDS = frozenset({"shred", "wipefs"})
 
-SYSTEM_PATHS = ("/etc/", "/usr/", "/var/", "/boot/", "/sys/", "/proc/",
-                 "/dev/", "/sbin/", "/lib/", "/opt/")
+SYSTEM_PATHS = (
+    "/etc/",
+    "/usr/",
+    "/var/",
+    "/boot/",
+    "/sys/",
+    "/proc/",
+    "/dev/",
+    "/sbin/",
+    "/lib/",
+    "/opt/",
+)
 
-SEMANTIC_READ_ONLY_COMMANDS = frozenset({
-    "ls", "cat", "head", "tail", "less", "more", "wc", "sort", "uniq",
-    "grep", "egrep", "fgrep", "find", "which", "whereis", "whatis",
-    "man", "info", "file", "stat", "du", "df", "free", "uptime",
-    "uname", "hostname", "whoami", "id", "groups", "env", "printenv",
-    "echo", "printf", "date", "cal", "bc", "expr", "test", "true",
-    "false", "pwd", "tree", "diff", "cmp", "md5sum", "sha256sum",
-    "sha1sum", "xxd", "od", "hexdump", "strings", "readlink", "realpath",
-    "basename", "dirname", "seq", "yes", "tput", "column", "jq", "yq",
-    "xargs", "tr", "cut", "paste", "awk", "sed",
-})
+SEMANTIC_READ_ONLY_COMMANDS = frozenset(
+    {
+        "ls",
+        "cat",
+        "head",
+        "tail",
+        "less",
+        "more",
+        "wc",
+        "sort",
+        "uniq",
+        "grep",
+        "egrep",
+        "fgrep",
+        "find",
+        "which",
+        "whereis",
+        "whatis",
+        "man",
+        "info",
+        "file",
+        "stat",
+        "du",
+        "df",
+        "free",
+        "uptime",
+        "uname",
+        "hostname",
+        "whoami",
+        "id",
+        "groups",
+        "env",
+        "printenv",
+        "echo",
+        "printf",
+        "date",
+        "cal",
+        "bc",
+        "expr",
+        "test",
+        "true",
+        "false",
+        "pwd",
+        "tree",
+        "diff",
+        "cmp",
+        "md5sum",
+        "sha256sum",
+        "sha1sum",
+        "xxd",
+        "od",
+        "hexdump",
+        "strings",
+        "readlink",
+        "realpath",
+        "basename",
+        "dirname",
+        "seq",
+        "yes",
+        "tput",
+        "column",
+        "jq",
+        "yq",
+        "xargs",
+        "tr",
+        "cut",
+        "paste",
+        "awk",
+        "sed",
+    }
+)
 
-NETWORK_COMMANDS = frozenset({
-    "curl", "wget", "ssh", "scp", "rsync", "ftp", "sftp", "nc", "ncat",
-    "telnet", "ping", "traceroute", "dig", "nslookup", "host", "whois",
-    "ifconfig", "ip", "netstat", "ss", "nmap",
-})
+NETWORK_COMMANDS = frozenset(
+    {
+        "curl",
+        "wget",
+        "ssh",
+        "scp",
+        "rsync",
+        "ftp",
+        "sftp",
+        "nc",
+        "ncat",
+        "telnet",
+        "ping",
+        "traceroute",
+        "dig",
+        "nslookup",
+        "host",
+        "whois",
+        "ifconfig",
+        "ip",
+        "netstat",
+        "ss",
+        "nmap",
+    }
+)
 
-PROCESS_COMMANDS = frozenset({
-    "kill", "pkill", "killall", "ps", "top", "htop", "bg", "fg",
-    "jobs", "nohup", "disown", "wait", "nice", "renice",
-})
+PROCESS_COMMANDS = frozenset(
+    {
+        "kill",
+        "pkill",
+        "killall",
+        "ps",
+        "top",
+        "htop",
+        "bg",
+        "fg",
+        "jobs",
+        "nohup",
+        "disown",
+        "wait",
+        "nice",
+        "renice",
+    }
+)
 
-PACKAGE_COMMANDS = frozenset({
-    "apt", "apt-get", "yum", "dnf", "pacman", "brew", "pip", "pip3",
-    "npm", "yarn", "pnpm", "bun", "cargo", "gem", "go", "rustup",
-    "snap", "flatpak",
-})
+PACKAGE_COMMANDS = frozenset(
+    {
+        "apt",
+        "apt-get",
+        "yum",
+        "dnf",
+        "pacman",
+        "brew",
+        "pip",
+        "pip3",
+        "npm",
+        "yarn",
+        "pnpm",
+        "bun",
+        "cargo",
+        "gem",
+        "go",
+        "rustup",
+        "snap",
+        "flatpak",
+    }
+)
 
-SYSTEM_ADMIN_COMMANDS = frozenset({
-    "sudo", "su", "chroot", "mount", "umount", "fdisk", "parted",
-    "lsblk", "blkid", "systemctl", "service", "journalctl", "dmesg",
-    "modprobe", "insmod", "rmmod", "iptables", "ufw", "firewall-cmd",
-    "sysctl", "crontab", "at", "useradd", "userdel", "usermod",
-    "groupadd", "groupdel", "passwd", "visudo",
-})
+SYSTEM_ADMIN_COMMANDS = frozenset(
+    {
+        "sudo",
+        "su",
+        "chroot",
+        "mount",
+        "umount",
+        "fdisk",
+        "parted",
+        "lsblk",
+        "blkid",
+        "systemctl",
+        "service",
+        "journalctl",
+        "dmesg",
+        "modprobe",
+        "insmod",
+        "rmmod",
+        "iptables",
+        "ufw",
+        "firewall-cmd",
+        "sysctl",
+        "crontab",
+        "at",
+        "useradd",
+        "userdel",
+        "usermod",
+        "groupadd",
+        "groupdel",
+        "passwd",
+        "visudo",
+    }
+)
 
 # Shell metacharacters that enable chaining, substitution, piping, redirection
 SHELL_METACHARS = set(";|&$`><(){}\n")
+INDIRECT_EXECUTORS = frozenset(
+    {
+        "cmd",
+        "cmd.exe",
+        "powershell",
+        "powershell.exe",
+        "pwsh",
+        "pwsh.exe",
+        "bash",
+        "sh",
+        "wsl",
+        "python",
+        "python.exe",
+        "python3",
+        "py",
+        "node",
+        "node.exe",
+        "ruby",
+        "perl",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def extract_first_command(command: str) -> str:
     """Extract the first bare command, stripping env vars."""
@@ -183,7 +420,7 @@ def extract_first_command(command: str) -> str:
         before_eq = next_str[:eq_pos]
         if not all(c.isalnum() or c == "_" for c in before_eq):
             break
-        after_eq = next_str[eq_pos + 1:]
+        after_eq = next_str[eq_pos + 1 :]
         end = _find_end_of_value(after_eq)
         if end is None:
             return ""
@@ -238,11 +475,9 @@ def _find_end_of_value(s: str) -> int | None:
             i += 1
         return None
     else:
-        idx = 0
-        for ch in s:
+        for idx, ch in enumerate(s):
             if ch.isspace():
                 return idx
-            idx += 1
         return None
 
 
@@ -266,6 +501,7 @@ def _get_git_subcommand(command: str) -> str | None:
 # ---------------------------------------------------------------------------
 # 1. readOnlyValidation
 # ---------------------------------------------------------------------------
+
 
 def validate_read_only(command: str, mode: PermissionMode) -> ValidationResult:
     if mode != PermissionMode.READ_ONLY:
@@ -320,6 +556,7 @@ def _validate_git_read_only(command: str) -> ValidationResult:
 # 2. destructiveCommandWarning
 # ---------------------------------------------------------------------------
 
+
 def check_destructive(command: str) -> ValidationResult:
     for pattern, warning in DESTRUCTIVE_PATTERNS:
         if pattern in command:
@@ -342,6 +579,7 @@ def check_destructive(command: str) -> ValidationResult:
 # ---------------------------------------------------------------------------
 # 3. modeValidation
 # ---------------------------------------------------------------------------
+
 
 def validate_mode(command: str, mode: PermissionMode) -> ValidationResult:
     if mode == PermissionMode.READ_ONLY:
@@ -369,15 +607,14 @@ def _command_targets_outside_workspace(command: str) -> bool:
 # 4. sedValidation
 # ---------------------------------------------------------------------------
 
+
 def validate_sed(command: str, mode: PermissionMode) -> ValidationResult:
     first = extract_first_command(command)
     if first != "sed":
         return ValidationResult.allow()
 
     if mode == PermissionMode.READ_ONLY and " -i" in command:
-        return ValidationResult.block(
-            "sed -i (in-place editing) is not allowed in read-only mode"
-        )
+        return ValidationResult.block("sed -i (in-place editing) is not allowed in read-only mode")
 
     return ValidationResult.allow()
 
@@ -386,19 +623,34 @@ def validate_sed(command: str, mode: PermissionMode) -> ValidationResult:
 # 5. pathValidation
 # ---------------------------------------------------------------------------
 
+
 def validate_paths(command: str, workspace: Path) -> ValidationResult:
-    if "../" in command:
-        workspace_str = str(workspace)
-        if workspace_str not in command:
-            return ValidationResult.warn(
-                "Command contains directory traversal pattern '../' — "
-                "verify the target path resolves within the workspace"
+    if re.search(r"(^|[\s\"'=])\.\.[\\/]", command):
+        return ValidationResult.block("Command contains directory traversal outside the workspace")
+
+    if (
+        "~/" in command
+        or "~\\" in command
+        or "$HOME" in command
+        or "%USERPROFILE%" in command.upper()
+    ):
+        return ValidationResult.block("Command references the home directory outside the workspace")
+
+    workspace_text = str(workspace)
+    windows_root = ntpath.normcase(ntpath.normpath(workspace_text.replace("/", "\\")))
+    for match in re.finditer(r"(?<![\w])([A-Za-z]:[\\/][^\s\"'|;&<>]*)", command):
+        candidate = ntpath.normcase(ntpath.normpath(match.group(1)))
+        try:
+            inside = ntpath.commonpath([candidate, windows_root]) == windows_root
+        except ValueError:
+            inside = False
+        if not inside:
+            return ValidationResult.block(
+                f"Command references path outside workspace: {match.group(1)}"
             )
 
-    if "~/" in command or "$HOME" in command:
-        return ValidationResult.warn(
-            "Command references home directory — verify it stays within the workspace scope"
-        )
+    if re.search(r"(^|[\s\"'=])\\\\[^\\\s]+\\", command):
+        return ValidationResult.block("Command references a UNC path outside the workspace")
 
     return ValidationResult.allow()
 
@@ -406,6 +658,7 @@ def validate_paths(command: str, workspace: Path) -> ValidationResult:
 # ---------------------------------------------------------------------------
 # 6. commandSemantics
 # ---------------------------------------------------------------------------
+
 
 def classify_command(command: str) -> CommandIntent:
     first = extract_first_command(command)
@@ -449,6 +702,7 @@ def _classify_by_first_command(first: str, command: str) -> CommandIntent:
 # 7. validate_command — full pipeline
 # ---------------------------------------------------------------------------
 
+
 def validate_command(command: str, mode: PermissionMode, workspace: Path) -> ValidationResult:
     # 1. Mode-level validation (includes read-only checks)
     result = validate_mode(command, mode)
@@ -462,16 +716,33 @@ def validate_command(command: str, mode: PermissionMode, workspace: Path) -> Val
 
     # 3. Destructive command warnings
     result = check_destructive(command)
+    if result.is_warn and mode == PermissionMode.WORKSPACE_WRITE:
+        return ValidationResult.block(result.message)
     if not result.is_allowed:
         return result
 
     # 4. Path validation
-    return validate_paths(command, workspace)
+    result = validate_paths(command, workspace)
+    if not result.is_allowed:
+        return result
+
+    if mode == PermissionMode.WORKSPACE_WRITE:
+        if any(char in SHELL_METACHARS for char in command):
+            return ValidationResult.block(
+                "Shell chaining, substitution, pipes, and redirection are not allowed"
+            )
+        executable = extract_first_command(command).lower()
+        if executable in INDIRECT_EXECUTORS:
+            return ValidationResult.block(
+                f"Indirect shell or interpreter execution is not allowed: {executable}"
+            )
+    return ValidationResult.allow()
 
 
 # ---------------------------------------------------------------------------
 # is_read_only_command — conservative heuristic for permission_enforcer
 # ---------------------------------------------------------------------------
+
 
 def is_read_only_command(command: str) -> bool:
     """Conservative heuristic: is this bash command safe in read-only mode?
@@ -504,7 +775,4 @@ def is_read_only_command(command: str) -> bool:
     if first_token not in SEMANTIC_READ_ONLY_COMMANDS:
         return False
 
-    if "-i " in command or "--in-place" in command:
-        return False
-
-    return True
+    return not ("-i " in command or "--in-place" in command)
