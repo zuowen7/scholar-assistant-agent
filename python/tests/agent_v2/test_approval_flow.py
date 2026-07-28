@@ -658,6 +658,23 @@ class TestApprovalRecovery:
         assert not rt.approve("nonexistent_id", "allow_once")
 
     @pytest.mark.asyncio
+    async def test_approve_rejects_unknown_decision_without_unblocking(self, workspace: Path):
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        rt = ConversationRuntime(
+            provider=MockProvider(),
+            tool_registry=registry,
+            permission_policy=policy,
+            session=Session(workspace=str(workspace)),
+        )
+        approval_event = asyncio.Event()
+        rt._approval_events["evt_001"] = approval_event
+
+        assert not rt.approve("evt_001", "always_allow")
+        assert not approval_event.is_set()
+        assert "evt_001" not in rt._approval_decisions
+
+    @pytest.mark.asyncio
     async def test_abort_unblocks_approval(self, workspace: Path):
         provider = MockProvider(
             scenarios=[

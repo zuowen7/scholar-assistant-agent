@@ -325,6 +325,7 @@
   },
   "agent": {
     "approvalRequest": "Agent 请求执行",
+    "approvalSubmitFailed": "审批未送达，任务可能已断开或过期。请重试；若仍失败，请停止任务后重新发送。",
     "approvalEditReason": "Agent 将修改 {path}",
     "userDeniedChange": "用户已拒绝修改 {path}",
     "approvalTimedOutChange": "修改审批已超时：{path}",

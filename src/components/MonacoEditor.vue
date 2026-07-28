@@ -755,7 +755,7 @@ watch(activeEdit, (edit) => {
 function _dispatchInlineDecision(decision: 'allow_once' | 'deny') {
   const edit = activeEdit.value
   if (!edit) return
-  sendApproval(edit.eventId, decision).then((ok) => {
+  sendApproval(edit.eventId, decision, undefined, edit.sessionId).then((ok) => {
     if (ok) clearActiveEdit()
     // On failure, widget stays visible for retry
   })

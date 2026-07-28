@@ -25,6 +25,7 @@ import AgentApprovalInline from '../components/AgentApprovalInline.vue'
 describe('AgentApprovalInline', () => {
   const basePending = {
     event_id: 'evt_1',
+    session_id: 'sess_1',
     tool_name: 'write_file',
     args: { file_path: 'draft.md' },
     risk: 'destructive',
@@ -61,5 +62,19 @@ describe('AgentApprovalInline', () => {
     expect(wrapper.text()).toContain('Agent 将修改 draft.md')
     expect(wrapper.text()).toContain('高风险')
     expect(wrapper.find('.approval-risk').classes()).toContain('risk-destructive')
+  })
+
+  it.each([
+    ['.allow-once', 'allow_once'],
+    ['.allow-session', 'allow_session'],
+    ['.deny', 'deny'],
+  ])('emits the decision when %s is clicked', async (selector, decision) => {
+    const wrapper = mount(AgentApprovalInline, {
+      props: { pending: basePending },
+    })
+
+    await wrapper.get(selector).trigger('click')
+
+    expect(wrapper.emitted('decide')).toEqual([[decision]])
   })
 })

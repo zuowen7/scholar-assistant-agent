@@ -135,6 +135,8 @@ const pendingCheckpoint = ref<PendingCheckpoint | null>(null)
 
 export interface PendingApproval {
   event_id: string
+  /** Immutable owner captured from session_started; never route via mutable global state. */
+  session_id: string
   tool_name: string
   args?: Record<string, unknown>
   risk?: string
@@ -178,17 +180,19 @@ export function _resetForTesting(): void {
 
 /** Agent chat composable (singleton). Manages ReAct loop SSE streaming, session lifecycle, per-session approval state, and RAG documents. */
 export function useAgentChat() {
-  function _setApproval(value: PendingApproval | null) {
-    const sid = activeRunSessionId.value
-    if (sid) _approvalBySession.set(sid, value)
+  function _setApproval(value: PendingApproval) {
+    if (value.session_id) _approvalBySession.set(value.session_id, value)
     pendingApproval.value = value
   }
 
   function _clearApproval(eventId?: string) {
     // Approval events can overlap in a multi-tool turn. A late HTTP response or
     // approval_received event for tool A must never clear tool B's newer card.
-    if (eventId && pendingApproval.value?.event_id !== eventId) return
-    _setApproval(null)
+    const current = pendingApproval.value
+    if (eventId && current?.event_id !== eventId) return
+    const ownerSessionId = current?.session_id || activeRunSessionId.value
+    if (ownerSessionId) _approvalBySession.set(ownerSessionId, null)
+    pendingApproval.value = null
   }
 
   // ── Shared SSE event handler ──────────────────────────────────────
@@ -297,6 +301,7 @@ export function useAgentChat() {
         case 'await_approval':
           _setApproval({
             event_id: agentEvent.event_id || '',
+            session_id: activeRunSessionId.value || '',
             tool_name:
               (agentEvent.metadata?.tool_name as string) ||
               (agentEvent.metadata?.tool as string) ||
@@ -588,9 +593,18 @@ export function useAgentChat() {
     eventId: string,
     decision: 'allow_once' | 'allow_session' | 'deny',
     reason?: string,
+    sessionId?: string,
   ): Promise<boolean> {
-    const sid = activeRunSessionId.value
-    if (!sid || !eventId) return false
+    const approvalOwner =
+      pendingApproval.value?.event_id === eventId ? pendingApproval.value.session_id : null
+    const sid = sessionId || approvalOwner || activeRunSessionId.value
+    if (!sid || !eventId) {
+      logger.warn('sendApproval skipped: approval routing identity is missing', {
+        eventId,
+        hasActiveSession: Boolean(activeRunSessionId.value),
+      })
+      return false
+    }
 
     try {
       const resp = await fetch(`${API_URL}/api/agent/v2/approve/${sid}/${eventId}`, {
@@ -607,6 +621,16 @@ export function useAgentChat() {
         _clearApproval(eventId)
         return true
       }
+      const detail = await resp
+        .json()
+        .then((body) => body?.detail)
+        .catch(() => undefined)
+      logger.warn('sendApproval rejected by backend', {
+        sessionId: sid,
+        eventId,
+        status: resp.status,
+        detail,
+      })
     } catch (e) {
       logger.warn('sendApproval failed', { error: e })
     }
