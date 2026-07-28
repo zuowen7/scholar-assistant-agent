@@ -248,6 +248,14 @@ class TestApproveEndpoint:
         assert resp.status_code == 200
         assert resp.json()["status"] == "ok"
 
+    def test_approve_rejects_unknown_decision(self, agent_app_with_session):
+        session_id, event_id, tc = agent_app_with_session
+        resp = tc.post(
+            f"/api/agent/v2/approve/{session_id}/{event_id}",
+            json={"decision": "always_allow"},
+        )
+        assert resp.status_code == 422
+
 
 # ── Fixture for approve happy path ───────────────────────────────────────
 

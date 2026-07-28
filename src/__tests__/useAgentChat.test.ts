@@ -677,6 +677,61 @@ describe('useAgentChat', () => {
       expect(approvalEvents.length).toBeGreaterThan(0)
     })
 
+    it('keeps the approval bound to the session that raised it', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          makeSseResponse([
+            makeSessionStartedChunk('sess_approval_owner'),
+            makeAwaitApprovalChunk('write_file', 'Confirm the edit', 'evt_owned'),
+            makeDoneChunk(),
+          ]),
+        )
+        .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+        .mockResolvedValueOnce(
+          makeSseResponse([makeSessionStartedChunk('sess_approval_owner'), makeDoneChunk()]),
+        )
+      vi.stubGlobal('fetch', fetchMock)
+
+      const { sendMessage, sendApproval, activeRunSessionId, pendingApproval } = useAgentChat()
+      await sendMessage('Update the draft')
+
+      expect(activeRunSessionId.value).toBeNull()
+      expect(pendingApproval.value).toMatchObject({
+        event_id: 'evt_owned',
+        session_id: 'sess_approval_owner',
+      })
+      expect(await sendApproval('evt_owned', 'allow_once')).toBe(true)
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        'http://127.0.0.1:18088/api/agent/v2/approve/sess_approval_owner/evt_owned',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ decision: 'allow_once' }),
+        }),
+      )
+
+      await sendMessage('Continue the task')
+      expect(pendingApproval.value).toBeNull()
+    })
+
+    it.each(['allow_once', 'allow_session', 'deny'] as const)(
+      'routes %s from the editor overlay to its explicit session owner',
+      async (decision) => {
+        const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
+        vi.stubGlobal('fetch', fetchMock)
+
+        const { sendApproval } = useAgentChat()
+        expect(await sendApproval('evt_inline', decision, undefined, 'sess_inline')).toBe(true)
+        expect(fetchMock).toHaveBeenCalledWith(
+          'http://127.0.0.1:18088/api/agent/v2/approve/sess_inline/evt_inline',
+          expect.objectContaining({
+            method: 'POST',
+            body: JSON.stringify({ decision }),
+          }),
+        )
+      },
+    )
+
     it('does not let an older approval_received event clear a newer tool approval', async () => {
       const openStream = makeOpenSseResponse([
         makeSessionStartedChunk('sess_overlap'),

@@ -371,6 +371,8 @@ class ConversationRuntime:
 
     def approve(self, event_id: str, decision: str) -> bool:
         """Handle approval decision from frontend. Returns True if event was found."""
+        if decision not in {"allow_once", "allow_session", "deny"}:
+            return False
         evt = self._approval_events.get(event_id)
         if evt is None:
             return False

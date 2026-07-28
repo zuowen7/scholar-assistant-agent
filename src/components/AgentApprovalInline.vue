@@ -17,24 +17,31 @@
     </div>
     <div class="approval-actions">
       <button
+        type="button"
         class="approval-btn allow-once u-interactive"
-        @click="decide('allow_once')"
         :disabled="deciding"
+        @click="decide('allow_once')"
       >
         <UiSpinner v-if="deciding && pendingDecision === 'allow_once'" size="sm" />
         <span v-else>{{ t('agent.allowOnce') }}</span>
       </button>
       <button
         v-if="!pending.force_approval"
+        type="button"
         class="approval-btn allow-session u-interactive"
-        @click="decide('allow_session')"
         :disabled="deciding"
+        @click="decide('allow_session')"
       >
         <UiSpinner v-if="deciding && pendingDecision === 'allow_session'" size="sm" />
         <span v-else>{{ t('agent.allowSession') }}</span>
       </button>
       <span v-else class="approval-hint-force">{{ t('agent.confirmEach') }}</span>
-      <button class="approval-btn deny u-interactive" @click="decide('deny')" :disabled="deciding">
+      <button
+        type="button"
+        class="approval-btn deny u-interactive"
+        :disabled="deciding"
+        @click="decide('deny')"
+      >
         <UiSpinner v-if="deciding && pendingDecision === 'deny'" size="sm" />
         <span v-else>{{ t('general.no') }}</span>
       </button>
