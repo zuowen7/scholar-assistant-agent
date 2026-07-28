@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -152,6 +153,44 @@ class TestSubAgentExecution:
         child_files = list((tmp_path / "sessions" / "subagents" / "parent").glob("*.jsonl"))
         assert len(child_files) == 1
         assert Session.load(child_files[0]).meta.outcome["stop_code"] == "timeout"
+
+    @pytest.mark.asyncio
+    async def test_cancellation_is_persisted_as_aborted_child_run(self, tmp_path: Path):
+        started = asyncio.Event()
+
+        class BlockingProvider:
+            model = "blocking"
+
+            async def chat(self, **_kwargs):
+                started.set()
+                await asyncio.Event().wait()
+
+        reg = ToolRegistry(tmp_path)
+        reg.set_provider(BlockingProvider())
+        parent_path = tmp_path / "sessions" / "parent.jsonl"
+        reg.set_runtime_context(
+            parent_session_id="parent",
+            parent_session_path=str(parent_path),
+            workspace=str(tmp_path),
+        )
+        register_sub_agent(reg)
+
+        execution = asyncio.create_task(
+            reg.execute(
+                "run_sub_agent",
+                {"preset": "audit", "content": "test"},
+            )
+        )
+        await asyncio.wait_for(started.wait(), timeout=1)
+        execution.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await execution
+
+        child_files = list((tmp_path / "sessions" / "subagents" / "parent").glob("*.jsonl"))
+        assert len(child_files) == 1
+        child = Session.load(child_files[0])
+        assert child.meta.state == "ABORTED"
+        assert child.meta.outcome["stop_code"] == "cancelled"
 
 
 class TestSubAgentEdge:

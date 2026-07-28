@@ -40,7 +40,7 @@ print()
 print("-" * 60)
 print("1. 测试 Block 结构")
 print("-" * 60)
-for i, b in enumerate(blocks[:5]):
+for _i, b in enumerate(blocks[:5]):
     paras = b.text.split("\n\n")
     sentences = b.text.count(". ") + b.text.count(".\n")
     print(f"Block {b.id}:")

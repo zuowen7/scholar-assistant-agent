@@ -448,7 +448,7 @@ class TestPromptCacheEdge:
         from src.agent_v2.runtime.prompt_cache import PromptCacheTracker
 
         tracker = PromptCacheTracker()
-        for i in range(1000):
+        for _i in range(1000):
             tracker.record_hit(100)
             tracker.record_miss(50)
         assert tracker.cache_hits == 1000
@@ -841,7 +841,6 @@ class TestTridentEdgeMore:
         assert clusters > 0
 
     def test_stage1_supersede_multiple_writes_same_file(self):
-        import json
 
         from src.agent_v2.runtime.trident import stage1_supersede
         from src.agent_v2.types import Message, MessageRole, ToolResultBlock, ToolUseBlock
@@ -877,7 +876,6 @@ class TestTridentEdgeMore:
         assert len(kept) == 2  # only last write + its result remain
 
     def test_stage1_read_not_superseded(self):
-        import json
 
         from src.agent_v2.runtime.trident import stage1_supersede
         from src.agent_v2.types import Message, MessageRole, ToolResultBlock, ToolUseBlock

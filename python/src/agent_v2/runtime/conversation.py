@@ -14,6 +14,7 @@ import logging
 import time
 import uuid
 from collections.abc import AsyncGenerator
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -45,6 +46,9 @@ _APPROVAL_TIMEOUT = 600.0  # 10 分钟等用户审批；超时必须与用户拒
 _TOOL_RESULT_MAX_CHARS = 4000
 _DEFAULT_MAX_TOOL_CALLS = 32
 _DEFAULT_SOFT_TOOL_CALLS = 28
+_DEFAULT_MAX_MODEL_CALLS = 16
+_DEFAULT_MAX_MUTATION_ATTEMPTS = 12
+_DEFAULT_MAX_ACTIVE_SECONDS = 300.0
 _SELECTION_MAX_TOOL_CALLS = 4
 _DEFAULT_MAX_TOOL_ERRORS = 5
 _SELECTION_MAX_TOOL_ERRORS = 2
@@ -65,6 +69,19 @@ _SELECTION_SAFE_TOOLS = frozenset(
 
 class _EmptyModelResponse(RuntimeError):
     """Provider completed without a user-visible answer or tool call."""
+
+
+class _OperationAborted(RuntimeError):
+    """An active provider or tool operation was cancelled by the user."""
+
+
+class _ResourceBudgetExceeded(RuntimeError):
+    """A non-retryable per-turn execution budget was exhausted."""
+
+    def __init__(self, code: str, reason: str):
+        super().__init__(reason)
+        self.code = code
+        self.reason = reason
 
 
 def _normalize_line_endings(text: str) -> str:
@@ -96,6 +113,9 @@ class ConversationRuntime:
         hook_runner: HookRunner | None = None,
         max_tool_calls: int = _DEFAULT_MAX_TOOL_CALLS,
         soft_tool_calls: int | None = None,
+        max_model_calls: int = _DEFAULT_MAX_MODEL_CALLS,
+        max_mutation_attempts: int = _DEFAULT_MAX_MUTATION_ATTEMPTS,
+        max_active_seconds: float = _DEFAULT_MAX_ACTIVE_SECONDS,
     ):
         self.provider = provider
         self.tool_registry = tool_registry
@@ -113,6 +133,9 @@ class ConversationRuntime:
             else min(_DEFAULT_SOFT_TOOL_CALLS, self.max_tool_calls - 1)
         )
         self.soft_tool_calls = max(0, min(configured_soft_limit, self.max_tool_calls - 1))
+        self.max_model_calls = max(1, int(max_model_calls))
+        self.max_mutation_attempts = max(1, int(max_mutation_attempts))
+        self.max_active_seconds = max(0.01, float(max_active_seconds))
         self.usage = UsageTracker(model=session.meta.model)
         self.tool_registry.set_runtime_context(
             parent_session_id=session.session_id,
@@ -128,6 +151,9 @@ class ConversationRuntime:
         self._aborted = False
         self._tool_calls_this_turn = 0
         self._tool_errors_this_turn = 0
+        self._model_calls_this_turn = 0
+        self._mutation_attempts_this_turn = 0
+        self._active_seconds_this_turn = 0.0
         self._tool_call_counts: dict[str, int] = {}
         self._readonly_tool_names = frozenset(
             name for name, perm in tool_registry.permission_specs() if perm == "read-only"
@@ -142,6 +168,7 @@ class ConversationRuntime:
         # sessions safely (never evict a streaming session).
         self.last_active_monotonic: float = time.monotonic()
         self._is_streaming: bool = False
+        self._active_operation_task: asyncio.Future[Any] | None = None
 
     # ---- Public API ----
 
@@ -157,6 +184,9 @@ class ConversationRuntime:
         self._approval_stop_reason = None
         self._tool_calls_this_turn = 0
         self._tool_errors_this_turn = 0
+        self._model_calls_this_turn = 0
+        self._mutation_attempts_this_turn = 0
+        self._active_seconds_this_turn = 0.0
         self._tool_call_counts.clear()
         self._tool_stop_reason = None
         self._tool_stop_code = None
@@ -272,6 +302,26 @@ class ConversationRuntime:
                         )
                         yield AgentEvent.done()
                         return
+                    except _OperationAborted:
+                        self._persist_turn_outcome(
+                            "ABORTED", "user_aborted", "Session aborted by user"
+                        )
+                        yield AgentEvent.aborted("Session aborted by user")
+                        yield AgentEvent.done()
+                        return
+                    except _ResourceBudgetExceeded as exc:
+                        self._tool_stop_code = exc.code
+                        self._tool_stop_reason = exc.reason
+                        async for final_event in self._finalize_stopped_turn(allow_model=False):
+                            yield final_event
+                        yield AgentEvent.usage(
+                            TokenUsage(
+                                input_tokens=self.usage.total_input,
+                                output_tokens=self.usage.total_output,
+                            )
+                        )
+                        yield AgentEvent.done()
+                        return
                     except ApiError as e:
                         if e.status_code == 429 and retry < 2:
                             wait = e.retry_after or (2**retry)
@@ -330,11 +380,60 @@ class ConversationRuntime:
 
     def abort(self) -> None:
         self._aborted = True
+        if self._active_operation_task is not None:
+            self._active_operation_task.cancel()
         # Signal all pending approvals to unblock
         for evt in self._approval_events.values():
             evt.set()
 
     # ---- Internal ----
+
+    async def _await_active_operation(self, awaitable: Any) -> Any:
+        """Make one provider/tool awaitable immediately cancellable through abort()."""
+        task = asyncio.ensure_future(awaitable)
+        self._active_operation_task = task
+        started = time.monotonic()
+        try:
+            remaining = self.max_active_seconds - self._active_seconds_this_turn
+            if remaining <= 0:
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
+                raise _ResourceBudgetExceeded(
+                    "active_time_exhausted",
+                    (
+                        "Agent active execution time limit reached "
+                        f"({self.max_active_seconds:g}s) before completion."
+                    ),
+                )
+            return await asyncio.wait_for(task, timeout=remaining)
+        except TimeoutError as exc:
+            if self._aborted:
+                raise _OperationAborted from exc
+            raise _ResourceBudgetExceeded(
+                "active_time_exhausted",
+                (
+                    "Agent active execution time limit reached "
+                    f"({self.max_active_seconds:g}s) before completion."
+                ),
+            ) from exc
+        except asyncio.CancelledError as exc:
+            if self._aborted:
+                raise _OperationAborted from exc
+            raise
+        finally:
+            self._active_seconds_this_turn += time.monotonic() - started
+            if self._active_operation_task is task:
+                self._active_operation_task = None
+
+    async def _abortable_stream(self, stream: Any) -> AsyncGenerator[Any, None]:
+        iterator = stream.__aiter__()
+        while True:
+            try:
+                chunk = await self._await_active_operation(anext(iterator))
+            except StopAsyncIteration:
+                return
+            yield chunk
 
     def _build_turn_outcome(
         self,
@@ -383,7 +482,9 @@ class ConversationRuntime:
         )
         self._auto_save()
 
-    async def _finalize_stopped_turn(self) -> AsyncGenerator[AgentEvent, None]:
+    async def _finalize_stopped_turn(
+        self, *, allow_model: bool = True
+    ) -> AsyncGenerator[AgentEvent, None]:
         stop_code = self._tool_stop_code or "tool_loop_stopped"
         stop_reason = self._tool_stop_reason or "Tool execution stopped before completion"
         outcome = self._build_turn_outcome(
@@ -401,16 +502,17 @@ class ConversationRuntime:
         )
         emitted_response = False
         try:
-            try:
-                async for event in self._llm_turn(
-                    recovery_instruction=instruction,
-                    force_no_tools=True,
-                ):
-                    if event.type == AgentEventType.RESPONSE:
-                        emitted_response = True
-                    yield event
-            except Exception as exc:
-                logger.warning("Agent finalization failed: %s", exc)
+            if allow_model:
+                try:
+                    async for event in self._llm_turn(
+                        recovery_instruction=instruction,
+                        force_no_tools=True,
+                    ):
+                        if event.type == AgentEventType.RESPONSE:
+                            emitted_response = True
+                        yield event
+                except Exception as exc:
+                    logger.warning("Agent finalization failed: %s", exc)
             if not emitted_response:
                 counts = outcome["tool_counts"]
                 changed = outcome["changed_files"]
@@ -434,6 +536,13 @@ class ConversationRuntime:
     ) -> AsyncGenerator[AgentEvent, None]:
         import os
 
+        self._model_calls_this_turn += 1
+        if self._model_calls_this_turn > self.max_model_calls:
+            raise _ResourceBudgetExceeded(
+                "model_call_budget_exhausted",
+                (f"Agent model-call limit reached ({self.max_model_calls}) before completion."),
+            )
+
         messages = self.session.messages
         system_prompt = "\n\n".join(
             part for part in (self.system_prompt, self._selection_instruction()) if part
@@ -454,10 +563,12 @@ class ConversationRuntime:
                 system_prompt=system_prompt,
             )
         if provider_stream is None:
-            resp = await self.provider.chat(
-                messages=messages,
-                tools=tool_definitions,
-                system_prompt=system_prompt,
+            resp = await self._await_active_operation(
+                self.provider.chat(
+                    messages=messages,
+                    tools=tool_definitions,
+                    system_prompt=system_prompt,
+                )
             )
             provider_stream = _fallback_stream(resp)
 
@@ -478,7 +589,7 @@ class ConversationRuntime:
             self.usage.record(usage)
             return True
 
-        async for chunk in provider_stream:
+        async for chunk in self._abortable_stream(provider_stream):
             if isinstance(chunk, TextBlock):
                 text_blocks.append(chunk)
                 yield AgentEvent.token(chunk.text)
@@ -593,6 +704,17 @@ class ConversationRuntime:
             self._tool_stop_reason = loop_error
             yield AgentEvent.tool_result(tb.id, tb.name, loop_error, is_error=True)
             return
+        mutation_budget_error = self._check_mutation_budget(tb.name)
+        if mutation_budget_error:
+            self._append_tool_error(tb, mutation_budget_error)
+            self._tool_stop_reason = mutation_budget_error
+            yield AgentEvent.tool_result(
+                tb.id,
+                tb.name,
+                mutation_budget_error,
+                is_error=True,
+            )
+            return
         if self._should_skip_in_draining(tb):
             output = (
                 "Tool execution skipped because the soft budget is exhausted; "
@@ -631,14 +753,39 @@ class ConversationRuntime:
 
         hook_asks_for_approval = False
         if self.hook_runner is not None:
-            hook_result = await self.hook_runner.run(
-                HookPoint.PRE_TOOL_USE,
-                HookEvent(
-                    hook=HookPoint.PRE_TOOL_USE,
-                    tool_name=tb.name,
-                    tool_input=json.dumps(args, ensure_ascii=False, sort_keys=True),
-                ),
-            )
+            try:
+                hook_result = await self._await_active_operation(
+                    self.hook_runner.run(
+                        HookPoint.PRE_TOOL_USE,
+                        HookEvent(
+                            hook=HookPoint.PRE_TOOL_USE,
+                            tool_name=tb.name,
+                            tool_input=json.dumps(args, ensure_ascii=False, sort_keys=True),
+                        ),
+                    )
+                )
+            except _OperationAborted:
+                tool_output = "Tool execution aborted while running its safety hook."
+                self._append_skipped_tool(tb, tool_output)
+                yield AgentEvent.tool_result(
+                    tb.id,
+                    tb.name,
+                    tool_output,
+                    status="skipped",
+                )
+                return
+            except _ResourceBudgetExceeded as exc:
+                self._tool_stop_code = exc.code
+                self._tool_stop_reason = exc.reason
+                tool_output = f"Tool execution skipped: {exc.reason}"
+                self._append_skipped_tool(tb, tool_output)
+                yield AgentEvent.tool_result(
+                    tb.id,
+                    tb.name,
+                    tool_output,
+                    status="skipped",
+                )
+                return
             if hook_result.updated_input is not None:
                 try:
                     updated_args = json.loads(hook_result.updated_input)
@@ -870,7 +1017,32 @@ class ConversationRuntime:
                     mutation_before_bytes = b""
 
             # Execute
-            result = await self.tool_registry.execute(tb.name, args)
+            try:
+                result = await self._await_active_operation(
+                    self.tool_registry.execute(tb.name, args)
+                )
+            except _OperationAborted:
+                tool_output = "Tool execution aborted by user."
+                self._append_skipped_tool(tb, tool_output)
+                yield AgentEvent.tool_result(
+                    tb.id,
+                    tb.name,
+                    tool_output,
+                    status="skipped",
+                )
+                return
+            except _ResourceBudgetExceeded as exc:
+                self._tool_stop_code = exc.code
+                self._tool_stop_reason = exc.reason
+                tool_output = f"Tool execution skipped: {exc.reason}"
+                self._append_skipped_tool(tb, tool_output)
+                yield AgentEvent.tool_result(
+                    tb.id,
+                    tb.name,
+                    tool_output,
+                    status="skipped",
+                )
+                return
             tool_output = result.output
             is_error = result.is_error
             result_status = result.status
@@ -929,16 +1101,24 @@ class ConversationRuntime:
                 post_point = (
                     HookPoint.POST_TOOL_USE_FAILURE if is_error else HookPoint.POST_TOOL_USE
                 )
-                await self.hook_runner.run(
-                    post_point,
-                    HookEvent(
-                        hook=post_point,
-                        tool_name=tb.name,
-                        tool_input=json.dumps(args, ensure_ascii=False, sort_keys=True),
-                        tool_result=tool_output,
-                        is_error=is_error,
-                    ),
-                )
+                try:
+                    await self._await_active_operation(
+                        self.hook_runner.run(
+                            post_point,
+                            HookEvent(
+                                hook=post_point,
+                                tool_name=tb.name,
+                                tool_input=json.dumps(args, ensure_ascii=False, sort_keys=True),
+                                tool_result=tool_output,
+                                is_error=is_error,
+                            ),
+                        )
+                    )
+                except _OperationAborted:
+                    logger.info("PostToolUse hook cancelled after tool %s completed", tb.name)
+                except _ResourceBudgetExceeded as exc:
+                    self._tool_stop_code = exc.code
+                    self._tool_stop_reason = exc.reason
 
         self.session.append(
             Message(
@@ -1102,6 +1282,19 @@ class ConversationRuntime:
             )
         return None
 
+    def _check_mutation_budget(self, tool_name: str) -> str | None:
+        spec = self.tool_registry.get(tool_name)
+        if spec is None or "filesystem_write" not in spec.effects:
+            return None
+        self._mutation_attempts_this_turn += 1
+        if self._mutation_attempts_this_turn <= self.max_mutation_attempts:
+            return None
+        self._tool_stop_code = "mutation_budget_exhausted"
+        return (
+            "Agent file-mutation attempt limit reached "
+            f"({self.max_mutation_attempts}) before completion."
+        )
+
     def _should_skip_in_draining(self, tb: ToolUseBlock) -> bool:
         if (
             self.edit_scope is not None
@@ -1145,6 +1338,22 @@ class ConversationRuntime:
                         tool_name=tb.name,
                         output=output,
                         is_error=True,
+                    ),
+                ],
+            )
+        )
+        self._auto_save()
+
+    def _append_skipped_tool(self, tb: ToolUseBlock, output: str) -> None:
+        self.session.append(
+            Message(
+                role=MessageRole.TOOL,
+                blocks=[
+                    ToolResultBlock(
+                        tool_use_id=tb.id,
+                        tool_name=tb.name,
+                        output=output,
+                        status="skipped",
                     ),
                 ],
             )

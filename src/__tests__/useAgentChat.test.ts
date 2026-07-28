@@ -612,7 +612,7 @@ describe('useAgentChat', () => {
       const cacheKeys = _getWorkflowCacheKeysForTesting()
       expect(cacheKeys).toHaveLength(20)
       expect(cacheKeys).not.toContain('workflow-0')
-      expect(cacheKeys.at(-1)).toBe('workflow-20')
+      expect(cacheKeys[cacheKeys.length - 1]).toBe('workflow-20')
     })
   })
 

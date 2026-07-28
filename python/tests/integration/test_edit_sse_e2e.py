@@ -57,7 +57,7 @@ def _make_cloud_sse_lines(tokens: list[str]) -> list[str]:
 def _make_ollama_sse_lines(tokens: list[str]) -> list[str]:
     """Build ollama-format lines from token list."""
     lines = []
-    for i, token in enumerate(tokens):
+    for _i, token in enumerate(tokens):
         chunk = {"message": {"content": token}, "done": False}
         lines.append(json.dumps(chunk, ensure_ascii=False))
     lines.append(json.dumps({"message": {"content": ""}, "done": True}))

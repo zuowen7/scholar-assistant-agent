@@ -45,22 +45,32 @@ for _pkg in ("chromadb", "onnxruntime", "tokenizers", "zstandard"):
     except Exception as _e:  # pragma: no cover - build-time only
         print(f"[api.spec] optional package '{_pkg}' not collected: {_e}")
 
-# Anaconda stores DLLs in Library/bin/ — PyInstaller doesn't find them automatically
-conda_bin = Path(sys.executable).parent / "Library" / "bin"
+# Anaconda stores DLLs in Library/bin/ — PyInstaller doesn't find them
+# automatically. A normal venv created from Anaconda keeps those DLLs under
+# ``sys.base_prefix`` rather than beside the venv executable.
+conda_bins = {
+    Path(sys.executable).parent / "Library" / "bin",
+    Path(sys.prefix) / "Library" / "bin",
+    Path(sys.base_prefix) / "Library" / "bin",
+}
 
 # Collect required Anaconda DLLs that PyInstaller may miss
 _conda_dlls = []
 _dll_names = [
     "libexpat.dll", "liblzma.dll", "LIBBZ2.dll", "ffi.dll",
-    "libssl-3-x64.dll", "libcrypto-3-x64.dll",
+    "libssl-3-x64.dll", "libcrypto-3-x64.dll", "sqlite3.dll",
     # MSVC runtime — bundle explicitly so api.exe + onnxruntime/pydantic-core/
     # tokenizers start on machines without the VC++ 2015-2022 redistributable.
     "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll",
 ]
-if conda_bin.exists():
+for conda_bin in conda_bins:
+    if not conda_bin.exists():
+        continue
     for dll in _dll_names:
         dll_path = conda_bin / dll
-        if dll_path.exists():
+        if dll_path.exists() and all(
+            Path(src).name.lower() != dll.lower() for src, _ in _conda_dlls
+        ):
             _conda_dlls.append((str(dll_path), "."))
 
 a = Analysis(

@@ -204,6 +204,10 @@ class PluginManager:
                         if proc is not None and proc.returncode is None:
                             await terminate_process_tree(proc)
                         return ToolResult("error: plugin tool timed out", is_error=True)
+                    except asyncio.CancelledError:
+                        if proc is not None and proc.returncode is None:
+                            await terminate_process_tree(proc)
+                        raise
                     except Exception as e:
                         return ToolResult(f"error: {e}", is_error=True)
 

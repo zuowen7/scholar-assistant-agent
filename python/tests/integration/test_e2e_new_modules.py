@@ -347,7 +347,7 @@ class TestSessionLifecycle:
                     role=MessageRole.ASSISTANT,
                     blocks=[
                         ToolUseBlock(
-                            id=f"r{i}", name="read_file", input=f'{{"file_path": "shared.md"}}'
+                            id=f"r{i}", name="read_file", input='{"file_path": "shared.md"}'
                         )
                     ],
                 )
