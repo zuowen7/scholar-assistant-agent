@@ -62,9 +62,9 @@ class TestChunkText:
     def test_invalid_strategy(self) -> None:
         try:
             chunk_text("test", strategy="invalid")
-            assert False, "Should have raised ValueError"
         except ValueError:
-            pass
+            return
+        raise AssertionError("Should have raised ValueError")
 
     def test_chunk_has_required_fields(self) -> None:
         chunks = chunk_text("Hello world. Test text.")

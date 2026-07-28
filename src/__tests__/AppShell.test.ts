@@ -24,7 +24,7 @@ vi.mock('vue-i18n', () => ({
 import AppShell from '../components/shell/AppShell.vue'
 
 const props = {
-  activeModule: 'write' as const,
+  activeModule: 'draft' as const,
   recentFiles: [],
   provider: 'local',
   model: 'qwen',

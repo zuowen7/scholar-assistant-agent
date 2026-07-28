@@ -37,20 +37,17 @@ from src.agent_v2.hooks import (
 
 class TestHookAbortSignal:
     def test_initial_state_not_aborted(self):
-        from src.agent_v2.hooks import HookAbortSignal
 
         signal = HookAbortSignal()
         assert not signal.is_aborted()
 
     def test_abort_sets_flag(self):
-        from src.agent_v2.hooks import HookAbortSignal
 
         signal = HookAbortSignal()
         signal.abort()
         assert signal.is_aborted()
 
     def test_abort_is_idempotent(self):
-        from src.agent_v2.hooks import HookAbortSignal
 
         signal = HookAbortSignal()
         signal.abort()
@@ -58,7 +55,6 @@ class TestHookAbortSignal:
         assert signal.is_aborted()
 
     def test_multiple_signals_independent(self):
-        from src.agent_v2.hooks import HookAbortSignal
 
         s1 = HookAbortSignal()
         s2 = HookAbortSignal()

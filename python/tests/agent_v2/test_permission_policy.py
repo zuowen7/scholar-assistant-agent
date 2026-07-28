@@ -187,7 +187,7 @@ class TestRuleMatching:
         policy = PermissionPolicy(
             PermissionMode.READ_ONLY,
             _default_tool_reqs(),
-            deny_rules=[f"write_file(/etc/hosts)"],
+            deny_rules=["write_file(/etc/hosts)"],
         )
         result = policy.authorize("write_file", '{"file_path":"/etc/hosts","content":"x"}')
         assert isinstance(result, DenyResult)

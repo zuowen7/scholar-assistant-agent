@@ -747,6 +747,9 @@ def _create_file_ops(registry: ToolRegistry) -> None:
             if validation.is_warn:
                 result = ToolResult(f"[WARNING: {validation.message}]\n{output or '(no output)'}")
             return result
+        except _aio.CancelledError:
+            await terminate_process_tree(proc)
+            raise
         except TimeoutError:
             await terminate_process_tree(proc)
             return ToolResult("error: command timed out (30s)", is_error=True)

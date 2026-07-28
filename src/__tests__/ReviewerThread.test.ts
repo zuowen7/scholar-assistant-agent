@@ -41,6 +41,7 @@ function makePoint(overrides: Partial<ReviewPoint> = {}): ReviewPoint {
     reviewer_label: null,
     thread: [],
     ...overrides,
+    perspective: overrides.perspective ?? null,
   }
 }
 

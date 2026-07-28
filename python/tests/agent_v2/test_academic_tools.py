@@ -1,8 +1,13 @@
 import httpx
 import pytest
 
-from src.agent_v2.tools.academic_tools import _validate_public_http_url, register_academic_tools
-from src.agent_v2.tools.registry import ToolRegistry
+from src.agent_v2.tools.academic_tools import (
+    _fetch_pinned_public_url,
+    _pinned_http_request_parts,
+    _validate_public_http_url,
+    register_academic_tools,
+)
+from src.agent_v2.tools.registry import ToolRegistry, ToolResult
 
 
 @pytest.mark.parametrize(
@@ -44,44 +49,146 @@ def test_web_fetch_rejects_nonstandard_ports():
 
 
 @pytest.mark.asyncio
-async def test_web_fetch_rechecks_dns_after_connection(monkeypatch, tmp_path):
+async def test_web_fetch_uses_ip_pinned_transport_for_each_redirect(monkeypatch, tmp_path):
     import src.agent_v2.tools.academic_tools as academic_tools
 
-    resolutions = iter(
-        [
-            (True, ""),
-            (True, ""),
-            (False, "non-public network target is not allowed: 127.0.0.1"),
-        ]
-    )
+    calls = []
 
-    async def resolve(_url):
-        return next(resolutions)
+    async def fetch(url):
+        calls.append(url)
+        if len(calls) == 1:
+            return 302, {"location": "https://papers.example.net/final"}, ""
+        return 200, {}, "<article>public paper</article>"
 
-    class FetchResponse:
-        status_code = 200
-        headers = {}
-        text = "private response must not be returned"
-
-    class FetchClient:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *args):
-            return None
-
-        async def get(self, _url):
-            return FetchResponse()
-
-    monkeypatch.setattr(academic_tools, "_resolve_public_http_url", resolve)
-    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: FetchClient())
+    monkeypatch.setattr(academic_tools, "_fetch_pinned_public_url", fetch)
     registry = ToolRegistry(tmp_path)
     register_academic_tools(registry)
 
     result = await registry.execute("web_fetch", {"url": "https://example.com/paper"})
 
+    assert result.is_error is False
+    assert result.output == "public paper"
+    assert calls == [
+        "https://example.com/paper",
+        "https://papers.example.net/final",
+    ]
+
+
+def test_web_fetch_pins_ip_but_preserves_host_and_tls_identity():
+    pinned_url, host_header, sni_hostname = _pinned_http_request_parts(
+        "https://example.com/paper?q=1",
+        "93.184.216.34",
+    )
+
+    assert pinned_url == "https://93.184.216.34/paper?q=1"
+    assert host_header == "example.com"
+    assert sni_hostname == "example.com"
+
+
+@pytest.mark.asyncio
+async def test_pinned_fetch_connects_to_validated_ip_and_disables_environment_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    import src.agent_v2.tools.academic_tools as academic_tools
+
+    client_options = {}
+    sent_requests = []
+
+    async def resolve(_url):
+        return True, "", "93.184.216.34"
+
+    class FetchResponse:
+        status_code = 200
+        headers = {}
+        encoding = "utf-8"
+
+        async def aiter_bytes(self):
+            yield b"paper"
+
+        async def aclose(self):
+            return None
+
+    class FetchClient:
+        def __init__(self, **kwargs):
+            client_options.update(kwargs)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        def build_request(self, method, url, *, headers):
+            return httpx.Request(method, url, headers=headers)
+
+        async def send(self, request, *, stream):
+            sent_requests.append((request, stream))
+            return FetchResponse()
+
+    monkeypatch.setattr(academic_tools, "_resolve_public_http_target", resolve)
+    monkeypatch.setattr(httpx, "AsyncClient", FetchClient)
+
+    result = await _fetch_pinned_public_url("https://example.com/paper")
+
+    assert result == (200, {}, "paper")
+    assert client_options["trust_env"] is False
+    request, stream = sent_requests[0]
+    assert stream is True
+    assert request.url.host == "93.184.216.34"
+    assert request.headers["host"] == "example.com"
+    assert request.extensions["sni_hostname"] == "example.com"
+
+
+@pytest.mark.asyncio
+async def test_pinned_fetch_rejects_oversized_response_before_reading(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    import src.agent_v2.tools.academic_tools as academic_tools
+
+    closed = False
+    iterated = False
+
+    async def resolve(_url):
+        return True, "", "93.184.216.34"
+
+    class FetchResponse:
+        status_code = 200
+        headers = {"content-length": str(2 * 1024 * 1024 + 1)}
+        encoding = "utf-8"
+
+        async def aiter_bytes(self):
+            nonlocal iterated
+            iterated = True
+            yield b"must not be read"
+
+        async def aclose(self):
+            nonlocal closed
+            closed = True
+
+    class FetchClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        def build_request(self, method, url, *, headers):
+            return httpx.Request(method, url, headers=headers)
+
+        async def send(self, _request, *, stream):
+            assert stream is True
+            return FetchResponse()
+
+    monkeypatch.setattr(academic_tools, "_resolve_public_http_target", resolve)
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: FetchClient())
+
+    result = await _fetch_pinned_public_url("https://example.com/large")
+
+    assert isinstance(result, ToolResult)
     assert result.is_error is True
-    assert "non-public network target" in result.output
+    assert "too large" in result.output
+    assert iterated is False
+    assert closed is True
 
 
 class _Response:

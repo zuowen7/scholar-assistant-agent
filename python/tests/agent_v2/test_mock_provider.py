@@ -105,7 +105,6 @@ class TestMultiTurnScenarios:
         assert tc.name == "read_file"
 
         # 模拟 tool_result 追加
-        from src.agent_v2.types import ToolResultBlock
 
         messages.append(Message(role=MessageRole.ASSISTANT, blocks=resp0.blocks))
         messages.append(
@@ -134,7 +133,6 @@ class TestMultiTurnScenarios:
         assert resp0.tool_calls()[0].name == "read_file"
 
         # Turn 1: grep
-        from src.agent_v2.types import ToolResultBlock
 
         tc0 = resp0.tool_calls()[0]
         messages.append(Message(role=MessageRole.ASSISTANT, blocks=resp0.blocks))
@@ -184,7 +182,7 @@ class TestMultiTurnScenarios:
                 ),
             ]
         )
-        for i in range(20):
+        for _i in range(20):
             resp = await provider.chat([make_user_message("keep going")])
             assert resp.has_tool_calls()
         assert provider.turn_counter == 20

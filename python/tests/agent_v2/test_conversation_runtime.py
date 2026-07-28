@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from src.agent_v2.hooks import HookPoint, HookResult, HookRunner
 from src.agent_v2.providers.mock_provider import (
     MockProvider,
     Scenario,
@@ -1442,3 +1443,283 @@ class TestSelectionContextInjection:
             ),
         )
         assert rt._apply_edit_scope(tb, json.loads(tb.input)) is None
+
+
+class TestAbortPropagation:
+    @pytest.mark.asyncio
+    async def test_abort_cancels_active_tool_and_persists_terminal_outcome(self, workspace: Path):
+        started = asyncio.Event()
+        cancelled = asyncio.Event()
+
+        async def slow_tool(_args):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        provider = MockProvider(
+            scenarios=[
+                Scenario(
+                    "slow",
+                    trigger_patterns=["slow"],
+                    response_factory=lambda _m, _t: _tool_response("slow_tool", {}),
+                )
+            ]
+        )
+        registry = ToolRegistry(workspace_root=workspace)
+        registry.register(
+            "slow_tool",
+            "Wait until cancelled",
+            {"type": "object", "properties": {}},
+            slow_tool,
+        )
+        session = Session(workspace=str(workspace))
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+        )
+
+        collector = asyncio.create_task(_collect_events(runtime, "slow"))
+        await asyncio.wait_for(started.wait(), timeout=2)
+        runtime.abort()
+        events = await asyncio.wait_for(collector, timeout=2)
+
+        assert cancelled.is_set()
+        assert AgentEventType.ABORTED in _event_types(events)
+        assert AgentEventType.DONE in _event_types(events)
+        assert any(
+            event.type == AgentEventType.TOOL_RESULT and event.data.get("status") == "skipped"
+            for event in events
+        )
+        assert session.meta.state == "ABORTED"
+
+    @pytest.mark.asyncio
+    async def test_abort_cancels_blocked_provider_stream(self, workspace: Path):
+        started = asyncio.Event()
+        cancelled = asyncio.Event()
+
+        class BlockingProvider:
+            model = "blocking"
+
+            def chat_stream(self, **_kwargs):
+                async def stream():
+                    started.set()
+                    try:
+                        await asyncio.Event().wait()
+                    except asyncio.CancelledError:
+                        cancelled.set()
+                        raise
+                    if False:
+                        yield TextBlock(text="unreachable")
+
+                return stream()
+
+        registry = ToolRegistry(workspace_root=workspace)
+        session = Session(workspace=str(workspace))
+        runtime = ConversationRuntime(
+            provider=BlockingProvider(),
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+        )
+
+        collector = asyncio.create_task(_collect_events(runtime, "block"))
+        await asyncio.wait_for(started.wait(), timeout=2)
+        runtime.abort()
+        events = await asyncio.wait_for(collector, timeout=2)
+
+        assert cancelled.is_set()
+        assert _event_types(events)[-2:] == [AgentEventType.ABORTED, AgentEventType.DONE]
+        assert session.meta.state == "ABORTED"
+
+    @pytest.mark.asyncio
+    async def test_abort_cancels_pre_tool_hook_and_keeps_protocol_paired(self, workspace: Path):
+        started = asyncio.Event()
+        cancelled = asyncio.Event()
+
+        async def blocking_hook(_event):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+            return HookResult()
+
+        hooks = HookRunner()
+        hooks.register_callable("blocking", HookPoint.PRE_TOOL_USE, blocking_hook)
+        provider = MockProvider(
+            scenarios=[
+                Scenario(
+                    "hook",
+                    trigger_patterns=["hook"],
+                    response_factory=lambda _m, _t: _tool_response("noop", {}),
+                )
+            ]
+        )
+        registry = ToolRegistry(workspace_root=workspace)
+
+        async def noop(_args):
+            return ToolResult("must not run")
+
+        registry.register("noop", "no-op", {"type": "object"}, noop)
+        session = Session(workspace=str(workspace))
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+            hook_runner=hooks,
+        )
+
+        collector = asyncio.create_task(_collect_events(runtime, "hook"))
+        await asyncio.wait_for(started.wait(), timeout=2)
+        runtime.abort()
+        events = await asyncio.wait_for(collector, timeout=2)
+
+        assert cancelled.is_set()
+        assert session.meta.state == "ABORTED"
+        assert any(
+            event.type == AgentEventType.TOOL_RESULT and event.data["status"] == "skipped"
+            for event in events
+        )
+
+
+class TestIndependentExecutionBudgets:
+    @pytest.mark.asyncio
+    async def test_model_call_budget_includes_followup_and_uses_local_finalizer(
+        self, workspace: Path
+    ):
+        class CountingProvider:
+            model = "counting"
+
+            def __init__(self):
+                self.calls = 0
+
+            async def chat(self, **_kwargs):
+                self.calls += 1
+                return ProviderResponse(
+                    blocks=[ToolUseBlock(id="n1", name="noop", input="{}")],
+                    stop_reason="tool_use",
+                )
+
+        provider = CountingProvider()
+        registry = ToolRegistry(workspace_root=workspace)
+
+        async def noop(_args):
+            return ToolResult("ok")
+
+        registry.register("noop", "no-op", {"type": "object"}, noop)
+        session = Session(workspace=str(workspace))
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+            max_model_calls=1,
+        )
+
+        events = await _collect_events(runtime, "do one step")
+
+        assert provider.calls == 1
+        assert session.meta.state == "PARTIAL"
+        assert session.meta.outcome["stop_code"] == "model_call_budget_exhausted"
+        assert any(event.type == AgentEventType.RESPONSE for event in events)
+
+    @pytest.mark.asyncio
+    async def test_mutation_attempt_budget_stops_second_write(self, workspace: Path):
+        provider = _ScriptedProvider(
+            [
+                ProviderResponse(
+                    blocks=[
+                        ToolUseBlock(id="m1", name="mutate", input='{"value": 1}'),
+                        ToolUseBlock(id="m2", name="mutate", input='{"value": 2}'),
+                    ],
+                    stop_reason="tool_use",
+                ),
+                _text_response("Only the admitted mutation completed."),
+            ]
+        )
+        registry = ToolRegistry(workspace_root=workspace)
+        executed: list[int] = []
+
+        async def mutate(args):
+            executed.append(args["value"])
+            return ToolResult("ok")
+
+        registry.register(
+            "mutate",
+            "mutating operation",
+            {"type": "object"},
+            mutate,
+            permission="workspace-write",
+            effects={"filesystem_write"},
+        )
+        session = Session(workspace=str(workspace))
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+            auto_approve=True,
+            max_mutation_attempts=1,
+        )
+
+        await _collect_events(runtime, "mutate twice")
+
+        assert executed == [1]
+        assert session.meta.state == "PARTIAL"
+        assert session.meta.outcome["stop_code"] == "mutation_budget_exhausted"
+
+    @pytest.mark.asyncio
+    async def test_active_time_budget_cancels_provider_and_persists_partial(
+        self, workspace: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        cancelled = asyncio.Event()
+
+        class SlowProvider:
+            model = "slow"
+
+            async def chat(self, **_kwargs):
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    cancelled.set()
+                    raise
+
+        monkeypatch.setenv("SCHOLAR_AGENT_STREAM", "0")
+        registry = ToolRegistry(workspace_root=workspace)
+        session = Session(workspace=str(workspace))
+        runtime = ConversationRuntime(
+            provider=SlowProvider(),
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+            max_active_seconds=0.02,
+        )
+
+        events = await asyncio.wait_for(
+            _collect_events(runtime, "wait forever"),
+            timeout=1,
+        )
+
+        assert cancelled.is_set()
+        assert session.meta.state == "PARTIAL"
+        assert session.meta.outcome["stop_code"] == "active_time_exhausted"
+        assert _event_types(events)[-1] == AgentEventType.DONE

@@ -108,6 +108,37 @@ class TestHookRunner:
         assert result.decision == HookDecision.ASK
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("permission_override", "expected"),
+        [
+            ("deny", HookDecision.DENY),
+            ("ask", HookDecision.ASK),
+        ],
+    )
+    async def test_permission_override_changes_pre_tool_decision(
+        self,
+        permission_override: str,
+        expected: HookDecision,
+    ):
+        runner = HookRunner()
+
+        def policy_hook(_event):
+            return HookResult(
+                permission_override=permission_override,
+                permission_reason="plugin policy",
+            )
+
+        runner.register_callable("policy", HookPoint.PRE_TOOL_USE, policy_hook)
+
+        result = await runner.run(
+            HookPoint.PRE_TOOL_USE,
+            HookEvent(hook=HookPoint.PRE_TOOL_USE, tool_name="write_file"),
+        )
+
+        assert result.decision == expected
+        assert result.reason == "plugin policy"
+
+    @pytest.mark.asyncio
     async def test_priority_ordering(self):
         """优先级小的 hook 先执行。PreToolUse 时第一个 DENY 短路。"""
         runner = HookRunner()
@@ -152,8 +183,8 @@ class TestHookRunner:
         assert result.decision == HookDecision.ALLOW
 
     @pytest.mark.asyncio
-    async def test_hook_exception_safe(self):
-        """Hook 异常不应崩溃，返回 ALLOW。"""
+    async def test_pre_tool_hook_exception_fails_closed(self):
+        """A broken safety hook must not silently authorize the tool."""
         runner = HookRunner()
 
         def boom(event):
@@ -162,7 +193,8 @@ class TestHookRunner:
         runner.register_callable("boom", HookPoint.PRE_TOOL_USE, boom, priority=10)
         event = HookEvent(hook=HookPoint.PRE_TOOL_USE, tool_name="test")
         result = await runner.run(HookPoint.PRE_TOOL_USE, event)
-        assert result.decision == HookDecision.ALLOW
+        assert result.decision == HookDecision.DENY
+        assert "failed closed" in result.reason
 
     @pytest.mark.asyncio
     async def test_wrong_hook_point_not_called(self):
@@ -177,6 +209,48 @@ class TestHookRunner:
         event = HookEvent(hook=HookPoint.POST_TOOL_USE, tool_name="test")
         await runner.run(HookPoint.POST_TOOL_USE, event)
         assert calls == []  # pre hook should NOT be called for POST
+
+    @pytest.mark.asyncio
+    async def test_timed_out_pre_tool_shell_hook_terminates_and_denies(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        import src.agent_v2.hooks as hooks
+
+        terminated = []
+
+        class TimedOutProcess:
+            returncode = None
+
+            async def communicate(self, _input):
+                raise TimeoutError
+
+        process = TimedOutProcess()
+
+        async def create(_command):
+            return process
+
+        async def terminate(proc):
+            terminated.append(proc)
+
+        monkeypatch.setattr(hooks, "_create_subprocess", create)
+        monkeypatch.setattr(hooks, "terminate_process_tree", terminate)
+        runner = HookRunner()
+        runner.register(
+            HookDefinition(
+                name="guard",
+                hook_point=HookPoint.PRE_TOOL_USE,
+                command="guard",
+            )
+        )
+
+        result = await runner.run(
+            HookPoint.PRE_TOOL_USE,
+            HookEvent(hook=HookPoint.PRE_TOOL_USE, tool_name="write_file"),
+        )
+
+        assert terminated == [process]
+        assert result.decision == HookDecision.DENY
+        assert "timed out" in result.reason
 
     @pytest.mark.asyncio
     async def test_add_builtin_hooks(self):

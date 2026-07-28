@@ -38,7 +38,7 @@ function extractAndRenderMath(src: string): { protectedText: string; slots: Math
   // 先取 display 公式 $$...$$（贪婪但非跨段）
   let working = src.replace(/\$\$([\s\S]+?)\$\$/g, (_, inner) => {
     const idx = counter++
-    let html = ''
+    let html: string
     try {
       html = katex.renderToString(inner.trim(), { displayMode: true, throwOnError: false })
     } catch {
@@ -51,7 +51,7 @@ function extractAndRenderMath(src: string): { protectedText: string; slots: Math
   // \[ ... \] 也作为 display
   working = working.replace(/\\\[([\s\S]+?)\\\]/g, (_, inner) => {
     const idx = counter++
-    let html = ''
+    let html: string
     try {
       html = katex.renderToString(inner.trim(), { displayMode: true, throwOnError: false })
     } catch {
@@ -64,7 +64,7 @@ function extractAndRenderMath(src: string): { protectedText: string; slots: Math
   // inline $...$（避开货币符号：要求不被数字紧紧包围）
   working = working.replace(/(?<![\\$])\$([^$\n]+?)\$(?!\d)/g, (_, inner) => {
     const idx = counter++
-    let html = ''
+    let html: string
     try {
       html = katex.renderToString(inner.trim(), { displayMode: false, throwOnError: false })
     } catch {

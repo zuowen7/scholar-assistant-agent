@@ -39,7 +39,7 @@ def _build_minimal_pdf(page_count: int) -> bytes:
     offsets: list[int] = []
 
     # Object 1: Catalog
-    offsets.append(sum(len(l) for l in lines))
+    offsets.append(sum(len(line) for line in lines))
     w(b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n")
 
     # Build individual page objects (start at object 4)
@@ -47,23 +47,23 @@ def _build_minimal_pdf(page_count: int) -> bytes:
 
     # Object 2: Pages
     kids = " ".join(f"{i} 0 R" for i in page_obj_ids)
-    offsets.append(sum(len(l) for l in lines))
+    offsets.append(sum(len(line) for line in lines))
     w(f"2 0 obj\n<< /Type /Pages /Kids [{kids}] /Count {page_count} >>\nendobj\n".encode())
 
     # Object 3: Minimal page resources
-    offsets.append(sum(len(l) for l in lines))
+    offsets.append(sum(len(line) for line in lines))
     w(b"3 0 obj\n<< >>\nendobj\n")
 
     # Page objects
     for obj_id in page_obj_ids:
-        offsets.append(sum(len(l) for l in lines))
+        offsets.append(sum(len(line) for line in lines))
         w(
             f"{obj_id} 0 obj\n<< /Type /Page /Parent 2 0 R /Resources 3 0 R "
             f"/MediaBox [0 0 612 792] >>\nendobj\n".encode()
         )
 
     # Cross-reference table
-    xref_offset = sum(len(l) for l in lines)
+    xref_offset = sum(len(line) for line in lines)
     total_objects = 3 + page_count
     w(f"xref\n0 {total_objects + 1}\n".encode())
     w(b"0000000000 65535 f \n")

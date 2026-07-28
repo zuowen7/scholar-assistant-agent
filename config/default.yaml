@@ -67,6 +67,11 @@ agent:
   # Per-turn tool budget reserves a final model call with tools disabled.
   max_tool_calls: 32
   soft_tool_calls: 28
+  # Independent hard limits include retries and side-effect attempts.
+  max_model_calls: 16
+  max_mutation_attempts: 12
+  # Active provider/tool time only; user approval wait time is excluded.
+  max_active_seconds: 300
   # Generic processes have no cross-platform OS filesystem sandbox.
   # Enable only after accepting that explicit risk.
   enable_run_command: false

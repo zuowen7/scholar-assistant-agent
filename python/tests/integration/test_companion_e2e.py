@@ -429,7 +429,7 @@ class TestPhase5Endpoints:
         assert resp.status_code == 200
         data = resp.json()
         labels = [p.get("reviewer_label") for p in data["points"]]
-        assert any(l is not None for l in labels), f"No reviewer_label set: {labels}"
+        assert any(label is not None for label in labels), f"No reviewer_label set: {labels}"
 
     def test_download_review_200(self, client, state):
         sid = state.get("session_id")

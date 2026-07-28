@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -70,7 +71,7 @@ class TestAnchorModel:
 
     def test_invalid_status_raises(self):
         Anchor, *_ = _anchor()
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             Anchor(doc_id="d1", quote="q", status="unknown_status")
 
     def test_optional_fields_default_to_none(self):

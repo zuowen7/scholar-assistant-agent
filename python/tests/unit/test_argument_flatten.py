@@ -279,8 +279,8 @@ class TestBuildTreeOutline:
         outline = self.f._build_tree_outline(nodes, "root", "IEEE")
         lines = outline.split("\n")
         # 孙节点行比子节点行有更多前导空格
-        child_line = next(l for l in lines if "Child" in l)
-        grand_line = next(l for l in lines if "Grandchild" in l)
+        child_line = next(line for line in lines if "Child" in line)
+        grand_line = next(line for line in lines if "Grandchild" in line)
         assert len(grand_line) - len(grand_line.lstrip()) > len(child_line) - len(
             child_line.lstrip()
         )
@@ -595,15 +595,15 @@ class TestExpandNode:
         self.mock_llm_return = "这是一段扩写后的学术段落。研究表明相关方法具有显著优势。"
 
     def _run(self, ndata, **kwargs):
-        defaults = dict(
-            section_title="引言",
-            chain_type="problem",
-            context_so_far="（首节）",
-            tree_outline="[论文] 测试\n  ├─ 引言（背景）",
-            rag_context_str="（无文献）",
-            cloud_client=None,
-            ollama_client=None,
-        )
+        defaults = {
+            "section_title": "引言",
+            "chain_type": "problem",
+            "context_so_far": "（首节）",
+            "tree_outline": "[论文] 测试\n  ├─ 引言（背景）",
+            "rag_context_str": "（无文献）",
+            "cloud_client": None,
+            "ollama_client": None,
+        }
         defaults.update(kwargs)
         with patch(
             "src.argument.llm_client.call_llm_chat",
@@ -989,7 +989,7 @@ class TestFlattenStream:
 
         async def collect():
             with tempfile.TemporaryDirectory() as tmpdir:
-                async for evt in f.flatten_stream(
+                async for _evt in f.flatten_stream(
                     tree_data=tree,
                     template="markdown",
                     style="IEEE",

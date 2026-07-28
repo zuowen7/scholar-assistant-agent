@@ -407,7 +407,7 @@ class TestRebuildLedger:
 class TestSuggestExperiment:
     @pytest.mark.asyncio
     async def test_returns_suggestion_text_for_partial_promise(self, tmp_path):
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import patch
 
         from src.argument.ledger import suggest_experiment_for_promise
 
@@ -422,7 +422,7 @@ class TestSuggestExperiment:
 
     @pytest.mark.asyncio
     async def test_returns_suggestion_for_unpaid_promise(self, tmp_path):
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import patch
 
         from src.argument.ledger import suggest_experiment_for_promise
 
@@ -437,7 +437,7 @@ class TestSuggestExperiment:
 
     @pytest.mark.asyncio
     async def test_llm_unavailable_returns_fallback_string(self, tmp_path):
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import patch
 
         from src.argument.ledger import suggest_experiment_for_promise
 
