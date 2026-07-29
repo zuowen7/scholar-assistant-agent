@@ -15,6 +15,14 @@ def test_system_prompt_exposes_current_date_to_agent():
     assert f"Current date: {date.today().isoformat()}" in prompt
 
 
+def test_system_prompt_makes_the_latest_user_turn_authoritative():
+    prompt = _build_system_prompt("C:/workspace", [])
+
+    assert "latest user message is the active task" in prompt
+    assert "Do not resume unrelated unfinished work" in prompt
+    assert "run_sub_agent cannot execute commands" in prompt
+
+
 def test_persisted_session_messages_are_available_to_the_history_panel(tmp_path, monkeypatch):
     import src.agent_v2.router as router
 
@@ -73,6 +81,69 @@ def test_persisted_session_messages_are_available_to_the_history_panel(tmp_path,
     assert summary["id"] == "sess_history"
     assert summary["query"] == "Review the draft"
     assert summary["messages"] == 4
+
+
+def test_partial_session_history_keeps_structured_recovery_state(tmp_path, monkeypatch):
+    import src.agent_v2.router as router
+
+    session = Session(workspace="C:/paper", model="test-model", session_id="sess_partial")
+    session.append(Message(role=MessageRole.USER, blocks=[TextBlock(text="Create two figures")]))
+    session.append(
+        Message(
+            role=MessageRole.ASSISTANT,
+            blocks=[
+                ToolUseBlock(
+                    id="call_1",
+                    name="write_file",
+                    input='{"file_path":"figures.py","content":"..."}',
+                )
+            ],
+        )
+    )
+    session.append(
+        Message(
+            role=MessageRole.TOOL,
+            blocks=[
+                ToolResultBlock(
+                    tool_use_id="call_1",
+                    tool_name="write_file",
+                    output="ok",
+                )
+            ],
+        )
+    )
+    session.set_outcome(
+        "PARTIAL",
+        {
+            "stop_code": "model_call_budget_exhausted",
+            "stop_reason": "Agent model-call limit reached (16) before completion.",
+            "tool_counts": {
+                "success": 1,
+                "error": 0,
+                "denied": 0,
+                "skipped": 0,
+                "no_change": 0,
+            },
+            "changed_files": ["C:/paper/figures.py"],
+            "unexecuted": [],
+        },
+    )
+    session.save(tmp_path / "sess_partial.jsonl")
+
+    monkeypatch.setattr(router, "_SESSION_DIR", tmp_path)
+    app = FastAPI()
+    register_agent_v2_routes(app)
+    messages = (
+        TestClient(app).get("/api/agent/v2/workflows/sess_partial/messages").json()["messages"]
+    )
+
+    assistant = messages[-1]
+    response = assistant["events"][-1]
+    assert response["type"] == "response"
+    assert response["metadata"]["partial"] is True
+    assert response["metadata"]["stop_code"] == "model_call_budget_exhausted"
+    assert response["metadata"]["changed_count"] == 1
+    assert "C:/paper/figures.py" not in assistant["content"]
 
 
 def test_session_history_rejects_invalid_or_missing_ids(tmp_path, monkeypatch):
@@ -225,6 +296,114 @@ def test_generated_session_ids_are_unique(tmp_path, monkeypatch):
     assert "run_command" not in first.system_prompt
 
 
+def test_selected_figure_skill_exposes_approved_command_execution(tmp_path, monkeypatch):
+    import src.agent_v2.router as router
+    from src.agent_v2.providers.mock_provider import MockProvider
+
+    monkeypatch.setattr(router, "_SESSION_DIR", tmp_path / "sessions")
+
+    def provider():
+        value = MockProvider()
+        value.model = "test-model"
+        return value
+
+    monkeypatch.setattr(router, "_create_provider", provider)
+    monkeypatch.setattr(
+        router,
+        "_load_agent_config",
+        lambda: {
+            "max_steps": 48,
+            "max_tool_calls": 32,
+            "soft_tool_calls": 28,
+            "enable_run_command": False,
+        },
+    )
+
+    runtime = router._create_runtime(
+        str(tmp_path),
+        selected_skills=["nature_figure"],
+    )
+
+    assert runtime.tool_registry.get("run_command") is not None
+    assert "run_command" in runtime.system_prompt
+
+
+_RUNTIME_SKILL_TOOL_CONTRACTS = [
+    ("academic_writing", {"read_file"}),
+    ("paper_review", {"read_file", "read_argument_ledger"}),
+    ("latex_formatting", {"read_file", "export_document"}),
+    ("chinese_academic", {"read_file"}),
+    ("methodology_critique", {"read_file"}),
+    ("nature_writing", {"read_file", "write_file"}),
+    ("nature_polishing", {"read_file", "write_file"}),
+    (
+        "nature_reviewer",
+        {"read_argument_graph", "read_argument_ledger", "read_reviewer_state"},
+    ),
+    ("nature_response", {"read_file", "write_file", "read_reviewer_state"}),
+    ("nature_citation", {"arxiv_search", "rag_search", "web_search", "web_fetch"}),
+    ("nature_data", {"read_file", "write_file"}),
+    (
+        "nature_reader",
+        {"read_file", "write_file", "translate_document", "export_document"},
+    ),
+    ("nature_figure", {"read_file", "write_file", "run_command"}),
+    ("thesis_writing", {"read_file", "write_file"}),
+]
+
+
+def test_runtime_skill_contract_matrix_covers_every_skill_exposed_by_the_ui():
+    import src.agent_v2.router as router
+    from src.agent_v2.skills import _BUILTIN_SKILLS, SkillRegistry
+
+    registry = SkillRegistry()
+    for skill in _BUILTIN_SKILLS:
+        registry.register(skill)
+    registry.load_dir(router._RUNTIME_DIR / "data" / "agent_v2" / "skills")
+
+    exposed = {item["name"] for item in registry.list_all()}
+    covered = {name for name, _required_tools in _RUNTIME_SKILL_TOOL_CONTRACTS}
+
+    assert covered == exposed
+
+
+@pytest.mark.parametrize(("skill_name", "required_tools"), _RUNTIME_SKILL_TOOL_CONTRACTS)
+def test_every_runtime_skill_is_selectable_with_its_runtime_tools(
+    skill_name, required_tools, tmp_path, monkeypatch
+):
+    """Contract smoke test for every skill exposed by the Agent UI."""
+    import src.agent_v2.router as router
+    from src.agent_v2.providers.mock_provider import MockProvider
+
+    monkeypatch.setattr(router, "_SESSION_DIR", tmp_path / "sessions")
+
+    def provider():
+        value = MockProvider()
+        value.model = "test-model"
+        return value
+
+    monkeypatch.setattr(router, "_create_provider", provider)
+    monkeypatch.setattr(
+        router,
+        "_load_agent_config",
+        lambda: {
+            "max_steps": 96,
+            "max_tool_calls": 64,
+            "soft_tool_calls": 56,
+            "max_model_calls": 32,
+            "enable_run_command": False,
+        },
+    )
+
+    runtime = router._create_runtime(
+        str(tmp_path),
+        selected_skills=[skill_name],
+    )
+
+    assert f"<!-- SKILL: {skill_name} (agents) -->" in runtime.system_prompt
+    assert required_tools <= {definition.name for definition in runtime.tool_registry.definitions()}
+
+
 def test_undo_route_restores_persisted_session_after_restart(tmp_path, monkeypatch):
     import src.agent_v2.router as router
 
@@ -304,3 +483,28 @@ def test_cloud_config_applies_environment_api_key(tmp_path, monkeypatch):
     monkeypatch.setenv("SCHOLAR_CLOUD_API_KEY", "environment-key")
 
     assert router._load_cloud_config()["api_key"] == "environment-key"
+
+
+def test_cloud_fallback_propagates_thinking_mode_and_request_timeout():
+    from src.agent_v2.router import _create_provider
+
+    provider = _create_provider(
+        {
+            "agent": {
+                "provider": "auto",
+                "thinking_mode": "enabled",
+                "request_timeout": 42,
+            },
+            "translator": {
+                "cloud": {
+                    "provider": "deepseek",
+                    "base_url": "https://api.deepseek.com/v1",
+                    "api_key": "test-key",
+                    "model": "deepseek-v4-flash",
+                }
+            },
+        }
+    )
+
+    assert provider.thinking_mode == "enabled"
+    assert provider.timeout == 42

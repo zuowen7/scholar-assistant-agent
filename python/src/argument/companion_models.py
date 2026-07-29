@@ -87,7 +87,12 @@ class ReviewPoint(BaseModel):
     status: PointStatus = "open"
     source: PointSource = "llm"
     reviewer_label: str | None = None
-    perspective: Literal["method", "experiment", "writing", "aggregated"] | None = None
+    perspective: (
+        Literal["method", "experiment", "writing", "devils_advocate", "aggregated"] | None
+    ) = None
+    # Temporary extraction evidence. It is converted into a persisted Anchor
+    # before SSE/store output and deliberately excluded from serialization.
+    verbatim_quote: str | None = Field(default=None, exclude=True)
     thread: list[RebuttalTurn] = Field(default_factory=list)
 
 

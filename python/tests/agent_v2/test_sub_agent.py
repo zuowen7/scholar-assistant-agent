@@ -92,6 +92,31 @@ class TestSubAgentExecution:
         assert not result.is_error
 
     @pytest.mark.asyncio
+    async def test_rejects_command_execution_requests_without_calling_the_model(self):
+        class FailIfCalledProvider:
+            model = "must-not-run"
+
+            async def chat(self, **_kwargs):
+                raise AssertionError("execution requests must be rejected before model invocation")
+
+        reg = ToolRegistry()
+        reg.set_provider(FailIfCalledProvider())
+        register_sub_agent(reg)
+
+        result = await reg.execute(
+            "run_sub_agent",
+            {
+                "preset": "implement",
+                "content": "python C:/paper/figures/make_figures.py",
+                "instruction": "Execute the Python script and return stdout and stderr",
+            },
+        )
+
+        assert result.is_error is True
+        assert "run_command" in result.output
+        assert result.metadata["sub_agent_state"] == "REJECTED"
+
+    @pytest.mark.asyncio
     async def test_persists_child_run_and_usage_under_parent(self, tmp_path: Path):
         reg = ToolRegistry(tmp_path)
         reg.set_provider(MockProvider())

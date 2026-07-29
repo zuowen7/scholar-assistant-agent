@@ -295,6 +295,7 @@ _BUILTIN_SKILLS = [
 - Establish the figure's scientific conclusion, evidence chain, data source, panel plan, and export requirements before coding.
 - Use only real workspace data. Never create mock measurements or hide missing data to make a figure look complete.
 - Ask for Python or R when the backend is not clear; then keep one backend throughout the task.
+- Use run_command, never run_sub_agent, to execute the selected Python or R backend. A sub-agent can review text or code but cannot run it.
 - Use accessible color, readable type at final size, honest axes, uncertainty where appropriate, and vector output when possible.
 - Inspect the rendered artifact and report remaining visual or evidentiary limitations before completion.""",
     ),

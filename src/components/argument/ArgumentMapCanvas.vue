@@ -1,5 +1,5 @@
 <template>
-  <div class="arg-canvas-wrapper" @click="onClickWrapper" tabindex="0">
+  <div class="arg-canvas-wrapper" tabindex="0" @click="onClickWrapper">
     <VueFlow
       :nodes="flowNodes"
       :edges="flowEdges"
@@ -22,7 +22,9 @@
     <div v-if="state.extracting" class="canvas-extracting-overlay">
       <div class="canvas-extracting-pill">
         <span class="dot-wave"><i></i><i></i><i></i></span>
-        <span class="canvas-extracting-label">{{ t('argument.buildingMap') }}</span>
+        <span class="canvas-extracting-label">{{
+          state.extractionStage || t('argument.buildingMap')
+        }}</span>
       </div>
     </div>
   </div>

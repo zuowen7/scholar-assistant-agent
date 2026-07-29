@@ -115,13 +115,16 @@ class TestLedgerCrossCheck:
         points = ledger_cross_check(ledger)
         assert points == []
 
-    def test_partial_promise_produces_no_point(self):
+    def test_partial_promise_produces_actionable_point(self):
         from src.argument.reviewer import ledger_cross_check
 
-        p = make_promise("partial")
+        p = make_promise("partial", note="Missing ablation for one condition")
         ledger = make_ledger([p])
         points = ledger_cross_check(ledger)
-        assert points == []
+        assert len(points) == 1
+        assert points[0].severity == "minor"
+        assert points[0].source == "ledger_check"
+        assert "Missing ablation" in points[0].detail
 
     def test_none_ledger_returns_empty(self):
         from src.argument.reviewer import ledger_cross_check
@@ -382,6 +385,43 @@ class TestRunReview:
         assert complete_data["session_id"]  # non-empty
 
     @pytest.mark.asyncio
+    async def test_llm_verbatim_quote_is_persisted_as_a_navigable_anchor(self, tmp_path):
+        from src.argument.reviewer import run_review
+
+        store = self._make_store(tmp_path)
+        llm_json = json.dumps(
+            [
+                {
+                    "severity": "major",
+                    "category": "baseline",
+                    "title": "Baseline comparison is weak",
+                    "detail": "The comparison needs stronger baselines.",
+                    "verbatim_quote": "We compare against baseline C.",
+                }
+            ]
+        )
+
+        events = []
+        with patch(
+            "src.argument.reviewer.call_llm_chat",
+            new=AsyncMock(return_value=llm_json),
+        ):
+            async for event in run_review(
+                doc_id="doc1",
+                text=SAMPLE_TEXT,
+                checks=["llm"],
+                store=store,
+            ):
+                events.append(event)
+
+        complete = json.loads(events[-1]["data"])
+        session = store.get_review(complete["session_id"])
+        assert len(session.anchors) == 1
+        assert session.anchors[0].quote == "We compare against baseline C."
+        assert session.anchors[0].status == "anchored"
+        assert session.points[0].anchor_id == session.anchors[0].id
+
+    @pytest.mark.asyncio
     async def test_focus_mode_only_yields_scoped_points(self, tmp_path):
         from src.argument.reviewer import run_review
 
@@ -526,6 +566,45 @@ class TestRunReview:
         # Should not crash, complete event present
         event_types = [e["event"] for e in events]
         assert "complete" in event_types
+
+    def test_llm_parser_normalizes_model_defined_category_and_severity(self):
+        from src.argument.reviewer import _parse_llm_points
+
+        raw = json.dumps(
+            [
+                {
+                    "severity": "critical",
+                    "category": "unstated_assumption",
+                    "title": "Hidden assumption",
+                    "detail": "The conclusion depends on an unstated assumption.",
+                }
+            ]
+        )
+
+        points = _parse_llm_points(raw, source="llm")
+
+        assert len(points) == 1
+        assert points[0].category == "other"
+        assert points[0].severity == "minor"
+
+    def test_review_anchor_fuzzily_relocates_a_near_verbatim_quote(self):
+        from src.argument.reviewer import _attach_review_anchors
+
+        text = "The proposed method improves accuracy by thirty percent on the benchmark."
+        point = ReviewPoint(
+            severity="major",
+            category="claim_overreach",
+            title="Unsupported improvement",
+            detail="The improvement needs stronger evidence.",
+            verbatim_quote="The proposed method improves accuracy thirty percent on the benchmark.",
+        )
+
+        anchors = _attach_review_anchors("doc1", text, [point])
+
+        assert len(anchors) == 1
+        assert anchors[0].status == "drifted"
+        assert anchors[0].char_start is not None
+        assert point.anchor_id == anchors[0].id
 
     @pytest.mark.asyncio
     async def test_by_category_count_in_complete(self, tmp_path):

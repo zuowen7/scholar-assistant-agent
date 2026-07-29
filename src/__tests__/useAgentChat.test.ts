@@ -26,7 +26,6 @@ import {
   _getWorkflowCacheKeysForTesting,
   _resetForTesting,
 } from '../composables/useAgentChat'
-import { ref } from 'vue'
 
 // ── SSE helper ──────────────────────────────────────────────────────────
 
@@ -91,14 +90,6 @@ function makeThoughtChunk(content: string) {
   return { event: 'thought', data: { content } }
 }
 
-function makeToolCallChunk(name: string, args: Record<string, unknown>, eventId?: string) {
-  return { event: 'tool_call', data: { tool_name: name, args, event_id: eventId || 'evt_1' } }
-}
-
-function makeToolResultChunk(name: string, result: string) {
-  return { event: 'tool_result', data: { tool_name: name, content: result } }
-}
-
 function makeTaskDoneChunk(content: string) {
   return { event: 'task_done', data: { content } }
 }
@@ -109,6 +100,21 @@ function makeTokenChunk(content: string) {
 
 function makeResponseChunk(content: string) {
   return { event: 'response', data: { content } }
+}
+
+function makePartialResponseChunk() {
+  return {
+    event: 'response',
+    data: {
+      content: 'Task partially completed.',
+      metadata: {
+        partial: true,
+        stop_code: 'model_call_budget_exhausted',
+        tool_counts: { success: 15, error: 2, denied: 0, skipped: 0, no_change: 0 },
+        changed_count: 3,
+      },
+    },
+  }
 }
 
 function makeDoneChunk() {
@@ -227,6 +233,36 @@ describe('useAgentChat', () => {
       )
       expect(thoughts).toHaveLength(1)
       expect(thoughts[0].content).toBe('先读取当前选区。')
+    })
+
+    it('localizes and retains structured partial completion metadata', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(
+            makeSseResponse([
+              makeSessionStartedChunk('sess_partial'),
+              makePartialResponseChunk(),
+              makeDoneChunk(),
+            ]),
+          ),
+      )
+
+      const { sendMessage, messages } = useAgentChat()
+      await sendMessage('继续制作图表')
+
+      const assistant = messages.value[1]
+      expect(assistant.content).toBe('agent.partialSummary')
+      expect(assistant.events).toContainEqual(
+        expect.objectContaining({
+          type: 'response',
+          metadata: expect.objectContaining({
+            partial: true,
+            stop_code: 'model_call_budget_exhausted',
+          }),
+        }),
+      )
     })
 
     it('promotes activeRunSessionId to conversationWorkflowId after a normal run', async () => {
@@ -770,6 +806,7 @@ describe('useAgentChat', () => {
       // abortSession without a session calls stopGenerating which sets sending=false
       const result = abortSession()
       // abortSession returns a promise resolving to boolean
+      expect(result).toBeInstanceOf(Promise)
       expect(sending.value).toBe(true) // abort is async, pending state unchanged before await
     })
   })

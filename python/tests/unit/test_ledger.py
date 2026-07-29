@@ -206,6 +206,24 @@ class TestBuildLedger:
             complete_idx = event_types.index("complete")
             assert last_promise < complete_idx
 
+    def test_accepts_top_level_promise_array_from_model(self, tmp_path):
+        """Some compatible models follow the item schema but omit the wrapper object."""
+        store = _make_store(tmp_path)
+        array_response = json.dumps(json.loads(EXTRACT_LLM_RESP)["promises"])
+
+        events = _run(_collect_build(store, [array_response, DISCHARGE_LLM_RESP]))
+
+        complete = json.loads(events[-1]["data"])
+        assert complete["promise_count"] == 2
+        assert len(store.get_ledger("doc_test").promises) == 2
+
+    def test_valid_empty_wrapper_completes_without_a_repair_call(self, tmp_path):
+        store = _make_store(tmp_path)
+        events = _run(_collect_build(store, ['{"promises": []}']))
+
+        assert events[-1]["event"] == "complete"
+        assert json.loads(events[-1]["data"])["promise_count"] == 0
+
 
 # ── build_ledger — 失败兜底 ───────────────────────────────────────────────────
 
@@ -292,6 +310,31 @@ class TestRebuildLedger:
         assert match.text == p_user.text
         assert match.status == p_user.status
         assert match.user_overridden is True
+
+    def test_complete_is_last_and_includes_preserved_promises(self, tmp_path):
+        from src.argument.companion_models import Ledger, Promise
+
+        store = _make_store(tmp_path)
+        store.save_ledger(
+            Ledger(
+                doc_id="doc_rb",
+                promises=[
+                    Promise(
+                        text="User-owned promise",
+                        kind="claim",
+                        source_anchor_id="a_user",
+                        status="paid",
+                        user_overridden=True,
+                    )
+                ],
+            )
+        )
+
+        events = _run(self._run_rebuild(store, [EXTRACT_LLM_RESP, DISCHARGE_LLM_RESP]))
+
+        assert events[-1]["event"] == "complete"
+        complete = json.loads(events[-1]["data"])
+        assert complete["promise_count"] == 3
 
     def test_non_overridden_promise_replaced_by_ai(self, tmp_path):
         from src.argument.companion_models import Ledger, Promise

@@ -26,6 +26,7 @@ from src.agent_v2.types import (
     ToolDefinition,
     ToolUseBlock,
 )
+from src.llm_request_policy import apply_thinking_policy, normalize_thinking_mode
 
 logger = logging.getLogger(__name__)
 
@@ -88,12 +89,14 @@ class OpenAiCompatProvider(BaseProvider):
         model: str = "gpt-4o",
         timeout: float = 300.0,
         proxy: str | None = None,
+        thinking_mode: str = "auto",
     ):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
         self.timeout = timeout
         self.proxy = proxy
+        self.thinking_mode = normalize_thinking_mode(thinking_mode)
         self._client: httpx.AsyncClient | None = None
         self._direct_client: httpx.AsyncClient | None = None
         from src.agent_v2.providers.quirks import detect_quirks
@@ -202,6 +205,12 @@ class OpenAiCompatProvider(BaseProvider):
             "stream": False,
         }
         built_tools = self._build_tools(tools)
+        apply_thinking_policy(
+            body,
+            base_url=self.base_url,
+            model=self.model,
+            configured=self.thinking_mode,
+        )
         if built_tools:
             body["tools"] = built_tools
             if tool_choice != "auto":
@@ -265,6 +274,12 @@ class OpenAiCompatProvider(BaseProvider):
         }
         if self.quirks.supports_stream_options:
             body["stream_options"] = {"include_usage": True}
+        apply_thinking_policy(
+            body,
+            base_url=self.base_url,
+            model=self.model,
+            configured=self.thinking_mode,
+        )
         built_tools = self._build_tools(tools)
         if built_tools:
             body["tools"] = built_tools

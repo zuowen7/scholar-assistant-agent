@@ -14,6 +14,7 @@ import httpx
 import yaml
 
 from src.constants import ANTHROPIC_API_VERSION
+from src.llm_request_policy import apply_thinking_policy, normalize_thinking_mode
 from src.translator._helpers import (
     TranslationResult,
     _deduplicate_repetition,
@@ -115,6 +116,7 @@ class CloudClient:
         max_tokens: int = 16384,
         system_prompt: str = "",
         timeout: float = 300.0,
+        thinking_mode: str = "auto",
     ) -> None:
         """初始化云端翻译客户端
 
@@ -127,6 +129,7 @@ class CloudClient:
             max_tokens: 最大生成 token 数
             system_prompt: 自定义系统提示词
             timeout: HTTP 请求超时秒数
+            thinking_mode: 思考模式 auto/enabled/disabled
         """
         self.provider = provider
         self.base_url = base_url.rstrip("/")
@@ -136,6 +139,7 @@ class CloudClient:
         self.max_tokens = max_tokens
         self.system_prompt = system_prompt
         self.timeout = timeout
+        self.thinking_mode = normalize_thinking_mode(thinking_mode)
 
         preset = PROVIDER_PRESETS.get(provider, {})
         self.api_format = preset.get("api_format", "openai")
@@ -338,6 +342,12 @@ CRITICAL: Preserve paragraph structure exactly.
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
         }
+        apply_thinking_policy(
+            payload,
+            base_url=self.base_url,
+            model=self.model,
+            configured=self.thinking_mode,
+        )
 
         url = f"{self.base_url}/chat/completions"
         headers = {
@@ -493,6 +503,12 @@ CRITICAL: Preserve paragraph structure exactly.
             "messages": [{"role": "user", "content": "hi"}],
             "max_tokens": 1,
         }
+        apply_thinking_policy(
+            payload,
+            base_url=self.base_url,
+            model=self.model,
+            configured=self.thinking_mode,
+        )
         try:
             client = self._get_http_client()
             resp = client.post(url, json=payload, headers=headers, timeout=15.0)

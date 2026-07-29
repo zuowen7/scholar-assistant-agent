@@ -41,14 +41,14 @@ from src.agent_v2.types import (
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MAX_STEPS = 48
+_DEFAULT_MAX_STEPS = 96
 _APPROVAL_TIMEOUT = 600.0  # 10 分钟等用户审批；超时必须与用户拒绝分开
 _TOOL_RESULT_MAX_CHARS = 4000
-_DEFAULT_MAX_TOOL_CALLS = 32
-_DEFAULT_SOFT_TOOL_CALLS = 28
-_DEFAULT_MAX_MODEL_CALLS = 16
-_DEFAULT_MAX_MUTATION_ATTEMPTS = 12
-_DEFAULT_MAX_ACTIVE_SECONDS = 300.0
+_DEFAULT_MAX_TOOL_CALLS = 64
+_DEFAULT_SOFT_TOOL_CALLS = 56
+_DEFAULT_MAX_MODEL_CALLS = 32
+_DEFAULT_MAX_MUTATION_ATTEMPTS = 20
+_DEFAULT_MAX_ACTIVE_SECONDS = 600.0
 _SELECTION_MAX_TOOL_CALLS = 4
 _DEFAULT_MAX_TOOL_ERRORS = 5
 _SELECTION_MAX_TOOL_ERRORS = 2
@@ -504,7 +504,7 @@ class ConversationRuntime:
         )
         emitted_response = False
         try:
-            if allow_model:
+            if allow_model and self._model_calls_this_turn < self.max_model_calls:
                 try:
                     async for event in self._llm_turn(
                         recovery_instruction=instruction,
@@ -512,19 +512,28 @@ class ConversationRuntime:
                     ):
                         if event.type == AgentEventType.RESPONSE:
                             emitted_response = True
-                        yield event
+                            yield AgentEvent.response(
+                                str(event.data.get("text", "")),
+                                partial=True,
+                                stop_code=stop_code,
+                                stop_reason=stop_reason,
+                                tool_counts=outcome["tool_counts"],
+                                changed_count=len(outcome["changed_files"]),
+                            )
+                        else:
+                            yield event
                 except Exception as exc:
                     logger.warning("Agent finalization failed: %s", exc)
             if not emitted_response:
                 counts = outcome["tool_counts"]
-                changed = outcome["changed_files"]
-                changed_text = ", ".join(changed) if changed else "none"
                 yield AgentEvent.response(
-                    "Task partially completed. "
-                    f"Successful tools: {counts['success']}; errors: {counts['error']}; "
-                    f"skipped: {counts['skipped']}; no change: {counts['no_change']}. "
-                    f"Changed files: {changed_text}. "
-                    f"Stop reason: {stop_reason}"
+                    "Task partially completed. Review the execution details and continue "
+                    "the task to finish the remaining verification.",
+                    partial=True,
+                    stop_code=stop_code,
+                    stop_reason=stop_reason,
+                    tool_counts=counts,
+                    changed_count=len(outcome["changed_files"]),
                 )
         finally:
             self.session.set_outcome("PARTIAL", outcome)
@@ -697,8 +706,34 @@ class ConversationRuntime:
         try:
             if tb.input:
                 args = json.loads(tb.input)
-        except json.JSONDecodeError:
-            args = {}
+        except (json.JSONDecodeError, TypeError) as exc:
+            detail = (
+                "Tool input is invalid or truncated JSON; the tool was not executed. "
+                f"Retry with a smaller payload or split the operation into compact steps "
+                f"(input_chars={len(tb.input or '')}, error_position={getattr(exc, 'pos', 0)})."
+            )
+            self._append_tool_error(tb, detail)
+            self._record_tool_error()
+            yield AgentEvent.tool_result(
+                tb.id,
+                tb.name,
+                detail,
+                is_error=True,
+                status="error",
+            )
+            return
+        if not isinstance(args, dict):
+            detail = "Tool input must be a JSON object; the tool was not executed."
+            self._append_tool_error(tb, detail)
+            self._record_tool_error()
+            yield AgentEvent.tool_result(
+                tb.id,
+                tb.name,
+                detail,
+                is_error=True,
+                status="error",
+            )
+            return
 
         loop_error = self._check_tool_loop(tb, args)
         if loop_error:
@@ -865,8 +900,22 @@ class ConversationRuntime:
                     status="no_change",
                 )
                 return
-        perm_result = self.permission_policy.authorize(tb.name, normalized_input)
         spec = self.tool_registry.get(tb.name)
+        preflight_result = self.tool_registry.preflight(tb.name, args)
+        if preflight_result is not None:
+            self._append_tool_error(tb, preflight_result.output)
+            self._record_tool_error()
+            yield AgentEvent.tool_result(
+                tb.id,
+                tb.name,
+                preflight_result.output,
+                is_error=True,
+                status=preflight_result.status,
+                metadata=dict(preflight_result.metadata or {}),
+            )
+            return
+
+        perm_result = self.permission_policy.authorize(tb.name, normalized_input)
 
         # Capture old content for diff
         old_text = ""
@@ -1437,7 +1486,10 @@ class ConversationRuntime:
         sp = getattr(self.session, "_save_path", "")
         if sp and sp.strip():
             try:
-                self.session.save_with_rotate(sp)
+                # Live snapshots already use atomic replace. Rotating a complete
+                # JSONL snapshot on every tool event causes large sessions to
+                # churn .1/.2/.3 files and can collide with readers on Windows.
+                self.session.save(sp)
             except Exception as e:
                 logger.warning("auto-save session failed: %s", e)
 

@@ -11,6 +11,7 @@ from src.utils.json_extract import extract_json_object
 from .graph_store import ArgGraphStore
 from .llm_client import call_llm_chat
 from .models_v2 import ALLOWED_EDGES, ArgEdge, ArgNode, SpanMapping
+from .section_utils import build_section_excerpt
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,7 @@ async def extract_argument(
     source_label: str | None,
     side: str,
     store: ArgGraphStore,
+    source_doc: str | None = None,
     cloud_client: Any = None,
     ollama_client: Any = None,
 ) -> AsyncIterator[dict]:
@@ -70,18 +72,26 @@ async def extract_argument(
 
     事件序列: node* → span* → edge* → complete  (或 error)
     """
+    coverage_text = build_section_excerpt(text, max_chars=48000)
+    target_nodes = min(30, max(10, len(coverage_text) // 1600))
     prompt = (
         "你是学术论证分析专家。从以下文本提取 Toulmin 论证结构。\n\n"
-        f"文本：\n{text[:4000]}\n\n"
+        f"文本：\n{coverage_text}\n\n"
         "请输出严格 JSON（不要任何其他文字）：\n"
         '{"nodes": [{"local_id": "c1", "type": "claim|grounds|warrant|backing|qualifier|rebuttal", '
         '"text": "节点内容（一句话）", "verbatim_quote": "原文精确子串（用于定位）"}], '
         '"edges": [{"source": "<local_id>", "target": "<local_id>", '
         '"relation": "supports|warrants|backs|qualifies|rebuts|counters"}]}\n\n'
-        "要求：verbatim_quote 必须是输入文本的精确子串；每个 claim 至少尝试找 grounds；"
-        "识别文中让步/例外作 rebuttal。"
+        f"要求：综合覆盖所有主要章节，目标约 {target_nodes} 个有实质内容的节点；"
+        "不要为了凑类型而生成空泛节点。verbatim_quote 必须是输入文本的精确子串；"
+        "每个主要 claim 至少尝试找 grounds 与 warrant；识别限定条件作 qualifier，"
+        "识别让步、反例和例外作 rebuttal。"
     )
 
+    yield {
+        "event": "progress",
+        "data": json.dumps({"stage": "extracting_structure"}),
+    }
     raw = ""
     try:
         raw = await call_llm_chat(
@@ -98,6 +108,10 @@ async def extract_argument(
         if parsed is not None:
             break
         if attempt == 0:
+            yield {
+                "event": "progress",
+                "data": json.dumps({"stage": "repairing_response"}),
+            }
             try:
                 raw = await call_llm_chat(
                     f"请只输出有效的 JSON 对象，不要任何解释文字：\n{raw[:500]}",
@@ -195,7 +209,13 @@ async def extract_argument(
 
     # ── Write atomically ─────────────────────────────────────────────────────
 
+    yield {
+        "event": "progress",
+        "data": json.dumps({"stage": "saving_graph"}),
+    }
     store.replace_graph(gid, nodes=new_nodes, edges=new_edges, spans=new_spans)
+    if source_doc:
+        store.set_source_doc(gid, source_doc)
 
     yield {
         "event": "complete",

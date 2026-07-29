@@ -202,6 +202,7 @@ def register_argument_v2(
     class ExtractRequest(BaseModel):
         text: str
         source_label: str | None = None
+        source_doc: str | None = None
         side: str = "trans"
 
     class CritiqueRequest(BaseModel):
@@ -226,6 +227,7 @@ def register_argument_v2(
                     source_label=req.source_label,
                     side=req.side,
                     store=store,
+                    source_doc=req.source_doc,
                     cloud_client=cloud_client,
                 ):
                     yield {"event": ev["event"], "data": ev["data"]}

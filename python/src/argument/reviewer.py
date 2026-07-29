@@ -7,16 +7,28 @@ import logging
 import re
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import yaml
 
 from src.utils.json_extract import extract_json_array
 
-from .companion_models import Ledger, ReviewPoint, ReviewSession
+from .anchor import make_anchor_from_quote, relocate
+from .companion_models import (
+    Ledger,
+    PointCategory,
+    PointSeverity,
+    ReviewPoint,
+    ReviewSession,
+)
 from .companion_store import CompanionStore
 from .llm_client import call_llm_chat
-from .section_utils import find_section, has_contrast_marker, split_paragraphs
+from .section_utils import (
+    build_section_excerpt,
+    find_section,
+    has_contrast_marker,
+    split_paragraphs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +96,20 @@ def ledger_cross_check(ledger: Ledger | None) -> list[ReviewPoint]:
                     anchor_id=p.source_anchor_id,
                 )
             )
+        elif p.status == "partial":
+            points.append(
+                ReviewPoint(
+                    severity="minor",
+                    category="claim_overreach",
+                    source="ledger_check",
+                    title="声明仅得到部分兑现",
+                    detail=(
+                        f"承诺「{p.text}」已有相关论证，但尚不完整："
+                        f"{p.note or '仍需补充直接证据、对照或覆盖条件。'}"
+                    ),
+                    anchor_id=p.source_anchor_id,
+                )
+            )
     return points
 
 
@@ -107,14 +133,15 @@ async def coherence_check(
     # Summarise promise obligations from ledger
     promise_summary = ""
     if ledger and ledger.promises:
-        items = [f"- [{p.kind}] {p.text}" for p in ledger.promises[:8]]
+        items = [f"- [{p.kind}] {p.text}" for p in ledger.promises]
         promise_summary = "Promised contributions:\n" + "\n".join(items)
+        promise_summary = promise_summary[:6000]
 
     prompt = (
         "你是一位严格的学术审稿人。分析以下论文各章节之间的内部一致性问题。\n\n"
-        f"摘要（ABSTRACT）：\n{abstract[:1200]}\n\n"
-        f"引言（INTRODUCTION）：\n{intro[:1200]}\n\n"
-        f"结论（CONCLUSION）：\n{conclusion[:1200]}\n\n"
+        f"摘要（ABSTRACT）：\n{abstract[:3000]}\n\n"
+        f"引言（INTRODUCTION）：\n{intro[:5000]}\n\n"
+        f"结论（CONCLUSION）：\n{conclusion[:3000]}\n\n"
         f"{promise_summary}\n\n"
         "只检查以下类别的问题：\n"
         "- inconsistency：摘要/引言/结论之间存在矛盾\n"
@@ -179,7 +206,7 @@ async def related_work_check(
     # LLM check: deeper positioning critique
     prompt = (
         "你是一位严格的学术审稿人。分析以下相关工作章节：\n\n"
-        f"{rw_text[:2000]}\n\n"
+        f"{rw_text[:8000]}\n\n"
         "检查以下问题：\n"
         "- weak_positioning：对已有工作的比较存在夸大或不实之处\n"
         "- missing_related_work：明显遗漏的重要引用或子领域\n\n"
@@ -216,15 +243,19 @@ def _parse_llm_points(raw: str, *, source: str) -> list[ReviewPoint]:
         logger.debug("LLM returned non-JSON array: %s…", raw[:120])
         return []
 
+    valid_severities = set(get_args(PointSeverity))
+    valid_categories = set(get_args(PointCategory))
     points = []
     for item in items:
         if not isinstance(item, dict):
             continue
         try:
-            severity = item.get("severity", "minor")
-            category = item.get("category")
-            if not category:
-                continue  # discard items missing category
+            severity = str(item.get("severity", "minor")).strip().lower()
+            if severity not in valid_severities:
+                severity = "minor"
+            category = str(item.get("category", "other")).strip().lower()
+            if category not in valid_categories:
+                category = "other"
             title = item.get("title", "")
             detail = item.get("detail", "")
             if not title or not detail:
@@ -236,12 +267,31 @@ def _parse_llm_points(raw: str, *, source: str) -> list[ReviewPoint]:
                     source=source,
                     title=title,
                     detail=detail,
+                    verbatim_quote=str(item.get("verbatim_quote", "")).strip() or None,
                 )
             )
         except Exception as e:
             logger.debug("discarding malformed review point: %s", e)
             continue
     return points
+
+
+def _attach_review_anchors(
+    doc_id: str,
+    text: str,
+    points: list[ReviewPoint],
+) -> list[Any]:
+    """Convert model-provided exact quotes into navigable review anchors."""
+    anchors = []
+    for point in points:
+        if point.anchor_id or not point.verbatim_quote:
+            continue
+        anchor = make_anchor_from_quote(doc_id, text, point.verbatim_quote)
+        if anchor.status == "lost":
+            anchor = relocate(anchor, text)
+        point.anchor_id = anchor.id
+        anchors.append(anchor)
+    return anchors
 
 
 # ── main run_review SSE generator ────────────────────────────────────────────
@@ -271,6 +321,7 @@ async def run_review(
         checks = ["ledger", "coherence", "rw", "llm"]
 
     new_points: list[ReviewPoint] = []
+    new_anchors = []
     venue_profile = _load_venue_profile(venue)
 
     # ── scoped / focused review ───────────────────────────────────────────────
@@ -292,12 +343,24 @@ async def run_review(
             logger.warning("scoped review LLM failed: %s", exc)
             raw = ""
 
-        for rp in _parse_llm_points(raw, source="scoped"):
+        scoped_points = _parse_llm_points(raw, source="scoped")
+        for anchor in _attach_review_anchors(doc_id, text, scoped_points):
+            new_anchors.append(anchor)
+            yield {"event": "anchor", "data": anchor.model_dump_json()}
+        for rp in scoped_points:
             new_points.append(rp)
             yield {"event": "review_point", "data": rp.model_dump_json()}
 
         yield _build_complete_event(
-            new_points, session_id, doc_id, doc_title, venue, persona, checks, store
+            new_points,
+            session_id,
+            doc_id,
+            doc_title,
+            venue,
+            persona,
+            checks,
+            store,
+            anchors=new_anchors,
         )
         return
 
@@ -311,22 +374,31 @@ async def run_review(
 
     # 2. Coherence check (LLM)
     if "coherence" in checks:
-        for rp in await coherence_check(ledger, text, cloud_client, ollama_client):
+        coherence_points = await coherence_check(ledger, text, cloud_client, ollama_client)
+        for anchor in _attach_review_anchors(doc_id, text, coherence_points):
+            new_anchors.append(anchor)
+            yield {"event": "anchor", "data": anchor.model_dump_json()}
+        for rp in coherence_points:
             new_points.append(rp)
             yield {"event": "review_point", "data": rp.model_dump_json()}
 
     # 3. Related-work check (deterministic + LLM)
     if "rw" in checks:
-        for rp in await related_work_check(text, cloud_client, ollama_client):
+        related_points = await related_work_check(text, cloud_client, ollama_client)
+        for anchor in _attach_review_anchors(doc_id, text, related_points):
+            new_anchors.append(anchor)
+            yield {"event": "anchor", "data": anchor.model_dump_json()}
+        for rp in related_points:
             new_points.append(rp)
             yield {"event": "review_point", "data": rp.model_dump_json()}
 
     # 4. General LLM review
     if "llm" in checks:
+        review_excerpt = build_section_excerpt(text, max_chars=24000)
         prompt = (
             f"你是一位投稿到 {venue or '顶级学术期刊/会议'} 的苛刻审稿人（Reviewer 2）。\n"
             f"投稿要求参考：{venue_profile[:600]}\n\n"
-            f"论文正文（可能截断）：\n{text[:4000]}\n\n"
+            f"论文正文（分章节覆盖）：\n{review_excerpt}\n\n"
             "请写一份详细的审稿意见，重点关注：方法可靠性、创新性、基线对比、"
             "实验设计和写作清晰度。不要重复只从摘要就能看出的问题。\n\n"
             "输出 JSON 数组（可以为空），每项字段：\n"
@@ -344,12 +416,24 @@ async def run_review(
             logger.warning("run_review LLM call failed: %s", exc)
             raw = ""
 
-        for rp in _parse_llm_points(raw, source="llm"):
+        llm_points = _parse_llm_points(raw, source="llm")
+        for anchor in _attach_review_anchors(doc_id, text, llm_points):
+            new_anchors.append(anchor)
+            yield {"event": "anchor", "data": anchor.model_dump_json()}
+        for rp in llm_points:
             new_points.append(rp)
             yield {"event": "review_point", "data": rp.model_dump_json()}
 
     yield _build_complete_event(
-        new_points, session_id, doc_id, doc_title, venue, persona, checks, store
+        new_points,
+        session_id,
+        doc_id,
+        doc_title,
+        venue,
+        persona,
+        checks,
+        store,
+        anchors=new_anchors,
     )
 
 
@@ -362,6 +446,9 @@ def _build_complete_event(
     persona: str,
     checks: list[str],
     store: CompanionStore,
+    *,
+    anchors: list[Any] | None = None,
+    warnings: list[str] | None = None,
 ) -> dict:
     """Persist the session and return the complete event dict."""
     by_category: dict[str, int] = {}
@@ -372,6 +459,10 @@ def _build_complete_event(
         existing = store.get_review(session_id)
         if existing:
             existing.points.extend(new_points)
+            known_anchor_ids = {anchor.id for anchor in existing.anchors}
+            existing.anchors.extend(
+                anchor for anchor in (anchors or []) if anchor.id not in known_anchor_ids
+            )
             for c in checks:
                 if c not in existing.checks:
                     existing.checks.append(c)
@@ -382,7 +473,7 @@ def _build_complete_event(
                     {
                         "session_id": existing.id,
                         "by_category": by_category,
-                        "warnings": [],
+                        "warnings": warnings or [],
                     }
                 ),
             }
@@ -394,6 +485,7 @@ def _build_complete_event(
         persona=persona,  # type: ignore[arg-type]
         checks=checks,
         points=new_points,
+        anchors=anchors or [],
     )
     store.save_review(session)
     return {
@@ -402,7 +494,7 @@ def _build_complete_event(
             {
                 "session_id": session.id,
                 "by_category": by_category,
-                "warnings": [],
+                "warnings": warnings or [],
             }
         ),
     }
@@ -554,10 +646,18 @@ async def import_real_reviews(
 
             if not title or not detail:
                 continue
+            severity = str(severity).strip().lower()
+            if severity not in set(get_args(PointSeverity)):
+                severity = "minor"
+            category = str(category).strip().lower()
+            if category not in set(get_args(PointCategory)):
+                category = "other"
 
             anchor_id = None
             if quote:
                 anchor = make_anchor_from_quote(doc_id, text, quote)
+                if anchor.status == "lost":
+                    anchor = relocate(anchor, text)
                 session.anchors.append(anchor)
                 anchor_id = anchor.id
 
@@ -598,9 +698,10 @@ async def run_review_parallel(
     cloud_client: Any = None,
     ollama_client: Any = None,
 ) -> AsyncIterator[dict]:
-    """SSE: Parallel three-perspective review (method / experiment / writing).
+    """SSE: Parallel four-perspective review.
 
-    Runs three reviewer angles via asyncio.gather, then aggregates and deduplicates.
+    Runs method, experiment, writing, and devil's-advocate reviewer angles via
+    asyncio.gather, then aggregates and deduplicates.
     Falls back gracefully if one perspective fails.
     """
     import asyncio as _asyncio
@@ -616,7 +717,12 @@ async def run_review_parallel(
 
     venue_profile = _load_venue_profile(venue)
     new_points: list[ReviewPoint] = []
+    new_anchors = []
 
+    yield {
+        "event": "progress",
+        "data": json.dumps({"stage": "ledger_cross_check"}),
+    }
     # Scoped / focused review: delegate to serial run_review
     if focus is not None:
         async for ev in run_review(
@@ -641,14 +747,58 @@ async def run_review_parallel(
         new_points.append(rp)
         yield {"event": "review_point", "data": rp.model_dump_json()}
 
-    # 2. Three perspectives in parallel
+    # 2. Four perspectives in parallel
+    yield {
+        "event": "progress",
+        "data": json.dumps({"stage": "parallel_perspectives"}),
+    }
     results = await _asyncio.gather(
-        run_method_perspective(text, venue_profile, cloud_client, ollama_client),
-        run_experiment_perspective(text, venue_profile, cloud_client, ollama_client),
-        run_writing_perspective(text, venue_profile, cloud_client, ollama_client),
-        run_devils_advocate_perspective(text, venue_profile, cloud_client, ollama_client),
+        run_method_perspective(
+            text,
+            venue_profile,
+            cloud_client,
+            ollama_client,
+            raise_errors=True,
+        ),
+        run_experiment_perspective(
+            text,
+            venue_profile,
+            cloud_client,
+            ollama_client,
+            raise_errors=True,
+        ),
+        run_writing_perspective(
+            text,
+            venue_profile,
+            cloud_client,
+            ollama_client,
+            raise_errors=True,
+        ),
+        run_devils_advocate_perspective(
+            text,
+            venue_profile,
+            cloud_client,
+            ollama_client,
+            raise_errors=True,
+        ),
         return_exceptions=True,
     )
+    failure_count = sum(isinstance(result, Exception) for result in results)
+    empty_count = sum(not isinstance(result, Exception) and not result for result in results)
+    if failure_count + empty_count == len(results):
+        yield {
+            "event": "error",
+            "data": json.dumps(
+                {"message": ("四个并行审查视角均未返回有效意见，请检查模型配置或网络后重试。")},
+                ensure_ascii=False,
+            ),
+        }
+        return
+    review_warnings = []
+    if failure_count:
+        review_warnings.append(f"{failure_count} 个审查视角调用失败，其余视角结果已保留。")
+    if empty_count:
+        review_warnings.append(f"{empty_count} 个审查视角未返回有效意见，其余视角结果已保留。")
 
     method_pts = results[0] if not isinstance(results[0], Exception) else []
     experiment_pts = results[1] if not isinstance(results[1], Exception) else []
@@ -674,8 +824,15 @@ async def run_review_parallel(
     )
 
     aggregated = aggregate_perspectives(method_pts, experiment_pts, writing_pts, da_pts)
+    for anchor in _attach_review_anchors(doc_id, text, aggregated):
+        new_anchors.append(anchor)
+        yield {"event": "anchor", "data": anchor.model_dump_json()}
 
     # Run editorial synthesis across all 4 perspectives
+    yield {
+        "event": "progress",
+        "data": json.dumps({"stage": "synthesizing_review"}),
+    }
     synthesis = await synthesize_review(
         method_pts,
         experiment_pts,
@@ -702,4 +859,6 @@ async def run_review_parallel(
         persona,
         checks if checks else ["parallel"],
         store,
+        anchors=new_anchors,
+        warnings=review_warnings,
     )

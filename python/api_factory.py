@@ -241,10 +241,46 @@ def _validate_config(cfg: dict) -> None:
     a_temp = agent.get("temperature")
     if a_temp is not None and (not isinstance(a_temp, (int, float)) or a_temp < 0 or a_temp > 2):
         raise ValueError(f"agent.temperature must be 0–2, got {a_temp!r}")
-    # max_steps must be positive int
-    max_steps = agent.get("max_steps")
-    if max_steps is not None and (not isinstance(max_steps, int) or max_steps < 1):
-        raise ValueError(f"agent.max_steps must be a positive integer, got {max_steps!r}")
+    integer_budgets = {
+        "max_steps": (1, 256),
+        "max_tool_calls": (1, 128),
+        "soft_tool_calls": (0, 127),
+        "max_model_calls": (1, 64),
+        "max_mutation_attempts": (1, 128),
+    }
+    for field_name, (minimum, maximum) in integer_budgets.items():
+        value = agent.get(field_name)
+        if value is not None and (
+            not isinstance(value, int) or isinstance(value, bool) or not minimum <= value <= maximum
+        ):
+            raise ValueError(
+                f"agent.{field_name} must be an integer between "
+                f"{minimum} and {maximum}, got {value!r}"
+            )
+
+    max_tool_calls = agent.get("max_tool_calls", 64)
+    soft_tool_calls = agent.get("soft_tool_calls", min(56, max_tool_calls - 1))
+    if soft_tool_calls >= max_tool_calls:
+        raise ValueError(
+            "agent.soft_tool_calls must be lower than agent.max_tool_calls, "
+            f"got {soft_tool_calls!r} >= {max_tool_calls!r}"
+        )
+    max_mutation_attempts = agent.get("max_mutation_attempts")
+    if max_mutation_attempts is not None and max_mutation_attempts > max_tool_calls:
+        raise ValueError(
+            "agent.max_mutation_attempts must not exceed agent.max_tool_calls, "
+            f"got {max_mutation_attempts!r} > {max_tool_calls!r}"
+        )
+    max_active_seconds = agent.get("max_active_seconds")
+    if max_active_seconds is not None and (
+        not isinstance(max_active_seconds, (int, float))
+        or isinstance(max_active_seconds, bool)
+        or not 1 <= max_active_seconds <= 3600
+    ):
+        raise ValueError(
+            "agent.max_active_seconds must be between 1 and 3600 seconds, "
+            f"got {max_active_seconds!r}"
+        )
 
     # translator.engine: if present, must be 'ollama' or 'cloud'
     engine = trans.get("engine")
@@ -263,6 +299,24 @@ def _validate_config(cfg: dict) -> None:
             raise ValueError(f"agent.model must be a string, got {type(a_model).__name__}")
         if a_model != a_model.strip():
             raise ValueError("agent.model must not have leading/trailing whitespace")
+
+    for section_name, section in (
+        ("agent", agent),
+        ("translator.cloud", trans.get("cloud", {})),
+    ):
+        thinking_mode = section.get("thinking_mode")
+        if thinking_mode is not None and thinking_mode not in ("auto", "enabled", "disabled"):
+            raise ValueError(
+                f"{section_name}.thinking_mode must be auto/enabled/disabled, got {thinking_mode!r}"
+            )
+
+    request_timeout = agent.get("request_timeout")
+    if request_timeout is not None and (
+        not isinstance(request_timeout, (int, float)) or not 5 <= request_timeout <= 300
+    ):
+        raise ValueError(
+            f"agent.request_timeout must be between 5 and 300 seconds, got {request_timeout!r}"
+        )
 
     # chunker.max_tokens: if present, must be positive int
     chunker = cfg.get("chunker", {})
@@ -434,6 +488,7 @@ def _build_cloud_client(trans_cfg: dict, cloud_cfg: dict) -> CloudClient:
         max_tokens=cloud_cfg.get("max_tokens", 16384),
         system_prompt=trans_cfg.get("system_prompt", ""),
         timeout=trans_cfg.get("timeout", 300.0),
+        thinking_mode=cloud_cfg.get("thinking_mode", "auto"),
     )
 
 
@@ -683,30 +738,41 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
         "%(asctime)s %(levelname)-8s [%(trace_id)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-    for _h in logging.root.handlers or [logging.StreamHandler()]:
-        _h.addFilter(_trace_filter)
-        if not _h.formatter:
-            _h.setFormatter(_log_fmt)
     if not logging.root.handlers:
         _sh = logging.StreamHandler()
-        _sh.addFilter(_trace_filter)
-        _sh.setFormatter(_log_fmt)
         logging.root.addHandler(_sh)
+    for _h in logging.root.handlers:
+        if not any(isinstance(item, _TraceIdFilter) for item in _h.filters):
+            _h.addFilter(_trace_filter)
+        if not _h.formatter:
+            _h.setFormatter(_log_fmt)
 
     # Rotating file handler: RUNTIME_DIR/logs/app.log, 10 MB × 5 backups
     from logging.handlers import RotatingFileHandler as _RFH
 
     _log_dir = RUNTIME_DIR / "logs"
     _log_dir.mkdir(parents=True, exist_ok=True)
-    _fh = _RFH(
-        str(_log_dir / "app.log"),
-        maxBytes=10 * 1024 * 1024,
-        backupCount=5,
-        encoding="utf-8",
-    )
+    _log_path = (_log_dir / "app.log").resolve()
+    _matching_handlers = [
+        handler
+        for handler in logging.root.handlers
+        if isinstance(handler, _RFH) and Path(handler.baseFilename).resolve() == _log_path
+    ]
+    _fh = _matching_handlers[0] if _matching_handlers else None
+    for _duplicate in _matching_handlers[1:]:
+        logging.root.removeHandler(_duplicate)
+        _duplicate.close()
+    if _fh is None:
+        _fh = _RFH(
+            str(_log_path),
+            maxBytes=10 * 1024 * 1024,
+            backupCount=5,
+            encoding="utf-8",
+        )
+        logging.root.addHandler(_fh)
     _fh.setFormatter(_log_fmt)
-    _fh.addFilter(_trace_filter)
-    logging.root.addHandler(_fh)
+    if not any(isinstance(item, _TraceIdFilter) for item in _fh.filters):
+        _fh.addFilter(_trace_filter)
     if logging.root.level == logging.WARNING or logging.root.level == 0:
         logging.root.setLevel(logging.INFO)
 
