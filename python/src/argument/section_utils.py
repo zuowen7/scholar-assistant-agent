@@ -80,3 +80,56 @@ def has_contrast_marker(text: str) -> bool:
     if not text:
         return False
     return bool(_CONTRAST_RE.search(text))
+
+
+def split_markdown_sections(text: str) -> list[tuple[str, str]]:
+    """Split Markdown into ``(heading, full_section_text)`` chunks."""
+    headings = list(_HEADING_RE.finditer(text))
+    if not headings:
+        return [("", text)] if text else []
+
+    sections: list[tuple[str, str]] = []
+    if headings[0].start() > 0:
+        sections.append(("", text[: headings[0].start()]))
+    for index, heading in enumerate(headings):
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(text)
+        sections.append((heading.group(2).strip(), text[heading.start() : end]))
+    return sections
+
+
+def build_section_excerpt(
+    text: str,
+    *,
+    max_chars: int,
+    preferred_headings: tuple[str, ...] = (),
+) -> str:
+    """Build a bounded excerpt without silently dropping all late sections.
+
+    When preferred headings are supplied, matching sections are used first.
+    Otherwise the character budget is distributed across every Markdown
+    section, preserving document order.
+    """
+    if max_chars <= 0 or not text:
+        return ""
+    if len(text) <= max_chars and not preferred_headings:
+        return text
+
+    sections = split_markdown_sections(text)
+    preferred = tuple(term.lower() for term in preferred_headings)
+    selected = [
+        (heading, body)
+        for heading, body in sections
+        if preferred and any(term in heading.lower() for term in preferred)
+    ]
+    if not selected:
+        selected = sections
+
+    joined = "\n\n".join(body for _, body in selected)
+    if len(joined) <= max_chars:
+        return joined
+
+    # Give every selected section representation instead of taking a prefix.
+    separator_budget = max(0, 2 * (len(selected) - 1))
+    quota = max(160, (max_chars - separator_budget) // max(1, len(selected)))
+    excerpt = "\n\n".join(body[:quota] for _, body in selected)
+    return excerpt[:max_chars]

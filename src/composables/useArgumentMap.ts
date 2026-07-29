@@ -6,6 +6,7 @@ import type { BlockData } from '../types/index'
 import { useTranslate } from './useTranslate'
 import { useEditor } from './useEditor'
 import { useToast } from './useToast'
+import type { LayoutEdge, LayoutNode } from './useArgumentLayout'
 
 const { pushError } = useToast()
 
@@ -169,6 +170,7 @@ interface SourceState {
   mode: 'paste' | 'translation' | 'editor'
   text: string
   label: string
+  documentPath: string | null
   side: 'orig' | 'trans'
   blocks: BlockData[]
 }
@@ -186,6 +188,8 @@ interface ArgumentMapState {
   source: SourceState
   /** True while extract SSE is in progress */
   extracting: boolean
+  /** Current backend extraction stage, translated for the active locale */
+  extractionStage: string
   /** True while critique request is in progress */
   critiquing: boolean
 }
@@ -194,6 +198,7 @@ const _defaultSource = (): SourceState => ({
   mode: 'paste',
   text: '',
   label: '',
+  documentPath: null,
   side: 'trans',
   blocks: [],
 })
@@ -207,6 +212,7 @@ const _state = reactive<ArgumentMapState>({
   hoveredSpanId: '',
   source: _defaultSource(),
   extracting: false,
+  extractionStage: '',
   critiquing: false,
 })
 
@@ -257,6 +263,7 @@ export function _resetForTesting() {
   _state.highlightNodeIds = []
   _state.hoveredSpanId = ''
   _state.extracting = false
+  _state.extractionStage = ''
   _state.critiquing = false
   Object.assign(_state.source, _defaultSource())
   _history.length = 0
@@ -283,10 +290,12 @@ async function createGraph(
   title = i18n.global.t('argument.unnamedGraph'),
   source_doc?: string,
 ): Promise<ArgGraph> {
+  const { activeFile } = useEditor()
+  const resolvedSourceDoc = source_doc ?? activeFile.value ?? undefined
   const res = await fetch(`${API_BASE}/api/argument/graph`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, source_doc }),
+    body: JSON.stringify({ title, source_doc: resolvedSourceDoc }),
   })
   const g: ArgGraph = await res.json()
   _state.graph = g
@@ -460,6 +469,7 @@ export function setPastedSource(text: string, label = i18n.global.t('argument.pa
   _state.source.mode = 'paste'
   _state.source.text = text
   _state.source.label = label
+  _state.source.documentPath = null
   _state.source.blocks = []
 }
 
@@ -471,6 +481,7 @@ export function loadSourceFromTranslation(): void {
   _state.source.blocks = blocks
   _state.source.side = 'trans'
   _state.source.label = i18n.global.t('argument.lastTranslation')
+  _state.source.documentPath = null
   _state.source.text = blocks
     .map((b) => b.translated || b.original)
     .filter(Boolean)
@@ -480,10 +491,11 @@ export function loadSourceFromTranslation(): void {
 /** Load source from the currently active editor tab. */
 export function loadSourceFromEditor(): void {
   const { activeTab } = useEditor()
-  const tab = activeTab.value as { content?: string; name?: string } | null
+  const tab = activeTab.value as { content?: string; name?: string; path?: string | null } | null
   _state.source.mode = 'editor'
   _state.source.text = tab?.content ?? ''
   _state.source.label = tab?.name ?? i18n.global.t('argument.editorFile')
+  _state.source.documentPath = tab?.path ?? null
   _state.source.blocks = []
 }
 
@@ -500,6 +512,7 @@ async function extractArgument(
 ): Promise<void> {
   if (!_state.graph) throw new Error('No graph loaded')
   _state.extracting = true
+  _state.extractionStage = i18n.global.t('argument.extractingStructure')
 
   // Clear current nodes/edges/spans for fresh extraction
   _state.graph.nodes = []
@@ -512,12 +525,19 @@ async function extractArgument(
     const res = await fetch(`${API_BASE}/api/argument/graph/${gid}/extract`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, source_label: sourcLabel, side }),
+      body: JSON.stringify({
+        text,
+        source_label: sourcLabel,
+        source_doc: _state.source.documentPath,
+        side,
+      }),
       signal: abort.signal,
     })
-    if (!res.body) return
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    if (!res.body) throw new Error(i18n.global.t('argument.extractFailedGeneric'))
 
     let streamDone = false
+    let streamError = ''
     await readSseStream(
       res.body.getReader(),
       (eventType, data) => {
@@ -528,13 +548,28 @@ async function extractArgument(
           _state.graph.edges.push(data as unknown as ArgEdge)
         } else if (eventType === 'span') {
           _state.graph.spans.push(data as unknown as SpanMapping)
-        } else if (eventType === 'complete' || eventType === 'error') {
+        } else if (eventType === 'progress') {
+          const stage = String((data as Record<string, unknown>)['stage'] ?? '')
+          const stageKeys: Record<string, string> = {
+            extracting_structure: 'argument.extractingStructure',
+            repairing_response: 'argument.repairingResponse',
+            saving_graph: 'argument.savingGraph',
+          }
+          _state.extractionStage = i18n.global.t(stageKeys[stage] ?? 'argument.extractingStructure')
+        } else if (eventType === 'error') {
+          streamError = String(
+            (data as Record<string, unknown>)['message'] ??
+              i18n.global.t('argument.extractFailedGeneric'),
+          )
+          streamDone = true
+        } else if (eventType === 'complete') {
           streamDone = true
         }
       },
       abort.signal,
       () => streamDone,
     )
+    if (streamError) throw new Error(streamError)
 
     // Reload from server to confirm persisted state
     await loadGraph(gid)
@@ -543,7 +578,11 @@ async function extractArgument(
     if (_state.graph && _state.graph.nodes.length) {
       const { useArgumentLayout } = await import('./useArgumentLayout')
       const { autoLayout } = useArgumentLayout()
-      const pos = autoLayout(_state.graph.nodes as any[], _state.graph.edges as any[], 'LR')
+      const pos = autoLayout(
+        _state.graph.nodes as unknown as LayoutNode[],
+        _state.graph.edges as unknown as LayoutEdge[],
+        'LR',
+      )
       try {
         await persistNodePositions(Object.fromEntries(pos.map((item) => [item.id, item.position])))
       } catch {
@@ -560,6 +599,7 @@ async function extractArgument(
   } finally {
     abort.abort()
     _state.extracting = false
+    _state.extractionStage = ''
   }
 }
 

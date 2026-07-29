@@ -85,6 +85,7 @@ python/output/
 
 # 运行时目录（ChromaDB、agent data 等）
 python/runtime/
+.codex-live-runtime/
 
 # 环境变量
 .env

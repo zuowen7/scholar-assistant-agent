@@ -240,8 +240,11 @@ class AgentEvent:
         return AgentEvent(type=AgentEventType.USAGE, data=usage.__dict__)
 
     @staticmethod
-    def response(text: str) -> AgentEvent:
-        return AgentEvent(type=AgentEventType.RESPONSE, data={"text": text})
+    def response(text: str, **metadata: Any) -> AgentEvent:
+        return AgentEvent(
+            type=AgentEventType.RESPONSE,
+            data={"text": text, **metadata},
+        )
 
     @staticmethod
     def error(message: str, **metadata: Any) -> AgentEvent:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from contextlib import suppress
 from pathlib import Path
 
@@ -244,6 +245,82 @@ class TestApprovalPause:
             await asyncio.wait_for(task, timeout=5)
         types = [e.type for e in events]
         assert AgentEventType.TOOL_RESULT in types
+
+    @pytest.mark.asyncio
+    async def test_approved_python_script_executes_with_backend_runtime(self, workspace: Path):
+        """An approved figure script must run, not fail in a second policy gate."""
+        (workspace / "figure_probe.py").write_text(
+            "import sys\n"
+            "import matplotlib\n"
+            "matplotlib.use('Agg')\n"
+            "from matplotlib import pyplot as plt\n"
+            "fig, ax = plt.subplots()\n"
+            "ax.plot([0, 1], [0, 1])\n"
+            "fig.savefig('figure_probe.svg')\n"
+            "plt.close(fig)\n"
+            'print(f"FIGURE_RUNTIME={sys.executable}")\n',
+            encoding="utf-8",
+        )
+        provider = MockProvider(
+            scenarios=[
+                Scenario(
+                    "run",
+                    trigger_patterns=["render figure"],
+                    turn_index=0,
+                    response_factory=lambda m, t: _tool_response(
+                        "run_command",
+                        {"command": "python figure_probe.py"},
+                    ),
+                ),
+                Scenario(
+                    "done",
+                    trigger_patterns=["render figure"],
+                    turn_index=1,
+                    response_factory=lambda m, t: _text_response("Figure probe completed."),
+                ),
+            ]
+        )
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy,
+            session=Session(workspace=str(workspace)),
+            auto_approve=False,
+        )
+        events = []
+
+        async def collect():
+            async for event in runtime.turn("render figure"):
+                events.append(event)
+
+        task = asyncio.create_task(collect())
+        for _ in range(100):
+            approval = next(
+                (event for event in events if event.type == AgentEventType.AWAIT_APPROVAL),
+                None,
+            )
+            if approval is not None:
+                assert runtime.approve(approval.data["id"], "allow_once")
+                break
+            await asyncio.sleep(0.02)
+        else:
+            pytest.fail("Expected run_command approval")
+
+        await asyncio.wait_for(task, timeout=10)
+        command_result = next(
+            event
+            for event in events
+            if event.type == AgentEventType.TOOL_RESULT
+            and event.data.get("tool_name") == "run_command"
+        )
+        assert command_result.data["is_error"] is False
+        assert "FIGURE_RUNTIME=" in command_result.data["output"]
+        assert str(Path(sys.executable)) in command_result.data["output"]
+        figure = workspace / "figure_probe.svg"
+        assert figure.is_file()
+        assert "<svg" in figure.read_text(encoding="utf-8")[:500]
 
     @pytest.mark.asyncio
     async def test_arbitrary_process_tool_requires_approval(self, workspace: Path):

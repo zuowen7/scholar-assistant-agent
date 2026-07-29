@@ -110,3 +110,7 @@ export function hasPendingApproval(events: AgentEvent[]): boolean {
       event.type === 'await_approval' && (!event.event_id || !resolved.has(event.event_id)),
   )
 }
+
+export function hasRecoverablePartial(events: AgentEvent[]): boolean {
+  return events.some((event) => event.type === 'response' && event.metadata?.partial === true)
+}

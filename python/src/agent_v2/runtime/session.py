@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import tempfile
+import threading
 import time
 import uuid
 import zlib
@@ -44,6 +45,32 @@ _ROTATE_AFTER_BYTES = 256 * 1024
 _MAX_ROTATED_FILES = 3
 _MAX_FIELD_CHARS = 16 * 1024
 _TRUNCATION_MARKER = "… [truncated]"
+_SESSION_IO_LOCKS = tuple(threading.RLock() for _ in range(64))
+_TRANSIENT_REPLACE_ERRNOS = frozenset({13, 16})
+_TRANSIENT_REPLACE_WINERRORS = frozenset({5, 32, 33})
+_REPLACE_RETRY_DELAYS = (0.02, 0.05, 0.1, 0.2, 0.4)
+
+
+def _session_io_lock(path: str | Path) -> threading.RLock:
+    normalized = os.path.normcase(os.path.abspath(os.fspath(path)))
+    digest = hashlib.blake2b(normalized.encode("utf-8"), digest_size=2).digest()
+    index = int.from_bytes(digest, "big") % len(_SESSION_IO_LOCKS)
+    return _SESSION_IO_LOCKS[index]
+
+
+def _replace_with_retry(source: str | Path, target: str | Path) -> None:
+    for attempt in range(len(_REPLACE_RETRY_DELAYS) + 1):
+        try:
+            os.replace(source, target)
+            return
+        except OSError as exc:
+            transient = (
+                exc.errno in _TRANSIENT_REPLACE_ERRNOS
+                or getattr(exc, "winerror", None) in _TRANSIENT_REPLACE_WINERRORS
+            )
+            if not transient or attempt >= len(_REPLACE_RETRY_DELAYS):
+                raise
+            time.sleep(_REPLACE_RETRY_DELAYS[attempt])
 
 
 @dataclass
@@ -428,70 +455,72 @@ class Session:
 
     def save(self, path: str | Path) -> None:
         p = Path(path)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        meta_dict = {
-            "version": self.meta.version,
-            "session_id": self.meta.session_id,
-            "workspace": self.meta.workspace,
-            "model": self.meta.model,
-            "created_ms": self.meta.created_ms,
-            "updated_ms": self.meta.updated_ms,
-            "state": self.meta.state,
-            "outcome": self.meta.outcome,
-            "total_usage": {
-                "input_tokens": self.meta.total_usage.input_tokens,
-                "output_tokens": self.meta.total_usage.output_tokens,
-            },
-        }
-        if self.fork_meta:
-            meta_dict["fork"] = {
-                "parent_session_id": self.fork_meta.parent_session_id,
-                "branch_name": self.fork_meta.branch_name,
+        with _session_io_lock(p):
+            p.parent.mkdir(parents=True, exist_ok=True)
+            meta_dict = {
+                "version": self.meta.version,
+                "session_id": self.meta.session_id,
+                "workspace": self.meta.workspace,
+                "model": self.meta.model,
+                "created_ms": self.meta.created_ms,
+                "updated_ms": self.meta.updated_ms,
+                "state": self.meta.state,
+                "outcome": self.meta.outcome,
+                "total_usage": {
+                    "input_tokens": self.meta.total_usage.input_tokens,
+                    "output_tokens": self.meta.total_usage.output_tokens,
+                },
             }
-        fd, tmp_name = tempfile.mkstemp(dir=p.parent, prefix=f".{p.name}.", suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                f.write(json.dumps(meta_dict, ensure_ascii=False) + "\n")
-                for msg in self._messages:
-                    f.write(json.dumps(_message_to_dict(msg), ensure_ascii=False) + "\n")
-                for record in self._mutations:
-                    f.write(json.dumps(_mutation_to_dict(record), ensure_ascii=False) + "\n")
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(tmp_name, p)
-        except Exception:
-            with suppress(OSError):
-                os.unlink(tmp_name)
-            raise
+            if self.fork_meta:
+                meta_dict["fork"] = {
+                    "parent_session_id": self.fork_meta.parent_session_id,
+                    "branch_name": self.fork_meta.branch_name,
+                }
+            fd, tmp_name = tempfile.mkstemp(dir=p.parent, prefix=f".{p.name}.", suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    f.write(json.dumps(meta_dict, ensure_ascii=False) + "\n")
+                    for msg in self._messages:
+                        f.write(json.dumps(_message_to_dict(msg), ensure_ascii=False) + "\n")
+                    for record in self._mutations:
+                        f.write(json.dumps(_mutation_to_dict(record), ensure_ascii=False) + "\n")
+                    f.flush()
+                    os.fsync(f.fileno())
+                _replace_with_retry(tmp_name, p)
+            except Exception:
+                with suppress(OSError):
+                    os.unlink(tmp_name)
+                raise
 
     @staticmethod
     def load(path: str | Path) -> Session:
         p = Path(path)
-        if not p.is_file():
-            return Session()
-        messages: list[Message] = []
-        mutations: list[MutationRecord] = []
-        meta_data: dict[str, Any] = {}
-        with open(p, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    d = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if "session_id" in d:
-                    meta_data = d
-                    continue
-                if "role" in d:
-                    messages.append(_dict_to_message(d))
-                    continue
-                if d.get("record_type") == "mutation":
-                    try:
-                        mutations.append(_dict_to_mutation(d))
-                    except Exception:
+        with _session_io_lock(p):
+            if not p.is_file():
+                return Session()
+            messages: list[Message] = []
+            mutations: list[MutationRecord] = []
+            meta_data: dict[str, Any] = {}
+            with open(p, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
                         continue
+                    try:
+                        d = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if "session_id" in d:
+                        meta_data = d
+                        continue
+                    if "role" in d:
+                        messages.append(_dict_to_message(d))
+                        continue
+                    if d.get("record_type") == "mutation":
+                        try:
+                            mutations.append(_dict_to_mutation(d))
+                        except Exception:
+                            continue
         session = Session(
             workspace=meta_data.get("workspace", ""),
             model=meta_data.get("model", ""),
@@ -537,25 +566,24 @@ class Session:
 
     def rotate(self, path: str | Path) -> Path:
         p = Path(path)
-        rotated = Path(str(p) + ".1")
-        # Shift existing rotated files
-        for i in range(_MAX_ROTATED_FILES - 1, 0, -1):
-            src = Path(str(p) + f".{i}")
-            dst = Path(str(p) + f".{i + 1}")
-            if src.is_file():
-                if dst.is_file():
-                    dst.unlink()
-                src.rename(dst)
-        if p.is_file():
-            if rotated.is_file():
-                rotated.unlink()
-            p.rename(rotated)
-        return rotated
+        with _session_io_lock(p):
+            rotated = Path(str(p) + ".1")
+            # Shift existing rotated files with replace semantics so readers
+            # never observe a partially moved chain.
+            for i in range(_MAX_ROTATED_FILES - 1, 0, -1):
+                src = Path(str(p) + f".{i}")
+                dst = Path(str(p) + f".{i + 1}")
+                if src.is_file():
+                    _replace_with_retry(src, dst)
+            if p.is_file():
+                _replace_with_retry(p, rotated)
+            return rotated
 
     def save_with_rotate(self, path: str | Path) -> None:
-        if self.should_rotate(path):
-            self.rotate(path)
-        self.save(path)
+        with _session_io_lock(path):
+            if self.should_rotate(path):
+                self.rotate(path)
+            self.save(path)
 
     @property
     def message_count(self) -> int:

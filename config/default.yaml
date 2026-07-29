@@ -38,6 +38,8 @@ translator:
     model: "gpt-4o"
     api_key: ""
     max_tokens: 16384
+    # auto: DeepSeek V4 defaults to non-thinking mode for bounded latency.
+    thinking_mode: auto
   # Ollama 配置
   ollama_base_url: "http://localhost:11434"
   model: "qwen3:8b"
@@ -63,15 +65,19 @@ agent:
   api_key: ""
   model: ""
   proxy: ""
-  max_steps: 48
+  # auto: official DeepSeek V4 uses bounded-latency non-thinking mode.
+  thinking_mode: auto
+  # Hard timeout for one provider request.
+  request_timeout: 120
+  max_steps: 96
   # Per-turn tool budget reserves a final model call with tools disabled.
-  max_tool_calls: 32
-  soft_tool_calls: 28
+  max_tool_calls: 64
+  soft_tool_calls: 56
   # Independent hard limits include retries and side-effect attempts.
-  max_model_calls: 16
-  max_mutation_attempts: 12
+  max_model_calls: 32
+  max_mutation_attempts: 20
   # Active provider/tool time only; user approval wait time is excluded.
-  max_active_seconds: 300
+  max_active_seconds: 600
   # Generic processes have no cross-platform OS filesystem sandbox.
   # Enable only after accepting that explicit risk.
   enable_run_command: false

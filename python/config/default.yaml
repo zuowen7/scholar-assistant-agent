@@ -3,9 +3,14 @@ agent:
   base_url: ''
   enable_run_command: false
   enabled_plugins: []
-  max_steps: 48
-  max_tool_calls: 32
-  soft_tool_calls: 28
+  max_steps: 96
+  max_tool_calls: 64
+  soft_tool_calls: 56
+  max_model_calls: 32
+  max_mutation_attempts: 20
+  max_active_seconds: 600
+  thinking_mode: auto
+  request_timeout: 120
   model: ''
   model_aliases:
     4o: gpt-4o
@@ -33,6 +38,7 @@ translator:
     max_tokens: 16384
     model: deepseek-v4-flash
     provider: deepseek
+    thinking_mode: auto
   engine: cloud
   model: qwen3:8b
   parallel:

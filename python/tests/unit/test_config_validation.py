@@ -148,3 +148,67 @@ class TestAgentModelValidation:
 
     def test_missing_model_passes(self):
         self._call({"agent": {}})
+
+
+def test_rejects_invalid_agent_thinking_mode():
+    from api_factory import _validate_config
+
+    with pytest.raises(ValueError, match="thinking_mode"):
+        _validate_config({"agent": {"thinking_mode": "maximum"}})
+
+
+def test_rejects_unbounded_agent_request_timeout():
+    from api_factory import _validate_config
+
+    with pytest.raises(ValueError, match="request_timeout"):
+        _validate_config({"agent": {"request_timeout": 301}})
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("max_steps", 257),
+        ("max_tool_calls", 129),
+        ("soft_tool_calls", -1),
+        ("max_model_calls", 65),
+        ("max_mutation_attempts", 0),
+        ("max_active_seconds", 3601),
+    ],
+)
+def test_rejects_agent_budget_outside_safe_operating_range(field, value):
+    from api_factory import _validate_config
+
+    with pytest.raises(ValueError, match=field):
+        _validate_config({"agent": {field: value}})
+
+
+def test_rejects_soft_tool_budget_at_or_above_hard_limit():
+    from api_factory import _validate_config
+
+    with pytest.raises(ValueError, match="soft_tool_calls"):
+        _validate_config(
+            {
+                "agent": {
+                    "max_tool_calls": 64,
+                    "soft_tool_calls": 64,
+                }
+            }
+        )
+
+
+def test_accepts_hardened_agent_budget_defaults():
+    from api_factory import _validate_config
+
+    _validate_config(
+        {
+            "agent": {
+                "max_steps": 96,
+                "max_tool_calls": 64,
+                "soft_tool_calls": 56,
+                "max_model_calls": 32,
+                "max_mutation_attempts": 20,
+                "max_active_seconds": 600,
+                "request_timeout": 120,
+            }
+        }
+    )

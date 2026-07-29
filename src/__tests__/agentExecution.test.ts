@@ -17,7 +17,12 @@ vi.mock('vue-i18n', () => ({
 
 import AgentExecutionGroup from '../components/AgentExecutionGroup.vue'
 import type { AgentEvent } from '../types'
-import { buildExecutionSteps, executionSummary, hasPendingApproval } from '../utils/agentExecution'
+import {
+  buildExecutionSteps,
+  executionSummary,
+  hasPendingApproval,
+  hasRecoverablePartial,
+} from '../utils/agentExecution'
 
 describe('agent execution presentation', () => {
   const events: AgentEvent[] = [
@@ -164,5 +169,20 @@ describe('agent execution presentation', () => {
     expect(hasPendingApproval(settled)).toBe(false)
     expect(hasPendingApproval(pending)).toBe(true)
     expect(hasPendingApproval([...settled, ...pending])).toBe(true)
+  })
+
+  it('recognizes only structured partial outcomes as recoverable', () => {
+    expect(
+      hasRecoverablePartial([
+        {
+          type: 'response',
+          content: '',
+          metadata: { partial: true, stop_code: 'model_call_budget_exhausted' },
+        },
+      ]),
+    ).toBe(true)
+    expect(
+      hasRecoverablePartial([{ type: 'response', content: 'The word partial is ordinary text.' }]),
+    ).toBe(false)
   })
 })
