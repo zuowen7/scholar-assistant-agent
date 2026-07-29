@@ -15,6 +15,7 @@ import os
 import re
 import shlex
 import shutil
+import sys
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -156,6 +157,7 @@ def _normalize_schema(schema: dict) -> None:
 
 # Tool function signature: async (args: dict) -> ToolResult
 ToolFunc = Callable[[dict[str, Any]], Awaitable[ToolResult]]
+ToolPreflight = Callable[[dict[str, Any]], ToolResult | None]
 
 
 class ToolSpec:
@@ -170,6 +172,7 @@ class ToolSpec:
         approval_scope: str = "exact-input",
         network_scope: Iterable[str] | None = None,
         rollback_capability: str = "none",
+        preflight: ToolPreflight | None = None,
     ):
         self.definition = definition
         self.func = func
@@ -178,6 +181,7 @@ class ToolSpec:
         self.approval_scope = approval_scope
         self.network_scope = frozenset(network_scope or ())
         self.rollback_capability = rollback_capability
+        self.preflight = preflight
 
     @property
     def requires_approval(self) -> bool:
@@ -241,6 +245,7 @@ class ToolRegistry:
         approval_scope: str = "exact-input",
         network_scope: Iterable[str] | None = None,
         rollback_capability: str = "none",
+        preflight: ToolPreflight | None = None,
     ) -> None:
         key = name.lower()
         if key in self._tools:
@@ -256,6 +261,7 @@ class ToolRegistry:
             approval_scope=approval_scope,
             network_scope=network_scope,
             rollback_capability=rollback_capability,
+            preflight=preflight,
         )
 
     def get(self, name: str) -> ToolSpec | None:
@@ -276,6 +282,90 @@ class ToolRegistry:
             return result.limit_output()
         except Exception as e:
             return ToolResult(output=f"tool '{name}' error: {e}", is_error=True)
+
+    @staticmethod
+    def _schema_preflight(spec: ToolSpec, args: dict[str, Any]) -> ToolResult | None:
+        schema = spec.definition.input_schema
+        properties = schema.get("properties", {})
+        errors: list[str] = []
+        invalid_fields: list[str] = []
+
+        for field_name in schema.get("required", []):
+            if field_name not in args or args[field_name] is None:
+                errors.append(f"{field_name} is required")
+                invalid_fields.append(field_name)
+
+        type_checks: dict[str, Callable[[Any], bool]] = {
+            "string": lambda value: isinstance(value, str),
+            "integer": lambda value: isinstance(value, int) and not isinstance(value, bool),
+            "number": lambda value: isinstance(value, (int, float)) and not isinstance(value, bool),
+            "boolean": lambda value: isinstance(value, bool),
+            "object": lambda value: isinstance(value, dict),
+            "array": lambda value: isinstance(value, list),
+        }
+        type_labels = {
+            "string": "a string",
+            "integer": "an integer",
+            "number": "a number",
+            "boolean": "a boolean",
+            "object": "an object",
+            "array": "an array",
+        }
+        for field_name, field_schema in properties.items():
+            if field_name not in args or args[field_name] is None:
+                continue
+            value = args[field_name]
+            expected_type = field_schema.get("type")
+            checker = type_checks.get(str(expected_type))
+            if checker is not None and not checker(value):
+                errors.append(f"{field_name} must be {type_labels[str(expected_type)]}")
+                invalid_fields.append(field_name)
+                continue
+            if isinstance(value, str):
+                min_length = field_schema.get("minLength")
+                if isinstance(min_length, int) and len(value) < min_length:
+                    errors.append(f"{field_name} must not be empty")
+                    invalid_fields.append(field_name)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                minimum = field_schema.get("minimum")
+                maximum = field_schema.get("maximum")
+                if isinstance(minimum, (int, float)) and value < minimum:
+                    errors.append(f"{field_name} must be at least {minimum}")
+                    invalid_fields.append(field_name)
+                if isinstance(maximum, (int, float)) and value > maximum:
+                    errors.append(f"{field_name} must be at most {maximum}")
+                    invalid_fields.append(field_name)
+            choices = field_schema.get("enum")
+            if isinstance(choices, list) and value not in choices:
+                errors.append(f"{field_name} must be one of {choices}")
+                invalid_fields.append(field_name)
+
+        if not errors:
+            return None
+        fields = sorted(set(invalid_fields))
+        return ToolResult(
+            output="error: invalid tool arguments: " + "; ".join(errors),
+            is_error=True,
+            metadata={
+                "code": "invalid_tool_arguments",
+                "fields": fields,
+            },
+        )
+
+    def preflight(self, name: str, args: dict[str, Any]) -> ToolResult | None:
+        """Validate a tool call before asking the user to approve it."""
+        spec = self.get(name)
+        if spec is None:
+            return ToolResult(output=f"tool '{name}' not found", is_error=True)
+        schema_error = self._schema_preflight(spec, args)
+        if schema_error is not None:
+            return schema_error
+        if spec.preflight is None:
+            return None
+        try:
+            return spec.preflight(args)
+        except Exception as exc:
+            return ToolResult(output=f"tool '{name}' preflight error: {exc}", is_error=True)
 
     def _permission_policy_check(self, command: str) -> tuple[PermissionMode,]:
         """Derive the current effective PermissionMode for bash validation.
@@ -615,7 +705,11 @@ def _create_file_ops(registry: ToolRegistry) -> None:
         {
             "type": "object",
             "properties": {
-                "file_path": {"type": "string", "description": "Path to file"},
+                "file_path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Path to file",
+                },
                 "offset": {
                     "type": "integer",
                     "minimum": 0,
@@ -642,7 +736,7 @@ def _create_file_ops(registry: ToolRegistry) -> None:
         {
             "type": "object",
             "properties": {
-                "file_path": {"type": "string"},
+                "file_path": {"type": "string", "minLength": 1},
                 "content": {"type": "string"},
             },
             "required": ["file_path", "content"],
@@ -660,8 +754,8 @@ def _create_file_ops(registry: ToolRegistry) -> None:
         {
             "type": "object",
             "properties": {
-                "file_path": {"type": "string"},
-                "old_string": {"type": "string"},
+                "file_path": {"type": "string", "minLength": 1},
+                "old_string": {"type": "string", "minLength": 1},
                 "new_string": {"type": "string"},
             },
             "required": ["file_path", "old_string", "new_string"],
@@ -684,8 +778,10 @@ def _create_file_ops(registry: ToolRegistry) -> None:
         permission="read-only",
     )
 
-    # ---- run_command — 执行 shell 命令 ----
-    async def run_command(args: dict) -> ToolResult:
+    # ---- run_command — 执行经过预检的直接命令（不启动 shell） ----
+    def _prepare_run_command(
+        args: dict,
+    ) -> tuple[str, list[str], Path, float] | ToolResult:
         command = str(args.get("command", ""))
         if not command:
             return ToolResult("error: command is required", is_error=True)
@@ -702,15 +798,27 @@ def _create_file_ops(registry: ToolRegistry) -> None:
         from src.agent_v2.runtime.bash_validation import validate_command
 
         perm_result = registry._permission_policy_check(command)
-        validation = validate_command(command, perm_result[0], root)
+        workspace_boundary = registry._workspace_root or root
+        validation = validate_command(
+            command,
+            perm_result[0],
+            workspace_boundary,
+            direct_exec=True,
+        )
         if validation.is_blocked:
-            return ToolResult(f"error: {validation.reason}", is_error=True)
+            return ToolResult(
+                f"error: command blocked by workspace safety policy: {validation.reason}",
+                is_error=True,
+                metadata={"code": "command_policy_blocked"},
+            )
         if validation.is_warn:
-            return ToolResult(f"error: {validation.message}", is_error=True)
+            return ToolResult(
+                f"error: command blocked by workspace safety policy: {validation.message}",
+                is_error=True,
+                metadata={"code": "command_policy_blocked"},
+            )
 
         try:
-            import asyncio as _aio
-
             argv = shlex.split(command, posix=os.name != "nt")
             if os.name == "nt":
                 argv = [
@@ -721,52 +829,107 @@ def _create_file_ops(registry: ToolRegistry) -> None:
                 ]
             if not argv:
                 return ToolResult("error: command is empty after parsing", is_error=True)
-            if argv[0].lower() == "echo":
-                # ``echo`` is a shell builtin on Windows. Implement the harmless
-                # form directly so the command runner never needs to re-enable a
-                # shell merely for cross-platform output.
-                return ToolResult(" ".join(argv[1:]) + "\n")
-            executable = shutil.which(argv[0])
+
+            timeout_raw = args.get("timeout_seconds", 120)
+            try:
+                timeout_seconds = float(timeout_raw)
+            except (TypeError, ValueError):
+                return ToolResult("error: timeout_seconds must be a number", is_error=True)
+            if not 1 <= timeout_seconds <= 300:
+                return ToolResult(
+                    "error: timeout_seconds must be between 1 and 300",
+                    is_error=True,
+                )
+
+            executable_name = re.split(r"[\\/]", argv[0])[-1].lower()
+            if re.fullmatch(r"(?:python(?:\d+(?:\.\d+)?)?|py)(?:\.exe)?", executable_name):
+                # Use the same environment as the Scholar Assistant backend so
+                # installed plotting/export dependencies are deterministic.
+                executable = sys.executable
+            elif executable_name in {"pip", "pip.exe", "pip3", "pip3.exe"}:
+                executable = sys.executable
+                argv = [argv[0], "-m", "pip", *argv[1:]]
+            elif executable_name == "echo":
+                executable = "echo"
+            else:
+                executable = shutil.which(argv[0])
             if executable is None:
                 return ToolResult(f"error: executable not found: {argv[0]}", is_error=True)
+            return executable, argv[1:], root, timeout_seconds
+        except ValueError as exc:
+            return ToolResult(f"error: command arguments could not be parsed: {exc}", is_error=True)
+
+    def _preflight_run_command(args: dict) -> ToolResult | None:
+        prepared = _prepare_run_command(args)
+        return prepared if isinstance(prepared, ToolResult) else None
+
+    async def run_command(args: dict) -> ToolResult:
+        prepared = _prepare_run_command(args)
+        if isinstance(prepared, ToolResult):
+            return prepared
+        executable, command_args, root, timeout_seconds = prepared
+
+        import asyncio as _aio
+
+        proc = None
+        try:
+            if re.split(r"[\\/]", executable)[-1].lower() == "echo":
+                return ToolResult(" ".join(command_args) + "\n")
             proc = await _aio.create_subprocess_exec(
                 executable,
-                *argv[1:],
+                *command_args,
                 cwd=str(root),
                 stdout=_aio.subprocess.PIPE,
                 stderr=_aio.subprocess.STDOUT,
                 **process_group_kwargs(),
             )
-            stdout, _ = await _aio.wait_for(proc.communicate(), timeout=30.0)
+            stdout, _ = await _aio.wait_for(proc.communicate(), timeout=timeout_seconds)
             output = stdout.decode("utf-8", errors="replace")
             if len(output) > _TOOL_RESULT_MAX:
                 output = output[:_TOOL_RESULT_MAX] + "\n... [truncated]"
             if proc.returncode != 0:
                 return ToolResult(f"{output}\nexit code: {proc.returncode}", is_error=True)
-            result = ToolResult(output or "(no output)")
-            if validation.is_warn:
-                result = ToolResult(f"[WARNING: {validation.message}]\n{output or '(no output)'}")
-            return result
+            return ToolResult(output or "(no output)")
         except _aio.CancelledError:
-            await terminate_process_tree(proc)
+            if proc is not None:
+                await terminate_process_tree(proc)
             raise
         except TimeoutError:
-            await terminate_process_tree(proc)
-            return ToolResult("error: command timed out (30s)", is_error=True)
+            if proc is not None:
+                await terminate_process_tree(proc)
+            return ToolResult(
+                f"error: command timed out ({timeout_seconds:g}s)",
+                is_error=True,
+            )
         except Exception as e:
             return ToolResult(f"error running command: {e}", is_error=True)
 
     registry.register(
         "run_command",
-        "Execute a direct command in the workspace (no shell)",
+        (
+            "Execute one direct command in the workspace after approval (no shell). "
+            "Use list_dir instead of dir/ls chains. Python aliases run with Scholar Assistant's "
+            "backend interpreter; execute a concrete workspace .py file, never python -c/-m."
+        ),
         {
             "type": "object",
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "Direct command to run without a shell",
+                    "minLength": 1,
+                    "description": (
+                        "One direct executable plus arguments. Shell operators, inline interpreter "
+                        "code, and paths outside the workspace are rejected before approval."
+                    ),
                 },
                 "cwd": {"type": "string", "default": ".", "description": "Working directory"},
+                "timeout_seconds": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 300,
+                    "default": 120,
+                    "description": "Execution timeout in seconds (1-300)",
+                },
             },
             "required": ["command"],
         },
@@ -774,6 +937,7 @@ def _create_file_ops(registry: ToolRegistry) -> None:
         permission="workspace-write",
         effects={"process"},
         approval_scope="exact-input",
+        preflight=_preflight_run_command,
     )
 
     registry.register(
@@ -782,7 +946,7 @@ def _create_file_ops(registry: ToolRegistry) -> None:
         {
             "type": "object",
             "properties": {
-                "pattern": {"type": "string"},
+                "pattern": {"type": "string", "minLength": 1},
                 "path": {"type": "string", "default": "."},
             },
             "required": ["pattern"],

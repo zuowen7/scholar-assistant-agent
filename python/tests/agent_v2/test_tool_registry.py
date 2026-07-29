@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -173,6 +174,105 @@ class TestToolExecution:
         ):
             result = await registry.execute("run_command", {"command": command})
             assert result.is_error, command
+
+    @pytest.mark.asyncio
+    async def test_run_command_executes_workspace_python_script_with_backend_interpreter(
+        self, registry: ToolRegistry, temp_workspace: Path
+    ):
+        script = temp_workspace / "figure_probe.py"
+        script.write_text(
+            "import sys\nprint('FIGURE_RUN_OK')\nprint(sys.executable)\n",
+            encoding="utf-8",
+        )
+
+        result = await registry.execute(
+            "run_command",
+            {"command": "python figure_probe.py", "timeout_seconds": 10},
+        )
+
+        assert not result.is_error, result.output
+        assert "FIGURE_RUN_OK" in result.output
+        assert str(Path(sys.executable).resolve()).lower() in result.output.lower()
+
+    @pytest.mark.asyncio
+    async def test_run_command_allows_external_python_executable_for_workspace_script(
+        self, registry: ToolRegistry, temp_workspace: Path
+    ):
+        script = temp_workspace / "probe.py"
+        script.write_text("print('ABSOLUTE_PYTHON_OK')\n", encoding="utf-8")
+        command = f'"{sys.executable}" "{script}"'
+
+        result = await registry.execute("run_command", {"command": command})
+
+        assert not result.is_error, result.output
+        assert "ABSOLUTE_PYTHON_OK" in result.output
+
+    @pytest.mark.asyncio
+    async def test_run_command_validates_paths_against_workspace_not_nested_cwd(
+        self, registry: ToolRegistry, temp_workspace: Path
+    ):
+        scripts = temp_workspace / "scripts"
+        output = temp_workspace / "output"
+        scripts.mkdir()
+        output.mkdir()
+        script = scripts / "probe.py"
+        script.write_text("print('SIBLING_SCRIPT_OK')\n", encoding="utf-8")
+
+        result = await registry.execute(
+            "run_command",
+            {"command": f'python "{script}"', "cwd": str(output)},
+        )
+
+        assert not result.is_error, result.output
+        assert "SIBLING_SCRIPT_OK" in result.output
+
+    @pytest.mark.asyncio
+    async def test_run_command_preflight_rejects_impossible_command(self, registry: ToolRegistry):
+        result = registry.preflight(
+            "run_command",
+            {"command": 'python -c "print(1)"'},
+        )
+
+        assert result is not None
+        assert result.is_error
+        assert "inline" in result.output.lower()
+
+    def test_preflight_rejects_missing_required_argument(self, registry: ToolRegistry):
+        result = registry.preflight(
+            "write_file",
+            {"content": "print('safe')\n"},
+        )
+
+        assert result is not None
+        assert result.is_error
+        assert result.metadata == {
+            "code": "invalid_tool_arguments",
+            "fields": ["file_path"],
+        }
+        assert "file_path" in result.output
+
+    def test_preflight_rejects_wrong_argument_type(self, registry: ToolRegistry):
+        result = registry.preflight(
+            "write_file",
+            {"file_path": ["not", "a", "path"], "content": "text"},
+        )
+
+        assert result is not None
+        assert result.is_error
+        assert result.metadata == {
+            "code": "invalid_tool_arguments",
+            "fields": ["file_path"],
+        }
+        assert "must be a string" in result.output
+
+    def test_preflight_allows_empty_write_content(self, registry: ToolRegistry):
+        assert (
+            registry.preflight(
+                "write_file",
+                {"file_path": "empty.md", "content": ""},
+            )
+            is None
+        )
 
     @pytest.mark.asyncio
     async def test_tr013_glob(self, registry: ToolRegistry, temp_workspace: Path):

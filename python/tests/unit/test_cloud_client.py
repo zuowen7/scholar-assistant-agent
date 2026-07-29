@@ -105,6 +105,45 @@ class TestOpenAIFormat:
 
         assert headers.get("Authorization") == "Bearer sk-test"
 
+    def test_deepseek_v4_disables_default_thinking_mode(self):
+        client = CloudClient(
+            provider="deepseek",
+            base_url="https://api.deepseek.com/v1",
+            api_key="sk-test",
+            model="deepseek-v4-flash",
+        )
+        mock_resp = _make_openai_response("结果", model="deepseek-v4-flash")
+
+        with patch.object(client, "_get_http_client") as mock_get:
+            mock_http = MagicMock()
+            mock_http.post.return_value = mock_resp
+            mock_get.return_value = mock_http
+
+            client.translate("Test")
+            payload = mock_http.post.call_args.kwargs["json"]
+
+        assert payload["thinking"] == {"type": "disabled"}
+
+    def test_explicit_deepseek_thinking_mode_is_respected(self):
+        client = CloudClient(
+            provider="deepseek",
+            base_url="https://api.deepseek.com/v1",
+            api_key="sk-test",
+            model="deepseek-v4-flash",
+            thinking_mode="enabled",
+        )
+        mock_resp = _make_openai_response("结果", model="deepseek-v4-flash")
+
+        with patch.object(client, "_get_http_client") as mock_get:
+            mock_http = MagicMock()
+            mock_http.post.return_value = mock_resp
+            mock_get.return_value = mock_http
+
+            client.translate("Test")
+            payload = mock_http.post.call_args.kwargs["json"]
+
+        assert payload["thinking"] == {"type": "enabled"}
+
 
 # ---------------------------------------------------------------------------
 # Anthropic API

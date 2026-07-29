@@ -198,6 +198,7 @@ describe('useArgumentCompanion', () => {
 
       await expect(companion.buildOrRebuildLedger('text')).resolves.not.toThrow()
       expect(companion.state.building).toBe(false)
+      expect(companion.state.ledger).toBeNull()
     })
   })
 
@@ -431,6 +432,7 @@ describe('useArgumentCompanion', () => {
 
       await expect(companion.runReview('text')).resolves.not.toThrow()
       expect(companion.state.reviewing).toBe(false)
+      expect(companion.state.review).toBeNull()
     })
   })
 
@@ -508,6 +510,19 @@ describe('useArgumentCompanion', () => {
 
       expect(companion.state.review).not.toBeNull()
       expect(companion.state.review!.points.length).toBeGreaterThanOrEqual(1)
+    })
+
+    it('does not keep an empty review shell after an error event', async () => {
+      const stream = makeSseStream([{ event: 'error', data: { message: 'scope failed' } }])
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body: stream }))
+
+      const companion = useArgumentCompanion()
+      companion.setDoc('doc1', 'Paper')
+
+      await companion.scopedReview('selected text', 'full paper')
+
+      expect(companion.state.review).toBeNull()
+      expect(companion.state.reviewing).toBe(false)
     })
   })
 

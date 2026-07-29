@@ -122,6 +122,14 @@ class ArgGraphStore:
             if path.exists():
                 path.unlink()
 
+    def set_source_doc(self, gid: str, source_doc: str) -> ArgGraph:
+        """Associate an existing graph with its manuscript."""
+        with self._lock:
+            graph = self._cache[gid]
+            graph.source_doc = source_doc
+            self._flush(gid)
+            return graph
+
     # ── 节点 CRUD ─────────────────────────────────────────────────────────────
 
     def upsert_node(self, gid: str, node: ArgNode) -> ArgNode:

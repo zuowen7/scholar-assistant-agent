@@ -17,7 +17,7 @@ from src.agent_v2.providers.mock_provider import (
 )
 from src.agent_v2.runtime.conversation import ConversationRuntime
 from src.agent_v2.runtime.permissions import PermissionMode, PermissionPolicy, policy_from_registry
-from src.agent_v2.runtime.session import Session
+from src.agent_v2.runtime.session import _ROTATE_AFTER_BYTES, Session
 from src.agent_v2.tools.registry import ToolRegistry, ToolResult, create_default_registry
 from src.agent_v2.types import (
     AgentEvent,
@@ -148,6 +148,62 @@ class TestBasicFlow:
         # Verify tool result contains file content
         tool_results = [e for e in events if e.type == AgentEventType.TOOL_RESULT]
         assert any("Hello" in e.data.get("output", "") for e in tool_results)
+
+    @pytest.mark.asyncio
+    async def test_invalid_truncated_tool_json_is_not_executed_or_sent_for_approval(
+        self, workspace: Path
+    ):
+        class TruncatedProvider:
+            model = "truncated"
+
+            def __init__(self):
+                self.calls = 0
+
+            async def chat(self, **_kwargs):
+                self.calls += 1
+                if self.calls == 1:
+                    return ProviderResponse(
+                        blocks=[
+                            ToolUseBlock(
+                                id="write-truncated",
+                                name="write_file",
+                                input='{"file_path":"figure.py","content":"unterminated',
+                            )
+                        ],
+                        stop_reason="length",
+                    )
+                return _text_response("Recovered with a smaller payload.")
+
+        provider = TruncatedProvider()
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        session = Session(workspace=str(workspace))
+        rt = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy,
+            session=session,
+            auto_approve=False,
+        )
+
+        events = await _collect_events(rt, "create a figure script")
+
+        assert not (workspace / "figure.py").exists()
+        assert AgentEventType.AWAIT_APPROVAL not in _event_types(events)
+        failure = next(
+            event
+            for event in events
+            if event.type == AgentEventType.TOOL_RESULT
+            and event.data.get("id") == "write-truncated"
+        )
+        assert failure.data["is_error"] is True
+        assert failure.data["status"] == "error"
+        assert "invalid or truncated JSON" in failure.data["output"]
+        assert any(
+            event.type == AgentEventType.RESPONSE
+            and event.data.get("text") == "Recovered with a smaller payload."
+            for event in events
+        )
 
     @pytest.mark.asyncio
     async def test_tool_turn_resets_premature_completion_text(self, workspace: Path):
@@ -409,6 +465,94 @@ class TestBasicFlow:
 
 class TestPermissionIntegration:
     @pytest.mark.asyncio
+    async def test_missing_write_path_fails_before_requesting_approval(self, workspace: Path):
+        provider = MockProvider(
+            scenarios=[
+                Scenario(
+                    "missing path",
+                    trigger_patterns=["missing path"],
+                    turn_index=0,
+                    response_factory=lambda m, t: _tool_response(
+                        "write_file",
+                        {"content": "draft"},
+                    ),
+                ),
+                Scenario(
+                    "recover",
+                    trigger_patterns=["missing path"],
+                    turn_index=1,
+                    response_factory=lambda m, t: _text_response(
+                        "The invalid write was rejected before approval."
+                    ),
+                ),
+            ]
+        )
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy,
+            session=Session(workspace=str(workspace)),
+            auto_approve=False,
+        )
+
+        events = await _collect_events(runtime, "missing path")
+
+        assert AgentEventType.AWAIT_APPROVAL not in _event_types(events)
+        failure = next(
+            event
+            for event in events
+            if event.type == AgentEventType.TOOL_RESULT and event.data.get("is_error")
+        )
+        assert failure.data["metadata"]["code"] == "invalid_tool_arguments"
+        assert failure.data["metadata"]["fields"] == ["file_path"]
+
+    @pytest.mark.asyncio
+    async def test_run_command_preflight_fails_before_requesting_approval(self, workspace: Path):
+        provider = MockProvider(
+            scenarios=[
+                Scenario(
+                    "run",
+                    trigger_patterns=["run inline"],
+                    turn_index=0,
+                    response_factory=lambda m, t: _tool_response(
+                        "run_command",
+                        {"command": 'python -c "print(1)"'},
+                    ),
+                ),
+                Scenario(
+                    "recover",
+                    trigger_patterns=["run inline"],
+                    turn_index=1,
+                    response_factory=lambda m, t: _text_response(
+                        "The command was rejected before approval."
+                    ),
+                ),
+            ]
+        )
+        registry = create_default_registry(workspace_root=workspace)
+        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy,
+            session=Session(workspace=str(workspace)),
+            auto_approve=False,
+        )
+
+        events = await _collect_events(runtime, "run inline")
+
+        assert AgentEventType.AWAIT_APPROVAL not in _event_types(events)
+        failure = next(
+            event
+            for event in events
+            if event.type == AgentEventType.TOOL_RESULT and event.data.get("is_error")
+        )
+        assert failure.data["metadata"]["code"] == "command_policy_blocked"
+        assert "inline code" in failure.data["output"].lower()
+
+    @pytest.mark.asyncio
     async def test_cr010_tool_denied(self, workspace: Path):
         """CR-010: 工具被 Deny"""
         provider = MockProvider(
@@ -496,6 +640,39 @@ class TestSessionIntegration:
         assert session.message_count >= 2
         assert session.messages[0].role == MessageRole.USER
         assert session.messages[1].role == MessageRole.ASSISTANT
+
+    @pytest.mark.asyncio
+    async def test_auto_save_does_not_rotate_a_large_live_snapshot(self, workspace: Path):
+        save_path = workspace / "large-session.jsonl"
+        session = Session(workspace=str(workspace), model="mock")
+        for index in range(24):
+            session.append(
+                Message(
+                    role=MessageRole.USER,
+                    blocks=[TextBlock(text=f"{index}:" + ("x" * 16_000))],
+                )
+            )
+        session.save(save_path)
+        assert save_path.stat().st_size >= _ROTATE_AFTER_BYTES
+        session._save_path = str(save_path)
+        registry = create_default_registry(workspace_root=workspace)
+        runtime = ConversationRuntime(
+            provider=MockProvider(),
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE,
+                registry.permission_specs(),
+            ),
+            session=session,
+        )
+
+        await _collect_events(runtime, "continue")
+
+        assert save_path.is_file()
+        assert not Path(str(save_path) + ".1").exists()
+        loaded = Session.load(save_path)
+        assert loaded.meta.state == "COMPLETE"
+        assert loaded.messages[-1].text_content()
 
 
 # ============================================================================
@@ -971,6 +1148,8 @@ class TestMultiToolCircuitBreakerProtocol:
             tool_registry=registry,
             permission_policy=policy,
             session=session,
+            max_tool_calls=32,
+            soft_tool_calls=28,
         )
 
         events = await _collect_events(runtime, "perform a large batch")
@@ -1597,6 +1776,75 @@ class TestAbortPropagation:
 
 class TestIndependentExecutionBudgets:
     @pytest.mark.asyncio
+    async def test_default_budget_allows_sixty_four_readonly_tools_and_final_response(
+        self, workspace: Path
+    ):
+        class SixtyFourToolProvider:
+            model = "budget-proof"
+
+            def __init__(self):
+                self.calls = 0
+
+            async def chat(self, **_kwargs):
+                self.calls += 1
+                if self.calls == 1:
+                    return ProviderResponse(
+                        blocks=[
+                            ToolUseBlock(
+                                id=f"inspect-{index}",
+                                name="inspect_item",
+                                input=json.dumps({"index": index}),
+                            )
+                            for index in range(64)
+                        ],
+                        stop_reason="tool_use",
+                    )
+                return _text_response("All 64 inspections completed.")
+
+        provider = SixtyFourToolProvider()
+        registry = ToolRegistry(workspace_root=workspace)
+
+        async def inspect_item(args):
+            return ToolResult(f"inspected {args['index']}")
+
+        registry.register(
+            "inspect_item",
+            "Inspect one item",
+            {
+                "type": "object",
+                "properties": {"index": {"type": "integer"}},
+                "required": ["index"],
+            },
+            inspect_item,
+            permission="read-only",
+        )
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE,
+                registry.permission_specs(),
+            ),
+            session=Session(workspace=str(workspace)),
+        )
+
+        events = await _collect_events(runtime, "inspect 64 items")
+
+        successful = [
+            event
+            for event in events
+            if event.type == AgentEventType.TOOL_RESULT and not event.data.get("is_error")
+        ]
+        assert len(successful) == 64
+        assert provider.calls == 2
+        assert runtime.session.meta.state == "COMPLETE"
+        assert any(
+            event.type == AgentEventType.RESPONSE
+            and event.data.get("text") == "All 64 inspections completed."
+            for event in events
+        )
+
+    @pytest.mark.asyncio
     async def test_model_call_budget_includes_followup_and_uses_local_finalizer(
         self, workspace: Path
     ):
@@ -1636,7 +1884,11 @@ class TestIndependentExecutionBudgets:
         assert provider.calls == 1
         assert session.meta.state == "PARTIAL"
         assert session.meta.outcome["stop_code"] == "model_call_budget_exhausted"
-        assert any(event.type == AgentEventType.RESPONSE for event in events)
+        partial = next(event for event in events if event.type == AgentEventType.RESPONSE)
+        assert partial.data["partial"] is True
+        assert partial.data["stop_code"] == "model_call_budget_exhausted"
+        assert partial.data["tool_counts"]["success"] == 1
+        assert "Changed files:" not in partial.data["text"]
 
     @pytest.mark.asyncio
     async def test_mutation_attempt_budget_stops_second_write(self, workspace: Path):
@@ -1679,11 +1931,15 @@ class TestIndependentExecutionBudgets:
             max_mutation_attempts=1,
         )
 
-        await _collect_events(runtime, "mutate twice")
+        events = await _collect_events(runtime, "mutate twice")
 
         assert executed == [1]
         assert session.meta.state == "PARTIAL"
         assert session.meta.outcome["stop_code"] == "mutation_budget_exhausted"
+        partial = next(event for event in events if event.type == AgentEventType.RESPONSE)
+        assert partial.data["text"] == "Only the admitted mutation completed."
+        assert partial.data["partial"] is True
+        assert partial.data["stop_code"] == "mutation_budget_exhausted"
 
     @pytest.mark.asyncio
     async def test_active_time_budget_cancels_provider_and_persists_partial(

@@ -16,6 +16,7 @@ from .anchor import make_anchor_from_quote, relocate, relocate_all
 from .companion_models import Ledger, Promise
 from .companion_store import CompanionStore
 from .llm_client import call_llm_chat
+from .section_utils import build_section_excerpt
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,24 @@ async def _call_with_retry(
     return raw
 
 
+def _parse_promise_payload(raw: str) -> list[dict]:
+    """Accept the documented wrapper and a common top-level-array variant."""
+    parsed = extract_json_object(raw)
+    if parsed and isinstance(parsed.get("promises"), list):
+        return [item for item in parsed["promises"] if isinstance(item, dict)]
+    array = extract_json_array(raw)
+    if array is not None:
+        return [item for item in array if isinstance(item, dict)]
+    return []
+
+
+def _has_valid_promise_payload(raw: str) -> bool:
+    parsed = extract_json_object(raw)
+    if parsed is not None and isinstance(parsed.get("promises"), list):
+        return True
+    return extract_json_array(raw) is not None
+
+
 async def build_ledger(
     doc_id: str,
     doc_title: str,
@@ -95,8 +114,8 @@ async def build_ledger(
     promise_zone, body_zone = _extract_promise_zone(text)
 
     # ── LLM #1: extract promises ──────────────────────────────────────────────
-    # Use up to 6000 chars of the promise zone (abstract + intro + motivation + related work)
-    pz_text = promise_zone[:6000] if len(promise_zone) > 6000 else promise_zone
+    # Keep every promise-bearing section represented instead of taking a prefix.
+    pz_text = build_section_excerpt(promise_zone, max_chars=16000)
     prompt1 = (
         "你是学术论证分析专家。从这篇论文的前半部分（摘要、引言、动机、研究背景等）全面提取作者立下的所有承诺。\n\n"
         "承诺类型说明：\n"
@@ -113,6 +132,10 @@ async def build_ledger(
         '{"promises":[{"local_id":"p1","kind":"contribution","text":"承诺原话(可适度归一)","verbatim_quote":"文中的精确子串"}]}'
     )
 
+    yield {
+        "event": "progress",
+        "data": json.dumps({"stage": "extracting_promises"}),
+    }
     raw1 = ""
     for attempt in range(2):
         try:
@@ -123,10 +146,8 @@ async def build_ledger(
                 max_tokens=4096,
                 temperature=0.3,
             )
-            if raw1.strip():
-                parsed1_attempt = extract_json_object(raw1)
-                if parsed1_attempt is not None:
-                    break
+            if raw1.strip() and _has_valid_promise_payload(raw1):
+                break
         except (json.JSONDecodeError, ValueError):
             if attempt == 1:
                 yield {
@@ -142,15 +163,10 @@ async def build_ledger(
         yield {"event": "error", "data": json.dumps({"message": "LLM 返回空响应，请重试"})}
         return
 
-    try:
-        parsed1 = extract_json_object(raw1)
-        if not parsed1:
-            raise ValueError("no JSON object found")
-    except (json.JSONDecodeError, ValueError):
+    raw_promises = _parse_promise_payload(raw1)
+    if not _has_valid_promise_payload(raw1):
         yield {"event": "error", "data": json.dumps({"message": "LLM 未返回有效 JSON，请重试"})}
         return
-
-    raw_promises = parsed1.get("promises", [])
     if not raw_promises:
         # No promises found — complete with zero
         logger.warning("companion build_ledger 0 promises raw1(500)=%s", raw1[:500])
@@ -178,21 +194,7 @@ async def build_ledger(
         return
 
     # ── LLM #2: discharge resolution ─────────────────────────────────────────
-    # Sample body: head + middle + tail so experiments/results sections are visible
-    def _sample_body(body: str, total: int = 8000) -> str:
-        if len(body) <= total:
-            return body
-        chunk = total // 3
-        mid = len(body) // 2
-        return (
-            body[:chunk]
-            + f"\n\n[... 中间省略 {mid - chunk} 字符 ...]\n\n"
-            + body[mid - chunk // 2 : mid + chunk // 2]
-            + "\n\n[... 省略至末尾 ...]\n\n"
-            + body[-chunk:]
-        )
-
-    body_sample = _sample_body(body_zone)
+    body_sample = build_section_excerpt(body_zone, max_chars=48000)
     promises_summary = "\n".join(
         f"- (id={p.get('local_id', '?')}) {p.get('text', '')}" for p in raw_promises
     )
@@ -211,6 +213,10 @@ async def build_ledger(
         '"note":"一行具体说明：paid 时说证据在哪；unpaid/partial 时说缺什么"}'
     )
 
+    yield {
+        "event": "progress",
+        "data": json.dumps({"stage": "matching_evidence"}),
+    }
     raw2 = ""
     for attempt in range(2):
         try:
@@ -243,6 +249,10 @@ async def build_ledger(
         logger.warning("discharge map parsing failed: %s", e)
 
     # ── Assemble promises + anchors ───────────────────────────────────────────
+    yield {
+        "event": "progress",
+        "data": json.dumps({"stage": "saving_ledger"}),
+    }
     new_promises: list[Promise] = []
     new_anchors = []
     warnings: list[str] = []
@@ -374,12 +384,10 @@ async def rebuild_ledger(
             new_promise_events.append(ev)
             yield ev
 
-    # Yield the complete event from build_ledger
-    if last_event and last_event["event"] == "complete":
-        yield last_event
-
     # Now patch in user-overridden promises
     if not overridden:
+        if last_event and last_event["event"] == "complete":
+            yield last_event
         return
 
     fresh_ledger = store.get_ledger(doc_id)
@@ -399,6 +407,21 @@ async def rebuild_ledger(
             fresh_ledger.anchors.append(a)
 
     store.save_ledger(fresh_ledger)
+    by_status: dict[str, int] = {}
+    for promise in fresh_ledger.promises:
+        by_status[promise.status] = by_status.get(promise.status, 0) + 1
+    previous_data = json.loads(last_event["data"]) if last_event else {}
+    yield {
+        "event": "complete",
+        "data": json.dumps(
+            {
+                "ledger_id": fresh_ledger.id,
+                "promise_count": len(fresh_ledger.promises),
+                "by_status": by_status,
+                "warnings": previous_data.get("warnings", []),
+            }
+        ),
+    }
 
 
 # ── Phase 5: suggest experiment ───────────────────────────────────────────────

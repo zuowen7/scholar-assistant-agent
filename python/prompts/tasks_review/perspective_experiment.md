@@ -10,5 +10,5 @@ Review ONLY these aspects:
 - Experimental setup: reproducibility and clarity
 - Statistical significance and error analysis
 
-Return ONLY a JSON array (possibly []):
+Return 3-6 concrete issues as ONLY a JSON array:
 [{"category": "baseline|ablation|experiment_design|reproducibility|other", "severity": "minor|major|fatal", "title": "...", "detail": "...", "verbatim_quote": "..."}]

@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import uuid
 from pathlib import Path
 
@@ -50,6 +51,17 @@ _PRESETS: dict[str, str] = {
     ),
 }
 
+_EXECUTION_REQUEST_RE = re.compile(
+    r"(?:\b(?:run|execute|launch|invoke)\b.{0,100}"
+    r"\b(?:python|rscript|script|command|terminal|shell|stdout|stderr)\b)"
+    r"|(?:(?:运行|执行|启动).{0,50}(?:python|r|脚本|命令|终端))",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _requests_process_execution(instruction: str, content: str) -> bool:
+    return bool(_EXECUTION_REQUEST_RE.search(f"{instruction}\n{content}"))
+
 
 def register_sub_agent(registry: ToolRegistry) -> None:
     """注册 run_sub_agent 工具。"""
@@ -63,6 +75,16 @@ def register_sub_agent(registry: ToolRegistry) -> None:
 
         if not content:
             return ToolResult("error: content is required", is_error=True)
+        if _requests_process_execution(instruction, content):
+            return ToolResult(
+                "error: run_sub_agent cannot execute commands or scripts. "
+                "Use run_command when available and verify its real stdout/stderr.",
+                is_error=True,
+                metadata={
+                    "sub_agent_state": "REJECTED",
+                    "stop_code": "unsupported_process_execution",
+                },
+            )
 
         preset_key = preset.lower()
         system_prompt = _PRESETS.get(preset_key)
@@ -231,7 +253,8 @@ def register_sub_agent(registry: ToolRegistry) -> None:
         (
             "Run a one-shot specialist model call to audit, explain, implement, or translate "
             "provided content. It has no tools and cannot delegate or perform multi-step "
-            "workspace work. Available presets: audit, explain, implement, translate."
+            "workspace work. It cannot execute commands or scripts; use run_command for real "
+            "process execution. Available presets: audit, explain, implement, translate."
         ),
         {
             "type": "object",
