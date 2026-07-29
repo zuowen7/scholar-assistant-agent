@@ -219,6 +219,63 @@ class TestExtractArgument:
         data = json.loads(complete_ev["data"])
         assert len(data.get("warnings", [])) > 0
 
+    def test_long_document_tail_is_included_in_extraction_prompt(self, store, graph_id):
+        """Regression: extraction must not silently review only the first 4,000 chars."""
+        long_text = (
+            "# Abstract\n"
+            + ("introductory material " * 260)
+            + "\n\n# 5 Results\nLATE_SECTION_EMPIRICAL_EVIDENCE supports the main claim."
+        )
+        captured: list[str] = []
+
+        async def spy(prompt, *args, **kwargs):
+            captured.append(prompt)
+            return VALID_LLM_JSON
+
+        async def run():
+            from src.argument.ai_ops import extract_argument
+
+            return [
+                event
+                async for event in extract_argument(
+                    gid=graph_id,
+                    text=long_text,
+                    source_label="long.md",
+                    side="trans",
+                    store=store,
+                )
+            ]
+
+        with patch("src.argument.ai_ops.call_llm_chat", new=spy):
+            _run(run())
+
+        assert captured
+        assert "LATE_SECTION_EMPIRICAL_EVIDENCE" in captured[0]
+
+    def test_successful_editor_extraction_associates_graph_with_document(self, store, graph_id):
+        async def run():
+            from src.argument.ai_ops import extract_argument
+
+            return [
+                event
+                async for event in extract_argument(
+                    gid=graph_id,
+                    text=SOURCE_TEXT,
+                    source_label="main.md",
+                    side="trans",
+                    source_doc="C:/papers/main.md",
+                    store=store,
+                )
+            ]
+
+        with patch(
+            "src.argument.ai_ops.call_llm_chat",
+            new=AsyncMock(return_value=VALID_LLM_JSON),
+        ):
+            _run(run())
+
+        assert store.get(graph_id).source_doc == "C:/papers/main.md"
+
 
 # ── suggest_element ────────────────────────────────────────────────────────────
 

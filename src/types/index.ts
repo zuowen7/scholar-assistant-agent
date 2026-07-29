@@ -225,6 +225,12 @@ export interface AgentEvent {
     attempt?: number
     max_attempts?: number
     reset_stream?: boolean
+    // recoverable partial completion
+    partial?: boolean
+    stop_code?: string
+    stop_reason?: string
+    tool_counts?: Record<string, number>
+    changed_count?: number
     // v2 task_done
     status?: string
     // pipeline_stage

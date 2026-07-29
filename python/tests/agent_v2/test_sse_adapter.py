@@ -89,6 +89,24 @@ class TestAdapter:
         assert result["type"] == "response"
         assert result["content"] == "final answer"
 
+    def test_partial_response_preserves_recovery_metadata(self):
+        event = AgentEvent.response(
+            "partial",
+            partial=True,
+            stop_code="model_call_budget_exhausted",
+            changed_count=2,
+        )
+
+        result = agent_event_to_sse(event)
+
+        assert result["type"] == "response"
+        assert result["content"] == "partial"
+        assert result["metadata"] == {
+            "partial": True,
+            "stop_code": "model_call_budget_exhausted",
+            "changed_count": 2,
+        }
+
     def test_session_started_exposes_session_id_to_frontend(self):
         event = AgentEvent.session_started("sess_123")
         result = agent_event_to_sse(event)

@@ -14,5 +14,5 @@ Focus on:
 - Logical fallacies or circular reasoning
 - Overgeneralization — claims that go beyond what evidence supports
 
-Return ONLY a JSON array (possibly []):
-[{"category":"...","severity":"minor|major|fatal","title":"...","detail":"..."}]
+Return 3-6 concrete issues as ONLY a JSON array:
+[{"category":"soundness|claim_overreach|experiment_design|other","severity":"minor|major|fatal","title":"...","detail":"...","verbatim_quote":"exact text copied from the paper, or empty string"}]

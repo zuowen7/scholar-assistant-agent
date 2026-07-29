@@ -1,4 +1,4 @@
-"""Unit tests for Reviewer-2 DAG three-perspective parallel review (Phase D)."""
+"""Unit tests for Reviewer-2 DAG four-perspective parallel review (Phase D)."""
 
 from __future__ import annotations
 
@@ -108,6 +108,26 @@ async def test_perspective_experiment_prompt_focused():
 
 
 @pytest.mark.asyncio
+async def test_experiment_perspective_includes_late_results_section():
+    captured: list[str] = []
+    paper = (
+        "# Abstract\n"
+        + ("front matter " * 400)
+        + "\n\n# 4 Experiments and Results\nLATE_RESULTS_TABLE_MARKER"
+    )
+
+    async def spy(prompt, *a, **kw):
+        captured.append(prompt)
+        return "[]"
+
+    with patch("src.argument._reviewer_perspectives.call_llm_chat", spy):
+        await run_experiment_perspective(paper, "venue profile", None, None)
+
+    assert captured
+    assert "LATE_RESULTS_TABLE_MARKER" in captured[0]
+
+
+@pytest.mark.asyncio
 async def test_perspective_writing_prompt_focused():
     """D5: writing perspective prompt contains writing/clarity keywords."""
     captured: list[str] = []
@@ -122,6 +142,31 @@ async def test_perspective_writing_prompt_focused():
     assert captured
     text = captured[0].lower()
     assert any(kw in text for kw in ["writing", "clarity", "presentation", "language", "structure"])
+
+
+@pytest.mark.asyncio
+async def test_perspective_repairs_a_truncated_json_response_once():
+    responses = iter(
+        [
+            'analysis follows\n[{"category":"writing_clarity","severity":"major"',
+            (
+                '[{"category":"writing_clarity","severity":"major",'
+                '"title":"Unclear structure","detail":"Sections are not connected."}]'
+            ),
+        ]
+    )
+    budgets: list[int] = []
+
+    async def mock_llm(_prompt, *args, **kwargs):
+        budgets.append(kwargs["max_tokens"])
+        return next(responses)
+
+    with patch("src.argument._reviewer_perspectives.call_llm_chat", mock_llm):
+        points = await run_writing_perspective("paper", "venue", None, None)
+
+    assert len(points) == 1
+    assert points[0].title == "Unclear structure"
+    assert budgets == [4096, 4096]
 
 
 # ── D6: aggregator deduplicates by (title, category) ─────────────────────────
@@ -246,3 +291,79 @@ async def test_token_cost_logged():
         )
 
     assert call_count[0] == 3, f"Expected 3 LLM calls (one per perspective), got {call_count[0]}"
+
+
+@pytest.mark.asyncio
+async def test_full_parallel_review_uses_only_four_parallel_model_calls(tmp_path):
+    """Editorial synthesis must not add a fifth serial LLM wait."""
+    from src.argument.companion_store import CompanionStore
+    from src.argument.reviewer import run_review_parallel
+
+    call_count = 0
+
+    async def counting_mock(prompt, *a, **kw):
+        nonlocal call_count
+        call_count += 1
+        return (
+            '[{"severity":"major","category":"soundness",'
+            '"title":"Concrete issue","detail":"Concrete detail"}]'
+        )
+
+    events = []
+    with patch("src.argument._reviewer_perspectives.call_llm_chat", counting_mock):
+        async for event in run_review_parallel(
+            doc_id="doc",
+            text="# Methods\nmethod\n# Results\nresult",
+            store=CompanionStore(tmp_path),
+        ):
+            events.append(event)
+
+    assert call_count == 4
+    synthesis = next(event for event in events if event["event"] == "synthesis")
+    assert json.loads(synthesis["data"])["top_issues"]
+
+
+@pytest.mark.asyncio
+async def test_all_parallel_perspective_failures_emit_error_without_empty_session(tmp_path):
+    from src.argument.companion_store import CompanionStore
+    from src.argument.reviewer import run_review_parallel
+
+    async def failing_llm(*_args, **_kwargs):
+        raise TimeoutError("provider timed out")
+
+    store = CompanionStore(tmp_path)
+    events = []
+    with patch("src.argument._reviewer_perspectives.call_llm_chat", failing_llm):
+        async for event in run_review_parallel(
+            doc_id="doc",
+            text="# Methods\nmethod\n# Results\nresult",
+            store=store,
+        ):
+            events.append(event)
+
+    assert any(event["event"] == "error" for event in events)
+    assert not any(event["event"] == "complete" for event in events)
+    assert store.list_reviews("doc") == []
+
+
+@pytest.mark.asyncio
+async def test_all_empty_parallel_perspectives_emit_error_without_empty_session(tmp_path):
+    from src.argument.companion_store import CompanionStore
+    from src.argument.reviewer import run_review_parallel
+
+    async def empty_llm(*_args, **_kwargs):
+        return "[]"
+
+    store = CompanionStore(tmp_path)
+    events = []
+    with patch("src.argument._reviewer_perspectives.call_llm_chat", empty_llm):
+        async for event in run_review_parallel(
+            doc_id="doc",
+            text="# Methods\nmethod\n# Results\nresult",
+            store=store,
+        ):
+            events.append(event)
+
+    assert any(event["event"] == "error" for event in events)
+    assert not any(event["event"] == "complete" for event in events)
+    assert store.list_reviews("doc") == []

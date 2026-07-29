@@ -15,7 +15,9 @@ Submodules:
 from __future__ import annotations
 
 import ntpath
+import os
 import re
+import shlex
 from enum import Enum
 from pathlib import Path
 
@@ -376,7 +378,7 @@ SYSTEM_ADMIN_COMMANDS = frozenset(
 
 # Shell metacharacters that enable chaining, substitution, piping, redirection
 SHELL_METACHARS = set(";|&$`><(){}\n")
-INDIRECT_EXECUTORS = frozenset(
+SHELL_EXECUTORS = frozenset(
     {
         "cmd",
         "cmd.exe",
@@ -387,6 +389,11 @@ INDIRECT_EXECUTORS = frozenset(
         "bash",
         "sh",
         "wsl",
+        "wsl.exe",
+    }
+)
+SCRIPT_INTERPRETERS = frozenset(
+    {
         "python",
         "python.exe",
         "python3",
@@ -397,6 +404,7 @@ INDIRECT_EXECUTORS = frozenset(
         "perl",
     }
 )
+INDIRECT_EXECUTORS = SHELL_EXECUTORS | SCRIPT_INTERPRETERS
 
 
 # ---------------------------------------------------------------------------
@@ -428,9 +436,116 @@ def extract_first_command(command: str) -> str:
         if not remaining.strip():
             return ""
 
-    token = remaining.split()[0] if remaining.split() else ""
-    # Strip leading path: /usr/bin/git -> git
-    return token.rsplit("/", 1)[-1] if "/" in token else token
+    token = remaining.split()[0].strip("\"'") if remaining.split() else ""
+    # Strip leading path on POSIX and Windows.
+    return re.split(r"[\\/]", token)[-1]
+
+
+def _split_direct_command(command: str) -> list[str]:
+    """Parse a direct-exec command without invoking a shell."""
+    argv = shlex.split(command, posix=os.name != "nt")
+    if os.name == "nt":
+        argv = [
+            token[1:-1]
+            if len(token) >= 2 and token[0] == token[-1] and token[0] in "\"'"
+            else token
+            for token in argv
+        ]
+    return argv
+
+
+def _contains_unquoted_shell_syntax(command: str) -> bool:
+    """Detect syntax that only makes sense when a shell interprets it."""
+    quote = ""
+    escaped = False
+    for char in command:
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\" and quote:
+            escaped = True
+            continue
+        if quote:
+            if char == quote:
+                quote = ""
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            continue
+        if char in {";", "|", "&", "$", "`", ">", "<", "\n", "\r"}:
+            return True
+    return False
+
+
+def _is_python_executable(executable: str) -> bool:
+    return bool(re.fullmatch(r"(?:python(?:\d+(?:\.\d+)?)?|py)(?:\.exe)?", executable))
+
+
+def _validate_direct_interpreter(command: str, executable: str) -> ValidationResult:
+    """Allow workspace script files but keep inline-code and module bypasses blocked."""
+    try:
+        argv = _split_direct_command(command)
+    except ValueError as exc:
+        return ValidationResult.block(f"Command arguments could not be parsed: {exc}")
+    args = argv[1:]
+    if not args:
+        return ValidationResult.block(
+            f"Interpreter '{executable}' requires a workspace script or an information flag"
+        )
+
+    info_flags = {"--version", "-v", "-V", "--help", "-h"}
+    if all(arg in info_flags for arg in args):
+        return ValidationResult.allow()
+
+    if _is_python_executable(executable):
+        blocked_flags = {"-c", "-m"}
+        script_suffixes = {".py", ".pyw"}
+        allowed_flags = {
+            "-B",
+            "-E",
+            "-I",
+            "-O",
+            "-OO",
+            "-P",
+            "-q",
+            "-s",
+            "-S",
+            "-u",
+            "-v",
+            "-x",
+        }
+        script = ""
+        for arg in args:
+            if not script and arg in blocked_flags:
+                kind = "inline code" if arg == "-c" else "module execution"
+                return ValidationResult.block(
+                    f"Python {kind} is not allowed; run a concrete workspace .py file instead"
+                )
+            if not script and arg.startswith("-"):
+                if arg in allowed_flags or re.fullmatch(r"-\d+(?:\.\d+)?", arg):
+                    continue
+                return ValidationResult.block(
+                    f"Unsupported Python interpreter flag before the script: {arg}"
+                )
+            if not script:
+                script = arg
+                break
+        if not script or Path(script).suffix.lower() not in script_suffixes:
+            return ValidationResult.block("Python must run a concrete workspace .py file")
+        return ValidationResult.allow()
+
+    if executable in {"node", "node.exe"}:
+        if args[0] in {"-e", "--eval", "-p", "--print"}:
+            return ValidationResult.block(
+                "Node inline code is not allowed; run a concrete workspace script instead"
+            )
+        if Path(args[0]).suffix.lower() not in {".js", ".mjs", ".cjs"}:
+            return ValidationResult.block("Node must run a concrete workspace script")
+        return ValidationResult.allow()
+
+    return ValidationResult.block(
+        f"Indirect shell or interpreter execution is not allowed: {executable}"
+    )
 
 
 def extract_sudo_inner(command: str) -> str:
@@ -624,21 +739,32 @@ def validate_sed(command: str, mode: PermissionMode) -> ValidationResult:
 # ---------------------------------------------------------------------------
 
 
-def validate_paths(command: str, workspace: Path) -> ValidationResult:
-    if re.search(r"(^|[\s\"'=])\.\.[\\/]", command):
+def validate_paths(
+    command: str,
+    workspace: Path,
+    *,
+    skip_executable: bool = False,
+) -> ValidationResult:
+    scan_command = command
+    if skip_executable:
+        first = re.match(r"""^\s*(?:"[^"]*"|'[^']*'|\S+)""", command)
+        if first:
+            scan_command = command[first.end() :]
+
+    if re.search(r"(^|[\s\"'=])\.\.[\\/]", scan_command):
         return ValidationResult.block("Command contains directory traversal outside the workspace")
 
     if (
-        "~/" in command
-        or "~\\" in command
-        or "$HOME" in command
-        or "%USERPROFILE%" in command.upper()
+        "~/" in scan_command
+        or "~\\" in scan_command
+        or "$HOME" in scan_command
+        or "%USERPROFILE%" in scan_command.upper()
     ):
         return ValidationResult.block("Command references the home directory outside the workspace")
 
     workspace_text = str(workspace)
     windows_root = ntpath.normcase(ntpath.normpath(workspace_text.replace("/", "\\")))
-    for match in re.finditer(r"(?<![\w])([A-Za-z]:[\\/][^\s\"'|;&<>]*)", command):
+    for match in re.finditer(r"(?<![\w])([A-Za-z]:[\\/][^\s\"'|;&<>]*)", scan_command):
         candidate = ntpath.normcase(ntpath.normpath(match.group(1)))
         try:
             inside = ntpath.commonpath([candidate, windows_root]) == windows_root
@@ -649,7 +775,7 @@ def validate_paths(command: str, workspace: Path) -> ValidationResult:
                 f"Command references path outside workspace: {match.group(1)}"
             )
 
-    if re.search(r"(^|[\s\"'=])\\\\[^\\\s]+\\", command):
+    if re.search(r"(^|[\s\"'=])\\\\[^\\\s]+\\", scan_command):
         return ValidationResult.block("Command references a UNC path outside the workspace")
 
     return ValidationResult.allow()
@@ -703,7 +829,13 @@ def _classify_by_first_command(first: str, command: str) -> CommandIntent:
 # ---------------------------------------------------------------------------
 
 
-def validate_command(command: str, mode: PermissionMode, workspace: Path) -> ValidationResult:
+def validate_command(
+    command: str,
+    mode: PermissionMode,
+    workspace: Path,
+    *,
+    direct_exec: bool = False,
+) -> ValidationResult:
     # 1. Mode-level validation (includes read-only checks)
     result = validate_mode(command, mode)
     if not result.is_allowed:
@@ -722,17 +854,34 @@ def validate_command(command: str, mode: PermissionMode, workspace: Path) -> Val
         return result
 
     # 4. Path validation
-    result = validate_paths(command, workspace)
+    result = validate_paths(command, workspace, skip_executable=direct_exec)
     if not result.is_allowed:
         return result
 
     if mode == PermissionMode.WORKSPACE_WRITE:
-        if any(char in SHELL_METACHARS for char in command):
+        if direct_exec:
+            if _contains_unquoted_shell_syntax(command):
+                return ValidationResult.block(
+                    "Shell chaining, substitution, pipes, and redirection are not allowed; "
+                    "run one direct command at a time"
+                )
+        elif any(char in SHELL_METACHARS for char in command):
             return ValidationResult.block(
                 "Shell chaining, substitution, pipes, and redirection are not allowed"
             )
-        executable = extract_first_command(command).lower()
-        if executable in INDIRECT_EXECUTORS:
+        if direct_exec:
+            try:
+                argv = _split_direct_command(command)
+            except ValueError as exc:
+                return ValidationResult.block(f"Command arguments could not be parsed: {exc}")
+            executable = re.split(r"[\\/]", argv[0])[-1].lower() if argv else ""
+        else:
+            executable = extract_first_command(command).lower()
+        if direct_exec and executable in SHELL_EXECUTORS:
+            return ValidationResult.block(f"Indirect shell execution is not allowed: {executable}")
+        if direct_exec and (_is_python_executable(executable) or executable in SCRIPT_INTERPRETERS):
+            return _validate_direct_interpreter(command, executable)
+        if not direct_exec and executable in INDIRECT_EXECUTORS:
             return ValidationResult.block(
                 f"Indirect shell or interpreter execution is not allowed: {executable}"
             )

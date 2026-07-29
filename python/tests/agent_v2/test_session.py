@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import errno
 import json
+import os
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -307,6 +312,71 @@ class TestStress:
             session.rotate(session_path)
         rotated_files = list(session_path.parent.glob(str(session_path.name) + ".*"))
         assert len(rotated_files) <= 3
+
+    def test_concurrent_saves_to_same_path_are_serialized(
+        self, session_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        import src.agent_v2.runtime.session as session_module
+
+        first = Session(workspace="one")
+        first.append(Message(role=MessageRole.USER, blocks=[TextBlock(text="first")]))
+        second = Session(workspace="two")
+        second.append(Message(role=MessageRole.USER, blocks=[TextBlock(text="second")]))
+
+        real_replace = os.replace
+        guard = threading.Lock()
+        active = 0
+        peak = 0
+
+        def slow_replace(source, target):
+            nonlocal active, peak
+            with guard:
+                active += 1
+                peak = max(peak, active)
+            time.sleep(0.05)
+            try:
+                return real_replace(source, target)
+            finally:
+                with guard:
+                    active -= 1
+
+        monkeypatch.setattr(session_module.os, "replace", slow_replace)
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [
+                pool.submit(first.save, session_path),
+                pool.submit(second.save, session_path),
+            ]
+            for future in futures:
+                future.result(timeout=2)
+
+        assert peak == 1
+        loaded = Session.load(session_path)
+        assert loaded.meta.workspace in {"one", "two"}
+        assert loaded.message_count == 1
+
+    def test_transient_windows_replace_error_is_retried(
+        self, session: Session, session_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        import src.agent_v2.runtime.session as session_module
+
+        session.append(Message(role=MessageRole.USER, blocks=[TextBlock(text="durable")]))
+        real_replace = os.replace
+        attempts = 0
+
+        def flaky_replace(source, target):
+            nonlocal attempts
+            attempts += 1
+            if attempts < 3:
+                raise PermissionError(errno.EACCES, "simulated Windows sharing violation")
+            return real_replace(source, target)
+
+        monkeypatch.setattr(session_module.os, "replace", flaky_replace)
+
+        session.save(session_path)
+
+        assert attempts == 3
+        assert Session.load(session_path).messages[0].text_content() == "durable"
 
 
 class TestMutationJournal:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 import textwrap
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import pytest
@@ -137,6 +138,39 @@ def test_create_app_preserves_agent_lifecycle_callbacks(tmp_path, monkeypatch):
     assert callable(app.state._state_agent.get("startup"))
     assert callable(app.state._state_agent.get("shutdown"))
     assert callable(app.state._state_agent.get("ensure_rag_store"))
+
+
+def test_create_app_installs_one_file_log_handler_per_runtime(tmp_path, monkeypatch):
+    import logging
+
+    import api_factory
+
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    config_path = config_dir / "default.yaml"
+    config_path.write_text("translator:\n  engine: ollama\n", encoding="utf-8")
+    monkeypatch.setattr(api_factory, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(api_factory, "RUNTIME_DIR", tmp_path)
+    target = (tmp_path / "logs" / "app.log").resolve()
+    root = logging.getLogger()
+    original_handlers = set(root.handlers)
+
+    try:
+        api_factory.create_app()
+        api_factory.create_app()
+
+        matches = [
+            handler
+            for handler in root.handlers
+            if isinstance(handler, RotatingFileHandler)
+            and Path(handler.baseFilename).resolve() == target
+        ]
+        assert len(matches) == 1
+    finally:
+        for handler in list(root.handlers):
+            if handler not in original_handlers:
+                root.removeHandler(handler)
+                handler.close()
 
     def test_empty_base(self) -> None:
         result = self._merge({}, {"a": 1})

@@ -29,6 +29,7 @@ interface CompanionState {
   docTitle: string
   ledger: Ledger | null
   building: boolean
+  operationStage: string
   ledgerStale: boolean
   review: ReviewSession | null
   reviewStale: boolean
@@ -43,6 +44,7 @@ const state = reactive<CompanionState>({
   docTitle: '',
   ledger: null,
   building: false,
+  operationStage: '',
   ledgerStale: false,
   review: null,
   reviewStale: false,
@@ -84,6 +86,7 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
     return
   }
   state.building = true
+  state.operationStage = i18n.global.t('argument.extractingPromises')
   logger.debug('[companion] setting building=true, about to fetch...')
   try {
     const resp = await fetch(`${API_BASE}/api/companion/ledger/build`, {
@@ -112,9 +115,11 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
     }
 
     let eventCount = 0
+    let streamFailed = false
     await readSseStream(resp.body.getReader(), (eventType, data) => {
       eventCount++
       if (eventType === 'error') {
+        streamFailed = true
         const msg =
           ((data as Record<string, unknown>)['message'] as string) ||
           i18n.global.t('errors.unknownError')
@@ -123,7 +128,15 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
         state.building = false
         return
       }
-      if (eventType === 'promise') {
+      if (eventType === 'progress') {
+        const stage = String((data as Record<string, unknown>)['stage'] ?? '')
+        const stageKeys: Record<string, string> = {
+          extracting_promises: 'argument.extractingPromises',
+          matching_evidence: 'argument.matchingEvidence',
+          saving_ledger: 'argument.savingLedger',
+        }
+        state.operationStage = i18n.global.t(stageKeys[stage] ?? 'argument.extractingPromises')
+      } else if (eventType === 'promise') {
         const p = data as unknown as ArgPromise
         ledger.promises.push(p)
         if ((data as Record<string, unknown>)['anchor']) {
@@ -142,6 +155,7 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
       'promises:',
       ledger.promises.length,
     )
+    if (streamFailed) return
 
     if (ledger.promises.length === 0 && eventCount > 0) {
       logger.warn('[companion] LLM returned 0 promises — LLM may be unavailable or text too short')
@@ -151,6 +165,7 @@ async function buildOrRebuildLedger(text: string): Promise<void> {
     state.ledgerStale = false
   } finally {
     state.building = false
+    state.operationStage = ''
   }
 }
 
@@ -257,6 +272,7 @@ async function runReview(
     state.docTitle = 'Untitled'
   }
   state.reviewing = true
+  state.operationStage = i18n.global.t('argument.ledgerCrossCheck')
   state.reviewStale = false
   // Initialize review immediately so points appear live as they stream in
   state.review = {
@@ -284,13 +300,23 @@ async function runReview(
         mode,
       }),
     })
-    if (!resp.ok || !resp.body) {
-      state.reviewing = false
-      return
-    }
+    if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`)
 
+    let streamError = ''
     await readSseStream(resp.body.getReader(), (eventType, data) => {
-      if (eventType === 'review_point') {
+      if (eventType === 'error') {
+        streamError = String(
+          (data as Record<string, unknown>)['message'] ?? i18n.global.t('errors.unknownError'),
+        )
+      } else if (eventType === 'progress') {
+        const stage = String((data as Record<string, unknown>)['stage'] ?? '')
+        const stageKeys: Record<string, string> = {
+          ledger_cross_check: 'argument.ledgerCrossCheck',
+          parallel_perspectives: 'argument.parallelPerspectives',
+          synthesizing_review: 'argument.synthesizingReview',
+        }
+        state.operationStage = i18n.global.t(stageKeys[stage] ?? 'argument.reviewing')
+      } else if (eventType === 'review_point') {
         state.review!.points.push(data as unknown as import('../types').ReviewPoint)
       } else if (eventType === 'synthesis') {
         state.review!.synthesis = data as Record<string, unknown>
@@ -301,6 +327,11 @@ async function runReview(
         if (d['session_id']) state.review!.id = d['session_id'] as string
       }
     })
+    if (streamError) {
+      pushError(i18n.global.t('argument.reviewFailedMsg', { msg: streamError }))
+      state.review = null
+      return
+    }
 
     if (!state.review.id) {
       pushError(i18n.global.t('argument.reviewNotInit'))
@@ -308,8 +339,13 @@ async function runReview(
       return
     }
     await listReviews()
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    pushError(i18n.global.t('argument.reviewFailedMsg', { msg }))
+    state.review = null
   } finally {
     state.reviewing = false
+    state.operationStage = ''
   }
 }
 
@@ -319,6 +355,7 @@ async function scopedReview(
 ): Promise<void> {
   if (!state.docId) return
   state.reviewing = true
+  let createdReview = false
   try {
     const sessionId = state.review?.id ?? undefined
     const resp = await fetch(`${API_BASE}/api/companion/review`, {
@@ -332,12 +369,10 @@ async function scopedReview(
         session_id: sessionId,
       }),
     })
-    if (!resp.ok || !resp.body) {
-      state.reviewing = false
-      return
-    }
+    if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`)
 
     if (!state.review) {
+      createdReview = true
       state.review = {
         id: '',
         doc_id: state.docId,
@@ -352,8 +387,13 @@ async function scopedReview(
       }
     }
 
+    let streamError = ''
     await readSseStream(resp.body.getReader(), (eventType, data) => {
-      if (eventType === 'review_point') {
+      if (eventType === 'error') {
+        streamError = String(
+          (data as Record<string, unknown>)['message'] ?? i18n.global.t('errors.unknownError'),
+        )
+      } else if (eventType === 'review_point') {
         state.review!.points.push(data as unknown as import('../types').ReviewPoint)
       } else if (eventType === 'synthesis') {
         state.review!.synthesis = data as Record<string, unknown>
@@ -366,6 +406,11 @@ async function scopedReview(
         }
       }
     })
+    if (streamError) throw new Error(streamError)
+  } catch (err) {
+    if (createdReview) state.review = null
+    const msg = err instanceof Error ? err.message : String(err)
+    pushError(i18n.global.t('argument.reviewFailedMsg', { msg }))
   } finally {
     state.reviewing = false
   }
@@ -377,11 +422,15 @@ async function updatePointStatus(
 ): Promise<void> {
   if (!state.review) return
   try {
-    await fetch(`${API_BASE}/api/companion/review/${state.review.id}/point/${pointId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    })
+    const resp = await fetch(
+      `${API_BASE}/api/companion/review/${state.review.id}/point/${pointId}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      },
+    )
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
     const point = state.review.points.find((p) => p.id === pointId)
     if (point) point.status = status
   } catch (e) {
@@ -402,15 +451,17 @@ async function rebut(pointId: string, message: string, text: string): Promise<vo
         body: JSON.stringify({ message, text }),
       },
     )
-    if (!resp.ok || !resp.body) {
-      state.rebuttalSending = ''
-      return
-    }
+    if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`)
 
     const point = state.review.points.find((p) => p.id === pointId)
 
+    let streamError = ''
     await readSseStream(resp.body.getReader(), (eventType, data) => {
-      if (eventType === 'reviewer_reply' && point) {
+      if (eventType === 'error') {
+        streamError = String(
+          (data as Record<string, unknown>)['message'] ?? i18n.global.t('errors.unknownError'),
+        )
+      } else if (eventType === 'reviewer_reply' && point) {
         point.thread.push({
           id: `rt_${crypto.randomUUID()}`,
           role: 'reviewer',
@@ -422,6 +473,7 @@ async function rebut(pointId: string, message: string, text: string): Promise<vo
         if (s === 'rebutted') point.status = 'rebutted'
       }
     })
+    if (streamError) throw new Error(streamError)
 
     // Prepend author message to thread
     if (point) {
@@ -432,6 +484,9 @@ async function rebut(pointId: string, message: string, text: string): Promise<vo
         created_at: Date.now() / 1000,
       })
     }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    pushError(i18n.global.t('argument.reviewFailedMsg', { msg }))
   } finally {
     state.rebuttalSending = ''
   }
@@ -440,6 +495,7 @@ async function rebut(pointId: string, message: string, text: string): Promise<vo
 async function importReviews(reviewsRaw: string, text: string): Promise<void> {
   if (!state.docId) return
   state.reviewing = true
+  const createdReview = !state.review
   if (!state.review) {
     state.review = {
       id: '',
@@ -465,13 +521,15 @@ async function importReviews(reviewsRaw: string, text: string): Promise<void> {
         reviews_raw: reviewsRaw,
       }),
     })
-    if (!resp.ok || !resp.body) {
-      state.reviewing = false
-      return
-    }
+    if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`)
 
+    let streamError = ''
     await readSseStream(resp.body.getReader(), (eventType, data) => {
-      if (eventType === 'review_point') {
+      if (eventType === 'error') {
+        streamError = String(
+          (data as Record<string, unknown>)['message'] ?? i18n.global.t('errors.unknownError'),
+        )
+      } else if (eventType === 'review_point') {
         state.review!.points.push(data as unknown as import('../types').ReviewPoint)
       } else if (eventType === 'complete') {
         const d = data as Record<string, unknown>
@@ -480,8 +538,13 @@ async function importReviews(reviewsRaw: string, text: string): Promise<void> {
         }
       }
     })
+    if (streamError) throw new Error(streamError)
 
     await listReviews()
+  } catch (err) {
+    if (createdReview) state.review = null
+    const msg = err instanceof Error ? err.message : String(err)
+    pushError(i18n.global.t('argument.reviewFailedMsg', { msg }))
   } finally {
     state.reviewing = false
   }
@@ -546,6 +609,7 @@ export function _resetForTesting(): void {
   state.docTitle = ''
   state.ledger = null
   state.building = false
+  state.operationStage = ''
   state.ledgerStale = false
   state.review = null
   state.reviewStale = false

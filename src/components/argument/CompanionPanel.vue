@@ -93,7 +93,9 @@
         >
           <span v-if="companion.state.reviewing" class="rv-loading">
             <span class="rv-dots"><i /><i /><i /></span>
-            <span class="anim-shimmer-text">{{ t('argument.reviewing') }}</span>
+            <span class="anim-shimmer-text">{{
+              companion.state.operationStage || t('argument.reviewing')
+            }}</span>
           </span>
           <span v-else>{{ t('argument.redTeam') }}</span>
         </button>
@@ -129,9 +131,10 @@
           <UiSpinner
             size="sm"
             :label="
-              reviewMode === 'parallel'
+              companion.state.operationStage ||
+              (reviewMode === 'parallel'
                 ? t('argument.reviewParallelSpinner')
-                : t('argument.reviewSerialSpinner')
+                : t('argument.reviewSerialSpinner'))
             "
           />
         </div>
@@ -178,6 +181,7 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { API_BASE } from '../../utils/api'
+import { logger } from '../../utils/logger'
 import { saveBlob } from '../../composables/useEditorIO'
 import { useToast } from '../../composables/useToast'
 
@@ -207,7 +211,7 @@ const props = defineProps<{
 }>()
 
 async function handleAnalyze() {
-  console.log('[companion] handleAnalyze called, content length:', props.content?.length ?? 0)
+  logger.debug('[companion] handleAnalyze called, content length:', props.content?.length ?? 0)
   await companion.buildOrRebuildLedger(props.content)
 }
 

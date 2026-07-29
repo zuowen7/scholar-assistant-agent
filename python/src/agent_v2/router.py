@@ -263,6 +263,36 @@ def _session_messages_for_frontend(session: Session) -> list[dict]:
                 flush_assistant()
 
     flush_assistant()
+    if session.meta.state == "PARTIAL" and isinstance(session.meta.outcome, dict):
+        outcome = session.meta.outcome
+        counts = outcome.get("tool_counts", {})
+        if not isinstance(counts, dict):
+            counts = {}
+        partial_event = {
+            "type": "response",
+            "content": (
+                "Task partially completed. Review the execution details and continue "
+                "the task to finish the remaining verification."
+            ),
+            "metadata": {
+                "partial": True,
+                "stop_code": str(outcome.get("stop_code", "tool_loop_stopped")),
+                "stop_reason": str(outcome.get("stop_reason", "")),
+                "tool_counts": counts,
+                "changed_count": len(outcome.get("changed_files", []) or []),
+            },
+        }
+        if result and result[-1].get("role") == "assistant":
+            result[-1]["content"] = partial_event["content"]
+            result[-1].setdefault("events", []).append(partial_event)
+        else:
+            result.append(
+                {
+                    "role": "assistant",
+                    "content": partial_event["content"],
+                    "events": [partial_event],
+                }
+            )
     return result
 
 
@@ -427,6 +457,8 @@ def _create_provider(root_config: dict | None = None):
     api_key = cfg.get("api_key", "").strip()
     base_url = cfg.get("base_url", "").strip()
     proxy = cfg.get("proxy", "").strip() or None
+    thinking_mode = cfg.get("thinking_mode", "auto")
+    request_timeout = float(cfg.get("request_timeout", 120.0))
     translator_cloud = (
         _cloud_config_from(root_config) if root_config is not None else _load_cloud_config()
     )
@@ -452,6 +484,8 @@ def _create_provider(root_config: dict | None = None):
             api_key=api_key,
             model=model or "gpt-4o",
             proxy=proxy,
+            timeout=request_timeout,
+            thinking_mode=thinking_mode,
         )
 
     # 2. API key without explicit provider — detect from key prefix
@@ -470,6 +504,8 @@ def _create_provider(root_config: dict | None = None):
             api_key=api_key,
             model=model or "gpt-4o",
             proxy=proxy,
+            timeout=request_timeout,
+            thinking_mode=thinking_mode,
         )
 
     # 3. Fallback: translator cloud config (DeepSeek etc.)
@@ -482,13 +518,26 @@ def _create_provider(root_config: dict | None = None):
             tb = tb or "https://api.deepseek.com/v1"
             m = model or tm or "deepseek-chat"
             logger.info("Agent V2: cloud config — %s @ %s", m, tb)
-            return OpenAiCompatProvider(base_url=tb, api_key=tk, model=m, proxy=proxy or tp)
+            return OpenAiCompatProvider(
+                base_url=tb,
+                api_key=tk,
+                model=m,
+                proxy=proxy or tp,
+                timeout=request_timeout,
+                thinking_mode=thinking_mode,
+            )
 
     # 4. Local Ollama
     ollama_base = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1").strip()
     m = model or "qwen3:8b"
     logger.info("Agent V2: Ollama — %s", m)
-    return OpenAiCompatProvider(base_url=ollama_base, api_key="", model=m)
+    return OpenAiCompatProvider(
+        base_url=ollama_base,
+        api_key="",
+        model=m,
+        timeout=request_timeout,
+        thinking_mode=thinking_mode,
+    )
 
 
 def _build_system_prompt(workspace_root: str, tools: list) -> str:
@@ -496,6 +545,12 @@ def _build_system_prompt(workspace_root: str, tools: list) -> str:
     tool_names = {t.name for t in tools}
     command_edit_rule = (
         " Never use run_command to edit document text." if "run_command" in tool_names else ""
+    )
+    process_execution_rule = (
+        "Use run_command for process execution and verify its real stdout/stderr."
+        if "run_command" in tool_names
+        else "No process-execution tool is available in this turn; state that execution remains "
+        "unverified."
     )
     return (
         f"You are Scholar Assistant, an academic AI writing assistant. "
@@ -510,6 +565,14 @@ def _build_system_prompt(workspace_root: str, tools: list) -> str:
         f"When you need to modify a file, use str_replace or write_file. "
         f"When you need to search, use grep_files or glob_files. "
         f"Each tool result will be shown to you so you can decide the next step.\n\n"
+        f"# Current turn scope\n"
+        f"The latest user message is the active task. Earlier turns are context, not an "
+        f"automatic backlog. Do not resume unrelated unfinished work unless the latest "
+        f"user message explicitly asks you to continue it. When the user narrows or "
+        f"replaces the scope, stop the older plan and follow the new scope.\n\n"
+        f"run_sub_agent cannot execute commands, inspect the filesystem, or run code. "
+        f"{process_execution_rule} Never treat generated sub-agent text as "
+        f"command output.\n\n"
         f"# CRITICAL: How to edit files\n"
         f"Use str_replace for targeted edits to existing text whenever the exact old text is known. "
         f"Use write_file only to create a new file or for a deliberate whole-file rewrite after "
@@ -634,11 +697,17 @@ def _create_runtime(
 
     agent_cfg = _agent_config_from(root_config) if root_config is not None else _load_agent_config()
 
-    # Tool registry. Generic process execution is opt-in because static
-    # command parsing cannot provide an OS-enforced filesystem sandbox.
+    selected_skill_names = set(selected_skills or [])
+    # Generic process execution stays opt-in. The figure workflow is a
+    # per-turn exception because selecting it is an explicit request to create
+    # and render code-backed figures; every command still goes through the
+    # normal exact-input approval path.
+    include_run_command = bool(agent_cfg.get("enable_run_command", False)) or (
+        "nature_figure" in selected_skill_names
+    )
     registry = create_default_registry(
         workspace_root=ws,
-        include_run_command=bool(agent_cfg.get("enable_run_command", False)),
+        include_run_command=include_run_command,
     )
     register_academic_tools(registry)
     register_sub_agent(registry)
@@ -651,7 +720,7 @@ def _create_runtime(
     # Load user skills from data/agent_v2/skills/
     _skills_dir = _RUNTIME_DIR / "data" / "agent_v2" / "skills"
     skill_registry.load_dir(_skills_dir)
-    for skill_name in selected_skills or []:
+    for skill_name in selected_skill_names:
         skill_registry.activate(skill_name)
 
     # Hooks
@@ -678,12 +747,12 @@ def _create_runtime(
     sp = base_prompt + "\n" + skill_prompt if skill_prompt else base_prompt
 
     # Read max_steps from config
-    max_steps = int(agent_cfg.get("max_steps", 48) or 48)
-    max_tool_calls = int(agent_cfg.get("max_tool_calls", 32) or 32)
-    soft_tool_calls = int(agent_cfg.get("soft_tool_calls", 28) or 28)
-    max_model_calls = int(agent_cfg.get("max_model_calls", 16) or 16)
-    max_mutation_attempts = int(agent_cfg.get("max_mutation_attempts", 12) or 12)
-    max_active_seconds = float(agent_cfg.get("max_active_seconds", 300) or 300)
+    max_steps = int(agent_cfg.get("max_steps", 96) or 96)
+    max_tool_calls = int(agent_cfg.get("max_tool_calls", 64) or 64)
+    soft_tool_calls = int(agent_cfg.get("soft_tool_calls", 56) or 56)
+    max_model_calls = int(agent_cfg.get("max_model_calls", 32) or 32)
+    max_mutation_attempts = int(agent_cfg.get("max_mutation_attempts", 20) or 20)
+    max_active_seconds = float(agent_cfg.get("max_active_seconds", 600) or 600)
 
     return ConversationRuntime(
         provider=provider,
@@ -1182,12 +1251,12 @@ def register_agent_v2_routes(
             "available": True,
             "model": cfg.get("model", ""),
             "provider": cfg.get("provider", "auto"),
-            "max_steps": cfg.get("max_steps", 48),
-            "max_tool_calls": cfg.get("max_tool_calls", 32),
-            "soft_tool_calls": cfg.get("soft_tool_calls", 28),
-            "max_model_calls": cfg.get("max_model_calls", 16),
-            "max_mutation_attempts": cfg.get("max_mutation_attempts", 12),
-            "max_active_seconds": cfg.get("max_active_seconds", 300),
+            "max_steps": cfg.get("max_steps", 96),
+            "max_tool_calls": cfg.get("max_tool_calls", 64),
+            "soft_tool_calls": cfg.get("soft_tool_calls", 56),
+            "max_model_calls": cfg.get("max_model_calls", 32),
+            "max_mutation_attempts": cfg.get("max_mutation_attempts", 20),
+            "max_active_seconds": cfg.get("max_active_seconds", 600),
             "enable_run_command": bool(cfg.get("enable_run_command", False)),
         }
 

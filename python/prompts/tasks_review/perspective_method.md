@@ -10,5 +10,5 @@ Review ONLY these aspects:
 - Appropriateness of the approach for the stated problem
 - Internal consistency of assumptions and arguments
 
-Return ONLY a JSON array (possibly []):
+Return 3-6 concrete issues as ONLY a JSON array:
 [{"category": "soundness|motivation|novelty|other", "severity": "minor|major|fatal", "title": "...", "detail": "...", "verbatim_quote": "..."}]

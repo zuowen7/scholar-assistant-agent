@@ -25,6 +25,20 @@ interface RawHistoryMessage {
   events?: AgentEvent[]
 }
 
+function formatPartialSummary(event: AgentEvent): string {
+  const metadata = event.metadata || {}
+  const counts = metadata.tool_counts || {}
+  const stopCode = metadata.stop_code || 'tool_loop_stopped'
+  const reasonKey = `agent.runtimeErrors.${stopCode}`
+  const reason = i18n.global.t(reasonKey)
+  return i18n.global.t('agent.partialSummary', {
+    success: counts.success || 0,
+    error: counts.error || 0,
+    changed: metadata.changed_count || 0,
+    reason,
+  })
+}
+
 export interface AgentSelectionContext {
   filePath: string
   startLine: number
@@ -289,8 +303,11 @@ export function useAgentChat() {
         }
         case 'response':
           // Final response text replaces accumulated tokens (handles non-streaming too)
-          msg.content = agentEvent.content
+          msg.content = agentEvent.metadata?.partial
+            ? formatPartialSummary(agentEvent)
+            : agentEvent.content
           msg.isStreaming = false
+          msg.events = [...msg.events, agentEvent]
           break
         case 'session_started':
           activeRunSessionId.value =
@@ -818,14 +835,20 @@ export function useAgentChat() {
       })
       if (!resp.ok) return false
       const data = (await resp.json()) as { messages?: RawHistoryMessage[] }
-      const loaded: AgentChatMessage[] = (data.messages || []).map((m, i) => ({
-        id: `hist_${i}`,
-        role: m.role === 'user' ? 'user' : 'assistant',
-        content: m.content || '',
-        events: Array.isArray(m.events) ? m.events : [],
-        isStreaming: false,
-        timestamp: Date.now() + i,
-      }))
+      const loaded: AgentChatMessage[] = (data.messages || []).map((m, i) => {
+        const events = Array.isArray(m.events) ? m.events : []
+        const partial = events.find(
+          (event) => event.type === 'response' && event.metadata?.partial === true,
+        )
+        return {
+          id: `hist_${i}`,
+          role: m.role === 'user' ? 'user' : 'assistant',
+          content: partial ? formatPartialSummary(partial) : m.content || '',
+          events,
+          isStreaming: false,
+          timestamp: Date.now() + i,
+        }
+      })
       cacheWorkflowMessages(wfId, loaded)
       _clearApproval()
       conversationWorkflowId.value = wfId

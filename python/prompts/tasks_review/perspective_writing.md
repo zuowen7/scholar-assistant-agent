@@ -10,5 +10,5 @@ Review ONLY these aspects:
 - Figure/table captions and labels
 - Related work positioning against prior art
 
-Return ONLY a JSON array (possibly []):
+Return 3-6 concrete issues as ONLY a JSON array:
 [{"category": "writing_clarity|weak_positioning|missing_related_work|other", "severity": "minor|major|fatal", "title": "...", "detail": "...", "verbatim_quote": "..."}]

@@ -24,6 +24,7 @@ import type {
   NodeType,
   RelationType,
 } from '../composables/useArgumentMap'
+import { activeTabId, tabs } from '../composables/useEditorState'
 
 let _nodeCounter = 0
 let _edgeCounter = 0
@@ -118,7 +119,7 @@ describe('toFlowNodes', () => {
 
   it('converts all six node types correctly', () => {
     const types: NodeType[] = ['claim', 'grounds', 'warrant', 'backing', 'qualifier', 'rebuttal']
-    const nodes = types.map((t, i) => makeNode({ id: `n_${t}`, node_type: t }))
+    const nodes = types.map((t) => makeNode({ id: `n_${t}`, node_type: t }))
     const result = toFlowNodes(makeGraph({ nodes }))
 
     expect(result).toHaveLength(6)
@@ -386,5 +387,47 @@ describe('useArgumentMap undo/redo', () => {
     )
     undo()
     expect(state.graph!.nodes[0].position).toEqual({ x: 120, y: 240 })
+  })
+})
+
+describe('useArgumentMap manuscript association', () => {
+  beforeEach(() => {
+    _resetForTesting()
+    tabs.value = []
+    activeTabId.value = null
+    vi.restoreAllMocks()
+  })
+
+  afterEach(() => {
+    tabs.value = []
+    activeTabId.value = null
+    vi.restoreAllMocks()
+  })
+
+  it('links a newly created graph to the active editor document', async () => {
+    tabs.value = [
+      {
+        id: 'paper',
+        path: 'C:/papers/main.md',
+        name: 'main.md',
+        content: '# Paper',
+        isModified: false,
+        docId: 'C:/papers/main.md',
+      },
+    ]
+    activeTabId.value = 'paper'
+    const graph = makeGraph({ id: 'g_linked', source_doc: 'C:/papers/main.md' })
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => graph,
+    } as Response)
+
+    await useArgumentMap().createGraph('Linked graph')
+
+    const request = fetchMock.mock.calls[0][1] as RequestInit
+    expect(JSON.parse(String(request.body))).toEqual({
+      title: 'Linked graph',
+      source_doc: 'C:/papers/main.md',
+    })
   })
 })

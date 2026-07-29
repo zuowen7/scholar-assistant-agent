@@ -101,8 +101,8 @@
         <button
           v-if="!isStandalone && !isFloating"
           class="agent-close-btn"
-          @click="$emit('update:open', false)"
           :aria-label="t('agent.close')"
+          @click="$emit('update:open', false)"
         >
           <svg
             width="14"
@@ -121,8 +121,8 @@
 
     <!-- Sessions Tab -->
     <div
-      id="agent-panel-sessions"
       v-show="tab === 'sessions'"
+      id="agent-panel-sessions"
       role="tabpanel"
       aria-labelledby="agent-tab-sessions"
       class="agent-sessions"
@@ -132,24 +132,24 @@
 
     <!-- Chat Tab -->
     <div
-      id="agent-panel-chat"
       v-show="tab === 'chat'"
+      id="agent-panel-chat"
       role="tabpanel"
       aria-labelledby="agent-tab-chat"
       class="agent-chat"
     >
       <div v-if="sending && !pendingApproval" class="agent-thinking-bar"></div>
-      <div class="agent-messages" ref="messagesRef" @scroll="_onMessagesScroll">
+      <div ref="messagesRef" class="agent-messages" @scroll="_onMessagesScroll">
         <div v-if="currentStatus && sending && !pendingApproval" class="agent-status-bar">
           <span class="status-dots"><i></i><i></i><i></i></span>
           <span class="agent-status-text">{{ currentStatus }}</span>
         </div>
         <div v-if="messages.length === 0 && !sending" class="agent-empty">
           <p>{{ t('agent.placeholder') }}</p>
-          <p class="hint" v-if="workspaceName">
+          <p v-if="workspaceName" class="hint">
             {{ t('agent.workspaceLabel') }}{{ workspaceName }}
           </p>
-          <p class="hint warn" v-else>{{ t('agent.noWorkspaceLabel') }}</p>
+          <p v-else class="hint warn">{{ t('agent.noWorkspaceLabel') }}</p>
         </div>
         <div v-for="msg in messages" :key="msg.id" class="agent-msg" :class="msg.role">
           <AgentThoughtGroup
@@ -188,6 +188,15 @@
             class="agent-bubble agent-markdown"
           />
           <div v-else-if="msg.content" class="agent-bubble">{{ msg.content }}</div>
+          <button
+            v-if="msg.id === lastRecoverablePartialId"
+            type="button"
+            class="agent-continue-partial"
+            :disabled="sending"
+            @click="continuePartial"
+          >
+            {{ t('agent.continuePartial') }}
+          </button>
           <div v-if="msg.isStreaming" class="agent-streaming">
             <span class="dot-wave"><i></i><i></i><i></i></span>
           </div>
@@ -205,8 +214,8 @@
           :class="{ active: !!workspaceName, inactive: !workspaceName }"
         >
           <span class="ws-dot"></span>
-          <span class="ws-name" v-if="workspaceName">{{ workspaceName }}</span>
-          <span class="ws-name muted" v-else>{{ t('agent.noProject') }}</span>
+          <span v-if="workspaceName" class="ws-name">{{ workspaceName }}</span>
+          <span v-else class="ws-name muted">{{ t('agent.noProject') }}</span>
         </div>
         <div v-if="contextText" class="agent-context-note">
           {{
@@ -234,8 +243,8 @@
           </button>
         </div>
         <!-- File attachments -->
-        <div class="agent-attachments" v-if="files.length">
-          <div class="agent-file" v-for="f in files" :key="f.name">
+        <div v-if="files.length" class="agent-attachments">
+          <div v-for="f in files" :key="f.name" class="agent-file">
             <svg
               width="12"
               height="12"
@@ -275,9 +284,9 @@
           <div class="agent-input-row">
             <button
               class="agent-attach-btn"
-              @click="attachFile"
               :title="t('agent.addAttachment')"
               :disabled="sending"
+              @click="attachFile"
             >
               <svg
                 width="14"
@@ -301,10 +310,10 @@
               aria-controls="agent-slash-menu"
               :aria-expanded="slashMenuOpen"
               :aria-activedescendant="slashActiveDescendant"
-              @keydown="handleInputKeydown"
               :disabled="sending"
               :placeholder="t('agent.inputPlaceholder')"
               class="agent-input"
+              @keydown="handleInputKeydown"
             ></textarea>
             <button
               v-if="agentSpeech.isSupported"
@@ -323,9 +332,9 @@
             <button
               class="agent-send-btn"
               :class="{ stopping: sending }"
-              @click="sending ? abortSession() : handleComposerSubmit()"
               :disabled="!sending && !input.trim()"
               :title="sending ? t('agent.stopGenerate') : t('agent.send')"
+              @click="sending ? abortSession() : handleComposerSubmit()"
             >
               <svg v-if="sending" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
                 <rect x="3" y="3" width="18" height="18" rx="3" />
@@ -350,8 +359,8 @@
 
     <!-- Docs Tab -->
     <div
-      id="agent-panel-docs"
       v-show="tab === 'docs'"
+      id="agent-panel-docs"
       role="tabpanel"
       aria-labelledby="agent-tab-docs"
       class="agent-docs"
@@ -366,8 +375,8 @@
           <button
             class="btn ghost u-interactive"
             :class="{ refreshing: sourceLibrary.loading.value }"
-            @click="fetchDocs"
             :disabled="sourceLibrary.loading.value"
+            @click="fetchDocs"
           >
             {{ t('agent.refresh') }}
           </button>
@@ -411,8 +420,8 @@
 
     <!-- Skills and paper templates -->
     <div
-      id="agent-panel-templates"
       v-show="tab === 'templates'"
+      id="agent-panel-templates"
       role="tabpanel"
       aria-labelledby="agent-tab-templates"
       class="agent-templates"
@@ -425,8 +434,8 @@
         <button
           class="btn ghost u-interactive"
           :class="{ refreshing: skillsLoading }"
-          @click="fetchAgentSkills"
           :disabled="skillsLoading"
+          @click="fetchAgentSkills"
         >
           {{ t('agent.refresh') }}
         </button>
@@ -466,8 +475,8 @@
           <button
             class="btn ghost u-interactive"
             :class="{ refreshing: templatesLoading }"
-            @click="loadPaperTemplates"
             :disabled="templatesLoading"
+            @click="loadPaperTemplates"
           >
             {{ t('agent.refreshTemplates') }}
           </button>
@@ -537,6 +546,7 @@ import AgentSessionList from './AgentSessionList.vue'
 import { Pin, PinOff, Mic, Plus } from './ui/icons'
 import { API_BASE } from '../utils/api'
 import type { AgentSessionInfo, AgentSkill } from '../types'
+import { hasRecoverablePartial } from '../utils/agentExecution'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
 import UiSkeleton from './ui/UiSkeleton.vue'
 import { useToast } from '../composables/useToast'
@@ -1074,6 +1084,26 @@ const currentStatus = computed(() => {
   }
   return ''
 })
+
+const lastRecoverablePartialId = computed(() => {
+  const latestAssistant = [...messages.value]
+    .reverse()
+    .find((message) => message.role === 'assistant')
+  if (
+    !latestAssistant ||
+    latestAssistant.isStreaming ||
+    !hasRecoverablePartial(latestAssistant.events)
+  ) {
+    return null
+  }
+  return latestAssistant.id
+})
+
+function continuePartial() {
+  if (sending.value || !lastRecoverablePartialId.value) return
+  input.value = t('agent.continuePartialInstruction')
+  void sendMessage()
+}
 
 // ── Approval ──
 const showInlineDiff = computed(() => {
@@ -1638,6 +1668,27 @@ onUnmounted(() => {
   border-radius: 0;
   font-size: 14.5px;
   line-height: 1.7;
+}
+
+.agent-continue-partial {
+  margin: 7px 0 0 8px;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--c-accent) 42%, var(--c-surface-3));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--c-accent) 9%, var(--c-surface-1));
+  color: var(--c-accent);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.agent-continue-partial:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--c-accent) 15%, var(--c-surface-1));
+}
+
+.agent-continue-partial:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 /* Event stream — ink-styled cards */
