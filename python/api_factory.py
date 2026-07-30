@@ -625,7 +625,12 @@ def _validate_file_path(file_path: Path) -> None:
 def create_app(*, cloud_only: bool = False) -> FastAPI:
     from contextlib import asynccontextmanager
 
+    from prompts.loader import validate_required_prompt_bundle
     from src._version import __version__
+
+    # Academic safety prompts are production resources, not optional cosmetic
+    # text. Refuse to start a weakened backend when packaging omitted them.
+    validate_required_prompt_bundle()
 
     _app_title = "研墨 API (cloud-only)" if cloud_only else "研墨 API"
 

@@ -191,6 +191,14 @@ class TestEnforcement:
         violations = locked_glossary.enforce(translated)
         assert not any(v["source"] == "BERT" for v in violations)
 
+    def test_passthrough_not_enforced_when_source_absent_from_original(self, locked_glossary):
+        original = "The PCA cumulative explained variance is 59.1%."
+        translated = "PCA累计解释方差为59.1%。"
+        violations = locked_glossary.enforce(translated, original=original)
+        assert not any(
+            v["source"] in {"BERT", "GPT", "ResNet", "VGG", "LSTM", "GRU"} for v in violations
+        )
+
     def test_unlocked_no_violation(self, locked_glossary):
         original = "We use gradient descent for optimization."
         translated = "我们使用梯度下坠法进行优化。"

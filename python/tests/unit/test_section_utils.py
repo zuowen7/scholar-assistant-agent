@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from src.argument.section_utils import find_section, has_contrast_marker, split_paragraphs
+from src.argument.section_utils import (
+    build_section_excerpt_envelope,
+    find_section,
+    has_contrast_marker,
+    split_paragraphs,
+)
 
 # ── find_section ─────────────────────────────────────────────────────────────
 
@@ -155,6 +160,18 @@ class TestSplitParagraphs:
     def test_empty_string(self):
         paras = split_paragraphs("")
         assert paras == []
+
+
+def test_section_excerpt_envelope_reports_coverage_and_truncation():
+    paper = "# Intro\n" + ("A" * 300) + "\n\n# Results\n" + ("B" * 300)
+
+    excerpt = build_section_excerpt_envelope(paper, max_chars=220)
+
+    assert excerpt.truncated is True
+    assert excerpt.original_chars == len(paper)
+    assert excerpt.excerpt_chars <= 220
+    assert excerpt.covered_sections == ("Intro", "Results")
+    assert len(excerpt.source_hash) == 64
 
 
 # ── has_contrast_marker ───────────────────────────────────────────────────────

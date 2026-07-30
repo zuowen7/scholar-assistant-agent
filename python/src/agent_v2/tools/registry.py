@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import fnmatch
+import locale
 import logging
 import os
 import re
@@ -509,16 +510,29 @@ def _create_file_ops(registry: ToolRegistry) -> None:
     async def write_file(args: dict) -> ToolResult:
         path_str = str(args.get("file_path", ""))
         content = str(args.get("content", ""))
+        mode = str(args.get("mode", "overwrite")).lower()
         if not path_str:
             return ToolResult("error: file_path is required", is_error=True)
+        if mode not in {"overwrite", "append"}:
+            return ToolResult("error: mode must be overwrite or append", is_error=True)
         if registry.check_workspace_escape(path_str):
             return ToolResult(f"error: path '{path_str}' is outside workspace", is_error=True)
         if registry.check_windows_reserved(path_str):
             return ToolResult(f"error: '{path_str}' is a reserved name on Windows", is_error=True)
         try:
             full = registry._resolve_path(path_str)
-            atomic_write_text(full, content)
-            return ToolResult(f"ok: wrote {len(content)} chars to {path_str}")
+            existing = read_text_exact(full) if mode == "append" and full.is_file() else ""
+            combined = existing + content if mode == "append" else content
+            atomic_write_text(full, combined)
+            return ToolResult(
+                f"ok: {mode} wrote {len(content)} chars to {path_str}",
+                metadata={
+                    "mode": mode,
+                    "written_chars": len(content),
+                    "total_chars": len(combined),
+                    "final_chunk": bool(args.get("final_chunk", True)),
+                },
+            )
         except Exception as e:
             return ToolResult(f"error writing file: {e}", is_error=True)
 
@@ -732,12 +746,53 @@ def _create_file_ops(registry: ToolRegistry) -> None:
 
     registry.register(
         "write_file",
-        "Write content to file",
+        (
+            "Atomically overwrite or append content to a file; missing parent directories are "
+            "created automatically. Split large model payloads into compact chunks."
+        ),
         {
             "type": "object",
             "properties": {
                 "file_path": {"type": "string", "minLength": 1},
                 "content": {"type": "string"},
+                "mode": {
+                    "type": "string",
+                    "enum": ["overwrite", "append"],
+                    "default": "overwrite",
+                    "description": (
+                        "Use overwrite for a complete file or first chunk; use append for later "
+                        "chunks."
+                    ),
+                },
+                "final_chunk": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": (
+                        "Set false while a multi-call write is incomplete and true only on the "
+                        "last chunk."
+                    ),
+                },
+                "evidence_refs": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "description": (
+                        "Required when adding academic facts. Each quote must be present in the "
+                        "referenced successful tool result or current user message."
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "tool_use_id": {"type": "string"},
+                            "source": {
+                                "type": "string",
+                                "enum": ["tool_result", "user_message"],
+                            },
+                            "quote": {"type": "string", "minLength": 1, "maxLength": 2000},
+                            "anchor": {"type": "string", "maxLength": 500},
+                        },
+                        "required": ["quote"],
+                    },
+                },
             },
             "required": ["file_path", "content"],
         },
@@ -757,6 +812,27 @@ def _create_file_ops(registry: ToolRegistry) -> None:
                 "file_path": {"type": "string", "minLength": 1},
                 "old_string": {"type": "string", "minLength": 1},
                 "new_string": {"type": "string"},
+                "evidence_refs": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "description": (
+                        "Required when adding academic facts. Each quote must be present in the "
+                        "referenced successful tool result or current user message."
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "tool_use_id": {"type": "string"},
+                            "source": {
+                                "type": "string",
+                                "enum": ["tool_result", "user_message"],
+                            },
+                            "quote": {"type": "string", "minLength": 1, "maxLength": 2000},
+                            "anchor": {"type": "string", "maxLength": 500},
+                        },
+                        "required": ["quote"],
+                    },
+                },
             },
             "required": ["file_path", "old_string", "new_string"],
         },
@@ -830,6 +906,37 @@ def _create_file_ops(registry: ToolRegistry) -> None:
             if not argv:
                 return ToolResult("error: command is empty after parsing", is_error=True)
 
+            if os.name == "nt":
+                builtin = re.split(r"[\\/]", argv[0])[-1].lower()
+                builtin_replacements = {
+                    "dir": (
+                        "list_dir",
+                        "Windows 'dir' is a shell builtin and cannot run in direct-exec mode. "
+                        "Use list_dir instead.",
+                    ),
+                    "mkdir": (
+                        "write_file",
+                        "Windows 'mkdir' is a shell builtin. write_file creates missing parent "
+                        "directories automatically, so write the target file directly.",
+                    ),
+                    "md": (
+                        "write_file",
+                        "Windows 'md' is a shell builtin. write_file creates missing parent "
+                        "directories automatically, so write the target file directly.",
+                    ),
+                }
+                replacement = builtin_replacements.get(builtin)
+                if replacement is not None:
+                    suggested_next_action, message = replacement
+                    return ToolResult(
+                        f"error: {message}",
+                        is_error=True,
+                        metadata={
+                            "code": "windows_shell_builtin",
+                            "suggested_next_action": suggested_next_action,
+                        },
+                    )
+
             timeout_raw = args.get("timeout_seconds", 120)
             try:
                 timeout_seconds = float(timeout_raw)
@@ -879,17 +986,33 @@ def _create_file_ops(registry: ToolRegistry) -> None:
                 executable,
                 *command_args,
                 cwd=str(root),
+                env={
+                    **os.environ,
+                    "PYTHONUTF8": "1",
+                    "PYTHONIOENCODING": "utf-8",
+                },
                 stdout=_aio.subprocess.PIPE,
                 stderr=_aio.subprocess.STDOUT,
                 **process_group_kwargs(),
             )
             stdout, _ = await _aio.wait_for(proc.communicate(), timeout=timeout_seconds)
-            output = stdout.decode("utf-8", errors="replace")
-            if len(output) > _TOOL_RESULT_MAX:
-                output = output[:_TOOL_RESULT_MAX] + "\n... [truncated]"
+            try:
+                output = stdout.decode("utf-8", errors="strict")
+                encoding_source = "utf-8"
+            except UnicodeDecodeError:
+                preferred = locale.getpreferredencoding(False) or "utf-8"
+                output = stdout.decode(preferred, errors="replace")
+                encoding_source = preferred.lower()
             if proc.returncode != 0:
-                return ToolResult(f"{output}\nexit code: {proc.returncode}", is_error=True)
-            return ToolResult(output or "(no output)")
+                return ToolResult(
+                    f"{output}\nexit code: {proc.returncode}",
+                    is_error=True,
+                    metadata={"encoding_source": encoding_source, "code": "process_exit_nonzero"},
+                )
+            return ToolResult(
+                output or "(no output)",
+                metadata={"encoding_source": encoding_source},
+            )
         except _aio.CancelledError:
             if proc is not None:
                 await terminate_process_tree(proc)

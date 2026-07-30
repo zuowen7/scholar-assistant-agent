@@ -11,10 +11,13 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import time
 import uuid
+from collections import Counter
 from collections.abc import AsyncGenerator
 from contextlib import suppress
+from datetime import date
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -49,10 +52,79 @@ _DEFAULT_SOFT_TOOL_CALLS = 56
 _DEFAULT_MAX_MODEL_CALLS = 32
 _DEFAULT_MAX_MUTATION_ATTEMPTS = 20
 _DEFAULT_MAX_ACTIVE_SECONDS = 600.0
+_DEFAULT_MAX_RESEARCH_CALLS = 24
+_DEFAULT_SOFT_RESEARCH_CALLS = 20
 _SELECTION_MAX_TOOL_CALLS = 4
 _DEFAULT_MAX_TOOL_ERRORS = 5
 _SELECTION_MAX_TOOL_ERRORS = 2
 _MAX_IDENTICAL_TOOL_CALLS = 2
+_APPROVAL_POLICY_VERSION = "1"
+_ACADEMIC_FILE_SUFFIXES = frozenset({".md", ".markdown", ".tex", ".rst", ".adoc"})
+_ACADEMIC_PATH_HINTS = frozenset(
+    {
+        "draft",
+        "paper",
+        "papers",
+        "manuscript",
+        "manuscripts",
+        "thesis",
+        "chapter",
+        "chapters",
+        "论文",
+    }
+)
+_ACADEMIC_FILE_NAMES = frozenset(
+    {
+        "main.md",
+        "main.tex",
+        "paper.md",
+        "paper.tex",
+        "manuscript.md",
+        "manuscript.tex",
+        "thesis.tex",
+    }
+)
+_FACT_NUMBER_RE = re.compile(
+    r"(?<![A-Za-z0-9_-])"
+    r"(?:\d+(?:\.\d+)?\s*%|\d{1,3}(?:,\d{3})+|\d+\.\d+|\d{2,})"
+    r"(?![A-Za-z0-9_-])"
+)
+_ARXIV_ID_RE = re.compile(r"(?<!\d)(\d{4}\.\d{4,5})(?:v\d+)?(?!\d)", re.IGNORECASE)
+_CITATION_RE = re.compile(r"(?<!\!)\[(?:\d+(?:\s*[-,]\s*\d+)*)\]")
+_CONTEXT_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{2,}")
+_CONTEXT_STOPWORDS = frozenset(
+    {
+        "about",
+        "after",
+        "also",
+        "analysis",
+        "article",
+        "based",
+        "before",
+        "between",
+        "from",
+        "into",
+        "model",
+        "paper",
+        "results",
+        "study",
+        "that",
+        "their",
+        "this",
+        "using",
+        "with",
+    }
+)
+_VERIFICATION_CLAIMS = (
+    "经核查",
+    "经验证",
+    "已验证",
+    "完整读取",
+    "全面核验",
+    "verified",
+    "validated",
+    "complete dataset",
+)
 _SELECTION_SAFE_TOOLS = frozenset(
     {
         "str_replace",
@@ -64,6 +136,93 @@ _SELECTION_SAFE_TOOLS = frozenset(
         "read_argument_ledger",
         "read_reviewer_state",
     }
+)
+_RESEARCH_TOOLS = frozenset({"arxiv_search", "rag_search", "web_search", "web_fetch"})
+_AUTO_EVIDENCE_TOOLS = frozenset(
+    {"arxiv_search", "rag_search", "read_file", "run_command", "web_fetch"}
+)
+_PENDING_RESUME_MARKERS = (
+    "继续",
+    "未完成",
+    "尚未完成",
+    "接着",
+    "continue",
+    "resume",
+    "unfinished",
+)
+_NAMED_SOURCE_FILE_RE = re.compile(
+    r"(?<![A-Za-z0-9_-])([A-Za-z0-9_.\-/\\]+\.(?:bib|csv|json|md|rst|tex|txt|yaml|yml))",
+    re.IGNORECASE,
+)
+_RESPONSE_SEMANTIC_CLAIMS = (
+    (
+        "first principal component",
+        re.compile(
+            r"\bfirst\s+(?:(?:principal|retained)\s+component|PC)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "PCA applied to an unspecified data object",
+        re.compile(
+            r"\b(?:PCA|principal\s+component\s+analysis)\b.{0,40}"
+            r"\b(?:was|is|were|are)\s+applied\s+to\s+(?:the\s+)?"
+            r"(?:dataset|data|feature\s+set|feature\s+space)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "held-out/test/validation/training role",
+        re.compile(
+            r"\b(?:held[- ]out(?:\s+(?:test|validation|training))?"
+            r"(?:\s+(?:set|sample|data|dataset))?|test\s+set|"
+            r"validation\s+set|training\s+set|"
+            r"train/test\s+split|validation\s+split)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "unsupported known or confirmed status",
+        re.compile(
+            r"\b(?:is|are|was|were)\s+(?:already\s+)?(?:known|confirmed|retrievable)\b|"
+            r"\bconfirms?\s+(?:that\s+)?(?:it\s+)?(?:is|was)\s+known\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "single-sample design",
+        re.compile(r"\bsingle[- ]sample\b", re.IGNORECASE),
+    ),
+    (
+        "available upon reasonable request",
+        re.compile(r"\bavailable\s+(?:upon|on)\s+reasonable\s+request\b", re.IGNORECASE),
+    ),
+    (
+        "institutional approval",
+        re.compile(r"\binstitutional\s+approval\b", re.IGNORECASE),
+    ),
+)
+_RESPONSE_NEGATION_RE = re.compile(
+    r"\b(?:absence|absent|cannot|can't|doesn't|does\s+not|isn't|is\s+not|"
+    r"lack|lacks|missing|no|not|unavailable|unknown|unreported|"
+    r"unspecified|without)\b",
+    re.IGNORECASE,
+)
+_RESPONSE_RECOMMENDATION_RE = re.compile(
+    r"\b(?:should|must|needs?(?:\s+to)?|recommended?(?:\s+that)?|"
+    r"requires?(?:\s+that)?|could\s+(?:add|provide|report|include|specify|"
+    r"describe|clarify|use)|would\s+benefit\s+from)\b|"
+    r"^\s*(?:[-*]\s*)?(?:add|provide|report|include|specify|describe|clarify|use)\b",
+    re.IGNORECASE,
+)
+_RESPONSE_POST_CLAIM_NEGATION_RE = re.compile(
+    r"^\s*[*_`'\"]*(?:(?:is|are|was|were|remain|remains)\s+)?"
+    r"(?:absent|missing|unavailable|unknown|unreported|unspecified)\b|"
+    r"^\s*[*_`'\"]*(?:(?:is|are|was|were)\s+)?not\s+"
+    r"(?:available|confirmed|known|provided|reported|specified|supplied|verified)\b|"
+    r"^\s*[*_`'\"]*(?:has|have|had)\s+not\s+been\s+"
+    r"(?:confirmed|provided|reported|specified|supplied|verified)\b",
+    re.IGNORECASE,
 )
 
 
@@ -82,6 +241,107 @@ class _ResourceBudgetExceeded(RuntimeError):
         super().__init__(reason)
         self.code = code
         self.reason = reason
+
+
+class _MalformedToolProtocol(RuntimeError):
+    """Provider returned textual tool protocol instead of a user-facing response."""
+
+
+class _UngroundedResponse(RuntimeError):
+    """A skill response introduced facts absent from the allowed source set."""
+
+    def __init__(self, issues: list[str], draft: str):
+        self.issues = issues
+        self.draft = draft
+        super().__init__("Ungrounded response: " + ", ".join(issues))
+
+
+def _contains_tool_protocol(text: str) -> bool:
+    normalized = text.lower().replace("｜", "|")
+    return any(
+        marker in normalized
+        for marker in (
+            "dsml||tool_calls",
+            "dsml|tool_calls",
+            "<tool_calls>",
+            "</tool_calls>",
+            "<function=",
+        )
+    )
+
+
+def _is_academic_target(path_value: str) -> bool:
+    path = Path(path_value)
+    if path.suffix.lower() not in _ACADEMIC_FILE_SUFFIXES:
+        return False
+    lowered_parts = {part.lower() for part in path.parts}
+    return path.name.lower() in _ACADEMIC_FILE_NAMES or bool(lowered_parts & _ACADEMIC_PATH_HINTS)
+
+
+def _fact_scan_text(text: str) -> str:
+    # Markdown headings frequently contain section numbers rather than claims.
+    without_current_date = text.replace(date.today().isoformat(), "").replace(r"\%", "%")
+    return "\n".join(
+        line for line in without_current_date.splitlines() if not re.match(r"^\s*#{1,6}\s", line)
+    )
+
+
+def _fact_marker_counts(text: str) -> Counter[str]:
+    scan = _fact_scan_text(text)
+    arxiv_ids = _ARXIV_ID_RE.findall(scan)
+    without_arxiv_ids = _ARXIV_ID_RE.sub(" ", scan)
+    markers: Counter[str] = Counter(_FACT_NUMBER_RE.findall(without_arxiv_ids))
+    markers.update(f"source_id:{value}" for value in arxiv_ids)
+    markers.update(f"citation:{value}" for value in _CITATION_RE.findall(scan))
+    for phrase in _VERIFICATION_CLAIMS:
+        markers[f"claim:{phrase}"] = scan.lower().count(phrase.lower())
+    return markers
+
+
+def _new_fact_markers(old_text: str, new_text: str) -> list[str]:
+    old_markers = _fact_marker_counts(old_text)
+    new_markers = _fact_marker_counts(new_text)
+    additions: list[str] = []
+    for marker, count in new_markers.items():
+        additions.extend([marker] * max(0, count - old_markers.get(marker, 0)))
+    return additions
+
+
+def _marker_value(marker: str) -> str:
+    return marker.split(":", 1)[1] if marker.startswith("source_id:") else marker
+
+
+def _context_line(text: str, marker: str) -> str:
+    value = _marker_value(marker)
+    for line in text.splitlines():
+        if value in line:
+            return line[:2000]
+    index = text.find(value)
+    if index < 0:
+        return ""
+    return text[max(0, index - 500) : index + len(value) + 500]
+
+
+def _context_tokens(text: str) -> set[str]:
+    return {
+        token.lower()
+        for token in _CONTEXT_TOKEN_RE.findall(text)
+        if token.lower() not in _CONTEXT_STOPWORDS
+    }
+
+
+def _contextually_supports(source_text: str, new_text: str, marker: str) -> bool:
+    """Require title/model overlap so an unrelated page sharing an ID cannot pass."""
+    value = _marker_value(marker)
+    if value not in source_text:
+        return False
+    claim_tokens = _context_tokens(_context_line(new_text, marker))
+    shared = claim_tokens & _context_tokens(source_text)
+    if len(shared) >= 2:
+        return True
+    return any(
+        len(token) >= 8 or any(char.isdigit() for char in token) or "-" in token for token in shared
+    )
 
 
 def _normalize_line_endings(text: str) -> str:
@@ -116,6 +376,9 @@ class ConversationRuntime:
         max_model_calls: int = _DEFAULT_MAX_MODEL_CALLS,
         max_mutation_attempts: int = _DEFAULT_MAX_MUTATION_ATTEMPTS,
         max_active_seconds: float = _DEFAULT_MAX_ACTIVE_SECONDS,
+        max_research_calls: int = _DEFAULT_MAX_RESEARCH_CALLS,
+        workspace_grant: str = "",
+        editor_files: list[dict[str, Any]] | None = None,
     ):
         self.provider = provider
         self.tool_registry = tool_registry
@@ -136,7 +399,34 @@ class ConversationRuntime:
         self.max_model_calls = max(1, int(max_model_calls))
         self.max_mutation_attempts = max(1, int(max_mutation_attempts))
         self.max_active_seconds = max(0.01, float(max_active_seconds))
-        self.usage = UsageTracker(model=session.meta.model)
+        self.max_research_calls = max(1, int(max_research_calls))
+        self.soft_research_calls = min(
+            _DEFAULT_SOFT_RESEARCH_CALLS, max(0, self.max_research_calls - 1)
+        )
+        self.workspace_grant = workspace_grant
+        self._editor_files: dict[str, dict[str, Any]] = {}
+        workspace_path = tool_registry._workspace_root
+        for state in editor_files or []:
+            if not isinstance(state, dict):
+                continue
+            raw_path = str(state.get("file_path", "")).strip()
+            if not raw_path:
+                continue
+            try:
+                path = Path(raw_path)
+                if not path.is_absolute() and workspace_path is not None:
+                    path = workspace_path / path
+                resolved = path.resolve()
+                if workspace_path is not None:
+                    resolved.relative_to(workspace_path.resolve())
+            except (OSError, ValueError):
+                continue
+            self._editor_files[str(resolved).lower()] = dict(state)
+        self.usage = UsageTracker(
+            model=session.meta.model,
+            total_input=session.meta.total_usage.input_tokens,
+            total_output=session.meta.total_usage.output_tokens,
+        )
         self.tool_registry.set_runtime_context(
             parent_session_id=session.session_id,
             parent_session_path=getattr(session, "_save_path", ""),
@@ -153,6 +443,7 @@ class ConversationRuntime:
         self._tool_errors_this_turn = 0
         self._model_calls_this_turn = 0
         self._mutation_attempts_this_turn = 0
+        self._research_tool_calls_this_turn = 0
         self._active_seconds_this_turn = 0.0
         self._tool_call_counts: dict[str, int] = {}
         self._readonly_tool_names = frozenset(
@@ -164,6 +455,9 @@ class ConversationRuntime:
         self._changed_files_this_turn: set[str] = set()
         self._turn_message_start = 0
         self._turn_id = ""
+        self._resume_pending_actions = False
+        self._pending_created_this_turn = False
+        self._pending_response_retries_this_turn = 0
         # Lifecycle tracking — used by router._cleanup_pool to evict stale
         # sessions safely (never evict a streaming session).
         self.last_active_monotonic: float = time.monotonic()
@@ -173,7 +467,11 @@ class ConversationRuntime:
     # ---- Public API ----
 
     async def turn(
-        self, user_message: str, *, resume: bool = False
+        self,
+        user_message: str,
+        *,
+        resume: bool = False,
+        persisted_user_message: str | None = None,
     ) -> AsyncGenerator[AgentEvent, None]:
         if not resume and not user_message.strip():
             yield AgentEvent.error("empty message")
@@ -186,6 +484,7 @@ class ConversationRuntime:
         self._tool_errors_this_turn = 0
         self._model_calls_this_turn = 0
         self._mutation_attempts_this_turn = 0
+        self._research_tool_calls_this_turn = 0
         self._active_seconds_this_turn = 0.0
         self._tool_call_counts.clear()
         self._tool_stop_reason = None
@@ -194,14 +493,32 @@ class ConversationRuntime:
         self._changed_files_this_turn.clear()
         self._turn_message_start = len(self.session.messages)
         self._turn_id = uuid.uuid4().hex
-        self.session.set_outcome("RUNNING", {})
+        lowered_message = user_message.lower()
+        self._resume_pending_actions = resume or any(
+            marker in lowered_message for marker in _PENDING_RESUME_MARKERS
+        )
+        self._pending_created_this_turn = False
+        self._pending_response_retries_this_turn = 0
+        self.session.start_turn(self._turn_id)
+        self.session.set_outcome(
+            "RUNNING",
+            {
+                "pending_actions": self._active_pending_actions(),
+            },
+        )
         self._is_streaming = True
         self.last_active_monotonic = time.monotonic()
         try:
             yield AgentEvent.session_started(self.session.session_id)
             if not resume:
                 self.session.append(
-                    Message(role=MessageRole.USER, blocks=[TextBlock(text=user_message)])
+                    Message(
+                        role=MessageRole.USER,
+                        blocks=[TextBlock(text=user_message)],
+                        persisted_text=persisted_user_message,
+                        context_externalized=persisted_user_message is not None
+                        and persisted_user_message != user_message,
+                    )
                 )
                 self._auto_save()
 
@@ -213,11 +530,60 @@ class ConversationRuntime:
                     return
 
                 recovery_instruction = self._step_instruction()
-                for retry in range(3):
+                force_no_tools = False
+                for retry in range(4):
+                    retry_pending_delivery = False
                     try:
                         async for event in self._llm_turn(
-                            recovery_instruction=recovery_instruction
+                            recovery_instruction=recovery_instruction,
+                            force_no_tools=force_no_tools,
                         ):
+                            if (
+                                event.type == AgentEventType.RESPONSE
+                                and self._active_pending_actions()
+                            ):
+                                if self._pending_response_retries_this_turn < 2:
+                                    self._pending_response_retries_this_turn += 1
+                                    retry_pending_delivery = True
+                                    yield AgentEvent.warning(
+                                        "交付文件仍未完成，已拒绝降级为聊天回复并继续恢复写入。",
+                                        code="pending_actions_retry",
+                                        attempt=self._pending_response_retries_this_turn,
+                                        max_attempts=2,
+                                        reset_stream=True,
+                                        pending_actions=self._active_pending_actions(),
+                                    )
+                                    continue
+                                pending = self._active_pending_actions()
+                                event.data.update(
+                                    {
+                                        "partial": True,
+                                        "stop_code": "pending_actions_remaining",
+                                        "stop_reason": (
+                                            "Required file mutation remains unresolved after "
+                                            "automatic recovery attempts"
+                                        ),
+                                        "pending_actions": pending,
+                                    }
+                                )
+                                yield event
+                                self._persist_turn_outcome(
+                                    "PARTIAL",
+                                    "pending_actions_remaining",
+                                    (
+                                        "Required file mutation remains unresolved after "
+                                        "automatic recovery attempts"
+                                    ),
+                                )
+                                self._auto_save()
+                                yield AgentEvent.usage(
+                                    TokenUsage(
+                                        input_tokens=self.usage.total_input,
+                                        output_tokens=self.usage.total_output,
+                                    )
+                                )
+                                yield AgentEvent.done()
+                                return
                             yield event
                             if event.type in (AgentEventType.RESPONSE, AgentEventType.ERROR):
                                 if event.type == AgentEventType.RESPONSE:
@@ -272,6 +638,8 @@ class ConversationRuntime:
                             )
                             yield AgentEvent.done()
                             return
+                        if retry_pending_delivery:
+                            break
                         break
                     except _EmptyModelResponse:
                         if retry < 2:
@@ -299,6 +667,64 @@ class ConversationRuntime:
                         )
                         self._persist_turn_outcome(
                             "FAILED", "empty_model_response", "Model returned no final response"
+                        )
+                        yield AgentEvent.done()
+                        return
+                    except _UngroundedResponse as exc:
+                        if retry < 3:
+                            if force_no_tools:
+                                yield AgentEvent.warning(
+                                    "模型答复仍包含无来源事实，正在再次自动校正。",
+                                    code="response_grounding_retry",
+                                    attempt=retry + 1,
+                                    max_attempts=4,
+                                    issues=exc.issues,
+                                )
+                            recovery_instruction = "\n\n".join(
+                                part
+                                for part in (
+                                    self._step_instruction(),
+                                    "The previous user-facing answer failed the source-grounding "
+                                    "check. Rewrite it from scratch as plain text without tools. "
+                                    "Do not mention this validator. Every number, citation, method, "
+                                    "dataset role, component claim, availability procedure, and "
+                                    "verification statement must be present in the current user "
+                                    "message or a successful allowed primary-source tool result. "
+                                    "For missing facts, say 'not supplied in the available evidence' "
+                                    "instead of guessing. Remove these unsupported items: "
+                                    + ", ".join(exc.issues)
+                                    + ". Delete the entire sentence or table row when a clean "
+                                    "source-grounded replacement is not possible"
+                                    + ". Apply these exact repairs when relevant: replace 'first "
+                                    "principal component/first PC' with 'reported cumulative "
+                                    "explained variance'; replace assertions that PCA was applied "
+                                    "to a feature set or dataset with 'the reported PCA result'; "
+                                    "never write 'PCA was/is applied to' or 'PCA applied to' when "
+                                    "the source does not name that data object; in a table, list, "
+                                    "or LaTeX fragment, use supplied label-value pairs instead of "
+                                    "adding a subject or analysis procedure; "
+                                    "replace known/confirmed/retrievable claims with 'not supplied "
+                                    "in the available evidence'; remove every illustrative number, "
+                                    "threshold, confidence interval, bootstrap count, or rule of "
+                                    "thumb not present in the sources. Preserve the requested "
+                                    "format and all supported content from this draft:\n"
+                                    "<draft_to_repair>\n"
+                                    + exc.draft[:30_000]
+                                    + "\n</draft_to_repair>",
+                                )
+                                if part
+                            )
+                            force_no_tools = True
+                            continue
+                        yield AgentEvent.error(
+                            "模型连续 4 次未能生成来源充分的答复；未向用户交付含无来源事实的结果。",
+                            code="response_grounding_failed",
+                            issues=exc.issues,
+                        )
+                        self._persist_turn_outcome(
+                            "FAILED",
+                            "response_grounding_failed",
+                            "Model response remained ungrounded after automatic repair",
                         )
                         yield AgentEvent.done()
                         return
@@ -475,7 +901,63 @@ class ConversationRuntime:
             "tool_counts": counts,
             "changed_files": sorted(self._changed_files_this_turn),
             "unexecuted": unexecuted,
+            "pending_actions": self._active_pending_actions(),
         }
+
+    def _active_pending_actions(self) -> list[dict[str, Any]]:
+        if not (self._pending_created_this_turn or self._resume_pending_actions):
+            return []
+        return [dict(action) for action in self.session.meta.pending_actions]
+
+    def _pending_target_path(self, tb: ToolUseBlock, path_value: str = "") -> str:
+        raw_path = str(path_value or "").strip()
+        if not raw_path and tb.input:
+            match = re.search(r'"(?:file_path|path)"\s*:\s*"([^"]+)', tb.input)
+            if match:
+                raw_path = match.group(1)
+        if not raw_path:
+            return ""
+        try:
+            path = Path(raw_path)
+            workspace = self.tool_registry._workspace_root
+            if not path.is_absolute() and workspace is not None:
+                path = workspace / path
+            return str(path.resolve())
+        except (OSError, ValueError):
+            return raw_path
+
+    def _record_pending_mutation(
+        self,
+        tb: ToolUseBlock,
+        *,
+        error_code: str,
+        target_path: str = "",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        if tb.name not in {"write_file", "str_replace"}:
+            return
+        self.session.record_pending_action(
+            tool_name=tb.name,
+            target_path=self._pending_target_path(tb, target_path),
+            error_code=error_code,
+            turn_id=self._turn_id,
+            details=details,
+        )
+        self._pending_created_this_turn = True
+        self._auto_save()
+
+    def _resolve_pending_mutation(
+        self,
+        tb: ToolUseBlock,
+        *,
+        target_path: str,
+    ) -> None:
+        if tb.name not in {"write_file", "str_replace"}:
+            return
+        self.session.resolve_pending_action(
+            tool_name=tb.name,
+            target_path=self._pending_target_path(tb, target_path),
+        )
 
     def _persist_turn_outcome(self, state: str, stop_code: str, stop_reason: str) -> None:
         self.session.set_outcome(
@@ -505,30 +987,46 @@ class ConversationRuntime:
         emitted_response = False
         try:
             if allow_model and self._model_calls_this_turn < self.max_model_calls:
-                try:
-                    async for event in self._llm_turn(
-                        recovery_instruction=instruction,
-                        force_no_tools=True,
-                    ):
-                        if event.type == AgentEventType.RESPONSE:
-                            emitted_response = True
-                            yield AgentEvent.response(
-                                str(event.data.get("text", "")),
-                                partial=True,
-                                stop_code=stop_code,
-                                stop_reason=stop_reason,
-                                tool_counts=outcome["tool_counts"],
-                                changed_count=len(outcome["changed_files"]),
+                for attempt in range(2):
+                    try:
+                        repair_instruction = instruction
+                        if attempt:
+                            repair_instruction += (
+                                "\n\nThe previous finalization contained provider tool protocol. "
+                                "Return plain user-facing text only. Do not output XML-like tags, "
+                                "DSML, JSON tool calls, or function syntax."
                             )
-                        else:
-                            yield event
-                except Exception as exc:
-                    logger.warning("Agent finalization failed: %s", exc)
+                        async for event in self._llm_turn(
+                            recovery_instruction=repair_instruction,
+                            force_no_tools=True,
+                        ):
+                            if event.type == AgentEventType.RESPONSE:
+                                emitted_response = True
+                                yield AgentEvent.response(
+                                    str(event.data.get("text", "")),
+                                    partial=True,
+                                    stop_code=stop_code,
+                                    stop_reason=stop_reason,
+                                    tool_counts=outcome["tool_counts"],
+                                    changed_count=len(outcome["changed_files"]),
+                                )
+                            else:
+                                yield event
+                        if emitted_response:
+                            break
+                    except _MalformedToolProtocol:
+                        logger.warning(
+                            "Agent finalization returned textual tool protocol (attempt %d/2)",
+                            attempt + 1,
+                        )
+                        continue
+                    except Exception as exc:
+                        logger.warning("Agent finalization failed: %s", exc)
+                        break
             if not emitted_response:
                 counts = outcome["tool_counts"]
                 yield AgentEvent.response(
-                    "Task partially completed. Review the execution details and continue "
-                    "the task to finish the remaining verification.",
+                    self._deterministic_partial_summary(outcome),
                     partial=True,
                     stop_code=stop_code,
                     stop_reason=stop_reason,
@@ -538,6 +1036,100 @@ class ConversationRuntime:
         finally:
             self.session.set_outcome("PARTIAL", outcome)
             self._auto_save()
+
+    @staticmethod
+    def _deterministic_partial_summary(outcome: dict[str, Any]) -> str:
+        counts = outcome.get("tool_counts", {})
+        changed_files = list(outcome.get("changed_files", []) or [])
+        parts = [
+            "Task partially completed.",
+            f"Stop code: {outcome.get('stop_code', 'tool_loop_stopped')}.",
+            (
+                "Tool results: "
+                f"{int(counts.get('success', 0) or 0)} succeeded, "
+                f"{int(counts.get('error', 0) or 0)} failed, "
+                f"{int(counts.get('skipped', 0) or 0)} skipped, "
+                f"{int(counts.get('denied', 0) or 0)} denied."
+            ),
+        ]
+        if changed_files:
+            parts.append("Changed files: " + ", ".join(changed_files) + ".")
+        parts.append("Remaining or skipped work is unverified; continue only after reviewing it.")
+        return " ".join(parts)
+
+    @staticmethod
+    def _semantic_claim_is_negated(text: str, match: re.Match[str]) -> bool:
+        line_start = text.rfind("\n", 0, match.start()) + 1
+        line_end = text.find("\n", match.end())
+        if line_end < 0:
+            line_end = len(text)
+        prefix = text[line_start : match.start()]
+        suffix = text[match.end() : line_end]
+        return bool(
+            _RESPONSE_NEGATION_RE.search(prefix)
+            or _RESPONSE_RECOMMENDATION_RE.search(prefix)
+            or _RESPONSE_POST_CLAIM_NEGATION_RE.search(suffix)
+        )
+
+    def _response_grounding_source(self) -> str:
+        turn_messages = self.session.messages[self._turn_message_start :]
+        user_text = "\n".join(
+            message.text_content() for message in turn_messages if message.role == MessageRole.USER
+        )
+        named_sources = {
+            match.group(1).replace("\\", "/").lower()
+            for match in _NAMED_SOURCE_FILE_RE.finditer(user_text)
+        }
+        tool_inputs: dict[str, tuple[str, str]] = {}
+        source_parts = [user_text]
+        for message in turn_messages:
+            for block in message.blocks:
+                if isinstance(block, ToolUseBlock):
+                    try:
+                        args = json.loads(block.input) if block.input else {}
+                    except (json.JSONDecodeError, TypeError):
+                        args = {}
+                    path = str(
+                        args.get("file_path", "") or args.get("path", "")
+                        if isinstance(args, dict)
+                        else ""
+                    )
+                    tool_inputs[block.id] = (block.name, path)
+                elif isinstance(block, ToolResultBlock):
+                    if block.is_error or block.status not in {"", "success"}:
+                        continue
+                    tool_name, path = tool_inputs.get(block.tool_use_id, (block.tool_name, ""))
+                    if tool_name == "read_file" and named_sources:
+                        normalized = path.replace("\\", "/").lower()
+                        basename = normalized.rsplit("/", 1)[-1]
+                        if not any(
+                            normalized.endswith(source)
+                            or source.endswith(normalized)
+                            or source.rsplit("/", 1)[-1] == basename
+                            for source in named_sources
+                        ):
+                            continue
+                    source_parts.append(block.output)
+        return "\n".join(part for part in source_parts if part)
+
+    def _response_grounding_issues(self, text: str) -> list[str]:
+        if not self.session.meta.active_skills:
+            return []
+        source_text = self._response_grounding_source()
+        source_markers = set(_fact_marker_counts(source_text))
+        issues = [marker for marker in _fact_marker_counts(text) if marker not in source_markers]
+        for label, pattern in _RESPONSE_SEMANTIC_CLAIMS:
+            source_matches = list(pattern.finditer(source_text))
+            if any(
+                not self._semantic_claim_is_negated(source_text, match) for match in source_matches
+            ):
+                continue
+            matches = list(pattern.finditer(text))
+            if matches and not all(
+                self._semantic_claim_is_negated(text, match) for match in matches
+            ):
+                issues.append(f"claim:{label}")
+        return list(dict.fromkeys(issues))
 
     async def _llm_turn(
         self,
@@ -598,12 +1190,23 @@ class ConversationRuntime:
                 return False
             recorded_usage.add(signature)
             self.usage.record(usage)
+            self.session.meta.total_usage = TokenUsage(
+                input_tokens=self.usage.total_input,
+                output_tokens=self.usage.total_output,
+                cache_read_tokens=self.usage.total_cache_read,
+                cache_creation_tokens=self.usage.total_cache_creation,
+            )
+            self.session.meta.usage_available = True
             return True
 
         async for chunk in self._abortable_stream(provider_stream):
             if isinstance(chunk, TextBlock):
                 text_blocks.append(chunk)
-                yield AgentEvent.token(chunk.text)
+                # A reserved no-tools finalizer is buffered until its entire
+                # text is known safe. This prevents DSML/function protocol from
+                # leaking through token events before validation.
+                if not force_no_tools:
+                    yield AgentEvent.token(chunk.text)
             elif isinstance(chunk, ThinkingBlock):
                 yield AgentEvent.thought(chunk.thinking)
             elif isinstance(chunk, ToolUseBlock):
@@ -639,13 +1242,35 @@ class ConversationRuntime:
                             text_blocks.append(b)
 
                 full_text = "".join(b.text for b in text_blocks)
+                if _contains_tool_protocol(full_text):
+                    if not force_no_tools:
+                        yield AgentEvent.warning(
+                            "",
+                            code="malformed_tool_call",
+                            reset_stream=True,
+                        )
+                    raise _MalformedToolProtocol(
+                        "Provider returned textual tool protocol instead of a response"
+                    )
+                if not tool_blocks and full_text.strip():
+                    grounding_issues = self._response_grounding_issues(full_text)
+                    if grounding_issues:
+                        if not force_no_tools:
+                            yield AgentEvent.warning(
+                                "",
+                                code="response_grounding_retry",
+                                reset_stream=True,
+                                issues=grounding_issues,
+                            )
+                        raise _UngroundedResponse(grounding_issues, full_text)
                 assistant_blocks = list(tool_blocks)
                 if text_blocks:
                     assistant_blocks.append(TextBlock(text=full_text))
                 if assistant_blocks:
                     self.session.append(
                         Message(
-                            role=MessageRole.ASSISTANT, blocks=assistant_blocks, usage=chunk.usage
+                            role=MessageRole.ASSISTANT,
+                            blocks=assistant_blocks,
                         )
                     )
                     self._auto_save()
@@ -697,11 +1322,13 @@ class ConversationRuntime:
                                 skip_output,
                                 status="skipped",
                             )
+                            self._log_tool_completion(remaining, "skipped")
                         self._auto_save()
                         return
                 return
 
     async def _execute_tool(self, tb: ToolUseBlock) -> AsyncGenerator[AgentEvent, None]:
+        tool_started = time.monotonic()
         args = {}
         try:
             if tb.input:
@@ -711,6 +1338,14 @@ class ConversationRuntime:
                 "Tool input is invalid or truncated JSON; the tool was not executed. "
                 f"Retry with a smaller payload or split the operation into compact steps "
                 f"(input_chars={len(tb.input or '')}, error_position={getattr(exc, 'pos', 0)})."
+            )
+            self._record_pending_mutation(
+                tb,
+                error_code="invalid_tool_json",
+                details={
+                    "input_chars": len(tb.input or ""),
+                    "error_position": getattr(exc, "pos", 0),
+                },
             )
             self._append_tool_error(tb, detail)
             self._record_tool_error()
@@ -780,6 +1415,7 @@ class ConversationRuntime:
                 },
             )
             self._auto_save()
+            self._log_tool_completion(tb, "skipped", duration_started=tool_started)
             yield AgentEvent.tool_result(
                 tb.id,
                 tb.name,
@@ -851,6 +1487,12 @@ class ConversationRuntime:
                     )
                 )
                 self._auto_save()
+                self._log_tool_completion(
+                    tb,
+                    "denied",
+                    metadata={"code": "hook_denied"},
+                    duration_started=tool_started,
+                )
                 yield AgentEvent.tool_denied(tb.id, tb.name, reason)
                 yield AgentEvent.tool_result(tb.id, tb.name, reason, is_error=True, status="denied")
                 self._record_tool_error()
@@ -892,6 +1534,17 @@ class ConversationRuntime:
                     )
                 )
                 self._tool_errors_this_turn = 0
+                if tb.name == "write_file" and not bool(args.get("final_chunk", True)):
+                    self._record_pending_mutation(
+                        tb,
+                        error_code="chunked_write_incomplete",
+                        target_path=str(args.get("file_path", "")),
+                    )
+                else:
+                    self._resolve_pending_mutation(
+                        tb,
+                        target_path=str(args.get("file_path", "") or args.get("path", "")),
+                    )
                 self._auto_save()
                 yield AgentEvent.tool_result(
                     tb.id,
@@ -899,11 +1552,24 @@ class ConversationRuntime:
                     output,
                     status="no_change",
                 )
+                self._log_tool_completion(tb, "no_change", duration_started=tool_started)
                 return
         spec = self.tool_registry.get(tb.name)
         preflight_result = self.tool_registry.preflight(tb.name, args)
         if preflight_result is not None:
-            self._append_tool_error(tb, preflight_result.output)
+            self._record_pending_mutation(
+                tb,
+                error_code=str(
+                    (preflight_result.metadata or {}).get("code", "tool_preflight_failed")
+                ),
+                target_path=str(args.get("file_path", "") or args.get("path", "")),
+                details=dict(preflight_result.metadata or {}),
+            )
+            self._append_tool_error(
+                tb,
+                preflight_result.output,
+                metadata=dict(preflight_result.metadata or {}),
+            )
             self._record_tool_error()
             yield AgentEvent.tool_result(
                 tb.id,
@@ -920,6 +1586,8 @@ class ConversationRuntime:
         # Capture old content for diff
         old_text = ""
         new_text = ""
+        evidence_old_text = ""
+        verified_evidence_refs: list[dict[str, str]] = []
         file_path = args.get("file_path", "") or args.get("path", "")
         # Resolve to absolute path so frontend can match against editor tabs
         resolved_path = file_path
@@ -933,16 +1601,99 @@ class ConversationRuntime:
         if tb.name == "str_replace":
             old_text = args.get("old_string", "")
             new_text = args.get("new_string", "")
+            evidence_old_text = old_text
         elif tb.name == "write_file":
             new_text = args.get("content", "")
             if resolved_path:
                 try:
                     full = Path(resolved_path)
                     if full.is_file():
-                        old_text = full.read_text(encoding="utf-8", errors="replace")[:4000]
+                        evidence_old_text = full.read_text(encoding="utf-8", errors="replace")
+                        old_text = evidence_old_text[:4000]
                 except Exception:
                     pass
+            if str(args.get("mode", "overwrite")).lower() == "append":
+                evidence_old_text = ""
         result_metadata: dict[str, Any] = {}
+
+        if tb.name in {"write_file", "str_replace"}:
+            conflict = self._editor_conflict(resolved_path)
+            if conflict is not None:
+                detail, metadata = conflict
+                conflict_code = str(metadata.get("code", "editor_conflict"))
+                self._record_pending_mutation(
+                    tb,
+                    error_code=conflict_code,
+                    target_path=resolved_path,
+                    details=metadata,
+                )
+                # Dirty or version-diverged editor state requires a user/editor
+                # action. Repeating model turns cannot resolve it and previously
+                # caused long retry loops before the generic error budget fired.
+                self._tool_stop_code = conflict_code
+                self._tool_stop_reason = detail
+                self._append_tool_error(tb, detail, metadata=metadata)
+                self._record_tool_error()
+                yield AgentEvent.tool_result(
+                    tb.id,
+                    tb.name,
+                    detail,
+                    is_error=True,
+                    status="error",
+                    metadata=metadata,
+                )
+                return
+
+        if tb.name in {"write_file", "str_replace"} and _is_academic_target(resolved_path):
+            missing_facts = _new_fact_markers(evidence_old_text, new_text)
+            if missing_facts:
+                verified_evidence_refs, unsupported_facts = self._verify_evidence_refs(
+                    args.get("evidence_refs"),
+                    missing_facts,
+                    new_text,
+                )
+                if unsupported_facts:
+                    display_facts = [
+                        value.split(":", 1)[1] if ":" in value else value
+                        for value in unsupported_facts
+                    ]
+                    metadata = {
+                        "code": "academic_evidence_required",
+                        "missing_facts": display_facts,
+                        "evidence_candidates": self._evidence_candidates(),
+                        "suggested_next_action": (
+                            "Reuse an exact quote from one of evidence_candidates and retry. "
+                            "The runtime will resolve a stale or fabricated tool_use_id to the "
+                            "real successful result when the quote matches."
+                        ),
+                    }
+                    detail = (
+                        "Academic evidence gate blocked the mutation before approval. "
+                        "Unsupported new facts: " + ", ".join(display_facts)
+                    )
+                    self._record_pending_mutation(
+                        tb,
+                        error_code="academic_evidence_required",
+                        target_path=resolved_path,
+                        details={
+                            "missing_facts": display_facts,
+                            "evidence_candidates": [
+                                value.get("tool_use_id", "")
+                                for value in metadata["evidence_candidates"]
+                            ],
+                        },
+                    )
+                    self._append_tool_error(tb, detail, metadata=metadata)
+                    self._record_tool_error()
+                    yield AgentEvent.tool_result(
+                        tb.id,
+                        tb.name,
+                        detail,
+                        is_error=True,
+                        status="error",
+                        metadata=metadata,
+                    )
+                    return
 
         if perm_result.is_denied:
             yield AgentEvent.tool_denied(tb.id, tb.name, perm_result.reason)
@@ -956,9 +1707,17 @@ class ConversationRuntime:
             approval_key = self._approval_key(tb.name, args, resolved_path)
             requires_approval = bool(spec and spec.requires_approval)
             # All side-effecting tools use the same capability-based approval path.
+            session_scope_approved = (
+                approval_key in self._session_approved_actions
+                or self.session.has_session_approval(
+                    approval_key,
+                    workspace_grant=self.workspace_grant,
+                    policy_version=_APPROVAL_POLICY_VERSION,
+                )
+            )
             if (
                 hook_asks_for_approval or (requires_approval and not self.auto_approve)
-            ) and approval_key not in self._session_approved_actions:
+            ) and not session_scope_approved:
                 if tb.name == "run_command":
                     approval_reason = (
                         f"Agent wants to run a command in {args.get('cwd', '.')}: "
@@ -1029,18 +1788,31 @@ class ConversationRuntime:
                     yield AgentEvent.tool_result(
                         tb.id, tb.name, tool_output, is_error=True, status="denied"
                     )
+                    self._log_tool_completion(
+                        tb,
+                        "denied",
+                        metadata={"code": decision},
+                        duration_started=tool_started,
+                    )
                     if not self._aborted:
                         self._approval_denied = True
                         self._approval_stop_reason = stop_reason
                     return
                 if decision == "allow_session":
                     self._session_approved_actions.add(approval_key)
+                    self.session.grant_session_approval(
+                        approval_key,
+                        workspace_grant=self.workspace_grant,
+                        policy_version=_APPROVAL_POLICY_VERSION,
+                    )
+                    self._auto_save()
 
             # Capture an exact pre-image immediately before execution. Preview
             # text is intentionally truncated and cannot support reliable Undo.
             mutation_before_exists = False
             mutation_before_content = ""
             mutation_before_bytes = b""
+            mutation_before_hash = ""
             mutation_is_binary = tb.name == "export_document"
             mutation_target_path = resolved_path
             if tb.name == "export_document" and resolved_path:
@@ -1060,8 +1832,12 @@ class ConversationRuntime:
                     if mutation_before_exists:
                         if mutation_is_binary:
                             mutation_before_bytes = mutation_path.read_bytes()
+                            mutation_before_hash = hashlib.sha256(mutation_before_bytes).hexdigest()
                         else:
                             mutation_before_content = read_text_exact(mutation_path)
+                            mutation_before_hash = hashlib.sha256(
+                                mutation_before_content.encode("utf-8")
+                            ).hexdigest()
                 except Exception:
                     mutation_before_exists = False
                     mutation_before_content = ""
@@ -1101,6 +1877,32 @@ class ConversationRuntime:
             result_original_chars = result.original_chars
             result_returned_chars = result.returned_chars
             result_metadata = dict(result.metadata or {})
+            if verified_evidence_refs:
+                result_metadata["evidence_refs"] = verified_evidence_refs
+            if tb.name in {"write_file", "str_replace"}:
+                if is_error:
+                    self._record_pending_mutation(
+                        tb,
+                        error_code=str(result_metadata.get("code", "tool_execution_failed")),
+                        target_path=resolved_path,
+                        details=result_metadata,
+                    )
+                elif (
+                    tb.name == "write_file"
+                    and result_status in {"success", "no_change"}
+                    and not bool(args.get("final_chunk", True))
+                ):
+                    self._record_pending_mutation(
+                        tb,
+                        error_code="chunked_write_incomplete",
+                        target_path=resolved_path,
+                        details=result_metadata,
+                    )
+                elif result_status in {"success", "no_change"}:
+                    self._resolve_pending_mutation(
+                        tb,
+                        target_path=resolved_path,
+                    )
             sub_agent_usage = result_metadata.get("sub_agent_usage")
             if isinstance(sub_agent_usage, dict):
                 self.usage.record(
@@ -1189,6 +1991,12 @@ class ConversationRuntime:
                 ],
             )
         )
+        self._log_tool_completion(
+            tb,
+            result_status,
+            metadata=result_metadata,
+            duration_started=tool_started,
+        )
         self._auto_save()
         yield AgentEvent.tool_result(
             tb.id,
@@ -1231,13 +2039,20 @@ class ConversationRuntime:
             if checkpoint_path:
                 self._changed_files_this_turn.add(checkpoint_path)
             new_content = ""
+            checkpoint_after_hash = ""
             if checkpoint_path and not mutation_is_binary:
-                try:
+                with suppress(Exception):
                     fp = Path(checkpoint_path)
                     if fp.is_file():
                         new_content = fp.read_text(encoding="utf-8", errors="replace")
-                except Exception:
-                    pass
+                        checkpoint_after_hash = hashlib.sha256(
+                            new_content.encode("utf-8")
+                        ).hexdigest()
+            elif checkpoint_path and mutation_is_binary:
+                with suppress(Exception):
+                    checkpoint_after_hash = hashlib.sha256(
+                        Path(checkpoint_path).read_bytes()
+                    ).hexdigest()
             yield AgentEvent.checkpoint(
                 {
                     "action": tb.name,
@@ -1245,6 +2060,9 @@ class ConversationRuntime:
                     "workspace": self.session.meta.workspace,
                     "content": new_content[:10000] if new_content else tool_output,
                     "content_truncated": len(new_content) > 10000,
+                    "evidence_refs": verified_evidence_refs,
+                    "before_hash": mutation_before_hash or None,
+                    "after_hash": checkpoint_after_hash or None,
                 }
             )
 
@@ -1293,6 +2111,38 @@ class ConversationRuntime:
                 "The selection edit is complete. Do not call any more tools; provide the final "
                 "concise response."
             )
+        pending = self._active_pending_actions()
+        if pending:
+            self.session.set_outcome(
+                "RECOVERING",
+                {
+                    "pending_actions": pending,
+                    "automatic_recovery_attempt": self._pending_response_retries_this_turn + 1,
+                },
+            )
+            self._auto_save()
+            return (
+                "# Required delivery recovery\n"
+                "A requested file mutation is still pending. A chat-only answer is not an "
+                "acceptable substitute. Inspect the pending error and retry the mutation now. "
+                "For academic_evidence_required, reuse exact quotes from successful tool results; "
+                "never invent tool_use_id values. For a large write, use write_file with "
+                "mode=overwrite and final_chunk=false for the first compact chunk, then "
+                "mode=append for compact continuation chunks and final_chunk=true only on the "
+                "last chunk. Do not return a final response until the pending action is resolved.\n\n"
+                f"Pending actions:\n{json.dumps(pending, ensure_ascii=False, sort_keys=True)}"
+            )
+        if (
+            self.edit_scope is None
+            and self.soft_research_calls > 0
+            and self._research_tool_calls_this_turn >= self.soft_research_calls
+        ):
+            remaining = max(0, self.max_research_calls - self._research_tool_calls_this_turn)
+            return (
+                f"Research budget is nearly exhausted ({remaining} research calls remain). "
+                "Stop broad or duplicate searches. Select the strongest sources already fetched, "
+                "synthesize the requested deliverable, write it, and verify the written file."
+            )
         if self.edit_scope is None and self._tool_calls_this_turn >= self.soft_tool_calls > 0:
             remaining = max(0, self.max_tool_calls - self._tool_calls_this_turn)
             self.session.set_outcome(
@@ -1321,6 +2171,15 @@ class ConversationRuntime:
                 f"Agent tool-call limit reached ({max_calls}) before completion. "
                 "The task was stopped because it exhausted its tool budget."
             )
+        if tb.name in _RESEARCH_TOOLS:
+            self._research_tool_calls_this_turn += 1
+            if self._research_tool_calls_this_turn > self.max_research_calls:
+                self._tool_stop_code = "research_budget_exhausted"
+                return (
+                    "Research tool-call limit reached "
+                    f"({self.max_research_calls}) before delivery. Stop expanding the search set "
+                    "and complete the deliverable from the sources already collected."
+                )
 
         fingerprint = f"{tb.name}:{json.dumps(args, ensure_ascii=False, sort_keys=True)}"
         count = self._tool_call_counts.get(fingerprint, 0) + 1
@@ -1367,6 +2226,280 @@ class ConversationRuntime:
             }
         )
 
+    def _successful_tool_results(self) -> list[ToolResultBlock]:
+        results: list[ToolResultBlock] = []
+        for message in self.session.messages:
+            for block in message.blocks:
+                if (
+                    isinstance(block, ToolResultBlock)
+                    and not block.is_error
+                    and block.status not in {"error", "denied", "skipped"}
+                ):
+                    results.append(block)
+        return results
+
+    def _evidence_candidates(self) -> list[dict[str, str]]:
+        return [
+            {
+                "tool_use_id": block.tool_use_id,
+                "tool_name": block.tool_name,
+            }
+            for block in self._successful_tool_results()
+            if block.tool_name in _AUTO_EVIDENCE_TOOLS
+        ][-64:]
+
+    @staticmethod
+    def _verified_evidence(
+        *,
+        source_type: str,
+        source_id: str,
+        source_text: str,
+        quote: str,
+        anchor: str = "",
+    ) -> dict[str, str]:
+        return {
+            "source": source_type,
+            "tool_use_id": source_id if source_type == "tool_result" else "",
+            "source_id": source_id,
+            "source_hash": hashlib.sha256(source_text.encode("utf-8")).hexdigest(),
+            "quote_hash": hashlib.sha256(quote.encode("utf-8")).hexdigest(),
+            "anchor": anchor[:500],
+        }
+
+    def _verify_evidence_refs(
+        self,
+        raw_refs: Any,
+        fact_markers: list[str],
+        new_text: str,
+    ) -> tuple[list[dict[str, str]], list[str]]:
+        refs = raw_refs if isinstance(raw_refs, list) else []
+        successful_results = self._successful_tool_results()
+        tool_results = {block.tool_use_id: block for block in successful_results}
+        user_text = ""
+        for message in self.session.messages:
+            if message.role == MessageRole.USER:
+                user_text = message.text_content()
+
+        verified: list[dict[str, str]] = []
+        supported_text: list[str] = []
+        support_records: list[tuple[str, str, str]] = []
+        seen_refs: set[tuple[str, str]] = set()
+
+        def add_verified(
+            *,
+            source_type: str,
+            source_id: str,
+            source_text: str,
+            quote: str,
+            anchor: str = "",
+        ) -> None:
+            key = (source_id, hashlib.sha256(quote.encode("utf-8")).hexdigest())
+            if key in seen_refs:
+                return
+            seen_refs.add(key)
+            supported_text.append(quote)
+            support_records.append((source_type, source_text, quote))
+            verified.append(
+                self._verified_evidence(
+                    source_type=source_type,
+                    source_id=source_id,
+                    source_text=source_text,
+                    quote=quote,
+                    anchor=anchor,
+                )
+            )
+
+        for value in refs[:64]:
+            if not isinstance(value, dict):
+                continue
+            quote = str(value.get("quote", "")).strip()
+            if not quote:
+                continue
+            tool_use_id = str(value.get("tool_use_id", "")).strip()
+            source = str(value.get("source", "")).strip()
+            source_text = ""
+            source_type = ""
+            source_id = ""
+            if tool_use_id:
+                block = tool_results.get(tool_use_id)
+                if block is not None and quote in block.output:
+                    source_text = block.output
+                    source_type = "tool_result"
+                    source_id = block.tool_use_id
+                else:
+                    # Provider-generated IDs are often stale or fabricated.
+                    # Recover provenance only when the exact quote is present
+                    # in an actually successful persisted tool result.
+                    matched = next(
+                        (
+                            candidate
+                            for candidate in reversed(successful_results)
+                            if quote in candidate.output
+                        ),
+                        None,
+                    )
+                    if matched is None:
+                        continue
+                    source_text = matched.output
+                    source_type = "tool_result"
+                    source_id = matched.tool_use_id
+            elif source == "user_message":
+                source_text = user_text
+                source_type = "user_message"
+                source_id = self._turn_id or "current_turn"
+            else:
+                matched = next(
+                    (
+                        candidate
+                        for candidate in reversed(successful_results)
+                        if quote in candidate.output
+                    ),
+                    None,
+                )
+                if matched is None:
+                    continue
+                source_text = matched.output
+                source_type = "tool_result"
+                source_id = matched.tool_use_id
+            if quote not in source_text:
+                continue
+            add_verified(
+                source_type=source_type,
+                source_id=source_id,
+                source_text=source_text,
+                quote=quote,
+                anchor=str(value.get("anchor", "")),
+            )
+
+        # Proactively recover facts from sources already collected in this
+        # session. Context overlap prevents an unrelated arXiv page that merely
+        # shares an identifier from grounding the claim.
+        combined = "\n".join(supported_text)
+        for marker in fact_markers:
+            if marker.startswith(("citation:", "claim:")) or _marker_value(marker) in combined:
+                continue
+            marker_value = _marker_value(marker)
+            if marker_value in user_text:
+                quote = _context_line(user_text, marker) or marker_value
+                add_verified(
+                    source_type="user_message",
+                    source_id=self._turn_id or "current_turn",
+                    source_text=user_text,
+                    quote=quote,
+                )
+                combined = "\n".join(supported_text)
+                continue
+            for block in reversed(successful_results):
+                if block.tool_name not in _AUTO_EVIDENCE_TOOLS:
+                    continue
+                if not _contextually_supports(block.output, new_text, marker):
+                    continue
+                quote = _context_line(block.output, marker) or marker_value
+                add_verified(
+                    source_type="tool_result",
+                    source_id=block.tool_use_id,
+                    source_text=block.output,
+                    quote=quote,
+                    anchor=_context_line(new_text, marker),
+                )
+                combined = "\n".join(supported_text)
+                break
+
+        unsupported: list[str] = []
+        for marker in fact_markers:
+            # Citations and verification language require a real validated
+            # source, while numeric facts must appear verbatim in the quote.
+            if marker.startswith(("citation:", "claim:")):
+                if not verified:
+                    unsupported.append(marker)
+            elif marker.startswith("source_id:"):
+                marker_value = _marker_value(marker)
+                if not any(
+                    marker_value in quote
+                    and (
+                        source_type == "user_message"
+                        or _contextually_supports(source_text, new_text, marker)
+                    )
+                    for source_type, source_text, quote in support_records
+                ):
+                    unsupported.append(marker)
+            elif _marker_value(marker) not in combined:
+                unsupported.append(marker)
+        return verified, unsupported
+
+    def _log_tool_completion(
+        self,
+        tb: ToolUseBlock,
+        status: str,
+        *,
+        metadata: dict[str, Any] | None = None,
+        duration_started: float | None = None,
+    ) -> None:
+        details = metadata or {}
+        duration_ms = (
+            max(0, int((time.monotonic() - duration_started) * 1000))
+            if duration_started is not None
+            else 0
+        )
+        log = logger.warning if status in {"error", "denied"} else logger.info
+        log(
+            "agent_tool_completed session_id=%s turn_id=%s tool_use_id=%s "
+            "tool_name=%s status=%s error_code=%s duration_ms=%d",
+            self.session.session_id,
+            self._turn_id,
+            tb.id,
+            tb.name,
+            status,
+            str(details.get("code", "")),
+            duration_ms,
+        )
+
+    def _editor_conflict(self, resolved_path: str) -> tuple[str, dict[str, Any]] | None:
+        if not resolved_path:
+            return None
+        try:
+            key = str(Path(resolved_path).resolve()).lower()
+        except (OSError, ValueError):
+            return None
+        state = self._editor_files.get(key)
+        if state is None:
+            return None
+        if bool(state.get("is_dirty", False)):
+            return (
+                "File mutation blocked because the same file has unsaved editor changes. "
+                "Save or resolve the editor version before retrying.",
+                {
+                    "code": "dirty_editor_conflict",
+                    "file_path": resolved_path,
+                    "editor_version": int(state.get("editor_version", 0) or 0),
+                    "suggested_next_action": "save_or_resolve_editor",
+                },
+            )
+        expected_hash = str(state.get("content_hash", "") or "").lower()
+        if not expected_hash:
+            return None
+        try:
+            path = Path(resolved_path)
+            if not path.is_file():
+                return None
+            disk_text = path.read_text(encoding="utf-8", errors="strict")
+            disk_hash = hashlib.sha256(disk_text.encode("utf-8")).hexdigest()
+        except (OSError, UnicodeError):
+            return None
+        if disk_hash == expected_hash:
+            return None
+        return (
+            "File mutation blocked because the editor snapshot no longer matches the disk file.",
+            {
+                "code": "editor_version_conflict",
+                "file_path": resolved_path,
+                "expected_hash": expected_hash,
+                "actual_hash": disk_hash,
+                "editor_version": int(state.get("editor_version", 0) or 0),
+                "suggested_next_action": "reload_or_resolve_editor",
+            },
+        )
+
     def _record_tool_error(self) -> None:
         self._tool_errors_this_turn += 1
         max_errors = (
@@ -1379,7 +2512,13 @@ class ConversationRuntime:
                 "The task was stopped so the same failing strategy is not repeated."
             )
 
-    def _append_tool_error(self, tb: ToolUseBlock, output: str) -> None:
+    def _append_tool_error(
+        self,
+        tb: ToolUseBlock,
+        output: str,
+        *,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
         self.session.append(
             Message(
                 role=MessageRole.TOOL,
@@ -1389,10 +2528,12 @@ class ConversationRuntime:
                         tool_name=tb.name,
                         output=output,
                         is_error=True,
+                        metadata=dict(metadata or {}),
                     ),
                 ],
             )
         )
+        self._log_tool_completion(tb, "error", metadata=metadata)
         self._auto_save()
 
     def _append_skipped_tool(self, tb: ToolUseBlock, output: str) -> None:
@@ -1409,6 +2550,7 @@ class ConversationRuntime:
                 ],
             )
         )
+        self._log_tool_completion(tb, "skipped")
         self._auto_save()
 
     def _apply_edit_scope(self, tb: ToolUseBlock, args: dict[str, Any]) -> str | None:

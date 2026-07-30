@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
+from dataclasses import dataclass
 
 # Markdown heading pattern: # … or ## … (levels 1–6)
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
@@ -35,6 +37,25 @@ _CONTRAST_RE = re.compile(
     "|".join(_CONTRAST_MARKERS),
     re.IGNORECASE,
 )
+
+
+@dataclass(frozen=True)
+class SectionExcerpt:
+    text: str
+    source_hash: str
+    original_chars: int
+    excerpt_chars: int
+    covered_sections: tuple[str, ...]
+    truncated: bool
+
+    def metadata(self) -> dict:
+        return {
+            "source_hash": self.source_hash,
+            "original_chars": self.original_chars,
+            "excerpt_chars": self.excerpt_chars,
+            "covered_sections": list(self.covered_sections),
+            "truncated": self.truncated,
+        }
 
 
 def find_section(text: str, names: list[str]) -> str | None:
@@ -109,10 +130,40 @@ def build_section_excerpt(
     Otherwise the character budget is distributed across every Markdown
     section, preserving document order.
     """
+    return build_section_excerpt_envelope(
+        text,
+        max_chars=max_chars,
+        preferred_headings=preferred_headings,
+    ).text
+
+
+def build_section_excerpt_envelope(
+    text: str,
+    *,
+    max_chars: int,
+    preferred_headings: tuple[str, ...] = (),
+) -> SectionExcerpt:
+    """Return the excerpt plus explicit source coverage and truncation metadata."""
+    source_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
     if max_chars <= 0 or not text:
-        return ""
+        return SectionExcerpt(
+            text="",
+            source_hash=source_hash,
+            original_chars=len(text),
+            excerpt_chars=0,
+            covered_sections=(),
+            truncated=bool(text),
+        )
     if len(text) <= max_chars and not preferred_headings:
-        return text
+        headings = tuple(heading for heading, _body in split_markdown_sections(text) if heading)
+        return SectionExcerpt(
+            text=text,
+            source_hash=source_hash,
+            original_chars=len(text),
+            excerpt_chars=len(text),
+            covered_sections=headings,
+            truncated=False,
+        )
 
     sections = split_markdown_sections(text)
     preferred = tuple(term.lower() for term in preferred_headings)
@@ -125,11 +176,20 @@ def build_section_excerpt(
         selected = sections
 
     joined = "\n\n".join(body for _, body in selected)
+    covered_sections = tuple(heading or "(preamble)" for heading, _body in selected)
     if len(joined) <= max_chars:
-        return joined
+        excerpt = joined
+    else:
+        # Give every selected section representation instead of taking a prefix.
+        separator_budget = max(0, 2 * (len(selected) - 1))
+        quota = max(160, (max_chars - separator_budget) // max(1, len(selected)))
+        excerpt = "\n\n".join(body[:quota] for _, body in selected)[:max_chars]
 
-    # Give every selected section representation instead of taking a prefix.
-    separator_budget = max(0, 2 * (len(selected) - 1))
-    quota = max(160, (max_chars - separator_budget) // max(1, len(selected)))
-    excerpt = "\n\n".join(body[:quota] for _, body in selected)
-    return excerpt[:max_chars]
+    return SectionExcerpt(
+        text=excerpt,
+        source_hash=source_hash,
+        original_chars=len(text),
+        excerpt_chars=len(excerpt),
+        covered_sections=covered_sections,
+        truncated=excerpt != text,
+    )
