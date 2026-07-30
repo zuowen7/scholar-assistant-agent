@@ -4,7 +4,12 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.agent_v2.router import _build_system_prompt, register_agent_v2_routes
+from src.agent_v2.router import (
+    ChatRequestV2,
+    _build_system_prompt,
+    _persisted_turn_message,
+    register_agent_v2_routes,
+)
 from src.agent_v2.runtime.session import Session
 from src.agent_v2.types import Message, MessageRole, TextBlock, ToolResultBlock, ToolUseBlock
 
@@ -21,6 +26,40 @@ def test_system_prompt_makes_the_latest_user_turn_authoritative():
     assert "latest user message is the active task" in prompt
     assert "Do not resume unrelated unfinished work" in prompt
     assert "run_sub_agent cannot execute commands" in prompt
+
+
+def test_system_prompt_enforces_academic_evidence_and_incomplete_result_contracts():
+    prompt = _build_system_prompt("C:/workspace", [])
+
+    assert "Never invent or infer a new number" in prompt
+    assert "evidence_refs" in prompt
+    assert "complete=false" in prompt
+    assert "PARTIAL" in prompt
+    assert "rendered artifact" in prompt
+    assert prompt.index("# Core safety contract") < prompt.index("Current date:")
+
+
+def test_persisted_turn_externalizes_editor_body_with_hash_and_dirty_state():
+    request = ChatRequestV2(
+        message="Review this draft",
+        context_file="draft/main.md",
+        context_text="private unsaved manuscript body",
+        editor_files=[
+            {
+                "file_path": "draft/main.md",
+                "is_dirty": True,
+                "content_hash": "a" * 64,
+                "editor_version": 4,
+            }
+        ],
+    )
+
+    persisted = _persisted_turn_message(request)
+
+    assert "private unsaved manuscript body" not in persisted
+    assert 'content_hash="' + ("a" * 64) + '"' in persisted
+    assert 'dirty="true"' in persisted
+    assert 'snapshot_status="not_persisted"' in persisted
 
 
 def test_persisted_session_messages_are_available_to_the_history_panel(tmp_path, monkeypatch):
@@ -326,6 +365,10 @@ def test_selected_figure_skill_exposes_approved_command_execution(tmp_path, monk
 
     assert runtime.tool_registry.get("run_command") is not None
     assert "run_command" in runtime.system_prompt
+    assert runtime.session.meta.prompt_bundle_version
+    assert len(runtime.session.meta.system_prompt_hash) == 64
+    assert runtime.session.meta.active_skills == ["nature_figure"]
+    assert len(runtime.session.meta.tool_schema_hash) == 64
 
 
 _RUNTIME_SKILL_TOOL_CONTRACTS = [

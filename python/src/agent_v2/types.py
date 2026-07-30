@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import time
+import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -77,6 +79,13 @@ class Message:
     role: MessageRole
     blocks: list[ContentBlock] = field(default_factory=list)
     usage: TokenUsage | None = None
+    message_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    turn_id: str = ""
+    created_ms: int = field(default_factory=lambda: int(time.time() * 1000))
+    original_chars: int = 0
+    truncated: bool = False
+    persisted_text: str | None = field(default=None, repr=False)
+    context_externalized: bool = False
 
     def text_content(self) -> str:
         return "".join(b.text for b in self.blocks if isinstance(b, TextBlock))

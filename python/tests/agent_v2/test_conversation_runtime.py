@@ -391,6 +391,179 @@ class TestBasicFlow:
         assert runtime.session.meta.outcome["stop_code"] == "repeated_tool_call"
 
     @pytest.mark.asyncio
+    async def test_stopped_turn_never_exposes_dsml_tool_protocol(self, workspace: Path):
+        protocol = (
+            "<｜｜DSML｜｜tool_calls>"
+            '<｜｜DSML｜｜invoke name="run_command">{"command":"python make.py"}'
+            "</｜｜DSML｜｜tool_calls>"
+        )
+        provider = _ScriptedProvider(
+            [
+                _tool_response("read_file", {"file_path": "main.md"}),
+                _tool_response("read_file", {"file_path": "main.md"}),
+                _tool_response("read_file", {"file_path": "main.md"}),
+                _text_response(protocol),
+                _text_response(protocol),
+            ]
+        )
+        registry = create_default_registry(workspace_root=workspace)
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=Session(workspace=str(workspace)),
+        )
+
+        events = await _collect_events(runtime, "repeat until stopped")
+        visible = "\n".join(
+            str(event.data.get("text", "")) + str(event.data.get("token", "")) for event in events
+        )
+
+        assert "DSML" not in visible
+        partial = next(event for event in events if event.type == AgentEventType.RESPONSE)
+        assert partial.data["partial"] is True
+        assert partial.data["stop_code"] == "repeated_tool_call"
+        assert "repeated_tool_call" in partial.data["text"]
+
+    @pytest.mark.asyncio
+    async def test_academic_numeric_mutation_requires_verified_evidence_before_approval(
+        self, workspace: Path
+    ):
+        (workspace / "draft").mkdir()
+        manuscript = workspace / "draft" / "main.md"
+        manuscript.write_text("PCA结果待计算。\n", encoding="utf-8")
+        registry = create_default_registry(workspace_root=workspace)
+        runtime = ConversationRuntime(
+            provider=MockProvider(),
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=Session(workspace=str(workspace)),
+            auto_approve=False,
+        )
+        call = ToolUseBlock(
+            id="unsupported-number",
+            name="str_replace",
+            input=json.dumps(
+                {
+                    "file_path": "draft/main.md",
+                    "old_string": "PCA结果待计算。",
+                    "new_string": "PCA累计方差解释率为78.3%。",
+                },
+                ensure_ascii=False,
+            ),
+        )
+
+        events = [event async for event in runtime._execute_tool(call)]
+
+        assert AgentEventType.AWAIT_APPROVAL not in _event_types(events)
+        result = next(event for event in events if event.type == AgentEventType.TOOL_RESULT)
+        assert result.data["metadata"]["code"] == "academic_evidence_required"
+        assert "78.3%" in result.data["metadata"]["missing_facts"]
+        assert manuscript.read_text(encoding="utf-8") == "PCA结果待计算。\n"
+
+    @pytest.mark.asyncio
+    async def test_academic_numeric_mutation_accepts_quote_grounded_tool_evidence(
+        self, workspace: Path
+    ):
+        (workspace / "draft").mkdir()
+        manuscript = workspace / "draft" / "main.md"
+        manuscript.write_text("PCA结果待计算。\n", encoding="utf-8")
+        session = Session(workspace=str(workspace))
+        session.append(
+            Message(
+                role=MessageRole.TOOL,
+                blocks=[
+                    ToolResultBlock(
+                        tool_use_id="calc-1",
+                        tool_name="run_command",
+                        output="Cumulative explained variance: 59.1%",
+                    )
+                ],
+            )
+        )
+        registry = create_default_registry(workspace_root=workspace)
+        runtime = ConversationRuntime(
+            provider=MockProvider(),
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+            auto_approve=True,
+        )
+        call = ToolUseBlock(
+            id="grounded-number",
+            name="str_replace",
+            input=json.dumps(
+                {
+                    "file_path": "draft/main.md",
+                    "old_string": "PCA结果待计算。",
+                    "new_string": "PCA累计方差解释率为59.1%。",
+                    "evidence_refs": [
+                        {
+                            "tool_use_id": "calc-1",
+                            "quote": "Cumulative explained variance: 59.1%",
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+        )
+
+        events = [event async for event in runtime._execute_tool(call)]
+
+        assert not any(
+            event.type == AgentEventType.TOOL_RESULT and event.data.get("is_error")
+            for event in events
+        )
+        assert "59.1%" in manuscript.read_text(encoding="utf-8")
+        checkpoint = next(event for event in events if event.type == AgentEventType.CHECKPOINT)
+        assert checkpoint.data["evidence_refs"][0]["tool_use_id"] == "calc-1"
+
+    @pytest.mark.asyncio
+    async def test_dirty_editor_file_blocks_disk_mutation_before_approval(self, workspace: Path):
+        registry = create_default_registry(workspace_root=workspace)
+        runtime = ConversationRuntime(
+            provider=MockProvider(),
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=Session(workspace=str(workspace)),
+            auto_approve=False,
+            editor_files=[
+                {
+                    "file_path": str(workspace / "main.md"),
+                    "is_dirty": True,
+                    "content_hash": "a" * 64,
+                    "editor_version": 7,
+                }
+            ],
+        )
+        call = ToolUseBlock(
+            id="dirty-edit",
+            name="str_replace",
+            input=json.dumps(
+                {
+                    "file_path": "main.md",
+                    "old_string": "# Hello World",
+                    "new_string": "# Changed",
+                }
+            ),
+        )
+
+        events = [event async for event in runtime._execute_tool(call)]
+
+        assert AgentEventType.AWAIT_APPROVAL not in _event_types(events)
+        result = next(event for event in events if event.type == AgentEventType.TOOL_RESULT)
+        assert result.data["metadata"]["code"] == "dirty_editor_conflict"
+        assert workspace.joinpath("main.md").read_text(encoding="utf-8") == "# Hello World"
+
+    @pytest.mark.asyncio
     async def test_cr005_empty_tool_calls(self, workspace: Path):
         """CR-005: LLM 返回无 tool_call（纯文本），直接结束"""
         provider = MockProvider()

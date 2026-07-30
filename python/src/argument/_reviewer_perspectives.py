@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -11,7 +12,7 @@ from src.utils.json_extract import extract_json_array
 from .companion_models import ReviewPoint
 from .llm_client import call_llm_chat
 from .reviewer import _parse_llm_points
-from .section_utils import build_section_excerpt
+from .section_utils import SectionExcerpt, build_section_excerpt_envelope
 
 logger = logging.getLogger(__name__)
 
@@ -40,14 +41,25 @@ _EXPERIMENT_HEADINGS = (
 )
 
 
+def _render_review_prompt(template: str, venue_profile: str, excerpt: SectionExcerpt) -> str:
+    metadata = json.dumps(excerpt.metadata(), ensure_ascii=False, sort_keys=True)
+    return (
+        template.replace("{venue}", venue_profile[:400])
+        .replace("{source_metadata}", metadata)
+        .replace("{text}", excerpt.text)
+    )
+
+
 def _load_prompt(name: str) -> str:
-    """Load a prompt template from tasks_review/; return '' if missing."""
+    """Load a required reviewer prompt; never silently weaken review behavior."""
     p = _PROMPTS_DIR / name
     try:
-        return p.read_text(encoding="utf-8") if p.exists() else ""
-    except Exception as e:
-        logger.warning("failed to load review prompt template %s: %s", name, e)
-        return ""
+        content = p.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise RuntimeError(f"required review prompt unavailable: {name}: {exc}") from exc
+    if not content.strip():
+        raise RuntimeError(f"required review prompt is empty: {name}")
+    return content
 
 
 async def _call_perspective_prompt(
@@ -94,18 +106,18 @@ async def run_method_perspective(
     raise_errors: bool = False,
 ) -> list[ReviewPoint]:
     """LLM review focused on methodology and theoretical soundness."""
-    excerpt = build_section_excerpt(
+    excerpt = build_section_excerpt_envelope(
         text,
         max_chars=14000,
         preferred_headings=_METHOD_HEADINGS,
     )
     template = _load_prompt("perspective_method.md")
     if template:
-        prompt = template.replace("{venue}", venue_profile[:400]).replace("{text}", excerpt)
+        prompt = _render_review_prompt(template, venue_profile, excerpt)
     else:
         prompt = (
             "You are Reviewer-2 focusing ONLY on methodology and theoretical soundness.\n"
-            f"Venue: {venue_profile[:400]}\n\nPaper:\n{excerpt}\n\n"
+            f"Venue: {venue_profile[:400]}\n\nPaper:\n{excerpt.text}\n\n"
             "Focus: research design, approach validity, theoretical grounding, logical soundness of methods.\n"
             "Return 3-6 concrete issues as ONLY a JSON array: "
             '[{"category":...,"severity":"minor|major|fatal","title":...,"detail":...}]'
@@ -133,18 +145,18 @@ async def run_experiment_perspective(
     raise_errors: bool = False,
 ) -> list[ReviewPoint]:
     """LLM review focused on experiments and evaluation."""
-    excerpt = build_section_excerpt(
+    excerpt = build_section_excerpt_envelope(
         text,
         max_chars=16000,
         preferred_headings=_EXPERIMENT_HEADINGS,
     )
     template = _load_prompt("perspective_experiment.md")
     if template:
-        prompt = template.replace("{venue}", venue_profile[:400]).replace("{text}", excerpt)
+        prompt = _render_review_prompt(template, venue_profile, excerpt)
     else:
         prompt = (
             "You are Reviewer-2 focusing ONLY on experiments and evaluation.\n"
-            f"Venue: {venue_profile[:400]}\n\nPaper:\n{excerpt}\n\n"
+            f"Venue: {venue_profile[:400]}\n\nPaper:\n{excerpt.text}\n\n"
             "Focus: baselines, ablation studies, experimental setup, reproducibility, statistical significance.\n"
             "Return 3-6 concrete issues as ONLY a JSON array: "
             '[{"category":...,"severity":"minor|major|fatal","title":...,"detail":...}]'
@@ -172,14 +184,14 @@ async def run_writing_perspective(
     raise_errors: bool = False,
 ) -> list[ReviewPoint]:
     """LLM review focused on writing quality and presentation."""
-    excerpt = build_section_excerpt(text, max_chars=14000)
+    excerpt = build_section_excerpt_envelope(text, max_chars=14000)
     template = _load_prompt("perspective_writing.md")
     if template:
-        prompt = template.replace("{venue}", venue_profile[:400]).replace("{text}", excerpt)
+        prompt = _render_review_prompt(template, venue_profile, excerpt)
     else:
         prompt = (
             "You are Reviewer-2 focusing ONLY on writing quality and presentation clarity.\n"
-            f"Venue: {venue_profile[:400]}\n\nPaper:\n{excerpt}\n\n"
+            f"Venue: {venue_profile[:400]}\n\nPaper:\n{excerpt.text}\n\n"
             "Focus: clarity, structure, language quality, figure captions, related work positioning.\n"
             "Return 3-6 concrete issues as ONLY a JSON array: "
             '[{"category":...,"severity":"minor|major|fatal","title":...,"detail":...}]'
@@ -229,14 +241,14 @@ async def run_devils_advocate_perspective(
     raise_errors: bool = False,
 ) -> list[ReviewPoint]:
     """LLM review from a deliberately contrarian stance."""
-    excerpt = build_section_excerpt(text, max_chars=16000)
+    excerpt = build_section_excerpt_envelope(text, max_chars=16000)
     template = _load_prompt("perspective_devils_advocate.md")
     if template:
-        prompt = template.replace("{venue}", venue_profile[:400]).replace("{text}", excerpt)
+        prompt = _render_review_prompt(template, venue_profile, excerpt)
     else:
         prompt = (
             "You are Devil's Advocate — find the strongest counter-arguments.\n"
-            f"Venue: {venue_profile[:400]}\n\nPaper:\n{excerpt}\n\n"
+            f"Venue: {venue_profile[:400]}\n\nPaper:\n{excerpt.text}\n\n"
             "Focus: weakest links, alternative explanations, edge cases, failing assumptions.\n"
             "Return 3-6 concrete issues as ONLY a JSON array: "
             '[{"category":"soundness|claim_overreach|experiment_design|other",'

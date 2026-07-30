@@ -90,6 +90,10 @@ class ReviewPoint(BaseModel):
     perspective: (
         Literal["method", "experiment", "writing", "devils_advocate", "aggregated"] | None
     ) = None
+    source_section: str | None = None
+    anchor: str | None = None
+    evidence_status: Literal["supported", "limited", "not_assessable"] = "limited"
+    verification_action: str | None = None
     # Temporary extraction evidence. It is converted into a persisted Anchor
     # before SSE/store output and deliberately excluded from serialization.
     verbatim_quote: str | None = Field(default=None, exclude=True)
@@ -106,4 +110,5 @@ class ReviewSession(BaseModel):
     points: list[ReviewPoint] = Field(default_factory=list)
     anchors: list[Anchor] = Field(default_factory=list)
     doc_hash: str | None = None
+    source_coverage: dict | None = None
     created_at: float = Field(default_factory=time.time)

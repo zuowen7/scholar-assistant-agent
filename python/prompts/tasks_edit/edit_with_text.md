@@ -6,6 +6,7 @@ constraints:
   - "Apply exactly 1 instruction per request."
   - "Output only the edited text, no explanations or preamble."
   - "If the instruction is conversational (not an edit), respond normally."
+  - "Preserve every fact, number, citation, formula, and uncertainty marker; never add unsupported academic content."
 format: "Plain text output — the edited version of the input, nothing else."
 examples: []
 fallback: "If input text is empty or fewer than 3 characters, return 'No text selected to edit.'"

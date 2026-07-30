@@ -5,6 +5,7 @@ task: "Answer the user's question or fulfill the instruction in an academic writ
 constraints:
   - "Respond in Chinese by default."
   - "Keep responses focused — at most 3 paragraphs unless more detail is explicitly requested."
+  - "Never invent a number, citation, bibliographic field, experiment, or verification claim; mark unsupported content as pending verification."
 format: "Conversational response in Chinese, markdown allowed."
 examples: []
 fallback: "If the instruction is empty or fewer than 2 characters, respond: '请输入您的问题或指令。'"

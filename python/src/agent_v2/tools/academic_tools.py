@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import ipaddress
 import json
 import os
@@ -27,6 +28,124 @@ _LATEX_CITE_RE = re.compile(r"\\cite\w*\{([^}]+)}")
 _PANDOC_CITE_RE = re.compile(r"(?<![\w.])@([A-Za-z0-9_:.+\-/]+)")
 _BIB_KEY_RE = re.compile(r"@\w+\s*\{\s*([^,\s]+)", re.IGNORECASE)
 _WEB_FETCH_MAX_BYTES = 2 * 1024 * 1024
+_ACADEMIC_PAGE_LIMIT = 10
+
+
+def _document_hash(
+    registry: ToolRegistry, doc_id: str, stored_hash: str | None
+) -> tuple[str | None, bool | None]:
+    """Return the current document hash and whether persisted academic state is stale."""
+    if not doc_id:
+        return None, None
+    try:
+        path = registry._resolve_path(doc_id)
+    except (OSError, ValueError):
+        return None, None
+    if not path.is_file():
+        return None, None
+    try:
+        content = path.read_text(encoding="utf-8", errors="strict")
+    except (OSError, UnicodeError):
+        return None, None
+    current_hash = hashlib.sha1(content.encode("utf-8")).hexdigest()[:16]
+    return current_hash, bool(stored_hash and stored_hash != current_hash)
+
+
+def _academic_page(
+    *,
+    registry: ToolRegistry,
+    payload: object,
+    args: dict,
+    primary_collection: str,
+    allowed_collections: set[str],
+) -> dict:
+    """Build a bounded, cursor-addressable envelope for large academic state."""
+    if not isinstance(payload, dict):
+        payload = {"items": payload if isinstance(payload, list) else [payload]}
+        primary_collection = "items"
+        allowed_collections = {"items"}
+
+    mode = str(args.get("mode", "summary") or "summary").strip().lower()
+    if mode not in {"summary", "detail"}:
+        mode = "summary"
+    collection = str(args.get("collection", primary_collection) or primary_collection)
+    if collection not in allowed_collections:
+        collection = primary_collection
+    raw_items = payload.get(collection, [])
+    items = list(raw_items) if isinstance(raw_items, list) else []
+    source_version = hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+    doc_id = str(payload.get("doc_id", "") or "")
+    stored_doc_hash = str(payload.get("doc_hash", "") or "")
+    current_doc_hash, stale = _document_hash(registry, doc_id, stored_doc_hash)
+
+    counts: dict[str, int] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("status") or item.get("severity") or "unclassified")
+        counts[label] = counts.get(label, 0) + 1
+
+    base = {
+        "mode": mode,
+        "collection": collection,
+        "source_id": str(payload.get("id", "") or ""),
+        "source_version": source_version,
+        "source_doc_hash": stored_doc_hash or None,
+        "current_doc_hash": current_doc_hash,
+        "stale": stale,
+        "total_items": len(items),
+        "counts": counts,
+    }
+    if mode == "summary":
+        detail_available = bool(items)
+        return {
+            **base,
+            "returned_items": 0,
+            # A summary is not evidence that every underlying item was read.
+            "complete": not detail_available,
+            "next_cursor": 0 if detail_available else None,
+            "items": [],
+            "available_collections": {
+                name: len(value) if isinstance(value, list) else 0
+                for name, value in payload.items()
+                if name in allowed_collections
+            },
+        }
+
+    requested_ids = args.get("item_ids", [])
+    item_ids = {
+        str(value)
+        for value in requested_ids
+        if isinstance(requested_ids, list) and str(value).strip()
+    }
+    if item_ids:
+        items = [
+            item for item in items if isinstance(item, dict) and str(item.get("id", "")) in item_ids
+        ]
+        cursor = 0
+    else:
+        try:
+            cursor = max(0, int(args.get("cursor", 0) or 0))
+        except (TypeError, ValueError):
+            cursor = 0
+    try:
+        limit = max(1, min(_ACADEMIC_PAGE_LIMIT, int(args.get("limit", 5) or 5)))
+    except (TypeError, ValueError):
+        limit = 5
+    page = items[cursor : cursor + limit]
+    next_cursor = None if cursor + len(page) >= len(items) else cursor + len(page)
+    return {
+        **base,
+        "total_items": len(items),
+        "returned_items": len(page),
+        "complete": next_cursor is None,
+        "next_cursor": next_cursor,
+        "items": page,
+    }
 
 
 def _local_resource_path(source: Path, raw_path: str) -> Path | None:
@@ -600,15 +719,32 @@ def register_academic_tools(registry: ToolRegistry) -> None:
                 if resp.status_code == 404:
                     return ToolResult(f"Claim Ledger not found for: {doc_id}", is_error=True)
                 resp.raise_for_status()
-                return ToolResult(json.dumps(resp.json(), ensure_ascii=False))
+                envelope = _academic_page(
+                    registry=registry,
+                    payload=resp.json(),
+                    args=args,
+                    primary_collection="promises",
+                    allowed_collections={"promises", "anchors"},
+                )
+                return ToolResult(
+                    json.dumps(envelope, ensure_ascii=False),
+                    metadata={
+                        "complete": envelope["complete"],
+                        "next_cursor": envelope["next_cursor"],
+                        "source_version": envelope["source_version"],
+                        "stale": envelope["stale"],
+                    },
+                )
         except Exception as e:
             return ToolResult(f"Claim Ledger lookup failed: {e}", is_error=True)
 
     registry.register(
         "read_argument_ledger",
         (
-            "Read the real Claim Ledger for a manuscript, including promises, "
-            "source anchors, discharge anchors, and fulfillment status."
+            "Read the real Claim Ledger through a completeness envelope. The default summary "
+            "returns counts and source integrity metadata; use mode=detail with cursor/limit or "
+            "item_ids until complete=true. Never describe stale=true or complete=false data as current "
+            "or complete."
         ),
         {
             "type": "object",
@@ -616,6 +752,28 @@ def register_academic_tools(registry: ToolRegistry) -> None:
                 "doc_id": {
                     "type": "string",
                     "description": "Document ID or full workspace file path",
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["summary", "detail"],
+                    "default": "summary",
+                },
+                "collection": {
+                    "type": "string",
+                    "enum": ["promises", "anchors"],
+                    "default": "promises",
+                },
+                "cursor": {"type": "integer", "minimum": 0, "default": 0},
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": _ACADEMIC_PAGE_LIMIT,
+                    "default": 5,
+                },
+                "item_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "maxItems": _ACADEMIC_PAGE_LIMIT,
                 },
             },
             "required": ["doc_id"],
@@ -643,15 +801,35 @@ def register_academic_tools(registry: ToolRegistry) -> None:
                 if resp.status_code == 404:
                     return ToolResult("Reviewer-2 state not found.", is_error=True)
                 resp.raise_for_status()
-                return ToolResult(json.dumps(resp.json(), ensure_ascii=False))
+                payload = resp.json()
+                # A doc_id query returns compact review summaries rather than one
+                # ReviewSession. Keep them pageable under the same envelope.
+                primary = "points" if isinstance(payload, dict) else "items"
+                envelope = _academic_page(
+                    registry=registry,
+                    payload=payload,
+                    args=args,
+                    primary_collection=primary,
+                    allowed_collections={"points", "anchors", "items"},
+                )
+                return ToolResult(
+                    json.dumps(envelope, ensure_ascii=False),
+                    metadata={
+                        "complete": envelope["complete"],
+                        "next_cursor": envelope["next_cursor"],
+                        "source_version": envelope["source_version"],
+                        "stale": envelope["stale"],
+                    },
+                )
         except Exception as e:
             return ToolResult(f"Reviewer-2 lookup failed: {e}", is_error=True)
 
     registry.register(
         "read_reviewer_state",
         (
-            "Read persisted Reviewer-2 criticism, response status, rebuttal data, "
-            "and anchored manuscript evidence."
+            "Read persisted Reviewer-2 state through a completeness envelope. Start with summary, "
+            "then use mode=detail with cursor/limit or item_ids until complete=true. Propagate stale "
+            "and incomplete status into the final assessment."
         ),
         {
             "type": "object",
@@ -660,6 +838,28 @@ def register_academic_tools(registry: ToolRegistry) -> None:
                 "doc_id": {
                     "type": "string",
                     "description": "Document ID or full workspace file path",
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["summary", "detail"],
+                    "default": "summary",
+                },
+                "collection": {
+                    "type": "string",
+                    "enum": ["points", "anchors", "items"],
+                    "default": "points",
+                },
+                "cursor": {"type": "integer", "minimum": 0, "default": 0},
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": _ACADEMIC_PAGE_LIMIT,
+                    "default": 5,
+                },
+                "item_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "maxItems": _ACADEMIC_PAGE_LIMIT,
                 },
             },
         },

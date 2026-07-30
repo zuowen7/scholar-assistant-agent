@@ -35,6 +35,7 @@ class TestSkillParsing:
         assert skill is not None
         assert "Just plain markdown" in skill.content
         assert skill.layer == "agents"  # default
+        assert skill.default_active is False
 
     def test_skill_inject_prompt(self):
         skill = Skill(name="test", layer="agents", content="## Test\nContent")
@@ -77,8 +78,8 @@ class TestSkillRegistry:
 
     def test_build_injection(self):
         reg = SkillRegistry()
-        reg.register(Skill(name="a", layer="agents", content="Agent A"))
-        reg.register(Skill(name="b", layer="soul", content="Soul B"))
+        reg.register(Skill(name="a", layer="agents", content="Agent A", default_active=True))
+        reg.register(Skill(name="b", layer="soul", content="Soul B", default_active=True))
         all_inj = reg.build_prompt_injection()
         assert "Agent A" in all_inj
         assert "Soul B" in all_inj
@@ -89,9 +90,8 @@ class TestSkillRegistry:
 
     def test_build_injection_respects_active(self):
         reg = SkillRegistry()
-        reg.register(Skill(name="active", content="Active"))
-        reg.register(Skill(name="inactive", content="Inactive"))
-        reg.deactivate("inactive")
+        reg.register(Skill(name="active", content="Active", default_active=True))
+        reg.register(Skill(name="inactive", content="Inactive", default_active=False))
         inj = reg.build_prompt_injection()
         assert "Active" in inj
         assert "Inactive" not in inj
@@ -100,6 +100,7 @@ class TestSkillRegistry:
         reg = SkillRegistry()
         reg.register(Skill(name="s1", description="d1"))
         reg.register(Skill(name="s2"))
+        reg.activate("s1")
         reg.deactivate("s2")
         items = reg.list_all()
         assert len(items) == 2
@@ -146,8 +147,12 @@ class TestBuiltinSkills:
         reg = SkillRegistry()
         for s in _BUILTIN_SKILLS:
             reg.register(s)
+            reg.activate(s.name)
         inj = reg.build_prompt_injection(layer="agents")
         assert len(inj) > 100
+
+    def test_builtins_are_opt_in_because_core_safety_lives_in_the_runtime_prompt(self):
+        assert all(skill.default_active is False for skill in _BUILTIN_SKILLS)
 
 
 class TestSkillEdge:
@@ -164,7 +169,7 @@ class TestSkillEdge:
         f.write_text("x" * 100_000, encoding="utf-8")
         reg = SkillRegistry()
         reg.load_dir(tmp_path)
-        assert reg.get("long") is not None
+        assert reg.get("long") is None
 
     def test_unicode_skill_name(self, tmp_path: Path):
         f = tmp_path / "中文技能.md"
@@ -176,6 +181,6 @@ class TestSkillEdge:
     def test_100_skills_injection(self):
         reg = SkillRegistry()
         for i in range(100):
-            reg.register(Skill(name=f"s{i:03d}", content=f"Content {i}"))
-        inj = reg.build_prompt_injection()
-        assert len(inj) > 0
+            reg.register(Skill(name=f"s{i:03d}", content=f"Content {i}", default_active=True))
+        with pytest.raises(ValueError, match="active skill limit"):
+            reg.build_prompt_injection()

@@ -11,8 +11,10 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import time
 import uuid
+from collections import Counter
 from collections.abc import AsyncGenerator
 from contextlib import suppress
 from pathlib import Path
@@ -53,6 +55,46 @@ _SELECTION_MAX_TOOL_CALLS = 4
 _DEFAULT_MAX_TOOL_ERRORS = 5
 _SELECTION_MAX_TOOL_ERRORS = 2
 _MAX_IDENTICAL_TOOL_CALLS = 2
+_APPROVAL_POLICY_VERSION = "1"
+_ACADEMIC_FILE_SUFFIXES = frozenset({".md", ".markdown", ".tex", ".rst", ".adoc"})
+_ACADEMIC_PATH_HINTS = frozenset(
+    {
+        "draft",
+        "paper",
+        "papers",
+        "manuscript",
+        "manuscripts",
+        "thesis",
+        "chapter",
+        "chapters",
+        "论文",
+    }
+)
+_ACADEMIC_FILE_NAMES = frozenset(
+    {
+        "main.md",
+        "main.tex",
+        "paper.md",
+        "paper.tex",
+        "manuscript.md",
+        "manuscript.tex",
+        "thesis.tex",
+    }
+)
+_FACT_NUMBER_RE = re.compile(
+    r"(?<![A-Za-z0-9_])(?:\d+(?:\.\d+)?\s*%|\d{1,3}(?:,\d{3})+|\d+\.\d+|\d{2,})(?![A-Za-z0-9_])"
+)
+_CITATION_RE = re.compile(r"(?<!\!)\[(?:\d+(?:\s*[-,]\s*\d+)*)\]")
+_VERIFICATION_CLAIMS = (
+    "经核查",
+    "经验证",
+    "已验证",
+    "完整读取",
+    "全面核验",
+    "verified",
+    "validated",
+    "complete dataset",
+)
 _SELECTION_SAFE_TOOLS = frozenset(
     {
         "str_replace",
@@ -82,6 +124,53 @@ class _ResourceBudgetExceeded(RuntimeError):
         super().__init__(reason)
         self.code = code
         self.reason = reason
+
+
+class _MalformedToolProtocol(RuntimeError):
+    """Provider returned textual tool protocol instead of a user-facing response."""
+
+
+def _contains_tool_protocol(text: str) -> bool:
+    normalized = text.lower().replace("｜", "|")
+    return any(
+        marker in normalized
+        for marker in (
+            "dsml||tool_calls",
+            "dsml|tool_calls",
+            "<tool_calls>",
+            "</tool_calls>",
+            "<function=",
+        )
+    )
+
+
+def _is_academic_target(path_value: str) -> bool:
+    path = Path(path_value)
+    if path.suffix.lower() not in _ACADEMIC_FILE_SUFFIXES:
+        return False
+    lowered_parts = {part.lower() for part in path.parts}
+    return path.name.lower() in _ACADEMIC_FILE_NAMES or bool(lowered_parts & _ACADEMIC_PATH_HINTS)
+
+
+def _fact_scan_text(text: str) -> str:
+    # Markdown headings frequently contain section numbers rather than claims.
+    return "\n".join(line for line in text.splitlines() if not re.match(r"^\s*#{1,6}\s", line))
+
+
+def _new_fact_markers(old_text: str, new_text: str) -> list[str]:
+    old_scan = _fact_scan_text(old_text)
+    new_scan = _fact_scan_text(new_text)
+    old_markers = Counter(_FACT_NUMBER_RE.findall(old_scan))
+    old_markers.update(f"citation:{value}" for value in _CITATION_RE.findall(old_scan))
+    new_markers = Counter(_FACT_NUMBER_RE.findall(new_scan))
+    new_markers.update(f"citation:{value}" for value in _CITATION_RE.findall(new_scan))
+    for phrase in _VERIFICATION_CLAIMS:
+        old_markers[f"claim:{phrase}"] = old_scan.lower().count(phrase.lower())
+        new_markers[f"claim:{phrase}"] = new_scan.lower().count(phrase.lower())
+    additions: list[str] = []
+    for marker, count in new_markers.items():
+        additions.extend([marker] * max(0, count - old_markers.get(marker, 0)))
+    return additions
 
 
 def _normalize_line_endings(text: str) -> str:
@@ -116,6 +205,8 @@ class ConversationRuntime:
         max_model_calls: int = _DEFAULT_MAX_MODEL_CALLS,
         max_mutation_attempts: int = _DEFAULT_MAX_MUTATION_ATTEMPTS,
         max_active_seconds: float = _DEFAULT_MAX_ACTIVE_SECONDS,
+        workspace_grant: str = "",
+        editor_files: list[dict[str, Any]] | None = None,
     ):
         self.provider = provider
         self.tool_registry = tool_registry
@@ -136,7 +227,30 @@ class ConversationRuntime:
         self.max_model_calls = max(1, int(max_model_calls))
         self.max_mutation_attempts = max(1, int(max_mutation_attempts))
         self.max_active_seconds = max(0.01, float(max_active_seconds))
-        self.usage = UsageTracker(model=session.meta.model)
+        self.workspace_grant = workspace_grant
+        self._editor_files: dict[str, dict[str, Any]] = {}
+        workspace_path = tool_registry._workspace_root
+        for state in editor_files or []:
+            if not isinstance(state, dict):
+                continue
+            raw_path = str(state.get("file_path", "")).strip()
+            if not raw_path:
+                continue
+            try:
+                path = Path(raw_path)
+                if not path.is_absolute() and workspace_path is not None:
+                    path = workspace_path / path
+                resolved = path.resolve()
+                if workspace_path is not None:
+                    resolved.relative_to(workspace_path.resolve())
+            except (OSError, ValueError):
+                continue
+            self._editor_files[str(resolved).lower()] = dict(state)
+        self.usage = UsageTracker(
+            model=session.meta.model,
+            total_input=session.meta.total_usage.input_tokens,
+            total_output=session.meta.total_usage.output_tokens,
+        )
         self.tool_registry.set_runtime_context(
             parent_session_id=session.session_id,
             parent_session_path=getattr(session, "_save_path", ""),
@@ -173,7 +287,11 @@ class ConversationRuntime:
     # ---- Public API ----
 
     async def turn(
-        self, user_message: str, *, resume: bool = False
+        self,
+        user_message: str,
+        *,
+        resume: bool = False,
+        persisted_user_message: str | None = None,
     ) -> AsyncGenerator[AgentEvent, None]:
         if not resume and not user_message.strip():
             yield AgentEvent.error("empty message")
@@ -194,6 +312,7 @@ class ConversationRuntime:
         self._changed_files_this_turn.clear()
         self._turn_message_start = len(self.session.messages)
         self._turn_id = uuid.uuid4().hex
+        self.session.start_turn(self._turn_id)
         self.session.set_outcome("RUNNING", {})
         self._is_streaming = True
         self.last_active_monotonic = time.monotonic()
@@ -201,7 +320,13 @@ class ConversationRuntime:
             yield AgentEvent.session_started(self.session.session_id)
             if not resume:
                 self.session.append(
-                    Message(role=MessageRole.USER, blocks=[TextBlock(text=user_message)])
+                    Message(
+                        role=MessageRole.USER,
+                        blocks=[TextBlock(text=user_message)],
+                        persisted_text=persisted_user_message,
+                        context_externalized=persisted_user_message is not None
+                        and persisted_user_message != user_message,
+                    )
                 )
                 self._auto_save()
 
@@ -505,30 +630,46 @@ class ConversationRuntime:
         emitted_response = False
         try:
             if allow_model and self._model_calls_this_turn < self.max_model_calls:
-                try:
-                    async for event in self._llm_turn(
-                        recovery_instruction=instruction,
-                        force_no_tools=True,
-                    ):
-                        if event.type == AgentEventType.RESPONSE:
-                            emitted_response = True
-                            yield AgentEvent.response(
-                                str(event.data.get("text", "")),
-                                partial=True,
-                                stop_code=stop_code,
-                                stop_reason=stop_reason,
-                                tool_counts=outcome["tool_counts"],
-                                changed_count=len(outcome["changed_files"]),
+                for attempt in range(2):
+                    try:
+                        repair_instruction = instruction
+                        if attempt:
+                            repair_instruction += (
+                                "\n\nThe previous finalization contained provider tool protocol. "
+                                "Return plain user-facing text only. Do not output XML-like tags, "
+                                "DSML, JSON tool calls, or function syntax."
                             )
-                        else:
-                            yield event
-                except Exception as exc:
-                    logger.warning("Agent finalization failed: %s", exc)
+                        async for event in self._llm_turn(
+                            recovery_instruction=repair_instruction,
+                            force_no_tools=True,
+                        ):
+                            if event.type == AgentEventType.RESPONSE:
+                                emitted_response = True
+                                yield AgentEvent.response(
+                                    str(event.data.get("text", "")),
+                                    partial=True,
+                                    stop_code=stop_code,
+                                    stop_reason=stop_reason,
+                                    tool_counts=outcome["tool_counts"],
+                                    changed_count=len(outcome["changed_files"]),
+                                )
+                            else:
+                                yield event
+                        if emitted_response:
+                            break
+                    except _MalformedToolProtocol:
+                        logger.warning(
+                            "Agent finalization returned textual tool protocol (attempt %d/2)",
+                            attempt + 1,
+                        )
+                        continue
+                    except Exception as exc:
+                        logger.warning("Agent finalization failed: %s", exc)
+                        break
             if not emitted_response:
                 counts = outcome["tool_counts"]
                 yield AgentEvent.response(
-                    "Task partially completed. Review the execution details and continue "
-                    "the task to finish the remaining verification.",
+                    self._deterministic_partial_summary(outcome),
                     partial=True,
                     stop_code=stop_code,
                     stop_reason=stop_reason,
@@ -538,6 +679,26 @@ class ConversationRuntime:
         finally:
             self.session.set_outcome("PARTIAL", outcome)
             self._auto_save()
+
+    @staticmethod
+    def _deterministic_partial_summary(outcome: dict[str, Any]) -> str:
+        counts = outcome.get("tool_counts", {})
+        changed_files = list(outcome.get("changed_files", []) or [])
+        parts = [
+            "Task partially completed.",
+            f"Stop code: {outcome.get('stop_code', 'tool_loop_stopped')}.",
+            (
+                "Tool results: "
+                f"{int(counts.get('success', 0) or 0)} succeeded, "
+                f"{int(counts.get('error', 0) or 0)} failed, "
+                f"{int(counts.get('skipped', 0) or 0)} skipped, "
+                f"{int(counts.get('denied', 0) or 0)} denied."
+            ),
+        ]
+        if changed_files:
+            parts.append("Changed files: " + ", ".join(changed_files) + ".")
+        parts.append("Remaining or skipped work is unverified; continue only after reviewing it.")
+        return " ".join(parts)
 
     async def _llm_turn(
         self,
@@ -598,12 +759,23 @@ class ConversationRuntime:
                 return False
             recorded_usage.add(signature)
             self.usage.record(usage)
+            self.session.meta.total_usage = TokenUsage(
+                input_tokens=self.usage.total_input,
+                output_tokens=self.usage.total_output,
+                cache_read_tokens=self.usage.total_cache_read,
+                cache_creation_tokens=self.usage.total_cache_creation,
+            )
+            self.session.meta.usage_available = True
             return True
 
         async for chunk in self._abortable_stream(provider_stream):
             if isinstance(chunk, TextBlock):
                 text_blocks.append(chunk)
-                yield AgentEvent.token(chunk.text)
+                # A reserved no-tools finalizer is buffered until its entire
+                # text is known safe. This prevents DSML/function protocol from
+                # leaking through token events before validation.
+                if not force_no_tools:
+                    yield AgentEvent.token(chunk.text)
             elif isinstance(chunk, ThinkingBlock):
                 yield AgentEvent.thought(chunk.thinking)
             elif isinstance(chunk, ToolUseBlock):
@@ -639,13 +811,24 @@ class ConversationRuntime:
                             text_blocks.append(b)
 
                 full_text = "".join(b.text for b in text_blocks)
+                if _contains_tool_protocol(full_text):
+                    if not force_no_tools:
+                        yield AgentEvent.warning(
+                            "",
+                            code="malformed_tool_call",
+                            reset_stream=True,
+                        )
+                    raise _MalformedToolProtocol(
+                        "Provider returned textual tool protocol instead of a response"
+                    )
                 assistant_blocks = list(tool_blocks)
                 if text_blocks:
                     assistant_blocks.append(TextBlock(text=full_text))
                 if assistant_blocks:
                     self.session.append(
                         Message(
-                            role=MessageRole.ASSISTANT, blocks=assistant_blocks, usage=chunk.usage
+                            role=MessageRole.ASSISTANT,
+                            blocks=assistant_blocks,
                         )
                     )
                     self._auto_save()
@@ -697,11 +880,13 @@ class ConversationRuntime:
                                 skip_output,
                                 status="skipped",
                             )
+                            self._log_tool_completion(remaining, "skipped")
                         self._auto_save()
                         return
                 return
 
     async def _execute_tool(self, tb: ToolUseBlock) -> AsyncGenerator[AgentEvent, None]:
+        tool_started = time.monotonic()
         args = {}
         try:
             if tb.input:
@@ -780,6 +965,7 @@ class ConversationRuntime:
                 },
             )
             self._auto_save()
+            self._log_tool_completion(tb, "skipped", duration_started=tool_started)
             yield AgentEvent.tool_result(
                 tb.id,
                 tb.name,
@@ -851,6 +1037,12 @@ class ConversationRuntime:
                     )
                 )
                 self._auto_save()
+                self._log_tool_completion(
+                    tb,
+                    "denied",
+                    metadata={"code": "hook_denied"},
+                    duration_started=tool_started,
+                )
                 yield AgentEvent.tool_denied(tb.id, tb.name, reason)
                 yield AgentEvent.tool_result(tb.id, tb.name, reason, is_error=True, status="denied")
                 self._record_tool_error()
@@ -899,11 +1091,16 @@ class ConversationRuntime:
                     output,
                     status="no_change",
                 )
+                self._log_tool_completion(tb, "no_change", duration_started=tool_started)
                 return
         spec = self.tool_registry.get(tb.name)
         preflight_result = self.tool_registry.preflight(tb.name, args)
         if preflight_result is not None:
-            self._append_tool_error(tb, preflight_result.output)
+            self._append_tool_error(
+                tb,
+                preflight_result.output,
+                metadata=dict(preflight_result.metadata or {}),
+            )
             self._record_tool_error()
             yield AgentEvent.tool_result(
                 tb.id,
@@ -920,6 +1117,8 @@ class ConversationRuntime:
         # Capture old content for diff
         old_text = ""
         new_text = ""
+        evidence_old_text = ""
+        verified_evidence_refs: list[dict[str, str]] = []
         file_path = args.get("file_path", "") or args.get("path", "")
         # Resolve to absolute path so frontend can match against editor tabs
         resolved_path = file_path
@@ -933,16 +1132,70 @@ class ConversationRuntime:
         if tb.name == "str_replace":
             old_text = args.get("old_string", "")
             new_text = args.get("new_string", "")
+            evidence_old_text = old_text
         elif tb.name == "write_file":
             new_text = args.get("content", "")
             if resolved_path:
                 try:
                     full = Path(resolved_path)
                     if full.is_file():
-                        old_text = full.read_text(encoding="utf-8", errors="replace")[:4000]
+                        evidence_old_text = full.read_text(encoding="utf-8", errors="replace")
+                        old_text = evidence_old_text[:4000]
                 except Exception:
                     pass
         result_metadata: dict[str, Any] = {}
+
+        if tb.name in {"write_file", "str_replace"}:
+            conflict = self._editor_conflict(resolved_path)
+            if conflict is not None:
+                detail, metadata = conflict
+                self._append_tool_error(tb, detail, metadata=metadata)
+                self._record_tool_error()
+                yield AgentEvent.tool_result(
+                    tb.id,
+                    tb.name,
+                    detail,
+                    is_error=True,
+                    status="error",
+                    metadata=metadata,
+                )
+                return
+
+        if tb.name in {"write_file", "str_replace"} and _is_academic_target(resolved_path):
+            missing_facts = _new_fact_markers(evidence_old_text, new_text)
+            if missing_facts:
+                verified_evidence_refs, unsupported_facts = self._verify_evidence_refs(
+                    args.get("evidence_refs"),
+                    missing_facts,
+                )
+                if unsupported_facts:
+                    display_facts = [
+                        value.split(":", 1)[1] if ":" in value else value
+                        for value in unsupported_facts
+                    ]
+                    metadata = {
+                        "code": "academic_evidence_required",
+                        "missing_facts": display_facts,
+                        "suggested_next_action": (
+                            "Read the source or run the calculation first, then retry with "
+                            "quote-grounded evidence_refs."
+                        ),
+                    }
+                    detail = (
+                        "Academic evidence gate blocked the mutation before approval. "
+                        "Unsupported new facts: " + ", ".join(display_facts)
+                    )
+                    self._append_tool_error(tb, detail, metadata=metadata)
+                    self._record_tool_error()
+                    yield AgentEvent.tool_result(
+                        tb.id,
+                        tb.name,
+                        detail,
+                        is_error=True,
+                        status="error",
+                        metadata=metadata,
+                    )
+                    return
 
         if perm_result.is_denied:
             yield AgentEvent.tool_denied(tb.id, tb.name, perm_result.reason)
@@ -956,9 +1209,17 @@ class ConversationRuntime:
             approval_key = self._approval_key(tb.name, args, resolved_path)
             requires_approval = bool(spec and spec.requires_approval)
             # All side-effecting tools use the same capability-based approval path.
+            session_scope_approved = (
+                approval_key in self._session_approved_actions
+                or self.session.has_session_approval(
+                    approval_key,
+                    workspace_grant=self.workspace_grant,
+                    policy_version=_APPROVAL_POLICY_VERSION,
+                )
+            )
             if (
                 hook_asks_for_approval or (requires_approval and not self.auto_approve)
-            ) and approval_key not in self._session_approved_actions:
+            ) and not session_scope_approved:
                 if tb.name == "run_command":
                     approval_reason = (
                         f"Agent wants to run a command in {args.get('cwd', '.')}: "
@@ -1029,18 +1290,31 @@ class ConversationRuntime:
                     yield AgentEvent.tool_result(
                         tb.id, tb.name, tool_output, is_error=True, status="denied"
                     )
+                    self._log_tool_completion(
+                        tb,
+                        "denied",
+                        metadata={"code": decision},
+                        duration_started=tool_started,
+                    )
                     if not self._aborted:
                         self._approval_denied = True
                         self._approval_stop_reason = stop_reason
                     return
                 if decision == "allow_session":
                     self._session_approved_actions.add(approval_key)
+                    self.session.grant_session_approval(
+                        approval_key,
+                        workspace_grant=self.workspace_grant,
+                        policy_version=_APPROVAL_POLICY_VERSION,
+                    )
+                    self._auto_save()
 
             # Capture an exact pre-image immediately before execution. Preview
             # text is intentionally truncated and cannot support reliable Undo.
             mutation_before_exists = False
             mutation_before_content = ""
             mutation_before_bytes = b""
+            mutation_before_hash = ""
             mutation_is_binary = tb.name == "export_document"
             mutation_target_path = resolved_path
             if tb.name == "export_document" and resolved_path:
@@ -1060,8 +1334,12 @@ class ConversationRuntime:
                     if mutation_before_exists:
                         if mutation_is_binary:
                             mutation_before_bytes = mutation_path.read_bytes()
+                            mutation_before_hash = hashlib.sha256(mutation_before_bytes).hexdigest()
                         else:
                             mutation_before_content = read_text_exact(mutation_path)
+                            mutation_before_hash = hashlib.sha256(
+                                mutation_before_content.encode("utf-8")
+                            ).hexdigest()
                 except Exception:
                     mutation_before_exists = False
                     mutation_before_content = ""
@@ -1101,6 +1379,8 @@ class ConversationRuntime:
             result_original_chars = result.original_chars
             result_returned_chars = result.returned_chars
             result_metadata = dict(result.metadata or {})
+            if verified_evidence_refs:
+                result_metadata["evidence_refs"] = verified_evidence_refs
             sub_agent_usage = result_metadata.get("sub_agent_usage")
             if isinstance(sub_agent_usage, dict):
                 self.usage.record(
@@ -1189,6 +1469,12 @@ class ConversationRuntime:
                 ],
             )
         )
+        self._log_tool_completion(
+            tb,
+            result_status,
+            metadata=result_metadata,
+            duration_started=tool_started,
+        )
         self._auto_save()
         yield AgentEvent.tool_result(
             tb.id,
@@ -1231,13 +1517,20 @@ class ConversationRuntime:
             if checkpoint_path:
                 self._changed_files_this_turn.add(checkpoint_path)
             new_content = ""
+            checkpoint_after_hash = ""
             if checkpoint_path and not mutation_is_binary:
-                try:
+                with suppress(Exception):
                     fp = Path(checkpoint_path)
                     if fp.is_file():
                         new_content = fp.read_text(encoding="utf-8", errors="replace")
-                except Exception:
-                    pass
+                        checkpoint_after_hash = hashlib.sha256(
+                            new_content.encode("utf-8")
+                        ).hexdigest()
+            elif checkpoint_path and mutation_is_binary:
+                with suppress(Exception):
+                    checkpoint_after_hash = hashlib.sha256(
+                        Path(checkpoint_path).read_bytes()
+                    ).hexdigest()
             yield AgentEvent.checkpoint(
                 {
                     "action": tb.name,
@@ -1245,6 +1538,9 @@ class ConversationRuntime:
                     "workspace": self.session.meta.workspace,
                     "content": new_content[:10000] if new_content else tool_output,
                     "content_truncated": len(new_content) > 10000,
+                    "evidence_refs": verified_evidence_refs,
+                    "before_hash": mutation_before_hash or None,
+                    "after_hash": checkpoint_after_hash or None,
                 }
             )
 
@@ -1367,6 +1663,150 @@ class ConversationRuntime:
             }
         )
 
+    def _verify_evidence_refs(
+        self,
+        raw_refs: Any,
+        fact_markers: list[str],
+    ) -> tuple[list[dict[str, str]], list[str]]:
+        refs = raw_refs if isinstance(raw_refs, list) else []
+        tool_results: dict[str, ToolResultBlock] = {}
+        user_text = ""
+        for message in self.session.messages:
+            if message.role == MessageRole.USER:
+                user_text = message.text_content()
+            for block in message.blocks:
+                if isinstance(block, ToolResultBlock):
+                    tool_results[block.tool_use_id] = block
+
+        verified: list[dict[str, str]] = []
+        supported_text: list[str] = []
+        for value in refs[:16]:
+            if not isinstance(value, dict):
+                continue
+            quote = str(value.get("quote", "")).strip()
+            if not quote:
+                continue
+            tool_use_id = str(value.get("tool_use_id", "")).strip()
+            source = str(value.get("source", "")).strip()
+            source_text = ""
+            source_type = ""
+            source_id = ""
+            if tool_use_id:
+                block = tool_results.get(tool_use_id)
+                if (
+                    block is None
+                    or block.is_error
+                    or block.status in {"error", "denied", "skipped"}
+                ):
+                    continue
+                source_text = block.output
+                source_type = "tool_result"
+                source_id = tool_use_id
+            elif source == "user_message":
+                source_text = user_text
+                source_type = "user_message"
+                source_id = self._turn_id or "current_turn"
+            else:
+                continue
+            if quote not in source_text:
+                continue
+            supported_text.append(quote)
+            verified.append(
+                {
+                    "source": source_type,
+                    "tool_use_id": tool_use_id,
+                    "source_id": source_id,
+                    "source_hash": hashlib.sha256(source_text.encode("utf-8")).hexdigest(),
+                    "quote_hash": hashlib.sha256(quote.encode("utf-8")).hexdigest(),
+                    "anchor": str(value.get("anchor", ""))[:500],
+                }
+            )
+
+        combined = "\n".join(supported_text)
+        unsupported: list[str] = []
+        for marker in fact_markers:
+            # Citations and verification language require a real validated
+            # source, while numeric facts must appear verbatim in the quote.
+            if marker.startswith(("citation:", "claim:")):
+                if not verified:
+                    unsupported.append(marker)
+            elif marker not in combined:
+                unsupported.append(marker)
+        return verified, unsupported
+
+    def _log_tool_completion(
+        self,
+        tb: ToolUseBlock,
+        status: str,
+        *,
+        metadata: dict[str, Any] | None = None,
+        duration_started: float | None = None,
+    ) -> None:
+        details = metadata or {}
+        duration_ms = (
+            max(0, int((time.monotonic() - duration_started) * 1000))
+            if duration_started is not None
+            else 0
+        )
+        log = logger.warning if status in {"error", "denied"} else logger.info
+        log(
+            "agent_tool_completed session_id=%s turn_id=%s tool_use_id=%s "
+            "tool_name=%s status=%s error_code=%s duration_ms=%d",
+            self.session.session_id,
+            self._turn_id,
+            tb.id,
+            tb.name,
+            status,
+            str(details.get("code", "")),
+            duration_ms,
+        )
+
+    def _editor_conflict(self, resolved_path: str) -> tuple[str, dict[str, Any]] | None:
+        if not resolved_path:
+            return None
+        try:
+            key = str(Path(resolved_path).resolve()).lower()
+        except (OSError, ValueError):
+            return None
+        state = self._editor_files.get(key)
+        if state is None:
+            return None
+        if bool(state.get("is_dirty", False)):
+            return (
+                "File mutation blocked because the same file has unsaved editor changes. "
+                "Save or resolve the editor version before retrying.",
+                {
+                    "code": "dirty_editor_conflict",
+                    "file_path": resolved_path,
+                    "editor_version": int(state.get("editor_version", 0) or 0),
+                    "suggested_next_action": "save_or_resolve_editor",
+                },
+            )
+        expected_hash = str(state.get("content_hash", "") or "").lower()
+        if not expected_hash:
+            return None
+        try:
+            path = Path(resolved_path)
+            if not path.is_file():
+                return None
+            disk_text = path.read_text(encoding="utf-8", errors="strict")
+            disk_hash = hashlib.sha256(disk_text.encode("utf-8")).hexdigest()
+        except (OSError, UnicodeError):
+            return None
+        if disk_hash == expected_hash:
+            return None
+        return (
+            "File mutation blocked because the editor snapshot no longer matches the disk file.",
+            {
+                "code": "editor_version_conflict",
+                "file_path": resolved_path,
+                "expected_hash": expected_hash,
+                "actual_hash": disk_hash,
+                "editor_version": int(state.get("editor_version", 0) or 0),
+                "suggested_next_action": "reload_or_resolve_editor",
+            },
+        )
+
     def _record_tool_error(self) -> None:
         self._tool_errors_this_turn += 1
         max_errors = (
@@ -1379,7 +1819,13 @@ class ConversationRuntime:
                 "The task was stopped so the same failing strategy is not repeated."
             )
 
-    def _append_tool_error(self, tb: ToolUseBlock, output: str) -> None:
+    def _append_tool_error(
+        self,
+        tb: ToolUseBlock,
+        output: str,
+        *,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
         self.session.append(
             Message(
                 role=MessageRole.TOOL,
@@ -1389,10 +1835,12 @@ class ConversationRuntime:
                         tool_name=tb.name,
                         output=output,
                         is_error=True,
+                        metadata=dict(metadata or {}),
                     ),
                 ],
             )
         )
+        self._log_tool_completion(tb, "error", metadata=metadata)
         self._auto_save()
 
     def _append_skipped_tool(self, tb: ToolUseBlock, output: str) -> None:
@@ -1409,6 +1857,7 @@ class ConversationRuntime:
                 ],
             )
         )
+        self._log_tool_completion(tb, "skipped")
         self._auto_save()
 
     def _apply_edit_scope(self, tb: ToolUseBlock, args: dict[str, Any]) -> str | None:
