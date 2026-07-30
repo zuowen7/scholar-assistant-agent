@@ -237,6 +237,37 @@ class TestToolExecution:
         assert result.is_error
         assert "inline" in result.output.lower()
 
+    @pytest.mark.skipif(os.name != "nt", reason="Windows shell builtins are platform-specific")
+    @pytest.mark.parametrize(
+        ("command", "suggestion"),
+        [
+            ("dir", "list_dir"),
+            ("mkdir figures", "write_file"),
+        ],
+    )
+    def test_run_command_preflight_explains_windows_shell_builtin_replacement(
+        self, registry: ToolRegistry, command: str, suggestion: str
+    ):
+        result = registry.preflight("run_command", {"command": command})
+
+        assert result is not None
+        assert result.is_error
+        assert result.metadata["code"] == "windows_shell_builtin"
+        assert result.metadata["suggested_next_action"] == suggestion
+
+    @pytest.mark.asyncio
+    async def test_run_command_reports_output_encoding_source(
+        self, registry: ToolRegistry, temp_workspace: Path
+    ):
+        script = temp_workspace / "unicode_probe.py"
+        script.write_text("print('中文路径')\n", encoding="utf-8")
+
+        result = await registry.execute("run_command", {"command": "python unicode_probe.py"})
+
+        assert not result.is_error
+        assert "中文路径" in result.output
+        assert result.metadata["encoding_source"] == "utf-8"
+
     def test_preflight_rejects_missing_required_argument(self, registry: ToolRegistry):
         result = registry.preflight(
             "write_file",

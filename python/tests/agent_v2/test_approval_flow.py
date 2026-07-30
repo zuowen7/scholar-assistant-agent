@@ -21,7 +21,7 @@ from src.agent_v2.runtime.conversation import ConversationRuntime
 from src.agent_v2.runtime.permissions import PermissionMode, policy_from_registry
 from src.agent_v2.runtime.session import Session
 from src.agent_v2.tools.registry import ToolRegistry, ToolResult, create_default_registry
-from src.agent_v2.types import AgentEventType
+from src.agent_v2.types import AgentEventType, ToolUseBlock
 
 
 @pytest.fixture
@@ -413,6 +413,124 @@ class TestApprovalPause:
         await execute_and_decide("first", "allow_session")
         second_events = await execute_and_decide("second", "allow_once")
         assert any(event.type == AgentEventType.AWAIT_APPROVAL for event in second_events)
+
+    @pytest.mark.asyncio
+    async def test_allow_session_survives_runtime_recreation_for_same_grant_and_scope(
+        self, workspace: Path, tmp_path: Path
+    ):
+        session_path = tmp_path / "session.jsonl"
+
+        def make_registry():
+            registry = ToolRegistry(workspace_root=workspace)
+
+            async def custom_process(args):
+                return ToolResult(str(args["command"]))
+
+            registry.register(
+                "custom_process",
+                "custom process",
+                {
+                    "type": "object",
+                    "properties": {"command": {"type": "string"}},
+                    "required": ["command"],
+                },
+                custom_process,
+                permission="workspace-write",
+                effects={"process"},
+            )
+            return registry
+
+        first_session = Session(workspace=str(workspace), session_id="sess_persisted_approval")
+        first_session._save_path = str(session_path)
+        first_registry = make_registry()
+        first = ConversationRuntime(
+            provider=MockProvider(),
+            tool_registry=first_registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, first_registry.permission_specs()
+            ),
+            session=first_session,
+            auto_approve=False,
+            workspace_grant="grant-a",
+        )
+        events = []
+
+        async def collect_first():
+            async for event in first._execute_tool(
+                ToolUseBlock(
+                    id="first-call",
+                    name="custom_process",
+                    input=json.dumps({"command": "same"}),
+                )
+            ):
+                events.append(event)
+
+        task = asyncio.create_task(collect_first())
+        for _ in range(20):
+            approval = next(
+                (event for event in events if event.type == AgentEventType.AWAIT_APPROVAL), None
+            )
+            if approval:
+                assert first.approve(approval.data["id"], "allow_session")
+                break
+            await asyncio.sleep(0.01)
+        await task
+
+        loaded = Session.load(session_path)
+        second_registry = make_registry()
+        second = ConversationRuntime(
+            provider=MockProvider(),
+            tool_registry=second_registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, second_registry.permission_specs()
+            ),
+            session=loaded,
+            auto_approve=False,
+            workspace_grant="grant-a",
+        )
+        second_events = [
+            event
+            async for event in second._execute_tool(
+                ToolUseBlock(
+                    id="second-call",
+                    name="custom_process",
+                    input=json.dumps({"command": "same"}),
+                )
+            )
+        ]
+        assert AgentEventType.AWAIT_APPROVAL not in [event.type for event in second_events]
+
+        third_registry = make_registry()
+        different_grant = ConversationRuntime(
+            provider=MockProvider(),
+            tool_registry=third_registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, third_registry.permission_specs()
+            ),
+            session=Session.load(session_path),
+            auto_approve=False,
+            workspace_grant="grant-b",
+        )
+        different_events = []
+
+        async def collect_different():
+            async for event in different_grant._execute_tool(
+                ToolUseBlock(
+                    id="third-call",
+                    name="custom_process",
+                    input=json.dumps({"command": "same"}),
+                )
+            ):
+                different_events.append(event)
+
+        different_task = asyncio.create_task(collect_different())
+        for _ in range(20):
+            if AgentEventType.AWAIT_APPROVAL in [event.type for event in different_events]:
+                different_grant.abort()
+                break
+            await asyncio.sleep(0.01)
+        await different_task
+        assert AgentEventType.AWAIT_APPROVAL in [event.type for event in different_events]
 
     @pytest.mark.asyncio
     async def test_pre_tool_hook_deny_blocks_execution(self, workspace: Path):

@@ -383,6 +383,10 @@ class TestRunReview:
         complete_data = json.loads(events[-1]["data"])
         assert "session_id" in complete_data
         assert complete_data["session_id"]  # non-empty
+        assert complete_data["source_coverage"]["scope"] == "document"
+        assert complete_data["source_coverage"]["source_hash"]
+        session = store.get_review(complete_data["session_id"])
+        assert session.source_coverage == complete_data["source_coverage"]
 
     @pytest.mark.asyncio
     async def test_llm_verbatim_quote_is_persisted_as_a_navigable_anchor(self, tmp_path):

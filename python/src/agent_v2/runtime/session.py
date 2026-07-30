@@ -40,7 +40,7 @@ from src.agent_v2.types import (
     ToolUseBlock,
 )
 
-_SESSION_VERSION = 2
+_SESSION_VERSION = 3
 _ROTATE_AFTER_BYTES = 256 * 1024
 _MAX_ROTATED_FILES = 3
 _MAX_FIELD_CHARS = 16 * 1024
@@ -84,6 +84,14 @@ class SessionMeta:
     total_usage: TokenUsage = field(default_factory=TokenUsage)
     state: str = "IDLE"
     outcome: dict[str, Any] = field(default_factory=dict)
+    session_approvals: list[dict[str, str]] = field(default_factory=list)
+    prompt_bundle_version: str = ""
+    system_prompt_hash: str = ""
+    active_skills: list[str] = field(default_factory=list)
+    tool_schema_hash: str = ""
+    usage_available: bool = False
+    last_turn_outcome: dict[str, Any] = field(default_factory=dict)
+    session_aggregate: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -178,7 +186,21 @@ def _dict_to_block(d: dict[str, Any]) -> ContentBlock:
 
 
 def _message_to_dict(msg: Message) -> dict[str, Any]:
-    d: dict[str, Any] = {"role": msg.role.value, "blocks": [_block_to_dict(b) for b in msg.blocks]}
+    persisted_blocks = (
+        [TextBlock(text=msg.persisted_text)]
+        if msg.persisted_text is not None and msg.role == MessageRole.USER
+        else msg.blocks
+    )
+    d: dict[str, Any] = {
+        "role": msg.role.value,
+        "blocks": [_block_to_dict(b) for b in persisted_blocks],
+        "message_id": msg.message_id,
+        "turn_id": msg.turn_id,
+        "created_ms": msg.created_ms,
+        "original_chars": msg.original_chars,
+        "truncated": msg.truncated,
+        "context_externalized": msg.context_externalized,
+    }
     if msg.usage:
         d["usage"] = {
             "input_tokens": msg.usage.input_tokens,
@@ -195,7 +217,17 @@ def _dict_to_message(d: dict[str, Any]) -> Message:
         usage = TokenUsage(
             input_tokens=u.get("input_tokens", 0), output_tokens=u.get("output_tokens", 0)
         )
-    return Message(role=MessageRole(d.get("role", "user")), blocks=blocks, usage=usage)
+    return Message(
+        role=MessageRole(d.get("role", "user")),
+        blocks=blocks,
+        usage=usage,
+        message_id=str(d.get("message_id", "") or uuid.uuid4().hex),
+        turn_id=str(d.get("turn_id", "") or ""),
+        created_ms=int(d.get("created_ms", 0) or _now_ms()),
+        original_chars=int(d.get("original_chars", 0) or 0),
+        truncated=bool(d.get("truncated", False)),
+        context_externalized=bool(d.get("context_externalized", False)),
+    )
 
 
 def _mutation_to_dict(record: MutationRecord) -> dict[str, Any]:
@@ -262,6 +294,7 @@ class Session:
         self._messages: list[Message] = []
         self._mutations: list[MutationRecord] = []
         self._save_path: str = ""  # set by router for auto-save
+        self._active_turn_id: str = ""
         self.fork_meta: SessionFork | None = None
 
     @property
@@ -273,10 +306,40 @@ class Session:
         return list(self._messages)
 
     def append(self, msg: Message) -> None:
+        if not msg.turn_id and self._active_turn_id:
+            msg.turn_id = self._active_turn_id
+        if msg.original_chars <= 0:
+            msg.original_chars = sum(
+                len(block.text)
+                if isinstance(block, TextBlock)
+                else len(block.thinking)
+                if isinstance(block, ThinkingBlock)
+                else len(block.input)
+                if isinstance(block, ToolUseBlock)
+                else int(block.original_chars or len(block.output))
+                if isinstance(block, ToolResultBlock)
+                else 0
+                for block in msg.blocks
+            )
+        if not msg.truncated:
+            msg.truncated = any(
+                (isinstance(block, TextBlock) and len(block.text) > _MAX_FIELD_CHARS)
+                or (isinstance(block, ThinkingBlock) and len(block.thinking) > _MAX_FIELD_CHARS)
+                or (isinstance(block, ToolUseBlock) and len(block.input) > _MAX_FIELD_CHARS)
+                or (isinstance(block, ToolResultBlock) and block.truncated)
+                or (isinstance(block, ToolResultBlock) and len(block.output) > _MAX_FIELD_CHARS)
+                for block in msg.blocks
+            )
         self._messages.append(msg)
         self.meta.updated_ms = _now_ms()
         if msg.usage:
             self.meta.total_usage = self.meta.total_usage + msg.usage
+            if msg.usage.total() > 0:
+                self.meta.usage_available = True
+
+    def start_turn(self, turn_id: str) -> None:
+        self._active_turn_id = turn_id
+        self.meta.updated_ms = _now_ms()
 
     def fork(self, branch_name: str | None = None) -> Session:
         """Create a new session forked from the current state."""
@@ -295,6 +358,7 @@ class Session:
         forked._messages = list(self._messages)
         forked._mutations = list(self._mutations)
         forked._save_path = ""
+        forked._active_turn_id = ""
         forked.fork_meta = SessionFork(
             parent_session_id=self.session_id,
             branch_name=branch_name,
@@ -307,6 +371,77 @@ class Session:
     def set_outcome(self, state: str, outcome: dict[str, Any] | None = None) -> None:
         self.meta.state = state
         self.meta.outcome = dict(outcome or {})
+        self.meta.last_turn_outcome = dict(outcome or {})
+        self.meta.session_aggregate = self._build_session_aggregate()
+        self.meta.updated_ms = _now_ms()
+
+    def _build_session_aggregate(self) -> dict[str, Any]:
+        counts = {"success": 0, "error": 0, "denied": 0, "skipped": 0, "no_change": 0}
+        for message in self._messages:
+            for block in message.blocks:
+                if not isinstance(block, ToolResultBlock):
+                    continue
+                status = (
+                    block.status
+                    if block.status in counts
+                    else ("error" if block.is_error else "success")
+                )
+                counts[status] += 1
+        return {
+            "turns": sum(1 for message in self._messages if message.role == MessageRole.USER),
+            "messages": len(self._messages),
+            "tool_counts": counts,
+            "mutation_count": len(self._mutations),
+            "changed_files": sorted({record.path for record in self._mutations}),
+        }
+
+    @staticmethod
+    def _approval_digest(value: str) -> str:
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+    def grant_session_approval(
+        self,
+        approval_key: str,
+        *,
+        workspace_grant: str,
+        policy_version: str,
+    ) -> None:
+        """Persist one exact approval scope without storing command/file text."""
+        if not workspace_grant:
+            return
+        entry = {
+            "scope_hash": self._approval_digest(approval_key),
+            "workspace_grant_hash": self._approval_digest(workspace_grant),
+            "policy_version": policy_version,
+        }
+        self.meta.session_approvals = [
+            existing
+            for existing in self.meta.session_approvals
+            if existing.get("scope_hash") != entry["scope_hash"]
+        ]
+        self.meta.session_approvals.append(entry)
+        self.meta.updated_ms = _now_ms()
+
+    def has_session_approval(
+        self,
+        approval_key: str,
+        *,
+        workspace_grant: str,
+        policy_version: str,
+    ) -> bool:
+        if not workspace_grant:
+            return False
+        scope_hash = self._approval_digest(approval_key)
+        grant_hash = self._approval_digest(workspace_grant)
+        return any(
+            entry.get("scope_hash") == scope_hash
+            and entry.get("workspace_grant_hash") == grant_hash
+            and entry.get("policy_version") == policy_version
+            for entry in self.meta.session_approvals
+        )
+
+    def revoke_session_approvals(self) -> None:
+        self.meta.session_approvals = []
         self.meta.updated_ms = _now_ms()
 
     @property
@@ -466,6 +601,14 @@ class Session:
                 "updated_ms": self.meta.updated_ms,
                 "state": self.meta.state,
                 "outcome": self.meta.outcome,
+                "session_approvals": self.meta.session_approvals,
+                "prompt_bundle_version": self.meta.prompt_bundle_version,
+                "system_prompt_hash": self.meta.system_prompt_hash,
+                "active_skills": self.meta.active_skills,
+                "tool_schema_hash": self.meta.tool_schema_hash,
+                "usage_available": self.meta.usage_available,
+                "last_turn_outcome": self.meta.last_turn_outcome,
+                "session_aggregate": self.meta.session_aggregate,
                 "total_usage": {
                     "input_tokens": self.meta.total_usage.input_tokens,
                     "output_tokens": self.meta.total_usage.output_tokens,
@@ -532,6 +675,31 @@ class Session:
             persisted_state = meta_data.get("state", "IDLE")
             outcome = meta_data.get("outcome", {})
             persisted_outcome = outcome if isinstance(outcome, dict) else {}
+            approvals = meta_data.get("session_approvals", [])
+            session.meta.session_approvals = [
+                {
+                    "scope_hash": str(entry.get("scope_hash", "")),
+                    "workspace_grant_hash": str(entry.get("workspace_grant_hash", "")),
+                    "policy_version": str(entry.get("policy_version", "")),
+                }
+                for entry in approvals
+                if isinstance(entry, dict)
+                and entry.get("scope_hash")
+                and entry.get("workspace_grant_hash")
+            ]
+            session.meta.prompt_bundle_version = str(
+                meta_data.get("prompt_bundle_version", "") or ""
+            )
+            session.meta.system_prompt_hash = str(meta_data.get("system_prompt_hash", "") or "")
+            session.meta.active_skills = [
+                str(value) for value in meta_data.get("active_skills", []) if isinstance(value, str)
+            ]
+            session.meta.tool_schema_hash = str(meta_data.get("tool_schema_hash", "") or "")
+            session.meta.usage_available = bool(meta_data.get("usage_available", False))
+            last_turn = meta_data.get("last_turn_outcome", persisted_outcome)
+            session.meta.last_turn_outcome = dict(last_turn) if isinstance(last_turn, dict) else {}
+            aggregate = meta_data.get("session_aggregate", {})
+            session.meta.session_aggregate = dict(aggregate) if isinstance(aggregate, dict) else {}
             if persisted_state in {"RUNNING", "DRAINING", "FINALIZING"}:
                 session.meta.state = "PARTIAL"
                 session.meta.outcome = {
@@ -556,6 +724,7 @@ class Session:
         session._messages = messages
         session._mutations = mutations
         session._save_path = str(p)
+        session._active_turn_id = ""
         return session
 
     def should_rotate(self, path: str | Path) -> bool:

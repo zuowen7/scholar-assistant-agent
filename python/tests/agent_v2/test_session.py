@@ -85,6 +85,66 @@ class TestBasics:
         assert loaded.meta.outcome["stop_code"] == "tool_budget_exhausted"
         assert loaded.meta.outcome["changed_files"] == ["draft/main.md"]
 
+    def test_message_integrity_metadata_and_session_aggregate_round_trip(
+        self, session: Session, session_path: Path
+    ):
+        session.start_turn("turn-1")
+        session.append(
+            Message(
+                role=MessageRole.USER,
+                blocks=[TextBlock(text="x" * (_MAX_FIELD_CHARS + 100))],
+            )
+        )
+        session.append(
+            Message(
+                role=MessageRole.TOOL,
+                blocks=[
+                    ToolResultBlock(
+                        tool_use_id="tool-1",
+                        tool_name="read_file",
+                        output="partial",
+                        truncated=True,
+                        original_chars=100,
+                        returned_chars=7,
+                    )
+                ],
+            )
+        )
+        session.set_outcome("PARTIAL", {"stop_code": "truncated_context"})
+        session.save(session_path)
+
+        loaded = Session.load(session_path)
+        message = loaded.messages[0]
+        assert message.message_id
+        assert message.turn_id == "turn-1"
+        assert message.created_ms > 0
+        assert message.original_chars == _MAX_FIELD_CHARS + 100
+        assert message.truncated is True
+        assert loaded.meta.last_turn_outcome["stop_code"] == "truncated_context"
+        assert loaded.meta.session_aggregate["turns"] == 1
+        assert loaded.meta.session_aggregate["tool_counts"]["success"] == 1
+
+    def test_session_approval_is_bound_to_grant_and_policy_version(
+        self, session: Session, session_path: Path
+    ):
+        session.grant_session_approval(
+            "run_command:exact",
+            workspace_grant="grant-a",
+            policy_version="1",
+        )
+        session.save(session_path)
+        loaded = Session.load(session_path)
+
+        assert loaded.has_session_approval(
+            "run_command:exact", workspace_grant="grant-a", policy_version="1"
+        )
+        assert not loaded.has_session_approval(
+            "run_command:exact", workspace_grant="grant-b", policy_version="1"
+        )
+        assert not loaded.has_session_approval(
+            "run_command:exact", workspace_grant="grant-a", policy_version="2"
+        )
+
     def test_se004_append_tool_result(self, session: Session):
         session.append(
             Message(

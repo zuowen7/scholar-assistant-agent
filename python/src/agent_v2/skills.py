@@ -20,6 +20,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+_MAX_SKILL_CHARS = 16_000
+_MAX_ACTIVE_SKILLS = 16
+_MAX_SKILL_PROMPT_CHARS = 64_000
+_VALID_LAYERS = frozenset({"soul", "agents", "identity"})
+_VALID_SKILL_NAME = re.compile(r"^[A-Za-z0-9_\-\u4e00-\u9fff]+$")
+
 
 @dataclass
 class Skill:
@@ -29,7 +35,9 @@ class Skill:
     content: str = ""
     source_file: str = ""
     category: str = "general"
-    default_active: bool = True
+    # Task skills are opt-in. Cross-task safety belongs in the immutable
+    # runtime core prompt, not in an arbitrary skill file.
+    default_active: bool = False
 
     def inject_prompt(self) -> str:
         if not self.content.strip():
@@ -66,6 +74,7 @@ class SkillRegistry:
                 continue  # skip helper/docs files
             try:
                 skill = self._parse_skill_file(f)
+                self._validate_skill(skill)
                 self._skills[skill.name] = skill
                 if skill.default_active:
                     self._active.add(skill.name)
@@ -80,7 +89,7 @@ class SkillRegistry:
         description = ""
         layer = "agents"
         category = "custom"
-        default_active = True
+        default_active = False
         content = text
 
         # Parse YAML frontmatter
@@ -115,6 +124,7 @@ class SkillRegistry:
         )
 
     def register(self, skill: Skill) -> None:
+        self._validate_skill(skill)
         self._skills[skill.name] = skill
         if skill.default_active:
             self._active.add(skill.name)
@@ -145,6 +155,10 @@ class SkillRegistry:
 
     def build_prompt_injection(self, layer: str | None = None) -> str:
         """构建注入系统提示词的 skill 内容。"""
+        if len(self._active) > _MAX_ACTIVE_SKILLS:
+            raise ValueError(
+                f"active skill limit exceeded: {len(self._active)} > {_MAX_ACTIVE_SKILLS}"
+            )
         parts = []
         for name in sorted(self._active):
             skill = self._skills.get(name)
@@ -155,7 +169,22 @@ class SkillRegistry:
             inj = skill.inject_prompt()
             if inj:
                 parts.append(inj)
-        return "\n".join(parts)
+        prompt = "\n".join(parts)
+        if len(prompt) > _MAX_SKILL_PROMPT_CHARS:
+            raise ValueError(
+                "active skill prompt budget exceeded: "
+                f"{len(prompt)} > {_MAX_SKILL_PROMPT_CHARS} characters"
+            )
+        return prompt
+
+    @staticmethod
+    def _validate_skill(skill: Skill) -> None:
+        if not _VALID_SKILL_NAME.fullmatch(skill.name):
+            raise ValueError(f"invalid skill name: {skill.name!r}")
+        if skill.layer not in _VALID_LAYERS:
+            raise ValueError(f"invalid skill layer: {skill.layer!r}")
+        if len(skill.content) > _MAX_SKILL_CHARS:
+            raise ValueError(f"skill content exceeds {_MAX_SKILL_CHARS} characters: {skill.name}")
 
 
 # Built-in academic skills
