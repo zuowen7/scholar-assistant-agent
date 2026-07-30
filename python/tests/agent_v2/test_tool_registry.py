@@ -97,6 +97,34 @@ class TestToolExecution:
         assert (temp_workspace / "new.txt").read_text() == "hello world"
 
     @pytest.mark.asyncio
+    async def test_write_file_appends_compact_chunks_atomically(
+        self, registry: ToolRegistry, temp_workspace: Path
+    ):
+        first = await registry.execute(
+            "write_file",
+            {
+                "file_path": "draft.md",
+                "content": "first\n",
+                "mode": "overwrite",
+                "final_chunk": False,
+            },
+        )
+        second = await registry.execute(
+            "write_file",
+            {
+                "file_path": "draft.md",
+                "content": "second\n",
+                "mode": "append",
+                "final_chunk": True,
+            },
+        )
+
+        assert first.metadata["final_chunk"] is False
+        assert second.metadata["mode"] == "append"
+        assert second.metadata["total_chars"] == len("first\nsecond\n")
+        assert (temp_workspace / "draft.md").read_text(encoding="utf-8") == "first\nsecond\n"
+
+    @pytest.mark.asyncio
     async def test_read_file_pages_cover_content_without_overlap(
         self, registry: ToolRegistry, temp_workspace: Path
     ):

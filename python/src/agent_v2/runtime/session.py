@@ -40,7 +40,7 @@ from src.agent_v2.types import (
     ToolUseBlock,
 )
 
-_SESSION_VERSION = 3
+_SESSION_VERSION = 4
 _ROTATE_AFTER_BYTES = 256 * 1024
 _MAX_ROTATED_FILES = 3
 _MAX_FIELD_CHARS = 16 * 1024
@@ -92,6 +92,7 @@ class SessionMeta:
     usage_available: bool = False
     last_turn_outcome: dict[str, Any] = field(default_factory=dict)
     session_aggregate: dict[str, Any] = field(default_factory=dict)
+    pending_actions: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -354,6 +355,7 @@ class Session:
             updated_ms=now,
             state=self.meta.state,
             outcome=dict(self.meta.outcome),
+            pending_actions=[dict(action) for action in self.meta.pending_actions],
         )
         forked._messages = list(self._messages)
         forked._mutations = list(self._mutations)
@@ -375,6 +377,85 @@ class Session:
         self.meta.session_aggregate = self._build_session_aggregate()
         self.meta.updated_ms = _now_ms()
 
+    @staticmethod
+    def _pending_target_key(value: str) -> str:
+        if not value:
+            return ""
+        return os.path.normcase(os.path.normpath(value))
+
+    def record_pending_action(
+        self,
+        *,
+        tool_name: str,
+        target_path: str,
+        error_code: str,
+        turn_id: str = "",
+        details: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Persist a recoverable mutation obligation without storing draft content."""
+        target_key = self._pending_target_key(target_path)
+        now = _now_ms()
+        existing = next(
+            (
+                action
+                for action in self.meta.pending_actions
+                if str(action.get("tool_name", "")) == tool_name
+                and self._pending_target_key(str(action.get("target_path", ""))) == target_key
+            ),
+            None,
+        )
+        safe_details: dict[str, Any] = {}
+        for key, value in (details or {}).items():
+            if isinstance(value, list):
+                safe_details[str(key)] = [str(item)[:200] for item in value[:32]]
+            elif isinstance(value, (str, int, float, bool)) or value is None:
+                safe_details[str(key)] = str(value)[:1000] if isinstance(value, str) else value
+        if existing is not None:
+            existing.update(
+                {
+                    "error_code": error_code,
+                    "updated_ms": now,
+                    "attempt_count": int(existing.get("attempt_count", 0) or 0) + 1,
+                    "details": safe_details,
+                }
+            )
+            self.meta.updated_ms = now
+            return existing
+        action = {
+            "action_id": uuid.uuid4().hex,
+            "tool_name": tool_name,
+            "target_path": target_path,
+            "error_code": error_code,
+            "turn_id": turn_id or self._active_turn_id,
+            "created_ms": now,
+            "updated_ms": now,
+            "attempt_count": 1,
+            "details": safe_details,
+        }
+        self.meta.pending_actions.append(action)
+        self.meta.pending_actions = self.meta.pending_actions[-20:]
+        self.meta.updated_ms = now
+        return action
+
+    def resolve_pending_action(self, *, tool_name: str, target_path: str) -> int:
+        """Resolve pending mutations completed by the same tool or another file mutation."""
+        target_key = self._pending_target_key(target_path)
+        before = len(self.meta.pending_actions)
+        remaining: list[dict[str, Any]] = []
+        for action in self.meta.pending_actions:
+            action_tool = str(action.get("tool_name", ""))
+            action_target = self._pending_target_key(str(action.get("target_path", "")))
+            same_target = bool(target_key and action_target == target_key)
+            unknown_target_same_tool = not action_target and action_tool == tool_name
+            if same_target or unknown_target_same_tool:
+                continue
+            remaining.append(action)
+        self.meta.pending_actions = remaining
+        resolved = before - len(remaining)
+        if resolved:
+            self.meta.updated_ms = _now_ms()
+        return resolved
+
     def _build_session_aggregate(self) -> dict[str, Any]:
         counts = {"success": 0, "error": 0, "denied": 0, "skipped": 0, "no_change": 0}
         for message in self._messages:
@@ -393,6 +474,7 @@ class Session:
             "tool_counts": counts,
             "mutation_count": len(self._mutations),
             "changed_files": sorted({record.path for record in self._mutations}),
+            "pending_action_count": len(self.meta.pending_actions),
         }
 
     @staticmethod
@@ -609,6 +691,7 @@ class Session:
                 "usage_available": self.meta.usage_available,
                 "last_turn_outcome": self.meta.last_turn_outcome,
                 "session_aggregate": self.meta.session_aggregate,
+                "pending_actions": self.meta.pending_actions,
                 "total_usage": {
                     "input_tokens": self.meta.total_usage.input_tokens,
                     "output_tokens": self.meta.total_usage.output_tokens,
@@ -700,7 +783,11 @@ class Session:
             session.meta.last_turn_outcome = dict(last_turn) if isinstance(last_turn, dict) else {}
             aggregate = meta_data.get("session_aggregate", {})
             session.meta.session_aggregate = dict(aggregate) if isinstance(aggregate, dict) else {}
-            if persisted_state in {"RUNNING", "DRAINING", "FINALIZING"}:
+            pending_actions = meta_data.get("pending_actions", [])
+            session.meta.pending_actions = [
+                dict(action) for action in pending_actions if isinstance(action, dict)
+            ][-20:]
+            if persisted_state in {"RUNNING", "RECOVERING", "DRAINING", "FINALIZING"}:
                 session.meta.state = "PARTIAL"
                 session.meta.outcome = {
                     **persisted_outcome,

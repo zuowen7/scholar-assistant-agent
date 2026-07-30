@@ -17,6 +17,7 @@ import uuid
 from collections import Counter
 from collections.abc import AsyncGenerator
 from contextlib import suppress
+from datetime import date
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -51,6 +52,8 @@ _DEFAULT_SOFT_TOOL_CALLS = 56
 _DEFAULT_MAX_MODEL_CALLS = 32
 _DEFAULT_MAX_MUTATION_ATTEMPTS = 20
 _DEFAULT_MAX_ACTIVE_SECONDS = 600.0
+_DEFAULT_MAX_RESEARCH_CALLS = 24
+_DEFAULT_SOFT_RESEARCH_CALLS = 20
 _SELECTION_MAX_TOOL_CALLS = 4
 _DEFAULT_MAX_TOOL_ERRORS = 5
 _SELECTION_MAX_TOOL_ERRORS = 2
@@ -82,9 +85,36 @@ _ACADEMIC_FILE_NAMES = frozenset(
     }
 )
 _FACT_NUMBER_RE = re.compile(
-    r"(?<![A-Za-z0-9_])(?:\d+(?:\.\d+)?\s*%|\d{1,3}(?:,\d{3})+|\d+\.\d+|\d{2,})(?![A-Za-z0-9_])"
+    r"(?<![A-Za-z0-9_-])"
+    r"(?:\d+(?:\.\d+)?\s*%|\d{1,3}(?:,\d{3})+|\d+\.\d+|\d{2,})"
+    r"(?![A-Za-z0-9_-])"
 )
+_ARXIV_ID_RE = re.compile(r"(?<!\d)(\d{4}\.\d{4,5})(?:v\d+)?(?!\d)", re.IGNORECASE)
 _CITATION_RE = re.compile(r"(?<!\!)\[(?:\d+(?:\s*[-,]\s*\d+)*)\]")
+_CONTEXT_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{2,}")
+_CONTEXT_STOPWORDS = frozenset(
+    {
+        "about",
+        "after",
+        "also",
+        "analysis",
+        "article",
+        "based",
+        "before",
+        "between",
+        "from",
+        "into",
+        "model",
+        "paper",
+        "results",
+        "study",
+        "that",
+        "their",
+        "this",
+        "using",
+        "with",
+    }
+)
 _VERIFICATION_CLAIMS = (
     "经核查",
     "经验证",
@@ -106,6 +136,19 @@ _SELECTION_SAFE_TOOLS = frozenset(
         "read_argument_ledger",
         "read_reviewer_state",
     }
+)
+_RESEARCH_TOOLS = frozenset({"arxiv_search", "rag_search", "web_search", "web_fetch"})
+_AUTO_EVIDENCE_TOOLS = frozenset(
+    {"arxiv_search", "rag_search", "read_file", "run_command", "web_fetch"}
+)
+_PENDING_RESUME_MARKERS = (
+    "继续",
+    "未完成",
+    "尚未完成",
+    "接着",
+    "continue",
+    "resume",
+    "unfinished",
 )
 
 
@@ -154,23 +197,68 @@ def _is_academic_target(path_value: str) -> bool:
 
 def _fact_scan_text(text: str) -> str:
     # Markdown headings frequently contain section numbers rather than claims.
-    return "\n".join(line for line in text.splitlines() if not re.match(r"^\s*#{1,6}\s", line))
+    without_current_date = text.replace(date.today().isoformat(), "")
+    return "\n".join(
+        line for line in without_current_date.splitlines() if not re.match(r"^\s*#{1,6}\s", line)
+    )
+
+
+def _fact_marker_counts(text: str) -> Counter[str]:
+    scan = _fact_scan_text(text)
+    arxiv_ids = _ARXIV_ID_RE.findall(scan)
+    without_arxiv_ids = _ARXIV_ID_RE.sub(" ", scan)
+    markers: Counter[str] = Counter(_FACT_NUMBER_RE.findall(without_arxiv_ids))
+    markers.update(f"source_id:{value}" for value in arxiv_ids)
+    markers.update(f"citation:{value}" for value in _CITATION_RE.findall(scan))
+    for phrase in _VERIFICATION_CLAIMS:
+        markers[f"claim:{phrase}"] = scan.lower().count(phrase.lower())
+    return markers
 
 
 def _new_fact_markers(old_text: str, new_text: str) -> list[str]:
-    old_scan = _fact_scan_text(old_text)
-    new_scan = _fact_scan_text(new_text)
-    old_markers = Counter(_FACT_NUMBER_RE.findall(old_scan))
-    old_markers.update(f"citation:{value}" for value in _CITATION_RE.findall(old_scan))
-    new_markers = Counter(_FACT_NUMBER_RE.findall(new_scan))
-    new_markers.update(f"citation:{value}" for value in _CITATION_RE.findall(new_scan))
-    for phrase in _VERIFICATION_CLAIMS:
-        old_markers[f"claim:{phrase}"] = old_scan.lower().count(phrase.lower())
-        new_markers[f"claim:{phrase}"] = new_scan.lower().count(phrase.lower())
+    old_markers = _fact_marker_counts(old_text)
+    new_markers = _fact_marker_counts(new_text)
     additions: list[str] = []
     for marker, count in new_markers.items():
         additions.extend([marker] * max(0, count - old_markers.get(marker, 0)))
     return additions
+
+
+def _marker_value(marker: str) -> str:
+    return marker.split(":", 1)[1] if marker.startswith("source_id:") else marker
+
+
+def _context_line(text: str, marker: str) -> str:
+    value = _marker_value(marker)
+    for line in text.splitlines():
+        if value in line:
+            return line[:2000]
+    index = text.find(value)
+    if index < 0:
+        return ""
+    return text[max(0, index - 500) : index + len(value) + 500]
+
+
+def _context_tokens(text: str) -> set[str]:
+    return {
+        token.lower()
+        for token in _CONTEXT_TOKEN_RE.findall(text)
+        if token.lower() not in _CONTEXT_STOPWORDS
+    }
+
+
+def _contextually_supports(source_text: str, new_text: str, marker: str) -> bool:
+    """Require title/model overlap so an unrelated page sharing an ID cannot pass."""
+    value = _marker_value(marker)
+    if value not in source_text:
+        return False
+    claim_tokens = _context_tokens(_context_line(new_text, marker))
+    shared = claim_tokens & _context_tokens(source_text)
+    if len(shared) >= 2:
+        return True
+    return any(
+        len(token) >= 8 or any(char.isdigit() for char in token) or "-" in token for token in shared
+    )
 
 
 def _normalize_line_endings(text: str) -> str:
@@ -205,6 +293,7 @@ class ConversationRuntime:
         max_model_calls: int = _DEFAULT_MAX_MODEL_CALLS,
         max_mutation_attempts: int = _DEFAULT_MAX_MUTATION_ATTEMPTS,
         max_active_seconds: float = _DEFAULT_MAX_ACTIVE_SECONDS,
+        max_research_calls: int = _DEFAULT_MAX_RESEARCH_CALLS,
         workspace_grant: str = "",
         editor_files: list[dict[str, Any]] | None = None,
     ):
@@ -227,6 +316,10 @@ class ConversationRuntime:
         self.max_model_calls = max(1, int(max_model_calls))
         self.max_mutation_attempts = max(1, int(max_mutation_attempts))
         self.max_active_seconds = max(0.01, float(max_active_seconds))
+        self.max_research_calls = max(1, int(max_research_calls))
+        self.soft_research_calls = min(
+            _DEFAULT_SOFT_RESEARCH_CALLS, max(0, self.max_research_calls - 1)
+        )
         self.workspace_grant = workspace_grant
         self._editor_files: dict[str, dict[str, Any]] = {}
         workspace_path = tool_registry._workspace_root
@@ -267,6 +360,7 @@ class ConversationRuntime:
         self._tool_errors_this_turn = 0
         self._model_calls_this_turn = 0
         self._mutation_attempts_this_turn = 0
+        self._research_tool_calls_this_turn = 0
         self._active_seconds_this_turn = 0.0
         self._tool_call_counts: dict[str, int] = {}
         self._readonly_tool_names = frozenset(
@@ -278,6 +372,9 @@ class ConversationRuntime:
         self._changed_files_this_turn: set[str] = set()
         self._turn_message_start = 0
         self._turn_id = ""
+        self._resume_pending_actions = False
+        self._pending_created_this_turn = False
+        self._pending_response_retries_this_turn = 0
         # Lifecycle tracking — used by router._cleanup_pool to evict stale
         # sessions safely (never evict a streaming session).
         self.last_active_monotonic: float = time.monotonic()
@@ -304,6 +401,7 @@ class ConversationRuntime:
         self._tool_errors_this_turn = 0
         self._model_calls_this_turn = 0
         self._mutation_attempts_this_turn = 0
+        self._research_tool_calls_this_turn = 0
         self._active_seconds_this_turn = 0.0
         self._tool_call_counts.clear()
         self._tool_stop_reason = None
@@ -312,8 +410,19 @@ class ConversationRuntime:
         self._changed_files_this_turn.clear()
         self._turn_message_start = len(self.session.messages)
         self._turn_id = uuid.uuid4().hex
+        lowered_message = user_message.lower()
+        self._resume_pending_actions = resume or any(
+            marker in lowered_message for marker in _PENDING_RESUME_MARKERS
+        )
+        self._pending_created_this_turn = False
+        self._pending_response_retries_this_turn = 0
         self.session.start_turn(self._turn_id)
-        self.session.set_outcome("RUNNING", {})
+        self.session.set_outcome(
+            "RUNNING",
+            {
+                "pending_actions": self._active_pending_actions(),
+            },
+        )
         self._is_streaming = True
         self.last_active_monotonic = time.monotonic()
         try:
@@ -339,10 +448,57 @@ class ConversationRuntime:
 
                 recovery_instruction = self._step_instruction()
                 for retry in range(3):
+                    retry_pending_delivery = False
                     try:
                         async for event in self._llm_turn(
                             recovery_instruction=recovery_instruction
                         ):
+                            if (
+                                event.type == AgentEventType.RESPONSE
+                                and self._active_pending_actions()
+                            ):
+                                if self._pending_response_retries_this_turn < 2:
+                                    self._pending_response_retries_this_turn += 1
+                                    retry_pending_delivery = True
+                                    yield AgentEvent.warning(
+                                        "交付文件仍未完成，已拒绝降级为聊天回复并继续恢复写入。",
+                                        code="pending_actions_retry",
+                                        attempt=self._pending_response_retries_this_turn,
+                                        max_attempts=2,
+                                        reset_stream=True,
+                                        pending_actions=self._active_pending_actions(),
+                                    )
+                                    continue
+                                pending = self._active_pending_actions()
+                                event.data.update(
+                                    {
+                                        "partial": True,
+                                        "stop_code": "pending_actions_remaining",
+                                        "stop_reason": (
+                                            "Required file mutation remains unresolved after "
+                                            "automatic recovery attempts"
+                                        ),
+                                        "pending_actions": pending,
+                                    }
+                                )
+                                yield event
+                                self._persist_turn_outcome(
+                                    "PARTIAL",
+                                    "pending_actions_remaining",
+                                    (
+                                        "Required file mutation remains unresolved after "
+                                        "automatic recovery attempts"
+                                    ),
+                                )
+                                self._auto_save()
+                                yield AgentEvent.usage(
+                                    TokenUsage(
+                                        input_tokens=self.usage.total_input,
+                                        output_tokens=self.usage.total_output,
+                                    )
+                                )
+                                yield AgentEvent.done()
+                                return
                             yield event
                             if event.type in (AgentEventType.RESPONSE, AgentEventType.ERROR):
                                 if event.type == AgentEventType.RESPONSE:
@@ -397,6 +553,8 @@ class ConversationRuntime:
                             )
                             yield AgentEvent.done()
                             return
+                        if retry_pending_delivery:
+                            break
                         break
                     except _EmptyModelResponse:
                         if retry < 2:
@@ -600,7 +758,63 @@ class ConversationRuntime:
             "tool_counts": counts,
             "changed_files": sorted(self._changed_files_this_turn),
             "unexecuted": unexecuted,
+            "pending_actions": self._active_pending_actions(),
         }
+
+    def _active_pending_actions(self) -> list[dict[str, Any]]:
+        if not (self._pending_created_this_turn or self._resume_pending_actions):
+            return []
+        return [dict(action) for action in self.session.meta.pending_actions]
+
+    def _pending_target_path(self, tb: ToolUseBlock, path_value: str = "") -> str:
+        raw_path = str(path_value or "").strip()
+        if not raw_path and tb.input:
+            match = re.search(r'"(?:file_path|path)"\s*:\s*"([^"]+)', tb.input)
+            if match:
+                raw_path = match.group(1)
+        if not raw_path:
+            return ""
+        try:
+            path = Path(raw_path)
+            workspace = self.tool_registry._workspace_root
+            if not path.is_absolute() and workspace is not None:
+                path = workspace / path
+            return str(path.resolve())
+        except (OSError, ValueError):
+            return raw_path
+
+    def _record_pending_mutation(
+        self,
+        tb: ToolUseBlock,
+        *,
+        error_code: str,
+        target_path: str = "",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        if tb.name not in {"write_file", "str_replace"}:
+            return
+        self.session.record_pending_action(
+            tool_name=tb.name,
+            target_path=self._pending_target_path(tb, target_path),
+            error_code=error_code,
+            turn_id=self._turn_id,
+            details=details,
+        )
+        self._pending_created_this_turn = True
+        self._auto_save()
+
+    def _resolve_pending_mutation(
+        self,
+        tb: ToolUseBlock,
+        *,
+        target_path: str,
+    ) -> None:
+        if tb.name not in {"write_file", "str_replace"}:
+            return
+        self.session.resolve_pending_action(
+            tool_name=tb.name,
+            target_path=self._pending_target_path(tb, target_path),
+        )
 
     def _persist_turn_outcome(self, state: str, stop_code: str, stop_reason: str) -> None:
         self.session.set_outcome(
@@ -897,6 +1111,14 @@ class ConversationRuntime:
                 f"Retry with a smaller payload or split the operation into compact steps "
                 f"(input_chars={len(tb.input or '')}, error_position={getattr(exc, 'pos', 0)})."
             )
+            self._record_pending_mutation(
+                tb,
+                error_code="invalid_tool_json",
+                details={
+                    "input_chars": len(tb.input or ""),
+                    "error_position": getattr(exc, "pos", 0),
+                },
+            )
             self._append_tool_error(tb, detail)
             self._record_tool_error()
             yield AgentEvent.tool_result(
@@ -1084,6 +1306,17 @@ class ConversationRuntime:
                     )
                 )
                 self._tool_errors_this_turn = 0
+                if tb.name == "write_file" and not bool(args.get("final_chunk", True)):
+                    self._record_pending_mutation(
+                        tb,
+                        error_code="chunked_write_incomplete",
+                        target_path=str(args.get("file_path", "")),
+                    )
+                else:
+                    self._resolve_pending_mutation(
+                        tb,
+                        target_path=str(args.get("file_path", "") or args.get("path", "")),
+                    )
                 self._auto_save()
                 yield AgentEvent.tool_result(
                     tb.id,
@@ -1096,6 +1329,14 @@ class ConversationRuntime:
         spec = self.tool_registry.get(tb.name)
         preflight_result = self.tool_registry.preflight(tb.name, args)
         if preflight_result is not None:
+            self._record_pending_mutation(
+                tb,
+                error_code=str(
+                    (preflight_result.metadata or {}).get("code", "tool_preflight_failed")
+                ),
+                target_path=str(args.get("file_path", "") or args.get("path", "")),
+                details=dict(preflight_result.metadata or {}),
+            )
             self._append_tool_error(
                 tb,
                 preflight_result.output,
@@ -1143,12 +1384,20 @@ class ConversationRuntime:
                         old_text = evidence_old_text[:4000]
                 except Exception:
                     pass
+            if str(args.get("mode", "overwrite")).lower() == "append":
+                evidence_old_text = ""
         result_metadata: dict[str, Any] = {}
 
         if tb.name in {"write_file", "str_replace"}:
             conflict = self._editor_conflict(resolved_path)
             if conflict is not None:
                 detail, metadata = conflict
+                self._record_pending_mutation(
+                    tb,
+                    error_code=str(metadata.get("code", "editor_conflict")),
+                    target_path=resolved_path,
+                    details=metadata,
+                )
                 self._append_tool_error(tb, detail, metadata=metadata)
                 self._record_tool_error()
                 yield AgentEvent.tool_result(
@@ -1167,6 +1416,7 @@ class ConversationRuntime:
                 verified_evidence_refs, unsupported_facts = self._verify_evidence_refs(
                     args.get("evidence_refs"),
                     missing_facts,
+                    new_text,
                 )
                 if unsupported_facts:
                     display_facts = [
@@ -1176,14 +1426,28 @@ class ConversationRuntime:
                     metadata = {
                         "code": "academic_evidence_required",
                         "missing_facts": display_facts,
+                        "evidence_candidates": self._evidence_candidates(),
                         "suggested_next_action": (
-                            "Read the source or run the calculation first, then retry with "
-                            "quote-grounded evidence_refs."
+                            "Reuse an exact quote from one of evidence_candidates and retry. "
+                            "The runtime will resolve a stale or fabricated tool_use_id to the "
+                            "real successful result when the quote matches."
                         ),
                     }
                     detail = (
                         "Academic evidence gate blocked the mutation before approval. "
                         "Unsupported new facts: " + ", ".join(display_facts)
+                    )
+                    self._record_pending_mutation(
+                        tb,
+                        error_code="academic_evidence_required",
+                        target_path=resolved_path,
+                        details={
+                            "missing_facts": display_facts,
+                            "evidence_candidates": [
+                                value.get("tool_use_id", "")
+                                for value in metadata["evidence_candidates"]
+                            ],
+                        },
                     )
                     self._append_tool_error(tb, detail, metadata=metadata)
                     self._record_tool_error()
@@ -1381,6 +1645,30 @@ class ConversationRuntime:
             result_metadata = dict(result.metadata or {})
             if verified_evidence_refs:
                 result_metadata["evidence_refs"] = verified_evidence_refs
+            if tb.name in {"write_file", "str_replace"}:
+                if is_error:
+                    self._record_pending_mutation(
+                        tb,
+                        error_code=str(result_metadata.get("code", "tool_execution_failed")),
+                        target_path=resolved_path,
+                        details=result_metadata,
+                    )
+                elif (
+                    tb.name == "write_file"
+                    and result_status in {"success", "no_change"}
+                    and not bool(args.get("final_chunk", True))
+                ):
+                    self._record_pending_mutation(
+                        tb,
+                        error_code="chunked_write_incomplete",
+                        target_path=resolved_path,
+                        details=result_metadata,
+                    )
+                elif result_status in {"success", "no_change"}:
+                    self._resolve_pending_mutation(
+                        tb,
+                        target_path=resolved_path,
+                    )
             sub_agent_usage = result_metadata.get("sub_agent_usage")
             if isinstance(sub_agent_usage, dict):
                 self.usage.record(
@@ -1589,6 +1877,38 @@ class ConversationRuntime:
                 "The selection edit is complete. Do not call any more tools; provide the final "
                 "concise response."
             )
+        pending = self._active_pending_actions()
+        if pending:
+            self.session.set_outcome(
+                "RECOVERING",
+                {
+                    "pending_actions": pending,
+                    "automatic_recovery_attempt": self._pending_response_retries_this_turn + 1,
+                },
+            )
+            self._auto_save()
+            return (
+                "# Required delivery recovery\n"
+                "A requested file mutation is still pending. A chat-only answer is not an "
+                "acceptable substitute. Inspect the pending error and retry the mutation now. "
+                "For academic_evidence_required, reuse exact quotes from successful tool results; "
+                "never invent tool_use_id values. For a large write, use write_file with "
+                "mode=overwrite and final_chunk=false for the first compact chunk, then "
+                "mode=append for compact continuation chunks and final_chunk=true only on the "
+                "last chunk. Do not return a final response until the pending action is resolved.\n\n"
+                f"Pending actions:\n{json.dumps(pending, ensure_ascii=False, sort_keys=True)}"
+            )
+        if (
+            self.edit_scope is None
+            and self.soft_research_calls > 0
+            and self._research_tool_calls_this_turn >= self.soft_research_calls
+        ):
+            remaining = max(0, self.max_research_calls - self._research_tool_calls_this_turn)
+            return (
+                f"Research budget is nearly exhausted ({remaining} research calls remain). "
+                "Stop broad or duplicate searches. Select the strongest sources already fetched, "
+                "synthesize the requested deliverable, write it, and verify the written file."
+            )
         if self.edit_scope is None and self._tool_calls_this_turn >= self.soft_tool_calls > 0:
             remaining = max(0, self.max_tool_calls - self._tool_calls_this_turn)
             self.session.set_outcome(
@@ -1617,6 +1937,15 @@ class ConversationRuntime:
                 f"Agent tool-call limit reached ({max_calls}) before completion. "
                 "The task was stopped because it exhausted its tool budget."
             )
+        if tb.name in _RESEARCH_TOOLS:
+            self._research_tool_calls_this_turn += 1
+            if self._research_tool_calls_this_turn > self.max_research_calls:
+                self._tool_stop_code = "research_budget_exhausted"
+                return (
+                    "Research tool-call limit reached "
+                    f"({self.max_research_calls}) before delivery. Stop expanding the search set "
+                    "and complete the deliverable from the sources already collected."
+                )
 
         fingerprint = f"{tb.name}:{json.dumps(args, ensure_ascii=False, sort_keys=True)}"
         count = self._tool_call_counts.get(fingerprint, 0) + 1
@@ -1663,24 +1992,90 @@ class ConversationRuntime:
             }
         )
 
+    def _successful_tool_results(self) -> list[ToolResultBlock]:
+        results: list[ToolResultBlock] = []
+        for message in self.session.messages:
+            for block in message.blocks:
+                if (
+                    isinstance(block, ToolResultBlock)
+                    and not block.is_error
+                    and block.status not in {"error", "denied", "skipped"}
+                ):
+                    results.append(block)
+        return results
+
+    def _evidence_candidates(self) -> list[dict[str, str]]:
+        return [
+            {
+                "tool_use_id": block.tool_use_id,
+                "tool_name": block.tool_name,
+            }
+            for block in self._successful_tool_results()
+            if block.tool_name in _AUTO_EVIDENCE_TOOLS
+        ][-64:]
+
+    @staticmethod
+    def _verified_evidence(
+        *,
+        source_type: str,
+        source_id: str,
+        source_text: str,
+        quote: str,
+        anchor: str = "",
+    ) -> dict[str, str]:
+        return {
+            "source": source_type,
+            "tool_use_id": source_id if source_type == "tool_result" else "",
+            "source_id": source_id,
+            "source_hash": hashlib.sha256(source_text.encode("utf-8")).hexdigest(),
+            "quote_hash": hashlib.sha256(quote.encode("utf-8")).hexdigest(),
+            "anchor": anchor[:500],
+        }
+
     def _verify_evidence_refs(
         self,
         raw_refs: Any,
         fact_markers: list[str],
+        new_text: str,
     ) -> tuple[list[dict[str, str]], list[str]]:
         refs = raw_refs if isinstance(raw_refs, list) else []
-        tool_results: dict[str, ToolResultBlock] = {}
+        successful_results = self._successful_tool_results()
+        tool_results = {block.tool_use_id: block for block in successful_results}
         user_text = ""
         for message in self.session.messages:
             if message.role == MessageRole.USER:
                 user_text = message.text_content()
-            for block in message.blocks:
-                if isinstance(block, ToolResultBlock):
-                    tool_results[block.tool_use_id] = block
 
         verified: list[dict[str, str]] = []
         supported_text: list[str] = []
-        for value in refs[:16]:
+        support_records: list[tuple[str, str, str]] = []
+        seen_refs: set[tuple[str, str]] = set()
+
+        def add_verified(
+            *,
+            source_type: str,
+            source_id: str,
+            source_text: str,
+            quote: str,
+            anchor: str = "",
+        ) -> None:
+            key = (source_id, hashlib.sha256(quote.encode("utf-8")).hexdigest())
+            if key in seen_refs:
+                return
+            seen_refs.add(key)
+            supported_text.append(quote)
+            support_records.append((source_type, source_text, quote))
+            verified.append(
+                self._verified_evidence(
+                    source_type=source_type,
+                    source_id=source_id,
+                    source_text=source_text,
+                    quote=quote,
+                    anchor=anchor,
+                )
+            )
+
+        for value in refs[:64]:
             if not isinstance(value, dict):
                 continue
             quote = str(value.get("quote", "")).strip()
@@ -1693,36 +2088,89 @@ class ConversationRuntime:
             source_id = ""
             if tool_use_id:
                 block = tool_results.get(tool_use_id)
-                if (
-                    block is None
-                    or block.is_error
-                    or block.status in {"error", "denied", "skipped"}
-                ):
-                    continue
-                source_text = block.output
-                source_type = "tool_result"
-                source_id = tool_use_id
+                if block is not None and quote in block.output:
+                    source_text = block.output
+                    source_type = "tool_result"
+                    source_id = block.tool_use_id
+                else:
+                    # Provider-generated IDs are often stale or fabricated.
+                    # Recover provenance only when the exact quote is present
+                    # in an actually successful persisted tool result.
+                    matched = next(
+                        (
+                            candidate
+                            for candidate in reversed(successful_results)
+                            if quote in candidate.output
+                        ),
+                        None,
+                    )
+                    if matched is None:
+                        continue
+                    source_text = matched.output
+                    source_type = "tool_result"
+                    source_id = matched.tool_use_id
             elif source == "user_message":
                 source_text = user_text
                 source_type = "user_message"
                 source_id = self._turn_id or "current_turn"
             else:
-                continue
+                matched = next(
+                    (
+                        candidate
+                        for candidate in reversed(successful_results)
+                        if quote in candidate.output
+                    ),
+                    None,
+                )
+                if matched is None:
+                    continue
+                source_text = matched.output
+                source_type = "tool_result"
+                source_id = matched.tool_use_id
             if quote not in source_text:
                 continue
-            supported_text.append(quote)
-            verified.append(
-                {
-                    "source": source_type,
-                    "tool_use_id": tool_use_id,
-                    "source_id": source_id,
-                    "source_hash": hashlib.sha256(source_text.encode("utf-8")).hexdigest(),
-                    "quote_hash": hashlib.sha256(quote.encode("utf-8")).hexdigest(),
-                    "anchor": str(value.get("anchor", ""))[:500],
-                }
+            add_verified(
+                source_type=source_type,
+                source_id=source_id,
+                source_text=source_text,
+                quote=quote,
+                anchor=str(value.get("anchor", "")),
             )
 
+        # Proactively recover facts from sources already collected in this
+        # session. Context overlap prevents an unrelated arXiv page that merely
+        # shares an identifier from grounding the claim.
         combined = "\n".join(supported_text)
+        for marker in fact_markers:
+            if marker.startswith(("citation:", "claim:")) or _marker_value(marker) in combined:
+                continue
+            marker_value = _marker_value(marker)
+            if marker_value in user_text:
+                quote = _context_line(user_text, marker) or marker_value
+                add_verified(
+                    source_type="user_message",
+                    source_id=self._turn_id or "current_turn",
+                    source_text=user_text,
+                    quote=quote,
+                )
+                combined = "\n".join(supported_text)
+                continue
+            for block in reversed(successful_results):
+                if block.tool_name not in _AUTO_EVIDENCE_TOOLS:
+                    continue
+                if not _contextually_supports(block.output, new_text, marker):
+                    continue
+                quote = _context_line(block.output, marker) or marker_value
+                add_verified(
+                    source_type="tool_result",
+                    source_id=block.tool_use_id,
+                    source_text=block.output,
+                    quote=quote,
+                    anchor=_context_line(new_text, marker),
+                )
+                combined = "\n".join(supported_text)
+                break
+
         unsupported: list[str] = []
         for marker in fact_markers:
             # Citations and verification language require a real validated
@@ -1730,7 +2178,18 @@ class ConversationRuntime:
             if marker.startswith(("citation:", "claim:")):
                 if not verified:
                     unsupported.append(marker)
-            elif marker not in combined:
+            elif marker.startswith("source_id:"):
+                marker_value = _marker_value(marker)
+                if not any(
+                    marker_value in quote
+                    and (
+                        source_type == "user_message"
+                        or _contextually_supports(source_text, new_text, marker)
+                    )
+                    for source_type, source_text, quote in support_records
+                ):
+                    unsupported.append(marker)
+            elif _marker_value(marker) not in combined:
                 unsupported.append(marker)
         return verified, unsupported
 

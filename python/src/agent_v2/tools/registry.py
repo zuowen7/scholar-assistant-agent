@@ -510,16 +510,29 @@ def _create_file_ops(registry: ToolRegistry) -> None:
     async def write_file(args: dict) -> ToolResult:
         path_str = str(args.get("file_path", ""))
         content = str(args.get("content", ""))
+        mode = str(args.get("mode", "overwrite")).lower()
         if not path_str:
             return ToolResult("error: file_path is required", is_error=True)
+        if mode not in {"overwrite", "append"}:
+            return ToolResult("error: mode must be overwrite or append", is_error=True)
         if registry.check_workspace_escape(path_str):
             return ToolResult(f"error: path '{path_str}' is outside workspace", is_error=True)
         if registry.check_windows_reserved(path_str):
             return ToolResult(f"error: '{path_str}' is a reserved name on Windows", is_error=True)
         try:
             full = registry._resolve_path(path_str)
-            atomic_write_text(full, content)
-            return ToolResult(f"ok: wrote {len(content)} chars to {path_str}")
+            existing = read_text_exact(full) if mode == "append" and full.is_file() else ""
+            combined = existing + content if mode == "append" else content
+            atomic_write_text(full, combined)
+            return ToolResult(
+                f"ok: {mode} wrote {len(content)} chars to {path_str}",
+                metadata={
+                    "mode": mode,
+                    "written_chars": len(content),
+                    "total_chars": len(combined),
+                    "final_chunk": bool(args.get("final_chunk", True)),
+                },
+            )
         except Exception as e:
             return ToolResult(f"error writing file: {e}", is_error=True)
 
@@ -733,15 +746,35 @@ def _create_file_ops(registry: ToolRegistry) -> None:
 
     registry.register(
         "write_file",
-        "Write content to a file; missing parent directories are created automatically.",
+        (
+            "Atomically overwrite or append content to a file; missing parent directories are "
+            "created automatically. Split large model payloads into compact chunks."
+        ),
         {
             "type": "object",
             "properties": {
                 "file_path": {"type": "string", "minLength": 1},
                 "content": {"type": "string"},
+                "mode": {
+                    "type": "string",
+                    "enum": ["overwrite", "append"],
+                    "default": "overwrite",
+                    "description": (
+                        "Use overwrite for a complete file or first chunk; use append for later "
+                        "chunks."
+                    ),
+                },
+                "final_chunk": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": (
+                        "Set false while a multi-call write is incomplete and true only on the "
+                        "last chunk."
+                    ),
+                },
                 "evidence_refs": {
                     "type": "array",
-                    "maxItems": 16,
+                    "maxItems": 64,
                     "description": (
                         "Required when adding academic facts. Each quote must be present in the "
                         "referenced successful tool result or current user message."
@@ -781,7 +814,7 @@ def _create_file_ops(registry: ToolRegistry) -> None:
                 "new_string": {"type": "string"},
                 "evidence_refs": {
                     "type": "array",
-                    "maxItems": 16,
+                    "maxItems": 64,
                     "description": (
                         "Required when adding academic facts. Each quote must be present in the "
                         "referenced successful tool result or current user message."

@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 # prompts/ 目录根路径
 _PROMPTS_DIR = Path(__file__).parent
-PROMPT_BUNDLE_VERSION = "2026-07-30.1"
+PROMPT_BUNDLE_VERSION = "2026-07-30.2"
 REQUIRED_PROMPTS = (
     "system/academic_writer_system.md",
     "tasks_edit/edit_with_text.md",
