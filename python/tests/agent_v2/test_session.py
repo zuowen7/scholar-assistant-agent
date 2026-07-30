@@ -85,6 +85,26 @@ class TestBasics:
         assert loaded.meta.outcome["stop_code"] == "tool_budget_exhausted"
         assert loaded.meta.outcome["changed_files"] == ["draft/main.md"]
 
+    def test_pending_action_round_trips_and_resolves_by_target(
+        self, session: Session, session_path: Path, tmp_path: Path
+    ):
+        target = str((tmp_path / "draft" / "main.md").resolve())
+        session.record_pending_action(
+            tool_name="write_file",
+            target_path=target,
+            error_code="academic_evidence_required",
+            turn_id="turn-1",
+            details={"missing_facts": ["78.3%"]},
+        )
+        session.save(session_path)
+
+        loaded = Session.load(session_path)
+
+        assert loaded.meta.pending_actions[0]["target_path"] == target
+        assert loaded.meta.pending_actions[0]["details"]["missing_facts"] == ["78.3%"]
+        assert loaded.resolve_pending_action(tool_name="str_replace", target_path=target) == 1
+        assert loaded.meta.pending_actions == []
+
     def test_message_integrity_metadata_and_session_aggregate_round_trip(
         self, session: Session, session_path: Path
     ):

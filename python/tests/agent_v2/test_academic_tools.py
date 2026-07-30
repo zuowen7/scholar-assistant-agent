@@ -191,6 +191,50 @@ async def test_pinned_fetch_rejects_oversized_response_before_reading(
     assert closed is True
 
 
+@pytest.mark.asyncio
+async def test_arxiv_search_uses_https_redirects_and_clamps_result_count(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+):
+    client_options = {}
+    calls = []
+
+    class ArxivResponse:
+        status_code = 200
+        text = "<feed><title>YOLO paper</title></feed>"
+        url = "https://export.arxiv.org/api/query?search_query=all%3AYOLO"
+
+    class ArxivClient:
+        def __init__(self, **kwargs):
+            client_options.update(kwargs)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, url, *, params):
+            calls.append((url, params))
+            return ArxivResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", ArxivClient)
+    registry = ToolRegistry(tmp_path)
+    register_academic_tools(registry)
+
+    result = await registry.execute("arxiv_search", {"query": "YOLO", "max_results": 200})
+
+    assert result.is_error is False
+    assert client_options["follow_redirects"] is True
+    assert calls == [
+        (
+            "https://export.arxiv.org/api/query",
+            {"search_query": "all:YOLO", "max_results": "20"},
+        )
+    ]
+    assert result.metadata["source_kind"] == "arxiv"
+    assert result.metadata["max_results"] == 20
+
+
 class _Response:
     def __init__(self, data: dict, *, content: bytes = b"") -> None:
         self.status_code = 200

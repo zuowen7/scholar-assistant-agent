@@ -503,7 +503,7 @@ def register_academic_tools(registry: ToolRegistry) -> None:
     async def arxiv_search(args: dict) -> ToolResult:
         """搜索 arXiv 论文。"""
         query = str(args.get("query", ""))
-        max_results = int(args.get("max_results", 5))
+        max_results = max(1, min(int(args.get("max_results", 5)), 20))
 
         if not query:
             return ToolResult("error: query is required", is_error=True)
@@ -511,17 +511,25 @@ def register_academic_tools(registry: ToolRegistry) -> None:
         try:
             import httpx
 
-            url = "http://export.arxiv.org/api/query"
+            url = "https://export.arxiv.org/api/query"
             params = {
                 "search_query": f"all:{query}",
                 "max_results": str(max_results),
             }
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
                 resp = await client.get(url, params=params)
                 if resp.status_code != 200:
                     return ToolResult(f"arXiv API returned {resp.status_code}", is_error=True)
                 text = resp.text[:4000]
-                return ToolResult(text)
+                return ToolResult(
+                    text,
+                    metadata={
+                        "source_url": str(resp.url),
+                        "source_kind": "arxiv",
+                        "query": query,
+                        "max_results": max_results,
+                    },
+                )
         except Exception as e:
             return ToolResult(f"arXiv search failed: {e}", is_error=True)
 
@@ -581,7 +589,12 @@ def register_academic_tools(registry: ToolRegistry) -> None:
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Search query"},
-                "max_results": {"type": "integer", "default": 5},
+                "max_results": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20,
+                    "default": 5,
+                },
             },
             "required": ["query"],
         },

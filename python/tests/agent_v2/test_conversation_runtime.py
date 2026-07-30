@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -523,6 +524,349 @@ class TestBasicFlow:
         assert "59.1%" in manuscript.read_text(encoding="utf-8")
         checkpoint = next(event for event in events if event.type == AgentEventType.CHECKPOINT)
         assert checkpoint.data["evidence_refs"][0]["tool_use_id"] == "calc-1"
+
+    @pytest.mark.asyncio
+    async def test_evidence_gate_recovers_fabricated_tool_id_from_exact_real_quote(
+        self, workspace: Path
+    ):
+        (workspace / "draft").mkdir()
+        manuscript = workspace / "draft" / "main.md"
+        manuscript.write_text("Result pending.\n", encoding="utf-8")
+        session = Session(workspace=str(workspace))
+        session.append(
+            Message(
+                role=MessageRole.TOOL,
+                blocks=[
+                    ToolResultBlock(
+                        tool_use_id="real-fetch-1",
+                        tool_name="web_fetch",
+                        output="YOLOv10 reports 38.5% AP on the COCO benchmark.",
+                    )
+                ],
+            )
+        )
+        registry = create_default_registry(workspace_root=workspace)
+        runtime = ConversationRuntime(
+            provider=MockProvider(),
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+            auto_approve=True,
+        )
+        call = ToolUseBlock(
+            id="write-grounded",
+            name="str_replace",
+            input=json.dumps(
+                {
+                    "file_path": "draft/main.md",
+                    "old_string": "Result pending.",
+                    "new_string": "YOLOv10 reports 38.5% AP on the COCO benchmark.",
+                    "evidence_refs": [
+                        {
+                            "tool_use_id": "fabricated-id",
+                            "quote": "YOLOv10 reports 38.5% AP on the COCO benchmark.",
+                        }
+                    ],
+                }
+            ),
+        )
+
+        events = [event async for event in runtime._execute_tool(call)]
+
+        checkpoint = next(event for event in events if event.type == AgentEventType.CHECKPOINT)
+        assert checkpoint.data["evidence_refs"][0]["tool_use_id"] == "real-fetch-1"
+        assert "38.5%" in manuscript.read_text(encoding="utf-8")
+
+    @pytest.mark.asyncio
+    async def test_auto_evidence_rejects_unrelated_arxiv_page_with_same_identifier(
+        self, workspace: Path
+    ):
+        (workspace / "draft").mkdir()
+        manuscript = workspace / "draft" / "main.md"
+        manuscript.write_text("Source pending.\n", encoding="utf-8")
+        session = Session(workspace=str(workspace))
+        session.append(
+            Message(
+                role=MessageRole.TOOL,
+                blocks=[
+                    ToolResultBlock(
+                        tool_use_id="wrong-fetch",
+                        tool_name="web_fetch",
+                        output=(
+                            "arXiv:2401.00970 Almost Perfect Shadow Prices in finance markets."
+                        ),
+                    )
+                ],
+            )
+        )
+        registry = create_default_registry(workspace_root=workspace)
+        runtime = ConversationRuntime(
+            provider=MockProvider(),
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+            auto_approve=True,
+        )
+        call = ToolUseBlock(
+            id="wrong-source",
+            name="str_replace",
+            input=json.dumps(
+                {
+                    "file_path": "draft/main.md",
+                    "old_string": "Source pending.",
+                    "new_string": "YOLO-World is described by arXiv 2401.00970.",
+                    "evidence_refs": [
+                        {
+                            "tool_use_id": "fabricated-id",
+                            "quote": (
+                                "arXiv:2401.00970 Almost Perfect Shadow Prices in finance markets."
+                            ),
+                        }
+                    ],
+                }
+            ),
+        )
+
+        events = [event async for event in runtime._execute_tool(call)]
+
+        result = next(event for event in events if event.type == AgentEventType.TOOL_RESULT)
+        assert result.data["metadata"]["code"] == "academic_evidence_required"
+        assert result.data["metadata"]["evidence_candidates"] == [
+            {"tool_use_id": "wrong-fetch", "tool_name": "web_fetch"}
+        ]
+        assert manuscript.read_text(encoding="utf-8") == "Source pending.\n"
+
+    @pytest.mark.asyncio
+    async def test_current_runtime_date_is_not_treated_as_an_academic_fact(self, workspace: Path):
+        (workspace / "draft").mkdir()
+        registry = create_default_registry(workspace_root=workspace)
+        runtime = ConversationRuntime(
+            provider=MockProvider(),
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=Session(workspace=str(workspace)),
+            auto_approve=True,
+        )
+        call = ToolUseBlock(
+            id="dated-note",
+            name="write_file",
+            input=json.dumps(
+                {
+                    "file_path": "draft/main.md",
+                    "content": (
+                        f"Audit updated {date.today().isoformat()}; architecture: Darknet-53.\n"
+                    ),
+                }
+            ),
+        )
+
+        events = [event async for event in runtime._execute_tool(call)]
+
+        assert not any(
+            event.type == AgentEventType.TOOL_RESULT and event.data.get("is_error")
+            for event in events
+        )
+        assert date.today().isoformat() in (workspace / "draft" / "main.md").read_text()
+
+    @pytest.mark.asyncio
+    async def test_pending_write_is_recovered_instead_of_downgraded_to_chat(self, workspace: Path):
+        (workspace / "draft").mkdir()
+        manuscript = workspace / "draft" / "main.md"
+        manuscript.write_text("Result pending.\n", encoding="utf-8")
+        (workspace / "evidence.txt").write_text(
+            "ExplainedVariance PCA result is 78.3%.\n", encoding="utf-8"
+        )
+        failed_write = ToolUseBlock(
+            id="write-1",
+            name="str_replace",
+            input=json.dumps(
+                {
+                    "file_path": "draft/main.md",
+                    "old_string": "Result pending.",
+                    "new_string": "ExplainedVariance PCA result is 78.3%.",
+                }
+            ),
+        )
+        recovered_write = ToolUseBlock(
+            id="write-2",
+            name="str_replace",
+            input=failed_write.input,
+        )
+        provider = _ScriptedProvider(
+            [
+                ProviderResponse(blocks=[failed_write], stop_reason="tool_use"),
+                _tool_response("read_file", {"file_path": "evidence.txt"}),
+                ProviderResponse(blocks=[recovered_write], stop_reason="tool_use"),
+                _text_response("文件已写入并核验。"),
+            ]
+        )
+        registry = create_default_registry(workspace_root=workspace)
+        session = Session(workspace=str(workspace))
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+            auto_approve=True,
+        )
+
+        events = await _collect_events(runtime, "write the verified result")
+
+        assert session.meta.state == "COMPLETE"
+        assert session.meta.pending_actions == []
+        assert "78.3%" in manuscript.read_text(encoding="utf-8")
+        assert any(event.type == AgentEventType.CHECKPOINT for event in events)
+
+    @pytest.mark.asyncio
+    async def test_pending_write_never_becomes_complete_via_chat_only_response(
+        self, workspace: Path
+    ):
+        (workspace / "draft").mkdir()
+        manuscript = workspace / "draft" / "main.md"
+        manuscript.write_text("Result pending.\n", encoding="utf-8")
+        provider = _ScriptedProvider(
+            [
+                ProviderResponse(
+                    blocks=[
+                        ToolUseBlock(
+                            id="write-blocked",
+                            name="str_replace",
+                            input=json.dumps(
+                                {
+                                    "file_path": "draft/main.md",
+                                    "old_string": "Result pending.",
+                                    "new_string": "Unsupported result is 78.3%.",
+                                }
+                            ),
+                        )
+                    ],
+                    stop_reason="tool_use",
+                ),
+                _text_response("先口头汇报。"),
+                _text_response("还是口头汇报。"),
+                _text_response("无法写入。"),
+            ]
+        )
+        registry = create_default_registry(workspace_root=workspace)
+        session = Session(workspace=str(workspace))
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+            auto_approve=True,
+        )
+
+        events = await _collect_events(runtime, "write the result")
+
+        retries = [
+            event
+            for event in events
+            if event.type == AgentEventType.WARNING
+            and event.data.get("code") == "pending_actions_retry"
+        ]
+        response = next(event for event in events if event.type == AgentEventType.RESPONSE)
+        assert len(retries) == 2
+        assert response.data["partial"] is True
+        assert response.data["stop_code"] == "pending_actions_remaining"
+        assert session.meta.state == "PARTIAL"
+        assert session.meta.pending_actions
+        assert manuscript.read_text(encoding="utf-8") == "Result pending.\n"
+
+    @pytest.mark.asyncio
+    async def test_continue_turn_recovers_pending_action_from_prior_turn(self, workspace: Path):
+        target = str((workspace / "main.md").resolve())
+        session = Session(workspace=str(workspace))
+        session.record_pending_action(
+            tool_name="write_file",
+            target_path=target,
+            error_code="invalid_tool_json",
+            turn_id="prior-turn",
+        )
+        provider = _ScriptedProvider(
+            [
+                _tool_response(
+                    "write_file",
+                    {
+                        "file_path": "main.md",
+                        "content": "# Recovered deliverable\n",
+                    },
+                ),
+                _text_response("已继续完成并核验。"),
+            ]
+        )
+        registry = create_default_registry(workspace_root=workspace)
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+            auto_approve=True,
+        )
+
+        events = await _collect_events(runtime, "继续完成刚才未完成的任务")
+
+        assert session.meta.state == "COMPLETE"
+        assert session.meta.pending_actions == []
+        assert (workspace / "main.md").read_text(encoding="utf-8") == "# Recovered deliverable\n"
+        assert any(event.type == AgentEventType.CHECKPOINT for event in events)
+
+    @pytest.mark.asyncio
+    async def test_chunked_write_remains_pending_until_final_chunk(self, workspace: Path):
+        provider = _ScriptedProvider(
+            [
+                _tool_response(
+                    "write_file",
+                    {
+                        "file_path": "deliverable.txt",
+                        "content": "first\n",
+                        "mode": "overwrite",
+                        "final_chunk": False,
+                    },
+                ),
+                _tool_response(
+                    "write_file",
+                    {
+                        "file_path": "deliverable.txt",
+                        "content": "second\n",
+                        "mode": "append",
+                        "final_chunk": True,
+                    },
+                ),
+                _text_response("分块文件已完整写入。"),
+            ]
+        )
+        registry = create_default_registry(workspace_root=workspace)
+        session = Session(workspace=str(workspace))
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+            auto_approve=True,
+        )
+
+        events = await _collect_events(runtime, "write the large deliverable in chunks")
+
+        assert session.meta.state == "COMPLETE"
+        assert session.meta.pending_actions == []
+        assert (workspace / "deliverable.txt").read_text() == "first\nsecond\n"
+        assert len(session.mutation_journal) == 2
+        assert sum(event.type == AgentEventType.CHECKPOINT for event in events) == 2
 
     @pytest.mark.asyncio
     async def test_dirty_editor_file_blocks_disk_mutation_before_approval(self, workspace: Path):
@@ -1948,6 +2292,54 @@ class TestAbortPropagation:
 
 
 class TestIndependentExecutionBudgets:
+    @pytest.mark.asyncio
+    async def test_research_budget_stops_duplicate_expansion_before_global_budget(
+        self, workspace: Path
+    ):
+        provider = _ScriptedProvider(
+            [
+                _tool_response("web_search", {"query": "YOLO"}),
+                _tool_response("web_search", {"query": "YOLOv2"}),
+                _tool_response("web_search", {"query": "YOLOv3"}),
+                _text_response("Research stopped before delivery."),
+            ]
+        )
+        registry = ToolRegistry(workspace_root=workspace)
+
+        async def web_search(args):
+            return ToolResult(f"results for {args['query']}")
+
+        registry.register(
+            "web_search",
+            "Search the web",
+            {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"],
+            },
+            web_search,
+            permission="read-only",
+            effects={"network"},
+        )
+        session = Session(workspace=str(workspace))
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+            max_research_calls=2,
+        )
+
+        events = await _collect_events(runtime, "research YOLO")
+
+        assert session.meta.state == "PARTIAL"
+        assert session.meta.outcome["stop_code"] == "research_budget_exhausted"
+        partial = next(event for event in events if event.type == AgentEventType.RESPONSE)
+        assert partial.data["partial"] is True
+        assert partial.data["stop_code"] == "research_budget_exhausted"
+
     @pytest.mark.asyncio
     async def test_default_budget_allows_sixty_four_readonly_tools_and_final_response(
         self, workspace: Path

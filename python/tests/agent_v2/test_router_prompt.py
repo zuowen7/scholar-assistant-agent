@@ -36,6 +36,10 @@ def test_system_prompt_enforces_academic_evidence_and_incomplete_result_contract
     assert "complete=false" in prompt
     assert "PARTIAL" in prompt
     assert "rendered artifact" in prompt
+    assert "recovery signal" in prompt
+    assert "Never fabricate tool_use_id" in prompt
+    assert "final_chunk=false" in prompt
+    assert "Do not repeat equivalent searches" in prompt
     assert prompt.index("# Core safety contract") < prompt.index("Current date:")
 
 

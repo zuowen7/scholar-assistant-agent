@@ -689,3 +689,92 @@ npm run build
 - 生产前端：`vite build` 通过。
 
 上述验证证明当前仓库内契约与回归测试通过；它不替代真实 DeepSeek/Ollama、长会话崩溃恢复和桌面端视觉验收。
+
+## 12. 2026-07-30 新会话复测：拦截存在，但交付闭环仍失败
+
+### 12.1 修正结论
+
+新会话 `sess_1d138ccd76234322840988e5fb7e56d9` 证明第 11.2 节对 A1 的“已修复高风险路径”表述不完整：旧修复能阻止部分无证据写入，但不能在阻止后自动恢复并完成交付，也不能阻止运行时把空文件和聊天替代品标成 `COMPLETE`。
+
+因此，可靠结论应修正为：
+
+1. evidence gate 是必要的安全约束，但不是完成机制。
+2. 写入失败必须形成可跨 turn 恢复的 pending action。
+3. 用户要求文件交付时，聊天回复不能清除 pending action，也不能产生 `COMPLETE`。
+4. 只有目标文件真实 mutation 成功、最终分块已提交且 pending action 清零，才能进入 `COMPLETE`。
+
+### 12.2 新会话事实证据
+
+| 指标 | 结果 |
+|---|---:|
+| 用户消息 | 4 |
+| 持久化消息 | 97 |
+| 工具调用 / 结果 | 66 / 66 |
+| 工具错误 | 7 |
+| `web_search` / `web_fetch` | 24 / 22 |
+| 输入 / 输出 token | 896,953 / 25,264 |
+| `write_file` 尝试 / 失败 | 5 / 5 |
+| mutation / changed files | 0 / 0 |
+| 持久化终态 | `COMPLETE` |
+
+关键失败链：
+
+1. 首次约 9,386 字符的整文件写入因工具 JSON 截断而失败。
+2. 后续 4 次写入均被 evidence gate 拒绝；模型反复传入并不存在于 session 的伪造 `tool_use_id`。
+3. 数字扫描把当前日期、arXiv 标识符分段以及 `Darknet-19`、`Darknet-53` 等名称中的数字当成独立学术事实，扩大了误拦截。
+4. 用户发送“继续完成刚才未完成的当前任务”后，Agent 读取到空文件，却改为“先口头汇报”。
+5. runtime 仅因收到 `response` 事件就持久化 `COMPLETE`，没有检查失败 mutation 或未完成交付。
+6. `arxiv_search` 请求使用 HTTP 且不跟随重定向，实际返回 301。
+7. 部分抓取的 arXiv 编号对应无关论文；仅按编号存在性自动放行会造成错误来源污染。
+
+这条链路直接支持用户反馈：只有拦截、没有恢复，对文件交付没有实际完成价值。
+
+### 12.3 本轮完成的恢复闭环
+
+| 机制 | 修复结果 |
+|---|---|
+| 证据引用恢复 | 对模型传入的失效或伪造 `tool_use_id`，只有在真实成功工具结果中找到完全一致引文时才重绑定到实际 ID |
+| 已有来源自动复用 | 可从 session 内成功的 `web_fetch`、`arxiv_search`、`rag_search`、`read_file`、`run_command` 结果自动取证 |
+| 错源防护 | arXiv/source ID 除编号一致外，还要求声明上下文与来源标题或模型词汇重合；无关论文不能仅凭相同编号通过 |
+| 误报收敛 | 当前运行日期不再触发 evidence gate；arXiv ID 作为整体来源标识处理；连字符模型名中的数字不再拆成事实 |
+| Pending action | 失败写入只持久化工具、目标、错误码和有限诊断信息，不持久化未提交正文；可跨 turn 恢复 |
+| 防聊天降级 | pending action 存在时，runtime 自动拒绝前两次聊天终答并要求继续恢复；仍未解决时只能返回 `PARTIAL` |
+| 正确终态 | 成功 mutation 或最终写入分块会清除对应 pending action；未清零时不能进入 `COMPLETE` |
+| 大文件交付 | `write_file` 新增原子 `overwrite` / `append` 和 `final_chunk`，支持紧凑分块续写并保留 mutation journal / Undo |
+| arXiv | 改用 HTTPS、跟随重定向、限制 1–20 条结果并记录来源元数据 |
+| 检索预算 | 每 turn 最多 24 次研究工具调用，20 次后提示停止扩张、转入筛选、写入和验证 |
+| Prompt 契约 | 明确“安全错误是恢复信号”“不得伪造 ID”“文件交付不得降级成聊天”“大文本分块写入” |
+
+该实现保留最新用户消息的范围优先级：旧 pending action 只在用户明确说“继续 / 未完成 / resume”等情况下恢复，不会自动劫持无关的新任务。
+
+### 12.4 行为级验证
+
+新增回归覆盖：
+
+1. 伪造 ID + 真实精确引文会解析到实际工具结果并成功写入。
+2. 同一 arXiv 编号但标题和声明上下文不匹配时，即使传入精确引文仍被拒绝。
+3. 当前日期和模型标识符不会制造无意义的证据缺口。
+4. 首次写入被拒绝后，Agent 读取已有来源、重算证据、重试 mutation，最终文件真实更新且 pending action 清零。
+5. Agent 连续尝试用聊天回复替代文件时，前两次自动恢复，第三次只能得到带 pending action 的 `PARTIAL`。
+6. 跨 turn 的“继续完成”可恢复旧 pending action，写入成功后进入 `COMPLETE`。
+7. 分块 overwrite/append 的最终文件、工具元数据和 session 持久化均正确。
+8. 研究调用在独立预算耗尽时先于全局 64 次工具预算停止。
+
+当前验证结果：
+
+- Agent V2 全套：`795 passed`。
+- 后端全量：`2339 passed, 7 skipped`。
+- Ruff：修改文件 `check` 通过。
+- Git whitespace：`git diff --check` 通过。
+
+### 12.5 尚需真实桌面验收
+
+代码和回归测试已覆盖本次确定性失败链，但仍需用修复后的新 Agent V2 session 做一次桌面复测：
+
+1. 要求 Agent 检索有限数量的相关论文并写入 `draft/untitled.md`。
+2. 观察来源错误时是否自动复用真实工具结果并重试，而不是只返回拦截错误。
+3. 制造一次大文本分块写入，确认最后一个 `final_chunk=true` 后文件完整且可 Undo。
+4. 在写入仍失败时确认 UI 显示 `PARTIAL` 和 pending action，而不是 `COMPLETE`。
+5. 重新打开 session 后发送“继续完成”，确认运行时从 pending action 恢复。
+
+旧 session 已经以旧 runtime 记录了错误终态，不能用代码升级追溯性地改写为真实完成；验收必须创建新 session 或明确继续该 session 后重新执行交付。
