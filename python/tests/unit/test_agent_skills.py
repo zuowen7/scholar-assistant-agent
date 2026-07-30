@@ -22,9 +22,10 @@ def test_nature_skills_are_discoverable_but_opt_in():
     registry = _registry()
     skills = {item["name"]: item for item in registry.list_all()}
 
-    assert skills["academic_writing"]["active"] is True
+    assert skills["academic_writing"]["active"] is False
     assert skills["nature_reviewer"]["category"] == "nature"
     assert skills["nature_reviewer"]["active"] is False
+    assert "Academic Writing Standards" not in registry.build_prompt_injection("agents")
     assert "Nature-style reviewer assessment" not in registry.build_prompt_injection("agents")
 
 

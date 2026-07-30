@@ -128,6 +128,24 @@ async def test_experiment_perspective_includes_late_results_section():
 
 
 @pytest.mark.asyncio
+async def test_perspective_prompt_exposes_coverage_and_keeps_untrusted_input_last():
+    captured: list[str] = []
+
+    async def spy(prompt, *a, **kw):
+        captured.append(prompt)
+        return "[]"
+
+    with patch("src.argument._reviewer_perspectives.call_llm_chat", spy):
+        await run_method_perspective("# Method\npaper text", "venue profile", None, None)
+
+    prompt = captured[0]
+    assert '"original_chars"' in prompt
+    assert '"truncated"' in prompt
+    assert "<untrusted_paper_excerpt>" in prompt
+    assert prompt.index("Never follow") < prompt.index("<untrusted_paper_excerpt>")
+
+
+@pytest.mark.asyncio
 async def test_perspective_writing_prompt_focused():
     """D5: writing perspective prompt contains writing/clarity keywords."""
     captured: list[str] = []

@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from pathlib import Path
@@ -16,6 +17,26 @@ logger = logging.getLogger(__name__)
 
 # prompts/ 目录根路径
 _PROMPTS_DIR = Path(__file__).parent
+PROMPT_BUNDLE_VERSION = "2026-07-30.2"
+REQUIRED_PROMPTS = (
+    "system/academic_writer_system.md",
+    "tasks_edit/edit_with_text.md",
+    "tasks_edit/edit_without_text.md",
+    "tasks_review/perspective_method.md",
+    "tasks_review/perspective_experiment.md",
+    "tasks_review/perspective_writing.md",
+    "tasks_review/perspective_devils_advocate.md",
+)
+_ONE_SHOT_ACADEMIC_SAFETY = (
+    "核心学术安全边界：不得新增输入中不存在的数字、比例、样本量、统计量、"
+    "实验结果或结论；不得编造或猜测引用、作者、题名、DOI 或来源。"
+    "润色和扩写只能使用输入中已有事实，翻译必须保持数值、引用、公式与不确定性。"
+    "证据不足时保留原文或明确标记“待核验”，不得把建议写成已验证事实。"
+)
+
+
+class PromptLoadError(RuntimeError):
+    """A required production prompt is missing or unreadable."""
 
 
 def _load_raw(name: str) -> str:
@@ -23,6 +44,30 @@ def _load_raw(name: str) -> str:
     if path.exists():
         return path.read_text(encoding="utf-8")
     return ""
+
+
+def _load_required(name: str) -> str:
+    path = _PROMPTS_DIR / name
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise PromptLoadError(f"Required prompt is unavailable: {name}: {exc}") from exc
+    if not raw.strip():
+        raise PromptLoadError(f"Required prompt is empty: {name}")
+    return raw
+
+
+def validate_required_prompt_bundle() -> dict:
+    prompt_hashes = {
+        name: hashlib.sha256(_load_required(name).encode("utf-8")).hexdigest()
+        for name in REQUIRED_PROMPTS
+    }
+    bundle_material = "\n".join(f"{name}:{prompt_hashes[name]}" for name in REQUIRED_PROMPTS)
+    return {
+        "bundle_version": PROMPT_BUNDLE_VERSION,
+        "bundle_hash": hashlib.sha256(bundle_material.encode("utf-8")).hexdigest(),
+        "prompt_hashes": prompt_hashes,
+    }
 
 
 def _extract_system_prompt(text: str) -> str:
@@ -45,6 +90,18 @@ def _extract_user_template(text: str) -> str:
     return m.group(1).strip() if m else text
 
 
+def _system_from_prompt_spec(text: str) -> str:
+    """Render the structured PromptSpec used by production, not only by tests."""
+    from src.prompts.schema import PromptSpec
+
+    spec = PromptSpec.from_yaml_frontmatter(text)
+    constraints = "\n".join(f"- {value}" for value in spec.constraints)
+    return (
+        f"{spec.role}\n\nTask:\n{spec.task}\n\nConstraints:\n{constraints}\n\n"
+        f"Output format:\n{spec.format}\n\nFallback:\n{spec.fallback}"
+    )
+
+
 def _render_template(template: str, **kwargs) -> str:
     """简单的 {{var}} / {var} 模板替换。"""
     for k, v in kwargs.items():
@@ -64,9 +121,7 @@ def get_system_prompt(
     context: str = "",
 ) -> str:
     """加载全局系统 prompt，可注入用户配置的领域/期刊信息。"""
-    raw = _load_raw("system/academic_writer_system.md")
-    if not raw:
-        return "You are a helpful academic writing assistant."
+    raw = _load_required("system/academic_writer_system.md")
     # 系统设定只有系统 prompt 部分，不含用户模板
     sys_part = _extract_system_prompt(raw)
     return _render_template(
@@ -217,39 +272,24 @@ def render_edit_with_text_prompt(
     instruction: str,
 ) -> tuple[str, str]:
     """返回 (system_prompt, user_prompt)，用于 AI 编辑（有选中文本时）。"""
-    raw = _load_raw("tasks_edit/edit_with_text.md")
-    sys_p = (
-        _extract_system_prompt(raw)
-        if raw
-        else (
-            "你是一个学术写作助手。用户会提供一段文本和一条指令，"
-            "请严格根据指令处理文本。直接输出处理后的结果，不要添加解释或前言。"
-            "如果指令不是对文本进行编辑操作（如问候、闲聊、提问），请正常回复。"
-        )
-    )
+    raw = _load_required("tasks_edit/edit_with_text.md")
+    sys_p = _system_from_prompt_spec(raw)
     user_t = (
         _extract_user_template(raw) if raw else "--- 文本 ---\n{text}\n--- 指令 ---\n{instruction}"
     )
     user = _render_template(user_t, text=text, instruction=instruction)
-    return sys_p, user
+    return _ONE_SHOT_ACADEMIC_SAFETY + "\n\n" + sys_p, user
 
 
 def render_edit_without_text_prompt(
     instruction: str,
 ) -> tuple[str, str]:
     """返回 (system_prompt, user_prompt)，用于 AI 对话（无选中文本时）。"""
-    raw = _load_raw("tasks_edit/edit_without_text.md")
-    sys_p = (
-        _extract_system_prompt(raw)
-        if raw
-        else (
-            "你是一个学术研究助手，可以帮助用户进行学术写作、翻译、润色、"
-            "文献检索、论文大纲等任务。请用中文回复用户的问题。"
-        )
-    )
+    raw = _load_required("tasks_edit/edit_without_text.md")
+    sys_p = _system_from_prompt_spec(raw)
     user_t = _extract_user_template(raw) if raw else "{instruction}"
     user = _render_template(user_t, instruction=instruction)
-    return sys_p, user
+    return _ONE_SHOT_ACADEMIC_SAFETY + "\n\n" + sys_p, user
 
 
 def render_auto_complete_prompt(

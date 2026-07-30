@@ -97,6 +97,34 @@ class TestToolExecution:
         assert (temp_workspace / "new.txt").read_text() == "hello world"
 
     @pytest.mark.asyncio
+    async def test_write_file_appends_compact_chunks_atomically(
+        self, registry: ToolRegistry, temp_workspace: Path
+    ):
+        first = await registry.execute(
+            "write_file",
+            {
+                "file_path": "draft.md",
+                "content": "first\n",
+                "mode": "overwrite",
+                "final_chunk": False,
+            },
+        )
+        second = await registry.execute(
+            "write_file",
+            {
+                "file_path": "draft.md",
+                "content": "second\n",
+                "mode": "append",
+                "final_chunk": True,
+            },
+        )
+
+        assert first.metadata["final_chunk"] is False
+        assert second.metadata["mode"] == "append"
+        assert second.metadata["total_chars"] == len("first\nsecond\n")
+        assert (temp_workspace / "draft.md").read_text(encoding="utf-8") == "first\nsecond\n"
+
+    @pytest.mark.asyncio
     async def test_read_file_pages_cover_content_without_overlap(
         self, registry: ToolRegistry, temp_workspace: Path
     ):
@@ -236,6 +264,37 @@ class TestToolExecution:
         assert result is not None
         assert result.is_error
         assert "inline" in result.output.lower()
+
+    @pytest.mark.skipif(os.name != "nt", reason="Windows shell builtins are platform-specific")
+    @pytest.mark.parametrize(
+        ("command", "suggestion"),
+        [
+            ("dir", "list_dir"),
+            ("mkdir figures", "write_file"),
+        ],
+    )
+    def test_run_command_preflight_explains_windows_shell_builtin_replacement(
+        self, registry: ToolRegistry, command: str, suggestion: str
+    ):
+        result = registry.preflight("run_command", {"command": command})
+
+        assert result is not None
+        assert result.is_error
+        assert result.metadata["code"] == "windows_shell_builtin"
+        assert result.metadata["suggested_next_action"] == suggestion
+
+    @pytest.mark.asyncio
+    async def test_run_command_reports_output_encoding_source(
+        self, registry: ToolRegistry, temp_workspace: Path
+    ):
+        script = temp_workspace / "unicode_probe.py"
+        script.write_text("print('中文路径')\n", encoding="utf-8")
+
+        result = await registry.execute("run_command", {"command": "python unicode_probe.py"})
+
+        assert not result.is_error
+        assert "中文路径" in result.output
+        assert result.metadata["encoding_source"] == "utf-8"
 
     def test_preflight_rejects_missing_required_argument(self, registry: ToolRegistry):
         result = registry.preflight(

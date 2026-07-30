@@ -11,11 +11,19 @@ import { i18n } from '../i18n'
 import { logger } from '../utils/logger'
 import { readSseStream } from '../utils/streamReader'
 import { currentWorkspaceGrant } from './useProject'
+import { tabs as editorTabs, contentVersion as editorContentVersion } from './useEditorState'
 
 function workspaceGrantHeaders(): Record<string, string> | undefined {
   return currentWorkspaceGrant.value
     ? { 'X-Workspace-Grant': currentWorkspaceGrant.value }
     : undefined
+}
+
+async function sha256Hex(value: string): Promise<string | undefined> {
+  const subtle = globalThis.crypto?.subtle
+  if (!subtle) return undefined
+  const digest = await subtle.digest('SHA-256', new TextEncoder().encode(value))
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
 /** Raw history message shape returned by the workflows messages endpoint. */
@@ -416,6 +424,17 @@ export function useAgentChat() {
     abortController = new AbortController()
 
     const selection = options.selection ? normalizeAgentSelection(options.selection) : undefined
+    const editorFiles = await Promise.all(
+      editorTabs.value
+        .filter((tab) => !!tab.path)
+        .slice(0, 50)
+        .map(async (tab) => ({
+          file_path: tab.path!,
+          is_dirty: tab.isModified,
+          content_hash: await sha256Hex(tab.content),
+          editor_version: editorContentVersion.value,
+        })),
+    )
     // True when this run is an ephemeral selection edit — its session must not
     // overwrite the persistent conversation workflow ID.
     const isSelectionRun = !!selection
@@ -470,6 +489,7 @@ export function useAgentChat() {
                 after_context: selection.afterContext?.trim() || undefined,
               }
             : undefined,
+          editor_files: editorFiles.length ? editorFiles : undefined,
         }),
         signal: abortController!.signal,
       })

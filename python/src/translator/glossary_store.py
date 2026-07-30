@@ -163,6 +163,10 @@ class GlossaryStore:
             if not entry.locked:
                 continue
 
+            source_in_original = self._source_present(original, entry.source) if original else True
+            if not source_in_original:
+                continue
+
             if entry.is_passthrough:
                 # Source term must appear as-is in the translation
                 if not self._source_present(translated, entry.source):
@@ -175,12 +179,6 @@ class GlossaryStore:
                         }
                     )
             else:
-                # If original is provided, only enforce when source appears in original
-                source_in_original = (
-                    self._source_present(original, entry.source) if original else True
-                )
-                if not source_in_original:
-                    continue
                 # Target term must be present in the translation
                 if not self._target_present(translated, entry.target):
                     violations.append(

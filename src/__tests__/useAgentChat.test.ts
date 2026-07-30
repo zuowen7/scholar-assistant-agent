@@ -26,6 +26,10 @@ import {
   _getWorkflowCacheKeysForTesting,
   _resetForTesting,
 } from '../composables/useAgentChat'
+import {
+  tabs as editorTabs,
+  contentVersion as editorContentVersion,
+} from '../composables/useEditorState'
 
 // ── SSE helper ──────────────────────────────────────────────────────────
 
@@ -150,6 +154,8 @@ function makeCheckpointChunk(file: string, content: string) {
 describe('useAgentChat', () => {
   beforeEach(() => {
     _resetForTesting()
+    editorTabs.value = []
+    editorContentVersion.value = 0
     vi.restoreAllMocks()
     vi.stubGlobal('crypto', { randomUUID: () => `uuid-${Math.random().toString(36).slice(2, 10)}` })
   })
@@ -527,6 +533,37 @@ describe('useAgentChat', () => {
       expect(body.context_text).toBe('source text')
       expect(body.context_file).toBe('draft/main.md')
       expect(body.history).toEqual([])
+    })
+
+    it('sends dirty editor state so backend mutations can fail before approval', async () => {
+      editorTabs.value = [
+        {
+          id: 'D:/paper/draft/main.md',
+          path: 'D:/paper/draft/main.md',
+          name: 'main.md',
+          content: 'unsaved manuscript',
+          isModified: true,
+          docId: 'D:/paper/draft/main.md',
+        },
+      ]
+      editorContentVersion.value = 9
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(
+          makeSseResponse([makeSessionStartedChunk('sess_dirty'), makeDoneChunk()]),
+        )
+      vi.stubGlobal('fetch', fetchMock)
+
+      await useAgentChat().sendMessage('Update the draft', '', '', 'D:/paper')
+
+      const body = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body))
+      expect(body.editor_files).toEqual([
+        {
+          file_path: 'D:/paper/draft/main.md',
+          is_dirty: true,
+          editor_version: 9,
+        },
+      ])
     })
 
     it('notifies the editor for every file in a multi-file checkpoint stream', async () => {
