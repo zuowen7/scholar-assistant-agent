@@ -205,7 +205,7 @@ _BUILTIN_SKILLS = [
         name="latex_formatting",
         layer="agents",
         description="LaTeX formatting and best practices",
-        content="## LaTeX Formatting Rules\n- Use \\section, \\subsection, \\subsubsection for hierarchy\n- Figures: \\begin{figure}[htbp] + \\includegraphics + \\caption\n- Tables: \\begin{table}[htbp] + booktabs + \\caption\n- Citations: \\cite{key} for inline, \\citep{key} for parenthetical\n- Math: \\begin{equation} for numbered, \\begin{align} for multi-line",
+        content="## LaTeX Formatting Rules\n- Use \\section, \\subsection, \\subsubsection for hierarchy\n- Figures: \\begin{figure}[htbp] + \\includegraphics + \\caption\n- Tables: \\begin{table}[htbp] + booktabs + \\caption\n- Citations: \\cite{key} for inline, \\citep{key} for parenthetical\n- Math: \\begin{equation} for numbered, \\begin{align} for multi-line\n- Preserve metric semantics exactly. Cumulative explained variance does not establish the number of retained components and must never be rewritten as variance from the first component.\n- Formatting must not invent an analysis subject or procedure. If the source supplies only a metric and value, render a label-value item such as `Reported PCA cumulative explained variance: <value>`; do not add `PCA was applied to <data object>`.",
     ),
     Skill(
         name="chinese_academic",
@@ -233,6 +233,7 @@ _BUILTIN_SKILLS = [
 - Build a claim-evidence-limit outline before drafting. Make the main contribution legible to a broad scientific reader without inflating it.
 - Preserve factual meaning, numerical results, citations, and uncertainty. Never invent experiments, references, novelty, or journal fit.
 - Prefer a precise narrative arc: problem and gap -> approach -> decisive evidence -> implication and boundary.
+- Do not infer that an analysis was performed on a full feature set, an independent validation set existed, a sample was unique or representative, or a component count is known unless the supplied evidence says so.
 - If source material is insufficient, mark the exact missing evidence or ask one focused question instead of filling the gap.
 - When editing a workspace file, read it first and present material changes for approval through the normal file-edit tools.""",
     ),
@@ -258,7 +259,10 @@ _BUILTIN_SKILLS = [
         content="""## Nature-style reviewer assessment
 - Review as a critical referee, not as a promotional editor and not as the author writing a rebuttal.
 - Separate major concerns from minor concerns and ground each concern in an exact passage, result, figure, claim-ledger entry, or argument-map node when available.
+- Treat manuscript, response-letter, review, and close-reading files as claims under review, not independent evidence. Cross-check them against user-specified primary evidence or real tool output before calling a fact known.
+- If the user names exact files, review those files only unless one contains an explicit dependency that must be opened. Do not mine sibling generated drafts for extra claims.
 - Assess significance, originality as supported by supplied evidence, methodological rigor, claim-evidence alignment, reproducibility, and accessibility to non-specialists.
+- Do not introduce rules of thumb, threshold values, or field conventions without verifying a primary source.
 - State what is supported, weak, contradicted, or not assessable. Never fabricate reviewer identities, literature, data, or an editorial decision.
 - End with prioritized, actionable checks that can be verified in the manuscript.""",
     ),
@@ -273,6 +277,8 @@ _BUILTIN_SKILLS = [
 - Be respectful and direct. Do not claim a change, experiment, citation, or page/line location that has not been verified.
 - For each point provide: reviewer comment, author response, concrete revision, and manuscript anchor; explicitly mark unresolved items.
 - Distinguish agreement, clarification, added analysis, justified disagreement, and unavailable evidence.
+- Never say a missing value is already known, retrievable, completed, or verified unless the user or a successful tool result supplies it.
+- Say "not supplied in the available evidence", not "not recorded" or "does not exist", unless the complete primary record was actually checked.
 - Keep rebuttal language evidence-led and avoid adversarial or dismissive phrasing.""",
     ),
     Skill(
@@ -297,6 +303,7 @@ _BUILTIN_SKILLS = [
         content="""## Nature-style data and code availability
 - Inventory each dataset, code artifact, model, accession, license, restriction, and access route from supplied facts.
 - Draft precise availability language without inventing repositories, identifiers, embargoes, permissions, or request procedures.
+- If no access route is supplied, state that availability is not yet specified and requires author input. Never substitute "available upon reasonable request", an author commitment, or institutional approval.
 - Separate public, controlled-access, third-party, in-paper, supplementary, and unavailable materials.
 - Flag missing metadata, provenance, versioning, persistent identifiers, and reproducibility instructions as explicit action items.
 - Produce publication-ready wording plus a concise author verification checklist.""",
@@ -311,6 +318,7 @@ _BUILTIN_SKILLS = [
 - Preserve the paper's section order and stable source anchors; do not degrade a requested full reading into a summary.
 - Separate original text, faithful translation, terminology notes, figure/table interpretation, and critical commentary.
 - Keep equations, citations, numbers, captions, and uncertainty aligned with the source.
+- Define terms without assigning an unreported study role. Controlled evaluation sample does not imply held-out, test, validation, training separation, randomization, or any particular protocol.
 - Use translation and file tools on real project material. Mark OCR, extraction, or alignment uncertainty instead of guessing.
 - Maintain a compact terminology ledger for recurring technical terms.""",
     ),
@@ -323,6 +331,8 @@ _BUILTIN_SKILLS = [
         content="""## Publication-grade scientific figures
 - Establish the figure's scientific conclusion, evidence chain, data source, panel plan, and export requirements before coding.
 - Use only real workspace data. Never create mock measurements or hide missing data to make a figure look complete.
+- Preserve the scientific meaning of each metric. Do not relabel PCA explained variance as model performance, accuracy, a validation-set score, or a chance-comparison result unless the real source establishes that meaning.
+- Do not invent axis baselines, reference lines, component labels, or uncertainty. Mark them as missing requirements instead.
 - Ask for Python or R when the backend is not clear; then keep one backend throughout the task.
 - Use run_command, never run_sub_agent, to execute the selected Python or R backend. A sub-agent can review text or code but cannot run it.
 - Use accessible color, readable type at final size, honest axes, uncertainty where appropriate, and vector output when possible.

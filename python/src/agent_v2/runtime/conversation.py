@@ -150,6 +150,80 @@ _PENDING_RESUME_MARKERS = (
     "resume",
     "unfinished",
 )
+_NAMED_SOURCE_FILE_RE = re.compile(
+    r"(?<![A-Za-z0-9_-])([A-Za-z0-9_.\-/\\]+\.(?:bib|csv|json|md|rst|tex|txt|yaml|yml))",
+    re.IGNORECASE,
+)
+_RESPONSE_SEMANTIC_CLAIMS = (
+    (
+        "first principal component",
+        re.compile(
+            r"\bfirst\s+(?:(?:principal|retained)\s+component|PC)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "PCA applied to an unspecified data object",
+        re.compile(
+            r"\b(?:PCA|principal\s+component\s+analysis)\b.{0,40}"
+            r"\b(?:was|is|were|are)\s+applied\s+to\s+(?:the\s+)?"
+            r"(?:dataset|data|feature\s+set|feature\s+space)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "held-out/test/validation/training role",
+        re.compile(
+            r"\b(?:held[- ]out(?:\s+(?:test|validation|training))?"
+            r"(?:\s+(?:set|sample|data|dataset))?|test\s+set|"
+            r"validation\s+set|training\s+set|"
+            r"train/test\s+split|validation\s+split)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "unsupported known or confirmed status",
+        re.compile(
+            r"\b(?:is|are|was|were)\s+(?:already\s+)?(?:known|confirmed|retrievable)\b|"
+            r"\bconfirms?\s+(?:that\s+)?(?:it\s+)?(?:is|was)\s+known\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "single-sample design",
+        re.compile(r"\bsingle[- ]sample\b", re.IGNORECASE),
+    ),
+    (
+        "available upon reasonable request",
+        re.compile(r"\bavailable\s+(?:upon|on)\s+reasonable\s+request\b", re.IGNORECASE),
+    ),
+    (
+        "institutional approval",
+        re.compile(r"\binstitutional\s+approval\b", re.IGNORECASE),
+    ),
+)
+_RESPONSE_NEGATION_RE = re.compile(
+    r"\b(?:absence|absent|cannot|can't|doesn't|does\s+not|isn't|is\s+not|"
+    r"lack|lacks|missing|no|not|unavailable|unknown|unreported|"
+    r"unspecified|without)\b",
+    re.IGNORECASE,
+)
+_RESPONSE_RECOMMENDATION_RE = re.compile(
+    r"\b(?:should|must|needs?(?:\s+to)?|recommended?(?:\s+that)?|"
+    r"requires?(?:\s+that)?|could\s+(?:add|provide|report|include|specify|"
+    r"describe|clarify|use)|would\s+benefit\s+from)\b|"
+    r"^\s*(?:[-*]\s*)?(?:add|provide|report|include|specify|describe|clarify|use)\b",
+    re.IGNORECASE,
+)
+_RESPONSE_POST_CLAIM_NEGATION_RE = re.compile(
+    r"^\s*[*_`'\"]*(?:(?:is|are|was|were|remain|remains)\s+)?"
+    r"(?:absent|missing|unavailable|unknown|unreported|unspecified)\b|"
+    r"^\s*[*_`'\"]*(?:(?:is|are|was|were)\s+)?not\s+"
+    r"(?:available|confirmed|known|provided|reported|specified|supplied|verified)\b|"
+    r"^\s*[*_`'\"]*(?:has|have|had)\s+not\s+been\s+"
+    r"(?:confirmed|provided|reported|specified|supplied|verified)\b",
+    re.IGNORECASE,
+)
 
 
 class _EmptyModelResponse(RuntimeError):
@@ -171,6 +245,15 @@ class _ResourceBudgetExceeded(RuntimeError):
 
 class _MalformedToolProtocol(RuntimeError):
     """Provider returned textual tool protocol instead of a user-facing response."""
+
+
+class _UngroundedResponse(RuntimeError):
+    """A skill response introduced facts absent from the allowed source set."""
+
+    def __init__(self, issues: list[str], draft: str):
+        self.issues = issues
+        self.draft = draft
+        super().__init__("Ungrounded response: " + ", ".join(issues))
 
 
 def _contains_tool_protocol(text: str) -> bool:
@@ -197,7 +280,7 @@ def _is_academic_target(path_value: str) -> bool:
 
 def _fact_scan_text(text: str) -> str:
     # Markdown headings frequently contain section numbers rather than claims.
-    without_current_date = text.replace(date.today().isoformat(), "")
+    without_current_date = text.replace(date.today().isoformat(), "").replace(r"\%", "%")
     return "\n".join(
         line for line in without_current_date.splitlines() if not re.match(r"^\s*#{1,6}\s", line)
     )
@@ -447,11 +530,13 @@ class ConversationRuntime:
                     return
 
                 recovery_instruction = self._step_instruction()
-                for retry in range(3):
+                force_no_tools = False
+                for retry in range(4):
                     retry_pending_delivery = False
                     try:
                         async for event in self._llm_turn(
-                            recovery_instruction=recovery_instruction
+                            recovery_instruction=recovery_instruction,
+                            force_no_tools=force_no_tools,
                         ):
                             if (
                                 event.type == AgentEventType.RESPONSE
@@ -582,6 +667,64 @@ class ConversationRuntime:
                         )
                         self._persist_turn_outcome(
                             "FAILED", "empty_model_response", "Model returned no final response"
+                        )
+                        yield AgentEvent.done()
+                        return
+                    except _UngroundedResponse as exc:
+                        if retry < 3:
+                            if force_no_tools:
+                                yield AgentEvent.warning(
+                                    "模型答复仍包含无来源事实，正在再次自动校正。",
+                                    code="response_grounding_retry",
+                                    attempt=retry + 1,
+                                    max_attempts=4,
+                                    issues=exc.issues,
+                                )
+                            recovery_instruction = "\n\n".join(
+                                part
+                                for part in (
+                                    self._step_instruction(),
+                                    "The previous user-facing answer failed the source-grounding "
+                                    "check. Rewrite it from scratch as plain text without tools. "
+                                    "Do not mention this validator. Every number, citation, method, "
+                                    "dataset role, component claim, availability procedure, and "
+                                    "verification statement must be present in the current user "
+                                    "message or a successful allowed primary-source tool result. "
+                                    "For missing facts, say 'not supplied in the available evidence' "
+                                    "instead of guessing. Remove these unsupported items: "
+                                    + ", ".join(exc.issues)
+                                    + ". Delete the entire sentence or table row when a clean "
+                                    "source-grounded replacement is not possible"
+                                    + ". Apply these exact repairs when relevant: replace 'first "
+                                    "principal component/first PC' with 'reported cumulative "
+                                    "explained variance'; replace assertions that PCA was applied "
+                                    "to a feature set or dataset with 'the reported PCA result'; "
+                                    "never write 'PCA was/is applied to' or 'PCA applied to' when "
+                                    "the source does not name that data object; in a table, list, "
+                                    "or LaTeX fragment, use supplied label-value pairs instead of "
+                                    "adding a subject or analysis procedure; "
+                                    "replace known/confirmed/retrievable claims with 'not supplied "
+                                    "in the available evidence'; remove every illustrative number, "
+                                    "threshold, confidence interval, bootstrap count, or rule of "
+                                    "thumb not present in the sources. Preserve the requested "
+                                    "format and all supported content from this draft:\n"
+                                    "<draft_to_repair>\n"
+                                    + exc.draft[:30_000]
+                                    + "\n</draft_to_repair>",
+                                )
+                                if part
+                            )
+                            force_no_tools = True
+                            continue
+                        yield AgentEvent.error(
+                            "模型连续 4 次未能生成来源充分的答复；未向用户交付含无来源事实的结果。",
+                            code="response_grounding_failed",
+                            issues=exc.issues,
+                        )
+                        self._persist_turn_outcome(
+                            "FAILED",
+                            "response_grounding_failed",
+                            "Model response remained ungrounded after automatic repair",
                         )
                         yield AgentEvent.done()
                         return
@@ -914,6 +1057,80 @@ class ConversationRuntime:
         parts.append("Remaining or skipped work is unverified; continue only after reviewing it.")
         return " ".join(parts)
 
+    @staticmethod
+    def _semantic_claim_is_negated(text: str, match: re.Match[str]) -> bool:
+        line_start = text.rfind("\n", 0, match.start()) + 1
+        line_end = text.find("\n", match.end())
+        if line_end < 0:
+            line_end = len(text)
+        prefix = text[line_start : match.start()]
+        suffix = text[match.end() : line_end]
+        return bool(
+            _RESPONSE_NEGATION_RE.search(prefix)
+            or _RESPONSE_RECOMMENDATION_RE.search(prefix)
+            or _RESPONSE_POST_CLAIM_NEGATION_RE.search(suffix)
+        )
+
+    def _response_grounding_source(self) -> str:
+        turn_messages = self.session.messages[self._turn_message_start :]
+        user_text = "\n".join(
+            message.text_content() for message in turn_messages if message.role == MessageRole.USER
+        )
+        named_sources = {
+            match.group(1).replace("\\", "/").lower()
+            for match in _NAMED_SOURCE_FILE_RE.finditer(user_text)
+        }
+        tool_inputs: dict[str, tuple[str, str]] = {}
+        source_parts = [user_text]
+        for message in turn_messages:
+            for block in message.blocks:
+                if isinstance(block, ToolUseBlock):
+                    try:
+                        args = json.loads(block.input) if block.input else {}
+                    except (json.JSONDecodeError, TypeError):
+                        args = {}
+                    path = str(
+                        args.get("file_path", "") or args.get("path", "")
+                        if isinstance(args, dict)
+                        else ""
+                    )
+                    tool_inputs[block.id] = (block.name, path)
+                elif isinstance(block, ToolResultBlock):
+                    if block.is_error or block.status not in {"", "success"}:
+                        continue
+                    tool_name, path = tool_inputs.get(block.tool_use_id, (block.tool_name, ""))
+                    if tool_name == "read_file" and named_sources:
+                        normalized = path.replace("\\", "/").lower()
+                        basename = normalized.rsplit("/", 1)[-1]
+                        if not any(
+                            normalized.endswith(source)
+                            or source.endswith(normalized)
+                            or source.rsplit("/", 1)[-1] == basename
+                            for source in named_sources
+                        ):
+                            continue
+                    source_parts.append(block.output)
+        return "\n".join(part for part in source_parts if part)
+
+    def _response_grounding_issues(self, text: str) -> list[str]:
+        if not self.session.meta.active_skills:
+            return []
+        source_text = self._response_grounding_source()
+        source_markers = set(_fact_marker_counts(source_text))
+        issues = [marker for marker in _fact_marker_counts(text) if marker not in source_markers]
+        for label, pattern in _RESPONSE_SEMANTIC_CLAIMS:
+            source_matches = list(pattern.finditer(source_text))
+            if any(
+                not self._semantic_claim_is_negated(source_text, match) for match in source_matches
+            ):
+                continue
+            matches = list(pattern.finditer(text))
+            if matches and not all(
+                self._semantic_claim_is_negated(text, match) for match in matches
+            ):
+                issues.append(f"claim:{label}")
+        return list(dict.fromkeys(issues))
+
     async def _llm_turn(
         self,
         *,
@@ -1035,6 +1252,17 @@ class ConversationRuntime:
                     raise _MalformedToolProtocol(
                         "Provider returned textual tool protocol instead of a response"
                     )
+                if not tool_blocks and full_text.strip():
+                    grounding_issues = self._response_grounding_issues(full_text)
+                    if grounding_issues:
+                        if not force_no_tools:
+                            yield AgentEvent.warning(
+                                "",
+                                code="response_grounding_retry",
+                                reset_stream=True,
+                                issues=grounding_issues,
+                            )
+                        raise _UngroundedResponse(grounding_issues, full_text)
                 assistant_blocks = list(tool_blocks)
                 if text_blocks:
                     assistant_blocks.append(TextBlock(text=full_text))
@@ -1392,12 +1620,18 @@ class ConversationRuntime:
             conflict = self._editor_conflict(resolved_path)
             if conflict is not None:
                 detail, metadata = conflict
+                conflict_code = str(metadata.get("code", "editor_conflict"))
                 self._record_pending_mutation(
                     tb,
-                    error_code=str(metadata.get("code", "editor_conflict")),
+                    error_code=conflict_code,
                     target_path=resolved_path,
                     details=metadata,
                 )
+                # Dirty or version-diverged editor state requires a user/editor
+                # action. Repeating model turns cannot resolve it and previously
+                # caused long retry loops before the generic error budget fired.
+                self._tool_stop_code = conflict_code
+                self._tool_stop_reason = detail
                 self._append_tool_error(tb, detail, metadata=metadata)
                 self._record_tool_error()
                 yield AgentEvent.tool_result(

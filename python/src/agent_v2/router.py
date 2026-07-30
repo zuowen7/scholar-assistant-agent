@@ -458,6 +458,86 @@ def _resolve_model_alias(model: str, aliases: dict) -> str:
     return aliases.get(model.lower(), model)
 
 
+def _effective_agent_status(
+    root_config: dict | None = None,
+    *,
+    agent_config: dict | None = None,
+    cloud_config: dict | None = None,
+) -> dict:
+    """Describe the connection that ``_create_provider`` will actually use."""
+    cfg = (
+        copy.deepcopy(agent_config)
+        if agent_config is not None
+        else _agent_config_from(root_config)
+        if root_config is not None
+        else _load_agent_config()
+    )
+    cloud = (
+        copy.deepcopy(cloud_config)
+        if cloud_config is not None
+        else _cloud_config_from(root_config)
+        if root_config is not None
+        else _load_cloud_config()
+    )
+    aliases = cfg.get("model_aliases", {})
+    configured_model = str(cfg.get("model", "") or "").strip()
+    model = _resolve_model_alias(configured_model, aliases)
+    configured_provider = str(cfg.get("provider", "auto") or "auto").strip().lower()
+    api_key = str(cfg.get("api_key", "") or "").strip()
+    base_url = str(cfg.get("base_url", "") or "").strip()
+
+    if configured_provider == "anthropic" and api_key:
+        effective_provider = "anthropic"
+        effective_model = model or "claude-sonnet-4-6"
+        effective_base_url = base_url or "https://api.anthropic.com"
+        provider_source = "agent"
+        has_api_key = True
+    elif configured_provider == "openai" and (api_key or base_url):
+        effective_provider = "openai-compatible"
+        effective_model = model or "gpt-4o"
+        effective_base_url = base_url or "https://api.openai.com/v1"
+        provider_source = "agent"
+        has_api_key = bool(api_key)
+    elif api_key:
+        is_anthropic = api_key.startswith("sk-ant-")
+        effective_provider = "anthropic" if is_anthropic else "openai-compatible"
+        effective_model = model or ("claude-sonnet-4-6" if is_anthropic else "gpt-4o")
+        effective_base_url = base_url or (
+            "https://api.anthropic.com" if is_anthropic else "https://api.openai.com/v1"
+        )
+        provider_source = "agent"
+        has_api_key = True
+    else:
+        cloud_key = str(cloud.get("api_key", "") or "").strip()
+        cloud_base_url = str(cloud.get("base_url", "") or "").strip()
+        cloud_model = str(cloud.get("model", "") or "").strip()
+        if cloud_key or cloud_base_url:
+            effective_provider = "openai-compatible"
+            effective_model = model or cloud_model or "deepseek-chat"
+            effective_base_url = cloud_base_url or "https://api.deepseek.com/v1"
+            provider_source = "translator.cloud"
+            has_api_key = bool(cloud_key)
+        else:
+            effective_provider = "ollama"
+            effective_model = model or "qwen3:8b"
+            effective_base_url = os.environ.get(
+                "OLLAMA_BASE_URL", "http://localhost:11434/v1"
+            ).strip()
+            provider_source = "local"
+            has_api_key = False
+
+    return {
+        "model": effective_model,
+        "provider": effective_provider,
+        "base_url": effective_base_url,
+        "has_api_key": has_api_key,
+        "provider_source": provider_source,
+        "configured_model": configured_model,
+        "configured_provider": configured_provider,
+        "config": cfg,
+    }
+
+
 def _create_provider(root_config: dict | None = None):
     from src.agent_v2.providers.anthropic import AnthropicProvider
     from src.agent_v2.providers.openai_compat import OpenAiCompatProvider
@@ -597,7 +677,20 @@ def _build_system_prompt(workspace_root: str, tools: list) -> str:
         "The latest user message is the active task. Earlier turns are context, not an automatic "
         "backlog. Do not resume unrelated unfinished work unless the latest user message explicitly "
         "asks you to continue it. When the user narrows or replaces the scope, stop the older plan "
-        "and follow the new scope.\n\n"
+        "and follow the new scope.\n"
+        "- Match the requested delivery surface exactly. Draft, rewrite, polish, review, explain, "
+        "or 'return only' requests are chat deliverables unless the latest user message explicitly "
+        "asks to create, save, update, or edit a workspace file. Do not turn a chat-only request "
+        "into a file mutation, and do not claim a file was saved when it was not requested.\n"
+        "- Treat an absent fact as absent. Do not replace missing evidence with a method, dataset "
+        "property, repository, access procedure, author commitment, institutional approval, "
+        "validation split, component count, baseline, or uncertainty estimate that the user or a "
+        "successful tool result did not supply.\n"
+        "- A statement found in a manuscript draft, generated review, rebuttal, close-reading note, "
+        "or prior Agent output is a claim to check, not independent evidence that the claim is true. "
+        "Do not recycle it as verified support. Prefer the current user message, primary evidence "
+        "files, real command output, and fetched primary sources; report conflicts instead of "
+        "silently choosing the more convenient claim.\n\n"
         "# File and tool rules\n"
         "Use read_file before editing an existing file. Use str_replace for targeted edits when the "
         "exact old text is known. Use write_file only for a new file or a deliberate whole-file "
@@ -605,6 +698,10 @@ def _build_system_prompt(workspace_root: str, tools: list) -> str:
         "directories automatically. For large content, write compact chunks: overwrite the first "
         "chunk with final_chunk=false, append continuation chunks, and set final_chunk=true only "
         "on the last chunk. Never mutate a dirty editor file or bypass a hash conflict. "
+        "When the latest user message names exact source files, read those files first and keep "
+        "the evidence scope to them; do not inspect sibling drafts or generated outputs merely "
+        "because they exist. Expand only when a named source explicitly requires it or the user "
+        "asked for a workspace-wide audit. "
         "Do not repeat an unchanged failed or truncated tool call; follow its next_cursor or "
         "suggested_next_action instead."
     )
@@ -1330,20 +1427,20 @@ def register_agent_v2_routes(
     @app.get(f"{prefix}/plugins")
     async def v2_plugins(request: Request):
         """列出所有插件 + 启用状态。"""
-        plugin_mgr = create_default_plugin_manager()
+        root_config = _current_root_config()
+        cfg = _agent_config_from(root_config) if root_config is not None else _load_agent_config()
+        plugin_mgr = create_default_plugin_manager(enabled_names=cfg.get("enabled_plugins", []))
         return plugin_mgr.list_all()
 
     @app.get(f"{prefix}/config")
     async def v2_config(request: Request):
         """返回当前 agent 配置（脱敏）。"""
-        cfg = _load_agent_config()
+        status = _effective_agent_status(_current_root_config())
+        cfg = status.pop("config")
         aliases = cfg.get("model_aliases", {})
         return {
-            "model": cfg.get("model", ""),
-            "provider": cfg.get("provider", "auto"),
-            "base_url": cfg.get("base_url", ""),
+            **status,
             "proxy": cfg.get("proxy", ""),
-            "has_api_key": bool(cfg.get("api_key", "").strip()),
             "model_aliases": aliases,
             "available_aliases": list(aliases.keys()),
         }
@@ -1363,11 +1460,11 @@ def register_agent_v2_routes(
 
     @app.get("/api/agent/stats")
     async def agent_stats():
-        cfg = _load_agent_config()
+        status = _effective_agent_status(_current_root_config())
+        cfg = status.pop("config")
         return {
             "available": True,
-            "model": cfg.get("model", ""),
-            "provider": cfg.get("provider", "auto"),
+            **status,
             "max_steps": cfg.get("max_steps", 96),
             "max_tool_calls": cfg.get("max_tool_calls", 64),
             "soft_tool_calls": cfg.get("soft_tool_calls", 56),
@@ -1395,14 +1492,24 @@ def register_agent_v2_routes(
         if not tool_name:
             raise HTTPException(400, "tool_name is required")
         ws = body.get("workspace_root", "")
+        root_config = _current_root_config()
+        cfg = _agent_config_from(root_config) if root_config is not None else _load_agent_config()
+        selected_skills = {str(name) for name in body.get("skills", []) if isinstance(name, str)}
         registry = create_default_registry(
             workspace_root=ws,
-            include_run_command=bool(_load_agent_config().get("enable_run_command", False)),
+            include_run_command=bool(cfg.get("enable_run_command", False))
+            or "nature_figure" in selected_skills,
         )
+        register_academic_tools(registry)
+        register_sub_agent(registry)
         tool_def = registry.get(tool_name)
         if not tool_def:
             raise HTTPException(400, f"Unknown tool: {tool_name}")
-        return {"status": "ok", "tool": tool_name, "description": tool_def.description}
+        return {
+            "status": "ok",
+            "tool": tool_name,
+            "description": tool_def.definition.description,
+        }
 
     @app.post(f"{prefix}/undo/{{session_id}}")
     async def v2_undo(session_id: str, request: Request):

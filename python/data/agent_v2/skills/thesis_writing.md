@@ -7,6 +7,12 @@ layer: agents
 
 When writing or expanding academic theses:
 
+0. **Evidence and Delivery Scope**:
+   - Use only facts supplied by the user or successful tool results
+   - Do not infer methods, dataset properties, validation design, component counts, or statistical meaning from an isolated metric
+   - If only a result is supplied, say it was "reported"; do not assert that a method was applied to a feature set, dataset, cohort, or split
+   - Return text in chat unless the latest user request explicitly asks to create, save, update, or edit a workspace file
+
 1. **Structure**: Each section should have a clear topic sentence, 2-3 supporting paragraphs with evidence, and a transition to the next section.
 
 2. **Argumentation**:

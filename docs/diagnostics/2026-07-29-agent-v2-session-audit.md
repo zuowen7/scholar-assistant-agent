@@ -778,3 +778,89 @@ npm run build
 5. 重新打开 session 后发送“继续完成”，确认运行时从 pending action 恢复。
 
 旧 session 已经以旧 runtime 记录了错误终态，不能用代码升级追溯性地改写为真实完成；验收必须创建新 session 或明确继续该 session 后重新执行交付。
+
+## 13. 2026-07-30 全能力隔离实测与二次修复
+
+### 13.1 结论
+
+第 12.5 节要求的单一流程已经真实完成，但它不足以证明整个 Agent 可用；本轮因此扩展到全部生产工具、全部 14 个内置技能、会话控制、学术状态、插件/MCP/Hook 子系统和跨前后端回归。实测证明核心工具和会话控制可用，同时发现“技能最终答复编造事实、聊天任务擅自写文件、脏编辑器冲突后循环、状态接口显示错误模型、工具自省漏注册、术语误报”等新问题，现已修复并重新以真实 DeepSeek 会话验证高风险路径。
+
+### 13.2 隔离与判定口径
+
+- 后端：独立进程，仅监听 `127.0.0.1:18089`；未停止或占用用户原有的 `18088` 实例。
+- 工作区：`%LOCALAPPDATA%\Temp\agent-v2-live-qa`；所有 mutation、Undo、拒绝、恢复和冲突测试均限定在该目录。
+- Provider：`deepseek-v4-flash`，实际生效配置为 `openai-compatible` / `translator.cloud`；状态接口只返回 `has_api_key=true`，不返回密钥。
+- 通过标准：工具必须返回生产实现的真实结果；文件流程必须检查磁盘内容和 session 终态；技能必须记录正确 `active_skills`；安全拦截之后必须能继续交付或进入可信 `PARTIAL`，不能把“被拦截”本身算成功。
+- 外部集成边界：当前示例 Agent 插件为 `disabled`，且没有配置 Agent V2 MCP server；因此只验证其加载、配置应用、协议与生命周期测试，不宣称存在未配置的真实外部服务。
+
+### 13.3 全部生产工具
+
+本轮覆盖 17 个生产工具：
+
+`read_file`、`write_file`、`str_replace`、`grep_files`、`glob_files`、`list_dir`、`run_command`、`rag_search`、`web_search`、`web_fetch`、`arxiv_search`、`translate_document`、`export_document`、`read_argument_graph`、`read_argument_ledger`、`read_reviewer_state`、`run_sub_agent`。
+
+验证结果：
+
+1. 文件检索、读取、覆盖、追加、替换和命令执行均在隔离工作区产生可核对结果。
+2. `web_search`、`web_fetch`、`arxiv_search` 和 `run_sub_agent` 均调用真实生产实现；受当前沙箱网络限制的调用改在获批的隔离进程中复验。
+3. `translate_document` 真实创建任务并消费完整 SSE；最终收到 `translate.complete`。修复后复测任务 `0b719cb9` 没有再把原文未出现的 BERT、GPT 等 passthrough 术语误报为 `translate.glossary_violation`。
+4. `export_document` 真实生成导出结果。
+5. 先用真实模型构建含 4 个 promise 的 Ledger 和含 13 个 review point 的 Reviewer 状态，再分别验证 graph、ledger 和 reviewer 分页读取；`complete`、`cursor`、`next_cursor`、`stale` 字段可用。
+6. `/api/agent/v2/tool` 原先没有注册学术工具和按技能启用的 `run_command`，且读取了不存在的 `ToolDefinition.description` 属性；修复后 live 请求可正确返回 `arxiv_search` 和 `nature_figure` 下的 `run_command`。
+
+### 13.4 全部 14 个技能
+
+本轮通过 `/api/agent/v2/chat` 逐个选择并调用：
+
+`academic_writing`、`paper_review`、`latex_formatting`、`chinese_academic`、`methodology_critique`、`nature_writing`、`nature_polishing`、`nature_reviewer`、`nature_response`、`nature_citation`、`nature_data`、`nature_reader`、`nature_figure`、`thesis_writing`。
+
+每个持久化 session 的 `active_skills` 均与请求一致。初次真实输出暴露了两类共同缺陷：
+
+1. 用户明确要求在聊天中返回内容并禁止编辑文件时，部分技能仍调用 `write_file` / `str_replace`。
+2. 多个技能会补造来源中不存在的“独立验证集”“完整特征集”“已知组件数”“可向作者合理申请”“机构批准”，或把 PCA 累计解释方差改写成模型性能、第一主成分或已执行的数据集分析。
+
+修复包括：
+
+- 核心 prompt 明确聊天交付不 mutation、缺失事实保持缺失、生成的草稿/审稿不能反过来作为独立证据。
+- 14 个技能的高风险语义规则与工具契约同步收紧。
+- 对启用技能的最终 `response` 增加来源集合校验；无来源数字、引用、验证状态和高风险语义不会持久化为最终答复，而是清空临时流并最多自动校正 4 次。
+- 用户明确命名来源文件时，未命名的同目录生成稿不能进入答复证据集合。
+- 否定、缺失和建议语境与事实断言分开处理，避免把“缺少 held-out test set”误判成“存在 held-out test set”。
+
+修复后高风险真实复测：
+
+- `nature_reader`、`nature_response`、`thesis_writing`、`nature_reviewer` 均 `COMPLETE`，且聊天任务 mutation 为 0。
+- `nature_response` 首次补造 95% 后触发 `response_grounding_retry`，重写为无虚构数字的完成答复。
+- `latex_formatting` 首次把 PCA 描述成对未指定数据集执行的分析，自动校正后 `COMPLETE`；最终只交付 `Reported PCA cumulative explained variance: 59.1%` 与 `n=120`。
+- `nature_reviewer` 只读取明确指定的 `draft/main.md` 与根目录 `evidence.md`，区分“数值存在但方法支撑不足”和“数值不存在”。
+
+### 13.5 会话控制与安全边界
+
+| 流程 | 真实结果 |
+|---|---|
+| 拒绝审批 | session `ABORTED`，目标文件不存在 |
+| Abort | 等待审批时中止，session `ABORTED`，目标文件不存在 |
+| Resume + approve | 从已中止 session 继续，重新请求审批，写入并读回 `RESUME-FIX`，最终 `COMPLETE` |
+| Undo | 已写文件通过 `/undo` 恢复，恢复后文件不存在 |
+| Dirty Monaco | 一次冲突后 6.7 秒进入 `PARTIAL / dirty_editor_conflict`，磁盘仍为 `ORIGINAL-DIRTY-FIX`；不再进行约十分钟的重复写入循环 |
+| Workspace escape | 模型拒绝读取工作区外的 `C:\Windows\win.ini`，没有越界工具调用 |
+| 跨轮继续 | 失败写入保留 pending action；明确继续时恢复，成功 mutation 后清零并允许 `COMPLETE` |
+
+### 13.6 其他运行面
+
+1. `/api/agent/v2/config` 和 `/api/agent/stats` 原先显示配置表面值而不是实际 fallback provider。现在返回真实生效的 provider、model、base URL、来源和是否存在密钥，且不暴露密钥内容。
+2. `/plugins` 原先忽略配置中的 enabled 列表。现在应用配置；当前 `example_academic` 仍按本机配置显示 `enabled=false`，没有擅自修改用户配置。
+3. Hooks、Plugin manager、MCP manager、sub-agent、session fork、cleanup、Trident compaction、permission policy 和 SSE adapter 均通过 Agent V2 全套测试。MCP 无外部 server 配置，不能把 manager 测试等同于在线 MCP 服务验收。
+4. Ledger 生成提示修复了一个误导：promise 位于 front matter 时，不再声称“全文没有 promise”；下游正文为空时只报告缺少下游正文证据。
+
+### 13.7 最终验证
+
+- 真实 DeepSeek：核心检索/取证/写入/分块/继续流程、17 个生产工具、14 个技能选择执行，以及 deny/abort/resume/approve/undo/dirty/escape 控制流程均已运行。
+- Agent V2 全套：`805 passed`。
+- 后端全量：`2350 passed, 7 skipped`。
+- 前端全量：`834 passed`。
+- TypeScript：`vue-tsc --noEmit` 通过。
+- Python 静态检查：Ruff check 与 format check 通过。
+- 生产前端：`vite build` 通过。
+
+该结论证明当前已配置能力的代码契约和上述真实流程可用；它不证明未配置的外部 MCP 服务、被禁用插件或 PDF 视觉验收已经在线可用。后续若启用新的外部插件/MCP server，应按具体配置再做一次真实连接与权限验收。
