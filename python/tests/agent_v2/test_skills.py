@@ -154,6 +154,16 @@ class TestBuiltinSkills:
     def test_builtins_are_opt_in_because_core_safety_lives_in_the_runtime_prompt(self):
         assert all(skill.default_active is False for skill in _BUILTIN_SKILLS)
 
+    def test_source_grounding_guards_cover_observed_live_failures(self):
+        content = {skill.name: skill.content for skill in _BUILTIN_SKILLS}
+
+        assert "does not establish the number of retained components" in content["latex_formatting"]
+        assert "not independent evidence" in content["nature_reviewer"]
+        assert "Do not mine sibling generated drafts" in content["nature_reviewer"]
+        assert "not recorded" in content["nature_response"]
+        assert "does not imply held-out" in content["nature_reader"]
+        assert "Do not relabel PCA explained variance" in content["nature_figure"]
+
 
 class TestSkillEdge:
     def test_malformed_yaml(self, tmp_path: Path):

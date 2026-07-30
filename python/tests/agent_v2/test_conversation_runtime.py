@@ -908,6 +908,249 @@ class TestBasicFlow:
         assert workspace.joinpath("main.md").read_text(encoding="utf-8") == "# Hello World"
 
     @pytest.mark.asyncio
+    async def test_dirty_editor_conflict_stops_turn_without_model_retry_loop(self, workspace: Path):
+        provider = _ScriptedProvider(
+            [
+                _tool_response(
+                    "write_file",
+                    {"file_path": "main.md", "content": "# Changed"},
+                ),
+                _text_response("The editor has unsaved changes; save or resolve them first."),
+            ]
+        )
+        registry = create_default_registry(workspace_root=workspace)
+        session = Session(workspace=str(workspace))
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+            auto_approve=True,
+            editor_files=[
+                {
+                    "file_path": str(workspace / "main.md"),
+                    "is_dirty": True,
+                    "content_hash": "a" * 64,
+                    "editor_version": 7,
+                }
+            ],
+        )
+
+        events = await _collect_events(runtime, "replace main.md")
+
+        results = [
+            event
+            for event in events
+            if event.type == AgentEventType.TOOL_RESULT
+            and event.data.get("tool_name") == "write_file"
+        ]
+        assert len(results) == 1
+        assert results[0].data["metadata"]["code"] == "dirty_editor_conflict"
+        assert session.meta.state == "PARTIAL"
+        assert session.meta.outcome["stop_code"] == "dirty_editor_conflict"
+        assert len(session.meta.pending_actions) == 1
+        assert workspace.joinpath("main.md").read_text(encoding="utf-8") == "# Hello World"
+
+    @pytest.mark.asyncio
+    async def test_skill_response_is_automatically_repaired_before_delivery(self, workspace: Path):
+        provider = _ScriptedProvider(
+            [
+                _text_response(
+                    "The first principal component explained 59.1%, with a 95% confidence interval."
+                ),
+                _text_response(
+                    "The reported cumulative explained variance is 59.1%; the component count "
+                    "and uncertainty are not supplied in the available evidence."
+                ),
+            ]
+        )
+        registry = create_default_registry(workspace_root=workspace)
+        session = Session(workspace=str(workspace))
+        session.meta.active_skills = ["latex_formatting"]
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+            auto_approve=True,
+        )
+
+        events = await _collect_events(
+            runtime,
+            "Format the reported cumulative explained variance of 59.1%.",
+        )
+
+        responses = [
+            event.data["text"] for event in events if event.type == AgentEventType.RESPONSE
+        ]
+        warnings = [
+            event
+            for event in events
+            if event.type == AgentEventType.WARNING
+            and event.data.get("code") == "response_grounding_retry"
+        ]
+        assert responses == [
+            "The reported cumulative explained variance is 59.1%; the component count "
+            "and uncertainty are not supplied in the available evidence."
+        ]
+        assert len(warnings) == 1
+        assert warnings[0].data["reset_stream"] is True
+        assert session.meta.state == "COMPLETE"
+        assert "95%" not in "\n".join(message.text_content() for message in session.messages)
+
+    def test_skill_response_does_not_treat_unnamed_sibling_draft_as_primary_evidence(
+        self, workspace: Path
+    ):
+        registry = create_default_registry(workspace_root=workspace)
+        session = Session(workspace=str(workspace))
+        session.meta.active_skills = ["nature_reviewer"]
+        session.append(
+            Message(
+                role=MessageRole.USER,
+                blocks=[TextBlock(text="Review main.md and evidence.md only.")],
+            )
+        )
+        session.append(
+            Message(
+                role=MessageRole.ASSISTANT,
+                blocks=[
+                    ToolUseBlock(
+                        id="read_generated",
+                        name="read_file",
+                        input=json.dumps({"file_path": "generated-response.md"}),
+                    )
+                ],
+            )
+        )
+        session.append(
+            Message(
+                role=MessageRole.TOOL,
+                blocks=[
+                    ToolResultBlock(
+                        tool_use_id="read_generated",
+                        tool_name="read_file",
+                        output="The component count is already known.",
+                    )
+                ],
+            )
+        )
+        runtime = ConversationRuntime(
+            provider=MockProvider(),
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+        )
+        runtime._turn_message_start = 0
+
+        issues = runtime._response_grounding_issues("The component count is already known.")
+
+        assert "claim:unsupported known or confirmed status" in issues
+
+    def test_skill_response_distinguishes_assertions_from_missing_or_recommended_evidence(
+        self, workspace: Path
+    ):
+        registry = create_default_registry(workspace_root=workspace)
+        session = Session(workspace=str(workspace))
+        session.meta.active_skills = ["nature_reviewer"]
+        session.append(
+            Message(
+                role=MessageRole.USER,
+                blocks=[TextBlock(text="Review the supplied evidence.")],
+            )
+        )
+        runtime = ConversationRuntime(
+            provider=MockProvider(),
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+        )
+        runtime._turn_message_start = 0
+
+        asserted = runtime._response_grounding_issues("The authors report a held-out test set.")
+        absent = runtime._response_grounding_issues(
+            "A held-out test set is not supplied in the available evidence."
+        )
+        recommended = runtime._response_grounding_issues(
+            "The authors should report whether a held-out test set was used."
+        )
+
+        assert "claim:held-out/test/validation/training role" in asserted
+        assert "claim:held-out/test/validation/training role" not in absent
+        assert "claim:held-out/test/validation/training role" not in recommended
+
+    def test_negated_source_mention_does_not_ground_positive_skill_assertion(self, workspace: Path):
+        registry = create_default_registry(workspace_root=workspace)
+        session = Session(workspace=str(workspace))
+        session.meta.active_skills = ["nature_reviewer"]
+        session.append(
+            Message(
+                role=MessageRole.USER,
+                blocks=[
+                    TextBlock(
+                        text=(
+                            "No held-out test set is supplied. Do not claim that PCA was applied "
+                            "to a dataset."
+                        )
+                    )
+                ],
+            )
+        )
+        runtime = ConversationRuntime(
+            provider=MockProvider(),
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+        )
+        runtime._turn_message_start = 0
+
+        issues = runtime._response_grounding_issues(
+            "A held-out test set was used. PCA was applied to the dataset."
+        )
+
+        assert "claim:held-out/test/validation/training role" in issues
+        assert "claim:PCA applied to an unspecified data object" in issues
+
+    @pytest.mark.asyncio
+    async def test_skill_grounding_repair_has_one_extra_converging_attempt(self, workspace: Path):
+        provider = _ScriptedProvider(
+            [
+                _text_response("Unsupported interval: 95%."),
+                _text_response("Unsupported interval: 96%."),
+                _text_response("Unsupported interval: 97%."),
+                _text_response("Uncertainty is not supplied in the available evidence."),
+            ]
+        )
+        registry = create_default_registry(workspace_root=workspace)
+        session = Session(workspace=str(workspace))
+        session.meta.active_skills = ["nature_reviewer"]
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+        )
+
+        events = await _collect_events(runtime, "Review the supplied evidence.")
+
+        responses = [
+            event.data["text"] for event in events if event.type == AgentEventType.RESPONSE
+        ]
+        assert responses == ["Uncertainty is not supplied in the available evidence."]
+        assert session.meta.state == "COMPLETE"
+
+    @pytest.mark.asyncio
     async def test_cr005_empty_tool_calls(self, workspace: Path):
         """CR-005: LLM 返回无 tool_call（纯文本），直接结束"""
         provider = MockProvider()

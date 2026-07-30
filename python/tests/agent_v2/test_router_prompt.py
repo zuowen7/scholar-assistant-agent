@@ -40,6 +40,11 @@ def test_system_prompt_enforces_academic_evidence_and_incomplete_result_contract
     assert "Never fabricate tool_use_id" in prompt
     assert "final_chunk=false" in prompt
     assert "Do not repeat equivalent searches" in prompt
+    assert "Match the requested delivery surface exactly" in prompt
+    assert "Do not turn a chat-only request into a file mutation" in prompt
+    assert "author commitment" in prompt
+    assert "is a claim to check, not independent evidence" in prompt
+    assert "keep the evidence scope to them" in prompt
     assert prompt.index("# Core safety contract") < prompt.index("Current date:")
 
 
@@ -230,6 +235,82 @@ def test_agent_stats_reports_runtime_budget_config(monkeypatch):
     assert stats.json()["max_model_calls"] == 9
     assert stats.json()["max_mutation_attempts"] == 7
     assert stats.json()["max_active_seconds"] == 123
+
+
+def test_config_and_stats_report_effective_translator_cloud_fallback_without_secret():
+    root_config = {
+        "agent": {
+            "provider": "auto",
+            "model": "",
+            "max_steps": 23,
+            "model_aliases": {},
+        },
+        "translator": {
+            "cloud": {
+                "api_key": "super-secret-key",
+                "base_url": "https://api.deepseek.com/v1",
+                "model": "deepseek-v4-flash",
+            }
+        },
+    }
+    app = FastAPI()
+    register_agent_v2_routes(app, load_config=lambda: root_config)
+    client = TestClient(app)
+
+    config = client.get("/api/agent/v2/config")
+    stats = client.get("/api/agent/stats")
+
+    assert config.status_code == 200
+    assert config.json()["model"] == "deepseek-v4-flash"
+    assert config.json()["provider"] == "openai-compatible"
+    assert config.json()["provider_source"] == "translator.cloud"
+    assert config.json()["configured_provider"] == "auto"
+    assert config.json()["has_api_key"] is True
+    assert "super-secret-key" not in config.text
+    assert stats.json()["model"] == "deepseek-v4-flash"
+    assert stats.json()["provider_source"] == "translator.cloud"
+    assert stats.json()["max_steps"] == 23
+    assert "super-secret-key" not in stats.text
+
+
+def test_plugins_endpoint_uses_effective_enabled_plugin_config():
+    app = FastAPI()
+    register_agent_v2_routes(
+        app,
+        load_config=lambda: {
+            "agent": {"enabled_plugins": ["example_academic"]},
+        },
+    )
+
+    plugins = TestClient(app).get("/api/agent/v2/plugins")
+
+    assert plugins.status_code == 200
+    example = next(item for item in plugins.json() if item["name"] == "example_academic")
+    assert example["enabled"] is True
+
+
+def test_tool_introspection_covers_academic_and_skill_activated_command_tools(tmp_path):
+    app = FastAPI()
+    register_agent_v2_routes(app, load_config=lambda: {"agent": {}})
+    client = TestClient(app)
+
+    academic = client.post(
+        "/api/agent/v2/tool",
+        json={"tool_name": "arxiv_search", "workspace_root": str(tmp_path)},
+    )
+    command = client.post(
+        "/api/agent/v2/tool",
+        json={
+            "tool_name": "run_command",
+            "workspace_root": str(tmp_path),
+            "skills": ["nature_figure"],
+        },
+    )
+
+    assert academic.status_code == 200
+    assert academic.json()["tool"] == "arxiv_search"
+    assert command.status_code == 200
+    assert command.json()["tool"] == "run_command"
 
 
 def test_session_path_rejects_traversal(tmp_path, monkeypatch):
