@@ -72,6 +72,19 @@ CONFIG_PATH = (
     else (RUNTIME_DIR / "config" / "default.yaml")
 )
 
+
+def _seed_runtime_config(source: Path, destination: Path) -> None:
+    """Create an ignored runtime config from the tracked source template once."""
+    if destination.exists() or not source.exists():
+        return
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+
+
+if not _is_frozen() and not DOCKER_MODE:
+    _seed_runtime_config(Path(__file__).parent.parent / "config" / "default.yaml", CONFIG_PATH)
+
+
 if _is_frozen() and not DOCKER_MODE:
     bundled_default = BUNDLED_DIR / "config" / "default.yaml"
     if not CONFIG_PATH.exists():
@@ -365,12 +378,13 @@ _config_read_lock = threading.Lock()
 def _save_config(config: dict) -> None:
     global _config_cache, _config_cache_mtime
     save_copy = copy.deepcopy(config)
-    # Strip secrets from default.yaml, but persist them in default.local.yaml.
-    # Keep unrelated local overrides intact when rotating or clearing a key.
-    secret_paths = (
+    # Keep credentials and user-specific identifiers out of the tracked/default
+    # template. Preserve unrelated local overrides when rotating or clearing them.
+    private_paths = (
         ("translator", "cloud", "api_key"),
         ("agent", "api_key"),
         ("zotero", "api_key"),
+        ("zotero", "user_id"),
         ("vision", "api_key"),
     )
 
@@ -402,8 +416,8 @@ def _save_config(config: dict) -> None:
             if isinstance(parent.get(key), dict) and not parent[key]:
                 parent.pop(key, None)
 
-    secrets = {path: _get_nested(save_copy, path) for path in secret_paths}
-    for path, value in secrets.items():
+    private_values = {path: _get_nested(save_copy, path) for path in private_paths}
+    for path, value in private_values.items():
         if value:
             _set_nested(save_copy, path, "")
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -422,7 +436,7 @@ def _save_config(config: dict) -> None:
             with contextlib.suppress(OSError):
                 os.unlink(tmp_name)
             raise
-        # Persist API keys to default.local.yaml so they survive config reloads.
+        # Persist private values to default.local.yaml so they survive reloads.
         local_path = CONFIG_PATH.parent / "default.local.yaml"
         try:
             if local_path.exists():
@@ -430,7 +444,7 @@ def _save_config(config: dict) -> None:
                     local_data = yaml.safe_load(f) or {}
             else:
                 local_data = {}
-            for path, value in secrets.items():
+            for path, value in private_values.items():
                 if value:
                     _set_nested(local_data, path, value)
                 else:
