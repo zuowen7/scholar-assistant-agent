@@ -377,11 +377,10 @@
       "useTool": "Use {tool}"
     },
     "runtimeErrors": {
-      "tool_call_limit": "This task made too many tool calls and was stopped safely. Narrow the scope or continue in smaller steps.",
-      "tool_budget_exhausted": "This task exhausted its tool budget. Existing results were saved and finalized, and unfinished work can be resumed.",
       "tool_error_limit": "This task encountered several tool errors and stopped retrying. Expand Execution to inspect the failures.",
-      "max_steps_exhausted": "This task reached its maximum reasoning steps. Existing results were saved and finalized, and unfinished work can be resumed.",
-      "model_call_budget_exhausted": "This task reached its model-call limit. Existing results were saved and unverified steps can be continued.",
+      "selection_tool_limit": "The selection edit did not complete atomically and was stopped to protect the selected content.",
+      "no_progress_stall": "Consecutive tool calls produced no new result, so the repeated strategy was stopped and existing work was preserved.",
+      "active_time_exhausted": "No new tool result was produced within the active execution lease, so the task was stopped.",
       "tool_loop_stopped": "An abnormal tool loop was detected and the task was stopped safely."
     },
     "partialSummary": "The task is only partially complete: {success} tool operations succeeded, {error} failed, and {changed} files changed. {reason}",

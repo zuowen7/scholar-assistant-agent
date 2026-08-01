@@ -71,15 +71,10 @@ agent:
   request_timeout: 120
   # Native Ollama context; OpenAI-compatible /v1 otherwise defaults to only 4096.
   ollama_context_length: 32768
-  max_steps: 96
-  # Per-turn tool budget reserves a final model call with tools disabled.
-  max_tool_calls: 64
-  soft_tool_calls: 56
-  # Independent hard limits include retries and side-effect attempts.
-  max_model_calls: 32
-  max_mutation_attempts: 20
-  # Active provider/tool time only; user approval wait time is excluded.
+  # Successful new tool observations renew this lease; approval wait is excluded.
   max_active_seconds: 600
+  # Stop only after this many consecutive calls repeat prior observations.
+  max_stalled_tool_calls: 12
   # Generic processes have no cross-platform OS filesystem sandbox.
   # Enable only after accepting that explicit risk.
   enable_run_command: false

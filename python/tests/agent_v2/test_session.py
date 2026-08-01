@@ -74,7 +74,7 @@ class TestBasics:
         session.set_outcome(
             "PARTIAL",
             {
-                "stop_code": "tool_budget_exhausted",
+                "stop_code": "no_progress_stall",
                 "changed_files": ["draft/main.md"],
             },
         )
@@ -82,7 +82,7 @@ class TestBasics:
 
         loaded = Session.load(session_path)
         assert loaded.meta.state == "PARTIAL"
-        assert loaded.meta.outcome["stop_code"] == "tool_budget_exhausted"
+        assert loaded.meta.outcome["stop_code"] == "no_progress_stall"
         assert loaded.meta.outcome["changed_files"] == ["draft/main.md"]
 
     def test_pending_action_round_trips_and_resolves_by_target(

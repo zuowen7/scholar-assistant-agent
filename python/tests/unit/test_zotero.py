@@ -123,12 +123,14 @@ class TestZoteroClient:
     def test_check_config_no_key(self):
         """未配置 API Key 时抛出异常"""
         client = ZoteroClient(api_key="", user_id="123")
+        client.api_key = ""
         with pytest.raises(ValueError, match="API Key"):
             client._check_config()
 
     def test_check_config_no_user_id(self):
         """未配置 User ID 时抛出异常"""
         client = ZoteroClient(api_key="key", user_id="")
+        client.user_id = ""
         with pytest.raises(ValueError, match="User ID"):
             client._check_config()
 

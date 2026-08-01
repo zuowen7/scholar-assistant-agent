@@ -93,7 +93,7 @@ class TestAdapter:
         event = AgentEvent.response(
             "partial",
             partial=True,
-            stop_code="model_call_budget_exhausted",
+            stop_code="no_progress_stall",
             changed_count=2,
         )
 
@@ -103,7 +103,7 @@ class TestAdapter:
         assert result["content"] == "partial"
         assert result["metadata"] == {
             "partial": True,
-            "stop_code": "model_call_budget_exhausted",
+            "stop_code": "no_progress_stall",
             "changed_count": 2,
         }
 

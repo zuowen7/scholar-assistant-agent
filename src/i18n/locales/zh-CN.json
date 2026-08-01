@@ -380,11 +380,10 @@
       "useTool": "使用 {tool}"
     },
     "runtimeErrors": {
-      "tool_call_limit": "本次任务的工具调用过多，已安全停止。请缩小任务范围或分步继续。",
-      "tool_budget_exhausted": "本次任务已用完工具预算；已有结果已保存并完成收尾，可从未完成项继续。",
       "tool_error_limit": "本次任务连续遇到多次工具错误，已停止重复尝试。请展开“执行过程”查看失败原因。",
-      "max_steps_exhausted": "本次任务已达到最大推理步数；已有结果已保存并完成收尾，可从未完成项继续。",
-      "model_call_budget_exhausted": "本次任务已达到模型调用上限；已有结果已保存，可继续完成尚未验证的步骤。",
+      "selection_tool_limit": "选区编辑没有按原子步骤完成，已停止以保护选区内容。",
+      "no_progress_stall": "连续工具调用没有产生新结果，已保留现有结果并停止重复策略。",
+      "active_time_exhausted": "在活动租约内没有取得新的工具结果，当前任务已停止。",
       "tool_loop_stopped": "检测到异常工具循环，本次任务已安全停止。"
     },
     "partialSummary": "任务仅部分完成：{success} 项工具操作成功，{error} 项失败，已修改 {changed} 个文件。{reason}",

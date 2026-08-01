@@ -409,7 +409,7 @@ class TestConfigCache:
             translator:
               temperature: 0.5
             agent:
-              max_steps: 10
+              max_stalled_tool_calls: 10
         """)
         )
         monkeypatch.setattr(api_factory, "CONFIG_PATH", config_file)
@@ -418,7 +418,7 @@ class TestConfigCache:
 
         cfg = api_factory._load_config()
         assert cfg["translator"]["temperature"] == 0.5
-        assert cfg["agent"]["max_steps"] == 10
+        assert cfg["agent"]["max_stalled_tool_calls"] == 10
 
     def test_returns_cached_on_same_mtime(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -54,7 +54,7 @@ def client(tmp_path_factory):
         "translator:\n  engine: ollama\n  model: qwen3:8b\n"
         "  ollama_base_url: http://localhost:11434\n  temperature: 0.3\n"
         "  timeout: 30.0\nchunker:\n  max_tokens: 512\n  overlap_tokens: 64\n"
-        "formatter:\n  output_format: bilingual\nagent:\n  model: qwen3:8b\n  max_steps: 3\n",
+        "formatter:\n  output_format: bilingual\nagent:\n  model: qwen3:8b\n  max_stalled_tool_calls: 3\n",
         encoding="utf-8",
     )
     with patch("api_factory.CONFIG_PATH", config_dir / "default.yaml"):

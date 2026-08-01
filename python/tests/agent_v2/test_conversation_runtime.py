@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from pathlib import Path
 
@@ -206,7 +207,9 @@ class TestBasicFlow:
         )
 
     @pytest.mark.asyncio
-    async def test_tool_turn_resets_premature_completion_text(self, workspace: Path):
+    async def test_tool_turn_compacts_provisional_text_instead_of_streaming_it(
+        self, workspace: Path
+    ):
         provider = MockProvider(
             scenarios=[
                 Scenario(
@@ -243,13 +246,24 @@ class TestBasicFlow:
         )
 
         events = await _collect_events(rt, "inspect")
-        resets = [
+        leaked_tokens = [
             event
             for event in events
-            if event.type == AgentEventType.WARNING and event.data.get("reset_stream")
+            if event.type == AgentEventType.TOKEN
+            and "The task is complete." in event.data.get("text", "")
+        ]
+        compact_thoughts = [
+            event.data.get("text", "") for event in events if event.type == AgentEventType.THOUGHT
         ]
 
-        assert len(resets) == 1
+        assert leaked_tokens == []
+        assert "The task is complete." not in "".join(compact_thoughts)
+        assert any("read_file" in thought for thought in compact_thoughts)
+        assert not [
+            event
+            for event in events
+            if event.type == AgentEventType.WARNING and event.data.get("code") == "tool_turn"
+        ]
         assert any(
             event.type == AgentEventType.RESPONSE
             and event.data.get("text") == "Confirmed final response."
@@ -360,7 +374,7 @@ class TestBasicFlow:
         assert AgentEventType.RESPONSE in _event_types(events)
 
     @pytest.mark.asyncio
-    async def test_repeated_identical_tool_loop_uses_total_budget(self, workspace: Path):
+    async def test_repeated_identical_tool_loop_uses_progress_watchdog(self, workspace: Path):
         provider = MockProvider(
             scenarios=[
                 Scenario(
@@ -379,17 +393,16 @@ class TestBasicFlow:
             tool_registry=registry,
             permission_policy=policy,
             session=Session(workspace=str(workspace)),
-            max_steps=20,
-            max_tool_calls=4,
+            max_stalled_tool_calls=3,
         )
 
         events = await _collect_events(runtime, "keep reading")
         tool_calls = [event for event in events if event.type == AgentEventType.TOOL_CALL]
 
-        assert len(tool_calls) == 5
+        assert len(tool_calls) == 4
         assert not any(event.type == AgentEventType.ERROR for event in events)
         assert runtime.session.meta.state == "PARTIAL"
-        assert runtime.session.meta.outcome["stop_code"] == "tool_budget_exhausted"
+        assert runtime.session.meta.outcome["stop_code"] == "no_progress_stall"
 
     @pytest.mark.asyncio
     async def test_stopped_turn_never_exposes_dsml_tool_protocol(self, workspace: Path):
@@ -415,7 +428,7 @@ class TestBasicFlow:
                 PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
             ),
             session=Session(workspace=str(workspace)),
-            max_tool_calls=2,
+            max_stalled_tool_calls=2,
         )
 
         events = await _collect_events(runtime, "repeat until stopped")
@@ -426,8 +439,8 @@ class TestBasicFlow:
         assert "DSML" not in visible
         partial = next(event for event in events if event.type == AgentEventType.RESPONSE)
         assert partial.data["partial"] is True
-        assert partial.data["stop_code"] == "tool_budget_exhausted"
-        assert "tool_budget_exhausted" in partial.data["text"]
+        assert partial.data["stop_code"] == "no_progress_stall"
+        assert "no_progress_stall" in partial.data["text"]
 
     @pytest.mark.asyncio
     async def test_academic_content_is_not_blocked_by_runtime_fact_validation(
@@ -691,6 +704,118 @@ class TestBasicFlow:
         assert (workspace / "deliverable.txt").read_text() == "first\nsecond\n"
         assert len(session.mutation_journal) == 2
         assert sum(event.type == AgentEventType.CHECKPOINT for event in events) == 2
+
+    @pytest.mark.asyncio
+    async def test_clean_editor_snapshot_advances_after_each_agent_write(self, workspace: Path):
+        provider = _ScriptedProvider(
+            [
+                _tool_response(
+                    "str_replace",
+                    {
+                        "file_path": "main.md",
+                        "old_string": "# Hello World",
+                        "new_string": "# Revised World",
+                    },
+                ),
+                _tool_response(
+                    "str_replace",
+                    {
+                        "file_path": "main.md",
+                        "old_string": "# Revised World",
+                        "new_string": "# Final World",
+                    },
+                ),
+                _text_response("Both edits were applied and verified."),
+            ]
+        )
+        initial_hash = hashlib.sha256(b"# Hello World").hexdigest()
+        registry = create_default_registry(workspace_root=workspace)
+        session = Session(workspace=str(workspace))
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+            auto_approve=True,
+            editor_files=[
+                {
+                    "file_path": str(workspace / "main.md"),
+                    "is_dirty": False,
+                    "content_hash": initial_hash,
+                    "editor_version": 7,
+                }
+            ],
+        )
+
+        events = await _collect_events(runtime, "apply both edits")
+
+        assert session.meta.state == "COMPLETE"
+        assert session.meta.pending_actions == []
+        assert workspace.joinpath("main.md").read_text(encoding="utf-8") == "# Final World"
+        assert sum(event.type == AgentEventType.CHECKPOINT for event in events) == 2
+        assert not [
+            event
+            for event in events
+            if event.type == AgentEventType.TOOL_RESULT
+            and event.data.get("metadata", {}).get("code") == "editor_version_conflict"
+        ]
+
+    @pytest.mark.asyncio
+    async def test_external_change_after_agent_write_still_conflicts(self, workspace: Path):
+        initial_hash = hashlib.sha256(b"# Hello World").hexdigest()
+        registry = create_default_registry(workspace_root=workspace)
+        runtime = ConversationRuntime(
+            provider=MockProvider(),
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=Session(workspace=str(workspace)),
+            auto_approve=True,
+            editor_files=[
+                {
+                    "file_path": str(workspace / "main.md"),
+                    "is_dirty": False,
+                    "content_hash": initial_hash,
+                    "editor_version": 7,
+                }
+            ],
+        )
+        first = ToolUseBlock(
+            id="first-edit",
+            name="str_replace",
+            input=json.dumps(
+                {
+                    "file_path": "main.md",
+                    "old_string": "# Hello World",
+                    "new_string": "# Agent World",
+                }
+            ),
+        )
+        second = ToolUseBlock(
+            id="second-edit",
+            name="str_replace",
+            input=json.dumps(
+                {
+                    "file_path": "main.md",
+                    "old_string": "# External World",
+                    "new_string": "# Final World",
+                }
+            ),
+        )
+
+        first_events = [event async for event in runtime._execute_tool(first)]
+        workspace.joinpath("main.md").write_text("# External World", encoding="utf-8")
+        second_events = [event async for event in runtime._execute_tool(second)]
+
+        assert any(event.type == AgentEventType.CHECKPOINT for event in first_events)
+        conflict = next(
+            event for event in second_events if event.type == AgentEventType.TOOL_RESULT
+        )
+        assert conflict.data["metadata"]["code"] == "editor_version_conflict"
+        assert workspace.joinpath("main.md").read_text(encoding="utf-8") == "# External World"
 
     @pytest.mark.asyncio
     async def test_dirty_editor_file_blocks_disk_mutation_before_approval(self, workspace: Path):
@@ -1321,38 +1446,6 @@ class TestFaultInjection:
 
 class TestStress:
     @pytest.mark.asyncio
-    async def test_cr050_max_steps_boundary(self, workspace: Path):
-        """CR-050: 恰好 max_steps 时正确终止"""
-        provider = MockProvider(
-            scenarios=[
-                Scenario(
-                    "loop",
-                    trigger_patterns=[],
-                    response_factory=lambda m, t: _tool_response(
-                        "read_file", {"file_path": "main.md", "attempt": t}
-                    ),
-                ),
-            ]
-        )
-        registry = create_default_registry(workspace_root=workspace)
-        policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
-        session = Session(workspace=str(workspace))
-        rt = ConversationRuntime(
-            provider=provider,
-            tool_registry=registry,
-            permission_policy=policy,
-            session=session,
-            max_steps=3,
-        )
-
-        events = await _collect_events(rt, "keep going")
-        types = _event_types(events)
-        assert AgentEventType.ERROR not in types
-        assert AgentEventType.RESPONSE in types
-        assert session.meta.state == "PARTIAL"
-        assert session.meta.outcome["stop_code"] == "max_steps_exhausted"
-
-    @pytest.mark.asyncio
     async def test_cr054_fast_sequential(self, workspace: Path):
         """CR-054: 快速连续对话"""
         provider = MockProvider()
@@ -1399,15 +1492,14 @@ def _read(file_path: str = "main.md", tool_id: str = "tu_read") -> ToolUseBlock:
     return ToolUseBlock(id=tool_id, name="read_file", input=json.dumps({"file_path": file_path}))
 
 
-class TestMultiToolBudgetProtocol:
+class TestMultiToolStopProtocol:
     """Every ToolUseBlock must have a matching ToolResultBlock, even when a
-    total budget stops execution mid-batch. Otherwise the persisted session
+    progress watchdog stops execution mid-batch. Otherwise the persisted session
     is protocol-invalid and the next resume fails with 'missing tool result'."""
 
     @pytest.mark.asyncio
-    async def test_budget_mid_batch_supplements_skipped_tool_results(self, workspace: Path):
-        """The first two reads consume the total budget. The next batch is
-        stopped, and its never-executed calls receive synthetic results."""
+    async def test_stall_mid_batch_supplements_skipped_tool_results(self, workspace: Path):
+        """Repeated reads trip the watchdog; later calls receive synthetic results."""
         provider = _ScriptedProvider(
             [
                 ProviderResponse(
@@ -1440,7 +1532,7 @@ class TestMultiToolBudgetProtocol:
             tool_registry=registry,
             permission_policy=policy,
             session=session,
-            max_tool_calls=2,
+            max_stalled_tool_calls=2,
         )
 
         events = await _collect_events(rt, "read the file a few times then edit")
@@ -1457,7 +1549,7 @@ class TestMultiToolBudgetProtocol:
 
     @pytest.mark.asyncio
     async def test_persisted_history_pairs_every_tool_use_with_result(self, workspace: Path):
-        """After a mid-batch budget stop, the session's persisted messages must
+        """After a mid-batch stall stop, the session's persisted messages must
         pair every ToolUseBlock with a ToolResultBlock (protocol invariant)."""
         provider = _ScriptedProvider(
             [
@@ -1486,7 +1578,7 @@ class TestMultiToolBudgetProtocol:
             tool_registry=registry,
             permission_policy=policy,
             session=session,
-            max_tool_calls=2,
+            max_stalled_tool_calls=2,
         )
 
         await _collect_events(rt, "read repeatedly then write")
@@ -1503,20 +1595,20 @@ class TestMultiToolBudgetProtocol:
         assert use_ids == result_ids, f"ToolUse {use_ids} != ToolResult {result_ids}"
 
     @pytest.mark.asyncio
-    async def test_tool_budget_exhaustion_finalizes_as_persisted_partial(self, workspace: Path):
-        """RUN-01: budget exhaustion must finalize without admitting more tools."""
+    async def test_no_progress_stall_finalizes_as_persisted_partial(self, workspace: Path):
+        """RUN-01: repeated no-progress work finalizes without admitting more tools."""
         calls = [
             ToolUseBlock(
                 id=f"t{i}",
                 name="noop",
-                input=json.dumps({"value": i}),
+                input=json.dumps({"value": 1}),
             )
             for i in range(35)
         ]
         provider = _ScriptedProvider(
             [
                 ProviderResponse(blocks=calls, stop_reason="tool_use"),
-                _text_response("已完成部分操作，剩余验证因预算耗尽未执行。"),
+                _text_response("重复操作没有产生新结果，已停止。"),
             ]
         )
         registry = ToolRegistry(workspace_root=workspace)
@@ -1541,25 +1633,24 @@ class TestMultiToolBudgetProtocol:
             tool_registry=registry,
             permission_policy=policy,
             session=session,
-            max_tool_calls=32,
-            soft_tool_calls=28,
+            max_stalled_tool_calls=3,
         )
 
         events = await _collect_events(runtime, "perform a large batch")
 
         assert any(
-            event.type == AgentEventType.RESPONSE and "预算耗尽" in event.data["text"]
+            event.type == AgentEventType.RESPONSE and "没有产生新结果" in event.data["text"]
             for event in events
         )
         assert not any(event.type == AgentEventType.ERROR for event in events)
         result_events = [event for event in events if event.type == AgentEventType.TOOL_RESULT]
-        assert sum(event.data["status"] == "success" for event in result_events) == 32
-        assert sum(event.data["status"] == "error" for event in result_events) == 1
-        assert sum(event.data["status"] == "skipped" for event in result_events) == 2
+        assert sum(event.data["status"] == "success" for event in result_events) == 4
+        assert sum(event.data["status"] == "error" for event in result_events) == 0
+        assert sum(event.data["status"] == "skipped" for event in result_events) == 31
         assert session.meta.state == "PARTIAL"
-        assert session.meta.outcome["stop_code"] == "tool_budget_exhausted"
-        assert session.meta.outcome["tool_counts"]["success"] == 32
-        assert session.meta.outcome["tool_counts"]["skipped"] == 2
+        assert session.meta.outcome["stop_code"] == "no_progress_stall"
+        assert session.meta.outcome["tool_counts"]["success"] == 4
+        assert session.meta.outcome["tool_counts"]["skipped"] == 31
 
     @pytest.mark.asyncio
     async def test_finalizer_ignores_provider_tool_calls(self, workspace: Path):
@@ -1597,13 +1688,12 @@ class TestMultiToolBudgetProtocol:
             tool_registry=registry,
             permission_policy=policy,
             session=session,
-            max_tool_calls=1,
-            soft_tool_calls=0,
+            max_stalled_tool_calls=1,
         )
 
         events = await _collect_events(runtime, "run too much work")
 
-        assert executions == ["executed"]
+        assert executions == ["executed", "executed"]
         assert not any(
             event.type == AgentEventType.TOOL_CALL and event.data["id"] == "forbidden"
             for event in events
@@ -1611,7 +1701,7 @@ class TestMultiToolBudgetProtocol:
         assert session.meta.state == "PARTIAL"
 
     @pytest.mark.asyncio
-    async def test_soft_budget_enters_draining_before_hard_stop(self, workspace: Path):
+    async def test_stall_warning_asks_provider_to_change_strategy(self, workspace: Path):
         class PromptCapturingProvider(_ScriptedProvider):
             def __init__(self, responses):
                 super().__init__(responses)
@@ -1630,7 +1720,7 @@ class TestMultiToolBudgetProtocol:
                         ToolUseBlock(
                             id=f"t{i}",
                             name="noop",
-                            input=json.dumps({"value": i}),
+                            input=json.dumps({"value": 1}),
                         )
                         for i in range(3)
                     ],
@@ -1652,18 +1742,17 @@ class TestMultiToolBudgetProtocol:
             tool_registry=registry,
             permission_policy=policy,
             session=session,
-            max_tool_calls=4,
-            soft_tool_calls=3,
+            max_stalled_tool_calls=4,
         )
 
-        events = await _collect_events(runtime, "use the budget carefully")
+        events = await _collect_events(runtime, "avoid repeating observations")
 
-        assert "Tool budget is low (1 calls remain)" in provider.prompts[-1]
+        assert "Recent tool calls repeated observations" in provider.prompts[-1]
         assert any(event.type == AgentEventType.RESPONSE for event in events)
         assert session.meta.state == "COMPLETE"
 
     @pytest.mark.asyncio
-    async def test_soft_budget_technically_blocks_new_side_effects(self, workspace: Path):
+    async def test_distinct_side_effects_are_not_blocked_by_a_fixed_count(self, workspace: Path):
         provider = _ScriptedProvider(
             [
                 ProviderResponse(
@@ -1673,11 +1762,11 @@ class TestMultiToolBudgetProtocol:
                             name="mutate",
                             input=json.dumps({"value": i}),
                         )
-                        for i in range(3)
+                        for i in range(6)
                     ],
                     stop_reason="tool_use",
                 ),
-                _text_response("drained"),
+                _text_response("completed"),
             ]
         )
         registry = ToolRegistry(workspace_root=workspace)
@@ -1702,26 +1791,31 @@ class TestMultiToolBudgetProtocol:
             permission_policy=policy,
             session=Session(workspace=str(workspace)),
             auto_approve=True,
-            max_tool_calls=4,
-            soft_tool_calls=2,
         )
 
-        events = await _collect_events(runtime, "mutate three times")
+        events = await _collect_events(runtime, "mutate six times")
 
-        assert executed == [0, 1]
-        skipped = [
-            event
+        assert executed == list(range(6))
+        assert not any(
+            event.type == AgentEventType.TOOL_RESULT and event.data["status"] == "skipped"
             for event in events
-            if event.type == AgentEventType.TOOL_RESULT and event.data["status"] == "skipped"
-        ]
-        assert [event.data["id"] for event in skipped] == ["t2"]
+        )
+        assert runtime.session.meta.state == "COMPLETE"
 
     @pytest.mark.asyncio
     async def test_streamed_and_final_tool_blocks_merge_by_id(self, workspace: Path):
         class PartialStreamingProvider:
             model = "partial-stream"
 
+            def __init__(self):
+                self.calls = 0
+
             async def chat_stream(self, **_kwargs):
+                self.calls += 1
+                if self.calls > 1:
+                    yield TextBlock(text="done")
+                    yield _text_response("done")
+                    return
                 first = ToolUseBlock(id="t1", name="noop", input='{"value": 1}')
                 second = ToolUseBlock(id="t2", name="noop", input='{"value": 2}')
                 yield first
@@ -1744,7 +1838,6 @@ class TestMultiToolBudgetProtocol:
             tool_registry=registry,
             permission_policy=policy,
             session=Session(workspace=str(workspace)),
-            max_steps=1,
         )
 
         events = await _collect_events(runtime, "stream two tool calls")
@@ -1870,7 +1963,7 @@ class TestMultiToolBudgetProtocol:
 
 
 class TestReadEditReadCycle:
-    """Legitimate repeated calls rely on idempotency and the total budget."""
+    """Legitimate repeated calls rely on idempotency and progress detection."""
 
     @pytest.mark.asyncio
     async def test_read_write_read_completes(self, workspace: Path):
@@ -1944,6 +2037,42 @@ class TestReadEditReadCycle:
         assert (workspace / "main.md").read_text(encoding="utf-8") == "# Same"
         results = [e for e in events if e.type == AgentEventType.TOOL_RESULT]
         assert [e.data["status"] for e in results] == ["success", "no_change", "no_change"]
+
+    @pytest.mark.asyncio
+    async def test_repeated_applied_mutation_trips_progress_watchdog(self, workspace: Path):
+        provider = MockProvider(
+            scenarios=[
+                Scenario(
+                    "repeat-write",
+                    trigger_patterns=[],
+                    response_factory=lambda _messages, _turn: _tool_response(
+                        "write_file", {"file_path": "main.md", "content": "# Stable"}
+                    ),
+                )
+            ]
+        )
+        registry = create_default_registry(workspace_root=workspace)
+        session = Session(workspace=str(workspace))
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+            max_stalled_tool_calls=2,
+        )
+
+        events = await _collect_events(runtime, "write the same content forever")
+
+        results = [event for event in events if event.type == AgentEventType.TOOL_RESULT]
+        assert [event.data["status"] for event in results] == [
+            "success",
+            "no_change",
+            "no_change",
+        ]
+        assert session.meta.state == "PARTIAL"
+        assert session.meta.outcome["stop_code"] == "no_progress_stall"
 
 
 # ============================================================================
@@ -2164,9 +2293,9 @@ class TestAbortPropagation:
         )
 
 
-class TestIndependentExecutionBudgets:
+class TestProgressBasedExecution:
     @pytest.mark.asyncio
-    async def test_research_budget_stops_duplicate_expansion_before_global_budget(
+    async def test_distinct_research_observations_complete_without_a_fixed_budget(
         self, workspace: Path
     ):
         provider = _ScriptedProvider(
@@ -2174,7 +2303,7 @@ class TestIndependentExecutionBudgets:
                 _tool_response("web_search", {"query": "YOLO"}),
                 _tool_response("web_search", {"query": "YOLOv2"}),
                 _tool_response("web_search", {"query": "YOLOv3"}),
-                _text_response("Research stopped before delivery."),
+                _text_response("Research completed."),
             ]
         )
         registry = ToolRegistry(workspace_root=workspace)
@@ -2202,21 +2331,17 @@ class TestIndependentExecutionBudgets:
                 PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
             ),
             session=session,
-            max_research_calls=2,
         )
 
         events = await _collect_events(runtime, "research YOLO")
 
-        assert session.meta.state == "PARTIAL"
-        assert session.meta.outcome["stop_code"] == "research_budget_exhausted"
-        partial = next(event for event in events if event.type == AgentEventType.RESPONSE)
-        assert partial.data["partial"] is True
-        assert partial.data["stop_code"] == "research_budget_exhausted"
+        assert session.meta.state == "COMPLETE"
+        assert session.meta.outcome["tool_counts"]["success"] == 3
+        response = next(event for event in events if event.type == AgentEventType.RESPONSE)
+        assert response.data["text"] == "Research completed."
 
     @pytest.mark.asyncio
-    async def test_default_budget_allows_sixty_four_readonly_tools_and_final_response(
-        self, workspace: Path
-    ):
+    async def test_sixty_four_distinct_readonly_tools_and_final_response(self, workspace: Path):
         class SixtyFourToolProvider:
             model = "budget-proof"
 
@@ -2283,11 +2408,61 @@ class TestIndependentExecutionBudgets:
         )
 
     @pytest.mark.asyncio
-    async def test_model_call_budget_includes_followup_and_uses_local_finalizer(
-        self, workspace: Path
-    ):
-        class CountingProvider:
-            model = "counting"
+    async def test_progressing_tool_loop_can_exceed_legacy_model_call_limit(self, workspace: Path):
+        class ProgressingProvider:
+            model = "progressing"
+
+            def __init__(self):
+                self.calls = 0
+
+            async def chat(self, **_kwargs):
+                self.calls += 1
+                if self.calls > 40:
+                    return _text_response("All 40 distinct steps completed.")
+                return ProviderResponse(
+                    blocks=[
+                        ToolUseBlock(
+                            id=f"step-{self.calls}",
+                            name="inspect",
+                            input=json.dumps({"value": self.calls}),
+                        )
+                    ],
+                    stop_reason="tool_use",
+                )
+
+        provider = ProgressingProvider()
+        registry = ToolRegistry(workspace_root=workspace)
+
+        async def inspect(args):
+            return ToolResult(f"new observation {args['value']}")
+
+        registry.register("inspect", "inspect", {"type": "object"}, inspect)
+        session = Session(workspace=str(workspace))
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+        )
+
+        events = await _collect_events(runtime, "complete all forty distinct steps")
+
+        assert provider.calls == 41
+        assert session.meta.state == "COMPLETE"
+        assert session.meta.outcome["stop_code"] == ""
+        assert session.meta.outcome["tool_counts"]["success"] == 40
+        assert any(
+            event.type == AgentEventType.RESPONSE
+            and event.data["text"] == "All 40 distinct steps completed."
+            for event in events
+        )
+
+    @pytest.mark.asyncio
+    async def test_repeated_no_progress_results_stop_after_stall_window(self, workspace: Path):
+        class StalledProvider:
+            model = "stalled"
 
             def __init__(self):
                 self.calls = 0
@@ -2295,67 +2470,27 @@ class TestIndependentExecutionBudgets:
             async def chat(self, **_kwargs):
                 self.calls += 1
                 return ProviderResponse(
-                    blocks=[ToolUseBlock(id="n1", name="noop", input="{}")],
+                    blocks=[
+                        ToolUseBlock(
+                            id=f"stalled-{self.calls}",
+                            name="inspect",
+                            input='{"value": 1}',
+                        )
+                    ],
                     stop_reason="tool_use",
                 )
 
-        provider = CountingProvider()
+        provider = StalledProvider()
         registry = ToolRegistry(workspace_root=workspace)
 
-        async def noop(_args):
-            return ToolResult("ok")
-
-        registry.register("noop", "no-op", {"type": "object"}, noop)
-        session = Session(workspace=str(workspace))
-        runtime = ConversationRuntime(
-            provider=provider,
-            tool_registry=registry,
-            permission_policy=policy_from_registry(
-                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
-            ),
-            session=session,
-            max_model_calls=1,
-        )
-
-        events = await _collect_events(runtime, "do one step")
-
-        assert provider.calls == 1
-        assert session.meta.state == "PARTIAL"
-        assert session.meta.outcome["stop_code"] == "model_call_budget_exhausted"
-        partial = next(event for event in events if event.type == AgentEventType.RESPONSE)
-        assert partial.data["partial"] is True
-        assert partial.data["stop_code"] == "model_call_budget_exhausted"
-        assert partial.data["tool_counts"]["success"] == 1
-        assert "Changed files:" not in partial.data["text"]
-
-    @pytest.mark.asyncio
-    async def test_mutation_attempt_budget_stops_second_write(self, workspace: Path):
-        provider = _ScriptedProvider(
-            [
-                ProviderResponse(
-                    blocks=[
-                        ToolUseBlock(id="m1", name="mutate", input='{"value": 1}'),
-                        ToolUseBlock(id="m2", name="mutate", input='{"value": 2}'),
-                    ],
-                    stop_reason="tool_use",
-                ),
-                _text_response("Only the admitted mutation completed."),
-            ]
-        )
-        registry = ToolRegistry(workspace_root=workspace)
-        executed: list[int] = []
-
-        async def mutate(args):
-            executed.append(args["value"])
-            return ToolResult("ok")
+        async def inspect(_args):
+            return ToolResult("same unchanged observation")
 
         registry.register(
-            "mutate",
-            "mutating operation",
+            "inspect",
+            "inspect",
             {"type": "object"},
-            mutate,
-            permission="workspace-write",
-            effects={"filesystem_write"},
+            inspect,
         )
         session = Session(workspace=str(workspace))
         runtime = ConversationRuntime(
@@ -2365,19 +2500,63 @@ class TestIndependentExecutionBudgets:
                 PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
             ),
             session=session,
-            auto_approve=True,
-            max_mutation_attempts=1,
+            max_stalled_tool_calls=3,
         )
 
-        events = await _collect_events(runtime, "mutate twice")
+        events = await _collect_events(runtime, "keep inspecting until something changes")
 
-        assert executed == [1]
         assert session.meta.state == "PARTIAL"
-        assert session.meta.outcome["stop_code"] == "mutation_budget_exhausted"
+        assert session.meta.outcome["stop_code"] == "no_progress_stall"
+        assert session.meta.outcome["tool_counts"]["success"] == 4
         partial = next(event for event in events if event.type == AgentEventType.RESPONSE)
-        assert partial.data["text"] == "Only the admitted mutation completed."
         assert partial.data["partial"] is True
-        assert partial.data["stop_code"] == "mutation_budget_exhausted"
+        assert partial.data["stop_code"] == "no_progress_stall"
+
+    @pytest.mark.asyncio
+    async def test_new_tool_observations_renew_active_time_lease(self, workspace: Path):
+        class SlowProgressProvider:
+            model = "slow-progress"
+
+            def __init__(self):
+                self.calls = 0
+
+            async def chat(self, **_kwargs):
+                self.calls += 1
+                if self.calls > 3:
+                    return _text_response("finished after renewed leases")
+                return ProviderResponse(
+                    blocks=[
+                        ToolUseBlock(
+                            id=f"slow-{self.calls}",
+                            name="inspect",
+                            input=json.dumps({"value": self.calls}),
+                        )
+                    ],
+                    stop_reason="tool_use",
+                )
+
+        async def inspect(args):
+            await asyncio.sleep(0.04)
+            return ToolResult(f"observation {args['value']}")
+
+        provider = SlowProgressProvider()
+        registry = ToolRegistry(workspace_root=workspace)
+        registry.register("inspect", "inspect", {"type": "object"}, inspect)
+        session = Session(workspace=str(workspace))
+        runtime = ConversationRuntime(
+            provider=provider,
+            tool_registry=registry,
+            permission_policy=policy_from_registry(
+                PermissionMode.WORKSPACE_WRITE, registry.permission_specs()
+            ),
+            session=session,
+            max_active_seconds=0.1,
+        )
+
+        events = await _collect_events(runtime, "complete three slow, distinct observations")
+
+        assert session.meta.state == "COMPLETE"
+        assert any(event.type == AgentEventType.RESPONSE for event in events)
 
     @pytest.mark.asyncio
     async def test_active_time_budget_cancels_provider_and_persists_partial(

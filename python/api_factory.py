@@ -241,44 +241,24 @@ def _validate_config(cfg: dict) -> None:
     a_temp = agent.get("temperature")
     if a_temp is not None and (not isinstance(a_temp, (int, float)) or a_temp < 0 or a_temp > 2):
         raise ValueError(f"agent.temperature must be 0–2, got {a_temp!r}")
-    integer_budgets = {
-        "max_steps": (1, 256),
-        "max_tool_calls": (1, 128),
-        "soft_tool_calls": (0, 127),
-        "max_model_calls": (1, 64),
-        "max_mutation_attempts": (1, 128),
-    }
-    for field_name, (minimum, maximum) in integer_budgets.items():
-        value = agent.get(field_name)
-        if value is not None and (
-            not isinstance(value, int) or isinstance(value, bool) or not minimum <= value <= maximum
-        ):
-            raise ValueError(
-                f"agent.{field_name} must be an integer between "
-                f"{minimum} and {maximum}, got {value!r}"
-            )
-
-    max_tool_calls = agent.get("max_tool_calls", 64)
-    soft_tool_calls = agent.get("soft_tool_calls", min(56, max_tool_calls - 1))
-    if soft_tool_calls >= max_tool_calls:
+    max_stalled_tool_calls = agent.get("max_stalled_tool_calls")
+    if max_stalled_tool_calls is not None and (
+        not isinstance(max_stalled_tool_calls, int)
+        or isinstance(max_stalled_tool_calls, bool)
+        or not 1 <= max_stalled_tool_calls <= 1000
+    ):
         raise ValueError(
-            "agent.soft_tool_calls must be lower than agent.max_tool_calls, "
-            f"got {soft_tool_calls!r} >= {max_tool_calls!r}"
-        )
-    max_mutation_attempts = agent.get("max_mutation_attempts")
-    if max_mutation_attempts is not None and max_mutation_attempts > max_tool_calls:
-        raise ValueError(
-            "agent.max_mutation_attempts must not exceed agent.max_tool_calls, "
-            f"got {max_mutation_attempts!r} > {max_tool_calls!r}"
+            "agent.max_stalled_tool_calls must be an integer between 1 and 1000, "
+            f"got {max_stalled_tool_calls!r}"
         )
     max_active_seconds = agent.get("max_active_seconds")
     if max_active_seconds is not None and (
         not isinstance(max_active_seconds, (int, float))
         or isinstance(max_active_seconds, bool)
-        or not 1 <= max_active_seconds <= 3600
+        or not 1 <= max_active_seconds <= 86400
     ):
         raise ValueError(
-            "agent.max_active_seconds must be between 1 and 3600 seconds, "
+            "agent.max_active_seconds must be between 1 and 86400 seconds, "
             f"got {max_active_seconds!r}"
         )
 
