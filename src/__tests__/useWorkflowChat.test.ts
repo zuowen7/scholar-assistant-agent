@@ -1,6 +1,5 @@
 /** Phase 3 tests: useAgentChat — per-workflow isolation, AbortSignal, pipeline state. */
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { ref } from 'vue'
+import { describe, it, expect, vi } from 'vitest'
 
 // Mock API base
 vi.mock('../utils/api', () => ({ API_BASE: 'http://localhost:18088' }))
@@ -101,53 +100,6 @@ describe('useAgentChat — workflow isolation', () => {
 
     expect(messagesByWorkflow.has('wf_a')).toBe(false)
     expect(messagesByWorkflow.has('wf_b')).toBe(true)
-  })
-})
-
-describe('useAgentChat — shared between panels', () => {
-  it('AgentPanel and AiPanel share same workflowId', () => {
-    const sharedWorkflowId = ref<string | null>('wf_shared')
-
-    // Both panels read the same ref
-    const agentPanelId = sharedWorkflowId
-    const aiPanelId = sharedWorkflowId
-
-    expect(agentPanelId.value).toBe('wf_shared')
-    expect(aiPanelId.value).toBe('wf_shared')
-
-    sharedWorkflowId.value = 'wf_new'
-    expect(agentPanelId.value).toBe('wf_new')
-    expect(aiPanelId.value).toBe('wf_new')
-  })
-
-  it('AiPanel chat mode writes to shared workflow messages', () => {
-    const messagesByWorkflow = new Map<string, any[]>()
-    const activeId = 'wf_test'
-    messagesByWorkflow.set(activeId, [])
-
-    // AiPanel adds a message
-    const msgs = messagesByWorkflow.get(activeId)!
-    msgs.push({
-      id: '1',
-      role: 'user',
-      content: 'from AiPanel',
-      events: [],
-      isStreaming: false,
-      timestamp: Date.now(),
-    })
-
-    expect(messagesByWorkflow.get(activeId)).toHaveLength(1)
-    expect(messagesByWorkflow.get(activeId)![0].content).toBe('from AiPanel')
-  })
-
-  it('AiPanel preset mode does not affect workflow', () => {
-    // Preset mode uses /api/edit, not /api/agent/v2/chat
-    const isPresetMode = true
-    const workflowId = 'wf_123'
-
-    // In preset mode, workflow_id is not needed
-    const endpoint = isPresetMode ? '/api/edit' : '/api/agent/v2/chat'
-    expect(endpoint).toBe('/api/edit')
   })
 })
 

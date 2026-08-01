@@ -15,7 +15,7 @@ class TestValidateConfig:
         self._call(
             {
                 "translator": {"temperature": 0.3},
-                "agent": {"temperature": 0.5, "max_steps": 20},
+                "agent": {"temperature": 0.5, "max_stalled_tool_calls": 20},
             }
         )
 
@@ -38,23 +38,23 @@ class TestValidateConfig:
         with pytest.raises(ValueError, match="agent.temperature"):
             self._call({"agent": {"temperature": 3.0}})
 
-    def test_agent_max_steps_zero_rejected(self) -> None:
-        with pytest.raises(ValueError, match="agent.max_steps"):
-            self._call({"agent": {"max_steps": 0}})
+    def test_agent_stall_window_zero_rejected(self) -> None:
+        with pytest.raises(ValueError, match="agent.max_stalled_tool_calls"):
+            self._call({"agent": {"max_stalled_tool_calls": 0}})
 
-    def test_agent_max_steps_negative_rejected(self) -> None:
-        with pytest.raises(ValueError, match="agent.max_steps"):
-            self._call({"agent": {"max_steps": -5}})
+    def test_agent_stall_window_negative_rejected(self) -> None:
+        with pytest.raises(ValueError, match="agent.max_stalled_tool_calls"):
+            self._call({"agent": {"max_stalled_tool_calls": -5}})
 
-    def test_agent_max_steps_float_rejected(self) -> None:
-        with pytest.raises(ValueError, match="agent.max_steps"):
-            self._call({"agent": {"max_steps": 3.5}})
+    def test_agent_stall_window_float_rejected(self) -> None:
+        with pytest.raises(ValueError, match="agent.max_stalled_tool_calls"):
+            self._call({"agent": {"max_stalled_tool_calls": 3.5}})
 
     def test_boundary_values_accepted(self) -> None:
         self._call(
             {
                 "translator": {"temperature": 0},
-                "agent": {"temperature": 2, "max_steps": 1},
+                "agent": {"temperature": 2, "max_stalled_tool_calls": 1},
             }
         )
 
@@ -167,12 +167,8 @@ def test_rejects_unbounded_agent_request_timeout():
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("max_steps", 257),
-        ("max_tool_calls", 129),
-        ("soft_tool_calls", -1),
-        ("max_model_calls", 65),
-        ("max_mutation_attempts", 0),
-        ("max_active_seconds", 3601),
+        ("max_stalled_tool_calls", 1001),
+        ("max_active_seconds", 86401),
     ],
 )
 def test_rejects_agent_budget_outside_safe_operating_range(field, value):
@@ -182,32 +178,14 @@ def test_rejects_agent_budget_outside_safe_operating_range(field, value):
         _validate_config({"agent": {field: value}})
 
 
-def test_rejects_soft_tool_budget_at_or_above_hard_limit():
-    from api_factory import _validate_config
-
-    with pytest.raises(ValueError, match="soft_tool_calls"):
-        _validate_config(
-            {
-                "agent": {
-                    "max_tool_calls": 64,
-                    "soft_tool_calls": 64,
-                }
-            }
-        )
-
-
-def test_accepts_hardened_agent_budget_defaults():
+def test_accepts_progress_watchdog_defaults():
     from api_factory import _validate_config
 
     _validate_config(
         {
             "agent": {
-                "max_steps": 96,
-                "max_tool_calls": 64,
-                "soft_tool_calls": 56,
-                "max_model_calls": 32,
-                "max_mutation_attempts": 20,
                 "max_active_seconds": 600,
+                "max_stalled_tool_calls": 12,
                 "request_timeout": 120,
             }
         }

@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from src.agent_v2.router import (
     ChatRequestV2,
     _build_system_prompt,
+    _compose_turn_message,
     _persisted_turn_message,
     register_agent_v2_routes,
 )
@@ -28,16 +29,17 @@ def test_system_prompt_makes_the_latest_user_turn_authoritative():
     assert "run_sub_agent cannot execute commands" in prompt
 
 
-def test_system_prompt_enforces_academic_evidence_and_incomplete_result_contracts():
+def test_system_prompt_guides_academic_evidence_without_runtime_evidence_payloads():
     prompt = _build_system_prompt("C:/workspace", [])
 
     assert "Never invent or infer a new number" in prompt
-    assert "evidence_refs" in prompt
+    assert "obtain supporting user text or a successful tool result" in prompt
+    assert "evidence_refs" not in prompt
     assert "complete=false" in prompt
     assert "PARTIAL" in prompt
     assert "rendered artifact" in prompt
-    assert "recovery signal" in prompt
-    assert "Never fabricate tool_use_id" in prompt
+    assert "make one corrected attempt" in prompt
+    assert "instead of looping or claiming success" in prompt
     assert "final_chunk=false" in prompt
     assert "Do not repeat equivalent searches" in prompt
     assert "Match the requested delivery surface exactly" in prompt
@@ -69,6 +71,37 @@ def test_persisted_turn_externalizes_editor_body_with_hash_and_dirty_state():
     assert 'content_hash="' + ("a" * 64) + '"' in persisted
     assert 'dirty="true"' in persisted
     assert 'snapshot_status="not_persisted"' in persisted
+
+
+def test_live_turn_marks_full_editor_body_as_a_complete_snapshot():
+    request = ChatRequestV2(
+        message="Review this draft",
+        context_file="draft/main.md",
+        context_text="current manuscript body",
+        skills=["nature_reviewer"],
+        editor_files=[
+            {
+                "file_path": "draft/main.md",
+                "is_dirty": False,
+                "content_hash": "b" * 64,
+                "editor_version": 5,
+            }
+        ],
+    )
+
+    live = _compose_turn_message(request)
+
+    assert 'snapshot_status="complete_editor_snapshot"' in live
+    assert 'file_path="draft/main.md"' in live
+    assert 'content_hash="' + ("b" * 64) + '"' in live
+    assert 'dirty="false"' in live
+    assert "current manuscript body" in live
+    assert "<current_task_reminder>" in live
+    assert "The active user task remains" in live
+    assert "Selected skills: nature_reviewer" in live
+    assert "read_argument_graph(source_doc=draft/main.md)" in live
+    assert "read_argument_ledger(doc_id=draft/main.md)" in live
+    assert "read_reviewer_state(doc_id=draft/main.md)" in live
 
 
 def test_persisted_session_messages_are_available_to_the_history_panel(tmp_path, monkeypatch):
@@ -163,8 +196,8 @@ def test_partial_session_history_keeps_structured_recovery_state(tmp_path, monke
     session.set_outcome(
         "PARTIAL",
         {
-            "stop_code": "model_call_budget_exhausted",
-            "stop_reason": "Agent model-call limit reached (16) before completion.",
+            "stop_code": "no_progress_stall",
+            "stop_reason": "Repeated tool calls produced no new observation.",
             "tool_counts": {
                 "success": 1,
                 "error": 0,
@@ -189,7 +222,7 @@ def test_partial_session_history_keeps_structured_recovery_state(tmp_path, monke
     response = assistant["events"][-1]
     assert response["type"] == "response"
     assert response["metadata"]["partial"] is True
-    assert response["metadata"]["stop_code"] == "model_call_budget_exhausted"
+    assert response["metadata"]["stop_code"] == "no_progress_stall"
     assert response["metadata"]["changed_count"] == 1
     assert "C:/paper/figures.py" not in assistant["content"]
 
@@ -206,7 +239,7 @@ def test_session_history_rejects_invalid_or_missing_ids(tmp_path, monkeypatch):
     assert client.get("/api/agent/v2/workflows/sess_missing/messages").status_code == 404
 
 
-def test_agent_stats_reports_runtime_budget_config(monkeypatch):
+def test_agent_stats_reports_progress_watchdog_config(monkeypatch):
     import src.agent_v2.router as router
 
     monkeypatch.setattr(
@@ -215,12 +248,8 @@ def test_agent_stats_reports_runtime_budget_config(monkeypatch):
         lambda: {
             "model": "test",
             "provider": "mock",
-            "max_steps": 41,
-            "max_tool_calls": 17,
-            "soft_tool_calls": 13,
-            "max_model_calls": 9,
-            "max_mutation_attempts": 7,
             "max_active_seconds": 123,
+            "max_stalled_tool_calls": 7,
         },
     )
     app = FastAPI()
@@ -229,12 +258,8 @@ def test_agent_stats_reports_runtime_budget_config(monkeypatch):
     stats = TestClient(app).get("/api/agent/stats")
 
     assert stats.status_code == 200
-    assert stats.json()["max_steps"] == 41
-    assert stats.json()["max_tool_calls"] == 17
-    assert stats.json()["soft_tool_calls"] == 13
-    assert stats.json()["max_model_calls"] == 9
-    assert stats.json()["max_mutation_attempts"] == 7
     assert stats.json()["max_active_seconds"] == 123
+    assert stats.json()["max_stalled_tool_calls"] == 7
 
 
 def test_config_and_stats_report_effective_translator_cloud_fallback_without_secret():
@@ -242,7 +267,7 @@ def test_config_and_stats_report_effective_translator_cloud_fallback_without_sec
         "agent": {
             "provider": "auto",
             "model": "",
-            "max_steps": 23,
+            "max_stalled_tool_calls": 23,
             "model_aliases": {},
         },
         "translator": {
@@ -269,7 +294,7 @@ def test_config_and_stats_report_effective_translator_cloud_fallback_without_sec
     assert "super-secret-key" not in config.text
     assert stats.json()["model"] == "deepseek-v4-flash"
     assert stats.json()["provider_source"] == "translator.cloud"
-    assert stats.json()["max_steps"] == 23
+    assert stats.json()["max_stalled_tool_calls"] == 23
     assert "super-secret-key" not in stats.text
 
 
@@ -405,9 +430,7 @@ def test_generated_session_ids_are_unique(tmp_path, monkeypatch):
         router,
         "_load_agent_config",
         lambda: {
-            "max_steps": 48,
-            "max_tool_calls": 32,
-            "soft_tool_calls": 28,
+            "max_stalled_tool_calls": 12,
             "enable_run_command": False,
         },
     )
@@ -436,9 +459,7 @@ def test_selected_figure_skill_exposes_approved_command_execution(tmp_path, monk
         router,
         "_load_agent_config",
         lambda: {
-            "max_steps": 48,
-            "max_tool_calls": 32,
-            "soft_tool_calls": 28,
+            "max_stalled_tool_calls": 12,
             "enable_run_command": False,
         },
     )
@@ -454,6 +475,51 @@ def test_selected_figure_skill_exposes_approved_command_execution(tmp_path, monk
     assert len(runtime.session.meta.system_prompt_hash) == 64
     assert runtime.session.meta.active_skills == ["nature_figure"]
     assert len(runtime.session.meta.tool_schema_hash) == 64
+
+
+def test_selected_skill_tool_steps_are_prompted_as_required(tmp_path, monkeypatch):
+    import src.agent_v2.router as router
+    from src.agent_v2.providers.mock_provider import MockProvider
+
+    monkeypatch.setattr(router, "_SESSION_DIR", tmp_path / "sessions")
+
+    def provider(*_args, **_kwargs):
+        value = MockProvider()
+        value.model = "test-model"
+        return value
+
+    monkeypatch.setattr(router, "_create_provider", provider)
+
+    runtime = router._create_runtime(
+        str(tmp_path),
+        selected_skills=["nature_reviewer"],
+    )
+
+    assert "Selected skill execution reminder" in runtime.system_prompt
+    assert "required execution steps" in runtime.system_prompt
+    assert (
+        "read_argument_graph, read_argument_ledger, and read_reviewer_state"
+        in runtime.system_prompt
+    )
+
+
+def test_local_ollama_config_uses_native_provider_with_large_context():
+    import src.agent_v2.router as router
+    from src.agent_v2.providers.ollama import OllamaProvider
+
+    provider = router._create_provider(
+        {
+            "agent": {
+                "provider": "openai",
+                "base_url": "http://127.0.0.1:11434/v1",
+                "model": "qwen3:8b",
+                "ollama_context_length": 16_384,
+            }
+        }
+    )
+
+    assert isinstance(provider, OllamaProvider)
+    assert provider.context_length == 16_384
 
 
 _RUNTIME_SKILL_TOOL_CONTRACTS = [
@@ -515,10 +581,7 @@ def test_every_runtime_skill_is_selectable_with_its_runtime_tools(
         router,
         "_load_agent_config",
         lambda: {
-            "max_steps": 96,
-            "max_tool_calls": 64,
-            "soft_tool_calls": 56,
-            "max_model_calls": 32,
+            "max_stalled_tool_calls": 12,
             "enable_run_command": False,
         },
     )

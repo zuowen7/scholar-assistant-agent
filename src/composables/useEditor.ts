@@ -18,7 +18,6 @@ import {
   activeFile,
   isModified,
   selection,
-  showAiPanel,
   aiLoading,
   aiResult,
   previousContent,
@@ -236,7 +235,6 @@ export function undoEdit() {
   if (tab) tab.content = previousContent.value
   previousContent.value = ''
   if (monacoEditor.value) monacoEditor.value.setValue(activeTab.value?.content ?? '')
-  showAiPanel.value = false
   aiResult.value = ''
 }
 
@@ -262,7 +260,6 @@ export function useEditor() {
     activeTabId,
     activeFile,
     isModified,
-    showAiPanel,
     aiLoading,
     aiResult,
     previousContent,

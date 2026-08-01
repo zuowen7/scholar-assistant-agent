@@ -72,6 +72,19 @@ CONFIG_PATH = (
     else (RUNTIME_DIR / "config" / "default.yaml")
 )
 
+
+def _seed_runtime_config(source: Path, destination: Path) -> None:
+    """Create an ignored runtime config from the tracked source template once."""
+    if destination.exists() or not source.exists():
+        return
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+
+
+if not _is_frozen() and not DOCKER_MODE:
+    _seed_runtime_config(Path(__file__).parent.parent / "config" / "default.yaml", CONFIG_PATH)
+
+
 if _is_frozen() and not DOCKER_MODE:
     bundled_default = BUNDLED_DIR / "config" / "default.yaml"
     if not CONFIG_PATH.exists():
@@ -241,44 +254,24 @@ def _validate_config(cfg: dict) -> None:
     a_temp = agent.get("temperature")
     if a_temp is not None and (not isinstance(a_temp, (int, float)) or a_temp < 0 or a_temp > 2):
         raise ValueError(f"agent.temperature must be 0–2, got {a_temp!r}")
-    integer_budgets = {
-        "max_steps": (1, 256),
-        "max_tool_calls": (1, 128),
-        "soft_tool_calls": (0, 127),
-        "max_model_calls": (1, 64),
-        "max_mutation_attempts": (1, 128),
-    }
-    for field_name, (minimum, maximum) in integer_budgets.items():
-        value = agent.get(field_name)
-        if value is not None and (
-            not isinstance(value, int) or isinstance(value, bool) or not minimum <= value <= maximum
-        ):
-            raise ValueError(
-                f"agent.{field_name} must be an integer between "
-                f"{minimum} and {maximum}, got {value!r}"
-            )
-
-    max_tool_calls = agent.get("max_tool_calls", 64)
-    soft_tool_calls = agent.get("soft_tool_calls", min(56, max_tool_calls - 1))
-    if soft_tool_calls >= max_tool_calls:
+    max_stalled_tool_calls = agent.get("max_stalled_tool_calls")
+    if max_stalled_tool_calls is not None and (
+        not isinstance(max_stalled_tool_calls, int)
+        or isinstance(max_stalled_tool_calls, bool)
+        or not 1 <= max_stalled_tool_calls <= 1000
+    ):
         raise ValueError(
-            "agent.soft_tool_calls must be lower than agent.max_tool_calls, "
-            f"got {soft_tool_calls!r} >= {max_tool_calls!r}"
-        )
-    max_mutation_attempts = agent.get("max_mutation_attempts")
-    if max_mutation_attempts is not None and max_mutation_attempts > max_tool_calls:
-        raise ValueError(
-            "agent.max_mutation_attempts must not exceed agent.max_tool_calls, "
-            f"got {max_mutation_attempts!r} > {max_tool_calls!r}"
+            "agent.max_stalled_tool_calls must be an integer between 1 and 1000, "
+            f"got {max_stalled_tool_calls!r}"
         )
     max_active_seconds = agent.get("max_active_seconds")
     if max_active_seconds is not None and (
         not isinstance(max_active_seconds, (int, float))
         or isinstance(max_active_seconds, bool)
-        or not 1 <= max_active_seconds <= 3600
+        or not 1 <= max_active_seconds <= 86400
     ):
         raise ValueError(
-            "agent.max_active_seconds must be between 1 and 3600 seconds, "
+            "agent.max_active_seconds must be between 1 and 86400 seconds, "
             f"got {max_active_seconds!r}"
         )
 
@@ -385,12 +378,13 @@ _config_read_lock = threading.Lock()
 def _save_config(config: dict) -> None:
     global _config_cache, _config_cache_mtime
     save_copy = copy.deepcopy(config)
-    # Strip secrets from default.yaml, but persist them in default.local.yaml.
-    # Keep unrelated local overrides intact when rotating or clearing a key.
-    secret_paths = (
+    # Keep credentials and user-specific identifiers out of the tracked/default
+    # template. Preserve unrelated local overrides when rotating or clearing them.
+    private_paths = (
         ("translator", "cloud", "api_key"),
         ("agent", "api_key"),
         ("zotero", "api_key"),
+        ("zotero", "user_id"),
         ("vision", "api_key"),
     )
 
@@ -422,8 +416,8 @@ def _save_config(config: dict) -> None:
             if isinstance(parent.get(key), dict) and not parent[key]:
                 parent.pop(key, None)
 
-    secrets = {path: _get_nested(save_copy, path) for path in secret_paths}
-    for path, value in secrets.items():
+    private_values = {path: _get_nested(save_copy, path) for path in private_paths}
+    for path, value in private_values.items():
         if value:
             _set_nested(save_copy, path, "")
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -442,7 +436,7 @@ def _save_config(config: dict) -> None:
             with contextlib.suppress(OSError):
                 os.unlink(tmp_name)
             raise
-        # Persist API keys to default.local.yaml so they survive config reloads.
+        # Persist private values to default.local.yaml so they survive reloads.
         local_path = CONFIG_PATH.parent / "default.local.yaml"
         try:
             if local_path.exists():
@@ -450,7 +444,7 @@ def _save_config(config: dict) -> None:
                     local_data = yaml.safe_load(f) or {}
             else:
                 local_data = {}
-            for path, value in secrets.items():
+            for path, value in private_values.items():
                 if value:
                     _set_nested(local_data, path, value)
                 else:

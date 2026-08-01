@@ -49,7 +49,7 @@ def client():
         "  timeout: 300.0\n"
         "chunker:\n  max_tokens: 2048\n  overlap_tokens: 128\n"
         "formatter:\n  output_format: bilingual\n"
-        "agent:\n  model: qwen3:8b\n  max_steps: 3\n",
+        "agent:\n  model: qwen3:8b\n  max_stalled_tool_calls: 3\n",
         encoding="utf-8",
     )
 

@@ -31,6 +31,37 @@ _WEB_FETCH_MAX_BYTES = 2 * 1024 * 1024
 _ACADEMIC_PAGE_LIMIT = 10
 
 
+def _academic_unavailable(source_kind: str, query: dict[str, str]) -> dict:
+    """Return a successful, complete envelope for an expected missing state."""
+    source_version = hashlib.sha256(
+        json.dumps(
+            {"source_kind": source_kind, "query": query},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    return {
+        "available": False,
+        "source_kind": source_kind,
+        "query": query,
+        "mode": "summary",
+        "collection": "items",
+        "source_id": "",
+        "source_version": source_version,
+        "source_doc_hash": None,
+        "current_doc_hash": None,
+        "stale": None,
+        "total_items": 0,
+        "counts": {},
+        "returned_items": 0,
+        "complete": True,
+        "next_cursor": None,
+        "items": [],
+        "available_collections": {},
+    }
+
+
 def _document_hash(
     registry: ToolRegistry, doc_id: str, stored_hash: str | None
 ) -> tuple[str | None, bool | None]:
@@ -90,6 +121,7 @@ def _academic_page(
         counts[label] = counts.get(label, 0) + 1
 
     base = {
+        "available": True,
         "mode": mode,
         "collection": collection,
         "source_id": str(payload.get("id", "") or ""),
@@ -679,7 +711,13 @@ def register_academic_tools(registry: ToolRegistry) -> None:
                 if graph_id:
                     resp = await client.get(f"{api_base}/api/argument/graph/{graph_id}")
                     if resp.status_code == 404:
-                        return ToolResult(f"Argument graph not found: {graph_id}", is_error=True)
+                        envelope = _academic_unavailable(
+                            "argument_graph", {"graph_id": graph_id, "source_doc": source_doc}
+                        )
+                        return ToolResult(
+                            json.dumps(envelope, ensure_ascii=False),
+                            metadata={"available": False, "complete": True, "stale": None},
+                        )
                     resp.raise_for_status()
                     return ToolResult(json.dumps(resp.json(), ensure_ascii=False))
 
@@ -694,7 +732,13 @@ def register_academic_tools(registry: ToolRegistry) -> None:
                         if str(graph.get("source_doc", "")).replace("\\", "/").lower() == normalized
                     ]
                 if not graphs:
-                    return ToolResult("No argument graph found for the requested document.")
+                    envelope = _academic_unavailable(
+                        "argument_graph", {"graph_id": graph_id, "source_doc": source_doc}
+                    )
+                    return ToolResult(
+                        json.dumps(envelope, ensure_ascii=False),
+                        metadata={"available": False, "complete": True, "stale": None},
+                    )
                 return ToolResult(json.dumps(graphs, ensure_ascii=False))
         except Exception as e:
             return ToolResult(f"Argument graph lookup failed: {e}", is_error=True)
@@ -812,9 +856,66 @@ def register_academic_tools(registry: ToolRegistry) -> None:
                         f"{api_base}/api/companion/reviews", params={"doc_id": doc_id}
                     )
                 if resp.status_code == 404:
-                    return ToolResult("Reviewer-2 state not found.", is_error=True)
+                    envelope = _academic_unavailable(
+                        "reviewer_state",
+                        {"session_id": session_id, "doc_id": doc_id},
+                    )
+                    return ToolResult(
+                        json.dumps(envelope, ensure_ascii=False),
+                        metadata={
+                            "available": False,
+                            "complete": True,
+                            "next_cursor": None,
+                            "source_version": envelope["source_version"],
+                            "stale": None,
+                        },
+                    )
                 resp.raise_for_status()
                 payload = resp.json()
+                if not session_id and isinstance(payload, list) and len(payload) == 1:
+                    resolved_session_id = str(payload[0].get("session_id", "")).strip()
+                    if resolved_session_id:
+                        detail_resp = await client.get(
+                            f"{api_base}/api/companion/review/{resolved_session_id}"
+                        )
+                        if detail_resp.status_code == 404:
+                            envelope = _academic_unavailable(
+                                "reviewer_state",
+                                {"session_id": resolved_session_id, "doc_id": doc_id},
+                            )
+                            return ToolResult(
+                                json.dumps(envelope, ensure_ascii=False),
+                                metadata={
+                                    "available": False,
+                                    "complete": True,
+                                    "next_cursor": None,
+                                    "source_version": envelope["source_version"],
+                                    "stale": None,
+                                },
+                            )
+                        detail_resp.raise_for_status()
+                        payload = detail_resp.json()
+                if payload in (None, [], {}) or (
+                    isinstance(payload, dict)
+                    and not any(
+                        isinstance(payload.get(name), list) and payload.get(name)
+                        for name in ("points", "anchors", "items")
+                    )
+                ):
+                    envelope = _academic_unavailable(
+                        "reviewer_state",
+                        {"session_id": session_id, "doc_id": doc_id},
+                    )
+                    return ToolResult(
+                        json.dumps(envelope, ensure_ascii=False),
+                        metadata={
+                            "available": False,
+                            "complete": True,
+                            "next_cursor": None,
+                            "source_version": envelope["source_version"],
+                            "stale": None,
+                        },
+                    )
                 # A doc_id query returns compact review summaries rather than one
                 # ReviewSession. Keep them pageable under the same envelope.
                 primary = "points" if isinstance(payload, dict) else "items"
@@ -829,6 +930,7 @@ def register_academic_tools(registry: ToolRegistry) -> None:
                     json.dumps(envelope, ensure_ascii=False),
                     metadata={
                         "complete": envelope["complete"],
+                        "available": envelope["available"],
                         "next_cursor": envelope["next_cursor"],
                         "source_version": envelope["source_version"],
                         "stale": envelope["stale"],
@@ -841,8 +943,11 @@ def register_academic_tools(registry: ToolRegistry) -> None:
         "read_reviewer_state",
         (
             "Read persisted Reviewer-2 state through a completeness envelope. Start with summary, "
-            "then use mode=detail with cursor/limit or item_ids until complete=true. Propagate stale "
-            "and incomplete status into the final assessment."
+            "then use mode=detail with cursor/limit or item_ids until complete=true. Query by doc_id "
+            "unless the user or a prior tool result supplied an exact session_id; never invent a "
+            "placeholder session ID. available=false is a successful, complete absence result, not "
+            "a tool failure. Propagate unavailable, stale, and incomplete status into the final "
+            "assessment."
         ),
         {
             "type": "object",

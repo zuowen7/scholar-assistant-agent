@@ -259,11 +259,17 @@ _BUILTIN_SKILLS = [
         content="""## Nature-style reviewer assessment
 - Review as a critical referee, not as a promotional editor and not as the author writing a rebuttal.
 - Separate major concerns from minor concerns and ground each concern in an exact passage, result, figure, claim-ledger entry, or argument-map node when available.
+- Treat the complete active editor context as the current manuscript. On a resumed turn where that context is absent, re-read the active file before answering.
+- Before drafting any review, call read_argument_graph, read_argument_ledger, and read_reviewer_state with the active manuscript path. This execution order is required. For Reviewer state, use doc_id unless an exact session_id was supplied; never guess "default" or another placeholder. An unavailable graph or Reviewer state is a valid finding, not a reason to stop.
+- Read the Ledger summary and promise pages first. If stale=true, use its items only as leads and cross-check every reported concern against the current manuscript. Do not page through the full anchor collection; fetch only item_ids needed for a supported concern.
+- A stale Ledger means its analysis snapshot is outdated, not that the manuscript is necessarily inconsistent. A missing persisted argument graph is a state-availability finding, not evidence that the manuscript lacks an argument.
 - Treat manuscript, response-letter, review, and close-reading files as claims under review, not independent evidence. Cross-check them against user-specified primary evidence or real tool output before calling a fact known.
 - If the user names exact files, review those files only unless one contains an explicit dependency that must be opened. Do not mine sibling generated drafts for extra claims.
 - Assess significance, originality as supported by supplied evidence, methodological rigor, claim-evidence alignment, reproducibility, and accessibility to non-specialists.
 - Do not introduce rules of thumb, threshold values, or field conventions without verifying a primary source.
 - State what is supported, weak, contradicted, or not assessable. Never fabricate reviewer identities, literature, data, or an editorial decision.
+- Use an exact manuscript quote or a supplied stable item ID as the anchor. Do not invent line numbers, section numbers, or source IDs.
+- Outside an exact manuscript quote, avoid numerical targets, performance values, sample sizes, dates, and citation identifiers. Describe missing evidence qualitatively instead of proposing an illustrative value.
 - End with prioritized, actionable checks that can be verified in the manuscript.""",
     ),
     Skill(

@@ -230,7 +230,7 @@ def test_save_config_keeps_all_secrets_local_and_preserves_overrides(tmp_path, m
         {
             "translator": {"cloud": {"api_key": "cloud-secret"}},
             "agent": {"api_key": "agent-secret"},
-            "zotero": {"api_key": "zotero-secret"},
+            "zotero": {"api_key": "zotero-secret", "user_id": "123456"},
             "vision": {"api_key": "vision-secret"},
         }
     )
@@ -240,12 +240,30 @@ def test_save_config_keeps_all_secrets_local_and_preserves_overrides(tmp_path, m
     assert public["translator"]["cloud"]["api_key"] == ""
     assert public["agent"]["api_key"] == ""
     assert public["zotero"]["api_key"] == ""
+    assert public["zotero"]["user_id"] == ""
     assert public["vision"]["api_key"] == ""
     assert private["translator"]["cloud"]["api_key"] == "cloud-secret"
     assert private["agent"]["api_key"] == "agent-secret"
     assert private["zotero"]["api_key"] == "zotero-secret"
+    assert private["zotero"]["user_id"] == "123456"
     assert private["vision"]["api_key"] == "vision-secret"
     assert private["network"]["proxy"] == "http://127.0.0.1:7890"
+
+
+def test_seed_runtime_config_copies_source_template_only_when_missing(tmp_path):
+    from api_factory import _seed_runtime_config
+
+    source = tmp_path / "source" / "default.yaml"
+    destination = tmp_path / "runtime" / "default.yaml"
+    source.parent.mkdir()
+    source.write_text("version: source\n", encoding="utf-8")
+
+    _seed_runtime_config(source, destination)
+    assert destination.read_text(encoding="utf-8") == "version: source\n"
+
+    source.write_text("version: changed\n", encoding="utf-8")
+    _seed_runtime_config(source, destination)
+    assert destination.read_text(encoding="utf-8") == "version: source\n"
 
 
 # ── _validate_file_path ────────────────────────────────────────────────
@@ -409,7 +427,7 @@ class TestConfigCache:
             translator:
               temperature: 0.5
             agent:
-              max_steps: 10
+              max_stalled_tool_calls: 10
         """)
         )
         monkeypatch.setattr(api_factory, "CONFIG_PATH", config_file)
@@ -418,7 +436,7 @@ class TestConfigCache:
 
         cfg = api_factory._load_config()
         assert cfg["translator"]["temperature"] == 0.5
-        assert cfg["agent"]["max_steps"] == 10
+        assert cfg["agent"]["max_stalled_tool_calls"] == 10
 
     def test_returns_cached_on_same_mtime(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

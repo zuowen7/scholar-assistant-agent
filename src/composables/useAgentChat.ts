@@ -269,7 +269,12 @@ export function useAgentChat() {
             msg.content = ''
             msg.isStreaming = true
           }
-          msg.events = [...msg.events, agentEvent]
+          // A tool turn can replace provisional text with a tool call. The
+          // backend uses an empty control event to reset that text; keeping it
+          // in the visible timeline makes a successful run look like a warning.
+          if (agentEvent.metadata?.code !== 'tool_turn' || agentEvent.content) {
+            msg.events = [...msg.events, agentEvent]
+          }
           break
         case 'aborted':
           if (agentEvent.content === 'File edit rejected; no changes were applied') {

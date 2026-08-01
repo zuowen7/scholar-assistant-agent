@@ -86,7 +86,7 @@ function makeOpenSseResponse(chunks: { event: string; data: Record<string, unkno
 function makeSessionStartedChunk(sessionId: string) {
   return {
     event: 'session_started',
-    data: { metadata: { session_id: sessionId, model: 'qwen3:8b', max_steps: 20 } },
+    data: { metadata: { session_id: sessionId, model: 'qwen3:8b', max_stalled_tool_calls: 12 } },
   }
 }
 
@@ -113,7 +113,7 @@ function makePartialResponseChunk() {
       content: 'Task partially completed.',
       metadata: {
         partial: true,
-        stop_code: 'model_call_budget_exhausted',
+        stop_code: 'no_progress_stall',
         tool_counts: { success: 15, error: 2, denied: 0, skipped: 0, no_change: 0 },
         changed_count: 3,
       },
@@ -265,7 +265,7 @@ describe('useAgentChat', () => {
           type: 'response',
           metadata: expect.objectContaining({
             partial: true,
-            stop_code: 'model_call_budget_exhausted',
+            stop_code: 'no_progress_stall',
           }),
         }),
       )
@@ -442,6 +442,38 @@ describe('useAgentChat', () => {
         expect.objectContaining({
           type: 'warning',
           metadata: expect.objectContaining({ reset_stream: true }),
+        }),
+      )
+    })
+
+    it('uses an internal tool-turn reset without showing a warning event', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          makeSseResponse([
+            makeSessionStartedChunk('sess_tool_turn'),
+            makeTokenChunk('provisional response'),
+            {
+              event: 'warning',
+              data: {
+                content: '',
+                metadata: { code: 'tool_turn', reset_stream: true },
+              },
+            },
+            makeResponseChunk('grounded response'),
+            makeDoneChunk(),
+          ]),
+        ),
+      )
+
+      const { sendMessage, messages } = useAgentChat()
+      await sendMessage('Use a tool first')
+
+      expect(messages.value[1].content).toBe('grounded response')
+      expect(messages.value[1].events).not.toContainEqual(
+        expect.objectContaining({
+          type: 'warning',
+          metadata: expect.objectContaining({ code: 'tool_turn' }),
         }),
       )
     })
