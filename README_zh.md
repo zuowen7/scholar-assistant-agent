@@ -155,8 +155,7 @@ v0.5.0 · 最新：Agent 执行界面重构（AgentExecutionGroup、inline diff 
 │   ├── composables/
 │   │   ├── useTranslate.ts       #   SSE 翻译管线状态管理（单例）
 │   │   ├── useAgentChat.ts       #   Agent SSE 对话状态管理（单例）
-│   │   ├── useEditor.ts          #   Monaco Editor + AI Panel（单例）
-│   │   ├── useAiPanelState.ts    #   AI Panel 独立状态管理
+│   │   ├── useEditor.ts          #   Monaco Editor + 编辑器标签状态（单例）
 │   │   ├── useFileTree.ts        #   文件树导航（单例，新建文件/文件夹）
 │   │   ├── useProject.ts         #   项目管理（单例，创建/打开/关闭/最近）
 │   │   ├── useMindMap.ts         #   思维导图数据 + undo/redo（单例）
@@ -178,11 +177,11 @@ v0.5.0 · 最新：Agent 执行界面重构（AgentExecutionGroup、inline diff 
 │   │   ├── AppTopBar.vue         #   顶栏（品牌/模式切换/引擎设置/语音设置/窗口控制）
 │   │   ├── TranslateView.vue     #   翻译模式（上传/进度/结果三视图）
 │   │   ├── AgentPanel.vue        #   Agent 侧面板（对话/知识库/模板/会话）
-│   │   ├── EditorLayout.vue      #   编辑器布局（~657 行，Monaco + AiPanel + FileTree）
+│   │   ├── EditorLayout.vue      #   编辑器布局（Monaco + FileTree + 预览/论证面板）
 │   │   ├── VoiceAssistantView.vue #   Siri 风格全屏语音界面（毛玻璃 + 脉冲/波纹动画）
 │   │   ├── mindmap/              #   思维导图（Vue Flow 画布 + 自定义节点/边）
 │   │   ├── ui/                   #   UI 原语（Button/Input/Panel/Tooltip…）
-│   │   └── …                     #   MonacoEditor, AiPanel, ArgumentMap 等
+│   │   └── …                     #   MonacoEditor、ArgumentMap、文件树和编辑器工具栏等
 │   ├── utils/
 │   │   ├── api.ts                #   API base URL（自动检测 Tauri/Web）
 │   │   └── streamReader.ts       #   统一 SSE 流解析工具（6 个调用点共用）

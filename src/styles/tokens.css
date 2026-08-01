@@ -75,6 +75,7 @@
   --motion-slow: 280ms;
   --motion-page: 320ms;
   --motion-stagger: 40ms;
+  --stagger-i: 0;
 
   --glass-blur: 24px;
   --ring-focus: 0 0 0 3px var(--c-accent-ring);

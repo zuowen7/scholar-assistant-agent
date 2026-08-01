@@ -92,7 +92,7 @@ class TestBasics:
         session.record_pending_action(
             tool_name="write_file",
             target_path=target,
-            error_code="academic_evidence_required",
+            error_code="write_failed",
             turn_id="turn-1",
             details={"missing_facts": ["78.3%"]},
         )

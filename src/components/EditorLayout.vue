@@ -52,8 +52,8 @@
           <button
             type="button"
             class="header-icon"
-            :title="rightPanelVisible ? t('editor.collapseRight') : t('editor.expandRight')"
-            @click="toggleHeaderRightPanel"
+            :title="rightDock === 'agent' ? t('editor.collapseRight') : t('editor.expandRight')"
+            @click="toggleAgentDock()"
           >
             <PanelRightClose :size="18" />
           </button>
@@ -117,6 +117,7 @@
             <EditorToolbar
               ref="toolbarRef"
               :active-right-tab="rightPanelTab"
+              :agent-open="rightDock === 'agent'"
               :message="exportMessage"
               @toggle-right="toggleRightPanel"
               @image-selected="handleImageSelected"
@@ -165,7 +166,6 @@
           >
             <EditorRightTabBar
               :model-value="rightPanelTab"
-              :agent-mode="!isLatexMode"
               :agent-open="rightDock === 'agent'"
               @update:model-value="setRightPanelTab"
               @open-agent="toggleAgentDock(true)"
@@ -176,24 +176,7 @@
               :version="contentVersion"
               class="rp-content rp-preview"
             />
-            <CompanionPanel
-              v-else-if="rightPanelTab === 'argument'"
-              :content="content"
-              class="rp-content"
-            />
-            <AiPanel
-              v-else
-              ref="aiPanelRef"
-              workspace-variant
-              :editor-context="selection.text || content"
-              :active-file="activeFile"
-              :can-undo="!!previousContent"
-              :workspace-files="workspaceFiles"
-              class="rp-content"
-              @insert="handleInsert"
-              @undo="handleUndo"
-              @close="rightPanelVisible = false"
-            />
+            <CompanionPanel v-else :content="content" class="rp-content" />
           </aside>
         </div>
       </template>
@@ -320,7 +303,6 @@ import { open as openDialog } from '@tauri-apps/plugin-dialog'
 const MonacoEditor = defineAsyncComponent(() => import('./MonacoEditor.vue'))
 const MarkdownPreview = defineAsyncComponent(() => import('./MarkdownPreview.vue'))
 const MindMapView = defineAsyncComponent(() => import('./MindMapView.vue'))
-const AiPanel = defineAsyncComponent(() => import('./AiPanel.vue'))
 const CompanionPanel = defineAsyncComponent(() => import('./argument/CompanionPanel.vue'))
 
 defineProps<{ isDark: boolean }>()
@@ -332,9 +314,7 @@ const {
   content,
   contentVersion,
   selection,
-  previousContent,
   tabs,
-  aiResult,
   insertTextAtCursor,
   activeFile,
   monacoEditor,
@@ -342,9 +322,6 @@ const {
 
 // -- Tab / file operations ------------------------------------------------
 const { openNewUntitled, closeTab, setContent, markDirty, saveFile, reloadOpenTabs } = useEditor()
-
-// -- AI edit actions (from useEditor, called once) -----------------------
-const { applyAiResult, undoEdit } = useEditor()
 
 // -- Feature composables ---------------------------------------------------
 const { analyzeVision, insertImageFile } = useEditorVision()
@@ -418,11 +395,11 @@ watch(
 )
 
 // -- Right panel ----------------------------------------------------------
-type RightTab = 'preview' | 'ai' | 'argument'
-const rightPanelTab = ref<RightTab | null>('ai')
-const aiPanelRef = ref<InstanceType<typeof AiPanel> | null>(null)
-const toggleRightPanel = (tab: RightTab) => {
-  if (tab === 'ai' && !isLatexMode.value) {
+type RightTab = 'preview' | 'argument'
+type RightPanelCommand = RightTab | 'agent'
+const rightPanelTab = ref<RightTab | null>('preview')
+const toggleRightPanel = (tab: RightPanelCommand) => {
+  if (tab === 'agent') {
     toggleAgentDock(true)
     rightPanelVisible.value = false
     return
@@ -438,19 +415,6 @@ const setRightPanelTab = (tab: RightTab | null) => {
   }
   toggleRightPanel(tab)
 }
-const toggleHeaderRightPanel = () => {
-  if (!isLatexMode.value) {
-    toggleAgentDock()
-    return
-  }
-  if (rightPanelVisible.value) {
-    rightPanelVisible.value = false
-    return
-  }
-  if (rightPanelTab.value === null) rightPanelTab.value = 'ai'
-  rightPanelVisible.value = true
-}
-
 // -- Export state ---------------------------------------------------------
 const exportMessage = ref('')
 const toolbarRef = ref<InstanceType<typeof EditorToolbar> | null>(null)
@@ -499,27 +463,6 @@ async function performCloseProject() {
   showCloseProjectConfirm.value = false
 }
 
-// M12 fix: only map stable identity fields (name/path) so this computed does NOT
-// invalidate on every keystroke when tab content changes.  AiPanel needs `content`
-// only when the user actually selects a file via @-mention; it accesses it through
-// the `content` field which we populate lazily via a getter below.
-const workspaceFiles = computed(() =>
-  tabs.value.map((t) => {
-    const name = t.name || t.path?.split(/[\\/]/).pop() || 'untitled'
-    // Expose content as a lazy getter so Vue's reactivity system does not track
-    // it as a dependency of this computed — content is large and changes on every
-    // edit, but only matters when a user explicitly @-mentions the file.
-    const tab = t
-    return Object.defineProperty({ name }, 'content', {
-      get() {
-        return tab.content
-      },
-      enumerable: true,
-      configurable: true,
-    }) as { name: string; content?: string }
-  }),
-)
-
 // -- Event handlers ------------------------------------------------------
 
 function navigateToLine(line: number) {
@@ -544,10 +487,8 @@ function addSection() {
 async function handleSelectionTask(action: string) {
   const target = selection.value.text || content.value
   if (!target.trim()) return
-  // Auto-open the right panel so the user sees the agent working (writing mode)
-  if (!isLatexMode.value) {
-    toggleAgentDock(true)
-  }
+  // The global Agent dock is the only AI task surface in every editor mode.
+  toggleAgentDock(true)
   // Capture read-only surrounding lines so the agent can keep transitions,
   // terminology and style coherent. The editable range stays the selection.
   let beforeContext: string | undefined
@@ -838,14 +779,6 @@ async function runComplianceCheck() {
   }
 }
 
-function handleInsert(text: string) {
-  aiResult.value = text
-  applyAiResult()
-}
-function handleUndo() {
-  undoEdit()
-}
-
 const companion = useArgumentCompanion()
 
 // Wire argument companion: setDoc on tab switch, onEditorEdit on content change
@@ -1039,10 +972,7 @@ function handleVoiceExport(e: Event) {
 
 function handleVoiceAiPreset(e: Event) {
   const { action } = (e as CustomEvent).detail
-  rightPanelTab.value = 'ai'
-  nextTick(() => {
-    aiPanelRef.value?.sendPreset(action)
-  })
+  void handleSelectionTask(action)
 }
 
 function handleVoiceCompliance() {

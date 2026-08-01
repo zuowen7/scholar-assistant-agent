@@ -772,27 +772,6 @@ def _create_file_ops(registry: ToolRegistry) -> None:
                         "last chunk."
                     ),
                 },
-                "evidence_refs": {
-                    "type": "array",
-                    "maxItems": 64,
-                    "description": (
-                        "Required when adding academic facts. Each quote must be present in the "
-                        "referenced successful tool result or current user message."
-                    ),
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "tool_use_id": {"type": "string"},
-                            "source": {
-                                "type": "string",
-                                "enum": ["tool_result", "user_message"],
-                            },
-                            "quote": {"type": "string", "minLength": 1, "maxLength": 2000},
-                            "anchor": {"type": "string", "maxLength": 500},
-                        },
-                        "required": ["quote"],
-                    },
-                },
             },
             "required": ["file_path", "content"],
         },
@@ -812,27 +791,6 @@ def _create_file_ops(registry: ToolRegistry) -> None:
                 "file_path": {"type": "string", "minLength": 1},
                 "old_string": {"type": "string", "minLength": 1},
                 "new_string": {"type": "string"},
-                "evidence_refs": {
-                    "type": "array",
-                    "maxItems": 64,
-                    "description": (
-                        "Required when adding academic facts. Each quote must be present in the "
-                        "referenced successful tool result or current user message."
-                    ),
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "tool_use_id": {"type": "string"},
-                            "source": {
-                                "type": "string",
-                                "enum": ["tool_result", "user_message"],
-                            },
-                            "quote": {"type": "string", "minLength": 1, "maxLength": 2000},
-                            "anchor": {"type": "string", "maxLength": 500},
-                        },
-                        "required": ["quote"],
-                    },
-                },
             },
             "required": ["file_path", "old_string", "new_string"],
         },

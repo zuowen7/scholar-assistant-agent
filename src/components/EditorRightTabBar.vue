@@ -11,11 +11,11 @@
     <button
       data-testid="right-tab-agent"
       class="rp-tab"
-      :class="{ active: agentMode ? agentOpen : modelValue === 'ai' }"
-      @click="agentMode ? emit('openAgent') : emit('update:modelValue', 'ai')"
+      :class="{ active: agentOpen }"
+      @click="emit('openAgent')"
     >
       <Bot :size="13" :stroke-width="1.7" />
-      {{ t(agentMode ? 'editor.rightAgent' : 'editor.rightAiEdit') }}
+      {{ t('editor.rightAgent') }}
     </button>
     <button
       data-testid="right-tab-argument"
@@ -41,9 +41,9 @@ import { Eye, Bot, GitBranch, X } from './ui/icons'
 import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 
-type RightTab = 'preview' | 'ai' | 'argument'
+type RightTab = 'preview' | 'argument'
 
-defineProps<{ modelValue: RightTab | null; agentMode?: boolean; agentOpen?: boolean }>()
+defineProps<{ modelValue: RightTab | null; agentOpen?: boolean }>()
 const emit = defineEmits<{
   (e: 'update:modelValue', value: RightTab | null): void
   (e: 'openAgent'): void

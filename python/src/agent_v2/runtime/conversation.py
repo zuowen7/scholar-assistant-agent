@@ -14,10 +14,8 @@ import logging
 import re
 import time
 import uuid
-from collections import Counter
 from collections.abc import AsyncGenerator
 from contextlib import suppress
-from datetime import date
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -57,74 +55,7 @@ _DEFAULT_SOFT_RESEARCH_CALLS = 20
 _SELECTION_MAX_TOOL_CALLS = 4
 _DEFAULT_MAX_TOOL_ERRORS = 5
 _SELECTION_MAX_TOOL_ERRORS = 2
-_MAX_IDENTICAL_TOOL_CALLS = 2
 _APPROVAL_POLICY_VERSION = "1"
-_ACADEMIC_FILE_SUFFIXES = frozenset({".md", ".markdown", ".tex", ".rst", ".adoc"})
-_ACADEMIC_PATH_HINTS = frozenset(
-    {
-        "draft",
-        "paper",
-        "papers",
-        "manuscript",
-        "manuscripts",
-        "thesis",
-        "chapter",
-        "chapters",
-        "论文",
-    }
-)
-_ACADEMIC_FILE_NAMES = frozenset(
-    {
-        "main.md",
-        "main.tex",
-        "paper.md",
-        "paper.tex",
-        "manuscript.md",
-        "manuscript.tex",
-        "thesis.tex",
-    }
-)
-_FACT_NUMBER_RE = re.compile(
-    r"(?<![A-Za-z0-9_-])"
-    r"(?:\d+(?:\.\d+)?\s*%|\d{1,3}(?:,\d{3})+|\d+\.\d+|\d{2,})"
-    r"(?![A-Za-z0-9_-])"
-)
-_ARXIV_ID_RE = re.compile(r"(?<!\d)(\d{4}\.\d{4,5})(?:v\d+)?(?!\d)", re.IGNORECASE)
-_CITATION_RE = re.compile(r"(?<!\!)\[(?:\d+(?:\s*[-,]\s*\d+)*)\]")
-_CONTEXT_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]{2,}")
-_CONTEXT_STOPWORDS = frozenset(
-    {
-        "about",
-        "after",
-        "also",
-        "analysis",
-        "article",
-        "based",
-        "before",
-        "between",
-        "from",
-        "into",
-        "model",
-        "paper",
-        "results",
-        "study",
-        "that",
-        "their",
-        "this",
-        "using",
-        "with",
-    }
-)
-_VERIFICATION_CLAIMS = (
-    "经核查",
-    "经验证",
-    "已验证",
-    "完整读取",
-    "全面核验",
-    "verified",
-    "validated",
-    "complete dataset",
-)
 _SELECTION_SAFE_TOOLS = frozenset(
     {
         "str_replace",
@@ -138,9 +69,6 @@ _SELECTION_SAFE_TOOLS = frozenset(
     }
 )
 _RESEARCH_TOOLS = frozenset({"arxiv_search", "rag_search", "web_search", "web_fetch"})
-_AUTO_EVIDENCE_TOOLS = frozenset(
-    {"arxiv_search", "rag_search", "read_file", "run_command", "web_fetch"}
-)
 _PENDING_RESUME_MARKERS = (
     "继续",
     "未完成",
@@ -149,80 +77,6 @@ _PENDING_RESUME_MARKERS = (
     "continue",
     "resume",
     "unfinished",
-)
-_NAMED_SOURCE_FILE_RE = re.compile(
-    r"(?<![A-Za-z0-9_-])([A-Za-z0-9_.\-/\\]+\.(?:bib|csv|json|md|rst|tex|txt|yaml|yml))",
-    re.IGNORECASE,
-)
-_RESPONSE_SEMANTIC_CLAIMS = (
-    (
-        "first principal component",
-        re.compile(
-            r"\bfirst\s+(?:(?:principal|retained)\s+component|PC)\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "PCA applied to an unspecified data object",
-        re.compile(
-            r"\b(?:PCA|principal\s+component\s+analysis)\b.{0,40}"
-            r"\b(?:was|is|were|are)\s+applied\s+to\s+(?:the\s+)?"
-            r"(?:dataset|data|feature\s+set|feature\s+space)\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "held-out/test/validation/training role",
-        re.compile(
-            r"\b(?:held[- ]out(?:\s+(?:test|validation|training))?"
-            r"(?:\s+(?:set|sample|data|dataset))?|test\s+set|"
-            r"validation\s+set|training\s+set|"
-            r"train/test\s+split|validation\s+split)\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "unsupported known or confirmed status",
-        re.compile(
-            r"\b(?:is|are|was|were)\s+(?:already\s+)?(?:known|confirmed|retrievable)\b|"
-            r"\bconfirms?\s+(?:that\s+)?(?:it\s+)?(?:is|was)\s+known\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "single-sample design",
-        re.compile(r"\bsingle[- ]sample\b", re.IGNORECASE),
-    ),
-    (
-        "available upon reasonable request",
-        re.compile(r"\bavailable\s+(?:upon|on)\s+reasonable\s+request\b", re.IGNORECASE),
-    ),
-    (
-        "institutional approval",
-        re.compile(r"\binstitutional\s+approval\b", re.IGNORECASE),
-    ),
-)
-_RESPONSE_NEGATION_RE = re.compile(
-    r"\b(?:absence|absent|cannot|can't|doesn't|does\s+not|isn't|is\s+not|"
-    r"lack|lacks|missing|no|not|unavailable|unknown|unreported|"
-    r"unspecified|without)\b",
-    re.IGNORECASE,
-)
-_RESPONSE_RECOMMENDATION_RE = re.compile(
-    r"\b(?:should|must|needs?(?:\s+to)?|recommended?(?:\s+that)?|"
-    r"requires?(?:\s+that)?|could\s+(?:add|provide|report|include|specify|"
-    r"describe|clarify|use)|would\s+benefit\s+from)\b|"
-    r"^\s*(?:[-*]\s*)?(?:add|provide|report|include|specify|describe|clarify|use)\b",
-    re.IGNORECASE,
-)
-_RESPONSE_POST_CLAIM_NEGATION_RE = re.compile(
-    r"^\s*[*_`'\"]*(?:(?:is|are|was|were|remain|remains)\s+)?"
-    r"(?:absent|missing|unavailable|unknown|unreported|unspecified)\b|"
-    r"^\s*[*_`'\"]*(?:(?:is|are|was|were)\s+)?not\s+"
-    r"(?:available|confirmed|known|provided|reported|specified|supplied|verified)\b|"
-    r"^\s*[*_`'\"]*(?:has|have|had)\s+not\s+been\s+"
-    r"(?:confirmed|provided|reported|specified|supplied|verified)\b",
-    re.IGNORECASE,
 )
 
 
@@ -247,15 +101,6 @@ class _MalformedToolProtocol(RuntimeError):
     """Provider returned textual tool protocol instead of a user-facing response."""
 
 
-class _UngroundedResponse(RuntimeError):
-    """A skill response introduced facts absent from the allowed source set."""
-
-    def __init__(self, issues: list[str], draft: str):
-        self.issues = issues
-        self.draft = draft
-        super().__init__("Ungrounded response: " + ", ".join(issues))
-
-
 def _contains_tool_protocol(text: str) -> bool:
     normalized = text.lower().replace("｜", "|")
     return any(
@@ -267,80 +112,6 @@ def _contains_tool_protocol(text: str) -> bool:
             "</tool_calls>",
             "<function=",
         )
-    )
-
-
-def _is_academic_target(path_value: str) -> bool:
-    path = Path(path_value)
-    if path.suffix.lower() not in _ACADEMIC_FILE_SUFFIXES:
-        return False
-    lowered_parts = {part.lower() for part in path.parts}
-    return path.name.lower() in _ACADEMIC_FILE_NAMES or bool(lowered_parts & _ACADEMIC_PATH_HINTS)
-
-
-def _fact_scan_text(text: str) -> str:
-    # Markdown headings frequently contain section numbers rather than claims.
-    without_current_date = text.replace(date.today().isoformat(), "").replace(r"\%", "%")
-    return "\n".join(
-        line for line in without_current_date.splitlines() if not re.match(r"^\s*#{1,6}\s", line)
-    )
-
-
-def _fact_marker_counts(text: str) -> Counter[str]:
-    scan = _fact_scan_text(text)
-    arxiv_ids = _ARXIV_ID_RE.findall(scan)
-    without_arxiv_ids = _ARXIV_ID_RE.sub(" ", scan)
-    markers: Counter[str] = Counter(_FACT_NUMBER_RE.findall(without_arxiv_ids))
-    markers.update(f"source_id:{value}" for value in arxiv_ids)
-    markers.update(f"citation:{value}" for value in _CITATION_RE.findall(scan))
-    for phrase in _VERIFICATION_CLAIMS:
-        markers[f"claim:{phrase}"] = scan.lower().count(phrase.lower())
-    return markers
-
-
-def _new_fact_markers(old_text: str, new_text: str) -> list[str]:
-    old_markers = _fact_marker_counts(old_text)
-    new_markers = _fact_marker_counts(new_text)
-    additions: list[str] = []
-    for marker, count in new_markers.items():
-        additions.extend([marker] * max(0, count - old_markers.get(marker, 0)))
-    return additions
-
-
-def _marker_value(marker: str) -> str:
-    return marker.split(":", 1)[1] if marker.startswith("source_id:") else marker
-
-
-def _context_line(text: str, marker: str) -> str:
-    value = _marker_value(marker)
-    for line in text.splitlines():
-        if value in line:
-            return line[:2000]
-    index = text.find(value)
-    if index < 0:
-        return ""
-    return text[max(0, index - 500) : index + len(value) + 500]
-
-
-def _context_tokens(text: str) -> set[str]:
-    return {
-        token.lower()
-        for token in _CONTEXT_TOKEN_RE.findall(text)
-        if token.lower() not in _CONTEXT_STOPWORDS
-    }
-
-
-def _contextually_supports(source_text: str, new_text: str, marker: str) -> bool:
-    """Require title/model overlap so an unrelated page sharing an ID cannot pass."""
-    value = _marker_value(marker)
-    if value not in source_text:
-        return False
-    claim_tokens = _context_tokens(_context_line(new_text, marker))
-    shared = claim_tokens & _context_tokens(source_text)
-    if len(shared) >= 2:
-        return True
-    return any(
-        len(token) >= 8 or any(char.isdigit() for char in token) or "-" in token for token in shared
     )
 
 
@@ -445,10 +216,6 @@ class ConversationRuntime:
         self._mutation_attempts_this_turn = 0
         self._research_tool_calls_this_turn = 0
         self._active_seconds_this_turn = 0.0
-        self._tool_call_counts: dict[str, int] = {}
-        self._readonly_tool_names = frozenset(
-            name for name, perm in tool_registry.permission_specs() if perm == "read-only"
-        )
         self._tool_stop_reason: str | None = None
         self._tool_stop_code: str | None = None
         self._selection_edit_completed = False
@@ -457,7 +224,6 @@ class ConversationRuntime:
         self._turn_id = ""
         self._resume_pending_actions = False
         self._pending_created_this_turn = False
-        self._pending_response_retries_this_turn = 0
         # Lifecycle tracking — used by router._cleanup_pool to evict stale
         # sessions safely (never evict a streaming session).
         self.last_active_monotonic: float = time.monotonic()
@@ -486,7 +252,6 @@ class ConversationRuntime:
         self._mutation_attempts_this_turn = 0
         self._research_tool_calls_this_turn = 0
         self._active_seconds_this_turn = 0.0
-        self._tool_call_counts.clear()
         self._tool_stop_reason = None
         self._tool_stop_code = None
         self._selection_edit_completed = False
@@ -498,7 +263,6 @@ class ConversationRuntime:
             marker in lowered_message for marker in _PENDING_RESUME_MARKERS
         )
         self._pending_created_this_turn = False
-        self._pending_response_retries_this_turn = 0
         self.session.start_turn(self._turn_id)
         self.session.set_outcome(
             "RUNNING",
@@ -530,39 +294,21 @@ class ConversationRuntime:
                     return
 
                 recovery_instruction = self._step_instruction()
-                force_no_tools = False
                 for retry in range(4):
-                    retry_pending_delivery = False
                     try:
                         async for event in self._llm_turn(
                             recovery_instruction=recovery_instruction,
-                            force_no_tools=force_no_tools,
                         ):
                             if (
                                 event.type == AgentEventType.RESPONSE
                                 and self._active_pending_actions()
                             ):
-                                if self._pending_response_retries_this_turn < 2:
-                                    self._pending_response_retries_this_turn += 1
-                                    retry_pending_delivery = True
-                                    yield AgentEvent.warning(
-                                        "交付文件仍未完成，已拒绝降级为聊天回复并继续恢复写入。",
-                                        code="pending_actions_retry",
-                                        attempt=self._pending_response_retries_this_turn,
-                                        max_attempts=2,
-                                        reset_stream=True,
-                                        pending_actions=self._active_pending_actions(),
-                                    )
-                                    continue
                                 pending = self._active_pending_actions()
                                 event.data.update(
                                     {
                                         "partial": True,
                                         "stop_code": "pending_actions_remaining",
-                                        "stop_reason": (
-                                            "Required file mutation remains unresolved after "
-                                            "automatic recovery attempts"
-                                        ),
+                                        "stop_reason": "Required file mutation remains unresolved",
                                         "pending_actions": pending,
                                     }
                                 )
@@ -570,10 +316,7 @@ class ConversationRuntime:
                                 self._persist_turn_outcome(
                                     "PARTIAL",
                                     "pending_actions_remaining",
-                                    (
-                                        "Required file mutation remains unresolved after "
-                                        "automatic recovery attempts"
-                                    ),
+                                    "Required file mutation remains unresolved",
                                 )
                                 self._auto_save()
                                 yield AgentEvent.usage(
@@ -638,8 +381,6 @@ class ConversationRuntime:
                             )
                             yield AgentEvent.done()
                             return
-                        if retry_pending_delivery:
-                            break
                         break
                     except _EmptyModelResponse:
                         if retry < 2:
@@ -667,64 +408,6 @@ class ConversationRuntime:
                         )
                         self._persist_turn_outcome(
                             "FAILED", "empty_model_response", "Model returned no final response"
-                        )
-                        yield AgentEvent.done()
-                        return
-                    except _UngroundedResponse as exc:
-                        if retry < 3:
-                            if force_no_tools:
-                                yield AgentEvent.warning(
-                                    "模型答复仍包含无来源事实，正在再次自动校正。",
-                                    code="response_grounding_retry",
-                                    attempt=retry + 1,
-                                    max_attempts=4,
-                                    issues=exc.issues,
-                                )
-                            recovery_instruction = "\n\n".join(
-                                part
-                                for part in (
-                                    self._step_instruction(),
-                                    "The previous user-facing answer failed the source-grounding "
-                                    "check. Rewrite it from scratch as plain text without tools. "
-                                    "Do not mention this validator. Every number, citation, method, "
-                                    "dataset role, component claim, availability procedure, and "
-                                    "verification statement must be present in the current user "
-                                    "message or a successful allowed primary-source tool result. "
-                                    "For missing facts, say 'not supplied in the available evidence' "
-                                    "instead of guessing. Remove these unsupported items: "
-                                    + ", ".join(exc.issues)
-                                    + ". Delete the entire sentence or table row when a clean "
-                                    "source-grounded replacement is not possible"
-                                    + ". Apply these exact repairs when relevant: replace 'first "
-                                    "principal component/first PC' with 'reported cumulative "
-                                    "explained variance'; replace assertions that PCA was applied "
-                                    "to a feature set or dataset with 'the reported PCA result'; "
-                                    "never write 'PCA was/is applied to' or 'PCA applied to' when "
-                                    "the source does not name that data object; in a table, list, "
-                                    "or LaTeX fragment, use supplied label-value pairs instead of "
-                                    "adding a subject or analysis procedure; "
-                                    "replace known/confirmed/retrievable claims with 'not supplied "
-                                    "in the available evidence'; remove every illustrative number, "
-                                    "threshold, confidence interval, bootstrap count, or rule of "
-                                    "thumb not present in the sources. Preserve the requested "
-                                    "format and all supported content from this draft:\n"
-                                    "<draft_to_repair>\n"
-                                    + exc.draft[:30_000]
-                                    + "\n</draft_to_repair>",
-                                )
-                                if part
-                            )
-                            force_no_tools = True
-                            continue
-                        yield AgentEvent.error(
-                            "模型连续 4 次未能生成来源充分的答复；未向用户交付含无来源事实的结果。",
-                            code="response_grounding_failed",
-                            issues=exc.issues,
-                        )
-                        self._persist_turn_outcome(
-                            "FAILED",
-                            "response_grounding_failed",
-                            "Model response remained ungrounded after automatic repair",
                         )
                         yield AgentEvent.done()
                         return
@@ -1057,80 +740,6 @@ class ConversationRuntime:
         parts.append("Remaining or skipped work is unverified; continue only after reviewing it.")
         return " ".join(parts)
 
-    @staticmethod
-    def _semantic_claim_is_negated(text: str, match: re.Match[str]) -> bool:
-        line_start = text.rfind("\n", 0, match.start()) + 1
-        line_end = text.find("\n", match.end())
-        if line_end < 0:
-            line_end = len(text)
-        prefix = text[line_start : match.start()]
-        suffix = text[match.end() : line_end]
-        return bool(
-            _RESPONSE_NEGATION_RE.search(prefix)
-            or _RESPONSE_RECOMMENDATION_RE.search(prefix)
-            or _RESPONSE_POST_CLAIM_NEGATION_RE.search(suffix)
-        )
-
-    def _response_grounding_source(self) -> str:
-        turn_messages = self.session.messages[self._turn_message_start :]
-        user_text = "\n".join(
-            message.text_content() for message in turn_messages if message.role == MessageRole.USER
-        )
-        named_sources = {
-            match.group(1).replace("\\", "/").lower()
-            for match in _NAMED_SOURCE_FILE_RE.finditer(user_text)
-        }
-        tool_inputs: dict[str, tuple[str, str]] = {}
-        source_parts = [user_text]
-        for message in turn_messages:
-            for block in message.blocks:
-                if isinstance(block, ToolUseBlock):
-                    try:
-                        args = json.loads(block.input) if block.input else {}
-                    except (json.JSONDecodeError, TypeError):
-                        args = {}
-                    path = str(
-                        args.get("file_path", "") or args.get("path", "")
-                        if isinstance(args, dict)
-                        else ""
-                    )
-                    tool_inputs[block.id] = (block.name, path)
-                elif isinstance(block, ToolResultBlock):
-                    if block.is_error or block.status not in {"", "success"}:
-                        continue
-                    tool_name, path = tool_inputs.get(block.tool_use_id, (block.tool_name, ""))
-                    if tool_name == "read_file" and named_sources:
-                        normalized = path.replace("\\", "/").lower()
-                        basename = normalized.rsplit("/", 1)[-1]
-                        if not any(
-                            normalized.endswith(source)
-                            or source.endswith(normalized)
-                            or source.rsplit("/", 1)[-1] == basename
-                            for source in named_sources
-                        ):
-                            continue
-                    source_parts.append(block.output)
-        return "\n".join(part for part in source_parts if part)
-
-    def _response_grounding_issues(self, text: str) -> list[str]:
-        if not self.session.meta.active_skills:
-            return []
-        source_text = self._response_grounding_source()
-        source_markers = set(_fact_marker_counts(source_text))
-        issues = [marker for marker in _fact_marker_counts(text) if marker not in source_markers]
-        for label, pattern in _RESPONSE_SEMANTIC_CLAIMS:
-            source_matches = list(pattern.finditer(source_text))
-            if any(
-                not self._semantic_claim_is_negated(source_text, match) for match in source_matches
-            ):
-                continue
-            matches = list(pattern.finditer(text))
-            if matches and not all(
-                self._semantic_claim_is_negated(text, match) for match in matches
-            ):
-                issues.append(f"claim:{label}")
-        return list(dict.fromkeys(issues))
-
     async def _llm_turn(
         self,
         *,
@@ -1252,17 +861,6 @@ class ConversationRuntime:
                     raise _MalformedToolProtocol(
                         "Provider returned textual tool protocol instead of a response"
                     )
-                if not tool_blocks and full_text.strip():
-                    grounding_issues = self._response_grounding_issues(full_text)
-                    if grounding_issues:
-                        if not force_no_tools:
-                            yield AgentEvent.warning(
-                                "",
-                                code="response_grounding_retry",
-                                reset_stream=True,
-                                issues=grounding_issues,
-                            )
-                        raise _UngroundedResponse(grounding_issues, full_text)
                 assistant_blocks = list(tool_blocks)
                 if text_blocks:
                     assistant_blocks.append(TextBlock(text=full_text))
@@ -1370,11 +968,11 @@ class ConversationRuntime:
             )
             return
 
-        loop_error = self._check_tool_loop(tb, args)
-        if loop_error:
-            self._append_tool_error(tb, loop_error)
-            self._tool_stop_reason = loop_error
-            yield AgentEvent.tool_result(tb.id, tb.name, loop_error, is_error=True)
+        budget_error = self._check_tool_budget(tb)
+        if budget_error:
+            self._append_tool_error(tb, budget_error)
+            self._tool_stop_reason = budget_error
+            yield AgentEvent.tool_result(tb.id, tb.name, budget_error, is_error=True)
             return
         mutation_budget_error = self._check_mutation_budget(tb.name)
         if mutation_budget_error:
@@ -1586,8 +1184,6 @@ class ConversationRuntime:
         # Capture old content for diff
         old_text = ""
         new_text = ""
-        evidence_old_text = ""
-        verified_evidence_refs: list[dict[str, str]] = []
         file_path = args.get("file_path", "") or args.get("path", "")
         # Resolve to absolute path so frontend can match against editor tabs
         resolved_path = file_path
@@ -1601,19 +1197,15 @@ class ConversationRuntime:
         if tb.name == "str_replace":
             old_text = args.get("old_string", "")
             new_text = args.get("new_string", "")
-            evidence_old_text = old_text
         elif tb.name == "write_file":
             new_text = args.get("content", "")
             if resolved_path:
                 try:
                     full = Path(resolved_path)
                     if full.is_file():
-                        evidence_old_text = full.read_text(encoding="utf-8", errors="replace")
-                        old_text = evidence_old_text[:4000]
+                        old_text = full.read_text(encoding="utf-8", errors="replace")[:4000]
                 except Exception:
                     pass
-            if str(args.get("mode", "overwrite")).lower() == "append":
-                evidence_old_text = ""
         result_metadata: dict[str, Any] = {}
 
         if tb.name in {"write_file", "str_replace"}:
@@ -1643,57 +1235,6 @@ class ConversationRuntime:
                     metadata=metadata,
                 )
                 return
-
-        if tb.name in {"write_file", "str_replace"} and _is_academic_target(resolved_path):
-            missing_facts = _new_fact_markers(evidence_old_text, new_text)
-            if missing_facts:
-                verified_evidence_refs, unsupported_facts = self._verify_evidence_refs(
-                    args.get("evidence_refs"),
-                    missing_facts,
-                    new_text,
-                )
-                if unsupported_facts:
-                    display_facts = [
-                        value.split(":", 1)[1] if ":" in value else value
-                        for value in unsupported_facts
-                    ]
-                    metadata = {
-                        "code": "academic_evidence_required",
-                        "missing_facts": display_facts,
-                        "evidence_candidates": self._evidence_candidates(),
-                        "suggested_next_action": (
-                            "Reuse an exact quote from one of evidence_candidates and retry. "
-                            "The runtime will resolve a stale or fabricated tool_use_id to the "
-                            "real successful result when the quote matches."
-                        ),
-                    }
-                    detail = (
-                        "Academic evidence gate blocked the mutation before approval. "
-                        "Unsupported new facts: " + ", ".join(display_facts)
-                    )
-                    self._record_pending_mutation(
-                        tb,
-                        error_code="academic_evidence_required",
-                        target_path=resolved_path,
-                        details={
-                            "missing_facts": display_facts,
-                            "evidence_candidates": [
-                                value.get("tool_use_id", "")
-                                for value in metadata["evidence_candidates"]
-                            ],
-                        },
-                    )
-                    self._append_tool_error(tb, detail, metadata=metadata)
-                    self._record_tool_error()
-                    yield AgentEvent.tool_result(
-                        tb.id,
-                        tb.name,
-                        detail,
-                        is_error=True,
-                        status="error",
-                        metadata=metadata,
-                    )
-                    return
 
         if perm_result.is_denied:
             yield AgentEvent.tool_denied(tb.id, tb.name, perm_result.reason)
@@ -1877,8 +1418,6 @@ class ConversationRuntime:
             result_original_chars = result.original_chars
             result_returned_chars = result.returned_chars
             result_metadata = dict(result.metadata or {})
-            if verified_evidence_refs:
-                result_metadata["evidence_refs"] = verified_evidence_refs
             if tb.name in {"write_file", "str_replace"}:
                 if is_error:
                     self._record_pending_mutation(
@@ -2021,18 +1560,6 @@ class ConversationRuntime:
             tb.name in ("write_file", "str_replace", "export_document")
             and result_status == "success"
         ):
-            # A successful write changes file-system state, so earlier identical
-            # reads are no longer "repeated" — reset only read-only fingerprints
-            # to avoid false circuit-breaker trips on legitimate read-edit-read
-            # cycles. Write-tool fingerprints are preserved so that repeated
-            # identical writes still trip the breaker.
-            readonly_prefixes = tuple(f"{rn}:" for rn in self._readonly_tool_names)
-            if readonly_prefixes:
-                self._tool_call_counts = {
-                    k: v
-                    for k, v in self._tool_call_counts.items()
-                    if not k.startswith(readonly_prefixes)
-                }
             if self.edit_scope is not None and tb.name == "str_replace":
                 self._selection_edit_completed = True
             checkpoint_path = mutation_target_path or resolved_path
@@ -2060,7 +1587,6 @@ class ConversationRuntime:
                     "workspace": self.session.meta.workspace,
                     "content": new_content[:10000] if new_content else tool_output,
                     "content_truncated": len(new_content) > 10000,
-                    "evidence_refs": verified_evidence_refs,
                     "before_hash": mutation_before_hash or None,
                     "after_hash": checkpoint_after_hash or None,
                 }
@@ -2115,21 +1641,18 @@ class ConversationRuntime:
         if pending:
             self.session.set_outcome(
                 "RECOVERING",
-                {
-                    "pending_actions": pending,
-                    "automatic_recovery_attempt": self._pending_response_retries_this_turn + 1,
-                },
+                {"pending_actions": pending},
             )
             self._auto_save()
             return (
-                "# Required delivery recovery\n"
-                "A requested file mutation is still pending. A chat-only answer is not an "
-                "acceptable substitute. Inspect the pending error and retry the mutation now. "
-                "For academic_evidence_required, reuse exact quotes from successful tool results; "
-                "never invent tool_use_id values. For a large write, use write_file with "
+                "# Pending file delivery\n"
+                "A requested file mutation is still pending. Inspect the real error and, when the "
+                "latest user request still requires that file, make one corrected attempt before "
+                "responding. For a large write, use write_file with "
                 "mode=overwrite and final_chunk=false for the first compact chunk, then "
                 "mode=append for compact continuation chunks and final_chunk=true only on the "
-                "last chunk. Do not return a final response until the pending action is resolved.\n\n"
+                "last chunk. If it still cannot be completed, explain the actual blocker once; "
+                "do not loop or claim success.\n\n"
                 f"Pending actions:\n{json.dumps(pending, ensure_ascii=False, sort_keys=True)}"
             )
         if (
@@ -2160,7 +1683,7 @@ class ConversationRuntime:
             )
         return None
 
-    def _check_tool_loop(self, tb: ToolUseBlock, args: dict[str, Any]) -> str | None:
+    def _check_tool_budget(self, tb: ToolUseBlock) -> str | None:
         self._tool_calls_this_turn += 1
         max_calls = (
             _SELECTION_MAX_TOOL_CALLS if self.edit_scope is not None else self.max_tool_calls
@@ -2181,15 +1704,6 @@ class ConversationRuntime:
                     "and complete the deliverable from the sources already collected."
                 )
 
-        fingerprint = f"{tb.name}:{json.dumps(args, ensure_ascii=False, sort_keys=True)}"
-        count = self._tool_call_counts.get(fingerprint, 0) + 1
-        self._tool_call_counts[fingerprint] = count
-        if count > _MAX_IDENTICAL_TOOL_CALLS:
-            self._tool_stop_code = "repeated_tool_call"
-            return (
-                f"Agent repeated the same tool call more than {_MAX_IDENTICAL_TOOL_CALLS} times. "
-                "The task was stopped instead of retrying indefinitely."
-            )
         return None
 
     def _check_mutation_budget(self, tool_name: str) -> str | None:
@@ -2225,207 +1739,6 @@ class ConversationRuntime:
                 "cost",
             }
         )
-
-    def _successful_tool_results(self) -> list[ToolResultBlock]:
-        results: list[ToolResultBlock] = []
-        for message in self.session.messages:
-            for block in message.blocks:
-                if (
-                    isinstance(block, ToolResultBlock)
-                    and not block.is_error
-                    and block.status not in {"error", "denied", "skipped"}
-                ):
-                    results.append(block)
-        return results
-
-    def _evidence_candidates(self) -> list[dict[str, str]]:
-        return [
-            {
-                "tool_use_id": block.tool_use_id,
-                "tool_name": block.tool_name,
-            }
-            for block in self._successful_tool_results()
-            if block.tool_name in _AUTO_EVIDENCE_TOOLS
-        ][-64:]
-
-    @staticmethod
-    def _verified_evidence(
-        *,
-        source_type: str,
-        source_id: str,
-        source_text: str,
-        quote: str,
-        anchor: str = "",
-    ) -> dict[str, str]:
-        return {
-            "source": source_type,
-            "tool_use_id": source_id if source_type == "tool_result" else "",
-            "source_id": source_id,
-            "source_hash": hashlib.sha256(source_text.encode("utf-8")).hexdigest(),
-            "quote_hash": hashlib.sha256(quote.encode("utf-8")).hexdigest(),
-            "anchor": anchor[:500],
-        }
-
-    def _verify_evidence_refs(
-        self,
-        raw_refs: Any,
-        fact_markers: list[str],
-        new_text: str,
-    ) -> tuple[list[dict[str, str]], list[str]]:
-        refs = raw_refs if isinstance(raw_refs, list) else []
-        successful_results = self._successful_tool_results()
-        tool_results = {block.tool_use_id: block for block in successful_results}
-        user_text = ""
-        for message in self.session.messages:
-            if message.role == MessageRole.USER:
-                user_text = message.text_content()
-
-        verified: list[dict[str, str]] = []
-        supported_text: list[str] = []
-        support_records: list[tuple[str, str, str]] = []
-        seen_refs: set[tuple[str, str]] = set()
-
-        def add_verified(
-            *,
-            source_type: str,
-            source_id: str,
-            source_text: str,
-            quote: str,
-            anchor: str = "",
-        ) -> None:
-            key = (source_id, hashlib.sha256(quote.encode("utf-8")).hexdigest())
-            if key in seen_refs:
-                return
-            seen_refs.add(key)
-            supported_text.append(quote)
-            support_records.append((source_type, source_text, quote))
-            verified.append(
-                self._verified_evidence(
-                    source_type=source_type,
-                    source_id=source_id,
-                    source_text=source_text,
-                    quote=quote,
-                    anchor=anchor,
-                )
-            )
-
-        for value in refs[:64]:
-            if not isinstance(value, dict):
-                continue
-            quote = str(value.get("quote", "")).strip()
-            if not quote:
-                continue
-            tool_use_id = str(value.get("tool_use_id", "")).strip()
-            source = str(value.get("source", "")).strip()
-            source_text = ""
-            source_type = ""
-            source_id = ""
-            if tool_use_id:
-                block = tool_results.get(tool_use_id)
-                if block is not None and quote in block.output:
-                    source_text = block.output
-                    source_type = "tool_result"
-                    source_id = block.tool_use_id
-                else:
-                    # Provider-generated IDs are often stale or fabricated.
-                    # Recover provenance only when the exact quote is present
-                    # in an actually successful persisted tool result.
-                    matched = next(
-                        (
-                            candidate
-                            for candidate in reversed(successful_results)
-                            if quote in candidate.output
-                        ),
-                        None,
-                    )
-                    if matched is None:
-                        continue
-                    source_text = matched.output
-                    source_type = "tool_result"
-                    source_id = matched.tool_use_id
-            elif source == "user_message":
-                source_text = user_text
-                source_type = "user_message"
-                source_id = self._turn_id or "current_turn"
-            else:
-                matched = next(
-                    (
-                        candidate
-                        for candidate in reversed(successful_results)
-                        if quote in candidate.output
-                    ),
-                    None,
-                )
-                if matched is None:
-                    continue
-                source_text = matched.output
-                source_type = "tool_result"
-                source_id = matched.tool_use_id
-            if quote not in source_text:
-                continue
-            add_verified(
-                source_type=source_type,
-                source_id=source_id,
-                source_text=source_text,
-                quote=quote,
-                anchor=str(value.get("anchor", "")),
-            )
-
-        # Proactively recover facts from sources already collected in this
-        # session. Context overlap prevents an unrelated arXiv page that merely
-        # shares an identifier from grounding the claim.
-        combined = "\n".join(supported_text)
-        for marker in fact_markers:
-            if marker.startswith(("citation:", "claim:")) or _marker_value(marker) in combined:
-                continue
-            marker_value = _marker_value(marker)
-            if marker_value in user_text:
-                quote = _context_line(user_text, marker) or marker_value
-                add_verified(
-                    source_type="user_message",
-                    source_id=self._turn_id or "current_turn",
-                    source_text=user_text,
-                    quote=quote,
-                )
-                combined = "\n".join(supported_text)
-                continue
-            for block in reversed(successful_results):
-                if block.tool_name not in _AUTO_EVIDENCE_TOOLS:
-                    continue
-                if not _contextually_supports(block.output, new_text, marker):
-                    continue
-                quote = _context_line(block.output, marker) or marker_value
-                add_verified(
-                    source_type="tool_result",
-                    source_id=block.tool_use_id,
-                    source_text=block.output,
-                    quote=quote,
-                    anchor=_context_line(new_text, marker),
-                )
-                combined = "\n".join(supported_text)
-                break
-
-        unsupported: list[str] = []
-        for marker in fact_markers:
-            # Citations and verification language require a real validated
-            # source, while numeric facts must appear verbatim in the quote.
-            if marker.startswith(("citation:", "claim:")):
-                if not verified:
-                    unsupported.append(marker)
-            elif marker.startswith("source_id:"):
-                marker_value = _marker_value(marker)
-                if not any(
-                    marker_value in quote
-                    and (
-                        source_type == "user_message"
-                        or _contextually_supports(source_text, new_text, marker)
-                    )
-                    for source_type, source_text, quote in support_records
-                ):
-                    unsupported.append(marker)
-            elif _marker_value(marker) not in combined:
-                unsupported.append(marker)
-        return verified, unsupported
 
     def _log_tool_completion(
         self,
