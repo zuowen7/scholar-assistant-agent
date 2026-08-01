@@ -196,8 +196,8 @@ def test_partial_session_history_keeps_structured_recovery_state(tmp_path, monke
     session.set_outcome(
         "PARTIAL",
         {
-            "stop_code": "model_call_budget_exhausted",
-            "stop_reason": "Agent model-call limit reached (16) before completion.",
+            "stop_code": "no_progress_stall",
+            "stop_reason": "Repeated tool calls produced no new observation.",
             "tool_counts": {
                 "success": 1,
                 "error": 0,
@@ -222,7 +222,7 @@ def test_partial_session_history_keeps_structured_recovery_state(tmp_path, monke
     response = assistant["events"][-1]
     assert response["type"] == "response"
     assert response["metadata"]["partial"] is True
-    assert response["metadata"]["stop_code"] == "model_call_budget_exhausted"
+    assert response["metadata"]["stop_code"] == "no_progress_stall"
     assert response["metadata"]["changed_count"] == 1
     assert "C:/paper/figures.py" not in assistant["content"]
 
@@ -239,7 +239,7 @@ def test_session_history_rejects_invalid_or_missing_ids(tmp_path, monkeypatch):
     assert client.get("/api/agent/v2/workflows/sess_missing/messages").status_code == 404
 
 
-def test_agent_stats_reports_runtime_budget_config(monkeypatch):
+def test_agent_stats_reports_progress_watchdog_config(monkeypatch):
     import src.agent_v2.router as router
 
     monkeypatch.setattr(
@@ -248,12 +248,8 @@ def test_agent_stats_reports_runtime_budget_config(monkeypatch):
         lambda: {
             "model": "test",
             "provider": "mock",
-            "max_steps": 41,
-            "max_tool_calls": 17,
-            "soft_tool_calls": 13,
-            "max_model_calls": 9,
-            "max_mutation_attempts": 7,
             "max_active_seconds": 123,
+            "max_stalled_tool_calls": 7,
         },
     )
     app = FastAPI()
@@ -262,12 +258,8 @@ def test_agent_stats_reports_runtime_budget_config(monkeypatch):
     stats = TestClient(app).get("/api/agent/stats")
 
     assert stats.status_code == 200
-    assert stats.json()["max_steps"] == 41
-    assert stats.json()["max_tool_calls"] == 17
-    assert stats.json()["soft_tool_calls"] == 13
-    assert stats.json()["max_model_calls"] == 9
-    assert stats.json()["max_mutation_attempts"] == 7
     assert stats.json()["max_active_seconds"] == 123
+    assert stats.json()["max_stalled_tool_calls"] == 7
 
 
 def test_config_and_stats_report_effective_translator_cloud_fallback_without_secret():
@@ -275,7 +267,7 @@ def test_config_and_stats_report_effective_translator_cloud_fallback_without_sec
         "agent": {
             "provider": "auto",
             "model": "",
-            "max_steps": 23,
+            "max_stalled_tool_calls": 23,
             "model_aliases": {},
         },
         "translator": {
@@ -302,7 +294,7 @@ def test_config_and_stats_report_effective_translator_cloud_fallback_without_sec
     assert "super-secret-key" not in config.text
     assert stats.json()["model"] == "deepseek-v4-flash"
     assert stats.json()["provider_source"] == "translator.cloud"
-    assert stats.json()["max_steps"] == 23
+    assert stats.json()["max_stalled_tool_calls"] == 23
     assert "super-secret-key" not in stats.text
 
 
@@ -438,9 +430,7 @@ def test_generated_session_ids_are_unique(tmp_path, monkeypatch):
         router,
         "_load_agent_config",
         lambda: {
-            "max_steps": 48,
-            "max_tool_calls": 32,
-            "soft_tool_calls": 28,
+            "max_stalled_tool_calls": 12,
             "enable_run_command": False,
         },
     )
@@ -469,9 +459,7 @@ def test_selected_figure_skill_exposes_approved_command_execution(tmp_path, monk
         router,
         "_load_agent_config",
         lambda: {
-            "max_steps": 48,
-            "max_tool_calls": 32,
-            "soft_tool_calls": 28,
+            "max_stalled_tool_calls": 12,
             "enable_run_command": False,
         },
     )
@@ -593,10 +581,7 @@ def test_every_runtime_skill_is_selectable_with_its_runtime_tools(
         router,
         "_load_agent_config",
         lambda: {
-            "max_steps": 96,
-            "max_tool_calls": 64,
-            "soft_tool_calls": 56,
-            "max_model_calls": 32,
+            "max_stalled_tool_calls": 12,
             "enable_run_command": False,
         },
     )

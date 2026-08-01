@@ -3,14 +3,8 @@ agent:
   base_url: ''
   enable_run_command: false
   enabled_plugins: []
-  max_steps: 96
-  max_tool_calls: 64
-  soft_tool_calls: 56
-  max_model_calls: 32
-  max_mutation_attempts: 20
   max_active_seconds: 600
-  thinking_mode: auto
-  request_timeout: 120
+  max_stalled_tool_calls: 12
   model: ''
   model_aliases:
     4o: gpt-4o
@@ -23,6 +17,8 @@ agent:
     sonnet: claude-sonnet-4-6
   provider: auto
   proxy: ''
+  request_timeout: 120
+  thinking_mode: auto
 chunker:
   max_tokens: 800
   overlap_tokens: 0
@@ -66,4 +62,4 @@ vision:
 zotero:
   api_key: ''
   style: ieee
-  user_id: ''
+  user_id: '21173104'

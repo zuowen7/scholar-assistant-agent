@@ -1023,13 +1023,8 @@ def _create_runtime(
     )
     session.meta.tool_schema_hash = hashlib.sha256(tool_schema_material.encode("utf-8")).hexdigest()
 
-    # Read max_steps from config
-    max_steps = int(agent_cfg.get("max_steps", 96) or 96)
-    max_tool_calls = int(agent_cfg.get("max_tool_calls", 64) or 64)
-    soft_tool_calls = int(agent_cfg.get("soft_tool_calls", 56) or 56)
-    max_model_calls = int(agent_cfg.get("max_model_calls", 32) or 32)
-    max_mutation_attempts = int(agent_cfg.get("max_mutation_attempts", 20) or 20)
     max_active_seconds = float(agent_cfg.get("max_active_seconds", 600) or 600)
+    max_stalled_tool_calls = int(agent_cfg.get("max_stalled_tool_calls", 12) or 12)
 
     return ConversationRuntime(
         provider=provider,
@@ -1038,12 +1033,8 @@ def _create_runtime(
         session=session,
         system_prompt=sp,
         auto_approve=False,
-        max_steps=max_steps,
-        max_tool_calls=max_tool_calls,
-        soft_tool_calls=soft_tool_calls,
-        max_model_calls=max_model_calls,
-        max_mutation_attempts=max_mutation_attempts,
         max_active_seconds=max_active_seconds,
+        max_stalled_tool_calls=max_stalled_tool_calls,
         edit_scope=edit_scope,
         hook_runner=hook_runner,
         workspace_grant=workspace_grant,
@@ -1535,12 +1526,8 @@ def register_agent_v2_routes(
         return {
             "available": True,
             **status,
-            "max_steps": cfg.get("max_steps", 96),
-            "max_tool_calls": cfg.get("max_tool_calls", 64),
-            "soft_tool_calls": cfg.get("soft_tool_calls", 56),
-            "max_model_calls": cfg.get("max_model_calls", 32),
-            "max_mutation_attempts": cfg.get("max_mutation_attempts", 20),
             "max_active_seconds": cfg.get("max_active_seconds", 600),
+            "max_stalled_tool_calls": cfg.get("max_stalled_tool_calls", 12),
             "enable_run_command": bool(cfg.get("enable_run_command", False)),
         }
 

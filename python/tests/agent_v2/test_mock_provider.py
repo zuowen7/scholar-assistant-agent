@@ -168,9 +168,8 @@ class TestMultiTurnScenarios:
         assert resp2.tool_calls()[0].name == "str_replace"
 
     @pytest.mark.asyncio
-    async def test_mp013_max_steps_terminates(self):
-        """MP-013: 超过 max_steps 后应被 ConversationRuntime 终止。
-        这里只验证 MockProvider 的 turn counter 正常递增。"""
+    async def test_mp013_turn_counter_increments(self):
+        """MP-013: MockProvider 的 turn counter 正常递增。"""
         provider = MockProvider(
             scenarios=[
                 Scenario(

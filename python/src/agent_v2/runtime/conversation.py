@@ -42,16 +42,10 @@ from src.agent_v2.types import (
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MAX_STEPS = 96
 _APPROVAL_TIMEOUT = 600.0  # 10 分钟等用户审批；超时必须与用户拒绝分开
 _TOOL_RESULT_MAX_CHARS = 4000
-_DEFAULT_MAX_TOOL_CALLS = 64
-_DEFAULT_SOFT_TOOL_CALLS = 56
-_DEFAULT_MAX_MODEL_CALLS = 32
-_DEFAULT_MAX_MUTATION_ATTEMPTS = 20
 _DEFAULT_MAX_ACTIVE_SECONDS = 600.0
-_DEFAULT_MAX_RESEARCH_CALLS = 24
-_DEFAULT_SOFT_RESEARCH_CALLS = 20
+_DEFAULT_MAX_STALLED_TOOL_CALLS = 12
 _SELECTION_MAX_TOOL_CALLS = 4
 _DEFAULT_MAX_TOOL_ERRORS = 5
 _SELECTION_MAX_TOOL_ERRORS = 2
@@ -68,7 +62,6 @@ _SELECTION_SAFE_TOOLS = frozenset(
         "read_reviewer_state",
     }
 )
-_RESEARCH_TOOLS = frozenset({"arxiv_search", "rag_search", "web_search", "web_fetch"})
 _PENDING_RESUME_MARKERS = (
     "继续",
     "未完成",
@@ -89,7 +82,7 @@ class _OperationAborted(RuntimeError):
 
 
 class _ResourceBudgetExceeded(RuntimeError):
-    """A non-retryable per-turn execution budget was exhausted."""
+    """A non-retryable execution lease expired."""
 
     def __init__(self, code: str, reason: str):
         super().__init__(reason)
@@ -137,17 +130,12 @@ class ConversationRuntime:
         tool_registry: ToolRegistry,
         permission_policy: PermissionPolicy,
         session: Session,
-        max_steps: int = _DEFAULT_MAX_STEPS,
         system_prompt: str | None = None,
         auto_approve: bool = True,
         edit_scope: dict[str, Any] | None = None,
         hook_runner: HookRunner | None = None,
-        max_tool_calls: int = _DEFAULT_MAX_TOOL_CALLS,
-        soft_tool_calls: int | None = None,
-        max_model_calls: int = _DEFAULT_MAX_MODEL_CALLS,
-        max_mutation_attempts: int = _DEFAULT_MAX_MUTATION_ATTEMPTS,
         max_active_seconds: float = _DEFAULT_MAX_ACTIVE_SECONDS,
-        max_research_calls: int = _DEFAULT_MAX_RESEARCH_CALLS,
+        max_stalled_tool_calls: int = _DEFAULT_MAX_STALLED_TOOL_CALLS,
         workspace_grant: str = "",
         editor_files: list[dict[str, Any]] | None = None,
     ):
@@ -155,25 +143,12 @@ class ConversationRuntime:
         self.tool_registry = tool_registry
         self.permission_policy = permission_policy
         self.session = session
-        self.max_steps = max_steps
         self.system_prompt = system_prompt
         self.auto_approve = auto_approve
         self.edit_scope = dict(edit_scope) if edit_scope else None
         self.hook_runner = hook_runner
-        self.max_tool_calls = max(1, int(max_tool_calls))
-        configured_soft_limit = (
-            int(soft_tool_calls)
-            if soft_tool_calls is not None
-            else min(_DEFAULT_SOFT_TOOL_CALLS, self.max_tool_calls - 1)
-        )
-        self.soft_tool_calls = max(0, min(configured_soft_limit, self.max_tool_calls - 1))
-        self.max_model_calls = max(1, int(max_model_calls))
-        self.max_mutation_attempts = max(1, int(max_mutation_attempts))
         self.max_active_seconds = max(0.01, float(max_active_seconds))
-        self.max_research_calls = max(1, int(max_research_calls))
-        self.soft_research_calls = min(
-            _DEFAULT_SOFT_RESEARCH_CALLS, max(0, self.max_research_calls - 1)
-        )
+        self.max_stalled_tool_calls = max(1, int(max_stalled_tool_calls))
         self.workspace_grant = workspace_grant
         self._editor_files: dict[str, dict[str, Any]] = {}
         workspace_path = tool_registry._workspace_root
@@ -212,9 +187,8 @@ class ConversationRuntime:
         self._aborted = False
         self._tool_calls_this_turn = 0
         self._tool_errors_this_turn = 0
-        self._model_calls_this_turn = 0
-        self._mutation_attempts_this_turn = 0
-        self._research_tool_calls_this_turn = 0
+        self._stalled_tool_calls_this_turn = 0
+        self._progress_observations_this_turn: set[str] = set()
         self._active_seconds_this_turn = 0.0
         self._tool_stop_reason: str | None = None
         self._tool_stop_code: str | None = None
@@ -248,9 +222,8 @@ class ConversationRuntime:
         self._approval_stop_reason = None
         self._tool_calls_this_turn = 0
         self._tool_errors_this_turn = 0
-        self._model_calls_this_turn = 0
-        self._mutation_attempts_this_turn = 0
-        self._research_tool_calls_this_turn = 0
+        self._stalled_tool_calls_this_turn = 0
+        self._progress_observations_this_turn.clear()
         self._active_seconds_this_turn = 0.0
         self._tool_stop_reason = None
         self._tool_stop_code = None
@@ -286,7 +259,7 @@ class ConversationRuntime:
                 )
                 self._auto_save()
 
-            for _step in range(self.max_steps):
+            while True:
                 if self._aborted:
                     self._persist_turn_outcome("ABORTED", "user_aborted", "Session aborted by user")
                     yield AgentEvent.aborted("Session aborted by user")
@@ -464,12 +437,6 @@ class ConversationRuntime:
                         yield AgentEvent.done()
                         return
                 self.last_active_monotonic = time.monotonic()
-            else:
-                self._tool_stop_reason = f"max steps ({self.max_steps}) reached before completion"
-                self._tool_stop_code = "max_steps_exhausted"
-                async for final_event in self._finalize_stopped_turn():
-                    yield final_event
-                yield AgentEvent.done()
         finally:
             # Guaranteed cleanup on any exit path (normal return, exception,
             # generator close, client disconnect). Prevents _approval_events
@@ -513,8 +480,8 @@ class ConversationRuntime:
                 raise _ResourceBudgetExceeded(
                     "active_time_exhausted",
                     (
-                        "Agent active execution time limit reached "
-                        f"({self.max_active_seconds:g}s) before completion."
+                        "Agent made no new successful tool observation within the active "
+                        f"execution lease ({self.max_active_seconds:g}s)."
                     ),
                 )
             return await asyncio.wait_for(task, timeout=remaining)
@@ -524,8 +491,8 @@ class ConversationRuntime:
             raise _ResourceBudgetExceeded(
                 "active_time_exhausted",
                 (
-                    "Agent active execution time limit reached "
-                    f"({self.max_active_seconds:g}s) before completion."
+                    "Agent made no new successful tool observation within the active "
+                    f"execution lease ({self.max_active_seconds:g}s)."
                 ),
             ) from exc
         except asyncio.CancelledError as exc:
@@ -669,7 +636,7 @@ class ConversationRuntime:
         )
         emitted_response = False
         try:
-            if allow_model and self._model_calls_this_turn < self.max_model_calls:
+            if allow_model:
                 for attempt in range(2):
                     try:
                         repair_instruction = instruction
@@ -740,6 +707,19 @@ class ConversationRuntime:
         parts.append("Remaining or skipped work is unverified; continue only after reviewing it.")
         return " ".join(parts)
 
+    @staticmethod
+    def _compact_tool_phase(tool_blocks: list[ToolUseBlock]) -> str:
+        """Describe a tool step without exposing provider planning prose."""
+        names: list[str] = []
+        for block in tool_blocks:
+            if block.name not in names:
+                names.append(block.name)
+        visible = names[:4]
+        summary = " → ".join(visible)
+        if len(names) > len(visible):
+            summary += f" → +{len(names) - len(visible)}"
+        return summary
+
     async def _llm_turn(
         self,
         *,
@@ -747,13 +727,6 @@ class ConversationRuntime:
         force_no_tools: bool = False,
     ) -> AsyncGenerator[AgentEvent, None]:
         import os
-
-        self._model_calls_this_turn += 1
-        if self._model_calls_this_turn > self.max_model_calls:
-            raise _ResourceBudgetExceeded(
-                "model_call_budget_exhausted",
-                (f"Agent model-call limit reached ({self.max_model_calls}) before completion."),
-            )
 
         messages = self.session.messages
         system_prompt = "\n\n".join(
@@ -811,11 +784,10 @@ class ConversationRuntime:
         async for chunk in self._abortable_stream(provider_stream):
             if isinstance(chunk, TextBlock):
                 text_blocks.append(chunk)
-                # A reserved no-tools finalizer is buffered until its entire
-                # text is known safe. This prevents DSML/function protocol from
-                # leaking through token events before validation.
-                if not force_no_tools:
-                    yield AgentEvent.token(chunk.text)
+                # A model can emit planning prose through ordinary content and
+                # only reveal a tool call later in the same response. Buffer it
+                # until the terminal response classifies the turn so internal
+                # planning never flashes as the user-facing answer.
             elif isinstance(chunk, ThinkingBlock):
                 yield AgentEvent.thought(chunk.thinking)
             elif isinstance(chunk, ToolUseBlock):
@@ -874,13 +846,15 @@ class ConversationRuntime:
                     self._auto_save()
 
                 if tool_blocks and full_text:
-                    # Text emitted in a tool-use turn is provisional. Clear it
-                    # from the live answer so "completed" claims and recovery
-                    # narration are not presented as the final response.
-                    yield AgentEvent.warning("", code="tool_turn", reset_stream=True)
+                    # Keep the provider's prose in conversation history for its
+                    # next step, but expose only a deterministic compact phase
+                    # in the collapsed thought UI.
+                    yield AgentEvent.thought(self._compact_tool_phase(tool_blocks))
 
                 if not tool_blocks:
                     if full_text.strip():
+                        if not force_no_tools:
+                            yield AgentEvent.token(full_text)
                         yield AgentEvent.response(full_text)
                     else:
                         raise _EmptyModelResponse
@@ -968,57 +942,20 @@ class ConversationRuntime:
             )
             return
 
-        budget_error = self._check_tool_budget(tb)
-        if budget_error:
-            self._append_tool_error(tb, budget_error)
-            self._tool_stop_reason = budget_error
-            yield AgentEvent.tool_result(tb.id, tb.name, budget_error, is_error=True)
-            return
-        mutation_budget_error = self._check_mutation_budget(tb.name)
-        if mutation_budget_error:
-            self._append_tool_error(tb, mutation_budget_error)
-            self._tool_stop_reason = mutation_budget_error
+        self._tool_calls_this_turn += 1
+        if self.edit_scope is not None and self._tool_calls_this_turn > _SELECTION_MAX_TOOL_CALLS:
+            detail = (
+                "Selection edit stopped after too many tool calls; the active selection "
+                "must be handled atomically."
+            )
+            self._append_tool_error(tb, detail)
+            self._tool_stop_code = "selection_tool_limit"
+            self._tool_stop_reason = detail
             yield AgentEvent.tool_result(
                 tb.id,
                 tb.name,
-                mutation_budget_error,
+                detail,
                 is_error=True,
-            )
-            return
-        if self._should_skip_in_draining(tb):
-            output = (
-                "Tool execution skipped because the soft budget is exhausted; "
-                "only read-only verification is allowed while draining."
-            )
-            self.session.append(
-                Message(
-                    role=MessageRole.TOOL,
-                    blocks=[
-                        ToolResultBlock(
-                            tool_use_id=tb.id,
-                            tool_name=tb.name,
-                            output=output,
-                            status="skipped",
-                        )
-                    ],
-                )
-            )
-            self.session.set_outcome(
-                "DRAINING",
-                {
-                    "tool_calls": self._tool_calls_this_turn,
-                    "tool_calls_remaining": max(
-                        0, self.max_tool_calls - self._tool_calls_this_turn
-                    ),
-                },
-            )
-            self._auto_save()
-            self._log_tool_completion(tb, "skipped", duration_started=tool_started)
-            yield AgentEvent.tool_result(
-                tb.id,
-                tb.name,
-                output,
-                status="skipped",
             )
             return
 
@@ -1065,6 +1002,7 @@ class ConversationRuntime:
                 if not isinstance(updated_args, dict):
                     reason = "PreToolUse hook returned invalid updated input"
                     self._append_tool_error(tb, reason)
+                    self._record_tool_error()
                     yield AgentEvent.tool_result(tb.id, tb.name, reason, is_error=True)
                     return
                 args = updated_args
@@ -1151,6 +1089,12 @@ class ConversationRuntime:
                     status="no_change",
                 )
                 self._log_tool_completion(tb, "no_change", duration_started=tool_started)
+                self._record_tool_progress(
+                    tb,
+                    args=args,
+                    output=output,
+                    status="no_change",
+                )
                 return
         spec = self.tool_registry.get(tb.name)
         preflight_result = self.tool_registry.preflight(tb.name, args)
@@ -1580,6 +1524,8 @@ class ConversationRuntime:
                     checkpoint_after_hash = hashlib.sha256(
                         Path(checkpoint_path).read_bytes()
                     ).hexdigest()
+            if checkpoint_after_hash:
+                self._advance_editor_snapshot(checkpoint_path, checkpoint_after_hash)
             yield AgentEvent.checkpoint(
                 {
                     "action": tb.name,
@@ -1591,6 +1537,12 @@ class ConversationRuntime:
                     "after_hash": checkpoint_after_hash or None,
                 }
             )
+        self._record_tool_progress(
+            tb,
+            args=args,
+            output=tool_output,
+            status=result_status,
+        )
 
     def _approval_key(self, tool_name: str, args: dict[str, Any], resolved_path: str) -> str:
         spec = self.tool_registry.get(tool_name)
@@ -1655,90 +1607,52 @@ class ConversationRuntime:
                 "do not loop or claim success.\n\n"
                 f"Pending actions:\n{json.dumps(pending, ensure_ascii=False, sort_keys=True)}"
             )
-        if (
-            self.edit_scope is None
-            and self.soft_research_calls > 0
-            and self._research_tool_calls_this_turn >= self.soft_research_calls
-        ):
-            remaining = max(0, self.max_research_calls - self._research_tool_calls_this_turn)
+        warning_threshold = max(2, self.max_stalled_tool_calls // 2)
+        if self._stalled_tool_calls_this_turn >= warning_threshold:
             return (
-                f"Research budget is nearly exhausted ({remaining} research calls remain). "
-                "Stop broad or duplicate searches. Select the strongest sources already fetched, "
-                "synthesize the requested deliverable, write it, and verify the written file."
+                "Recent tool calls repeated observations already available and made no new "
+                "progress. Change the query, path, page, or edit strategy; if the requested "
+                "deliverable is already complete, verify it once and provide the final answer."
             )
-        if self.edit_scope is None and self._tool_calls_this_turn >= self.soft_tool_calls > 0:
-            remaining = max(0, self.max_tool_calls - self._tool_calls_this_turn)
-            self.session.set_outcome(
-                "DRAINING",
+        return None
+
+    def _record_tool_progress(
+        self,
+        tb: ToolUseBlock,
+        *,
+        args: dict[str, Any],
+        output: str,
+        status: str,
+    ) -> None:
+        """Renew execution while tools produce new, successful observations."""
+        if status != "success":
+            self._stalled_tool_calls_this_turn += 1
+        else:
+            material = json.dumps(
                 {
-                    "tool_calls": self._tool_calls_this_turn,
-                    "tool_calls_remaining": remaining,
+                    "tool_name": tb.name,
+                    "input": args,
+                    "output": output,
                 },
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
             )
-            self._auto_save()
-            return (
-                f"Tool budget is low ({remaining} calls remain). Do not start new mutation, "
-                "process, network, or costly work. Verify the current result with read-only "
-                "tools if essential, then provide the final user-facing answer."
+            signature = hashlib.sha256(material.encode("utf-8")).hexdigest()
+            if signature in self._progress_observations_this_turn:
+                self._stalled_tool_calls_this_turn += 1
+            else:
+                self._progress_observations_this_turn.add(signature)
+                self._stalled_tool_calls_this_turn = 0
+                self._active_seconds_this_turn = 0.0
+
+        if self._stalled_tool_calls_this_turn >= self.max_stalled_tool_calls:
+            self._tool_stop_code = "no_progress_stall"
+            self._tool_stop_reason = (
+                "Agent stopped after repeated tool calls produced no new successful observation. "
+                "Existing results were preserved; change strategy before resuming."
             )
-        return None
-
-    def _check_tool_budget(self, tb: ToolUseBlock) -> str | None:
-        self._tool_calls_this_turn += 1
-        max_calls = (
-            _SELECTION_MAX_TOOL_CALLS if self.edit_scope is not None else self.max_tool_calls
-        )
-        if self._tool_calls_this_turn > max_calls:
-            self._tool_stop_code = "tool_budget_exhausted"
-            return (
-                f"Agent tool-call limit reached ({max_calls}) before completion. "
-                "The task was stopped because it exhausted its tool budget."
-            )
-        if tb.name in _RESEARCH_TOOLS:
-            self._research_tool_calls_this_turn += 1
-            if self._research_tool_calls_this_turn > self.max_research_calls:
-                self._tool_stop_code = "research_budget_exhausted"
-                return (
-                    "Research tool-call limit reached "
-                    f"({self.max_research_calls}) before delivery. Stop expanding the search set "
-                    "and complete the deliverable from the sources already collected."
-                )
-
-        return None
-
-    def _check_mutation_budget(self, tool_name: str) -> str | None:
-        spec = self.tool_registry.get(tool_name)
-        if spec is None or "filesystem_write" not in spec.effects:
-            return None
-        self._mutation_attempts_this_turn += 1
-        if self._mutation_attempts_this_turn <= self.max_mutation_attempts:
-            return None
-        self._tool_stop_code = "mutation_budget_exhausted"
-        return (
-            "Agent file-mutation attempt limit reached "
-            f"({self.max_mutation_attempts}) before completion."
-        )
-
-    def _should_skip_in_draining(self, tb: ToolUseBlock) -> bool:
-        if (
-            self.edit_scope is not None
-            or self.soft_tool_calls <= 0
-            or self._tool_calls_this_turn <= self.soft_tool_calls
-        ):
-            return False
-        spec = self.tool_registry.get(tb.name)
-        if spec is None:
-            return False
-        return bool(
-            spec.effects
-            & {
-                "filesystem_write",
-                "process",
-                "network",
-                "external_side_effect",
-                "cost",
-            }
-        )
 
     def _log_tool_completion(
         self,
@@ -1812,6 +1726,19 @@ class ConversationRuntime:
                 "suggested_next_action": "reload_or_resolve_editor",
             },
         )
+
+    def _advance_editor_snapshot(self, resolved_path: str, content_hash: str) -> None:
+        """Adopt a successful agent mutation as the next clean comparison base."""
+        if not resolved_path or not content_hash:
+            return
+        try:
+            key = str(Path(resolved_path).resolve()).lower()
+        except (OSError, ValueError):
+            return
+        state = self._editor_files.get(key)
+        if state is None or bool(state.get("is_dirty", False)):
+            return
+        state["content_hash"] = content_hash.lower()
 
     def _record_tool_error(self) -> None:
         self._tool_errors_this_turn += 1

@@ -39,7 +39,7 @@ formatter:
   output_format: bilingual
 agent:
   model: qwen3:8b
-  max_steps: 3
+  max_stalled_tool_calls: 3
 features:
   argument_companion: true
 """

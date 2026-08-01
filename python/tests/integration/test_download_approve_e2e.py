@@ -32,7 +32,7 @@ formatter:
   output_format: bilingual
 agent:
   model: qwen3:8b
-  max_steps: 3
+  max_stalled_tool_calls: 3
 translate:
   max_tasks: 10
   max_upload_mb: 50
