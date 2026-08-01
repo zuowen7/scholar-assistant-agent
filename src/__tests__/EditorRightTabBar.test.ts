@@ -9,12 +9,16 @@ import EditorRightTabBar from '../components/EditorRightTabBar.vue'
 
 describe('EditorRightTabBar', () => {
   it('exposes labeled Agent, preview, and argument tabs', async () => {
-    const wrapper = mount(EditorRightTabBar, { props: { modelValue: 'ai', agentMode: true } })
+    const wrapper = mount(EditorRightTabBar, {
+      props: { modelValue: 'preview', agentOpen: false },
+    })
 
     expect(wrapper.get('[data-testid="right-tab-agent"]').text()).toContain('editor.rightAgent')
+    await wrapper.get('[data-testid="right-tab-agent"]').trigger('click')
     await wrapper.get('[data-testid="right-tab-preview"]').trigger('click')
     await wrapper.get('[data-testid="right-tab-argument"]').trigger('click')
 
+    expect(wrapper.emitted('openAgent')).toHaveLength(1)
     expect(wrapper.emitted('update:modelValue')).toEqual([['preview'], ['argument']])
   })
 

@@ -129,12 +129,12 @@ Key `src/` modules:
   - `AppTopBar.vue` — brand, mode switch, settings panels, health pills, window controls, voice settings tab
   - `TranslateView.vue` — upload drop card, progress indicators, result views
   - `AgentPanel.vue` — agent chat/docs/templates/sessions side panel
-  - `EditorLayout.vue` — FileTree + MonacoEditor + AiPanel + ArgumentMap, tab management
+  - `EditorLayout.vue` — FileTree + MonacoEditor + preview/ArgumentMap docks, tab management
   - `VoiceAssistantView.vue` — Siri-style fullscreen voice UI (glassmorphism + pulse sphere + ripple animation)
   - `DebugPanel.vue` — Frontend error history + backend log viewer
   - `mindmap/` — MindMapCanvas (Vue Flow), MindNodeCard (collapsible body textarea)
   - `ui/` — Design-system primitives (UiButton, UiCard, UiDropdown, UiInput, UiPanel, UiPopover, UiSelect, UiTextarea, UiTooltip, etc.)
-  - Other: MonacoEditor, AiPanel, FileTree, ArgumentMap, EditorTabs, EditorToolbar, EditorWelcome, CommandPalette, TemplatePicker, ComplianceModal, AgentSessionList, AgentApprovalInline, StatusCluster
+  - Other: MonacoEditor, FileTree, ArgumentMap, EditorTabs, EditorToolbar, EditorWelcome, CommandPalette, TemplatePicker, ComplianceModal, AgentSessionList, AgentApprovalInline, StatusCluster
 - `utils/streamReader.ts` — Shared SSE parser (6 call sites)
 - `utils/sentenceAlign.ts` — Sentence-level alignment for hover highlighting
 - `styles/tokens.css` — Design tokens (`--c-*`) with dark/light themes; legacy aliases maintained

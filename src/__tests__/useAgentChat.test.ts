@@ -446,6 +446,38 @@ describe('useAgentChat', () => {
       )
     })
 
+    it('uses an internal tool-turn reset without showing a warning event', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          makeSseResponse([
+            makeSessionStartedChunk('sess_tool_turn'),
+            makeTokenChunk('provisional response'),
+            {
+              event: 'warning',
+              data: {
+                content: '',
+                metadata: { code: 'tool_turn', reset_stream: true },
+              },
+            },
+            makeResponseChunk('grounded response'),
+            makeDoneChunk(),
+          ]),
+        ),
+      )
+
+      const { sendMessage, messages } = useAgentChat()
+      await sendMessage('Use a tool first')
+
+      expect(messages.value[1].content).toBe('grounded response')
+      expect(messages.value[1].events).not.toContainEqual(
+        expect.objectContaining({
+          type: 'warning',
+          metadata: expect.objectContaining({ code: 'tool_turn' }),
+        }),
+      )
+    })
+
     it('localizes the deterministic file-edit rejection state', async () => {
       vi.stubGlobal(
         'fetch',

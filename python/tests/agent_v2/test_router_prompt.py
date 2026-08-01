@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from src.agent_v2.router import (
     ChatRequestV2,
     _build_system_prompt,
+    _compose_turn_message,
     _persisted_turn_message,
     register_agent_v2_routes,
 )
@@ -28,16 +29,17 @@ def test_system_prompt_makes_the_latest_user_turn_authoritative():
     assert "run_sub_agent cannot execute commands" in prompt
 
 
-def test_system_prompt_enforces_academic_evidence_and_incomplete_result_contracts():
+def test_system_prompt_guides_academic_evidence_without_runtime_evidence_payloads():
     prompt = _build_system_prompt("C:/workspace", [])
 
     assert "Never invent or infer a new number" in prompt
-    assert "evidence_refs" in prompt
+    assert "obtain supporting user text or a successful tool result" in prompt
+    assert "evidence_refs" not in prompt
     assert "complete=false" in prompt
     assert "PARTIAL" in prompt
     assert "rendered artifact" in prompt
-    assert "recovery signal" in prompt
-    assert "Never fabricate tool_use_id" in prompt
+    assert "make one corrected attempt" in prompt
+    assert "instead of looping or claiming success" in prompt
     assert "final_chunk=false" in prompt
     assert "Do not repeat equivalent searches" in prompt
     assert "Match the requested delivery surface exactly" in prompt
@@ -69,6 +71,37 @@ def test_persisted_turn_externalizes_editor_body_with_hash_and_dirty_state():
     assert 'content_hash="' + ("a" * 64) + '"' in persisted
     assert 'dirty="true"' in persisted
     assert 'snapshot_status="not_persisted"' in persisted
+
+
+def test_live_turn_marks_full_editor_body_as_a_complete_snapshot():
+    request = ChatRequestV2(
+        message="Review this draft",
+        context_file="draft/main.md",
+        context_text="current manuscript body",
+        skills=["nature_reviewer"],
+        editor_files=[
+            {
+                "file_path": "draft/main.md",
+                "is_dirty": False,
+                "content_hash": "b" * 64,
+                "editor_version": 5,
+            }
+        ],
+    )
+
+    live = _compose_turn_message(request)
+
+    assert 'snapshot_status="complete_editor_snapshot"' in live
+    assert 'file_path="draft/main.md"' in live
+    assert 'content_hash="' + ("b" * 64) + '"' in live
+    assert 'dirty="false"' in live
+    assert "current manuscript body" in live
+    assert "<current_task_reminder>" in live
+    assert "The active user task remains" in live
+    assert "Selected skills: nature_reviewer" in live
+    assert "read_argument_graph(source_doc=draft/main.md)" in live
+    assert "read_argument_ledger(doc_id=draft/main.md)" in live
+    assert "read_reviewer_state(doc_id=draft/main.md)" in live
 
 
 def test_persisted_session_messages_are_available_to_the_history_panel(tmp_path, monkeypatch):
@@ -454,6 +487,51 @@ def test_selected_figure_skill_exposes_approved_command_execution(tmp_path, monk
     assert len(runtime.session.meta.system_prompt_hash) == 64
     assert runtime.session.meta.active_skills == ["nature_figure"]
     assert len(runtime.session.meta.tool_schema_hash) == 64
+
+
+def test_selected_skill_tool_steps_are_prompted_as_required(tmp_path, monkeypatch):
+    import src.agent_v2.router as router
+    from src.agent_v2.providers.mock_provider import MockProvider
+
+    monkeypatch.setattr(router, "_SESSION_DIR", tmp_path / "sessions")
+
+    def provider(*_args, **_kwargs):
+        value = MockProvider()
+        value.model = "test-model"
+        return value
+
+    monkeypatch.setattr(router, "_create_provider", provider)
+
+    runtime = router._create_runtime(
+        str(tmp_path),
+        selected_skills=["nature_reviewer"],
+    )
+
+    assert "Selected skill execution reminder" in runtime.system_prompt
+    assert "required execution steps" in runtime.system_prompt
+    assert (
+        "read_argument_graph, read_argument_ledger, and read_reviewer_state"
+        in runtime.system_prompt
+    )
+
+
+def test_local_ollama_config_uses_native_provider_with_large_context():
+    import src.agent_v2.router as router
+    from src.agent_v2.providers.ollama import OllamaProvider
+
+    provider = router._create_provider(
+        {
+            "agent": {
+                "provider": "openai",
+                "base_url": "http://127.0.0.1:11434/v1",
+                "model": "qwen3:8b",
+                "ollama_context_length": 16_384,
+            }
+        }
+    )
+
+    assert isinstance(provider, OllamaProvider)
+    assert provider.context_length == 16_384
 
 
 _RUNTIME_SKILL_TOOL_CONTRACTS = [

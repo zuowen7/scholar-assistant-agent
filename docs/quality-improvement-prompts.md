@@ -67,7 +67,6 @@ Scholar Assistant / 研墨 是隐私优先的学术写作工作台，可以把�
 - src/composables/useAgentChat.ts
 - src/composables/useEditor*.ts
 - src/components/AgentPanel.vue
-- src/components/AiPanel.vue
 - src-tauri/src/main.rs
 - src-tauri/tauri.conf.json
 - .github/workflows/release.yml
@@ -126,7 +125,7 @@ Scholar Assistant / 研墨 是隐私优先的学术写作工作台，可以把�
 1. 创建或打开论文项目。
 2. 写/改 draft/main.md。
 3. 让 Agent 读取项目并修改文件。
-4. 使用 AI Panel 做选中文本润色/扩写/翻译。
+4. 使用 Agent 面板做选中文本润色/扩写/翻译。
 5. 建立论证账本并运行 Reviewer-2。
 6. 翻译 PDF 并导出 Word/Markdown。
 7. 配置云端 provider/API key 或本地 Ollama。
@@ -134,7 +133,7 @@ Scholar Assistant / 研墨 是隐私优先的学术写作工作台，可以把�
 
 必须检查：
 1. 用户是否知道第一步该做什么。
-2. AgentPanel 和 AiPanel 的职责是否清楚。
+2. 单一 Agent 面板内的对话、预设编辑和文件操作职责是否清楚。
 3. 失败提示是否告诉用户下一步怎么做。
 4. 设置项是否可能让用户误操作，尤其 API key、provider、base_url、model、proxy、路径。
 5. 操作成功/失败/进行中状态是否明确。
@@ -162,7 +161,7 @@ Scholar Assistant / 研墨 是隐私优先的学术写作工作台，可以把�
 禁止：
 1. 不要做无关重构。
 2. 不要复活旧 agent/ReAct 路径。
-3. 不要合并 AiPanel 和 AgentPanel。
+3. 不要重新引入第二套 AiPanel 或独立 Agent 状态。
 4. 不要绕过既有 SSE/checkpoint/approval 协议。
 5. 不要提交或打印 API key、用户本地隐私路径、运行时数据。
 
@@ -224,7 +223,7 @@ Scholar Assistant / 研墨 是隐私优先的学术写作工作台，可以把�
 审计 Scholar Assistant 前端复杂度和构建体积。
 
 重点：
-1. 大组件：App.vue, TranslateView.vue, AgentPanel.vue, EditorLayout.vue, MindMapView.vue, AiPanel.vue。
+1. 大组件：App.vue, TranslateView.vue, AgentPanel.vue, EditorLayout.vue, MindMapView.vue。
 2. 大 composable：useTranslate.ts, useAgentChat.ts, useEditor*.ts, useArgumentCompanion.ts。
 3. Vite build 警告：monaco、workers、动态 import 与静态 import 混用。
 4. 状态是否集中在难以测试的组件里。

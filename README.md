@@ -173,11 +173,11 @@ Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant-ag
 │   │   ├── AppTopBar.vue         #   Top bar (brand / mode switch / settings / voice settings / window controls)
 │   │   ├── TranslateView.vue     #   Translation mode (upload / progress / result views)
 │   │   ├── AgentPanel.vue        #   Agent side panel (chat / library / templates / sessions)
-│   │   ├── EditorLayout.vue      #   Editor layout (~657 lines, Monaco + AiPanel + FileTree)
+│   │   ├── EditorLayout.vue      #   Editor layout (Monaco + FileTree + preview / argument docks)
 │   │   ├── VoiceAssistantView.vue #   Siri-style fullscreen voice UI (glass morphism, pulse/ripple animation)
 │   │   ├── mindmap/              #   Mind map (Vue Flow canvas + custom nodes/edges)
 │   │   ├── ui/                   #   UI primitives (Button/Input/Panel/Tooltip…)
-│   │   └── …                     #   MonacoEditor, AiPanel, ArgumentMap, etc.
+│   │   └── …                     #   MonacoEditor, ArgumentMap, file tree, and editor toolbars
 │   ├── i18n/                     #   Internationalization (vue-i18n v11, zh-CN + en-US ~790 keys each)
 │   ├── utils/
 │   │   ├── api.ts                #   API base URL (auto-detect Tauri vs web)
