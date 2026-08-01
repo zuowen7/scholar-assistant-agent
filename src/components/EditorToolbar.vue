@@ -47,10 +47,10 @@
       </button>
       <button
         class="tb-btn u-interactive"
-        :class="{ active: activeRightTab === 'ai' }"
-        :title="t('editor.aiEdit')"
-        :aria-label="t('editor.aiEditPanel')"
-        @click="$emit('toggle-right', 'ai')"
+        :class="{ active: agentOpen }"
+        :title="t('editor.rightAgent')"
+        :aria-label="t('editor.rightAgent')"
+        @click="$emit('toggle-right', 'agent')"
       >
         <Bot :size="15" :stroke-width="1.7" />
       </button>
@@ -114,11 +114,12 @@ function toggleSpeech() {
 
 defineProps<{
   activeRightTab: string | null
+  agentOpen: boolean
   message: string
 }>()
 
 const emit = defineEmits<{
-  'toggle-right': [tab: 'preview' | 'ai' | 'argument']
+  'toggle-right': [tab: 'preview' | 'agent' | 'argument']
   'open-image-picker': []
   'insert-table': []
   'insert-inline-formula': []

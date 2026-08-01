@@ -29,7 +29,6 @@ export const activeFile = computed(() => activeTab.value?.path ?? null)
 export const isModified = computed(() => activeTab.value?.isModified ?? false)
 
 // ── AI 编辑状态 ─────────────────────────────────────────────────────────
-export const showAiPanel = ref(true)
 export const aiLoading = ref(false)
 export const aiResult = ref('')
 export const previousContent = ref('')
@@ -156,7 +155,6 @@ export function useEditorState() {
     content,
     activeFile,
     isModified,
-    showAiPanel,
     aiLoading,
     aiResult,
     previousContent,

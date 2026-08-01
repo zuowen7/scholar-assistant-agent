@@ -177,7 +177,7 @@ describe('agent execution presentation', () => {
         {
           type: 'response',
           content: '',
-          metadata: { partial: true, stop_code: 'model_call_budget_exhausted' },
+          metadata: { partial: true, stop_code: 'no_progress_stall' },
         },
       ]),
     ).toBe(true)

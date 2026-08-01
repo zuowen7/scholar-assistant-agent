@@ -33,7 +33,7 @@ formatter:
   output_format: bilingual
 agent:
   model: qwen3:8b
-  max_steps: 3
+  max_stalled_tool_calls: 3
 """
 
 
@@ -454,7 +454,7 @@ class TestZoteroEndpoints:
     def test_status_verify_checks_the_remote_library(self, client, monkeypatch):
         from src.zotero.client import ZoteroClient
 
-        def fake_init(self):
+        def fake_init(self, *args, **kwargs):
             self.api_key = "test-key"
             self.user_id = "123456"
             self.style = "ieee"

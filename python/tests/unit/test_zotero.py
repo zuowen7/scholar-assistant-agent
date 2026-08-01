@@ -112,6 +112,25 @@ class TestZoteroClient:
         client = ZoteroClient()
         assert client.timeout == 30.0
 
+    def test_router_client_uses_merged_runtime_config(self, monkeypatch):
+        """路由必须使用统一加载器合并后的 Zotero 配置。"""
+        from routers.editor import _build_zotero_client
+
+        monkeypatch.setattr(ZoteroClient, "_load_config", lambda self: None)
+        client = _build_zotero_client(
+            {
+                "zotero": {
+                    "api_key": "local-secret",
+                    "user_id": 123456,
+                    "style": "apa",
+                }
+            }
+        )
+
+        assert client.api_key == "local-secret"
+        assert client.user_id == "123456"
+        assert client.style == "apa"
+
     def test_get_headers(self):
         """请求头包含认证信息"""
         client = ZoteroClient(api_key="my-key", user_id="123")
@@ -123,12 +142,14 @@ class TestZoteroClient:
     def test_check_config_no_key(self):
         """未配置 API Key 时抛出异常"""
         client = ZoteroClient(api_key="", user_id="123")
+        client.api_key = ""
         with pytest.raises(ValueError, match="API Key"):
             client._check_config()
 
     def test_check_config_no_user_id(self):
         """未配置 User ID 时抛出异常"""
         client = ZoteroClient(api_key="key", user_id="")
+        client.user_id = ""
         with pytest.raises(ValueError, match="User ID"):
             client._check_config()
 

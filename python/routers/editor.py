@@ -20,6 +20,18 @@ from sse_starlette.sse import EventSourceResponse
 logger = logging.getLogger(__name__)
 
 
+def _build_zotero_client(config: dict):
+    """Build Zotero from the merged runtime config, including local secrets."""
+    from src.zotero.client import ZoteroClient
+
+    zotero = config.get("zotero", {})
+    return ZoteroClient(
+        api_key=str(zotero.get("api_key") or "").strip(),
+        user_id=str(zotero.get("user_id") or "").strip(),
+        style=str(zotero.get("style") or "ieee").strip(),
+    )
+
+
 def _safe_child_path(root: Path, filename: str) -> Path:
     """Resolve a routed filename without allowing cross-platform path escapes."""
     if "\x00" in filename:
@@ -759,9 +771,7 @@ def register_editor(
     @app.get("/api/zotero/status")
     async def zotero_status(verify: bool = False):
         try:
-            from src.zotero.client import ZoteroClient
-
-            client = ZoteroClient()
+            client = _build_zotero_client(load_config())
             if not client.api_key or not client.user_id:
                 return {
                     "connected": False,
@@ -782,9 +792,7 @@ def register_editor(
     @app.post("/api/zotero/search")
     async def search_zotero(req: ZoteroSearchRequest):
         try:
-            from src.zotero.client import ZoteroClient
-
-            client = ZoteroClient()
+            client = _build_zotero_client(load_config())
             items = client.search(query=req.query, item_type=req.item_type, limit=req.limit)
             return {"count": len(items), "items": [item.to_dict() for item in items]}
         except ValueError as e:
@@ -796,9 +804,7 @@ def register_editor(
     @app.get("/api/zotero/item/{item_key}")
     async def get_zotero_item(item_key: str):
         try:
-            from src.zotero.client import ZoteroClient
-
-            client = ZoteroClient()
+            client = _build_zotero_client(load_config())
             item = client.get_item(item_key)
             if not item:
                 raise HTTPException(404, f"文献不存在: {item_key}")
@@ -812,9 +818,7 @@ def register_editor(
     @app.get("/api/zotero/item/{item_key}/bibtex")
     async def get_zotero_item_bibtex(item_key: str):
         try:
-            from src.zotero.client import ZoteroClient
-
-            client = ZoteroClient()
+            client = _build_zotero_client(load_config())
             item = client.get_item(item_key)
             if not item:
                 raise HTTPException(404, f"文献不存在: {item_key}")
@@ -828,9 +832,7 @@ def register_editor(
     @app.post("/api/zotero/export")
     async def export_zotero_bibtex(item_keys: list[str] | None = None):
         try:
-            from src.zotero.client import ZoteroClient
-
-            client = ZoteroClient()
+            client = _build_zotero_client(load_config())
             bibtex = client.export_bibtex(item_keys)
             return {"bibtex": bibtex, "count": len(bibtex.split("\n\n")) if bibtex else 0}
         except Exception as e:
@@ -840,9 +842,7 @@ def register_editor(
     @app.post("/api/zotero/citations")
     async def get_zotero_citations(item_keys: list[str]):
         try:
-            from src.zotero.client import ZoteroClient
-
-            client = ZoteroClient()
+            client = _build_zotero_client(load_config())
             items = client.get_items_by_keys(item_keys)
             return {
                 "count": len(items),

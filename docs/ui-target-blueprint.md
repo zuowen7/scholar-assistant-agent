@@ -133,13 +133,13 @@
 ### 写作视图(三区 IA,AI 常驻)
 - **左**:文档大纲(可收起为 42px 轨,收起态显示章节点)。
 - **中**:画布=主表面。衬线标题 + 无衬线正文,纸张材质(1.1 光晕/纤维),版心 `--page-width` 居中,行高 1.6。顶部一键"专注模式"。
-- **右**:AI 面板**默认常驻、默认 AI 标签**。空态:`ac-empty` 线稿 + "问我任何问题,或 @ 引用选中文字"引导 + 预设 chips(polish/expand/review…)。消息气泡用纸卡,AI 头像用朱印小章。
+- **右**:全局 Agent 面板**默认常驻、默认任务标签**。空态:`ac-empty` 线稿 + "问我任何问题,或 @ 引用选中文字"引导 + 预设 chips(polish/expand/review…)。消息气泡用纸卡,AI 头像用朱印小章。
 
 ### 翻译视图
 - 双栏对照(原文 / 译文),当前翻译块**墨流高亮**(从左到右 `--c-accent-soft` 扫光,非闪烁);进度条用墨滴填充;逐句完成打朱点。
 
 ### LaTeX 视图
-- 左源码(等宽,tabular)/ 右预览;`AiPanel workspace-variant` 常驻右侧,预设 polish/expand/rewrite/compliance。
+- 左源码(等宽,tabular)/ 右预览；polish/expand/rewrite/compliance 统一发送到全局 Agent 面板。
 
 ### 思维导图
 - canvas + 右侧 AI 提示(可收 42px 轨);节点卡片纸感,增删 FLIP;关系连线用 `--rel-*` 单源,hover 高亮当前分支。
