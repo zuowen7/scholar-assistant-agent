@@ -3,7 +3,6 @@
 pytest>=8.0.0
 pytest-cov>=5.0.0
 pytest-asyncio>=0.23.0
-matplotlib>=3.9.0  # agent_v2 figure-probe test only; not in production runtime
 
 # Lint / format (see python/ruff.toml)
 ruff>=0.6.0

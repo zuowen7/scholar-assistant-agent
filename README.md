@@ -15,7 +15,7 @@
 
 PDF translation & close reading included as an on-ramp — translate a paper in minutes, then work on it. Voice assistant with Siri-style wake word and dictation. Runs locally offline or connects to 21 cloud LLM providers. **Bilingual UI** (zh-CN / en-US).
 
-v0.5.1 — Latest: Agent V2 reliability hardening — progressing turns (blocking gates removed), blocked-write recovery, session reliability gaps, approval routing and feedback fixes, runtime identity isolation, Zotero credential fix. MIT license.
+v0.5.1 — Latest: Agent V2 reliability hardening — progressing turns (blocking gates removed), blocked-write recovery, session reliability gaps, approval routing and feedback fixes, runtime identity isolation, Zotero credential fix, bundled matplotlib so the `nature_figure` skill renders figures in the packaged app. MIT license.
 
 ## Demo
 

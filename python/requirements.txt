@@ -47,3 +47,8 @@ unidiff==0.7.5
 # PyInstaller builds — without it, the packaged app silently loses 文献库.
 chromadb==1.5.9
 numpy>=1.26   # chromadb transitive dep + tests/unit/test_translation_memory.py
+
+# Agent V2 figure rendering (nature_figure skill): the Agent writes and runs
+# matplotlib scripts via run_command using the bundled backend Python, so this
+# must ship in the PyInstaller build (removed from api.spec excludes).
+matplotlib>=3.9.0

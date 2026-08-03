@@ -141,9 +141,10 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        # Remove heavy unused packages that Anaconda pulls in
+        # Remove heavy unused packages that Anaconda pulls in.
+        # NOTE: matplotlib stays bundled — Agent V2 nature_figure skill renders
+        # figure scripts with the backend Python (see requirements.txt).
         "tkinter",
-        "matplotlib",
         "numpy.f2py",
         "scipy",
         "pandas",
