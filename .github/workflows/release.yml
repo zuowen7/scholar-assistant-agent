@@ -57,7 +57,8 @@ jobs:
       - name: Install Python dependencies
         run: |
           pip install -r python/requirements-lock.txt
-          pip install pytest pytest-asyncio hypothesis
+          pip install -r python/requirements-dev.txt
+          pip install hypothesis
 
       - name: Run pytest (full suite)
         run: cd python && pytest tests/ -q --tb=short
