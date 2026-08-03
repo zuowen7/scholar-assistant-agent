@@ -11,7 +11,7 @@
 
 PDF 翻译与精读作为辅助入口，帮你快速把论文沉淀进工作流。语音助手支持唤醒词和全局热键。本地可离线运行，也可接入 21 家云端大模型。支持中/英双语界面切换。
 
-v0.5.0 · 最新：Agent 执行界面重构（AgentExecutionGroup、inline diff overlay 脱离 Monaco DOM）、会话生命周期加固（暂停/恢复/中止、scope breaker 重置）、选区编辑交互改造、构建链路修复（PyInstaller PIL 纳入、pylatexenc 依赖补齐、外部工具缺失阻断构建）。MIT 协议。
+v0.5.1 · 最新：Agent V2 可靠性加固 — 持续推进（移除阻塞门禁）、阻塞写入恢复、会话可靠性缺口、审批路由与反馈修复、运行时身份隔离、Zotero 凭据修复。MIT 协议。
 
 ## 功能演示
 
