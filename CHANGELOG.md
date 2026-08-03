@@ -11,6 +11,7 @@
 
 ### Build
 
+- **Bundle matplotlib** — the Agent V2 `nature_figure` skill renders figure scripts with the backend Python via `run_command`. matplotlib is now a production dependency (requirements.txt + lock) and included in the PyInstaller build (removed from `api.spec` excludes), so figure rendering works in the packaged app instead of failing on import.
 - Version bumped to 0.5.1 across package.json, Cargo.toml, tauri.conf.json, `_version.py`, and Docker image labels.
 
 ## [0.5.0] — Agent execution redesign & build chain hardening
