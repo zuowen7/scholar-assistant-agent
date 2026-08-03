@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.1] — Agent V2 reliability hardening
+
+### Agent Runtime
+
+- **Progressing turns** — removed blocking gates so agent turns keep progressing through real multi-step workflows instead of stalling.
+- **Capability-wide reliability** — hardened execution and recovery across Agent V2 capabilities: blocked-write recovery, session reliability gaps, approval routing and feedback.
+- **Runtime identity** — runtime identity stays local to its workspace (config fix) instead of leaking between contexts.
+- **Zotero credentials** — API calls now use the merged runtime credentials instead of falling back to stale ones.
+
+### Build
+
+- Version bumped to 0.5.1 across package.json, Cargo.toml, tauri.conf.json, `_version.py`, and Docker image labels.
+
 ## [0.5.0] — Agent execution redesign & build chain hardening
 
 ### Agent Execution UI

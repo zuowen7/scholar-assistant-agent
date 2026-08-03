@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![CI](https://github.com/zuowen7/scholar-assistant-agent/actions/workflows/release.yml/badge.svg)](https://github.com/zuowen7/scholar-assistant-agent/actions)
-[![Version](https://img.shields.io/badge/version-0.5.0-brightgreen)](https://github.com/zuowen7/scholar-assistant-agent/releases)
+[![Version](https://img.shields.io/badge/version-0.5.1-brightgreen)](https://github.com/zuowen7/scholar-assistant-agent/releases)
 
 **English** | [中文](./README_zh.md)
 
@@ -15,7 +15,7 @@
 
 PDF translation & close reading included as an on-ramp — translate a paper in minutes, then work on it. Voice assistant with Siri-style wake word and dictation. Runs locally offline or connects to 21 cloud LLM providers. **Bilingual UI** (zh-CN / en-US).
 
-v0.5.0 — Latest: Agent execution UI redesign (AgentExecutionGroup, inline diff overlay outside Monaco DOM), session lifecycle hardening (pause/resume/abort, scope breaker reset), selection-editing interaction overhaul, build chain fixes (PyInstaller PIL inclusion, pylatexenc dependency, external-tool build gating). MIT license.
+v0.5.1 — Latest: Agent V2 reliability hardening — progressing turns (blocking gates removed), blocked-write recovery, session reliability gaps, approval routing and feedback fixes, runtime identity isolation, Zotero credential fix. MIT license.
 
 ## Demo
 
