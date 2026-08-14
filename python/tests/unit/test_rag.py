@@ -1,6 +1,6 @@
-"""RAG 路由辅助函数单元测试 — 切块与翻译入库 doc_id 稳定性"""
+"""RAG 路由辅助函数单元测试 — 切块、翻译入库 doc_id 稳定性与检索去重"""
 
-from routers.rag import _chunk_text, build_translation_doc_id
+from routers.rag import _chunk_text, _dedupe_hits, build_translation_doc_id
 
 
 class TestChunkText:
@@ -45,3 +45,37 @@ class TestBuildTranslationDocId:
         doc_id = build_translation_doc_id("任意内容")
         assert doc_id.startswith("trans_")
         assert len(doc_id) == len("trans_") + 16
+
+
+class TestDedupeHits:
+    def _mk(self, n: int) -> tuple[list[str], list[str], list[dict | None], list[float | None]]:
+        ids = [f"chunk{i}" for i in range(n)]
+        documents = [f"text{i}" for i in range(n)]
+        metadatas = [{"doc_id": f"doc{i % 3}", "title": f"t{i % 3}"} for i in range(n)]
+        distances = [float(i) for i in range(n)]
+        return ids, documents, metadatas, distances
+
+    def test_caps_per_doc_at_two(self):
+        ids, documents, metadatas, distances = self._mk(9)
+        hits = _dedupe_hits(ids, documents, metadatas, distances, top_k=9)
+        doc_ids = [h["doc_id"] for h in hits]
+        # 3 篇文档 × 每篇 2 个 chunk = 6 条
+        assert len(hits) == 6
+        assert doc_ids.count("doc0") == 2
+        assert doc_ids.count("doc1") == 2
+        assert doc_ids.count("doc2") == 2
+
+    def test_respects_top_k(self):
+        ids, documents, metadatas, distances = self._mk(9)
+        hits = _dedupe_hits(ids, documents, metadatas, distances, top_k=3)
+        assert len(hits) == 3
+        # 保持相关性顺序：最靠前的 chunk 先保留
+        assert hits[0]["chunk_id"] == "chunk0"
+
+    def test_missing_metadata_falls_back_to_chunk_id(self):
+        hits = _dedupe_hits(["c1", "c2"], ["a", "b"], [None, None], [0.1, 0.2], top_k=2)
+        assert hits[0]["doc_id"] == "c1"
+        assert hits[1]["doc_id"] == "c2"
+
+    def test_empty(self):
+        assert _dedupe_hits([], [], [], [], top_k=5) == []

@@ -230,7 +230,9 @@
     <AppPromptDialog
       v-model="showZoteroPrompt"
       :title="t('editor.searchZotero')"
-      :description="t('editor.zoteroSearchDescription')"
+      :description="
+        zoteroMode === 'local' ? t('editor.zoteroLocalHint') : t('editor.zoteroSearchDescription')
+      "
       :label="t('general.search')"
       :placeholder="t('editor.zoteroSearchPlaceholder')"
       :confirm-label="t('general.search')"
@@ -355,6 +357,7 @@ const { openProjectWorkspace } = useProjectWorkspace()
 const showZoteroPrompt = ref(false)
 const zoteroSearching = ref(false)
 const zoteroPromptError = ref('')
+const zoteroMode = ref<'cloud' | 'local' | 'unavailable' | null>(null)
 let _contentBeforeMindMap = ''
 const sidebarCollapsed = ref(false)
 const writingSidebarTab = ref<'files' | 'outline'>('files')
@@ -689,6 +692,13 @@ async function handleProcessCitations() {
 async function handleZoteroInsert() {
   zoteroPromptError.value = ''
   showZoteroPrompt.value = true
+  // 预检连接模式：本地 Zotero 免 Key 时给出对应提示
+  try {
+    const status = await getZoteroStatus()
+    zoteroMode.value = status?.mode ?? null
+  } catch {
+    zoteroMode.value = null
+  }
 }
 
 async function submitZoteroSearch(query: string) {

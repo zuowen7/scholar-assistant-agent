@@ -1061,6 +1061,7 @@
     "selectionTaskPrompt": "{action} the current {target}, preserve academic meaning and citations, and use the existing editing tools to propose a confirmable change.",
     "openRecentFailed": "Failed to open recent project",
     "zoteroSearchDescription": "Search the connected Zotero library and insert the first matching citation at the cursor.",
+    "zoteroLocalHint": "Connected to local Zotero desktop (no API key needed) — search your library directly.",
     "zoteroSearchPlaceholder": "Title, author, DOI, or keyword"
   },
   "toast": {
