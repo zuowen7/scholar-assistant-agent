@@ -11,7 +11,11 @@ import { i18n } from '../i18n'
 import { logger } from '../utils/logger'
 import { readSseStream } from '../utils/streamReader'
 import { currentWorkspaceGrant } from './useProject'
-import { tabs as editorTabs, contentVersion as editorContentVersion } from './useEditorState'
+import {
+  tabs as editorTabs,
+  contentVersion as editorContentVersion,
+  revealFileRange,
+} from './useEditorState'
 
 function workspaceGrantHeaders(): Record<string, string> | undefined {
   return currentWorkspaceGrant.value
@@ -345,6 +349,25 @@ export function useAgentChat() {
             force_approval: (agentEvent.metadata?.force_approval as boolean) || false,
           })
           msg.events = [...msg.events, agentEvent]
+          // 文件修改审批：编辑器跳到被修改位置并高亮，方便对比 diff
+          {
+            const toolName = (
+              (agentEvent.metadata?.tool_name as string) ||
+              (agentEvent.metadata?.tool as string) ||
+              ''
+            ).toLowerCase()
+            const args =
+              (agentEvent.metadata?.args as Record<string, unknown>) ||
+              (agentEvent.metadata?.arguments as Record<string, unknown>)
+            const filePath = args?.file_path
+            if ((toolName === 'str_replace' || toolName === 'write_file') && filePath) {
+              const needle =
+                toolName === 'str_replace' && typeof args.old_string === 'string'
+                  ? args.old_string
+                  : null
+              void revealFileRange(String(filePath), needle)
+            }
+          }
           break
         case 'approval_received':
           _clearApproval(agentEvent.event_id)
@@ -382,6 +405,11 @@ export function useAgentChat() {
             )
           break
         }
+        case 'todo':
+          // 任务计划原地更新：同一消息内只保留最新一张清单，
+          // 避免每次 todo_write 都堆叠一张新卡片
+          msg.events = [...msg.events.filter((e) => e.type !== 'todo'), agentEvent]
+          break
         default:
           msg.events = [...msg.events, agentEvent]
           break

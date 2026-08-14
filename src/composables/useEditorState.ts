@@ -4,7 +4,7 @@
  * 单一模块级状态，所有 composable 共享同一个 ref 实例。
  * 禁止在此文件之外定义 tab / selection / monacoEditor 等状态。
  */
-import { ref, shallowRef, computed } from 'vue'
+import { ref, shallowRef, computed, nextTick } from 'vue'
 import type { EditorSelection, EditorTab } from '../types'
 // This module stores Monaco-shaped state but never executes Monaco itself.
 // Keep the import type-only so the editor runtime remains behind MonacoEditor's
@@ -142,6 +142,48 @@ export function insertTextAtCursor(text: string): boolean {
 
 export function insertImage(url: string, alt = 'image') {
   return insertTextAtCursor(`\n![${alt}](${url})\n`)
+}
+
+/**
+ * 在编辑器中定位文件并高亮指定文本片段（Agent 审批 diff 跳转用）。
+ * needle 传旧文本（str_replace 的 old_string）时精确高亮该片段；
+ * 传 null 时跳到文件开头。文件未在标签页打开时返回 false。
+ */
+export async function revealFileRange(filePath: string, needle: string | null): Promise<boolean> {
+  const normalized = filePath.replace(/\\/g, '/').toLowerCase()
+  const tab = tabs.value.find(
+    (t) => t.path && t.path.replace(/\\/g, '/').toLowerCase() === normalized,
+  )
+  if (!tab) return false
+  activeTabId.value = tab.id
+  // 等待 Monaco 切到该标签的 model，避免在旧 model 上定位
+  await nextTick()
+  const editor = monacoEditor.value
+  if (!editor) return false
+  const model = editor.getModel()
+  const text = model ? model.getValue() : tab.content
+  if (needle && text.includes(needle)) {
+    const idx = text.indexOf(needle)
+    const before = text.slice(0, idx)
+    const lines = before.split('\n')
+    const startLine = lines.length
+    const startCol = lines[lines.length - 1].length + 1
+    const needleLines = needle.split('\n')
+    const endLine = startLine + needleLines.length - 1
+    const endCol =
+      needleLines.length > 1
+        ? needleLines[needleLines.length - 1].length + 1
+        : startCol + needle.length
+    const Range = getRange(editor)
+    const range = new Range(startLine, startCol, endLine, endCol)
+    editor.setSelection(range)
+    editor.revealRangeInCenter(range)
+    editor.focus()
+    return true
+  }
+  editor.revealLineInCenter(1)
+  editor.focus()
+  return false
 }
 
 export function useEditorState() {
