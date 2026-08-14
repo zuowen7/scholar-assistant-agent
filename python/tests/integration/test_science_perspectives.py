@@ -14,15 +14,19 @@ Test sample: science.adn8744.pdf (4 pages, 3 bundled Perspectives articles)
 """
 
 import os
+from pathlib import Path
 
 import pytest
 
+# 样例 PDF 路径：避免硬编码本机用户名（隐私），默认取桌面上的样例文件
+_SAMPLE_PDF = str(Path.home() / "Desktop" / "science.adn8744.pdf")
+
 pytestmark = pytest.mark.skipif(
-    not os.path.exists(r"C:\Users\zuowen\Desktop\science.adn8744.pdf"),
+    not os.path.exists(_SAMPLE_PDF),
     reason="Test PDF not available on this machine",
 )
 
-PDF_PATH = r"C:\Users\zuowen\Desktop\science.adn8744.pdf"
+PDF_PATH = _SAMPLE_PDF
 
 
 @pytest.fixture(scope="module")
