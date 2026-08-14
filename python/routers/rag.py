@@ -56,6 +56,45 @@ def build_translation_doc_id(source_text: str) -> str:
     return f"trans_{digest}"
 
 
+_MAX_CHUNKS_PER_DOC = 2
+
+
+def _dedupe_hits(
+    ids: list[str],
+    documents: list[str],
+    metadatas: list[dict[str, Any] | None],
+    distances: list[float | None],
+    top_k: int,
+    max_chunks_per_doc: int = _MAX_CHUNKS_PER_DOC,
+) -> list[dict[str, Any]]:
+    """按文档去重检索结果。
+
+    每篇文档最多贡献 max_chunks_per_doc 个 chunk（按相关性顺序保留最靠前的），
+    最终返回至多 top_k 条，避免单篇文献霸占全部结果。
+    """
+    hits: list[dict[str, Any]] = []
+    per_doc_count: dict[str, int] = {}
+    for index, chunk_id in enumerate(ids):
+        metadata = metadatas[index] if index < len(metadatas) and metadatas[index] else {}
+        doc_id = metadata.get("doc_id", chunk_id)
+        if per_doc_count.get(doc_id, 0) >= max_chunks_per_doc:
+            continue
+        per_doc_count[doc_id] = per_doc_count.get(doc_id, 0) + 1
+        hits.append(
+            {
+                "doc_id": doc_id,
+                "chunk_id": chunk_id,
+                "source": metadata.get("title", chunk_id),
+                "text": documents[index] if index < len(documents) else "",
+                "distance": distances[index] if index < len(distances) else None,
+                "metadata": metadata,
+            }
+        )
+        if len(hits) >= top_k:
+            break
+    return hits
+
+
 def _chunk_text(
     text: str,
     *,
@@ -327,28 +366,7 @@ def register_rag_routes(
             documents = (results.get("documents") or [[]])[0]
             metadatas = (results.get("metadatas") or [[]])[0]
             distances = (results.get("distances") or [[]])[0]
-            hits = []
-            per_doc_count: dict[str, int] = {}
-            for index, chunk_id in enumerate(ids):
-                metadata = metadatas[index] if index < len(metadatas) and metadatas[index] else {}
-                doc_id = metadata.get("doc_id", chunk_id)
-                # 每篇文档最多贡献 2 个 chunk，避免单篇文献霸占全部结果
-                if per_doc_count.get(doc_id, 0) >= 2:
-                    continue
-                per_doc_count[doc_id] = per_doc_count.get(doc_id, 0) + 1
-                hits.append(
-                    {
-                        "doc_id": doc_id,
-                        "chunk_id": chunk_id,
-                        "source": metadata.get("title", chunk_id),
-                        "text": documents[index] if index < len(documents) else "",
-                        "distance": distances[index] if index < len(distances) else None,
-                        "metadata": metadata,
-                    }
-                )
-                if len(hits) >= req.top_k:
-                    break
-            return {"hits": hits}
+            return {"hits": _dedupe_hits(ids, documents, metadatas, distances, req.top_k)}
         except Exception as exc:
             logger.warning("RAG query failed: %s", exc)
             raise HTTPException(500, "RAG query failed")

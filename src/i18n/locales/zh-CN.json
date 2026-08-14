@@ -1064,6 +1064,7 @@
     "selectionTaskPrompt": "{action}当前{target}，保持学术含义与引用不变，并通过现有编辑工具给出可确认修改。",
     "openRecentFailed": "打开最近项目失败",
     "zoteroSearchDescription": "在已连接的 Zotero 文献库中搜索，并将首个匹配引用插入光标位置。",
+    "zoteroLocalHint": "已连接本地 Zotero 桌面版（免 API Key），可直接搜索文献库。",
     "zoteroSearchPlaceholder": "标题、作者、DOI 或关键词"
   },
   "toast": {
