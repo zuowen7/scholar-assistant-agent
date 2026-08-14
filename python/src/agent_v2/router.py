@@ -724,7 +724,6 @@ def _build_system_prompt(workspace_root: str, tools: list) -> str:
     )
     dynamic_context = (
         "# Runtime context\n"
-        f"Current date: {date.today().isoformat()}\n"
         f"Working directory: {workspace_root}\n"
         f"Available tools: {tool_list}\n\n"
         "When you need to search, use grep_files or glob_files. Each tool result will be shown "
@@ -732,6 +731,10 @@ def _build_system_prompt(workspace_root: str, tools: list) -> str:
         "run_sub_agent cannot execute commands, inspect the filesystem, or run code. "
         f"{process_execution_rule} Never treat generated sub-agent text as command output."
         f"{command_edit_rule}\n\n"
+        "# Planning\n"
+        "For work with multiple concrete steps, call todo_write first to record a short plan, "
+        "then keep statuses (pending | in_progress | completed) updated as steps finish. "
+        "Do not over-plan single-step requests.\n\n"
         "# Communication\n"
         "Respond in the same language as the user. Be concise; for simple tasks, one tool call "
         "and a short confirmation is enough."
@@ -768,6 +771,8 @@ def _append_history(session: Session, history: list[dict] | None, current_messag
 def _compose_turn_message(req: ChatRequestV2) -> str:
     """Combine the task with the real editor context the client supplied."""
     parts = [req.message.strip()]
+    # 当前日期随 user 消息注入：系统提示保持稳定，最大化 DeepSeek 前缀缓存命中
+    parts.append(f"Current date: {date.today().isoformat()}")
     if req.constraints and req.constraints.strip():
         parts.append("<task_constraints>\n" + req.constraints.strip() + "\n</task_constraints>")
     if req.context_file and req.context_file.strip():

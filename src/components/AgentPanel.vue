@@ -180,6 +180,27 @@
               <span class="evt-warning-icon">&#x26A0;</span>
               <span class="evt-content-text">{{ evt.content }}</span>
             </div>
+            <div v-else-if="evt.type === 'todo' && evt.metadata?.tasks?.length" class="agent-todo">
+              <div class="agent-todo-header">
+                <span class="agent-todo-title">{{ t('agent.todoTitle') }}</span>
+                <span class="agent-todo-progress"
+                  >{{ todoDoneCount(evt.metadata.tasks) }}/{{ evt.metadata.tasks.length }}</span
+                >
+              </div>
+              <ul class="agent-todo-list">
+                <li
+                  v-for="(task, ti) in evt.metadata.tasks"
+                  :key="ti"
+                  class="agent-todo-item"
+                  :class="task.status"
+                >
+                  <span class="agent-todo-mark">{{
+                    task.status === 'completed' ? '✓' : task.status === 'in_progress' ? '…' : '○'
+                  }}</span>
+                  <span class="agent-todo-text">{{ task.content }}</span>
+                </li>
+              </ul>
+            </div>
           </template>
           <MarkdownBlock
             v-if="msg.content && msg.role === 'assistant'"
@@ -1173,6 +1194,10 @@ async function refreshSessions() {
   sessionListRef.value?.fetchSessions()
 }
 
+function todoDoneCount(tasks: Array<{ content: string; status: string }>): number {
+  return tasks.filter((t) => t.status === 'completed').length
+}
+
 async function handleSessionOpen(session: AgentSessionInfo) {
   const loaded = await loadWorkflowMessages(session.id)
   if (!loaded) {
@@ -1918,6 +1943,63 @@ onUnmounted(() => {
   font-size: 14px;
   flex-shrink: 0;
   color: var(--c-warn);
+}
+
+/* Todo checklist (todo_write 任务计划) */
+.agent-todo {
+  margin: 2px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--c-border);
+  border-left: 2px solid var(--c-accent);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface-1);
+}
+.agent-todo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.agent-todo-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--c-text-2);
+}
+.agent-todo-progress {
+  font-size: 11px;
+  color: var(--c-text-3);
+}
+.agent-todo-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.agent-todo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--c-text-1);
+}
+.agent-todo-item.completed .agent-todo-text {
+  text-decoration: line-through;
+  color: var(--c-text-3);
+}
+.agent-todo-item.in_progress .agent-todo-text {
+  color: var(--c-text-0);
+}
+.agent-todo-mark {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  color: var(--c-accent);
+}
+.agent-todo-item.completed .agent-todo-mark {
+  color: var(--c-success, var(--c-accent));
 }
 
 .agent-sessions {

@@ -190,6 +190,7 @@ export interface AgentEvent {
     | 'aborted'
     | 'pipeline_stage'
     | 'checkpoint'
+    | 'todo'
   content: string
   event_id?: string
   metadata?: {
@@ -242,6 +243,8 @@ export interface AgentEvent {
     deliverables?: string[]
     metrics?: Record<string, number>
     options?: string[]
+    // todo
+    tasks?: Array<{ content: string; status: 'pending' | 'in_progress' | 'completed' }>
     file?: string
     content?: string
     content_truncated?: boolean

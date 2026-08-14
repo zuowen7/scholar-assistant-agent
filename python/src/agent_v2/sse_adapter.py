@@ -79,6 +79,16 @@ def agent_event_to_sse(event: AgentEvent) -> dict[str, Any]:
             "event_id": data.get("id") or _event_id(),
             "metadata": metadata,
         }
+    elif t == AgentEventType.TODO:
+        tasks = data.get("tasks", [])
+        content = ""
+        evt_type = "todo"
+        return {
+            "type": evt_type,
+            "content": content,
+            "event_id": _event_id(),
+            "metadata": {"tasks": tasks if isinstance(tasks, list) else []},
+        }
     elif t == AgentEventType.TOOL_DENIED:
         content = data.get("reason", "")
         evt_type = "tool_denied"

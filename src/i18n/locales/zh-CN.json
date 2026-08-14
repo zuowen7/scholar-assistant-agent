@@ -356,6 +356,7 @@
     "noWorkspace": "请先在编辑器中打开一个项目文件夹",
     "labelTask": "任务",
     "labelTaskDone": "任务完成",
+    "todoTitle": "任务计划",
     "labelThought": "思考",
     "labelReasoning": "推理",
     "thoughtProcess": "思考过程",

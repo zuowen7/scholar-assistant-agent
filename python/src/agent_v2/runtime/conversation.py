@@ -25,7 +25,7 @@ from src.agent_v2.runtime.file_mutations import read_text_exact
 from src.agent_v2.runtime.permissions import PermissionPolicy
 from src.agent_v2.runtime.session import Session
 from src.agent_v2.runtime.usage import UsageTracker
-from src.agent_v2.tools.registry import ToolRegistry
+from src.agent_v2.tools.registry import ToolRegistry, format_todo_block
 from src.agent_v2.types import (
     AgentEvent,
     AgentEventType,
@@ -173,10 +173,13 @@ class ConversationRuntime:
             total_input=session.meta.total_usage.input_tokens,
             total_output=session.meta.total_usage.output_tokens,
         )
+        # 结构化任务列表（todo_write 工具写入），随每轮注入最后一条 user 消息
+        self._todos: list[dict] = []
         self.tool_registry.set_runtime_context(
             parent_session_id=session.session_id,
             parent_session_path=getattr(session, "_save_path", ""),
             workspace=session.meta.workspace,
+            todos=self._todos,
         )
         # Approval state
         self._approval_events: dict[str, asyncio.Event] = {}
@@ -729,6 +732,37 @@ class ConversationRuntime:
         import os
 
         messages = self.session.messages
+        todo_block = format_todo_block(self._todos)
+        if todo_block and messages:
+            # 把 todo 状态追加到消息列表末尾（复制，不改会话持久内容）：
+            # 系统提示 + 历史前缀保持稳定，最大化 DeepSeek 前缀缓存命中。
+            # 工具循环内末尾是 tool 消息，追加到最后一个工具结果；
+            # 新一轮用户消息则在末尾 user 消息追加。
+            last = messages[-1]
+            messages = list(messages)
+            if last.role == MessageRole.TOOL:
+                blocks = list(last.blocks)
+                for i in range(len(blocks) - 1, -1, -1):
+                    b = blocks[i]
+                    if isinstance(b, ToolResultBlock):
+                        blocks[i] = ToolResultBlock(
+                            tool_use_id=b.tool_use_id,
+                            tool_name=b.tool_name,
+                            output=b.output + "\n\n" + todo_block,
+                            is_error=b.is_error,
+                            status=b.status,
+                            truncated=b.truncated,
+                            original_chars=b.original_chars,
+                            returned_chars=b.returned_chars,
+                            metadata=b.metadata,
+                        )
+                        break
+                messages[-1] = Message(role=last.role, blocks=blocks)
+            else:
+                messages[-1] = Message(
+                    role=last.role,
+                    blocks=[TextBlock(text=last.text_content() + "\n\n" + todo_block)],
+                )
         system_prompt = "\n\n".join(
             part for part in (self.system_prompt, self._selection_instruction()) if part
         )
@@ -1492,6 +1526,9 @@ class ConversationRuntime:
             returned_chars=result_returned_chars,
             metadata=result_metadata,
         )
+        # 结构化任务计划更新成功时，向前端推送 todo 事件以渲染清单
+        if tb.name == "todo_write" and not is_error:
+            yield AgentEvent.todo(list(self._todos))
         if is_error:
             self._record_tool_error()
         else:
