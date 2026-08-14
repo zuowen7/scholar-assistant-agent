@@ -97,6 +97,13 @@ jobs:
             --ignore=tests/integration/test_ollama_translate_e2e.py \
             --ignore=tests/integration/test_ollama_models_endpoint.py
 
+      # agent_v2 套件只在 release.yml（windows runner）里作为阻断门禁运行；
+      # 这里在每次 push 上可见性执行：ubuntu 环境个别平台相关用例可能失败，
+      # 因此先保持非阻断，待平台差异收敛后再升级为阻断。
+      - name: Pytest (agent_v2 visibility, non-blocking)
+        continue-on-error: true
+        run: cd python && pytest tests/agent_v2/ -q --tb=short || echo "::warning::agent_v2 suite has failures on ubuntu"
+
   # ── 跨层契约检查 ────────────────────────────────────
   # 确保 SSE 事件名、tool_name 等跨前后端的契约没有被破坏
   contract:
