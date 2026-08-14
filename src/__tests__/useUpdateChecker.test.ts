@@ -84,7 +84,7 @@ describe('checkForUpdate', () => {
     localStorage.clear()
   })
 
-  async function mockHealthAndGithub(healthVersion: string, githubTag: string) {
+  async function mockHealthAndLatest(healthVersion: string, latestVersion: string) {
     mockFetch
       .mockImplementationOnce(() =>
         Promise.resolve({
@@ -97,27 +97,28 @@ describe('checkForUpdate', () => {
           ok: true,
           json: () =>
             Promise.resolve({
-              tag_name: githubTag,
-              html_url: 'https://github.com/example/releases/tag/' + githubTag,
+              ok: true,
+              latest_version: latestVersion,
+              release_url: 'https://github.com/example/releases/tag/' + latestVersion,
             }),
         } as Response),
       )
   }
 
   it('newer remote → pushes info toast', async () => {
-    await mockHealthAndGithub('0.3.1', 'v0.3.2')
+    await mockHealthAndLatest('0.3.1', 'v0.3.2')
     await checkForUpdate()
     expect(mockFetch).toHaveBeenCalledTimes(2)
   })
 
   it('same version → no toast', async () => {
-    await mockHealthAndGithub('0.3.2', 'v0.3.2')
+    await mockHealthAndLatest('0.3.2', 'v0.3.2')
     await checkForUpdate()
     expect(mockFetch).toHaveBeenCalledTimes(2)
   })
 
   it('older remote → no toast', async () => {
-    await mockHealthAndGithub('0.4.0', 'v0.3.2')
+    await mockHealthAndLatest('0.4.0', 'v0.3.2')
     await checkForUpdate()
     expect(mockFetch).toHaveBeenCalledTimes(2)
   })
@@ -127,7 +128,7 @@ describe('checkForUpdate', () => {
     await expect(checkForUpdate()).resolves.toBeUndefined()
   })
 
-  it('network error on github API → silent', async () => {
+  it('network error on latest endpoint → silent', async () => {
     mockFetch
       .mockImplementationOnce(() =>
         Promise.resolve({
@@ -140,27 +141,27 @@ describe('checkForUpdate', () => {
   })
 
   it('same version already notified → no duplicate toast', async () => {
-    await mockHealthAndGithub('0.3.1', 'v0.3.2')
+    await mockHealthAndLatest('0.3.1', 'v0.3.2')
     await checkForUpdate()
 
     // Second check — fetches happen (lightweight) but no toast for same version
-    await mockHealthAndGithub('0.3.1', 'v0.3.2')
+    await mockHealthAndLatest('0.3.1', 'v0.3.2')
     await checkForUpdate()
     expect(mockFetch).toHaveBeenCalledTimes(4) // 2 calls × 2 checks
   })
 
   it('newer version after previous notification → notifies again', async () => {
-    await mockHealthAndGithub('0.3.1', 'v0.3.2')
+    await mockHealthAndLatest('0.3.1', 'v0.3.2')
     await checkForUpdate()
 
     // New version released
     mockFetch.mockReset()
-    await mockHealthAndGithub('0.3.1', 'v0.3.3')
+    await mockHealthAndLatest('0.3.1', 'v0.3.3')
     await checkForUpdate()
     expect(mockFetch).toHaveBeenCalledTimes(2)
   })
 
-  it('malformed github response → silent', async () => {
+  it('malformed latest response → silent', async () => {
     mockFetch
       .mockImplementationOnce(() =>
         Promise.resolve({
@@ -177,7 +178,7 @@ describe('checkForUpdate', () => {
     await expect(checkForUpdate()).resolves.toBeUndefined()
   })
 
-  it('github returns non-ok status → silent', async () => {
+  it('latest endpoint reports no release (ok=false) → silent', async () => {
     mockFetch
       .mockImplementationOnce(() =>
         Promise.resolve({
@@ -185,7 +186,35 @@ describe('checkForUpdate', () => {
           json: () => Promise.resolve({ status: 'ok', version: '0.3.1' }),
         } as Response),
       )
-      .mockImplementationOnce(() => Promise.resolve({ ok: false, status: 403 } as Response))
+      .mockImplementationOnce(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ ok: false, latest_version: '', release_url: '' }),
+        } as Response),
+      )
     await expect(checkForUpdate()).resolves.toBeUndefined()
+  })
+
+  it('latest endpoint non-ok status → silent', async () => {
+    mockFetch
+      .mockImplementationOnce(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ status: 'ok', version: '0.3.1' }),
+        } as Response),
+      )
+      .mockImplementationOnce(() => Promise.resolve({ ok: false, status: 500 } as Response))
+    await expect(checkForUpdate()).resolves.toBeUndefined()
+  })
+
+  it('returns result with local/remote versions and release url', async () => {
+    await mockHealthAndLatest('0.5.1', 'v0.6.0')
+    const result = await checkForUpdate({ notify: false })
+    expect(result).toEqual({
+      status: 'available',
+      localVersion: '0.5.1',
+      remoteVersion: '0.6.0',
+      releaseUrl: 'https://github.com/example/releases/tag/v0.6.0',
+    })
   })
 })
