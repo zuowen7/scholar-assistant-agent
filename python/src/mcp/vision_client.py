@@ -30,6 +30,25 @@ def _deep_merge(base: dict, override: dict) -> None:
             base[key] = value
 
 
+def _config_dir() -> Path:
+    """Vision 配置目录。
+
+    开发环境：python/config（模块相对路径存在时）。
+    PyInstaller 冻结环境：src 模块在 PYZ 内无真实路径，改走
+    api_factory 的运行时配置目录（RUNTIME_DIR/config），与
+    /api/config 的读写目标一致，保证安装版用户设置生效。
+    """
+    module_dir = Path(__file__).resolve().parent.parent.parent / "config"
+    if module_dir.is_dir():
+        return module_dir
+    try:
+        from api_factory import CONFIG_PATH
+
+        return Path(CONFIG_PATH).resolve().parent
+    except Exception:
+        return module_dir
+
+
 # 支持的图片格式
 SUPPORTED_IMAGE_FORMATS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 
@@ -129,8 +148,11 @@ class VisionClient:
 
         与 agent_v2 一致：default.yaml 与 default.local.yaml 深合并，
         确保用户在设置面板保存的 vision 覆盖（local.yaml）真正生效。
+        PyInstaller 冻结环境下模块位于 PYZ 内、无真实 __file__ 路径，
+        此时改读 api_factory 的运行时配置目录（RUNTIME_DIR/config），
+        保证安装版与开发版读取同一份用户配置。
         """
-        config_dir = Path(__file__).parent.parent.parent / "config"
+        config_dir = _config_dir()
         merged: dict = {}
         for name in ("default.yaml", "default.local.yaml"):
             path = config_dir / name
