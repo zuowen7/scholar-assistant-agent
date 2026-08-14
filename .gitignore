@@ -19,6 +19,8 @@ env/
 
 # 测试与覆盖率
 .pytest_cache/
+.ruff_cache/
+.hypothesis/
 htmlcov/
 .coverage
 
@@ -139,6 +141,7 @@ AGENTS.md
 
 # Runtime artifacts
 *.log
+python/logs/
 *_warnings.txt
 python/data/chromadb/
 python/test_chroma/
@@ -158,6 +161,7 @@ verify_tools.py
 python/nul_test/
 python/data/argument_output/
 outputs/
+argument_output_v2/
 *.docx
 
 # Local archive — untracked, kept on disk only, never pushed to the cloud repo

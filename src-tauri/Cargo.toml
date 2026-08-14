@@ -1,5 +1,5 @@
 [package]
-name = "scholar-translate"
+name = "scholar-assistant"
 version = "0.5.1"
 edition = "2021"
 

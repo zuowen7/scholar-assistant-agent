@@ -66,7 +66,7 @@ def handle_request(msg: dict) -> dict | None:
             "result": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "scholar-translate", "version": __version__},
+                "serverInfo": {"name": "scholar-assistant", "version": __version__},
             },
         }
     if method == "notifications/initialized":
