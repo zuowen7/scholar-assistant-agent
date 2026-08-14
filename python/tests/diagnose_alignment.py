@@ -3,6 +3,7 @@
 
 import io
 import sys
+from pathlib import Path
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
@@ -18,7 +19,8 @@ from src.translator.block_translator import (
     _split_paragraphs,
 )
 
-pdf = r"C:\Users\zuowen\Desktop\science.adn8744.pdf"
+# 样例 PDF 路径：避免硬编码本机用户名（隐私），默认取桌面上的样例文件
+pdf = str(Path.home() / "Desktop" / "science.adn8744.pdf")
 doc = extract_pages(pdf)
 raw_articles = extract_articles(doc.full_text)
 

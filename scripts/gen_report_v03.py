@@ -1,19 +1,20 @@
 # Generate 研墨 v0.3 项目研究报告 (Word docx) for competition submission.
 # Run: python scripts/gen_report_v03.py
-# Output: C:\\Users\\zuowen\\Desktop\\研墨_项目研究报告_v0.3.docx
+# Output: <user home>/Desktop/研墨_项目研究报告_v0.3.docx
 
 from __future__ import annotations
 
 from pathlib import Path
 from docx import Document
 from docx.shared import Pt, Cm, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_ALIGN_VERTICAL
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
 
-OUTPUT_PATH = r"C:\Users\zuowen\Desktop\研墨_项目研究报告_v0.3.docx"
+# 输出路径：避免硬编码本机用户名（隐私），默认写到当前用户桌面
+OUTPUT_PATH = Path.home() / "Desktop" / "研墨_项目研究报告_v0.3.docx"
 
 
 # ────────────────────────────────────────────────────────────────────────────────
