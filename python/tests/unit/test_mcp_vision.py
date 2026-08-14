@@ -1,7 +1,10 @@
 """MCP Vision 和 Citation 索引单元测试"""
 
+import sys
+import types
 from unittest.mock import AsyncMock, patch
 
+import src.mcp.vision_client as vision_client_module
 from src.citation.indexer import CitationIndexer
 from src.mcp.vision_client import CLAUDE_PROMPTS, OPENAI_PROMPTS, VisionClient, VisionResult
 
@@ -74,6 +77,32 @@ class TestVisionClient:
         ):
             result = await client.analyze_image("fake.png", analysis_type="ocr")
         assert "API Key" in result.text
+
+    def test_load_config_in_frozen_mode_reads_runtime_config_dir(self, tmp_path, monkeypatch):
+        """冻结环境（PYZ 无真实 __file__）下应回退到 api_factory 的运行时配置目录。"""
+        runtime_cfg = tmp_path / "runtime-config"
+        runtime_cfg.mkdir()
+        (runtime_cfg / "default.yaml").write_text(
+            "vision:\n  api_key: from-default\n  base_url: https://api.openai.com/v1\n",
+            encoding="utf-8",
+        )
+        (runtime_cfg / "default.local.yaml").write_text(
+            "vision:\n  api_key: from-local\n  model: glm-4v-flash\n",
+            encoding="utf-8",
+        )
+        api_factory_stub = types.ModuleType("api_factory")
+        api_factory_stub.CONFIG_PATH = str(runtime_cfg / "default.yaml")
+        monkeypatch.setitem(sys.modules, "api_factory", api_factory_stub)
+        # 模拟 PyInstaller：模块 __file__ 指向不存在的 PYZ 内路径
+        monkeypatch.setattr(
+            vision_client_module, "__file__", "Z:/nonexistent/_internal/vision_client.pyc"
+        )
+
+        config = VisionClient()._load_config()
+
+        assert config["vision"]["api_key"] == "from-local"  # local 覆盖 default
+        assert config["vision"]["model"] == "glm-4v-flash"
+        assert config["vision"]["base_url"] == "https://api.openai.com/v1"
 
 
 class TestCitationIndexer:
