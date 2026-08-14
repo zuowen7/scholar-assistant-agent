@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.2] — Vision, update checker, and packaging fixes
+
+### Vision / OCR
+
+- **Vision settings UI** — new 识图 Vision API section in Settings → Integrations to configure base URL, vision model, and API key; `/api/config` now accepts and masks the `vision` section.
+- **Local OCR fallback** — image OCR falls back to local engines (Tesseract → PaddleOCR) when no vision key is configured or the cloud call fails, so text-only models can still transcribe images; results report the `engine` used and never write error text into the document.
+
+### Update Checker
+
+- **Backend-proxied GitHub Releases check** — new `GET /api/version/latest` uses the GitHub web redirect (no API rate limit) with REST API fallback and a 5-minute success cache; frontend no longer calls `api.github.com` directly, fixing the Tauri CSP block and anonymous rate limiting that made "check for updates" always fail.
+
+### Packaging & Privacy
+
+- **Frozen-build vision config** — `VisionClient` now resolves its config from the runtime config directory inside PyInstaller bundles (PYZ modules have no real `__file__`), so vision settings saved in the installed app actually take effect.
+- **Privacy cleanup** — removed hardcoded local username / Desktop paths from tests and scripts.
+
 ## [0.5.1] — Agent V2 reliability hardening
 
 ### Agent Runtime
