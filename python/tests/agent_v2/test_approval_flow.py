@@ -308,7 +308,9 @@ class TestApprovalPause:
         else:
             pytest.fail("Expected run_command approval")
 
-        await asyncio.wait_for(task, timeout=10)
+        # CI 冷缓存时 matplotlib 首次导入需构建字体缓存（+Windows Defender 首次扫描），
+        # 10s 预算在干净 runner 上不够；放宽到 90s（仍远小于工具默认 120s 超时）。
+        await asyncio.wait_for(task, timeout=90)
         command_result = next(
             event
             for event in events

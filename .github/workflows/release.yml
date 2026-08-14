@@ -59,6 +59,13 @@ jobs:
           pip install -r python/requirements-lock.txt
           pip install pytest pytest-asyncio hypothesis
 
+      - name: Pre-warm matplotlib (font cache)
+        shell: bash
+        run: |
+          # agent_v2 的 figure-probe 测试会以子进程运行 python 脚本导入 matplotlib；
+          # 冷 runner 上首次导入要构建字体缓存，预热后测试更快、更稳。
+          python -c "import matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt; plt.figure(); plt.close('all'); print('matplotlib warm')"
+
       - name: Run pytest (full suite)
         run: cd python && pytest tests/ -q --tb=short
 
