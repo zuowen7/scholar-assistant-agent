@@ -81,6 +81,18 @@ def _seed_runtime_config(source: Path, destination: Path) -> None:
     shutil.copy2(source, destination)
 
 
+def _seed_optional_runtime_dir(source: Path, destination: Path) -> None:
+    """首次运行时把打包内的可选数据目录复制到运行时目录（不存在才复制）。
+
+    开发版直接读 python/data/...；安装版需要从 _MEIPASS 种子一次，
+    否则两侧数据不一致（如内置 skills 缺失）。
+    """
+    if not source.is_dir() or destination.exists():
+        return
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source, destination)
+
+
 if not _is_frozen() and not DOCKER_MODE:
     _seed_runtime_config(Path(__file__).parent.parent / "config" / "default.yaml", CONFIG_PATH)
 
@@ -112,6 +124,12 @@ if _is_frozen() and not DOCKER_MODE:
     runtime_glossary = RUNTIME_DIR / "data" / "translator" / "glossaries"
     if bundled_glossary.is_dir() and not runtime_glossary.is_dir():
         shutil.copytree(bundled_glossary, runtime_glossary)
+    # Agent V2 内置技能目录种子：开发版读 python/data/agent_v2/skills，
+    # 安装版从 _MEIPASS 复制到运行时目录，保证 /api/agent/v2/skills 一致
+    _seed_optional_runtime_dir(
+        BUNDLED_DIR / "data" / "agent_v2" / "skills",
+        RUNTIME_DIR / "data" / "agent_v2" / "skills",
+    )
     # Seed chromadb's embedding-model cache from the bundled copy (downloaded at
     # build time, lives beside api.exe — NOT in _MEIPASS) so 文献库/RAG works
     # offline. chromadb skips its S3 download when the onnx files already exist.
