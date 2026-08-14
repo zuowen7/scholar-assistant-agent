@@ -352,6 +352,7 @@
     "workspace": "Workspace: {name}",
     "noWorkspace": "Open a project folder in the editor first",
     "labelTask": "Task",
+    "todoTitle": "Task plan",
     "labelTaskDone": "Task Done",
     "labelThought": "Thinking",
     "labelReasoning": "Reasoning",

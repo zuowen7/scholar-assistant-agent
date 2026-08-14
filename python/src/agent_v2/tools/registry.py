@@ -1059,6 +1059,95 @@ def create_default_registry(
     """Create a registry with all builtin tools."""
     registry = ToolRegistry(workspace_root=workspace_root)
     _create_file_ops(registry)
+    _create_todo_tool(registry)
     if not include_run_command:
         registry._tools.pop("run_command", None)
     return registry
+
+
+_TODO_STATUS_MARKS = {"completed": "[x]", "in_progress": "[~]", "pending": "[ ]"}
+
+
+def format_todo_block(todos: list[dict]) -> str:
+    """把结构化任务列表渲染为注入模型上下文的紧凑块（借鉴 DeepSeek Harness todo）。
+
+    注入位置在最后一个 user 消息末尾，避免破坏 DeepSeek 前缀缓存的稳定前缀。
+    """
+    if not todos:
+        return ""
+    lines = ["<todo_status>", "Current plan progress (keep updated via todo_write):"]
+    for index, item in enumerate(todos, 1):
+        content = str(item.get("content", "")).strip().replace("\n", " ")
+        status = str(item.get("status", "pending"))
+        mark = _TODO_STATUS_MARKS.get(status, "[ ]")
+        lines.append(f"{index}. {mark} {content[:200]}")
+    lines.append("</todo_status>")
+    return "\n".join(lines)
+
+
+def _create_todo_tool(registry: ToolRegistry) -> None:
+    async def todo_write(args: dict) -> ToolResult:
+        tasks = args.get("tasks")
+        if not isinstance(tasks, list) or not tasks:
+            return ToolResult("'tasks' must be a non-empty array", is_error=True)
+        sanitized: list[dict] = []
+        for item in tasks:
+            if not isinstance(item, dict):
+                return ToolResult(
+                    "each task must be an object with 'content' and 'status'", is_error=True
+                )
+            content = str(item.get("content", "")).strip()
+            if not content:
+                return ToolResult("task 'content' is required", is_error=True)
+            status = str(item.get("status", "pending"))
+            if status not in _TODO_STATUS_MARKS:
+                return ToolResult(
+                    f"invalid status '{status}'; use pending|in_progress|completed",
+                    is_error=True,
+                )
+            sanitized.append({"content": content[:400], "status": status})
+        # 通过可变容器与运行时共享：runtime 初始化时注入 set_runtime_context(todos=self._todos)
+        store = registry.get_runtime_context().get("todos")
+        if isinstance(store, list):
+            store.clear()
+            store.extend(sanitized)
+        done = sum(1 for t in sanitized if t["status"] == "completed")
+        return ToolResult(f"todo list updated ({done}/{len(sanitized)} completed).")
+
+    registry.register(
+        "todo_write",
+        (
+            "Create or update a structured task plan for the current user request. "
+            "Use for multi-step work: list concrete steps, then keep statuses updated "
+            "(pending | in_progress | completed) as you progress. Replace the full list "
+            "on each update."
+        ),
+        {
+            "type": "object",
+            "properties": {
+                "tasks": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "One concrete, verifiable step",
+                            },
+                            "status": {
+                                "type": "string",
+                                "enum": ["pending", "in_progress", "completed"],
+                                "default": "pending",
+                            },
+                        },
+                        "required": ["content"],
+                    },
+                }
+            },
+            "required": ["tasks"],
+        },
+        todo_write,
+        permission="read-only",
+    )

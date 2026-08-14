@@ -15,10 +15,13 @@ from src.agent_v2.runtime.session import Session
 from src.agent_v2.types import Message, MessageRole, TextBlock, ToolResultBlock, ToolUseBlock
 
 
-def test_system_prompt_exposes_current_date_to_agent():
+def test_turn_message_exposes_current_date_to_agent():
+    # 日期从系统提示移到 user 消息：系统提示保持稳定以命中 DeepSeek 前缀缓存
     prompt = _build_system_prompt("C:/workspace", [])
+    live = _compose_turn_message(ChatRequestV2(message="hello"))
 
-    assert f"Current date: {date.today().isoformat()}" in prompt
+    assert "Current date:" not in prompt
+    assert f"Current date: {date.today().isoformat()}" in live
 
 
 def test_system_prompt_makes_the_latest_user_turn_authoritative():
@@ -47,7 +50,8 @@ def test_system_prompt_guides_academic_evidence_without_runtime_evidence_payload
     assert "author commitment" in prompt
     assert "is a claim to check, not independent evidence" in prompt
     assert "keep the evidence scope to them" in prompt
-    assert prompt.index("# Core safety contract") < prompt.index("Current date:")
+    assert "# Planning" in prompt
+    assert "todo_write" in prompt
 
 
 def test_persisted_turn_externalizes_editor_body_with_hash_and_dirty_state():

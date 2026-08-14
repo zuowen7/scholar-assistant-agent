@@ -152,6 +152,7 @@ class AgentEventType(Enum):
     THOUGHT = "thought"
     TOOL_CALL = "tool_call"
     TOOL_RESULT = "tool_result"
+    TODO = "todo"
     TOOL_DENIED = "tool_denied"
     TOOL_ERROR = "tool_error"
     AWAIT_APPROVAL = "await_approval"
@@ -225,6 +226,10 @@ class AgentEvent:
         return AgentEvent(
             type=AgentEventType.TOOL_DENIED, data={"id": id, "tool_name": name, "reason": reason}
         )
+
+    @staticmethod
+    def todo(tasks: list[dict]) -> AgentEvent:
+        return AgentEvent(type=AgentEventType.TODO, data={"tasks": tasks})
 
     @staticmethod
     def await_approval(
