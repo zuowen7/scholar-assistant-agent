@@ -780,22 +780,25 @@ def register_editor(
     async def zotero_status(verify: bool = False):
         try:
             client = _build_zotero_client(load_config())
-            if not client.api_key or not client.user_id:
+            mode = client.resolve_mode()
+            if mode == "unavailable":
                 return {
                     "connected": False,
                     "verified": False,
-                    "message": "未配置 Zotero API Key 或 User ID",
+                    "mode": mode,
+                    "message": "未配置 Zotero API Key，且未检测到本地 Zotero（Zotero 7 桌面版开启后免 Key 可用）",
                 }
             if verify:
                 await asyncio.to_thread(client.search, query="", limit=1)
             return {
                 "connected": True,
                 "verified": verify,
-                "user_id": client.user_id,
+                "mode": mode,
+                "user_id": client.user_id if mode == "cloud" else "local",
                 "style": client.style,
             }
         except Exception as e:
-            return {"connected": False, "verified": False, "message": str(e)}
+            return {"connected": False, "verified": False, "mode": "unavailable", "message": str(e)}
 
     @app.post("/api/zotero/search")
     async def search_zotero(req: ZoteroSearchRequest):

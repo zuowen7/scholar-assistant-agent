@@ -697,7 +697,7 @@ async function submitZoteroSearch(query: string) {
   try {
     const status = await getZoteroStatus()
     if (status && status.connected === false) {
-      zoteroPromptError.value = t('editor.zoteroConfig')
+      zoteroPromptError.value = status.message || t('editor.zoteroConfig')
       return
     }
     const items = await searchZotero(query, 5)

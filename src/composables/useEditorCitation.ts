@@ -15,8 +15,11 @@ export interface CitationExtractResponse {
 
 export interface ZoteroStatusResponse {
   connected?: boolean
+  verified?: boolean
+  mode?: 'cloud' | 'local' | 'unavailable'
   user_id?: string
   style?: string
+  message?: string
   error?: string
 }
 

@@ -154,6 +154,96 @@ class TestZoteroClient:
             client._check_config()
 
 
+class TestZoteroLocalMode:
+    """本地 Zotero 7 API 回退测试"""
+
+    def test_resolve_mode_cloud_when_configured(self):
+        client = ZoteroClient(api_key="key", user_id="123")
+        assert client.resolve_mode() == "cloud"
+
+    def test_resolve_mode_local_when_desktop_running(self, monkeypatch):
+        client = ZoteroClient(api_key="", user_id="")
+        monkeypatch.setattr(ZoteroClient, "local_available", lambda self: True)
+        assert client.resolve_mode() == "local"
+
+    def test_resolve_mode_unavailable_without_anything(self, monkeypatch):
+        client = ZoteroClient(api_key="", user_id="")
+        monkeypatch.setattr(ZoteroClient, "local_available", lambda self: False)
+        assert client.resolve_mode() == "unavailable"
+
+    def test_require_mode_raises_actionable_error(self, monkeypatch):
+        client = ZoteroClient(api_key="", user_id="")
+        monkeypatch.setattr(ZoteroClient, "local_available", lambda self: False)
+        with pytest.raises(ValueError, match="本地 Zotero|Zotero 7"):
+            client._require_mode()
+
+    def test_require_mode_returns_local_without_key(self, monkeypatch):
+        client = ZoteroClient(api_key="", user_id="")
+        monkeypatch.setattr(ZoteroClient, "local_available", lambda self: True)
+        assert client._require_mode() == "local"
+
+    def test_items_base_url_local(self):
+        client = ZoteroClient()
+        assert client._items_base_url("local") == "http://localhost:23119/api/users/0/items"
+
+    def test_items_base_url_cloud(self):
+        client = ZoteroClient(api_key="key", user_id="42")
+        assert client._items_base_url("cloud") == "https://api.zotero.org/users/42/items"
+
+    def test_local_available_false_on_connection_error(self, monkeypatch):
+        import httpx
+
+        def boom(*args, **kwargs):
+            raise httpx.ConnectError("refused")
+
+        monkeypatch.setattr("httpx.Client", lambda *a, **k: _FakeClient(boom))
+        assert not ZoteroClient().local_available()
+
+    def test_local_available_true_on_ok(self, monkeypatch):
+        monkeypatch.setattr(
+            "httpx.Client", lambda *a, **k: _FakeClient(lambda *a, **k: _FakeResp(200))
+        )
+        assert ZoteroClient().local_available()
+
+    def test_export_bibtex_local_generates_client_side(self, monkeypatch):
+        client = ZoteroClient(api_key="", user_id="")
+        monkeypatch.setattr(ZoteroClient, "resolve_mode", lambda self: "local")
+
+        def fake_get_items(keys):
+            return [
+                ZoteroItem(
+                    key="1", item_type="journalArticle", title="T", authors=["A"], year="2020"
+                )
+            ]
+
+        monkeypatch.setattr(client, "get_items_by_keys", fake_get_items)
+        bibtex = client.export_bibtex(["1"])
+        assert "@article{" in bibtex
+
+
+class _FakeResp:
+    def __init__(self, status_code):
+        self.status_code = status_code
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+
+class _FakeClient:
+    def __init__(self, fn):
+        self._fn = fn
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def get(self, *args, **kwargs):
+        return self._fn(*args, **kwargs)
+
+
 class TestZoteroItemTypes:
     """不同文献类型测试"""
 

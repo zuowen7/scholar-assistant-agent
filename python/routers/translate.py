@@ -848,25 +848,48 @@ def register_translate(
                     async def _bg_ingest():
                         async with _RAG_INGEST_SEMAPHORE:
                             try:
-                                _doc_id = f"trans_{_task_id_str}"
-                                _metadata = {
+                                from routers.rag import _chunk_text, build_translation_doc_id
+
+                                # 稳定 doc_id：同一篇文献重复翻译会命中同一 doc_id，
+                                # delete-then-upsert 天然去重，避免向量库出现重复条目
+                                _doc_id = build_translation_doc_id(original_text)
+                                _base_metadata = {
                                     "title": f"[翻译] {_filename}",
                                     "source": "translation",
                                     "source_lang": src_label,
                                 }
-                                if hasattr(rs, "ingest_document"):
+                                if hasattr(rs, "upsert"):
+                                    # 与 /api/rag/ingest 一致：切块 + 稳定 id + 删除旧块
+                                    chunks = _chunk_text(dual_text)
+                                    ids = [f"{_doc_id}::{i}" for i in range(len(chunks))]
+                                    metadatas = [
+                                        {
+                                            **_base_metadata,
+                                            "doc_id": _doc_id,
+                                            "chunk_index": i,
+                                        }
+                                        for i in range(len(chunks))
+                                    ]
+                                    await asyncio.to_thread(rs.delete, where={"doc_id": _doc_id})
                                     await asyncio.to_thread(
-                                        rs.ingest_document, _doc_id, dual_text, _metadata
+                                        rs.upsert,
+                                        ids=ids,
+                                        documents=chunks,
+                                        metadatas=metadatas,
+                                    )
+                                    logger.info(
+                                        "翻译结果已自动入库 RAG: %s (%d chunks)",
+                                        _doc_id,
+                                        len(chunks),
                                     )
                                 elif hasattr(rs, "add"):
                                     await asyncio.to_thread(
                                         rs.add,
                                         ids=[_doc_id],
                                         documents=[dual_text],
-                                        metadatas=[_metadata],
+                                        metadatas=[{**_base_metadata, "doc_id": _doc_id}],
                                     )
                                 task["rag_status"] = "ready"
-                                logger.info("翻译结果已自动入库 RAG: trans_%s", _task_id_str)
                             except Exception as exc:
                                 task["rag_status"] = "failed"
                                 logger.warning("翻译结果入库 RAG 失败: %s", exc)

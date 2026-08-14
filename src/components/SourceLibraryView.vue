@@ -600,8 +600,7 @@ async function openZotero() {
   try {
     const status = await citation.getZoteroStatus()
     if (!status?.connected) {
-      const message = (status as (typeof status & { message?: string }) | null)?.message
-      pushError(message || t('sources.zoteroNotConnected'))
+      pushError(status?.message || t('sources.zoteroNotConnected'))
       emit('open-settings', 'integrations')
       return
     }

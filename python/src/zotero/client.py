@@ -7,9 +7,10 @@
 - 生成引用格式
 
 使用方式：
-1. 在 Zotero 设置中创建 API Key: https://www.zotero.org/settings/keys
-2. 获取 User ID
-3. 配置到 config/default.yaml
+1. 云端：在 Zotero 设置中创建 API Key: https://www.zotero.org/settings/keys，
+   获取 User ID 并配置到 config/default.yaml
+2. 本地：无需配置，启动 Zotero 7 桌面版即可通过本地 API
+   （http://localhost:23119）免 Key 搜索文献库
 
 配置示例：
 zotero:
@@ -28,8 +29,12 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# API 基础 URL
+# 云端 API 基础 URL
 ZOTERO_API_BASE = "https://api.zotero.org"
+# Zotero 7 桌面版本地 API（免 Key，仅本机可用）
+LOCAL_API_BASE = "http://localhost:23119/api"
+# 本地 API 探测超时（秒）
+_LOCAL_PROBE_TIMEOUT = 1.5
 
 
 @dataclass
@@ -166,7 +171,7 @@ class ZoteroClient:
         }
 
     def _check_config(self) -> None:
-        """检查配置是否完整"""
+        """检查配置是否完整（仅云端模式需要）"""
         if not self.api_key:
             raise ValueError(
                 "未配置 Zotero API Key，请在 config/default.yaml 中设置 zotero.api_key"
@@ -175,6 +180,46 @@ class ZoteroClient:
             raise ValueError(
                 "未配置 Zotero User ID，请在 config/default.yaml 中设置 zotero.user_id"
             )
+
+    def _cloud_ready(self) -> bool:
+        """云端模式是否可用"""
+        return bool(self.api_key and self.user_id)
+
+    def local_available(self) -> bool:
+        """Zotero 7 桌面版本地 API 是否可用（免 Key）"""
+        try:
+            with httpx.Client(timeout=_LOCAL_PROBE_TIMEOUT) as client:
+                resp = client.get(
+                    f"{LOCAL_API_BASE}/users/0/items",
+                    params={"limit": 1, "format": "json"},
+                )
+                return resp.status_code < 500
+        except Exception:
+            return False
+
+    def resolve_mode(self) -> str:
+        """返回当前可用模式: 'cloud' | 'local' | 'unavailable'"""
+        if self._cloud_ready():
+            return "cloud"
+        if self.local_available():
+            return "local"
+        return "unavailable"
+
+    def _require_mode(self) -> str:
+        """解析模式；完全不可用时抛出可操作的 ValueError"""
+        mode = self.resolve_mode()
+        if mode == "unavailable":
+            raise ValueError(
+                "未配置 Zotero API Key，且未检测到本地 Zotero；"
+                "请在设置中配置 zotero.api_key / zotero.user_id，或启动 Zotero 7 桌面版"
+            )
+        return mode
+
+    def _items_base_url(self, mode: str) -> str:
+        """按模式返回 items 集合的基础 URL"""
+        if mode == "cloud":
+            return f"{ZOTERO_API_BASE}/users/{self.user_id}/items"
+        return f"{LOCAL_API_BASE}/users/0/items"
 
     def search(
         self,
@@ -192,7 +237,7 @@ class ZoteroClient:
         Returns:
             文献条目列表
         """
-        self._check_config()
+        mode = self._require_mode()
 
         params = {
             "q": query,
@@ -205,8 +250,9 @@ class ZoteroClient:
 
         try:
             with httpx.Client(timeout=self.timeout) as client:
-                url = f"{ZOTERO_API_BASE}/users/{self.user_id}/items"
-                resp = client.get(url, headers=self._get_headers(), params=params)
+                url = self._items_base_url(mode)
+                headers = self._get_headers() if mode == "cloud" else None
+                resp = client.get(url, headers=headers, params=params)
                 resp.raise_for_status()
                 data = resp.json()
 
@@ -239,12 +285,13 @@ class ZoteroClient:
         Returns:
             文献条目或 None
         """
-        self._check_config()
+        mode = self._require_mode()
 
         try:
             with httpx.Client(timeout=self.timeout) as client:
-                url = f"{ZOTERO_API_BASE}/users/{self.user_id}/items/{item_key}"
-                resp = client.get(url, headers=self._get_headers())
+                url = f"{self._items_base_url(mode)}/{item_key}"
+                headers = self._get_headers() if mode == "cloud" else None
+                resp = client.get(url, headers=headers)
                 resp.raise_for_status()
                 data = resp.json()
 
@@ -267,18 +314,19 @@ class ZoteroClient:
         Returns:
             文献条目列表
         """
-        self._check_config()
+        mode = self._require_mode()
 
         if not item_keys:
             return []
 
         try:
             with httpx.Client(timeout=self.timeout) as client:
-                url = f"{ZOTERO_API_BASE}/users/{self.user_id}/items"
+                url = self._items_base_url(mode)
                 keys_param = ",".join(item_keys)
+                headers = self._get_headers() if mode == "cloud" else None
                 resp = client.get(
                     url,
-                    headers=self._get_headers(),
+                    headers=headers,
                     params={"items": keys_param, "format": "json"},
                 )
                 resp.raise_for_status()
@@ -308,11 +356,21 @@ class ZoteroClient:
         Returns:
             BibTeX 格式文本
         """
+        mode = self._require_mode()
+
+        if mode == "local":
+            # 本地 API 对 format=bibtex 支持不完整，用已解析条目在客户端生成
+            if item_keys:
+                items = self.get_items_by_keys(item_keys)
+            else:
+                items = self.search(query="", limit=100)
+            return "\n\n".join(item.to_bibtex() for item in items)
+
         self._check_config()
 
         try:
             with httpx.Client(timeout=self.timeout) as client:
-                url = f"{ZOTERO_API_BASE}/users/{self.user_id}/items"
+                url = self._items_base_url(mode)
 
                 params = {"format": "bibtex"}
                 if item_keys:
