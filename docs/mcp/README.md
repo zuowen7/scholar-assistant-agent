@@ -146,3 +146,5 @@ Windows 用户同样需要设置 `"HTTP_PROXY": ""` 和 `"HTTPS_PROXY": ""`。
 | `get_citation_context` | 获取引用上下文 |
 | `analyze_image_with_vision` | Vision API 分析图片 |
 | `analyze_chart_image` | Vision API 分析图表 |
+
+> **识图工具说明**：`analyze_image_with_vision` / `analyze_chart_image` 需要配置视觉模型（设置 → 集成 → 识图 Vision API，或 `vision` 配置节）。未配置 Key 时这两个工具会返回明确错误；桌面端的图片 OCR 另有本地兜底（Tesseract / PaddleOCR），MCP 工具不包含该兜底。
