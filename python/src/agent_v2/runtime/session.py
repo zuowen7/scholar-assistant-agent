@@ -306,6 +306,19 @@ class Session:
     def messages(self) -> list[Message]:
         return list(self._messages)
 
+    def remove_trailing_messages_since_last_user(self) -> int:
+        """移除最后一条 user 消息之后的所有尾部消息（上一次回答的工具/助手回合）。
+
+        用于重复消息重试（openclaw 式去重）：用户重发同一条消息时，
+        用新回答替换旧回答，避免 [user, assistant, assistant] 的协议污染。
+        返回移除的条数。
+        """
+        removed = 0
+        while self._messages and self._messages[-1].role != MessageRole.USER:
+            self._messages.pop()
+            removed += 1
+        return removed
+
     def append(self, msg: Message) -> None:
         if not msg.turn_id and self._active_turn_id:
             msg.turn_id = self._active_turn_id

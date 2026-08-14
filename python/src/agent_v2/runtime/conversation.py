@@ -201,6 +201,7 @@ class ConversationRuntime:
         self._turn_id = ""
         self._resume_pending_actions = False
         self._pending_created_this_turn = False
+        self._deduped_user_message = False
         # Lifecycle tracking — used by router._cleanup_pool to evict stale
         # sessions safely (never evict a streaming session).
         self.last_active_monotonic: float = time.monotonic()
@@ -239,6 +240,7 @@ class ConversationRuntime:
             marker in lowered_message for marker in _PENDING_RESUME_MARKERS
         )
         self._pending_created_this_turn = False
+        self._deduped_user_message = False
         self.session.start_turn(self._turn_id)
         self.session.set_outcome(
             "RUNNING",
@@ -251,16 +253,36 @@ class ConversationRuntime:
         try:
             yield AgentEvent.session_started(self.session.session_id)
             if not resume:
-                self.session.append(
-                    Message(
-                        role=MessageRole.USER,
-                        blocks=[TextBlock(text=user_message)],
-                        persisted_text=persisted_user_message,
-                        context_externalized=persisted_user_message is not None
-                        and persisted_user_message != user_message,
-                    )
+                # openclaw 式消息去重：用户重复发送同一条消息（双击/重试）时，
+                # 不重复追加到上下文；并移除上一次针对该消息的回答，
+                # 让本轮新回答替换旧回答，避免 [user, assistant, assistant] 协议污染。
+                last_user = next(
+                    (m for m in reversed(self.session.messages) if m.role == MessageRole.USER),
+                    None,
                 )
-                self._auto_save()
+                if (
+                    last_user is not None
+                    and last_user.text_content().strip() == user_message.strip()
+                ):
+                    self._deduped_user_message = True
+                    removed = self.session.remove_trailing_messages_since_last_user()
+                    logger.debug(
+                        "duplicate user message deduped (%d trailing messages replaced): %r",
+                        removed,
+                        user_message[:80],
+                    )
+                else:
+                    self._deduped_user_message = False
+                    self.session.append(
+                        Message(
+                            role=MessageRole.USER,
+                            blocks=[TextBlock(text=user_message)],
+                            persisted_text=persisted_user_message,
+                            context_externalized=persisted_user_message is not None
+                            and persisted_user_message != user_message,
+                        )
+                    )
+                    self._auto_save()
 
             while True:
                 if self._aborted:
