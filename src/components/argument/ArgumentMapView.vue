@@ -309,7 +309,8 @@ async function runAutoLayout() {
 
 .arg-view-split {
   display: grid;
-  grid-template-columns: 220px minmax(360px, 1fr) 260px;
+  /* 弹性列宽：右侧 Agent 面板打开时容器只有 ~796px，固定 220/360/260 会溢出 44px */
+  grid-template-columns: minmax(150px, 0.9fr) minmax(300px, 1.6fr) minmax(200px, 1fr);
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -325,6 +326,8 @@ async function runAutoLayout() {
   flex: 1;
   min-width: 0;
   height: 100%;
+  /* 节点超出画布边界时裁剪，避免压到右侧属性面板 */
+  overflow: hidden;
 }
 
 .arg-inspector-area {
