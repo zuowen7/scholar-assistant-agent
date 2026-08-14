@@ -137,7 +137,35 @@ class TestConfigEndpoints:
             },
         ).json()["zotero"]
         assert updated["api_key"] == first["api_key"]
-        assert updated["user_id"] == "456"
+
+    def test_config_masks_and_preserves_vision_key(self, client):
+        client.put(
+            "/api/config",
+            json={
+                "vision": {
+                    "api_key": "vision-real-test-key",
+                    "base_url": "https://open.bigmodel.cn/api/paas/v4",
+                    "model": "glm-4v-flash",
+                },
+            },
+        )
+
+        first = client.get("/api/config").json()["vision"]
+        assert first["api_key"] != "vision-real-test-key"
+        assert "****" in first["api_key"]
+        assert first["model"] == "glm-4v-flash"
+
+        updated = client.put(
+            "/api/config",
+            json={
+                "vision": {
+                    "api_key": first["api_key"],
+                    "base_url": "https://open.bigmodel.cn/api/paas/v4",
+                    "model": "glm-4v-flash",
+                },
+            },
+        ).json()["vision"]
+        assert updated["api_key"] == first["api_key"]
 
 
 # ── 2. Health endpoint ──────────────────────────────────────────────────

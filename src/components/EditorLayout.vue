@@ -755,6 +755,13 @@ async function handleVisionSelected(file: File, mode: VisionAnalysisType = 'gene
       showExportToast(t('editor.visionFailed'))
       return
     }
+    // 本地 OCR 都不可用时，不把错误提示写进文档，只提示用户
+    if (data.engine === 'none') {
+      showExportToast(t('editor.visionLocalUnavailable'))
+      return
+    }
+    const localOcrEngine =
+      data.engine === 'tesseract' || data.engine === 'paddleocr' ? data.engine : null
     if (mode === 'ocr' || mode === 'formula') {
       // OCR 转写 / 公式识别结果按原文直接插入
       insertTextAtCursor(`\n\n${data.text || data.raw_description || t('editor.visionNoText')}\n`)
@@ -772,7 +779,11 @@ async function handleVisionSelected(file: File, mode: VisionAnalysisType = 'gene
         `\n\n> Vision：${data.text || data.raw_description || t('editor.visionNoText')}${chart}${findings}${table}\n`,
       )
     }
-    showExportToast(t('editor.visionInserted'))
+    showExportToast(
+      localOcrEngine
+        ? t('editor.visionInsertedLocal', { engine: localOcrEngine })
+        : t('editor.visionInserted'),
+    )
   } catch (e) {
     showExportToast(t('editor.visionFailedMsg', { msg: String(e) }))
   }
