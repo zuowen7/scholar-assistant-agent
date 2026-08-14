@@ -44,6 +44,7 @@ _SESSION_VERSION = 4
 _ROTATE_AFTER_BYTES = 256 * 1024
 _MAX_ROTATED_FILES = 3
 _MAX_FIELD_CHARS = 16 * 1024
+_MAX_RAW_TEXT_CHARS = 20 * 1024
 _TRUNCATION_MARKER = "… [truncated]"
 _SESSION_IO_LOCKS = tuple(threading.RLock() for _ in range(64))
 _TRANSIENT_REPLACE_ERRNOS = frozenset({13, 16})
@@ -202,6 +203,9 @@ def _message_to_dict(msg: Message) -> dict[str, Any]:
         "truncated": msg.truncated,
         "context_externalized": msg.context_externalized,
     }
+    if msg.raw_text:
+        # 原始用户文本仅用于去重比对，截断存储即可
+        d["raw_text"] = msg.raw_text[:_MAX_RAW_TEXT_CHARS]
     if msg.usage:
         d["usage"] = {
             "input_tokens": msg.usage.input_tokens,
@@ -228,6 +232,7 @@ def _dict_to_message(d: dict[str, Any]) -> Message:
         original_chars=int(d.get("original_chars", 0) or 0),
         truncated=bool(d.get("truncated", False)),
         context_externalized=bool(d.get("context_externalized", False)),
+        raw_text=str(d.get("raw_text", "") or ""),
     )
 
 

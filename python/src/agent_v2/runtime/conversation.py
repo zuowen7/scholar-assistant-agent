@@ -216,6 +216,8 @@ class ConversationRuntime:
         *,
         resume: bool = False,
         persisted_user_message: str | None = None,
+        raw_user_message: str | None = None,
+        dedup_user_message: bool = False,
     ) -> AsyncGenerator[AgentEvent, None]:
         if not resume and not user_message.strip():
             yield AgentEvent.error("empty message")
@@ -256,13 +258,19 @@ class ConversationRuntime:
                 # openclaw 式消息去重：用户重复发送同一条消息（双击/重试）时，
                 # 不重复追加到上下文；并移除上一次针对该消息的回答，
                 # 让本轮新回答替换旧回答，避免 [user, assistant, assistant] 协议污染。
+                # 比对用原始文本（raw_user_message），因为持久化的 user 消息带
+                # Current date/选区等组合后缀，直接比内容会误判。
+                raw_key = (raw_user_message or user_message).strip()
                 last_user = next(
                     (m for m in reversed(self.session.messages) if m.role == MessageRole.USER),
                     None,
                 )
                 if (
-                    last_user is not None
-                    and last_user.text_content().strip() == user_message.strip()
+                    dedup_user_message
+                    or (
+                        last_user is not None
+                        and (last_user.raw_text or last_user.text_content()).strip() == raw_key
+                    )
                 ):
                     self._deduped_user_message = True
                     removed = self.session.remove_trailing_messages_since_last_user()
@@ -280,6 +288,7 @@ class ConversationRuntime:
                             persisted_text=persisted_user_message,
                             context_externalized=persisted_user_message is not None
                             and persisted_user_message != user_message,
+                            raw_text=raw_key,
                         )
                     )
                     self._auto_save()

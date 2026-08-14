@@ -114,3 +114,70 @@ def test_remove_trailing_messages_empty_and_user_only_sessions():
     user_only = Session(workspace="C:/papers")
     user_only.append(Message(role=MessageRole.USER, blocks=[TextBlock(text="hi")]))
     assert user_only.remove_trailing_messages_since_last_user() == 0
+
+
+def test_router_dedups_duplicate_message_across_requests(tmp_path, monkeypatch):
+    """跨请求去重：组合消息带日期后缀，凭 raw_text 判定重复并替换旧回答。"""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import src.agent_v2.router as router
+    from src.agent_v2.providers.mock_provider import MockProvider
+    from src.agent_v2.router import register_agent_v2_routes
+    from src.agent_v2.runtime.workspace_grants import install_workspace_grants
+
+    sessions_dir = tmp_path / "sessions"
+    sessions_dir.mkdir()
+    monkeypatch.setattr(router, "_SESSION_DIR", sessions_dir)
+    router._SESSION_POOL.clear()
+    monkeypatch.setattr(
+        router,
+        "_load_agent_config",
+        lambda: {"max_stalled_tool_calls": 12, "enable_run_command": False},
+    )
+
+    def provider():
+        value = MockProvider()
+        value.model = "test-model"
+        return value
+
+    monkeypatch.setattr(router, "_create_provider", provider)
+
+    app = FastAPI()
+    token = install_workspace_grants(app).issue(tmp_path)
+    register_agent_v2_routes(app)
+    client = TestClient(app)
+
+    msg = "帮我总结一下这份文稿"
+    workflow = "wf-dedup"
+    payload = {
+        "message": msg,
+        "workspace_root": str(tmp_path),
+        "workspace_grant": token,
+        "workflow_id": workflow,
+    }
+
+    with client.stream("POST", "/api/agent/v2/chat", json=payload) as resp:
+        assert resp.status_code == 200
+        list(resp.iter_lines())
+
+    payload2 = {
+        **payload,
+        "history": [
+            {"role": "user", "content": msg},
+            {"role": "assistant", "content": "这是上一次的总结"},
+        ],
+    }
+    with client.stream("POST", "/api/agent/v2/chat", json=payload2) as resp:
+        assert resp.status_code == 200
+        list(resp.iter_lines())
+
+    session_file = sessions_dir / f"{workflow}.jsonl"
+    assert session_file.is_file()
+    from src.agent_v2.runtime.session import Session as _Session
+
+    loaded = _Session.load(session_file)
+    user_messages = [m for m in loaded.messages if m.role == MessageRole.USER]
+    assert len(user_messages) == 1
+    assert user_messages[0].text_content().strip() == msg
+    assert user_messages[0].raw_text == msg
