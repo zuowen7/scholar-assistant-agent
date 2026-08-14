@@ -76,6 +76,7 @@ async def _call_perspective_prompt(
         ollama_client,
         max_tokens=4096,
         temperature=temperature,
+        json_mode=True,
     )
     points = _parse_llm_points(raw, source="llm")
     if extract_json_array(raw) is not None:
@@ -93,6 +94,7 @@ async def _call_perspective_prompt(
         ollama_client,
         max_tokens=4096,
         temperature=0.1,
+        json_mode=True,
     )
     return _parse_llm_points(repaired, source="llm")
 
