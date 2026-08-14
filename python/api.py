@@ -79,8 +79,35 @@ def _self_test(base_url: str) -> int:
     return 1
 
 
+def _maybe_run_python_subcommand() -> bool:
+    """打包后 sys.executable 是 api.exe：Agent 的 run_command 工具执行
+    ``python script.py`` / ``python -m mod`` 时会以 api.exe 子命令形式被调用。
+    在此透明转发（runpy），保证安装版与开发版（真实 python 解释器）行为一致。
+    返回 True 表示已作为子命令执行、不应再启动服务器。
+    """
+    import runpy
+    import sys as _sys
+
+    argv = _sys.argv[1:]
+    if not argv:
+        return False
+    if argv[0] == "-m" and len(argv) > 1:
+        _sys.argv = [argv[1], *argv[2:]]
+        runpy.run_module(argv[1], run_name="__main__", alter_sys=True)
+        return True
+    if argv[0].endswith(".py") and Path(argv[0]).is_file():
+        _sys.argv = [argv[0], *argv[1:]]
+        runpy.run_path(argv[0], run_name="__main__")
+        return True
+    return False
+
+
 def main() -> None:
     global app
+
+    # 打包版 Python 子命令转发（python script.py / python -m）
+    if _maybe_run_python_subcommand():
+        return
 
     parser = argparse.ArgumentParser(description="研墨 API Server")
     parser.add_argument("--cloud-only", action="store_true", help="Cloud-only mode (no Ollama)")
