@@ -44,6 +44,18 @@ class QueryRequest(BaseModel):
     source_ids: list[str] | None = Field(default=None, max_length=100)
 
 
+def build_translation_doc_id(source_text: str) -> str:
+    """翻译自动入库的稳定 doc_id。
+
+    基于源文本内容哈希生成：同一篇文献重复翻译会命中同一 doc_id，
+    配合 delete-then-upsert 实现去重，避免向量库出现重复条目。
+    """
+    import hashlib
+
+    digest = hashlib.sha256(source_text.encode("utf-8")).hexdigest()[:16]
+    return f"trans_{digest}"
+
+
 def _chunk_text(
     text: str,
     *,
@@ -302,7 +314,8 @@ def register_rag_routes(
                 where = {"$and": filters}
             query_kwargs: dict[str, Any] = {
                 "query_texts": [req.query],
-                "n_results": req.top_k,
+                # 多取候选，便于按文档去重后仍能凑满 top_k
+                "n_results": min(max(req.top_k * 3, 10), 50),
             }
             if where is not None:
                 query_kwargs["where"] = where
@@ -315,11 +328,17 @@ def register_rag_routes(
             metadatas = (results.get("metadatas") or [[]])[0]
             distances = (results.get("distances") or [[]])[0]
             hits = []
+            per_doc_count: dict[str, int] = {}
             for index, chunk_id in enumerate(ids):
                 metadata = metadatas[index] if index < len(metadatas) and metadatas[index] else {}
+                doc_id = metadata.get("doc_id", chunk_id)
+                # 每篇文档最多贡献 2 个 chunk，避免单篇文献霸占全部结果
+                if per_doc_count.get(doc_id, 0) >= 2:
+                    continue
+                per_doc_count[doc_id] = per_doc_count.get(doc_id, 0) + 1
                 hits.append(
                     {
-                        "doc_id": metadata.get("doc_id", chunk_id),
+                        "doc_id": doc_id,
                         "chunk_id": chunk_id,
                         "source": metadata.get("title", chunk_id),
                         "text": documents[index] if index < len(documents) else "",
@@ -327,6 +346,8 @@ def register_rag_routes(
                         "metadata": metadata,
                     }
                 )
+                if len(hits) >= req.top_k:
+                    break
             return {"hits": hits}
         except Exception as exc:
             logger.warning("RAG query failed: %s", exc)
