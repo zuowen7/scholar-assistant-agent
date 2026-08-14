@@ -156,7 +156,7 @@ async def llm_critique(
 
     try:
         raw = await call_llm_chat(
-            prompt, cloud_client, ollama_client, max_tokens=1024, temperature=0.3
+            prompt, cloud_client, ollama_client, max_tokens=1024, temperature=0.3, json_mode=True
         )
         if not raw.strip():
             return []

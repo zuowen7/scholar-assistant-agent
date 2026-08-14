@@ -77,9 +77,16 @@ async def _call_with_retry(
     ollama_client: Any,
     max_tokens: int,
     temperature: float,
+    *,
+    json_mode: bool = False,
 ) -> str:
     raw = await call_llm_chat(
-        prompt, cloud_client, ollama_client, max_tokens=max_tokens, temperature=temperature
+        prompt,
+        cloud_client,
+        ollama_client,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        json_mode=json_mode,
     )
     return raw
 
@@ -145,6 +152,7 @@ async def build_ledger(
                 ollama_client,
                 max_tokens=4096,
                 temperature=0.3,
+                json_mode=True,
             )
             if raw1.strip() and _has_valid_promise_payload(raw1):
                 break
@@ -229,6 +237,7 @@ async def build_ledger(
                 ollama_client,
                 max_tokens=4096,
                 temperature=0.3,
+                json_mode=True,
             )
             if raw2.strip():
                 arr = extract_json_array(raw2)

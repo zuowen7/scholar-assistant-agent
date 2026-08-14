@@ -164,6 +164,36 @@ async def test_reasoning_retry_reuses_one_http_client():
 
 
 @pytest.mark.asyncio
+async def test_json_mode_sends_response_format():
+    _FakeAsyncClient.responses = [_openai_response('[{"ok": true}]')]
+
+    result = await _direct_cloud_chat(
+        "输出 JSON 格式的分析结果",
+        _client("deepseek-v4-flash", base_url="https://api.deepseek.com/v1"),
+        max_tokens=1024,
+        temperature=0.3,
+        json_mode=True,
+    )
+
+    assert result == '[{"ok": true}]'
+    assert _FakeAsyncClient.requests[0]["json"]["response_format"] == {"type": "json_object"}
+
+
+@pytest.mark.asyncio
+async def test_json_mode_off_by_default():
+    _FakeAsyncClient.responses = [_openai_response("plain")]
+
+    await _direct_cloud_chat(
+        "normal chat",
+        _client("deepseek-v4-flash", base_url="https://api.deepseek.com/v1"),
+        max_tokens=1024,
+        temperature=0.3,
+    )
+
+    assert "response_format" not in _FakeAsyncClient.requests[0]["json"]
+
+
+@pytest.mark.asyncio
 async def test_cloud_failure_without_fallback_is_propagated(monkeypatch):
     failure = RuntimeError("provider timeout")
     monkeypatch.setattr(

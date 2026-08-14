@@ -228,7 +228,7 @@ async def related_work_check(
     )
     try:
         raw = await call_llm_chat(
-            prompt, cloud_client, ollama_client, max_tokens=1024, temperature=0.3
+            prompt, cloud_client, ollama_client, max_tokens=1024, temperature=0.3, json_mode=True
         )
     except Exception as exc:
         logger.warning("related_work_check LLM call failed: %s", exc)
@@ -368,7 +368,12 @@ async def run_review(
         )
         try:
             raw = await call_llm_chat(
-                focus_prompt, cloud_client, ollama_client, max_tokens=512, temperature=0.4
+                focus_prompt,
+                cloud_client,
+                ollama_client,
+                max_tokens=512,
+                temperature=0.4,
+                json_mode=True,
             )
         except Exception as exc:
             logger.warning("scoped review LLM failed: %s", exc)
@@ -446,7 +451,12 @@ async def run_review(
         )
         try:
             raw = await call_llm_chat(
-                prompt, cloud_client, ollama_client, max_tokens=2048, temperature=0.5
+                prompt,
+                cloud_client,
+                ollama_client,
+                max_tokens=2048,
+                temperature=0.5,
+                json_mode=True,
             )
         except Exception as exc:
             logger.warning("run_review LLM call failed: %s", exc)
@@ -656,7 +666,7 @@ async def import_real_reviews(
 
     try:
         raw = await call_llm_chat(
-            prompt, cloud_client, ollama_client, max_tokens=2048, temperature=0.2
+            prompt, cloud_client, ollama_client, max_tokens=2048, temperature=0.2, json_mode=True
         )
     except Exception as exc:
         yield {"event": "error", "data": json.dumps({"message": f"LLM unavailable: {exc}"})}

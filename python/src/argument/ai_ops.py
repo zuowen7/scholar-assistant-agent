@@ -95,7 +95,7 @@ async def extract_argument(
     raw = ""
     try:
         raw = await call_llm_chat(
-            prompt, cloud_client, ollama_client, max_tokens=16384, temperature=0.3
+            prompt, cloud_client, ollama_client, max_tokens=16384, temperature=0.3, json_mode=True
         )
     except Exception as exc:
         yield {"event": "error", "data": json.dumps({"message": f"LLM 调用失败: {exc}"})}
@@ -119,6 +119,7 @@ async def extract_argument(
                     ollama_client,
                     max_tokens=16384,
                     temperature=0.1,
+                    json_mode=True,
                 )
             except Exception as e:
                 logger.warning("LLM retry for Toulmin extraction failed: %s", e)
@@ -262,7 +263,7 @@ async def suggest_element(
 
     try:
         raw = await call_llm_chat(
-            prompt, cloud_client, ollama_client, max_tokens=512, temperature=0.7
+            prompt, cloud_client, ollama_client, max_tokens=512, temperature=0.7, json_mode=True
         )
         data = extract_json_object(raw)
         if not data:

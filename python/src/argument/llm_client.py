@@ -51,6 +51,7 @@ async def call_llm_chat(
     *,
     max_tokens: int = 2048,
     temperature: float = 0.7,
+    json_mode: bool = False,
 ) -> str:
     """调用 LLM，三层降级：Cloud HTTP → Ollama → 空字符串。
 
@@ -60,11 +61,14 @@ async def call_llm_chat(
         ollama_client: OllamaClient 实例。
         max_tokens: 最大生成 token 数。
         temperature: 采样温度。
+        json_mode: 要求云端按 JSON 输出（response_format=json_object，提示词须含 "json"）。
     """
     cloud_error: Exception | None = None
     if cloud_client is not None:
         try:
-            return await _direct_cloud_chat(prompt, cloud_client, max_tokens, temperature)
+            return await _direct_cloud_chat(
+                prompt, cloud_client, max_tokens, temperature, json_mode=json_mode
+            )
         except Exception as e:
             logger.warning("Cloud chat failed: %s", e)
             cloud_error = e
@@ -90,6 +94,8 @@ async def _direct_cloud_chat(
     client: Any,
     max_tokens: int,
     temperature: float,
+    *,
+    json_mode: bool = False,
 ) -> str:
     import httpx
 
@@ -129,6 +135,9 @@ async def _direct_cloud_chat(
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        if json_mode:
+            # DeepSeek/OpenAI JSON Output：保证返回合法 JSON（提示词须含 "json" 字样）
+            payload["response_format"] = {"type": "json_object"}
         apply_thinking_policy(
             payload,
             base_url=base_url,
