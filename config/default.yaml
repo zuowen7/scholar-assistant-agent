@@ -105,11 +105,13 @@ zotero:
   style: "ieee"
 
 # Vision 图像分析 (可选)
-# 需要支持 vision 的模型，如 GPT-4o、Qwen-VL 等
+# 需要支持 vision 的模型，如 GPT-4o、Qwen-VL、GLM-4V-Flash 等
 vision:
   base_url: "https://api.openai.com/v1"
   api_key: ""
   model: "gpt-4o"
+  # 视觉模型输出上限；GLM-4V-Flash 等国产模型限制在 [1,1024]
+  max_tokens: 1024
 
 # Translate pipeline limits
 translate:

@@ -109,8 +109,16 @@ const presentation = computed(() => props.presentation || 'code')
 const editorWrapper = ref<HTMLElement>()
 const editorContainer = ref<HTMLElement>()
 const selectionToolbar = ref<HTMLElement>()
-const { setEditorInstance, setContent, content, updateSelection, activeTabId, markDirty, aiEdit } =
-  useEditor()
+const {
+  setEditorInstance,
+  setContent,
+  content,
+  updateSelection,
+  activeTabId,
+  markDirty,
+  scheduleAutoSave,
+  aiEdit,
+} = useEditor()
 const { activeEdit, clearActiveEdit, setInlineDiffVisible, activeTab } = useEditorState()
 const { sendApproval } = useAgentChat()
 
@@ -388,6 +396,7 @@ onMounted(() => {
     _monacoUpdating = true
     setContent(nextValue)
     markDirty()
+    scheduleAutoSave()
     // Clear stale cache and schedule new completion
     cachedCompletion = ''
     cachedPosition = null
