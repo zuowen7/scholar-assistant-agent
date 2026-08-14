@@ -75,6 +75,7 @@
     "localUser": "研墨用户",
     "localWorkspace": "本地工作区",
     "windowControls": "窗口控制",
+    "windowDragRegion": "拖动窗口",
     "recentFiles": "最近文件",
     "recentEmpty": "打开项目后会显示在这里"
   },

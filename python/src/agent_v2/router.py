@@ -1238,6 +1238,13 @@ def register_agent_v2_routes(
     @app.get(f"{prefix}/sessions")
     async def v2_list_sessions(request: Request):
         """List active and persisted sessions with real display metadata."""
+        grant_store = get_workspace_grants(request.app)
+        token = request.headers.get("X-Workspace-Grant", "")
+        if grant_store is not None and not token:
+            # 未打开项目：没有授权令牌 → 返回空列表，而不是 403。
+            # 前端首页/Agent 面板在无项目时会请求会话列表，403 会造成报错噪音。
+            # 返回空列表不泄露任何会话数据（保持 fail-closed）。
+            return []
         authorized_workspace = _authorized_workspace_from_header(request)
         async with _SESSION_LOCK:
             result = [
