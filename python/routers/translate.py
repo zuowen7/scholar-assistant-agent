@@ -41,6 +41,83 @@ from src.translator.post_qa import (
 
 logger = logging.getLogger(__name__)
 
+# ── GitHub 更新检查（后端代理：规避前端 CSP 限制与 api.github.com 匿名限流）──
+_GITHUB_REPO = "zuowen7/scholar-assistant-agent"
+_GITHUB_UA = "scholar-assistant"
+_UPDATE_CACHE_TTL_S = 300.0
+_update_cache: dict[str, dict] = {}
+
+
+def _extract_release_tag_from_url(url: str) -> str:
+    """从 github.com/<repo>/releases/tag/<tag> 类 URL 中提取 tag。"""
+    import re
+    from urllib.parse import unquote
+
+    match = re.search(r"/releases/tag/([^/?#]+)", url)
+    return unquote(match.group(1)) if match else ""
+
+
+async def _fetch_latest_release() -> dict:
+    """获取 GitHub 最新正式版本。
+
+    优先走网页端 /releases/latest 的 302 重定向（不占 api.github.com 限流额度，
+    国内网络更稳），失败再回退 REST API。仅成功结果缓存 5 分钟。
+    """
+    cached = _update_cache.get("latest")
+    if cached and time.monotonic() - cached["ts"] < _UPDATE_CACHE_TTL_S:
+        return cached["data"]
+
+    data: dict = {"ok": False, "latest_version": "", "release_url": ""}
+    try:
+        import httpx
+    except ImportError:  # pragma: no cover - httpx 是硬依赖
+        return data
+
+    # 1) 网页端重定向（无 API 速率限制）
+    try:
+        async with httpx.AsyncClient(
+            timeout=10.0, follow_redirects=True, headers={"User-Agent": _GITHUB_UA}
+        ) as client:
+            resp = await client.get(f"https://github.com/{_GITHUB_REPO}/releases/latest")
+            if resp.status_code == 200:
+                tag = _extract_release_tag_from_url(str(resp.url))
+                if tag:
+                    data = {
+                        "ok": True,
+                        "latest_version": tag.lstrip("v"),
+                        "release_url": f"https://github.com/{_GITHUB_REPO}/releases/tag/{tag}",
+                    }
+    except Exception as exc:
+        logger.info("GitHub 网页端点查询失败: %s", exc)
+
+    # 2) REST API 兜底（未限流时）
+    if not data["ok"]:
+        try:
+            async with httpx.AsyncClient(
+                timeout=10.0,
+                headers={"User-Agent": _GITHUB_UA, "Accept": "application/vnd.github+json"},
+            ) as client:
+                resp = await client.get(
+                    f"https://api.github.com/repos/{_GITHUB_REPO}/releases/latest"
+                )
+                if resp.status_code == 200:
+                    payload = resp.json()
+                    tag = str(payload.get("tag_name") or "").lstrip("v")
+                    if tag:
+                        data = {
+                            "ok": True,
+                            "latest_version": tag,
+                            "release_url": payload.get("html_url")
+                            or f"https://github.com/{_GITHUB_REPO}/releases/latest",
+                        }
+        except Exception as exc:
+            logger.info("GitHub API 端点查询失败: %s", exc)
+
+    if data["ok"]:
+        _update_cache["latest"] = {"ts": time.monotonic(), "data": data}
+    return data
+
+
 # Fallback constants; overridden at runtime by config values (translate.max_tasks etc.)
 _DEFAULT_MAX_TASKS = 10
 _DEFAULT_MAX_UPLOAD_MB = 200
@@ -176,6 +253,11 @@ def register_translate(
         if cloud_only:
             payload["mode"] = "cloud_only"
         return payload
+
+    @app.get("/api/version/latest")
+    async def latest_version():
+        """最新正式版本（GitHub Releases 代理查询，供前端"应用更新"使用）。"""
+        return await _fetch_latest_release()
 
     @app.get("/api/ollama/status")
     def ollama_status():

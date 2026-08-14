@@ -190,6 +190,35 @@ class TestHealthEndpoint:
         assert len(data["version"]) > 0
 
 
+class TestVersionLatestEndpoint:
+    """GET /api/version/latest — GitHub Releases 代理查询（前端"应用更新"）。"""
+
+    def test_version_latest_passthrough(self, client, monkeypatch):
+        async def fake_fetch():
+            return {
+                "ok": True,
+                "latest_version": "0.9.9",
+                "release_url": "https://github.com/zuowen7/scholar-assistant-agent/releases/tag/v0.9.9",
+            }
+
+        monkeypatch.setattr("routers.translate._fetch_latest_release", fake_fetch)
+        resp = client.get("/api/version/latest")
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["ok"] is True
+        assert payload["latest_version"] == "0.9.9"
+        assert "releases/tag/v0.9.9" in payload["release_url"]
+
+    def test_version_latest_unavailable(self, client, monkeypatch):
+        async def fake_fetch():
+            return {"ok": False, "latest_version": "", "release_url": ""}
+
+        monkeypatch.setattr("routers.translate._fetch_latest_release", fake_fetch)
+        resp = client.get("/api/version/latest")
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is False
+
+
 # ── 3. Tectonic status ──────────────────────────────────────────────────
 
 
