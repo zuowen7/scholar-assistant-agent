@@ -67,6 +67,7 @@
     "sources": "文献",
     "export": "导出",
     "noProject": "尚未打开项目",
+    "openProjectFirst": "请先打开一个项目",
     "projectWorkspace": "项目工作区",
     "translate": "翻译",
     "write": "写作",

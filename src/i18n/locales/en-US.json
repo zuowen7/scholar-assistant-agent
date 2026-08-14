@@ -67,6 +67,7 @@
     "sources": "Sources",
     "export": "Export",
     "noProject": "No project open",
+    "openProjectFirst": "Open a project first",
     "projectWorkspace": "Project workspace",
     "translate": "Translate",
     "write": "Write",
