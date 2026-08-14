@@ -38,6 +38,8 @@ import {
   setActiveTab,
   renameTabPath,
   saveFile,
+  scheduleAutoSave,
+  cancelAutoSave,
   reloadOpenTabs,
   applyExternalFileUpdate,
 } from './useEditorTabs'
@@ -281,6 +283,8 @@ export function useEditor() {
     setActiveTab,
     renameTabPath,
     saveFile,
+    scheduleAutoSave,
+    cancelAutoSave,
     aiEdit,
     inlineEdit,
     cancelAiEdit,

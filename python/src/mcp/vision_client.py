@@ -20,6 +20,16 @@ from src.constants import ANTHROPIC_API_VERSION
 
 logger = logging.getLogger(__name__)
 
+
+def _deep_merge(base: dict, override: dict) -> None:
+    """In-place deep merge of override into base."""
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
+
+
 # 支持的图片格式
 SUPPORTED_IMAGE_FORMATS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 
@@ -112,17 +122,26 @@ class VisionClient:
         self.timeout = timeout
 
     def _load_config(self) -> dict:
-        """从配置文件加载云端设置"""
-        try:
-            import yaml
+        """从配置文件加载云端设置。
 
-            config_path = Path(__file__).parent.parent.parent / "config" / "default.yaml"
-            if config_path.exists():
-                with open(config_path, encoding="utf-8") as f:
-                    return yaml.safe_load(f) or {}
-        except Exception as e:
-            logger.debug("Failed to load config file: %s", e)
-        return {}
+        与 agent_v2 一致：default.yaml 与 default.local.yaml 深合并，
+        确保用户在设置面板保存的 vision 覆盖（local.yaml）真正生效。
+        """
+        config_dir = Path(__file__).parent.parent.parent / "config"
+        merged: dict = {}
+        for name in ("default.yaml", "default.local.yaml"):
+            path = config_dir / name
+            if not path.is_file():
+                continue
+            try:
+                import yaml
+
+                with open(path, encoding="utf-8") as f:
+                    data = yaml.safe_load(f) or {}
+                _deep_merge(merged, data)
+            except Exception as e:
+                logger.debug("Failed to load %s: %s", name, e)
+        return merged
 
     def _get_credentials(self) -> tuple[str, str, str]:
         """获取认证信息。优先读取 vision 专属配置，其次回退到 translator.cloud。"""
@@ -227,6 +246,10 @@ class VisionClient:
 
         prompt = OPENAI_PROMPTS.get(analysis_type, OPENAI_PROMPTS["general"])
 
+        # GLM-4V-Flash 等国产视觉模型限制 max_tokens ∈ [1,1024]，默认取 1024 保证兼容
+        vision_cfg = self._load_config().get("vision", {})
+        max_tokens = vision_cfg.get("max_tokens", 1024)
+
         messages = [
             {
                 "role": "user",
@@ -239,7 +262,6 @@ class VisionClient:
                         "type": "image_url",
                         "image_url": {
                             "url": f"data:image/{Path(image_path).suffix[1:]};base64,{image_b64}",
-                            "detail": "high",
                         },
                     },
                 ],
@@ -258,7 +280,7 @@ class VisionClient:
                         json={
                             "model": model,
                             "messages": messages,
-                            "max_tokens": 2048,
+                            "max_tokens": max_tokens,
                         },
                     )
                     resp.raise_for_status()
@@ -274,7 +296,7 @@ class VisionClient:
                         json={
                             "model": model,
                             "messages": messages,
-                            "max_tokens": 2048,
+                            "max_tokens": max_tokens,
                         },
                     ) as resp:
                         resp.raise_for_status()
@@ -284,8 +306,14 @@ class VisionClient:
             return self._parse_vision_response(content, analysis_type)
 
         except Exception as e:
-            logger.error("Vision API 调用失败: %s", e)
-            raise
+            detail = ""
+            try:
+                if hasattr(e, "response") and e.response is not None:
+                    detail = f" body={e.response.text[:300]}"
+            except Exception:
+                pass
+            logger.error("Vision API 调用失败: %s%s", e, detail)
+            raise RuntimeError(f"Vision API 调用失败: {e}{detail}") from e
 
     async def _analyze_claude(
         self,

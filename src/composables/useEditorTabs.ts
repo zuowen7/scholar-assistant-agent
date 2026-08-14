@@ -4,7 +4,7 @@
  * 状态来源：useEditorState（单一真实源）
  * 导出的函数构成 EditorLayout / MonacoEditor 等组件的 API。
  */
-import type { EditorSelection } from '../types'
+import type { EditorSelection, EditorTab } from '../types'
 import {
   tabs,
   activeTabId,
@@ -19,6 +19,7 @@ import {
 import { i18n } from '../i18n'
 import { save } from '@tauri-apps/plugin-dialog'
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
+import { useToast } from './useToast'
 
 function setContent(text: string) {
   const tab = activeTab.value
@@ -185,12 +186,58 @@ async function saveFile(): Promise<string | null> {
   }
 
   // Named tab — save in place
+  return saveTabToDisk(tab)
+}
+
+// ── 自动保存 ──────────────────────────────────────────────────────────────────
+
+const AUTO_SAVE_DEBOUNCE_MS = 1500
+let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+function isTauriRuntime(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+}
+
+async function saveTabToDisk(tab: EditorTab): Promise<string | null> {
+  if (!tab.path) return null
   try {
     await writeTextFile(tab.path, tab.content)
     tab.isModified = false
     return null
   } catch {
     return i18n.global.t('editor.saveFailed')
+  }
+}
+
+/** 输入停顿 1.5s 后自动保存命名文件（未命名标签页需要先手动 Save As）。 */
+function scheduleAutoSave() {
+  if (!isTauriRuntime()) return
+  const tab = activeTab.value
+  if (!tab?.path) return
+  if (autoSaveTimer) clearTimeout(autoSaveTimer)
+  autoSaveTimer = setTimeout(() => {
+    autoSaveTimer = null
+    // 捕获编辑发生时的 tab，避免用户切换标签页后保存到错误的文件
+    void autoSaveNow(tab)
+  }, AUTO_SAVE_DEBOUNCE_MS)
+}
+
+async function autoSaveNow(tab: EditorTab | null) {
+  if (!tab?.path || !tab.isModified) return
+  const err = await saveTabToDisk(tab)
+  const { success, warn } = useToast()
+  if (err) {
+    warn(err)
+    return
+  }
+  success(i18n.global.t('editor.autoSaved'))
+}
+
+/** 切换标签页/关闭时取消挂起的自动保存定时器。 */
+function cancelAutoSave() {
+  if (autoSaveTimer) {
+    clearTimeout(autoSaveTimer)
+    autoSaveTimer = null
   }
 }
 
@@ -215,6 +262,8 @@ export {
   setActiveTab,
   renameTabPath,
   saveFile,
+  scheduleAutoSave,
+  cancelAutoSave,
   reloadOpenTabs,
   applyExternalFileUpdate,
 }
