@@ -39,10 +39,23 @@ describe('useWorkspaceNavigation', () => {
     expect(workspace.draftView.value).toBe('mindmap')
   })
 
-  it('opens translation as a standalone flow when no workspace is active', () => {
+  it('stays put and hints when navigating without a workspace', () => {
     const workspace = useWorkspaceNavigation()
     workspace.navigate('sources')
-    expect(workspace.location.value).toEqual({ kind: 'standalone-translation' })
+    // 不再静默跳转到独立翻译页：无项目时保持原位置（首页）
+    expect(workspace.location.value).toEqual({ kind: 'home' })
+  })
+
+  it('navigates back into the last workspace when it exists', () => {
+    const workspace = useWorkspaceNavigation()
+    workspace.enterWorkspace('D:/papers/demo')
+    workspace.goHome()
+    workspace.navigate('sources')
+    expect(workspace.location.value).toEqual({
+      kind: 'workspace',
+      projectRoot: 'D:/papers/demo',
+      section: 'sources',
+    })
   })
 
   it('returns from standalone translation to the last workspace', () => {

@@ -85,7 +85,7 @@ defineEmits<{
 const { t } = useI18n()
 const navItems = computed(() => [
   { key: 'draft' as const, label: t('shell.draft'), icon: Files, requiresWorkspace: true },
-  { key: 'sources' as const, label: t('shell.sources'), icon: Library, requiresWorkspace: false },
+  { key: 'sources' as const, label: t('shell.sources'), icon: Library, requiresWorkspace: true },
   {
     key: 'review' as const,
     label: t('shell.review'),

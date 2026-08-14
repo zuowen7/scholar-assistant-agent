@@ -127,7 +127,7 @@
             embedded
             @update:open="workspace.toggleAgentDock($event)"
             @switch-to-editor="workspace.navigate('draft')"
-            @switch-to-sources="workspace.navigate('sources')"
+            @switch-to-sources="handleWorkspaceNavigate('sources')"
           />
         </template>
         <template #tasks><TaskCenter /></template>
@@ -284,8 +284,9 @@ const shellProjectName = computed(
 )
 
 function handleWorkspaceNavigate(section: WorkspaceSection) {
-  if (section === 'sources' && !currentProject.value) {
-    workspace.openStandaloneTranslation()
+  // 未打开项目时点击工作区栏目：提示先打开项目，不再跳到独立翻译页
+  if (!currentProject.value) {
+    info(t('shell.openProjectFirst'))
     return
   }
   workspace.navigate(section)

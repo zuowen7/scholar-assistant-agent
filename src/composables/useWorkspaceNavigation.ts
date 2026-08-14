@@ -81,8 +81,8 @@ function enterWorkspace(
 function navigate(section: WorkspaceSection) {
   const current = location.value
   if (current.kind !== 'workspace') {
-    if (section === 'sources') openStandaloneTranslation()
-    else if (lastWorkspaceLocation) {
+    // 无活动工作区时不再静默跳转独立翻译页；若有上次工作区则回到其中
+    if (lastWorkspaceLocation) {
       const next = { ...lastWorkspaceLocation, section }
       lastWorkspaceLocation = next
       setLocation(next)
