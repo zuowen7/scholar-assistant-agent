@@ -86,6 +86,8 @@ class Message:
     truncated: bool = False
     persisted_text: str | None = field(default=None, repr=False)
     context_externalized: bool = False
+    # 用户消息的原始文本（未拼接日期/选区等组合后缀），用于跨请求去重比对
+    raw_text: str = field(default="", repr=False)
 
     def text_content(self) -> str:
         return "".join(b.text for b in self.blocks if isinstance(b, TextBlock))

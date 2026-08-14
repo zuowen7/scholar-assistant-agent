@@ -1184,6 +1184,7 @@ def register_agent_v2_routes(
                 async for event in rt.turn(
                     _compose_turn_message(req),
                     persisted_user_message=_persisted_turn_message(req),
+                    raw_user_message=req.message,
                 ):
                     yield agent_event_to_sse_stream(event)
             except Exception as e:
