@@ -20,8 +20,9 @@
           :compact="rightDock === 'agent'"
         >
           <template #title-after>
-            <StatusBadge :tone="activeTab.isModified ? 'warning' : 'success'" dot>{{
-              activeTab.isModified ? t('editor.unsavedChanges') : t('editor.autoSaved')
+            <!-- 仅未保存时显示警示；"已自动保存"由右下角 3 秒 toast 反馈，不常驻 -->
+            <StatusBadge v-if="activeTab.isModified" tone="warning" dot>{{
+              t('editor.unsavedChanges')
             }}</StatusBadge>
           </template>
           <template #center>
@@ -389,11 +390,14 @@ const wordCount = computed(() => {
   const chinese = content.value.match(/[\u3400-\u9fff]/g)?.length || 0
   return latin + chinese
 })
-const headerSubtitle = computed(() =>
-  t(isLatexMode.value ? 'editor.latexHeaderSubtitle' : 'editor.writingHeaderSubtitle', {
-    status: activeTab.value?.isModified ? t('editor.notSaved') : t('editor.saved'),
-  }),
-)
+const headerSubtitle = computed(() => {
+  // 仅在未保存时提示；已保存状态由自动保存 toast（3 秒自动消失）反馈，
+  // 不再常驻显示"已保存"这类装饰性文案
+  const status = activeTab.value?.isModified ? ` · ${t('editor.notSaved')}` : ''
+  return t(isLatexMode.value ? 'editor.latexHeaderSubtitle' : 'editor.writingHeaderSubtitle', {
+    status,
+  })
+})
 const documentViewOptions = computed(() => [
   { value: 'body', label: t('editor.body') },
   { value: 'preview', label: t('editor.preview') },
