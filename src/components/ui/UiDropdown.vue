@@ -14,8 +14,8 @@
             class="dd-item"
             :class="{ disabled: item.disabled, danger: item.danger }"
             :disabled="item.disabled"
-            @click="!item.disabled && (close(), nextTick(() => item.onClick?.()))"
             role="menuitem"
+            @click="!item.disabled && (close(), nextTick(() => item.onClick?.()))"
           >
             <component
               :is="item.icon"

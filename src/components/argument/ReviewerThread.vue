@@ -7,7 +7,7 @@
       <span class="card-source" :class="`src-${point.source}`">{{ sourceLabel }}</span>
       <div class="header-spacer"></div>
       <!-- Status selector -->
-      <div class="status-wrap" ref="statusWrapRef">
+      <div ref="statusWrapRef" class="status-wrap">
         <button
           class="status-chip"
           data-status-btn

@@ -5,7 +5,7 @@
  * Mocks useSpeechRecognition at the composable level (its unit tests cover internals).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { nextTick, ref } from 'vue'
+import { ref } from 'vue'
 
 // ═══════════════════════════════════════════════════════════════════════
 // Mocks

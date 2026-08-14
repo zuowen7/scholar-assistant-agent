@@ -482,8 +482,6 @@ const tectonicChecking = ref(false)
 const updateChecking = ref(false)
 const updateResult = ref<UpdateCheckResult | null>(null)
 const globalDragging = ref(false)
-const mouseX = ref(0)
-const mouseY = ref(0)
 const { isDark, toggleTheme } = useAppTheme()
 watch(_openFullArgMapTick, () => {
   if (location.value.kind === 'workspace') workspace.navigate('review')
@@ -540,21 +538,13 @@ const ollamaModelsLoading = ref(false)
 
 const proxyUrl = ref('')
 
-// --- 窗口控制 ---
-
-const { handleMinimize, handleToggleMaximize, handleClose } = useAppWindow()
-
 // --- 自定义背景 ---
 
 const {
   bgSettings,
-  bgDataUrl,
   bgAssetUrl,
   backgroundLayerStyle,
-  loadBgSettings,
-  saveBgSettings,
   pickBackground,
-  pathToDataUrl,
   clearBackground,
   onOpacityChange,
   initBackground,
@@ -565,28 +555,11 @@ const {
 const {
   readSettings,
   loadReadSettings,
-  saveReadSettings,
   onFontSizeChange,
   onLineHeightChange,
   onFontFamilyChange,
   onColorChange,
 } = useReadSettings()
-
-// ── 鼠标微视差：光晕/粒子跟随鼠标 ──
-function onMouseMove(e: MouseEvent) {
-  mouseX.value = e.clientX
-  mouseY.value = e.clientY
-}
-const orbParallaxStyle = computed(() => {
-  const x = (mouseX.value / window.innerWidth - 0.5) * 22
-  const y = (mouseY.value / window.innerHeight - 0.5) * 22
-  return { transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)` }
-})
-const particleParallaxStyle = computed(() => {
-  const x = (mouseX.value / window.innerWidth - 0.5) * 14
-  const y = (mouseY.value / window.innerHeight - 0.5) * 14
-  return { transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)` }
-})
 
 // --- 拖拽处理 ---
 
@@ -620,9 +593,6 @@ onMounted(async () => {
 
     // Load read settings
     loadReadSettings()
-
-    // Mouse parallax for ambient orbs / particles
-    window.addEventListener('mousemove', onMouseMove, { passive: true })
 
     // Listen for backend crash events (Tauri only)
     listenBackendCrash()
@@ -718,7 +688,6 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleUiZoomShortcut)
-  window.removeEventListener('mousemove', onMouseMove)
   window.removeEventListener('voice-command-trigger', handleVoiceCommandTrigger)
   window.removeEventListener('voice-command-submit', handleVoiceCommandSubmit)
   window.removeEventListener('voice-toggle-theme', handleVoiceToggleTheme)

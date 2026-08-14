@@ -1,10 +1,10 @@
 <template>
   <div
+    ref="wrapperRef"
     class="mindmap-canvas-wrapper"
     :class="{ connecting: !!connectionFromId }"
-    @click="onClickWrapper"
     tabindex="0"
-    ref="wrapperRef"
+    @click="onClickWrapper"
     @keydown="onCanvasKeydown"
     @keydown.esc="cancelConnection"
   >

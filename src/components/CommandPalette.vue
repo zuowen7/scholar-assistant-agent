@@ -9,15 +9,15 @@
     >
       <div class="cmd-task-tabs" role="tablist">
         <button
-          v-for="t in taskTypes"
-          :key="t.id"
+          v-for="task in taskTypes"
+          :key="task.id"
           class="cmd-tab"
           role="tab"
-          :class="{ active: activeTask === t.id }"
-          :aria-selected="activeTask === t.id"
-          @click="activeTask = t.id"
+          :class="{ active: activeTask === task.id }"
+          :aria-selected="activeTask === task.id"
+          @click="activeTask = task.id"
         >
-          {{ t.label }}
+          {{ task.label }}
         </button>
       </div>
 
@@ -37,9 +37,9 @@
         />
         <button
           class="cmd-submit"
-          @click="handleSubmit"
           :disabled="loading"
           :aria-label="t('commandPalette.execute')"
+          @click="handleSubmit"
         >
           <span v-if="!loading">{{ t('commandPalette.apply') }}</span>
           <span v-else class="cmd-spinner"></span>

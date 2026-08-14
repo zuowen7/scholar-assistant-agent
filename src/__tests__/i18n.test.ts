@@ -1,5 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { createI18n } from 'vue-i18n'
+import { describe, it, expect } from 'vitest'
 
 import { createAppI18n } from '../i18n'
 import zhMessages from '../i18n/locales/zh-CN.json'

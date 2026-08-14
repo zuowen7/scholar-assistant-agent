@@ -9,17 +9,17 @@
     <button
       v-for="opt in options"
       :key="String(opt.value)"
+      :ref="
+        (el) => {
+          if (opt.value === modelValue) activeRef = el as HTMLElement
+        }
+      "
       type="button"
       role="tab"
       class="seg-item"
       :class="{ active: opt.value === modelValue, disabled: opt.disabled }"
       :disabled="opt.disabled"
       :aria-selected="opt.value === modelValue"
-      :ref="
-        (el) => {
-          if (opt.value === modelValue) activeRef = el as HTMLElement
-        }
-      "
       @click="!opt.disabled && $emit('update:modelValue', opt.value)"
     >
       <component

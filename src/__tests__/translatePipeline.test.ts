@@ -5,7 +5,7 @@
  * 验证翻译管道的所有阶段状态转换。
  * 使用 fetch mock 来模拟后端 SSE 响应。
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // ---------------------------------------------------------------------------
 // Mock fetch globally

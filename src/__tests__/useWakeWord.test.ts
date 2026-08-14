@@ -231,7 +231,7 @@ describe('useWakeWord', () => {
 
   it('auto-restarts on onend event', async () => {
     const useWakeWord = await getFresh()
-    const { startWakeWord, stopWakeWord, active } = useWakeWord(vi.fn())
+    const { startWakeWord, stopWakeWord } = useWakeWord(vi.fn())
     await startWakeWord()
 
     // Simulate recognition ending naturally

@@ -282,8 +282,8 @@
                 >{{ stripHeadingMark(b.original) }}</component
               >
               <component
-                v-if="b.translated"
                 :is="`h${Math.min(Math.max(b.level || 2, 1), 6)}`"
+                v-if="b.translated"
                 class="dual-heading-trans"
                 >{{ stripHeadingMark(b.translated) }}</component
               >
@@ -343,6 +343,7 @@
         </div>
 
         <div v-else class="reading-view">
+          <!-- eslint-disable-next-line vue/no-v-html -- renderMarkdown 输出已经 DOMPurify 消毒 -->
           <article class="prose" v-html="translationOnlyHtml" />
         </div>
       </div>

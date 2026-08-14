@@ -179,8 +179,8 @@
               <h2>{{ t('reviewerWorkspace.ledgerTab') }}</h2>
               <button
                 type="button"
-                @click="companion.buildOrRebuildLedger(content)"
                 :disabled="companion.state.building || !content.trim()"
+                @click="companion.buildOrRebuildLedger(content)"
               >
                 {{
                   companion.state.ledger

@@ -5,7 +5,7 @@
  * - shouldShowInlineDiff 路由逻辑（纯函数）
  * - activeEdit 状态管理
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 
 // ---------------------------------------------------------------------------
 // shouldShowInlineDiff 纯函数测试（不依赖 Vue/Monaco）

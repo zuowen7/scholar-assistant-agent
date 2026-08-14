@@ -19,6 +19,8 @@ const props = withDefaults(
   }>(),
   {
     shape: 'line',
+    width: undefined,
+    height: undefined,
     lines: 1,
   },
 )

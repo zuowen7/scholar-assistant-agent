@@ -7,9 +7,9 @@
       <div class="tree-actions">
         <button
           class="tree-btn"
-          @click="handleNewFile"
           :title="t('files.newFile')"
           :aria-label="t('files.newFile')"
+          @click="handleNewFile"
         >
           <svg
             width="14"
@@ -24,9 +24,9 @@
         </button>
         <button
           class="tree-btn"
-          @click="handleNewFolder"
           :title="t('files.newFolder')"
           :aria-label="t('files.newFolder')"
+          @click="handleNewFolder"
         >
           <svg
             width="14"
@@ -42,9 +42,9 @@
         </button>
         <button
           class="tree-btn"
-          @click="handleOpenFolder"
           :title="t('files.openFolder2')"
           :aria-label="t('files.openFolder2')"
+          @click="handleOpenFolder"
         >
           <svg
             width="14"
@@ -60,10 +60,10 @@
         <button
           class="tree-btn"
           :class="{ spinning: refreshing }"
-          @click="handleRefresh"
           :title="t('files.refresh')"
           :aria-label="t('files.refresh')"
           :disabled="refreshing"
+          @click="handleRefresh"
         >
           <svg
             width="14"
@@ -80,9 +80,9 @@
         <div class="tree-btn-sep" />
         <button
           class="tree-btn"
-          @click="$emit('collapse')"
           :title="t('files.collapseSidebar')"
           :aria-label="t('files.collapseSidebar')"
+          @click="$emit('collapse')"
         >
           <svg
             width="14"
@@ -99,7 +99,7 @@
     </div>
 
     <!-- 搜索框 -->
-    <div class="tree-search" v-if="rootDir">
+    <div v-if="rootDir" class="tree-search">
       <svg
         class="search-icon"
         width="12"
@@ -133,7 +133,7 @@
       </button>
     </div>
 
-    <div class="tree-body" v-if="rootDir">
+    <div v-if="rootDir" class="tree-body">
       <!-- 目录加载骨架 -->
       <div v-if="loading" class="tree-loading">
         <div

@@ -6,7 +6,7 @@
         <p class="inspector-title">{{ t('argument.argumentMapShort') }}</p>
         <p v-if="state.graph" class="inspector-graph-title">{{ state.graph.title }}</p>
         <div v-if="state.graph" class="inspector-stats">
-          <span class="stat-item" v-for="(count, type) in nodeTypeCounts" :key="type">
+          <span v-for="(count, type) in nodeTypeCounts" :key="type" class="stat-item">
             <span class="stat-type">{{ typeLabel(type as NodeType) }}</span>
             <span class="stat-count">{{ count }}</span>
           </span>
@@ -262,7 +262,7 @@ async function doExport() {
         exportMsg.value = t('argument.downloadFailed')
       }
     }
-  } catch (e) {
+  } catch (_e) {
     exportMsg.value = t('argument.exportDefaultFailed')
   } finally {
     exporting.value = false
