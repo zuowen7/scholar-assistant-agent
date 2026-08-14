@@ -336,7 +336,7 @@ class TranslationMemory:
             tmx,
             "header",
             creationtool="研墨",
-            creationtoolversion="0.5.1",
+            creationtoolversion="0.5.2",
             datatype="plaintext",
             segtype="sentence",
             adminlang="en",
