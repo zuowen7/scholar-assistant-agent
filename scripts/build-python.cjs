@@ -306,9 +306,9 @@ with tarfile.open(tar_path, 'r:gz') as t:
   }
 }
 
-// Kill running api.exe / scholar-translate.exe so PyInstaller can replace files
+// Kill running api.exe / scholar-assistant.exe (legacy: scholar-translate.exe) so PyInstaller can replace files
 if (process.platform === 'win32') {
-  for (const name of ['api.exe', 'scholar-translate.exe']) {
+  for (const name of ['api.exe', 'scholar-assistant.exe', 'scholar-translate.exe']) {
     try {
       execSync(`taskkill /F /IM "${name}"`, { stdio: 'pipe' });
       console.log(`[INFO] Killed running ${name}`);
