@@ -52,8 +52,6 @@ import {
   contentVersion,
   selection,
   monacoEditor,
-  aiResult,
-  previousContent,
 } from '../composables/useEditorState'
 
 import {
@@ -65,7 +63,6 @@ import {
   updateSelection,
   markClean,
   markDirty,
-  saveFile,
   applyExternalFileUpdate,
 } from '../composables/useEditorTabs'
 import { inlineEdit } from '../composables/useEditor'

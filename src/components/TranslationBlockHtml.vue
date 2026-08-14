@@ -1,4 +1,5 @@
 <template>
+  <!-- eslint-disable-next-line vue/no-v-html -- block 模式经 DOMPurify 消毒，sentence 模式全量 escapeHtml -->
   <div v-html="renderedHtml"></div>
 </template>
 

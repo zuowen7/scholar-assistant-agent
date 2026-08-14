@@ -259,36 +259,6 @@ describe('provideAICompletion', () => {
 
 describe('MonacoEditor.vue single event registration', () => {
   it('onDidChangeModelContent is registered only once', async () => {
-    const onDidChangeModelContent = vi.fn(() => ({ dispose: vi.fn() }))
-    const onDidChangeCursorSelection = vi.fn(() => ({ dispose: vi.fn() }))
-    const registerInlineCompletionsProvider = vi.fn(() => ({ dispose: vi.fn() }))
-    const addAction = vi.fn()
-
-    const fakeEditor = {
-      onDidChangeModelContent,
-      onDidChangeCursorSelection,
-      addAction,
-      getModel: () => null,
-      getPosition: () => null,
-      getSelection: () => null,
-      getValue: () => '',
-      setValue: vi.fn(),
-      deltaDecorations: vi.fn(() => []),
-      dispose: vi.fn(),
-    }
-
-    const fakeMonaco = {
-      editor: {
-        create: () => fakeEditor,
-        MouseTargetType: {},
-        TrackedRangeStickiness: { NeverGrowsWhenTypingAtEdges: 1 },
-      },
-      languages: { registerInlineCompletionsProvider },
-      Range: class {},
-      KeyMod: { CtrlCmd: 1, Alt: 2 },
-      KeyCode: { KeyK: 1, KeyS: 2, Backslash: 3, Escape: 4, Tab: 5, Enter: 6 },
-    }
-
     // Dynamic import the module to verify registration count
     // Since we can't easily mount the component without full DOM,
     // we verify the pattern: the module should call onDidChangeModelContent exactly once

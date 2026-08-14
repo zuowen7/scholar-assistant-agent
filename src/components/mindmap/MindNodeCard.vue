@@ -25,8 +25,8 @@
           v-if="!editing"
           class="body-toggle nodrag"
           :class="{ 'has-body': bodyPreview }"
-          @click="toggleBody"
           :title="bodyExpanded ? t('mindmap.collapseBody') : t('mindmap.editBody')"
+          @click="toggleBody"
         >
           {{ bodyExpanded ? '▾' : '▸' }}
         </button>
@@ -76,12 +76,12 @@
 
     <Handle type="target" :position="Position.Left" class="mind-handle" />
     <Handle type="source" :position="Position.Right" class="mind-handle" />
-    <Handle type="source" :position="Position.Top" class="mind-handle hidden-handle" id="top" />
+    <Handle id="top" type="source" :position="Position.Top" class="mind-handle hidden-handle" />
     <Handle
+      id="bottom"
       type="source"
       :position="Position.Bottom"
       class="mind-handle hidden-handle"
-      id="bottom"
     />
 
     <Teleport to="body">

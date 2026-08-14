@@ -134,7 +134,7 @@ describe('VoiceAssistantView', () => {
 
   it('pressing Escape calls cancel', async () => {
     mockState.value = 'listening'
-    const wrapper = mountView()
+    mountView()
     // Escape handler is bound to window, not component
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     expect(mockCancel).toHaveBeenCalled()

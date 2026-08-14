@@ -52,7 +52,7 @@
         <!-- Sections -->
         <div class="report-sections">
           <!-- Structure -->
-          <div class="report-section" v-if="report.structure">
+          <div v-if="report.structure" class="report-section">
             <h4>{{ t('editor.complianceStructure') }}</h4>
             <div class="section-content">
               <div class="section-item">
@@ -61,9 +61,9 @@
               </div>
               <div v-if="report.structure.issues?.length" class="issues">
                 <span
-                  class="issue-tag warning"
                   v-for="(issue, i) in report.structure.issues"
                   :key="i"
+                  class="issue-tag warning"
                   >{{ typeof issue === 'object' ? issue.detail : issue }}</span
                 >
               </div>
@@ -71,7 +71,7 @@
           </div>
 
           <!-- Terminology -->
-          <div class="report-section" v-if="report.terminology">
+          <div v-if="report.terminology" class="report-section">
             <h4>{{ t('editor.complianceTerminology') }}</h4>
             <div class="section-content">
               <div class="section-item">
@@ -90,9 +90,9 @@
               </div>
               <div v-if="report.terminology.issues?.length" class="issues">
                 <span
-                  class="issue-tag warning"
                   v-for="(issue, i) in report.terminology.issues"
                   :key="i"
+                  class="issue-tag warning"
                   >{{ fmt(issue) }}</span
                 >
               </div>
@@ -100,7 +100,7 @@
           </div>
 
           <!-- Citation -->
-          <div class="report-section" v-if="report.citation">
+          <div v-if="report.citation" class="report-section">
             <h4>{{ t('editor.complianceCitations') }}</h4>
             <div class="section-content">
               <div class="section-item">
@@ -109,17 +109,17 @@
               </div>
               <div v-if="report.citation.format_issues?.length" class="issues">
                 <span
-                  class="issue-tag warning"
                   v-for="(issue, i) in report.citation.format_issues"
                   :key="i"
+                  class="issue-tag warning"
                   >{{ fmt(issue) }}</span
                 >
               </div>
               <div v-if="report.citation.issues?.length" class="issues">
                 <span
-                  class="issue-tag error"
                   v-for="(issue, i) in report.citation.issues"
                   :key="i"
+                  class="issue-tag error"
                   >{{ fmt(issue) }}</span
                 >
               </div>
@@ -127,7 +127,7 @@
           </div>
 
           <!-- Hallucination Risk -->
-          <div class="report-section" v-if="report.hallucination_risk">
+          <div v-if="report.hallucination_risk" class="report-section">
             <h4>{{ t('editor.complianceHallucination') }}</h4>
             <div class="section-content">
               <div class="section-item">
@@ -138,17 +138,17 @@
               </div>
               <div v-if="report.hallucination_risk.flags?.length" class="issues">
                 <span
-                  class="issue-tag error"
                   v-for="(flag, i) in report.hallucination_risk.flags"
                   :key="i"
+                  class="issue-tag error"
                   >{{ fmt(flag) }}</span
                 >
               </div>
               <div v-if="report.hallucination_risk.issues?.length" class="issues">
                 <span
-                  class="issue-tag warning"
                   v-for="(issue, i) in report.hallucination_risk.issues"
                   :key="i"
+                  class="issue-tag warning"
                   >{{ fmt(issue) }}</span
                 >
               </div>
@@ -156,7 +156,7 @@
           </div>
 
           <!-- Readability -->
-          <div class="report-section" v-if="report.readability">
+          <div v-if="report.readability" class="report-section">
             <h4>{{ t('editor.complianceReadability') }}</h4>
             <div class="section-content">
               <div class="section-item">
@@ -168,9 +168,9 @@
               </div>
               <div v-if="report.readability.long_sentences?.length" class="issues">
                 <span
-                  class="issue-tag info"
                   v-for="(s, i) in report.readability.long_sentences.slice(0, 3)"
                   :key="i"
+                  class="issue-tag info"
                 >
                   {{ (typeof s === 'string' ? s : s?.text || JSON.stringify(s)).slice(0, 60)
                   }}{{ (typeof s === 'string' ? s : s?.text || '').length > 60 ? '...' : '' }}
@@ -178,9 +178,9 @@
               </div>
               <div v-if="report.readability.issues?.length" class="issues">
                 <span
-                  class="issue-tag warning"
                   v-for="(issue, i) in report.readability.issues"
                   :key="i"
+                  class="issue-tag warning"
                   >{{ fmt(issue) }}</span
                 >
               </div>
@@ -196,7 +196,7 @@
     </div>
     <template #footer>
       <button class="btn secondary-btn" @click="$emit('close')">{{ t('general.close') }}</button>
-      <button class="btn primary-btn" @click="$emit('retry')" :disabled="loading">
+      <button class="btn primary-btn" :disabled="loading" @click="$emit('retry')">
         {{ t('editor.complianceRecheck') }}
       </button>
     </template>

@@ -3,7 +3,8 @@
     <div class="preview-header">
       <span class="preview-title">{{ t('editor.preview') }}</span>
     </div>
-    <div class="preview-body" :key="renderKey" v-html="renderedHtml"></div>
+    <!-- eslint-disable-next-line vue/no-v-html -- renderedHtml 经 DOMPurify.sanitize 双重消毒 -->
+    <div :key="renderKey" class="preview-body" v-html="renderedHtml"></div>
   </div>
 </template>
 

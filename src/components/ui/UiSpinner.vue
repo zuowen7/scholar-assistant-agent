@@ -24,6 +24,7 @@ const props = withDefaults(
   }>(),
   {
     size: 'md',
+    label: '',
   },
 )
 

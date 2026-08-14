@@ -21,28 +21,28 @@
     <template v-else>
       <div class="toolbar-group structure-group" :aria-label="t('mindmap.structure')">
         <span class="group-label">{{ t('mindmap.structure') }}</span>
-        <button @click.stop="$emit('reset-map')" :title="t('mindmap.newMap')">
+        <button :title="t('mindmap.newMap')" @click.stop="$emit('reset-map')">
           {{ t('mindmap.newMap') }}
         </button>
         <button
-          @click.stop="$emit('add-child')"
           :disabled="!canAdd"
           :title="t('mindmap.childNode')"
+          @click.stop="$emit('add-child')"
         >
           {{ t('mindmap.childNode') }}
         </button>
         <button
           :class="{ active: connecting }"
-          @click.stop="$emit('start-connect')"
           :disabled="!canAdd"
           :title="t('mindmap.connectNode')"
+          @click.stop="$emit('start-connect')"
         >
           {{ t('mindmap.connect2') }}
         </button>
         <button
-          @click.stop="$emit('delete-node')"
           :disabled="!canDelete"
           :title="t('mindmap.deleteNode')"
+          @click.stop="$emit('delete-node')"
         >
           {{ t('mindmap.delete') }}
         </button>
@@ -50,16 +50,16 @@
 
       <div class="toolbar-group view-group" :aria-label="t('mindmap.view')">
         <span class="group-label">{{ t('mindmap.view') }}</span>
-        <button class="icon-btn" @click.stop="$emit('zoom-in')" :title="t('mindmap.zoomIn')">
+        <button class="icon-btn" :title="t('mindmap.zoomIn')" @click.stop="$emit('zoom-in')">
           +
         </button>
-        <button class="icon-btn" @click.stop="$emit('zoom-out')" :title="t('mindmap.zoomOut')">
+        <button class="icon-btn" :title="t('mindmap.zoomOut')" @click.stop="$emit('zoom-out')">
           -
         </button>
-        <button @click.stop="$emit('reset-view')" :title="t('mindmap.resetView')">
+        <button :title="t('mindmap.resetView')" @click.stop="$emit('reset-view')">
           {{ t('mindmap.reset') }}
         </button>
-        <button @click.stop="$emit('fit-view')" :title="t('mindmap.fitView')">
+        <button :title="t('mindmap.fitView')" @click.stop="$emit('fit-view')">
           {{ t('mindmap.fit') }}
         </button>
       </div>
@@ -67,13 +67,13 @@
       <div class="toolbar-group ai-group optional-on-small" :aria-label="t('mindmap.aiAssist')">
         <span class="group-label">AI</span>
         <button
-          @click.stop="$emit('ai-expand')"
           :disabled="!canAdd || expanding"
           :title="t('mindmap.aiExpand')"
+          @click.stop="$emit('ai-expand')"
         >
           {{ expanding ? t('mindmap.expanding') : t('mindmap.aiExpandBtn') }}
         </button>
-        <button @click.stop="$emit('analyze')" :disabled="analyzing" :title="t('mindmap.aiCheck')">
+        <button :disabled="analyzing" :title="t('mindmap.aiCheck')" @click.stop="$emit('analyze')">
           {{ analyzing ? t('mindmap.checking') : t('mindmap.aiCheckBtn') }}
         </button>
       </div>
@@ -82,22 +82,22 @@
         <span class="group-label">{{ t('mindmap.workflow') }}</span>
         <button
           class="subtle-on-small"
-          @click.stop="$emit('auto-layout')"
           :title="t('mindmap.autoLayout')"
+          @click.stop="$emit('auto-layout')"
         >
           {{ t('mindmap.autoLayoutBtn') }}
         </button>
         <button
           class="workflow-primary"
-          @click.stop="$emit('save')"
           :title="t('mindmap.saveToProject')"
+          @click.stop="$emit('save')"
         >
           {{ t('mindmap.save') }}
         </button>
         <button
           class="workflow-primary"
-          @click.stop="$emit('enter-editor')"
           :title="t('mindmap.enterEditor')"
+          @click.stop="$emit('enter-editor')"
         >
           {{ t('mindmap.editor') }}
         </button>
@@ -107,8 +107,8 @@
         <button
           class="icon-btn help-btn"
           :class="{ active: showHelp }"
-          @click.stop="toggleHelp"
           :title="t('mindmap.shortcuts')"
+          @click.stop="toggleHelp"
         >
           ?
         </button>
@@ -131,10 +131,10 @@
     </template>
 
     <div v-if="showMore && !collapsed" class="more-panel" @click.stop @pointerdown.stop>
-      <button @click="$emit('ai-expand')" :disabled="!canAdd || expanding">
+      <button :disabled="!canAdd || expanding" @click="$emit('ai-expand')">
         {{ expanding ? t('mindmap.expanding2') : t('mindmap.aiExpand2') }}
       </button>
-      <button @click="$emit('analyze')" :disabled="analyzing">
+      <button :disabled="analyzing" @click="$emit('analyze')">
         {{ analyzing ? t('mindmap.checking2') : t('mindmap.aiCheck2') }}
       </button>
       <button @click="$emit('auto-layout')">{{ t('mindmap.autoLayout') }}</button>

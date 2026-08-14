@@ -1,4 +1,5 @@
 <template>
+  <!-- eslint-disable-next-line vue/no-v-html -- renderMarkdown 输出已经 DOMPurify 消毒 -->
   <div v-html="renderedHtml"></div>
 </template>
 

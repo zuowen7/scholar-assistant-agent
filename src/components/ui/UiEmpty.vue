@@ -32,7 +32,11 @@ withDefaults(
     actionLabel?: string
   }>(),
   {
+    icon: undefined,
     iconSize: 32,
+    title: '',
+    subtitle: '',
+    actionLabel: '',
   },
 )
 

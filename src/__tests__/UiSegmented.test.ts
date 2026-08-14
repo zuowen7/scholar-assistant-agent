@@ -20,7 +20,6 @@ vi.mock('vue-i18n', () => ({
 }))
 import { mount } from '@vue/test-utils'
 import UiSegmented from '../components/ui/UiSegmented.vue'
-import { h } from 'vue'
 
 describe('UiSegmented', () => {
   const options = [
