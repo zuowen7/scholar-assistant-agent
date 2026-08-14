@@ -1,7 +1,7 @@
 import { API_BASE } from '../utils/api'
 import { insertImage } from './useEditorState'
 
-export type VisionAnalysisType = 'general' | 'chart' | 'table' | 'formula'
+export type VisionAnalysisType = 'general' | 'ocr' | 'chart' | 'table' | 'formula'
 
 export interface VisionAnalysisResponse {
   text?: string
@@ -66,6 +66,14 @@ export function useEditorVision() {
     return (await resp.json()) as VisionAnalysisResponse
   }
 
+  async function recognizeFormula(file: File): Promise<VisionAnalysisResponse | null> {
+    const formData = new FormData()
+    formData.append('file', file)
+    const resp = await fetch(`${API}/api/vision/formula`, { method: 'POST', body: formData })
+    if (!resp.ok) return null
+    return (await resp.json()) as VisionAnalysisResponse
+  }
+
   async function insertImageFile(file: File): Promise<ImageUploadResponse | null> {
     const data = await uploadImage(file)
     if (!data) return null
@@ -80,5 +88,6 @@ export function useEditorVision() {
     ocrImage,
     analyzeChart,
     extractTableFromImage,
+    recognizeFormula,
   }
 }

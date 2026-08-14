@@ -1,9 +1,9 @@
 """MCP Vision 和 Citation 索引单元测试"""
 
-import pytest
+from unittest.mock import AsyncMock, patch
 
-from src.citation.indexer import CitationEntry, CitationIndexer
-from src.mcp.vision_client import VisionClient, VisionResult
+from src.citation.indexer import CitationIndexer
+from src.mcp.vision_client import CLAUDE_PROMPTS, OPENAI_PROMPTS, VisionClient, VisionResult
 
 
 class TestVisionClient:
@@ -27,6 +27,53 @@ class TestVisionClient:
         assert result.table_data is None
         d = result.to_dict()
         assert d["text"] == ""
+
+    def test_prompts_cover_all_analysis_types(self):
+        expected = {"general", "ocr", "chart", "table", "formula"}
+        assert expected <= set(OPENAI_PROMPTS)
+        assert expected <= set(CLAUDE_PROMPTS)
+
+    def test_ocr_prompt_asks_for_transcription_not_summary(self):
+        assert "逐行转写" in OPENAI_PROMPTS["ocr"] or "逐行转写" in CLAUDE_PROMPTS["ocr"]
+        assert "不要翻译" in OPENAI_PROMPTS["ocr"] or "不要翻译" in CLAUDE_PROMPTS["ocr"]
+
+    async def test_ocr_image_routes_to_ocr_analysis_type(self):
+        client = VisionClient()
+        expected = VisionResult(text="识别出的文字")
+        with patch.object(
+            client, "analyze_image", new=AsyncMock(return_value=expected)
+        ) as mock_analyze:
+            result = await client.ocr_image("fake.png")
+        mock_analyze.assert_awaited_once_with("fake.png", analysis_type="ocr")
+        assert result.text == "识别出的文字"
+
+    async def test_recognize_formula_routes_to_formula_analysis_type(self):
+        client = VisionClient()
+        expected = VisionResult(text="E = mc^2")
+        with patch.object(
+            client, "analyze_image", new=AsyncMock(return_value=expected)
+        ) as mock_analyze:
+            result = await client.recognize_formula("fake.png")
+        mock_analyze.assert_awaited_once_with("fake.png", analysis_type="formula")
+        assert result.text == "E = mc^2"
+
+    async def test_analyze_chart_routes_to_chart_analysis_type(self):
+        client = VisionClient()
+        expected = VisionResult(text="柱状图")
+        with patch.object(
+            client, "analyze_image", new=AsyncMock(return_value=expected)
+        ) as mock_analyze:
+            result = await client.analyze_chart("fake.png")
+        mock_analyze.assert_awaited_once_with("fake.png", analysis_type="chart")
+        assert result.text == "柱状图"
+
+    async def test_analyze_image_without_api_key_returns_placeholder(self):
+        client = VisionClient(api_key="")
+        with patch.object(
+            client, "_get_credentials", return_value=("https://api.openai.com/v1", "", "gpt-4o")
+        ):
+            result = await client.analyze_image("fake.png", analysis_type="ocr")
+        assert "API Key" in result.text
 
 
 class TestCitationIndexer:

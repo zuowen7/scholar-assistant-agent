@@ -375,7 +375,9 @@ def _extract_source_content(path: Path) -> dict[str, Any]:
         raise HTTPException(422, f"无法解析文献内容: {exc}")
     text = document.full_text.strip()
     if not text:
-        raise HTTPException(422, "文献没有可提取文本；扫描版 PDF 请先启用 OCR")
+        from src.parser.ocr import ocr_install_hint
+
+        raise HTTPException(422, f"文献没有可提取文本（疑似扫描版 PDF）。{ocr_install_hint()}")
     return {
         "text": text,
         "pages": len(document.pages),

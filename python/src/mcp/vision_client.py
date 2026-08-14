@@ -23,6 +23,48 @@ logger = logging.getLogger(__name__)
 # 支持的图片格式
 SUPPORTED_IMAGE_FORMATS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 
+# 分析类型 → prompt（OpenAI-compatible 路径）
+OPENAI_PROMPTS: dict[str, str] = {
+    "general": """请详细描述这张图片的内容，包括：
+1. 图片中的主要元素
+2. 文字内容（如果有）
+3. 整体含义和目的
+请用中文回答。""",
+    "ocr": """请识别这张图片中的全部文字，要求：
+1. 逐行转写所有可见文字，保持原有顺序与段落结构
+2. 不要翻译、总结或解释
+3. 无法辨认的字用 □ 标注
+4. 数学公式转写为 LaTeX（行内用 $...$，独立公式用 $$...$$）
+5. 仅输出转写文本，不要添加任何额外说明""",
+    "chart": """这是一个数据图表，请分析：
+1. 图表类型（柱状图/折线图/饼图/散点图等）
+2. 图表标题和坐标轴标签
+3. 主要数据趋势和模式
+4. 关键数据点和数值
+5. 图表的主要发现或结论
+请用中文回答，尽可能提取精确数据。""",
+    "table": """这是一个表格或表格形式的图片，请：
+1. 提取所有行列数据
+2. 识别表头
+3. 以 Markdown 表格格式输出
+4. 如有合并单元格，请标注
+请用中文标注表格含义。""",
+    "formula": """这是一个数学公式或表达式，请：
+1. 识别公式内容
+2. 转换为标准 LaTeX 格式
+3. 解释公式含义（变量说明）
+请用中文解释。""",
+}
+
+# 分析类型 → prompt（Claude 路径）
+CLAUDE_PROMPTS: dict[str, str] = {
+    "general": "请详细描述这张图片的内容，用中文回答。",
+    "ocr": "请识别这张图片中的全部文字，逐行转写并保持原有顺序，不要翻译、总结或解释；无法辨认的字用 □ 标注；数学公式转写为 LaTeX；仅输出转写文本。",
+    "chart": "这是一个数据图表，请分析图表类型、数据趋势、关键数值，用中文回答。",
+    "table": "这是一个表格图片，请提取所有数据并以 Markdown 表格格式输出，用中文标注含义。",
+    "formula": "请识别图片中的数学公式，转换为 LaTeX 格式并解释含义，用中文回答。",
+}
+
 
 class VisionResult:
     """图像分析结果"""
@@ -126,7 +168,7 @@ class VisionClient:
     async def analyze_image(
         self,
         image_path: str | Path,
-        analysis_type: Literal["general", "chart", "table", "formula"] = "general",
+        analysis_type: Literal["general", "ocr", "chart", "table", "formula"] = "general",
     ) -> VisionResult:
         """分析图片内容
 
@@ -134,6 +176,7 @@ class VisionClient:
             image_path: 图片路径
             analysis_type: 分析类型
                 - general: 通用描述
+                - ocr: 文字识别（逐行转写）
                 - chart: 图表分析
                 - table: 表格识别
                 - formula: 公式识别
@@ -182,34 +225,7 @@ class VisionClient:
         base_url, api_key, model = self._get_credentials()
         image_b64 = self._encode_image(image_path)
 
-        # 根据分析类型构建不同的 prompt
-        prompts = {
-            "general": """请详细描述这张图片的内容，包括：
-1. 图片中的主要元素
-2. 文字内容（如果有）
-3. 整体含义和目的
-请用中文回答。""",
-            "chart": """这是一个数据图表，请分析：
-1. 图表类型（柱状图/折线图/饼图/散点图等）
-2. 图表标题和坐标轴标签
-3. 主要数据趋势和模式
-4. 关键数据点和数值
-5. 图表的主要发现或结论
-请用中文回答，尽可能提取精确数据。""",
-            "table": """这是一个表格或表格形式的图片，请：
-1. 提取所有行列数据
-2. 识别表头
-3. 以 Markdown 表格格式输出
-4. 如有合并单元格，请标注
-请用中文标注表格含义。""",
-            "formula": """这是一个数学公式或表达式，请：
-1. 识别公式内容
-2. 转换为标准 LaTeX 格式
-3. 解释公式含义（变量说明）
-请用中文解释。""",
-        }
-
-        prompt = prompts.get(analysis_type, prompts["general"])
+        prompt = OPENAI_PROMPTS.get(analysis_type, OPENAI_PROMPTS["general"])
 
         messages = [
             {
@@ -280,14 +296,7 @@ class VisionClient:
         base_url, api_key, model = self._get_credentials()
         image_b64 = self._encode_image(image_path)
 
-        prompts = {
-            "general": "请详细描述这张图片的内容，用中文回答。",
-            "chart": "这是一个数据图表，请分析图表类型、数据趋势、关键数值，用中文回答。",
-            "table": "这是一个表格图片，请提取所有数据并以 Markdown 表格格式输出，用中文标注含义。",
-            "formula": "请识别图片中的数学公式，转换为 LaTeX 格式并解释含义，用中文回答。",
-        }
-
-        prompt = prompts.get(analysis_type, prompts["general"])
+        prompt = CLAUDE_PROMPTS.get(analysis_type, CLAUDE_PROMPTS["general"])
 
         try:
             import aiohttp
@@ -416,8 +425,8 @@ class VisionClient:
         return result
 
     async def ocr_image(self, image_path: str | Path) -> VisionResult:
-        """OCR 专用接口 — 识别图片中的文字"""
-        return await self.analyze_image(image_path, analysis_type="general")
+        """OCR 专用接口 — 逐行转写图片中的文字"""
+        return await self.analyze_image(image_path, analysis_type="ocr")
 
     async def analyze_chart(self, image_path: str | Path) -> VisionResult:
         """图表分析专用接口"""

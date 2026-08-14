@@ -70,6 +70,8 @@ export {
   PenLine,
   Eye,
   EyeOff,
+  ScanText,
+  BarChart3,
   Bot,
   MessageSquare,
   Sparkles,

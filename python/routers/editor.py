@@ -715,7 +715,10 @@ def register_editor(
             from src.mcp.vision_client import VisionClient
 
             client = VisionClient()
-            result = await client.analyze_image(temp_path, analysis_type=analysis_type)
+            if analysis_type == "ocr":
+                result = await client.ocr_image(temp_path)
+            else:
+                result = await client.analyze_image(temp_path, analysis_type=analysis_type)
             return result.to_dict()
         finally:
             try:
@@ -732,7 +735,8 @@ def register_editor(
 
     @app.post("/api/vision/ocr")
     async def ocr_image(file: UploadFile = File(...)):
-        return await _analyze_image_impl(file, analysis_type="general")
+        """图片 OCR — 逐行转写文字（区别于 analyze 的通用描述）"""
+        return await _analyze_image_impl(file, analysis_type="ocr")
 
     @app.post("/api/vision/chart")
     async def analyze_chart(file: UploadFile = File(...)):
@@ -741,6 +745,10 @@ def register_editor(
     @app.post("/api/vision/table")
     async def extract_table(file: UploadFile = File(...)):
         return await _analyze_image_impl(file, analysis_type="table")
+
+    @app.post("/api/vision/formula")
+    async def recognize_formula(file: UploadFile = File(...)):
+        return await _analyze_image_impl(file, analysis_type="formula")
 
     @app.put("/api/citation/index")
     async def index_citations(req: CitationIndexRequest):
