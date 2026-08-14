@@ -1,19 +1,38 @@
 # Changelog
 
-## [0.5.2] — Vision, update checker, and packaging fixes
+## [0.5.2] — Vision, agent polish, and reliability fixes
 
 ### Vision / OCR
 
-- **Vision settings UI** — new 识图 Vision API section in Settings → Integrations to configure base URL, vision model, and API key; `/api/config` now accepts and masks the `vision` section.
-- **Local OCR fallback** — image OCR falls back to local engines (Tesseract → PaddleOCR) when no vision key is configured or the cloud call fails, so text-only models can still transcribe images; results report the `engine` used and never write error text into the document.
+- **Vision settings UI** — 设置 → 集成 now includes a 识图 Vision API card to configure base URL, vision model, and API key; `/api/config` accepts and masks the `vision` section.
+- **Local OCR fallback** — image OCR now falls back to local engines (Tesseract → PaddleOCR) when no vision key is configured or the cloud call fails, so text-only models can still transcribe images; results report the `engine` used and never write error text into the document.
+- **Real OCR endpoint + formula route** — `/api/vision/ocr` transcribes line by line and `/api/vision/formula` converts formulas to LaTeX; scanned PDFs get an actionable hint about optional OCR dependencies.
+- **Zhipu vision compatibility** — GLM-4V-Flash fixes (removed OpenAI-only `detail` field, configurable `max_tokens`).
+
+### Agent V2
+
+- **DeepSeek provider conformance** — `reasoning_content` echo-back on tool turns, prompt-cache hit/miss usage reporting, `thinking` params, and `response_format` JSON mode for structured calls.
+- **todo_write planning tool** — structured task plan tool with a frontend checklist; updates replace the plan in place instead of stacking duplicate cards.
+- **openclaw-style message dedup** — duplicate sends (double-click) compare raw user text and replace the previous answer instead of re-running the turn.
+- **Provider quirk gating** — reasoning echo is enabled only for providers that tolerate it, protecting strict providers.
+- **Approval diffs jump to the edit location** — accepting/rejecting a diff scrolls to the changed region.
+
+### Zotero / RAG
+
+- **Keyless local Zotero fallback** — local Zotero mode works without an API key with a clear hint; RAG ingest deduplicates translation chunks and search hits.
+
+### UI / Editor
+
+- Fixed header overflow, session-list 403 handling, missing i18n keys; argument-map split overflow; sources navigation no longer jumps to standalone translation without a project.
+- **Real auto-save** — removed the always-on "已自动保存" badge; the save state now reflects actual writes.
 
 ### Update Checker
 
-- **Backend-proxied GitHub Releases check** — new `GET /api/version/latest` uses the GitHub web redirect (no API rate limit) with REST API fallback and a 5-minute success cache; frontend no longer calls `api.github.com` directly, fixing the Tauri CSP block and anonymous rate limiting that made "check for updates" always fail.
+- **Backend-proxied GitHub Releases check** — new `GET /api/version/latest` (web redirect first, REST API fallback, 5-minute cache); the frontend no longer calls `api.github.com` directly, fixing the Tauri CSP block and anonymous API rate limiting that made "check for updates" always fail.
 
 ### Packaging & Privacy
 
-- **Frozen-build vision config** — `VisionClient` now resolves its config from the runtime config directory inside PyInstaller bundles (PYZ modules have no real `__file__`), so vision settings saved in the installed app actually take effect.
+- **Frozen-build config parity** — `VisionClient` resolves its config from the runtime config directory inside PyInstaller bundles (PYZ modules have no real `__file__`), so vision settings saved in the installed app actually take effect.
 - **Privacy cleanup** — removed hardcoded local username / Desktop paths from tests and scripts.
 
 ## [0.5.1] — Agent V2 reliability hardening

@@ -1,6 +1,6 @@
 # Scholar Assistant — User Guide
 
-> For version v0.3.6+ | [中文指南](./USER_GUIDE.md)
+> For version v0.5.2 | [中文指南](./USER_GUIDE.md)
 
 ## Table of Contents
 
@@ -142,6 +142,22 @@ The editor toolbar has a microphone button for voice dictation:
 - Click 🎤 → start speaking; your speech is transcribed in real time at the cursor
 - Click again → stop recording
 - While speaking, press `Tab` to accept Ghost Text; subsequent voice input continues seamlessly
+
+### Image Analysis & OCR
+
+The editor toolbar's image tool supports 5 analysis modes:
+
+| Mode | Purpose |
+|------|---------|
+| Analyze image | General description of the image content |
+| OCR to text | Transcribe all text in the image line by line |
+| Analyze chart | Extract chart type, trends, and key values |
+| Extract table | Recognize tables and convert them to Markdown |
+| Recognize formula | Convert formulas to LaTeX with explanation |
+
+- **Cloud vision model**: configure base URL, vision model, and API key under Settings → Integrations → Vision API (e.g. GLM-4V-Flash, GPT-4o, Qwen-VL)
+- **Local OCR fallback**: with a text-only model (e.g. DeepSeek), image OCR automatically falls back to local engines **Tesseract → PaddleOCR** — no key required; the toast reports which engine was used
+- If neither local engine is available, the app shows setup instructions (Tesseract system binary, or `requirements-ocr.txt` for PaddleOCR) and never writes error text into the document
 
 ---
 
@@ -400,6 +416,31 @@ The status panel shows:
 
 If offline, click "Restart Backend".
 
+### Integrations (Zotero & Vision)
+
+Settings panel → "Integrations" tab:
+
+**Zotero**: enter an API Key and User ID to search and insert references from the editor; without a key it automatically falls back to local mode.
+
+**Vision API**: the vision model used for image analysis / OCR.
+
+| Setting | Description |
+|---------|-------------|
+| Base URL | Vision model API address (e.g. `https://open.bigmodel.cn/api/paas/v4`) |
+| Vision model | Model name (e.g. `glm-4v-flash`, `gpt-4o`) |
+| API Key | Vision model key; leave blank to keep the stored key |
+
+> No configuration is needed for text-only models — image OCR automatically falls back to local engines (Tesseract / PaddleOCR).
+
+### App Updates
+
+Settings panel → "System" → "App Updates":
+
+- Click "Check for updates" to compare the current version with the latest GitHub Release
+- The check is proxied through the backend (immune to GitHub API rate limits) and **never downloads or installs automatically**
+- When an update is available, a "View release" button opens the Releases page
+- The app also checks once at startup and shows a toast (only once per version)
+
 ---
 
 ## Export
@@ -551,3 +592,16 @@ Mind maps can be converted to paper outlines with one click, then opened in the 
 ### Q: Voice recognition produces duplicate text
 
 **A**: Chrome's continuous speech recognition occasionally re-recognizes earlier audio. Scholar Assistant has three layers of deduplication (prefix overlap detection + utterance tracking + internal duplication cleaning) that handle most cases automatically. If duplication still occurs, stop the mic and restart recording.
+
+### Q: Image OCR says "No vision key and local OCR is unavailable"
+
+**A**: With a text-only model, image OCR falls back to local engines; this message only appears when both are unavailable:
+
+1. **Tesseract**: install the system Tesseract binary (`tesseract` must be on PATH)
+2. **PaddleOCR**: `pip install -r requirements-ocr.txt` (first recognition downloads the Chinese model — needs internet once)
+
+Or configure a cloud vision model: Settings → Integrations → Vision API, enter a key, and OCR runs in the cloud.
+
+### Q: "Check for updates" keeps failing
+
+**A**: The check is proxied through the backend (v0.5.2+ fixed the older version being blocked by network policy). Confirm the backend is online in the status panel and retry; in a fully offline environment the check cannot work by design.

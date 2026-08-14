@@ -353,9 +353,10 @@ Translation SSE event order: `progress` → `parsed` → `cleaned` → `chunked`
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/api/vision/analyze` | General image analysis |
-| `POST` | `/api/vision/ocr` | OCR text extraction |
+| `POST` | `/api/vision/ocr` | OCR text extraction (falls back to local Tesseract / PaddleOCR when no vision key) |
 | `POST` | `/api/vision/chart` | Chart analysis |
 | `POST` | `/api/vision/table` | Table structure extraction |
+| `POST` | `/api/vision/formula` | Formula recognition → LaTeX |
 
 ### Argument Companion (v3)
 | Method | Path | Description |
@@ -418,6 +419,7 @@ Translation SSE event order: `progress` → `parsed` → `cleaned` → `chunked`
 | `GET` | `/api/citation/extract` | Extract citations |
 | `POST` | `/api/upload/image` | Upload image |
 | `GET` | `/api/assets/{filename}` | Get asset file |
+| `GET` | `/api/version/latest` | Latest GitHub Release (proxied, no API rate limit) |
 
 ## Configuration
 
@@ -436,6 +438,10 @@ Edit `config/default.yaml`:
 | `agent.enabled` | true | Whether Agent is enabled |
 | `rag.enabled` | true | Whether RAG is enabled (local only) |
 | `features.parallel_review` | false | 3-angle parallel review (enable in `default.local.yaml`) |
+| `vision.base_url` / `vision.model` / `vision.api_key` | OpenAI defaults | Vision model config (prefer Settings → Integrations → Vision API) |
+| `zotero.api_key` / `zotero.user_id` | empty | Zotero integration (local mode when no key) |
+
+> Private keys (API keys etc.) go into `python/config/default.local.yaml`, which is gitignored and never committed.
 
 ## Architecture
 
@@ -525,7 +531,7 @@ Good first issues are tagged `good-first-issue`. The project structure is docume
 
 ## A Note on Maturity
 
-Scholar Assistant is an active personal project under continuous improvement. While the core pipelines (translation, Agent, argument companion, mind map) are battle-tested with 2500+ tests, some features are still maturing — and that's reflected in the [subsystem grades](#subsystem-maturity) above.
+Scholar Assistant is an active personal project under continuous improvement. While the core pipelines (translation, Agent, argument companion, mind map) are battle-tested with 2500+ tests, some features are still maturing — see the subsystem maturity notes in `AGENTS.md` / `CLAUDE.md`.
 
 If something breaks or behaves unexpectedly, please [open an issue](../../issues). Bug reports with reproduction steps are incredibly helpful. PRs are welcome too.
 

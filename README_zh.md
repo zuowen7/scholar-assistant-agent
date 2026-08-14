@@ -401,9 +401,10 @@ MSYS_NO_PATHCONV=1 docker run --rm \
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `POST` | `/api/vision/analyze` | 通用图像分析 |
-| `POST` | `/api/vision/ocr` | OCR 文字提取 |
+| `POST` | `/api/vision/ocr` | OCR 文字提取（未配置视觉 Key 时自动回退本地 Tesseract / PaddleOCR） |
 | `POST` | `/api/vision/chart` | 图表分析 |
 | `POST` | `/api/vision/table` | 表格结构提取 |
+| `POST` | `/api/vision/formula` | 公式识别 → LaTeX |
 
 ### 论证陪练（Argument Companion v3）
 | 方法 | 路径 | 说明 |
@@ -457,10 +458,11 @@ MSYS_NO_PATHCONV=1 docker run --rm \
 | `GET` | `/api/citation/extract` | 提取引用 |
 | `POST` | `/api/upload/image` | 上传图片 |
 | `GET` | `/api/assets/{filename}` | 获取资源文件 |
+| `GET` | `/api/version/latest` | 最新 GitHub Release（后端代理，不受 API 限流影响） |
 
 ## 配置
 
-编辑 `python/config/default.yaml`：
+编辑 `python/config/default.yaml`（默认值模板）：
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
@@ -475,6 +477,10 @@ MSYS_NO_PATHCONV=1 docker run --rm \
 | `agent.enabled` | true | 是否启用 Agent |
 | `rag.enabled` | true | 是否启用 RAG（仅本地） |
 | `features.parallel_review` | false | 三角度并行评审（需在 `default.local.yaml` 启用） |
+| `vision.base_url` / `vision.model` / `vision.api_key` | OpenAI 默认 | 视觉模型配置（建议在「设置 → 集成 → 识图 Vision API」填写） |
+| `zotero.api_key` / `zotero.user_id` | 空 | Zotero 集成（未配置 Key 时自动本地模式） |
+
+> 私有密钥（API Key 等）写入 `python/config/default.local.yaml`，该文件被 `.gitignore` 排除、不会随仓库提交。
 
 ## 测试
 

@@ -62,7 +62,7 @@ Architecture inspired by [ultraworkers/claw-code](https://github.com/ultraworker
 ### Backend Structure (`python/`)
 
 `api_factory.py` — `create_app()` factory registers six router modules, each receiving shared state (config, runtime dirs, RAG store):
-- `routers/translate.py` — translation pipeline, config CRUD, health, export, retry
+- `routers/translate.py` — translation pipeline, config CRUD, health, export, retry, version/update check (`/api/version/latest`)
 - `src/agent_v2/router.py` — Agent V2 chat (ConversationRuntime, claw-code inspired). Registered directly via `api_factory.py` at `/api/agent/v2/*`
 - `routers/editor.py` — AI edit/complete/export/vision/citation/Zotero
 - `routers/argument.py` — Argument Map v2 + Companion v3 (ledger, reviewer, rebuttal, import reviews). **All ledger routes use `?doc_id=` query param**.
@@ -177,8 +177,8 @@ vue-i18n v11 (Composition API). Locales in `src/i18n/locales/{zh-CN,en-US}.json`
 | AI Editor (Monaco + Ghost Text + AI Panel + mid-stream reload) | B+ |
 | Cloud LLM providers (Claude/GPT/DeepSeek/Ollama, auto-detect, model aliases, provider quirks) | B+ |
 | RAG / Library (on-demand `rag_search`, translation auto-ingest) | B- |
-| Zotero integration | C |
-| Vision / OCR | C |
+| Zotero integration (keyless local fallback + credential merge) | B- |
+| Vision / OCR (settings UI, cloud vision, Tesseract/PaddleOCR local fallback) | B- |
 
 ## Known Defect Index
 
