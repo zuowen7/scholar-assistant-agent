@@ -75,6 +75,7 @@
     "localUser": "Local researcher",
     "localWorkspace": "Local workspace",
     "windowControls": "Window controls",
+    "windowDragRegion": "Drag window",
     "recentFiles": "Recent files",
     "recentEmpty": "Opened projects will appear here"
   },

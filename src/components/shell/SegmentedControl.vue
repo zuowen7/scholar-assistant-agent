@@ -28,6 +28,7 @@ defineEmits<{ 'update:modelValue': [value: string] }>()
 <style scoped>
 .segmented-control {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 2px;
   padding: 3px;
@@ -36,6 +37,8 @@ defineEmits<{ 'update:modelValue': [value: string] }>()
   background: var(--c-surface-1);
 }
 .segment-button {
+  flex-shrink: 0;
+  white-space: nowrap;
   height: 30px;
   padding: 0 12px;
   border: 0;

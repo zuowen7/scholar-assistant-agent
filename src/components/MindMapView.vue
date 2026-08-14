@@ -4,6 +4,7 @@
       :title="t('mindmap.headerTitle', { title: mapTitle })"
       :subtitle="t('mindmap.headerSubtitle', { count: nodeCount })"
       :icon="Network"
+      :compact="headerCompact"
     >
       <button
         type="button"
@@ -31,10 +32,15 @@
         <ShieldCheck :size="16" />
         {{ analysisLoading ? t('mindmap.checking') : t('mindmap.aiCheckBtn') }}
       </button>
-      <button type="button" class="map-header-button" @click="autoLayout()">
+      <button v-if="!headerCompact" type="button" class="map-header-button" @click="autoLayout()">
         <LayoutGrid :size="16" /> {{ t('mindmap.autoLayout') }}
       </button>
-      <button type="button" class="map-header-button" @click="addChildWithPosition">
+      <button
+        v-if="!headerCompact"
+        type="button"
+        class="map-header-button"
+        @click="addChildWithPosition"
+      >
         <Plus :size="16" /> {{ t('mindmap.childNode') }}
       </button>
       <button type="button" class="map-header-button" @click="saveAndEnterEditor">
@@ -267,12 +273,17 @@ import { useMindMap, mindMapToMarkdown, setAnalysisIssues } from '../composables
 import { useMindMapAnalysis, type MindMapAnalysisIssue } from '../composables/useMindMapAnalysis'
 import { useMindMapLayout } from '../composables/useMindMapLayout'
 import { useMindMapKeyboard } from '../composables/useMindMapKeyboard'
+import { useWorkspaceNavigation } from '../composables/useWorkspaceNavigation'
 import AppHeader from './shell/AppHeader.vue'
 import { LayoutGrid, Network, Plus, RefreshCw, ShieldCheck, Sparkles } from 'lucide-vue-next'
 
 const emit = defineEmits<{
   (e: 'enter-editor', outline: string): void
 }>()
+
+// Agent 面板打开时主列变窄，头部切换为紧凑布局并隐藏与工具栏重复的按钮
+const { rightDock } = useWorkspaceNavigation()
+const headerCompact = computed(() => rightDock.value === 'agent')
 
 type PaneResizeTarget = 'outline' | 'ai' | 'properties'
 type OutlineMode = 'expanded' | 'collapsed' | 'hidden'

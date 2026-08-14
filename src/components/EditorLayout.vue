@@ -17,7 +17,13 @@
           :title="activeTab.name"
           :subtitle="headerSubtitle"
           :icon="isLatexMode ? FileCode2 : FileText"
+          :compact="rightDock === 'agent'"
         >
+          <template #title-after>
+            <StatusBadge :tone="activeTab.isModified ? 'warning' : 'success'" dot>{{
+              activeTab.isModified ? t('editor.unsavedChanges') : t('editor.autoSaved')
+            }}</StatusBadge>
+          </template>
           <template #center>
             <SegmentedControl
               v-if="!isLatexMode"
@@ -29,9 +35,6 @@
               t('editor.lineWordCount', { lines: lineCount, words: wordCount.toLocaleString() })
             }}</span>
           </template>
-          <StatusBadge :tone="activeTab.isModified ? 'warning' : 'success'" dot>{{
-            activeTab.isModified ? t('editor.unsavedChanges') : t('editor.autoSaved')
-          }}</StatusBadge>
           <button type="button" class="header-action mode-toggle" @click="toggleEditorMode">
             {{ isLatexMode ? t('editor.writingView') : 'LaTeX' }}
           </button>

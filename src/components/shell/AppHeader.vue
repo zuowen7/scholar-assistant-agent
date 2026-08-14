@@ -1,5 +1,9 @@
 <template>
-  <header class="app-header" :class="{ 'no-center': !$slots.center }" data-tauri-drag-region>
+  <header
+    class="app-header"
+    :class="{ 'no-center': !$slots.center, 'is-compact': compact }"
+    data-tauri-drag-region
+  >
     <div class="header-leading">
       <component :is="icon" v-if="icon" :size="21" aria-hidden="true" />
       <div class="header-copy">
@@ -17,7 +21,7 @@
 
 <script setup lang="ts">
 import type { Component } from 'vue'
-defineProps<{ title: string; subtitle?: string; icon?: Component }>()
+defineProps<{ title: string; subtitle?: string; icon?: Component; compact?: boolean }>()
 </script>
 
 <style scoped>
@@ -80,6 +84,19 @@ defineProps<{ title: string; subtitle?: string; icon?: Component }>()
 }
 .header-actions > :deep(*) {
   flex-shrink: 0;
+}
+/* 紧凑模式：主列因右侧面板变窄时（窗口宽度正常，但 header 容器 < 默认网格最小宽度），
+   收紧列宽与内边距，避免 actions 向左溢出压住居中的分段控件。 */
+.app-header.is-compact {
+  grid-template-columns: minmax(200px, 0.8fr) minmax(0, auto) minmax(300px, 1.2fr);
+  gap: 10px;
+  padding: 0 14px 0 16px;
+}
+.app-header.is-compact.no-center {
+  grid-template-columns: minmax(200px, 0.8fr) minmax(300px, 1.2fr);
+}
+.app-header.is-compact .header-actions {
+  gap: 6px;
 }
 @media (max-width: 1100px) {
   .app-header {
