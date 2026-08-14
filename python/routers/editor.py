@@ -712,11 +712,36 @@ def register_editor(
         with open(temp_path, "wb") as f:
             f.write(content)
         try:
-            from src.mcp.vision_client import VisionClient
+            from src.mcp.vision_client import VisionClient, VisionResult
 
             client = VisionClient()
             if analysis_type == "ocr":
-                result = await client.ocr_image(temp_path)
+                # OCR 有本地兜底：未配置视觉 Key（纯文本模型用户）或云端失败时，
+                # 回退到 Tesseract / PaddleOCR，保证"图片 OCR 转文字"始终可用
+                _, api_key, _ = client._get_credentials()
+                result: VisionResult | None = None
+                if api_key:
+                    try:
+                        result = await client.ocr_image(temp_path)
+                    except Exception as exc:
+                        logger.warning("云端 OCR 失败，尝试本地 OCR: %s", exc)
+                if result is None or not api_key:
+                    from src.mcp.local_ocr import local_ocr_image
+
+                    local = await asyncio.to_thread(local_ocr_image, temp_path)
+                    if local is not None:
+                        text, engine = local
+                        result = VisionResult(
+                            text=text,
+                            raw_description=f"本地 OCR（{engine}）",
+                            engine=engine,
+                        )
+                    else:
+                        return {
+                            "text": "未配置识图 API Key，且本地 OCR 不可用（可安装 Tesseract 或 PaddleOCR 后重试）",
+                            "raw_description": "no vision key and no local ocr",
+                            "engine": "none",
+                        }
             else:
                 result = await client.analyze_image(temp_path, analysis_type=analysis_type)
             return result.to_dict()

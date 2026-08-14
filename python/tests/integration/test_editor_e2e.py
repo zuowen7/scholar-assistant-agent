@@ -526,6 +526,10 @@ class TestVisionEndpoints:
             },
         )
         assert resp.status_code in (200, 500)
+        if resp.status_code == 200:
+            body = resp.json()
+            assert "text" in body
+            assert "engine" in body
 
     def test_vision_chart(self, client, png_file):
         png_file.seek(0)

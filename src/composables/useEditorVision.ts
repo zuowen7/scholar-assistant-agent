@@ -10,6 +10,7 @@ export interface VisionAnalysisResponse {
   table_data?: string[][]
   key_findings?: string[]
   raw_description?: string
+  engine?: string
 }
 
 export interface ImageUploadResponse {

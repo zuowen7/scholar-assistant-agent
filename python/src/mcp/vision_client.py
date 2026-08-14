@@ -87,6 +87,7 @@ class VisionResult:
         table_data: list[list[str]] | None = None,
         key_findings: list[str] | None = None,
         raw_description: str = "",
+        engine: str = "",
     ):
         self.text = text
         self.chart_type = chart_type
@@ -94,6 +95,7 @@ class VisionResult:
         self.table_data = table_data
         self.key_findings = key_findings or []
         self.raw_description = raw_description
+        self.engine = engine
 
     def to_dict(self) -> dict:
         return {
@@ -103,6 +105,7 @@ class VisionResult:
             "table_data": self.table_data,
             "key_findings": self.key_findings,
             "raw_description": self.raw_description,
+            "engine": self.engine,
         }
 
 

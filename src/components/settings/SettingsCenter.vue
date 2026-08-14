@@ -352,6 +352,7 @@
             :description="t('settingsCenter.integrationsDescription')"
           />
           <ZoteroSettings />
+          <VisionSettings />
         </section>
 
         <section v-else-if="tab === 'background'" class="settings-page">
@@ -582,6 +583,7 @@ import UiButton from '../ui/UiButton.vue'
 import SettingsHeading from './SettingsHeading.vue'
 import DebugPanel from '../DebugPanel.vue'
 import ZoteroSettings from './ZoteroSettings.vue'
+import VisionSettings from './VisionSettings.vue'
 import type { UpdateCheckResult } from '../../composables/useUpdateChecker'
 
 interface CloudConfig {
