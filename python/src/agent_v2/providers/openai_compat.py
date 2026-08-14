@@ -75,6 +75,16 @@ def _max_tokens_for_model(model: str) -> int:
     return 4096
 
 
+def _usage_from_payload(usage_data: dict) -> TokenUsage:
+    """Parse usage, mapping DeepSeek 磁盘缓存字段到统一的 cache_read/creation。"""
+    return TokenUsage(
+        input_tokens=usage_data.get("prompt_tokens", 0),
+        output_tokens=usage_data.get("completion_tokens", 0),
+        cache_read_tokens=usage_data.get("prompt_cache_hit_tokens", 0),
+        cache_creation_tokens=usage_data.get("prompt_cache_miss_tokens", 0),
+    )
+
+
 class OpenAiCompatProvider(BaseProvider):
     """OpenAI-compatible Chat Completions provider with real streaming.
 
@@ -137,11 +147,17 @@ class OpenAiCompatProvider(BaseProvider):
             elif msg.role == MessageRole.ASSISTANT:
                 text = msg.text_content()
                 tool_calls = msg.tool_calls()
+                thinking = "".join(b.thinking for b in msg.blocks if isinstance(b, ThinkingBlock))
                 if text or tool_calls:
                     entry: dict[str, Any] = {"role": "assistant"}
                     # Always include content key, even if null (matches claw-code)
                     entry["content"] = text if text else None
                     if tool_calls:
+                        # DeepSeek 思考模式要求：工具调用回合的 reasoning_content
+                        # 必须在后续轮次回传，否则模型丢失推理链上下文。
+                        # 非工具调用回合的 reasoning_content 会被忽略，不发送以省 token。
+                        if thinking:
+                            entry["reasoning_content"] = thinking
                         tc_list = []
                         for tc in tool_calls:
                             args = tc.input
@@ -205,12 +221,16 @@ class OpenAiCompatProvider(BaseProvider):
             "stream": False,
         }
         built_tools = self._build_tools(tools)
-        apply_thinking_policy(
+        thinking_resolved = apply_thinking_policy(
             body,
             base_url=self.base_url,
             model=self.model,
             configured=self.thinking_mode,
         )
+        if thinking_resolved == "enabled":
+            # DeepSeek 思考模式下 temperature/top_p 等参数不生效（文档明示），
+            # 显式省略以避免上游兼容性问题
+            body.pop("temperature", None)
         if built_tools:
             body["tools"] = built_tools
             if tool_choice != "auto":
@@ -274,12 +294,15 @@ class OpenAiCompatProvider(BaseProvider):
         }
         if self.quirks.supports_stream_options:
             body["stream_options"] = {"include_usage": True}
-        apply_thinking_policy(
+        thinking_resolved = apply_thinking_policy(
             body,
             base_url=self.base_url,
             model=self.model,
             configured=self.thinking_mode,
         )
+        if thinking_resolved == "enabled":
+            # DeepSeek 思考模式下 temperature/top_p 等参数不生效（文档明示）
+            body.pop("temperature", None)
         built_tools = self._build_tools(tools)
         if built_tools:
             body["tools"] = built_tools
@@ -324,6 +347,7 @@ class OpenAiCompatProvider(BaseProvider):
         blocks: list = []
         tc_map: dict[int, dict] = {}
         text_buf = ""
+        reasoning_buf = ""
         stream_finished = False
 
         async with client.stream("POST", url, json=body) as resp:
@@ -364,10 +388,7 @@ class OpenAiCompatProvider(BaseProvider):
                 if not choices:
                     usage_data = chunk.get("usage")
                     if usage_data:
-                        yield TokenUsage(
-                            input_tokens=usage_data.get("prompt_tokens", 0),
-                            output_tokens=usage_data.get("completion_tokens", 0),
-                        )
+                        yield _usage_from_payload(usage_data)
                     continue
                 choice = choices[0]
                 if choice.get("finish_reason") is not None:
@@ -382,6 +403,7 @@ class OpenAiCompatProvider(BaseProvider):
 
                 reasoning = delta.get("reasoning_content")
                 if isinstance(reasoning, str) and reasoning:
+                    reasoning_buf += reasoning
                     yield ThinkingBlock(thinking=reasoning)
 
                 for tc in delta.get("tool_calls") or []:
@@ -398,10 +420,7 @@ class OpenAiCompatProvider(BaseProvider):
 
                 usage_data = chunk.get("usage")
                 if usage_data:
-                    yield TokenUsage(
-                        input_tokens=usage_data.get("prompt_tokens", 0),
-                        output_tokens=usage_data.get("completion_tokens", 0),
-                    )
+                    yield _usage_from_payload(usage_data)
 
         if not stream_finished:
             raise ApiError(
@@ -419,6 +438,11 @@ class OpenAiCompatProvider(BaseProvider):
                         input=tc["args"] or "{}",
                     )
                 )
+
+        # 思考内容随最终响应一并返回：会话持久化需要它，
+        # DeepSeek 工具调用回合在后续请求中必须回传 reasoning_content。
+        if reasoning_buf:
+            blocks.append(ThinkingBlock(thinking=reasoning_buf))
 
         yield ProviderResponse(
             blocks=blocks,
@@ -443,19 +467,18 @@ class OpenAiCompatProvider(BaseProvider):
                     input=func.get("arguments", "{}"),
                 )
             )
+        # 思考内容独立于正文捕获：纯工具调用回合 content 为空，
+        # 若只按 text 非空才解析会丢失 reasoning，后续无法回传。
+        reasoning = msg.get("reasoning_content") or ""
+        if reasoning:
+            blocks.append(ThinkingBlock(thinking=reasoning))
         text = msg.get("content", "")
         if isinstance(text, str) and text:
-            reasoning = msg.get("reasoning_content") or ""
-            if reasoning:
-                blocks.append(ThinkingBlock(thinking=reasoning))
             blocks.append(TextBlock(text=text))
 
         return ProviderResponse(
             blocks=blocks,
-            usage=TokenUsage(
-                input_tokens=usage_data.get("prompt_tokens", 0),
-                output_tokens=usage_data.get("completion_tokens", 0),
-            ),
+            usage=_usage_from_payload(usage_data),
             stop_reason="tool_use" if finish == "tool_calls" else "end_turn",
         )
 

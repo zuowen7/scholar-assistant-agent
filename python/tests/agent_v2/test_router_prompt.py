@@ -398,7 +398,13 @@ def test_session_routes_require_and_filter_by_server_workspace_grant(tmp_path, m
     client = TestClient(app)
     headers = {"X-Workspace-Grant": token}
 
-    assert client.get("/api/agent/v2/sessions").status_code == 403
+    # 无授权令牌：返回空列表（不泄露任何会话），而不是 403 噪音
+    no_token = client.get("/api/agent/v2/sessions")
+    assert no_token.status_code == 200
+    assert no_token.json() == []
+    # 无效令牌仍被拒绝
+    bad_token = client.get("/api/agent/v2/sessions", headers={"X-Workspace-Grant": "invalid-token"})
+    assert bad_token.status_code == 403
     listing = client.get("/api/agent/v2/sessions", headers=headers)
     assert listing.status_code == 200
     assert [item["id"] for item in listing.json()] == ["sess_granted"]
