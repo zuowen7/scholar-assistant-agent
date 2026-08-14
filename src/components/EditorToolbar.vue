@@ -85,12 +85,13 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
-import { Eye, Bot, GitBranch, MoreHorizontal } from './ui/icons'
+import { Eye, Bot, GitBranch, MoreHorizontal, ScanText, BarChart3 } from './ui/icons'
 import { Image, Table, Sigma, Quote, Library, CheckCircle } from './ui/icons'
 import { Mic } from './ui/icons'
 import UiDropdown from './ui/UiDropdown.vue'
 import type { DropdownItem } from './ui/UiDropdown.vue'
 import { useSpeechRecognition } from '../composables/useSpeechRecognition'
+import type { VisionAnalysisType } from '../composables/useEditorVision'
 
 const speech = useSpeechRecognition({
   onResult: (text) => {
@@ -128,7 +129,7 @@ const emit = defineEmits<{
   'run-compliance': []
   'process-citations': []
   'zotero-insert': []
-  'vision-selected': [file: File]
+  'vision-selected': [file: File, mode: VisionAnalysisType]
   'image-selected': [file: File]
   'voice-text': [text: string]
   'voice-start': []
@@ -138,11 +139,14 @@ const emit = defineEmits<{
 
 const imageInputRef = ref<HTMLInputElement | null>(null)
 const visionInputRef = ref<HTMLInputElement | null>(null)
+const pendingVisionMode = ref<VisionAnalysisType>('general')
 
 function openImagePicker() {
   imageInputRef.value?.click()
 }
-function openVisionPicker() {
+
+function pickVision(mode: VisionAnalysisType) {
+  pendingVisionMode.value = mode
   visionInputRef.value?.click()
 }
 
@@ -155,7 +159,7 @@ function handleImageSelected(event: Event) {
 function handleVisionSelected(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]
   ;(event.target as HTMLInputElement).value = ''
-  if (file) emit('vision-selected', file)
+  if (file) emit('vision-selected', file, pendingVisionMode.value)
 }
 
 defineExpose({ resetVoiceAccumulated })
@@ -168,7 +172,11 @@ const moreItems = computed<DropdownItem[]>(() => [
   { text: t('editor.blockFormula'), icon: Sigma, onClick: () => emit('insert-block-formula') },
   { divider: true },
   { label: t('editor.analysis') },
-  { text: 'OCR / Vision', icon: Eye, onClick: openVisionPicker },
+  { text: t('editor.visionLabel'), icon: Eye, onClick: () => pickVision('general') },
+  { text: t('editor.visionOcr'), icon: ScanText, onClick: () => pickVision('ocr') },
+  { text: t('editor.visionChart'), icon: BarChart3, onClick: () => pickVision('chart') },
+  { text: t('editor.visionTable'), icon: Table, onClick: () => pickVision('table') },
+  { text: t('editor.visionFormula'), icon: Sigma, onClick: () => pickVision('formula') },
   { text: t('editor.complianceCheck'), icon: CheckCircle, onClick: () => emit('run-compliance') },
   { divider: true },
   { label: t('editor.cite') },

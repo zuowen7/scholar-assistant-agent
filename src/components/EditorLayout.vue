@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="editor-layout">
     <MindMapView v-if="draftView === 'mindmap'" @enter-editor="enterEditorFromMindMap" />
 
@@ -287,6 +287,7 @@ import {
 import { useEditorState, getRange } from '../composables/useEditorState'
 import { useEditor } from '../composables/useEditor'
 import { useEditorVision } from '../composables/useEditorVision'
+import type { VisionAnalysisType, VisionAnalysisResponse } from '../composables/useEditorVision'
 import { useToast } from '../composables/useToast'
 import { useEditorCitation } from '../composables/useEditorCitation'
 import { useExportWorkspace } from '../composables/useExportWorkspace'
@@ -324,7 +325,14 @@ const {
 const { openNewUntitled, closeTab, setContent, markDirty, saveFile, reloadOpenTabs } = useEditor()
 
 // -- Feature composables ---------------------------------------------------
-const { analyzeVision, insertImageFile } = useEditorVision()
+const {
+  analyzeVision,
+  insertImageFile,
+  ocrImage,
+  analyzeChart,
+  extractTableFromImage,
+  recognizeFormula,
+} = useEditorVision()
 const { processCitations, previewCitations, getZoteroStatus, searchZotero } = useEditorCitation()
 const {
   resetMindMap,
@@ -718,25 +726,35 @@ async function handleImageSelected(file: File) {
   }
 }
 
-async function handleVisionSelected(file: File) {
+async function handleVisionSelected(file: File, mode: VisionAnalysisType = 'general') {
   try {
-    const data = await analyzeVision(file, 'general')
+    let data: VisionAnalysisResponse | null
+    if (mode === 'ocr') data = await ocrImage(file)
+    else if (mode === 'chart') data = await analyzeChart(file)
+    else if (mode === 'table') data = await extractTableFromImage(file)
+    else if (mode === 'formula') data = await recognizeFormula(file)
+    else data = await analyzeVision(file, 'general')
     if (!data) {
       showExportToast(t('editor.visionFailed'))
       return
     }
-    const findings = data.key_findings?.length
-      ? `\n${t('editor.visionFindings', { findings: data.key_findings.join('; ') })}`
-      : ''
-    const chart = data.chart_type
-      ? `\n${t('editor.visionChartType', { type: data.chart_type })}`
-      : ''
-    const table = data.table_data?.length
-      ? `\n\n${data.table_data.map((row: string[]) => `| ${row.join(' | ')} |`).join('\n')}`
-      : ''
-    insertTextAtCursor(
-      `\n\n> Vision：${data.text || data.raw_description || t('editor.visionNoText')}${chart}${findings}${table}\n`,
-    )
+    if (mode === 'ocr' || mode === 'formula') {
+      // OCR 转写 / 公式识别结果按原文直接插入
+      insertTextAtCursor(`\n\n${data.text || data.raw_description || t('editor.visionNoText')}\n`)
+    } else {
+      const findings = data.key_findings?.length
+        ? `\n${t('editor.visionFindings', { findings: data.key_findings.join('; ') })}`
+        : ''
+      const chart = data.chart_type
+        ? `\n${t('editor.visionChartType', { type: data.chart_type })}`
+        : ''
+      const table = data.table_data?.length
+        ? `\n\n${data.table_data.map((row: string[]) => `| ${row.join(' | ')} |`).join('\n')}`
+        : ''
+      insertTextAtCursor(
+        `\n\n> Vision：${data.text || data.raw_description || t('editor.visionNoText')}${chart}${findings}${table}\n`,
+      )
+    }
     showExportToast(t('editor.visionInserted'))
   } catch (e) {
     showExportToast(t('editor.visionFailedMsg', { msg: String(e) }))
