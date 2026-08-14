@@ -153,10 +153,11 @@ class OpenAiCompatProvider(BaseProvider):
                     # Always include content key, even if null (matches claw-code)
                     entry["content"] = text if text else None
                     if tool_calls:
-                        # DeepSeek 思考模式要求：工具调用回合的 reasoning_content
-                        # 必须在后续轮次回传，否则模型丢失推理链上下文。
+                        # 推理模型（DeepSeek/Qwen/GLM 等）要求工具调用回合回传
+                        # reasoning_content；严格供应商（OpenAI/Groq 等）不识别该字段，
+                        # 由 quirks.echo_reasoning_content 门控，避免 400。
                         # 非工具调用回合的 reasoning_content 会被忽略，不发送以省 token。
-                        if thinking:
+                        if thinking and self.quirks.echo_reasoning_content:
                             entry["reasoning_content"] = thinking
                         tc_list = []
                         for tc in tool_calls:

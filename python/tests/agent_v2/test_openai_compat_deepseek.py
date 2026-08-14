@@ -69,6 +69,24 @@ class TestReasoningEchoBack:
         assert built[2]["tool_call_id"] == "tc_1"
         assert built[2]["content"] == "文件内容"
 
+    def test_openai_never_echoes_reasoning_content(self):
+        """严格供应商不识别 reasoning_content 字段，即使消息带 ThinkingBlock 也不回声。"""
+        provider = OpenAiCompatProvider(
+            base_url="https://api.openai.com/v1", api_key="k", model="gpt-4o"
+        )
+        built = _build_messages_for_test(provider, [_assistant_with_tools("思考内容")])
+        assert "reasoning_content" not in built[0]
+        assert built[0]["tool_calls"]
+
+    def test_qwen_echoes_reasoning_content(self):
+        provider = OpenAiCompatProvider(
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            api_key="k",
+            model="qwen3-235b",
+        )
+        built = _build_messages_for_test(provider, [_assistant_with_tools("推理过程")])
+        assert built[0]["reasoning_content"] == "推理过程"
+
 
 def _build_messages_for_test(provider: OpenAiCompatProvider, msgs: list[Message]) -> list[dict]:
     return provider._build_messages(msgs, system_prompt=None)
