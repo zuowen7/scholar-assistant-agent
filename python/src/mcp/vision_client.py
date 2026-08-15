@@ -190,6 +190,20 @@ class VisionClient:
 
         return base_url, api_key, model or "gpt-4o"
 
+    def _get_proxy(self) -> str | None:
+        """从配置 network.proxy 读取代理（与 Agent 供应商一致）。
+
+        桌面端启动时 Rust 会清空 HTTP(S)_PROXY 环境变量，因此配置项是
+        主要入口；未配置时回退环境变量（httpx 默认行为）。
+        """
+        proxy = (self._load_config().get("network", {}) or {}).get("proxy", "") or ""
+        proxy = str(proxy).strip()
+        if not proxy:
+            import os
+
+            proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or ""
+        return proxy or None
+
     def _encode_image(self, image_path: str | Path) -> str:
         """将图片编码为 base64"""
         path = Path(image_path)
@@ -255,14 +269,15 @@ class VisionClient:
         analysis_type: str,
     ) -> VisionResult:
         """使用 OpenAI-compatible Vision API 分析"""
-        use_httpx = False
+        # 优先 httpx（硬依赖，代理/超时行为可靠）；aiohttp 仅在 httpx 不可用时兜底
+        use_httpx = True
         try:
-            import aiohttp
+            import httpx
         except ImportError:
             try:
-                import httpx
+                import aiohttp
 
-                use_httpx = True
+                use_httpx = False
             except ImportError:
                 raise ImportError("需要安装 aiohttp 或 httpx")
 
@@ -295,7 +310,11 @@ class VisionClient:
 
         try:
             if use_httpx:
-                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                kwargs: dict = {"timeout": self.timeout}
+                proxy = self._get_proxy()
+                if proxy:
+                    kwargs["proxy"] = proxy
+                async with httpx.AsyncClient(**kwargs) as client:
                     resp = await client.post(
                         f"{base_url}/chat/completions",
                         headers={
@@ -311,9 +330,13 @@ class VisionClient:
                     resp.raise_for_status()
                     result = resp.json()
             else:
-                async with aiohttp.ClientSession() as session:
+                proxy = self._get_proxy()
+                async with aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=self.timeout)
+                ) as session:
                     async with session.post(
                         f"{base_url}/chat/completions",
+                        proxy=proxy,
                         headers={
                             "Authorization": f"Bearer {api_key}",
                             "Content-Type": "application/json",
@@ -351,12 +374,15 @@ class VisionClient:
 
         prompt = CLAUDE_PROMPTS.get(analysis_type, CLAUDE_PROMPTS["general"])
 
+        # 优先 httpx（硬依赖，代理/超时行为可靠）；aiohttp 仅在 httpx 不可用时兜底
         try:
-            import aiohttp
-        except ImportError:
             import httpx
 
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            kwargs: dict = {"timeout": self.timeout}
+            proxy = self._get_proxy()
+            if proxy:
+                kwargs["proxy"] = proxy
+            async with httpx.AsyncClient(**kwargs) as client:
                 resp = await client.post(
                     f"{base_url}/messages",
                     headers={
@@ -392,10 +418,16 @@ class VisionClient:
                 result = resp.json()
                 content = result["content"][0]["text"]
                 return self._parse_vision_response(content, analysis_type)
-        else:
-            async with aiohttp.ClientSession() as session:
+        except ImportError:
+            import aiohttp
+
+            proxy = self._get_proxy()
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=self.timeout)
+            ) as session:
                 async with session.post(
                     f"{base_url}/messages",
+                    proxy=proxy,
                     headers={
                         "x-api-key": api_key,
                         "anthropic-version": ANTHROPIC_API_VERSION,

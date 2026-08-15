@@ -104,6 +104,71 @@ class TestVisionClient:
         assert config["vision"]["model"] == "glm-4v-flash"
         assert config["vision"]["base_url"] == "https://api.openai.com/v1"
 
+    def test_get_proxy_from_network_config(self, monkeypatch):
+        client = VisionClient()
+        monkeypatch.setattr(
+            client, "_load_config", lambda: {"network": {"proxy": "http://127.0.0.1:7897"}}
+        )
+        assert client._get_proxy() == "http://127.0.0.1:7897"
+
+    def test_get_proxy_falls_back_to_env(self, monkeypatch):
+        client = VisionClient()
+        monkeypatch.setattr(client, "_load_config", lambda: {})
+        monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:7898")
+        monkeypatch.delenv("HTTP_PROXY", raising=False)
+        assert client._get_proxy() == "http://127.0.0.1:7898"
+
+    def test_get_proxy_none_when_unconfigured(self, monkeypatch):
+        client = VisionClient()
+        monkeypatch.setattr(client, "_load_config", lambda: {})
+        monkeypatch.delenv("HTTPS_PROXY", raising=False)
+        monkeypatch.delenv("HTTP_PROXY", raising=False)
+        assert client._get_proxy() is None
+
+    async def test_analyze_image_passes_proxy_to_httpx_client(self, monkeypatch):
+        captured: dict = {}
+
+        class _FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"choices": [{"message": {"content": "识别出的文字"}}]}
+
+        class _FakeAsyncClient:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return False
+
+            async def post(self, *args, **kwargs):
+                return _FakeResponse()
+
+        httpx_stub = types.ModuleType("httpx")
+        httpx_stub.AsyncClient = _FakeAsyncClient
+        # _analyze_openai 优先 aiohttp，令其导入失败以强制走 httpx 分支
+        monkeypatch.setitem(sys.modules, "aiohttp", None)
+        monkeypatch.setitem(sys.modules, "httpx", httpx_stub)
+
+        client = VisionClient()
+        monkeypatch.setattr(client, "_get_proxy", lambda: "http://127.0.0.1:7897")
+        with (
+            patch.object(
+                client,
+                "_get_credentials",
+                return_value=("https://example.com/v1", "k", "m"),
+            ),
+            patch.object(client, "_encode_image", return_value="b64"),
+        ):
+            result = await client.analyze_image("fake.png", analysis_type="ocr")
+
+        assert captured.get("proxy") == "http://127.0.0.1:7897"
+        assert result.text == "识别出的文字"
+
 
 class TestCitationIndexer:
     def test_extract_simple_citation(self):
