@@ -1,6 +1,6 @@
 """Hooks system — lifecycle interceptors with abort signal, progress, JSON parsing.
 
-Port of agent runtime rust/crates/runtime/src/hooks.rs.
+Reimplementation of agent runtime rust/crates/runtime/src/hooks.rs.
 
 Advanced features over original:
   - HookAbortSignal: async cancellation of running hooks

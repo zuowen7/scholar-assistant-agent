@@ -1,7 +1,7 @@
 """End-to-end integration tests: router → runtime → new modules.
 
 Tests the full chain from HTTP request to runtime behavior,
-covering all 10 newly ported modules in realistic scenarios.
+covering all 10 newly reimplemented modules in realistic scenarios.
 """
 
 from __future__ import annotations
