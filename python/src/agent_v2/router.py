@@ -43,10 +43,12 @@ from src.agent_v2.runtime.permissions import PermissionMode, policy_from_registr
 from src.agent_v2.runtime.session import MutationConflictError, Session
 from src.agent_v2.runtime.usage import UsageTracker
 from src.agent_v2.runtime.workspace_grants import get_workspace_grants
+from src.agent_v2.skill_learning import SkillLearningService, SkillProposalStore
 from src.agent_v2.skills import _BUILTIN_SKILLS, SkillRegistry
 from src.agent_v2.sse_adapter import agent_event_to_sse_stream
 from src.agent_v2.tools.academic_tools import register_academic_tools
 from src.agent_v2.tools.registry import create_default_registry
+from src.agent_v2.tools.skill_tools import register_skill_tools
 from src.agent_v2.tools.sub_agent import register_sub_agent
 from src.agent_v2.types import (
     Message,
@@ -75,6 +77,8 @@ _RUNTIME_DIR = _get_runtime_dir()
 # Session 保存在 data/ 目录下，避开 Tauri src-tauri/ 文件监视器
 _DEFAULT_SESSION_DIR = _RUNTIME_DIR / "data" / "agent_v2" / "sessions"
 _SESSION_DIR = Path(os.environ.get("AGENT_SESSION_DIR", str(_DEFAULT_SESSION_DIR)))
+_SKILLS_DIR = _RUNTIME_DIR / "data" / "agent_v2" / "skills"
+_SKILL_PROPOSALS_DIR = _RUNTIME_DIR / "data" / "agent_v2" / "skill_proposals"
 _SESSION_POOL: dict[str, ConversationRuntime] = {}
 _SESSION_LOCK = asyncio.Lock()
 _SESSION_TTL = 3600
@@ -184,6 +188,10 @@ class ChatRequestV2(BaseModel):
 class ApproveRequest(BaseModel):
     decision: Literal["allow_once", "allow_session", "deny"] = "allow_once"
     reason: str | None = None
+
+
+class SkillProposalDecisionRequest(BaseModel):
+    decision: Literal["approve", "reject"]
 
 
 def _visible_user_text(text: str) -> str:
@@ -452,6 +460,32 @@ def _agent_config_from(root_config: dict) -> dict:
 def _load_agent_config() -> dict:
     """Load Agent settings for standalone Agent V2 usage."""
     return _agent_config_from(_load_root_config())
+
+
+def _base_skill_registry() -> SkillRegistry:
+    registry = SkillRegistry()
+    for skill in _BUILTIN_SKILLS:
+        registry.register(skill)
+    registry.load_dir(_SKILLS_DIR)
+    return registry
+
+
+def _skill_registry_for_config(agent_cfg: dict | None = None) -> SkillRegistry:
+    registry = _base_skill_registry()
+    plugin_mgr = create_default_plugin_manager(
+        enabled_names=(agent_cfg or {}).get("enabled_plugins", []),
+    )
+    plugin_mgr.register_skills(registry)
+    return registry
+
+
+def _skill_learning_config(agent_cfg: dict) -> dict:
+    value = agent_cfg.get("skill_learning", {})
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _skill_proposal_store() -> SkillProposalStore:
+    return SkillProposalStore(_SKILL_PROPOSALS_DIR, _SKILLS_DIR)
 
 
 def _resolve_model_alias(model: str, aliases: dict) -> str:
@@ -958,14 +992,7 @@ def _create_runtime(
     registry.set_provider(provider)
 
     # Skills
-    skill_registry = SkillRegistry()
-    for s in _BUILTIN_SKILLS:
-        skill_registry.register(s)
-    # Load user skills from data/agent_v2/skills/
-    _skills_dir = _RUNTIME_DIR / "data" / "agent_v2" / "skills"
-    skill_registry.load_dir(_skills_dir)
-    for skill_name in selected_skill_names:
-        skill_registry.activate(skill_name)
+    skill_registry = _base_skill_registry()
 
     # Hooks
     hook_runner = HookRunner()
@@ -976,6 +1003,9 @@ def _create_runtime(
         enabled_names=agent_cfg.get("enabled_plugins", []),
     )
     plugin_mgr.apply_all(skill_registry, hook_runner, registry)
+    for skill_name in selected_skill_names:
+        skill_registry.activate(skill_name)
+    register_skill_tools(registry, skill_registry)
 
     # Policy
     policy = policy_from_registry(PermissionMode.WORKSPACE_WRITE, registry.permission_specs())
@@ -989,6 +1019,9 @@ def _create_runtime(
     base_prompt = _build_system_prompt(str(ws), registry.definitions())
     skill_prompt = skill_registry.build_prompt_injection(layer="agents")
     sp = base_prompt + "\n" + skill_prompt if skill_prompt else base_prompt
+    discovery_prompt = skill_registry.build_discovery_prompt()
+    if discovery_prompt:
+        sp += "\n\n" + discovery_prompt
     if selected_skill_names:
         selected_list = ", ".join(sorted(selected_skill_names))
         sp += (
@@ -1115,10 +1148,71 @@ def register_agent_v2_routes(
     def _current_root_config() -> dict | None:
         return load_config() if load_config is not None else None
 
+    def _agent_cfg_for(root_config: dict | None) -> dict:
+        return _agent_config_from(root_config) if root_config is not None else _load_agent_config()
+
+    async def _review_session(session: Session, *, root_config: dict | None, force: bool):
+        provider = _create_provider(root_config) if root_config is not None else _create_provider()
+        try:
+            agent_cfg = _agent_cfg_for(root_config)
+            service = SkillLearningService(
+                provider=provider,
+                registry=_skill_registry_for_config(agent_cfg),
+                store=_skill_proposal_store(),
+                config=_skill_learning_config(agent_cfg),
+            )
+            return await service.review(session, force=force)
+        finally:
+            close = getattr(provider, "close", None)
+            if close:
+                await close()
+
+    def _auto_review_enabled_for(session: Session, root_config: dict | None) -> bool:
+        agent_cfg = _agent_cfg_for(root_config)
+        learning_cfg = _skill_learning_config(agent_cfg)
+        if not bool(learning_cfg.get("enabled", False)):
+            return False
+        service = SkillLearningService(
+            provider=None,  # type: ignore[arg-type] -- predicate does not call the provider
+            registry=_skill_registry_for_config(agent_cfg),
+            store=_skill_proposal_store(),
+            config=learning_cfg,
+        )
+        return service.should_review(session)
+
     # Background cleanup task — started/stopped via app.state so the host
     # app's lifespan handler (api_factory._lifespan) controls the lifecycle.
     # This avoids the deprecated @app.on_event("startup"/"shutdown") API.
     _cleanup_task: asyncio.Task | None = None
+    _review_tasks: set[asyncio.Task] = set()
+
+    def _schedule_review(session: Session, root_config: dict | None) -> None:
+        try:
+            should_review = _auto_review_enabled_for(session, root_config)
+        except Exception:
+            logger.exception("Agent V2: could not evaluate automatic Skill review eligibility")
+            return
+        if not should_review:
+            return
+        task = asyncio.create_task(
+            _review_session(session, root_config=root_config, force=False),
+            name=f"skill-review-{session.session_id}",
+        )
+        _review_tasks.add(task)
+
+        def _done(completed: asyncio.Task) -> None:
+            _review_tasks.discard(completed)
+            if completed.cancelled():
+                return
+            error = completed.exception()
+            if error is not None:
+                logger.warning(
+                    "Agent V2: background Skill review failed for %s: %s",
+                    session.session_id,
+                    error,
+                )
+
+        task.add_done_callback(_done)
 
     async def _start_cleanup_loop() -> None:
         nonlocal _cleanup_task
@@ -1136,6 +1230,11 @@ def register_agent_v2_routes(
             with suppress(asyncio.CancelledError):
                 await _cleanup_task
             logger.info("Agent V2: background session cleanup loop stopped")
+        for task in tuple(_review_tasks):
+            task.cancel()
+        if _review_tasks:
+            await asyncio.gather(*tuple(_review_tasks), return_exceptions=True)
+            _review_tasks.clear()
 
     # Register with app.state so api_factory._lifespan can drive the lifecycle.
     state_agent = getattr(app.state, "_state_agent", None)
@@ -1148,6 +1247,7 @@ def register_agent_v2_routes(
     @app.post(f"{prefix}/chat")
     async def v2_chat(req: ChatRequestV2, request: Request):
         """主对话端点 — SSE 流式。"""
+        root_config = _current_root_config()
         workspace = req.workspace_root or ""
         grant_store = get_workspace_grants(request.app)
         if grant_store is not None:
@@ -1166,7 +1266,7 @@ def register_agent_v2_routes(
                 history=runtime_history,
                 current_message=req.message,
                 selected_skills=req.skills,
-                root_config=_current_root_config(),
+                root_config=root_config,
                 edit_scope=req.selection.model_dump() if req.selection is not None else None,
                 workspace_grant=req.workspace_grant or "",
                 editor_files=[value.model_dump() for value in req.editor_files],
@@ -1199,6 +1299,7 @@ def register_agent_v2_routes(
             finally:
                 async with _SESSION_LOCK:
                     _SESSION_POOL.pop(rt.session.session_id, None)
+                _schedule_review(rt.session, root_config)
                 close = getattr(rt.provider, "close", None)
                 if close:
                     await close()
@@ -1278,6 +1379,7 @@ def register_agent_v2_routes(
     @app.post(f"{prefix}/resume/{{session_id}}")
     async def v2_resume(session_id: str, request: Request):
         """恢复会话 — 加载持久化 session 并继续。"""
+        root_config = _current_root_config()
         try:
             session_path = _session_path(session_id)
         except ValueError as e:
@@ -1295,7 +1397,7 @@ def register_agent_v2_routes(
                 rt = _create_runtime(
                     workspace,
                     session_id=session_id,
-                    root_config=_current_root_config(),
+                    root_config=root_config,
                 )
                 async with _SESSION_LOCK:
                     if session_id in _SESSION_POOL:
@@ -1320,6 +1422,7 @@ def register_agent_v2_routes(
                 if rt:
                     async with _SESSION_LOCK:
                         _SESSION_POOL.pop(session_id, None)
+                    _schedule_review(rt.session, root_config)
                     close = getattr(rt.provider, "close", None)
                     if close:
                         await close()
@@ -1489,14 +1592,70 @@ def register_agent_v2_routes(
     @app.get(f"{prefix}/skills")
     async def v2_skills(request: Request):
         """列出所有 skills + 激活状态。"""
-        skill_registry = SkillRegistry()
-        for s in _BUILTIN_SKILLS:
-            skill_registry.register(s)
-        _sdir = _RUNTIME_DIR / "data" / "agent_v2" / "skills"
-        skill_registry.load_dir(_sdir)
-        plugin_mgr = create_default_plugin_manager()
-        plugin_mgr.register_skills(skill_registry)
-        return skill_registry.list_all()
+        return _skill_registry_for_config(_agent_cfg_for(_current_root_config())).list_all()
+
+    @app.post(f"{prefix}/skills/review/{{session_id}}")
+    async def v2_review_session_for_skill(session_id: str, request: Request):
+        """Explicitly review one completed session; this never writes a Skill directly."""
+        try:
+            path = _session_path(session_id)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        async with _SESSION_LOCK:
+            if session_id in _SESSION_POOL:
+                raise HTTPException(409, "Cannot review a session while it is active")
+        if not path.is_file():
+            raise HTTPException(404, f"Session {session_id} not found")
+        session = Session.load(path)
+        _authorize_workspace_header(request, session.meta.workspace)
+        try:
+            proposal = await _review_session(
+                session,
+                root_config=_current_root_config(),
+                force=True,
+            )
+        except (ValueError, json.JSONDecodeError) as exc:
+            logger.warning("Skill review rejected invalid candidate for %s: %s", session_id, exc)
+            raise HTTPException(422, str(exc)) from exc
+        if proposal is None:
+            return {"status": "no_proposal", "proposal": None}
+        return {"status": "proposal", "proposal": proposal.to_dict()}
+
+    @app.get(f"{prefix}/skill-proposals")
+    async def v2_skill_proposals(request: Request):
+        workspace = _authorized_workspace_from_header(request)
+        requested_status = request.query_params.get("status", "pending")
+        if requested_status not in {"pending", "approved", "rejected", "all"}:
+            raise HTTPException(400, "Invalid proposal status")
+        proposals = _skill_proposal_store().list(
+            workspace=str(workspace) if workspace is not None else None,
+            status=None if requested_status == "all" else requested_status,
+        )
+        return [proposal.to_dict() for proposal in proposals]
+
+    @app.post(f"{prefix}/skill-proposals/{{proposal_id}}/decision")
+    async def v2_skill_proposal_decision(
+        proposal_id: str,
+        body: SkillProposalDecisionRequest,
+        request: Request,
+    ):
+        store = _skill_proposal_store()
+        try:
+            proposal = store.get(proposal_id)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        if proposal is None:
+            raise HTTPException(404, "Skill proposal not found")
+        _authorize_workspace_header(request, proposal.workspace)
+        try:
+            decided = store.decide(proposal_id, body.decision)
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        except (FileExistsError, FileNotFoundError, RuntimeError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return decided.to_dict()
 
     @app.get(f"{prefix}/plugins")
     async def v2_plugins(request: Request):

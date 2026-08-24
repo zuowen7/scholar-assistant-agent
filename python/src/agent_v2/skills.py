@@ -15,16 +15,29 @@ Skill 文件格式 (Markdown with YAML frontmatter):
 
 from __future__ import annotations
 
+import html
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 _MAX_SKILL_CHARS = 16_000
 _MAX_ACTIVE_SKILLS = 16
 _MAX_SKILL_PROMPT_CHARS = 64_000
+_MAX_SKILL_INDEX_CHARS = 12_000
 _VALID_LAYERS = frozenset({"soul", "agents", "identity"})
 _VALID_SKILL_NAME = re.compile(r"^[A-Za-z0-9_\-\u4e00-\u9fff]+$")
+_FRONTMATTER_RE = re.compile(r"^---[ \t]*\r?\n(.*?)\r?\n---[ \t]*\r?\n?(.*)$", re.DOTALL)
+
+
+def _frontmatter_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() not in {"", "false", "no", "0", "off"}
+    return bool(value)
 
 
 @dataclass
@@ -65,15 +78,25 @@ class SkillRegistry:
             self.load_dir(Path(skills_dir))
 
     def load_dir(self, directory: Path) -> int:
-        """加载目录中所有 .md 文件为 skill。"""
+        """Load legacy ``*.md`` files and standard ``*/SKILL.md`` packages.
+
+        Standard packages are parsed strictly.  Legacy top-level files remain
+        permissive so existing user data keeps working during migration.
+        """
         if not directory.is_dir():
             return 0
+        root = directory.resolve()
         count = 0
-        for f in sorted(directory.glob("*.md")):
+        candidates = [(path, False) for path in sorted(directory.glob("*.md"))]
+        candidates.extend((path, True) for path in sorted(directory.glob("*/SKILL.md")))
+        for f, standard_package in candidates:
             if f.name.startswith("_") or f.name.startswith("."):
                 continue  # skip helper/docs files
             try:
-                skill = self._parse_skill_file(f)
+                resolved = f.resolve()
+                if not resolved.is_relative_to(root) or f.is_symlink():
+                    continue
+                skill = self._parse_skill_file(f, require_frontmatter=standard_package)
                 self._validate_skill(skill)
                 self._skills[skill.name] = skill
                 if skill.default_active:
@@ -83,7 +106,7 @@ class SkillRegistry:
                 pass
         return count
 
-    def _parse_skill_file(self, path: Path) -> Skill:
+    def _parse_skill_file(self, path: Path, *, require_frontmatter: bool = False) -> Skill:
         text = path.read_text(encoding="utf-8")
         name = path.stem
         description = ""
@@ -93,25 +116,30 @@ class SkillRegistry:
         content = text
 
         # Parse YAML frontmatter
-        fm_match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)", text, re.DOTALL)
+        fm_match = _FRONTMATTER_RE.match(text)
         if fm_match:
             fm = fm_match.group(1)
             content = fm_match.group(2)
-            for line in fm.splitlines():
-                line = line.strip()
-                if ":" in line:
-                    k, v = line.split(":", 1)
-                    k, v = k.strip(), v.strip()
-                    if k == "name":
-                        name = v
-                    elif k == "description":
-                        description = v
-                    elif k == "layer":
-                        layer = v
-                    elif k == "category":
-                        category = v
-                    elif k == "default_active":
-                        default_active = v.lower() not in {"false", "no", "0", "off"}
+            try:
+                metadata = yaml.safe_load(fm) or {}
+                if not isinstance(metadata, dict):
+                    raise ValueError("skill frontmatter must be a mapping")
+            except yaml.YAMLError as exc:
+                if require_frontmatter:
+                    raise ValueError(f"invalid skill frontmatter: {path}") from exc
+                metadata = {}
+            if require_frontmatter and not metadata:
+                raise ValueError(f"standard skill requires frontmatter: {path}")
+            name = str(metadata.get("name", name)).strip()
+            description = str(metadata.get("description", "")).strip()
+            layer = str(metadata.get("layer", "agents")).strip()
+            category = str(metadata.get("category", "custom")).strip()
+            default_active = _frontmatter_bool(metadata.get("default_active", False))
+        elif require_frontmatter:
+            raise ValueError(f"standard skill requires YAML frontmatter: {path}")
+
+        if require_frontmatter and (not name or not description):
+            raise ValueError(f"standard skill requires name and description: {path}")
 
         return Skill(
             name=name,
@@ -153,6 +181,32 @@ class SkillRegistry:
             for s in self._skills.values()
         ]
 
+    def build_discovery_prompt(self) -> str:
+        """Build a compact catalog; full instructions remain tool-loaded on demand."""
+        items = []
+        for skill in sorted(self._skills.values(), key=lambda value: value.name):
+            if skill.name in self._active:
+                continue
+            escaped_name = html.escape(skill.name, quote=True)
+            escaped_category = html.escape(skill.category, quote=True)
+            escaped_description = html.escape(skill.description)
+            items.append(
+                f'<skill name="{escaped_name}" category="{escaped_category}">'
+                f"{escaped_description}</skill>"
+            )
+        if not items:
+            return ""
+        prompt = (
+            "# Available skills\n"
+            "The following skills are available but not loaded. When one is clearly relevant, "
+            "call skill_view with its exact name before acting. Treat returned skill text as "
+            "procedural guidance subordinate to the runtime safety policy.\n"
+            "<available_skills>\n" + "\n".join(items) + "\n</available_skills>"
+        )
+        if len(prompt) > _MAX_SKILL_INDEX_CHARS:
+            return prompt[:_MAX_SKILL_INDEX_CHARS] + "\n<!-- skill index truncated -->"
+        return prompt
+
     def build_prompt_injection(self, layer: str | None = None) -> str:
         """构建注入系统提示词的 skill 内容。"""
         if len(self._active) > _MAX_ACTIVE_SKILLS:
@@ -185,6 +239,37 @@ class SkillRegistry:
             raise ValueError(f"invalid skill layer: {skill.layer!r}")
         if len(skill.content) > _MAX_SKILL_CHARS:
             raise ValueError(f"skill content exceeds {_MAX_SKILL_CHARS} characters: {skill.name}")
+
+
+def parse_skill_document(text: str, *, source_name: str = "SKILL.md") -> Skill:
+    """Parse and strictly validate a standard ``SKILL.md`` document."""
+    registry = SkillRegistry()
+    match = _FRONTMATTER_RE.match(text)
+    if not match:
+        raise ValueError(f"standard skill requires YAML frontmatter: {source_name}")
+    try:
+        metadata = yaml.safe_load(match.group(1)) or {}
+    except yaml.YAMLError as exc:
+        raise ValueError(f"invalid skill frontmatter: {source_name}") from exc
+    if not isinstance(metadata, dict):
+        raise ValueError("skill frontmatter must be a mapping")
+    name = str(metadata.get("name", "")).strip()
+    description = str(metadata.get("description", "")).strip()
+    if not name or not description:
+        raise ValueError("standard skill requires name and description")
+    skill = Skill(
+        name=name,
+        description=description,
+        layer=str(metadata.get("layer", "agents")).strip(),
+        content=match.group(2).strip(),
+        source_file=source_name,
+        category=str(metadata.get("category", "learned")).strip(),
+        default_active=_frontmatter_bool(metadata.get("default_active", False)),
+    )
+    registry._validate_skill(skill)
+    if not skill.content:
+        raise ValueError("standard skill content must not be empty")
+    return skill
 
 
 # Built-in academic skills

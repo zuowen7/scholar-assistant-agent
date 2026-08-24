@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-import tempfile
+import json
 from pathlib import Path
 
 import pytest
 
-from src.agent_v2.skills import _BUILTIN_SKILLS, Skill, SkillRegistry
+from src.agent_v2.skills import _BUILTIN_SKILLS, Skill, SkillRegistry, parse_skill_document
+from src.agent_v2.tools.registry import ToolRegistry
+from src.agent_v2.tools.skill_tools import register_skill_tools
 
 
 class TestSkillParsing:
@@ -46,6 +48,26 @@ class TestSkillParsing:
     def test_empty_skill_no_inject(self):
         skill = Skill(name="empty")
         assert skill.inject_prompt() == ""
+
+    def test_standard_skill_package_requires_valid_frontmatter(self, tmp_path: Path):
+        package = tmp_path / "learned_skill"
+        package.mkdir()
+        (package / "SKILL.md").write_text(
+            "---\nname: learned_skill\ndescription: Reusable workflow\n---\n# Procedure\nDo it.",
+            encoding="utf-8",
+        )
+        invalid = tmp_path / "invalid"
+        invalid.mkdir()
+        (invalid / "SKILL.md").write_text("# No frontmatter", encoding="utf-8")
+
+        registry = SkillRegistry()
+        assert registry.load_dir(tmp_path) == 1
+        assert registry.get("learned_skill") is not None
+        assert registry.get("invalid") is None
+
+    def test_parse_standard_document_rejects_missing_description(self):
+        with pytest.raises(ValueError, match="name and description"):
+            parse_skill_document("---\nname: incomplete\n---\n# Procedure")
 
 
 class TestSkillRegistry:
@@ -111,6 +133,32 @@ class TestSkillRegistry:
         reg.register(Skill(name="s", content="first"))
         reg.register(Skill(name="s", content="second"))
         assert reg.get("s").content == "second"
+
+    def test_discovery_prompt_lists_inactive_skill_without_full_content(self):
+        reg = SkillRegistry()
+        reg.register(Skill(name="available", description="Short summary", content="SECRET BODY"))
+
+        prompt = reg.build_discovery_prompt()
+
+        assert 'name="available"' in prompt
+        assert "Short summary" in prompt
+        assert "SECRET BODY" not in prompt
+
+
+@pytest.mark.asyncio
+async def test_skill_tools_list_and_load_exact_skill():
+    skills = SkillRegistry()
+    skills.register(Skill(name="workflow", description="Reusable", content="# Steps\n1. Verify"))
+    tools = ToolRegistry()
+    register_skill_tools(tools, skills)
+
+    listed = await tools.execute("skills_list", {})
+    viewed = await tools.execute("skill_view", {"name": "workflow"})
+    missing = await tools.execute("skill_view", {"name": "../workflow"})
+
+    assert json.loads(listed.output)[0]["name"] == "workflow"
+    assert json.loads(viewed.output)["content"].startswith("# Steps")
+    assert missing.is_error is True
 
 
 class TestBuiltinSkills:

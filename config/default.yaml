@@ -80,6 +80,14 @@ agent:
   enable_run_command: false
   # Plugins are discovered but disabled until explicitly listed here.
   enabled_plugins: []
+  # Post-turn Skill review is opt-in because it sends a redacted task trace
+  # through the configured model. Manual review remains available in the UI.
+  skill_learning:
+    enabled: false
+    min_successful_tools: 2
+    correction_signals: true
+    max_trace_chars: 24000
+    max_trace_piece_chars: 2000
   model_aliases:
     4o: gpt-4o
     4o-mini: gpt-4o-mini

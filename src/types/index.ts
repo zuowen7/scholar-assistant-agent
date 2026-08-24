@@ -275,6 +275,21 @@ export interface AgentSkill {
   source?: string
 }
 
+export interface AgentSkillProposal {
+  id: string
+  status: 'pending' | 'approved' | 'rejected'
+  action: 'create' | 'update'
+  skill_name: string
+  description: string
+  content: string
+  reason: string
+  evidence_tool_use_ids: string[]
+  source_session_id: string
+  source_turn_id: string
+  created_ms: number
+  updated_ms: number
+}
+
 export interface AgentChatMessage {
   id: string
   role: 'user' | 'assistant'
