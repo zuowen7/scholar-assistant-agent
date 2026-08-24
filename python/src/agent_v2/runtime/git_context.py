@@ -1,6 +1,6 @@
 """Git Context — detect workspace git state for system prompt injection.
 
-Port of claw-code rust/crates/runtime/src/git_context.rs.
+Reimplementation of claw-code rust/crates/runtime/src/git_context.rs.
 
 Detects: branch name, recent commits (max 5), staged files.
 Returns None if workspace is not a git repo.

@@ -168,7 +168,7 @@ The old ReAct agent (50+ files, PPT-demo quality) has been replaced with a clean
 
 ### 9 Claw-Code Runtime Modules (2026-06-06)
 
-Ported from [ultraworkers/claw-code](https://github.com/ultraworkers/claw-code) `rust/crates/runtime/src/`:
+Reimplemented in Python, with architecture and module boundaries informed by [ultraworkers/claw-code](https://github.com/ultraworkers/claw-code) `rust/crates/runtime/src/`:
 
 - **`bash_validation.py`** — 6-submodule bash command validation pipeline: readOnlyValidation, destructiveCommandWarning, modeValidation, sedValidation, pathValidation, commandSemantics. Exposed via `validate_command()` and `is_read_only_command()`. Supports sudo wrapping detection (`extract_sudo_inner`), git subcommand classification, env var stripping (`extract_first_command`).
 - **`git_context.py`** — `GitContext.detect()` scans workspace git state (branch, recent 5 commits, staged files) for system prompt injection. Returns `None` gracefully for non-git directories.

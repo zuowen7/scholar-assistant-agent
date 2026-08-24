@@ -1,6 +1,6 @@
 """Policy Engine — condition-driven rule evaluation for agent behavior.
 
-Port of claw-code rust/crates/runtime/src/policy_engine.rs.
+Reimplementation of claw-code rust/crates/runtime/src/policy_engine.rs.
 
 Declarative rules: Condition(key=value|threshold) → Action(RETRY|ESCALATE|LOG|ABORT).
 Evaluated against a context dict, ordered by priority (lower = higher priority).

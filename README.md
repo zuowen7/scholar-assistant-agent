@@ -53,7 +53,7 @@ Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant-ag
 
 > **Positioning: Claude Code for Papers.** Treat your research project as a workspace; the Agent reads/writes PDFs, drafts, bib files, and data directly — just like Claude Code edits source code. Agent V2 architecture inspired by [ultraworkers/claw-code](https://github.com/ultraworkers/claw-code).
 
-- **Agent V2 Runtime** — ConversationRuntime unified loop, real-time SSE streaming token-by-token; 3-retry error recovery; planning detection + auto-retry; 9 claw-code runtime modules ported (bash_validation, git_context, lsp_client, policy_engine, prompt_cache, recovery, sandbox, session_control, trident)
+- **Agent V2 Runtime** — ConversationRuntime unified loop, real-time SSE streaming token-by-token; 3-retry error recovery; planning detection + auto-retry; 9 runtime modules independently reimplemented in Python, with architecture inspired by Claw Code (bash_validation, git_context, lsp_client, policy_engine, prompt_cache, recovery, sandbox, session_control, trident)
 - **17 Built-in Tools** — `read_file / write_file / str_replace / grep_files / glob_files / list_dir / run_command / rag_search / web_search / web_fetch / translate_document / export_document / arxiv_search / run_sub_agent` (4 presets: audit/explain/implement/translate); `run_command` protected by bash validation pipeline (read-only mode, destructive command warnings, path validation, command classification)
 - **5-Tier Permission System** — ReadOnly / WorkspaceWrite / DangerFullAccess / Prompt / Allow with allow/deny/ask rule engine; all file ops locked to workspace boundary; sudo wrapping and sed -i blocked in read-only mode
 - **Real-time File Refresh** — Checkpoint SSE events after Agent writes; file tree and editor tabs update instantly
@@ -198,7 +198,7 @@ Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant-ag
 │   │   ├── chunker/              #   3 chunking strategies (sentence/paragraph/fixed)
 │   │   ├── translator/           #   Ollama + Cloud dual-client (21 providers)
 │   │   ├── formatter/            #   3 output modes + Pandoc export
-│   │   ├── agent_v2/             #   Agent V2 runtime (ConversationRuntime, PermissionPolicy, Skills, Hooks, Plugins, 9 claw-code runtime modules)
+│   │   ├── agent_v2/             #   Agent V2 runtime (ConversationRuntime, PermissionPolicy, Skills, Hooks, Plugins, 9 runtime modules reimplemented in Python, Claw Code-inspired)
 │   │   ├── argument/             #   Argument Map v2 + Companion v3
 │   │   ├── plugin/               #   MCP-style plugin registry
 │   │   ├── citation/             #   Citation indexer
@@ -474,7 +474,7 @@ Edit `config/default.yaml`:
 
 ### Key Design Decisions
 
-- **Agent V2 (claw-code inspired)** — ConversationRuntime, not LangChain; 9 claw-code runtime modules ported; 700+ tests, 100% deterministic mock coverage
+- **Agent V2 (claw-code inspired)** — ConversationRuntime, not LangChain; 9 runtime modules independently reimplemented in Python; 700+ tests, 100% deterministic mock coverage
 - **SSE everywhere** — streaming UX for translation, agent chat, argument extraction
 - **Local-first** — all data stays on your machine; cloud LLMs are optional
 - **Workspace-scoped Agent** — file operations locked to project root, 5-tier permission system

@@ -22,7 +22,7 @@ import pytest
 
 
 class TestReadOnlyValidation:
-    """Port of claw-code bash_validation.rs readOnlyValidation tests."""
+    """Adapted from claw-code bash_validation.rs readOnlyValidation tests."""
 
     def test_blocks_rm_in_read_only(self):
         from src.agent_v2.runtime.bash_validation import validate_read_only
@@ -176,7 +176,7 @@ class TestReadOnlyValidation:
 
 
 class TestDestructiveCommandWarning:
-    """Port of claw-code bash_validation.rs destructiveCommandWarning tests."""
+    """Adapted from claw-code bash_validation.rs destructiveCommandWarning tests."""
 
     def test_warns_rm_rf_root(self):
         from src.agent_v2.runtime.bash_validation import check_destructive
@@ -256,7 +256,7 @@ class TestDestructiveCommandWarning:
 
 
 class TestModeValidation:
-    """Port of claw-code bash_validation.rs modeValidation tests."""
+    """Adapted from claw-code bash_validation.rs modeValidation tests."""
 
     def test_workspace_write_warns_system_paths(self):
         from src.agent_v2.runtime.bash_validation import validate_mode
@@ -302,7 +302,7 @@ class TestModeValidation:
 
 
 class TestSedValidation:
-    """Port of claw-code bash_validation.rs sedValidation tests."""
+    """Adapted from claw-code bash_validation.rs sedValidation tests."""
 
     def test_blocks_sed_inplace_in_read_only(self):
         from src.agent_v2.runtime.bash_validation import validate_sed
@@ -340,7 +340,7 @@ class TestSedValidation:
 
 
 class TestPathValidation:
-    """Port of claw-code bash_validation.rs pathValidation tests."""
+    """Adapted from claw-code bash_validation.rs pathValidation tests."""
 
     def test_blocks_directory_traversal(self):
         from pathlib import Path
@@ -418,7 +418,7 @@ class TestPathValidation:
 
 
 class TestCommandSemantics:
-    """Port of claw-code bash_validation.rs commandSemantics tests."""
+    """Adapted from claw-code bash_validation.rs commandSemantics tests."""
 
     @pytest.fixture(autouse=True)
     def _import(self):

@@ -1,6 +1,6 @@
 """PromptCache Event — track prompt cache hit/miss rates and token savings.
 
-Port of claw-code PromptCacheEvent from conversation.rs.
+Reimplementation of claw-code PromptCacheEvent from conversation.rs.
 """
 from __future__ import annotations
 

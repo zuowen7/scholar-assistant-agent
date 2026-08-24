@@ -1,6 +1,6 @@
 """Session Control — pause/resume/abort + workspace-namespaced session store.
 
-Port of claw-code session_control.rs.
+Reimplementation of claw-code session_control.rs.
 
 SessionControl: in-memory state machine for session lifecycle (Active/Paused/Aborted).
 SessionStore: per-workspace session persistence with namespace isolation.

@@ -1,6 +1,6 @@
 """Trident Compaction — 3-stage context compression.
 
-Port of claw-code rust/crates/runtime/src/trident.rs.
+Reimplementation of claw-code rust/crates/runtime/src/trident.rs.
 
 Stages:
   1. Supersede — remove obsolete file operations (keep only latest write per file)

@@ -1,6 +1,6 @@
 """Bash command validation pipeline — 6 submodules.
 
-Port of claw-code rust/crates/runtime/src/bash_validation.rs.
+Reimplementation of claw-code rust/crates/runtime/src/bash_validation.rs.
 
 Submodules:
   1. readOnlyValidation — block write-like commands in read-only mode

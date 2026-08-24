@@ -1,6 +1,6 @@
 """LSP Client Registry — Language Server Protocol client management.
 
-Port of claw-code rust/crates/runtime/src/lsp_client.rs.
+Reimplementation of claw-code rust/crates/runtime/src/lsp_client.rs.
 
 Manages LSP server connections with state machine: Disconnected→Connecting→Ready→Error.
 Supports 7 actions: diagnostics, hover, definition, references, completion, symbols, format.

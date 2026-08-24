@@ -1,6 +1,6 @@
 """Recovery Recipes — automatic fault recovery for known failure scenarios.
 
-Port of claw-code rust/crates/runtime/src/recovery_recipes.rs.
+Reimplementation of claw-code rust/crates/runtime/src/recovery_recipes.rs.
 
 7 failure scenarios with known recovery recipes:
   - TrustPromptUnresolved → AcceptTrustPrompt

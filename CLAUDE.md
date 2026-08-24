@@ -77,7 +77,7 @@ Key `src/` modules:
   - `runtime/conversation.py` — `ConversationRuntime` (unified agent loop, streaming + non-streaming, 3-retry error recovery)
   - `runtime/permissions.py` — `PermissionPolicy` (5-tier: ReadOnly/WorkspaceWrite/DangerFullAccess/Prompt/Allow, allow/deny/ask rule engine)
   - `runtime/permission_enforcer.py` — `PermissionEnforcer` (check_file_write/check_bash/is_read_only_command)
-  - `runtime/bash_validation.py` — Bash command validation (read-only, destructive, mode, sed, path, semantics, full pipeline) — port of claw-code
+  - `runtime/bash_validation.py` — Bash command validation (read-only, destructive, mode, sed, path, semantics, full pipeline) — reimplementation of claw-code's bash_validation.rs
   - `runtime/git_context.py` — `GitContext` (branch, commits, staged files detection for system prompt injection)
   - `runtime/lsp_client.py` — `LspRegistry` (state machine: Disconnected→Connecting→Ready→Error, 7 actions)
   - `runtime/policy_engine.py` — `PolicyEngine` (condition-driven rule evaluation, priority-ordered actions)
@@ -167,7 +167,7 @@ vue-i18n v11 (Composition API). Locales in `src/i18n/locales/{zh-CN,en-US}.json`
 
 | Subsystem | Grade |
 |-----------|-------|
-| Agent V2 (ConversationRuntime + PermissionPolicy + ToolRegistry + Skills/Hooks/Plugins + 9 claw-code runtime modules + streaming + 700+ tests) | A+ |
+| Agent V2 (ConversationRuntime + PermissionPolicy + ToolRegistry + Skills/Hooks/Plugins + 9 reimplemented runtime modules (Claw Code-inspired) + streaming + 700+ tests) | A+ |
 | Translation pipeline (5-step SSE + multi-article + citation protect/restore + 6 continuation rules) | A |
 | Argument Companion v3 (ledger + Reviewer-2 + 3-angle parallel review + rebuttal + real review import) | A |
 | Mind Map (Vue Flow + AI expand + dagre + node body + editor bidirectional sync) | A |
