@@ -452,15 +452,61 @@
           <span class="docs-title">{{ t('agent.skillsTitle') }}</span>
           <span class="docs-subtitle">{{ t('agent.skillsSubtitle') }}</span>
         </div>
-        <button
-          class="btn ghost u-interactive"
-          :class="{ refreshing: skillsLoading }"
-          :disabled="skillsLoading"
-          @click="fetchAgentSkills"
-        >
-          {{ t('agent.refresh') }}
-        </button>
+        <div class="docs-toolbar-actions">
+          <button
+            class="btn ghost u-interactive"
+            :class="{ refreshing: skillReviewing }"
+            :disabled="!conversationWorkflowId || sending || skillReviewing"
+            @click="handleSkillReview"
+          >
+            {{ skillReviewing ? t('agent.skillReviewing') : t('agent.reviewLastTask') }}
+          </button>
+          <button
+            class="btn ghost u-interactive"
+            :class="{ refreshing: skillsLoading || skillProposalsLoading }"
+            :disabled="skillsLoading || skillProposalsLoading"
+            @click="refreshSkillData"
+          >
+            {{ t('agent.refresh') }}
+          </button>
+        </div>
       </div>
+      <section v-if="skillProposals.length > 0" class="skill-proposals">
+        <div class="skill-proposals-heading">
+          <span>{{ t('agent.skillProposalsTitle') }}</span>
+          <span>{{ t('agent.skillProposalsSubtitle') }}</span>
+        </div>
+        <article v-for="proposal in skillProposals" :key="proposal.id" class="skill-proposal-card">
+          <div class="skill-proposal-title-row">
+            <span class="skill-name">{{ proposal.skill_name.replaceAll('_', ' ') }}</span>
+            <span class="skill-proposal-action">{{
+              t(`agent.skillAction.${proposal.action}`)
+            }}</span>
+          </div>
+          <p class="skill-description">{{ proposal.description }}</p>
+          <p class="skill-proposal-reason">{{ proposal.reason }}</p>
+          <details class="skill-proposal-preview">
+            <summary>{{ t('agent.previewSkill') }}</summary>
+            <pre>{{ proposal.content }}</pre>
+          </details>
+          <div class="skill-proposal-actions">
+            <button
+              class="btn ghost u-interactive"
+              :disabled="skillProposalDecisionId === proposal.id"
+              @click="handleSkillDecision(proposal.id, 'reject')"
+            >
+              {{ t('agent.rejectSkill') }}
+            </button>
+            <button
+              class="btn primary u-interactive"
+              :disabled="skillProposalDecisionId === proposal.id"
+              @click="handleSkillDecision(proposal.id, 'approve')"
+            >
+              {{ t('agent.approveSkill') }}
+            </button>
+          </div>
+        </article>
+      </section>
       <div v-if="skillsLoading && agentSkills.length === 0" class="skills-list">
         <UiSkeleton v-for="i in 5" :key="i" shape="card" height="66" class="tpl-skel" />
       </div>
@@ -805,9 +851,14 @@ onMounted(async () => {
 const {
   messages,
   sending,
+  conversationWorkflowId,
   pendingApproval,
   agentSkills,
   skillsLoading,
+  skillProposals,
+  skillProposalsLoading,
+  skillReviewing,
+  skillProposalDecisionId,
   sendMessage: agentSendMessage,
   sendApproval,
   abortSession,
@@ -816,6 +867,9 @@ const {
   pendingCheckpoint,
   fetchSessions: _fetchSessions,
   fetchAgentSkills,
+  fetchSkillProposals,
+  reviewCurrentWorkflow,
+  decideSkillProposal,
 } = useAgentChat()
 
 const {
@@ -892,7 +946,7 @@ const files = ref<{ name: string; path: string }[]>([])
 const selectedSkillNames = ref<string[]>([])
 const slashActiveIndex = ref(0)
 const slashDismissed = ref(false)
-const { warn: showWarning } = useToast()
+const { warn: showWarning, success: showSuccess } = useToast()
 
 const visibleAgentSkills = computed(() =>
   [...agentSkills.value].sort((a, b) => {
@@ -1016,6 +1070,30 @@ async function useSkill(skill: AgentSkill) {
 
 function removeSkill(name: string) {
   selectedSkillNames.value = selectedSkillNames.value.filter((skillName) => skillName !== name)
+}
+
+async function refreshSkillData() {
+  await Promise.all([fetchAgentSkills(), fetchSkillProposals()])
+}
+
+async function handleSkillReview() {
+  const result = await reviewCurrentWorkflow()
+  if (result === 'proposal') {
+    showSuccess(t('agent.skillProposalCreated'))
+  } else if (result === 'no_proposal') {
+    showSuccess(t('agent.skillNoProposal'))
+  } else {
+    showWarning(t('agent.skillReviewFailed'), 6000)
+  }
+}
+
+async function handleSkillDecision(proposalId: string, decision: 'approve' | 'reject') {
+  const ok = await decideSkillProposal(proposalId, decision)
+  if (!ok) {
+    showWarning(t('agent.skillDecisionFailed'), 6000)
+    return
+  }
+  showSuccess(t(decision === 'approve' ? 'agent.skillApproved' : 'agent.skillRejected'))
 }
 
 async function applySlashCommand(item: AgentSlashCommand, argument = '') {
@@ -1379,7 +1457,7 @@ watch(
   async (isOpen) => {
     if (isOpen) {
       if (!_focusBeforeOpen) _focusBeforeOpen = document.activeElement as HTMLElement | null
-      await Promise.all([fetchDocs(), fetchAgentSkills()])
+      await Promise.all([fetchDocs(), fetchAgentSkills(), fetchSkillProposals()])
       await nextTick()
       if (tab.value === 'chat') agentInputEl.value?.focus()
     } else if (!isFloating.value && !isStandalone.value) {
@@ -1410,6 +1488,7 @@ watch(tab, (t) => {
   if (t === 'templates') {
     if (templates.value.length === 0) loadPaperTemplates()
     if (agentSkills.value.length === 0) fetchAgentSkills()
+    void fetchSkillProposals()
   }
 })
 
@@ -2431,6 +2510,72 @@ onUnmounted(() => {
   min-width: 0;
   flex-direction: column;
   gap: 2px;
+}
+.skill-proposals {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.skill-proposals-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--c-text-0);
+  font-size: 12px;
+  font-weight: 650;
+}
+.skill-proposals-heading span:last-child {
+  color: var(--c-text-3);
+  font-size: 11px;
+  font-weight: 400;
+}
+.skill-proposal-card {
+  padding: 11px;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  background: var(--c-surface-2);
+}
+.skill-proposal-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.skill-proposal-action {
+  color: var(--c-accent);
+  font-size: 10px;
+  font-weight: 650;
+}
+.skill-proposal-reason {
+  margin: 6px 0;
+  color: var(--c-text-2);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.skill-proposal-preview summary {
+  color: var(--c-text-2);
+  cursor: pointer;
+  font-size: 11px;
+}
+.skill-proposal-preview pre {
+  max-height: 220px;
+  margin: 8px 0 0;
+  padding: 8px;
+  overflow: auto;
+  border-radius: 6px;
+  background: var(--c-surface-1);
+  color: var(--c-text-1);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.skill-proposal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 10px;
 }
 .skills-list {
   display: flex;

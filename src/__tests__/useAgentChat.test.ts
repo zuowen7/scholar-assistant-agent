@@ -653,6 +653,89 @@ describe('useAgentChat', () => {
       expect(agentSkills.value).toHaveLength(1)
       expect(agentSkills.value[0].name).toBe('nature_reviewer')
     })
+
+    it('reviews the current workflow and keeps the proposal pending for user approval', async () => {
+      const proposal = {
+        id: 'sp_123',
+        status: 'pending',
+        action: 'create',
+        skill_name: 'verify_before_edit',
+        description: 'Verify before editing',
+        content: '---\nname: verify_before_edit\n---\n## Procedure',
+        reason: 'Reusable',
+        evidence_tool_use_ids: ['tool_ok'],
+        source_session_id: 'sess_review',
+        source_turn_id: 'turn_1',
+        created_ms: 1,
+        updated_ms: 1,
+      }
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ status: 'proposal', proposal }), { status: 200 }),
+        )
+      vi.stubGlobal('fetch', fetchMock)
+
+      const { conversationWorkflowId, reviewCurrentWorkflow, skillProposals } = useAgentChat()
+      conversationWorkflowId.value = 'sess_review'
+      const result = await reviewCurrentWorkflow()
+
+      expect(result).toBe('proposal')
+      expect(skillProposals.value).toEqual([proposal])
+      expect(fetchMock).toHaveBeenCalledWith(
+        'http://127.0.0.1:18088/api/agent/v2/skills/review/sess_review',
+        expect.objectContaining({ method: 'POST' }),
+      )
+    })
+
+    it('approves a persisted proposal and refreshes the Skill catalog', async () => {
+      const proposal = {
+        id: 'sp_approved',
+        status: 'pending',
+        action: 'create',
+        skill_name: 'safe_workflow',
+        description: 'Safe workflow',
+        content: 'content',
+        reason: 'Reusable',
+        evidence_tool_use_ids: ['tool_ok'],
+        source_session_id: 'sess_review',
+        source_turn_id: 'turn_1',
+        created_ms: 1,
+        updated_ms: 1,
+      }
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify([proposal]), { status: 200 }))
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ ...proposal, status: 'approved' }), { status: 200 }),
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify([
+              {
+                name: 'safe_workflow',
+                description: 'Safe workflow',
+                layer: 'agents',
+                category: 'learned',
+                active: false,
+                default_active: false,
+              },
+            ]),
+            { status: 200 },
+          ),
+        )
+      vi.stubGlobal('fetch', fetchMock)
+
+      const { fetchSkillProposals, decideSkillProposal, skillProposals, agentSkills } =
+        useAgentChat()
+      await fetchSkillProposals()
+      const ok = await decideSkillProposal('sp_approved', 'approve')
+
+      expect(ok).toBe(true)
+      expect(skillProposals.value).toEqual([])
+      expect(agentSkills.value[0].name).toBe('safe_workflow')
+      expect(fetchMock.mock.calls[1][1].body).toBe(JSON.stringify({ decision: 'approve' }))
+    })
   })
 
   describe('session history', () => {

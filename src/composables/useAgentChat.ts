@@ -4,6 +4,7 @@ import type {
   AgentEvent,
   AgentSessionInfo,
   AgentSkill,
+  AgentSkillProposal,
   RAGDocument,
 } from '../types'
 import { API_BASE } from '../utils/api'
@@ -104,6 +105,10 @@ const ragDocuments = ref<RAGDocument[]>([])
 const ragLoading = ref(false)
 const agentSkills = ref<AgentSkill[]>([])
 const skillsLoading = ref(false)
+const skillProposals = ref<AgentSkillProposal[]>([])
+const skillProposalsLoading = ref(false)
+const skillReviewing = ref(false)
+const skillProposalDecisionId = ref<string | null>(null)
 let abortController: AbortController | null = null
 
 // v2 state
@@ -194,6 +199,10 @@ export function _resetForTesting(): void {
   ragLoading.value = false
   agentSkills.value = []
   skillsLoading.value = false
+  skillProposals.value = []
+  skillProposalsLoading.value = false
+  skillReviewing.value = false
+  skillProposalDecisionId.value = null
   conversationWorkflowId.value = null
   activeRunSessionId.value = null
   pendingApproval.value = null
@@ -962,6 +971,78 @@ export function useAgentChat() {
     }
   }
 
+  async function fetchSkillProposals(): Promise<AgentSkillProposal[]> {
+    skillProposalsLoading.value = true
+    try {
+      const resp = await fetch(`${API_URL}/api/agent/v2/skill-proposals?status=pending`, {
+        headers: workspaceGrantHeaders(),
+      })
+      if (!resp.ok) return skillProposals.value
+      const data = await resp.json()
+      skillProposals.value = Array.isArray(data) ? data : []
+      return skillProposals.value
+    } catch (e) {
+      logger.warn('fetchSkillProposals failed', { error: e })
+      return skillProposals.value
+    } finally {
+      skillProposalsLoading.value = false
+    }
+  }
+
+  async function reviewCurrentWorkflow(): Promise<'proposal' | 'no_proposal' | 'error'> {
+    const workflowId = conversationWorkflowId.value
+    if (!workflowId || sending.value) return 'error'
+    skillReviewing.value = true
+    try {
+      const resp = await fetch(`${API_URL}/api/agent/v2/skills/review/${workflowId}`, {
+        method: 'POST',
+        headers: workspaceGrantHeaders(),
+      })
+      if (!resp.ok) return 'error'
+      const data = await resp.json()
+      if (data?.proposal) {
+        const proposal = data.proposal as AgentSkillProposal
+        skillProposals.value = [
+          proposal,
+          ...skillProposals.value.filter((item) => item.id !== proposal.id),
+        ]
+        return 'proposal'
+      }
+      return 'no_proposal'
+    } catch (e) {
+      logger.warn('reviewCurrentWorkflow failed', { error: e })
+      return 'error'
+    } finally {
+      skillReviewing.value = false
+    }
+  }
+
+  async function decideSkillProposal(
+    proposalId: string,
+    decision: 'approve' | 'reject',
+  ): Promise<boolean> {
+    skillProposalDecisionId.value = proposalId
+    try {
+      const resp = await fetch(`${API_URL}/api/agent/v2/skill-proposals/${proposalId}/decision`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(workspaceGrantHeaders() || {}),
+        },
+        body: JSON.stringify({ decision }),
+      })
+      if (!resp.ok) return false
+      skillProposals.value = skillProposals.value.filter((item) => item.id !== proposalId)
+      if (decision === 'approve') await fetchAgentSkills()
+      return true
+    } catch (e) {
+      logger.warn('decideSkillProposal failed', { error: e, proposalId, decision })
+      return false
+    } finally {
+      skillProposalDecisionId.value = null
+    }
+  }
+
   async function cleanupWorkflows() {
     try {
       const resp = await fetch(`${API_URL}/api/agent/v2/workflows/cleanup`, {
@@ -1013,6 +1094,13 @@ export function useAgentChat() {
     agentSkills,
     skillsLoading,
     fetchAgentSkills,
+    skillProposals,
+    skillProposalsLoading,
+    skillReviewing,
+    skillProposalDecisionId,
+    fetchSkillProposals,
+    reviewCurrentWorkflow,
+    decideSkillProposal,
     cleanupWorkflows,
     deleteWorkflow,
     ragDocuments,
