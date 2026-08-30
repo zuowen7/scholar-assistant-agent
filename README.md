@@ -76,7 +76,7 @@ Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant-ag
 > **Your pre-submission pressure test.** AI proactively finds problems in your logic; you just respond.
 
 - **Claim Ledger** — Auto-extract every promise from abstract/intro; track whether the body delivers (paid / partial / unpaid / mismatch), each anchored to exact character offsets; fuzzy relocation on edits (anchored → drifted → lost 3-state), like `git blame` for arguments
-- **Reviewer‑2 Adversary** — 7 conference-calibrated simulated reviews (NeurIPS / ICML / ICLR / ACL / CVPR / KDD / CHI); each critique anchored to a specific sentence; author drafts rebuttal point-by-point; reviewer can be persuaded; 3-angle parallel review (method/experiment/writing) with auto dedup
+- **Reviewer‑2 Adversary** — simulated reviews guided by 7 manually curated, zero-shot venue-conditioned profiles (NeurIPS / ICML / ICLR / ACL / CVPR / KDD / CHI); each critique anchored to a specific sentence; author drafts rebuttal point-by-point; reviewer can be persuaded; 3-angle parallel review (method/experiment/writing) with auto dedup
 - **Real Review Import** — Paste actual reviewer comments; AI structures them into rebuttal-ready items
 - **Experiment Gap Suggestions** — For each unpaid/partial promise, AI proposes a concrete experiment design
 - **Rebuttal Package Export** — One-click download of all critique points + rebuttal drafts as Markdown
@@ -489,7 +489,7 @@ OpenAI, Anthropic, DeepSeek, Moonshot, Zhipu (ChatGLM), Qwen (Tongyi), Gemini, S
 A unique feature not found in any other academic tool:
 
 - **Claim Ledger** — automatically extracts promises from abstract/intro and tracks whether the body delivers on each one (paid / partial / unpaid), anchored to exact character offsets with fuzzy relocation on edits
-- **Reviewer-2 Simulation** — calibrated reviews for 7 conferences (NeurIPS, ICML, ICLR, ACL, CVPR, KDD, CHI), with rebuttal mini-chat where the reviewer can be persuaded
+- **Reviewer-2 Simulation** — reviews guided by 7 manually curated, zero-shot venue-conditioned profiles (NeurIPS, ICML, ICLR, ACL, CVPR, KDD, CHI), with rebuttal mini-chat where the reviewer can be persuaded
 - **Parallel Perspectives** — method / experiment / writing angles reviewed concurrently via `asyncio.gather`
 - **Real Review Import** — paste actual reviewer comments, get structured rebuttal items
 

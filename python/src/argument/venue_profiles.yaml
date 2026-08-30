@@ -1,5 +1,5 @@
-# Argument Companion — venue calibration profiles (Phase 3)
-# Each entry describes the review culture and hard requirements for that venue.
+# Argument Companion — source-grounded venue-conditioned profiles (Phase 3)
+# Each non-generic entry is manually curated from current official review criteria.
 
 generic: |
   This is a rigorous academic venue. Focus on: soundness of methodology,
@@ -7,57 +7,50 @@ generic: |
   and reproducibility of experiments. Be thorough but fair.
 
 NeurIPS: |
-  NeurIPS emphasises theoretical novelty and empirical rigour.
-  Key concerns: (1) novelty beyond incremental improvement;
-  (2) solid ablations isolating each contribution;
-  (3) correct and complete statistical reporting (mean ± std, seeds);
-  (4) reproducibility (code, hyperparams, compute budget);
-  (5) discussion of limitations and broader impact.
+  For the selected NeurIPS contribution type, assess quality, clarity, significance, and originality; do not assume every submission must combine theory and empirical validation.
+  Assess originality through new insights, understanding, framings, tasks, metrics, methods, or well-motivated combinations; do not require a wholly new method.
+  Request or weigh an ablation only when it would answer a decision-relevant question about a claim, and state that question.
+  For experiments supporting the main claims, assess whether uncertainty or statistical significance is reported appropriately and whether variability and its calculation are explained.
+  Assess whether the contribution has a reasonable reproducibility path; for experiments, consider code, data or instructions, settings, and compute disclosure, without treating code release as universally mandatory.
+  Assess acknowledged limitations and implications; consider negative societal impacts when appropriate to the paper's scope.
 
 ICML: |
-  ICML values machine-learning methodology with strong theoretical or
-  empirical foundations. Key concerns: (1) clear problem formulation;
-  (2) theoretical guarantees or rigorous empirical analysis;
-  (3) comparison to strong, up-to-date baselines;
-  (4) generalisation claims backed by multiple datasets;
-  (5) clarity and reproducibility.
+  ICML values rigorous machine-learning research whose claims have sound theoretical and/or empirical support.
+  Assess whether the problem, contributions, and claims are clearly stated and contextualized.
+  Assess whether the claims are supported by reproducible, well-designed experiments and/or sound theoretical analysis; do not require formal guarantees from every contribution.
+  Assess whether the contribution is situated and distinguished against relevant prior research; require a particular baseline only when it is needed to test a claim.
+  Assess clarity and whether the paper provides enough information and evidence for an expert to understand and reproduce the claimed results.
 
 ICLR: |
-  ICLR uses open peer review and rewards reproducible, open-science work.
-  Key concerns: (1) open-source code (expected, not optional);
-  (2) ablation completeness;
-  (3) fair comparison (same compute budget, same data splits);
-  (4) addressing reviewer comments from prior submissions if applicable;
-  (5) theoretical insight or strong empirical justification.
+  ICLR uses OpenReview with public reviews and discussion; assess technical correctness, experimental rigor, reproducibility, novelty, claim support, and significance.
+  Assess whether experimental comparisons are rigorous and whether their evidence supports the claims; require matched compute or data splits only when a claim-specific rationale makes them necessary.
+  Assess whether theoretical or empirical results are correct, scientifically rigorous, and sufficient to support the paper's claims.
 
 ACL: |
-  ACL covers Natural Language Processing and Computational Linguistics.
-  Key concerns: (1) linguistic validity and task definition;
-  (2) comparison to strong NLP baselines (including fine-tuned LLMs);
-  (3) human evaluation where automatic metrics are insufficient;
-  (4) dataset construction quality and annotation agreement;
-  (5) cross-lingual / multilingual scope if applicable.
+  ACL covers Computational Linguistics and Natural Language Processing.
+  Assess whether the research question, contribution, key terms, methods, and claims are clear, technically sound, and appropriately scoped.
+  Assess comparisons against relevant, sufficiently tuned baselines when they are needed to evaluate the paper's claims; request a particular LLM comparison only when it directly bears on those claims.
+  For papers that use or create datasets or human annotations, assess whether data provenance, coverage, statistics, identified quality issues, and annotation procedures are reported or explicitly justified.
+  When language coverage is relevant to the claims, assess whether languages and linguistic/domain coverage are documented and whether generalization claims match that coverage; do not require multilingual evaluation merely because a study is monolingual.
 
 CVPR: |
-  CVPR covers Computer Vision and Pattern Recognition.
-  Key concerns: (1) benchmark performance with reproducible protocol;
-  (2) ablation study isolating visual components;
-  (3) qualitative results showing failure modes;
-  (4) comparison on standard benchmarks (ImageNet, COCO, etc.);
-  (5) efficiency (FLOPs, params, inference time) reported.
+  CVPR covers computer vision and pattern recognition.
+  Assess technical soundness and contribution, interpret benchmark results alongside novelty and impact, and consider whether the reported method and results are reproducible; do not require state-of-the-art performance.
+  Consider an honest discussion of limitations positively; do not require a separate limitations section or treat its absence alone as a rejection reason.
+  Only when a paper makes an efficiency or scalability claim, assess whether the evidence supports that claim; the CVPR 2026 compute report is not visible to reviewers and does not affect acceptance decisions.
 
 KDD: |
-  KDD emphasises knowledge discovery and data mining with real-world impact.
-  Key concerns: (1) scalability to large datasets;
-  (2) evaluation on real industrial data (not just academic benchmarks);
-  (3) interpretability / explainability of results;
-  (4) practical deployment considerations;
-  (5) novelty relative to data mining literature.
+  KDD covers knowledge discovery, data science, and AI; apply Research-track criteria to research papers and ADS criteria only to ADS submissions.
+  When a paper makes scalability or large-scale-systems claims, assess whether its execution and evidence support those claims; do not require large-dataset experiments of every KDD paper.
+  For ADS submissions, assess evidence of live deployment and quantified post-launch performance, or the documented barriers and broadly applicable lessons allowed by the stated exception; do not impose this requirement on Research-track papers.
+  When interpretability or explainability is part of the claimed contribution, assess its technical merit, execution, and evidence; do not treat it as a universal requirement.
+  For ADS submissions, assess design tradeoffs, deployment challenges, post-launch evidence, and lessons learned; do not impose ADS deployment criteria on Research-track papers.
+  For Research-track papers, assess originality and innovative technical contribution in relation to relevant work; for ADS papers, recognize that novelty may lie in the application domain, engineering design, usability, or business use case.
 
 CHI: |
-  CHI focuses on Human-Computer Interaction with mixed-methods evaluation.
-  Key concerns: (1) user study design (participants, tasks, measures);
-  (2) ecological validity (lab vs. real-world setting);
-  (3) qualitative analysis rigour (thematic analysis, grounded theory);
-  (4) ethical considerations for human subjects;
-  (5) contribution to HCI theory or design guidelines.
+  CHI evaluates original contributions to HCI; assess rigor and evidence according to the contribution type rather than requiring mixed methods.
+  For work involving users or human participants, assess whether the relevant population, tasks or instruments, procedures, measures, and analysis are transparently reported and justified; do not require a user study for every contribution.
+  When claims depend on a proposed setting or context, assess whether the setting, tasks, users, obstacles, and chosen validation support those claims; do not impose a universal lab-versus-field requirement.
+  For qualitative research, assess transparent justification of its conceptual basis, participant or site selection, data collection and analysis, theme construction, researcher positionality, and potential bias; do not require a named method such as thematic analysis or grounded theory.
+  For research involving human subjects, assess compliance with applicable ethics-review requirements and disclosure of the institutional context; for qualitative research, separately assess transparent treatment of anonymity, privacy, consent, and data use.
+  Assess whether the paper makes an original and significant contribution to HCI according to its contribution type; require theoretical or design implications only when they are part of the claimed contribution.

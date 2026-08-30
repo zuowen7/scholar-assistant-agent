@@ -77,7 +77,7 @@ v0.5.2 · 最新：识图 Vision API 设置面板 + 纯文本模型本地 OCR �
 > **投稿前的压力测试。** AI 主动发现逻辑问题，你只需回应。
 
 - **论证账本（Claim Ledger）** — 自动提取 abstract/intro 中每条承诺，追踪正文是否兑付（paid / partial / unpaid / mismatch），每条锚定到精确字符偏移；改稿后用模糊重定位（anchored → drifted → lost 三态）保持锚点存活，类似 `git blame` 之于论证
-- **Reviewer‑2 对抗** — 7 种会议校准的模拟评审（NeurIPS / ICML / ICLR / ACL / CVPR / KDD / CHI），每条批评锚到具体句子；作者逐条起草 rebuttal，reviewer 会被说服；三角度并行评审（方法/实验/写作）自动去重聚合
+- **Reviewer‑2 对抗** — 基于 7 组人工整理、零样本、按会议条件化 profile 的模拟评审（NeurIPS / ICML / ICLR / ACL / CVPR / KDD / CHI），每条批评锚到具体句子；作者逐条起草 rebuttal，reviewer 会被说服；三角度并行评审（方法/实验/写作）自动去重聚合
 - **真实评审导入** — 粘贴真实 reviewer 意见，AI 结构化拆解为可逐条 rebuttal 的条目
 - **实验缺口建议** — 对每条 unpaid / partial 承诺，AI 给出具体实验设计方案
 - **Rebuttal 包导出** — 一键下载含所有批评点 + rebuttal 草稿的 Markdown 文件
