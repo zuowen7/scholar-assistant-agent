@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "reviewer-validation-freeze-manifest/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "protocol_version", "manifest_status", "generated_at", "formal_run_authorized", "protocol", "artifacts"],
+  "properties": {
+    "schema_version": {"const": "reviewer-validation-freeze-manifest/v1"},
+    "protocol_version": {"type": "string", "minLength": 1},
+    "manifest_status": {"enum": ["draft", "frozen", "amended"]},
+    "generated_at": {"type": ["string", "null"], "format": "date-time"},
+    "formal_run_authorized": {"type": "boolean"},
+    "protocol": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "sha256", "schema_version"],
+      "properties": {
+        "path": {"const": "methods/reviewer_validation/protocol.yaml"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "schema_version": {"const": "reviewer-validation-protocol/v1"}
+      }
+    },
+    "artifacts": {
+      "type": "array", "minItems": 1,
+      "items": {"$ref": "#/$defs/artifact"}
+    }
+  },
+  "$defs": {
+    "relativePath": {"type": "string", "minLength": 1, "pattern": "^(?![A-Za-z]:)(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"},
+    "artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["artifact_id", "category", "path", "sha256", "byte_length", "schema_id", "record_count", "created_at", "formal_input", "immutable", "required_for_strict", "status"],
+      "properties": {
+        "artifact_id": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
+        "category": {
+          "enum": ["corpus_manifest", "source_paper", "parsed_full_text", "parsed_full_text_manifest", "production_excerpt", "production_excerpt_manifest", "coordinate_mapping", "coordinate_mapping_manifest", "raw_annotation", "adjudicated_gold", "official_source", "criterion_map", "status_challenge", "anchor_challenge", "prompt_snapshot", "profile_snapshot", "schema", "generator_script", "seed", "run_config", "protocol_support"]
+        },
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "byte_length": {"type": ["integer", "null"], "minimum": 0},
+        "schema_id": {
+          "type": ["string", "null"],
+          "enum": [null, "reviewer-validation-protocol/v1", "reviewer-validation-freeze-manifest/v1", "reviewer-validation-promise-gold/v1", "reviewer-validation-anchor-case/v1", "reviewer-validation-venue-applicability/v1", "reviewer-validation-venue-review-score/v1", "reviewer-validation-run-record/v1"]
+        },
+        "record_count": {"type": ["integer", "null"], "minimum": 0},
+        "created_at": {"type": ["string", "null"], "format": "date-time"},
+        "formal_input": {"type": "boolean"},
+        "immutable": {"type": "boolean"},
+        "required_for_strict": {"type": "boolean"},
+        "status": {"enum": ["pending", "present", "verified"]}
+      }
+    }
+  }
+}

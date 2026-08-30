@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "reviewer-validation-anchor-case/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "case_id", "source_anchor_id", "cluster_id", "variant", "gold_status", "source_quote", "transformed_text", "gold_quote", "gold_span", "transformation", "generator_seed", "item_input_sha256", "denominators"],
+  "properties": {
+    "schema_version": {"const": "reviewer-validation-anchor-case/v1"},
+    "case_id": {"type": "string", "minLength": 1}, "source_anchor_id": {"type": "string", "minLength": 1},
+    "cluster_id": {"type": "string", "minLength": 1},
+    "variant": {"enum": ["anchored", "drifted", "lost"]},
+    "gold_status": {"enum": ["anchored", "drifted", "lost"]},
+    "source_quote": {"type": "string", "minLength": 1},
+    "transformed_text": {"$ref": "#/$defs/artifactIdentity"},
+    "gold_quote": {"type": ["string", "null"], "minLength": 1},
+    "gold_span": {"oneOf": [{"$ref": "#/$defs/span"}, {"type": "null"}]},
+    "transformation": {
+      "type": "object", "additionalProperties": false, "required": ["operation", "description"],
+      "properties": {
+        "operation": {"enum": ["insert_before", "delete_before", "move_before", "whitespace_change", "local_rewrite", "substitution", "paraphrase", "delete_target_with_distractor"]},
+        "description": {"type": "string", "minLength": 1}
+      }
+    },
+    "generator_seed": {"type": "integer", "minimum": 0},
+    "item_input_sha256": {"$ref": "#/$defs/sha256"},
+    "denominators": {
+      "type": "object", "additionalProperties": false, "required": ["variant_occurrence", "source_anchor_cluster"],
+      "properties": {"variant_occurrence": {"const": 1}, "source_anchor_cluster": {"const": 1}}
+    }
+  },
+  "allOf": [
+    {"if": {"properties": {"variant": {"const": "lost"}}, "required": ["variant"]}, "then": {"properties": {"gold_status": {"const": "lost"}, "gold_quote": {"type": "null"}, "gold_span": {"type": "null"}, "transformation": {"properties": {"operation": {"const": "delete_target_with_distractor"}}}}}},
+    {"if": {"properties": {"variant": {"enum": ["anchored", "drifted"]}}, "required": ["variant"]}, "then": {"properties": {"gold_quote": {"type": "string", "minLength": 1}, "gold_span": {"$ref": "#/$defs/span"}}}},
+    {"if": {"properties": {"variant": {"const": "anchored"}}, "required": ["variant"]}, "then": {"properties": {"gold_status": {"const": "anchored"}, "transformation": {"properties": {"operation": {"enum": ["insert_before", "delete_before", "move_before", "whitespace_change"]}}}}}},
+    {"if": {"properties": {"variant": {"const": "drifted"}}, "required": ["variant"]}, "then": {"properties": {"gold_status": {"const": "drifted"}, "transformation": {"properties": {"operation": {"enum": ["local_rewrite", "substitution", "paraphrase"]}}}}}}
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "artifactIdentity": {
+      "type": "object", "additionalProperties": false, "required": ["artifact_id", "sha256"],
+      "properties": {"artifact_id": {"type": "string", "minLength": 1}, "sha256": {"$ref": "#/$defs/sha256"}}
+    },
+    "span": {
+      "type": "object", "additionalProperties": false, "required": ["char_start", "char_end"],
+      "properties": {"char_start": {"type": "integer", "minimum": 0}, "char_end": {"type": "integer", "minimum": 1}}
+    }
+  }
+}

@@ -1,0 +1,188 @@
+{
+  "schema_version": "reviewer-validation-freeze-manifest/v1",
+  "protocol_version": "0.1.0-draft",
+  "manifest_status": "draft",
+  "generated_at": null,
+  "formal_run_authorized": false,
+  "protocol": {
+    "path": "methods/reviewer_validation/protocol.yaml",
+    "sha256": "d1ed84a87ee843fca1a8f586618084dc3ca78b784a76f30f6054f1b4fce39c65",
+    "schema_version": "reviewer-validation-protocol/v1"
+  },
+  "artifacts": [
+    {
+      "artifact_id": "canonical_methodology", "category": "protocol_support", "path": "METHODOLOGY.md",
+      "sha256": "9ae0bc27b1b8d563849d55d909bcf888cff118ebb6f12fe2d4136c51ad566354", "byte_length": 46097,
+      "schema_id": null, "record_count": null, "created_at": "2026-08-28T16:48:09Z",
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "verified"
+    },
+    {
+      "artifact_id": "schema_protocol", "category": "schema", "path": "methods/reviewer_validation/schemas/protocol.schema.json",
+      "sha256": "34813e9ebd8440f93aff8f3f7ebc210640a77fb423b991c60cf44f1d511a1d40", "byte_length": 14046,
+      "schema_id": null, "record_count": null, "created_at": "2026-08-28T11:53:45Z",
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "verified"
+    },
+    {
+      "artifact_id": "schema_freeze_manifest", "category": "schema", "path": "methods/reviewer_validation/schemas/freeze_manifest.schema.json",
+      "sha256": "8ab05009ab99c3f58c4e3c8ed84d66b2862ddbfde18ce2f5ba4b933bf7a8fc84", "byte_length": 3039,
+      "schema_id": null, "record_count": null, "created_at": "2026-08-28T11:53:45Z",
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "verified"
+    },
+    {
+      "artifact_id": "schema_promise_gold", "category": "schema", "path": "methods/reviewer_validation/schemas/promise_gold.schema.json",
+      "sha256": "b11185c883fbb33872cee5bc8755d13537f2b316c0cbc7b68128c27928163aa5", "byte_length": 3742,
+      "schema_id": null, "record_count": null, "created_at": "2026-08-28T11:53:45Z",
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "verified"
+    },
+    {
+      "artifact_id": "schema_anchor_case", "category": "schema", "path": "methods/reviewer_validation/schemas/anchor_case.schema.json",
+      "sha256": "35b94c24218e805c85715ae97898a4697f7a305dac86b622d8ea5a8413210646", "byte_length": 3412,
+      "schema_id": null, "record_count": null, "created_at": "2026-08-28T11:53:45Z",
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "verified"
+    },
+    {
+      "artifact_id": "schema_venue_applicability", "category": "schema", "path": "methods/reviewer_validation/schemas/venue_applicability.schema.json",
+      "sha256": "80df1578e356e6ae1e7659c3971b4702ad559876bc318d65ffb9693b27153fce", "byte_length": 2452,
+      "schema_id": null, "record_count": null, "created_at": "2026-08-28T11:53:45Z",
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "verified"
+    },
+    {
+      "artifact_id": "schema_venue_review_score", "category": "schema", "path": "methods/reviewer_validation/schemas/venue_review_score.schema.json",
+      "sha256": "9b32edfcf5443226cfe0b805ce36f6b7e8ad67a6cf155d1b5ac392a23f376502", "byte_length": 3819,
+      "schema_id": null, "record_count": null, "created_at": "2026-08-28T11:53:45Z",
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "verified"
+    },
+    {
+      "artifact_id": "schema_run_record", "category": "schema", "path": "methods/reviewer_validation/schemas/run_record.schema.json",
+      "sha256": "7ca2c8964298c575ae8c7f7d092398273b62842b503a316d90769ba96eb64b1e", "byte_length": 9837,
+      "schema_id": null, "record_count": null, "created_at": "2026-08-28T11:53:45Z",
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "verified"
+    },
+    {
+      "artifact_id": "freeze_verifier", "category": "protocol_support", "path": "methods/reviewer_validation/scripts/verify_freeze.py",
+      "sha256": "b87f7535a87bd14b54123642a48c17bb53e989855be85b2b97efe600f1eb064c", "byte_length": 37134,
+      "schema_id": null, "record_count": null, "created_at": "2026-08-28T11:53:45Z",
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "verified"
+    },
+    {
+      "artifact_id": "corpus_manifest", "category": "corpus_manifest", "path": "methods/reviewer_validation/manifests/corpus.csv",
+      "sha256": null, "byte_length": null, "schema_id": null, "record_count": 16, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "parsed_full_text_manifest", "category": "parsed_full_text_manifest", "path": "methods/reviewer_validation/manifests/parsed_full_texts.json",
+      "sha256": null, "byte_length": null, "schema_id": null, "record_count": 16, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "production_excerpt_manifest", "category": "production_excerpt_manifest", "path": "methods/reviewer_validation/manifests/production_excerpts.json",
+      "sha256": null, "byte_length": null, "schema_id": null, "record_count": null, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "coordinate_mapping_manifest", "category": "coordinate_mapping_manifest", "path": "methods/reviewer_validation/manifests/coordinate_mappings.json",
+      "sha256": null, "byte_length": null, "schema_id": null, "record_count": null, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "ledger_raw_A", "category": "raw_annotation", "path": "methods/reviewer_validation/annotations/raw/ledger_A.jsonl",
+      "sha256": null, "byte_length": null, "schema_id": "reviewer-validation-promise-gold/v1", "record_count": null, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "ledger_raw_B", "category": "raw_annotation", "path": "methods/reviewer_validation/annotations/raw/ledger_B.jsonl",
+      "sha256": null, "byte_length": null, "schema_id": "reviewer-validation-promise-gold/v1", "record_count": null, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "ledger_gold", "category": "adjudicated_gold", "path": "methods/reviewer_validation/annotations/adjudicated/ledger_gold.jsonl",
+      "sha256": null, "byte_length": null, "schema_id": "reviewer-validation-promise-gold/v1", "record_count": null, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "venue_applicability_raw_A", "category": "raw_annotation", "path": "methods/reviewer_validation/annotations/raw/venue_applicability_A.jsonl",
+      "sha256": null, "byte_length": null, "schema_id": "reviewer-validation-venue-applicability/v1", "record_count": null, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "venue_applicability_raw_B", "category": "raw_annotation", "path": "methods/reviewer_validation/annotations/raw/venue_applicability_B.jsonl",
+      "sha256": null, "byte_length": null, "schema_id": "reviewer-validation-venue-applicability/v1", "record_count": null, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "venue_applicability_gold", "category": "adjudicated_gold", "path": "methods/reviewer_validation/annotations/adjudicated/venue_applicability_gold.jsonl",
+      "sha256": null, "byte_length": null, "schema_id": "reviewer-validation-venue-applicability/v1", "record_count": null, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "official_sources", "category": "official_source", "path": "methods/reviewer_validation/criteria/official_sources.json",
+      "sha256": null, "byte_length": null, "schema_id": null, "record_count": 7, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "criterion_map", "category": "criterion_map", "path": "methods/reviewer_validation/criteria/criterion_map.json",
+      "sha256": null, "byte_length": null, "schema_id": null, "record_count": null, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "status_challenges", "category": "status_challenge", "path": "methods/reviewer_validation/challenges/status_cases.jsonl",
+      "sha256": null, "byte_length": null, "schema_id": null, "record_count": 80, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "anchor_challenges", "category": "anchor_challenge", "path": "methods/reviewer_validation/challenges/anchor_cases.jsonl",
+      "sha256": null, "byte_length": null, "schema_id": "reviewer-validation-anchor-case/v1", "record_count": 120, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "prompt_snapshot", "category": "prompt_snapshot", "path": "methods/reviewer_validation/snapshots/prompts.json",
+      "sha256": null, "byte_length": null, "schema_id": null, "record_count": null, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "profile_snapshot", "category": "profile_snapshot", "path": "methods/reviewer_validation/snapshots/venue_profiles.yaml",
+      "sha256": null, "byte_length": null, "schema_id": null, "record_count": null, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "challenge_generator", "category": "generator_script", "path": "methods/reviewer_validation/scripts/generate_challenges.py",
+      "sha256": null, "byte_length": null, "schema_id": null, "record_count": null, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "corpus_selection_seed", "category": "seed", "path": "methods/reviewer_validation/configs/seeds/corpus_selection.txt",
+      "sha256": null, "byte_length": null, "schema_id": null, "record_count": null, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "status_challenge_seed", "category": "seed", "path": "methods/reviewer_validation/configs/seeds/status_challenge.txt",
+      "sha256": null, "byte_length": null, "schema_id": null, "record_count": null, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "anchor_challenge_seed", "category": "seed", "path": "methods/reviewer_validation/configs/seeds/anchor_challenge.txt",
+      "sha256": null, "byte_length": null, "schema_id": null, "record_count": null, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "venue_call_order_seed", "category": "seed", "path": "methods/reviewer_validation/configs/seeds/venue_call_order.txt",
+      "sha256": null, "byte_length": null, "schema_id": null, "record_count": null, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "blind_side_order_seed", "category": "seed", "path": "methods/reviewer_validation/configs/seeds/blind_side_order.txt",
+      "sha256": null, "byte_length": null, "schema_id": null, "record_count": null, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "bootstrap_seed", "category": "seed", "path": "methods/reviewer_validation/configs/seeds/bootstrap.txt",
+      "sha256": null, "byte_length": null, "schema_id": null, "record_count": null, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    },
+    {
+      "artifact_id": "run_config", "category": "run_config", "path": "methods/reviewer_validation/configs/formal_run.json",
+      "sha256": null, "byte_length": null, "schema_id": null, "record_count": null, "created_at": null,
+      "formal_input": true, "immutable": true, "required_for_strict": true, "status": "pending"
+    }
+  ]
+}

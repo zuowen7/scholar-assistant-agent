@@ -1,0 +1,387 @@
+[
+  {
+    "venue": "NeurIPS",
+    "lineage": {
+      "source_packet": {
+        "path": "methods/reviewer_validation/sources/packet_1_neurips_icml_iclr.md",
+        "sha256": "00b32eff0ce4eea48c7211d39b1bd91efb55ce0a9ce2e4dcaf7d308a5149d83c"
+      },
+      "synthesis_review": {
+        "path": "methods/reviewer_validation/sources/synthesis_review.md",
+        "sha256": "93174627ae7864191e38e2639b6e3590eafbe01cdb98c42b1752b75b98776fe4"
+      }
+    },
+    "sources": [
+      {
+        "source_id": "NEURIPS-S1",
+        "venue": "NeurIPS",
+        "title": "NeurIPS 2026 Reviewing Guidelines",
+        "canonical_url": "https://neurips.cc/Conferences/2026/ReviewerGuidelines",
+        "official_host": "neurips.cc",
+        "officiality_basis": "NeurIPS official 2026 main-track reviewer guidelines organized by contribution type.",
+        "publication_or_update": "not_stated",
+        "applicable_conference_year": "2026",
+        "access_date": "2026-08-29",
+        "locator": "Reviewing Guidelines for Different Contribution Types; General Reviewing Guidelines; contribution-type sections",
+        "source_packet": "methods/reviewer_validation/sources/packet_1_neurips_icml_iclr.md",
+        "snapshot": {"status": "pending_g2", "path": null, "sha256": null}
+      },
+      {
+        "source_id": "NEURIPS-S2",
+        "venue": "NeurIPS",
+        "title": "NeurIPS Paper Checklist Guidelines",
+        "canonical_url": "https://neurips.cc/public/guides/PaperChecklist",
+        "official_host": "neurips.cc",
+        "officiality_basis": "NeurIPS official public checklist guide linked to the 2026 main track by NEURIPS-S3.",
+        "publication_or_update": "not_stated",
+        "applicable_conference_year": "current NeurIPS submissions; linked to the 2026 main track by NEURIPS-S3",
+        "access_date": "2026-08-29",
+        "locator": "General guidance; items 1-2, 4-8, and 10",
+        "source_packet": "methods/reviewer_validation/sources/packet_1_neurips_icml_iclr.md",
+        "snapshot": {"status": "pending_g2", "path": null, "sha256": null}
+      },
+      {
+        "source_id": "NEURIPS-S3",
+        "venue": "NeurIPS",
+        "title": "NeurIPS Main Track Handbook",
+        "canonical_url": "https://neurips.cc/Conferences/2026/MainTrackHandbook",
+        "official_host": "neurips.cc",
+        "officiality_basis": "NeurIPS official 2026 Main Track Handbook, version V2026.3.",
+        "publication_or_update": "2026 (V2026.3)",
+        "applicable_conference_year": "2026",
+        "access_date": "2026-08-29",
+        "locator": "Review Form; Questions, Limitations, and Overall entries",
+        "source_packet": "methods/reviewer_validation/sources/packet_1_neurips_icml_iclr.md",
+        "snapshot": {"status": "pending_g2", "path": null, "sha256": null}
+      }
+    ]
+  },
+  {
+    "venue": "ICML",
+    "lineage": {
+      "source_packet": {
+        "path": "methods/reviewer_validation/sources/packet_1_neurips_icml_iclr.md",
+        "sha256": "00b32eff0ce4eea48c7211d39b1bd91efb55ce0a9ce2e4dcaf7d308a5149d83c"
+      },
+      "synthesis_review": {
+        "path": "methods/reviewer_validation/sources/synthesis_review.md",
+        "sha256": "93174627ae7864191e38e2639b6e3590eafbe01cdb98c42b1752b75b98776fe4"
+      }
+    },
+    "sources": [
+      {
+        "source_id": "ICML-S1",
+        "venue": "ICML",
+        "title": "ICML 2026 Call for Papers",
+        "canonical_url": "https://icml.cc/Conferences/2026/CallForPapers",
+        "official_host": "icml.cc",
+        "officiality_basis": "ICML official 2026 main-track call for papers containing Reviewing Criteria.",
+        "publication_or_update": "Revised January 25, 2026",
+        "applicable_conference_year": "2026",
+        "access_date": "2026-08-29",
+        "locator": "Reviewing Criteria",
+        "source_packet": "methods/reviewer_validation/sources/packet_1_neurips_icml_iclr.md",
+        "snapshot": {"status": "pending_g2", "path": null, "sha256": null}
+      },
+      {
+        "source_id": "ICML-S2",
+        "venue": "ICML",
+        "title": "ICML 2026 Reviewer Instructions",
+        "canonical_url": "https://icml.cc/Conferences/2026/ReviewerInstructions",
+        "official_host": "icml.cc",
+        "officiality_basis": "ICML official 2026 reviewer instructions and main-track review form guidance.",
+        "publication_or_update": "not_stated",
+        "applicable_conference_year": "2026",
+        "access_date": "2026-08-29",
+        "locator": "Tips for Reviewing; Main Track Reviewer Form Instructions",
+        "source_packet": "methods/reviewer_validation/sources/packet_1_neurips_icml_iclr.md",
+        "snapshot": {"status": "pending_g2", "path": null, "sha256": null}
+      }
+    ]
+  },
+  {
+    "venue": "ICLR",
+    "lineage": {
+      "source_packet": {
+        "path": "methods/reviewer_validation/sources/packet_1_neurips_icml_iclr.md",
+        "sha256": "00b32eff0ce4eea48c7211d39b1bd91efb55ce0a9ce2e4dcaf7d308a5149d83c"
+      },
+      "synthesis_review": {
+        "path": "methods/reviewer_validation/sources/synthesis_review.md",
+        "sha256": "93174627ae7864191e38e2639b6e3590eafbe01cdb98c42b1752b75b98776fe4"
+      }
+    },
+    "sources": [
+      {
+        "source_id": "ICLR-S1",
+        "venue": "ICLR",
+        "title": "ICLR 2027 Reviewer Guide",
+        "canonical_url": "https://iclr.cc/Conferences/2027/ReviewerGuidelines",
+        "official_host": "iclr.cc",
+        "officiality_basis": "ICLR official 2027 reviewer guide with reviewer tasks and step-by-step review guidance.",
+        "publication_or_update": "not_stated",
+        "applicable_conference_year": "2027",
+        "access_date": "2026-08-29",
+        "locator": "Reviewing a submission: step-by-step; Strong points; four key questions",
+        "source_packet": "methods/reviewer_validation/sources/packet_1_neurips_icml_iclr.md",
+        "snapshot": {"status": "pending_g2", "path": null, "sha256": null}
+      },
+      {
+        "source_id": "ICLR-S2",
+        "venue": "ICLR",
+        "title": "ICLR 2027 Author Guidelines",
+        "canonical_url": "https://iclr.cc/Conferences/2027/AuthorGuidelines",
+        "official_host": "iclr.cc",
+        "officiality_basis": "ICLR official 2027 author guidelines covering supplementary code, reproducibility, and OpenReview.",
+        "publication_or_update": "not_stated",
+        "applicable_conference_year": "2027",
+        "access_date": "2026-08-29",
+        "locator": "Supplementary Materials; Recommended: Reproducibility statement; Reviewing Process",
+        "source_packet": "methods/reviewer_validation/sources/packet_1_neurips_icml_iclr.md",
+        "snapshot": {"status": "pending_g2", "path": null, "sha256": null}
+      }
+    ]
+  },
+  {
+    "venue": "ACL",
+    "lineage": {
+      "source_packet": {
+        "path": "methods/reviewer_validation/sources/packet_2_acl_cvpr.md",
+        "sha256": "a502ae8fdf524f6ab01afed4d0e3d1eec119e2846cfeda7b026d148295e21ebf"
+      },
+      "synthesis_review": {
+        "path": "methods/reviewer_validation/sources/synthesis_review.md",
+        "sha256": "93174627ae7864191e38e2639b6e3590eafbe01cdb98c42b1752b75b98776fe4"
+      }
+    },
+    "sources": [
+      {
+        "source_id": "ACL-S1",
+        "venue": "ACL",
+        "title": "Main Conference - ACL 2026",
+        "canonical_url": "https://2026.aclweb.org/calls/main_conference_papers/",
+        "official_host": "2026.aclweb.org",
+        "officiality_basis": "ACL 2026 official main-conference call for papers linked to the ARR review process.",
+        "publication_or_update": "not_stated",
+        "applicable_conference_year": "2026",
+        "access_date": "2026-08-29",
+        "locator": "Overview; Paper Submission Information",
+        "source_packet": "methods/reviewer_validation/sources/packet_2_acl_cvpr.md",
+        "snapshot": {"status": "pending_g2", "path": null, "sha256": null}
+      },
+      {
+        "source_id": "ACL-S2",
+        "venue": "ACL",
+        "title": "ARR Reviewer Guidelines",
+        "canonical_url": "https://aclrollingreview.org/reviewerguidelines",
+        "official_host": "aclrollingreview.org",
+        "officiality_basis": "Current official ACL Rolling Review reviewer guidelines used by the ACL 2026 process.",
+        "publication_or_update": "01.05.2025",
+        "applicable_conference_year": "current ARR; ACL 2026 receives reviews through ARR",
+        "access_date": "2026-08-29",
+        "locator": "Common problems in NLP papers; G1; G4; R1; M3; H10; R2; H13; H14",
+        "source_packet": "methods/reviewer_validation/sources/packet_2_acl_cvpr.md",
+        "snapshot": {"status": "pending_g2", "path": null, "sha256": null}
+      },
+      {
+        "source_id": "ACL-S3",
+        "venue": "ACL",
+        "title": "ACL Rolling Review - Responsible NLP Research checklist",
+        "canonical_url": "https://aclrollingreview.org/responsibleNLPresearch/",
+        "official_host": "aclrollingreview.org",
+        "officiality_basis": "ARR official Responsible NLP Research checklist used as a reviewer consideration.",
+        "publication_or_update": "updated for ARR October 2024 cycle",
+        "applicable_conference_year": "current ARR; ACL 2026 receives reviews through ARR",
+        "access_date": "2026-08-29",
+        "locator": "B5-B6; D1-D5",
+        "source_packet": "methods/reviewer_validation/sources/packet_2_acl_cvpr.md",
+        "snapshot": {"status": "pending_g2", "path": null, "sha256": null}
+      }
+    ]
+  },
+  {
+    "venue": "CVPR",
+    "lineage": {
+      "source_packet": {
+        "path": "methods/reviewer_validation/sources/packet_2_acl_cvpr.md",
+        "sha256": "a502ae8fdf524f6ab01afed4d0e3d1eec119e2846cfeda7b026d148295e21ebf"
+      },
+      "synthesis_review": {
+        "path": "methods/reviewer_validation/sources/synthesis_review.md",
+        "sha256": "93174627ae7864191e38e2639b6e3590eafbe01cdb98c42b1752b75b98776fe4"
+      }
+    },
+    "sources": [
+      {
+        "source_id": "CVPR-S1",
+        "venue": "CVPR",
+        "title": "CVPR 2026 Call for Papers",
+        "canonical_url": "https://cvpr.thecvf.com/Conferences/2026/CallForPapers",
+        "official_host": "cvpr.thecvf.com",
+        "officiality_basis": "Official IEEE/CVF CVPR 2026 main-conference call for papers.",
+        "publication_or_update": "not_stated",
+        "applicable_conference_year": "2026",
+        "access_date": "2026-08-29",
+        "locator": "Opening section; Topics of interest",
+        "source_packet": "methods/reviewer_validation/sources/packet_2_acl_cvpr.md",
+        "snapshot": {"status": "pending_g2", "path": null, "sha256": null}
+      },
+      {
+        "source_id": "CVPR-S2",
+        "venue": "CVPR",
+        "title": "CVPR 2026 Reviewer Guidelines",
+        "canonical_url": "https://cvpr.thecvf.com/Conferences/2026/ReviewerGuidelines",
+        "official_host": "cvpr.thecvf.com",
+        "officiality_basis": "CVPR official 2026 reviewer guidelines for the Reviewing Committee.",
+        "publication_or_update": "not_stated",
+        "applicable_conference_year": "2026",
+        "access_date": "2026-08-29",
+        "locator": "Be Mindful; Check for Reproducibility",
+        "source_packet": "methods/reviewer_validation/sources/packet_2_acl_cvpr.md",
+        "snapshot": {"status": "pending_g2", "path": null, "sha256": null}
+      },
+      {
+        "source_id": "CVPR-S3",
+        "venue": "CVPR",
+        "title": "CVPR 2026 Reviewer Training Material",
+        "canonical_url": "https://cvpr.thecvf.com/Conferences/2026/ReviewerTrainingMaterial",
+        "official_host": "cvpr.thecvf.com",
+        "officiality_basis": "CVPR official 2026 reviewer training material supplementing the reviewer guidelines.",
+        "publication_or_update": "not_stated",
+        "applicable_conference_year": "2026",
+        "access_date": "2026-08-29",
+        "locator": "Careful Reading and Brief Summary; What Should Be Accepted?; Large Language Models",
+        "source_packet": "methods/reviewer_validation/sources/packet_2_acl_cvpr.md",
+        "snapshot": {"status": "pending_g2", "path": null, "sha256": null}
+      },
+      {
+        "source_id": "CVPR-S4",
+        "venue": "CVPR",
+        "title": "CVPR 2026 Author Guidelines",
+        "canonical_url": "https://cvpr.thecvf.com/Conferences/2026/AuthorGuidelines",
+        "official_host": "cvpr.thecvf.com",
+        "officiality_basis": "CVPR official 2026 author guidelines.",
+        "publication_or_update": "not_stated",
+        "applicable_conference_year": "2026",
+        "access_date": "2026-08-29",
+        "locator": "What's New for Submissions & Authors at CVPR 2026?; Compute reporting",
+        "source_packet": "methods/reviewer_validation/sources/packet_2_acl_cvpr.md",
+        "snapshot": {"status": "pending_g2", "path": null, "sha256": null}
+      }
+    ]
+  },
+  {
+    "venue": "KDD",
+    "lineage": {
+      "source_packet": {
+        "path": "methods/reviewer_validation/sources/packet_3_kdd_chi.md",
+        "sha256": "ef37e39bcfa9669c6dab2d7ad78281331de15adcf1617471b8fe0ced86e47a5a"
+      },
+      "synthesis_review": {
+        "path": "methods/reviewer_validation/sources/synthesis_review.md",
+        "sha256": "93174627ae7864191e38e2639b6e3590eafbe01cdb98c42b1752b75b98776fe4"
+      }
+    },
+    "sources": [
+      {
+        "source_id": "KDD-S1",
+        "venue": "KDD",
+        "title": "Research Track: Call for Papers - KDD 2026",
+        "canonical_url": "https://kdd2026.kdd.org/research-track-call-for-papers/",
+        "official_host": "kdd2026.kdd.org",
+        "officiality_basis": "KDD 2026 official Research Track call for papers with scope and decision factors.",
+        "publication_or_update": "not_stated",
+        "applicable_conference_year": "2026",
+        "access_date": "2026-08-29",
+        "locator": "Scope; Reviewing Process - Decision; Reproducibility",
+        "source_packet": "methods/reviewer_validation/sources/packet_3_kdd_chi.md",
+        "snapshot": {"status": "pending_g2", "path": null, "sha256": null}
+      },
+      {
+        "source_id": "KDD-S2",
+        "venue": "KDD",
+        "title": "Applied Data Science (ADS) Track: Call for Papers - KDD 2026",
+        "canonical_url": "https://kdd2026.kdd.org/applied-data-science-ads-track-call-for-papers/",
+        "official_host": "kdd2026.kdd.org",
+        "officiality_basis": "KDD 2026 official ADS Track call for papers with deployment requirements and exceptions.",
+        "publication_or_update": "not_stated",
+        "applicable_conference_year": "2026",
+        "access_date": "2026-08-29",
+        "locator": "Scope",
+        "source_packet": "methods/reviewer_validation/sources/packet_3_kdd_chi.md",
+        "snapshot": {"status": "pending_g2", "path": null, "sha256": null}
+      }
+    ]
+  },
+  {
+    "venue": "CHI",
+    "lineage": {
+      "source_packet": {
+        "path": "methods/reviewer_validation/sources/packet_3_kdd_chi.md",
+        "sha256": "ef37e39bcfa9669c6dab2d7ad78281331de15adcf1617471b8fe0ced86e47a5a"
+      },
+      "synthesis_review": {
+        "path": "methods/reviewer_validation/sources/synthesis_review.md",
+        "sha256": "93174627ae7864191e38e2639b6e3590eafbe01cdb98c42b1752b75b98776fe4"
+      }
+    },
+    "sources": [
+      {
+        "source_id": "CHI-S1",
+        "venue": "CHI",
+        "title": "Guide to Reviewing Papers - ACM CHI 2026",
+        "canonical_url": "https://chi2026.acm.org/guide-to-reviewing-papers/",
+        "official_host": "chi2026.acm.org",
+        "officiality_basis": "CHI 2026 official guidance for Papers reviewers.",
+        "publication_or_update": "not_stated",
+        "applicable_conference_year": "2026",
+        "access_date": "2026-08-29",
+        "locator": "Contributions; Transparency",
+        "source_packet": "methods/reviewer_validation/sources/packet_3_kdd_chi.md",
+        "snapshot": {"status": "pending_g2", "path": null, "sha256": null}
+      },
+      {
+        "source_id": "CHI-S2",
+        "venue": "CHI",
+        "title": "Guide to a Successful Submission - ACM CHI 2026",
+        "canonical_url": "https://chi2026.acm.org/guide-to-a-successful-submission/",
+        "official_host": "chi2026.acm.org",
+        "officiality_basis": "CHI 2026 official Papers submission and review-form guidance.",
+        "publication_or_update": "not_stated",
+        "applicable_conference_year": "2026",
+        "access_date": "2026-08-29",
+        "locator": "The Review Form; Transparency",
+        "source_packet": "methods/reviewer_validation/sources/packet_3_kdd_chi.md",
+        "snapshot": {"status": "pending_g2", "path": null, "sha256": null}
+      },
+      {
+        "source_id": "CHI-S3",
+        "venue": "CHI",
+        "title": "Contributions to CHI - ACM CHI 2026",
+        "canonical_url": "https://chi2026.acm.org/contributions-to-chi/",
+        "official_host": "chi2026.acm.org",
+        "officiality_basis": "CHI 2026 official contribution-type and evaluation guidance for reviewers and authors.",
+        "publication_or_update": "not_stated",
+        "applicable_conference_year": "2026",
+        "access_date": "2026-08-29",
+        "locator": "Introduction; contribution-type sections including artifacts, users, systems, theory, validation and replication",
+        "source_packet": "methods/reviewer_validation/sources/packet_3_kdd_chi.md",
+        "snapshot": {"status": "pending_g2", "path": null, "sha256": null}
+      },
+      {
+        "source_id": "CHI-S4",
+        "venue": "CHI",
+        "title": "Papers - ACM CHI 2026",
+        "canonical_url": "https://chi2026.acm.org/authors/papers/",
+        "official_host": "chi2026.acm.org",
+        "officiality_basis": "CHI 2026 official Papers page containing research-quality and human-subjects policy.",
+        "publication_or_update": "not_stated",
+        "applicable_conference_year": "2026",
+        "access_date": "2026-08-29",
+        "locator": "Message from the Papers Chairs; Policy on Research Involving Human Participants and Subjects; Research Quality",
+        "source_packet": "methods/reviewer_validation/sources/packet_3_kdd_chi.md",
+        "snapshot": {"status": "pending_g2", "path": null, "sha256": null}
+      }
+    ]
+  }
+]

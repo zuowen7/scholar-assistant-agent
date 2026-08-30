@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "reviewer-validation-venue-review-score/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "score_id", "pair_id", "paper_id", "rater_id", "applicability_gold_sha256", "blind_packet", "criteria", "critique_units", "preference", "denominators", "note"],
+  "properties": {
+    "schema_version": {"const": "reviewer-validation-venue-review-score/v1"},
+    "score_id": {"type": "string", "minLength": 1}, "pair_id": {"type": "string", "minLength": 1},
+    "paper_id": {"type": "string", "minLength": 1}, "rater_id": {"enum": ["A", "B"]},
+    "applicability_gold_sha256": {"$ref": "#/$defs/sha256"},
+    "blind_packet": {"$ref": "#/$defs/artifactIdentity"},
+    "criteria": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/criterionScore"}},
+    "critique_units": {"type": "array", "items": {"$ref": "#/$defs/critiqueUnit"}},
+    "preference": {"enum": ["A", "B", "Tie"]},
+    "denominators": {"$ref": "#/$defs/denominators"},
+    "note": {"type": "string"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "artifactIdentity": {
+      "type": "object", "additionalProperties": false, "required": ["artifact_id", "sha256"],
+      "properties": {"artifact_id": {"type": "string", "minLength": 1}, "sha256": {"$ref": "#/$defs/sha256"}}
+    },
+    "criterionScore": {
+      "type": "object", "additionalProperties": false,
+      "required": ["criterion_id", "side", "applicability", "score", "evidence_note"],
+      "properties": {
+        "criterion_id": {"type": "string", "pattern": "^C[1-9][0-9]*$"},
+        "side": {"enum": ["A", "B"]},
+        "applicability": {"enum": ["applicable", "not_applicable"]},
+        "score": {"type": ["integer", "null"], "enum": [0, 1, 2, null]},
+        "evidence_note": {"type": "string"}
+      },
+      "allOf": [
+        {"if": {"properties": {"applicability": {"const": "applicable"}}, "required": ["applicability"]}, "then": {"properties": {"score": {"enum": [0, 1, 2]}}}},
+        {"if": {"properties": {"applicability": {"const": "not_applicable"}}, "required": ["applicability"]}, "then": {"properties": {"score": {"type": "null"}}}}
+      ]
+    },
+    "critiqueUnit": {
+      "type": "object", "additionalProperties": false,
+      "required": ["critique_id", "side", "text", "label", "excerpt_support_note"],
+      "properties": {
+        "critique_id": {"type": "string", "minLength": 1}, "side": {"enum": ["A", "B"]},
+        "text": {"type": "string", "minLength": 1}, "label": {"enum": ["supported", "unsupported", "not_assessable"]},
+        "excerpt_support_note": {"type": "string"}
+      }
+    },
+    "denominators": {
+      "type": "object", "additionalProperties": false,
+      "required": ["criteria_defined", "review_sides", "criterion_rows", "applicable_criteria_per_review", "scored_criterion_occurrences", "criteria_max_points_per_review", "supported_critique_units", "unsupported_critique_units", "not_assessable_critique_units", "fact_claim_critique_units", "preference_label"],
+      "properties": {
+        "criteria_defined": {"type": "integer", "minimum": 1}, "review_sides": {"const": 2},
+        "criterion_rows": {"type": "integer", "minimum": 2}, "applicable_criteria_per_review": {"type": "integer", "minimum": 0},
+        "scored_criterion_occurrences": {"type": "integer", "minimum": 0}, "criteria_max_points_per_review": {"type": "integer", "minimum": 0},
+        "supported_critique_units": {"type": "integer", "minimum": 0},
+        "unsupported_critique_units": {"type": "integer", "minimum": 0}, "not_assessable_critique_units": {"type": "integer", "minimum": 0},
+        "fact_claim_critique_units": {"type": "integer", "minimum": 0}, "preference_label": {"const": 1}
+      }
+    }
+  }
+}

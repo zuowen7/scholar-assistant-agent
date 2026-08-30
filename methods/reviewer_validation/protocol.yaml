@@ -1,0 +1,293 @@
+schema_version: reviewer-validation-protocol/v1
+protocol_version: 0.1.0-draft
+status: draft
+title: Scholar Assistant bounded technical validation
+canonical_methodology: METHODOLOGY.md
+baseline_commit: 099b69c
+formal_run_authorized: false
+scope:
+  validation_type: technical_only
+  team_size: 2
+  duration_days: 14
+  excluded_claims:
+    - educational_effectiveness
+    - learning_gain
+    - writing_ability_improvement
+    - satisfaction
+    - human_reviewer_style_fidelity
+research_questions:
+  - id: RQ1
+    target: ledger_promise_extraction_type_and_discharge_accuracy
+    corpus_papers: 10
+    runs_per_stage: 3
+    primary_analysis_unit: paper
+    cluster_count: 10
+    primary_metrics:
+      - name: relaxed_span_f1
+        denominator: all_adjudicated_gold_and_all_predictions_per_paper_run
+      - name: four_class_status_macro_f1
+        denominator: all_adjudicated_four_state_gold_promises_per_run
+      - name: evidence_hit_rate
+        denominator: adjudicated_gold_promises_with_nonempty_evidence_per_run
+      - name: end_to_end_correct_rate
+        denominator: all_adjudicated_gold_promises_per_run
+    secondary_metrics:
+      - exact_span_precision_recall_f1
+      - kind_accuracy_macro_f1_and_per_class_f1
+      - status_accuracy_per_class_f1_and_confusion_matrix
+      - spurious_evidence_rate
+      - invalid_json_empty_response_provider_failure_and_unknown_rates
+  - id: RQ2
+    target: anchor_state_and_relocation_accuracy
+    source_anchors: 40
+    variants_per_source: 3
+    challenge_cases: 120
+    primary_analysis_unit: source_anchor
+    cluster_count: 40
+    primary_metrics:
+      - name: three_state_macro_f1
+        denominator: all_120_frozen_variants
+      - name: joint_status_location_accuracy
+        denominator: all_120_frozen_variants
+      - name: false_relocation_rate
+        denominator: all_40_lost_variants
+    secondary_metrics:
+      - status_accuracy_per_class_precision_recall_f1_and_confusion_matrix
+      - correct_location_rate_on_80_anchored_or_drifted_variants
+  - id: RQ3
+    target: venue_profile_incremental_official_criteria_adherence
+    held_out_papers: 14
+    venues: 7
+    papers_per_venue: 2
+    conditions: 2
+    runs_per_condition: 3
+    total_reviews: 84
+    blind_pairs: 42
+    primary_analysis_unit: paper
+    cluster_count: 14
+    primary_metrics:
+      - name: criteria_adherence_difference
+        denominator: applicable_criteria_per_paper_condition
+      - name: unsupported_critique_rate_difference
+        denominator: supported_plus_unsupported_critique_units
+    secondary_metrics:
+      - evidence_supported_coverage
+      - unsupported_critiques_per_review
+      - empty_review_rate
+      - blind_preference
+      - inter_rater_agreement_with_item_counts_and_class_distributions
+sample_design:
+  master_corpus_papers: 16
+  development_papers: 2
+  held_out_papers: 14
+  ledger_subset_papers: 10
+  ledger_domain_strata:
+    ai_cs: 5
+    hci_education_cross_disciplinary: 5
+  venues:
+    - NeurIPS
+    - ICML
+    - ICLR
+    - ACL
+    - CVPR
+    - KDD
+    - CHI
+  status_challenge:
+    base_groups: 20
+    variants_per_group: 4
+    total_cases: 80
+    states:
+      - paid
+      - partial
+      - unpaid
+      - mismatch
+  anchor_challenge:
+    source_anchors: 40
+    variants_per_source: 3
+    total_cases: 120
+    states:
+      - anchored
+      - drifted
+      - lost
+execution:
+  code_commit: null
+  runs_per_llm_stage: 3
+  venue_conditions:
+    - generic
+    - venue_conditioned
+  venue_checks:
+    - llm
+  serial_only: true
+  model:
+    provider: null
+    model_id: null
+    snapshot: null
+    api_format: null
+    temperature: null
+    max_tokens: null
+    thinking_mode: null
+    seed_supported: null
+  retry_policy:
+    same_provider_format_repair_allowed: true
+    max_same_provider_attempts: null
+    cross_provider_fallback_allowed: false
+    replace_failed_first_record: false
+    preserve_every_attempt: true
+  failure_taxonomy:
+    - success
+    - legal_empty
+    - empty_response
+    - invalid_json
+    - timeout
+    - provider_error
+    - classification_incomplete
+    - unknown_status
+coordinate_contract:
+  index_unit: unicode_code_point
+  origin: 0
+  interval: half_open
+  relaxed_span_iou_threshold: 0.5
+  location_iou_threshold: 0.5
+  canonical_score_space: immutable_full_text
+  prediction_search_space: model_visible_excerpt_only
+  synthetic_mapping_gold_allowed: false
+  duplicate_resolution: maximum_cardinality_then_total_iou_then_lexicographic_ids
+analysis:
+  bootstrap_iterations: 10000
+  confidence_level: 0.95
+  bootstrap_cluster_units:
+    RQ1: paper
+    RQ1_status_challenge: base_group
+    RQ2: source_anchor
+    RQ3: paper
+  rq3_claim_gates:
+    adherence_two_sided_ci_lower:
+      operator: greater_than
+      value: 0.0
+    unsupported_rate_one_sided_ci_upper:
+      operator: less_than
+      value: 0.05
+  zero_denominator_policy: report_na_and_count
+  negative_result_policy: retain_in_main_text
+annotation:
+  annotators:
+    - A
+    - B
+  raw_labels_append_only: true
+  agreement_before_adjudication: true
+  adjudication_creates_new_artifact: true
+  unresolved_never_silently_dropped: true
+  promise_kinds:
+    - contribution
+    - claim
+    - hypothesis
+    - gap_statement
+    - scope
+  substantive_promise_statuses:
+    - paid
+    - partial
+    - unpaid
+    - mismatch
+  system_fallback_status: unknown
+  venue_applicability:
+    - applicable
+    - not_applicable
+  venue_coverage_scores:
+    - 0
+    - 1
+    - 2
+  critique_labels:
+    - supported
+    - unsupported
+    - not_assessable
+seeds:
+  corpus_selection: null
+  status_challenge_generation: null
+  anchor_challenge_generation: null
+  venue_call_order: null
+  blind_side_order: null
+  bootstrap: null
+freeze_contract:
+  protocol_hash_algorithm: sha256
+  manifest_hash_algorithm: sha256
+  manifest_self_hash_embedded: false
+  formal_inputs_individually_listed: true
+  formal_inputs_immutable: true
+  output_manifest_append_only: true
+  category_requirements:
+    - {category: corpus_manifest, exact_count: 1, minimum_count: null}
+    - {category: source_paper, exact_count: 16, minimum_count: null}
+    - {category: parsed_full_text, exact_count: 16, minimum_count: null}
+    - {category: production_excerpt, exact_count: null, minimum_count: 14}
+    - {category: coordinate_mapping, exact_count: null, minimum_count: 14}
+    - {category: raw_annotation, exact_count: null, minimum_count: 4}
+    - {category: adjudicated_gold, exact_count: 2, minimum_count: null}
+    - {category: official_source, exact_count: 7, minimum_count: null}
+    - {category: criterion_map, exact_count: 1, minimum_count: null}
+    - {category: status_challenge, exact_count: 1, minimum_count: null}
+    - {category: anchor_challenge, exact_count: 1, minimum_count: null}
+    - {category: prompt_snapshot, exact_count: null, minimum_count: 3}
+    - {category: profile_snapshot, exact_count: null, minimum_count: 1}
+    - {category: schema, exact_count: 7, minimum_count: null}
+    - {category: generator_script, exact_count: null, minimum_count: 1}
+    - {category: seed, exact_count: 6, minimum_count: null}
+    - {category: run_config, exact_count: 1, minimum_count: null}
+  formal_input_roots:
+    - methods/reviewer_validation/corpus
+    - methods/reviewer_validation/excerpts
+    - methods/reviewer_validation/mappings
+    - methods/reviewer_validation/annotations/raw
+    - methods/reviewer_validation/annotations/adjudicated
+    - methods/reviewer_validation/criteria
+    - methods/reviewer_validation/challenges
+    - methods/reviewer_validation/snapshots
+    - methods/reviewer_validation/configs
+  required_artifact_ids:
+    - corpus_manifest
+    - parsed_full_text_manifest
+    - production_excerpt_manifest
+    - coordinate_mapping_manifest
+    - ledger_raw_A
+    - ledger_raw_B
+    - ledger_gold
+    - venue_applicability_raw_A
+    - venue_applicability_raw_B
+    - venue_applicability_gold
+    - official_sources
+    - criterion_map
+    - status_challenges
+    - anchor_challenges
+    - prompt_snapshot
+    - profile_snapshot
+    - challenge_generator
+    - corpus_selection_seed
+    - status_challenge_seed
+    - anchor_challenge_seed
+    - venue_call_order_seed
+    - blind_side_order_seed
+    - bootstrap_seed
+    - run_config
+repository_boundaries:
+  artifact_root: methods/reviewer_validation
+  allowed_repository_inputs:
+    - METHODOLOGY.md
+    - python/src/argument/ledger.py
+    - python/src/argument/anchor.py
+    - python/src/argument/reviewer.py
+    - python/src/argument/section_utils.py
+    - python/src/argument/venue_profiles.yaml
+gates:
+  G0: premise
+  G1: pilot_human_audit
+  G2: strict_freeze_verification
+  G3: independent_raw_labels_before_adjudication
+  G4: venue_single_factor_and_single_model_isolation
+  G5: clustered_analysis
+  G6: claim_traceability
+  required_before_formal_run:
+    - G0
+    - G1
+    - G2
+    - G3
+    - G4
+amendments: []
