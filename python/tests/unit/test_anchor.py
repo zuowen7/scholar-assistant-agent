@@ -195,6 +195,34 @@ class TestRelocate:
         assert a2.status in ("anchored", "drifted")
         assert a2.char_start is not None
 
+    def test_duplicate_exact_quote_uses_context_consistent_second_occurrence(self):
+        _, _, _, make_anchor, _, relocate, *_ = _anchor()
+        original = "Alpha target Beta. Gamma target Delta."
+        source_start = original.rindex("target")
+        anchor = make_anchor("d", original, source_start, source_start + len("target"))
+        edited = "Prelude. Alpha target Beta. Gamma target Delta."
+
+        relocated = relocate(anchor, edited)
+
+        expected_start = edited.rindex("target")
+        assert relocated.status == "anchored"
+        assert (relocated.char_start, relocated.char_end) == (
+            expected_start,
+            expected_start + len("target"),
+        )
+
+    def test_similar_distractor_is_rejected_when_context_conflicts(self):
+        _, _, _, _, make_anchor_from_quote, relocate, *_ = _anchor()
+        original = "We introduce a novel transformer architecture for NLP."
+        anchor = make_anchor_from_quote("d", original, "novel transformer architecture")
+        edited = "This paper discusses a novel transfer architecture elsewhere."
+
+        relocated = relocate(anchor, edited)
+
+        assert relocated.status == "lost"
+        assert relocated.char_start is None
+        assert relocated.char_end is None
+
     def test_fuzzy_match_returns_drifted(self):
         _, _, _, _, make_anchor_from_quote, relocate, *_ = _anchor()
         original = "Our approach significantly outperforms existing methods."
@@ -248,6 +276,67 @@ class TestRelocate:
             assert (
                 a2.context_before == new_text[max(0, a2.char_start - CONTEXT_CHARS) : a2.char_start]
             )
+
+
+class TestCandidateOrderingAndRejection:
+    def test_exact_candidate_ranking_is_independent_of_input_order(self):
+        from src.argument.anchor import _rank_candidates, make_anchor
+
+        original = "Alpha target Beta. Gamma target Delta."
+        start = original.rindex("target")
+        anchor = make_anchor("d", original, start, start + len("target"))
+        edited = "Prelude. Alpha target Beta. Gamma target Delta."
+        spans = [
+            (edited.index("target"), edited.index("target") + len("target")),
+            (edited.rindex("target"), edited.rindex("target") + len("target")),
+        ]
+
+        forward = _rank_candidates(anchor, edited, spans, exact=True)
+        reverse = _rank_candidates(anchor, edited, list(reversed(spans)), exact=True)
+
+        assert [(item.start, item.end) for item in forward] == [
+            (item.start, item.end) for item in reverse
+        ]
+        assert forward[0].start == edited.rindex("target")
+
+    def test_fuzzy_candidate_ranking_has_stable_lexicographic_tie_break(self):
+        from src.argument.anchor import Anchor, _rank_candidates
+
+        anchor = Anchor(doc_id="d", quote="cat", char_start=None, char_end=None)
+        text = "cot cot"
+        spans = [(4, 7), (0, 3)]
+
+        ranked = _rank_candidates(anchor, text, spans, exact=False)
+
+        assert [(item.start, item.end) for item in ranked] == [(0, 3), (4, 7)]
+
+    def test_low_similarity_candidate_is_rejected(self):
+        from src.argument.anchor import Anchor, _accept_fuzzy, _Candidate
+
+        anchor = Anchor(doc_id="d", quote="target", context_before="same ")
+        candidate = _Candidate(
+            start=0,
+            end=6,
+            quote_ratio=0.61,
+            context_ratio=1.0,
+            section_match=0,
+            position_distance=0,
+        )
+        assert _accept_fuzzy(anchor, candidate) is False
+
+    def test_context_conflict_rejects_high_lexical_similarity(self):
+        from src.argument.anchor import Anchor, _accept_fuzzy, _Candidate
+
+        anchor = Anchor(doc_id="d", quote="target", context_before="source context ")
+        candidate = _Candidate(
+            start=10,
+            end=16,
+            quote_ratio=0.95,
+            context_ratio=0.39,
+            section_match=0,
+            position_distance=1,
+        )
+        assert _accept_fuzzy(anchor, candidate) is False
 
 
 # ── relocate_all ──────────────────────────────────────────────────────────────
