@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "reviewer-validation-promise-gold/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "promise_id", "paper_id", "exact_quote", "full_text", "excerpt", "mapping", "kind", "status", "gold_evidence_spans", "annotator_id", "resolution", "note", "denominators"],
+  "properties": {
+    "schema_version": {"const": "reviewer-validation-promise-gold/v1"},
+    "promise_id": {"type": "string", "minLength": 1},
+    "paper_id": {"type": "string", "minLength": 1},
+    "exact_quote": {"type": "string", "minLength": 1},
+    "full_text": {"$ref": "#/$defs/textSpan"},
+    "excerpt": {"$ref": "#/$defs/excerptSpan"},
+    "mapping": {"$ref": "#/$defs/artifactIdentity"},
+    "kind": {"enum": ["contribution", "claim", "hypothesis", "gap_statement", "scope"]},
+    "status": {"type": ["string", "null"], "enum": ["paid", "partial", "unpaid", "mismatch", null]},
+    "gold_evidence_spans": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
+    "annotator_id": {"enum": ["A", "B", "adjudicated"]},
+    "resolution": {"enum": ["resolved", "unresolved"]},
+    "note": {"type": "string"},
+    "denominators": {
+      "type": "object", "additionalProperties": false,
+      "required": ["gold_occurrence", "evidence_bearing"],
+      "properties": {"gold_occurrence": {"const": 1}, "evidence_bearing": {"type": "boolean"}}
+    }
+  },
+  "allOf": [
+    {"if": {"properties": {"resolution": {"const": "resolved"}}, "required": ["resolution"]}, "then": {"properties": {"status": {"enum": ["paid", "partial", "unpaid", "mismatch"]}}}},
+    {"if": {"properties": {"status": {"const": "unpaid"}}, "required": ["status"]}, "then": {"properties": {"gold_evidence_spans": {"maxItems": 0}, "denominators": {"properties": {"evidence_bearing": {"const": false}}}}}},
+    {"if": {"properties": {"status": {"enum": ["paid", "partial", "mismatch"]}, "resolution": {"const": "resolved"}}, "required": ["status", "resolution"]}, "then": {"properties": {"gold_evidence_spans": {"minItems": 1}, "denominators": {"properties": {"evidence_bearing": {"const": true}}}}}}
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "artifactIdentity": {
+      "type": "object", "additionalProperties": false, "required": ["artifact_id", "sha256"],
+      "properties": {"artifact_id": {"type": "string", "minLength": 1}, "sha256": {"$ref": "#/$defs/sha256"}}
+    },
+    "textSpan": {
+      "type": "object", "additionalProperties": false, "required": ["artifact_id", "text_sha256", "char_start", "char_end"],
+      "properties": {"artifact_id": {"type": "string", "minLength": 1}, "text_sha256": {"$ref": "#/$defs/sha256"}, "char_start": {"type": "integer", "minimum": 0}, "char_end": {"type": "integer", "minimum": 1}}
+    },
+    "excerptSpan": {
+      "type": "object", "additionalProperties": false,
+      "required": ["artifact_id", "excerpt_id", "text_sha256", "char_start", "char_end"],
+      "properties": {
+        "artifact_id": {"type": "string", "minLength": 1}, "excerpt_id": {"type": "string", "minLength": 1},
+        "text_sha256": {"$ref": "#/$defs/sha256"}, "char_start": {"type": "integer", "minimum": 0},
+        "char_end": {"type": "integer", "minimum": 1}
+      }
+    },
+    "evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["evidence_id", "exact_quote", "full_text", "excerpt", "mapping"],
+      "properties": {
+        "evidence_id": {"type": "string", "minLength": 1}, "exact_quote": {"type": "string", "minLength": 1},
+        "full_text": {"$ref": "#/$defs/textSpan"}, "excerpt": {"$ref": "#/$defs/excerptSpan"}, "mapping": {"$ref": "#/$defs/artifactIdentity"}
+      }
+    }
+  }
+}

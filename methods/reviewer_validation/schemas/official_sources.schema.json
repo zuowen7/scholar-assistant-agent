@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "reviewer-validation-official-sources/v1",
+  "type": "array",
+  "prefixItems": [
+    {"$ref":"#/$defs/neurips"}, {"$ref":"#/$defs/icml"}, {"$ref":"#/$defs/iclr"},
+    {"$ref":"#/$defs/acl"}, {"$ref":"#/$defs/cvpr"}, {"$ref":"#/$defs/kdd"}, {"$ref":"#/$defs/chi"}
+  ],
+  "items": false,
+  "$defs": {
+    "sha256": {"type":"string","pattern":"^[0-9a-f]{64}$"},
+    "artifact": {"type":"object","additionalProperties":false,"required":["path","sha256"],"properties":{"path":{"type":"string","pattern":"^methods/reviewer_validation/sources/[^.][^\\\\]*\\.md$"},"sha256":{"$ref":"#/$defs/sha256"}}},
+    "lineage": {"type":"object","additionalProperties":false,"required":["source_packet","synthesis_review"],"properties":{"source_packet":{"$ref":"#/$defs/artifact"},"synthesis_review":{"$ref":"#/$defs/artifact"}}},
+    "snapshot": {"type":"object","additionalProperties":false,"required":["status","path","sha256"],"properties":{"status":{"const":"pending_g2"},"path":{"type":"null"},"sha256":{"type":"null"}}},
+    "source": {
+      "type":"object","additionalProperties":false,
+      "required":["source_id","venue","title","canonical_url","official_host","officiality_basis","publication_or_update","applicable_conference_year","access_date","locator","source_packet","snapshot"],
+      "properties":{
+        "source_id":{"type":"string","pattern":"^[A-Z]+-S[1-9][0-9]*$"},
+        "venue":{"enum":["NeurIPS","ICML","ICLR","ACL","CVPR","KDD","CHI"]},
+        "title":{"type":"string","minLength":1},
+        "canonical_url":{"type":"string","pattern":"^https://[^ ]+$"},
+        "official_host":{"type":"string","minLength":1},
+        "officiality_basis":{"type":"string","minLength":1},
+        "publication_or_update":{"type":"string","minLength":1},
+        "applicable_conference_year":{"type":"string","minLength":1},
+        "access_date":{"type":"string","pattern":"^2026-08-29$"},
+        "locator":{"type":"string","minLength":1},
+        "source_packet":{"type":"string","pattern":"^methods/reviewer_validation/sources/packet_[123]_[^\\\\]+\\.md$"},
+        "snapshot":{"$ref":"#/$defs/snapshot"}
+      }
+    },
+    "venueBase": {"type":"object","additionalProperties":false,"required":["venue","lineage","sources"],"properties":{"venue":{"enum":["NeurIPS","ICML","ICLR","ACL","CVPR","KDD","CHI"]},"lineage":{"$ref":"#/$defs/lineage"},"sources":{"type":"array"}}},
+    "neurips": {"allOf":[{"$ref":"#/$defs/venueBase"},{"properties":{"venue":{"const":"NeurIPS"},"sources":{"type":"array","prefixItems":[{"$ref":"#/$defs/NEURIPS-S1"},{"$ref":"#/$defs/NEURIPS-S2"},{"$ref":"#/$defs/NEURIPS-S3"}],"items":false}}}]},
+    "icml": {"allOf":[{"$ref":"#/$defs/venueBase"},{"properties":{"venue":{"const":"ICML"},"sources":{"type":"array","prefixItems":[{"$ref":"#/$defs/ICML-S1"},{"$ref":"#/$defs/ICML-S2"}],"items":false}}}]},
+    "iclr": {"allOf":[{"$ref":"#/$defs/venueBase"},{"properties":{"venue":{"const":"ICLR"},"sources":{"type":"array","prefixItems":[{"$ref":"#/$defs/ICLR-S1"},{"$ref":"#/$defs/ICLR-S2"}],"items":false}}}]},
+    "acl": {"allOf":[{"$ref":"#/$defs/venueBase"},{"properties":{"venue":{"const":"ACL"},"sources":{"type":"array","prefixItems":[{"$ref":"#/$defs/ACL-S1"},{"$ref":"#/$defs/ACL-S2"},{"$ref":"#/$defs/ACL-S3"}],"items":false}}}]},
+    "cvpr": {"allOf":[{"$ref":"#/$defs/venueBase"},{"properties":{"venue":{"const":"CVPR"},"sources":{"type":"array","prefixItems":[{"$ref":"#/$defs/CVPR-S1"},{"$ref":"#/$defs/CVPR-S2"},{"$ref":"#/$defs/CVPR-S3"},{"$ref":"#/$defs/CVPR-S4"}],"items":false}}}]},
+    "kdd": {"allOf":[{"$ref":"#/$defs/venueBase"},{"properties":{"venue":{"const":"KDD"},"sources":{"type":"array","prefixItems":[{"$ref":"#/$defs/KDD-S1"},{"$ref":"#/$defs/KDD-S2"}],"items":false}}}]},
+    "chi": {"allOf":[{"$ref":"#/$defs/venueBase"},{"properties":{"venue":{"const":"CHI"},"sources":{"type":"array","prefixItems":[{"$ref":"#/$defs/CHI-S1"},{"$ref":"#/$defs/CHI-S2"},{"$ref":"#/$defs/CHI-S3"},{"$ref":"#/$defs/CHI-S4"}],"items":false}}}]},
+    "NEURIPS-S1":{"allOf":[{"$ref":"#/$defs/source"},{"properties":{"source_id":{"const":"NEURIPS-S1"},"venue":{"const":"NeurIPS"}}}]},
+    "NEURIPS-S2":{"allOf":[{"$ref":"#/$defs/source"},{"properties":{"source_id":{"const":"NEURIPS-S2"},"venue":{"const":"NeurIPS"}}}]},
+    "NEURIPS-S3":{"allOf":[{"$ref":"#/$defs/source"},{"properties":{"source_id":{"const":"NEURIPS-S3"},"venue":{"const":"NeurIPS"}}}]},
+    "ICML-S1":{"allOf":[{"$ref":"#/$defs/source"},{"properties":{"source_id":{"const":"ICML-S1"},"venue":{"const":"ICML"}}}]},
+    "ICML-S2":{"allOf":[{"$ref":"#/$defs/source"},{"properties":{"source_id":{"const":"ICML-S2"},"venue":{"const":"ICML"}}}]},
+    "ICLR-S1":{"allOf":[{"$ref":"#/$defs/source"},{"properties":{"source_id":{"const":"ICLR-S1"},"venue":{"const":"ICLR"}}}]},
+    "ICLR-S2":{"allOf":[{"$ref":"#/$defs/source"},{"properties":{"source_id":{"const":"ICLR-S2"},"venue":{"const":"ICLR"}}}]},
+    "ACL-S1":{"allOf":[{"$ref":"#/$defs/source"},{"properties":{"source_id":{"const":"ACL-S1"},"venue":{"const":"ACL"}}}]},
+    "ACL-S2":{"allOf":[{"$ref":"#/$defs/source"},{"properties":{"source_id":{"const":"ACL-S2"},"venue":{"const":"ACL"}}}]},
+    "ACL-S3":{"allOf":[{"$ref":"#/$defs/source"},{"properties":{"source_id":{"const":"ACL-S3"},"venue":{"const":"ACL"}}}]},
+    "CVPR-S1":{"allOf":[{"$ref":"#/$defs/source"},{"properties":{"source_id":{"const":"CVPR-S1"},"venue":{"const":"CVPR"}}}]},
+    "CVPR-S2":{"allOf":[{"$ref":"#/$defs/source"},{"properties":{"source_id":{"const":"CVPR-S2"},"venue":{"const":"CVPR"}}}]},
+    "CVPR-S3":{"allOf":[{"$ref":"#/$defs/source"},{"properties":{"source_id":{"const":"CVPR-S3"},"venue":{"const":"CVPR"}}}]},
+    "CVPR-S4":{"allOf":[{"$ref":"#/$defs/source"},{"properties":{"source_id":{"const":"CVPR-S4"},"venue":{"const":"CVPR"}}}]},
+    "KDD-S1":{"allOf":[{"$ref":"#/$defs/source"},{"properties":{"source_id":{"const":"KDD-S1"},"venue":{"const":"KDD"}}}]},
+    "KDD-S2":{"allOf":[{"$ref":"#/$defs/source"},{"properties":{"source_id":{"const":"KDD-S2"},"venue":{"const":"KDD"}}}]},
+    "CHI-S1":{"allOf":[{"$ref":"#/$defs/source"},{"properties":{"source_id":{"const":"CHI-S1"},"venue":{"const":"CHI"}}}]},
+    "CHI-S2":{"allOf":[{"$ref":"#/$defs/source"},{"properties":{"source_id":{"const":"CHI-S2"},"venue":{"const":"CHI"}}}]},
+    "CHI-S3":{"allOf":[{"$ref":"#/$defs/source"},{"properties":{"source_id":{"const":"CHI-S3"},"venue":{"const":"CHI"}}}]},
+    "CHI-S4":{"allOf":[{"$ref":"#/$defs/source"},{"properties":{"source_id":{"const":"CHI-S4"},"venue":{"const":"CHI"}}}]}
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "reviewer-validation-venue-applicability/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "record_id", "paper_id", "criterion_id", "criterion_text", "criterion_text_sha256", "official_source", "excerpt", "annotator_id", "phase", "applicability", "disputed", "rationale", "source_locator", "denominators"],
+  "properties": {
+    "schema_version": {"const": "reviewer-validation-venue-applicability/v1"},
+    "record_id": {"type": "string", "minLength": 1}, "paper_id": {"type": "string", "minLength": 1},
+    "criterion_id": {"type": "string", "pattern": "^C[1-9][0-9]*$"},
+    "criterion_text": {"type": "string", "minLength": 1},
+    "criterion_text_sha256": {"$ref": "#/$defs/sha256"},
+    "official_source": {"$ref": "#/$defs/artifactIdentity"},
+    "excerpt": {"$ref": "#/$defs/excerptIdentity"},
+    "annotator_id": {"enum": ["A", "B", "adjudicated"]},
+    "phase": {"enum": ["raw", "adjudicated"]},
+    "applicability": {"enum": ["applicable", "not_applicable"]},
+    "disputed": {"type": "boolean"},
+    "rationale": {"type": "string", "minLength": 1},
+    "source_locator": {"type": "string", "minLength": 1},
+    "denominators": {
+      "type": "object", "additionalProperties": false, "required": ["paper_criterion_occurrence", "applicability_item"],
+      "properties": {"paper_criterion_occurrence": {"const": 1}, "applicability_item": {"const": 1}}
+    }
+  },
+  "allOf": [
+    {"if": {"properties": {"phase": {"const": "raw"}}, "required": ["phase"]}, "then": {"properties": {"annotator_id": {"enum": ["A", "B"]}, "disputed": {"const": false}}}},
+    {"if": {"properties": {"phase": {"const": "adjudicated"}}, "required": ["phase"]}, "then": {"properties": {"annotator_id": {"const": "adjudicated"}}}}
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "artifactIdentity": {
+      "type": "object", "additionalProperties": false, "required": ["artifact_id", "sha256"],
+      "properties": {"artifact_id": {"type": "string", "minLength": 1}, "sha256": {"$ref": "#/$defs/sha256"}}
+    },
+    "excerptIdentity": {
+      "type": "object", "additionalProperties": false, "required": ["artifact_id", "excerpt_id", "sha256"],
+      "properties": {"artifact_id": {"type": "string", "minLength": 1}, "excerpt_id": {"type": "string", "minLength": 1}, "sha256": {"$ref": "#/$defs/sha256"}}
+    }
+  }
+}
