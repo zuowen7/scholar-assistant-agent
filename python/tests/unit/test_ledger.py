@@ -96,10 +96,156 @@ async def _collect_build(store, llm_responses, doc_id="doc_test", text=PAPER_TEX
     return events
 
 
+async def _collect_direct_build(store, *, cloud_client=None, ollama_client=None):
+    from src.argument.ledger import build_ledger
+
+    events = []
+    async for event in build_ledger(
+        doc_id="doc_test",
+        doc_title="Test Paper",
+        text=PAPER_TEXT,
+        store=store,
+        cloud_client=cloud_client,
+        ollama_client=ollama_client,
+    ):
+        events.append(event)
+    return events
+
+
 # ── build_ledger — 正常路径 ───────────────────────────────────────────────────
 
 
 class TestBuildLedger:
+    def test_refactor_preserves_legacy_event_and_ledger_projection(self, tmp_path):
+        """A1 snapshot excludes only generated IDs and timestamps."""
+        store = _make_store(tmp_path)
+        events = _run(_collect_build(store, [EXTRACT_LLM_RESP, DISCHARGE_LLM_RESP]))
+
+        assert [event["event"] for event in events] == [
+            "progress",
+            "progress",
+            "progress",
+            "anchor",
+            "anchor",
+            "promise",
+            "anchor",
+            "anchor",
+            "promise",
+            "complete",
+        ]
+        assert [json.loads(event["data"])["stage"] for event in events[:3]] == [
+            "extracting_promises",
+            "matching_evidence",
+            "saving_ledger",
+        ]
+        ledger = store.get_ledger("doc_test")
+        assert [
+            {
+                "text": promise.text,
+                "kind": promise.kind,
+                "status": promise.status,
+                "severity": promise.severity,
+                "note": promise.note,
+            }
+            for promise in ledger.promises
+        ] == [
+            {
+                "text": "Our method scales to N=1e6.",
+                "kind": "contribution",
+                "status": "partial",
+                "severity": "warning",
+                "note": "§5 uses N=1e5, not 1e6 as promised",
+            },
+            {
+                "text": "The approach outperforms all baselines.",
+                "kind": "claim",
+                "status": "paid",
+                "severity": "info",
+                "note": None,
+            },
+        ]
+        assert [(anchor.quote, anchor.status) for anchor in ledger.anchors] == [
+            ("our method scales to N=1e6", "anchored"),
+            ("We evaluate on N=1e5 samples", "anchored"),
+            ("outperforms all baselines", "anchored"),
+            ("Table 2 shows our method achieves the best results", "anchored"),
+        ]
+        complete = json.loads(events[-1]["data"])
+        assert {key: value for key, value in complete.items() if key != "ledger_id"} == {
+            "promise_count": 2,
+            "by_status": {"partial": 1, "paid": 1},
+            "warnings": [],
+        }
+
+    def test_build_and_staging_send_identical_requests(self, tmp_path):
+        from src.argument.ledger import (
+            prepare_ledger_classification,
+            prepare_ledger_extraction,
+        )
+
+        store = _make_store(tmp_path)
+        calls = []
+        responses = iter([EXTRACT_LLM_RESP, DISCHARGE_LLM_RESP])
+
+        async def capture(prompt, cloud_client, ollama_client, **kwargs):
+            calls.append((prompt, cloud_client, ollama_client, kwargs))
+            return next(responses)
+
+        with patch("src.argument.ledger.call_llm_chat", new=capture):
+            _run(
+                _collect_direct_build(
+                    store,
+                    cloud_client=object(),
+                    ollama_client=None,
+                )
+            )
+
+        extracted = json.loads(EXTRACT_LLM_RESP)["promises"]
+        extraction_request = prepare_ledger_extraction(PAPER_TEXT)
+        classification_request = prepare_ledger_classification(PAPER_TEXT, extracted)
+        assert calls == [
+            (
+                extraction_request.prompt,
+                calls[0][1],
+                None,
+                {"max_tokens": 4096, "temperature": 0.3, "json_mode": True},
+            ),
+            (
+                classification_request.prompt,
+                calls[0][1],
+                None,
+                {"max_tokens": 4096, "temperature": 0.3, "json_mode": True},
+            ),
+        ]
+
+    def test_discharge_provider_error_keeps_legacy_same_provider_repair(self, tmp_path):
+        store = _make_store(tmp_path)
+        responses = iter(
+            [
+                EXTRACT_LLM_RESP,
+                RuntimeError("transient provider failure"),
+                DISCHARGE_LLM_RESP,
+            ]
+        )
+        calls = []
+
+        async def fake_llm(prompt, *args, **kwargs):
+            calls.append(prompt)
+            response = next(responses)
+            if isinstance(response, BaseException):
+                raise response
+            return response
+
+        with patch("src.argument.ledger.call_llm_chat", new=fake_llm):
+            events = _run(_collect_direct_build(store, cloud_client=object()))
+
+        assert events[-1]["event"] == "complete"
+        assert calls[2] == "请只输出有效的 JSON 数组：\n[]"
+        assert [promise.status for promise in store.get_ledger("doc_test").promises] == [
+            "partial",
+            "paid",
+        ]
+
     def test_yields_promise_events(self, tmp_path):
         store = _make_store(tmp_path)
         events = _run(_collect_build(store, [EXTRACT_LLM_RESP, DISCHARGE_LLM_RESP]))

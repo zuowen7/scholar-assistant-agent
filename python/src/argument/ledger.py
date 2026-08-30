@@ -7,7 +7,8 @@ import json
 import logging
 import re
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any
 
 from src.utils.json_extract import extract_json_array, extract_json_object
@@ -16,7 +17,7 @@ from .anchor import make_anchor_from_quote, relocate, relocate_all
 from .companion_models import Ledger, Promise
 from .companion_store import CompanionStore
 from .llm_client import call_llm_chat
-from .section_utils import build_section_excerpt
+from .section_utils import SectionExcerpt, build_section_excerpt_envelope
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ _STATUS_SEVERITY = {
     "paid": "info",
     "unknown": "info",
 }
+_SUBSTANTIVE_STATUSES = frozenset({"paid", "partial", "unpaid", "mismatch"})
 
 _PROMISE_SECTION_RE = re.compile(
     r"^#{1,3}\s*(abstract|摘要|introduction|引言|研究背景|研究动机|intro|background|motivation)\b",
@@ -37,6 +39,67 @@ _METHOD_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 _HEADER_RE = re.compile(r"^#{1,3}\s+", re.MULTILINE)
+
+_LEDGER_MAX_TOKENS = 4096
+_LEDGER_TEMPERATURE = 0.3
+_LEDGER_JSON_MODE = True
+_LEDGER_ATTEMPTS = 2
+
+LedgerLLMCall = Callable[..., Awaitable[str]]
+
+
+@dataclass(frozen=True)
+class LedgerStageRequest:
+    """Exact production request inputs for one independently evaluable stage."""
+
+    stage: str
+    excerpt: SectionExcerpt
+    prompt: str
+    max_tokens: int = _LEDGER_MAX_TOKENS
+    temperature: float = _LEDGER_TEMPERATURE
+    json_mode: bool = _LEDGER_JSON_MODE
+
+    @property
+    def excerpt_sha256(self) -> str:
+        return _sha256_text(self.excerpt.text)
+
+
+@dataclass(frozen=True)
+class LedgerStageAttempt:
+    """One immutable attempt, including failures that production may retry."""
+
+    attempt_number: int
+    prompt: str
+    raw_response: str | None
+    parsed_output: Any
+    status: str
+    started_at: float
+    ended_at: float
+    error: dict[str, str] | None = None
+
+    @property
+    def prompt_sha256(self) -> str:
+        return _sha256_text(self.prompt)
+
+    @property
+    def raw_response_sha256(self) -> str | None:
+        return _sha256_text(self.raw_response) if self.raw_response is not None else None
+
+
+@dataclass(frozen=True)
+class LedgerStageResult:
+    """Observable result of a production-equivalent Ledger LLM stage."""
+
+    request: LedgerStageRequest
+    attempts: tuple[LedgerStageAttempt, ...]
+    raw_response: str
+    parsed_output: list[Any]
+    termination_status: str
+    error_message: str | None = None
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 def _doc_hash(text: str) -> str:
@@ -109,21 +172,8 @@ def _has_valid_promise_payload(raw: str) -> bool:
     return extract_json_array(raw) is not None
 
 
-async def build_ledger(
-    doc_id: str,
-    doc_title: str,
-    text: str,
-    store: CompanionStore,
-    cloud_client: Any = None,
-    ollama_client: Any = None,
-) -> AsyncIterator[dict]:
-    """SSE: promise* → complete (或 error，不写脏数据)。"""
-    promise_zone, body_zone = _extract_promise_zone(text)
-
-    # ── LLM #1: extract promises ──────────────────────────────────────────────
-    # Keep every promise-bearing section represented instead of taking a prefix.
-    pz_text = build_section_excerpt(promise_zone, max_chars=16000)
-    prompt1 = (
+def _build_extraction_prompt(promise_excerpt: str) -> str:
+    return (
         "你是学术论证分析专家。从这篇论文的前半部分（摘要、引言、动机、研究背景等）全面提取作者立下的所有承诺。\n\n"
         "承诺类型说明：\n"
         "- contribution: 具体贡献声明（'我们提出了…'、'本文的贡献包括…'）\n"
@@ -134,50 +184,373 @@ async def build_ledger(
         "请仔细阅读全文，不要遗漏。一篇论文通常有 5-15 条承诺，分布在多个段落中。\n"
         "特别注意：贡献列表、'we propose'、'we demonstrate'、'our approach'、'主要创新'、"
         "'本文旨在'、'与现有方法不同'等表述都应提取。\n\n"
-        f"文本：\n{pz_text}\n\n"
+        f"文本：\n{promise_excerpt}\n\n"
         "输出严格 JSON（不含其他文字）：\n"
         '{"promises":[{"local_id":"p1","kind":"contribution","text":"承诺原话(可适度归一)","verbatim_quote":"文中的精确子串"}]}'
     )
 
+
+def _build_discharge_prompt(promises: list[dict], body_excerpt: str) -> str:
+    promises_summary = "\n".join(
+        f"- (id={p.get('local_id', '?')}) {p.get('text', '')}" for p in promises
+    )
+    return (
+        "你是严格的学术审稿人。对以下每条承诺，在论文正文里找兑现证据，按以下标准判断状态：\n\n"
+        "状态标准（从严判断，不要宽泛认为'有相关内容'就算 paid）：\n"
+        "- unpaid：正文里完全没有对应的实验/证明/数据，或该 section 尚未写出\n"
+        "- partial：有相关内容但不完整——例如缺少消融实验、某基线没比较、某场景没覆盖\n"
+        "- mismatch：正文给出的结果与承诺相矛盾，或结论被限定条件稀释到名存实亡\n"
+        "- paid：正文有完整的实验结果/严格证明/充分数据直接支撑该承诺，审稿人挑不出漏洞\n\n"
+        "重要边界：承诺原话已经出现在前半部分，不得写成“该主张/数值在整篇文档中未出现”。"
+        "这里只判断后续正文是否提供了独立兑现证据。若后续正文为空，应准确写“未提供后续正文证据”，"
+        "不得否认承诺原话本身的存在。\n\n"
+        f"承诺列表：\n{promises_summary}\n\n"
+        f"论文正文（首段+中段+末段采样）：\n{body_excerpt}\n\n"
+        "输出严格 JSON 数组（不含其他文字），每项：\n"
+        '{"promise_local_id":"p1","status":"unpaid|partial|mismatch|paid",'
+        '"discharge_quotes":["正文精确子串，找不到则空数组"],'
+        '"note":"一行具体说明：paid 时说证据在哪；unpaid/partial 时说缺什么"}'
+    )
+
+
+def prepare_ledger_extraction(text: str) -> LedgerStageRequest:
+    """Create the byte-identical extraction request used by ``build_ledger``."""
+    promise_zone, _body_zone = _extract_promise_zone(text)
+    excerpt = build_section_excerpt_envelope(promise_zone, max_chars=16000)
+    return LedgerStageRequest(
+        stage="extraction",
+        excerpt=excerpt,
+        prompt=_build_extraction_prompt(excerpt.text),
+    )
+
+
+def prepare_ledger_classification(text: str, promises: list[dict]) -> LedgerStageRequest:
+    """Create the production classification request for explicit promises.
+
+    Evaluation code may pass frozen gold promises here. This function never
+    invokes extraction and therefore keeps gold-conditioned classification
+    identifiable.
+    """
+    _promise_zone, body_zone = _extract_promise_zone(text)
+    excerpt = build_section_excerpt_envelope(body_zone, max_chars=48000)
+    return LedgerStageRequest(
+        stage="gold_conditioned_status",
+        excerpt=excerpt,
+        prompt=_build_discharge_prompt(promises, excerpt.text),
+    )
+
+
+def _attempt_status(raw: str, parsed: list[Any] | None) -> str:
+    if not raw.strip():
+        return "empty_response"
+    if parsed is None:
+        return "invalid_json"
+    if not parsed:
+        return "legal_empty"
+    return "success"
+
+
+def _attempt_error(status: str) -> dict[str, str] | None:
+    """Return schema-ready diagnostics for response-level failures."""
+    if status == "empty_response":
+        return {"type": "EmptyResponse", "message": "LLM returned an empty response"}
+    if status == "invalid_json":
+        return {"type": "InvalidJSONResponse", "message": "LLM response was not valid JSON"}
+    return None
+
+
+async def run_ledger_extraction_stage(
+    text: str,
+    cloud_client: Any = None,
+    ollama_client: Any = None,
+    *,
+    llm_call: LedgerLLMCall | None = None,
+) -> LedgerStageResult:
+    """Run only production Promise extraction and retain every attempt."""
+    request = prepare_ledger_extraction(text)
+    caller = llm_call or _call_with_retry
+    raw = ""
+    attempts: list[LedgerStageAttempt] = []
+
+    for attempt_index in range(_LEDGER_ATTEMPTS):
+        prompt = (
+            request.prompt if attempt_index == 0 else f"请只输出有效的 JSON 对象：\n{raw[:500]}"
+        )
+        started_at = time.time()
+        try:
+            raw = await caller(
+                prompt,
+                cloud_client,
+                ollama_client,
+                max_tokens=request.max_tokens,
+                temperature=request.temperature,
+                json_mode=request.json_mode,
+            )
+            parsed = _parse_promise_payload(raw) if _has_valid_promise_payload(raw) else None
+            status = _attempt_status(raw, parsed)
+            attempts.append(
+                LedgerStageAttempt(
+                    attempt_number=attempt_index + 1,
+                    prompt=prompt,
+                    raw_response=raw,
+                    parsed_output=parsed,
+                    status=status,
+                    started_at=started_at,
+                    ended_at=time.time(),
+                    error=_attempt_error(status),
+                )
+            )
+            if raw.strip() and parsed is not None:
+                return LedgerStageResult(
+                    request=request,
+                    attempts=tuple(attempts),
+                    raw_response=raw,
+                    parsed_output=parsed,
+                    termination_status=status,
+                )
+        except (json.JSONDecodeError, ValueError) as exc:
+            attempts.append(
+                LedgerStageAttempt(
+                    attempt_number=attempt_index + 1,
+                    prompt=prompt,
+                    raw_response=None,
+                    parsed_output=None,
+                    status="invalid_json",
+                    started_at=started_at,
+                    ended_at=time.time(),
+                    error={"type": type(exc).__name__, "message": str(exc)},
+                )
+            )
+            if attempt_index == _LEDGER_ATTEMPTS - 1:
+                return LedgerStageResult(
+                    request=request,
+                    attempts=tuple(attempts),
+                    raw_response=raw,
+                    parsed_output=[],
+                    termination_status="invalid_json",
+                    error_message="LLM 未返回有效 JSON，请重试",
+                )
+        except Exception as exc:
+            status = "timeout" if isinstance(exc, TimeoutError) else "provider_error"
+            attempts.append(
+                LedgerStageAttempt(
+                    attempt_number=attempt_index + 1,
+                    prompt=prompt,
+                    raw_response=None,
+                    parsed_output=None,
+                    status=status,
+                    started_at=started_at,
+                    ended_at=time.time(),
+                    error={"type": type(exc).__name__, "message": str(exc)},
+                )
+            )
+            return LedgerStageResult(
+                request=request,
+                attempts=tuple(attempts),
+                raw_response=raw,
+                parsed_output=[],
+                termination_status=status,
+                error_message=f"LLM 调用失败: {exc}",
+            )
+
+    status = "empty_response" if not raw.strip() else "invalid_json"
+    message = (
+        "LLM 返回空响应，请重试" if status == "empty_response" else "LLM 未返回有效 JSON，请重试"
+    )
+    return LedgerStageResult(
+        request=request,
+        attempts=tuple(attempts),
+        raw_response=raw,
+        parsed_output=[],
+        termination_status=status,
+        error_message=message,
+    )
+
+
+async def run_ledger_classification_stage(
+    text: str,
+    promises: list[dict],
+    cloud_client: Any = None,
+    ollama_client: Any = None,
+    *,
+    llm_call: LedgerLLMCall | None = None,
+) -> LedgerStageResult:
+    """Run only production discharge classification for explicit promises."""
+    request = prepare_ledger_classification(text, promises)
+    caller = llm_call or _call_with_retry
+    raw = ""
+    attempts: list[LedgerStageAttempt] = []
+    forced_terminal: tuple[str, str] | None = None
+
+    for attempt_index in range(_LEDGER_ATTEMPTS):
+        prompt = (
+            request.prompt if attempt_index == 0 else f"请只输出有效的 JSON 数组：\n{raw[:500]}"
+        )
+        started_at = time.time()
+        try:
+            raw = await caller(
+                prompt,
+                cloud_client,
+                ollama_client,
+                max_tokens=request.max_tokens,
+                temperature=request.temperature,
+                json_mode=request.json_mode,
+            )
+            parsed = extract_json_array(raw) if raw.strip() else None
+            status = _attempt_status(raw, parsed)
+            attempts.append(
+                LedgerStageAttempt(
+                    attempt_number=attempt_index + 1,
+                    prompt=prompt,
+                    raw_response=raw,
+                    parsed_output=parsed,
+                    status=status,
+                    started_at=started_at,
+                    ended_at=time.time(),
+                    error=_attempt_error(status),
+                )
+            )
+            forced_terminal = None
+            if raw.strip() and parsed is not None:
+                return LedgerStageResult(
+                    request=request,
+                    attempts=tuple(attempts),
+                    raw_response=raw,
+                    parsed_output=parsed,
+                    termination_status=status,
+                )
+        except (json.JSONDecodeError, ValueError) as exc:
+            attempts.append(
+                LedgerStageAttempt(
+                    attempt_number=attempt_index + 1,
+                    prompt=prompt,
+                    raw_response=None,
+                    parsed_output=None,
+                    status="invalid_json",
+                    started_at=started_at,
+                    ended_at=time.time(),
+                    error={"type": type(exc).__name__, "message": str(exc)},
+                )
+            )
+            forced_terminal = ("invalid_json", str(exc))
+            if attempt_index == _LEDGER_ATTEMPTS - 1:
+                raw = "[]"
+        except Exception as exc:
+            status = "timeout" if isinstance(exc, TimeoutError) else "provider_error"
+            logger.warning("discharge extraction unexpected error: %s", exc)
+            attempts.append(
+                LedgerStageAttempt(
+                    attempt_number=attempt_index + 1,
+                    prompt=prompt,
+                    raw_response=None,
+                    parsed_output=None,
+                    status=status,
+                    started_at=started_at,
+                    ended_at=time.time(),
+                    error={"type": type(exc).__name__, "message": str(exc)},
+                )
+            )
+            forced_terminal = (status, str(exc))
+            raw = "[]"
+
+    if forced_terminal is not None:
+        status, message = forced_terminal
+        return LedgerStageResult(
+            request=request,
+            attempts=tuple(attempts),
+            raw_response=raw,
+            parsed_output=[],
+            termination_status=status,
+            error_message=message,
+        )
+
+    parsed = extract_json_array(raw) if raw.strip() else None
+    status = _attempt_status(raw, parsed)
+    return LedgerStageResult(
+        request=request,
+        attempts=tuple(attempts),
+        raw_response=raw,
+        parsed_output=parsed or [],
+        termination_status=status,
+        error_message=None if parsed is not None else status,
+    )
+
+
+def _discharge_map(parsed_output: list[Any]) -> dict[str, dict]:
+    """Apply the production parser/map semantics, including partial maps."""
+    discharge_map: dict[str, dict] = {}
+    try:
+        if parsed_output:
+            for item in parsed_output:
+                lid = str(item.get("promise_local_id", ""))
+                discharge_map[lid] = item
+    except Exception as exc:
+        logger.warning("discharge map parsing failed: %s", exc)
+    return discharge_map
+
+
+def materialize_discharge_classifications(
+    promises: list[dict],
+    parsed_output: list[Any],
+) -> list[dict[str, Any]]:
+    """Expose production status mapping while preserving missing/invalid reasons."""
+    by_local_id = _discharge_map(parsed_output)
+    classifications: list[dict[str, Any]] = []
+    for promise in promises:
+        local_id = str(promise.get("local_id", ""))
+        is_missing = local_id not in by_local_id
+        item = by_local_id.get(local_id, {})
+        raw_status = str(item.get("status", "unknown"))
+        status = raw_status if raw_status in _SUBSTANTIVE_STATUSES else "unknown"
+        classifications.append(
+            {
+                "promise_local_id": local_id,
+                "status": status,
+                "raw_status": raw_status,
+                "discharge_quotes": item.get("discharge_quotes", []),
+                "note": item.get("note") or None,
+                "failure_reason": (
+                    "missing_classification"
+                    if is_missing
+                    else "unknown_status"
+                    if status == "unknown"
+                    else None
+                ),
+            }
+        )
+    return classifications
+
+
+async def build_ledger(
+    doc_id: str,
+    doc_title: str,
+    text: str,
+    store: CompanionStore,
+    cloud_client: Any = None,
+    ollama_client: Any = None,
+) -> AsyncIterator[dict]:
+    """SSE: promise* → complete (或 error，不写脏数据)。"""
+    # ── LLM #1: extract promises ──────────────────────────────────────────────
     yield {
         "event": "progress",
         "data": json.dumps({"stage": "extracting_promises"}),
     }
-    raw1 = ""
-    for attempt in range(2):
-        try:
-            raw1 = await _call_with_retry(
-                prompt1 if attempt == 0 else f"请只输出有效的 JSON 对象：\n{raw1[:500]}",
-                cloud_client,
-                ollama_client,
-                max_tokens=4096,
-                temperature=0.3,
-                json_mode=True,
-            )
-            if raw1.strip() and _has_valid_promise_payload(raw1):
-                break
-        except (json.JSONDecodeError, ValueError):
-            if attempt == 1:
-                yield {
-                    "event": "error",
-                    "data": json.dumps({"message": "LLM 未返回有效 JSON，请重试"}),
-                }
-                return
-        except Exception as exc:
-            yield {"event": "error", "data": json.dumps({"message": f"LLM 调用失败: {exc}"})}
-            return
-
-    if not raw1.strip():
-        yield {"event": "error", "data": json.dumps({"message": "LLM 返回空响应，请重试"})}
+    extraction = await run_ledger_extraction_stage(text, cloud_client, ollama_client)
+    if extraction.termination_status not in {"success", "legal_empty"}:
+        yield {
+            "event": "error",
+            "data": json.dumps(
+                {"message": extraction.error_message or "LLM 未返回有效 JSON，请重试"}
+            ),
+        }
         return
-
-    raw_promises = _parse_promise_payload(raw1)
-    if not _has_valid_promise_payload(raw1):
-        yield {"event": "error", "data": json.dumps({"message": "LLM 未返回有效 JSON，请重试"})}
-        return
+    raw_promises = extraction.parsed_output
     if not raw_promises:
         # No promises found — complete with zero
-        logger.warning("companion build_ledger 0 promises raw1(500)=%s", raw1[:500])
+        logger.warning(
+            "companion build_ledger 0 promises raw1(500)=%s",
+            extraction.raw_response[:500],
+        )
         # No promises found — complete with zero
         ledger = Ledger(
             doc_id=doc_id,
@@ -202,63 +575,17 @@ async def build_ledger(
         return
 
     # ── LLM #2: discharge resolution ─────────────────────────────────────────
-    body_sample = build_section_excerpt(body_zone, max_chars=48000)
-    promises_summary = "\n".join(
-        f"- (id={p.get('local_id', '?')}) {p.get('text', '')}" for p in raw_promises
-    )
-    prompt2 = (
-        "你是严格的学术审稿人。对以下每条承诺，在论文正文里找兑现证据，按以下标准判断状态：\n\n"
-        "状态标准（从严判断，不要宽泛认为'有相关内容'就算 paid）：\n"
-        "- unpaid：正文里完全没有对应的实验/证明/数据，或该 section 尚未写出\n"
-        "- partial：有相关内容但不完整——例如缺少消融实验、某基线没比较、某场景没覆盖\n"
-        "- mismatch：正文给出的结果与承诺相矛盾，或结论被限定条件稀释到名存实亡\n"
-        "- paid：正文有完整的实验结果/严格证明/充分数据直接支撑该承诺，审稿人挑不出漏洞\n\n"
-        "重要边界：承诺原话已经出现在前半部分，不得写成“该主张/数值在整篇文档中未出现”。"
-        "这里只判断后续正文是否提供了独立兑现证据。若后续正文为空，应准确写“未提供后续正文证据”，"
-        "不得否认承诺原话本身的存在。\n\n"
-        f"承诺列表：\n{promises_summary}\n\n"
-        f"论文正文（首段+中段+末段采样）：\n{body_sample}\n\n"
-        "输出严格 JSON 数组（不含其他文字），每项：\n"
-        '{"promise_local_id":"p1","status":"unpaid|partial|mismatch|paid",'
-        '"discharge_quotes":["正文精确子串，找不到则空数组"],'
-        '"note":"一行具体说明：paid 时说证据在哪；unpaid/partial 时说缺什么"}'
-    )
-
     yield {
         "event": "progress",
         "data": json.dumps({"stage": "matching_evidence"}),
     }
-    raw2 = ""
-    for attempt in range(2):
-        try:
-            raw2 = await _call_with_retry(
-                prompt2 if attempt == 0 else f"请只输出有效的 JSON 数组：\n{raw2[:500]}",
-                cloud_client,
-                ollama_client,
-                max_tokens=4096,
-                temperature=0.3,
-                json_mode=True,
-            )
-            if raw2.strip():
-                arr = extract_json_array(raw2)
-                if arr is not None:
-                    break
-        except (json.JSONDecodeError, ValueError):
-            if attempt == 1:
-                raw2 = "[]"
-        except Exception as e:
-            logger.warning("discharge extraction unexpected error: %s", e)
-            raw2 = "[]"
-
-    discharge_map: dict[str, dict] = {}
-    try:
-        arr2 = extract_json_array(raw2)
-        if arr2:
-            for item in arr2:
-                lid = str(item.get("promise_local_id", ""))
-                discharge_map[lid] = item
-    except Exception as e:
-        logger.warning("discharge map parsing failed: %s", e)
+    classification = await run_ledger_classification_stage(
+        text,
+        raw_promises,
+        cloud_client,
+        ollama_client,
+    )
+    discharge_map = _discharge_map(classification.parsed_output)
 
     # ── Assemble promises + anchors ───────────────────────────────────────────
     yield {
@@ -289,7 +616,7 @@ async def build_ledger(
         # Discharge
         dis_info = discharge_map.get(local_id, {})
         status = str(dis_info.get("status", "unknown"))
-        if status not in ("paid", "partial", "unpaid", "mismatch"):
+        if status not in _SUBSTANTIVE_STATUSES:
             status = "unknown"
         note = dis_info.get("note") or None
         dis_ids: list[str] = []

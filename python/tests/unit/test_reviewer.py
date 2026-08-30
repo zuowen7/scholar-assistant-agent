@@ -327,6 +327,19 @@ class TestLoadVenueProfile:
         assert profile
         assert isinstance(profile, str)
 
+    def test_explicit_override_bypasses_venue_lookup(self):
+        from src.argument.reviewer import _resolve_venue_profile
+
+        with patch("src.argument.reviewer._load_venue_profile") as loader:
+            assert _resolve_venue_profile("NeurIPS", "EXPERIMENT PROFILE") == "EXPERIMENT PROFILE"
+        loader.assert_not_called()
+
+    def test_explicit_override_must_be_non_empty(self):
+        from src.argument.reviewer import _resolve_venue_profile
+
+        with pytest.raises(ValueError, match="non-empty"):
+            _resolve_venue_profile("NeurIPS", "   ")
+
 
 # ── run_review ────────────────────────────────────────────────────────────────
 
@@ -387,6 +400,111 @@ class TestRunReview:
         assert complete_data["source_coverage"]["source_hash"]
         session = store.get_review(complete_data["session_id"])
         assert session.source_coverage == complete_data["source_coverage"]
+
+    @pytest.mark.asyncio
+    async def test_profile_override_is_the_only_prompt_factor(self, tmp_path):
+        from src.argument.reviewer import run_review
+
+        prompts: list[str] = []
+
+        async def capture_prompt(prompt, *_args, **_kwargs):
+            prompts.append(prompt)
+            return "[]"
+
+        profiles = ("GENERIC_PROFILE_MARKER", "VENUE_PROFILE_MARKER")
+        for index, profile in enumerate(profiles):
+            async for _event in run_review(
+                doc_id="doc1",
+                doc_title="Paper",
+                text=SAMPLE_TEXT,
+                venue="NeurIPS",
+                persona="reviewer2",
+                ledger=None,
+                store=self._make_store(tmp_path / str(index)),
+                checks=["llm"],
+                cloud_client=object(),
+                venue_profile_override=profile,
+                llm_call=capture_prompt,
+                raise_llm_errors=True,
+            ):
+                pass
+
+        assert len(prompts) == 2
+        assert "投稿到 NeurIPS" in prompts[0]
+        assert "投稿到 NeurIPS" in prompts[1]
+        assert prompts[0].replace(profiles[0], "<PROFILE>") == prompts[1].replace(
+            profiles[1], "<PROFILE>"
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("venue", ["NeurIPS", "ICML", "ICLR", "ACL", "CVPR", "KDD", "CHI"])
+    @pytest.mark.parametrize("focused", [False, True])
+    async def test_full_profile_reaches_focused_and_document_prompt(self, tmp_path, venue, focused):
+        from src.argument.reviewer import _load_venue_profile, run_review
+
+        prompts: list[str] = []
+
+        async def capture_prompt(prompt, *_args, **_kwargs):
+            prompts.append(prompt)
+            return "[]"
+
+        kwargs = {"focus": {"quote": "30% improvement"}} if focused else {}
+        async for _event in run_review(
+            doc_id="doc1",
+            doc_title="Paper",
+            text=SAMPLE_TEXT,
+            venue=venue,
+            persona="reviewer2",
+            ledger=None,
+            store=self._make_store(tmp_path / f"{venue}-{focused}"),
+            checks=["llm"],
+            cloud_client=object(),
+            llm_call=capture_prompt,
+            raise_llm_errors=True,
+            **kwargs,
+        ):
+            pass
+
+        profile = _load_venue_profile(venue)
+        first, *_, last = profile.splitlines()
+        assert len(prompts) == 1
+        assert profile in prompts[0]
+        assert first in prompts[0]
+        assert last in prompts[0]
+
+    @pytest.mark.asyncio
+    async def test_default_path_still_swallows_llm_error_and_completes(self, tmp_path):
+        from src.argument.reviewer import run_review
+
+        events = []
+        async for event in run_review(
+            doc_id="doc1",
+            text=SAMPLE_TEXT,
+            store=self._make_store(tmp_path),
+            checks=["llm"],
+            cloud_client=object(),
+            llm_call=AsyncMock(side_effect=RuntimeError("provider failed")),
+        ):
+            events.append(event)
+
+        assert [event["event"] for event in events] == ["complete"]
+
+    @pytest.mark.asyncio
+    async def test_experiment_path_can_propagate_llm_error(self, tmp_path):
+        from src.argument.reviewer import run_review
+
+        with pytest.raises(RuntimeError, match="provider failed"):
+            async for _event in run_review(
+                doc_id="doc1",
+                text=SAMPLE_TEXT,
+                store=self._make_store(tmp_path),
+                checks=["llm"],
+                cloud_client=object(),
+                venue_profile_override="GENERIC PROFILE",
+                llm_call=AsyncMock(side_effect=RuntimeError("provider failed")),
+                raise_llm_errors=True,
+            ):
+                pass
 
     @pytest.mark.asyncio
     async def test_llm_verbatim_quote_is_persisted_as_a_navigable_anchor(self, tmp_path):

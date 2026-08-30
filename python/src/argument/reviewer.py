@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from typing import Any, get_args
 
@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 _VENUE_PROFILES_PATH = Path(__file__).parent / "venue_profiles.yaml"
 _venue_profiles_cache: dict[str, str] | None = None
+LLMCall = Callable[..., Awaitable[str]]
 
 
 def _review_source_coverage(
@@ -52,7 +53,7 @@ def _review_source_coverage(
 
 
 def _load_venue_profile(venue: str | None) -> str:
-    """Return the calibration text for *venue*, falling back to generic."""
+    """Return the manually curated venue-conditioned profile, or generic fallback."""
     global _venue_profiles_cache
     if _venue_profiles_cache is None:
         try:
@@ -75,6 +76,15 @@ def _load_venue_profile(venue: str | None) -> str:
 
     # Unknown venue — generic + venue name
     return f"Venue: {venue}. " + generic
+
+
+def _resolve_venue_profile(venue: str | None, override: str | None) -> str:
+    """Resolve the production profile unless an explicit experiment override is set."""
+    if override is None:
+        return _load_venue_profile(venue)
+    if not override.strip():
+        raise ValueError("venue_profile_override must be non-empty")
+    return override
 
 
 # ── deterministic checks ──────────────────────────────────────────────────────
@@ -332,6 +342,9 @@ async def run_review(
     session_id: str | None = None,
     cloud_client: Any = None,
     ollama_client: Any = None,
+    venue_profile_override: str | None = None,
+    llm_call: LLMCall | None = None,
+    raise_llm_errors: bool = False,
 ) -> AsyncIterator[dict]:
     """SSE: review_point* → complete.
 
@@ -343,7 +356,8 @@ async def run_review(
 
     new_points: list[ReviewPoint] = []
     new_anchors = []
-    venue_profile = _load_venue_profile(venue)
+    venue_profile = _resolve_venue_profile(venue, venue_profile_override)
+    resolved_llm_call = llm_call or call_llm_chat
     review_excerpt = build_section_excerpt_envelope(text, max_chars=24000)
     source_coverage = _review_source_coverage(
         review_excerpt,
@@ -363,11 +377,11 @@ async def run_review(
             "verbatim_quote, source_section, anchor, evidence_status "
             "(supported/limited/not_assessable), verification_action\n"
             "只输出 JSON 数组，不含其他文字。不得为了凑数而编造问题。\n"
-            f"投稿场景：{venue_profile[:400]}\n"
+            f"投稿场景：{venue_profile}\n"
             f"<untrusted_paper_excerpt>\n{focus_text}\n</untrusted_paper_excerpt>"
         )
         try:
-            raw = await call_llm_chat(
+            raw = await resolved_llm_call(
                 focus_prompt,
                 cloud_client,
                 ollama_client,
@@ -377,6 +391,8 @@ async def run_review(
             )
         except Exception as exc:
             logger.warning("scoped review LLM failed: %s", exc)
+            if raise_llm_errors:
+                raise
             raw = ""
 
         scoped_points = _parse_llm_points(raw, source="scoped")
@@ -445,12 +461,12 @@ async def run_review(
             "claim_overreach, missing_related_work, reproducibility, experiment_design, "
             "writing_clarity, inconsistency, gap_mismatch, weak_positioning, term_drift, other\n"
             "只输出 JSON 数组，不含其他文字。\n"
-            f"投稿要求参考：{venue_profile[:600]}\n"
+            f"投稿要求参考：{venue_profile}\n"
             f"来源覆盖元数据：{json.dumps(review_excerpt.metadata(), ensure_ascii=False)}\n"
             f"<untrusted_paper_excerpt>\n{review_excerpt.text}\n</untrusted_paper_excerpt>"
         )
         try:
-            raw = await call_llm_chat(
+            raw = await resolved_llm_call(
                 prompt,
                 cloud_client,
                 ollama_client,
@@ -460,6 +476,8 @@ async def run_review(
             )
         except Exception as exc:
             logger.warning("run_review LLM call failed: %s", exc)
+            if raise_llm_errors:
+                raise
             raw = ""
 
         llm_points = _parse_llm_points(raw, source="llm")
