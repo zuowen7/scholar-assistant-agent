@@ -142,9 +142,14 @@ def verify_model_execution_state(config: dict[str, Any]) -> dict[str, Any]:
     state = config.get("execution_code_state")
     if not isinstance(state, dict):
         raise ValueError("model-selection execution_code_state is missing")
+    base_commit = state.get("base_commit")
+    if not isinstance(base_commit, str) or not re.fullmatch(
+        r"[0-9a-f]{40}", base_commit
+    ):
+        raise ValueError("model-selection base commit is invalid")
     current_commit = _git_commit()
-    if state.get("base_commit") != current_commit:
-        raise ValueError("model-selection base commit drifted")
+    if not _git_commit_is_ancestor(base_commit, current_commit):
+        raise ValueError("model-selection base commit is not an ancestor of HEAD")
     records: list[dict[str, Any]] = []
     for source in state.get("source_files", []):
         path = _repo_path(source["path"])
@@ -160,7 +165,8 @@ def verify_model_execution_state(config: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("model-selection execution closure is empty")
     canonical = json.dumps(records, sort_keys=True, separators=(",", ":"))
     return {
-        "base_commit": current_commit,
+        "base_commit": base_commit,
+        "current_commit": current_commit,
         "working_tree_clean_required": bool(
             state.get("working_tree_clean_required", False)
         ),
@@ -529,6 +535,22 @@ def _git_commit() -> str:
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ValueError("git HEAD is not a full commit hash")
     return commit
+
+
+def _git_commit_is_ancestor(ancestor: str, descendant: str) -> bool:
+    completed = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode == 0:
+        return True
+    if completed.returncode == 1:
+        return False
+    detail = completed.stderr.strip() or "git merge-base failed"
+    raise RuntimeError(detail)
 
 
 def _read_artifact(reference: dict[str, Any] | None) -> str:

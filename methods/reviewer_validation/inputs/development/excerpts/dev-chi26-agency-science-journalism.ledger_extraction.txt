@@ -1,0 +1,191 @@
+“Helping Me Versus Doing It for
+LLM-Infused Writing Tools
+Sachita Nishal ∗
+Northwestern University
+Evanston, Illinois, USA
+nishal@u.northwestern.edu
+Nicholas Diakopoulos
+Northwestern University
+Evanston, Illinois, USA
+nad@northwestern.edu
+
+
+Abstract
+Journalists rely on their agency —the ability to exercise independent
+judgment in alignment with their values—to fulfill their democratic
+social role. In this study, we investigate how LLM-infused writing
+tools reshape journalists’ agency in editorial decision making. In
+interviews with 20 science journalists, we presented four hypo-
+thetical LLM-infused writing tools representing a range of possible
+design space configurations. We find that journalists are selectively
+willing to cede control: they view AI that gathers information or
+offers feedback as supporting their efficiency by automating exe-
+cution while leaving decision making intact. In contrast, they see
+AI that generates core ideas or drafts as a threat to their autonomy,
+skill development, self-fulfillment, and professional relationships.
+This sensitivity extends to seemingly automatable tasks such as
+manipulating writing voice with AI, which are seen as reducing
+opportunities for reflection and critical thinking. We discuss the
+implications of these findings for design that preserves journalistic
+agency in the moment, and over the long term.
+CCS Concepts
+• Human-centered computing → Human computer interac-
+tion (HCI) ; Collaborative and social computing .
+Keywords
+agency, value-sensitive design, journalism, science communication,
+large language models (LLMs)
+Sachita Nishal, Mina Lee, Nicholas Diakopoulos, and Jennifer Wortman
+Vaughan. 2026. “Helping Me Versus Doing It for Me”: Designing for Agency
+in LLM-Infused Writing Tools for Science Journalism. In
+ACM, New York, NY, USA, 20 pages.
+https://doi.org/10.1145/3772318.3790372
+Work done while at Microsoft Research.
+This work is licensed under a Creative Commons Attribution 4.0 International License.
+© 2026 Copyright held by the owner/author(s).
+ACM ISBN 979-8-4007-2278-3/26/04
+https://doi.org/10.1145/3772318.3790372
+
+Me”: Designing for Agency in
+for Science Journalism
+MinaLee ∗
+University of Chicago
+Chicago, Illinois, USA
+mnlee@uchicago.edu
+Jennifer Wortman Vaughan
+Microsoft Research
+New York, New York, USA
+jenn@microsoft.com
+
+
+1 Introduction
+Journalists help sustain informed public discourse by delivering
+reporting that is timely and relevant. Doing this hinges on journal-
+ists’ agency , their ability to make independent editorial decisions
+while ensuring that outcomes align with professional values like
+transparency, accuracy, and public welfare [36]. Journalists exer-
+cise their agency within the context of rich sociotechnical systems,
+frequently using computational tools to support their work [35, 48].
+However, the increasing adoption of generative AI in journalism—
+from information gathering to data analysis to writing headlines
+and summaries [16]—changes how journalists make and execute
+decisions and creates risks of value erosion.
+Consider LLM-based headline generation, where an editor may
+use a tool to generate multiple possible headlines, then select and
+iterate on a subset. This configuration allows editors to explore mul-
+tiple options quickly, shifting control over initial text generation to
+the AI system. This may enhance efficiency for breaking news, but
+if the tool consistently favors engagement-optimized headlines, the
+editor’s selection process could subtly shift over time, perhaps sac-
+rificing accuracy to prioritize audience metrics. This is not a hypo-
+thetical concern: practicing journalists worry that generative AI use
+may reconfigure their practice in ways that divert from their values
+and diminish their critical thinking and autonomy [12, 55, 59, 63].
+Empirical evidence from different knowledge work contexts also
+lends some credence to these worries: generative AI can cause users
+to fixate on tool outputs rather than explore diverse ideas [60], shape
+writing decisions even when its suggestions conflict with users’
+values [31], and reduce users’ critical engagement with tasks [38].
+In this study, we examine how journalists’ professional values
+might shape their desired control over LLM-infused tools for writ-
+ing, i.e., how journalists might negotiate and uphold their agency
+in these sociotechnical configurations. We adopt a value-sensitive
+design (VSD) approach [19], which centers human values in the
+design process. This approach directs our investigation toward un-
+derstanding how people might prioritize values in context, and
+navigate trade-offs when technological affordances conflict with
+those values.
+We center freelance science journalists who must balance tech-
+nical accuracy with engaging storytelling, while navigating the
+unstable economics and relationship-driven nature of freelance
+work [10]. We investigate these dynamics through the task of pitch
+writing, where journalists submit short proposals that outline a
+
+story idea and reporting plan to editors. Pitching encapsulates
+broader value tensions in journalism: it requires creativity within
+structural constraints and continual negotiation between develop-
+ing a personal voice and fulfilling editorial expectations. While
+concerns in pitching and freelancing may not always generalize to
+other contexts, e.g., journalists might be more willing to experiment
+with AI-generated phrasing in a short pitch than in a published
+story with lasting public impact, and freelancers may worry about
+forging new relationships more so than staff reporters, pitching
+nonetheless offers a representative window into how journalists
+weigh their professional values and sense of control when engaging
+with LLM-infused writing tools.
+Our notion of agency in sociotechnical systems is grounded in
+prior work in HCI [5]. We conceptualize agency along two dimen-
+sions: causal agency ,i.e, control over decision making and execution
+with technology, and identity-based agency , which captures align-
+ment of work with professional values and the shaping of said
+values over time. Our research questions are:
+• RQ1 : What values underpin journalists’ agency during pitch
+writing?
+• RQ2 : What control are journalists willing to cede to genera-
+tive AI, and what must they retain, in their pursuit of these
+va
+
+2 Related Work
+We draw on two bodies of literature to frame our study of how LLM-
+infused writing tools might reconfigure journalists’ agency. First,
+we examine science journalism as a value-laden and creative profes-
+sion to situate our empirical focus, outlining the values, constraints,
+and decision-making contexts that define journalists’ work. Second,
+we review work on agency and values in generative AI-supported
+work , which highlights how design choices in such tools can influ-
+ence users’ control over their work and the alignment of outcomes
+with professional values.
+2.1 Science Journalism as a Value-Laden and
+Creative Profession
+Science journalists communicate newsworthy events (e.g., break-
+throughs, discoveries, controversies) to the public, along with im-
+portant context about the people, processes, and social implications
+of scientific research. This work requires balancing multiple, often
+
+competing considerations in the process of discovering and devel-
+oping news stories: domain values like accuracy, independence, and
+public interest [13, 36]; news values that determine what is “news-
+worthy” such as novelty and social impact of research [4, 24]; the
+topical and format-specific expectations of editors and audiences;
+and journalists’ own creative and topical interests [20]. This work
+is inherently collaborative, because news stories emerge through
+ongoing interactions between journalists, sources, and editors.
+Science journalists thus engage in a process of collaborative and
+constrained creativity. As Reich [51] puts it, “the mix of formulaic
+constraints and creative freedom of journalists places them in a
+situation comparable to that of jazz musicians [. . . ]: the song may
+be predetermined, but players are free to improvise within a given
+framework.” Creativity permeates news production, from ideat-
+ing and framing stories, to gathering and verifying information,
+to experimenting with writing, publication formats, and audience
+engagement [14, 43]. This constrained creative work increasingly
+occurs in a freelance context [2, 10]. Freelancers pitch story ideas
+to editors and independently navigate research and reporting, with
+minimal institutional support and no guarantees of being commis-
+sioned for their extensive time investment in this process. While
+this creates an “illusion of freedom”—more autonomy over story
+choice and workflow—structural constraints, such as economic de-
+pendence and editor approval for future work, can limit agency in
+practice [44].
+Pitch writing is a particularly revealing site for studying journal-
+ists’ values and agency. A pitch is a short proposal that freelance
+journalists write to convince editors to commission their story
+ideas [3]. While pitches follow well-defined structural conventions
+(e.g., including a lede and reporting plan 2 ), they demand significant
+creative work to convince editors that a story is newsworthy and
+that the particular journalist is the right candidate to tell it. This
+involves developing fresh angles, showcasing writing voice, and
+calibrating writing style to match an editor’s expectations [58]. This
+combination of structure and creative freedom makes pitch writing
+a microcosm of the broader engagement with values, creativity, and
+agency in journalism.
+In this study, we rely on pitch writing as a site to understand how
+LLM-infused writing tools might reconfigure journalists’ agency.
+Following Bennett et al. [5], we conceptualize agency through its
+causal aspects (decision-making and execution control with tech-
+nology) and its identity-based aspects (alignment with professional
+values and shaping of professional identity). In journalism, causal
+agency manifests as control over developing, framing, and present-
+ing story ideas. Grounding this work in value-sensitive design, we
+attend to how design choices can support or subtly undermine
+these values, and how practitioners might respond to value trade-
+offs in design. The stakes are particularly high giv

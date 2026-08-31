@@ -1,0 +1,408 @@
+Isolated Causal Effects
+Victoria Lin 1 Louis-Philippe Morency
+
+
+Abstract
+As language technologies become widespread, it
+is important to understand how changes in lan-
+guage affect reader perceptions and behaviors.
+These relationships may be formalized as the
+isolated causal effect of some focal language-
+encoded intervention (e.g., factual inaccuracies)
+on an external outcome (e.g., readers’ beliefs).
+In this paper, we introduce a formal estimation
+framework for isolated causal effects of language.
+We show that a core challenge of estimating iso-
+lated effects is the need to approximate all non-
+focal language outside of the intervention. Draw-
+ing on the principle of omitted variable bias ,we
+provide measures for evaluating the quality of
+both non-focal language approximations and iso-
+lated effect estimates themselves. We find that
+poor approximation of non-focal language can
+lead to bias in the corresponding isolated effect
+estimates due to omission of relevant variables,
+and we show how to assess the sensitivity of ef-
+fect estimates to such bias along the two key axes
+of fidelity and overlap . In experiments on semi-
+synthetic and real-world data, we validate the abil-
+ity of our framework to correctly recover isolated
+effects and demonstrate the utility of our proposed
+measures.
+
+
+1. Introduction
+The widespread use of language technologies has given
+rise to an ever-expanding amount of human- and machine-
+generated text data. From this vast body of data emerges
+the opportunity to understand how information contained in
+language relates to real-world outcomes. Elucidating these
+relationships can help answer scientifically interesting ques-
+tions and provide interpretability to texts and the models
+that generate them. For instance, what language attributes
+Carnegie Mellon University, Pittsburgh, PA, USA. Correspon-
+dence to: Victoria Lin vlin2@andrew.cmu.edu .
+Proceedings of the International Conference on Machine
+Learning , Vancouver, Canada. PMLR 267, 2025. Copyright 2025
+by the author(s).
+1
+
+of Natural Language
+1 Eli Ben-Michael 1
+(a) The isolated causal effect of a language attribute like netspeak
+can be learned by decomposing a text into focal language
+and non-focal language .
+(b) Non-focal language cannot be measured directly and instead
+must be approximated. Due to potential omitted variable bias ,
+which approximation we choose can significantly affect the iso-
+lated effect estimate.
+Figure 1. Isolated causal effects allow us to understand how
+changes in language affect reader perceptions and behaviors.
+(e.g., profanity ) cause readers to perceive a passage of text
+as hateful? Does use of rapport-building language by thera-
+pists help to improve patients’ mental health outcomes? Do
+factual inaccuracies propagated in machine-generated texts
+have negative impacts on readers’ beliefs or behaviors?
+The way in which language choices affect reader perceptions
+can be formalized as the causal effect of some language-
+encoded intervention—often a linguistic attribute—on an
+external outcome (Lin et al., 2023). However, because lan-
+guage is highly aliased (i.e., correlated with itself), the effect
+of such an intervention may be influenced by the surround-
+ing linguistic context (Fong & Grimmer, 2023). For in-
+stance, machine-generated texts with factual inaccuracies
+may also contain other undesirable attributes likely to in-
+
+Isolated Causal Effects of Natural Language
+fluence readers’ reactions, such as inflammatory language.
+If the causal effect of the factual inaccuracies is estimated
+without accounting for aliased attributes, the resulting esti-
+mate may contain the collective effect of both the factual
+inaccuracies and some portion of the related inflammatory
+language—making it difficult to determine whether action
+should be taken to address factual inaccuracies only, inflam-
+matory language only, or both.
+Motivated by this limitation, we propose a new target of
+inference: the isolated causal e
+
+2. Problem Setting
+Consider a text dataset D = { ( X ,Y ) ,..., ( X ,Y ) }
+where texts X ∈ X are drawn i.i.d. from a distribu-
+tion P , and individuals with potential outcome functions
+Y ( · ) : X → R are drawn i.i.d. from the population G ,
+where Y ( x ) denotes the potential outcome of individual i
+if they were to read text x (Neyman, 1923 [1990]; Rubin,
+1974). We study a setting in which all confounding between
+the intervention and the outcome is captured in the text.
+Such settings are an important and common case in natural
+language processing (NLP) due to the widespread prac-
+tice of labeling text data using external annotators who are
+randomly assigned to texts. This assignment mechanism in
+effect creates a randomized text experiment, eliminating con-
+founding external to the text (Lin et al., 2024). Prominent
+NLP benchmark datasets such as SST (Socher et al., 2013),
+SQuAD (Rajpurkar et al., 2018), and MNLI (Williams et al.,
+2018), for instance, all fall under this category.
+Now let X be parameterized as X = { a ( X ) ,a ( X ) } ,
+where a ( · ) : X → { 0 , 1 } is the intervention—the focal
+language attribute for which we learn a causal effect—and
+a ( · ): X → R is the non-focal portion of the text. Inthis
+setting, we consider a ( · ) to be a known mapping from the
+text to the intervention of interest. a ( · ) is also known as a
+“codebook function” (Egami et al., 2022)
+In naturally occurring text, a ( X ) is almost certainly dis-
+tributed differently when a ( X ) = 1 compared to when
+a ( X ) = 0 . For instance, suppose a ( X ) is humor , and
+X is from a corpus of movie scripts. The non-focal (i.e.,
+non-humor) parts of the scripts may include properties like
+positive emotion or optimism . As these properties are posi-
+tively correlated with humor, it is much more likely when
+a ( X ) = 1 that they also equal 1 and when a ( X ) = 0 that
+they also equal 0.
+To isolate the effect of only the focal language attribute,
+we must learn that effect over all possible variations of the
+non-focal text to be sure that no influence comes from the
+non-focal text. Formally, this is akin to learning the effect
+while enforcing the same non-focal text distribution P for
+both conditions of a ( X ) .
+Definition 2.1 (Isolated causal effect) . Let P be some
+target distribution over the non-focal language. Then the
+isolated causal effect of a ( X ) on Y is given by:
+τ = E [ E [ Y ( a ( X )=1 ,a ( X ) )
+− Y ( a ( X )=0 ,a ( X ) )]]
+We distinguish this from the natural causal effect defined
+by Lin et al. (2023), where a ( X ) follows its natural dis-
+tribution for both conditions of a ( X ) . The natural causal
+effect is the collective effe
+
+4. Experiments
+To assess the validity of isolated effects estimated using our
+framework, we examine how well we can recover the true
+isolated effect τ with our estimator τ . We evaluate on
+(cid:98)
+two natural language datasets—one semi-synthetic and one
+real-world—in which true isolated effects are known.
+The IATT is less susceptible to overlap violations than the
+IATE, as the IATT requires only that .
+5
+
+4.1. Datasets
+Amazon( partially controlled setting). The Amazon dataset
+(McAuley & Leskovec, 2013) consists of reviews from the
+Amazon e-commerce site, each with a number of “helpful”
+votes. To reduce unmeasured factors in the data, we generate
+a new semi-synthetic outcome Y by predicting the number
+of helpful votes as a linear function of a ( X ) ,a ( X ) ,then
+adding noise. Here, a ( X ) ,a ( X ) encode the 10 categories
+from the lexicon LIWC (see Section 4.2.1) that are most
+predictive of vote count. These categories are binarized
+to take the value 1 if the category is present in the text
+and 0 otherwise. We note that while the semi-synthetic
+construction allows us to control the outcome Y , we do not
+have influence over the joint distribution P ( a ( X ) ,a ( X )) .
+In this partially controlled data setting, we know both (1) the
+true isolated effect of each of the 10 lexical categories and
+(2) that the outcome model g can be fully learned from the
+text. Combined, these allow us to evaluate whether our esti-
+mator τ is able to recover the true isolated effect under
+(cid:98)
+best-case conditions. To allow for controlled evaluation un-
+der more challenging conditions, we also generate a second
+semi-synthetic Y where helpful votes are predicted as a non -
+linear function of a ( X ) ,a ( X ) ; this setting is discussed in
+Section B.2.
+Semaglutide vs. Tirzepatide (SvT) (real-world setting) .
+Here, we consider a slightly different setting in which the
+intervention and outcome are both encoded in text (in con-
+trast to the setting where the intervention is encoded in the
+text and the outcome is a numerical value external to the
+text). The SvT dataset (Dhawan et al., 2024) consists of
+posts from weight-loss communities on the social media site
+Reddit that mention one of two weight-loss medications:
+semaglutide or tirzepatide. From these posts, Dhawan et al.
+extracted the language-encoded binary intervention a ( X )
+(which weight-loss medication the user took) and binary
+outcome Y (whether the user lost more than 5 percent of
+their starting body weight). The dataset further includes
+a “ground truth” causal effect from a clinical trial on the
+effects of semaglutide versus tirzepatide at various doses
+(Fr´ıas et al., 2021)
+
+5. Results and Discussion
+In this section, we evaluate how well our method is able
+to recover true isolated causal effects in the Amazon and
+SvT datasets. Following this evaluation, we more closely
+examine the relationship between isolated effect estimation
+and omitted variable bias.
+5.1. Amazon Dataset
+In the Amazon dataset, we examine the isolated effects of
+the 10 predictive LIWC categories used to construct the
+semi-synthetic outcome. This section discusses the linear-
+function outcome, but the same trends appear in the nonlin-
+ear case (results in Section B.2).
+
+IsolatedCausalEffectsofNaturalLanguage
+isolated e ff ect (intervention = home) # dimensions
+(a) Isolated effect of home .
+isolated e ff ect (intervention = netspeak) # dimensions
+(b) Isolated effect of netspeak .
+Figure 2. Isolated causal effects of linguistic attributes on help-
+fulness in the Amazon dataset. Error bars correspond to 95%
+confidence intervals.
+Across the 10 categories, we iteratively set each category
+to be a ( X ) and estimate its isolated effect while using
+the remaining lexical categories as a c ( X ) . To explore the
+fidelity-overlap tradeoff under controlled conditions, we
+evaluate our isolated effect estimate and our three OVB-
+derived metrics— σ 2 , ν 2 , and robustness value—under dif-
+(cid:98) (cid:98)
+ferent choices of a c ( X ) . For each intervention, we restrict
+s
+the number of remaining lexical categories used as a c ( X ) ,
+s
+beginning with 2 categories and ending with 9.
+Over multiple interventions (Figures 2a, 2b; additional re-
+sults in Appendix B.1), we observe that as the dimensional-
+ity (number of categories) of a c ( X ) increases, so does the
+s
+proximity of the isolated effect estimate to the ground truth.
+Moreover, the behavior of the fidelity and overlap metrics
+σ 2 and ν 2 is also consistent with expectations. As dimen-
+(cid:98) (cid:98)
+sionality increases, σ 2 decreases, indicating that outcome
+(cid:98)
+model fidelity is improving. At the same time, ν 2 increases,
+(cid:98)
+consistent with worsening overlap.
+We further see that robustness values increase with a c ( X )
+s
+dimensionality, suggesting that gains in model fidelity out-
+weigh losses in overlap. This may not be the case for all
+datasets. As this dataset does not experience significant
+problems with overlap (as seen from the limited range of
+7
+
+isolated isolated e e ff ff ect ect
+Isolated Isolated e e ff ff ects ects (adjustment (adjustment using using OVB OVB comment) comment) metrics metrics (adjustment (adjustment using using comment) comment)
+true true naive naive ours ours
+isolated isolated e e ff ff ect ect
+Figure 3. Isolated causal effect of we
+
+6. Related Work
+Causal effects of text. Our work on isolated causal effects
+is situated within a recent literature on estimating text-based
+causal effects. Egami et al. (2022) describe a conceptual
+codebook framework for causal inference using text. Build-
+ing on this, Fong & Grimmer (2023) conduct randomized
+text experiments where texts are programmatically gener-
+ated from pre-specified attributes. Lin et al. (2023) further
+propose a method for transporting natural (i.e., non-isolated)
+causal effects from randomized text experiments to poten-
+tially non-randomized target distributions.
+Most directly related to our work are several methods for
+estimating isolated effects of natural language using specific
+language representation pipelines. Though these works do
+not explicitly distinguish isolated and natural effects, their
+estimands are defined such that they are isolated, and so we
+view these methods as complementary to ours. Pryzant et al.
+(2021) estimate the effect of a proxy linguistic attribute from
+observational data, where all other language information is
+represented by an embedding from a transformer trained
+to capture confounding. Dhawan et al. (2024) estimate
+effects from observational data using the LLM prompting
+approach we describe earlier. Finally, a recent paper by Imai
+& Nakamura (2024) estimates text effects via a randomized
+experiment in which LLM-generated texts are shown to hu-
+man respondents; text representations can then be extracted
+directly from the generating LLM.
+Omitted variable bias. The diversity of language repre-
+sentations that can be used in text-based causal inference
+highlights the strong need for a way to understand the qual-
+ity of representations and effect estimates. Our OVB-based
+metrics provide a way to do this flexibly across any data
+setting, which is important for real-world data where the
+ground truth is not known. Our metrics draw directly on
+the Chernozhukov et al. (2024) operationalization of OVB,
+which in turn builds on a history of foundational work on
+OVB (Goldberger, 1991; Frank, 2000; Angrist & Pischke,
+2009; Oster, 2019; Cinelli & Hazlett, 2019).
+Noting the importance of covariate representation in causal
+inference, Clivio et al. (2024b) have proposed learning rep-
+resentations that minimize information loss when balancing
+covariates, which can help to improve overlap (Clivio et al.,
+9
+
+2024a). While these methods are not developed specifically
+for text, the parallels between general covariate representa-
+tion and language representation are evident.
+
+
+7. Conclusion
+In this paper, we propose a framework for estimating the
+isolated causal effect of a focal language-based interven-
+tion. Estimating isolated effects is challenging because it
+requires us to model not only the focal intervention but also
+the non-focal language of the text. We introduce measures
+for assessing the sensitivity of isolated effect estimates to
+omitted variable bias in their non-focal language approxima-
+tions along the axes of fidelity and overlap . We demonstrate
+the ability of our framework to correctly recover isolated
+effects across multiple language-encoded interventions, and
+we explore how the way we approximate non-focal language
+impacts fidelity, overlap, and the robustness of the effect
+estimates themselves.
+Our results point to several avenues for future research. This
+paper studies a setting in which confounding is contained
+fully in the text. Though NLP datasets are not often released
+with external confounding data like information about an-
+notators, it may still be interesting to study the case where
+external confounding is present and measured. Additionally,
+in this paper we treat the focal language-encoding function
+a ( · ) as an accurate parameterization of the intervention of
+interest, but if a ( · ) does need to be estimated, then estima-
+tion error can lead to additional bias. Characterizing and
+counteracting this is important future work. Finally, our
+findings on OVB and robustness suggest a compelling line
+of research on learning representations—perhaps not only of
+language—that optimize the fidelity-overlap tradeoff to min-
+imize omitted variable bias, making them explicitly suitable
+for the task of causal inference.
+Impact Statement
+Broader impact. Recent advances in NLP have dramati-
+cally increased the availability of language data and models
+for common users. The resulting proliferation of texts and
+models has raised potential ethical concerns around factual
+inaccuracies (Monteith et al., 2024; Zhou et al., 2023), bias
+(Wan et al., 2023; Ferrara, 2024), and the black-box internals
+of models (Guidotti et al., 2018; McDermid et al., 2021).
+These concerns emphasize the growing need to understand
+the impacts of texts and language models on the readers that
+consume them. Our work on isolated causal effects builds
+toward this goal.
+Ethical considerations. The empirical analysis contained
+in this work relies partially on representations from pre-
+trained large language models, which may encode biases
+from their training data. Interpretations of causal effects that
+
+Isolated Causal Effects of Natural Language
+rely on such representations should consider these biases.
+We ad
+
+References
+Angrist, J. D. and Pischke, J.-S. Mostly harmless econo-
+metrics: An empiricist’s companion . Princeton university
+press, 2009.
+Byrd, J. and Lipton, Z. What is the effect of im-
+portance weighting in deep learning? In Chaud-
+huri, K. and Salakhutdinov, R. (eds.), Proceedings of
+the 36th International Conference on Machine Learn-
+ing , volume 97 of Proceedings of Machine Learn-
+ing Research , pp. 872–881. PMLR, 09–15 Jun 2019.
+URL https://proceedings.mlr.press/v97/
+byrd19a.html .
+Chernozhukov, V., Cinelli, C., Newey, W., Sharma, A., and
+Syrgkanis, V. Long story short: Omitted variable bias in
+causal machine learning, 2024. URL https://arxiv.
+org/abs/2112.13398 .
+Cinelli, C. and Hazlett, C. Making Sense of Sensitivity:
+Extending Omitted Variable Bias. Journal of the Royal
+Statistical Society Series B: Statistical Methodology ,82
+(1):39–67,122019. ISSN 1369-7412. doi: 10.1111/rssb.
+12348. URL https://doi.org/10.1111/rssb.
+12348 .
+Clivio, O., Bruns-Smith, D., Feller, A., and Holmes, C. C.
+Towards principled representation learning to improve
+overlap in treatment effect estimation. In 9th Causal
+Inference Workshop at UAI 2024 ,2024a. URL https:
+//openreview.net/forum?id=I7Uibi1AMt .
+Clivio, O., Feller, A., and Holmes, C. Towards represen-
+tation learning for weighting problems in design-based
+causal inference. In Kiyavash, N. and Mooij, J. M. (eds.),
+Proceedings of the Fortieth Conference on Uncertainty
+in Artificial Intelligence , volume 244 of Proceedings of
+Machine Learning Research , pp. 856–880. PMLR, 15–
+19 Jul 2024b. URL https://proceedings.mlr.
+press/v244/clivio24a.html .
+10
+
+Devlin, J., Chang, M.-W., Lee, K., and Toutanova, K. BERT:
+Pre-training of deep bidirectional transformers for lan-
+guage understanding. In Burstein, J., Doran, C., and
+Solorio, T. (eds.), Proceedings of the 2019 Conference of
+the North American Chapter of the Association for Com-
+putational Linguistics: Human Language Technologies,
+Volume 1 (Long and Short Papers) , pp. 4171–4186, Min-
+neapolis, Minnesota, June 2019. Association for Compu-
+tational Linguistics. doi: 10.18653/v1/N19- 1423. URL
+https://aclanthology.org/N19-1423/ .
+Dhawan, N., Cotta, L., Ullrich, K., Krishnan, R., and Mad-
+dison, C. J. End-to-end causal effect estimation from
+unstructured natural language data. In The Thirty-eighth
+Annual Conference on Neural Information Processing
+Systems ,2024. URL https://openreview.net/
+forum?id=gzQARCgIsI .
+Egami, N., Fong, C.J., Grimmer, J., Roberts, M.E., and
+Stewart, B. M. How to make causal inferences using
+texts. Science Advances , 8(42):eabg2652, 2022. doi: 10.
+1126/sciadv.abg2652. URL https://www.science.
+org/doi/abs/10.1

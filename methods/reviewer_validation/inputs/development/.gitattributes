@@ -1,0 +1,2 @@
+parsed/*.txt whitespace=-trailing-space
+excerpts/*.txt whitespace=-trailing-space

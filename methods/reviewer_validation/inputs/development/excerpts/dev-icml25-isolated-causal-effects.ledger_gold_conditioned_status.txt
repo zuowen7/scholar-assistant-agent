@@ -1,0 +1,668 @@
+4. Experiments
+To assess the validity of isolated effects estimated using our
+framework, we examine how well we can recover the true
+isolated effect τ with our estimator τ . We evaluate on
+(cid:98)
+two natural language datasets—one semi-synthetic and one
+real-world—in which true isolated effects are known.
+The IATT is less susceptible to overlap violations than the
+IATE, as the IATT requires only that .
+5
+
+4.1. Datasets
+Amazon( partially controlled setting). The Amazon dataset
+(McAuley & Leskovec, 2013) consists of reviews from the
+Amazon e-commerce site, each with a number of “helpful”
+votes. To reduce unmeasured factors in the data, we generate
+a new semi-synthetic outcome Y by predicting the number
+of helpful votes as a linear function of a ( X ) ,a ( X ) ,then
+adding noise. Here, a ( X ) ,a ( X ) encode the 10 categories
+from the lexicon LIWC (see Section 4.2.1) that are most
+predictive of vote count. These categories are binarized
+to take the value 1 if the category is present in the text
+and 0 otherwise. We note that while the semi-synthetic
+construction allows us to control the outcome Y , we do not
+have influence over the joint distribution P ( a ( X ) ,a ( X )) .
+In this partially controlled data setting, we know both (1) the
+true isolated effect of each of the 10 lexical categories and
+(2) that the outcome model g can be fully learned from the
+text. Combined, these allow us to evaluate whether our esti-
+mator τ is able to recover the true isolated effect under
+(cid:98)
+best-case conditions. To allow for controlled evaluation un-
+der more challenging conditions, we also generate a second
+semi-synthetic Y where helpful votes are predicted as a non -
+linear function of a ( X ) ,a ( X ) ; this setting is discussed in
+Section B.2.
+Semaglutide vs. Tirzepatide (SvT) (real-world setting) .
+Here, we consider a slightly different setting in which the
+intervention and outcome are both encoded in text (in con-
+trast to the setting where the intervention is encoded in the
+text and the outcome is a numerical value external to the
+text). The SvT dataset (Dhawan et al., 2024) consists of
+posts from weight-loss communities on the social media site
+Reddit that mention one of two weight-loss medications:
+semaglutide or tirzepatide. From these posts, Dhawan et al.
+extracted the language-encoded binary intervention a ( X )
+(which weight-loss medication the user took) and binary
+outcome Y (whether the user lost more than 5 percent of
+their starting body weight). The dataset further includes
+a “ground truth” causal effect from a clinical trial on the
+effects of semaglutide versus tirzepatide at various doses
+(Fr´ıas et al., 2021). Dhawan et al. used weight loss under
+5 mg tirzepatide versus 1 mg semaglutide as the true effect.
+We compute confidence intervals for this true effect using
+information available in the clinical trial.
+This dataset allows us both to evaluate the validity of iso-
+lated effect estimates in a realistic setting and to assess how
+different approximations of a ( X ) can impact our estimates.
+4.2. Implementation
+4.2.1.A PPROXIMATING N ON -F OCAL L ANGUAGE
+To construct a non-focal language approximation a ( X ) ,
+we explore a number of language representations varying in
+
+Isolated Causal Effects of Natural Language
+complexity. In this section, we describe each representation
+and discuss how it might fare in the fidelity-overlap tradeoff.
+Implementation details can be found in Appendix C.2.
+Lexicon. One simple language representation is a vector of
+interpretable categories encoded by a lexicon , which maps
+words in its vocabulary to those categories. These categories
+are usually relatively few in number, so the dimensionality
+of the category vector is fairly low. However, lexicons are
+limited by their vocabulary and are also unable to capture
+context or sentence-level meaning. Therefore, we expect
+that lexicon-derived non-focal language representations may
+have good overlap but poor model fidelity. We use two
+well-known lexicons in our experiments: the human expert-
+designed LIWC (Pennebaker et al., 2015) and the semi-
+automatically generated Empath (Fast et al., 2016).
+Language model embedding. Sentence embeddings from
+transformer-based language models are among the most
+commonly used language representations for machine learn-
+ing. These embeddings are information-rich in content and
+syntax and perform excellently on a wide variety of tasks.
+However, language model embeddings tend to be relatively
+high-dimensional compared to lexicons, and as a result,
+embedding-derived non-focal representations may achieve
+good model fidelity but suffer from overlap violations. In
+our experiments, we use embeddings extracted from the pre-
+trained transformers BERT (Devlin et al., 2019), RoBERTa
+(Liu et al., 2019), MPNet (Song et al., 2020), and MiniLM
+(Wang et al., 2020). For RoBERTa and MPNet, we also
+use singular value decomposition (SVD) to create a lower-
+dimensional version of each embedding. We refer to these
+smaller 200-dimension representations as RoBERTa+SVD
+and MPNet+SVD.
+SenteCon. SenteCon is a language representation in which
+a lexicon-based layer is constructed over language model
+embeddings (Lin & Morency, 2023). Like lexicon represen-
+tations, a SenteCon representation consists of a vector of
+interpretable categories where each category is associated
+with a numerical weight. Because the categories are derived
+from an existing lexicon, the dimensionality of the Sente-
+Con category vector should also be low. SenteCon does not
+rely exclusively on a pre-defined vocabulary and is able to
+capture sentence context. Consequently, we expect that a
+SenteCon-derived non-focal language representation will
+have reasonable model fidelity while also not being signif-
+icantly affected by overlap violations. In our experiments,
+we use two different base lexicons for SenteCon (LIWC or
+Empath). We refer to these variants as SenteCon-LIWC and
+SenteCon-Empath.
+LLM prompting. As large language model (LLM) capabil-
+ities continue to expand, it has become possible to extract
+attributes from a text passage simply by prompting an LLM.
+For instance, we might ask an LLM to tell us, based on
+6
+
+the information contained in a paragraph, the age of the
+writer or if they have any health conditions. Using this form
+of prompting on GPT-3.5, Dhawan et al. (2024) extract a
+set of 10 health-related attributes from Reddit posts in the
+SvT dataset. Of these, we exclude 3 attributes from which
+weight loss can be directly computed. We treat the remain-
+ing 7 discrete variables as a type of language representation
+and therefore an approximation of the non-focal language.
+4.2.2.M ODELING AND E STIMATION
+For each non-focal language representation a ( X ) ,weuse
+5-fold cross-fitting to train an outcome model g to predict Y
+(cid:98)
+given a ( X ) and a classifier to predict a ( X ) given a ( X ) .
+We use P (cid:98) ( a ( X ) = a | a ( X )) from this classifier to es-
+timate γ . Within the training folds, we conduct 5-fold
+(cid:98)
+cross-validation to select model hyperparameters. Forthe
+linear-outcome case of the Amazon dataset, we use a lo-
+gistic regression classifier and a linear regression outcome
+model (and neural networks for the nonlinear case). For
+the SvT dataset, we use gradient boosting models for both
+our classifier and outcome model. Additional model details,
+including libraries and hyperparameters, are available in
+Appendix C.3.
+With g and γ estimated, we are able to compute τ onthe
+(cid:98) (cid:98) (cid:98)
+estimation folds, which we call D . When estimating
+estimate
+the IATE, we directly use D as the source of texts
+estimate
+X ∼ P for the outcome modeling term, as the target
+distribution is equal to the observed data distribution. When
+estimating the IATT, we draw X from the subset of D
+estimate
+where a ( X ) = 1 . We estimate the IATE for the Amazon
+dataset and the IATT for the SvT dataset to maintain better
+overlap.
+We compare our isolated effect estimates against a naive
+estimator that does not isolate the focal attribute from the
+non-focal portion of the text (i.e., an estimator of the natural
+effect). In general, we expect this not to correctly recover the
+true isolated effect since it has no adjustment for isolation.
+
+
+5. Results and Discussion
+In this section, we evaluate how well our method is able
+to recover true isolated causal effects in the Amazon and
+SvT datasets. Following this evaluation, we more closely
+examine the relationship between isolated effect estimation
+and omitted variable bias.
+5.1. Amazon Dataset
+In the Amazon dataset, we examine the isolated effects of
+the 10 predictive LIWC categories used to construct the
+semi-synthetic outcome. This section discusses the linear-
+function outcome, but the same trends appear in the nonlin-
+ear case (results in Section B.2).
+
+IsolatedCausalEffectsofNaturalLanguage
+isolated e ff ect (intervention = home) # dimensions
+(a) Isolated effect of home .
+isolated e ff ect (intervention = netspeak) # dimensions
+(b) Isolated effect of netspeak .
+Figure 2. Isolated causal effects of linguistic attributes on help-
+fulness in the Amazon dataset. Error bars correspond to 95%
+confidence intervals.
+Across the 10 categories, we iteratively set each category
+to be a ( X ) and estimate its isolated effect while using
+the remaining lexical categories as a c ( X ) . To explore the
+fidelity-overlap tradeoff under controlled conditions, we
+evaluate our isolated effect estimate and our three OVB-
+derived metrics— σ 2 , ν 2 , and robustness value—under dif-
+(cid:98) (cid:98)
+ferent choices of a c ( X ) . For each intervention, we restrict
+s
+the number of remaining lexical categories used as a c ( X ) ,
+s
+beginning with 2 categories and ending with 9.
+Over multiple interventions (Figures 2a, 2b; additional re-
+sults in Appendix B.1), we observe that as the dimensional-
+ity (number of categories) of a c ( X ) increases, so does the
+s
+proximity of the isolated effect estimate to the ground truth.
+Moreover, the behavior of the fidelity and overlap metrics
+σ 2 and ν 2 is also consistent with expectations. As dimen-
+(cid:98) (cid:98)
+sionality increases, σ 2 decreases, indicating that outcome
+(cid:98)
+model fidelity is improving. At the same time, ν 2 increases,
+(cid:98)
+consistent with worsening overlap.
+We further see that robustness values increase with a c ( X )
+s
+dimensionality, suggesting that gains in model fidelity out-
+weigh losses in overlap. This may not be the case for all
+datasets. As this dataset does not experience significant
+problems with overlap (as seen from the limited range of
+7
+
+isolated isolated e e ff ff ect ect
+Isolated Isolated e e ff ff ects ects (adjustment (adjustment using using OVB OVB comment) comment) metrics metrics (adjustment (adjustment using using comment) comment)
+true true naive naive ours ours
+isolated isolated e e ff ff ect ect
+Figure 3. Isolated causal effect of weight-loss medication in the
+SvT dataset. Error bars denote 95% confidence intervals. The blue
+dotted lines surrounding the true effect mark its 95% confidence
+interval. Representations a ( X ) are ordered loosely by complexity,
+with less complex representations appearing closer to the top
+.
+ν 2 , particularly in Figure 2a), it seems that outcome model
+(cid:98)
+performance gains are more significant in this case.
+5.2. Semaglutide vs. Tirzepatide Dataset
+In the SvT dataset, we use the intervention and outcome
+from Dhawan et al. (2024). We treat the Reddit post text
+as the non-focal language a c ( X ) , and we explore how each
+of the non-focal language representations in Section 4.2.1
+impacts effect estimation.
+We first observe that all of our isolated effect estimates have
+wide 95% confidence intervals that include both the true
+isolated effect and 0 (Figure 3). Looking solely at the point
+estimates, we see that almost all of the representations yield
+positive isolated effect estimates that are consistent with the
+ground truth. Of these, SenteCon-Empath comes closest
+to recovering the true isolated effect, with MiniLM a close
+second—but a large amount of uncertainty remains. Asa
+result, we may not be able to use the point estimates alone to
+determine which representation best approximates non-focal
+language.
+We look instead to fidelity and overlap, where we observe
+interesting behavior. The high-dimensional MPNet embed-
+ding has a much larger ν 2 than any other representation,
+(cid:98)
+suggesting a near overlap violation. Interestingly, BERT
+and RoBERTa—which have the same dimensionality as
+MPNet—exhibit much better overlap than MPNet, possibly
+due to the additional optimization of MPNet for sentence-
+level tasks in the library used to extract its embedding. We
+
+Isolated Causal Effects of Natural Language
+also see that several representations, such as the lexicon
+Empath and the dimensionality-reduced RoBERTa+SVD,
+have negative ν s. Because doubly robust estimators like
+(cid:98)
+the one we use for ν do not necessarily satisfy criteria like
+(cid:98)
+being non-negative in noisy settings, we hypothesize that
+these negative values (which are small in magnitude) may
+be due to noise in estimation. Fidelity, on the other hand, is
+much more consistent across all representations. In general,
+fidelity is expected to improve (i.e., σ should decrease)
+with the dimensionality of the representation, as higher-
+dimensional representations are likely to contain more in-
+formation; however, this may be negated by strong regular-
+ization in the outcome model. These results suggest that the
+fidelity-overlap tradeoff depends on some notion of repre-
+sentation complexity that may go beyond the dimensionality
+of the representation alone.
+Finally, we find that the two representations with the high-
+est robustness values are LLM prompting, which produces
+a positive but conservative effect estimate, and SenteCon-
+Empath, which produces an estimate very close to the true
+effect. MiniLM, which like SenteCon-Empath has a point
+estimate close to the clinical benchmark, has only a mid-
+dling robustness value due to poor overlap. The robustness
+of LLM prompting is not unexpected: Dhawan et al. (2024)
+carefully designed their prompting procedure to extract dis-
+crete variables for the specific task of estimating the effect
+of tirzepatide versus semaglutide on weight loss, so we ex-
+pect this representation to yield good results. Importantly,
+however, the SenteCon-Empath representation—which is
+not specifically designed for this task—has a similarly high
+robustness value, suggesting that equally effective repre-
+sentations can be found without requiring extensive human
+design effort.
+Our results also illustrate the potential of dimensionality re-
+duction methods like SVD in non-focal language approxima-
+tion. Both RoBERTa and MPNet benefit from singular value
+thresholding across all OVB metrics: overlap improves, fi-
+delity remains similar, and robustness value increases. More-
+over, after SVD is applied, both representations’ effect point
+estimates move from outside the true effect confidence inter-
+valto inside the true effect confidence interval. These results
+suggest that dimensionality reduction can significantly im-
+prove the utility of high-dimensional non-focal language
+representations. Given the low computational and human
+overhead of these unsupervised post-processing techniques,
+they may often be worth trying.
+A closer look at OVB and robustness. While robust-
+ness values can be compared among non-focal language
+representations—providing some sense of how relatively
+robust each corresponding effect estimate is to bias—it is
+not immediately clear whether even the representation with
+the best robustness value is robust in absolute terms.
+8
+
+Figure 4. OVB lower bound of SenteCon-Empath isolated effect
+estimate in the SvT dataset. “Unadjusted” marks the point estimate
+lower bound without OVB.
+One way of understanding the scale of a robustness value
+is to calibrate it using the explanatory power lost when
+intentionally omitting variables known to have an influence
+on the effect estimate. We focus on one representation—
+SenteCon-Empath in the SvT dataset—and the lower OVB
+bound of its associated isolated effect estimate. We recall
+that this bound corresponds to the least possible value of the
+effect point estimate at a given level of OVB.
+In Figure 4, we plot this bound against the sensitivity pa-
+rameters C and C , which denote the explanatory power
+of omitted variables toward the outcome model g andthe
+importance weight γ , respectively. This contour plot shows
+how the lower OVB bound of the effect estimate changes as
+the hypothetical explanatory power of the variables omitted
+from the SenteCon-Empath representation increases. We
+color the 0 contour red to highlight the significance of the
+lower OVB bound “crossing” from positive to negative as
+C and C increase. Once the bound is negative, we can
+no longer be certain that the point estimate of our isolated
+effect is positive.
+We then plot four red triangles to mark the explanatory
+power lost by explicitly omitting the category with that
+name ( movement , science , exercise , or healing ) from the
+SenteCon-Empath representation. 3 We choose categories
+we believe to be relevant to the intervention and outcome.
+For each category omitted, we see the loss of explanatory
+power brings the point estimate closer to the 0 contour but
+is not nearly enough to cross it. Turning then to the masked
+marker, we look at the explanatory power lost by omitting
+key information from the non-focal text a ( X ) itself. We
+create a version of each Reddit post where we mask medi-
+cation type, body weight, and terms like “gain” and “loss.”
+These values can be computed explicitly by re-fitting the out-
+come models and importance weights (Appendix C.4).
+
+Isolated Causal Effects of Natural Language
+The resultin
+
+6. Related Work
+Causal effects of text. Our work on isolated causal effects
+is situated within a recent literature on estimating text-based
+causal effects. Egami et al. (2022) describe a conceptual
+codebook framework for causal inference using text. Build-
+ing on this, Fong & Grimmer (2023) conduct randomized
+text experiments where texts are programmatically gener-
+ated from pre-specified attributes. Lin et al. (2023) further
+propose a method for transporting natural (i.e., non-isolated)
+causal effects from randomized text experiments to poten-
+tially non-randomized target distributions.
+Most directly related to our work are several methods for
+estimating isolated effects of natural language using specific
+language representation pipelines. Though these works do
+not explicitly distinguish isolated and natural effects, their
+estimands are defined such that they are isolated, and so we
+view these methods as complementary to ours. Pryzant et al.
+(2021) estimate the effect of a proxy linguistic attribute from
+observational data, where all other language information is
+represented by an embedding from a transformer trained
+to capture confounding. Dhawan et al. (2024) estimate
+effects from observational data using the LLM prompting
+approach we describe earlier. Finally, a recent paper by Imai
+& Nakamura (2024) estimates text effects via a randomized
+experiment in which LLM-generated texts are shown to hu-
+man respondents; text representations can then be extracted
+directly from the generating LLM.
+Omitted variable bias. The diversity of language repre-
+sentations that can be used in text-based causal inference
+highlights the strong need for a way to understand the qual-
+ity of representations and effect estimates. Our OVB-based
+metrics provide a way to do this flexibly across any data
+setting, which is important for real-world data where the
+ground truth is not known. Our metrics draw directly on
+the Chernozhukov et al. (2024) operationalization of OVB,
+which in turn builds on a history of foundational work on
+OVB (Goldberger, 1991; Frank, 2000; Angrist & Pischke,
+2009; Oster, 2019; Cinelli & Hazlett, 2019).
+Noting the importance of covariate representation in causal
+inference, Clivio et al. (2024b) have proposed learning rep-
+resentations that minimize information loss when balancing
+covariates, which can help to improve overlap (Clivio et al.,
+9
+
+2024a). While these methods are not developed specifically
+for text, the parallels between general covariate representa-
+tion and language representation are evident.
+
+
+7. Conclusion
+In this paper, we propose a framework for estimating the
+isolated causal effect of a focal language-based interven-
+tion. Estimating isolated effects is challenging because it
+requires us to model not only the focal intervention but also
+the non-focal language of the text. We introduce measures
+for assessing the sensitivity of isolated effect estimates to
+omitted variable bias in their non-focal language approxima-
+tions along the axes of fidelity and overlap . We demonstrate
+the ability of our framework to correctly recover isolated
+effects across multiple language-encoded interventions, and
+we explore how the way we approximate non-focal language
+impacts fidelity, overlap, and the robustness of the effect
+estimates themselves.
+Our results point to several avenues for future research. This
+paper studies a setting in which confounding is contained
+fully in the text. Though NLP datasets are not often released
+with external confounding data like information about an-
+notators, it may still be interesting to study the case where
+external confounding is present and measured. Additionally,
+in this paper we treat the focal language-encoding function
+a ( · ) as an accurate parameterization of the intervention of
+interest, but if a ( · ) does need to be estimated, then estima-
+tion error can lead to additional bias. Characterizing and
+counteracting this is important future work. Finally, our
+findings on OVB and robustness suggest a compelling line
+of research on learning representations—perhaps not only of
+language—that optimize the fidelity-overlap tradeoff to min-
+imize omitted variable bias, making them explicitly suitable
+for the task of causal inference.
+Impact Statement
+Broader impact. Recent advances in NLP have dramati-
+cally increased the availability of language data and models
+for common users. The resulting proliferation of texts and
+models has raised potential ethical concerns around factual
+inaccuracies (Monteith et al., 2024; Zhou et al., 2023), bias
+(Wan et al., 2023; Ferrara, 2024), and the black-box internals
+of models (Guidotti et al., 2018; McDermid et al., 2021).
+These concerns emphasize the growing need to understand
+the impacts of texts and language models on the readers that
+consume them. Our work on isolated causal effects builds
+toward this goal.
+Ethical considerations. The empirical analysis contained
+in this work relies partially on representations from pre-
+trained large language models, which may encode biases
+from their training data. Interpretations of causal effects that
+
+Isolated Causal Effects of Natural Language
+rely on such representations should consider these biases.
+We additionally acknowledge the environmental impact of
+training the language models used in this work.
+Acknowledgements
+This material is based upon work partially supported by
+the National Institutes of Health (awards R01MH125740,
+R01MH132225, R21MH130767, and U01MH136535). Vic-
+toria Lin is supported by a Meta Research PhD Fellowship.
+Any opinions, findings, conclusions, or recommendations
+expressed in this material are those of the author(s) and do
+not necessarily reflect the views of the sponsors, and no
+official endorsement should be inferred.
+
+
+References
+Angrist, J. D. and Pischke, J.-S. Mostly harmless econo-
+metrics: An empiricist’s companion . Princeton university
+press, 2009.
+Byrd, J. and Lipton, Z. What is the effect of im-
+portance weighting in deep learning? In Chaud-
+huri, K. and Salakhutdinov, R. (eds.), Proceedings of
+the 36th International Conference on Machine Learn-
+ing , volume 97 of Proceedings of Machine Learn-
+ing Research , pp. 872–881. PMLR, 09–15 Jun 2019.
+URL https://proceedings.mlr.press/v97/
+byrd19a.html .
+Chernozhukov, V., Cinelli, C., Newey, W., Sharma, A., and
+Syrgkanis, V. Long story short: Omitted variable bias in
+causal machine learning, 2024. URL https://arxiv.
+org/abs/2112.13398 .
+Cinelli, C. and Hazlett, C. Making Sense of Sensitivity:
+Extending Omitted Variable Bias. Journal of the Royal
+Statistical Society Series B: Statistical Methodology ,82
+(1):39–67,122019. ISSN 1369-7412. doi: 10.1111/rssb.
+12348. URL https://doi.org/10.1111/rssb.
+12348 .
+Clivio, O., Bruns-Smith, D., Feller, A., and Holmes, C. C.
+Towards principled representation learning to improve
+overlap in treatment effect estimation. In 9th Causal
+Inference Workshop at UAI 2024 ,2024a. URL https:
+//openreview.net/forum?id=I7Uibi1AMt .
+Clivio, O., Feller, A., and Holmes, C. Towards represen-
+tation learning for weighting problems in design-based
+causal inference. In Kiyavash, N. and Mooij, J. M. (eds.),
+Proceedings of the Fortieth Conference on Uncertainty
+in Artificial Intelligence , volume 244 of Proceedings of
+Machine Learning Research , pp. 856–880. PMLR, 15–
+19 Jul 2024b. URL https://proceedings.mlr.
+press/v244/clivio24a.html .
+10
+
+Devlin, J., Chang, M.-W., Lee, K., and Toutanova, K. BERT:
+Pre-training of deep bidirectional transformers for lan-
+guage understanding. In Burstein, J., Doran, C., and
+Solorio, T. (eds.), Proceedings of the 2019 Conference of
+the North American Chapter of the Association for Com-
+putational Linguistics: Human Language Technologies,
+Volume 1 (Long and Short Papers) , pp. 4171–4186, Min-
+neapolis, Minnesota, June 2019. Association for Compu-
+tational Linguistics. doi: 10.18653/v1/N19- 1423. URL
+https://aclanthology.org/N19-1423/ .
+Dhawan, N., Cotta, L., Ullrich, K., Krishnan, R., and Mad-
+dison, C. J. End-to-end causal effect estimation from
+unstructured natural language data. In The Thirty-eighth
+Annual Conference on Neural Information Processing
+Systems ,2024. URL https://openreview.net/
+forum?id=gzQARCgIsI .
+Egami, N., Fong, C.J., Grimmer, J., Roberts, M.E., and
+Stewart, B. M. How to make causal inferences using
+texts. Science Advances , 8(42):eabg2652, 2022. doi: 10.
+1126/sciadv.abg2652. URL https://www.science.
+org/doi/abs/10.1126/sciadv.abg2652 .
+Fast, E., Chen, B., and Bernstein, M. S. Empath: Un-
+derstanding topic signals in large-scale text. In Pro-
+ceedings of the 2016 CHI Conference on Human Fac-
+tors in Computing Systems , CHI ’16, pp. 4647–4657,
+New York, NY, USA, 2016. Association for Comput-
+ing Machinery. ISBN 9781450333627. doi: 10.1145/
+2858036.2858535. URL https://doi.org/10.
+1145/2858036.2858535 .
+Ferrara, E. Fairness and bias in artificial intelligence: A
+brief survey of sources, impacts, and mitigation strate-
+gies. Sci , 6(1), 2024. ISSN 2413-4155. doi: 10.
+3390/sci6010003. URL https://www.mdpi.com/
+2413-4155/6/1/3 .
+Fong, C. and Grimmer, J. Causal inference with latent
+treatments. American Journal of Political Science , 67
+(2):374–389, 2023. doi: https://doi.org/10.1111/ajps.
+12649. URL https://onlinelibrary.wiley.
+com/doi/abs/10.1111/ajps.12649 .
+Frank, K. A. Impact of a confounding variable
+on a regression coefficient. Sociological Methods
+& Research , 29(2):147–194, 2000. doi: 10.1177/
+0049124100029002001. URL https://doi.org/
+10.1177/0049124100029002001 .
+Fr ´ ıas,J.P.,Davies,M.J.,Rosenstock,J.,Manghi,F.C.P.,
+Lando´, L. F., Bergman, B. K., Liu, B., Cui, X., and
+Brown, K. Tirzepatide versus semaglutide once weekly
+in patients with type 2 diabetes. New England Jour-
+nal of Medicine , 385(6):503–515, 2021. doi: 10.1056/
+
+Isolated Causal Effects of Natural Language
+NEJMoa2107519. URL https://www.nejm.org/
+doi/full/10.1056/NEJMoa2107519 .
+Goldberger, A. S. A course in econometrics . Harvard
+University Press, 1991.
+Guidotti, R., Monreale, A., Ruggieri, S., Turini, F., Gian-
+notti, F., and Pedreschi, D. A survey of methods for
+explaining black box models. ACM Comput. Surv. ,51(5),
+August 2018. ISSN 0360-0300. doi: 10.1145/3236009.
+URL https://doi.org/10.1145/3236009 .
+Imai, K. and Nakamura, K. Causal representation learn-
+ing with generative artificial intelligence: Application
+to texts as treatments, 2024. URL https://arxiv.
+org/abs/2410.00903 .
+Kallus, N., Mao, X., Wang, K., and Zhou, Z. Dou-
+bly robust distributionally robust off-policy evaluation
+and learning. In Chaudhuri, K., Jegelka, S., Song, L.,
+Szepesvari, C., Niu, G., and Sabato, S. (eds.), Pro-
+ceedings of the 39th International Conference on Ma-
+chine Learning , volume 162 of Proceedings of Machine
+Learning Research , pp. 10598–10632. PMLR, 17–23 Jul
+2022. URL https://proceedings.mlr.press/
+v162/kallus22a.html .
+Kennedy, E. H. Semiparametric doubly robust targeted dou-
+ble machine learning: a review. Handbook of Statistical
+Methods for Precision Medicine , pp. 207–236, 2024.
+Lin, V. and Morency, L.-P. SenteCon: Leveraging
+lexicons to learn human-interpretable language rep-
+resentations. In Rogers, A., Boyd-Graber, J., and
+Okazaki, N. (eds.), Findings of the Association for
+Computational Linguistics: ACL2023 , pp. 4312–4331,
+Toronto, Canada, July 2023. Association for Computa-
+tional Linguistics. doi: 10.18653/v1/2023.findings-acl.
+264. URL https://aclanthology.org/2023.
+findings-acl.264 .
+Lin, V., Morency, L.-P., and Ben-Michael, E. Text-transport:
+Toward learning causal effects of natural language. In
+Bouamor, H., Pino, J., and Bali, K. (eds.), Proceedings
+of the 2023 Conference on Empirical Methods in Natural
+Language Processing , pp. 1288–1304, Singapore, De-
+cember 2023. Association for Computational Linguistics.
+doi: 10.18653/v1/2023.emnlp-main.82. URL https:
+//aclanthology.org/2023.emnlp-main.82 .
+Lin, V., Ben-Michael, E., and Morency, L.-P. Optimizing
+language models for human preferences is a causal infer-
+ence problem. In Kiyavash, N. and Mooij, J. M. (eds.),
+Proceedings of the Fortieth Conference on Uncertainty
+in Artificial Intelligence , volume 244 of Proceedings of
+Machine Learning Research , pp. 2250–2270. PMLR, 15–
+19 Jul 2024. URL https://proceedings.mlr.
+press/v244/lin24a.html .
+11
+
+Liu, Y., Ott, M., Goyal, N., Du, J., Joshi, M., Chen, D., Levy,
+O., Lewis, M., Zettlemoyer, L., and Stoyanov, V. Roberta:
+A robustly optimized bert pretraining approach, 2019.
+URL https://arxiv.org/abs/1907.11692 .
+McAuley, J. and Leskovec, J. Hidden factors and hid-
+den topics: Understanding rating dimensions with re-
+view text. In Proceedings of the 7th ACM Conference
+on Recommender Systems , RecSys ’13, pp. 165–172,
+New York, NY, USA, 2013. Association for Comput-
+ing Machinery. ISBN 9781450324090. doi: 10.1145/
+2507157.2507163. URL https://doi.org/10.
+1145/2507157.2507163 .
+McDermid, J. A., Jia, Y., Porter, Z., and Habli, I. Artificial
+intelligence explainability: the technical and ethical
+dimensions. Philosophical Transactions of the Royal Soci-
+ety A: Mathematical, Physical and Engineering Sciences ,
+379(2207):20200363,2021. doi: 10.1098/rsta.2020.0363.
+URL https://royalsocietypublishing.
+org/doi/abs/10.1098/rsta.2020.0363 .
+Monteith, S., Glenn, T., Geddes, J. R., Whybrow, P. C.,
+Achtyes, E., and Bauer, M. Artificial intelligence and
+increasing misinformation. The British Journal of Psy-
+chiatry ,224(2):33–35,2024. doi: 10.1192/bjp.2023.136.
+Neyman, J. On the application of probability theory to
+agricultural experiments. essay on principles. section 9.
+Statistical Science ,5(4):465–472,1923[1990].
+Oster, E. Unobservable selection and coefficient stabil-
+ity: Theory and evidence. Journal of Business & Eco-
+nomic Statistics , 37(2):187–204, 2019. doi: 10.1080/
+07350015.2016.1227711. URL https://doi.org/
+10.1080/07350015.2016.1227711 .
+Pennebaker, J. W., Boyd, R. L., Jordan, K., and Blackburn,
+K. The development and psychometric properties of
+liwc2015. Technical report, 2015. URL http://liwc.
+net/LIWC2007LanguageManual.pdf .
+Pryzant, R., Card, D., Jurafsky, D., Veitch, V., and Sridhar,
+D. Causal effects of linguistic properties. In Toutanova,
+K., Rumshisky, A., Zettlemoyer, L., Hakkani-Tur, D.,
+Beltagy, I., Bethard, S., Cotterell, R., Chakraborty, T.,
+and Zhou, Y. (eds.), Proceedings of the 2021 Confer-
+ence of the North American Chapter of the Association
+for Computational Linguistics: Human Language Tech-
+nologies , pp. 4095–4109, Online, June 2021. Association
+for Computational Linguistics. doi: 10.18653/v1/2021.
+naacl-main.323. URL https://aclanthology.
+org/2021.naacl-main.323 .
+Rajpurkar, P., Jia, R., and Liang, P. Know what you
+don‘t know: Unanswerable questions for SQuAD. In
+Gurevych, I. and Miyao, Y. (eds.), Proceedings of the
+
+Isolated Causal Effects of Natural Language
+56th Annual Meeting of the Association for Computa-
+tional Linguistics (Volume 2: Short Papers) , pp. 784–789,
+Melbourne, Australia, July 2018. Association for Compu-
+tational Linguistics. doi: 10.18653/v1/P18-2124. URL
+https://aclanthology.org/P18-2124/ .
+Robins, J. M., Rotnitzky, A., and Ping Zhao, L. Estimation
+of Regression Coefficients When Some Regressors are
+not Always Observed. Journal of the American Statistical
+Association ,89(427):846–866,1994.
+Rubin, D. B. Estimating causal effects of treatments in
+randomized and nonrandomized studies. Journal of edu-
+cational Ps

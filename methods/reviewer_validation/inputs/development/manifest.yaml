@@ -15,7 +15,7 @@ protocol:
 
 model_selection:
   path: methods/reviewer_validation/inputs/development/model_selection.yaml
-  sha256: 6a43a4a90fbea84e2a0079d53209b5bc23decddf11e0f71eea3cfb2e6e740e0d
+  sha256: b50ac630c124013a66de7216744bbdeed7a7e8aafb2e9b630b028a9b2785110a
   byte_length: 9114
 
 code_state:
@@ -87,7 +87,7 @@ papers:
       status: verified
       license: CC-BY-4.0
       evidence_url: https://proceedings.mlr.press/pmlr-license-agreement.html
-      redistribution: permitted_with_attribution_but_kept_local_by_project_policy
+      redistribution: permitted_with_attribution_and_tracked_for_reproducible_human_audit
     local_source:
       path: methods/reviewer_validation/inputs/development/raw/dev-icml25-isolated-causal-effects.pdf
       sha256: 913bafe27994787cf09069ebcb25252d5bb96c18f556619a190475486ab21041
@@ -170,7 +170,7 @@ papers:
       license: CC-BY-4.0
       evidence_url: https://www.microsoft.com/en-us/research/wp-content/uploads/2026/02/designforagency.pdf
       evidence_location: first_page
-      redistribution: permitted_with_attribution_but_kept_local_by_project_policy
+      redistribution: permitted_with_attribution_and_tracked_for_reproducible_human_audit
     local_source:
       path: methods/reviewer_validation/inputs/development/raw/dev-chi26-agency-science-journalism.pdf
       sha256: cfbd3e5e958c534db270a2b93d04a1e0aa50df8a0355cde25f3df7c23f938300
