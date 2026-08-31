@@ -1,0 +1,207 @@
+schema_version: reviewer-validation-model-selection/v1
+selection_version: 0.1.0-development
+status: preregistered_not_run
+created_on: 2026-08-30
+development_only: true
+formal_denominator_eligible: false
+formal_run_authorized: false
+
+execution_code_state:
+  base_commit: 1667d39b71dd00fb7aaa8bc7b917c633a4efc3c2
+  working_tree_clean_required: false
+  provenance_rule: The development run is bound to every listed byte hash in addition to the base commit.
+  source_files:
+    - {path: python/src/argument/anchor.py, sha256: 949eec895a03043484d37afbe40a6fa56a0324bb9f787ba41ad956cc4a31b2f0}
+    - {path: python/src/argument/companion_models.py, sha256: e2aebec55023f4a1703373f570a81da29ddf327e0657aadae8815860a71c4332}
+    - {path: python/src/argument/companion_store.py, sha256: 09594d6710e9a5e5aea049e8e3f5b1636a908347419f9c4a96f56980cb83064e}
+    - {path: python/src/argument/ledger.py, sha256: 0568d6a84189f77407b86a58e20ea8a60263d93ce986d10e756ca1589f40173d}
+    - {path: python/src/argument/llm_client.py, sha256: e00e6b8afeccd2bef8c17d45f8fa77ba89b685ee854021779e97775d8695bf70}
+    - {path: python/src/argument/reviewer.py, sha256: 415c9359e2930daa4e115d122e83ff36b2be44cf83933f254dff7c6fa36472b4}
+    - {path: python/src/argument/section_utils.py, sha256: 14b4163f8ba1da24b984565048a51c78d800fcb4f886949ad3c93da3e743e092}
+    - {path: python/src/argument/venue_profiles.yaml, sha256: c89ba9b262a31c71bffdc518a603a604da6ca558593ae8bb56e14d79010ec7ce}
+    - {path: python/src/llm_request_policy.py, sha256: 9527f9a42154b97a4cfcb9afb354d63305b393d6b60c1ba923fc70e311b18619}
+    - {path: python/src/translator/cloud_client.py, sha256: e27443d100cffcbb2204595852a3b35e93a0601ceaee2ec4d0b0f5b85241230b}
+    - {path: python/src/utils/json_extract.py, sha256: 2ca1e47442de7fc83d639213bc6d74f8c90901e162aea4dccf5a062e0a117676}
+    - {path: methods/reviewer_validation/scripts/run_ledger.py, sha256: 2c716e3418bd46d3e732fd15bdbb2f0e4e544254a01b0eebe507951160722f47}
+    - {path: methods/reviewer_validation/scripts/run_venue_ab.py, sha256: 5e73ce1b1e0eff7d45fc00c4a343d9e6c4a371f0d30ed7965d001091ab87716e}
+    - {path: methods/reviewer_validation/scripts/run_model_selection.py, sha256: 3d56b4db5f239ad548fd5a5441f99cf1613d40aee32e79596cb989667f9e8456}
+    - {path: methods/reviewer_validation/schemas/run_record.schema.json, sha256: 7ca2c8964298c575ae8c7f7d092398273b62842b503a316d90769ba96eb64b1e}
+    - {path: config/providers.yaml, sha256: 85737c9c9361d650b5700e7dcd49a2dd79723ced0fffac3180ce02ad4dc493a6}
+
+decision_state:
+  user_preference_prior: deepseek-v4-pro
+  provisional_formal_candidate: deepseek-v4-pro
+  selection_outcome: pending_blind_development_screen
+  selected_model: null
+  note: Preference is a tie-break prior, not empirical evidence.
+
+provider:
+  name: deepseek
+  official_base_url: https://api.deepseek.com/v1
+  api_format: openai_chat_completions
+  endpoint: /chat/completions
+  cross_provider_fallback_allowed: false
+  api_key_source: local_runtime_config_only
+  api_key_persisted_in_artifacts: false
+
+candidates:
+  - model_id: deepseek-v4-pro
+    documented_provider_version: DeepSeek-V4-Pro-0813
+    role: preferred_candidate
+  - model_id: deepseek-v4-flash
+    documented_provider_version: DeepSeek-V4-Flash-0731
+    role: comparison_candidate
+
+common_request_controls:
+  thinking:
+    requested: enabled
+    request_field: thinking.type
+    emitted_by_current_argument_path: true
+  reasoning_effort:
+    intended: high
+    request_field: reasoning_effort
+    emitted_by_current_argument_path: true
+    effective_source: explicit_request
+    reproducibility_blocker_before_formal_freeze: false
+  seed:
+    provider_support_documented: false
+    emitted: false
+  top_p:
+    emitted: false
+  timeout_seconds: 90
+  client_configured_max_tokens: 16384
+  preserve_every_attempt: true
+  replace_failed_record: false
+  model_fallback_allowed: false
+  outbound_http_audit:
+    enabled_by_current_argument_path: true
+    excludes_authorization_headers: true
+    records_actual_payload_retry_and_usage: true
+  notes:
+    - Scholar Assistant auto mode resolves DeepSeek V4 to non-thinking; this screen must explicitly request enabled for both candidates.
+    - The current argument path raises the effective initial token budget for enabled V4 reasoning models; actual request metadata must be retained.
+
+workflows:
+  - id: ledger_extraction
+    papers:
+      - dev-icml25-isolated-causal-effects
+      - dev-chi26-agency-science-journalism
+    production_temperature: 0.3
+    production_requested_max_tokens: 4096
+    maximum_production_llm_attempts: 2
+    json_mode: true
+    prompt_and_excerpt_source: production_prepare_ledger_extraction
+  - id: venue_conditioned_reviewer
+    papers:
+      - dev-icml25-isolated-causal-effects
+      - dev-chi26-agency-science-journalism
+    production_temperature: 0.5
+    production_requested_max_tokens: 2048
+    maximum_production_llm_attempts: 1
+    json_mode: true
+    checks: [llm]
+    profile_condition: venue_conditioned_only
+    prompt_and_excerpt_source: production_run_review
+
+screen_design:
+  repetitions_per_model_paper_workflow: 2
+  invocations_per_model: 8
+  total_invocations: 16
+  run_order_seed: 2026083001
+  blind_label_seed: 2026083002
+  blind_model_labels: [M1, M2]
+  mapping_visibility: hidden_from_A_and_B_until_both_rating_files_are_locked
+  same_prompt_excerpt_and_parameters_within_pair: true
+  development_manifest: methods/reviewer_validation/inputs/development/manifest.yaml
+  output_root: methods/reviewer_validation/outputs/pilot/model_selection
+
+technical_eligibility:
+  minimum_valid_invocations_per_model: 7
+  total_invocations_per_model: 8
+  require_at_least_one_valid_output_per_paper_workflow: true
+  disqualifying_conditions:
+    - any_cross_provider_or_cross_model_fallback
+    - secret_material_in_artifacts
+    - systematic_failure_of_either_workflow
+    - missing_or_inconsistent_provider_reported_model
+    - request_pair_diff_beyond_model_id_and_blind_order_metadata
+  retained_failure_types:
+    - empty_response
+    - invalid_json
+    - timeout
+    - provider_error
+    - legal_empty
+
+human_rating:
+  raters: [A, B]
+  independent_before_adjudication: true
+  paired_validity:
+    both_model_outputs_must_be_valid: true
+    invalid_one_sided_pair_treatment: retain_as_technical_failure_and_do_not_rate
+    minimum_common_valid_pairs: 7
+    total_pairs: 8
+  dimensions:
+    - evidence_grounding
+    - substantive_coverage
+    - unsupported_or_invented_content
+    - classification_or_review_correctness
+    - actionable_specificity
+  dimension_scale: [0, 1, 2]
+  dimension_rubric:
+    evidence_grounding:
+      direction: higher_is_better
+      anchors: {0: no traceable support, 1: partly grounded or vague, 2: specific and traceably grounded}
+    substantive_coverage:
+      direction: higher_is_better
+      anchors: {0: misses central issues, 1: partial coverage, 2: covers the central issues}
+    unsupported_or_invented_content:
+      direction: lower_is_better
+      anchors: {0: none found, 1: minor unsupported content, 2: material unsupported or invented content}
+    classification_or_review_correctness:
+      direction: higher_is_better
+      anchors: {0: materially incorrect, 1: mixed or partly correct, 2: substantively correct}
+    actionable_specificity:
+      direction: higher_is_better
+      anchors: {0: not actionable, 1: partly actionable, 2: specific actionable guidance}
+  pair_preference: [M1, tie, M2]
+  source_boundary: model_visible_excerpt_only
+  lock_rule: Each rater completes a separate file set; both file-set hashes lock before unblinding.
+  preference_aggregation:
+    same_non_tie: that_label_wins
+    one_tie_one_non_tie: non_tie_label_wins
+    opposite_non_tie: aggregate_tie
+    both_tie: aggregate_tie
+
+selection_rule:
+  order:
+    - Exclude a technically ineligible candidate; if both are ineligible, selection remains blocked.
+    - Compare locked blind ratings only after both raters finish all pairs.
+    - Prefer the candidate with more pairwise wins, provided its unsupported-content total is not higher.
+    - If pairwise wins tie, prefer the candidate with the lower unsupported-content total.
+    - If pairwise wins and unsupported-content totals both tie, select deepseek-v4-pro using the declared user preference prior.
+    - If pairwise wins conflict with unsupported-content safety, selection remains blocked for adjudication rather than using cost as a tie-break.
+  price_used_as_quality_tie_break: false
+  formal_protocol_update_allowed_only_after_selection: true
+  rerun_g1_with_selected_single_model: true
+  multi_model_screen_counts_as_g1: false
+
+pricing_snapshot_2026_08_30_usd_per_million_tokens:
+  flash:
+    cache_miss_input_off_peak: 0.22
+    cache_miss_input_peak: 0.44
+    output_off_peak: 0.66
+    output_peak: 1.32
+  pro:
+    cache_miss_input_off_peak: 0.66
+    cache_miss_input_peak: 1.32
+    output_off_peak: 1.98
+    output_peak: 3.96
+  relative_cost: pro_is_three_times_flash_at_list_price
+  source: https://api-docs.deepseek.com/quick_start/pricing/
+
+gate_state:
+  model_screen: not_run
+  G1: blocked
+  G2: blocked
+  G3: blocked
+  G4: blocked

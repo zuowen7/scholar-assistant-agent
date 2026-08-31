@@ -1,0 +1,258 @@
+schema_version: reviewer-validation-development-corpus/v1
+manifest_version: 0.1.0-development
+status: selected_parse_checked_human_audit_pending
+created_on: 2026-08-30
+development_only: true
+formal_denominator_eligible: false
+external_model_output_seen_before_selection: false
+formal_run_authorized: false
+
+protocol:
+  path: methods/reviewer_validation/protocol.yaml
+  version: 0.1.0-draft
+  sha256: d1ed84a87ee843fca1a8f586618084dc3ca78b784a76f30f6054f1b4fce39c65
+  canonical_methodology: METHODOLOGY.md
+
+model_selection:
+  path: methods/reviewer_validation/inputs/development/model_selection.yaml
+  sha256: 6a43a4a90fbea84e2a0079d53209b5bc23decddf11e0f71eea3cfb2e6e740e0d
+  byte_length: 9114
+
+code_state:
+  base_commit: 1667d39b71dd00fb7aaa8bc7b917c633a4efc3c2
+  working_tree_clean: false
+  note: Development hashes bind the exact uncommitted parser and excerpt implementation.
+  source_files:
+    - path: python/src/parser/extractor.py
+      sha256: 4dc706ce0432395729c54850f0ffee30f2b7fdd2444612d1eac48d4f4a5d36a9
+    - path: python/src/argument/section_utils.py
+      sha256: 14b4163f8ba1da24b984565048a51c78d800fcb4f886949ad3c93da3e743e092
+    - path: python/src/argument/ledger.py
+      sha256: 0568d6a84189f77407b86a58e20ea8a60263d93ce986d10e756ca1589f40173d
+    - path: methods/reviewer_validation/scripts/prepare_development_inputs.py
+      sha256: 72f07e83e8a40871b44b1bc5507650e3f8438fdc1eaa1eaebeca7f3d81957298
+
+selection:
+  strategy: purposive_maximum_variation
+  selected_before_external_model_output: true
+  purpose: Expose parser, excerpt, prompt, and codebook failures before any held-out work.
+  inference_scope: pipeline_development_only
+  criteria:
+    - English open-access regular full paper with a verifiable formal record.
+    - Complementary research paradigms and evidence structures.
+    - Different target venues and domains.
+    - Multi-column layouts that exercise the current product parser.
+    - Sufficient claims, methods, results, limitations, and references for both Ledger and Reviewer pilots.
+  rationale: >-
+    The ICML paper is quantitative causal-method research with semi-synthetic and
+    real-world experiments; the CHI paper is qualitative, value-sensitive design
+    research based on interviews with 20 science journalists. Their methodological
+    and rhetorical differences make them suitable development stress cases, not a
+    representative or inferential sample.
+  held_out_selection_unchanged: seeded_stratified_sampling_from_complete_candidate_frame
+
+preparation:
+  command: python methods/reviewer_validation/scripts/prepare_development_inputs.py --replace-derived
+  parser_entrypoint: python/src/parser/extractor.py::extract_pages
+  ledger_extraction_builder: python/src/argument/ledger.py::prepare_ledger_extraction
+  ledger_status_builder: python/src/argument/ledger.py::prepare_ledger_classification
+  reviewer_builder: python/src/argument/section_utils.py::build_section_excerpt_envelope
+  reviewer_max_characters: 24000
+  llm_invoked: false
+  deterministic_repeat_check: pass
+  deterministic_repeat_report_sha256: daa3807d501c7984f644a7d6ddd9b0783a40d7e30df05becd5e41633ecb1807b
+  deterministic_repeat_runs: 2
+
+papers:
+  - paper_id: dev-icml25-isolated-causal-effects
+    group: development
+    title: Isolated Causal Effects of Natural Language
+    authors:
+      - Victoria Lin
+      - Louis-Philippe Morency
+      - Eli Ben-Michael
+    venue: ICML
+    year: 2025
+    track: main
+    paper_type: regular_full_paper
+    proceedings: Proceedings of the 42nd International Conference on Machine Learning, PMLR 267
+    proceedings_pages: 37919-37941
+    doi: null
+    official_record_url: https://proceedings.mlr.press/v267/lin25k.html
+    source_pdf_url: https://raw.githubusercontent.com/mlresearch/v267/main/assets/lin25k/lin25k.pdf
+    latest_formal_version_basis: >-
+      ICML 2025 is the latest published PMLR proceedings volume available at selection;
+      ICML 2026 post-conference revisions had not yet appeared in PMLR.
+    open_access:
+      status: verified
+      license: CC-BY-4.0
+      evidence_url: https://proceedings.mlr.press/pmlr-license-agreement.html
+      redistribution: permitted_with_attribution_but_kept_local_by_project_policy
+    local_source:
+      path: methods/reviewer_validation/inputs/development/raw/dev-icml25-isolated-causal-effects.pdf
+      sha256: 913bafe27994787cf09069ebcb25252d5bb96c18f556619a190475486ab21041
+      byte_length: 1347948
+    parsed_full_text:
+      path: methods/reviewer_validation/inputs/development/parsed/dev-icml25-isolated-causal-effects.txt
+      sha256: 9d415c8e8e77b7b684af6fabbc56638edc2b68bb01012e1c42c614ee9da98e37
+      byte_length: 81048
+      character_length: 79480
+      page_count: 23
+      nonempty_pages: 23
+      dual_column_pages: 12
+      replacement_characters: 0
+    production_excerpts:
+      ledger_extraction:
+        path: methods/reviewer_validation/inputs/development/excerpts/dev-icml25-isolated-causal-effects.ledger_extraction.txt
+        sha256: 6d154a2671026e3916aae877786b880c5f3cdc14d3b146ab26c37eb28c76c1ef
+        byte_length: 9352
+        character_length: 9306
+        source_scope: promise_zone
+        source_sha256: 53c2794975b813e03636a7c665a93386afcda1042214d1263d05088c4835a95d
+        source_characters: 20817
+        covered_sections: [preamble, Abstract, Introduction, Problem Setting]
+        truncated: true
+      ledger_gold_conditioned_status:
+        path: methods/reviewer_validation/inputs/development/excerpts/dev-icml25-isolated-causal-effects.ledger_gold_conditioned_status.txt
+        sha256: c6e0a79bfe5cb3ac706dea11b93efbb918fb5c4efe8863e2df0210d8519b3823
+        byte_length: 33367
+        character_length: 33228
+        source_scope: body_zone
+        source_sha256: 523c1c994ba0552f3d1065dbb8b915e4d0b181a782e154490ca5f78bd87c8d13
+        source_characters: 58663
+        covered_sections: [Experiments, Results and Discussion, Related Work, Conclusion, References]
+        truncated: true
+      reviewer_venue:
+        path: methods/reviewer_validation/inputs/development/excerpts/dev-icml25-isolated-causal-effects.reviewer_venue.txt
+        sha256: 2dd0f4178d76d30fd59cea950882cedcc6b03c05194ffab0336b4b8dc6389686
+        byte_length: 19941
+        character_length: 19856
+        source_scope: full_text
+        source_sha256: 9d415c8e8e77b7b684af6fabbc56638edc2b68bb01012e1c42c614ee9da98e37
+        source_characters: 79480
+        covered_sections: [preamble, Abstract, Introduction, Problem Setting, Experiments, Results and Discussion, Related Work, Conclusion, References]
+        truncated: true
+    eligibility:
+      english: pass
+      open_access: pass
+      regular_full_paper: pass
+      latest_completed_official_proceedings_or_formal_version: pass
+      parser_nonempty: pass
+      production_excerpts_nonempty: pass
+      team_authorship_conflict: pending_human_confirmation
+      prior_pilot_model_output_exposure: pass
+      main_body_readability: pending_two_human_audit
+    known_parse_risks:
+      - Full-width first-page title fragments can be separated around column content.
+      - Dense equations and appendices retain some PDF encoding artifacts.
+      - Complex tables and figures are not guaranteed to preserve semantic reading order.
+
+  - paper_id: dev-chi26-agency-science-journalism
+    group: development
+    title: '“Helping Me Versus Doing It for Me”: Designing for Agency in LLM-Infused Writing Tools for Science Journalism'
+    authors:
+      - Sachita Nishal
+      - Mina Lee
+      - Nicholas Diakopoulos
+      - Jennifer Wortman Vaughan
+    venue: CHI
+    year: 2026
+    track: papers
+    paper_type: regular_full_paper
+    proceedings: Proceedings of the 2026 CHI Conference on Human Factors in Computing Systems
+    proceedings_pages: 20-page article
+    doi: 10.1145/3772318.3790372
+    official_record_url: https://doi.org/10.1145/3772318.3790372
+    source_pdf_url: https://www.microsoft.com/en-us/research/wp-content/uploads/2026/02/designforagency.pdf
+    latest_formal_version_basis: Completed CHI 2026 proceedings paper with DOI and author-hosted accepted PDF.
+    open_access:
+      status: verified
+      license: CC-BY-4.0
+      evidence_url: https://www.microsoft.com/en-us/research/wp-content/uploads/2026/02/designforagency.pdf
+      evidence_location: first_page
+      redistribution: permitted_with_attribution_but_kept_local_by_project_policy
+    local_source:
+      path: methods/reviewer_validation/inputs/development/raw/dev-chi26-agency-science-journalism.pdf
+      sha256: cfbd3e5e958c534db270a2b93d04a1e0aa50df8a0355cde25f3df7c23f938300
+      byte_length: 1799233
+    parsed_full_text:
+      path: methods/reviewer_validation/inputs/development/parsed/dev-chi26-agency-science-journalism.txt
+      sha256: 49b8cd0986606d9db4edeed341c1a72bfd28653c8341cdb2dc07768b2ea95354
+      byte_length: 115875
+      character_length: 114852
+      page_count: 20
+      nonempty_pages: 20
+      dual_column_pages: 14
+      replacement_characters: 0
+    production_excerpts:
+      ledger_extraction:
+        path: methods/reviewer_validation/inputs/development/excerpts/dev-chi26-agency-science-journalism.ledger_extraction.txt
+        sha256: a90b3cb55a3279e162423bfcf905946540e79f07594e252fb6018e89dd2c63a4
+        byte_length: 10396
+        character_length: 10323
+        source_scope: promise_zone
+        source_sha256: 7290d074839cfef8b54cf1e5f8d9d3b9452feb3e4070f13ca301606adbec715e
+        source_characters: 20137
+        covered_sections: [preamble, Abstract, Introduction, Related Work]
+        truncated: true
+      ledger_gold_conditioned_status:
+        path: methods/reviewer_validation/inputs/development/excerpts/dev-chi26-agency-science-journalism.ledger_gold_conditioned_status.txt
+        sha256: 86153cafdb17527c82895779867765c64f6954132334eddee00546ea69ed7118
+        byte_length: 43311
+        character_length: 42960
+        source_scope: body_zone
+        source_sha256: 963ee73d73ebd77be6aa56f052da19cd6835e6ef30fad48de7f6fbffb58f3d57
+        source_characters: 94715
+        covered_sections: [Methods, 'RQ1: Values Underpinning Journalists’', 'RQ2: Dynamics of Control with LLM-Infused', Discussion, Conclusion, References]
+        truncated: true
+      reviewer_venue:
+        path: methods/reviewer_validation/inputs/development/excerpts/dev-chi26-agency-science-journalism.reviewer_venue.txt
+        sha256: b1e45b143d08103058041506f41c46559ca6d3bf6696650e55ff471af3f5c655
+        byte_length: 21669
+        character_length: 21523
+        source_scope: full_text
+        source_sha256: 49b8cd0986606d9db4edeed341c1a72bfd28653c8341cdb2dc07768b2ea95354
+        source_characters: 114852
+        covered_sections: [preamble, Abstract, Introduction, Related Work, Methods, 'RQ1: Values Underpinning Journalists’', 'RQ2: Dynamics of Control with LLM-Infused', Discussion, Conclusion, References]
+        truncated: true
+    eligibility:
+      english: pass
+      open_access: pass
+      regular_full_paper: pass
+      latest_completed_official_proceedings_or_formal_version: pass
+      parser_nonempty: pass
+      production_excerpts_nonempty: pass
+      team_authorship_conflict: pending_human_confirmation
+      prior_pilot_model_output_exposure: pass
+      main_body_readability: pending_two_human_audit
+    known_parse_risks:
+      - Full-width first-page title fragments can be separated around column content.
+      - Long subsection headings can be cut at the PDF line boundary.
+      - Complex tables and figures are not guaranteed to preserve semantic reading order.
+
+coordinate_mapping:
+  status: pending
+  reason: Section-based excerpts require piecewise excerpt-to-full-text mappings before G1 can pass.
+
+human_audit:
+  required_annotators: [A, B]
+  corpus_eligibility_records:
+    A:
+      path: methods/reviewer_validation/inputs/development/human_audit/annotator_A.yaml
+      status: pending
+      sha256: null
+      byte_length: null
+    B:
+      path: methods/reviewer_validation/inputs/development/human_audit/annotator_B.yaml
+      status: pending
+      sha256: null
+      byte_length: null
+  parser_and_excerpt_readability: pending
+  authorship_conflict_confirmation: pending
+  signed_g1_decision: pending
+
+gate_state:
+  G1: blocked
+  G2: blocked
+  G3: blocked
+  G4: blocked

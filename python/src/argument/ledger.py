@@ -31,14 +31,17 @@ _STATUS_SEVERITY = {
 _SUBSTANTIVE_STATUSES = frozenset({"paid", "partial", "unpaid", "mismatch"})
 
 _PROMISE_SECTION_RE = re.compile(
-    r"^#{1,3}\s*(abstract|摘要|introduction|引言|研究背景|研究动机|intro|background|motivation)\b",
+    r"^(?:#{1,3}\s*)?(?:\d{1,2}(?:\.\d{1,2})*\.?\s*)?"
+    r"(abstract|摘要|introduction|引言|研究背景|研究动机|intro|background|motivation)\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
 _METHOD_RE = re.compile(
-    r"^#{1,3}\s*(method|approach|methodology|方法|实验|experiment|3\s|4\s)\b",
+    r"^(?:#{1,3}\s*)?(?:\d{1,2}(?:\.\d{1,2})*\.?\s*)?"
+    r"(methods?|approach|methodology|方法|实验|experiments?)"
+    r"(?:\s*[:\-–—]\s*[^\n]{0,100})?\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
-_HEADER_RE = re.compile(r"^#{1,3}\s+", re.MULTILINE)
+_HEADER_RE = re.compile(r"^(?:#{1,3}\s+|\d{1,2}(?:\.\d{1,2})*\.?\s+)", re.MULTILINE)
 
 _LEDGER_MAX_TOKENS = 4096
 _LEDGER_TEMPERATURE = 0.3

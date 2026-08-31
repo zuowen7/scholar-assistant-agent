@@ -1,6 +1,6 @@
 # Reviewer Validation：实施与验收计划
 
-结论：Work A–F 已通过各自限定范围的开发态、来源追溯与 pre-pilot 验收，但尚无真实模型、held-out 或 formal data 运行，也无 RQ1–RQ3 效果结论；下一执行边界是真实 development 输出的 G1 人工 pilot，G1、G2、G4 仍为 BLOCKED，正式实验继续禁止。
+结论：Work A–F 与 Work G 的零费用模型筛选基础设施已通过限定范围验收，但尚无真实模型、held-out 或 formal data 运行；下一执行边界是 A/B 先锁定两篇开发论文的可读性与作者冲突审计，再运行 Pro/Flash 开发盲测，G1、G2、G4 仍为 BLOCKED。
 
 ## 1. 状态、依据与共同边界
 
@@ -14,7 +14,8 @@
 - 独立 capstone PASS（development infrastructure only）：未调用外部 LLM，未读取 held-out，未生成或运行 formal data；因此不改变任何研究 gate。
 - Work E PASS（source audit only）：首轮独立全量复核因两处官方日期遗漏、KDD-Y4/CHI-Y4 适用范围泛化和非规范 decision 术语而 FAIL；窄范围纠正后全量复审 PASS。最终为 20 个官方 source、20 个唯一 URL、42 个旧 YAML atom、35 个 replacement，决策为 6 `keep`/29 `rewrite_conditionally`/7 `remove`。
 - Work F PASS（pre-pilot inputs only）：实施后独立复核首先判定 REVISE，因为 `run_venue_ab.py` 仍使用 `profile_text[:600]` 使长 NeurIPS 成对 probe 失败，且 CHI-Y4 的 source 顺序不一致；窄范围修复后最终全量复审 PASS。focused tests 为 Reviewer 60 passed、grounding 19 passed、isolation 13 passed、scaffold 12 passed；长 NeurIPS full-profile mock pair 完整进入 prompt/artifact，generic block 的规范 UTF-8/LF 表示为 219 bytes，SHA-256 `30fd129da348e52128cfceab4844b54dedb7abdb39c9fe217251bc29fb60619a`。draft verifier PASS 但明确 `FORMAL_RUN: BLOCKED`，strict verifier 按预期非零退出。
-- 研究证据边界：Work E/F 未运行真实模型，未读取 held-out，未生成或运行 formal data；它们只支持“来源映射和消费路径已按契约实施”，不支持 profile 提高官方标准遵循度或任何 RQ3 效果结论。
+- Work G READY（zero-network only）：两篇目的抽样 development 论文、解析全文与生产 excerpts 已逐项哈希；Pro/Flash 计划固定为 8 对、16 个逻辑调用。runner 会在发送前校验 thinking/effort/token/JSON 参数、保存无认证头的实际 HTTP attempt、比较每对完整首请求、分离私有映射与盲包，并要求 A/B 独立评分文件分别锁定后机械选择模型。当前 preflight 因 A/B corpus audit 未完成而 fail-closed，尚未调用 DeepSeek。
+- 研究证据边界：Work E/F/G 均未读取 held-out 或运行 formal data；当前 Work G 也未调用真实模型。现有证据只支持“输入、请求控制、记录与盲评路径已按契约实施”，不支持任何 RQ1–RQ3 效果结论。
 - 正式运行禁令：首轮只允许 synthetic fixture 和 protocol 指定的 development 输入。不得对 14 篇 held-out、80 项正式 status challenge 或 120 项正式 Anchor challenge 运行系统、生成预测或调参；正式 Anchor case 本身只能按 Work D 的“生成后再冻结”规则离线生成，生成过程不得调用 `relocate`。
 - 等价性原则：评测路径必须复用生产 excerpt、prompt、参数、解析与状态映射；禁止另抄一份“看起来相同”的 prompt，禁止为提高 pilot 表现改写 production semantics。
 - 失败保留原则：空响应、无效 JSON、超时、provider 错误和合法空数组是不同结果；不得把失败改写成成功的空结果，不得用补跑覆盖首次记录。

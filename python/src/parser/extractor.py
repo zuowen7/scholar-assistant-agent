@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import statistics
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -106,7 +107,9 @@ def extract_pages(pdf_path: str | Path) -> DocumentContent:
                     text = _extract_dual_column(page)
                     # 双栏提取也可能存在词间距丢失，回退到字符级提取
                     if _has_missing_spaces(text):
-                        char_text = _extract_with_char_spaces(page)
+                        # 字符级回退仍须保持左栏在前、右栏在后；全页按 y
+                        # 排序会把两栏逐行交错，破坏论文的语义顺序。
+                        char_text = _extract_dual_column_with_char_spaces(page)
                         if char_text and len(char_text) > len(text) * 0.6:
                             text = char_text
                 else:
@@ -240,12 +243,32 @@ def _extract_dual_column(page: pdfplumber.page.Page) -> str:
     min_x = page.width * 0.04
     body_words = [w for w in body_words if w["x0"] >= min_x and w.get("size", 99) >= 6.0]
 
+    # Some publisher PDFs encode an entire visual line as one "word" with no
+    # spaces. Repair those tokens from their character coordinates before
+    # deciding whether a slower character-level fallback is necessary. This
+    # preserves the already-detected column membership of every token.
+    body_words = [_repair_word_spacing(page, word) for word in body_words]
+
     # 检测正文主字体
     body_font = _detect_body_font(body_words, midpoint)
 
-    # 过滤非正文字体词（图片标注、水印等）
+    # 过滤较小的非正文字体词（图片标注、水印等），同时保留标题和
+    # 粗体章节名。旧逻辑删除所有非正文字体，会连 Abstract/Methods
+    # 等结构信号一起删除。
     if body_font:
-        filtered = [w for w in body_words if _is_same_font_family(w.get("fontname", ""), body_font)]
+        body_sizes = [
+            float(w.get("size", 0) or 0)
+            for w in body_words
+            if _is_same_font_family(w.get("fontname", ""), body_font)
+            and float(w.get("size", 0) or 0) > 0
+        ]
+        body_size = statistics.median(body_sizes) if body_sizes else 8.0
+        filtered = [
+            w
+            for w in body_words
+            if _is_same_font_family(w.get("fontname", ""), body_font)
+            or float(w.get("size", 0) or 0) >= body_size * 0.95
+        ]
     else:
         filtered = body_words
 
@@ -263,6 +286,37 @@ def _extract_dual_column(page: pdfplumber.page.Page) -> str:
         parts.append(right_text.strip())
 
     return "\n\n".join(parts)
+
+
+def _repair_word_spacing(page: pdfplumber.page.Page, word: dict) -> dict:
+    """Restore spaces inside a collapsed PDF word without changing its bbox.
+
+    The repair is intentionally conservative: only long alphabetic tokens are
+    inspected, and character reconstruction is accepted only when removing the
+    inferred spaces yields the exact original token.
+    """
+    text = str(word.get("text", ""))
+    if len(text) < 8 or " " in text or not re.search(r"[A-Za-z]", text):
+        return word
+
+    top = float(word.get("top", 0) or 0)
+    x0 = float(word.get("x0", 0) or 0)
+    x1 = float(word.get("x1", 0) or 0)
+    chars = [
+        char
+        for char in page.chars
+        if x0 - 0.6 <= float(char.get("x0", 0) or 0)
+        and float(char.get("x1", 0) or 0) <= x1 + 0.6
+        and abs(float(char.get("top", 0) or 0) - top) <= 1.5
+    ]
+    chars.sort(key=lambda char: float(char.get("x0", 0) or 0))
+    if not chars:
+        return word
+
+    repaired = _chars_to_spaced_line(chars)
+    if " " not in repaired or repaired.replace(" ", "") != text.replace(" ", ""):
+        return word
+    return {**word, "text": repaired}
 
 
 def _detect_body_font(words: list[dict], midpoint: float) -> str:
@@ -410,12 +464,52 @@ def _extract_with_char_spaces(page: pdfplumber.page.Page) -> str:
     if not body_chars:
         return ""
 
-    # 按 y 坐标分行 (容差 3pt)
-    body_chars.sort(key=lambda c: (c["top"], c["x0"]))
-    lines: list[list[dict]] = []
-    current_line: list[dict] = [body_chars[0]]
+    return _chars_to_spaced_text(body_chars)
 
-    for c in body_chars[1:]:
+
+def _extract_dual_column_with_char_spaces(page: pdfplumber.page.Page) -> str:
+    """Character-level fallback that preserves left-then-right column order."""
+    chars = page.chars
+    if not chars:
+        return ""
+
+    header_cutoff = page.height * 0.05
+    footer_cutoff = page.height * 0.95
+    min_x = page.width * 0.04
+    midpoint = page.width / 2
+    body_chars = [
+        char
+        for char in chars
+        if header_cutoff <= float(char.get("top", 0) or 0) <= footer_cutoff
+        and float(char.get("x0", 0) or 0) >= min_x
+        and float(char.get("size", 99) or 99) >= 6.0
+    ]
+    left = [
+        char
+        for char in body_chars
+        if (float(char.get("x0", 0) or 0) + float(char.get("x1", 0) or 0)) / 2 < midpoint
+    ]
+    right = [
+        char
+        for char in body_chars
+        if (float(char.get("x0", 0) or 0) + float(char.get("x1", 0) or 0)) / 2 >= midpoint
+    ]
+    return "\n\n".join(
+        part for part in (_chars_to_spaced_text(left), _chars_to_spaced_text(right)) if part.strip()
+    )
+
+
+def _chars_to_spaced_text(chars: list[dict]) -> str:
+    """Reconstruct text from character coordinates in reading-order input."""
+    if not chars:
+        return ""
+
+    # 按 y 坐标分行 (容差 3pt)
+    chars = sorted(chars, key=lambda c: (c["top"], c["x0"]))
+    lines: list[list[dict]] = []
+    current_line: list[dict] = [chars[0]]
+
+    for c in chars[1:]:
         if abs(c["top"] - current_line[0]["top"]) <= 3:
             current_line.append(c)
         else:
@@ -427,36 +521,21 @@ def _extract_with_char_spaces(page: pdfplumber.page.Page) -> str:
     text_lines: list[str] = []
     for line_chars in lines:
         line_chars.sort(key=lambda c: c["x0"])
-
-        # 计算该行的字号（取中位数）
-        sizes = [c.get("size", 8) for c in line_chars]
-        sizes.sort()
-        sizes[len(sizes) // 2] if sizes else 8
-
-        # 空格阈值: 字号的 20%~30%
-        # 通过分析行内所有相邻字符间距来自适应
-        gaps = []
-        for j in range(1, len(line_chars)):
-            gap = line_chars[j]["x0"] - line_chars[j - 1]["x1"]
-            if gap > 0:
-                gaps.append(gap)
-
-        # 词内间隙通常 < 0.3pt，词间间隙通常 > 0.8pt
-        # 使用固定阈值 0.5pt，这对所有字号都安全
-        space_threshold = 0.5
-
-        # 重建行文本
-        parts: list[str] = []
-        for j, c in enumerate(line_chars):
-            if j > 0:
-                gap = c["x0"] - line_chars[j - 1]["x1"]
-                if gap > space_threshold:
-                    parts.append(" ")
-            parts.append(c["text"])
-
-        text_lines.append("".join(parts))
+        text_lines.append(_chars_to_spaced_line(line_chars))
 
     return "\n".join(text_lines)
+
+
+def _chars_to_spaced_line(chars: list[dict]) -> str:
+    """Reconstruct one visual line, inserting spaces for gaps over 0.5pt."""
+    parts: list[str] = []
+    for index, char in enumerate(chars):
+        if index > 0:
+            gap = float(char["x0"]) - float(chars[index - 1]["x1"])
+            if gap > 0.5:
+                parts.append(" ")
+        parts.append(str(char.get("text", "")))
+    return "".join(parts)
 
 
 # ---------------------------------------------------------------------------

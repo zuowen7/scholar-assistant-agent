@@ -1,6 +1,13 @@
 # Reviewer Validation execution scaffold
 
-结论：本目录当前只提供可审计的 `draft` protocol、schema 与冻结校验器；在 strict 校验成功前，任何 held-out、正式 challenge、Anchor 或模型运行都被禁止。
+结论：本目录已有可审计的 `draft` protocol、开发语料与零网络模型筛选入口；当前只允许完成 A/B 开发语料审计，审计锁定前 DeepSeek 调用会失败关闭，held-out 与正式运行继续禁止。
+
+## Development model screen
+
+- `inputs/development/manifest.yaml` 固定两篇开发论文、解析结果、production excerpts 与来源/代码 hash；`model_selection.yaml` 固定 Pro/Flash 的 8 对、16 次逻辑调用和盲评规则。
+- A、B 先分别填写 `inputs/development/human_audit/annotator_A.yaml` 与 `annotator_B.yaml`；协调者核验并写入 hash 后，付费运行才可能通过预检。
+- 零费用检查：`python ../methods/reviewer_validation/scripts/run_model_selection.py preflight`。当前预期结果为 `ready_for_paid_execution: false`，且 `network_calls: 0`。
+- 多模型筛选不计入 G1；选定单一模型后仍须重跑 development pilot。任何 held-out/formal runner 仍受 strict freeze gate 阻断。
 
 ## Authority and scope
 
