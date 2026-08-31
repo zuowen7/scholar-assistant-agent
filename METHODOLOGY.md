@@ -57,7 +57,7 @@ RQ3 只估计 profile 文本的增量作用。两种条件中的 venue 名称保
 正式 held-out 运行前，在 `methods/reviewer_validation/protocol.yaml` 固定以下内容：
 
 1. 本文三个 RQ、主要指标、次要指标和主张门槛。
-2. 16 篇论文的 manifest、纳入排除规则、抽样 seed、文件 hash、分组，以及每个 production excerpt 的坐标映射 hash。
+2. 16 篇论文的 manifest、纳入排除规则、development 目的抽样理由、held-out 抽样 seed、文件 hash、分组，以及每个 production excerpt 的坐标映射 hash。
 3. 两名标注者的 codebook、span 匹配规则、状态规则、criterion applicability 规则和 venue 评分规则。
 4. 单一 provider/model、生成参数、prompt/profile/excerpt 构造版本。
 5. 运行次数、执行顺序、A/B 随机化 seed、失败与重试规则。
@@ -71,6 +71,8 @@ RQ3 只估计 profile 文本的增量作用。两种条件中的 venue 名称保
 ### 4.1 Pilot
 
 仅使用 2 篇 development 论文和不进入正式集的锚点样本。两人必须查看真实 production excerpt、完整请求、原始响应、解析结果和评分包，检查：
+
+在 G1 之前先完成一次独立的开发态模型筛选：固定两篇已选 development 论文，对 `deepseek-v4-pro` 与 `deepseek-v4-flash` 分别运行 Ledger extraction 和 venue-conditioned Reviewer，各模型×论文×工作流重复 2 次，共 16 个逻辑调用。两模型均显式使用 thinking enabled、reasoning effort high、同一生产 prompt/excerpt/参数；实际出站请求在 HTTP 发送前校验，首请求除 model ID 外必须逐字节一致。A、B 分开完成 M1/M2 盲评并各自锁定文件 hash 后才解盲；pairwise wins 优先，unsupported-content 总分不得更差，完全平局时才以预先声明的用户偏好选择 Pro。该筛选只决定后续单模型 pilot 的候选模型，不计入 G1、正式分母或 RQ1–RQ3 结果；筛选后仍须用所选单一模型重跑并完成人工 G1 审计。
 
 - 两阶段 Ledger 的输入与生产路径一致，gold Promise 只在状态分类阶段注入。
 - 单一 provider/model 生效，失败不会转入其他模型。
@@ -96,7 +98,7 @@ pilot 是否通过必须依赖上述人工审计，不得以“脚本无报错�
 
 ### 5.1 16 篇 master corpus
 
-- 2 篇 development：仅用于 pipeline pilot、codebook 迭代和 profile 映射检查。
+- 2 篇 development：在看到任何模型输出前按最大差异目的抽样，覆盖不同研究范式、论证结构和 PDF 布局压力，仅用于 pipeline pilot、codebook 迭代、模型筛选和 profile 映射检查；不进入任何正式分母，也不据此作总体推断。
 - 14 篇 held-out：七个目标 venue 各 2 篇，用于 RQ3。
 - RQ1 从 14 篇 held-out 中预先选定 10 篇作为 Ledger 子集，按领域分层为 5 篇 AI/CS 与 5 篇 HCI、教育或交叉学科论文。
 
@@ -117,7 +119,7 @@ pilot 是否通过必须依赖上述人工审计，不得以“脚本无报错�
 - 解析后主要正文不可读。
 - 团队成员参与创作，或已在 pilot 中看过模型输出。
 
-先生成所有候选项，再按预注册 seed 分层抽样；不得按预期“容易发现问题”选论文。manifest 至少记录 paper_id、venue、年份、官方 URL、许可状态、原文件 hash、解析文本 hash、excerpt hash、纳入排除原因和分组。若版权不允许再分发全文，仅发布元数据、hash 和获取说明。
+development 论文可按预先写明的最大差异标准目的选择，因为其目标是尽早暴露 pipeline 与 codebook 缺陷，而非估计总体效果；选择理由、选择时间和“选择前未查看模型输出”必须进入独立 development manifest。正式 held-out 语料则必须先生成完整候选框，再按预注册 seed 分层抽样；不得按预期“容易发现问题”选择正式论文。manifest 至少记录 paper_id、venue、年份、官方 URL、许可状态、原文件 hash、解析文本 hash、excerpt hash、纳入排除原因和分组。若版权不允许再分发全文，仅发布元数据、hash 和获取说明。
 
 ### 5.3 数据层级
 

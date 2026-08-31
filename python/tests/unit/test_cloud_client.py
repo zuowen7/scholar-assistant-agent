@@ -144,6 +144,21 @@ class TestOpenAIFormat:
 
         assert payload["thinking"] == {"type": "enabled"}
 
+    def test_reasoning_effort_is_normalized_as_optional_argument_metadata(self):
+        client = CloudClient(
+            provider="deepseek",
+            base_url="https://api.deepseek.com/v1",
+            api_key="sk-test",
+            model="deepseek-v4-pro",
+            reasoning_effort=" HIGH ",
+        )
+
+        assert client.reasoning_effort == "high"
+
+    def test_invalid_reasoning_effort_fails_fast(self):
+        with pytest.raises(ValueError, match="reasoning_effort"):
+            CloudClient(reasoning_effort="maximum")
+
 
 # ---------------------------------------------------------------------------
 # Anthropic API

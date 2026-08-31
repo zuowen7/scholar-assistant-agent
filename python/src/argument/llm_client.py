@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import copy
 import logging
 import time
 from typing import Any
 
 from src.constants import ANTHROPIC_API_VERSION
-from src.llm_request_policy import apply_thinking_policy, resolve_thinking_mode
+from src.llm_request_policy import (
+    apply_reasoning_effort_policy,
+    apply_thinking_policy,
+    resolve_thinking_mode,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +27,13 @@ _REASONING_MODEL_MARKERS = (
 _MIN_REASONING_TOKENS = 8192
 _MAX_INITIAL_REASONING_TOKENS = 32768
 _MAX_RETRY_TOKENS = 32768
+
+
+def _emit_request_audit(client: Any, event: dict[str, Any]) -> None:
+    """Emit a header-free request event when an explicit audit hook is attached."""
+    hook = getattr(client, "request_audit_hook", None)
+    if hook is not None:
+        hook(copy.deepcopy(event))
 
 
 def _is_reasoning_model(model: str) -> bool:
@@ -138,33 +150,95 @@ async def _direct_cloud_chat(
         if json_mode:
             # DeepSeek/OpenAI JSON Output：保证返回合法 JSON（提示词须含 "json" 字样）
             payload["response_format"] = {"type": "json_object"}
-        apply_thinking_policy(
+        resolved_thinking = apply_thinking_policy(
             payload,
             base_url=base_url,
             model=model,
             configured=thinking_mode,
         )
+        if resolved_thinking != "disabled":
+            apply_reasoning_effort_policy(
+                payload,
+                base_url=base_url,
+                model=model,
+                configured=getattr(client, "reasoning_effort", None),
+            )
         url = f"{base_url}/chat/completions"
 
+    request_sequence = 0
+
     async def _do_request(http: Any, tokens: int) -> tuple[str, str, str]:
+        nonlocal request_sequence
+        request_sequence += 1
         p = {**payload, "max_tokens": tokens}
-        started = time.monotonic()
-        resp = await http.post(url, headers=headers, json=p)
-        resp.raise_for_status()
-        data = resp.json()
+        started_monotonic = time.monotonic()
+        started_at = time.time()
+        _emit_request_audit(
+            client,
+            {
+                "event": "request_started",
+                "sequence": request_sequence,
+                "started_at": started_at,
+                "payload": p,
+            },
+        )
+        resp = None
+        try:
+            resp = await http.post(url, headers=headers, json=p)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as exc:
+            _emit_request_audit(
+                client,
+                {
+                    "event": "request_failed",
+                    "sequence": request_sequence,
+                    "started_at": started_at,
+                    "ended_at": time.time(),
+                    "http_status": getattr(resp, "status_code", None),
+                    "error_type": type(exc).__name__,
+                },
+            )
+            raise
         logger.info(
             "argument LLM completed model=%s max_tokens=%d elapsed_ms=%d",
             model,
             tokens,
-            round((time.monotonic() - started) * 1000),
+            round((time.monotonic() - started_monotonic) * 1000),
         )
         if api_format == "anthropic":
             text = "".join(
                 b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"
             )
+            _emit_request_audit(
+                client,
+                {
+                    "event": "response_received",
+                    "sequence": request_sequence,
+                    "started_at": started_at,
+                    "ended_at": time.time(),
+                    "http_status": getattr(resp, "status_code", None),
+                    "finish_reason": None,
+                    "response_model": data.get("model"),
+                    "usage": data.get("usage") if isinstance(data.get("usage"), dict) else None,
+                },
+            )
             return text, "", ""
         msg = data.get("choices", [{}])[0].get("message", {})
         finish = data.get("choices", [{}])[0].get("finish_reason", "")
+        _emit_request_audit(
+            client,
+            {
+                "event": "response_received",
+                "sequence": request_sequence,
+                "started_at": started_at,
+                "ended_at": time.time(),
+                "http_status": getattr(resp, "status_code", None),
+                "finish_reason": finish,
+                "response_model": data.get("model"),
+                "usage": data.get("usage") if isinstance(data.get("usage"), dict) else None,
+            },
+        )
         return msg.get("content", ""), msg.get("reasoning_content", ""), finish
 
     resolved_thinking = resolve_thinking_mode(base_url, model, thinking_mode)

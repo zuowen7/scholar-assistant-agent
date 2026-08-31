@@ -74,6 +74,26 @@ We evaluate on dataset D.
 In conclusion, we demonstrated that our method achieves state-of-the-art performance.
 """
 
+PLAIN_PDF_PAPER = """\
+Paper title
+Abstract
+This paper proposes a bounded method.
+1 Introduction
+The introduction states the motivation.
+2 Related Work
+Prior work is summarized here.
+3 Methods
+The method is described here.
+4 RQ1: Main Findings
+The first finding is reported here.
+5 Results and Discussion
+The result is reported here.
+6 Conclusion
+The conclusion states the limitation.
+References
+[1] Reference entry.
+"""
+
 
 class TestFindSection:
     def test_finds_abstract_english(self):
@@ -137,6 +157,12 @@ class TestFindSection:
         assert text is not None
         assert "This paper proposes" in text
 
+    def test_finds_numbered_plain_pdf_section(self):
+        text = find_section(PLAIN_PDF_PAPER, ["methods", "methodology"])
+        assert text is not None
+        assert "described here" in text
+        assert "first finding" not in text
+
 
 # ── split_paragraphs ──────────────────────────────────────────────────────────
 
@@ -172,6 +198,35 @@ def test_section_excerpt_envelope_reports_coverage_and_truncation():
     assert excerpt.excerpt_chars <= 220
     assert excerpt.covered_sections == ("Intro", "Results")
     assert len(excerpt.source_hash) == 64
+
+
+def test_section_excerpt_recognizes_plain_pdf_headings():
+    excerpt = build_section_excerpt_envelope(PLAIN_PDF_PAPER, max_chars=260)
+
+    assert "Methods" in excerpt.covered_sections
+    assert "RQ1: Main Findings" in excerpt.covered_sections
+    assert "Results and Discussion" in excerpt.covered_sections
+    assert "Conclusion" in excerpt.covered_sections
+
+
+def test_unsectioned_excerpt_samples_start_middle_and_end():
+    paper = "A" * 300 + "M" * 300 + "Z" * 300
+
+    excerpt = build_section_excerpt_envelope(paper, max_chars=300)
+
+    assert excerpt.covered_sections == ("start", "middle", "end")
+    assert excerpt.text.startswith("A")
+    assert "M" in excerpt.text
+    assert excerpt.text.endswith("Z")
+    assert len(excerpt.text) == 300
+
+
+def test_pdf_plot_hash_labels_are_not_markdown_headings():
+    paper = "Abstract\nA real abstract.\n\n# 4 robustness value ↑  # 4 robustness value ↑"
+
+    excerpt = build_section_excerpt_envelope(paper, max_chars=1000)
+
+    assert excerpt.covered_sections == ("Abstract",)
 
 
 # ── has_contrast_marker ───────────────────────────────────────────────────────

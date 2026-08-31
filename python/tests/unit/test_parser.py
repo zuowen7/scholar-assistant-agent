@@ -6,7 +6,9 @@ from src.parser.extractor import (
     DocumentContent,
     PageContent,
     _detect_columns,
+    _extract_dual_column_with_char_spaces,
     _filter_header_footer,
+    _repair_word_spacing,
 )
 
 
@@ -124,3 +126,54 @@ class TestFilterHeaderFooter:
         page.extract_words.return_value = words
         result = _filter_header_footer("hello", page)
         assert result == "hello"
+
+
+class TestMissingSpaceRepair:
+    @staticmethod
+    def _chars(text: str, *, top: float, start: float, word_gaps: set[int]) -> list[dict]:
+        chars: list[dict] = []
+        x = start
+        for index, char in enumerate(text):
+            if char == " ":
+                x += 1.2
+                continue
+            if index in word_gaps:
+                x += 1.2
+            chars.append({"text": char, "x0": x, "x1": x + 0.4, "top": top, "size": 9.0})
+            x += 0.4
+        return chars
+
+    def test_repairs_collapsed_word_from_character_gaps(self) -> None:
+        page = MagicMock()
+        page.chars = self._chars(
+            "Journalists rely on agency",
+            top=100.0,
+            start=50.0,
+            word_gaps={12, 17, 20},
+        )
+        word = {
+            "text": "Journalistsrelyonagency",
+            "x0": 50.0,
+            "x1": page.chars[-1]["x1"],
+            "top": 100.0,
+        }
+
+        repaired = _repair_word_spacing(page, word)
+
+        assert repaired["text"] == "Journalists rely on agency"
+        assert repaired["x0"] == word["x0"]
+        assert repaired["x1"] == word["x1"]
+
+    def test_dual_column_character_fallback_keeps_columns_separate(self) -> None:
+        page = MagicMock()
+        page.width = 600.0
+        page.height = 800.0
+        left = self._chars("Left one", top=100.0, start=60.0, word_gaps={5})
+        left += self._chars("Left two", top=120.0, start=60.0, word_gaps={5})
+        right = self._chars("Right one", top=100.0, start=360.0, word_gaps={6})
+        right += self._chars("Right two", top=120.0, start=360.0, word_gaps={6})
+        page.chars = left + right
+
+        text = _extract_dual_column_with_char_spaces(page)
+
+        assert text == "Left one\nLeft two\n\nRight one\nRight two"

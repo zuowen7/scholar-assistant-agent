@@ -14,7 +14,11 @@ import httpx
 import yaml
 
 from src.constants import ANTHROPIC_API_VERSION
-from src.llm_request_policy import apply_thinking_policy, normalize_thinking_mode
+from src.llm_request_policy import (
+    apply_thinking_policy,
+    normalize_reasoning_effort,
+    normalize_thinking_mode,
+)
 from src.translator._helpers import (
     TranslationResult,
     _deduplicate_repetition,
@@ -117,6 +121,7 @@ class CloudClient:
         system_prompt: str = "",
         timeout: float = 300.0,
         thinking_mode: str = "auto",
+        reasoning_effort: str | None = None,
     ) -> None:
         """初始化云端翻译客户端
 
@@ -130,6 +135,7 @@ class CloudClient:
             system_prompt: 自定义系统提示词
             timeout: HTTP 请求超时秒数
             thinking_mode: 思考模式 auto/enabled/disabled
+            reasoning_effort: 显式推理强度 low/high/max；默认不发送
         """
         self.provider = provider
         self.base_url = base_url.rstrip("/")
@@ -140,6 +146,7 @@ class CloudClient:
         self.system_prompt = system_prompt
         self.timeout = timeout
         self.thinking_mode = normalize_thinking_mode(thinking_mode)
+        self.reasoning_effort = normalize_reasoning_effort(reasoning_effort)
 
         preset = PROVIDER_PRESETS.get(provider, {})
         self.api_format = preset.get("api_format", "openai")

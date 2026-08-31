@@ -1,0 +1,5 @@
+# Local acquisition and parser outputs. The tracked manifest records hashes and
+# source URLs; raw/full text is kept out of Git even when redistribution is allowed.
+raw/
+parsed/
+excerpts/

@@ -12,7 +12,7 @@
   "artifacts": [
     {
       "artifact_id": "canonical_methodology", "category": "protocol_support", "path": "METHODOLOGY.md",
-      "sha256": "9ae0bc27b1b8d563849d55d909bcf888cff118ebb6f12fe2d4136c51ad566354", "byte_length": 46097,
+        "sha256": "751aba8bc27e085c85d190d4ae9f33c0250c486822aa1ce8079f1ece984f9364", "byte_length": 47501,
       "schema_id": null, "record_count": null, "created_at": "2026-08-28T16:48:09Z",
       "formal_input": true, "immutable": true, "required_for_strict": true, "status": "verified"
     },

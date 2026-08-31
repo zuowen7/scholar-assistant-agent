@@ -13,6 +13,7 @@ from src.argument.llm_client import _direct_cloud_chat, call_llm_chat
 class _Response:
     def __init__(self, payload: dict):
         self._payload = payload
+        self.status_code = 200
 
     def raise_for_status(self) -> None:
         return None
@@ -26,8 +27,10 @@ def _openai_response(
     *,
     reasoning: str = "",
     finish_reason: str = "stop",
+    model: str = "deepseek-v4-pro",
 ) -> dict:
     return {
+        "model": model,
         "choices": [
             {
                 "message": {
@@ -36,7 +39,8 @@ def _openai_response(
                 },
                 "finish_reason": finish_reason,
             }
-        ]
+        ],
+        "usage": {"prompt_tokens": 12, "completion_tokens": 34},
     }
 
 
@@ -76,6 +80,8 @@ def _client(
     configured_max_tokens: int = 16384,
     base_url: str = "https://example.invalid/v1",
     thinking_mode: str = "auto",
+    reasoning_effort: str | None = None,
+    request_audit_hook=None,
 ):
     return SimpleNamespace(
         api_format="openai",
@@ -85,6 +91,8 @@ def _client(
         timeout=60.0,
         max_tokens=configured_max_tokens,
         thinking_mode=thinking_mode,
+        reasoning_effort=reasoning_effort,
+        request_audit_hook=request_audit_hook,
     )
 
 
@@ -124,6 +132,102 @@ async def test_explicit_deepseek_thinking_mode_is_respected():
 
     assert _FakeAsyncClient.requests[0]["json"]["thinking"] == {"type": "enabled"}
     assert _FakeAsyncClient.requests[0]["json"]["max_tokens"] == 16384
+
+
+@pytest.mark.asyncio
+async def test_explicit_deepseek_reasoning_effort_is_emitted():
+    _FakeAsyncClient.responses = [_openai_response("done")]
+
+    await _direct_cloud_chat(
+        "review this",
+        _client(
+            "deepseek-v4-pro",
+            base_url="https://api.deepseek.com/v1",
+            thinking_mode="enabled",
+            reasoning_effort="high",
+        ),
+        max_tokens=1024,
+        temperature=0.3,
+    )
+
+    payload = _FakeAsyncClient.requests[0]["json"]
+    assert payload["thinking"] == {"type": "enabled"}
+    assert payload["reasoning_effort"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_reasoning_effort_is_omitted_when_thinking_is_disabled():
+    _FakeAsyncClient.responses = [_openai_response("done")]
+
+    await _direct_cloud_chat(
+        "review this",
+        _client(
+            "deepseek-v4-pro",
+            base_url="https://api.deepseek.com/v1",
+            thinking_mode="disabled",
+            reasoning_effort="high",
+        ),
+        max_tokens=1024,
+        temperature=0.3,
+    )
+
+    assert "reasoning_effort" not in _FakeAsyncClient.requests[0]["json"]
+
+
+@pytest.mark.asyncio
+async def test_request_audit_records_actual_payload_without_headers():
+    _FakeAsyncClient.responses = [_openai_response("done")]
+    events: list[dict] = []
+
+    await _direct_cloud_chat(
+        "review this",
+        _client(
+            "deepseek-v4-pro",
+            base_url="https://api.deepseek.com/v1",
+            thinking_mode="enabled",
+            reasoning_effort="high",
+            request_audit_hook=events.append,
+        ),
+        max_tokens=2048,
+        temperature=0.5,
+    )
+
+    assert [event["event"] for event in events] == [
+        "request_started",
+        "response_received",
+    ]
+    request = events[0]["payload"]
+    assert request["max_tokens"] == 16384
+    assert request["thinking"] == {"type": "enabled"}
+    assert request["reasoning_effort"] == "high"
+    assert "headers" not in events[0]
+    assert "secret" not in str(events)
+    assert events[1]["usage"] == {"prompt_tokens": 12, "completion_tokens": 34}
+    assert events[1]["response_model"] == "deepseek-v4-pro"
+
+
+@pytest.mark.asyncio
+async def test_request_audit_hook_can_block_before_http_send():
+    _FakeAsyncClient.responses = [_openai_response("must not be sent")]
+
+    def reject(_event: dict) -> None:
+        raise RuntimeError("pre-send invariant failed")
+
+    with pytest.raises(RuntimeError, match="pre-send invariant failed"):
+        await _direct_cloud_chat(
+            "review this",
+            _client(
+                "deepseek-v4-pro",
+                base_url="https://api.deepseek.com/v1",
+                thinking_mode="enabled",
+                reasoning_effort="high",
+                request_audit_hook=reject,
+            ),
+            max_tokens=2048,
+            temperature=0.5,
+        )
+
+    assert _FakeAsyncClient.requests == []
 
 
 @pytest.mark.asyncio

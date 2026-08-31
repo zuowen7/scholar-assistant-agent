@@ -1,0 +1,27 @@
+schema_version: reviewer-validation-development-human-audit/v1
+annotator_id: B
+independent_review_complete: false
+instructions:
+  - Open both raw PDFs and compare the main body with the parsed text and three production excerpts.
+  - Record only direct observations; do not use an LLM to fill this audit.
+  - Confirm that no listed paper author is a member of the project research team.
+papers:
+  - paper_id: dev-icml25-isolated-causal-effects
+    team_authorship_conflict_absent: null
+    raw_pdf_opened: null
+    parsed_main_body_readable: null
+    ledger_extraction_excerpt_readable: null
+    ledger_status_excerpt_readable: null
+    reviewer_excerpt_readable: null
+    material_issues: []
+  - paper_id: dev-chi26-agency-science-journalism
+    team_authorship_conflict_absent: null
+    raw_pdf_opened: null
+    parsed_main_body_readable: null
+    ledger_extraction_excerpt_readable: null
+    ledger_status_excerpt_readable: null
+    reviewer_excerpt_readable: null
+    material_issues: []
+overall_decision: pending
+signed_name_or_initials: null
+signed_on: null
