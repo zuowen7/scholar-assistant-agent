@@ -89,6 +89,34 @@ def test_model_selection_keeps_preference_separate_from_result() -> None:
         config["common_request_controls"]["reasoning_effort"]["effective_source"]
         == "explicit_request"
     )
+
+
+def test_execution_state_accepts_ancestor_base_commit(monkeypatch) -> None:
+    config = _load("model_selection.yaml")
+    base_commit = config["execution_code_state"]["base_commit"]
+    current_commit = "c" * 40
+    monkeypatch.setattr(model_runner, "_git_commit", lambda: current_commit)
+    monkeypatch.setattr(
+        model_runner,
+        "_git_commit_is_ancestor",
+        lambda ancestor, descendant: (
+            (ancestor, descendant) == (base_commit, current_commit)
+        ),
+    )
+
+    result = model_runner.verify_model_execution_state(config)
+
+    assert result["base_commit"] == base_commit
+    assert result["current_commit"] == current_commit
+
+
+def test_execution_state_rejects_unrelated_base_commit(monkeypatch) -> None:
+    config = _load("model_selection.yaml")
+    monkeypatch.setattr(model_runner, "_git_commit", lambda: "c" * 40)
+    monkeypatch.setattr(model_runner, "_git_commit_is_ancestor", lambda *_: False)
+
+    with pytest.raises(ValueError, match="not an ancestor"):
+        model_runner.verify_model_execution_state(config)
     assert (
         config["common_request_controls"]["outbound_http_audit"][
             "records_actual_payload_retry_and_usage"

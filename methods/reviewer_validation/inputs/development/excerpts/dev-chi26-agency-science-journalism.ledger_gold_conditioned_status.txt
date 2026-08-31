@@ -1,0 +1,654 @@
+3 Methods
+Our study investigates how journalists exercise agency during pitch
+writing, and how this shapes their receptiveness to different LLM-
+infused writing tools. We adopted a research-through-design ap-
+proach grounded in value-sensitive design (VSD) [19], drawing
+on design workbooks [21] and speed-dating methods [68] within
+semi-structured interviews. VSD guided our design process: we
+crafted speculative concepts that might surface tensions between
+different professional values (rooted in prior work [14, 35, 48]).
+We aimed to understand what participants professed to value, and
+which trade-offs they would accept or reject in context.
+Design workbooks present multiple, provisional, and often am-
+biguous design concepts to stimulate reflection and speculation,
+inviting participants to project their own contexts and values onto
+potential futures from a design space [21]. Speed-dating, a comple-
+mentary method, involves rapidly exposing participants to several
+design concepts to elicit feedback on desirability and feasibility, and
+to surface unmet needs or social tensions [68]. We drew on these
+approaches to develop four LLM-infused pitch writing concepts,
+which served as instruments in semi-structured interviews with
+freelance journalists. This approach is particularly useful for emerg-
+ing technologies like generative AI, where the design space is vast
+and evolving, and early-stage user engagement can help designers
+understand how professional values might shape the acceptance
+and use of novel tools.
+Our approach follows recent HCI work using design workbooks
+and speed dating to investigate novel technologies in specific con-
+texts [6, 9, 27]. We allowed for slightly longer engagement with
+each concept than typical speed-dating studies to accommodate the
+depth of discussion around how these tools might interact with jour-
+nalists’ values, control, and ultimately, agency. The study protocol
+was approved by our institutional ethics board.
+
+3.1 Developing the Design Concepts
+We developed a design workbook containing four hypothetical
+LLM-infused tools for science journalists to support pitch writing.
+A pitch is a short, persuasive proposal that freelance journalists
+submit to editors, combining research, story ideation and fram-
+ing [3]. In encompassing these activities, pitch writing represents
+a microcosm of journalism’s different value tensions: balancing
+individual creativity with professional norms, negotiating edito-
+rial expectations, and managing efficiency under time constraints.
+While some priorities may shift in the writing of full stories, the
+pitch offers a useful lens for examining how journalists navigate
+agency within new sociotechnical arrangements.
+The design team included researchers with experience in build-
+ing tools for journalists, LLM-infused writing systems, and respon-
+sible AI design. Our iterative design process was informed by prior
+work mapping LLM-infused writing tools across dimensions of
+variation like tasks, users, technology leveraged, interaction modes,
+and deployment ecosystems [39]. To ground the design in journal-
+ists’ practice, we drew on literature characterizing the pitch writing
+process [3, 17, 25] and examined real-world pitch examples. 3 This
+helped us understand the key activities involved, such as back-
+ground research, angle development, framing, and the constraints
+journalists navigate, such as outlet-specific guidelines, editorial
+expectations, and time pressures.
+In early explorations, we generated a wide range of possible
+LLM-based features addressing different pitch writing needs, in-
+cluding idea generation, copy editing and style transfer, information
+sourcing, and templated writing. We sought to vary control across
+multiple dimensions: control over the writing process (which sub-
+tasks to support), control over system features (degree of configura-
+bility), control over input modality (natural language vs. structured
+options), and control over model outputs (semantic qualities like
+tone vs. mechanical constraints like length).
+Through several rounds of brainstorming and mapping, we nar-
+rowed our focus to three dimensions that could be systematically
+varied to create meaningfully different experiences: (1) Task Initi-
+ation : who initiates AI involvement; (2) Scope of AI Assistance :
+which functionality the AI offers; and (3) System Configurability :
+the degree of control journalists have over AI output. We selected
+features that might maximize both usefulness and differentiation
+across concepts, allowing us to probe different value tensions. Guer-
+rilla testing with colleagues and journalists (n=6) over four weeks
+helped us refine concepts to ensure they remained plausible while
+spanning this three-dimensional space. The final four concepts were
+positioned at different points across these dimensions, with each
+embodying hypotheses about how design decisions might shape
+journalists’ agency and their navigation of professional values.
+We created high-fidelity mockups rather than functional proto-
+types, consistent with prior design workbook methods [6, 9]. Mock-
+ups were implemented as interactive Figma prototypes with preset
+interaction paths, allowing participants to navigate through realis-
+tic usage scenarios while keeping the focus on potential outcomes
+and implications rather than technical implementation details. Our
+workbook embodied multiplicity, ambiguity, and provisionality
+[21], presenting a range of system configurations, provoking both
+Available here: https://www.theopennotebook.com/pitch-database/
+
+Table 1: The four design concepts used in our study, varying in task initiation, scope of AI assistance, and system configurability.
+Pitch Assist User-initiated via open-ended
+chat interface
+Pitch Refine User-initiated via scaffolded UI
+with subtasks drafting
+Pitch Critic System-initiated feedback Feedback generation
+triggered during writing
+Pitch Suggest System-initiated automatic Ideation, drafting
+drafting based on topic and
+opportunities
+interest and resistance, and allowing journalists to reflect on their
+practices and articulate where they might welcome AI involvement
+(or not).
+3.2 Design Concept Descriptions
+Below we describe our four speculative design concepts (Table 1)
+to explore how AI systems might reconfigure agency across differ-
+ent points in the pitch writing workflow, with references to trace
+inspiration from prior exemplars. To situate these concepts, recall
+that we examine agency through users’ causal (decision-making
+and execution control) and identity (alignment with and shaping
+of professional values) dimensions, which each concept engages
+differently.
+Pitch Assist offered a user-initiated, open-ended chat interface
+supporting information gathering, ideation, drafting, and feedback
+(Figure 1), inspired by multi-modal chat interfaces. In a scenario
+around pitching a short, environmental science story based on a
+press release, participants were shown how they could use an LLM
+to brainstorm angles, headlines, reader concerns, and visualizations,
+as well as how they could manipulate the style and length of the
+LLM-generated writing. The design entailed high configurability,
+allowing journalists to shape prompts, edit freely, and decide when
+to engage the tool. We envisioned that this concept could support
+decision-making control well, since users initiate and guide the
+process, but execution control may be more variable, depending on
+how users envision relying on system outputs to shape their work.
+Pitch Refine featured a scaffolded, user-initiated interface or-
+ganized into sub-tasks supporting ideation, information gathering,
+and drafting (Figure 2). The scenario was based on a short tech-
+focused story derived from a research paper, where participants
+could select from predefined, task-specific steps [67] like refining a
+lede, brainstorming a reporting plan, or adjusting voice and tone.
+The system offered moderate configurability through structured
+prompts and
+
+4 RQ1: Values Underpinning Journalists’
+Agency in Writing
+Our findings show that pitching encompasses a range of activities,
+from gathering information on newsworthy items and target outlets,
+to drafting the pitch and iterating based on feedback from editors
+and peers. Through thematic analysis of our interview data, we
+surfaced nine values that guide journalists’ decisions about what to
+pitch and how to pitch it, i.e., values that shape their identity-based
+agency in writing.
+These values stem from journalists’ treatment of writing as their
+craft (autonomy, writing as thinking, fulfillment, distinctiveness,
+skill development), as well as journalism’s social and commercial
+context (ethical standards, editorial alignment, relationship building,
+efficiency). While craft and commercial context are often framed as
+conflicting forces in creative industries [26], our analysis reveals
+how these values also reinforce each other in practice. In this section
+we define these different values, situate them within participants’
+pitching activities, and delineate connections across them of mutual
+support and conflict as they arise.
+Autonomy. Participants expressed a desire for self-direction in
+their creative process when pitching, such as freedom to choose
+what newsworthy events to pitch, what news angles or framing
+to pursue, and how to develop their ideas. This encompasses both
+autonomy over creative products (the actual material of the pitch
+and its style) and creative processes (the freedom to explore ideas
+and write at their own pace without disruption to their natural
+workflow). As P17 explained, this self-direction is a path to personal
+fulfillment in work: “You’re proposing your own perfect project
+or a project that’s completely self-driven [. . . ] it really helps me to
+connect with the things that I care about in this space and the work
+that I want to do.” Craft values can hence reinforce each other in
+practice.
+Writing as Thinking. Though pitching ostensibly functions to sell
+stories, participants emphasized it was also an iterative, creative
+process where they were actively brainstorming stories, seeking
+out new information, and making connections across seemingly
+
+disparate ideas. As P7 noted, pitching served as a way to “work out
+a lot of the kinks in your own thinking.” This process of deliberation
+was deemed valuable regardless of whether the pitch was ultimately
+accepted. P11 explained: “It can be nice to outline an idea [. . . ] do
+some of that kind of brainstorming and organization that you would
+do no matter what.” Though some participants preferred to reserve
+their cognitive efforts for the actual story writing stage, especially
+for shorter, news story pitches based on press releases that “already
+have an angle” [P16], most viewed pitching as an essential thinking
+practice that prepared them for deeper reporting down the line.
+Self-fulfillment. Participants strongly valued the intrinsic satis-
+faction that came from engaging in pitching, finding fulfillment
+across different stages of the process. Some enjoyed finding untold
+stories or engaging in background research: “You learn about a new
+topic or find some exciting research finding” [P2]. Others appre-
+ciated the analytical challenge of developing angles: “I like that
+it’s a bit of a puzzle [. . . ] thinking about the different ways that an
+idea could be framed and which framing is going to make the pitch
+do the best” [P8]. The creative freedom of pitching also provided
+satisfaction, as P6 noted: “pitching is more fun than writing [. . . ]
+the story can be a lot of things that you imagine, and it doesn’t have
+to be pinned down by reality yet.” Others enjoyed the mechanics of
+writing and editing: “you have to be concise and you have to get to
+the point across [. . . ] it forces you to kind of figure out what is the
+most important part of the story, and that can be enjoyable” [P9].
+Distinctiveness. Through their pitches, participants sought to
+develop and maintain a specific perspective and writing style while
+bringing unique or new information to audiences, i.e., distinctive-
+ness of both their voice and ideas. Voice was central to journalists’
+identity, as P8 described: “Voice is one of the things that you try
+as a journalist to develop and that you’re sort of proud of.” Yet this
+craft value also serves contextual needs through attracting oppor-
+tunities, as P6 noted: “I know in my work as a writer, working with
+editors, they are interested in a specific voice that I have.” Similarly,
+participants valued finding stories that “need to be told and haven’t
+been told,” [P12], or that presented a new angle on a familiar topic.
+Distinctiveness thus exemplifies how craft and contextual values
+reinforce each other, by fulfilling journalists’ desire for authentic
+expression while creating the market differentiation necessary for
+professional success.
+Skill Development. Participants emphasized that pitching offered
+opportunities to hone their writing craft and deepen subject matter
+expertise, and so it supported both personal fulfillment and career
+advancement. As P4 explained: “Pitching is a chance for me to flex
+my writer-y muscles [. . . ] This is some of the only writing I do
+that doesn’t get edited in at least some capacity. So it’s a good way
+for me to build my skills.” Even though writing pitches could be
+challenging, participants recognized the developmental value, as
+P12 noted: “Part of writing a pitch helps you understand your own
+story. [. . . ] It’s hard and it’s painful. It’s like going to the gym. If
+you don’t like exercising, going to the gym is a necessary evil. It’s
+good for your health. But you can’t have someone do it for you.”
+Journalistic Ethics. Participants strove to uphold professional
+journalism standards such as accuracy, transparency, and lack of
+bias. They were committed to representing information accurately
+and providing appropriate context even in the condensed pitch
+format. As one participant noted: “I don’t like simplifying stuff in a
+
+way that is misleading” [P3]. However, tensions sometimes arose
+between writing style and ethical standards, e.g., a phrasing choice
+in a story title might conflict with absolute accuracy. Participants
+also emphasized the importance of personal integrity in editor
+relationships, e.g., through ensuring attribution of their ideas and
+honest representation of their writing skill, viewing it as essential
+to long-term professional relationships.
+Efficiency. Pitching is the primary mechanism through which
+freelancers earn money, creating pressure to balance craft values
+against economic realities. As P13 explained: “My number one goal
+is to sell an article. I’ve got to pay the bills.” This pressure intensifies
+because pitching itself is unpaid labor that requires significant time
+investment, as P16 noted: “It’s time-consuming and it involves
+scanning through a lot of published news and published research
+to figure out what’s really happening [. . . ] for freelance journalists
+like me, it’s a lot of voluntary time” [P16]. The need to tailor pitches
+for different outlets further compounds this challenge, making
+efficiency a constant consideration in balancing creative fulfillment
+with financial necessity.
+Editorial Alignment. Successful pitches require alignment with
+editor preferences and audience needs through finding the right
+outlet for a story idea, and adapting it to fit publication require-
+ments. This understanding develops through years of experience
+navigating publication landscapes and reader expectations. As P20
+explained: “You’re just constantly fishing around [for place to pitch
+to]. Particularly for the first 10 years or so, I was still getting a han-
+dle on what the landscape looks like.” This alignment also requires
+journalists to balance their personal interests with market demands,
+adapting their voice and focus to meet external expectations while
+maintaining their authentic perspective.
+Relationship Building. Pitches ser
+
+5 RQ2: Dynamics of Control with LLM-Infused
+Writing Support Tools
+Participants’ responses to the different design concepts revealed
+consistent patterns around four types of AI functionality: infor-
+mation gathering (surfacing opportunities, sources, resources for
+pitching), idea generation, text generation (for different parts of
+the pitch), and feedback (pitch evaluation and suggestions). Par-
+ticipants readily accepted AI assistance for information gathering
+(Section 5.1) as long as they maintained control over evaluation
+and selection. For feedback generation (Section 5.2), they welcomed
+optional flagging and critiques of their writing based on domain-
+specific criteria. In contrast, AI support for idea (Section 5.3) and
+text generation (Section 5.4) was treated more cautiously: features
+that kick-started thinking were acceptable, but those generating
+
+CHI ’26, April 13–17, 2026, Barcelona, Spain Nishal, Lee, Diakopoulos, & Vaughan
+core ideas or substantial text threatened craft values like autonomy,
+reflection, voice, and fulfillment.
+These preferences were reflected in participant rankings, where
+Pitch Critic was ranked first by half the participants (n=10), followed
+by Pitch Suggest by 5 participants, with those ranking Pitch Sug-
+gest first explicitly valuing its information-gathering capabilities
+over its automated drafting features. The remaining 5 participants
+ranked either Pitch Refine or Pitch Assist first, and 4 of them then
+ranked Suggest or Critic second (Appendix B). However, individual
+variation also emerged: some participants rejected AI assistance
+even for typically accepted tasks (information gathering, feedback)
+when those activities contributed to their enjoyment or skill de-
+velopment, while others accepted typically rejected features (idea
+or text generation) when facing contextual pressures like financial Figure 5: Pitch Suggest would enable participants to share
+constraints, tight deadlines, or fear of rejection. their own writing, pitches, and bookmarks, which the system
+could use to infer editable tags of their interests (left). These
+5.1 Connecting Interests, Demands, and could then be used to match relevant calls for pitches (right).
+Resources Through Recommendations for
+Information Gathering “If [Pitch Suggest] says ‘Hey, SELF Magazine is look-
+Participants actively desired AI assistance for information gather- ing for stories about this [. . . ] it might be something
+ing during pitching: they were willing to cede execution control that’s relevant to this TikTok mental health study you
+over searching for and aggregating resources, but insisted on retain- were looking at recently.’ That’s the equivalent of in-
+ing decision-making control over evaluation and selection of what troducing two people at a party. Now, it’s up to those
+information to use in their pitch and how. This pattern supported ef- two people to decide whether they like each other.”
+ficiency and editorial alignment, without impinging on participants’ Several participants requested filtering controls (e.g., based on
+sense of autonomy, fulfillment, or originality. Several participants word rates) and automatic notifications for opportunities to en-
+explicitly appreciated functionality that connected their pitch to rel- hance this connective function. Experienced journalists (e.g., P2,
+evant opportunities and resources, against idea and text generation. P17) also envisioned AI support for resurfacing their own prior ideas
+The pattern of delegating some execution control while engaging in connection with new pitching opportunities, e.g., from saved
+in decision making held across the different information gathering links or notes, to enable pursuit of their specific interests. Sharing
+activities described below. Some participants, such as P8 and P19, personal archives to drive these recommendations of opportunities
+valued information gathering tasks—P8 describing the process of and past ideas, however, also raised plagiarism and impersonation
+finding target outlets as an enjoyable “puzzle” and P19 appreciating concerns: “How does [the tool] know it’s you and not like someone
+interviewee identification—highlighting how efficiency-oriented goes in there, and they’re like, ‘I’m [name]. These are my clips.’?
+AI features could sometimes conflict with personal fulfillment. [. . . ] And like trying to use their brain” [P6]. In an ecosystem where
+a distinctive voice is professional currency, AI that enables such
+5.1.1 Surfacing opportunities to enable pursuit of personal inter-
+mimicry has material consequences. P7 and P13 expressed a prefer-
+ests. Most participants saw it as busywork to find and vet different
+ence for manually specifying their interests rather than having a
+pitching opportunities across news websites, social media, newslet-
+system infer them from their writing samples, maintaining their
+ters, public spreadsheets, and so on: “there are like a million places
+decision-making control over the input parameters in the interest
+to pitch [. . . ] you got to know if it’s accepting at the moment, it
+of privacy.
+changes every day” [P3]. Several participants contrasted this diffi-
+culty with the ease of actually writing the pitch, with P12 explaining 5.1.2 Resource recommendations to save time and establish orig-
+“It’s not the writing that’s hard,” but rather “trying to figure out inality. Participants widely accepted delegating the execution of
+what [editors] want.” resource discovery to AI systems, as with Pitch Refine’s function-
+Delegating this work to AI, as with Pitch Suggest, could allow ality for suggesting sources and datasets (Figure 6a), while main-
+journalists to identify opportunities which matched their reporting taining control over which resources to pursue and how to use
+interests with relevant calls for pitches and useful metadata like them. Prior news coverage lookup based on existing pitches could
+compensation, outlet circulation, and pitching guidelines (Figure address a significant pain point: “[It] can be kind of tricky know-
+5). This was arguably the most popular feature across concepts: ing if someone else has already published what you want to pitch.
+by connecting journalists’ interests to existing editorial demand, it You do your best to search with Google and put in the right key-
+could support efficiency while preserving autonomy over creative words and figure out if it’s already out there, but it’s easy to miss
+decisions. Some participants saw potential for faster transition to stuff ” [P8]. Others also envisioned AI-generated suggestions to
+the more engaging stage of collaborative work with an editor. P20 demonstrate why their story would be timely and original, such
+captured the ideal role for such systems: as by surfacing relevant trends sourced from Google Trends data,
+
+“Helping Me Versus Doing It for Me”: Designing for Agency in LLM-Infused Writing Tools for Science Journalism CHI ’26, April 13–17, 2026, Barcelona, Spain
+Figure 7: Pitch Critic promised granular feedback on both
+domain-specific and user-defined custom criteria.
+names, preserving the open-ended process of considering diversity
+and bias in their sourcing decisions. Experienced journalists P15 and
+P20 also emphasized that their field experience would allow them
+to quickly evaluate AI suggestions for interviewees and datasets,
+highlighting how the practice of making these sourcing decisions
+builds the judgment needed to exercise meaningful control.
+5.2 Guiding Improvement and Reflection
+Through Feedback
+(a) Participants could hypothetically request interviewee and data
+source suggestions using Pitch Refine. Participants welcomed AI functionality that could automatically
+flag potential issues in their pitches (e.g., accuracy, clarity, bias, edi-
+torial alignment) while leaving them in control of which changes to
+make and how to implement them. As with information gathering,
+this delegation would support efficiency in meeting editorial stan-
+dards while preserving
+
+6 Discussion
+Our findings reveal how LLM-infused writing tools may reconfig-
+ure journalists’ agency, and ceding control may or may not align
+with journalists’ professional values. We organize the discussion of
+our findings in three parts. First, we examine journalists’ boundaries
+of control across distinct system functionalities and their design im-
+plications. Second, we explore how causal and identity-based agency
+can be mutually constitutive , explaining journalists’ resistance to
+ceding control and the long-term risks of reduced practice. Third,
+we discuss the challenges for value-sensitive design , including indi-
+vidual variation, systemic pressures, and approaches to preserving
+agency over time.
+
+6.1 Journalists’ Boundaries of Control With
+LLM-Infused Writing Tools
+Our findings reveal clear boundaries in how journalists negotiate
+control over AI during pitch writing. Participants were generally
+comfortable ceding execution control for information gathering
+or feedback generation, as long as they retained decision-making
+authority over how to integrate outputs into their work. Features
+that surfaced pitching opportunities, suggested sources, or flagged
+domain-specific issues were widely welcomed as efficiency gains:
+they reduced tedious labor without encroaching on values central
+to journalists’ craft. However, boundaries tightened around idea
+generation and text production, which journalists tied to autonomy,
+fulfillment, distinctiveness, and skill development. Here, AI was ac-
+ceptable mainly as a kick-start, allowing journalists to then engage
+in independent execution and decision making. These boundaries,
+however, were not uniform: early-career reporters sometimes prior-
+itized efficiency to establish themselves, while veterans emphasized
+critical engagement, expressing their voice, and skill development.
+Similarly, story type and situational pressures also shaped accep-
+tance at times: for some, AI-generated drafts were acceptable for
+shorter, formulaic stories or when they faced time constraints, fi-
+nancial stress, and exhaustion. In practice, these boundaries form a
+jagged frontier, shifting across individuals and contexts.
+These boundaries suggest several design implications. First, we
+argue that efficiency gains that preserve craft values may come
+more so from connecting journalists to resources that support their
+practice (e.g., through semantic search capabilities, or pitch oppor-
+tunity aggregators that parse unstructured data from social media
+and news sites) than from generating outputs for direct use. This
+approach can help connect journalists’ interests and values with rel-
+evant sources and opportunities, rather than distorting their work
+to fit demand, and aligns to recent work calling for tools that inspire
+and offer feedback, rather than generate content [29, 40]. Second,
+professionals’ decision-making control in such contexts still needs
+to be preserved without creating additional cognitive burdens or
+threats to autonomy. To this end, participants in our study valued
+optional, traceable suggestions with provenance that they could re-
+view individually, rather than automatic, in-place changes. Finally,
+we also found that some constraints on users’ ability to steer or
+configure the AI system itself may meaningfully enhance agency
+by focusing attention on editorial decisions rather than managing
+the AI system. For example, most participants responded more
+positively to Pitch Refine’s scaffolded iteration approach and Pitch
+Critic’s delineated feedback criteria, compared with Pitch Assist’s
+ability to do support iteration and feedback through prompting.
+The latter offered unconstrained interactions with the AI but also
+required deliberate focus on prompting, shifting participants’ focus
+away from the text in ways that they deemed unsatisfactory.
+6.2 Causal and Identity-Based Agency as
+Mutually Constitutive
+We introduced agency through its causal and identity-based dimen-
+sions [5]. This framework further considers identity-based agency
+in terms of people’s self-congruence (alignment of technology use
+with their values) and self-construction (effects of technology use
+on values over time). Our findings demonstrate the ways in which
+
+the dimensions of agency can be mutually constitutive in practice,
+where exercising causal agency creates the conditions for sustaining
+and developing identity-based agency over time.
+This relationship explains certain patterns of resistance that we
+observed. For instance, some participants rejected AI recommenda-
+tions of specific people to interview, preferring suggestions of types
+of sources instead. This could preserve the open-ended process of
+considering diversity and bias, which enables both ethical sourc-
+ing for a specific story (self-congruence) and the development of
+judgment needed to uphold this value over time (self-construction).
+Similarly, resistance to AI-generated first drafts stemmed from both
+immediate concerns about expressing voice (self-congruence) and
+the recognition that drafting practice develops one’s distinctive
+voice (self-construction). Recent studies of AI-assisted qualitative
+research [41] and UX design [54] also identify similar concerns
+about developing identity over time. Exercising causal agency in
+the present helps develop the professional self who can uphold
+those values in the future.
+This mutually constitutive relationship also indicates that pro-
+longed AI use may gradually undermine both dimensions of agency.
+Exercising meaningful control over any technology requires ex-
+pertise to evaluate its outputs, and this expertise develops through
+practice. This need for effortful practice applies even to activities
+where most participants expressed no concerns about ceding execu-
+tion control in the short term, e.g., for evaluating outlet suggestions
+from Pitch Suggest and Pitch Critic, resources from Pitch Refine,
+or writing feedback from Pitch Critic. But reduced practice may
+limit development of the expertise needed to evaluate AI outputs,
+as P7 suggested when considering AI-generated editorial feedback.
+Indeed, recent work on AI copilots confirms that users often pre-
+fer learning by doing, with semi-automated systems supporting
+learnability better than fully automated ones for creative tasks [33].
+Others also worried about cascading dependency, echoing findings
+from recent work [55]. Using AI-generated text in pitches, which
+might feel acceptable to some as an efficiency trade-off in a time
+crunch, would likely require them to extend that reliance to full sto-
+ries for stylistic consistency. In this way, short-term value trade-offs
+can constrain long-term control, locking journalists into AI use they
+would prefer to avoid. Turning to AI for feedback instead of peers
+or mentors may also reduce opportunities for identity construc-
+tion through community engagement. We observed that journalists
+valued community feedback because their peers might understand
+their voice, draw on shared experiences, and offer connection in
+otherwise solitary work.
+Designers can respond to these concerns by creating conditions
+for practice and engagement, to help sustain agency over time. Jour-
+nalists’ professional identity develops through routine practices and
+community interactions, and so we argue that design could help
+maintain friction and engagement within these processes rather
+than simply maximizing efficiency [53]. Designers may draw on
+seamful design philosophy [30] through rendering AI limitations
+visible and encouraging deliberate involvement in activities where
+values risk being traded away under situational pressures (e.g.,
+autonomy and voice in writing). Recent work also calls for infras-
+tructure design (e.g., online platforms, communities) that support
+both disciplined practice and spontaneous exploration in creative
+work [56].
+
+Focusing AI support on scoped, unremarkable use-cases that
+support efficiency can also help preserve agency [64]. For example,
+automat
+
+7 Conclusion
+Journalists’ agency is crucial to their democratic role, yet the in-
+creasing adoption of generative AI in journalism creates risks of
+value erosion by reshaping how journalists make and execute ed-
+itorial decisions. Through interviews with 20 science journalists
+exploring four hypothetical LLM-infused writing tools, we iden-
+tified nine values spanning craft concerns (e.g., autonomy, fulfill-
+ment, skill development) and contextual pressures (e.g., efficiency,
+editorial alignment) that guide journalists’ boundaries of control
+around AI assistance. While journalists selectively cede execution
+control for information gathering and feedback generation, they
+resist AI involvement in core ideation and text production, which
+they view as threatening autonomy, fulfillment, and skill devel-
+opment. These boundaries further reveal that causal agency and
+identity-based agency can be mutually constitutive: exercising con-
+trol over decision making and execution builds the judgment, skills,
+and relationships needed to sustain professional identity over time.
+Value-sensitive design offers an approach to navigate these com-
+plexities. Our findings suggest that preserving journalistic agency
+requires designing AI systems that connect journalists to resources
+and feedback rather than generating content for direct use, main-
+taining friction in creative processes to support cognitive engage-
+ment, and sustaining the communities of practice through which
+professional identity develops. However, artifact-level design can-
+not address systemic pressures that might compel intentional value
+
+“Helping Me Versus Doing It for Me”: Designing for Agency in LLM-Infused Writing Tools for Science Journalism
+compromises, nor can short-term evaluation capture long-term im-
+pacts of AI use on the development of professional identity. Address-
+ing these challenges will entail accounting for contextual factors
+that shape individuals’ exercise of agency (e.g., economic precarity),
+and pursuing longitudinal evaluation that tracks gradual shifts in
+practice, even when these are difficult to measure.
+While situated in science journalism’s pitch writing, these in-
+sights extend to other knowledge-work domains where creative
+exploration, identity, and ethical commitments intersect with effi-
+ciency pressures. Ultimately, preserving agency with LLM-infused
+writing tools is not just about steerability or configurability, but
+calls for designing systems that keep humans central, reflective,
+and in control of shaping their decisions and identities.
+Acknowledgments
+We are grateful to our study participants, without whom this re-
+search would not be possible. Thanks to Mandi Cai, Luke Guerdan,
+Evey Huang, Ben Laufer, Lesia Semenova, and Tejal Wakchoure
+for participating in pilots of our study. We are also grateful to Tzu-
+Sheng Kuo, Gonzalo Ramos, Emily Tseng, and the MSR FATE group
+for their thoughtful comments and feedback on our work.
+
+
+References
+[1] Mike Ananny and Matt Pearce. 2025. How We’re Using AI.
+[2] Josh Anderson and Anthony Dudo. 2023. A View From the Trenches: Interviews
+With Journalists About Reporting Science News. Science Communication 45,1
+(Jan. 2023), 107554702211491. doi:10.1177/10755470221149156
+[3] Martin W. Angler. 2017. Pitching. In Science Journalism . Routledge, London, UK.
+[4] Franziska Badenschier and Holger Wormer. 2012. Issue Selection in Science
+Journalism: Towards a Special Theory of News Values for Science News? In
+The Sciences’ Media Connection –Public Communication and Its Repercussions ,
+Simone Rödder, Martina Franzen, and Peter Weingart (Eds.). Vol. 28. Springer
+Netherlands, Dordrecht, 59–85. doi:10.1007/978-94- 007-2085- 5_4
+[5] Dan Bennett, Oussama Metatla, Anne Roudaut, and Elisa D. Mekler. 2023. How
+Does HCI Understand Human Agency and Autonomy?. In Proceedings of the 2023
+CHI Conference on Human Factors in Computing Systems (CHI ’23) . Association for
+Computing Machinery, New York, NY, USA, 1–18. doi:10.1145/3544548.3580651
+[6] Oloff C. Biermann, Ning F. Ma, and Dongwook Yoon. 2022. From Tool to Compan-
+ion: Storywriters Want AI Writers to Respect Their Personal Values and Writing
+Strategies. In Designing Interactive Systems Conference . Association for Comput-
+ing Machinery, New York, NY, USA, 1209–1227. doi:10.1145/3532106.3533506
+[7] Virginia Braun and Victoria Clarke. 2006. Using Thematic Analysis in Psychol-
+ogy. Qualitative Research in Psychology 3, 2 (Jan. 2006), 77–101. doi:10.1191/
+1478088706qp063oa
+[8] Virginia Braun and Victoria Clarke. 2024. Supporting Best Practice in Reflex-
+ive Thematic Analysis Reporting in Palliative Medicine: A Review of Published
+Research and Introduction to the Reflexive Thematic Analysis Reporting Guide-
+lines (RTARG). Palliative Medicine 38, 6 (June 2024), 608–616. doi:10.1177/
+02692163241234800
+[9] Janet X. Chen, Francesco Vitale, and Joanna McGrenere. 2021. What Happens
+After Death? Using a Design Workbook to Understand User Expectations for
+Preparing Their Data. In Proceedings of the 2021 CHI Conference on Human Factors
+in Computing Systems . Association for Computing Machinery, New York, NY,
+USA, 1–13. doi:10.1145/3411764.3445359
+[10] Nicole S. Cohen. 2016. Writers’ Rights: Freelance Journalism in a Digital Age .
+McGill-Queen’s University Press, Montreal Kingston London Chicago.
+[11] Nicole S. Cohen. 2019. At Work in the Digital Newsroom. Digital Journalism 7,5
+(May 2019), 571–591. doi:10.1080/21670811.2017.1419821
+[12] Hannes Cools and Nicholas Diakopoulos. 2024. Uses of Generative AI in the
+Newsroom: Mapping Journalists’ Perceptions of Perils and Possibilities. Journal-
+ism Practice 0, 0 (Aug. 2024), 1–19. doi:10.1080/17512786.2024.2394558
+[13] Mark Deuze. 2005. What Is Journalism?: Professional Identity and Ideology of
+Journalists Reconsidered. Journalism 6, 4 (Nov. 2005), 442–464. doi:10.1177/
+1464884905056815
+[14] Mark Deuze. 2019. On Creativity. Journalism 20, 1 (Jan. 2019), 130–134. doi:10.
+1177/1464884918807066
+[15] Paramveer S. Dhillon, Somayeh Molaei, Jiaqi Li, Maximilian Golub, Shaochun
+Zheng, and Lionel Peter Robert. 2024. Shaping Human-AI Collaboration: Varied
+Scaffolding Levels in Co-writing with Language Models. In Proceedings of the
+
+CHI ’26, April 13–17, 2026, Barcelona, Spain
+CHI Conference on Human Factors in Computing Systems (Honolulu HI USA).
+Association for Computing Machinery, New York, NY, USA, 1–18. doi:10.1145/
+3613904.3642134
+[16] Nicholas Diakopoulos, Hannes Cools, Charlotte Li, Natali Helberger, Ernest Kung,
+Aimee Rinehart, and Lisa Gibbs. 2024. Generative AI in Journalism: The Evolution
+of Newswork and Ethics in a Generative Information Ecosystem . Technical Report.
+Associated Press. doi:10.13140/RG.2.2.31540.05765
+[17] Celia Ford. 2022. Picking a Publication to Pitch . Retrieved Jan 26, 2026 from https:
+//www.theopennotebook.com/2022/11/15/picking-a- publication-to- pitch/
+[18] Batya Friedman and David G. Hendry. 2019. Theory . The MIT Press, Cambridge,
+MA, 18–57. doi:10.7551/mitpress/7585.003.0003
+[19] Batya Friedman, Jr. Peter H. Kahn, and Alan Borning. 2006. Value Sensitive
+Design and Information Systems. In Human-Computer Interaction in Management
+Information Systems: Foundations , P. Zhang and D. Galletta (Eds.). M. E. Sharpe,
+New York, 348–372.
+[20] Janet Fulton and Phillip McIntyre. 2013. Journalists on Journalism: Print Journal-
+ists’ Discussion of Their Creative Process. Journalism Practice 7, 1 (Feb. 2013),
+17–32. doi:10.1080/17512786.2012.657901
+[21] William Gaver. 2011. Making Spaces: How Design Workbooks Work. In Pro-
+ceedings of the SIGCHI Conference on Human Factors in Computing Systems (CHI
+’11) . Association for Computing Machinery, New York, NY, USA, 1551–1560.
+doi:10.1145/1978942.1979169
+[22] Sucheta Ghoshal and Sayamindu Dasgupta. 2023. Design Values in Action:
+Toward a Theory of Value Dilution. In Proceedings of the 2023 ACM Designing
+Interactive Systems Conference (2023-07-10) (DIS ’23) . Association for Computing
+Machinery, New York, NY, USA, 2347–2361. doi:10.1145/3563657.3596122
+[23] Alicia Guo, Leijie Wang, Jeffrey Heer, and Amy Zhang. 2024. Preserving Writer
+Values in AI Writing Assistance Tools. In Proceedings of the Third Workshop on
+Intelligent and Interactive Writing Assistants (In2Writing ’24) . Association for
+Computing Machinery, New York, NY, USA, 58–61. doi:10.1145/3690712.3690727
+[24] Tony Harcup and Deirdre O’Neill. 2017. What Is News?: News Values Revisited
+(Again). Journalism Studies 18, 12 (Dec. 2017), 1470–1488. doi:10.1080/1461670X.
+2016.1150193
+[25] Thomas C. Hayden, Michelle Nijhuis, and SciLance (Firm) (Eds.). 2013. The Science
+Writers’ Handbook: Everything You Need to Know to Pitch, Publish, and Prosper in
+the Digital Age . Da Capo Lifelong Books, a member of the Perseus Books Group,
+Boston, MA.
+[26] David Hesmondhalgh and Andy C. Pratt. 2005. Cultural Industries and Cultural
+Policy. International Journal of Cultural Policy 11, 1 (March 2005), 1–13. doi:10.
+1080/10286630500067598
+[27] Kenneth Holstein, Bruce M. McLaren, and Vincent Aleven. 2019. Designing
+for Complementarity: Teacher and Student Needs for Orchestration Support in
+AI-Enhanced Classrooms. In Artificial Intelligence in Education: 20th International
+Conference, AIED 2019, Chicago, IL, USA, June 25-29, 2019, Proceedings, Part I (2019-
+06-25). Springer-Verlag, Berlin, 157–171. doi:10.1007/978-3- 030-23204- 7_14
+[28] Yuxuan Huang, James Shea, Daniel C. Howe, and Jussi Holopainen. 2025. Lyric
+Poetry in the Face of Posthumanism: An Analysis of Generative AI-Assisted
+Poetry Writing. In Proceedings of the 2025 Conference on Creativity and Cognition .
+Association for Computing Machinery, New York, NY, USA, 762–773. doi:10.
+1145/3698061.3726919
+[29] Angel Hsing-Chi Hwang, Q. Vera Liao, Su Lin Blodgett, Alexandra Olteanu, and
+Adam Trischler. 2025. ’It Was 80% Me, 20% AI’: Seeking Authenticity in Co-
+Writing with Large Language Models. Proc. ACM Hum.-Comput. Interact. 9,2
+(May 2025), CSCW122:1–CSCW122:41. doi:10.1145/3711020
+[30] Sarah Inman and David Ribes. 2019. "Beautiful Seams": Strategic Revelations and
+Concealments. In Proceedings of the 2019 CHI Conference on Human Factors in
+Computing Systems (CHI ’19) . Association for Computing Machinery, New York,
+NY, USA, 1–14. doi:10.1145/3290605.3300508
+[31] Maurice Jakesch, Advait Bhat, Daniel Buschek, Lior Zalmanson, and Mor Naaman.
+2023. Co-Writing with Opinionated Language Models Affects Users’ Views. In
+Proceedings of the 2023 CHI Conference on Human Factors in Computing Systems
+(2023-04-19) (CHI ’23) . Association for Computing Machinery, New York, NY,
+USA, 1–15. doi:10.1145/3544548.3581196
+[32] Nikhita Joshi and Daniel Vogel. 2025. Writing with AI Lowers Psychological
+Ownership, but Longer Prompts Can Help. In Proceedings of the 7th ACM Con-
+ference on Conversational User Interfaces (CUI ’25) . Association for Computing
+Machinery, New York, NY, USA, 1–17. doi:10.1145/3719160.3736608
+[33] Anjali Khurana, Xiaotian S

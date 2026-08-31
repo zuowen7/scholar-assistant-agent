@@ -1,0 +1,185 @@
+Isolated Causal Effects
+Victoria Lin 1 Louis-Philippe Morency
+
+
+Abstract
+As language technologies become widespread, it
+is important to understand how changes in lan-
+guage affect reader perceptions and behaviors.
+These relationships may be formalized as the
+isolated causal effect of some focal language-
+encoded intervention (e.g., factual inaccuracies)
+on an external outcome (e.g., readers’ beliefs).
+In this paper, we introduce a formal estimation
+framework for isolated causal effects of language.
+We show that a core challenge of estimating iso-
+lated effects is the need to approximate all non-
+focal language outside of the intervention. Draw-
+ing on the principle of omitted variable bias ,we
+provide measures for evaluating the quality of
+both non-focal language approximations and iso-
+lated effect estimates themselves. We find that
+poor approximation of non-focal language can
+lead to bias in the corresponding isolated effect
+estimates due to omission of relevant variables,
+and we show how to assess the sensitivity of ef-
+fect estimates to such bias along the two key axes
+of fidelity and overlap . In experiments on semi-
+synthetic and real-world data, we validate the abil-
+ity of our framework to correctly recover isolated
+effects and demonstrate the utility of our proposed
+measures.
+
+
+1. Introduction
+The widespread use of language technologies has given
+rise to an ever-expanding amount of human- and machine-
+generated text data. From this vast body of data emerges
+the opportunity to understand how information contained in
+language relates to real-world outcomes. Elucidating these
+relationships can help answer scientifically interesting ques-
+tions and provide interpretability to texts and the models
+that generate them. For instance, what language attributes
+Carnegie Mellon University, Pittsburgh, PA, USA. Correspon-
+dence to: Victoria Lin vlin2@andrew.cmu.edu .
+Proceedings of the International Conference on Machine
+Learning , Vancouver, Canada. PMLR 267, 2025. Copyright 2025
+by the author(s).
+1
+
+of Natural Language
+1 Eli Ben-Michael 1
+(a) The isolated causal effect of a language attribute like netspeak
+can be learned by decomposing a text into focal language
+and non-focal language .
+(b) Non-focal language cannot be measured directly and instead
+must be approximated. Due to potential omitted variable bias ,
+which approximation we choose can significantly affect the iso-
+lated effect estimate.
+Figure 1. Isolated causal effects allow us to understand how
+changes in language affect reader perceptions and behaviors.
+(e.g., profanity ) cause readers to perceive a passage of text
+as hateful? Does use of rapport-building language by thera-
+pists help to improve patients’ mental health outcomes? Do
+factual inaccuracies propagated in machine-generated texts
+have negative impacts on readers’ beliefs or behaviors?
+The way in which language choices affect reader perceptions
+can be formalized as the causal effect of some language-
+encoded intervention—often a linguistic attribute—on an
+external outcome (Lin et al., 2023). However, because lan-
+guage is highly aliased (i.e., correlated with itself), the effect
+of such an intervention may be influenced by the surround-
+ing linguistic context (Fong & Grimmer, 2023). For in-
+stance, machine-generated texts with factual inaccuracies
+may also contain other undesirable attributes likely to in-
+
+Isolated Causal Effects of Natural Language
+fluence readers’ reactions, such as inflammatory language.
+If the causal effect of the factual inaccuracies is estimated
+without accounting for aliased attributes, the resulting esti-
+mate may contain the collective effect of both the factual
+inaccuracies and some portion of the related inflammatory
+language—making it difficult to determine whether action
+should be taken to address factual inaccuracies only, inflam-
+matory language only, or both.
+Motivated by this limitation, we propose a new target of
+inference: the isolated causal effect for natural language (or
+isolated effect for brevity). We define the isolated effect as
+the causal effect of only the part of the language contained
+in the intervention, or the average causal effect of the focal
+text intervention over all possible variations of the rest of
+thetext (Figure 1a).
+In practice, estimating such an effect poses several major
+challenges. (1) We must be able to formally define and
+approximate not only the focal intervention but also the non-
+focal language of a text: that is, all parts of the text external
+to the focal intervention. (2) Incorrect modeling of the non-
+focal language can lead to a biased or invalid estimate of the
+isolated effect due to omission of key language context—a
+formof omitted variable bias (OVB) (Figure 1b). Inother
+words, valid isolated causal effects can only be measured
+if the non-focal language is well-approximated. Therefore,
+it is important to be able to assess the robustness of the
+isolated effect estimate to errors or omissions in the non-
+focal language approximations.
+To address these challenges and to provide a practical path
+toward estimating isolated effects, this paper introduces
+a formal estimation framework for isolated effects of lan-
+guage. Within this framework, we explore how the way
+we approximate non-focal language impacts isolated effe
+
+2. Problem Setting
+Consider a text dataset D = { ( X ,Y ) ,..., ( X ,Y ) }
+where texts X ∈ X are drawn i.i.d. from a distribu-
+tion P , and individuals with potential outcome functions
+Y ( · ) : X → R are drawn i.i.d. from the population G ,
+where Y ( x ) denotes the potential outcome of individual i
+if they were to read text x (Neyman, 1923 [1990]; Rubin,
+1974). We study a setting in which all confounding between
+the intervention and the outcome is captured in the text.
+Such settings are an important and common case in natural
+language processing (NLP) due to the widespread prac-
+tice of labeling text data using external annotators who are
+randomly assigned to texts. This assignment mechanism in
+effect creates a randomized text experiment, eliminating con-
+founding external to the text (Lin et al., 2024). Prominent
+NLP benchmark datasets such as SST (Socher et al., 2013),
+SQuAD (Rajpurkar et al., 2018), and MNLI (Williams et al.,
+2018), for instance, all fall under this category.
+Now let X be parameterized as X = { a ( X ) ,a ( X ) } ,
+where a ( · ) : X → { 0 , 1 } is the intervention—the focal
+language attribute for which we learn a causal effect—and
+a ( · ): X → R is the non-focal portion of the text. Inthis
+setting, we consider a ( · ) to be a known mapping from the
+text to the intervention of interest. a ( · ) is also known as a
+“codebook function” (Egami et al., 2022)
+In naturally occurring text, a ( X ) is almost certainly dis-
+tributed differently when a ( X ) = 1 compared to when
+a ( X ) = 0 . For instance, suppose a ( X ) is humor , and
+X is from a corpus of movie scripts. The non-focal (i.e.,
+non-humor) parts of the scripts may include properties like
+positive emotion or optimism . As these properties are posi-
+tively correlated with humor, it is much more likely when
+a ( X ) = 1 that they also equal 1 and when a ( X ) = 0 that
+they also equal 0.
+To isolate the effect of only the focal language attribute,
+we must learn that effect over all possible variations of the
+non-focal text to be sure that no influence comes from the
+non-focal text. Formally, this is akin to learning the effect
+while enforcing the same non-focal text distribution P for
+both conditions of a ( X ) .
+Definition 2.1 (Isolated causal effect) . Let P be some
+target distribution over the non-focal language. Then the
+isolated causal effect of a ( X ) on Y is given by:
+τ = E [ E [ Y ( a ( X )=1 ,a ( X ) )
+− Y ( a ( X )=0 ,a ( X ) )]]
+We distinguish this from the natural causal effect defined
+by Lin et al. (2023), where a ( X ) follows its natural dis-
+tribution for both conditions of a ( X ) . The natural causal
+effect is the collective effect of the focal language attribute
+a ( X ) and the parts of the non-focal language with which it
+
+Isolated Causal Effects of Natural Language
+is naturally correlated.
+We generalize three common assumptions for valid causal
+inference to the language setting:
+1. Consistency . Y = Y ( X ) = Y ( a ( X ) ,a ( X )) . The
+observed outcome Y for an individual corresponds
+to the potential outcome Y ( a ( X ) ,a ( X )) associated
+with the text they actually receive.
+2. No unmeasured confounding . Y ( x ) ⊥⊥ a ( X ) | a ( X )
+for all x ∈ X . All confounding factors between the
+intervention and the outcome are captured by the non-
+focal portion of the text.
+3. Overlap . 0 <P ( a ( X )=1 | a ( X )) < 1 . The interven-
+tion a ( X ) has a non-zero probability of taking either
+value, regardless of the non-focal portion of the text.
+Note that this excludes the possibility that a ( X ) isa
+deterministic function of a ( X ) .
+As we mention earlier, the assumption of no unmeasured
+confounding is commonly fulfilled for NLP datasets due to
+text-annotator assignment protocols that eliminate external
+confounding. In practice, it is also reasonable to believe that
+the overlap assumption is fulfilled since any representation
+of the non-focal language a ( X ) is non-exhaustive, and so
+a ( X ) cannot be determined solely from the representa
