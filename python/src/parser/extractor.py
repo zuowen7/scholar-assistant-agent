@@ -81,6 +81,41 @@ class DocumentContent:
         return len(self.pages)
 
 
+def _apply_ocr_fallback(pdf_path: Path, pages: list[PageContent]) -> set[int]:
+    """用结构化 OCR 结果按原始页码回填，并返回被替换的页码集合。"""
+    if not pages:
+        return set()
+
+    full_text = "\n\n".join(page.text for page in pages if page.text.strip())
+    from src.parser.ocr import is_likely_scanned, ocr_pdf_pages
+
+    if not is_likely_scanned(len(full_text), len(pages)):
+        return set()
+
+    logger.info(
+        "PDF 平均每页文字过少（%d 字符/%d 页），触发 OCR fallback",
+        len(full_text),
+        len(pages),
+    )
+    try:
+        ocr_pages = ocr_pdf_pages(pdf_path, max_pages=len(pages))
+    except Exception as exc:
+        logger.warning("PDF OCR fallback 失败: %s", exc)
+        return set()
+
+    by_page_num = {page.page_num: page.text.strip() for page in ocr_pages}
+    replaced: set[int] = set()
+    for page in pages:
+        candidate = by_page_num.get(page.page_num, "")
+        if candidate and len(candidate) > len(page.text.strip()):
+            page.text = candidate
+            replaced.add(page.page_num)
+
+    if replaced:
+        logger.info("OCR 按原页码回填 %d/%d 页", len(replaced), len(pages))
+    return replaced
+
+
 def extract_pages(pdf_path: str | Path) -> DocumentContent:
     """逐页提取 PDF 文本，自动检测双栏布局
 
@@ -135,30 +170,7 @@ def extract_pages(pdf_path: str | Path) -> DocumentContent:
     except Exception as e:
         raise ValueError(f"PDF 解析失败: {pdf_path} - {e}") from e
 
-    # 扫描件检测: 如果提取文字过少，触发 OCR fallback
-    full_text = "\n\n".join(p.text for p in pages if p.text.strip())
-    if len(pages) > 0 and len(full_text) < 500:
-        from src.parser.ocr import is_likely_scanned, ocr_pdf
-
-        if is_likely_scanned(len(full_text), len(pages)):
-            logger.info(
-                "PDF 提取文字过少（%d 字符/%d 页），触发 OCR fallback", len(full_text), len(pages)
-            )
-            ocr_text = ocr_pdf(pdf_path)
-            if ocr_text and len(ocr_text.strip()) > len(full_text):
-                logger.info("OCR 成功（%d 字符），替换提取结果", len(ocr_text))
-                # 用 OCR 结果替换所有页面的文本
-                ocr_pages = ocr_text.split("\n\n[Page ")
-                for i, page in enumerate(pages):
-                    if i == 0:
-                        # 第一段是 OCR 文本序言（split 后不含 [Page 前缀的部分），直接使用
-                        pg_text = ocr_pages[0] if ocr_pages else ""
-                        page.text = re.sub(r"^\[Page\s*\d+\]\s*\n?", "", pg_text).strip()
-                    elif i < len(ocr_pages):
-                        pg_text = ocr_pages[i]
-                        page.text = re.sub(r"^\[Page\s*\d+\]\s*\n?", "", pg_text).strip()
-                    else:
-                        page.text = ""
+    _apply_ocr_fallback(pdf_path, pages)
 
     return DocumentContent(pages=pages, source_path=str(pdf_path))
 
@@ -659,6 +671,11 @@ def extract_document_with_layout(
 
     except Exception as e:
         raise ValueError(f"PDF layout 解析失败: {pdf_path} - {e}") from e
+
+    replaced_pages = _apply_ocr_fallback(pdf_path, pages_content)
+    if replaced_pages:
+        # OCR 没有可靠 bbox；移除这些页的旧文本块，避免伪造版面定位。
+        all_blocks = [block for block in all_blocks if block.page + 1 not in replaced_pages]
 
     doc_content = DocumentContent(
         pages=pages_content,

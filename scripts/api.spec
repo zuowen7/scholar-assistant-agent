@@ -128,7 +128,6 @@ a = Analysis(
         "docx",
         # Optional OCR (inside try/except in ocr.py, needs explicit listing)
         "pytesseract",
-        "pdf2image",
         "paddleocr",
         "paddle",
         "cv2",

@@ -5,11 +5,14 @@ from unittest.mock import MagicMock, patch
 from src.parser.extractor import (
     DocumentContent,
     PageContent,
+    _apply_ocr_fallback,
     _detect_columns,
     _extract_dual_column_with_char_spaces,
     _filter_header_footer,
     _repair_word_spacing,
+    extract_document_with_layout,
 )
+from src.parser.ocr import OCRPage
 
 
 class TestPageContent:
@@ -43,6 +46,84 @@ class TestDocumentContent:
         ]
         doc = DocumentContent(pages=pages, source_path="test.pdf")
         assert doc.full_text == "Content"
+
+
+class TestOcrFallback:
+    def test_does_not_run_for_text_rich_document(self, tmp_path):
+        pdf_path = tmp_path / "text.pdf"
+        pdf_path.touch()
+        pages = [
+            PageContent(page_num=1, text="a" * 100, width=600, height=800),
+            PageContent(page_num=2, text="b" * 100, width=600, height=800),
+        ]
+
+        with patch("src.parser.ocr.ocr_pdf_pages") as run_ocr:
+            replaced = _apply_ocr_fallback(pdf_path, pages)
+
+        assert replaced == set()
+        run_ocr.assert_not_called()
+
+    def test_refills_pages_by_explicit_page_number(self, tmp_path):
+        pdf_path = tmp_path / "scanned.pdf"
+        pdf_path.touch()
+        pages = [
+            PageContent(page_num=1, text="", width=600, height=800),
+            PageContent(page_num=2, text="", width=600, height=800),
+            PageContent(page_num=3, text="", width=600, height=800),
+        ]
+        ocr_pages = [
+            OCRPage(1, "第一页", "paddleocr"),
+            OCRPage(3, "第三页", "paddleocr"),
+        ]
+
+        with patch("src.parser.ocr.ocr_pdf_pages", return_value=ocr_pages) as run_ocr:
+            replaced = _apply_ocr_fallback(pdf_path, pages)
+
+        assert replaced == {1, 3}
+        assert [page.text for page in pages] == ["第一页", "", "第三页"]
+        run_ocr.assert_called_once_with(pdf_path, max_pages=3)
+
+    def test_mixed_document_keeps_better_existing_page_text(self, tmp_path):
+        pdf_path = tmp_path / "mixed.pdf"
+        pdf_path.touch()
+        original = "已有可选择的正文内容"
+        pages = [
+            PageContent(page_num=1, text=original, width=600, height=800),
+            PageContent(page_num=2, text="", width=600, height=800),
+        ]
+        ocr_pages = [
+            OCRPage(1, "乱码", "paddleocr"),
+            OCRPage(2, "扫描页识别出的完整内容", "paddleocr"),
+        ]
+
+        with patch("src.parser.ocr.ocr_pdf_pages", return_value=ocr_pages):
+            replaced = _apply_ocr_fallback(pdf_path, pages)
+
+        assert replaced == {2}
+        assert [page.text for page in pages] == [original, "扫描页识别出的完整内容"]
+
+    def test_layout_extractor_uses_same_scanned_pdf_fallback(self, tmp_path):
+        import fitz
+
+        pdf_path = tmp_path / "blank-pages.pdf"
+        document = fitz.open()
+        document.new_page()
+        document.new_page()
+        document.new_page()
+        document.save(pdf_path)
+        document.close()
+
+        ocr_pages = [
+            OCRPage(1, "光纤通信", "paddleocr"),
+            OCRPage(3, "色散与损耗", "paddleocr"),
+        ]
+        with patch("src.parser.ocr.ocr_pdf_pages", return_value=ocr_pages) as run_ocr:
+            content, blocks = extract_document_with_layout(pdf_path)
+
+        assert content.page_count == 3
+        assert [page.text for page in content.pages] == ["光纤通信", "", "色散与损耗"]
+        assert blocks == []
+        run_ocr.assert_called_once_with(pdf_path, max_pages=3)
 
 
 class TestDetectColumns:
