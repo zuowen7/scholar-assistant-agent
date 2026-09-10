@@ -63,6 +63,39 @@ class TestOcrFallback:
         assert replaced == set()
         run_ocr.assert_not_called()
 
+    def test_does_not_run_when_every_page_has_selectable_text(self, tmp_path):
+        pdf_path = tmp_path / "sparse-text.pdf"
+        pdf_path.touch()
+        pages = [
+            PageContent(page_num=1, text="Valid selectable title", width=600, height=800),
+            PageContent(page_num=2, text="Short native note", width=600, height=800),
+        ]
+
+        with patch("src.parser.ocr.ocr_pdf_pages") as run_ocr:
+            replaced = _apply_ocr_fallback(pdf_path, pages)
+
+        assert replaced == set()
+        assert [page.text for page in pages] == [
+            "Valid selectable title",
+            "Short native note",
+        ]
+        run_ocr.assert_not_called()
+
+    def test_keeps_legacy_global_text_guard_for_long_sparse_documents(self, tmp_path):
+        pdf_path = tmp_path / "long-sparse-text.pdf"
+        pdf_path.touch()
+        pages = [
+            PageContent(page_num=index, text="x" * 60, width=600, height=800)
+            for index in range(1, 11)
+        ]
+        pages.append(PageContent(page_num=11, text="", width=600, height=800))
+
+        with patch("src.parser.ocr.ocr_pdf_pages") as run_ocr:
+            replaced = _apply_ocr_fallback(pdf_path, pages)
+
+        assert replaced == set()
+        run_ocr.assert_not_called()
+
     def test_refills_pages_by_explicit_page_number(self, tmp_path):
         pdf_path = tmp_path / "scanned.pdf"
         pdf_path.touch()
@@ -83,7 +116,7 @@ class TestOcrFallback:
         assert [page.text for page in pages] == ["第一页", "", "第三页"]
         run_ocr.assert_called_once_with(pdf_path, max_pages=3)
 
-    def test_mixed_document_keeps_better_existing_page_text(self, tmp_path):
+    def test_mixed_document_never_replaces_existing_page_text(self, tmp_path):
         pdf_path = tmp_path / "mixed.pdf"
         pdf_path.touch()
         original = "已有可选择的正文内容"
@@ -92,7 +125,7 @@ class TestOcrFallback:
             PageContent(page_num=2, text="", width=600, height=800),
         ]
         ocr_pages = [
-            OCRPage(1, "乱码", "paddleocr"),
+            OCRPage(1, "更长但可能错误的 OCR 识别内容" * 5, "paddleocr"),
             OCRPage(2, "扫描页识别出的完整内容", "paddleocr"),
         ]
 

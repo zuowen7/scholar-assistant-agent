@@ -17,6 +17,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_MAX_NATIVE_TEXT_CHARS_FOR_OCR = 500
+
 
 @dataclass
 class TextBlock:
@@ -87,6 +89,12 @@ def _apply_ocr_fallback(pdf_path: Path, pages: list[PageContent]) -> set[int]:
         return set()
 
     full_text = "\n\n".join(page.text for page in pages if page.text.strip())
+    empty_page_nums = {page.page_num for page in pages if not page.text.strip()}
+    # Keep the legacy document-level guard and never replace selectable text.
+    # OCR is a fallback for native-empty pages, not a competing extraction path.
+    if len(full_text) >= _MAX_NATIVE_TEXT_CHARS_FOR_OCR or not empty_page_nums:
+        return set()
+
     from src.parser.ocr import is_likely_scanned, ocr_pdf_pages
 
     if not is_likely_scanned(len(full_text), len(pages)):
@@ -107,7 +115,7 @@ def _apply_ocr_fallback(pdf_path: Path, pages: list[PageContent]) -> set[int]:
     replaced: set[int] = set()
     for page in pages:
         candidate = by_page_num.get(page.page_num, "")
-        if candidate and len(candidate) > len(page.text.strip()):
+        if page.page_num in empty_page_nums and candidate:
             page.text = candidate
             replaced.add(page.page_num)
 
