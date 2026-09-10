@@ -182,6 +182,17 @@ class TestRelocate:
         assert a2.char_start == new_text.index("foo bar")
         assert a2.char_end == a2.char_start + len("foo bar")
 
+    def test_unchanged_anchor_in_repetitive_text_keeps_recorded_span(self):
+        _, _, _, make_anchor, _, relocate, *_ = _anchor()
+        text = "a" * 5000
+        start = 2500
+        anchor = make_anchor("d", text, start, start + 8)
+
+        relocated = relocate(anchor, text)
+
+        assert relocated.status == "anchored"
+        assert (relocated.char_start, relocated.char_end) == (start, start + 8)
+
     def test_context_window_helps_find_moved_quote(self):
         # quote appears in two places; context_before disambiguates
         _, _, _, make_anchor, _, relocate, *_ = _anchor()
@@ -211,6 +222,35 @@ class TestRelocate:
             expected_start + len("target"),
         )
 
+    def test_context_boundaries_prefer_rewritten_target_over_unrelated_exact_duplicate(self):
+        _, _, _, make_anchor, _, relocate, *_ = _anchor()
+        original = "Alpha target Beta. Gamma target Delta."
+        source_start = original.rindex("target")
+        anchor = make_anchor("d", original, source_start, source_start + len("target"))
+        edited = "Alpha target Beta. Gamma objective Delta."
+
+        relocated = relocate(anchor, edited)
+
+        expected_start = edited.index("objective")
+        assert relocated.status == "drifted"
+        assert (relocated.char_start, relocated.char_end) == (
+            expected_start,
+            expected_start + len("objective"),
+        )
+
+    def test_context_boundaries_reject_deleted_target_despite_unrelated_exact_duplicate(self):
+        _, _, _, make_anchor, _, relocate, *_ = _anchor()
+        original = "Alpha target Beta. Gamma target Delta."
+        source_start = original.rindex("target")
+        anchor = make_anchor("d", original, source_start, source_start + len("target"))
+        edited = "Alpha target Beta. Gamma  Delta."
+
+        relocated = relocate(anchor, edited)
+
+        assert relocated.status == "lost"
+        assert relocated.char_start is None
+        assert relocated.char_end is None
+
     def test_similar_distractor_is_rejected_when_context_conflicts(self):
         _, _, _, _, make_anchor_from_quote, relocate, *_ = _anchor()
         original = "We introduce a novel transformer architecture for NLP."
@@ -232,6 +272,42 @@ class TestRelocate:
         a2 = relocate(a, new_text)
         assert a2.status in ("drifted", "anchored")  # fuzzy should catch it
         assert a2.char_start is not None
+
+    def test_context_boundaries_recover_zero_overlap_paraphrase(self):
+        _, _, _, _, make_anchor_from_quote, relocate, *_ = _anchor()
+        original = (
+            "Background context. The analysis reports Recall. "
+            "A final sentence records the limitation."
+        )
+        anchor = make_anchor_from_quote("d", original, "Recall")
+        edited = (
+            "Background context. The analysis reports an equivalent interpretation. "
+            "A final sentence records the limitation."
+        )
+
+        relocated = relocate(anchor, edited)
+
+        expected = "an equivalent interpretation"
+        assert relocated.status == "drifted"
+        assert edited[relocated.char_start : relocated.char_end] == expected
+
+    def test_exact_quote_with_adjacent_expansion_is_drifted_and_span_expands(self):
+        _, _, _, _, make_anchor_from_quote, relocate, *_ = _anchor()
+        original = (
+            "Background context. The analysis reports Precision. "
+            "A final sentence records the limitation."
+        )
+        anchor = make_anchor_from_quote("d", original, "Precision")
+        edited = (
+            "Background context. The analysis reports Precision under stated conditions. "
+            "A final sentence records the limitation."
+        )
+
+        relocated = relocate(anchor, edited)
+
+        expected = "Precision under stated conditions"
+        assert relocated.status == "drifted"
+        assert edited[relocated.char_start : relocated.char_end] == expected
 
     def test_totally_removed_returns_lost(self):
         _, _, _, _, make_anchor_from_quote, relocate, *_ = _anchor()
@@ -410,6 +486,24 @@ class TestSectionPathAt:
 
 
 class TestPerformance:
+    def test_rewritten_anchor_in_repetitive_context_completes(self):
+        import time
+
+        _, _, _, make_anchor, _, relocate, *_ = _anchor()
+        original = "a" * 5000
+        start = 2500
+        anchor = make_anchor("d", original, start, start + 8)
+        edited = original[:start] + "b" * 8 + original[start + 8 :]
+
+        t0 = time.monotonic()
+        relocated = relocate(anchor, edited)
+        elapsed = time.monotonic() - t0
+
+        assert elapsed < 2.0, f"relocate took {elapsed:.2f}s on repetitive text"
+        assert relocated.status == "drifted"
+        assert (relocated.char_start, relocated.char_end) == (start, start + 8)
+        assert edited[relocated.char_start : relocated.char_end] == "b" * 8
+
     def test_relocate_long_text_completes(self):
         import time
 

@@ -6,6 +6,7 @@ import difflib
 import re
 import sys
 import uuid
+from bisect import bisect_left
 from dataclasses import dataclass
 from typing import Literal
 
@@ -84,12 +85,65 @@ def relocate(anchor: Anchor, new_text: str) -> Anchor:
     if not q:
         return anchor.model_copy(update={"status": "lost", "char_start": None, "char_end": None})
 
+    # Preserve an unchanged anchor at its recorded position before scanning for
+    # duplicate quotes or context boundaries.  Besides being the strongest
+    # available signal, this avoids combinatorial boundary matching in highly
+    # repetitive text where every context fragment occurs thousands of times.
+    stored_start = anchor.char_start
+    stored_end = anchor.char_end
+    if (
+        stored_start is not None
+        and stored_end == stored_start + len(q)
+        and 0 <= stored_start <= stored_end <= len(new_text)
+        and new_text[stored_start:stored_end] == q
+    ):
+        before_start = stored_start - len(anchor.context_before)
+        before_matches = not anchor.context_before or (
+            before_start >= 0 and new_text[before_start:stored_start] == anchor.context_before
+        )
+        after_matches = not anchor.context_after or (
+            new_text[stored_end : stored_end + len(anchor.context_after)] == anchor.context_after
+        )
+        if before_matches and after_matches:
+            return _updated_anchor(anchor, new_text, stored_start, stored_end, "anchored")
+
+    exact_spans = [(start, start + len(q)) for start in _find_all(new_text, q)]
+
+    # The stored context can recover a rewritten span even when the new wording
+    # has no lexical overlap with the old quote.  Resolve this before accepting
+    # an exact duplicate elsewhere in the document.
+    boundary_span = _context_boundary_span(anchor, new_text, require_both=True)
+    if boundary_span is not None:
+        start, end = boundary_span
+        enclosed_exact = [span for span in exact_spans if start <= span[0] and span[1] <= end]
+        if enclosed_exact and not (len(enclosed_exact) == 1 and enclosed_exact[0][0] == start):
+            boundary_span = None
+
+    if boundary_span is not None:
+        start, end = boundary_span
+        if start == end or not new_text[start:end].strip():
+            return anchor.model_copy(
+                update={"status": "lost", "char_start": None, "char_end": None}
+            )
+        status: Literal["anchored", "drifted"] = (
+            "anchored" if new_text[start:end] == q else "drifted"
+        )
+        return _updated_anchor(anchor, new_text, start, end, status)
+
     # Exact quotes can repeat. Rank every occurrence against the stored context
     # instead of accepting str.find()'s first occurrence.
-    exact_spans = [(start, start + len(q)) for start in _find_all(new_text, q)]
     if exact_spans:
         best = _rank_candidates(anchor, new_text, exact_spans, exact=True)[0]
         return _updated_anchor(anchor, new_text, best.start, best.end, "anchored")
+
+    boundary_span = _context_boundary_span(anchor, new_text, require_both=False)
+    if boundary_span is not None:
+        start, end = boundary_span
+        if start == end or not new_text[start:end].strip():
+            return anchor.model_copy(
+                update={"status": "lost", "char_start": None, "char_end": None}
+            )
+        return _updated_anchor(anchor, new_text, start, end, "drifted")
 
     fuzzy = _rank_candidates(anchor, new_text, _fuzzy_spans(q, new_text), exact=False)
     if fuzzy and _accept_fuzzy(anchor, fuzzy[0]):
@@ -108,6 +162,106 @@ def _find_all(text: str, needle: str) -> list[int]:
             return starts
         starts.append(found)
         offset = found + 1
+
+
+def _boundary_fragments(context: str, *, suffix: bool) -> list[str]:
+    """Return deterministic boundary-adjacent fragments, longest first."""
+
+    if not context:
+        return []
+    maximum = min(32, len(context))
+    lengths = sorted(
+        {maximum, *(size for size in (24, 16, 12, 8, 4) if size <= maximum)},
+        reverse=True,
+    )
+    return [context[-size:] if suffix else context[:size] for size in lengths]
+
+
+def _context_boundary_span(
+    anchor: Anchor,
+    text: str,
+    *,
+    require_both: bool,
+) -> tuple[int, int] | None:
+    """Recover the edited span between stable context boundaries.
+
+    Two-sided matches are strong enough to distinguish a rewritten or deleted
+    target from an identical quote elsewhere.  One-sided matches are reserved
+    for anchors originally located at a document boundary and are only used
+    after exact matching has failed.
+    """
+
+    left_fragments = _boundary_fragments(anchor.context_before, suffix=True)
+    right_fragments = _boundary_fragments(anchor.context_after, suffix=False)
+    max_gap = max(192, len(anchor.quote) * 4 + 32)
+    old_start = anchor.char_start
+    best: tuple[int, int, int, int, int, int] | None = None
+
+    if left_fragments and right_fragments:
+        right_positions = {right: _find_all(text, right) for right in right_fragments}
+        for left in left_fragments:
+            for left_start in _find_all(text, left):
+                start = left_start + len(left)
+                for right in right_fragments:
+                    right_starts = right_positions[right]
+                    first = bisect_left(right_starts, start)
+                    if first >= len(right_starts):
+                        continue
+                    end = right_starts[first]
+                    gap = end - start
+                    context_strength = len(left) + len(right)
+                    if gap > max_gap or context_strength < 16:
+                        continue
+                    distance = abs(start - old_start) if old_start is not None else sys.maxsize
+                    candidate = (
+                        -context_strength,
+                        distance,
+                        gap,
+                        abs(gap - len(anchor.quote)),
+                        start,
+                        end,
+                    )
+                    if best is None or candidate < best:
+                        best = candidate
+    elif not require_both and right_fragments and old_start == 0:
+        for right in right_fragments:
+            if len(right) < 16:
+                continue
+            for end in _find_all(text, right):
+                if end <= max_gap:
+                    candidate = (-len(right), end, end, abs(end - len(anchor.quote)), 0, end)
+                    if best is None or candidate < best:
+                        best = candidate
+    elif (
+        not require_both
+        and left_fragments
+        and anchor.char_end is not None
+        and anchor.char_end == anchor.char_start + len(anchor.quote)
+        and not anchor.context_after
+    ):
+        for left in left_fragments:
+            if len(left) < 16:
+                continue
+            for left_start in _find_all(text, left):
+                start = left_start + len(left)
+                if len(text) - start <= max_gap:
+                    distance = abs(start - old_start) if old_start is not None else sys.maxsize
+                    gap = len(text) - start
+                    candidate = (
+                        -len(left),
+                        distance,
+                        gap,
+                        abs(gap - len(anchor.quote)),
+                        start,
+                        len(text),
+                    )
+                    if best is None or candidate < best:
+                        best = candidate
+
+    if best is None:
+        return None
+    _, _, _, _, start, end = best
+    return start, end
 
 
 def _similarity(left: str, right: str) -> float:
