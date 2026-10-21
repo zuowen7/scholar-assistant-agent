@@ -1,6 +1,6 @@
 """PermissionPolicy — 5 级权限 + allow/deny/ask 规则引擎。
 
-参考 agent runtime runtime/permissions.rs:
+权限策略设计：
   - PermissionMode: ReadOnly < WorkspaceWrite < DangerFullAccess + Prompt + Allow
   - PermissionPolicy: authorize() with rule-based evaluation
   - Rule matching: exact, prefix (tool_name(pattern))
@@ -209,7 +209,7 @@ def _extract_subject(input_str: str) -> str | None:
 class PermissionPolicy:
     """5 级权限 + allow/deny/ask 规则引擎。
 
-    Evaluation order (参考 agent runtime permissions.rs authorize_with_context):
+    Evaluation order (authorize_with_context):
       1. denied_tools 黑名单 → unconditional Deny
       2. deny_rules → Deny
       3. Hook override Deny → short-circuit Deny

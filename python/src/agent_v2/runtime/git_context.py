@@ -1,6 +1,6 @@
 """Git Context — detect workspace git state for system prompt injection.
 
-Reimplementation of agent runtime rust/crates/runtime/src/git_context.rs.
+Independent Python implementation of the git context module.
 
 Detects: branch name, recent commits (max 5), staged files.
 Returns None if workspace is not a git repo.

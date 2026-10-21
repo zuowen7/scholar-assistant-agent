@@ -1,6 +1,6 @@
 """学术工具 — 翻译、导出、arXiv、RAG 检索。
 
-参考 agent runtime: retrieve_context_tool (RAG), dispatch_tool (file ops).
+学术工具实现：RAG 检索与文件操作。
 """
 
 from __future__ import annotations
@@ -637,9 +637,9 @@ def register_academic_tools(registry: ToolRegistry) -> None:
         network_scope={"export.arxiv.org"},
     )
 
-    # ---- rag_search — 参考 agent runtime retrieve_context_tool ----
+    # ---- rag_search ----
     async def rag_search(args: dict) -> ToolResult:
-        """检索文档库，返回相关文档片段。参考 agent runtime retrieve_context。"""
+        """检索文档库，返回相关文档片段。"""
         query = str(args.get("query", ""))
         top_k = int(args.get("top_k", 5))
 
@@ -985,7 +985,7 @@ def register_academic_tools(registry: ToolRegistry) -> None:
         permission="read-only",
     )
 
-    # ---- web_search (参考 agent runtime WebSearch) ----
+    # ---- web_search ----
     async def web_search(args: dict) -> ToolResult:
         """搜索网页。使用 DuckDuckGo HTML 搜索。"""
         query = str(args.get("query", ""))
@@ -1039,7 +1039,7 @@ def register_academic_tools(registry: ToolRegistry) -> None:
         network_scope={"html.duckduckgo.com"},
     )
 
-    # ---- web_fetch (参考 agent runtime WebFetch) ----
+    # ---- web_fetch ----
     async def web_fetch(args: dict) -> ToolResult:
         """抓取网页内容。"""
         url = str(args.get("url", ""))

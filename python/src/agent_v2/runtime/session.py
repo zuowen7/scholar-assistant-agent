@@ -1,6 +1,6 @@
 """Session — JSONL 会话持久化 + resume + rotate。
 
-参考 agent runtime runtime/session.rs:
+会话持久化：
   - JSONL 格式（每行一条消息）
   - 256KB rotate，最多 3 个 rotate 文件
   - 单字段 16KB 截断
@@ -314,7 +314,7 @@ class Session:
     def remove_trailing_messages_since_last_user(self) -> int:
         """移除最后一条 user 消息之后的所有尾部消息（上一次回答的工具/助手回合）。
 
-        用于重复消息重试（agent runtime 式去重）：用户重发同一条消息时，
+        用于重复消息重试（按原始文本去重）：用户重发同一条消息时，
         用新回答替换旧回答，避免 [user, assistant, assistant] 的协议污染。
         返回移除的条数。
         """

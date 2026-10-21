@@ -1,6 +1,6 @@
 """Provider quirks — 每个 provider 的特殊行为配置。
 
-参考 agent runtime:
+参考同类实现：
   - detect_provider_kind() / model_family_identity_for()
   - model_rejects_is_error_field() / model_requires_reasoning_content_in_history()
 """
@@ -23,7 +23,7 @@ class ProviderQuirks:
     requires_thinking_with_tool_use: bool = False  # Anthropic-format: thinking blocks required
     strip_reasoning_from_history: bool = False  # Don't include reasoning in history
     # reasoning_content 回传（OpenAI-compat 推理模型要求工具调用回合回传推理内容，
-    # 见 agent runtime model_requires_reasoning_content_in_history）。
+    # 见 model_requires_reasoning_content_in_history）。
     # 严格校验的供应商（OpenAI/Groq 等）不识别该字段，保持 False 以免 400。
     echo_reasoning_content: bool = False
 
@@ -84,7 +84,7 @@ _register("openai", supports_stream_options=False)
 
 
 def detect_quirks(model: str, base_url: str = "") -> ProviderQuirks:
-    """检测 provider 并返回对应的 quirks 配置。参考 agent runtime detect_provider_kind。"""
+    """检测 provider 并返回对应的 quirks 配置。"""
     model_lower = model.lower()
     url_lower = base_url.lower()
 

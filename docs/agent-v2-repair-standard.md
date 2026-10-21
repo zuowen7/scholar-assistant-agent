@@ -272,14 +272,9 @@ pending | awaiting_approval | success | error | denied | skipped | no_change
 这不等于拥有 OS/container sandbox。任何显式启用 `run_command`、插件或未来 MCP
 进程的配置都属于 power profile，不能宣称已通过本验收。
 
-## 5. 与主流编码 Agent 的边界比较
+## 5. 验收边界说明
 
-| 系统 | 默认信任与执行隔离 | 本项目的相对结论 |
-|---|---|---|
-| AI Agent | 项目读写权限模式、逐次审批和 turn 上限；安全文档仍要求外部 sandbox 承担 OS 隔离 | 本项目在工作区 grant、文件 mutation journal、跨重启 Undo 和学术资源预检上更具体；同样不能把静态命令校验冒充 OS sandbox |
-| Gemini CLI | trusted folders、allow/exclude tools、审批模式，并可使用 Seatbelt 或 Docker sandbox | 本项目生产安全配置通过直接移除命令能力达到更小攻击面；若启用命令，隔离能力弱于 Gemini 的 sandbox 模式 |
-| OpenHands | 推荐 Docker runtime；process runtime 明确没有隔离 | 本项目默认桌面内嵌运行，文件协议和恢复能力更强，但不提供容器级任意命令隔离 |
-| 本项目 | 服务端 workspace grant、effect policy、审批、可恢复 journal、独立预算、固定 IP/SNI 网络预检；默认无命令和插件进程 | 适合 privacy-first 学术文件工作；不应包装为通用 autonomous coding sandbox，子代理也是 one-shot specialist |
+本项目的安全与可靠性按独立验收清单评估，不以其他编码 Agent 的实现作为达标依据。
 
 ## 6. 验收证据
 

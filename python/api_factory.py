@@ -861,7 +861,7 @@ def create_app(*, cloud_only: bool = False) -> FastAPI:
     _graph_store = None
     _companion_store = None
 
-    # Agent V2 — agent runtime-inspired ConversationRuntime (replaces old ReAct agent)
+    # Agent V2 — ConversationRuntime (replaces old ReAct agent)
     logger.info("Registering Agent V2 routes")
     from src.agent_v2.router import register_agent_v2_routes
 

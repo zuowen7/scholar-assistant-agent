@@ -1,7 +1,7 @@
 """Anthropic Messages API Provider。
 
 通过 Anthropic 格式发请求给兼容的 provider（如 DeepSeek）。
-参考 agent runtime api/providers/anthropic.rs + cc-switch anthropic_to_openai 转换。
+参考 Anthropic Messages API 与 OpenAI Chat Completions 的字段转换方式。
 
 Anthropic 格式与 OpenAI 的关键差异:
   - system: 顶层字段（不在 messages 里）

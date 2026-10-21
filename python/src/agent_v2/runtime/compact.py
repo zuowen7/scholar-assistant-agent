@@ -1,6 +1,6 @@
 """上下文压缩 — token 超阈值时压缩旧消息为摘要。
 
-参考 agent runtime runtime/compact.rs:
+参考同类上下文压缩实现：
   - compact_session: 将旧消息压缩为摘要
   - estimate_session_tokens: 估算 token 数量
   - should_compact: 判断是否需要压缩
@@ -45,7 +45,7 @@ def compact_session(
 ) -> list[Message]:
     """压缩会话 — 保留最近 N 条消息，旧消息合并为系统摘要。
 
-    参考 agent runtime compact.rs compact_session:
+    压缩会话消息：
       - 计算需要压缩的消息数
       - 生成摘要消息
       - 返回精简后的消息列表

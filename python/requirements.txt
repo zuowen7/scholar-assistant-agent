@@ -29,7 +29,7 @@ striprtf==0.0.29
 
 # OCR fallback optional, see requirements-ocr.txt
 
-# MCP Server support (stdio transport for AI Agent / Cursor IDE integration)
+# MCP Server support (stdio transport for IDE integration)
 mcp==1.28.1
 # MCP uses this only on Windows; keeping the marker explicit makes the shared
 # lock file installable on Linux CI runners as well.

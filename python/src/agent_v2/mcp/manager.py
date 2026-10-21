@@ -1,6 +1,6 @@
 """McpManager — MCP server 生命周期管理。
 
-参考 agent runtime runtime/mcp_stdio.rs:
+参考同类 agent runtime 的 MCP stdio 生命周期：
   - spawn MCP server as subprocess (stdio transport)
   - JSON-RPC handshake: initialize → tools/list
   - call_tool: tools/call via JSON-RPC
@@ -56,7 +56,7 @@ class McpServerState:
 class McpManager:
     """MCP server 生命周期管理。
 
-    参考 agent runtime McpServerManager:
+    参考同类 McpServerManager 的生命周期管理：
       - startup_all(): 启动所有配置的 MCP server
       - get_all_tools(): 返回所有 server 提供的工具
       - call_tool(): 通过 JSON-RPC 调用 MCP server 的工具

@@ -1,6 +1,6 @@
 """Session Control — pause/resume/abort + workspace-namespaced session store.
 
-Reimplementation of agent runtime session_control.rs.
+Independent Python implementation of session control and session store.
 
 SessionControl: in-memory state machine for session lifecycle (Active/Paused/Aborted).
 SessionStore: per-workspace session persistence with namespace isolation.

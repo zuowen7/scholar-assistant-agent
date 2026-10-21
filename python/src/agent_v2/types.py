@@ -1,6 +1,6 @@
 """Agent V2 核心类型定义。
 
-参考 agent runtime:
+类型定义：
   - api/types.rs: StreamEvent, ContentBlock, ToolDefinition, MessageRequest/Response
   - runtime/session.rs: ContentBlock, ConversationMessage, MessageRole
   - runtime/conversation.rs: AssistantEvent

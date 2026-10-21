@@ -1,6 +1,6 @@
 """Recovery Recipes — automatic fault recovery for known failure scenarios.
 
-Reimplementation of agent runtime rust/crates/runtime/src/recovery_recipes.rs.
+Independent Python implementation of the recovery recipes.
 
 7 failure scenarios with known recovery recipes:
   - TrustPromptUnresolved → AcceptTrustPrompt

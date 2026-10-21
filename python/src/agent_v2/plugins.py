@@ -1,6 +1,6 @@
 """Plugin 系统 — YAML 配置驱动的可扩展插件。
 
-参考 agent runtime plugins/src/lib.rs: PluginLifecycle + bundled plugins。
+参考同类插件系统的 PluginLifecycle + bundled plugins 设计。
 
 Plugin manifest 格式 (plugin.yaml):
   name: my_plugin
@@ -54,7 +54,7 @@ class PluginManifest:
 
 
 class PluginManager:
-    """插件管理器。参考 agent runtime PluginLifecycle。"""
+    """插件管理器。"""
 
     def __init__(self, plugins_dir: str | Path | None = None):
         self._plugins: dict[str, PluginManifest] = {}

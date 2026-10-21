@@ -227,7 +227,7 @@ Settings panel → "Voice" tab:
 ---
 ## AI Agent Chat
 
-Switch the right panel to "Agent" — this is the core of the app. It operates on your workspace files directly, like AI Agent.
+Switch the right panel to "Agent" — this is the core of the app. It operates on your workspace files directly.
 
 ### Basic Usage
 

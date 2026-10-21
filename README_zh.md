@@ -4,7 +4,7 @@
 
 面向论文写作与投稿的开源 AI 工作台。写、审、想、排，一站完成。
 
-- **写** — 编辑器内 AI 伴写 / 润色 / 扩写，Agent 直接读写项目文件（论文版 AI Agent）
+- **写** — 编辑器内 AI 伴写 / 润色 / 扩写，Agent 直接读写项目文件（工作区原生 Agent）
 - **审** — Reviewer-2 对抗式审稿 + 论证账本，投稿前逼问逻辑漏洞
 - **想** — 思维导图 + Toulmin 论证图，理清思路与论证结构
 - **排** — 一键导出 IEEE / ACM / NeurIPS 等 LaTeX 模板与 Word
@@ -52,9 +52,9 @@ v0.5.2 · 最新：识图 Vision API 设置面板 + 纯文本模型本地 OCR �
 
 ### 学术写作 AI（Agent V2 为核心）
 
-> **定位：论文版 AI Agent。** 把科研项目当 workspace，Agent 像 AI Agent 修代码一样直接读/写 PDF、草稿、bib、数据文件。Agent V2 架构参考 [ultraworkers/agent runtime](https://github.com/ultraworkers/agent runtime) 设计。
+> **定位：面向论文的工作区原生 AI Agent。** 把科研项目当 workspace，Agent 像代码 Agent 改代码一样直接读/写 PDF、草稿、bib、数据文件。
 
-- **Agent V2 运行时** — ConversationRuntime 统一对话循环，支持流式 SSE 逐 token 实时显示；3 次自动重试恢复；Planning 检测 + 自动重试；9 个运行时模块参考 agent runtime 架构独立用 Python 重写（bash 命令校验、git 上下文、LSP 客户端、策略引擎、prompt 缓存、故障恢复、沙箱、会话控制、Trident 压缩）
+- **Agent V2 运行时** — ConversationRuntime 统一对话循环，支持流式 SSE 逐 token 实时显示；3 次自动重试恢复；Planning 检测 + 自动重试；9 个运行时模块独立用 Python 重写（bash 命令校验、git 上下文、LSP 客户端、策略引擎、prompt 缓存、故障恢复、沙箱、会话控制、Trident 压缩）
 - **17 个内置工具** — `read_file / write_file / str_replace / grep_files / glob_files / list_dir / run_command / rag_search / web_search / web_fetch / translate_document / export_document / arxiv_search / run_sub_agent`（audit/explain/implement/translate 四模式）；`run_command` 受 bash 校验管道保护（只读拦截、危险命令警告、路径验证、命令分类）
 - **5 级权限系统** — ReadOnly / WorkspaceWrite / DangerFullAccess / Prompt / Allow，支持 allow/deny/ask 规则引擎；文件操作严格锁定 workspace 边界；sudo 包装和 sed -i 在只读模式下被拦截
 - **实时文件刷新** — Agent 写入文件后自动发 checkpoint SSE 事件，文件树和编辑器即时更新
@@ -203,8 +203,8 @@ v0.5.2 · 最新：识图 Vision API 设置面板 + 纯文本模型本地 OCR �
 │   │   ├── chunker/              #   3 策略切块 (sentence/paragraph/fixed)
 │   │   ├── translator/           #   Ollama + Cloud 双客户端 (21 家供应商)
 │   │   ├── formatter/            #   3 输出模式 + Pandoc 导出
-│   │   ├── agent_v2/             #   Agent V2 (agent runtime 架构，替代旧 agent/)
-│   │   │   ├── runtime/          #     conversation, permissions, session, compact, usage, +9 个参考 agent runtime 重写的模块 (bash 校验/恢复/沙箱/trident 等)
+│   │   ├── agent_v2/             #   Agent V2（替代旧 agent/）
+│   │   │   ├── runtime/          #     conversation, permissions, session, compact, usage, +9 个独立重写的模块 (bash 校验/恢复/沙箱/trident 等)
 │   │   │   ├── tools/            #     registry（含 bash 校验管道集成）, academic_tools, sub_agent
 │   │   │   ├── providers/        #     openai_compat, anthropic, mock_provider, base, quirks
 │   │   │   ├── mcp/              #     MCP JSON-RPC stdio 生命周期管理

@@ -14,7 +14,7 @@
 
 这一定位与产品架构天然契合：Agent V2 已经是"能读写工作区文件、可调工具、可派生子代理"的运行时，下一步不是重写，而是**把单 Agent 循环升级为"多角色调度"**，并把调度策略本身作为可比较、可评估的研究对象。
 
-**安全表述原则**（来自 project docs 毕设上下文）：
+**安全表述原则**（来自项目约定）：
 - 把研墨定位为"学术写作助手的先验原型与实验平台"，而非成熟商业平台。
 - 论文聚焦：多智能体角色建模、任务路由数据、调度策略对比、系统集成、评估。
 - 轻量模型路由是**候选实验策略**，不是硬性成功条件。
@@ -30,7 +30,7 @@
 2. **契约先行**：SSE 事件名、`tool_name`、审批/checkpoint 负载、ledger `?doc_id=` 路由，前后端必须同步且文档化。
 3. **小步原子提交**：当前 `refactor/reference-driven-ui` 分支 202 条脏变更，须按功能原子收口，避免集成覆盖滞后。
 4. **测试跟着危险走**：provider 客户端、checkpoint 决策、resume 路径是高风险面，优先补测试。
-5. **文档即契约**：删除/重写 `gap analysis`，让文档回到"代码事实的真相"。
+5. **文档即契约**：清理历史差距分析文档，让文档回到"代码事实的真相"。
 
 ---
 
@@ -61,7 +61,7 @@
 - **Provider 客户端测试**（F10）：为 `openai_compat.py` / `anthropic.py` / `quirks.py` 补 mock-HTTP 回归测试，覆盖 21 家厂商的流式与 quirks 自动探测。
 - **special_elements 测试**（F11）：补 parser/tools/types/vision 底层依赖的单元测试。
 - **`AgentPanel.vue` 拆分**（F6）：拆出会话列表、审批卡片、工具调用渲染、流式消息等子组件，目标单文件 < 600 行。
-- **SSE 契约文档化**（F7）：把 `tool_denied` / `usage` 补入事件清单；校准测试数量表述；删除/重写 `gap analysis`。
+- **SSE 契约文档化**（F7）：把 `tool_denied` / `usage` 补入事件清单；校准测试数量表述；清理历史差距分析文档。
 
 ### 3.2 多智能体调度（毕设核心）
 - **角色建模**：在 `agent_v2/` 内引入角色注册（literature / writing / translation / argument / structure / format / project / settings），复用现有 `ToolRegistry` 与 `run_sub_agent` 预设。

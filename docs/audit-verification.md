@@ -28,13 +28,13 @@
 | **F4** `watch(sessionId)` 监听器泄漏 | TRUE | L104 `watch(sessionId,…)` 无 `onScopeDispose`；`useAgentChat()` 被 6 处组件调用（App/AgentPanel×2/EditorLayout/MonacoEditor/TaskAgentPanel），每次调用注册一个 watcher |
 | **F5** resume 路径漏传 `isDone` | TRUE，但**影响被轻微夸大** | L316 resume 确实缺 `isDone`（已补）。但缺它不会"挂起"——`readSseStream` 仍会在后端关闭流时正常退出；`isDone` 只是"done 后提前 cancel 读取器"的优化 |
 | **F6** 巨型文件 | TRUE | 全部行数核实无误：pipeline 1200 / splitter 759 / router 721（注册函数 265）/ flatten 699 / reviewer 637；AgentPanel 1584 / App 1483 / MindMapView 1242 / EditorLayout 1064 |
-| **F7** 文档领先于代码 | TRUE | `gap analysis` 列"无真流式/无 PermissionEnforcer/无自动保存/无系统提示词/路径穿越"——代码均已实现；project docs 事件清单缺 `tool_denied`(types.py:132)、`usage`(types.py:136)；`usage` 实际在 conversation.py:97/192/196 多处 emit |
+| **F7** 文档领先于代码 | TRUE | 差距分析文档列"无真流式/无 PermissionEnforcer/无自动保存/无系统提示词/路径穿越"——代码均已实现；项目文档事件清单缺 `tool_denied`(types.py:132)、`usage`(types.py:136)；`usage` 实际在 conversation.py:97/192/196 多处 emit |
 | **F8** 脏工作树 | TRUE | `git status --short` = 202 条；10 个已修改 agent/voice 源+测试，180+ 未跟踪截图/文档 |
 | **F9** Docker 漂移 | TRUE，且**比报告更严重** | `python/main.py` **实际不存在**（`find` 无结果），故 `Dockerfile` 的 `COPY python/main.py .` 会让镜像**构建直接失败**；compose `main.py` 入口也无法运行。原报告仅说"入口不一致"，低估了 |
 | **F10** Provider 层无测试 | TRUE | `python/tests` 无 `openai_compat/anthropic/base/quirks` 的 `.py` 测试，仅 `test_mock_provider.py`。补充：曾有 `test_llm_client_anthropic`/`test_multi_provider_compat` 等，源码已删，仅留 **gitignored** 的 `.pyc`（非仓库问题） |
 | **F11** special_elements 无测试 | TRUE | `test_special_elements.py` 源码已删，仅留 gitignored `.pyc`。当前无源测试 |
-| **F12** 配置三副本 | TRUE | `config/default.yaml` + `python/config/default.yaml` + `default.local.yaml` 三份并存（project docs 已警示） |
-| 附加 | TRUE | 后端无 `pdb`/`breakpoint()`/裸 `except:`；project docs 两项具名缺陷（sudo 标志、流式 tool-use）确已修复 |
+| **F12** 配置三副本 | TRUE | `config/default.yaml` + `python/config/default.yaml` + `default.local.yaml` 三份并存（项目文档已警示） |
+| 附加 | TRUE | 后端无 `pdb`/`breakpoint()`/裸 `except:`；项目文档两项具名缺陷（sudo 标志、流式 tool-use）确已修复 |
 
 ---
 
@@ -74,15 +74,15 @@
 | F3 | **撤回删除**（经用户澄清为 WIP）：恢复 `AgentCheckpointCard.vue`（50 行，完整实现）与 `respondCheckpoint` stub。原"死代码"判断错误——组件是尚未接入 `AgentPanel` 的在制品。真正缺口=后端 checkpoint decide 端点 + 前端挂载，留作 TODO | `src/components/AgentCheckpointCard.vue`（恢复）、`src/composables/useAgentChat.ts`（恢复 stub） | 组件恢复为干净 tracked 状态；`useAgentChat.test.ts` 20 passed |
 | F4 | `watch(sessionId)` 加 `onScopeDispose` + `getCurrentScope` 守卫，作用域销毁时停止监听 | `src/composables/useAgentChat.ts` | 20 passed |
 | F5 | resume 路径 `readSseStream` 补 `() => streamDone`（与初始路径一致） | `src/composables/useAgentChat.ts` | 20 passed；`streamReader.test.ts` 9 passed |
-| F7a | project docs SSE 事件清单补入 `tool_denied`、`usage` | `project docs` | — |
-| F7b | `gap analysis` 顶部加 ⚠️ STALE 通告，指向 project docs | `python/src/agent_v2/gap analysis` | — |
+| F7a | 项目文档 SSE 事件清单补入 `tool_denied`、`usage` | 项目文档 | — |
+| F7b | 差距分析文档标注 STALE 通告，指向项目文档 | 历史文档 | — |
 | F7c | audit-report.md 更正 F2（plugin 误报）、F9（main.py 缺失） | `docs/audit-report.md` | — |
 | F9 | Dockerfile：移除 `COPY python/main.py .`、LABEL 版本 `0.3.6→0.5.0`；docker-compose：entrypoint `main.py→api.py` + `command: ["--port","18088"]`、更新用法注释 | `Dockerfile`、`docker-compose.yml` | main.py 不存在问题消除；入口与 Dockerfile/healthcheck 一致 |
 
 ### ✅ 已提交
 
 - 审计修复已作为干净 commit 提交：`cebcd3a fix(audit): remove shadow backend, plug LLM log leak, wire agent cleanup`（7 文件）。
-- **被 gitignore 排除、未进 commit**：`project docs`（.gitignore:127）、`docs/audit-report.md`（docs/*REPORT*.md）——磁盘修改保留，需用户决定是否 `git add -f` 或放宽 .gitignore。
+- **被 gitignore 排除、未进 commit**：`docs/audit-report.md`（docs/*REPORT*.md）——磁盘修改保留，需用户决定是否 `git add -f` 或放宽 .gitignore。
 - **F3 撤回**：初版 commit 曾删除 `AgentCheckpointCard.vue`，经用户澄清为 WIP 后已 amend 恢复（组件 + `respondCheckpoint` stub）。
 
 ### ⏸️ 仍未提交（F8 仓库卫生）

@@ -1,6 +1,6 @@
 """TDD tests for Hooks Advanced Features.
 
-Reference: agent runtime rust/crates/runtime/src/hooks.rs
+Hooks tests.
 
 New features under test:
   1. HookAbortSignal — async cancellation of running hooks
@@ -9,7 +9,7 @@ New features under test:
   4. Shell hook JSON stdout parsing (decision, reason, updatedInput, permissionDecision)
   5. HookRunResult.permission_override — hook provides permission context
   6. Pre-tool-use deny short-circuits pipeline
-  7. Hook payload structure matches agent runtime format
+  7. Hook payload structure matches the documented format
 """
 
 from __future__ import annotations
@@ -331,7 +331,7 @@ class TestShellHookJsonParsing:
 
     @pytest.mark.asyncio
     async def test_shell_hook_exit_code_2_denies(self):
-        """Exit code 2 means deny (agent runtime convention)."""
+        """Exit code 2 means deny."""
         runner = HookRunner()
         runner.register(
             HookDefinition(
@@ -344,7 +344,7 @@ class TestShellHookJsonParsing:
 
     @pytest.mark.asyncio
     async def test_shell_hook_exit_code_3_ask(self):
-        """Exit code 3 means ask (agent runtime convention)."""
+        """Exit code 3 means ask."""
         runner = HookRunner()
         runner.register(
             HookDefinition(

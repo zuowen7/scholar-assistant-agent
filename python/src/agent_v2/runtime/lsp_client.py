@@ -1,6 +1,6 @@
 """LSP Client Registry — Language Server Protocol client management.
 
-Reimplementation of agent runtime rust/crates/runtime/src/lsp_client.rs.
+Independent Python implementation of the LSP client registry.
 
 Manages LSP server connections with state machine: Disconnected→Connecting→Ready→Error.
 Supports 7 actions: diagnostics, hover, definition, references, completion, symbols, format.

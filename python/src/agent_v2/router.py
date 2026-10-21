@@ -489,7 +489,7 @@ def _skill_proposal_store() -> SkillProposalStore:
 
 
 def _resolve_model_alias(model: str, aliases: dict) -> str:
-    """解析模型别名。参考 agent runtime resolve_model_alias。别名从 config 读取。"""
+    """解析模型别名。别名从 config 读取。"""
     return aliases.get(model.lower(), model)
 
 

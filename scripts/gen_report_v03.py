@@ -210,7 +210,7 @@ def build_report() -> Document:
     )
     add_para(doc,
         "（2）结构化思维工具的缺失。学术论文的生命线是严谨的论证结构，但现有 AI 写作工具"
-        "（ChatGPT、Claude、DeepSeek 等）普遍采用「输入 Prompt → 输出文本」的线性交互模式，"
+        "（主流大模型）普遍采用「输入 Prompt → 输出文本」的线性交互模式，"
         "完全无法帮助用户在写作前进行结构化思考。XMind、MindManager 等思维导图软件虽然能可视化结构，"
         "却缺乏 AI 驱动的内容展开能力，与学术写作流程完全割裂。"
     )
@@ -254,7 +254,7 @@ def build_report() -> Document:
     add_para(doc,
         "工程层面：采用 Tauri 2 + Python FastAPI 的混合架构，安装包约 15 MB，远小于 Electron 方案。"
         "通过 SSE 协议实现翻译、Agent 推理、论证账本构建、Reviewer 评审等所有长任务的实时可视化；"
-        "通过 MCP 协议实现与 AI Agent、Cursor 等主流 IDE 的无缝集成；"
+        "通过 MCP 协议实现与主流 AI IDE 的无缝集成；"
         "通过 trace_id 中间件、日志轮转、前端 DebugPanel 等观测体系，让每一次 LLM 调用、每一条 SSE 事件都可审计、可回放。"
         "v0.3 累计交付 1 624 个自动化测试（pytest 1 624 passed / 11 skipped），覆盖论证陪练 27 个端到端集成测试场景。"
     )
@@ -266,7 +266,7 @@ def build_report() -> Document:
     add_para(doc,
         "研墨不是传统意义上的「AI 写作工具」或「翻译软件」，而是国内首个学术写作 IDE"
         "（Integrated Development Environment for Academic Writing）—— 借鉴现代代码 IDE"
-        "（主流编辑器）的工作区组织、多模式 AI 交互、可视化预览等成熟范式，并将其系统性地适配到学术写作场景。"
+        "的工作区组织、多模式 AI 交互、可视化预览等成熟范式，并将其系统性地适配到学术写作场景。"
     )
     add_para(doc,
         "v0.3 版本在原有「思维导图 + AI Agent」双引擎之上，新增了「论证陪练（Argument Companion v3）」作为"
@@ -610,7 +610,7 @@ def build_report() -> Document:
     # 3.5 编辑器
     add_title(doc, "3.5 智能编辑器与多层级 AI 辅助交互", level=2)
     add_para(doc,
-        "系统的 Markdown 编辑器深度集成了多层级 AI 辅助交互能力，借鉴现代 AI 代码编辑器（主流编辑器）的交互范式并将其引入学术写作场景，"
+        "系统的 Markdown 编辑器深度集成了多层级 AI 辅助交互能力，借鉴现代 AI 代码编辑器的交互范式并将其引入学术写作场景，"
         "构建了从「几个词的续写」到「多步骤研究任务」的全频谱 AI 辅助体系："
         "（1）Markdown 双栏所见即所得编辑（左 Markdown 源码、右实时渲染预览，KaTeX/MathJax 实时数学公式渲染）；"
         "（2）项目级文件管理器（「打开文件夹 = 工作区」，多标签页并行编辑）；"
@@ -706,11 +706,11 @@ def build_report() -> Document:
     # 3.8 MCP
     add_title(doc, "3.8 MCP 协议与 IDE 集成", level=2)
     add_para(doc,
-        "系统实现了 MCP（Model Context Protocol）协议服务器，通过 stdio 传输方式与 AI Agent、Cursor、Continue 等主流 IDE 集成。"
+        "系统实现了 MCP（Model Context Protocol）协议服务器，通过 stdio 传输方式与主流 IDE 集成。"
         "MCP 服务器把系统的核心能力（翻译、文档解析、知识检索、arXiv 搜索、文本润色、摘要生成、大纲生成、段落扩写、"
         "论证陪练账本构建、Reviewer-2 评审）暴露为标准化的工具接口，用户可在 IDE 中直接调用这些功能。"
         "MCP 服务器从环境变量读取 Ollama 和云端 API 配置，启动开销 < 1 秒，工具执行结果限制在 4 000 字符以内以避免影响 IDE 响应。"
-        "项目提供 主流客户端 三种客户端的完整配置文档（Windows/macOS/Linux 三平台）。"
+        "项目提供三种主流客户端的完整配置文档（Windows/macOS/Linux 三平台）。"
     )
 
     # ── 四、关键创新点 ──────────────────────────────────────────────────────────
@@ -781,7 +781,7 @@ def build_report() -> Document:
     add_title(doc, "4.4 多层级 AI 辅助交互范式（核心创新四）", level=2)
     add_para(doc,
         "现有学术写作工具的 AI 交互模式普遍停留在「独立窗口对话」层面——用户必须切换到 AI 对话窗口、输入 Prompt、复制结果，"
-        "AI 能力与写作流程割裂。本系统借鉴现代 AI 代码编辑器（主流编辑器）的成熟范式并改造适配学术写作场景，"
+        "AI 能力与写作流程割裂。本系统借鉴现代 AI 代码编辑器的成熟范式并改造适配学术写作场景，"
         "构建了国内首个面向学术写作的多层级 AI 交互体系，覆盖从「几个词的续写」到「多步骤研究任务」再到「投稿前自检」的全频谱需求："
     )
     add_para(doc,

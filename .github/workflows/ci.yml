@@ -116,7 +116,7 @@ jobs:
       - name: Check SSE event name consistency
         shell: bash
         run: |
-          # project docs 声明的 translate.* 事件必须前后端都有
+          # 项目规范：translate.* 事件必须前后端都有
           EVENTS=(
             "translate.progress"
             "translate.parsed"
@@ -149,11 +149,11 @@ jobs:
       - name: Check tool_name metadata key
         shell: bash
         run: |
-          # project docs 规定：canonical metadata key 是 tool_name，不是 tool
+          # 项目规范：canonical metadata key 是 tool_name，不是 tool
           # 后端新代码不应再用 bare 'tool' 作为 canonical field
           if grep -rn "['\"]tool['\"]\s*:" python/src/agent_v2/ 2>/dev/null | \
              grep -v "tool_name\|tool_call\|tool_result\|tool_use\|tool_input\|# "; then
-            echo "::error::检测到 bare 'tool' 字段，应使用 'tool_name'（见 project docs）"
+            echo "::error::检测到 bare 'tool' 字段，应使用 'tool_name'（见项目规范）"
             exit 1
           fi
           echo "tool_name 契约检查通过"

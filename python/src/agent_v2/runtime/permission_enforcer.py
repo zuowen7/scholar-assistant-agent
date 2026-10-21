@@ -1,6 +1,6 @@
 """PermissionEnforcer — 工具执行门控层。
 
-参考 agent runtime runtime/permission_enforcer.rs:
+权限执行门控：
   - check(): 通用权限检查
   - check_file_write(): 文件写入 + workspace boundary
   - check_bash(): ReadOnly 下允许只读命令 (cat, grep, ls, git log...)
@@ -37,7 +37,7 @@ _WRITE_FLAGS = ("-i ", "--in-place ", " > ", " >> ", " 2> ", " 2>> ")
 
 
 def is_read_only_command(command: str) -> bool:
-    """保守启发式：判断 bash 命令是否为只读。参考 agent runtime is_read_only_command。"""
+    """保守启发式：判断 bash 命令是否为只读。"""
     if not command.strip():
         return False
     first_token = command.strip().split(None, 1)[0].rsplit("/", 1)[-1]
@@ -62,7 +62,7 @@ class EnforcementResult:
 class PermissionEnforcer:
     """工具执行门控。
 
-    参考 agent runtime PermissionEnforcer:
+    PermissionEnforcer：
       - 在 PermissionPolicy 之上添加特定工具的语义检查
       - check_file_write: workspace boundary
       - check_bash: ReadOnly 下只允许只读命令
@@ -156,7 +156,7 @@ class PermissionEnforcer:
 
 
 def _is_within_workspace(path: str, workspace_root: str) -> bool:
-    """Simple workspace boundary check via string prefix. 参考 agent runtime is_within_workspace。"""
+    """Simple workspace boundary check via string prefix."""
     import os
     normalized = path if path.startswith("/") or path.startswith("\\") or (len(path) > 1 and path[1] == ":") else os.path.join(workspace_root, path)
     root = workspace_root.rstrip("/").rstrip("\\")

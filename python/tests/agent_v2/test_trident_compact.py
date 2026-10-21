@@ -1,6 +1,6 @@
 """TDD tests for Trident Compaction — 3-stage context compression.
 
-Reference: agent runtime rust/crates/runtime/src/trident.rs
+Trident compaction tests.
 
 Stages under test:
   1. Stage 1 Supersede — remove obsolete file operations (keep only latest write)

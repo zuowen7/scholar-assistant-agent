@@ -1,6 +1,6 @@
 """TDD tests for Git Context Injection.
 
-Reference: agent runtime rust/crates/runtime/src/git_context.rs
+Git context tests.
 
 Tests cover:
   1. GitContext.detect() — detect git state from workspace

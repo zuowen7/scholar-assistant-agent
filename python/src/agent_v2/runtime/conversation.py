@@ -1,8 +1,6 @@
 """ConversationRuntime — 统一 Agent 对话循环（真流式 + 审批暂停）。
 
-参考 agent runtime:
-  - runtime/conversation.rs: ConversationRuntime + stream_message
-  - agent runtime/src/lib.rs: dispatch_tool + turn loop + session persist
+统一 Agent 对话循环：流式响应、工具调用分发、turn 循环与会话持久化。
 """
 
 from __future__ import annotations
@@ -255,7 +253,7 @@ class ConversationRuntime:
         try:
             yield AgentEvent.session_started(self.session.session_id)
             if not resume:
-                # agent runtime 式消息去重：用户重复发送同一条消息（双击/重试）时，
+                # 消息去重：用户重复发送同一条消息（双击/重试）时，
                 # 不重复追加到上下文；并移除上一次针对该消息的回答，
                 # 让本轮新回答替换旧回答，避免 [user, assistant, assistant] 协议污染。
                 # 比对用原始文本（raw_user_message），因为持久化的 user 消息带

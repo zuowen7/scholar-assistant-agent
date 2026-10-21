@@ -1,6 +1,6 @@
 """确定性 Mock LLM Provider。
 
-参考 agent runtime crates/mock-anthropic-service：
+参考 mock Anthropic 服务的实现思路：
   预设场景 → 根据 messages 内容匹配 → 返回固定的 ProviderResponse。
 不依赖任何网络，毫秒级响应，100% 可复现。
 """

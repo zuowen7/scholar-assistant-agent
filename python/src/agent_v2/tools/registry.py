@@ -1,10 +1,8 @@
 """ToolRegistry — 工具注册、发现、执行。
 
-参考 agent runtime:
-  - tools/lib.rs: GlobalToolRegistry, ToolSpec, permission_specs
-  - tools/tests/path_scope_enforcement.rs: workspace boundary enforcement
-  - agent runtime dispatch_tool: join_under_root, assert_workspace_path,
-    ignore-aware directory listing (WalkBuilder with .gitignore/.agentignore)
+工具注册表：GlobalToolRegistry、ToolSpec、permission_specs；
+工作区边界校验（路径规范化与 workspace 根目录约束）；
+ignore-aware 目录遍历（读取 .gitignore 等忽略规则）。
 """
 
 from __future__ import annotations
@@ -137,7 +135,7 @@ class ToolResult:
 
 
 def _normalize_schema(schema: dict) -> None:
-    """规范化 JSON Schema。参考 agent runtime normalize_object_schema。
+    """规范化 JSON Schema。
 
     给所有 object 类型添加 additionalProperties: false 和 properties: {}。
     部分 provider（DeepSeek 等）对 schema 格式校验严格，缺少这些字段会拒绝工具定义。
@@ -201,7 +199,7 @@ class ToolSpec:
 class ToolRegistry:
     """Tool registry with registration, lookup, and execution.
 
-    参考 agent runtime GlobalToolRegistry:
+    GlobalToolRegistry：
       - 名称唯一性检查（冲突报错）
       - 大小写不敏感查找
       - workspace boundary enforcement
@@ -391,7 +389,7 @@ class ToolRegistry:
             return True
 
     def _resolve_path(self, path_str: str) -> Path:
-        """Resolve and validate a workspace path. 参考 agent runtime join_under_root + assert_workspace_path。"""
+        """Resolve and validate a workspace path."""
         if self._workspace_root is None:
             return Path(path_str).resolve()
         p = Path(path_str)
@@ -409,7 +407,7 @@ class ToolRegistry:
         return resolved
 
     def _load_ignore_patterns(self) -> list[tuple[str, bool]]:
-        """Load ignore patterns from .gitignore and .agentignore。参考 agent runtime WalkBuilder。"""
+        """Load ignore patterns from .gitignore and workspace ignore files."""
         patterns = []
         for fname in (".gitignore", ".agentignore"):
             ignore_file = self._workspace_root / fname if self._workspace_root else None

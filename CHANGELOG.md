@@ -13,7 +13,7 @@
 
 - **DeepSeek provider conformance** — `reasoning_content` echo-back on tool turns, prompt-cache hit/miss usage reporting, `thinking` params, and `response_format` JSON mode for structured calls.
 - **todo_write planning tool** — structured task plan tool with a frontend checklist; updates replace the plan in place instead of stacking duplicate cards.
-- **agent runtime-style message dedup** — duplicate sends (double-click) compare raw user text and replace the previous answer instead of re-running the turn.
+- **Message dedup** — duplicate sends (double-click) compare raw user text and replace the previous answer instead of re-running the turn.
 - **Provider quirk gating** — reasoning echo is enabled only for providers that tolerate it, protecting strict providers.
 - **Approval diffs jump to the edit location** — accepting/rejecting a diff scrolls to the changed region.
 
@@ -128,11 +128,11 @@
 - **Config: proxy settings not saved** — `ConfigUpdate` model was missing `network` and `agent` fields, so proxy settings from the UI were silently discarded. Fixed.
 - **Agent: ConnectError error messages** — `httpx.ConnectError` and `HTTPStatusError` are now wrapped in `ApiError` with the endpoint URL, instead of showing raw "unexpected error: All connection attempts failed".
 
-## [0.4.0] — Agent V2: Agent Runtime Architecture
+## [0.4.0] — Agent V2: New Runtime Architecture
 
 ### Agent V2 — Complete Rewrite
 
-The old ReAct agent (50+ files, PPT-demo quality) has been replaced with a clean 16-file runtime inspired by [ultraworkers/agent runtime](https://github.com/ultraworkers/agent runtime).
+The old ReAct agent (50+ files, PPT-demo quality) has been replaced with a clean 16-file runtime.
 
 **Core components:**
 - `ConversationRuntime` — unified agent loop (streaming + non-streaming, 3-retry error recovery)
@@ -166,9 +166,9 @@ The old ReAct agent (50+ files, PPT-demo quality) has been replaced with a clean
 - Approval flow: SSE stream pause → user decision → resume
 - Real-time progress display (tool calls and tokens mapped to `response` SSE type)
 
-### 9 Agent Runtime Runtime Modules (2026-06-06)
+### 9 Runtime Modules (2026-06-06)
 
-Reimplemented in Python, with architecture and module boundaries informed by [ultraworkers/agent runtime](https://github.com/ultraworkers/agent runtime) `rust/crates/runtime/src/`:
+Independently implemented in Python:
 
 - **`bash_validation.py`** — 6-submodule bash command validation pipeline: readOnlyValidation, destructiveCommandWarning, modeValidation, sedValidation, pathValidation, commandSemantics. Exposed via `validate_command()` and `is_read_only_command()`. Supports sudo wrapping detection (`extract_sudo_inner`), git subcommand classification, env var stripping (`extract_first_command`).
 - **`git_context.py`** — `GitContext.detect()` scans workspace git state (branch, recent 5 commits, staged files) for system prompt injection. Returns `None` gracefully for non-git directories.
@@ -265,7 +265,7 @@ Reimplemented in Python, with architecture and module boundaries informed by [ul
 - **Voice assistant demo GIF** in README (both EN/ZH) — real screen recording of wake word + dictation flow
 
 ### Changed
-- **project docs condensed** — 385 → 185 lines; removed full changelog history (redundant with git log), kept architecture, data flow, and known defect index
+- **Project documentation condensed** — 385 → 185 lines; removed full changelog history (redundant with git log), kept architecture, data flow, and known defect index
 
 ## [0.3.6] — 2026-06-01
 
@@ -316,7 +316,7 @@ Reimplemented in Python, with architecture and module boundaries informed by [ul
 
 ## [0.3.0] — 2026-05-23
 
-This is a major release — the "AI Agent for Papers" pivot.
+This is a major release — the workspace-native Agent pivot.
 
 ### Added
 - **Agent workspace file tools** — open a project folder; Agent calls `read_file / grep_files / str_replace / write_file / git_op` directly; editor tabs reload mid-stream after each write; PDF/Word/EPUB auto-parsed

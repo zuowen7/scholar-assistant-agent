@@ -1,6 +1,6 @@
 """Bash command validation pipeline — 6 submodules.
 
-Reimplementation of agent runtime rust/crates/runtime/src/bash_validation.rs.
+Independent Python implementation of the bash command validation pipeline.
 
 Submodules:
   1. readOnlyValidation — block write-like commands in read-only mode

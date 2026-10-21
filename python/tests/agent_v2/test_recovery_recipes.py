@@ -1,6 +1,6 @@
 """TDD tests for Recovery Recipes — automatic fault recovery strategies.
 
-Reference: agent runtime rust/crates/runtime/src/recovery_recipes.rs
+Recovery recipes tests.
 
 Adapted for academic writing scenarios:
   - ProviderFailure: LLM API timeout / key error → fallback provider

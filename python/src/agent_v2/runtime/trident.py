@@ -1,6 +1,6 @@
 """Trident Compaction — 3-stage context compression.
 
-Reimplementation of agent runtime rust/crates/runtime/src/trident.rs.
+Independent Python implementation of the Trident context compaction pipeline.
 
 Stages:
   1. Supersede — remove obsolete file operations (keep only latest write per file)

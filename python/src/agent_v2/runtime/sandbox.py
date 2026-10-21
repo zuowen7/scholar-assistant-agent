@@ -1,6 +1,6 @@
 """Sandbox — Windows-adapted process isolation.
 
-Adapted from agent runtime rust/crates/runtime/src/sandbox.rs.
+Windows-adapted sandbox configuration and result model.
 
 Windows doesn't have Linux namespaces, so we provide:
   - CWD restriction

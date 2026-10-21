@@ -40,7 +40,7 @@ function button(label: string, className: string, onClick: () => void): HTMLButt
   return element
 }
 
-/** Add a inline inline diff that reserves editor space instead of covering text. */
+/** Add an inline diff that reserves editor space instead of covering text. */
 export function addInlineDiffViewZone(
   editor: InlineDiffZoneEditor,
   options: InlineDiffViewOptions,

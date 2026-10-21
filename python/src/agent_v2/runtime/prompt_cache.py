@@ -1,6 +1,6 @@
 """PromptCache Event — track prompt cache hit/miss rates and token savings.
 
-Reimplementation of agent runtime PromptCacheEvent from conversation.rs.
+Independent Python implementation of the prompt cache tracker.
 """
 from __future__ import annotations
 

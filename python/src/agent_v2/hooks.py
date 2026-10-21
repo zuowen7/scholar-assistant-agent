@@ -1,6 +1,6 @@
 """Hooks system — lifecycle interceptors with abort signal, progress, JSON parsing.
 
-Reimplementation of agent runtime rust/crates/runtime/src/hooks.rs.
+Independent Python implementation of the hooks runtime module.
 
 Advanced features over original:
   - HookAbortSignal: async cancellation of running hooks
@@ -86,7 +86,7 @@ class HookResult:
 class HookAbortSignal:
     """Thread-safe abort signal for cancelling hook execution.
 
-    Reference: agent runtime HookAbortSignal (Arc<AtomicBool>).
+    Reference: HookAbortSignal (Arc<AtomicBool>).
     """
 
     def __init__(self) -> None:
@@ -161,7 +161,7 @@ class HookProgressReporter(Protocol):
 class HookRunner:
     """Hook executor with abort signal, progress reporting, and JSON parsing.
 
-    Reference: agent runtime HookRunner.
+    Reference: HookRunner.
     """
 
     def __init__(self):
@@ -364,12 +364,12 @@ class HookRunner:
 
 
 # ---------------------------------------------------------------------------
-# Shell hook JSON output parsing (agent runtime convention)
+# Shell hook JSON output parsing
 # ---------------------------------------------------------------------------
 
 
 def _parse_shell_hook_output(return_code: int | None, stdout: str) -> HookResult:
-    """Parse shell hook stdout following agent runtime conventions.
+    """Parse shell hook stdout following the documented conventions.
 
     Exit codes: 0=allow (check JSON), 2=deny, 3=ask, other=fail.
     JSON fields: decision, reason, systemMessage, continue,

@@ -278,7 +278,7 @@ class TestReviewSession:
     def test_invalid_persona_raises(self):
         _, _, _, _, _, ReviewSession = _models()[:6]
         with pytest.raises(ValidationError):
-            ReviewSession(doc_id="d1", persona="chatgpt")
+            ReviewSession(doc_id="d1", persona="unknown_persona")
 
     def test_checks_default_llm(self):
         _, _, _, _, _, ReviewSession = _models()[:6]

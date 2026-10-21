@@ -50,6 +50,3 @@ docs/
 Dockerfile
 docker-compose*.yml
 .dockerignore
-
-# Claude
-.claude/

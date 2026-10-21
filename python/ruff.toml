@@ -31,7 +31,7 @@ extend-exclude = [
 # 行宽：项目里 docstring 较长，给到 100 字符
 line-length = 100
 
-# 目标 Python 版本（项目用 3.12，见 project docs）
+# 目标 Python 版本（项目用 3.12）
 target-version = "py312"
 
 # 文件包含模式：默认已覆盖 .py，这里显式声明便于维护

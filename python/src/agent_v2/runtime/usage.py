@@ -1,6 +1,6 @@
 """UsageTracker + ModelPricing — token/cost 追踪。
 
-参考 agent runtime:
+参考同类实现：
   - runtime/usage.rs: UsageTracker, ModelPricing, format_usd
 """
 from __future__ import annotations
@@ -41,7 +41,7 @@ def format_usd(amount: float) -> str:
 
 @dataclass
 class UsageTracker:
-    """Per-session usage tracker. 参考 agent runtime UsageTracker。"""
+    """Per-session usage tracker."""
 
     model: str = ""
     total_input: int = 0

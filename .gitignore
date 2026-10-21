@@ -70,8 +70,7 @@ src-tauri/data/
 # Code review dumps (临时产物)
 docs/code-review-*.md
 
-# Local agent memory and visual acceptance evidence
-.workbuddy/
+# Visual acceptance reference images
 docs/ui-implementation/*.png
 docs/ui-reference/*.png
 
@@ -87,13 +86,9 @@ python/output/
 
 # 运行时目录（ChromaDB、agent data 等）
 python/runtime/
-.dev-live-runtime/
 
 # 环境变量
 .env
-
-# Agent 备份日志
-.agent_backup/
 
 # Tauri 自动生成
 src-tauri/gen/
@@ -132,12 +127,6 @@ src-tauri/resources/pandoc/
 # Local test scratch
 pytest-cache-files-*/
 tmp_pytest/
-
-# project docs is the canonical project doc; project docs is intentionally not committed
-project docs
-
-# Claude
-.claude/
 
 # Runtime artifacts
 *.log

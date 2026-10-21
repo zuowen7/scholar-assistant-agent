@@ -1,4 +1,4 @@
-"""Sub-agent — 参考 agent runtime agents.rs。
+"""Sub-agent — 子代理执行器。
 
 主 Agent 可调用 run_sub_agent 委派子任务（审查/解释/实施/翻译），
 子 Agent 使用相同 Provider 但不同 system prompt，结果返回主 Agent。
@@ -15,7 +15,7 @@ from src.agent_v2.runtime.session import Session, SessionFork
 from src.agent_v2.tools.registry import ToolRegistry, ToolResult
 from src.agent_v2.types import Message, MessageRole, TextBlock
 
-# 预设模式 → system prompt（参考 agent runtime Preset）
+# 预设模式 → system prompt
 _PRESETS: dict[str, str] = {
     "audit": (
         "You are a precise academic auditor. Review the following content for:\n"

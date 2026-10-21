@@ -1,6 +1,6 @@
 """Policy Engine — condition-driven rule evaluation for agent behavior.
 
-Reimplementation of agent runtime rust/crates/runtime/src/policy_engine.rs.
+Independent Python implementation of the policy engine.
 
 Declarative rules: Condition(key=value|threshold) → Action(RETRY|ESCALATE|LOG|ABORT).
 Evaluated against a context dict, ordered by priority (lower = higher priority).

@@ -1,6 +1,6 @@
 """Skills 系统 — 从目录加载 prompt 模板注入 system prompt。
 
-参考 agent runtime:
+技能注册表设计：
   - skill_system.py: SkillRegistry + SOUL/AGENTS/IDENTITY layers
   - /skills slash command: list/install/help
 
@@ -69,7 +69,7 @@ class Skill:
 
 
 class SkillRegistry:
-    """Skill registry — 参考 agent runtime SkillRegistry。"""
+    """Skill registry."""
 
     def __init__(self, skills_dir: str | Path | None = None):
         self._skills: dict[str, Skill] = {}

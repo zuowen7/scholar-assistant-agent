@@ -16,7 +16,7 @@ pip install -r requirements-lock.txt
 pytest tests/unit/ -v
 ```
 
-See [project docs](./project docs) for a full architecture overview and build commands.
+See the architecture section in [README.md](./README.md) for a full overview and build commands.
 
 ## Development Workflow
 

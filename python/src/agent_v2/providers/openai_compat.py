@@ -62,7 +62,7 @@ def _api_error_from_response(response: httpx.Response) -> ApiError:
 
 
 def _max_tokens_for_model(model: str) -> int:
-    """参考 agent runtime max_tokens_for_model: 每个模型不同上限。"""
+    """按模型设置不同的 max_tokens 上限。"""
     m = model.lower()
     if "claude" in m:
         return 8192
@@ -150,7 +150,7 @@ class OpenAiCompatProvider(BaseProvider):
                 thinking = "".join(b.thinking for b in msg.blocks if isinstance(b, ThinkingBlock))
                 if text or tool_calls:
                     entry: dict[str, Any] = {"role": "assistant"}
-                    # Always include content key, even if null (matches agent runtime)
+                    # Always include content key, even if null
                     entry["content"] = text if text else None
                     if tool_calls:
                         # 推理模型（DeepSeek/Qwen/GLM 等）要求工具调用回合回传

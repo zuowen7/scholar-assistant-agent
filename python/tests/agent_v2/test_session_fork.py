@@ -1,6 +1,6 @@
 """TDD tests for Session Fork + Session Control.
 
-Reference: agent runtime session.rs (fork) + session_control.rs (store)
+Session fork and session store tests.
 
 Tests cover:
   1. Session.fork() — create a new session from current state

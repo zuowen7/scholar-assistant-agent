@@ -8,7 +8,7 @@
 
 > An open-source AI workstation for academic writing and submission. Write, review, think, and publish — all in one place.
 
-- **Write** — AI companion editor with polish / expand / rewrite; Agent reads and writes project files directly (AI Agent for papers)
+- **Write** — AI companion editor with polish / expand / rewrite; Agent reads and writes project files directly as a workspace
 - **Review** — Reviewer-2 adversarial peer review + Claim Ledger to pressure-test logic before you submit
 - **Think** — Mind map + Toulmin argument map to structure ideas and reasoning
 - **Publish** — One-click export to IEEE / ACM / NeurIPS LaTeX templates and Word
@@ -51,9 +51,9 @@ Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant-ag
 
 ### AI Editor (Agent V2 as Backbone)
 
-> **Positioning: AI Agent for Papers.** Treat your research project as a workspace; the Agent reads/writes PDFs, drafts, bib files, and data directly — just like AI Agent edits source code. Agent V2 architecture inspired by [ultraworkers/agent runtime](https://github.com/ultraworkers/agent runtime).
+> **Positioning: a workspace-native AI Agent for papers.** Treat your research project as a workspace; the Agent reads/writes PDFs, drafts, bib files, and data directly — the same way a coding agent edits source code.
 
-- **Agent V2 Runtime** — ConversationRuntime unified loop, real-time SSE streaming token-by-token; 3-retry error recovery; planning detection + auto-retry; 9 runtime modules independently reimplemented in Python, with architecture inspired by Agent Runtime (bash_validation, git_context, lsp_client, policy_engine, prompt_cache, recovery, sandbox, session_control, trident)
+- **Agent V2 Runtime** — ConversationRuntime unified loop, real-time SSE streaming token-by-token; 3-retry error recovery; planning detection + auto-retry; 9 runtime modules independently implemented in Python (bash_validation, git_context, lsp_client, policy_engine, prompt_cache, recovery, sandbox, session_control, trident)
 - **17 Built-in Tools** — `read_file / write_file / str_replace / grep_files / glob_files / list_dir / run_command / rag_search / web_search / web_fetch / translate_document / export_document / arxiv_search / run_sub_agent` (4 presets: audit/explain/implement/translate); `run_command` protected by bash validation pipeline (read-only mode, destructive command warnings, path validation, command classification)
 - **5-Tier Permission System** — ReadOnly / WorkspaceWrite / DangerFullAccess / Prompt / Allow with allow/deny/ask rule engine; all file ops locked to workspace boundary; sudo wrapping and sed -i blocked in read-only mode
 - **Real-time File Refresh** — Checkpoint SSE events after Agent writes; file tree and editor tabs update instantly
@@ -187,7 +187,7 @@ Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant-ag
 │   ├── api_factory.py            #   FastAPI app factory (core logic only)
 │   ├── routers/                  #   Route modules (split by function)
 │   │   ├── translate.py          #   Translation / config / health check routes
-│   │   ├── agent_v2/             #   Agent V2 (ConversationRuntime, agent runtime inspired)
+│   │   ├── agent_v2/             #   Agent V2 (ConversationRuntime)
 │   │   ├── editor.py             #   Edit / export / Vision / Citation routes
 │   │   ├── argument.py           #   Argument map + Companion v3 routes
 │   │   ├── mindmap.py            #   Mind map persistence + AI analysis/expand
@@ -198,7 +198,7 @@ Pre-built installers: [Releases](https://github.com/zuowen7/scholar-assistant-ag
 │   │   ├── chunker/              #   3 chunking strategies (sentence/paragraph/fixed)
 │   │   ├── translator/           #   Ollama + Cloud dual-client (21 providers)
 │   │   ├── formatter/            #   3 output modes + Pandoc export
-│   │   ├── agent_v2/             #   Agent V2 runtime (ConversationRuntime, PermissionPolicy, Skills, Hooks, Plugins, 9 runtime modules reimplemented in Python, Agent Runtime-inspired)
+│   │   ├── agent_v2/             #   Agent V2 runtime (ConversationRuntime, PermissionPolicy, Skills, Hooks, Plugins, 9 runtime modules independently implemented in Python)
 │   │   ├── argument/             #   Argument Map v2 + Companion v3
 │   │   ├── plugin/               #   MCP-style plugin registry
 │   │   ├── citation/             #   Citation indexer
@@ -474,7 +474,7 @@ Edit `config/default.yaml`:
 
 ### Key Design Decisions
 
-- **Agent V2 (agent runtime inspired)** — ConversationRuntime, not LangChain; 9 runtime modules independently reimplemented in Python; 700+ tests, 100% deterministic mock coverage
+- **Agent V2** — ConversationRuntime, not LangChain; 9 runtime modules independently implemented in Python; 700+ tests, 100% deterministic mock coverage
 - **SSE everywhere** — streaming UX for translation, agent chat, argument extraction
 - **Local-first** — all data stays on your machine; cloud LLMs are optional
 - **Workspace-scoped Agent** — file operations locked to project root, 5-tier permission system
@@ -527,11 +527,11 @@ Contributions are welcome! Here's how to get started:
 3. Run `pytest tests/ -v` and `npx vitest` to verify
 4. Submit a pull request
 
-Good first issues are tagged `good-first-issue`. The project structure is documented in [project docs](./project docs).
+Good first issues are tagged `good-first-issue`. The project structure is documented in the architecture section above.
 
 ## A Note on Maturity
 
-Scholar Assistant is an active personal project under continuous improvement. While the core pipelines (translation, Agent, argument companion, mind map) are battle-tested with 2500+ tests, some features are still maturing — see the subsystem maturity notes in `project docs` / `project docs`.
+Scholar Assistant is an active personal project under continuous improvement. While the core pipelines (translation, Agent, argument companion, mind map) are battle-tested with 2500+ tests, some features are still maturing — see the project documentation.
 
 If something breaks or behaves unexpectedly, please [open an issue](../../issues). Bug reports with reproduction steps are incredibly helpful. PRs are welcome too.
 

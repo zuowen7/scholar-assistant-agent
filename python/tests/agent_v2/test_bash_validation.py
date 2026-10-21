@@ -1,6 +1,6 @@
 """TDD tests for Bash Validation Pipeline.
 
-Reference: agent runtime rust/crates/runtime/src/bash_validation.rs
+Bash command validation pipeline tests.
 
 6 submodules under test:
   1. readOnlyValidation  — block write-like commands in read-only mode
@@ -22,7 +22,7 @@ import pytest
 
 
 class TestReadOnlyValidation:
-    """Adapted from agent runtime bash_validation.rs readOnlyValidation tests."""
+    """Read-only command validation tests."""
 
     def test_blocks_rm_in_read_only(self):
         from src.agent_v2.runtime.bash_validation import validate_read_only
@@ -176,7 +176,7 @@ class TestReadOnlyValidation:
 
 
 class TestDestructiveCommandWarning:
-    """Adapted from agent runtime bash_validation.rs destructiveCommandWarning tests."""
+    """Destructive command warning tests."""
 
     def test_warns_rm_rf_root(self):
         from src.agent_v2.runtime.bash_validation import check_destructive
@@ -256,7 +256,7 @@ class TestDestructiveCommandWarning:
 
 
 class TestModeValidation:
-    """Adapted from agent runtime bash_validation.rs modeValidation tests."""
+    """Permission mode validation tests."""
 
     def test_workspace_write_warns_system_paths(self):
         from src.agent_v2.runtime.bash_validation import validate_mode
@@ -302,7 +302,7 @@ class TestModeValidation:
 
 
 class TestSedValidation:
-    """Adapted from agent runtime bash_validation.rs sedValidation tests."""
+    """sed validation tests."""
 
     def test_blocks_sed_inplace_in_read_only(self):
         from src.agent_v2.runtime.bash_validation import validate_sed
@@ -340,7 +340,7 @@ class TestSedValidation:
 
 
 class TestPathValidation:
-    """Adapted from agent runtime bash_validation.rs pathValidation tests."""
+    """Path validation tests."""
 
     def test_blocks_directory_traversal(self):
         from pathlib import Path
@@ -418,7 +418,7 @@ class TestPathValidation:
 
 
 class TestCommandSemantics:
-    """Adapted from agent runtime bash_validation.rs commandSemantics tests."""
+    """Command semantics classification tests."""
 
     @pytest.fixture(autouse=True)
     def _import(self):
